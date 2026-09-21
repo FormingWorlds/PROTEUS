@@ -3487,6 +3487,43 @@ def test_dummy_structure_provides_tables_for_liquidus_super_without_generated_se
 
 
 @pytest.mark.unit
+def test_dummy_structure_liquidus_super_without_tables_raises_named_error(tmp_path):
+    """No generated set and no FWL_DATA or SPIDER table source gives a named RuntimeError."""
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_energetics.num_levels = 50
+    config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
+    config.planet.temperature_mode = 'liquidus_super'
+    hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
+
+    with (
+        _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        _patch(
+            'proteus.interior_energetics.wrapper._provide_spider_eos_tables',
+            side_effect=FileNotFoundError('no P-S tables'),
+        ),
+        _patch('proteus.interior_energetics.wrapper.Interior_t') as interior_t,
+        pytest.raises(RuntimeError) as excinfo,
+    ):
+        determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
+
+    msg = str(excinfo.value)
+    assert 'temperature_mode' in msg
+    assert 'liquidus_super' in msg
+    assert 'interior_struct.module' in msg
+    assert 'WolfBower2018_MgSiO3' in msg
+    assert 'no P-S tables' in msg
+    assert not isinstance(excinfo.value, FileNotFoundError)
+    # The failure happens before the first interior step is built.
+    interior_t.assert_not_called()
+
+
+@pytest.mark.unit
 def test_determine_interior_radius_with_dummy_no_mesh_for_non_spider(tmp_path):
     """For Aragog (no separate mesh file), solve_dummy_structure returns
     None and the helper skips the spider_mesh path entirely.

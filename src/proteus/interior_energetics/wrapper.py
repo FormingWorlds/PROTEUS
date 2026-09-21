@@ -1064,7 +1064,19 @@ def determine_interior_radius_with_dummy(
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
         elif config.planet.temperature_mode == 'liquidus_super':
             # The liquidus_super initial entropy solves on these tables.
-            _provide_spider_eos_tables(config, outdir, dirs)
+            try:
+                _provide_spider_eos_tables(config, outdir, dirs)
+            except FileNotFoundError as exc:
+                raise RuntimeError(
+                    "planet.temperature_mode='liquidus_super' with "
+                    f"interior_struct.module='dummy' needs SPIDER/Aragog P-S EOS "
+                    f'tables, but the mantle EOS '
+                    f'{config.interior_struct.eos_dir!r} has no PALEOS table set '
+                    'and no FWL_DATA or SPIDER lookup_data set is available. '
+                    'Provide the tables, or set planet.temperature_mode to '
+                    "'adiabatic' or another mode. "
+                    f'Cause: {exc}'
+                ) from exc
 
     # Derived quantities
     hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']
