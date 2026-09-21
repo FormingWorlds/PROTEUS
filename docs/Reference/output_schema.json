@@ -48,6 +48,24 @@
       ]
     },
     {
+      "name": "sma_dot_planet",
+      "unit": "m s-1",
+      "description": "semi-major axis derivative",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/orbit.py",
+          "condition": "orbit.evolve = true"
+        },
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": []
+    },
+    {
       "name": "separation",
       "unit": "m",
       "description": "time-averaged separation",
@@ -99,7 +117,8 @@
         }
       ],
       "consumers": [
-        "orbit"
+        "orbit",
+        "plot"
       ]
     },
     {
@@ -125,20 +144,36 @@
       ]
     },
     {
-      "name": "Imk2",
-      "unit": "1",
-      "description": "Imaginary part of k2 Love Number",
+      "name": "ecc_dot_planet",
+      "unit": "1 s-1",
+      "description": "eccentricity derivative",
       "group": "Orbital and spin parameters of planet",
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/orbit/wrapper.py",
-          "condition": "always"
+          "file": "src/proteus/orbit/orbit.py",
+          "condition": "orbit.evolve = true"
+        },
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
         }
       ],
-      "consumers": [
-        "orbit"
-      ]
+      "consumers": []
+    },
+    {
+      "name": "plan_star_am",
+      "unit": "kg m2 s-1",
+      "description": "angular momentum of star+planet",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/orbit.py",
+          "condition": "orbit.evolve = true"
+        }
+      ],
+      "consumers": []
     },
     {
       "name": "axial_period",
@@ -147,6 +182,10 @@
       "group": "Orbital and spin parameters of planet",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/orbit/orbit.py",
+          "condition": "orbit.evolve = true"
+        },
         {
           "file": "src/proteus/orbit/satellite.py",
           "condition": "orbit.satellite = true"
@@ -161,6 +200,22 @@
         "orbit",
         "plot",
         "utils"
+      ]
+    },
+    {
+      "name": "Imk2",
+      "unit": "1",
+      "description": "Imaginary part of k2 Love Number",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
       ]
     },
     {
@@ -204,6 +259,58 @@
       ]
     },
     {
+      "name": "semimajorax_sat",
+      "unit": "m",
+      "description": "semi-major axis",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "plot",
+        "utils"
+      ]
+    },
+    {
+      "name": "sma_dot_sat",
+      "unit": "m s-1",
+      "description": "semi-major axis derivative",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "separation_sat",
+      "unit": "m",
+      "description": "time-averaged separation",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "utils"
+      ]
+    },
+    {
       "name": "perigee",
       "unit": "m",
       "description": "lowest point in orbit",
@@ -215,12 +322,31 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [
+        "orbit"
+      ]
     },
     {
-      "name": "semimajorax_sat",
-      "unit": "m",
-      "description": "semi-major axis",
+      "name": "orbital_period_sat",
+      "unit": "s",
+      "description": "orbital duration",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "plot"
+      ]
+    },
+    {
+      "name": "eccentricity_sat",
+      "unit": "1",
+      "description": "orbital eccentricity of satellite",
       "group": "Satellite system",
       "origin": "literal",
       "producers": [
@@ -239,15 +365,68 @@
       ]
     },
     {
-      "name": "M_sat",
-      "unit": "kg",
-      "description": "mass of satellite",
+      "name": "ecc_dot_sat",
+      "unit": "1 s-1",
+      "description": "eccentricity derivative",
       "group": "Satellite system",
       "origin": "literal",
       "producers": [
         {
           "file": "src/proteus/orbit/satellite.py",
           "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "plan_sat_am",
+      "unit": "kg m2 s-1",
+      "description": "angular momentum of satellite+planet",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "plot"
+      ]
+    },
+    {
+      "name": "axial_period_sat",
+      "unit": "s",
+      "description": "day length of satellite around its axis",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "plot",
+        "utils"
+      ]
+    },
+    {
+      "name": "R_sat",
+      "unit": "m",
+      "description": "radius of satellite",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
         }
       ],
       "consumers": [
@@ -255,9 +434,62 @@
       ]
     },
     {
-      "name": "plan_sat_am",
-      "unit": "kg m2 s-1",
-      "description": "angular momentum of sat+pla",
+      "name": "M_sat",
+      "unit": "kg",
+      "description": "mass of satellite",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
+      ]
+    },
+    {
+      "name": "C_sat",
+      "unit": "kg m2",
+      "description": "principal moment of inertia of satellite",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
+      ]
+    },
+    {
+      "name": "evection_angle",
+      "unit": "rad",
+      "description": "evection angle",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "plot"
+      ]
+    },
+    {
+      "name": "evection_dt_cap_yr",
+      "unit": "yr",
+      "description": "next macro-step dt cap, rate + growth limiter folded in",
       "group": "Satellite system",
       "origin": "literal",
       "producers": [
@@ -267,7 +499,7 @@
         }
       ],
       "consumers": [
-        "orbit"
+        "interior_energetics"
       ]
     },
     {
@@ -411,6 +643,26 @@
       ]
     },
     {
+      "name": "C_int",
+      "unit": "kg m2",
+      "description": "principal moment of inertia of planet",
+      "group": "Planet structure",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/common.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/orbit/common.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
+      ]
+    },
+    {
       "name": "R_solvus",
       "unit": "m",
       "description": "solvus radius for global_miscibility mode",
@@ -524,7 +776,8 @@
         }
       ],
       "consumers": [
-        "interior_energetics"
+        "interior_energetics",
+        "orbit"
       ]
     },
     {
@@ -1881,6 +2134,7 @@
         "atmos_chem",
         "atmos_clim",
         "observe",
+        "orbit",
         "plot",
         "star"
       ]
@@ -20569,6 +20823,40 @@
       "consumers": [
         "atmos_clim",
         "orbit"
+      ]
+    },
+    {
+      "name": "roche_limit_sat",
+      "unit": "m",
+      "description": "Roche limit, orbital distance for the satellite",
+      "group": "Diagnostic variables",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "utils"
+      ]
+    },
+    {
+      "name": "breakup_period_sat",
+      "unit": "s",
+      "description": "Critical day length for satellite",
+      "group": "Diagnostic variables",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "utils"
       ]
     },
     {

@@ -199,9 +199,10 @@ def next_step(
             Scale factor to apply to step size
         interior_o : Interior_t, optional
             Interior object used to persist stiffness-aware adaptive
-            state (hysteresis counter) across calls. When ``None``,
-            the hysteresis and stiffness logging features are
-            disabled and the controller runs without hysteresis. Pass
+            state (hysteresis counter, evection growth-limiter cooldown
+            counter) across calls. When ``None``, the hysteresis,
+            stiffness logging, and evection growth-limiter features are
+            disabled and the controller runs without them. Pass
             ``interior_o`` when available.
 
     Returns
@@ -417,6 +418,36 @@ def next_step(
                     dtswitch,
                 )
                 dtswitch = mushy_max
+
+    # Evection-resonance dt cap: mirrors the mushy-regime cap above, for a
+    # different stiffness source. Computed and exported by
+    # proteus.orbit.satellite.evolve_orbit_satellite -- see
+    # _estimate_evection_dt_cap_yr's own docstring there for the physical
+    # reasoning (tidal-mode-window coverage, not just orbital-state
+    # smoothness) and why the whole mechanism (rate cap AND the evection-
+    # scoped growth limiter that used to sit here, with its own cooldown
+    # counter) is computed in orbit now: this is the ONLY evection-related
+    # read left in next_step, a single precomputed value folded into
+    # dtswitch like any other cap.
+    #
+    # `evection_dt_cap_yr` is a registered helpfile column, so
+    # ZeroHelpfileRow() has already initialised it to 0.0 in hf_row before
+    # orbit ever runs (e.g. no planet_satellite_model configured, or the
+    # very first iteration) -- NOT np.inf, unlike the in-memory default
+    # `_estimate_evection_dt_cap_yr` itself returns. A genuine computed
+    # cap can never be <= 0.0 (every bound it folds together is strictly
+    # positive whenever finite), so <= 0.0 unambiguously means "not yet
+    # computed", treated as no cap.
+    evection_cap = float(hf_row.get('evection_dt_cap_yr', np.inf))
+    if evection_cap <= 0.0:
+        evection_cap = np.inf
+    if np.isfinite(evection_cap) and dtswitch > evection_cap:
+        log.info(
+            'Time-stepping: evection cap active, capping dt at %.2e yr (was %.2e yr)',
+            evection_cap,
+            dtswitch,
+        )
+        dtswitch = evection_cap
 
     # On retries (step_sf < 1) in the static/initial branches we
     # deliberately allow dt to fall below dt.minimum; the whole point of

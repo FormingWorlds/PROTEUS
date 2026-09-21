@@ -9,12 +9,17 @@ import numpy as np
 from juliacall import Main as jl
 
 from proteus.interior_energetics.common import Interior_t
+from proteus.orbit.common import Tides_t
 from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.julia_common import make_julia_converters
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
+
+# LovePy-precision-bound converters
+_jlarr, _, _jlsca = make_julia_converters('LovePy')
 
 
 def import_lovepy():
@@ -22,18 +27,48 @@ def import_lovepy():
     jl.seval('using LovePy')
 
 
-def _jlarr(arr: np.array):
-    # Make copy of array, reverse order, and convert to Julia type
-    cop = np.array(arr, copy=True, dtype=float).flatten()
-    return juliacall.convert(jl.Array[jl.LovePy.prec, 1], cop)
+def store_lovepy_tides(omega: float, imk2: float, config: Config, tides_o: Tides_t):
+    """Store LovePy's hardcoded tidal modes (n,m,k), forcing frequency, and
+    Im(k2) in tides_o, so the legacy LovePy module is compatible with
+    `sp1d`, `ps1d`, and `ps1d_evec`. LovePy itself assumes e<<1 and spin-orbit
+    synchronisation, which the 1d orbit models do not require (see "Tidal
+    response modules" in docs/Explanations/orbit.md).
+
+    Parameters
+    ----------
+        omega: float
+            Angular frequency of rotation
+        imk2: float
+            Imaginary part of k2 love number
+        tides_o: Tides_t
+            Struct containing tidal arrays at current time.
+    """
+
+    omega = float(omega)
+    imk2 = float(imk2)
+
+    sign = np.sign(omega)
+    LN = -sign * 1j * np.abs(imk2)
+
+    # Collect tidal mode information
+    # Note that these modes are hardcoded into Lovepy.
+    nmk = np.array(([2, 0, 1], [2, 2, 1], [2, 2, 3]), dtype=int)
+    # Note we only have acces to the imaginary part of k2, so we set the real part to 0.0.
+    LNk = np.array((-LN, LN, -LN), dtype=complex)
+    # Note we consistently drop the minus sign on the East/West ward component of the
+    # forcing frequency and the imaginary part of the k2 love number.
+    sigma = np.array((-omega, omega, -omega), dtype=float)
+
+    # Store tidal mode information in tides_o object
+    storage = tides_o.add(primary='planet', perturber=config.orbit.perturber)
+    storage.nmk = nmk
+    storage.sigma = sigma
+    storage.LNk = LNk
 
 
-def _jlsca(sca: float):
-    # Make a copy of a scalar, and convert to Julia type
-    return juliacall.convert(jl.LovePy.prec, sca)
-
-
-def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config) -> float:
+def run_lovepy(
+    hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides_t, config: Config
+) -> float:
     """Run the lovepy tidal heating module.
 
     Sets the interior tidal heating and returns Im(k2) love number.
@@ -46,6 +81,8 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config)
             Dictionary of directories.
         interior_o: Interior_t
             Struct containing interior arrays at current time.
+        tides_o: Tides_t
+            Struct containing tidal arrays at current time.
         config: Config
             PROTEUS config object
     Returns
@@ -53,9 +90,30 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config)
         Imk2_love: float
     """
 
-    # Calculate angular frequency of rotation
-    omega = _jlsca(2 * np.pi / hf_row['orbital_period'])
-    ecc = _jlsca(hf_row['eccentricity'])
+    if config.orbit.perturber == 'star':
+        log.debug('Running Lovepy for star-planet tides...')
+
+        # Calculate orbital frequency of rotation
+        omega = _jlsca(2 * np.pi / hf_row['orbital_period'])
+
+        # Convert planet-star orbital eccentricity
+        ecc = _jlsca(hf_row['eccentricity'])
+
+    elif config.orbit.perturber == 'satellite':
+        log.debug('Running Lovepy for satellite-planet tides...')
+
+        # Calculate orbital frequency of rotation
+        omega = _jlsca(2 * np.pi / hf_row['orbital_period_sat'])
+
+        # Convert planet-satellite orbital eccentricity
+        ecc = _jlsca(hf_row['eccentricity_sat'])
+
+    else:
+        UpdateStatusfile(dirs, 26)
+        raise ValueError(
+            f"run_lovepy requires config.orbit.perturber to be 'star' or 'satellite', "
+            f'got {config.orbit.perturber!r}'
+        )
 
     # Copy arrays
     arr_keys = ('density', 'visc', 'shear', 'bulk', 'mass', 'radius')
@@ -71,6 +129,8 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config)
     i_top = 0  # index of topmost cell which has visc>visc_thresh
     if config.interior_energetics.module in ('dummy', 'boundary'):
         if lov['visc'][0] < config.orbit.lovepy.visc_thresh:
+            # Store empty tidal mode information
+            store_lovepy_tides(omega, 0.0, config, tides_o)
             return 0.0
 
         # Construct arrays for lovepy (we need two cells, three edges here)
@@ -91,6 +151,8 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config)
 
         # fully liquid
         if i_top <= 1:
+            # Store empty tidal mode information
+            store_lovepy_tides(omega, 0.0, config, tides_o)
             return 0.0
 
         # Construct arrays for lovepy
@@ -137,6 +199,9 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config)
         # Verify result against bulk calculation
         power_blk /= np.sum(lov['mass'])
         log.debug('    power from bulk calc: %.3e W kg-1' % power_blk)
+
+    # Store tidal mode information
+    store_lovepy_tides(omega, float(Imk2), config, tides_o)
 
     # Return imaginary part of k2 love number
     return float(Imk2)
