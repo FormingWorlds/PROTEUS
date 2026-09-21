@@ -2705,65 +2705,170 @@ def test_get_sufficient_zalmoxis_paleos(
 # ============================================================================
 
 
+_UNIFIED_IRON = 'paleos_iron_eos_table_pt.dat'
+_UNIFIED_MGSIO3 = 'paleos_mgsio3_eos_table_pt.dat'
+_UNIFIED_WATER = 'paleos_water_eos_table_pt.dat'
+
+
+def _fetched_datasets(mock_fetch):
+    """Dataset keys passed to a mocked ``fetch_dataset``, in call order."""
+    return [c.args[0] for c in mock_fetch.call_args_list]
+
+
+def _fetched_files(mock_file):
+    """``(dataset key, file name)`` pairs passed to a mocked ``fetch_dataset_file``."""
+    return [(c.args[0], c.args[1]) for c in mock_file.call_args_list]
+
+
 @pytest.mark.unit
-@patch('proteus.utils.data._download_zalmoxis_chabrier')
-@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_seager(mock_static, mock_folder, mock_chabrier):
+def test_download_zalmoxis_eos_seager(mock_static, mock_fetch, mock_file):
     """download_zalmoxis_eos for Seager2007 calls download_eos_static only."""
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('Seager2007:MgSiO3', core_eos='Seager2007:iron')
 
     mock_static.assert_called_once()
-    mock_folder.assert_not_called()
-    mock_chabrier.assert_not_called()
+    mock_fetch.assert_not_called()
+    mock_file.assert_not_called()
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data._download_zalmoxis_chabrier')
-@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_wolfbower(mock_static, mock_folder, mock_chabrier):
-    """download_zalmoxis_eos for WolfBower2018 downloads Seager + WB files."""
+def test_download_zalmoxis_eos_wolfbower(mock_static, mock_fetch, mock_file):
+    """WolfBower2018 fetches the Seager set and the whole Wolf and Bower dataset."""
+    from proteus.data import EOS_WOLF_BOWER_2018
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('WolfBower2018:MgSiO3', core_eos='Seager2007:iron')
 
     mock_static.assert_called_once()
-    # 3 calls for WB2018 files: density_melt, density_solid, adiabat_temp_grad_melt
-    wb_calls = [c for c in mock_folder.call_args_list if 'WolfBower2018' in str(c)]
-    assert len(wb_calls) == 3
-    mock_chabrier.assert_not_called()
+    assert _fetched_datasets(mock_fetch) == [EOS_WOLF_BOWER_2018]
+    mock_file.assert_not_called()
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data._download_zalmoxis_chabrier')
-@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_paleos_unified(mock_static, mock_folder, mock_chabrier):
-    """download_zalmoxis_eos for PALEOS unified downloads the right tables."""
+def test_download_zalmoxis_eos_rtpress(mock_static, mock_fetch, mock_file):
+    """RTPress100TPa fetches its own dataset plus the Wolf and Bower solid density only."""
+    from proteus.data import EOS_RTPRESS_100TPA, EOS_WOLF_BOWER_2018
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('RTPress100TPa:MgSiO3', core_eos='Seager2007:iron')
+
+    mock_static.assert_called_once()
+    assert _fetched_datasets(mock_fetch) == [EOS_RTPRESS_100TPA]
+    # The RTPress registry entry reads its solid density from the Wolf and
+    # Bower dataset; the whole dataset must not be pulled for that one file.
+    assert _fetched_files(mock_file) == [(EOS_WOLF_BOWER_2018, 'density_solid.dat')]
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_rtpress_with_wolfbower_fetches_whole_dataset(
+    mock_static, mock_fetch, mock_file
+):
+    """When Wolf and Bower is selected too, its whole dataset covers the solid file."""
+    from proteus.data import EOS_RTPRESS_100TPA, EOS_WOLF_BOWER_2018
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos(
+        'WolfBower2018:MgSiO3+RTPress100TPa:MgSiO3', core_eos='Seager2007:iron'
+    )
+
+    assert sorted(_fetched_datasets(mock_fetch)) == sorted(
+        [EOS_WOLF_BOWER_2018, EOS_RTPRESS_100TPA]
+    )
+    mock_file.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_paleos_2phase(mock_static, mock_fetch, mock_file):
+    """PALEOS-2phase:MgSiO3 fetches the standard-resolution dataset only."""
+    from proteus.data import EOS_PALEOS_MGSIO3_2PHASE
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='Seager2007:iron')
+
+    assert _fetched_datasets(mock_fetch) == [EOS_PALEOS_MGSIO3_2PHASE]
+    mock_file.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_paleos_2phase_highres(mock_static, mock_fetch, mock_file):
+    """PALEOS-2phase:MgSiO3-highres fetches the high-resolution dataset only."""
+    from proteus.data import EOS_PALEOS_MGSIO3_2PHASE_HIGHRES
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS-2phase:MgSiO3-highres', core_eos='Seager2007:iron')
+
+    assert _fetched_datasets(mock_fetch) == [EOS_PALEOS_MGSIO3_2PHASE_HIGHRES]
+    mock_file.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_paleos_unified(mock_static, mock_fetch, mock_file):
+    """PALEOS unified fetches its three tables one file at a time."""
+    from proteus.data import EOS_PALEOS_UNIFIED
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('PALEOS:MgSiO3', core_eos='PALEOS:iron', ice_layer_eos='PALEOS:H2O')
 
     # Seager not needed (no Seager component, core_eos is set)
     mock_static.assert_not_called()
-    # 3 PALEOS unified files: iron, MgSiO3, H2O
-    assert mock_folder.call_count == 3
-    folders = [str(c) for c in mock_folder.call_args_list]
-    assert any('PALEOS_iron' in f for f in folders)
-    assert any('PALEOS_MgSiO3_unified' in f for f in folders)
-    assert any('PALEOS_H2O' in f for f in folders)
-    mock_chabrier.assert_not_called()
+    # A whole-dataset fetch would pull the full 2.29 GB record.
+    mock_fetch.assert_not_called()
+    assert sorted(_fetched_files(mock_file)) == sorted(
+        [
+            (EOS_PALEOS_UNIFIED, _UNIFIED_IRON),
+            (EOS_PALEOS_UNIFIED, _UNIFIED_MGSIO3),
+            (EOS_PALEOS_UNIFIED, _UNIFIED_WATER),
+        ]
+    )
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data._download_zalmoxis_chabrier')
-@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_paleos_unified_only_selected_tables(
+    mock_static, mock_fetch, mock_file
+):
+    """Only the selected unified tables are fetched, not the whole record."""
+    from proteus.data import EOS_PALEOS_UNIFIED
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS:MgSiO3', core_eos='PALEOS:iron')
+
+    assert sorted(_fetched_files(mock_file)) == sorted(
+        [(EOS_PALEOS_UNIFIED, _UNIFIED_IRON), (EOS_PALEOS_UNIFIED, _UNIFIED_MGSIO3)]
+    )
+    mock_fetch.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_paleos_2phase_fetches_seager_fallback(
-    mock_static, mock_folder, mock_chabrier
+    mock_static, mock_fetch, mock_file
 ):
     """PALEOS-2phase with a PALEOS core still fetches the Seager static set.
 
@@ -2773,21 +2878,18 @@ def test_download_zalmoxis_eos_paleos_2phase_fetches_seager_fallback(
     fallback even though neither the mantle nor the core names Seager. A
     fetch that skips it leaves a fresh install failing the existence check
     on its first run of the Earth tutorial config (PALEOS-2phase:MgSiO3
-    mantle, PALEOS:iron core). The 2-phase sub-tables and the unified iron
+    mantle, PALEOS:iron core). The 2-phase tables and the unified iron
     table must download alongside.
     """
+    from proteus.data import EOS_PALEOS_MGSIO3_2PHASE, EOS_PALEOS_UNIFIED
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='PALEOS:iron')
 
     mock_static.assert_called_once()
-    folders = [str(c) for c in mock_folder.call_args_list]
-    assert any('paleos_mgsio3_tables_pt_proteus_solid.dat' in f for f in folders)
-    assert any('paleos_mgsio3_tables_pt_proteus_liquid.dat' in f for f in folders)
-    assert any('PALEOS_iron' in f for f in folders)
     # The standard-resolution selection must not pull the ~1.3 GB highres pair.
-    assert not any('highres' in f for f in folders)
-    mock_chabrier.assert_not_called()
+    assert _fetched_datasets(mock_fetch) == [EOS_PALEOS_MGSIO3_2PHASE]
+    assert _fetched_files(mock_file) == [(EOS_PALEOS_UNIFIED, _UNIFIED_IRON)]
 
 
 @pytest.mark.unit
@@ -2800,11 +2902,11 @@ def test_download_zalmoxis_eos_paleos_2phase_fetches_seager_fallback(
         'PALEOS-API-2phase:MgSiO3',
     ],
 )
-@patch('proteus.utils.data._download_zalmoxis_chabrier')
-@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_seager_fallback_every_family(
-    mock_static, mock_folder, mock_chabrier, mantle_component
+    mock_static, mock_fetch, mock_file, mantle_component
 ):
     """Every family with a Seager core fallback fetches the static set.
 
@@ -2816,14 +2918,97 @@ def test_download_zalmoxis_eos_seager_fallback_every_family(
     iron core must download its own table alongside, and the Chabrier
     fetch must stay untouched.
     """
+    from proteus.data import EOS_CHABRIER_2021, EOS_PALEOS_UNIFIED
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos(mantle_component, core_eos='PALEOS:iron')
 
     mock_static.assert_called_once()
-    folders = [str(c) for c in mock_folder.call_args_list]
-    assert any('PALEOS_iron' in f for f in folders)
-    mock_chabrier.assert_not_called()
+    assert (EOS_PALEOS_UNIFIED, _UNIFIED_IRON) in _fetched_files(mock_file)
+    assert EOS_CHABRIER_2021 not in _fetched_datasets(mock_fetch)
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_api_2phase_fetches_only_seager(
+    mock_static, mock_fetch, mock_file
+):
+    """PALEOS-API-2phase tabulates live but still needs the Seager fallback.
+
+    The API-backed 2-phase mantle generates its own tables on demand, so no
+    dataset fetch may fire for it, yet its registry entry carries the
+    Seager iron core fallback whose file the existence check requires. The
+    limit case of the fallback rule: the static set is the only download.
+    """
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS-API-2phase:MgSiO3', core_eos='PALEOS-API:iron')
+
+    mock_static.assert_called_once()
+    mock_fetch.assert_not_called()
+    mock_file.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_multi_component(mock_static, mock_fetch, mock_file):
+    """download_zalmoxis_eos handles multi-component EOS strings."""
+    from proteus.data import EOS_CHABRIER_2021, EOS_PALEOS_UNIFIED
+    from proteus.utils.data import download_zalmoxis_eos
+
+    # Composite mantle with PALEOS + Chabrier
+    download_zalmoxis_eos(
+        'PALEOS:MgSiO3:0.98+Chabrier:H:0.01+PALEOS:H2O:0.01',
+        core_eos='Seager2007:iron',
+    )
+
+    mock_static.assert_called_once()
+    assert _fetched_datasets(mock_fetch) == [EOS_CHABRIER_2021]
+    assert sorted(_fetched_files(mock_file)) == sorted(
+        [(EOS_PALEOS_UNIFIED, _UNIFIED_MGSIO3), (EOS_PALEOS_UNIFIED, _UNIFIED_WATER)]
+    )
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_unknown_component_warns(
+    mock_static, mock_fetch, mock_file, caplog
+):
+    """An unknown EOS family triggers a warning but no exception."""
+    from proteus.utils.data import download_zalmoxis_eos
+
+    with caplog.at_level('WARNING'):
+        download_zalmoxis_eos('UnknownFamily:Foo', core_eos='Seager2007:iron')
+
+    warnings = [r for r in caplog.records if 'no handler' in r.getMessage()]
+    # Discrimination: at least one warning was emitted for the unknown
+    # component, and nothing was fetched for it.
+    assert len(warnings) >= 1
+    assert any('UnknownFamily' in w.getMessage() for w in warnings)
+    mock_fetch.assert_not_called()
+    mock_file.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_paleos_api_no_download(mock_static, mock_fetch, mock_file):
+    """PALEOS-API:* and PALEOS-API-2phase:* are valid but trigger no dataset fetch."""
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS-API:MgSiO3+PALEOS-API-2phase:H2O', core_eos='Seager2007:iron')
+
+    # Seager static (always for core fallback) is the only download.
+    mock_static.assert_called_once()
+    mock_fetch.assert_not_called()
+    mock_file.assert_not_called()
 
 
 @pytest.mark.unit
@@ -2868,50 +3053,6 @@ def test_seager_fallback_families_match_registry():
 
     assert 'PALEOS-2phase:' in expected
     assert expected == set(SEAGER_FALLBACK_FAMILIES)
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data._download_zalmoxis_chabrier')
-@patch('proteus.utils.data._download_zalmoxis_folder')
-@patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_api_2phase_fetches_only_seager(
-    mock_static, mock_folder, mock_chabrier
-):
-    """PALEOS-API-2phase tabulates live but still needs the Seager fallback.
-
-    The API-backed 2-phase mantle generates its own tables on demand, so no
-    folder download may fire for it, yet its registry entry carries the
-    Seager iron core fallback whose file the existence check requires. The
-    limit case of the fallback rule: the static set is the only download.
-    """
-    from proteus.utils.data import download_zalmoxis_eos
-
-    download_zalmoxis_eos('PALEOS-API-2phase:MgSiO3', core_eos='PALEOS-API:iron')
-
-    mock_static.assert_called_once()
-    mock_folder.assert_not_called()
-    mock_chabrier.assert_not_called()
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data._download_zalmoxis_chabrier')
-@patch('proteus.utils.data._download_zalmoxis_folder')
-@patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_multi_component(mock_static, mock_folder, mock_chabrier):
-    """download_zalmoxis_eos handles multi-component EOS strings."""
-    from proteus.utils.data import download_zalmoxis_eos
-
-    # Composite mantle with PALEOS + Chabrier
-    download_zalmoxis_eos(
-        'PALEOS:MgSiO3:0.98+Chabrier:H:0.01+PALEOS:H2O:0.01',
-        core_eos='Seager2007:iron',
-    )
-
-    mock_static.assert_called_once()
-    mock_chabrier.assert_called_once()
-    folders = [str(c) for c in mock_folder.call_args_list]
-    assert any('PALEOS_MgSiO3_unified' in f for f in folders)
-    assert any('PALEOS_H2O' in f for f in folders)
 
 
 # ============================================================================
@@ -5162,241 +5303,6 @@ def test_get_zalmoxis_melting_curves_returns_two_interpolators(monkeypatch, tmp_
 
 
 # ============================================================================
-# get_zalmoxis_eos_dir
-# ============================================================================
-
-
-@pytest.mark.unit
-def test_get_zalmoxis_eos_dir_returns_fwl_data_subpath(monkeypatch, tmp_path):
-    """get_zalmoxis_eos_dir returns FWL_DATA / zalmoxis_eos."""
-    import proteus.utils.data as data_mod
-    from proteus.utils.data import get_zalmoxis_eos_dir
-
-    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
-
-    result = get_zalmoxis_eos_dir()
-    assert result == tmp_path / 'zalmoxis_eos'
-    # Discrimination: the returned path must end in zalmoxis_eos exactly
-    # (not 'zalmoxis_eos_dir' or some variant).
-    assert result.name == 'zalmoxis_eos'
-
-
-# ============================================================================
-# _download_zalmoxis_chabrier coverage
-# ============================================================================
-
-
-@pytest.mark.unit
-def test_download_zalmoxis_chabrier_already_present_returns_early(monkeypatch, tmp_path):
-    """When the Chabrier folder already exists with content, the helper returns immediately."""
-    import proteus.utils.data as data_mod
-    from proteus.utils.data import _download_zalmoxis_chabrier
-
-    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
-
-    folder_dir = tmp_path / 'zalmoxis_eos' / 'EOS_Chabrier2021_HHe'
-    folder_dir.mkdir(parents=True, exist_ok=True)
-    (folder_dir / 'placeholder.dat').write_text('data')
-
-    download_calls = []
-    monkeypatch.setattr(
-        data_mod, 'download_zenodo_folder', lambda *a, **k: download_calls.append(a)
-    )
-
-    _download_zalmoxis_chabrier()
-
-    # Discrimination: no download attempt was made because folder existed
-    # with files.
-    assert download_calls == []
-    # The placeholder remains intact.
-    assert (folder_dir / 'placeholder.dat').exists()
-
-
-@pytest.mark.unit
-def test_download_zalmoxis_chabrier_zenodo_failure_returns(monkeypatch, tmp_path):
-    """When download_zenodo_folder returns False, the helper warns and returns."""
-    import proteus.utils.data as data_mod
-    from proteus.utils.data import _download_zalmoxis_chabrier
-
-    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
-
-    monkeypatch.setattr(data_mod, 'download_zenodo_folder', lambda *a, **k: False)
-
-    _download_zalmoxis_chabrier()
-
-    folder_dir = tmp_path / 'zalmoxis_eos' / 'EOS_Chabrier2021_HHe'
-    # Discrimination: folder was created (mkdir line ran) before the
-    # download attempt, but no contents extracted.
-    assert folder_dir.exists()
-    assert list(folder_dir.iterdir()) == []
-
-
-@pytest.mark.unit
-def test_download_zalmoxis_chabrier_extracts_tarball(monkeypatch, tmp_path):
-    """The helper extracts a downloaded .tar.gz, moves contents up, and cleans up."""
-    import tarfile
-
-    import proteus.utils.data as data_mod
-    from proteus.utils.data import _download_zalmoxis_chabrier
-
-    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
-
-    folder_dir = tmp_path / 'zalmoxis_eos' / 'EOS_Chabrier2021_HHe'
-
-    def fake_download(zenodo_id, target):
-        target.mkdir(parents=True, exist_ok=True)
-        # Build a tarball containing a nested subdir
-        inner_dir = target / 'inner_temp'
-        inner_dir.mkdir(parents=True, exist_ok=True)
-        (inner_dir / 'chabrier2021_H.dat').write_text('chabrier data')
-        tarball = target / 'chabrier.tar.gz'
-        with tarfile.open(tarball, 'w:gz') as tar:
-            tar.add(inner_dir, arcname='inner_dir')
-        # Remove the inner_temp dir; the test simulates the actual
-        # tar-only contents.
-        import shutil
-
-        shutil.rmtree(inner_dir)
-        # Also write an md5sums.txt that should be cleaned up
-        (target / 'md5sums.txt').write_text('hash file.dat\n')
-        return True
-
-    monkeypatch.setattr(data_mod, 'download_zenodo_folder', fake_download)
-
-    _download_zalmoxis_chabrier()
-
-    # The expected file landed at the top level (after move from subdir)
-    assert (folder_dir / 'chabrier2021_H.dat').exists()
-    # Discrimination: the md5sums.txt was cleaned up, and no tarball
-    # remains.
-    assert not (folder_dir / 'md5sums.txt').exists()
-    assert list(folder_dir.glob('*.tar.gz')) == []
-
-
-# ============================================================================
-# download_zalmoxis_eos additional dispatch branches
-# ============================================================================
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data._download_zalmoxis_chabrier')
-@patch('proteus.utils.data._download_zalmoxis_folder')
-@patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_rtpress(mock_static, mock_folder, mock_chabrier):
-    """RTPress100TPa selects density_melt + adiabat_temp_grad_melt files."""
-    from proteus.utils.data import download_zalmoxis_eos
-
-    download_zalmoxis_eos('RTPress100TPa:MgSiO3', core_eos='Seager2007:iron')
-
-    mock_static.assert_called_once()
-    rt_calls = [c for c in mock_folder.call_args_list if 'RTPress' in str(c)]
-    # Discrimination: exactly TWO RTPress files (density melt and
-    # adiabat grad melt) must have been requested; a regression that
-    # only fetched one would break this pin.
-    assert len(rt_calls) == 2
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data._download_zalmoxis_chabrier')
-@patch('proteus.utils.data._download_zalmoxis_folder')
-@patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_paleos_2phase(mock_static, mock_folder, mock_chabrier):
-    """PALEOS-2phase:MgSiO3 selects the liquid + solid tables."""
-    from proteus.utils.data import download_zalmoxis_eos
-
-    download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='Seager2007:iron')
-
-    p2_calls = [c for c in mock_folder.call_args_list if 'PALEOS_MgSiO3' in str(c)]
-    # Discrimination: exactly two files (liquid + solid). A regression
-    # that downloaded only one would fail this assertion.
-    assert len(p2_calls) == 2
-    files = [c.kwargs.get('file', '') for c in p2_calls]
-    assert any('liquid' in f for f in files)
-    assert any('solid' in f for f in files)
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data._download_zalmoxis_chabrier')
-@patch('proteus.utils.data._download_zalmoxis_folder')
-@patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_paleos_2phase_highres(mock_static, mock_folder, mock_chabrier):
-    """PALEOS-2phase:MgSiO3-highres selects the highres liquid + solid tables."""
-    from proteus.utils.data import download_zalmoxis_eos
-
-    download_zalmoxis_eos('PALEOS-2phase:MgSiO3-highres', core_eos='Seager2007:iron')
-
-    p2_calls = [c for c in mock_folder.call_args_list if 'PALEOS_MgSiO3' in str(c)]
-    assert len(p2_calls) == 2
-    files = [c.kwargs.get('file', '') for c in p2_calls]
-    # Discrimination: the file names must contain 'highres' suffix.
-    assert all('highres' in f for f in files)
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data._download_zalmoxis_chabrier')
-@patch('proteus.utils.data._download_zalmoxis_folder')
-@patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_unknown_component_warns(
-    mock_static, mock_folder, mock_chabrier, caplog
-):
-    """An unknown EOS family triggers a warning but no exception."""
-    from proteus.utils.data import download_zalmoxis_eos
-
-    with caplog.at_level('WARNING'):
-        download_zalmoxis_eos('UnknownFamily:Foo', core_eos='Seager2007:iron')
-
-    warnings = [r for r in caplog.records if 'no handler' in r.getMessage()]
-    # Discrimination: at least one warning was emitted for the unknown
-    # component, and no folder-download was queued for it.
-    assert len(warnings) >= 1
-    no_handler_messages = [w.getMessage() for w in warnings]
-    assert any('UnknownFamily' in m for m in no_handler_messages)
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data._download_zalmoxis_chabrier')
-@patch('proteus.utils.data._download_zalmoxis_folder')
-@patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_paleos_api_no_download(mock_static, mock_folder, mock_chabrier):
-    """PALEOS-API:* and PALEOS-API-2phase:* are valid but trigger no downloads."""
-    from proteus.utils.data import download_zalmoxis_eos
-
-    download_zalmoxis_eos('PALEOS-API:MgSiO3+PALEOS-API-2phase:H2O', core_eos='Seager2007:iron')
-
-    # Discrimination: Seager static (always for core fallback) is the
-    # only download; PALEOS-API prefixes are NOT routed to the folder
-    # helper.
-    mock_static.assert_called_once()
-    assert mock_folder.call_count == 0
-
-
-# ============================================================================
-# _download_zalmoxis_folder unmapped folder warns
-# ============================================================================
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.get_data_source_info', return_value=None)
-def test_download_zalmoxis_folder_no_mapping_warns(mock_info, mock_dl, caplog):
-    """_download_zalmoxis_folder warns when the source mapping is missing."""
-    from proteus.utils.data import _download_zalmoxis_folder
-
-    with caplog.at_level('WARNING'):
-        _download_zalmoxis_folder('UnknownEOS')
-
-    # Discrimination: download() was NOT called; the function warned and
-    # returned.
-    mock_dl.assert_not_called()
-    messages = ' '.join(r.getMessage() for r in caplog.records)
-    assert 'No data source mapping' in messages
-
-
-# ============================================================================
 # download() further branches: no Zenodo, OSF cleanup of empty folder
 # ============================================================================
 
@@ -5815,48 +5721,6 @@ def test_get_socrates_uses_none_dirs_when_not_given(mock_run, tmp_path, monkeypa
     mock_run.assert_called_once()
     cmd = mock_run.call_args[0][0]
     assert cmd[0].startswith(str(tmp_path / 'tools'))
-
-
-# ============================================================================
-# _download_zalmoxis_chabrier: __MACOSX and dotfile branches
-# ============================================================================
-
-
-@pytest.mark.unit
-def test_download_zalmoxis_chabrier_removes_macosx_and_dotfiles(monkeypatch, tmp_path):
-    """The helper removes __MACOSX subdirs and skips ._/.DS_Store entries."""
-    import proteus.utils.data as data_mod
-    from proteus.utils.data import _download_zalmoxis_chabrier
-
-    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
-
-    folder_dir = tmp_path / 'zalmoxis_eos' / 'EOS_Chabrier2021_HHe'
-
-    def fake_download(zenodo_id, target):
-        target.mkdir(parents=True, exist_ok=True)
-        # Create a __MACOSX subdir at the top level that must be removed
-        macosx = target / '__MACOSX'
-        macosx.mkdir(parents=True, exist_ok=True)
-        (macosx / 'junk.dat').write_text('mac junk')
-        # Create a normal subdir with a dotfile and a real file
-        inner = target / 'inner'
-        inner.mkdir(parents=True, exist_ok=True)
-        (inner / 'chabrier2021_H.dat').write_text('real data')
-        (inner / '._hidden').write_text('apple metadata')
-        (inner / '.DS_Store').write_text('finder')
-        return True
-
-    monkeypatch.setattr(data_mod, 'download_zenodo_folder', fake_download)
-
-    _download_zalmoxis_chabrier()
-
-    # Discrimination: __MACOSX was removed; only the real chabrier file
-    # survived at the top level. The dotfiles did NOT make it up.
-    assert not (folder_dir / '__MACOSX').exists()
-    assert (folder_dir / 'chabrier2021_H.dat').read_text() == 'real data'
-    assert not (folder_dir / '._hidden').exists()
-    assert not (folder_dir / '.DS_Store').exists()
 
 
 # ============================================================================

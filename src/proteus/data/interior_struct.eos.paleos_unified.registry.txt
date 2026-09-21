@@ -1,0 +1,3 @@
+paleos_iron_eos_table_pt.dat md5:259a2267dcf58af3b2c4dd389105b597
+paleos_mgsio3_eos_table_pt.dat md5:1f75d518bf192e66b94ec0bda190ada7
+paleos_water_eos_table_pt.dat md5:2f62eea322f0dee1268565e4182bde11

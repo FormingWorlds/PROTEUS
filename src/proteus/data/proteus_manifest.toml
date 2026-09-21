@@ -109,3 +109,49 @@ required_by = ["proteus"]
 name = "MUSCLES observed stellar spectra"
 zenodo = "10.5281/zenodo.17802209"
 required_by = ["proteus"]
+
+[interior_struct.eos.wolf_bower_2018]
+name = "Wolf & Bower (2018) MgSiO3 equation of state to 1 TPa, Zalmoxis tables"
+zenodo = "10.5281/zenodo.17417017"
+required_by = ["proteus"]
+files = ["density_melt.dat", "density_solid.dat", "adiabat_temp_grad_melt.dat"]
+
+[interior_struct.eos.rtpress_100tpa]
+name = "RTPress MgSiO3 melt equation of state to 100 TPa, Zalmoxis tables"
+zenodo = "10.5281/zenodo.18819027"
+required_by = ["proteus"]
+files = ["density_melt.dat", "adiabat_temp_grad_melt.dat"]
+
+[interior_struct.eos.paleos_mgsio3_2phase]
+name = "PALEOS MgSiO3 solid and liquid tables, 150 points per decade"
+zenodo = "10.5281/zenodo.19680050"
+required_by = ["proteus"]
+files = [
+    "paleos_mgsio3_tables_pt_proteus_liquid.dat",
+    "paleos_mgsio3_tables_pt_proteus_solid.dat",
+]
+
+[interior_struct.eos.paleos_mgsio3_2phase_highres]
+name = "PALEOS MgSiO3 solid and liquid tables, 600 points per decade"
+zenodo = "10.5281/zenodo.19680050"
+required_by = ["proteus"]
+files = [
+    "paleos_mgsio3_tables_pt_proteus_liquid_highres.dat",
+    "paleos_mgsio3_tables_pt_proteus_solid_highres.dat",
+]
+
+[interior_struct.eos.paleos_unified]
+name = "PALEOS unified tables for iron, MgSiO3 and water"
+zenodo = "10.5281/zenodo.22776069"
+required_by = ["proteus"]
+files = [
+    "paleos_iron_eos_table_pt.dat",
+    "paleos_mgsio3_eos_table_pt.dat",
+    "paleos_water_eos_table_pt.dat",
+]
+
+[interior_struct.eos.chabrier_2021]
+name = "Chabrier et al. hydrogen and helium tables in PALEOS format"
+zenodo = "10.5281/zenodo.19135021"
+required_by = ["proteus"]
+extract = "tar"

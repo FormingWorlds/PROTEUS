@@ -35,8 +35,8 @@ used with lower rate limits.
 | Surface albedos | fwl-io | `proteus get surfaces` |
 | Scattering properties | PROTEUS downloader | `proteus get scattering` |
 | Exoplanet populations, mass-radius curves | fwl-io | `proteus get reference` |
-| Seager (2007) EOS tables | fwl-io | fetched when a run needs them |
-| Other interior EOS tables, melting curves | PROTEUS downloader | `proteus get interiordata` |
+| Interior structure EOS tables | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
+| Interior lookup tables, melting curves | PROTEUS downloader | `proteus get interiordata` |
 
 To configure a Zenodo API token, see the
 [Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
@@ -235,4 +235,16 @@ not read and can be deleted.
 
 The interior structure solver of PROTEUS, Zalmoxis, uses equation-of-state tables by [Seager et al. (2007)](https://iopscience.iop.org/article/10.1086/521346), and from [PALEOS](https://github.com/maraattia/PALEOS) by [Attia et al. (2026)](https://ui.adsabs.harvard.edu/abs/2026arXiv260503741A/abstract). An overview of equation of state tables can be found [here](https://proteus-framework.org/Zalmoxis/Reference/data.html#data-inventory).
 
-The Seager et al. (2007) tables are fetched through fwl-io into `$FWL_DATA/interior_struct/eos/seager_2007/r<record-id>/`, on the same terms as the datasets above. A copy under `$FWL_DATA/EOS_material_properties/EOS_Seager2007` is not read and can be deleted.
+All equation-of-state tables are fetched through fwl-io into `$FWL_DATA/interior_struct/eos/<dataset>/r<record-id>/`, on the same terms as the datasets above. Only the tables that the selected equations of state reference are fetched. A copy under `$FWL_DATA/EOS_material_properties/EOS_Seager2007` is not read and can be deleted.
+
+| Dataset directory | Contents | Fetched |
+|---|---|---|
+| `seager_2007` | Seager et al. (2007) iron, silicate and water tables | whole record |
+| `wolf_bower_2018` | Wolf and Bower (2018) MgSiO3 melt and solid tables to 1 TPa | whole dataset for `WolfBower2018`; the solid density file alone for `RTPress100TPa` |
+| `rtpress_100tpa` | RTPress MgSiO3 melt tables to 100 TPa | whole dataset |
+| `paleos_mgsio3_2phase` | PALEOS MgSiO3 solid and liquid tables, 150 points per decade | whole dataset |
+| `paleos_mgsio3_2phase_highres` | PALEOS MgSiO3 solid and liquid tables, 600 points per decade | whole dataset, only for `PALEOS-2phase:MgSiO3-highres` |
+| `paleos_unified` | PALEOS unified tables for iron, MgSiO3 and water | one file per selected component, not the full 2.29 GB record |
+| `chabrier_2021` | Chabrier et al. hydrogen and helium tables | archive extracted into `r<record-id>/EOS_Chabrier2021_HHe/` |
+
+Copies of these tables under `$FWL_DATA/zalmoxis_eos` and `$FWL_DATA/EOS_material_properties` are not read and can be deleted.

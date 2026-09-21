@@ -2894,9 +2894,6 @@ def test_material_dictionaries_seager_paths_use_the_versioned_dataset_dir(
     from proteus.data import EOS_SEAGER_2007, dataset_dir
 
     monkeypatch.setattr(zalmoxis_wrapper, 'FWL_DATA_DIR', tmp_path)
-    monkeypatch.setattr(
-        zalmoxis_wrapper, 'get_zalmoxis_eos_dir', lambda: tmp_path / 'zalmoxis_eos'
-    )
 
     registry = zalmoxis_wrapper.load_zalmoxis_material_dictionaries()
 
@@ -2911,3 +2908,57 @@ def test_material_dictionaries_seager_paths_use_the_versioned_dataset_dir(
         seager / 'eos_seager07_water.txt'
     )
     assert seager.name.startswith('r')
+
+
+def test_material_dictionaries_mantle_paths_use_the_versioned_dataset_dirs(
+    monkeypatch, tmp_path
+):
+    """Every mantle table resolves into its own fwl-io dataset directory."""
+    import proteus.interior_struct.zalmoxis as zalmoxis_wrapper
+    from proteus.data import (
+        EOS_PALEOS_MGSIO3_2PHASE,
+        EOS_PALEOS_MGSIO3_2PHASE_HIGHRES,
+        EOS_RTPRESS_100TPA,
+        EOS_WOLF_BOWER_2018,
+        dataset_dir,
+    )
+
+    monkeypatch.setattr(zalmoxis_wrapper, 'FWL_DATA_DIR', tmp_path)
+
+    registry = zalmoxis_wrapper.load_zalmoxis_material_dictionaries()
+
+    wb = dataset_dir(EOS_WOLF_BOWER_2018, data_root=tmp_path)
+    rt = dataset_dir(EOS_RTPRESS_100TPA, data_root=tmp_path)
+    p2 = dataset_dir(EOS_PALEOS_MGSIO3_2PHASE, data_root=tmp_path)
+    p2hr = dataset_dir(EOS_PALEOS_MGSIO3_2PHASE_HIGHRES, data_root=tmp_path)
+
+    wolf = registry['WolfBower2018:MgSiO3']
+    assert wolf['melted_mantle']['eos_file'] == str(wb / 'density_melt.dat')
+    assert wolf['solid_mantle']['eos_file'] == str(wb / 'density_solid.dat')
+    assert wolf['melted_mantle']['adiabat_grad_file'] == str(wb / 'adiabat_temp_grad_melt.dat')
+
+    rtpress = registry['RTPress100TPa:MgSiO3']
+    assert rtpress['melted_mantle']['eos_file'] == str(rt / 'density_melt.dat')
+    assert rtpress['melted_mantle']['adiabat_grad_file'] == str(
+        rt / 'adiabat_temp_grad_melt.dat'
+    )
+    # RTPress takes its solid density from the Wolf and Bower dataset.
+    assert rtpress['solid_mantle']['eos_file'] == str(wb / 'density_solid.dat')
+
+    two = registry['PALEOS-2phase:MgSiO3']
+    assert two['melted_mantle']['eos_file'] == str(
+        p2 / 'paleos_mgsio3_tables_pt_proteus_liquid.dat'
+    )
+    assert two['solid_mantle']['eos_file'] == str(
+        p2 / 'paleos_mgsio3_tables_pt_proteus_solid.dat'
+    )
+
+    high = registry['PALEOS-2phase:MgSiO3-highres']
+    assert high['melted_mantle']['eos_file'] == str(
+        p2hr / 'paleos_mgsio3_tables_pt_proteus_liquid_highres.dat'
+    )
+    assert high['solid_mantle']['eos_file'] == str(
+        p2hr / 'paleos_mgsio3_tables_pt_proteus_solid_highres.dat'
+    )
+    # The two PALEOS 2-phase sets share a record but not a directory.
+    assert p2 != p2hr

@@ -23,7 +23,13 @@ from pathlib import Path
 import pytest
 
 from proteus.data import (
+    EOS_CHABRIER_2021,
+    EOS_PALEOS_MGSIO3_2PHASE,
+    EOS_PALEOS_MGSIO3_2PHASE_HIGHRES,
+    EOS_PALEOS_UNIFIED,
+    EOS_RTPRESS_100TPA,
     EOS_SEAGER_2007,
+    EOS_WOLF_BOWER_2018,
     EXOPLANET_REFERENCE,
     FWL_IO_FLOOR,
     MASS_RADIUS_ZENG_2019,
@@ -50,6 +56,27 @@ SEAGER_2007_RECORD = '15727998'
 SOLAR_RECORD = '17981836'
 NAMED_RECORD = '15721440'
 MUSCLES_RECORD = '17802209'
+WOLF_BOWER_RECORD = '17417017'
+RTPRESS_RECORD = '18819027'
+PALEOS_2PHASE_RECORD = '19680050'
+PALEOS_UNIFIED_RECORD = '22776069'
+CHABRIER_RECORD = '19135021'
+
+# Equation-of-state datasets: key -> (subdir, record).
+EOS_DATASETS = {
+    EOS_WOLF_BOWER_2018: ('interior_struct/eos/wolf_bower_2018', WOLF_BOWER_RECORD),
+    EOS_RTPRESS_100TPA: ('interior_struct/eos/rtpress_100tpa', RTPRESS_RECORD),
+    EOS_PALEOS_MGSIO3_2PHASE: (
+        'interior_struct/eos/paleos_mgsio3_2phase',
+        PALEOS_2PHASE_RECORD,
+    ),
+    EOS_PALEOS_MGSIO3_2PHASE_HIGHRES: (
+        'interior_struct/eos/paleos_mgsio3_2phase_highres',
+        PALEOS_2PHASE_RECORD,
+    ),
+    EOS_PALEOS_UNIFIED: ('interior_struct/eos/paleos_unified', PALEOS_UNIFIED_RECORD),
+    EOS_CHABRIER_2021: ('interior_struct/eos/chabrier_2021', CHABRIER_RECORD),
+}
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -78,6 +105,7 @@ _OWNED_KEYS = {
     STELLAR_SPECTRA_SOLAR,
     STELLAR_SPECTRA_NAMED,
     STELLAR_SPECTRA_MUSCLES,
+    *EOS_DATASETS,
 } | {spectral_file_key(group, bands) for group, bands in SPECTRAL_RECORDS}
 
 
@@ -118,6 +146,9 @@ def test_manifest_declares_the_datasets():
     )
     assert datasets[EXOPLANET_REFERENCE].zenodo == f'10.5281/zenodo.{EXOPLANET_RECORD}'
     assert datasets[MASS_RADIUS_ZENG_2019].zenodo == f'10.5281/zenodo.{ZENG_2019_RECORD}'
+    for key, (subdir, record) in EOS_DATASETS.items():
+        assert datasets[key].subdir == subdir
+        assert datasets[key].zenodo == f'10.5281/zenodo.{record}'
     # All are PROTEUS-owned, so "proteus" has to appear in required_by or
     # "fwl-io fetch proteus" would skip them.
     for ds in datasets.values():
@@ -138,6 +169,12 @@ def test_registries_pin_committed_checksums():
     solar = _dataset(STELLAR_SPECTRA_SOLAR).registry()
     named = _dataset(STELLAR_SPECTRA_NAMED).registry()
     muscles = _dataset(STELLAR_SPECTRA_MUSCLES).registry()
+    wolf_bower = _dataset(EOS_WOLF_BOWER_2018).registry()
+    rtpress = _dataset(EOS_RTPRESS_100TPA).registry()
+    paleos_2phase = _dataset(EOS_PALEOS_MGSIO3_2PHASE).registry()
+    paleos_highres = _dataset(EOS_PALEOS_MGSIO3_2PHASE_HIGHRES).registry()
+    paleos_unified = _dataset(EOS_PALEOS_UNIFIED).registry()
+    chabrier = _dataset(EOS_CHABRIER_2021).registry()
 
     assert len(exo) == 1, 'the catalogue ships exactly one file'
     assert len(zeng) == 57, 'the Zeng-2019 grid ships 57 curve files'
@@ -150,6 +187,30 @@ def test_registries_pin_committed_checksums():
     assert len(solar) == 10, 'the solar record ships 10 spectra'
     assert len(named) == 11, 'the named-star record ships 11 spectra'
     assert len(muscles) == 38, 'the MUSCLES record ships 36 spectra, a readme and a table'
+    assert set(wolf_bower) == {
+        'density_melt.dat',
+        'density_solid.dat',
+        'adiabat_temp_grad_melt.dat',
+    }
+    assert set(rtpress) == {'density_melt.dat', 'adiabat_temp_grad_melt.dat'}
+    assert set(paleos_2phase) == {
+        'paleos_mgsio3_tables_pt_proteus_liquid.dat',
+        'paleos_mgsio3_tables_pt_proteus_solid.dat',
+    }
+    assert set(paleos_highres) == {
+        'paleos_mgsio3_tables_pt_proteus_liquid_highres.dat',
+        'paleos_mgsio3_tables_pt_proteus_solid_highres.dat',
+    }
+    # The unified record also holds high-resolution variants (2.29 GB in all);
+    # the registry lists only the three tables the Zalmoxis registry reads, so a
+    # whole-dataset fetch never pulls the rest.
+    assert set(paleos_unified) == {
+        'paleos_iron_eos_table_pt.dat',
+        'paleos_mgsio3_eos_table_pt.dat',
+        'paleos_water_eos_table_pt.dat',
+    }
+    assert set(chabrier) == {'EOS_Chabrier2021_HHe.tar.gz'}
+    assert chabrier['EOS_Chabrier2021_HHe.tar.gz'] == 'md5:18ce96ed0526d4ade283807a7da2e091'
     assert solar['sun.txt'] == 'md5:6e4b6540d952cf3c01a3bd0511aa6c10'
     assert named['sun.txt'] == 'md5:0c5225b847ca250673edc9690f02e055'
     assert muscles['gj876.txt'] == 'md5:4b4e7299bad9545ee8fef82cb4c8d4d8'
@@ -158,7 +219,21 @@ def test_registries_pin_committed_checksums():
     assert exo['DACE_PlanetS.csv'] == 'md5:367a90914eba4a209f896a1c72dd3d2b'
     # Every entry must carry an algorithm prefix, or pooch cannot know what to
     # verify against; a bare digest would silently be read as the default.
-    for registry in (exo, zeng, hammond, seager, solar, named, muscles):
+    for registry in (
+        exo,
+        zeng,
+        hammond,
+        seager,
+        solar,
+        named,
+        muscles,
+        wolf_bower,
+        rtpress,
+        paleos_2phase,
+        paleos_highres,
+        paleos_unified,
+        chabrier,
+    ):
         assert all(':' in digest for digest in registry.values())
     assert 'massradiusEarthlikeRocky.txt' in zeng
 
@@ -201,6 +276,8 @@ def test_dataset_dir_is_versioned(tmp_path):
     assert dataset_dir(EOS_SEAGER_2007, data_root=tmp_path) == (
         tmp_path / 'interior_struct' / 'eos' / 'seager_2007' / f'r{SEAGER_2007_RECORD}'
     )
+    for key, (subdir, record) in EOS_DATASETS.items():
+        assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{record}'
     assert dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=tmp_path) == (
         tmp_path / 'stellar_spectra' / 'solar' / f'r{SOLAR_RECORD}'
     )
@@ -445,6 +522,16 @@ def test_migrated_datasets_are_not_also_pinned_in_the_legacy_map():
     assert 'Zeng2019' not in DATA_SOURCE_MAP
     assert 'Hammond24' not in DATA_SOURCE_MAP
     assert 'EOS_Seager2007' not in DATA_SOURCE_MAP
+    for legacy in (
+        'EOS_WolfBower2018_1TPa',
+        'EOS_RTPress_melt_100TPa',
+        'EOS_PALEOS_MgSiO3',
+        'EOS_PALEOS_iron',
+        'EOS_PALEOS_MgSiO3_unified',
+        'EOS_PALEOS_H2O',
+        'EOS_Chabrier2021_HHe',
+    ):
+        assert legacy not in DATA_SOURCE_MAP
     assert 'Population' not in DATA_SOURCE_MAP
     # Discrimination: the map is still populated for the datasets that have not
     # migrated, so an emptied map cannot make this pass.
