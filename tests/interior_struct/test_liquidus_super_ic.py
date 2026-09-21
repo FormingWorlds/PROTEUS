@@ -29,7 +29,7 @@ superheat, is:
 
 from __future__ import annotations
 
-import re
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -410,23 +410,41 @@ class TestSolveSuperliquidusAdiabat:
         assert res['surface_T'] > 3900.0
         assert res['cmb_T'] > res['surface_T']
 
-    def test_unachievable_superheat_raises(self, monkeypatch):
-        """A superheat the synthetic table cannot support raises RuntimeError
-        rather than silently returning a partially-solid initial condition, and
-        the error reports the largest achievable superheat.
+    def test_unachievable_superheat_clamps_and_warns(self, monkeypatch, caplog):
+        """A superheat the synthetic table cannot support clamps to the largest
+        achievable superheat, reports it, and emits a WARNING that names the
+        requested and the achieved superheat.
         """
         _install_fake_solver_deps(monkeypatch, ceiling_T=4800.0)
         from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
         cfg = self._cfg(delta_T_super=6000.0)  # beyond the synthetic ceiling
-        with pytest.raises(RuntimeError, match='cannot initialise a fully molten') as exc:
-            solve_superliquidus_adiabat(cfg, {'P_cmb': 1.5e11})
-        msg = str(exc.value)
-        # The message must quote a concrete, achievable ceiling below the
-        # unreachable 6000 K request (so the user knows what to lower to).
-        assert 'largest achievable superheat' in msg
-        ceiling = re.search(r'largest achievable superheat is (\d+) K', msg)
-        assert ceiling is not None and 0.0 < float(ceiling.group(1)) < 6000.0
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_struct.zalmoxis'):
+            res = solve_superliquidus_adiabat(cfg, {'P_cmb': 1.5e11})
+        assert res['clamped'] is True
+        # The achieved superheat is a concrete value below the unreachable
+        # request, and the returned adiabat is the one that achieves it.
+        assert 0.0 < res['achieved_superheat'] < 6000.0
+        assert res['surface_T'] > 3700.0
+        warns = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+        msg = next((m for m in warns if 'not reachable' in m), None)
+        assert msg is not None, warns
+        assert 'requested superheat of 6000 K' in msg
+        assert f'{res["achieved_superheat"]:.0f} K' in msg
+        assert 'Lower delta_T_super' in msg
+
+    def test_reachable_superheat_is_not_clamped(self, monkeypatch, caplog):
+        """A reachable superheat is not flagged as clamped and emits no
+        unreachable-superheat warning.
+        """
+        _install_fake_solver_deps(monkeypatch)
+        from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
+
+        cfg = self._cfg(delta_T_super=500.0)
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_struct.zalmoxis'):
+            res = solve_superliquidus_adiabat(cfg, {'P_cmb': 1.5e11})
+        assert res['clamped'] is False
+        assert not [r for r in caplog.records if 'not reachable' in r.getMessage()]
 
     def test_missing_p_cmb_uses_nl20_estimate(self, monkeypatch):
         """When hf_row lacks P_cmb the solve falls back to the

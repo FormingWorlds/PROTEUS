@@ -236,8 +236,9 @@ class Planet:
             use. This guarantees a fully molten initial state with a controlled
             margin for any planet mass and any melting-curve parameterisation,
             without the user having to pick a surface temperature or entropy.
-            The solve raises if the requested superheat cannot be reached
-            before the deep adiabat exhausts the EOS table.
+            If the requested superheat cannot be reached before the deep
+            adiabat exhausts the EOS table, the solve clamps to the largest
+            achievable superheat and emits a warning that reports it.
     tsurf_init: float
         Initial magma surface temperature [K] (isothermal, linear, adiabatic).
         Ignored when temperature_mode = 'isentropic', 'adiabatic_from_cmb',
@@ -270,7 +271,8 @@ class Planet:
         ten-Earth-mass range. delta_T_super = 0 makes the mantle marginally
         molten (just touching the liquidus at the binding depth). If the
         requested superheat cannot be reached within the EOS table, the solve
-        raises and reports the largest achievable value.
+        clamps to the largest achievable superheat and emits a warning that
+        reports it.
     volatile_mode: str
         How to set the initial volatile inventory: 'elements' or 'gas_prs'.
     volatile_reservoir: str

@@ -343,7 +343,7 @@ jobs:
             tier: extended
             os: ubuntu-latest
             job_minutes: 120
-            select: test_unreachable_superheat_raises_real
+            select: test_unreachable_superheat_clamps_real
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
     runs-on: ${{ matrix.os }}

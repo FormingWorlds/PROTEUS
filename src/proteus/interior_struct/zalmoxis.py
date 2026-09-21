@@ -616,15 +616,16 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     -------
     dict
         ``surface_T`` [K], ``S_target`` [J/(kg K)], ``cmb_T`` [K],
-        ``achieved_superheat`` [K], ``binding_P`` [Pa] and ``P_cmb`` [Pa].
+        ``achieved_superheat`` [K], ``binding_P`` [Pa], ``P_cmb`` [Pa] and
+        ``clamped`` (True when the requested superheat was unreachable).
 
     Raises
     ------
     RuntimeError
-        If the requested superheat cannot be reached before the deep adiabat
-        exhausts the EOS table (the mantle is too deep to be molten with that
-        much superheat at this mass). The message reports the largest
-        achievable superheat so the user can lower ``delta_T_super``.
+        If no valid molten adiabat exists at this pressure, or the solved
+        adiabat leaves the EOS table. An unreachable ``delta_T_super`` does
+        not raise: the solve clamps to the largest achievable superheat,
+        reports it in ``achieved_superheat`` and emits a warning.
     """
     try:
         from zalmoxis.eos_export import compute_entropy_adiabat
@@ -758,24 +759,28 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     # EOS-table ceiling; restrict the solve to that increasing branch.
     superheats = [d['superheat'] for _, d in scan]
     branch = scan[: int(np.argmax(superheats)) + 1]
-    if branch[-1][1]['superheat'] < delta:
-        ceil_T, ceil_d = branch[-1]
-        raise RuntimeError(
-            'liquidus_super: cannot initialise a fully molten mantle with '
-            f'delta_T_super={delta:.0f} K at P_cmb={P_cmb / 1e9:.0f} GPa. The '
-            f'largest achievable superheat is {ceil_d["superheat"]:.0f} K (at '
-            f'surface T={ceil_T:.0f} K) before the deep adiabat exhausts the '
-            'EOS table. Lower delta_T_super or the planet mass, or extend the '
-            'EOS table to higher temperature.'
+    clamped = branch[-1][1]['superheat'] < delta
+    if clamped:
+        # Unreachable target: use the hottest valid adiabat on the branch, the
+        # largest superheat the EOS table supports, and say so.
+        T_solved = branch[-1][0]
+        log.warning(
+            'liquidus_super: the requested superheat of %.0f K is not reachable '
+            'at P_cmb=%.0f GPa within the EOS table; clamped to the largest '
+            'achievable superheat of %.0f K (surface T=%.0f K). Lower '
+            'delta_T_super if a full superheat margin is wanted.',
+            delta,
+            P_cmb / 1e9,
+            branch[-1][1]['superheat'],
+            T_solved,
         )
-
-    # Bracket the delta crossing on the increasing branch, then bisection-refine.
-    if branch[0][1]['superheat'] >= delta:
+    elif branch[0][1]['superheat'] >= delta:
         # The coolest in-table adiabat already meets the margin (e.g. delta=0,
         # or the cool end of the valid band is itself table-limited): it is the
         # coolest fully molten adiabat available, so return it.
         T_solved = branch[0][0]
     else:
+        # Bracket the delta crossing on the increasing branch, then bisect.
         T_lo, T_hi = branch[0][0], branch[-1][0]
         for k in range(1, len(branch)):
             if branch[k][1]['superheat'] >= delta:
@@ -816,19 +821,20 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
             FEI2021_LIQUIDUS_P_CALIB_PA / 1e9,
         )
 
-    log.info(
-        'liquidus_super: surface T=%.0f K gives a fully molten adiabat at least '
-        '%.0f K above the liquidus (achieved %.0f K at P=%.0f GPa = %.0f%% of '
-        'P_cmb); T_cmb=%.0f K, S=%.1f J/(kg K), P_cmb=%.0f GPa.',
-        T_solved,
-        delta,
-        final['superheat'],
-        final['binding_P'] / 1e9,
-        binding_frac * 100.0,
-        final['cmb_T'],
-        final['S_target'],
-        P_cmb / 1e9,
-    )
+    if not clamped:
+        log.info(
+            'liquidus_super: surface T=%.0f K gives a fully molten adiabat at least '
+            '%.0f K above the liquidus (achieved %.0f K at P=%.0f GPa = %.0f%% of '
+            'P_cmb); T_cmb=%.0f K, S=%.1f J/(kg K), P_cmb=%.0f GPa.',
+            T_solved,
+            delta,
+            final['superheat'],
+            final['binding_P'] / 1e9,
+            binding_frac * 100.0,
+            final['cmb_T'],
+            final['S_target'],
+            P_cmb / 1e9,
+        )
     out = {
         'surface_T': float(T_solved),
         'S_target': float(final['S_target']),
@@ -836,6 +842,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         'achieved_superheat': float(final['superheat']),
         'binding_P': float(final['binding_P']),
         'P_cmb': P_cmb,
+        'clamped': clamped,
     }
     _SUPERLIQ_CACHE[_cache_key] = dict(out)
     _SUPERLIQ_LAST_ANCHOR = float(out['cmb_T'])

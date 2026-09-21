@@ -107,14 +107,18 @@ class TestSolveSuperliquidusReal:
         assert spread < 0.05 * min(entropies)
 
     @pytest.mark.timeout(5400)  # 90 min ceiling; the scan measures ~48 min on the runner
-    def test_unreachable_superheat_raises_real(self):
-        """A superheat too large for the EOS table to support raises and names
-        the largest achievable value, rather than returning a partial-melt IC.
+    def test_unreachable_superheat_clamps_real(self, caplog):
+        """A superheat too large for the EOS table to support clamps to the
+        largest achievable value, flags the result as clamped and warns.
         """
+        import logging
+
         from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
         cfg = _cfg('S1_m10_dyn_IW4.toml')
         object.__setattr__(cfg.planet, 'delta_T_super', 5000.0)
-        with pytest.raises(RuntimeError, match='cannot initialise a fully molten') as exc:
-            solve_superliquidus_adiabat(cfg, {'P_cmb': 1.474e12})
-        assert 'largest achievable superheat' in str(exc.value)
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_struct.zalmoxis'):
+            res = solve_superliquidus_adiabat(cfg, {'P_cmb': 1.474e12})
+        assert res['clamped'] is True
+        assert 0.0 < res['achieved_superheat'] < 5000.0
+        assert any('not reachable' in r.getMessage() for r in caplog.records)
