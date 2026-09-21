@@ -853,7 +853,8 @@ def GetHelpfileKeys():
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
-        'T_cmb',           # core temperature [K]
+        'T_cmb',           # core temperature, bottom mantle cell [K]
+        'T_cmb_node',      # temperature at the core-mantle boundary basic node [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
         'T_skin',           # grey radiative skin temperature [K]
         'T_surface_initial',  # self-consistent T_surf from accretion mode [K]

@@ -153,6 +153,16 @@ def test_get_helpfile_keys_no_duplicates():
     assert len(keys) > 50
 
 
+@pytest.mark.unit
+def test_helpfile_has_t_cmb_node_column_distinct_from_t_cmb():
+    """``T_cmb_node`` is a helpfile column placed directly after ``T_cmb``."""
+    keys = GetHelpfileKeys()
+    assert 'T_cmb_node' in keys
+    assert 'T_cmb' in keys
+    assert keys.index('T_cmb_node') == keys.index('T_cmb') + 1
+    assert ZeroHelpfileRow()['T_cmb_node'] == 0.0
+
+
 # =============================================================================
 # Test: Helpfile Row Creation and Initialization
 # =============================================================================
