@@ -23,7 +23,7 @@ in `[project] dependencies`. Click a badge to view the pinned release.
 | fwl-calliope | Volatile outgassing | [![fwl-calliope](https://img.shields.io/badge/fwl--calliope-%3E%3D26.06.01-blue)](https://pypi.org/project/fwl-calliope/26.06.01/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/CALLIOPE/) |
 | fwl-zephyrus | Atmospheric escape | [![fwl-zephyrus](https://img.shields.io/badge/fwl--zephyrus-%3E%3D25.03.11-blue)](https://pypi.org/project/fwl-zephyrus/25.03.11/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/ZEPHYRUS) |
 | fwl-aragog | Interior thermal evolution | [![fwl-aragog](https://img.shields.io/badge/fwl--aragog-%3E%3D26.09.10-blue)](https://pypi.org/project/fwl-aragog/26.09.10/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/aragog/) |
-| fwl-zalmoxis | Interior structure | [![fwl-zalmoxis](https://img.shields.io/badge/fwl--zalmoxis-%3E%3D26.07.17-blue)](https://pypi.org/project/fwl-zalmoxis/26.07.17/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/Zalmoxis/) |
+| fwl-zalmoxis | Interior structure | [![fwl-zalmoxis](https://img.shields.io/badge/fwl--zalmoxis-%3E%3D26.09.21-blue)](https://pypi.org/project/fwl-zalmoxis/26.09.21/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/Zalmoxis/) |
 <!-- END PYPI_TABLE -->
 
 ### Git-pinned modules (non-PyPI)
