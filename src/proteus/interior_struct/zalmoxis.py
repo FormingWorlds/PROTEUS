@@ -17,6 +17,7 @@ from zalmoxis.mixing import _PALEOS_UNIFIED_NAMES
 from zalmoxis.solver import main
 
 from proteus.config import Config
+from proteus.data import EOS_SEAGER_2007, dataset_dir
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
@@ -1229,10 +1230,7 @@ def load_zalmoxis_material_dictionaries():
     """
     eos_base = get_zalmoxis_eos_dir()
 
-    # Seager2007 paths (also in the EOS_material_properties location)
-    seager_dir = eos_base / 'EOS_Seager2007'
-    if not seager_dir.exists():
-        seager_dir = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
+    seager_dir = dataset_dir(EOS_SEAGER_2007, data_root=FWL_DATA_DIR)
 
     _seager_iron = {'eos_file': str(seager_dir / 'eos_seager07_iron.txt')}
     _seager_silicate = {'eos_file': str(seager_dir / 'eos_seager07_silicate.txt')}

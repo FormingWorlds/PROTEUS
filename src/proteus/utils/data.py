@@ -502,14 +502,9 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     'MUSCLES': {'zenodo_id': '17802209', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
     # Stellar spectra - solar (OSF project: 8r2sw)
     'solar': {'zenodo_id': '17981836', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
-    # The surface albedos, the exoplanet catalogue and the mass-radius relations
-    # are declared in src/proteus/data/proteus_manifest.toml and fetched through
+    # The surface albedos, the Seager EOS tables, the exoplanet catalogue and the
+    # mass-radius relations are declared in src/proteus/data/proteus_manifest.toml and fetched through
     # fwl-io, so their record pins live there and are absent here.
-    # Population data (OSF project: dpkjb)
-    # NOTE: Population and EOS_Seager2007 currently share Zenodo ID '15727998'.
-    'Population': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
-    # EOS material properties (OSF project: dpkjb)
-    'EOS_Seager2007': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
     # Zalmoxis EOS: Wolf & Bower 2018 T-dependent MgSiO3 (1 TPa)
     'EOS_WolfBower2018_1TPa': {'zenodo_id': '17417017'},
     # Zalmoxis EOS: RTPress 100 TPa extended melt
@@ -1801,10 +1796,8 @@ def get_spider(dirs=None):
 def download_eos_static():
     """Download static (Zalmoxis-only) EOS files.
 
-    Downloads Seager et al. (2007) EOS into
-    ``FWL_DATA/EOS_material_properties/EOS_Seager2007/``.
-    Code in ``get_zalmoxis_EOS()`` falls back to this path when the
-    unified ``EOS/static/Seager2007/`` folder is not yet populated.
+    Fetches the Seager et al. (2007) EOS tables through fwl-io into
+    ``FWL_DATA/interior_struct/eos/seager_2007/r<record-id>/``.
     """
     download_Seager_EOS()
 
@@ -1891,19 +1884,15 @@ def download_eos_dynamic(eos_dir: str = 'WolfBower2018_MgSiO3'):
 
 
 def download_Seager_EOS():
-    """Download Seager EOS to the EOS_material_properties location."""
-    folder = 'EOS_Seager2007'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        raise ValueError(f'No data source mapping found for folder: {folder}')
+    """Fetch the Seager EOS tables through fwl-io.
 
-    download(
-        folder=folder,
-        target='EOS_material_properties',
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc='EOS Seager2007 material files',
-    )
+    The record pin and the file checksums come from the manifest PROTEUS ships.
+    Zalmoxis needs these tables for every Seager component, so a failed fetch
+    raises.
+    """
+    from proteus.data import EOS_SEAGER_2007, fetch_dataset
+
+    fetch_dataset(EOS_SEAGER_2007, data_root=FWL_DATA_DIR)
 
 
 # ── Zalmoxis EOS download helpers ────────────────────────────────────
@@ -2232,12 +2221,10 @@ def get_zalmoxis_melting_curves(config: Config):
 def get_zalmoxis_EOS():
     """Build and return material properties dictionaries for Zalmoxis.
 
-    Reads EOS files from the unified folder structure under
-    ``FWL_DATA/interior_lookup_tables/EOS/``. Static (Zalmoxis-only) EOS
-    like Seager2007 live in ``EOS/static/``, while dynamic EOS like
-    Wolf & Bower 2018 live in ``EOS/dynamic/WolfBower2018_MgSiO3/P-T/``.
-
-    Falls back to the EOS_material_properties paths if the unified structure is not yet populated.
+    The Seager2007 tables are fetched through fwl-io into their versioned
+    dataset directory. Dynamic EOS like Wolf & Bower 2018 are read from the
+    unified folder structure under ``FWL_DATA/interior_lookup_tables/EOS/``
+    (``EOS/dynamic/WolfBower2018_MgSiO3/P-T/``).
 
     The folder name matches the Zalmoxis ``mantle_eos`` source string
     (``WolfBower2018_MgSiO3``), not ``struct.eos_dir``.
@@ -2251,16 +2238,12 @@ def get_zalmoxis_EOS():
     """
     eos_base = FWL_DATA_DIR / 'interior_lookup_tables' / 'EOS'
 
-    # Seager2007: try the unified location, fall back to EOS_material_properties
-    seager_folder = eos_base / 'static' / 'Seager2007'
-    if not seager_folder.exists():
-        seager_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
-    if not seager_folder.exists():
+    from proteus.data import EOS_SEAGER_2007, dataset_dir
+
+    seager_folder = dataset_dir(EOS_SEAGER_2007, data_root=FWL_DATA_DIR)
+    if not (seager_folder / 'eos_seager07_iron.txt').exists():
         log.debug('Get EOS material properties from Seager et al. (2007)')
         download_eos_static()
-        seager_folder = eos_base / 'static' / 'Seager2007'
-        if not seager_folder.exists():
-            seager_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
 
     # Wolf-Bower: fixed mapping from source name to data folder
     wb_folder = eos_base / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'

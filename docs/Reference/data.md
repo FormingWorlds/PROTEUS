@@ -232,3 +232,5 @@ not read and can be deleted.
 ## Equations of state 
 
 The interior structure solver of PROTEUS, Zalmoxis, uses equation-of-state tables by [Seager et al. (2007)](https://iopscience.iop.org/article/10.1086/521346), and from [PALEOS](https://github.com/maraattia/PALEOS) by [Attia et al. (2026)](https://ui.adsabs.harvard.edu/abs/2026arXiv260503741A/abstract). An overview of equation of state tables can be found [here](https://proteus-framework.org/Zalmoxis/Reference/data.html#data-inventory).
+
+The Seager et al. (2007) tables are fetched through fwl-io into `$FWL_DATA/interior_struct/eos/seager_2007/r<record-id>/`, on the same terms as the datasets above. A copy under `$FWL_DATA/EOS_material_properties/EOS_Seager2007` is not read and can be deleted.

@@ -2884,3 +2884,30 @@ def test_twophase_registry_key_selects_table_family(mantle_eos, expected):
     from proteus.interior_struct.zalmoxis import twophase_registry_key
 
     assert twophase_registry_key(mantle_eos) == expected
+
+
+def test_material_dictionaries_seager_paths_use_the_versioned_dataset_dir(
+    monkeypatch, tmp_path
+):
+    """The Seager entries point into the fwl-io dataset directory, not a legacy folder."""
+    import proteus.interior_struct.zalmoxis as zalmoxis_wrapper
+    from proteus.data import EOS_SEAGER_2007, dataset_dir
+
+    monkeypatch.setattr(zalmoxis_wrapper, 'FWL_DATA_DIR', tmp_path)
+    monkeypatch.setattr(
+        zalmoxis_wrapper, 'get_zalmoxis_eos_dir', lambda: tmp_path / 'zalmoxis_eos'
+    )
+
+    registry = zalmoxis_wrapper.load_zalmoxis_material_dictionaries()
+
+    seager = dataset_dir(EOS_SEAGER_2007, data_root=tmp_path)
+    assert registry['Seager2007:iron']['core']['eos_file'] == str(
+        seager / 'eos_seager07_iron.txt'
+    )
+    assert registry['Seager2007:MgSiO3']['mantle']['eos_file'] == str(
+        seager / 'eos_seager07_silicate.txt'
+    )
+    assert registry['Seager2007:H2O']['ice_layer']['eos_file'] == str(
+        seager / 'eos_seager07_water.txt'
+    )
+    assert seager.name.startswith('r')

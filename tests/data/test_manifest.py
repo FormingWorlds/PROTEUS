@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from proteus.data import (
+    EOS_SEAGER_2007,
     EXOPLANET_REFERENCE,
     FWL_IO_FLOOR,
     MASS_RADIUS_ZENG_2019,
@@ -41,6 +42,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 EXOPLANET_RECORD = '15727878'
 ZENG_2019_RECORD = '15727899'
 HAMMOND_2024_RECORD = '15880455'
+SEAGER_2007_RECORD = '15727998'
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -66,6 +68,7 @@ def test_manifest_declares_the_datasets():
         EXOPLANET_REFERENCE,
         MASS_RADIUS_ZENG_2019,
         SURFACE_ALBEDOS_HAMMOND_2024,
+        EOS_SEAGER_2007,
     }
     assert datasets[EXOPLANET_REFERENCE].subdir == 'observe/exoplanet_reference'
     assert datasets[MASS_RADIUS_ZENG_2019].subdir == 'observe/mass_radius/zeng_2019'
@@ -73,6 +76,8 @@ def test_manifest_declares_the_datasets():
         datasets[SURFACE_ALBEDOS_HAMMOND_2024].subdir
         == 'atmos_clim/surface_albedos/hammond_2024'
     )
+    assert datasets[EOS_SEAGER_2007].subdir == 'interior_struct/eos/seager_2007'
+    assert datasets[EOS_SEAGER_2007].zenodo == f'10.5281/zenodo.{SEAGER_2007_RECORD}'
     assert datasets[SURFACE_ALBEDOS_HAMMOND_2024].zenodo == (
         f'10.5281/zenodo.{HAMMOND_2024_RECORD}'
     )
@@ -94,15 +99,22 @@ def test_registries_pin_committed_checksums():
     exo = _dataset(EXOPLANET_REFERENCE).registry()
     zeng = _dataset(MASS_RADIUS_ZENG_2019).registry()
     hammond = _dataset(SURFACE_ALBEDOS_HAMMOND_2024).registry()
+    seager = _dataset(EOS_SEAGER_2007).registry()
 
     assert len(exo) == 1, 'the catalogue ships exactly one file'
     assert len(zeng) == 57, 'the Zeng-2019 grid ships 57 curve files'
     assert len(hammond) == 26, 'the Hammond-2024 record ships 25 spectra and a readme'
+    assert set(seager) == {
+        'eos_seager07_iron.txt',
+        'eos_seager07_silicate.txt',
+        'eos_seager07_water.txt',
+    }
+    assert seager['eos_seager07_iron.txt'] == 'md5:7bf215a2bb4da6d27ceeac2ade0ce706'
     assert hammond['lunarmarebasalt.dat'] == 'md5:a157ea1d436072264c3bea833997a382'
     assert exo['DACE_PlanetS.csv'] == 'md5:367a90914eba4a209f896a1c72dd3d2b'
     # Every entry must carry an algorithm prefix, or pooch cannot know what to
     # verify against; a bare digest would silently be read as the default.
-    for registry in (exo, zeng, hammond):
+    for registry in (exo, zeng, hammond, seager):
         assert all(':' in digest for digest in registry.values())
     assert 'massradiusEarthlikeRocky.txt' in zeng
 
@@ -123,6 +135,7 @@ def test_manifest_is_discovered_via_entry_point():
         EXOPLANET_REFERENCE,
         MASS_RADIUS_ZENG_2019,
         SURFACE_ALBEDOS_HAMMOND_2024,
+        EOS_SEAGER_2007,
     }
 
 
@@ -145,6 +158,9 @@ def test_dataset_dir_is_versioned(tmp_path):
     )
     assert dataset_dir(SURFACE_ALBEDOS_HAMMOND_2024, data_root=tmp_path) == (
         tmp_path / 'atmos_clim' / 'surface_albedos' / 'hammond_2024' / f'r{HAMMOND_2024_RECORD}'
+    )
+    assert dataset_dir(EOS_SEAGER_2007, data_root=tmp_path) == (
+        tmp_path / 'interior_struct' / 'eos' / 'seager_2007' / f'r{SEAGER_2007_RECORD}'
     )
 
 
@@ -308,6 +324,7 @@ def test_manifest_and_registries_are_declared_as_package_data():
         f'{EXOPLANET_REFERENCE}.registry.txt',
         f'{MASS_RADIUS_ZENG_2019}.registry.txt',
         f'{SURFACE_ALBEDOS_HAMMOND_2024}.registry.txt',
+        f'{EOS_SEAGER_2007}.registry.txt',
     }
 
 
@@ -323,12 +340,15 @@ def test_migrated_datasets_are_not_also_pinned_in_the_legacy_map():
     assert 'Exoplanets' not in DATA_SOURCE_MAP
     assert 'Zeng2019' not in DATA_SOURCE_MAP
     assert 'Hammond24' not in DATA_SOURCE_MAP
+    assert 'EOS_Seager2007' not in DATA_SOURCE_MAP
+    assert 'Population' not in DATA_SOURCE_MAP
     # Discrimination: the map is still populated for the datasets that have not
     # migrated, so an emptied map cannot make this pass.
     assert 'Named' in DATA_SOURCE_MAP
     pinned_records = {entry['zenodo_id'] for entry in DATA_SOURCE_MAP.values()}
     assert EXOPLANET_RECORD not in pinned_records
     assert HAMMOND_2024_RECORD not in pinned_records
+    assert SEAGER_2007_RECORD not in pinned_records
     assert ZENG_2019_RECORD not in pinned_records
 
 

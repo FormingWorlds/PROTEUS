@@ -24,6 +24,7 @@ from pathlib import Path
 EXOPLANET_REFERENCE = 'observe.exoplanet_reference'
 MASS_RADIUS_ZENG_2019 = 'observe.mass_radius.zeng_2019'
 SURFACE_ALBEDOS_HAMMOND_2024 = 'atmos_clim.surface_albedos.hammond_2024'
+EOS_SEAGER_2007 = 'interior_struct.eos.seager_2007'
 
 # The oldest fwl-io that reads this manifest schema. An older fwl-io reads the
 # manifest as malformed rather than as a version mismatch, so the load names

@@ -2005,13 +2005,7 @@ def test_get_Seager_EOS_exists(mock_download, tmp_path):
     from proteus.utils.data import get_Seager_EOS
 
     # Create EOS folder
-    eos_folder = tmp_path / 'EOS_material_properties' / 'EOS_Seager2007'
-    eos_folder.mkdir(parents=True, exist_ok=True)
-
-    # Create required files
-    (eos_folder / 'eos_seager07_silicate.txt').write_text('test')
-    (eos_folder / 'eos_seager07_iron.txt').write_text('test')
-    (eos_folder / 'eos_seager07_water.txt').write_text('test')
+    eos_folder = _seed_seager(tmp_path)
 
     # Patch FWL_DATA_DIR at module level
     with patch('proteus.utils.data.FWL_DATA_DIR', tmp_path):
@@ -2039,11 +2033,14 @@ def test_get_Seager_EOS_exists(mock_download, tmp_path):
 @patch('proteus.utils.data.download_Seager_EOS')
 def test_get_Seager_EOS_not_exists(mock_download, tmp_path):
     """Test get_Seager_EOS when EOS folder doesn't exist."""
+    from proteus.data import EOS_SEAGER_2007, dataset_dir
     from proteus.utils.data import get_Seager_EOS
 
     # Precondition: the EOS folder really is absent before the call so
     # the missing-folder code path is what gets exercised.
-    assert not (tmp_path / 'EOS_material_properties' / 'EOS_Seager2007').exists()
+    assert not (
+        dataset_dir(EOS_SEAGER_2007, data_root=tmp_path) / 'eos_seager07_iron.txt'
+    ).exists()
 
     # Patch FWL_DATA_DIR and call function
     with patch('proteus.utils.data.FWL_DATA_DIR', tmp_path):
@@ -2054,18 +2051,21 @@ def test_get_Seager_EOS_not_exists(mock_download, tmp_path):
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-def test_download_Seager_EOS(mock_download):
-    """Test Seager EOS download."""
+def test_download_Seager_EOS(monkeypatch, tmp_path):
+    """The Seager EOS is fetched through fwl-io under the manifest key."""
+    import proteus.data as data_pkg
+    import proteus.utils.data as data_mod
     from proteus.utils.data import download_Seager_EOS
+
+    calls = []
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    monkeypatch.setattr(
+        data_pkg, 'fetch_dataset', lambda key, data_root=None: calls.append((key, data_root))
+    )
 
     download_Seager_EOS()
 
-    mock_download.assert_called_once()
-    call_kwargs = mock_download.call_args.kwargs
-    assert call_kwargs['folder'] == 'EOS_Seager2007'
-    assert call_kwargs['target'] == 'EOS_material_properties'
-    assert call_kwargs['desc'] == 'EOS Seager2007 material files'
+    assert calls == [('interior_struct.eos.seager_2007', tmp_path)]
 
 
 @pytest.mark.unit
@@ -2367,19 +2367,20 @@ def test_download_scattering_no_mapping(mock_get_info):
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_Seager_EOS_no_mapping(mock_get_info):
-    """Test Seager EOS download raises error when no mapping found."""
+def test_download_Seager_EOS_failure_raises(monkeypatch, tmp_path):
+    """A failed Seager fetch raises: Zalmoxis cannot run without the tables."""
+    import proteus.data as data_pkg
+    import proteus.utils.data as data_mod
     from proteus.utils.data import download_Seager_EOS
 
-    mock_get_info.return_value = None
+    def boom(key, data_root=None):
+        raise OSError('no network')
 
-    with pytest.raises(ValueError, match='No data source mapping found'):
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    monkeypatch.setattr(data_pkg, 'fetch_dataset', boom)
+
+    with pytest.raises(OSError, match='no network'):
         download_Seager_EOS()
-    # Discrimination: confirm the mapping lookup actually ran; a regression
-    # that raised ValueError from an unrelated guard before consulting the
-    # source-info registry would still pass the raises-match check.
-    mock_get_info.assert_called_once()
 
 
 @pytest.mark.unit
@@ -5496,31 +5497,55 @@ def test_download_file_mode_no_zenodo_id_skips_to_osf(
 # ============================================================================
 
 
+_SEAGER_FILES = (
+    'eos_seager07_iron.txt',
+    'eos_seager07_silicate.txt',
+    'eos_seager07_water.txt',
+)
+
+
+def _seed_seager(root):
+    """Create the Seager EOS files in their versioned dataset directory under ``root``."""
+    from proteus.data import EOS_SEAGER_2007, dataset_dir
+
+    folder = dataset_dir(EOS_SEAGER_2007, data_root=root)
+    folder.mkdir(parents=True, exist_ok=True)
+    for fname in _SEAGER_FILES:
+        (folder / fname).write_text('eos')
+    return folder
+
+
 @pytest.mark.unit
-def test_get_zalmoxis_EOS_unified_static_path_used(monkeypatch, tmp_path):
-    """When EOS/static/Seager2007 exists, that path is preferred over the legacy fallback."""
+def test_get_zalmoxis_EOS_seager_versioned_dir_used(monkeypatch, tmp_path):
+    """The Seager tables are read from their versioned fwl-io dataset directory."""
     import proteus.utils.data as data_mod
     from proteus.utils.data import get_zalmoxis_EOS
 
     monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-
-    eos_base = tmp_path / 'interior_lookup_tables' / 'EOS'
-    seager_unified = eos_base / 'static' / 'Seager2007'
-    seager_unified.mkdir(parents=True, exist_ok=True)
-    for fname in (
-        'eos_seager07_iron.txt',
-        'eos_seager07_silicate.txt',
-        'eos_seager07_water.txt',
-    ):
-        (seager_unified / fname).write_text('eos')
+    seager = _seed_seager(tmp_path)
 
     iron_silicate, _, water, _ = get_zalmoxis_EOS()
-    # Discrimination: the iron file path must point inside the unified
-    # location, NOT the legacy EOS_material_properties path.
-    assert 'EOS/static/Seager2007' in iron_silicate['core']['eos_file']
-    assert 'EOS_material_properties' not in iron_silicate['core']['eos_file']
-    # Water dict picks up the water EOS file as well
-    assert water['ice_layer']['eos_file'].endswith('eos_seager07_water.txt')
+
+    assert Path(iron_silicate['core']['eos_file']) == seager / 'eos_seager07_iron.txt'
+    assert Path(iron_silicate['mantle']['eos_file']) == seager / 'eos_seager07_silicate.txt'
+    assert Path(water['ice_layer']['eos_file']) == seager / 'eos_seager07_water.txt'
+    assert seager.parts[-4:-1] == ('interior_struct', 'eos', 'seager_2007')
+    assert seager.name.startswith('r')
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_EOS_seager_missing_fetches(monkeypatch, tmp_path):
+    """Absent Seager files trigger one fetch through download_eos_static."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import get_zalmoxis_EOS
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    calls = []
+    monkeypatch.setattr(data_mod, 'download_eos_static', lambda: calls.append(1))
+
+    get_zalmoxis_EOS()
+
+    assert calls == [1]
 
 
 @pytest.mark.unit
@@ -5569,14 +5594,7 @@ def test_get_zalmoxis_EOS_rt_legacy_folder_used(monkeypatch, tmp_path, caplog):
 
     monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
 
-    seager_legacy = tmp_path / 'EOS_material_properties' / 'EOS_Seager2007'
-    seager_legacy.mkdir(parents=True, exist_ok=True)
-    for fname in (
-        'eos_seager07_iron.txt',
-        'eos_seager07_silicate.txt',
-        'eos_seager07_water.txt',
-    ):
-        (seager_legacy / fname).write_text('eos')
+    _seed_seager(tmp_path)
 
     rt_legacy = tmp_path / 'EOS_material_properties' / 'EOS_RTPress_melt_100TPa'
     rt_legacy.mkdir(parents=True, exist_ok=True)
@@ -5606,14 +5624,7 @@ def test_get_zalmoxis_EOS_rt_missing_cp_warns(monkeypatch, tmp_path, caplog):
     monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
 
     eos_base = tmp_path / 'interior_lookup_tables' / 'EOS'
-    seager_legacy = tmp_path / 'EOS_material_properties' / 'EOS_Seager2007'
-    seager_legacy.mkdir(parents=True, exist_ok=True)
-    for fname in (
-        'eos_seager07_iron.txt',
-        'eos_seager07_silicate.txt',
-        'eos_seager07_water.txt',
-    ):
-        (seager_legacy / fname).write_text('eos')
+    _seed_seager(tmp_path)
 
     rt_unified = eos_base / 'RTPress_melt_100TPa'
     rt_unified.mkdir(parents=True, exist_ok=True)
@@ -5639,14 +5650,7 @@ def test_get_zalmoxis_EOS_rt_folder_missing_warns(monkeypatch, tmp_path, caplog)
 
     # Only Seager is present (legacy); RTPress folder is absent in BOTH
     # locations.
-    seager_legacy = tmp_path / 'EOS_material_properties' / 'EOS_Seager2007'
-    seager_legacy.mkdir(parents=True, exist_ok=True)
-    for fname in (
-        'eos_seager07_iron.txt',
-        'eos_seager07_silicate.txt',
-        'eos_seager07_water.txt',
-    ):
-        (seager_legacy / fname).write_text('eos')
+    _seed_seager(tmp_path)
 
     with caplog.at_level('WARNING'):
         _, _, _, iron_rt = get_zalmoxis_EOS()
