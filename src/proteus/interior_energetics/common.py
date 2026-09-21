@@ -178,6 +178,7 @@ def _verify_initial_entropy(
 
 
 _EOS_CACHE: dict = {}
+_EOS_CACHE_MAX = 4
 _TABLE_SUPERLIQ_N_POINTS = 200
 _TABLE_SUPERLIQ_N_BISECT = 60
 
@@ -187,7 +188,7 @@ def _load_entropy_eos(eos_dir: str) -> EntropyEOS:
 
     The cache key holds the resolved directory and the name, size and
     modification time of every file in it, so a regenerated table set is
-    reloaded.
+    reloaded. At most 4 table sets are kept, the oldest evicted first.
 
     Parameters
     ----------
@@ -214,7 +215,10 @@ def _load_entropy_eos(eos_dir: str) -> EntropyEOS:
     if key not in _EOS_CACHE:
         from aragog.eos.entropy import EntropyEOS
 
-        _EOS_CACHE.clear()
+        for stale in [k for k in _EOS_CACHE if k[0] == key[0]]:
+            del _EOS_CACHE[stale]
+        while len(_EOS_CACHE) >= _EOS_CACHE_MAX:
+            del _EOS_CACHE[next(iter(_EOS_CACHE))]
         _EOS_CACHE[key] = EntropyEOS(eos_dir)
     return _EOS_CACHE[key]
 
@@ -260,6 +264,8 @@ def solve_superliquidus_entropy_from_tables(
     ------
     FileNotFoundError
         If ``eos_dir`` is not a directory.
+    RuntimeError
+        If the liquidus is undefined at every evaluated pressure.
     """
     eos = _load_entropy_eos(eos_dir)
     delta = float(config.planet.delta_T_super)
@@ -273,8 +279,16 @@ def solve_superliquidus_entropy_from_tables(
             float(config.interior_struct.core_frac),
             str(config.interior_struct.core_frac_mode),
         )
+    if float(P_cmb) > float(eos.P_max):
+        log.warning(
+            'liquidus_super: the core-mantle boundary pressure %.0f GPa exceeds the '
+            'EOS table maximum %.0f GPa; the superheat is evaluated up to the '
+            'table maximum.',
+            float(P_cmb) / 1e9,
+            float(eos.P_max) / 1e9,
+        )
     P_cmb = min(float(P_cmb), float(eos.P_max))
-    P = np.geomspace(1e5, P_cmb, _TABLE_SUPERLIQ_N_POINTS)
+    P = np.geomspace(max(1e5, float(eos.P_min)), P_cmb, _TABLE_SUPERLIQ_N_POINTS)
 
     T_liq = None
     from proteus.utils.data import get_zalmoxis_melting_curves
@@ -289,6 +303,12 @@ def solve_superliquidus_entropy_from_tables(
         )
         T_liq = np.asarray(eos.temperature(P, eos.liquidus_entropy(P)), dtype=float)
     covered = np.isfinite(T_liq)
+    if not covered.any():
+        raise RuntimeError(
+            'liquidus_super: the liquidus is undefined at every pressure between '
+            f'{P[0] / 1e9:.3g} and {P[-1] / 1e9:.3g} GPa; the superheat target '
+            'cannot be evaluated.'
+        )
     if not covered.all():
         log.warning(
             'liquidus_super: the melting curve is undefined above P=%.0f GPa; '
@@ -298,7 +318,7 @@ def solve_superliquidus_entropy_from_tables(
 
     def _probe(S: float) -> tuple[float, float]:
         T = np.asarray(eos.temperature(P, np.full_like(P, S)), dtype=float)
-        margin = np.where(covered, T - T_liq, np.inf)
+        margin = np.where(covered & np.isfinite(T), T - T_liq, np.inf)
         i = int(np.argmin(margin))
         return float(margin[i]), float(P[i])
 

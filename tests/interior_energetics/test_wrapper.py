@@ -3450,6 +3450,43 @@ def test_determine_interior_radius_with_dummy_sets_mesh_paths_for_spider(tmp_pat
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ('temperature_mode', 'expect_call'),
+    [('liquidus_super', True), ('adiabatic', False)],
+)
+def test_dummy_structure_provides_tables_for_liquidus_super_without_generated_set(
+    tmp_path, temperature_mode, expect_call
+):
+    """With no generated P-S set, only liquidus_super requests the FWL_DATA tables."""
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_energetics.num_levels = 50
+    config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
+    config.planet.temperature_mode = temperature_mode
+    hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
+
+    with (
+        _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        _patch('proteus.interior_energetics.wrapper._provide_spider_eos_tables') as provide,
+        _patch('proteus.interior_energetics.wrapper.Interior_t'),
+        _patch('proteus.interior_energetics.wrapper.run_interior'),
+        _patch('proteus.interior_energetics.wrapper.update_gravity'),
+        _patch('proteus.interior_energetics.wrapper.calc_target_elemental_inventories'),
+        _patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
+
+    assert provide.called is expect_call
+    if expect_call:
+        assert provide.call_args.args[1] == str(tmp_path)
+
+
+@pytest.mark.unit
 def test_determine_interior_radius_with_dummy_no_mesh_for_non_spider(tmp_path):
     """For Aragog (no separate mesh file), solve_dummy_structure returns
     None and the helper skips the spider_mesh path entirely.

@@ -1062,6 +1062,9 @@ def determine_interior_radius_with_dummy(
             dirs['spider_eos_dir'] = spider_tables['eos_dir']
             dirs['spider_solidus_ps'] = spider_tables['solidus_path']
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
+        elif config.planet.temperature_mode == 'liquidus_super':
+            # The liquidus_super initial entropy solves on these tables.
+            _provide_spider_eos_tables(config, outdir, dirs)
 
     # Derived quantities
     hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']

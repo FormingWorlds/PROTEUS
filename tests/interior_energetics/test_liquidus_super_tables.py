@@ -169,14 +169,24 @@ def test_entropy_is_monotonic_in_requested_superheat(fake_tables):
     assert S[1] - S[0] == pytest.approx(100.0 / A, rel=1e-6)
 
 
-def test_table_floor_when_target_below_lowest_entropy(fake_tables):
+def test_table_floor_when_target_below_lowest_entropy(fake_tables, monkeypatch):
     """A target already met at the lowest table entropy returns that entropy."""
+    calls = []
+    real = _FakeEOS.temperature
+
+    def counting(self, P, S):
+        calls.append(1)
+        return real(self, P, S)
+
+    monkeypatch.setattr(_FakeEOS, 'temperature', counting)
     res = solve_superliquidus_entropy_from_tables(
         _config(-2000.0), {'P_cmb': P_CMB}, fake_tables
     )
 
     assert res['S_target'] == pytest.approx(_FakeEOS.S_min, abs=1e-12)
     assert res['clamped'] is False
+    # Bisection would need 60 probes; the floor short-circuit needs a handful.
+    assert len(calls) < 10
 
 
 def test_missing_melting_curve_falls_back_to_table_liquidus(monkeypatch, tmp_path, caplog):
@@ -220,10 +230,97 @@ def test_melting_curve_undefined_at_depth_uses_covered_range(monkeypatch, tmp_pa
     assert any('undefined above' in r.getMessage() for r in caplog.records)
 
 
-def test_p_cmb_above_table_range_is_clipped(fake_tables, monkeypatch):
-    """A CMB pressure beyond the table maximum is clipped to the maximum."""
+def test_liquidus_undefined_everywhere_raises(monkeypatch, tmp_path):
+    """A melting curve and a table liquidus that are NaN everywhere raise a clear error."""
+
+    class _NaNLiqEOS(_FakeEOS):
+        def liquidus_entropy(self, P):
+            return np.full_like(np.asarray(P, dtype=float), np.nan)
+
+    monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _NaNLiqEOS())
+    monkeypatch.setattr(
+        'proteus.utils.data.get_zalmoxis_melting_curves',
+        lambda cfg: (None, lambda P: np.full_like(np.asarray(P, dtype=float), np.nan)),
+    )
+
+    with pytest.raises(RuntimeError, match='liquidus is undefined'):
+        solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, str(tmp_path))
+
+
+def test_surface_anchor_is_raised_to_table_minimum_pressure(fake_tables, monkeypatch):
+    """A table whose minimum pressure exceeds 1 bar is never evaluated below it."""
+    seen = []
+    real = _FakeEOS.temperature
+
+    def guarded(self, P, S):
+        P = np.asarray(P, dtype=float)
+        seen.append(float(P.min()))
+        return np.where(P < self.P_min, np.nan, real(self, P, S))
+
+    monkeypatch.setattr(_FakeEOS, 'P_min', 1.0e7)
+    monkeypatch.setattr(_FakeEOS, 'temperature', guarded)
+    res = solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+
+    assert min(seen) >= 1.0e7
+    assert np.isfinite(res['S_target'])
+    assert res['S_target'] == pytest.approx(_S_expected(200.0), rel=1e-6)
+
+
+def test_missing_p_cmb_uses_mass_aware_estimate(fake_tables, monkeypatch):
+    """Without a helpfile P_cmb the Noack and Lasbleis estimate sets the CMB pressure."""
+    monkeypatch.setattr(
+        'proteus.utils.structure_estimate.estimate_P_cmb_NL20', lambda m, f, mode: 7.5e10
+    )
+    res = solve_superliquidus_entropy_from_tables(_config(200.0), {}, fake_tables)
+
+    assert res['P_cmb'] == pytest.approx(7.5e10, rel=1e-12)
+    assert res['S_target'] == pytest.approx(_S_expected(200.0, 7.5e10), rel=1e-6)
+
+
+def test_cache_keeps_other_directories_when_one_reloads(monkeypatch, tmp_path):
+    """Loading a second table set does not evict the first; the cache stays bounded."""
+    aragog_entropy = pytest.importorskip('aragog.eos.entropy')
+    monkeypatch.setattr(aragog_entropy, 'EntropyEOS', lambda d: object())
+    monkeypatch.setattr(common, '_EOS_CACHE', {})
+    dirs = []
+    for i in range(common._EOS_CACHE_MAX + 2):
+        d = tmp_path / f'set{i}'
+        d.mkdir()
+        (d / 'f.dat').write_text('x')
+        dirs.append(str(d))
+
+    first = common._load_entropy_eos(dirs[0])
+    second = common._load_entropy_eos(dirs[1])
+    assert common._load_entropy_eos(dirs[0]) is first
+    assert common._load_entropy_eos(dirs[1]) is second
+    for d in dirs[2:]:
+        common._load_entropy_eos(d)
+    assert len(common._EOS_CACHE) == common._EOS_CACHE_MAX
+
+
+def test_nan_temperatures_inside_table_range_are_ignored(fake_tables, monkeypatch):
+    """Pressures where the table returns NaN do not bias the bisection."""
+    real = _FakeEOS.temperature
+
+    def holey(self, P, S):
+        P = np.asarray(P, dtype=float)
+        return np.where((P > 2.0e10) & (P < 3.0e10), np.nan, real(self, P, S))
+
+    monkeypatch.setattr(_FakeEOS, 'temperature', holey)
+    res = solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+
+    assert res['clamped'] is False
+    assert res['S_target'] == pytest.approx(_S_expected(200.0), rel=1e-6)
+
+
+def test_p_cmb_above_table_range_is_clipped(fake_tables, monkeypatch, caplog):
+    """A CMB pressure beyond the table maximum is clipped to the maximum, with a warning."""
     monkeypatch.setattr(_FakeEOS, 'P_max', 2.0e11)
-    res = solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': 5e12}, fake_tables)
+    with caplog.at_level(logging.WARNING):
+        res = solve_superliquidus_entropy_from_tables(
+            _config(200.0), {'P_cmb': 5e12}, fake_tables
+        )
+    assert any('exceeds the EOS table maximum' in r.getMessage() for r in caplog.records)
 
     assert res['P_cmb'] == pytest.approx(2.0e11, rel=1e-12)
     assert res['S_target'] == pytest.approx(_S_expected(200.0, 2.0e11), rel=1e-6)
