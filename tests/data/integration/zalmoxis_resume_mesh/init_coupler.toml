@@ -106,13 +106,14 @@ semimajoraxis = 1.0
 eccentricity = 0.1
 zenith_angle = 48.19
 s0_factor = 0.375
-evolve = false
 axial_period = "none"
-satellite = false
-mass_sat = 7.347e+22
-semimajoraxis_sat = 300000000.0
 instellation_method = "distance"
 instellationflux = 1.0
+
+[orbit.satellite]
+include_satellite = false
+mass_sat = 0.0123024
+semimajoraxis_sat = 47.3527
 
 [orbit.dummy]
 H_tide = 0.0
@@ -234,7 +235,7 @@ trans_mixing = true
 heat_radiogenic = true
 heat_tidal = false
 mixing_length = "constant"
-grain_size = 0.1
+grain_size = 1e-3
 flux_guess = 1000.0
 tmagma_atol = 20.0
 tmagma_rtol = 0.02

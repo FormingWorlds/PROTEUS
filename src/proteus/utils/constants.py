@@ -16,6 +16,11 @@ M_core_earth = 1.94e24  # kg
 # ~500 GPa. Above this pressure the high-pressure power-law liquidus branch is
 # an extrapolation, so a superheat margin evaluated there is uncertain.
 FEI2021_LIQUIDUS_P_CALIB_PA = 500e9  # Pa
+# EOS name prefixes of the PALEOS family. The mantle EOS is matched to derive
+# the solidus from mushy_zone_factor; the config validator matches the core
+# and ice-layer EOS too.
+PALEOS_EOS_PREFIXES = ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
+
 mol = 6.02214076e23  # mol definition
 
 # Earth heat flux, globally averaged [W m-2]

@@ -28,7 +28,14 @@ from proteus.utils.constants import (
     vol_gas_list,
     vol_list,
 )
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
+from proteus.utils.helper import (
+    UpdateStatusfile,
+    create_tmp_folder,
+    format_subyear_time,
+    get_proteus_dir,
+    parse_subyear_time,
+    safe_rm,
+)
 from proteus.utils.plot import sample_times
 
 if TYPE_CHECKING:
@@ -38,6 +45,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 LOCKFILE_NAME = 'keepalive'
 AGNI_MIN_VERSION = '1.8.0'
+OBLIQUA_MIN_VERSION = '0.1.0'
 
 
 def _get_current_time():
@@ -129,6 +137,17 @@ def _get_agni_version(dirs: dict):
     with open(os.path.join(dirs['agni'], 'Project.toml'), 'rb') as hdl:
         agni_meta = tomlload(hdl)
     return agni_meta['version']
+
+
+def _get_obliqua_version(dirs: dict):
+    """
+    Get the installed Obliqua version
+    """
+    from tomllib import load as tomlload
+
+    with open(os.path.join(dirs['obliqua'], 'Project.toml'), 'rb') as hdl:
+        obliqua_meta = tomlload(hdl)
+    return obliqua_meta['version']
 
 
 def _get_julia_version():
@@ -287,6 +306,10 @@ def validate_module_versions(dirs: dict, config: Config):
 
         valid &= _valid_ver(mors_version, _get_expver('fwl-mors'), 'MORS')
 
+    # Orbit module
+    if config.orbit.module == 'obliqua':
+        valid &= _valid_ver(_get_obliqua_version(dirs), OBLIQUA_MIN_VERSION, 'Obliqua')
+
     # Exit
     if not valid:
         UpdateStatusfile(dirs, 20)
@@ -401,8 +424,11 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(write)
 
     # Orbit module
-    log.info('Orbit module      %s' % config.orbit.module)
-    if config.orbit.module == 'lovepy':
+    write = 'Orbit module      %s' % config.orbit.module
+    if config.orbit.module == 'obliqua':
+        write += ' version ' + _get_obliqua_version(dirs)
+    log.info(write)
+    if config.orbit.module in ['lovepy', 'obliqua']:
         log.info('  - Julia         version ' + _get_julia_version())
 
     # Accretion module
@@ -775,18 +801,37 @@ def GetHelpfileKeys():
 
         # Orbital and spin parameters of planet
         'semimajorax',      # semi-major axis [m]
+        'sma_dot_planet',   # semi-major axis derivative [m s-1]
         'separation',       # time-averaged separation [m]
         'perihelion',       # lowest point in orbit [m]
         'orbital_period',   # orbital duration [s]
         'eccentricity',     # orbital eccentricity [1]
-        'Imk2',             # Imaginary part of k2 Love Number [1]
+        'ecc_dot_planet',   # eccentricity derivative [1 s-1]
+        'plan_star_am',     # angular momentum of star+planet [kg m2 s-1]
         'axial_period',     # day length of planet around its axis [s]
 
+        'Imk2',             # Imaginary part of k2 Love Number [1]
+
+        'longitude',        # column longitude relative to substellar point [deg]
+        'latitude',         # column latitude relative to substellar point [deg]
+
         # Satellite system
-        'perigee',          # lowest point in orbit [m]
         'semimajorax_sat',  # semi-major axis [m]
+        'sma_dot_sat',      # semi-major axis derivative [m s-1]
+        'separation_sat',   # time-averaged separation [m]
+        'perigee',          # lowest point in orbit [m]
+        'orbital_period_sat', # orbital duration [s]
+        'eccentricity_sat', # orbital eccentricity of satellite [1]
+        'ecc_dot_sat',      # eccentricity derivative [1 s-1]
+        'plan_sat_am',      # angular momentum of satellite+planet [kg m2 s-1]
+        'axial_period_sat', # day length of satellite around its axis [s]
+
+        'R_sat',            # radius of satellite [m]
         'M_sat',            # mass of satellite [kg]
-        'plan_sat_am',      # angular momentum of sat+pla [kg m2 s-1],
+        'C_sat',            # principal moment of inertia of satellite [kg m2]
+
+        'evection_angle',   # evection angle [rad]
+        'evection_dt_cap_yr', # next macro-step dt cap, rate + growth limiter folded in [yr]
 
         # Planet structure
         'R_int',            # interior radius [m]
@@ -794,11 +839,12 @@ def GetHelpfileKeys():
         'M_planet',         # total planet wet+dry mass [kg]
         'M_vaps',           # vapourised rock mass, including the vapourised oxygen [kg]
         'R_core',           # core radius [m]
+        'C_int',            # principal moment of inertia of planet [kg m2]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]
         'T_solvus',         # solvus temperature for global_miscibility mode [K]
-        'P_center',         # central pressure from Zalmoxis structure [Pa]
-        'P_cmb',            # core-mantle boundary pressure from Zalmoxis structure [Pa]
+        'P_center',         # central pressure from Zalmoxis structure [Pa]; 0 for SPIDER, which models the mantle only
+        'P_cmb',            # core-mantle boundary pressure, from Zalmoxis structure or SPIDER's basic-node pressure profile [Pa]
         'core_density',     # core density from structure solver [kg m-3]
         'core_heatcap',     # core heat capacity [J kg-1 K-1]
         'X_H2_int',         # H2 mass fraction in interior (sub-Neptune mode) [1]
@@ -812,7 +858,6 @@ def GetHelpfileKeys():
         'T_skin',           # grey radiative skin temperature [K]
         'T_surface_initial',  # self-consistent T_surf from accretion mode [K]
         'T_surf_accr',      # surface temperature from accretion energy balance [K]
-        'T_cmb_initial',    # initial CMB temperature from White+Li thermal state [K]
         'DeltaT_accretion',  # accretion-energy DeltaT contribution [K]
         'DeltaT_adiabat',   # adiabatic DeltaT contribution [K]
         'DeltaT_differentiation',  # core-mantle differentiation DeltaT contribution [K]
@@ -1028,13 +1073,15 @@ def GetHelpfileKeys():
         keys.append(s + '_ocean')       # ocean surface density [kg m-2]
 
     # Diagnostic variables
-    keys.append('wtg_surf')         # Weak temperature gradient parameter at the surface [1]
-    keys.append('roche_limit')      # Roche limit, orbital distance  [m]
-    keys.append('breakup_period')   # Critical day length [s]
-    keys.append('hill_radius')      # Hill radius, radial distance [m]
+    keys.append('wtg_surf')             # Weak temperature gradient parameter at the surface [1]
+    keys.append('roche_limit')          # Roche limit, orbital distance  [m]
+    keys.append('breakup_period')       # Critical day length [s]
+    keys.append('hill_radius')          # Hill radius, radial distance [m]
+    keys.append('roche_limit_sat')      # Roche limit, orbital distance for the satellite [m]
+    keys.append('breakup_period_sat')   # Critical day length for satellite [s]
 
     # Simulation's computational variables
-    keys.append('runtime')          # Simulation wall-clock runtime [s]
+    keys.append('runtime')              # Simulation wall-clock runtime [s]
     # fmt: on
 
     return keys
@@ -1505,13 +1552,100 @@ def _snapshot_readable(path: str) -> bool:
     return _netcdf_readable(path)
 
 
+def _snapshot_time(path: str) -> float | None:
+    """Simulation time a snapshot file records for itself [yr], if it does.
+
+    A snapshot name can be ambiguous: SPIDER's JSON files are named on the time
+    rounded to a whole year, so two steps inside one year share a name, and a
+    directory from an older run can hold whole-year names for any writer. The
+    interior writers also record the time they wrote: Aragog's netCDF carries a
+    ``time`` variable and SPIDER's JSON a ``time_years`` entry. Reading it back
+    lets a resume tell whether a file is the row's own state or one a later
+    step left under the same name.
+
+    Parameters
+    ----------
+    path : str
+        Snapshot file to read.
+
+    Returns
+    -------
+    float or None
+        The recorded time, or None when the file records none, which is what
+        a directory written before the field existed looks like.
+    """
+    # Imported outside the try for the same reason as the readability probe:
+    # a missing netCDF4 must raise rather than read as "no file records a
+    # time", which would quietly restore the name-only behaviour everywhere.
+    from netCDF4 import Dataset
+
+    try:
+        if path.endswith('.json'):
+            with open(path) as fh:
+                recorded = json.load(fh).get('time_years')
+            return None if recorded is None else float(recorded)
+        with Dataset(path) as ds:
+            if 'time' not in ds.variables:
+                return None
+            return float(ds['time'][0])
+    except Exception:
+        # Unreadable is not this function's call to make: the readability
+        # probe reports that, and reporting it here as well would turn a
+        # corrupt file into a silently skipped one.
+        return None
+
+
+def _snapshot_belongs_to(path: str, time: float) -> bool:
+    """Whether a snapshot is the one written for a simulation time.
+
+    True when the file records that time, and also when it records none: a
+    file without the field cannot be told apart from its neighbours, so it is
+    accepted on its name, which is the behaviour every directory written
+    before the field existed relies on. True as well once the simulation time
+    is large enough that the helpfile's own precision cannot separate two rows
+    inside one filename, which is a few Gyr in.
+
+    Parameters
+    ----------
+    path : str
+        Snapshot file to check.
+    time : float
+        Simulation time of the helpfile row [yr].
+
+    Returns
+    -------
+    bool
+        Whether the file can be this row's half.
+    """
+    recorded = _snapshot_time(path)
+    if recorded is None:
+        return True
+
+    # The row's time has been through the helpfile, which serialises at
+    # '%.10e' and so holds eleven significant digits: a round trip moves it by
+    # up to 4.94e-11 of its own magnitude. The margin has to clear that, and a
+    # factor of four does, while staying as tight as the stored data allows.
+    resolution = 5.0e-11 * max(1.0, abs(time))
+    tolerance = 4.0 * resolution
+
+    # Past a few Gyr the helpfile precision itself exceeds the one-year name
+    # bucket, so no margin separates two rows in it: accept on name instead.
+    if tolerance >= 0.5:
+        return True
+
+    return abs(recorded - time) <= tolerance
+
+
 def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
     """Interior snapshot filename candidates for a simulation time, per writer.
 
-    Each interior module names its snapshot with the same str-format convention,
-    so the resume probes match. They differ by suffix.
-    The dummy and boundary interiors write no snapshot, so resume imposes
-    no interior constraint (empty list). Unknown module falls-back to Aragog.
+    Aragog names its snapshot with the sub-year form ``format_subyear_time(time) + '_int.nc'``
+    (e.g. ``'884p700_int.nc'``). The dot-decimal form (``'884.700_int.nc'``) and the
+    whole-year form (``'884_int.nc'``) are accepted as fallbacks. SPIDER names its
+    JSON with the whole-year form ``'%.0f.json'``; the SPIDER binary writes that
+    name, so PROTEUS matches it rather than choosing it. The dummy and boundary
+    interiors write no snapshot, so resume imposes no interior constraint (empty
+    list). Unknown module falls back to Aragog.
     """
 
     if time < 0.0:
@@ -1523,18 +1657,28 @@ def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
         case 'spider':
             return ['%.0f.json' % time]
         case _:
-            return ['%.0f_int.nc' % time]
+            return [
+                format_subyear_time(time) + '_int.nc',
+                '%.3f_int.nc' % time,
+                '%.0f_int.nc' % time,
+            ]
 
 
 def _atm_snapshot_names(time: float) -> list[str]:
-    """Atmosphere snapshot filename candidate for a simulation time, per writer.
+    """Atmosphere snapshot filename candidates for a simulation time.
 
-    All writers round the time with a string-floating point formatter
-    (rounds to nearest number with no decimals).
+    The atmosphere writers name the snapshot with the sub-year form
+    ``format_subyear_time(time) + '_atm.nc'`` (e.g. ``'884p700_atm.nc'``).
+    The dot-decimal form (``'884.700_atm.nc'``) and the whole-year form
+    (``'884_atm.nc'``) are accepted as fallbacks.
     """
     if time < 0.0:
         raise ValueError(f'Negative time {time} cannot be formatted as filename')
-    return ['%.0f_atm.nc' % time]
+    return [
+        format_subyear_time(time) + '_atm.nc',
+        '%.3f_atm.nc' % time,
+        '%.0f_atm.nc' % time,
+    ]
 
 
 def select_resumable_snapshot(
@@ -1558,6 +1702,25 @@ def select_resumable_snapshot(
     files are deleted: the helpfile is truncated below their rows, so they
     can never back a resume and would otherwise be swept into the final
     data archive.
+
+    Each half is probed with the candidate names for its writer. The interior
+    name depends on the module: Aragog uses the sub-year form ``'884p700_int.nc'``
+    and answers to the whole-year form ``'%.0f_int.nc'``, SPIDER uses the
+    whole-year form ``'%.0f.json'``, and the dummy and boundary interiors write
+    no snapshot at all (no interior constraint). The atmosphere half uses the
+    sub-year form ``'884p700_atm.nc'`` and answers to the whole-year form
+    ``'%.0f_atm.nc'``. See ``_interior_snapshot_names`` /
+    ``_atm_snapshot_names``.
+
+    The whole-year form keys the name on a whole year, so two rows less than a
+    year apart that both use it derive the same filename and one overwrites the
+    other; the sub-year form gives each such row a distinct file. Where the
+    name alone cannot say which row a file belongs to, the recorded time inside
+    the file decides. The interior writers store the time they wrote (a
+    ``time`` variable in the netCDF, ``time_years`` in SPIDER's JSON), so where
+    that is present it is what the row is matched against: a file left by a
+    different step is not accepted as this row's half, and the walk continues
+    past it. A file that carries no recorded time is accepted on its name.
 
     Parameters
     ----------
@@ -1593,6 +1756,7 @@ def select_resumable_snapshot(
     dropped: list[int] = []
     quarantined: list[tuple[str, str]] = []  # (moved_to, original) for rollback
     keep_idx = None
+
     for i in range(len(times) - 1, -1, -1):
         t = times[i]
         int_paths = [
@@ -1603,15 +1767,23 @@ def select_resumable_snapshot(
         )
         # An empty interior candidate list means the interior module writes no
         # snapshot (dummy/boundary): that half imposes no resume constraint.
-        int_ok = (not int_paths) or any(_snapshot_readable(p) for p in int_paths)
-        atm_ok = (not require_atm) or any(_snapshot_readable(p) for p in atm_paths)
+        # A file that records a different time is another step's, so it does
+        # not count as this row's half however well its name fits.
+        int_ok = (not int_paths) or any(
+            _snapshot_readable(p) and _snapshot_belongs_to(p, t) for p in int_paths
+        )
+        atm_ok = (not require_atm) or any(
+            _snapshot_readable(p) and _snapshot_belongs_to(p, t) for p in atm_paths
+        )
         if int_ok and atm_ok:
             keep_idx = i
             break
         # Incomplete pair: move whichever candidate halves exist aside so the
-        # interior / atmosphere latest-file globs cannot pick them up.
+        # interior / atmosphere latest-file globs cannot pick them up. A file
+        # that records a different time is left where it is: it belongs to
+        # another step, and dropping this row must not take it down as well.
         for p in int_paths + atm_paths:
-            if os.path.exists(p):
+            if os.path.exists(p) and _snapshot_belongs_to(p, t):
                 dst = p + '.incomplete'
                 os.replace(p, dst)
                 quarantined.append((dst, p))
@@ -1730,6 +1902,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     # Import utilities
     from proteus.atmos_clim.common import read_atmosphere_data
     from proteus.interior_energetics.wrapper import read_interior_data
+    from proteus.orbit.wrapper import read_tides_data
 
     # Import plotting functions
     from proteus.plot.cpl_atmosphere import plot_atmosphere
@@ -1742,7 +1915,11 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     from proteus.plot.cpl_global import plot_global
     from proteus.plot.cpl_interior import plot_interior
     from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
-    from proteus.plot.cpl_orbit import plot_orbit
+    from proteus.plot.cpl_orbit import (
+        plot_lovenumber,
+        plot_orbit,
+        plot_orbit_system,
+    )
     from proteus.plot.cpl_population import (
         plot_population_mass_radius,
         plot_population_time_density,
@@ -1765,6 +1942,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     agni = config.atmos_clim.module == 'agni'
     spider = config.interior_energetics.module == 'spider'
     aragog = config.interior_energetics.module == 'aragog'
+    obliqua = config.orbit.module == 'obliqua'
     observed = bool(config.observe.module is not None)
 
     # Get all output times
@@ -1786,13 +1964,27 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
 
     # Planet and satellite orbit parameters
-    if config.orbit.evolve or config.orbit.satellite:
-        plot_orbit(hf_all, output_dir, config.params.out.plot_fmt)
+    if (
+        config.orbit.star_planet_model is not None
+        or config.orbit.planet_satellite_model is not None
+    ):
+        plot_orbit(
+            hf_all,
+            output_dir,
+            config.orbit.satellite.include_satellite,
+            plot_format=config.params.out.plot_fmt,
+        )
+        plot_orbit_system(
+            hf_all,
+            output_dir,
+            config.orbit.planet_satellite_model is not None,
+            plot_format=config.params.out.plot_fmt,
+        )
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:
         ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
-        nc_times = [int(f.split('/')[-1].split('_atm')[0]) for f in ncs]
+        nc_times = [parse_subyear_time(f.split('/')[-1].split('_atm')[0]) for f in ncs]
         output_times = select_profile_plot_times(output_times, nc_times, no_int_snapshots)
 
     # Samples for plotting profiles
@@ -1845,6 +2037,21 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
             # Energy flux profiles
             plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
+
+    # Lovenumber spectra for tidal dissipation
+    if obliqua:
+        # Which times do we have tides data for?
+        ncs = glob.glob(os.path.join(output_dir, 'data', '*_obliqua.nc'))
+        plot_times_obliqua = [int(f.split('/')[-1].split('_obliqua')[0]) for f in ncs]
+
+        tide_data = read_tides_data(output_dir, 'obliqua', plot_times_obliqua)
+
+        plot_lovenumber(
+            output_dir=output_dir,
+            times=plot_times_obliqua,
+            data=tide_data,
+            plot_format=config.params.out.plot_fmt,
+        )
 
     # Only at the end of the simulation
     if end:
@@ -1986,6 +2193,7 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         'proteus': root_dir,
         'agni': os.path.join(root_dir, 'AGNI'),
         'lovepy': os.path.join(root_dir, 'lovepy'),
+        'obliqua': os.path.join(root_dir, 'Obliqua'),
         'input': os.path.join(root_dir, 'input'),
         'spider': os.path.join(root_dir, 'SPIDER'),
         'aragog': os.path.join(root_dir, 'aragog'),

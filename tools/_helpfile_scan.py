@@ -68,6 +68,10 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str], tuple[str, ...]] = {
     ('outgas/atmodeller.py', '<?>_kg_liquid'): ('gas_list', 'element_list'),
     ('outgas/atmodeller.py', '<?>_kg_solid'): ('gas_list', 'element_list'),
     ('outgas/atmodeller.py', '<?>_kg_total'): ('gas_list', 'element_list'),
+    ('outgas/atmodeller.py', '<?>_mol_atm'): ('gas_list',),
+    ('outgas/atmodeller.py', '<?>_mol_liquid'): ('gas_list',),
+    ('outgas/atmodeller.py', '<?>_mol_solid'): ('gas_list',),
+    ('outgas/atmodeller.py', '<?>_mol_total'): ('gas_list',),
     ('outgas/dummy.py', '<?>_bar'): ('gas_list',),
     ('outgas/dummy.py', '<?>_mol_atm'): ('gas_list',),
     ('outgas/dummy.py', '<?>_mol_liquid'): ('gas_list',),
@@ -93,6 +97,10 @@ SUPPRESSED_DYNAMIC_WRITES = {
     # hf_row.update(saved) restores of pre-call snapshots.
     ('interior_energetics/wrapper.py', '_solve_structure_with_adiabat_or_rollback'),
     ('interior_energetics/wrapper.py', 'update_structure_from_interior'),
+    # hf_row.clear(); hf_row.update(snapshot) restores the pre-substep state
+    # on a rejected adaptive step; shared by evolve_orbit_star (orbit.py) and
+    # evolve_orbit_satellite (satellite.py).
+    ('orbit/common.py', 'run_adaptive_orbit_substeps'),
 }
 
 # Producers that assemble their key through a local variable the visitor

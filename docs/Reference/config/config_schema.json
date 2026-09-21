@@ -490,6 +490,132 @@
       "group_qualifier": null
     },
     {
+      "path": "params.dt.evection_maximum",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Ceiling on the time-step size [yr] while the planet-satellite system is inside, or approaching, the evection resonance band. Must be > 0 when set. Default ``'none'`` (disables the whole mechanism).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.dt.evection_target_rel_de",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.05",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Target maximum fractional change in ``eccentricity_sat`` per macro-step while inside/approaching the evection band. Obliqua's own adaptive mode-window selection is keyed on the eccentricity it is given at call time, and that window is then held fixed for the whole of the following macro-step, so a large fractional swing in ``e`` within one step risks needing modes outside that window. Default 0.05 (5%).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.dt.evection_de_floor",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.02",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Floor on the eccentricity value used in the ``evection_target_rel_de`` ratio's denominator, so a tiny eccentricity right at capture onset does not make the allowed step blow up. Default 0.02.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.dt.evection_rate_window",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "int",
+      "accepts_none": false,
+      "default": "2",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 2
+        }
+      ],
+      "description": "Number of trailing accepted macro-steps used to estimate the SECULAR ``|de/dt|`` this cap bounds against (a least-squares linear fit for windows > 2, the plain two-point difference at the default of 2). Default 2, preserves the two-point behaviour.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.dt.evection_growth_factor",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Cap on the dt growth ratio between consecutive steps while the system is inside/approaching the evection band, or within ``evection_cooldown_iters`` steps of having left it. Separate from the global ``max_growth_factor`` (which most evection runs leave disabled, since it would also throttle ordinary bulk evolution for the rest of the run). Must be > 0 when set. Default ``'none'`` (disabled).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.dt.evection_cooldown_iters",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "int or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Number of PROTEUS iterations, after the system is no longer judged in/near the evection band, during which ``evection_growth_factor`` remains active. Refreshed to this value on every iteration the zone is active, so a long stay in the band does not exhaust it before exit. Must be > 0 when set. Default ``'none'`` (no cooldown tail; growth limiting turns off the instant the zone is left).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "params.dt.hysteresis_iters",
       "toml_section": "params.dt",
       "class": "TimeStepParams",
@@ -888,6 +1014,118 @@
       "choices": null,
       "bounds": null,
       "description": "Absolute correction (+/-) to (increase/decrease) calculated Breakup period [s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.stop.disint_sat.enabled",
+      "toml_section": "params.stop.disint_sat",
+      "class": "StopDisintSat",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Enable all planet disintegration criteria if True",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.stop.disint_sat.roche_enabled",
+      "toml_section": "params.stop.disint_sat",
+      "class": "StopDisintSat",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Disable Roche limit criterion",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.stop.disint_sat.offset_roche",
+      "toml_section": "params.stop.disint_sat",
+      "class": "StopDisintSat",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0",
+      "choices": null,
+      "bounds": null,
+      "description": "Absolute correction (+/-) to (increase/decrease) calculated Roche limit [m].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.stop.disint_sat.spin_enabled",
+      "toml_section": "params.stop.disint_sat",
+      "class": "StopDisintSat",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Disable Breakup period criterion",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.stop.disint_sat.offset_spin",
+      "toml_section": "params.stop.disint_sat",
+      "class": "StopDisintSat",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0",
+      "choices": null,
+      "bounds": null,
+      "description": "Absolute correction (+/-) to (increase/decrease) calculated Breakup period [s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.stop.satellite.enabled",
+      "toml_section": "params.stop.satellite",
+      "class": "StopSatellite",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Enable criteria if True",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "params.stop.satellite.sma_max",
+      "toml_section": "params.stop.satellite",
+      "class": "StopSatellite",
+      "type": "float",
+      "accepts_none": false,
+      "default": "60",
+      "choices": null,
+      "bounds": null,
+      "description": "Maximum semi-major axis for the satellite [R_Earth].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1405,26 +1643,6 @@
       "group_qualifier": null
     },
     {
-      "path": "orbit.module",
-      "toml_section": "orbit",
-      "class": "Orbit",
-      "type": "str or none",
-      "accepts_none": true,
-      "default": "none",
-      "choices": [
-        null,
-        "dummy",
-        "lovepy"
-      ],
-      "bounds": null,
-      "description": "Select orbit module to use. Choices: 'none', 'dummy', 'lovepy'.",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
       "path": "orbit.semimajoraxis",
       "toml_section": "orbit",
       "class": "Orbit",
@@ -1464,6 +1682,46 @@
         }
       ],
       "description": "Initial Eccentricity of the planet's orbit.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.instellation_method",
+      "toml_section": "orbit",
+      "class": "Orbit",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"distance\"",
+      "choices": [
+        "distance",
+        "inst"
+      ],
+      "bounds": null,
+      "description": "Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.instellationflux",
+      "toml_section": "orbit",
+      "class": "Orbit",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Instellation flux initially received by the planet in Earth units.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1517,15 +1775,20 @@
       "group_qualifier": null
     },
     {
-      "path": "orbit.evolve",
+      "path": "orbit.star_planet_model",
       "toml_section": "orbit",
       "class": "Orbit",
-      "type": "bool",
-      "accepts_none": false,
-      "default": "false",
-      "choices": null,
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": [
+        null,
+        "none",
+        "sp0d",
+        "sp1d"
+      ],
       "bounds": null,
-      "description": "Allow the planet's orbit to evolve based on eccentricity tides?",
+      "description": "Select star-planet orbit module to use. Choices: 'none', 'sp0d', 'sp1d'.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1549,15 +1812,15 @@
       "group_qualifier": null
     },
     {
-      "path": "orbit.satellite",
-      "toml_section": "orbit",
-      "class": "Orbit",
+      "path": "orbit.satellite.include_satellite",
+      "toml_section": "orbit.satellite",
+      "class": "Satellite",
       "type": "bool",
       "accepts_none": false,
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Model a satellite (moon) orbiting the planet and solve for its orbit?",
+      "description": "Whether to model a satellite orbiting the planet.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1565,12 +1828,12 @@
       "group_qualifier": null
     },
     {
-      "path": "orbit.mass_sat",
-      "toml_section": "orbit",
-      "class": "Orbit",
+      "path": "orbit.satellite.mass_sat",
+      "toml_section": "orbit.satellite",
+      "class": "Satellite",
       "type": "float",
       "accepts_none": false,
-      "default": "7.347e+22",
+      "default": "0.012",
       "choices": null,
       "bounds": [
         {
@@ -1578,7 +1841,7 @@
           "value": 0
         }
       ],
-      "description": "Satellite mass [kg]; the default is the lunar mass.",
+      "description": "Satellite mass [M_earth].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1586,12 +1849,12 @@
       "group_qualifier": null
     },
     {
-      "path": "orbit.semimajoraxis_sat",
-      "toml_section": "orbit",
-      "class": "Orbit",
+      "path": "orbit.satellite.radius_sat",
+      "toml_section": "orbit.satellite",
+      "class": "Satellite",
       "type": "float",
       "accepts_none": false,
-      "default": "300000000.0",
+      "default": "0.273",
       "choices": null,
       "bounds": [
         {
@@ -1599,7 +1862,533 @@
           "value": 0
         }
       ],
-      "description": "Satellite initial semi-major axis [m]",
+      "description": "Satellite radius [R_earth].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.satellite.axial_period_sat",
+      "toml_section": "orbit.satellite",
+      "class": "Satellite",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Satellite initial day length [hours], will use orbital period if value is None.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.satellite.semimajoraxis_sat",
+      "toml_section": "orbit.satellite",
+      "class": "Satellite",
+      "type": "float",
+      "accepts_none": false,
+      "default": "3.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Satellite initial semi-major axis [R_earth].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.satellite.eccentricity_sat",
+      "toml_section": "orbit.satellite",
+      "class": "Satellite",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Satellite initial orbital eccentricity [dimensionless].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.satellite.evection_angle",
+      "toml_section": "orbit.satellite",
+      "class": "Satellite",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Satellite evection angle [deg].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.satellite.c_factor_sat",
+      "toml_section": "orbit.satellite",
+      "class": "Satellite",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.4",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 0.4
+        }
+      ],
+      "description": "Satellite tidal dissipation factor (<= 0.4) [dimensionless].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.satellite.love_number_sat",
+      "toml_section": "orbit.satellite",
+      "class": "Satellite",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Satellite love number spectrum, provide absolute path to netCDF file containing forcing frequencies and complex Lovenumbers, and corresponding tidal degree in nmk format.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.planet_satellite_model",
+      "toml_section": "orbit",
+      "class": "Orbit",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": [
+        null,
+        "none",
+        "ps0d",
+        "ps1d",
+        "ps1d_evec"
+      ],
+      "bounds": null,
+      "description": "Select planet-satellite orbit module to use. Choices: 'none', 'ps0d', 'ps1d', 'ps1d_evec'.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.method",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"Radau\"",
+      "choices": [
+        "RK45",
+        "RK23",
+        "DOP853",
+        "Radau",
+        "BDF",
+        "LSODA"
+      ],
+      "bounds": null,
+      "description": "scipy.integrate.solve_ivp integration method.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.rtol",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-06",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Relative tolerance passed to solve_ivp.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.atol",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-09",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Absolute tolerance passed to solve_ivp.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.dt0_yr",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0001",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Initial adaptive-substep size [yr].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.dt_max_yr",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "2000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum adaptive-substep size [yr].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.growth",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.15",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 1.0
+        }
+      ],
+      "description": "Substep growth factor applied after an accepted step.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.shrink",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.35",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Substep shrink factor applied after a rejected step.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.max_rel_da",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum tolerated relative change in semi-major axis per substep.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.max_rel_de",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum tolerated relative change in eccentricity per substep.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.max_rel_dOmega",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.02",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum tolerated relative change in a spin rate per substep.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.de_floor",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.05",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Floor on the eccentricity-change-ratio denominator, so a small starting eccentricity does not make the ratio spuriously huge.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.max_substeps",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "int",
+      "accepts_none": false,
+      "default": "10000000",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum number of substeps attempted per call.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.resonance_margin_enter",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Evection-band entry margin (ps1d_evec only).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.resonance_margin_exit",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Evection-band exit margin (ps1d_evec only).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.resonance_margin_approach",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.3",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Wider, purely-diagnostic margin used to set a pre-emptive signal that the system is closing in on the band before the tighter ``resonance_margin_enter`` would declare capture.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.solver.fine_csv_target_rel_dt",
+      "toml_section": "orbit.solver",
+      "class": "OrbitSolver",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Target storage-clock spacing for out-of-band fine samples, as a fraction of the requested call duration (ps1d_evec only).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.perturber",
+      "toml_section": "orbit",
+      "class": "Orbit",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": [
+        null,
+        "none",
+        "star",
+        "satellite"
+      ],
+      "bounds": null,
+      "description": "Select perturber to induce tides on the planet. Options: 'none', 'star', 'satellite'.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.module",
+      "toml_section": "orbit",
+      "class": "Orbit",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": [
+        null,
+        "dummy",
+        "lovepy",
+        "obliqua"
+      ],
+      "bounds": null,
+      "description": "Select tides module to use. Choices: 'none', 'dummy', 'lovepy', 'obliqua'.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1609,7 +2398,7 @@
     {
       "path": "orbit.dummy.H_tide",
       "toml_section": "orbit.dummy",
-      "class": "OrbitDummy",
+      "class": "Dummy",
       "type": "float",
       "accepts_none": false,
       "default": "0.0",
@@ -1630,7 +2419,7 @@
     {
       "path": "orbit.dummy.Phi_tide",
       "toml_section": "orbit.dummy",
-      "class": "OrbitDummy",
+      "class": "Dummy",
       "type": "str",
       "accepts_none": false,
       "default": "\"<0.3\"",
@@ -1646,7 +2435,7 @@
     {
       "path": "orbit.dummy.Imk2",
       "toml_section": "orbit.dummy",
-      "class": "OrbitDummy",
+      "class": "Dummy",
       "type": "float",
       "accepts_none": false,
       "default": "0.0",
@@ -1707,18 +2496,15 @@
       "group_qualifier": null
     },
     {
-      "path": "orbit.instellation_method",
-      "toml_section": "orbit",
-      "class": "Orbit",
-      "type": "str",
+      "path": "orbit.obliqua.store_3D",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "bool",
       "accepts_none": false,
-      "default": "\"distance\"",
-      "choices": [
-        "distance",
-        "inst"
-      ],
+      "default": "false",
+      "choices": null,
       "bounds": null,
-      "description": "Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit",
+      "description": "Whether to store 3D information for solid tides.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1726,12 +2512,76 @@
       "group_qualifier": null
     },
     {
-      "path": "orbit.instellationflux",
-      "toml_section": "orbit",
-      "class": "Orbit",
+      "path": "orbit.obliqua.enforce_ec",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Whether to enforce energy conservation between Lovenumbers and heating profile.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.optimize_scales",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Whether to optimize the non-dimensional scaling parameters for solid tides.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.solid_shell",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Whether to insert an infinitesimal solid shell around the core.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.cap_LN",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Whether to clamp each mode's Love number to a fixed multiple of the classical fluid limit for its degree.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.min_frac",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
       "type": "float",
       "accepts_none": false,
-      "default": "1.0",
+      "default": "0.02",
       "choices": null,
       "bounds": [
         {
@@ -1739,7 +2589,609 @@
           "value": 0
         }
       ],
-      "description": "Instellation flux initially received by the planet in Earth units.",
+      "description": "Minimal segment radius fraction before smoothing.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.visc_lus",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "float",
+      "accepts_none": false,
+      "default": "500000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Liquidus viscosity [Pa s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.visc_sus",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "float",
+      "accepts_none": false,
+      "default": "500000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Solidus viscosity [Pa s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.n",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "list",
+      "accepts_none": false,
+      "default": "[2]",
+      "choices": null,
+      "bounds": null,
+      "description": "Power of the radial factor (r/a)^n.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.m",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "list",
+      "accepts_none": false,
+      "default": "[0, 2]",
+      "choices": null,
+      "bounds": null,
+      "description": "Tidal harmonic (m=2 semidiurnal, m=1 diurnal).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.k_min",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "int | Literal",
+      "accepts_none": false,
+      "default": "\"none\"",
+      "choices": null,
+      "bounds": null,
+      "description": "Minimum Fourier index in mean anomaly (adaptive spectrum).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.k_max",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "int | Literal",
+      "accepts_none": false,
+      "default": "\"none\"",
+      "choices": null,
+      "bounds": null,
+      "description": "Maximum Fourier index in mean anomaly (adaptive spectrum).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.evection_padding_factor",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "float",
+      "accepts_none": false,
+      "default": "2.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Safety multiplier on the linear look-ahead eccentricity padding applied to Obliqua's own adaptive k-range selection.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.material_mu",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"andrade\"",
+      "choices": [
+        "andrade",
+        "maxwell",
+        "elastic"
+      ],
+      "bounds": null,
+      "description": "Rheology model for complex shear modulus (\"andrade\" or \"maxwell\").",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.material_k",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"andrade\"",
+      "choices": [
+        "andrade",
+        "maxwell",
+        "elastic"
+      ],
+      "bounds": null,
+      "description": "Rheology model for complex bulk modulus (\"andrade\" or \"maxwell\").",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.alpha",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.3",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Andrade power-law exponent.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.verbosity",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "int",
+      "accepts_none": false,
+      "default": "1",
+      "choices": [
+        0,
+        1,
+        2
+      ],
+      "bounds": null,
+      "description": "Logging verbosity level (0=silent, 1=info, 2=debug).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.module_solid",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"solid0d\"",
+      "choices": [
+        "none",
+        "solid0d",
+        "solid1d",
+        "solid1d-relax",
+        "solid1d-mush",
+        "solid1d-mush-relax",
+        "solid1d-equil-relax"
+      ],
+      "bounds": null,
+      "description": "Solid-tide module to use (\"none\", \"solid0d\", \"solid1d\", \"solid1d-relax\", \"solid1d-mush\", \"solid1d-mush-relax\", \"solid1d-equil-relax\").",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.module_mushy",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"none\"",
+      "choices": [
+        "none",
+        "interp"
+      ],
+      "bounds": null,
+      "description": "Mushy-tide module to use (\"none\", \"interp\").",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.module_fluid",
+      "toml_section": "orbit.obliqua",
+      "class": "Obliqua",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"fluid0d\"",
+      "choices": [
+        "none",
+        "fluid0d",
+        "fluid1d"
+      ],
+      "bounds": null,
+      "description": "Fluid-tide module to use (\"none\", \"fluid0d\", \"fluid1d\").",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.solid.ncalc",
+      "toml_section": "orbit.obliqua.solid",
+      "class": "ObliquaSolid",
+      "type": "int",
+      "accepts_none": false,
+      "default": "1000",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 100
+        }
+      ],
+      "description": "Number of interpolated interior levels to use for solving tidal heating rates (shooting method).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.solid.dr_min",
+      "toml_section": "orbit.obliqua.solid",
+      "class": "ObliquaSolid",
+      "type": "int",
+      "accepts_none": false,
+      "default": "300",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Minimum radial grid spacing [m] (Henyey/relaxation method).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.solid.dr_max",
+      "toml_section": "orbit.obliqua.solid",
+      "class": "ObliquaSolid",
+      "type": "int",
+      "accepts_none": false,
+      "default": "3000",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum radial grid spacing [m] (Henyey/relaxation method).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.solid.core",
+      "toml_section": "orbit.obliqua.solid",
+      "class": "ObliquaSolid",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"liquid\"",
+      "choices": [
+        "liquid",
+        "solid",
+        "inertial-liquid",
+        "inertial"
+      ],
+      "bounds": null,
+      "description": "Core solution vector (\"liquid\", \"solid\", \"inertial-liquid\", or \"inertial\").",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.solid.core_props",
+      "toml_section": "orbit.obliqua.solid",
+      "class": "ObliquaSolid",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"core\"",
+      "choices": [
+        "core",
+        "mantle"
+      ],
+      "bounds": null,
+      "description": "Core properties to use (\"core\" or \"mantle\").",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.solid.inertial_terms",
+      "toml_section": "orbit.obliqua.solid",
+      "class": "ObliquaSolid",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Whether to include inertial terms in the solid-tide solution.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.solid.bulk_l",
+      "toml_section": "orbit.obliqua.solid",
+      "class": "ObliquaSolid",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Bulk modulus of the liquid phase [Pa].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.solid.porosity_thresh",
+      "toml_section": "orbit.obliqua.solid",
+      "class": "ObliquaSolid",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.03",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Porosity threshold, hard cutoff below which melt fraction is set to zero [dimensionless].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.solid.dbulk_power",
+      "toml_section": "orbit.obliqua.solid",
+      "class": "ObliquaSolid",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Drained bulk modulus powerlaw scaling exponent [dimensionless].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.mushy.b_width",
+      "toml_section": "orbit.obliqua.mushy",
+      "class": "ObliquaMushy",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Scale width of the bottom heating decay profile [dimensionless].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.mushy.t_width",
+      "toml_section": "orbit.obliqua.mushy",
+      "class": "ObliquaMushy",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.03",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Scale width of the top heating decay profile [dimensionless].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.fluid.sigma_R",
+      "toml_section": "orbit.obliqua.fluid",
+      "class": "ObliquaFluid",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.001",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Rayleigh drag in the fluid-mush/solid boundary layers [1/s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.fluid.sigma_R_factor",
+      "toml_section": "orbit.obliqua.fluid",
+      "class": "ObliquaFluid",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Rayleigh drag in the pure fluid as a fraction of the interface [dimensionless].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.fluid.sigma_R_prf",
+      "toml_section": "orbit.obliqua.fluid",
+      "class": "ObliquaFluid",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"exp\"",
+      "choices": [
+        "uniform",
+        "exp",
+        "linear",
+        "quadratic",
+        "dynamic",
+        "dynamic_interp"
+      ],
+      "bounds": null,
+      "description": "Radial heating distribution profile [dimensionless].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.fluid.H_R",
+      "toml_section": "orbit.obliqua.fluid",
+      "class": "ObliquaFluid",
+      "type": "float",
+      "accepts_none": false,
+      "default": "10000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Scale height to be used by heating profile [m].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.fluid.efficiency",
+      "toml_section": "orbit.obliqua.fluid",
+      "class": "ObliquaFluid",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.3",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Rayleigh drag efficiency at core interface [dimensionless].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -2838,7 +4290,7 @@
           "value": 1.0
         }
       ],
-      "description": "Cryoscopic depression factor controlling the width of the mushy zone (partially molten region) in the PALEOS unified EOS. Defines the solidus as T_sol = T_liq * mushy_zone_factor. 1.0 = sharp phase boundary (no mushy zone). 0.8 = solidus at 80% of the liquidus temperature, roughly matching the Stixrude+2014 cryoscopic depression for MgSiO3. Must be in [0.7, 1.0]. Only applies to PALEOS unified EOS; ignored for WolfBower2018 and RTPress100TPa (which use explicit melting curve files). This factor is applied consistently across Zalmoxis (density interpolation), SPIDER (phase boundaries), and the VolatileProfile phi-blending.",
+      "description": "Cryoscopic depression factor controlling the width of the mushy zone (partially molten region) in the PALEOS EOS family. Defines the solidus as T_sol = T_liq * mushy_zone_factor. 1.0 = sharp phase boundary (no mushy zone). 0.8 = solidus at 80% of the liquidus temperature, the constant solidus-to-liquidus ratio of Stixrude+2014 for MgSiO3, applied here to the PALEOS liquidus. Must be in [0.7, 1.0]. Applies to the PALEOS EOS family (PALEOS, PALEOS-2phase, PALEOS-API, PALEOS-API-2phase); ignored for WolfBower2018 and RTPress100TPa (which use explicit melting curve files) and for Seager2007/Analytic (no derived solidus).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 3,
@@ -3912,6 +5364,25 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.separation_viscosity",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"mixture\"",
+      "choices": [
+        "melt",
+        "mixture"
+      ],
+      "bounds": null,
+      "description": "Drag viscosity for the gravitational-separation velocity v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c).",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.solver_method",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",
@@ -3956,7 +5427,7 @@
       "default": "0.0",
       "choices": null,
       "bounds": null,
-      "description": "Per-call melt-fraction step cap. When > 0 and any staggered cell is in or near the two-phase window at solve() entry, a CVODE root function (and the equivalent scipy event) returns control at the exact time the larger of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches this cap. The per-cell term bounds how far one deep cell may cross the mushy window in a single call, which removes the discontinuous core-temperature drop at crystallisation onset. Schema default 0.0, which the Aragog wrapper promotes to a non-zero default for the coupled zalmoxis interior stack; a positive value here overrides that. -1.0 is the single off sentinel that keeps the cap disabled even on zalmoxis; any other negative, NaN, or infinity is rejected at load.",
+      "description": "Per-call melt-fraction step cap. When > 0 and any staggered cell is in or near the two-phase window at solve() entry, a CVODE root function (and the equivalent scipy event) returns control at the exact time the larger of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches this cap. Off by default: the schema default 0.0 resolves to no cap, because on a benign freezing-front crossing the root function slices the coupled step into many small ones and drives the reported CMB heat flux briefly negative where the uncapped run stays positive, so the cap is a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -3972,7 +5443,7 @@
       "default": "0.0",
       "choices": null,
       "bounds": null,
-      "description": "Per-call per-cell temperature step cap [K]. Shares the same root function as phi_step_cap and fires on the maximum single-cell |ΔT| since solve() entry. It bounds the core-temperature drop on the solid adiabat just below the solidus, where the melt-fraction cap goes blind because a fully solid cell's melt fraction can no longer move. Schema default 0.0, which the Aragog wrapper promotes to a non-zero default for the coupled zalmoxis stack; a positive value overrides that. -1.0 is the single off sentinel that keeps the cap disabled even on zalmoxis; any other negative, NaN, or infinity is rejected at load.",
+      "description": "Per-call per-cell temperature step cap [K]. Shares the same root function as phi_step_cap and fires on the maximum single-cell |ΔT| since solve() entry. When enabled it bounds the per-cell temperature change on the solid adiabat just below the solidus, where the melt-fraction cap cannot act because a fully solid cell's melt fraction no longer moves. Off by default (schema default 0.0 resolves to no cap); on a benign freezing-front crossing the caps slice the coupled step into many small ones and drive the reported CMB heat flux briefly negative, so they are a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -3988,7 +5459,7 @@
       "default": "0.0",
       "choices": null,
       "bounds": null,
-      "description": "Per-call per-cell entropy step cap [J/kg/K], in the native solver variable; same role as temperature_step_cap without an EOS lookup in the root function. Schema default 0.0, which the Aragog wrapper promotes to a non-zero default for the coupled zalmoxis stack; a positive value overrides that. -1.0 is the single off sentinel that keeps the cap disabled even on zalmoxis; any other negative, NaN, or infinity is rejected at load.",
+      "description": "Per-call per-cell entropy step cap [J/kg/K], in the native solver variable; same role as temperature_step_cap without an EOS lookup in the root function. Off by default (schema default 0.0 resolves to no cap); on a benign freezing-front crossing the caps slice the coupled step into many small ones and drive the reported CMB heat flux briefly negative, so they are a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -4262,6 +5733,48 @@
         }
       ],
       "description": "Core density [kg/m^3].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.boundary.core_shear",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Core shear modulus [Pa].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.boundary.core_bulk",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "float",
+      "accepts_none": false,
+      "default": "500000000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Core bulk modulus [Pa].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -4555,7 +6068,7 @@
       "class": "Interior",
       "type": "float",
       "accepts_none": false,
-      "default": "0.1",
+      "default": "0.001",
       "choices": null,
       "bounds": [
         {
@@ -4802,6 +6315,27 @@
       "group_order": 3,
       "group_position": 1,
       "group": "Rheology and convection",
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.tmagma_tides_step",
+      "toml_section": "interior_energetics",
+      "class": "Interior",
+      "type": "float",
+      "accepts_none": false,
+      "default": "10.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Maximum change in T_magma allowed when tides are active [K].",
+      "doc_source": "attributes",
+      "group_order": 4,
+      "group_position": 2,
+      "group": "Coupling limits",
       "group_qualifier": null
     },
     {
@@ -6845,6 +8379,122 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_clim.agni.hydrograv_steps",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "int",
+      "accepts_none": false,
+      "default": "2000",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Number of steps to use when calculating heights and gravity.",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 0,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_maxdr",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "100000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum step size to use when calculating heights [m]",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 1,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_mindr",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-05",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Minimum step size to use when calculating heights [m]",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 2,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_ming",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0001",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Minimum allowed gravity in the atmosphere [m/s^2]",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 3,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_constg",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Constant gravity with height?",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 4,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_selfg",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Include self-gravity of the atmosphere?",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 5,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_clim.janus.F_atm_bc",
       "toml_section": "atmos_clim.janus",
       "class": "Janus",
@@ -8520,8 +10170,8 @@
         "orbit"
       ],
       "touches": [
-        "orbit.evolve",
-        "orbit.instellation_method"
+        "orbit.instellation_method",
+        "orbit.star_planet_model"
       ],
       "doc": "Orbital evolution cannot be combined with instellation method 'inst'."
     },
@@ -8539,6 +10189,18 @@
       "doc": "ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled."
     },
     {
+      "validator": "obliqua_requires_perturber",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.module",
+        "orbit.perturber"
+      ],
+      "doc": "The Obliqua tidal-response module requires an explicit perturber."
+    },
+    {
       "validator": "observe_resolved_atmosphere",
       "module": "_config.py",
       "attached_to": [
@@ -8549,6 +10211,19 @@
         "observe.module"
       ],
       "doc": "Synthetic observations require a spatially resolved atmosphere (not dummy)."
+    },
+    {
+      "validator": "orbit_requires_tides",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.module",
+        "orbit.planet_satellite_model",
+        "orbit.star_planet_model"
+      ],
+      "doc": "sp1d, ps1d, and ps1d_evec require at least Lovepy, but ideally the Obliqua tidal-response module: all three read the full per-mode spectrum in ``tides_o``, which ``dummy`` never populates. ``sp0d``/``ps0d`` read the scalar ``Imk2`` instead (which ``dummy`` does provide), so they are unrestricted here; see \"Compatibility between orbit models and tidal modules\" in docs/Explanations/orbit.md."
     },
     {
       "validator": "planet_fO2_source_compat",
@@ -8582,10 +10257,23 @@
         "orbit"
       ],
       "touches": [
-        "orbit.evolve",
-        "orbit.satellite"
+        "orbit.planet_satellite_model",
+        "orbit.star_planet_model"
       ],
-      "doc": "Planetary orbital evolution and the satellite model are mutually exclusive."
+      "doc": "Star-planet orbital evolution and the planet-satellite model are mutually exclusive."
+    },
+    {
+      "validator": "sp0d_obliqua_degree_mismatch",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.module",
+        "orbit.obliqua.n",
+        "orbit.star_planet_model"
+      ],
+      "doc": "sp0d's closed-form is by definition the n=2 Love number. Obliqua can compute arbitrary tidal degree(s), block the mismatch."
     },
     {
       "validator": "spada_zephyrus",
@@ -8610,7 +10298,7 @@
         "interior_energetics.heat_tidal",
         "orbit.module"
       ],
-      "doc": "Interior tidal heating requires an orbit module to be enabled."
+      "doc": "Interior tidal heating requires an tides module to be enabled."
     },
     {
       "validator": "valid_escapedummy",

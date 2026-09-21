@@ -48,6 +48,24 @@
       ]
     },
     {
+      "name": "sma_dot_planet",
+      "unit": "m s-1",
+      "description": "semi-major axis derivative",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/orbit.py",
+          "condition": "orbit.evolve = true"
+        },
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": []
+    },
+    {
       "name": "separation",
       "unit": "m",
       "description": "time-averaged separation",
@@ -99,7 +117,8 @@
         }
       ],
       "consumers": [
-        "orbit"
+        "orbit",
+        "plot"
       ]
     },
     {
@@ -125,20 +144,36 @@
       ]
     },
     {
-      "name": "Imk2",
-      "unit": "1",
-      "description": "Imaginary part of k2 Love Number",
+      "name": "ecc_dot_planet",
+      "unit": "1 s-1",
+      "description": "eccentricity derivative",
       "group": "Orbital and spin parameters of planet",
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/orbit/wrapper.py",
-          "condition": "always"
+          "file": "src/proteus/orbit/orbit.py",
+          "condition": "orbit.evolve = true"
+        },
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
         }
       ],
-      "consumers": [
-        "orbit"
-      ]
+      "consumers": []
+    },
+    {
+      "name": "plan_star_am",
+      "unit": "kg m2 s-1",
+      "description": "angular momentum of star+planet",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/orbit.py",
+          "condition": "orbit.evolve = true"
+        }
+      ],
+      "consumers": []
     },
     {
       "name": "axial_period",
@@ -147,6 +182,10 @@
       "group": "Orbital and spin parameters of planet",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/orbit/orbit.py",
+          "condition": "orbit.evolve = true"
+        },
         {
           "file": "src/proteus/orbit/satellite.py",
           "condition": "orbit.satellite = true"
@@ -164,10 +203,10 @@
       ]
     },
     {
-      "name": "perigee",
-      "unit": "m",
-      "description": "lowest point in orbit",
-      "group": "Satellite system",
+      "name": "Imk2",
+      "unit": "1",
+      "description": "Imaginary part of k2 Love Number",
+      "group": "Orbital and spin parameters of planet",
       "origin": "literal",
       "producers": [
         {
@@ -175,7 +214,49 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [
+        "orbit"
+      ]
+    },
+    {
+      "name": "longitude",
+      "unit": "deg",
+      "description": "column longitude relative to substellar point",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/atmos_clim/agni.py",
+          "condition": "atmos_clim.module = \"agni\""
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "atmos_clim"
+      ]
+    },
+    {
+      "name": "latitude",
+      "unit": "deg",
+      "description": "column latitude relative to substellar point",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/atmos_clim/agni.py",
+          "condition": "atmos_clim.module = \"agni\""
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "atmos_clim"
+      ]
     },
     {
       "name": "semimajorax_sat",
@@ -195,7 +276,161 @@
       ],
       "consumers": [
         "orbit",
+        "plot",
+        "utils"
+      ]
+    },
+    {
+      "name": "sma_dot_sat",
+      "unit": "m s-1",
+      "description": "semi-major axis derivative",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "separation_sat",
+      "unit": "m",
+      "description": "time-averaged separation",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "utils"
+      ]
+    },
+    {
+      "name": "perigee",
+      "unit": "m",
+      "description": "lowest point in orbit",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
+      ]
+    },
+    {
+      "name": "orbital_period_sat",
+      "unit": "s",
+      "description": "orbital duration",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
         "plot"
+      ]
+    },
+    {
+      "name": "eccentricity_sat",
+      "unit": "1",
+      "description": "orbital eccentricity of satellite",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "plot"
+      ]
+    },
+    {
+      "name": "ecc_dot_sat",
+      "unit": "1 s-1",
+      "description": "eccentricity derivative",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "plan_sat_am",
+      "unit": "kg m2 s-1",
+      "description": "angular momentum of satellite+planet",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "plot"
+      ]
+    },
+    {
+      "name": "axial_period_sat",
+      "unit": "s",
+      "description": "day length of satellite around its axis",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "plot",
+        "utils"
+      ]
+    },
+    {
+      "name": "R_sat",
+      "unit": "m",
+      "description": "radius of satellite",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
       ]
     },
     {
@@ -206,8 +441,8 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/orbit/satellite.py",
-          "condition": "orbit.satellite = true"
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
         }
       ],
       "consumers": [
@@ -215,9 +450,46 @@
       ]
     },
     {
-      "name": "plan_sat_am",
-      "unit": "kg m2 s-1",
-      "description": "angular momentum of sat+pla",
+      "name": "C_sat",
+      "unit": "kg m2",
+      "description": "principal moment of inertia of satellite",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
+      ]
+    },
+    {
+      "name": "evection_angle",
+      "unit": "rad",
+      "description": "evection angle",
+      "group": "Satellite system",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/satellite.py",
+          "condition": "orbit.satellite = true"
+        },
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "plot"
+      ]
+    },
+    {
+      "name": "evection_dt_cap_yr",
+      "unit": "yr",
+      "description": "next macro-step dt cap, rate + growth limiter folded in",
       "group": "Satellite system",
       "origin": "literal",
       "producers": [
@@ -227,7 +499,7 @@
         }
       ],
       "consumers": [
-        "orbit"
+        "interior_energetics"
       ]
     },
     {
@@ -354,6 +626,10 @@
       "origin": "literal",
       "producers": [
         {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/interior_struct/dummy.py",
           "condition": "interior_struct.module = \"dummy\""
         },
@@ -364,6 +640,26 @@
       ],
       "consumers": [
         "interior_energetics"
+      ]
+    },
+    {
+      "name": "C_int",
+      "unit": "kg m2",
+      "description": "principal moment of inertia of planet",
+      "group": "Planet structure",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/common.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/orbit/common.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
       ]
     },
     {
@@ -421,7 +717,7 @@
     {
       "name": "P_center",
       "unit": "Pa",
-      "description": "central pressure from Zalmoxis structure",
+      "description": "central pressure from Zalmoxis structure ; 0 for SPIDER, which models the mantle only",
       "group": "Planet structure",
       "origin": "literal",
       "producers": [
@@ -437,10 +733,14 @@
     {
       "name": "P_cmb",
       "unit": "Pa",
-      "description": "core-mantle boundary pressure from Zalmoxis structure",
+      "description": "core-mantle boundary pressure, from Zalmoxis structure or SPIDER's basic-node pressure profile",
       "group": "Planet structure",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/interior_energetics/spider.py",
+          "condition": "interior_energetics.module = \"spider\""
+        },
         {
           "file": "src/proteus/interior_struct/zalmoxis.py",
           "condition": "interior_struct.module = \"zalmoxis\""
@@ -463,6 +763,10 @@
           "condition": "interior_energetics.module = \"aragog\""
         },
         {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/interior_struct/dummy.py",
           "condition": "interior_struct.module = \"dummy\""
         },
@@ -472,7 +776,8 @@
         }
       ],
       "consumers": [
-        "interior_energetics"
+        "interior_energetics",
+        "orbit"
       ]
     },
     {
@@ -482,6 +787,10 @@
       "group": "Planet structure",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/interior_struct/dummy.py",
           "condition": "interior_struct.module = \"dummy\""
@@ -707,20 +1016,6 @@
       "name": "T_surf_accr",
       "unit": "K",
       "description": "surface temperature from accretion energy balance",
-      "group": "Temperatures",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/interior_struct/zalmoxis.py",
-          "condition": "interior_struct.module = \"zalmoxis\""
-        }
-      ],
-      "consumers": []
-    },
-    {
-      "name": "T_cmb_initial",
-      "unit": "K",
-      "description": "initial CMB temperature from White+Li thermal state",
       "group": "Temperatures",
       "origin": "literal",
       "producers": [
@@ -1156,6 +1451,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/spider.py",
+          "condition": "interior_energetics.module = \"spider\""
         }
       ],
       "consumers": []
@@ -1835,6 +2134,7 @@
         "atmos_chem",
         "atmos_clim",
         "observe",
+        "orbit",
         "plot",
         "star"
       ]
@@ -2465,6 +2765,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -2494,6 +2798,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -2518,6 +2826,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -2541,6 +2853,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -2788,6 +3104,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -2817,6 +3137,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -2841,6 +3165,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -2864,6 +3192,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -3110,6 +3442,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -3139,6 +3475,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -3163,6 +3503,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -3186,6 +3530,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -3432,6 +3780,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/binodal.py",
           "condition": "h2 binodal enabled"
         },
@@ -3465,6 +3817,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/binodal.py",
           "condition": "h2 binodal enabled"
         },
@@ -3493,6 +3849,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/binodal.py",
           "condition": "h2 binodal enabled"
         },
@@ -3520,6 +3880,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/binodal.py",
           "condition": "h2 binodal enabled"
@@ -3789,6 +4153,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -3818,6 +4186,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -3842,6 +4214,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -3865,6 +4241,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -4111,6 +4491,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -4140,6 +4524,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -4164,6 +4552,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -4187,6 +4579,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -4433,6 +4829,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -4462,6 +4862,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -4486,6 +4890,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -4509,6 +4917,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -4755,6 +5167,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -4784,6 +5200,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -4808,6 +5228,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -4831,6 +5255,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -5077,6 +5505,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -5106,6 +5538,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -5130,6 +5566,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -5153,6 +5593,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -5399,6 +5843,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -5428,6 +5876,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -5452,6 +5904,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -5475,6 +5931,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -5721,6 +6181,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -5750,6 +6214,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -5774,6 +6242,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -5797,6 +6269,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -6043,6 +6519,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -6072,6 +6552,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -6096,6 +6580,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -6119,6 +6607,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -6374,6 +6866,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -6403,6 +6899,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -6427,6 +6927,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -6450,6 +6954,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -6705,6 +7213,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -6734,6 +7246,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -6758,6 +7274,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -6781,6 +7301,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -7036,6 +7560,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -7065,6 +7593,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -7089,6 +7621,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -7112,6 +7648,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -7367,6 +7907,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -7396,6 +7940,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -7420,6 +7968,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -7443,6 +7995,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -7698,6 +8254,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -7727,6 +8287,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -7751,6 +8315,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -7774,6 +8342,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -8019,6 +8591,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -8048,6 +8624,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -8072,6 +8652,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -8095,6 +8679,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -8340,6 +8928,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -8369,6 +8961,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -8393,6 +8989,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -8416,6 +9016,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -8671,6 +9275,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -8700,6 +9308,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -8724,6 +9336,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -8747,6 +9363,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -9002,6 +9622,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -9031,6 +9655,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -9055,6 +9683,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -9078,6 +9710,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -9333,6 +9969,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -9362,6 +10002,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -9386,6 +10030,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -9409,6 +10057,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -9664,6 +10316,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -9693,6 +10349,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -9717,6 +10377,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -9740,6 +10404,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -9985,6 +10653,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -10014,6 +10686,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -10038,6 +10714,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -10061,6 +10741,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -10306,6 +10990,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -10335,6 +11023,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -10359,6 +11051,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -10382,6 +11078,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -10637,6 +11337,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -10666,6 +11370,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -10690,6 +11398,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -10713,6 +11425,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -10958,6 +11674,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -10987,6 +11707,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -11011,6 +11735,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -11034,6 +11762,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -11289,6 +12021,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -11318,6 +12054,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -11342,6 +12082,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -11365,6 +12109,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -11610,6 +12358,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -11639,6 +12391,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -11663,6 +12419,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -11686,6 +12446,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -11931,6 +12695,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -11960,6 +12728,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -11984,6 +12756,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -12007,6 +12783,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -12252,6 +13032,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -12281,6 +13065,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -12305,6 +13093,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -12328,6 +13120,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -12583,6 +13379,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -12612,6 +13412,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -12636,6 +13440,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -12659,6 +13467,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -12904,6 +13716,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -12933,6 +13749,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -12957,6 +13777,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -12980,6 +13804,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -13225,6 +14053,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -13254,6 +14086,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -13278,6 +14114,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -13301,6 +14141,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -13546,6 +14390,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -13575,6 +14423,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -13599,6 +14451,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -13622,6 +14478,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -13867,6 +14727,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -13896,6 +14760,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -13920,6 +14788,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -13943,6 +14815,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -14198,6 +15074,10 @@
       "origin": "<gas>_mol_atm",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -14227,6 +15107,10 @@
       "origin": "<gas>_mol_solid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -14251,6 +15135,10 @@
       "origin": "<gas>_mol_liquid",
       "producers": [
         {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -14274,6 +15162,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_mol_total",
       "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
         {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
@@ -19931,6 +20823,40 @@
       "consumers": [
         "atmos_clim",
         "orbit"
+      ]
+    },
+    {
+      "name": "roche_limit_sat",
+      "unit": "m",
+      "description": "Roche limit, orbital distance for the satellite",
+      "group": "Diagnostic variables",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "utils"
+      ]
+    },
+    {
+      "name": "breakup_period_sat",
+      "unit": "s",
+      "description": "Critical day length for satellite",
+      "group": "Diagnostic variables",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit",
+        "utils"
       ]
     },
     {

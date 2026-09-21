@@ -5,6 +5,8 @@ from typing import Optional
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le, lt, optional
 
+from proteus.utils.constants import PALEOS_EOS_PREFIXES
+
 from ._converters import none_if_none
 
 
@@ -50,16 +52,19 @@ def valid_zalmoxis(instance, attribute, value):
     import logging as _logging
 
     _log = _logging.getLogger('fwl.' + __name__)
-    # mushy_zone_factor only applies to PALEOS unified tables
+    # mushy_zone_factor scales the derived solidus only for the PALEOS EOS family
     mzf = getattr(instance.zalmoxis, 'mushy_zone_factor', 0.8)
-    if mzf < 1.0 and not mantle_eos.startswith('PALEOS:'):
+    layer_eos = [core_eos, mantle_eos, ice_layer_eos]
+    if mzf < 1.0 and not any(e and e.startswith(PALEOS_EOS_PREFIXES) for e in layer_eos):
         _log.warning(
-            'mushy_zone_factor=%.2f has no effect with mantle EOS %s. '
-            'The mushy zone factor only applies to PALEOS unified tables. '
-            'For WolfBower2018/RTPress100TPa, the mushy zone is defined by '
-            'the solidus/liquidus melting curve files.',
+            'mushy_zone_factor=%.2f has no effect with core EOS %s, mantle EOS %s '
+            'and ice layer EOS %s. The mushy zone factor applies only to the PALEOS '
+            'EOS family. For WolfBower2018/RTPress100TPa, the mushy zone is defined '
+            'by the solidus/liquidus melting curve files.',
             mzf,
+            core_eos,
             mantle_eos,
+            ice_layer_eos,
         )
 
     # 2-layer model (no ice layer, non-T-dep mantle): mantle_mass_fraction must be 0
@@ -102,16 +107,16 @@ class Zalmoxis:
         Tabulated: "PALEOS:H2O", "Seager2007:H2O". Analytic: "Analytic:H2O".
     mushy_zone_factor: float
         Cryoscopic depression factor controlling the width of the mushy
-        zone (partially molten region) in the PALEOS unified EOS.
+        zone (partially molten region) in the PALEOS EOS family.
         Defines the solidus as T_sol = T_liq * mushy_zone_factor.
         1.0 = sharp phase boundary (no mushy zone).
-        0.8 = solidus at 80% of the liquidus temperature, roughly
-        matching the Stixrude+2014 cryoscopic depression for MgSiO3.
-        Must be in [0.7, 1.0]. Only applies to PALEOS unified EOS;
-        ignored for WolfBower2018 and RTPress100TPa (which use explicit
-        melting curve files). This factor is applied consistently across
-        Zalmoxis (density interpolation), SPIDER (phase boundaries),
-        and the VolatileProfile phi-blending.
+        0.8 = solidus at 80% of the liquidus temperature, the constant
+        solidus-to-liquidus ratio of Stixrude+2014 for MgSiO3, applied here
+        to the PALEOS liquidus.
+        Must be in [0.7, 1.0]. Applies to the PALEOS EOS family (PALEOS,
+        PALEOS-2phase, PALEOS-API, PALEOS-API-2phase); ignored for
+        WolfBower2018 and RTPress100TPa (which use explicit melting curve
+        files) and for Seager2007/Analytic (no derived solidus).
     mantle_mass_fraction: float
         Fraction of the planet's interior mass corresponding to the mantle.
         Required for 3-layer models (with ice layer) and for T-dependent

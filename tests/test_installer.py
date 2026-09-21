@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 from helpers import PROTEUS_ROOT
@@ -93,6 +94,45 @@ class TestInstallerArgParsing:
         assert 'Unknown argument' in bogus.stdout + bogus.stderr
 
 
+def _bin_dir_without(tmp_path, omitted: set[str]) -> Path:
+    """Mirror every executable on PATH into a fresh directory, minus `omitted`.
+
+    Lets a test run the installer as if the host lacked one specific tool,
+    without disturbing anything else the pre-flight checks need.
+    """
+    bindir = tmp_path / 'bin'
+    bindir.mkdir()
+    for entry in os.environ['PATH'].split(os.pathsep):
+        source = Path(entry)
+        if not source.is_dir():
+            continue
+        for exe in source.iterdir():
+            if exe.name in omitted or (bindir / exe.name).exists():
+                continue
+            try:
+                if exe.is_file() and os.access(exe, os.X_OK):
+                    (bindir / exe.name).symlink_to(exe)
+            except OSError:
+                continue
+    return bindir
+
+
+def _run_preflight(bindir: Path) -> str:
+    """Run install.sh with PATH restricted to `bindir`; return its combined output."""
+    env = os.environ.copy()
+    env['PATH'] = str(bindir)
+    env.setdefault('CONDA_DEFAULT_ENV', 'proteus')
+    result = subprocess.run(
+        ['bash', str(INSTALL_SH)],
+        capture_output=True,
+        text=True,
+        timeout=25,
+        env=env,
+        cwd=str(PROTEUS_ROOT),
+    )
+    return result.stdout + result.stderr
+
+
 class TestPreflightChecks:
     """Verify pre-flight check failure modes."""
 
@@ -138,6 +178,32 @@ class TestPreflightChecks:
         assert result.returncode != 0
         output = result.stdout + result.stderr
         assert 'pyproject.toml' in output or 'repository root' in output.lower()
+
+    def test_netcdf_fortran_required_even_when_c_interface_present(self, tmp_path):
+        """A host with nc-config but no nf-config is rejected at pre-flight.
+
+        SOCRATES needs the Fortran interface, so the C interface alone is not
+        enough. Discrimination: the check previously accepted either tool, so
+        on such a host it reported nothing missing and the build failed many
+        phases later with a far less obvious message. Requiring the Fortran
+        package to be named, and the C package not to be, fails against that
+        earlier logic rather than merely restating it.
+        """
+        output = _run_preflight(_bin_dir_without(tmp_path, {'nf-config'}))
+        assert 'Missing system packages' in output
+        assert 'netcdf-fortran-dev' in output
+        assert 'netcdf-dev' not in output
+
+    def test_both_netcdf_interfaces_named_when_both_absent(self, tmp_path):
+        """With neither tool present, both packages are named.
+
+        The opposite boundary from the test above. Reporting only one would
+        send a user who installs it round the same failure a second time.
+        """
+        output = _run_preflight(_bin_dir_without(tmp_path, {'nc-config', 'nf-config'}))
+        assert 'Missing system packages' in output
+        assert 'netcdf-dev' in output
+        assert 'netcdf-fortran-dev' in output
 
 
 def _echo_e_lines(content: str) -> list[int]:

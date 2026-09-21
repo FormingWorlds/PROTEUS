@@ -620,7 +620,6 @@ def _try_spider(
     hf_row: dict,
     step_sf: float,
     atol_sf: float,
-    dT_max: float,
     timeout: float = 60 * 30,
     mesh_file: str | None = None,
     interior_o=None,
@@ -771,7 +770,15 @@ def _try_spider(
         )
     else:
         dT_poststep = float(config.interior_energetics.tmagma_atol)
-    call_sequence.extend(['-tsurf_poststep_change', str(min(dT_max, dT_poststep))])
+    # When tides active...
+    if (
+        config.interior_energetics.heat_tidal
+        and interior_o is not None
+        and (np.amax(interior_o.tides) > 1e-10)
+    ):
+        dT_poststep = min(dT_poststep, config.interior_energetics.tmagma_tides_step)
+        log.info('Tidal heating active; limiting dT_magma to %.2f K' % dT_poststep)
+    call_sequence.extend(['-tsurf_poststep_change', str(dT_poststep)])
 
     # set surface and core entropy (-1 is a flag to ignore)
     call_sequence.extend(['-ic_surface_entropy', '-1'])
@@ -870,7 +877,7 @@ def _try_spider(
     # then FWL_DATA, then SPIDER local as final fallback.
     if dirs.get('spider_eos_dir') and os.path.isdir(dirs['spider_eos_dir']):
         eos_dir = dirs['spider_eos_dir']
-        log.info('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
+        log.debug('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
     else:
         if config.interior_struct.eos_dir is None:
             raise FileNotFoundError(
@@ -1188,12 +1195,6 @@ def RunSPIDER(
     spider_success = False  # success?
     attempts = 0  # number of attempts so far
 
-    # Maximum dT
-    dT_max = 1e99
-    if config.interior_energetics.heat_tidal and (np.amax(interior_o.tides) > 1e-10):
-        dT_max = 4.0
-        log.info('Tidal heating active; limiting dT_magma to %.2f K' % dT_max)
-
     # make attempts
     while not spider_success:
         attempts += 1
@@ -1208,7 +1209,6 @@ def RunSPIDER(
             hf_row,
             step_sf,
             atol_sf,
-            dT_max,
             mesh_file=mesh_file,
             interior_o=interior_o,
         )
@@ -1344,6 +1344,10 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
 
     # Core (CMB) temperature: last staggered node (SPIDER ordering is surface-to-CMB)
     output['T_cmb'] = float(interior_o.temp[-1])
+
+    # Core (CMB) pressure and heat flux: last basic node (SPIDER ordering is surface-to-CMB)
+    output['P_cmb'] = float(json_file.get_dict_values(['data', 'pressure_b'])[-1])
+    output['F_cmb'] = float(json_file.get_dict_values(['data', 'Jtot_b'])[-1])
 
     # Total thermal energy E_th = sum(mass_i * Cp_i * T_i).
     #
