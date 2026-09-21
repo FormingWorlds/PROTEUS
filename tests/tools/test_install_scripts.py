@@ -266,6 +266,12 @@ COPIED_SHELL_PATTERNS = (
     (r'^(?:if\s+)?(?:\$\{GIT_SSH_COMMAND[^}]*\}|ssh)\s+-T\s+git@github\.com', 'the SSH probe'),
 )
 
+# The library derives the checkout root, so the only `dirname` a script needs
+# is the one that finds the library. Anything else walking up from $0 or
+# BASH_SOURCE is a second derivation, which is how a newly added script
+# reintroduces the duplication (get_obliqua.sh arrived that way).
+BOOTSTRAP_LINE = r'^source\s+"\$\(dirname\s+"\$\{BASH_SOURCE\[0\]\}"\)/_get_common\.sh"'
+
 
 def _get_scripts() -> list[Path]:
     """Return the shipped ``tools/get_*.sh`` scripts."""
@@ -295,6 +301,10 @@ def test_no_get_script_carries_a_private_helper_copy():
     absence of the source line, is what has to be caught: the shadowed
     script would silently keep the old behaviour while every case in this
     file kept passing against the library.
+
+    A second derivation of the checkout root counts too. It carries no
+    helper name, so nothing else here would notice it, and it is the form
+    in which a newly added script brings the duplication back.
     """
     scripts = _get_scripts()
     functions = _library_function_names()
@@ -320,6 +330,8 @@ def test_no_get_script_carries_a_private_helper_copy():
             for pattern, label in (*definitions, *COPIED_SHELL_PATTERNS):
                 if re.search(pattern, code):
                     offenders.setdefault(script.name, []).append(label)
+            if 'dirname' in code and not re.match(BOOTSTRAP_LINE, code):
+                offenders.setdefault(script.name, []).append('a private root derivation')
     assert offenders == {}, offenders
 
 
@@ -1675,6 +1687,13 @@ CLONE_CASES = (
     ),
     ('get_agni.sh', (), '{root}/AGNI', 'https://github.com/nichollsh/AGNI.git', 1),
     (
+        'get_obliqua.sh',
+        (),
+        '{root}/Obliqua',
+        'https://github.com/FormingWorlds/Obliqua.git',
+        1,
+    ),
+    (
         'get_spider.sh',
         ('{root}/custom/SPIDER',),
         '{root}/custom/SPIDER',
@@ -1696,6 +1715,7 @@ CLONE_IDS = (
     'socrates default path',
     'socrates custom path',
     'agni pinned url',
+    'obliqua pinned url',
     'spider custom path',
     'aragog without ssh',
     'boreas without ssh',
