@@ -445,20 +445,6 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
 # Unified mapping of folder names to both Zenodo and OSF identifiers
 # Structure: folder_name -> {'zenodo_id': str, 'osf_id': str, 'osf_project': str}
 DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
-    # Spectral files (OSF project: vehxg)
-    'Frostflow/16': {'zenodo_id': '15799743', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Frostflow/48': {'zenodo_id': '15696415', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Frostflow/256': {'zenodo_id': '15799754', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Frostflow/4096': {'zenodo_id': '15799776', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Dayspring/16': {'zenodo_id': '15799318', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Dayspring/48': {'zenodo_id': '15721749', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Dayspring/256': {'zenodo_id': '15799474', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Dayspring/4096': {'zenodo_id': '15799495', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Honeyside/16': {'zenodo_id': '15799607', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Honeyside/48': {'zenodo_id': '15799652', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Honeyside/256': {'zenodo_id': '15799731', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Honeyside/4096': {'zenodo_id': '15696457', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Oak/318': {'zenodo_id': '15743843', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
     # Interior lookup tables (OSF project: phsxf)
     '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018': {
         'zenodo_id': '15877374',
@@ -528,7 +514,7 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
 
 # Spectral file folders served by `proteus get spectral`. One entry per
 # line, grouped by k-table set, ordered by band count. Every entry must
-# have a matching DATA_SOURCE_MAP record.
+# have a matching manifest table (see proteus.data.spectral_file_key).
 SPECTRAL_FILE_FOLDERS: tuple[str, ...] = (
     'Dayspring/16',
     'Dayspring/48',
@@ -1107,18 +1093,13 @@ def download_spectral_file(name: str, bands: str):
     if not isinstance(bands, str) or (len(bands) < 1):
         raise ValueError('Must provide number of bands in spectral file')
 
+    from proteus.data import fetch_dataset, spectral_file_key
+
     folder = f'{name}/{bands}'
-    source_info = get_data_source_info(folder)
-    if not source_info:
+    if folder not in SPECTRAL_FILE_FOLDERS:
         raise ValueError(f'No data source mapping found for folder: {folder}')
 
-    download(
-        folder=folder,
-        target='spectral_files',
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc=f'{name}{bands} spectral file',
-    )
+    fetch_dataset(spectral_file_key(name, bands))
 
 
 def download_spectral_files(name: str | None = None, bands: str | None = None):

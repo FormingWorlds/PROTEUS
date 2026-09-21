@@ -240,14 +240,14 @@ class TestCheckFwlData:
 
     def test_reports_present_subdirs(self, tmp_path):
         """Populated subdirectories report as present."""
-        (tmp_path / 'spectral_files').mkdir()
-        (tmp_path / 'spectral_files' / 'data.bin').touch()
+        (tmp_path / 'atmos_clim' / 'spectral_files').mkdir(parents=True)
+        (tmp_path / 'atmos_clim' / 'spectral_files' / 'data.bin').touch()
         (tmp_path / 'stellar_spectra').mkdir()
         (tmp_path / 'stellar_spectra' / 'sun.txt').touch()
         with patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}):
             results = check_fwl_data()
         statuses = {r.name: r.status for r in results}
-        assert statuses['FWL_DATA/spectral_files'] == PASS
+        assert statuses['FWL_DATA/atmos_clim/spectral_files'] == PASS
         assert statuses['FWL_DATA/stellar_spectra'] == PASS
 
     def test_reports_missing_subdirs(self, tmp_path):
@@ -1273,7 +1273,7 @@ class TestUpdateEntry:
         """A warning with no fix is surfaced but does not mark the install
         unhealthy: warnings are not failures."""
         results = [
-            CheckResult('FWL_DATA/spectral_files', 'data', WARN, 'empty', None),
+            CheckResult('FWL_DATA/atmos_clim/spectral_files', 'data', WARN, 'empty', None),
         ]
         with patch('proteus.doctor.run_all_checks', return_value=results):
             result = update_entry(dry_run=False)

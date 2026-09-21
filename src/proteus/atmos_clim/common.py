@@ -338,13 +338,20 @@ def get_spfile_name_and_bands(config: Config):
 def get_spfile_path(fwl_dir: str, config: Config):
     """
     Get path to spectral file, given name and bands.
+
+    The file lies in the version directory of the spectral-file dataset for the
+    configured group and band count; the path may not exist before the dataset
+    is fetched.
     """
+    from proteus.data import dataset_dir, spectral_file_key
 
     # Get group and bands (strings) from config
     group, bands = get_spfile_name_and_bands(config)
 
-    # Construct file path
-    return os.path.join(fwl_dir, 'spectral_files', group, bands, group) + '.sf'
+    return (
+        os.path.join(dataset_dir(spectral_file_key(group, bands), data_root=fwl_dir), group)
+        + '.sf'
+    )
 
 
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:

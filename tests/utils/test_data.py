@@ -46,8 +46,8 @@ def test_get_zenodo_record():
 
     Ensures that known configuration keys map to correct Zenodo repository IDs.
     """
-    # Known mapping: Frostflow 16 band table
-    assert get_zenodo_record('Frostflow/16') == '15799743'
+    # Known mapping: interior lookup table
+    assert get_zenodo_record('1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018') == '15877374'
     # Unknown key should return None safely
     assert get_zenodo_record('Unknown/Folder') is None
 
@@ -568,63 +568,44 @@ def test_download_spectral_files_dispatch(mock_single):
 
 
 @pytest.mark.unit
-def test_spectral_folder_registry_matches_source_map():
-    """Every spectral folder is downloadable and no spectral source is hidden.
+def test_spectral_folder_registry_matches_manifest():
+    """Every spectral folder is a manifest dataset and none is left in the source map.
 
-    Forward direction: each SPECTRAL_FILE_FOLDERS entry must have a
-    DATA_SOURCE_MAP record (the registry comment promises it; a missing
-    record only fails at download time otherwise). Reverse direction:
-    every DATA_SOURCE_MAP key shaped like a spectral folder
-    (Group/<digits> in the spectral OSF project) must be listed in
-    SPECTRAL_FILE_FOLDERS, so the bare `proteus get spectral` cannot
-    silently skip a newly added k-table set.
+    Forward direction: each SPECTRAL_FILE_FOLDERS entry must resolve to a
+    manifest table, so the bare `proteus get spectral` cannot fail on an entry
+    with no source. Reverse direction: no DATA_SOURCE_MAP key shaped like a
+    spectral folder (Group/<digits>) may remain, since it would pin the same
+    record a second time.
     """
     import re
 
+    from proteus.data import _dataset, spectral_file_key
     from proteus.utils.data import DATA_SOURCE_MAP, SPECTRAL_FILE_FOLDERS
 
-    missing = [f for f in SPECTRAL_FILE_FOLDERS if f not in DATA_SOURCE_MAP]
-    assert missing == [], f'SPECTRAL_FILE_FOLDERS entries without source records: {missing}'
+    for folder in SPECTRAL_FILE_FOLDERS:
+        group, bands = folder.split('/')
+        assert _dataset(spectral_file_key(group, bands)).zenodo.startswith('10.5281/zenodo.')
 
-    spectral_like = [
-        k
-        for k, v in DATA_SOURCE_MAP.items()
-        if re.fullmatch(r'[A-Za-z]+/[0-9]+', k) and v.get('osf_project') == 'vehxg'
-    ]
-    unlisted = sorted(set(spectral_like) - set(SPECTRAL_FILE_FOLDERS))
-    assert unlisted == [], (
-        f'Spectral source-map entries not in SPECTRAL_FILE_FOLDERS: {unlisted}'
-    )
-    # Sanity: the heuristic actually matched the registry (not vacuous).
-    assert len(spectral_like) == len(SPECTRAL_FILE_FOLDERS)
+    leftover = [k for k in DATA_SOURCE_MAP if re.fullmatch(r'[A-Za-z]+/[0-9]+', k)]
+    assert leftover == [], f'Spectral-folder entries left in DATA_SOURCE_MAP: {leftover}'
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_spectral_file_call(mock_get_info, mock_download):
+@patch('proteus.data.fetch_dataset')
+def test_download_spectral_file_call(mock_fetch):
     """
     Test spectral file download wrapper.
 
-    Ensures that the convenience function correctly interprets the
-    name/bands arguments to construct the target folder path and
-    resolves the correct Zenodo and OSF IDs from mapping.
+    Ensures that the convenience function fetches the manifest dataset for the
+    requested group and band count, and rejects an unlisted pair.
     """
-    # Mock mapping lookup
-    mock_get_info.return_value = {
-        'zenodo_id': '99999',
-        'osf_project': 'test_osf',
-        'osf_id': 'test_osf',
-    }
+    download_spectral_file('Oak', '318')
 
-    download_spectral_file('TestName', '123')
+    mock_fetch.assert_called_once_with('atmos_clim.spectral_files.oak_318')
 
-    mock_download.assert_called_once()
-    args, kwargs = mock_download.call_args
-    assert kwargs['folder'] == 'TestName/123'  # Folder structure
-    assert kwargs['zenodo_id'] == '99999'  # Resolved ID from mapping
-    assert kwargs['osf_id'] == 'test_osf'  # OSF ID from mapping
-    assert kwargs['target'] == 'spectral_files'  # Target subdir
+    with pytest.raises(ValueError, match='No data source mapping found for folder: Oak/16'):
+        download_spectral_file('Oak', '16')
+    mock_fetch.assert_called_once()
 
 
 @pytest.mark.unit

@@ -349,7 +349,7 @@ def check_fwl_data() -> list[CheckResult]:
         return results
 
     expected = {
-        'spectral_files': 'proteus get spectral',
+        'atmos_clim/spectral_files': 'proteus get spectral',
         'stellar_spectra': 'proteus get stellar',
     }
     for subdir, fix in expected.items():

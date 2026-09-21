@@ -26,6 +26,27 @@ MASS_RADIUS_ZENG_2019 = 'observe.mass_radius.zeng_2019'
 SURFACE_ALBEDOS_HAMMOND_2024 = 'atmos_clim.surface_albedos.hammond_2024'
 EOS_SEAGER_2007 = 'interior_struct.eos.seager_2007'
 
+
+def spectral_file_key(group: str, bands: str | int) -> str:
+    """Return the manifest key of one spectral-file dataset.
+
+    Parameters
+    ----------
+    group : str
+        Spectral file group, e.g. ``Dayspring``.
+    bands : str or int
+        Number of bands, e.g. ``256``.
+
+    Returns
+    -------
+    str
+        Dotted manifest key, e.g. ``atmos_clim.spectral_files.dayspring_256``.
+        The key is not checked against the manifest; an unknown pair raises
+        ``KeyError`` when the dataset is resolved.
+    """
+    return f'atmos_clim.spectral_files.{str(group).lower()}_{bands}'
+
+
 # The oldest fwl-io that reads this manifest schema. An older fwl-io reads the
 # manifest as malformed rather than as a version mismatch, so the load names
 # which side is out of date. The fwl-io requirement in pyproject.toml must be at

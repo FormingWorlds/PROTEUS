@@ -33,6 +33,7 @@ from proteus.data import (
     dataset_dir,
     fetch_dataset,
     manifest_path,
+    spectral_file_key,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -45,6 +46,30 @@ HAMMOND_2024_RECORD = '15880455'
 SEAGER_2007_RECORD = '15727998'
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Spectral-file datasets: (group, bands) -> Zenodo record, one dataset each.
+SPECTRAL_RECORDS = {
+    ('Frostflow', '16'): '15799743',
+    ('Frostflow', '48'): '15696415',
+    ('Frostflow', '256'): '15799754',
+    ('Frostflow', '4096'): '15799776',
+    ('Dayspring', '16'): '15799318',
+    ('Dayspring', '48'): '15721749',
+    ('Dayspring', '256'): '15799474',
+    ('Dayspring', '4096'): '15799495',
+    ('Honeyside', '16'): '15799607',
+    ('Honeyside', '48'): '15799652',
+    ('Honeyside', '256'): '15799731',
+    ('Honeyside', '4096'): '15696457',
+    ('Oak', '318'): '15743843',
+}
+
+_OWNED_KEYS = {
+    EXOPLANET_REFERENCE,
+    MASS_RADIUS_ZENG_2019,
+    SURFACE_ALBEDOS_HAMMOND_2024,
+    EOS_SEAGER_2007,
+} | {spectral_file_key(group, bands) for group, bands in SPECTRAL_RECORDS}
 
 
 def _pyproject() -> dict:
@@ -64,12 +89,7 @@ def test_manifest_declares_the_datasets():
 
     datasets = {ds.key: ds for ds in load_manifest(manifest_path())}
 
-    assert set(datasets) == {
-        EXOPLANET_REFERENCE,
-        MASS_RADIUS_ZENG_2019,
-        SURFACE_ALBEDOS_HAMMOND_2024,
-        EOS_SEAGER_2007,
-    }
+    assert set(datasets) == _OWNED_KEYS
     assert datasets[EXOPLANET_REFERENCE].subdir == 'observe/exoplanet_reference'
     assert datasets[MASS_RADIUS_ZENG_2019].subdir == 'observe/mass_radius/zeng_2019'
     assert (
@@ -131,12 +151,7 @@ def test_manifest_is_discovered_via_entry_point():
     providers = discover_manifests()
 
     assert 'proteus' in providers, f'proteus not among providers: {sorted(providers)}'
-    assert {ds.key for ds in providers['proteus']} == {
-        EXOPLANET_REFERENCE,
-        MASS_RADIUS_ZENG_2019,
-        SURFACE_ALBEDOS_HAMMOND_2024,
-        EOS_SEAGER_2007,
-    }
+    assert {ds.key for ds in providers['proteus']} == _OWNED_KEYS
 
 
 def test_dataset_dir_is_versioned(tmp_path):
@@ -321,11 +336,61 @@ def test_manifest_and_registries_are_declared_as_package_data():
     shipped = {path.name for path in manifest_path().parent.iterdir() if path.is_file()}
     assert 'proteus_manifest.toml' in shipped
     assert {name for name in shipped if name.endswith('.registry.txt')} == {
-        f'{EXOPLANET_REFERENCE}.registry.txt',
-        f'{MASS_RADIUS_ZENG_2019}.registry.txt',
-        f'{SURFACE_ALBEDOS_HAMMOND_2024}.registry.txt',
-        f'{EOS_SEAGER_2007}.registry.txt',
+        f'{key}.registry.txt' for key in _OWNED_KEYS
     }
+
+
+def test_spectral_file_datasets_pin_their_records_and_locations(tmp_path):
+    """Each (group, bands) spectral file set is its own dataset at a derived path.
+
+    The record ids are repeated literally so a silent re-pin fails here, and the
+    resolved directory is pinned because AGNI and JANUS read the file from it.
+    """
+    for (group, bands), record in SPECTRAL_RECORDS.items():
+        key = spectral_file_key(group, bands)
+        dataset = _dataset(key)
+        assert dataset.zenodo == f'10.5281/zenodo.{record}'
+        assert dataset.subdir == f'atmos_clim/spectral_files/{group.lower()}_{bands}'
+        assert dataset_dir(key, data_root=tmp_path) == (
+            tmp_path / 'atmos_clim' / 'spectral_files' / f'{group.lower()}_{bands}' / f'r{record}'
+        )
+        assert _dataset(key).registry(), f'empty registry for {key}'
+
+
+def test_every_spectral_folder_has_a_dataset_and_no_legacy_entry():
+    """The download list and the manifest agree, and the OSF-era map holds none.
+
+    A folder without a manifest table would fail only when a user runs the
+    download; a leftover map entry would give the record a second pin.
+    """
+    from proteus.utils.data import DATA_SOURCE_MAP, SPECTRAL_FILE_FOLDERS
+
+    assert {tuple(folder.split('/')) for folder in SPECTRAL_FILE_FOLDERS} == set(SPECTRAL_RECORDS)
+    for folder in SPECTRAL_FILE_FOLDERS:
+        group, bands = folder.split('/')
+        assert spectral_file_key(group, bands) in _OWNED_KEYS
+        assert folder not in DATA_SOURCE_MAP, f'{folder} is still pinned in DATA_SOURCE_MAP'
+
+
+def test_get_spfile_path_resolves_into_the_versioned_dataset_dir(tmp_path):
+    """The path PROTEUS hands to AGNI and JANUS is inside the dataset's version dir."""
+    from types import SimpleNamespace
+
+    from proteus.atmos_clim.common import get_spfile_path
+
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(module='agni', spectral_group='Oak', spectral_bands='318')
+    )
+    path = Path(get_spfile_path(str(tmp_path), config))
+
+    assert path == dataset_dir(spectral_file_key('Oak', '318'), data_root=tmp_path) / 'Oak.sf'
+    assert path.parent.name == 'r15743843'
+
+
+def test_unknown_spectral_pair_is_rejected():
+    """An unlisted (group, bands) pair fails loudly instead of resolving to a path."""
+    with pytest.raises(KeyError):
+        dataset_dir(spectral_file_key('Oak', '16'))
 
 
 def test_migrated_datasets_are_not_also_pinned_in_the_legacy_map():
