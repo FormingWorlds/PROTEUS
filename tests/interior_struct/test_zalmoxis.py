@@ -407,6 +407,17 @@ def test_solidus_liquidus_paleos_family_derives_solidus_from_mzf(eos_name):
     assert float(solidus_func_90(pressure)) == pytest.approx(
         0.9 * float(liquidus_func_90(pressure))
     )
+    # Range boundaries: 1.0 gives T_sol == T_liq exactly, 0.7 the widest band.
+    config.interior_struct.zalmoxis.mushy_zone_factor = 1.0
+    solidus_func_1, liquidus_func_1 = load_zalmoxis_solidus_liquidus_functions(eos_name, config)
+    assert float(solidus_func_1(pressure)) == float(liquidus_func_1(pressure))
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.7
+    solidus_func_70, liquidus_func_70 = load_zalmoxis_solidus_liquidus_functions(
+        eos_name, config
+    )
+    assert float(solidus_func_70(pressure)) == pytest.approx(
+        0.7 * float(liquidus_func_70(pressure))
+    )
 
 
 @pytest.mark.unit
@@ -1432,6 +1443,8 @@ def _run_gate_solver(
     dry_mantle=True,
     hf_extra=None,
     mixed_side_effect=None,
+    real_melting_curves=False,
+    mzf=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -1462,6 +1475,13 @@ def _run_gate_solver(
         Replacement side effect for the blended evaluator, e.g. to make
         selected nodes return non-finite densities. Defaults to the
         offset fake.
+    real_melting_curves : bool, optional
+        With True, the real ``load_zalmoxis_solidus_liquidus_functions``
+        runs (analytic, cheap) instead of the constant-pair stub, so the
+        curves handed to the solve are the ones PROTEUS builds.
+    mzf : float, optional
+        Value for ``config.interior_struct.zalmoxis.mushy_zone_factor``;
+        the default keeps the config helper's 0.8.
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -1480,6 +1500,13 @@ def _run_gate_solver(
         hf_row.update(hf_extra)
     config = _gate_config(mantle_eos)
     config.interior_struct.zalmoxis.dry_mantle = dry_mantle
+    if mzf is not None:
+        config.interior_struct.zalmoxis.mushy_zone_factor = mzf
+    melting_patch_kwargs = (
+        {'side_effect': zalmoxis_wrapper.load_zalmoxis_solidus_liquidus_functions}
+        if real_melting_curves
+        else {'return_value': (lambda P: 4000.0, lambda P: 5000.0)}
+    )
 
     monkeypatch.setattr(
         zalmoxis_wrapper,
@@ -1505,7 +1532,7 @@ def _run_gate_solver(
         patch.object(
             zalmoxis_wrapper,
             'load_zalmoxis_solidus_liquidus_functions',
-            return_value=(lambda P: 4000.0, lambda P: 5000.0),
+            **melting_patch_kwargs,
         ),
         patch.object(zalmoxis_wrapper, 'main', **main_patch_kwargs) as main_mock,
         patch('zalmoxis.eos.dispatch.calculate_density', side_effect=_fake_density) as rho_mock,
@@ -2693,8 +2720,51 @@ def test_zalmoxis_solver_rebuilds_mushy_zone_factors_for_wet_mantle(tmp_path, mo
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('mzf', [0.7, 0.8, 1.0])
+def test_zalmoxis_solver_passes_mzf_derived_solidus_to_solve(tmp_path, monkeypatch, mzf):
+    """The solve receives the mzf-derived solidus built from the PALEOS liquidus.
+
+    Runs the real ``load_zalmoxis_solidus_liquidus_functions`` (the
+    other solver tests stub it with a constant pair) and checks the
+    ``melting_curves_functions`` handed to the structure solve:
+    ``solidus(P) == mzf * liquidus(P)`` at several pressures, and exact
+    equality at ``mzf = 1.0``. Passing ``None`` or a stale curve pair to
+    the solve fails these assertions.
+    """
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    main_mock, _, _, _, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        tf,
+        real_melting_curves=True,
+        mzf=mzf,
+    )
+
+    melt_funcs = main_mock.call_args.kwargs['melting_curves_functions']
+    assert melt_funcs is not None
+    solidus_func, liquidus_func = melt_funcs
+    for pressure in (5e9, 50e9, 200e9):
+        t_liq = float(liquidus_func(pressure))
+        assert np.isfinite(t_liq)
+        if mzf == 1.0:
+            assert float(solidus_func(pressure)) == t_liq
+        else:
+            assert float(solidus_func(pressure)) == pytest.approx(mzf * t_liq)
+            assert float(solidus_func(pressure)) < t_liq
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_make_derived_solidus_scales_liquidus_by_mzf():
+def test_derive_solidus_from_liquidus_scales_liquidus_by_mzf():
     """The derived solidus is the liquidus scaled pointwise by mushy_zone_factor.
 
     Discrimination: mzf < 1 must strictly lower the solidus below the
@@ -2702,18 +2772,26 @@ def test_make_derived_solidus_scales_liquidus_by_mzf():
     different mzf must give a different solidus (rules out a hardcoded
     or memoized return value).
     """
-    from proteus.interior_struct.zalmoxis import _make_derived_solidus
+    from zalmoxis.melting_curves import derive_solidus_from_liquidus
 
     def liquidus(pressure):
         return 3000.0 + 10.0 * pressure
 
-    solidus = _make_derived_solidus(liquidus, mushy_zone_factor=0.8)
+    solidus = derive_solidus_from_liquidus(liquidus, mushy_zone_factor=0.8)
     for pressure in (0.0, 20e9, 80e9):
         assert solidus(pressure) == pytest.approx(0.8 * liquidus(pressure))
         assert solidus(pressure) < liquidus(pressure)
 
-    other_solidus = _make_derived_solidus(liquidus, mushy_zone_factor=0.95)
+    other_solidus = derive_solidus_from_liquidus(liquidus, mushy_zone_factor=0.95)
     assert other_solidus(20e9) != pytest.approx(solidus(20e9))
+
+    # Boundaries of the allowed range: 1.0 collapses the mushy zone exactly
+    # (no clamp below 1), 0.7 is the widest band.
+    sharp = derive_solidus_from_liquidus(liquidus, mushy_zone_factor=1.0)
+    widest = derive_solidus_from_liquidus(liquidus, mushy_zone_factor=0.7)
+    for pressure in (0.0, 20e9, 80e9):
+        assert sharp(pressure) == liquidus(pressure)
+        assert widest(pressure) == pytest.approx(0.7 * liquidus(pressure))
 
 
 @pytest.mark.unit
@@ -2773,9 +2851,7 @@ def test_generate_spider_tables_twophase_solidus_tracks_mzf(tmp_path, monkeypatc
         monkeypatch.setattr(
             'zalmoxis.eos_export.generate_spider_phase_boundaries', phase_writer
         )
-        monkeypatch.setattr(
-            'zalmoxis.eos_export.generate_spider_eos_tables', MagicMock()
-        )
+        monkeypatch.setattr('zalmoxis.eos_export.generate_spider_eos_tables', MagicMock())
 
         result = zalmoxis_wrapper.generate_spider_tables(config, str(outdir))
         assert result is not None
@@ -2790,3 +2866,21 @@ def test_generate_spider_tables_twophase_solidus_tracks_mzf(tmp_path, monkeypatc
         # Discrimination: a different mushy_zone_factor moves the written solidus.
         assert solidus_095(pressure) == pytest.approx(0.95 * liquidus(pressure))
         assert solidus_095(pressure) != pytest.approx(solidus_08(pressure))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('mantle_eos', 'expected'),
+    [
+        ('PALEOS-API:MgSiO3', 'PALEOS-API-2phase:MgSiO3'),
+        ('PALEOS-API-2phase:MgSiO3', 'PALEOS-API-2phase:MgSiO3'),
+        ('PALEOS-2phase:MgSiO3-highres', 'PALEOS-2phase:MgSiO3-highres'),
+        ('PALEOS-2phase:MgSiO3', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:MgSiO3', 'PALEOS-2phase:MgSiO3'),
+    ],
+)
+def test_twophase_registry_key_selects_table_family(mantle_eos, expected):
+    """The 2-phase registry key follows the EOS family of the mantle."""
+    from proteus.interior_struct.zalmoxis import twophase_registry_key
+
+    assert twophase_registry_key(mantle_eos) == expected
