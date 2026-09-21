@@ -879,6 +879,7 @@ def test_compute_initial_entropy_liquidus_super_without_zalmoxis_raises_runtime_
     import sys
     from types import SimpleNamespace
 
+    import proteus.interior_struct.zalmoxis  # noqa: F401  (import before blocking)
     from proteus.interior_energetics.common import compute_initial_entropy
 
     # Force the paleos_liquidus import to fail.
@@ -891,7 +892,7 @@ def test_compute_initial_entropy_liquidus_super_without_zalmoxis_raises_runtime_
             delta_T_super=200.0,
         ),
         interior_struct=SimpleNamespace(
-            module='dummy',
+            module='zalmoxis',
             core_frac=0.3,
             core_frac_mode='mass',
             zalmoxis=None,

@@ -217,6 +217,30 @@ def planet_oxygen_mode_explicit(instance, attribute, value):
     pass
 
 
+def planet_liquidus_super_needs_tables(instance, attribute, value):
+    """Require a P-S table route for ``temperature_mode = "liquidus_super"``.
+
+    The spider and aragog interior modules build the ``liquidus_super``
+    initial condition on interior P-S tables. With
+    ``interior_struct.module = "zalmoxis"`` the solve uses the Zalmoxis
+    adiabat; with ``"spider"`` or ``"dummy"`` the tables are supplied by the
+    interior wrapper. With no structure module, no table set is provided
+    and the initial condition has nothing to solve on.
+    """
+    if value.temperature_mode != 'liquidus_super':
+        return
+    if instance.interior_energetics.module not in ('spider', 'aragog'):
+        return
+    if instance.interior_struct.module is None:
+        raise ValueError(
+            "planet.temperature_mode = 'liquidus_super' has no valid route with "
+            'interior_struct.module = None under interior_energetics.module = '
+            f"'{instance.interior_energetics.module}': no P-S table set is provided. "
+            "Set interior_struct.module to 'spider', 'dummy' or 'zalmoxis', or "
+            'choose another planet.temperature_mode.'
+        )
+
+
 def planet_fO2_source_compat(instance, attribute, value):
     """Validate planet.fO2_source against O_mode, volatile_mode, and
     against availability.
@@ -385,6 +409,7 @@ class Config:
             planet_mass_valid,
             planet_oxygen_mode_explicit,
             planet_fO2_source_compat,
+            planet_liquidus_super_needs_tables,
         ),
     )
     interior_struct: Struct = field(factory=Struct)

@@ -177,6 +177,184 @@ def _verify_initial_entropy(
         )
 
 
+_EOS_CACHE: dict = {}
+_TABLE_SUPERLIQ_N_POINTS = 200
+_TABLE_SUPERLIQ_N_BISECT = 60
+
+
+def _load_entropy_eos(eos_dir: str) -> EntropyEOS:
+    """Load (and memoise) the P-S EOS tables in ``eos_dir``.
+
+    The cache key holds the resolved directory and the name, size and
+    modification time of every file in it, so a regenerated table set is
+    reloaded.
+
+    Parameters
+    ----------
+    eos_dir : str
+        Directory holding the SPIDER-format P-S tables.
+
+    Returns
+    -------
+    EntropyEOS
+        Table interpolator with ``P_min``, ``P_max``, ``S_min`` and ``S_max``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``eos_dir`` is not a directory.
+    """
+    if not os.path.isdir(eos_dir):
+        raise FileNotFoundError(f'SPIDER EOS table directory not found: {eos_dir}')
+    stamp = []
+    for name in sorted(os.listdir(eos_dir)):
+        st = os.stat(os.path.join(eos_dir, name))
+        stamp.append((name, st.st_size, st.st_mtime_ns))
+    key = (os.path.realpath(eos_dir), tuple(stamp))
+    if key not in _EOS_CACHE:
+        from aragog.eos.entropy import EntropyEOS
+
+        _EOS_CACHE.clear()
+        _EOS_CACHE[key] = EntropyEOS(eos_dir)
+    return _EOS_CACHE[key]
+
+
+def solve_superliquidus_entropy_from_tables(
+    config: Config,
+    hf_row: dict | None,
+    eos_dir: str,
+) -> dict:
+    """Solve the ``liquidus_super`` entropy on the in-memory P-S tables.
+
+    Finds the smallest uniform specific entropy whose adiabat lies at least
+    ``config.planet.delta_T_super`` above the liquidus at every pressure
+    between the surface (1 bar) and the core-mantle boundary. The liquidus is
+    the selected ``interior_struct.melting_dir`` P-T curve; where that curve is
+    unavailable or undefined the liquidus implied by the tables
+    (``T(P, S_liq(P))``) is used. No Zalmoxis or PALEOS data are read.
+
+    When the requested superheat is not reachable inside the table entropy
+    range, the entropy is clamped to the table maximum and a warning names the
+    requested and achieved superheat.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration. Uses ``planet.delta_T_super``,
+        ``planet.mass_tot``, ``interior_struct.core_frac``,
+        ``interior_struct.core_frac_mode`` and ``interior_struct.melting_dir``.
+    hf_row : dict or None
+        Helpfile row. ``hf_row['P_cmb']`` is used when populated; otherwise a
+        Noack & Lasbleis (2020) mass-aware estimate is used.
+    eos_dir : str
+        Directory holding the SPIDER-format P-S tables.
+
+    Returns
+    -------
+    dict
+        ``S_target`` [J/kg/K], ``surface_T`` [K], ``cmb_T`` [K],
+        ``achieved_superheat`` [K], ``binding_P`` [Pa], ``P_cmb`` [Pa] and
+        ``clamped`` (bool).
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``eos_dir`` is not a directory.
+    """
+    eos = _load_entropy_eos(eos_dir)
+    delta = float(config.planet.delta_T_super)
+
+    P_cmb = hf_row.get('P_cmb') if isinstance(hf_row, dict) else None
+    if not P_cmb or P_cmb <= 0:
+        from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
+        P_cmb = estimate_P_cmb_NL20(
+            float(config.planet.mass_tot),
+            float(config.interior_struct.core_frac),
+            str(config.interior_struct.core_frac_mode),
+        )
+    P_cmb = min(float(P_cmb), float(eos.P_max))
+    P = np.geomspace(1e5, P_cmb, _TABLE_SUPERLIQ_N_POINTS)
+
+    T_liq = None
+    from proteus.utils.data import get_zalmoxis_melting_curves
+
+    curves = get_zalmoxis_melting_curves(config)
+    if curves is not None and curves[1] is not None:
+        T_liq = np.asarray(curves[1](P), dtype=float)
+    if T_liq is None or not np.isfinite(T_liq).any():
+        log.warning(
+            'liquidus_super: melting curve P-T file unavailable; using the '
+            'liquidus implied by the P-S tables.'
+        )
+        T_liq = np.asarray(eos.temperature(P, eos.liquidus_entropy(P)), dtype=float)
+    covered = np.isfinite(T_liq)
+    if not covered.all():
+        log.warning(
+            'liquidus_super: the melting curve is undefined above P=%.0f GPa; '
+            'the superheat is evaluated only below that pressure.',
+            float(P[covered].max()) / 1e9,
+        )
+
+    def _probe(S: float) -> tuple[float, float]:
+        T = np.asarray(eos.temperature(P, np.full_like(P, S)), dtype=float)
+        margin = np.where(covered, T - T_liq, np.inf)
+        i = int(np.argmin(margin))
+        return float(margin[i]), float(P[i])
+
+    S_lo, S_hi = float(eos.S_min), float(eos.S_max)
+    clamped = False
+    sh_hi, _ = _probe(S_hi)
+    if sh_hi < delta:
+        clamped = True
+        S = S_hi
+    elif _probe(S_lo)[0] >= delta:
+        S = S_lo
+    else:
+        for _ in range(_TABLE_SUPERLIQ_N_BISECT):
+            mid = 0.5 * (S_lo + S_hi)
+            if _probe(mid)[0] >= delta:
+                S_hi = mid
+            else:
+                S_lo = mid
+        S = S_hi
+
+    achieved, P_bind = _probe(S)
+    T_prof = np.asarray(eos.temperature(P, np.full_like(P, S)), dtype=float)
+    out = {
+        'S_target': float(S),
+        'surface_T': float(T_prof[0]),
+        'cmb_T': float(T_prof[-1]),
+        'achieved_superheat': achieved,
+        'binding_P': P_bind,
+        'P_cmb': P_cmb,
+        'clamped': clamped,
+    }
+    if clamped:
+        log.warning(
+            'liquidus_super: the requested superheat of %.0f K is not reachable '
+            'within the EOS table (maximum entropy %.1f J/kg/K). The initial '
+            'entropy is clamped to that maximum, giving %.0f K of superheat at '
+            'P=%.0f GPa and a surface temperature of %.0f K.',
+            delta,
+            S,
+            achieved,
+            P_bind / 1e9,
+            out['surface_T'],
+        )
+    else:
+        log.info(
+            'liquidus_super (P-S tables): S=%.1f J/kg/K, surface T=%.0f K, '
+            'T_cmb=%.0f K, superheat %.0f K at P=%.0f GPa.',
+            S,
+            out['surface_T'],
+            out['cmb_T'],
+            achieved,
+            P_bind / 1e9,
+        )
+    return out
+
+
 def compute_initial_entropy(
     config: Config,
     hf_row: dict | None = None,
@@ -189,6 +367,11 @@ def compute_initial_entropy(
     the PALEOS EOS tables (via Zalmoxis). Both SPIDER and Aragog use this
     to derive a physically consistent initial condition from
     config.planet.tsurf_init (or the accretion-mode override).
+
+    In ``liquidus_super`` mode with ``interior_struct.module`` other than
+    ``zalmoxis``, the entropy is solved on the interior P-S tables in
+    ``spider_eos_dir`` and the selected melting curves, without reading any
+    Zalmoxis or PALEOS data (see ``solve_superliquidus_entropy_from_tables``).
 
     Special case: when ``config.planet.temperature_mode == 'isentropic'``,
     the entropy is taken directly from ``config.planet.ini_entropy`` and no
@@ -232,6 +415,22 @@ def compute_initial_entropy(
     # instead extrapolates the melting curve past its calibration at high mass
     # and yields a cold-surface, energy-non-conserving IC.
     if config.planet.temperature_mode == 'liquidus_super':
+        if config.interior_struct.module != 'zalmoxis':
+            # Without a Zalmoxis structure, solve on the interior tables and
+            # the selected melting curves; no Zalmoxis or PALEOS data are read.
+            if not spider_eos_dir:
+                raise FileNotFoundError(
+                    "temperature_mode='liquidus_super' with "
+                    f"interior_struct.module='{config.interior_struct.module}' "
+                    'needs the interior P-S EOS tables, but no table directory '
+                    'was provided.'
+                )
+            return float(
+                solve_superliquidus_entropy_from_tables(config, hf_row, spider_eos_dir)[
+                    'S_target'
+                ]
+            )
+
         from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
         res = solve_superliquidus_adiabat(config, hf_row)

@@ -48,7 +48,7 @@ def _make_minimal_config(
     cfg.planet.ini_entropy = 3000.0
     cfg.interior_struct.core_frac = core_frac
     cfg.interior_struct.core_frac_mode = core_frac_mode
-    cfg.interior_struct.module = 'dummy'
+    cfg.interior_struct.module = 'zalmoxis'
     # Explicitly None out interior_struct.zalmoxis. The liquidus_super solve
     # resolves P_cmb and emits the Noack & Lasbleis (2020) fallback log line
     # before it reads interior_struct.zalmoxis.mantle_eos, so this lets the

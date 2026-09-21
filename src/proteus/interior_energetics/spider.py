@@ -901,7 +901,12 @@ def _try_spider(
     if dirs.get('spider_liquidus_ps') and os.path.isfile(dirs['spider_liquidus_ps']):
         liquidus_ps = dirs['spider_liquidus_ps']
         solidus_ps = dirs['spider_solidus_ps']
-        log.info('Using Zalmoxis-generated phase boundaries')
+        log.info(
+            'Using P-S phase boundaries from %s (interior_struct.module=%s, melting_dir=%s)',
+            os.path.dirname(liquidus_ps),
+            config.interior_struct.module,
+            config.interior_struct.melting_dir,
+        )
     else:
         mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior_struct.melting_dir)
         liquidus_ps = os.path.join(mc_dir, 'liquidus_P-S.dat')
