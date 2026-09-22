@@ -17,15 +17,13 @@ from pathlib import Path
 
 import numpy as np
 
-from proteus import Proteus
 
-
-def get_git_commit(repo_path: Path | str) -> str:
+def get_git_commit(repo_path: Path | str | None) -> str:
     """Return git commit hash of a repository directory.
 
     Parameters
     ----------
-    repo_path : Path or str
+    repo_path : Path or str or None
         Path to git working directory.
 
     Returns
@@ -33,6 +31,8 @@ def get_git_commit(repo_path: Path | str) -> str:
     str
         HEAD commit hash, or 'unknown' if unavailable.
     """
+    if repo_path is None:
+        return 'unknown'
     try:
         res = subprocess.run(
             ['git', 'rev-parse', 'HEAD'],
@@ -46,18 +46,24 @@ def get_git_commit(repo_path: Path | str) -> str:
         return 'unknown'
 
 
-def get_aragog_repo_path() -> Path:
+def get_aragog_repo_path() -> Path | None:
     """Return the repository directory for the installed aragog package.
 
     Returns
     -------
-    Path
-        Root path of the aragog repository.
+    Path or None
+        Root path of the aragog repository, or None if unavailable.
     """
-    import aragog
+    try:
+        import aragog
 
-    pkg_dir = Path(aragog.__file__).resolve().parent
-    return pkg_dir.parent.parent
+        pkg_dir = Path(aragog.__file__).resolve().parent
+        repo_dir = pkg_dir.parent.parent
+        if (repo_dir / '.git').exists():
+            return repo_dir
+    except Exception:
+        pass
+    return None
 
 
 def record_step(config_path: Path | str, output_npz: Path | str) -> None:
@@ -70,6 +76,8 @@ def record_step(config_path: Path | str, output_npz: Path | str) -> None:
     output_npz : Path or str
         Output path for the .npz archive.
     """
+    from proteus import Proteus
+
     config_path = Path(config_path).resolve()
     output_npz = Path(output_npz).resolve()
     proteus_root = Path(__file__).resolve().parent.parent
@@ -77,6 +85,13 @@ def record_step(config_path: Path | str, output_npz: Path | str) -> None:
 
     proteus_commit = get_git_commit(proteus_root)
     aragog_commit = get_git_commit(aragog_root)
+    if aragog_commit == 'unknown':
+        try:
+            import aragog._version as av
+
+            aragog_commit = getattr(av, '__commit_id__', 'unknown')
+        except Exception:
+            pass
 
     with tempfile.TemporaryDirectory() as tmpdir:
         runner = Proteus(config_path=config_path)
@@ -161,20 +176,36 @@ def compare_recordings(ref_path: Path | str, test_path: Path | str) -> bool:
     for k in all_keys:
         if k.startswith('meta_') or k in IGNORED_KEYS:
             continue
-        if k not in ref.files or k not in test.files:
+        if k not in ref.files:
             mismatches += 1
+            print(f'  MISMATCH {k}: present in test but missing in reference')
+            continue
+        if k not in test.files:
+            mismatches += 1
+            print(f'  MISMATCH {k}: present in reference but missing in test')
             continue
 
         a = ref[k]
         b = test[k]
         checked_keys += 1
 
+        if a.shape != b.shape:
+            mismatches += 1
+            print(f'  MISMATCH {k}: shape differs {a.shape} vs {b.shape}')
+            continue
+
         is_float = np.issubdtype(a.dtype, np.inexact)
-        equal = np.array_equal(a, b, equal_nan=True) if is_float else np.array_equal(a, b)
+        if not is_float:
+            if not np.array_equal(a, b):
+                mismatches += 1
+                print(f'  MISMATCH {k}: non-numeric values differ')
+            continue
+
+        equal = np.array_equal(a, b, equal_nan=True)
         if not equal:
             mismatches += 1
-            nan_a = np.isnan(a) if is_float else np.zeros_like(a, dtype=bool)
-            nan_b = np.isnan(b) if is_float else np.zeros_like(b, dtype=bool)
+            nan_a = np.isnan(a)
+            nan_b = np.isnan(b)
             if not np.array_equal(nan_a, nan_b):
                 print(f'  MISMATCH {k}: NaN pattern differs')
             else:
