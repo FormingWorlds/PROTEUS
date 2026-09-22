@@ -5,7 +5,6 @@ import hashlib
 import logging
 import os
 import re
-import shutil
 import subprocess as sp
 import zipfile
 from pathlib import Path
@@ -28,8 +27,6 @@ FWL_DATA_DIR = resolve_fwl_data_dir()
 MAX_ATTEMPTS = 3
 MAX_DLTIME = 120.0  # seconds
 RETRY_WAIT = 5.0  # seconds
-
-ARAGOG_BASIC = ('Melting_curves/Wolf_Bower+2018',)
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
@@ -445,44 +442,10 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
 # Unified mapping of folder names to both Zenodo and OSF identifiers
 # Structure: folder_name -> {'zenodo_id': str, 'osf_id': str, 'osf_project': str}
 DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
-    # Interior lookup tables (OSF project: phsxf)
-    '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018': {
-        'zenodo_id': '15877374',
-        'osf_id': 'phsxf',
-        'osf_project': 'phsxf',
-    },
-    '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_400GPa': {
-        'zenodo_id': '15877424',
-        'osf_id': 'phsxf',
-        'osf_project': 'phsxf',
-    },
-    '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa': {
-        # Zenodo 19473625: complete P-S format tables (10 phase-property files
-        # + 2 P-S melting curves + README + md5sums). Used by BOTH SPIDER and
-        # Aragog at runtime.
-        'zenodo_id': '19473625',
-        'osf_id': 'phsxf',
-        'osf_project': 'phsxf',
-    },
-    # Melting curves (OSF project: phsxf)
-    'Melting_curves/Monteux+600': {
-        'zenodo_id': '15728091',
-        'osf_id': 'phsxf',
-        'osf_project': 'phsxf',
-    },
-    'Melting_curves/Monteux-600': {
-        'zenodo_id': '15728138',
-        'osf_id': 'phsxf',
-        'osf_project': 'phsxf',
-    },
-    'Melting_curves/Wolf_Bower+2018': {
-        'zenodo_id': '15728072',
-        'osf_id': 'phsxf',
-        'osf_project': 'phsxf',
-    },
     # The surface albedos, the Seager EOS tables, the exoplanet catalogue, the
-    # mass-radius relations, the solar, Named, MUSCLES and PHOENIX stellar spectra and the
-    # Zalmoxis equations of state are declared in
+    # mass-radius relations, the solar, Named, MUSCLES and PHOENIX stellar spectra, the
+    # Zalmoxis equations of state, the interior lookup tables and the melting
+    # curves are declared in
     # src/proteus/data/proteus_manifest.toml and fetched through fwl-io, so their
     # record pins live there and are absent here.
     # Aerosol scattering data (no OSF project)
@@ -1246,100 +1209,178 @@ def download_muscles(stars: str | list[str] | None = None, *, force: bool = Fals
         return False
 
 
+def _melting_curve_keys() -> dict[str, str]:
+    """Return the manifest key of each melting-curve name served by fwl-io.
+
+    Returns
+    -------
+    dict
+        Maps a ``interior_struct.melting_dir`` value to a dotted manifest key.
+    """
+    from proteus.data import (
+        MELTING_MONTEUX_MINUS600,
+        MELTING_MONTEUX_PLUS600,
+        MELTING_WOLF_BOWER_2018,
+    )
+
+    return {
+        'Monteux+600': MELTING_MONTEUX_PLUS600,
+        'Monteux-600': MELTING_MONTEUX_MINUS600,
+        'Wolf_Bower+2018': MELTING_WOLF_BOWER_2018,
+    }
+
+
+def resolve_melting_curve_files(
+    melting_dir: str, data_root: Path | str | None = None
+) -> tuple[Path, Path]:
+    """Locate the P-T solidus and liquidus files of one melting curve.
+
+    A local directory ``interior_lookup_tables/Melting_curves/<melting_dir>``
+    that holds both ``solidus_P-T.dat`` and ``liquidus_P-T.dat`` is used first,
+    so a directory the user supplies or generates takes precedence. Otherwise a
+    name served through the manifest (``Monteux+600``, ``Monteux-600``,
+    ``Wolf_Bower+2018``) resolves to ``solidus.dat`` and ``liquidus.dat`` in its
+    versioned dataset directory. Any other name resolves to the local paths,
+    which the caller reports as missing.
+
+    Parameters
+    ----------
+    melting_dir : str
+        Value of ``interior_struct.melting_dir``.
+    data_root : Path or str, optional
+        Data root; defaults to ``FWL_DATA``.
+
+    Returns
+    -------
+    tuple of Path
+        Solidus and liquidus file paths. The files are not checked to exist
+        when the name is served through the manifest.
+    """
+    from proteus.data import dataset_dir
+
+    root = GetFWLData() if data_root is None else Path(data_root)
+    local = root / 'interior_lookup_tables' / 'Melting_curves' / melting_dir
+    solidus, liquidus = local / 'solidus_P-T.dat', local / 'liquidus_P-T.dat'
+    if solidus.is_file() and liquidus.is_file():
+        return solidus, liquidus
+
+    key = _melting_curve_keys().get(melting_dir)
+    if key is None:
+        return solidus, liquidus
+    folder = dataset_dir(key, data_root=root)
+    return folder / 'solidus.dat', folder / 'liquidus.dat'
+
+
+def resolve_lookup_table_dir(data_root: Path | str | None = None) -> Path:
+    """Return the directory of the Wolf and Bower 2018 P-S lookup tables.
+
+    Parameters
+    ----------
+    data_root : Path or str, optional
+        Data root; defaults to ``FWL_DATA``.
+
+    Returns
+    -------
+    Path
+        Versioned dataset directory of the tables. The directory is not
+        checked to hold the files.
+    """
+    from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
+
+    root = GetFWLData() if data_root is None else Path(data_root)
+    return dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=root)
+
+
+def find_lookup_table_dir(data_root: Path | str | None = None) -> Path | None:
+    """Return the fetched Wolf and Bower 2018 P-S table directory if populated.
+
+    Parameters
+    ----------
+    data_root : Path or str, optional
+        Data root; defaults to ``FWL_DATA``.
+
+    Returns
+    -------
+    Path or None
+        The dataset directory when it holds the SPIDER phase files, else None
+        (also when the data root cannot be created).
+    """
+    try:
+        folder = resolve_lookup_table_dir(data_root)
+    except OSError:
+        return None
+    if (folder / 'thermal_exp_melt.dat').is_file() and (folder / 'density_melt.dat').is_file():
+        return folder
+    return None
+
+
 def download_interior_lookuptables(clean=False):
+    """Fetch the melting curves that Aragog and SPIDER always need.
+
+    The Wolf and Bower 2018 melting curves are fetched through fwl-io into
+    ``FWL_DATA/interior_struct/melting_curves/wolf_bower_2018/r<record-id>/``.
+
+    Parameters
+    ----------
+    clean : bool
+        Remove the fetched dataset first, so it is fetched again.
     """
-    Download basic interior lookup tables
-    """
-    log.debug('Download basic interior lookup tables')
+    from proteus.data import MELTING_WOLF_BOWER_2018, dataset_dir, fetch_dataset
 
-    data_dir = GetFWLData() / 'interior_lookup_tables'
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    for dir in ARAGOG_BASIC:
-        folder_dir = data_dir / dir
-        if clean:
-            safe_rm(folder_dir.as_posix())
-        source_info = get_data_source_info(dir)
-        if not source_info:
-            log.warning(f'No data source mapping found for {dir}, skipping')
-            continue
-
-        download(
-            folder=dir,
-            target=data_dir,
-            osf_id=source_info['osf_project'],
-            zenodo_id=source_info['zenodo_id'],
-            desc=f'Interior lookup tables: {dir}',
-        )
+    log.debug('Fetch basic interior lookup tables')
+    root = GetFWLData()
+    if clean:
+        safe_rm(str(dataset_dir(MELTING_WOLF_BOWER_2018, data_root=root)))
+    fetch_dataset(MELTING_WOLF_BOWER_2018, data_root=root)
 
 
 def download_melting_curves(config: Config, clean: bool = False):
-    """
-    Ensure melting curve data are available locally.
+    """Ensure the melting curve named in the configuration is available.
 
-    Expected layout:
-        interior_lookup_tables/
-            Melting_curves/
-                <melting_dir>/
-                    solidus_P-T.dat
-                    liquidus_P-T.dat
-                    solidus_P-S.dat
-                    liquidus_P-S.dat
+    A local directory ``interior_lookup_tables/Melting_curves/<melting_dir>``
+    with ``solidus_P-T.dat`` and ``liquidus_P-T.dat`` is used as it is and
+    nothing is fetched. Otherwise ``Monteux+600``, ``Monteux-600`` and
+    ``Wolf_Bower+2018`` are fetched through fwl-io into
+    ``FWL_DATA/interior_struct/melting_curves/<name>/r<record-id>/``.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object; ``interior_struct.melting_dir`` names the curve.
+    clean : bool
+        Remove the fetched dataset first, so it is fetched again. A local
+        directory is never removed.
+
+    Raises
+    ------
+    ValueError
+        If the name is neither served through the manifest nor present as a
+        local directory.
     """
-    log.debug('Download melting curve data')
-    if config.interior_struct.melting_dir is None:
+    from proteus.data import dataset_dir, fetch_dataset
+
+    log.debug('Fetch melting curve data')
+    melting_dir = config.interior_struct.melting_dir
+    if melting_dir is None:
         log.debug('melting_dir is None, skipping melting curve download')
         return
-    rel_dir = Path('Melting_curves') / config.interior_struct.melting_dir
 
-    data_dir = GetFWLData() / 'interior_lookup_tables'
-    data_dir.mkdir(parents=True, exist_ok=True)
+    root = GetFWLData()
+    key = _melting_curve_keys().get(melting_dir)
+    if clean and key is not None:
+        safe_rm(str(dataset_dir(key, data_root=root)))
 
-    folder_dir = data_dir / rel_dir
-
-    if clean:
-        safe_rm(folder_dir.as_posix())
-
-    # ------------------------------------------------------------------
-    # Canonical flat layout: if files already exist locally, do not download.
-    # ------------------------------------------------------------------
-    solidus_pt = folder_dir / 'solidus_P-T.dat'
-    liquidus_pt = folder_dir / 'liquidus_P-T.dat'
-    solidus_ps = folder_dir / 'solidus_P-S.dat'
-    liquidus_ps = folder_dir / 'liquidus_P-S.dat'
-
-    if all(p.is_file() for p in (solidus_pt, liquidus_pt, solidus_ps, liquidus_ps)):
-        log.debug('Melting curve data already present locally: %s', folder_dir)
+    local = root / 'interior_lookup_tables' / 'Melting_curves' / melting_dir
+    if (local / 'solidus_P-T.dat').is_file() and (local / 'liquidus_P-T.dat').is_file():
+        log.debug('Melting curve data already present locally: %s', local)
         return
 
-    # ------------------------------------------------------------------
-    # Fallback: try remote source mapping.
-    # ------------------------------------------------------------------
-    source_info = get_data_source_info(rel_dir.as_posix())
-    if not source_info:
+    if key is None:
         raise ValueError(
-            f'No data source mapping found for folder: {rel_dir}. '
-            f'Also did not find local melting curve data in: {folder_dir}'
+            f"No dataset serves melting_dir='{melting_dir}' and no local melting "
+            f'curve files were found in: {local}'
         )
-
-    download(
-        folder=rel_dir.as_posix(),
-        target=data_dir,
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc=f'Melting curve data: {rel_dir}',
-    )
-
-    # ------------------------------------------------------------------
-    # If the download contains solidus.dat / liquidus.dat, treat them as
-    # P-T and create canonical *_P-T.dat copies.
-    # ------------------------------------------------------------------
-    for stem in ('solidus', 'liquidus'):
-        legacy = folder_dir / f'{stem}.dat'
-        canonical = folder_dir / f'{stem}_P-T.dat'
-        if legacy.is_file() and not canonical.is_file():
-            shutil.copy2(legacy, canonical)
-            log.debug('Copied %s -> %s', legacy.name, canonical.name)
+    fetch_dataset(key, data_root=root)
 
 
 def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
@@ -1770,48 +1811,30 @@ def download_eos_static():
 
 
 def download_eos_dynamic(eos_dir: str = 'WolfBower2018_MgSiO3'):
-    """Download dynamic EOS files from Zenodo 19473625.
+    """Fetch the Wolf and Bower 2018 P-S lookup tables through fwl-io.
 
-    Downloads into
-    ``FWL_DATA/interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa/``.
-    The record provides the complete P-S set that both SPIDER and
-    Aragog consume at runtime: 10 phase-property files (temperature,
-    density, heat capacity, adiabatic gradient, thermal expansivity
-    for melt and solid) plus the two P-S melting curves
-    (``solidus_P-S.dat``, ``liquidus_P-S.dat``).
+    The tables land in
+    ``FWL_DATA/interior_struct/lookup/wolf_bower_2018_1tpa/r19473625/``. The
+    record provides the complete P-S set that both SPIDER and Aragog consume
+    at runtime: 10 phase-property files (temperature, density, heat capacity,
+    adiabatic gradient, thermal expansivity for melt and solid) plus the two
+    P-S melting curves (``solidus_P-S.dat``, ``liquidus_P-S.dat``).
 
-    After download, the function verifies that all 12 expected files
-    landed in the target directory and raises a clear error if any are
-    missing. This prevents silent downstream failures where Aragog's
-    ``EntropyEOS`` would otherwise crash with a confusing
-    ``FileNotFoundError`` for a single missing file.
+    After the fetch, the function warns if any of the 12 expected files is
+    missing from the dataset directory.
 
     Parameters
     ----------
     eos_dir : str
         Name of the dynamic EOS folder. Reserved for future multi-EOS
-        support; currently always resolves to
-        ``1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa``.
+        support; currently always resolves to the dataset above.
     """
-    folder = '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        log.warning(f'No data source mapping for dynamic EOS: {folder}')
-        return
+    from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir, fetch_dataset
 
-    download(
-        folder=folder,
-        target='interior_lookup_tables',
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc=f'Dynamic EOS (P-S): {folder}',
-    )
+    fwl_data = GetFWLData()
+    fetch_dataset(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=fwl_data)
+    target_dir = dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=fwl_data)
 
-    # Manifest validation: verify all 12 expected files are present.
-    # A partial download means the PROTEUS helpers will silently fall
-    # back to the SPIDER submodule at runtime, which is a warning sign
-    # that the user's FWL_DATA tree is stale or the Zenodo record
-    # contents have drifted.
     expected_files = (
         'temperature_melt.dat',
         'temperature_solid.dat',
@@ -1826,25 +1849,20 @@ def download_eos_dynamic(eos_dir: str = 'WolfBower2018_MgSiO3'):
         'solidus_P-S.dat',
         'liquidus_P-S.dat',
     )
-    target_dir = GetFWLData() / 'interior_lookup_tables' / folder
     missing = [f for f in expected_files if not (target_dir / f).is_file()]
     if missing:
         log.warning(
-            'Zenodo record %s download landed at %s but is missing %d of '
-            '%d expected files: %s. Aragog will fall back to the SPIDER '
-            'submodule at runtime via _provide_spider_eos_tables. To '
-            'refresh, delete %s and rerun with clean=True.',
-            source_info['zenodo_id'],
+            'Lookup tables at %s are missing %d of %d expected files: %s. '
+            'Aragog will fall back to the SPIDER submodule at runtime via '
+            '_provide_spider_eos_tables.',
             target_dir,
             len(missing),
             len(expected_files),
             missing[:5],
-            target_dir,
         )
     else:
         log.debug(
-            'Zenodo record %s complete: all %d files present at %s',
-            source_info['zenodo_id'],
+            'Lookup tables complete: all %d files present at %s',
             len(expected_files),
             target_dir,
         )
@@ -2030,8 +2048,8 @@ def load_melting_curve(melt_file):
 def get_zalmoxis_melting_curves(config: Config):
     """Load solidus and liquidus T(P) melting curves for Zalmoxis.
 
-    Reads the melting curve files from the directory specified by
-    ``config.interior_struct.melting_dir`` under ``FWL_DATA/interior_lookup_tables/Melting_curves/``.
+    Reads the melting curve files that :func:`resolve_melting_curve_files`
+    locates for ``config.interior_struct.melting_dir``.
 
     Parameters
     ----------
@@ -2045,19 +2063,17 @@ def get_zalmoxis_melting_curves(config: Config):
     """
     if config.interior_struct.melting_dir is None:
         return None
-    melting_curves_folder = (
-        FWL_DATA_DIR
-        / 'interior_lookup_tables'
-        / 'Melting_curves'
-        / config.interior_struct.melting_dir
+    solidus_file, liquidus_file = resolve_melting_curve_files(
+        config.interior_struct.melting_dir, data_root=FWL_DATA_DIR
     )
-    if not melting_curves_folder.is_dir():
-        raise FileNotFoundError(
-            f'Melting curves directory not found: {melting_curves_folder}. '
-            f"Check struct.melting_dir='{config.interior_struct.melting_dir}'."
-        )
-    solidus_func = load_melting_curve(melting_curves_folder / 'solidus_P-T.dat')
-    liquidus_func = load_melting_curve(melting_curves_folder / 'liquidus_P-T.dat')
+    for melting_file in (solidus_file, liquidus_file):
+        if not melting_file.is_file():
+            raise FileNotFoundError(
+                f'Melting curve file not found: {melting_file}. '
+                f"Check struct.melting_dir='{config.interior_struct.melting_dir}'."
+            )
+    solidus_func = load_melting_curve(solidus_file)
+    liquidus_func = load_melting_curve(liquidus_file)
     return (solidus_func, liquidus_func)
 
 
@@ -2065,12 +2081,7 @@ def get_zalmoxis_EOS():
     """Build and return material properties dictionaries for Zalmoxis.
 
     The Seager2007 tables are fetched through fwl-io into their versioned
-    dataset directory. Dynamic EOS like Wolf & Bower 2018 are read from the
-    unified folder structure under ``FWL_DATA/interior_lookup_tables/EOS/``
-    (``EOS/dynamic/WolfBower2018_MgSiO3/P-T/``).
-
-    The folder name matches the Zalmoxis ``mantle_eos`` source string
-    (``WolfBower2018_MgSiO3``), not ``struct.eos_dir``.
+    dataset directory, as are the Wolf & Bower 2018 and RTPress 100 TPa tables.
 
     Returns
     -------
@@ -2079,26 +2090,19 @@ def get_zalmoxis_EOS():
         water planet, and iron/RTPress100TPa silicate EOS. T-dep dicts include
         ``cp_file`` entries for heat capacity tables when the files exist.
     """
-    eos_base = FWL_DATA_DIR / 'interior_lookup_tables' / 'EOS'
-
-    from proteus.data import EOS_SEAGER_2007, dataset_dir
+    from proteus.data import (
+        EOS_RTPRESS_100TPA,
+        EOS_SEAGER_2007,
+        EOS_WOLF_BOWER_2018,
+        dataset_dir,
+    )
 
     seager_folder = dataset_dir(EOS_SEAGER_2007, data_root=FWL_DATA_DIR)
     if not (seager_folder / 'eos_seager07_iron.txt').exists():
         log.debug('Get EOS material properties from Seager et al. (2007)')
         download_eos_static()
 
-    # Wolf-Bower: fixed mapping from source name to data folder
-    wb_folder = eos_base / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
-    if not wb_folder.exists():
-        wb_folder = eos_base / 'dynamic' / 'WolfBower2018_MgSiO3'
-    if not wb_folder.exists():
-        wb_folder = (
-            FWL_DATA_DIR
-            / 'interior_lookup_tables'
-            / '1TPa-dK09-elec-free'
-            / 'MgSiO3_Wolf_Bower_2018_1TPa'
-        )
+    wb_folder = dataset_dir(EOS_WOLF_BOWER_2018, data_root=FWL_DATA_DIR)
 
     # Iron/silicate (Seager 2007)
     material_properties_iron_silicate_planets = {
@@ -2131,9 +2135,7 @@ def get_zalmoxis_EOS():
     }
 
     # RTPress100TPa melt EOS with WolfBower2018 solid
-    rt_folder = eos_base / 'RTPress_melt_100TPa'
-    if not rt_folder.exists():
-        rt_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_RTPress_melt_100TPa'
+    rt_folder = dataset_dir(EOS_RTPRESS_100TPA, data_root=FWL_DATA_DIR)
     if not rt_folder.exists():
         log.warning(
             'RTPress100TPa EOS folder not found at %s. '

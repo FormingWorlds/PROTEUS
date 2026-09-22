@@ -16,6 +16,7 @@ from scipy.interpolate import RegularGridInterpolator
 from proteus.interior_energetics.common import Interior_t, get_file_tides
 from proteus.interior_energetics.timestep import next_step
 from proteus.utils.constants import radnuc_data
+from proteus.utils.data import find_lookup_table_dir
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 
 if TYPE_CHECKING:
@@ -874,7 +875,7 @@ def _try_spider(
         call_sequence.extend(['-htidal_filename', get_file_tides(dirs['output'])])
 
     # EOS lookup data: prefer per-run generated tables (from Zalmoxis/PALEOS),
-    # then FWL_DATA, then SPIDER local as final fallback.
+    # then a local EOS directory, then the fetched dataset, then SPIDER local.
     if dirs.get('spider_eos_dir') and os.path.isdir(dirs['spider_eos_dir']):
         eos_dir = dirs['spider_eos_dir']
         log.debug('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
@@ -886,8 +887,14 @@ def _try_spider(
             )
         eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.interior_struct.eos_dir, 'P-S')
         if not os.path.isdir(eos_dir):
-            # Fall back to SPIDER's local lookup_data directory
-            eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
+            # The fetched Wolf and Bower 2018 tables are in P-S format and
+            # SPIDER reads them in place; the SPIDER submodule is the last resort.
+            fetched = find_lookup_table_dir()
+            eos_dir = (
+                str(fetched)
+                if fetched
+                else os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
+            )
         if not os.path.isdir(eos_dir):
             raise FileNotFoundError(
                 f'SPIDER EOS directory not found: {eos_dir}. '

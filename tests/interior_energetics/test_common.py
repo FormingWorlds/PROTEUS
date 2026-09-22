@@ -141,15 +141,13 @@ def test_load_ps_table_both_missing(tmp_path):
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv('FWL_DATA', str(tmp_path / 'nonexistent'))
         mp.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path / 'nonexistent', raising=False)
+        mp.setattr('proteus.interior_energetics.common.find_lookup_table_dir', lambda: None)
         result = interior_o._load_ps_table(
             str(tmp_path / 'also_nonexistent'),
             'SomeEOS',
             'density_melt.dat',
         )
-    assert result is None  # both-missing branch must yield None silently
-    # Discriminating check: neither candidate path exists on disk; only the
-    # both-missing branch can have produced the None return on this row.
-    assert not (tmp_path / 'nonexistent').exists()
+    assert result is None  # all three sources are missing: None, no exception
     assert not (tmp_path / 'also_nonexistent').exists()
 
 

@@ -38,6 +38,7 @@ from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, PALEOS_EOS_PREF
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
+from proteus.utils.data import resolve_lookup_table_dir, resolve_melting_curve_files
 from proteus.utils.helper import format_subyear_time, parse_subyear_time, snapshot_path_for_time
 
 log = logging.getLogger('fwl.' + __name__)
@@ -981,26 +982,17 @@ class AragogRunner:
                     'PALEOS EOS file not found (%s), falling back to the shipped EOS tables',
                     paleos_eos_file,
                 )
-                LOOK_UP_DIR = (
-                    FWL_DATA_DIR
-                    / 'interior_lookup_tables'
-                    / '1TPa-dK09-elec-free'
-                    / 'MgSiO3_Wolf_Bower_2018_1TPa'
-                )
+                LOOK_UP_DIR = resolve_lookup_table_dir(data_root=FWL_DATA_DIR)
         else:
-            # Shipped EOS tables; used when interior_struct.eos_dir is
-            # None (no dynamic EOS selected) or when the dynamic path
-            # does not resolve to a populated directory. The "EOS/dynamic"
-            # tree is only materialised when zalmoxis pre-generates
-            # PALEOS tables; outside that pathway it is empty.
-            legacy_lookup = (
-                FWL_DATA_DIR
-                / 'interior_lookup_tables'
-                / '1TPa-dK09-elec-free'
-                / 'MgSiO3_Wolf_Bower_2018_1TPa'
-            )
+            # Fetched Wolf and Bower 2018 tables; used when
+            # interior_struct.eos_dir is None (no dynamic EOS selected) or
+            # when the dynamic path does not resolve to a populated
+            # directory. The "EOS/dynamic" tree is only materialised when
+            # zalmoxis pre-generates PALEOS tables; outside that pathway
+            # it is empty.
+            default_lookup = resolve_lookup_table_dir(data_root=FWL_DATA_DIR)
             if config.interior_struct.eos_dir is None:
-                LOOK_UP_DIR = legacy_lookup
+                LOOK_UP_DIR = default_lookup
             else:
                 LOOK_UP_DIR = (
                     FWL_DATA_DIR
@@ -1011,7 +1003,7 @@ class AragogRunner:
                     / 'P-T'
                 )
                 if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
-                    LOOK_UP_DIR = legacy_lookup
+                    LOOK_UP_DIR = default_lookup
         # Determine melting curves. When using PALEOS EOS via Zalmoxis,
         # generate PALEOS-derived melting curves so Aragog uses the SAME
         # solidus/liquidus as SPIDER (PALEOS-liquidus * mushy_zone_factor).
@@ -1030,10 +1022,8 @@ class AragogRunner:
                     'interior_struct.melting_dir must be set for non-PALEOS EOS. '
                     'Provide a melting curve folder name (e.g. "Monteux-600").'
                 )
-            MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables/Melting_curves/'
-            solidus_path = MELTING_DIR / config.interior_struct.melting_dir / 'solidus_P-T.dat'
-            liquidus_path = (
-                MELTING_DIR / config.interior_struct.melting_dir / 'liquidus_P-T.dat'
+            solidus_path, liquidus_path = resolve_melting_curve_files(
+                config.interior_struct.melting_dir, data_root=FWL_DATA_DIR
             )
 
         # check data exist

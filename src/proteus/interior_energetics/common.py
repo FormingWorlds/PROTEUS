@@ -10,6 +10,7 @@ import numpy as np
 from scipy.special import erf
 
 from proteus.utils.constants import B_ein
+from proteus.utils.data import find_lookup_table_dir
 
 if TYPE_CHECKING:
     from aragog.eos.entropy import EntropyEOS
@@ -649,8 +650,9 @@ class Interior_t:
         (E_th computation in :func:`spider.ReadSPIDER`). All three
         files share the same on-disk layout.
 
-        Search order: FWL_DATA dynamic EOS directory first, then
-        SPIDER's bundled ``lookup_data/1TPa-dK09-elec-free``.
+        Search order: FWL_DATA dynamic EOS directory, then the fetched
+        Wolf and Bower 2018 tables, then SPIDER's bundled
+        ``lookup_data/1TPa-dK09-elec-free``.
 
         Parameters
         ----------
@@ -678,9 +680,13 @@ class Interior_t:
             filename,
         )
         local_path = os.path.join(spider_dir, 'lookup_data', '1TPa-dK09-elec-free', filename)
+        fetched = find_lookup_table_dir()
+        fetched_path = str(fetched / filename) if fetched else ''
 
         if os.path.isfile(fwl_path):
             filepath = fwl_path
+        elif fetched and os.path.isfile(fetched_path):
+            filepath = fetched_path
         elif os.path.isfile(local_path):
             filepath = local_path
         else:

@@ -372,8 +372,9 @@ class Struct:
             if self.melting_dir is None:
                 raise ValueError(
                     'interior_struct.melting_dir must be set when module = "spider". '
-                    'Provide a melting curve folder name (e.g. "Monteux-600") from '
-                    'FWL_DATA/interior_lookup_tables/Melting_curves/.'
+                    'Provide a melting curve name (e.g. "Monteux-600"): one of the '
+                    'curves fetched into FWL_DATA/interior_struct/melting_curves/, or a '
+                    'folder in FWL_DATA/interior_lookup_tables/Melting_curves/.'
                 )
             if self.eos_dir is None:
                 raise ValueError(

@@ -1235,9 +1235,10 @@ def test_try_spider_missing_eos_dir(tmp_path):
 
     dirs, config, hf_row, _, mc_base, _ = _setup_spider_env(tmp_path)
 
-    # Both FWL_DATA EOS path and SPIDER-local fallback (lookup_data/) are absent
+    # The local EOS path, the fetched lookup dataset and the SPIDER-local fallback are absent
     with (
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', '/nonexistent/eos'),
+        patch('proteus.interior_energetics.spider.find_lookup_table_dir', return_value=None),
         patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
         patch('proteus.interior_energetics.spider.sp.run') as mock_run,
         patch(
@@ -1299,7 +1300,7 @@ def test_try_spider_missing_melting_curves(tmp_path):
 
 @pytest.mark.unit
 def test_try_spider_eos_fallback_to_local(tmp_path):
-    """EOS dir resolves to SPIDER local fallback when FWL_DATA path missing."""
+    """EOS dir resolves to the SPIDER local fallback when no other EOS source exists."""
     from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, _, mc_base, _ = _setup_spider_env(tmp_path)
@@ -1312,6 +1313,7 @@ def test_try_spider_eos_fallback_to_local(tmp_path):
 
     with (
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', '/nonexistent/eos'),
+        patch('proteus.interior_energetics.spider.find_lookup_table_dir', return_value=None),
         patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
         patch('proteus.interior_energetics.spider.sp.run') as mock_run,
         patch(
@@ -1335,6 +1337,45 @@ def test_try_spider_eos_fallback_to_local(tmp_path):
     # EOS paths should reference the local fallback
     idx = call_args.index('-melt_rho_filename')
     assert '1TPa-dK09-elec-free' in call_args[idx + 1]
+
+
+@pytest.mark.unit
+def test_try_spider_eos_uses_fetched_lookup_dataset(tmp_path):
+    """With no local EOS dir, SPIDER receives the fetched lookup dataset directory."""
+    from proteus.interior_energetics.spider import _try_spider
+
+    dirs, config, hf_row, _, mc_base, _ = _setup_spider_env(tmp_path)
+
+    fetched = tmp_path / 'fetched_lookup'
+    fetched.mkdir()
+    for name in _EOS_FILE_NAMES:
+        _make_eos_table(str(fetched / name))
+
+    with (
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', '/nonexistent/eos'),
+        patch('proteus.interior_energetics.spider.find_lookup_table_dir', return_value=fetched),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        result = _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+        )
+
+    assert result is True
+    call_args = mock_run.call_args[0][0]
+    idx = call_args.index('-melt_rho_filename')
+    assert call_args[idx + 1] == str(fetched / 'density_melt.dat')
 
 
 @pytest.mark.unit

@@ -711,11 +711,10 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     melting_dir = getattr(config.interior_struct, 'melting_dir', None)
     derive_melting = melting_dir is not None
     if derive_melting:
-        from proteus.utils.data import GetFWLData as _GetFWL
+        from proteus.utils.data import resolve_melting_curve_files
 
-        melting_pt_dir = _GetFWL() / 'interior_lookup_tables' / 'Melting_curves' / melting_dir
-        sol_pt_path = melting_pt_dir / 'solidus_P-T.dat'
-        liq_pt_path = melting_pt_dir / 'liquidus_P-T.dat'
+        sol_pt_path, liq_pt_path = resolve_melting_curve_files(melting_dir)
+        melting_pt_dir = sol_pt_path.parent
         if not (sol_pt_path.is_file() and liq_pt_path.is_file()):
             log.warning(
                 'melting_dir=%s configured but P-T files missing at %s; '
@@ -756,15 +755,9 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
 
     # Import lazily so the helper is usable outside of a full PROTEUS
     # install (e.g. unit tests that stub out FWL_DATA).
-    from proteus.utils.data import GetFWLData
+    from proteus.utils.data import resolve_lookup_table_dir
 
-    fwl_data = GetFWLData()
-    zenodo_root = (
-        fwl_data
-        / 'interior_lookup_tables'
-        / '1TPa-dK09-elec-free'
-        / 'MgSiO3_Wolf_Bower_2018_1TPa'
-    )
+    zenodo_root = resolve_lookup_table_dir()
 
     # Case 2: FWL_DATA (Zenodo 19473625) complete set.
     # We check BOTH that all 12 files exist AND that density_melt.dat

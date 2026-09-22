@@ -32,7 +32,11 @@ from proteus.data import (
     EOS_WOLF_BOWER_2018,
     EXOPLANET_REFERENCE,
     FWL_IO_FLOOR,
+    LOOKUP_WOLF_BOWER_2018_1TPA,
     MASS_RADIUS_ZENG_2019,
+    MELTING_MONTEUX_MINUS600,
+    MELTING_MONTEUX_PLUS600,
+    MELTING_WOLF_BOWER_2018,
     STELLAR_SPECTRA_MUSCLES,
     STELLAR_SPECTRA_NAMED,
     STELLAR_SPECTRA_PHOENIX,
@@ -63,6 +67,10 @@ RTPRESS_RECORD = '18819027'
 PALEOS_2PHASE_RECORD = '19680050'
 PALEOS_UNIFIED_RECORD = '22776069'
 CHABRIER_RECORD = '19135021'
+LOOKUP_WOLF_BOWER_2018_1TPA_RECORD = '19473625'
+MELTING_MONTEUX_PLUS600_RECORD = '15728091'
+MELTING_MONTEUX_MINUS600_RECORD = '15728138'
+MELTING_WOLF_BOWER_2018_RECORD = '15728072'
 
 # Equation-of-state datasets: key -> (subdir, record).
 EOS_DATASETS = {
@@ -78,6 +86,26 @@ EOS_DATASETS = {
     ),
     EOS_PALEOS_UNIFIED: ('interior_struct/eos/paleos_unified', PALEOS_UNIFIED_RECORD),
     EOS_CHABRIER_2021: ('interior_struct/eos/chabrier_2021', CHABRIER_RECORD),
+}
+
+# Interior lookup table and melting curve datasets: key -> (subdir, record).
+LOOKUP_AND_MELTING_DATASETS = {
+    LOOKUP_WOLF_BOWER_2018_1TPA: (
+        'interior_struct/lookup/wolf_bower_2018_1tpa',
+        LOOKUP_WOLF_BOWER_2018_1TPA_RECORD,
+    ),
+    MELTING_MONTEUX_PLUS600: (
+        'interior_struct/melting_curves/monteux_plus600',
+        MELTING_MONTEUX_PLUS600_RECORD,
+    ),
+    MELTING_MONTEUX_MINUS600: (
+        'interior_struct/melting_curves/monteux_minus600',
+        MELTING_MONTEUX_MINUS600_RECORD,
+    ),
+    MELTING_WOLF_BOWER_2018: (
+        'interior_struct/melting_curves/wolf_bower_2018',
+        MELTING_WOLF_BOWER_2018_RECORD,
+    ),
 }
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -109,6 +137,7 @@ _OWNED_KEYS = {
     STELLAR_SPECTRA_MUSCLES,
     STELLAR_SPECTRA_PHOENIX,
     *EOS_DATASETS,
+    *LOOKUP_AND_MELTING_DATASETS,
 } | {spectral_file_key(group, bands) for group, bands in SPECTRAL_RECORDS}
 
 
@@ -154,6 +183,9 @@ def test_manifest_declares_the_datasets():
     for key, (subdir, record) in EOS_DATASETS.items():
         assert datasets[key].subdir == subdir
         assert datasets[key].zenodo == f'10.5281/zenodo.{record}'
+    for key, (subdir, record) in LOOKUP_AND_MELTING_DATASETS.items():
+        assert datasets[key].subdir == subdir
+        assert datasets[key].zenodo == f'10.5281/zenodo.{record}'
     # All are PROTEUS-owned, so "proteus" has to appear in required_by or
     # "fwl-io fetch proteus" would skip them.
     for ds in datasets.values():
@@ -180,6 +212,10 @@ def test_registries_pin_committed_checksums():
     paleos_highres = _dataset(EOS_PALEOS_MGSIO3_2PHASE_HIGHRES).registry()
     paleos_unified = _dataset(EOS_PALEOS_UNIFIED).registry()
     chabrier = _dataset(EOS_CHABRIER_2021).registry()
+    lookup = _dataset(LOOKUP_WOLF_BOWER_2018_1TPA).registry()
+    monteux_plus600 = _dataset(MELTING_MONTEUX_PLUS600).registry()
+    monteux_minus600 = _dataset(MELTING_MONTEUX_MINUS600).registry()
+    melting_wolf_bower = _dataset(MELTING_WOLF_BOWER_2018).registry()
 
     assert len(exo) == 1, 'the catalogue ships exactly one file'
     assert len(zeng) == 57, 'the Zeng-2019 grid ships 57 curve files'
@@ -216,6 +252,15 @@ def test_registries_pin_committed_checksums():
     }
     assert set(chabrier) == {'EOS_Chabrier2021_HHe.tar.gz'}
     assert chabrier['EOS_Chabrier2021_HHe.tar.gz'] == 'md5:18ce96ed0526d4ade283807a7da2e091'
+    assert len(lookup) == 14, 'the Wolf-Bower lookup-table record ships 14 files'
+    assert set(monteux_plus600) == {'liquidus.dat', 'solidus.dat'}
+    assert set(monteux_minus600) == {'liquidus.dat', 'solidus.dat'}
+    assert set(melting_wolf_bower) == {'liquidus.dat', 'solidus.dat'}
+    assert lookup['thermal_exp_melt.dat'] == 'md5:f2983441e654c4d4285f9a0e563247da'
+    assert lookup['density_melt.dat'] == 'md5:8aaa37a5ac723e248895e0e6eb609046'
+    assert monteux_plus600['solidus.dat'] == 'md5:e70660c7ff400609fc3ed442ea0eac84'
+    assert monteux_minus600['solidus.dat'] == 'md5:6d48d841639c06f61a872656fc9a5b11'
+    assert melting_wolf_bower['solidus.dat'] == 'md5:66b297a120c79e7e58de5761ac40f4c4'
     assert solar['sun.txt'] == 'md5:6e4b6540d952cf3c01a3bd0511aa6c10'
     assert named['sun.txt'] == 'md5:0c5225b847ca250673edc9690f02e055'
     assert muscles['gj876.txt'] == 'md5:4b4e7299bad9545ee8fef82cb4c8d4d8'
@@ -238,6 +283,10 @@ def test_registries_pin_committed_checksums():
         paleos_highres,
         paleos_unified,
         chabrier,
+        lookup,
+        monteux_plus600,
+        monteux_minus600,
+        melting_wolf_bower,
     ):
         assert all(':' in digest for digest in registry.values())
     assert 'massradiusEarthlikeRocky.txt' in zeng
@@ -282,6 +331,8 @@ def test_dataset_dir_is_versioned(tmp_path):
         tmp_path / 'interior_struct' / 'eos' / 'seager_2007' / f'r{SEAGER_2007_RECORD}'
     )
     for key, (subdir, record) in EOS_DATASETS.items():
+        assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{record}'
+    for key, (subdir, record) in LOOKUP_AND_MELTING_DATASETS.items():
         assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{record}'
     assert dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=tmp_path) == (
         tmp_path / 'stellar_spectra' / 'solar' / f'r{SOLAR_RECORD}'

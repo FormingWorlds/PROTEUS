@@ -74,6 +74,16 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     return config
 
 
+def _seed_lookup_tables(root):
+    """Create the versioned Wolf and Bower lookup dataset directory under ``root``."""
+    from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
+
+    folder = dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=root)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / 'heat_capacity_melt.dat').write_text('dummy')
+    return folder
+
+
 @pytest.mark.unit
 def test_setup_solver_zalmoxis_inner_radius(tmp_path):
     """setup_solver reads R_core from hf_row when struct.module='zalmoxis'."""
@@ -98,11 +108,7 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
     interior_o._spider_eos_dir = str(spider_eos_dir)
 
     # Create EOS dir
-    eos_dir = (
-        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
-    )
-    eos_dir.mkdir(parents=True)
-    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    _seed_lookup_tables(tmp_path)
     mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves'
     mc_dir.mkdir(parents=True)
 
@@ -151,11 +157,7 @@ def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
     spider_eos_dir.mkdir(parents=True)
     interior_o._spider_eos_dir = str(spider_eos_dir)
 
-    eos_dir = (
-        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
-    )
-    eos_dir.mkdir(parents=True)
-    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    _seed_lookup_tables(tmp_path)
     mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves'
     mc_dir.mkdir(parents=True)
 
@@ -181,7 +183,7 @@ def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
 
 @pytest.mark.unit
 def test_setup_solver_eos_fallback(tmp_path):
-    """setup_solver falls back to legacy EOS path when unified path is missing."""
+    """setup_solver reads the lookup tables from the versioned dataset directory."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = str(tmp_path)
@@ -200,15 +202,7 @@ def test_setup_solver_eos_fallback(tmp_path):
     spider_eos_dir.mkdir(parents=True)
     interior_o._spider_eos_dir = str(spider_eos_dir)
 
-    # Only create legacy path, NOT unified path
-    legacy_dir = (
-        tmp_path
-        / 'interior_lookup_tables'
-        / '1TPa-dK09-elec-free'
-        / 'MgSiO3_Wolf_Bower_2018_1TPa'
-    )
-    legacy_dir.mkdir(parents=True)
-    (legacy_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    _seed_lookup_tables(tmp_path)
     mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves'
     mc_dir.mkdir(parents=True)
 
@@ -221,10 +215,7 @@ def test_setup_solver_eos_fallback(tmp_path):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
     assert mock_solver.called
-    # Fallback-path discriminator: the solver must have been instantiated
-    # exactly once (the fallback path runs the setup body to completion;
-    # a regression that retried after the unified-path miss could call
-    # the solver more than once or zero times via a swallowed exception).
+    # The setup body must run to completion exactly once.
     assert mock_solver.call_count == 1
 
 
@@ -540,7 +531,7 @@ def _caps_only_energy_stub(
 
 
 def _spider_fallback_scaffold(tmp_path):
-    """Build the (hf_row, interior_o) inputs and the legacy EOS/melting dirs a
+    """Build the (hf_row, interior_o) inputs and the lookup and melting dirs a
     spider-stack setup_solver needs to reach the _EnergyParameters call."""
     hf_row = {
         'R_int': 6.371e6,
@@ -555,14 +546,7 @@ def _spider_fallback_scaffold(tmp_path):
     spider_eos_dir.mkdir(parents=True)
     interior_o._spider_eos_dir = str(spider_eos_dir)
 
-    legacy_dir = (
-        tmp_path
-        / 'interior_lookup_tables'
-        / '1TPa-dK09-elec-free'
-        / 'MgSiO3_Wolf_Bower_2018_1TPa'
-    )
-    legacy_dir.mkdir(parents=True)
-    (legacy_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    _seed_lookup_tables(tmp_path)
     (tmp_path / 'interior_lookup_tables' / 'Melting_curves').mkdir(parents=True)
     return hf_row, interior_o
 

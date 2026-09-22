@@ -46,8 +46,8 @@ def test_get_zenodo_record():
 
     Ensures that known configuration keys map to correct Zenodo repository IDs.
     """
-    # Known mapping: interior lookup table
-    assert get_zenodo_record('1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018') == '15877374'
+    # Known mapping: aerosol scattering data
+    assert get_zenodo_record('scattering') == '19294180'
     # Unknown key should return None safely
     assert get_zenodo_record('Unknown/Folder') is None
 
@@ -1064,11 +1064,8 @@ def test_get_osf_project():
 @pytest.mark.unit
 def test_get_zenodo_from_osf():
     """Test reverse lookup: OSF project -> Zenodo IDs."""
-    zenodo_ids = get_zenodo_from_osf('phsxf')
-    assert len(zenodo_ids) > 0
-    # 19473625 is the complete P-S format record used by SPIDER + Aragog at
-    # runtime (supersedes the partial P-T record 17417017 from 2024).
-    assert '19473625' in zenodo_ids
+    zenodo_ids = get_zenodo_from_osf('vehxg')
+    assert zenodo_ids == ['19294180']
 
     # Test unknown OSF project
     zenodo_ids = get_zenodo_from_osf('unknown')
@@ -1692,70 +1689,261 @@ def test_download_muscles_force_removes_the_requested_file_first(tmp_path, monke
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
-@patch('proteus.utils.data.safe_rm')
-def test_download_interior_lookuptables(mock_rm, mock_getfwl, mock_download, tmp_path):
-    """Test interior lookup tables download."""
-    from proteus.utils.data import ARAGOG_BASIC, download_interior_lookuptables
+@patch('proteus.data.fetch_dataset')
+def test_download_interior_lookuptables(mock_fetch, tmp_path, monkeypatch):
+    """The always-needed Wolf and Bower melting curves are fetched through fwl-io."""
+    from proteus.data import MELTING_WOLF_BOWER_2018
+    from proteus.utils.data import download_interior_lookuptables
 
-    mock_getfwl.return_value = tmp_path
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
 
     download_interior_lookuptables(clean=False)
 
-    # Should download each directory in ARAGOG_BASIC
-    assert mock_download.call_count == len(ARAGOG_BASIC)
-    for dir_name in ARAGOG_BASIC:
-        # Check that download was called with correct folder
-        calls = [
-            call for call in mock_download.call_args_list if call.kwargs['folder'] == dir_name
-        ]
-        assert len(calls) == 1
+    mock_fetch.assert_called_once_with(MELTING_WOLF_BOWER_2018, data_root=tmp_path)
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
-@patch('proteus.utils.data.safe_rm')
-def test_download_interior_lookuptables_clean(mock_rm, mock_getfwl, mock_download, tmp_path):
-    """Test interior lookup tables download with clean=True."""
-    from proteus.utils.data import ARAGOG_BASIC, download_interior_lookuptables
+@patch('proteus.data.fetch_dataset')
+def test_download_interior_lookuptables_clean(mock_fetch, tmp_path, monkeypatch):
+    """``clean=True`` removes the fetched dataset directory, then fetches again."""
+    from proteus.data import MELTING_WOLF_BOWER_2018, dataset_dir
+    from proteus.utils.data import download_interior_lookuptables
 
-    mock_getfwl.return_value = tmp_path
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    folder = dataset_dir(MELTING_WOLF_BOWER_2018, data_root=tmp_path)
+    folder.mkdir(parents=True)
+    stale = folder / 'stale.dat'
+    stale.write_text('old')
 
     download_interior_lookuptables(clean=True)
 
-    # Should have called safe_rm for each directory
-    assert mock_rm.call_count == len(ARAGOG_BASIC)
-    # Discrimination: clean=True must still trigger the download for each
-    # cleaned directory; a regression that early-returned after the rm
-    # sweep would leave mock_download.call_count at zero.
-    assert mock_download.call_count == len(ARAGOG_BASIC)
+    assert not stale.exists()
+    mock_fetch.assert_called_once_with(MELTING_WOLF_BOWER_2018, data_root=tmp_path)
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
-@patch('proteus.utils.data.safe_rm')
-def test_download_melting_curves(mock_rm, mock_getfwl, mock_download, tmp_path):
-    """Test melting curves download."""
-    from unittest.mock import MagicMock
-
-    from proteus.config import Config
+@pytest.mark.parametrize(
+    'name, attr',
+    [
+        ('Monteux+600', 'MELTING_MONTEUX_PLUS600'),
+        ('Monteux-600', 'MELTING_MONTEUX_MINUS600'),
+        ('Wolf_Bower+2018', 'MELTING_WOLF_BOWER_2018'),
+    ],
+)
+@patch('proteus.data.fetch_dataset')
+def test_download_melting_curves_fetches_known_name(
+    mock_fetch, name, attr, tmp_path, monkeypatch
+):
+    """Each of the three named curves is fetched from its own manifest dataset."""
+    import proteus.data as data_mod
     from proteus.utils.data import download_melting_curves
 
-    mock_getfwl.return_value = tmp_path
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    config = MagicMock()
+    config.interior_struct.melting_dir = name
 
-    # Create mock config with melting_dir
-    mock_config = MagicMock(spec=Config)
-    mock_config.interior_struct.melting_dir = 'Wolf_Bower+2018'
+    download_melting_curves(config, clean=False)
 
-    download_melting_curves(mock_config, clean=False)
+    mock_fetch.assert_called_once_with(getattr(data_mod, attr), data_root=tmp_path)
 
-    mock_download.assert_called_once()
-    call_kwargs = mock_download.call_args.kwargs
-    assert call_kwargs['folder'] == 'Melting_curves/Wolf_Bower+2018'
-    assert call_kwargs['desc'] == 'Melting curve data: Melting_curves/Wolf_Bower+2018'
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset')
+def test_download_melting_curves_local_dir_wins(mock_fetch, tmp_path, monkeypatch):
+    """A local directory with both P-T files is used and nothing is fetched."""
+    from proteus.utils.data import download_melting_curves
+
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
+    local.mkdir(parents=True)
+    for name in ('solidus_P-T.dat', 'liquidus_P-T.dat'):
+        (local / name).write_text('dummy\n')
+    config = MagicMock()
+    config.interior_struct.melting_dir = 'Wolf_Bower+2018'
+
+    download_melting_curves(config, clean=False)
+
+    mock_fetch.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset')
+def test_download_melting_curves_incomplete_local_dir_fetches(
+    mock_fetch, tmp_path, monkeypatch
+):
+    """A local directory with only one of the two P-T files does not count as present."""
+    from proteus.data import MELTING_WOLF_BOWER_2018
+    from proteus.utils.data import download_melting_curves
+
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
+    local.mkdir(parents=True)
+    (local / 'solidus_P-T.dat').write_text('dummy\n')
+    config = MagicMock()
+    config.interior_struct.melting_dir = 'Wolf_Bower+2018'
+
+    download_melting_curves(config, clean=False)
+
+    mock_fetch.assert_called_once_with(MELTING_WOLF_BOWER_2018, data_root=tmp_path)
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset')
+def test_download_melting_curves_unknown_name_raises(mock_fetch, tmp_path, monkeypatch):
+    """A name that no dataset serves and no local directory holds is an error."""
+    from proteus.utils.data import download_melting_curves
+
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    config = MagicMock()
+    config.interior_struct.melting_dir = 'UnknownCurve'
+
+    with pytest.raises(ValueError, match='No dataset serves melting_dir'):
+        download_melting_curves(config)
+    mock_fetch.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset')
+def test_download_melting_curves_unknown_name_local_dir_ok(mock_fetch, tmp_path, monkeypatch):
+    """A free-form local directory with both P-T files is accepted without a fetch."""
+    from proteus.utils.data import download_melting_curves
+
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'MyCurve'
+    local.mkdir(parents=True)
+    for name in ('solidus_P-T.dat', 'liquidus_P-T.dat'):
+        (local / name).write_text('dummy\n')
+    config = MagicMock()
+    config.interior_struct.melting_dir = 'MyCurve'
+
+    download_melting_curves(config)
+
+    mock_fetch.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset')
+def test_download_melting_curves_clean_removes_only_fetched_dataset(
+    mock_fetch, tmp_path, monkeypatch
+):
+    """``clean=True`` removes the fetched dataset and leaves a local directory alone."""
+    from proteus.data import MELTING_WOLF_BOWER_2018, dataset_dir
+    from proteus.utils.data import download_melting_curves
+
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    fetched = dataset_dir(MELTING_WOLF_BOWER_2018, data_root=tmp_path)
+    fetched.mkdir(parents=True)
+    stale = fetched / 'stale.dat'
+    stale.write_text('old')
+    local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
+    local.mkdir(parents=True)
+    keep = local / 'keep.dat'
+    keep.write_text('mine')
+    config = MagicMock()
+    config.interior_struct.melting_dir = 'Wolf_Bower+2018'
+
+    download_melting_curves(config, clean=True)
+
+    assert not stale.exists()
+    assert keep.read_text() == 'mine'
+    mock_fetch.assert_called_once_with(MELTING_WOLF_BOWER_2018, data_root=tmp_path)
+
+
+@pytest.mark.unit
+def test_resolve_melting_curve_files_manifest_layout(tmp_path):
+    """A known name without a local directory resolves to the versioned dataset files."""
+    from proteus.utils.data import resolve_melting_curve_files
+
+    expected = {
+        'Monteux+600': ('monteux_plus600', 'r15728091'),
+        'Monteux-600': ('monteux_minus600', 'r15728138'),
+        'Wolf_Bower+2018': ('wolf_bower_2018', 'r15728072'),
+    }
+    for name, (folder, rec) in expected.items():
+        solidus, liquidus = resolve_melting_curve_files(name, data_root=tmp_path)
+        base = tmp_path / 'interior_struct' / 'melting_curves' / folder / rec
+        assert solidus == base / 'solidus.dat'
+        assert liquidus == base / 'liquidus.dat'
+
+
+@pytest.mark.unit
+def test_resolve_melting_curve_files_local_first(tmp_path):
+    """A complete local directory takes precedence over the manifest dataset."""
+    from proteus.utils.data import resolve_melting_curve_files
+
+    local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
+    local.mkdir(parents=True)
+    (local / 'solidus_P-T.dat').write_text('s')
+    (local / 'liquidus_P-T.dat').write_text('l')
+
+    solidus, liquidus = resolve_melting_curve_files('Wolf_Bower+2018', data_root=tmp_path)
+
+    assert solidus == local / 'solidus_P-T.dat'
+    assert liquidus == local / 'liquidus_P-T.dat'
+
+
+@pytest.mark.unit
+def test_resolve_melting_curve_files_partial_local_falls_back(tmp_path):
+    """One local file alone does not shadow the manifest dataset."""
+    from proteus.utils.data import resolve_melting_curve_files
+
+    local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Monteux+600'
+    local.mkdir(parents=True)
+    (local / 'liquidus_P-T.dat').write_text('l')
+
+    solidus, liquidus = resolve_melting_curve_files('Monteux+600', data_root=tmp_path)
+
+    assert 'interior_struct' in solidus.parts
+    assert solidus.name == 'solidus.dat' and liquidus.name == 'liquidus.dat'
+
+
+@pytest.mark.unit
+def test_resolve_melting_curve_files_unknown_name_gives_local_paths(tmp_path):
+    """An unknown name resolves to the local P-T paths, which the caller reports."""
+    from proteus.utils.data import resolve_melting_curve_files
+
+    solidus, liquidus = resolve_melting_curve_files('Free_Form', data_root=tmp_path)
+
+    local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Free_Form'
+    assert (solidus, liquidus) == (local / 'solidus_P-T.dat', local / 'liquidus_P-T.dat')
+    assert not tmp_path.joinpath('interior_struct').exists()
+
+
+@pytest.mark.unit
+def test_resolve_lookup_table_dir_layout(tmp_path):
+    """The lookup tables resolve to the versioned dataset directory of record 19473625."""
+    from proteus.utils.data import resolve_lookup_table_dir
+
+    folder = resolve_lookup_table_dir(data_root=tmp_path)
+
+    assert (
+        folder == tmp_path / 'interior_struct' / 'lookup' / 'wolf_bower_2018_1tpa' / 'r19473625'
+    )
+
+
+@pytest.mark.unit
+def test_find_lookup_table_dir(tmp_path):
+    """The directory is returned only once it holds the SPIDER phase files."""
+    from proteus.utils.data import find_lookup_table_dir, resolve_lookup_table_dir
+
+    assert find_lookup_table_dir(data_root=tmp_path) is None
+
+    folder = resolve_lookup_table_dir(data_root=tmp_path)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / 'density_melt.dat').write_text('x')
+    assert find_lookup_table_dir(data_root=tmp_path) is None
+
+    (folder / 'thermal_exp_melt.dat').write_text('x')
+    assert find_lookup_table_dir(data_root=tmp_path) == folder
+
+
+@pytest.mark.unit
+def test_find_lookup_table_dir_unwritable_root_gives_none():
+    """A data root that cannot be created gives None, not an error."""
+    from proteus.utils.data import find_lookup_table_dir
+
+    with patch('proteus.data.dataset_dir', side_effect=OSError('read-only')):
+        assert find_lookup_table_dir(data_root='/nonexistent') is None
 
 
 @pytest.mark.unit
@@ -2232,85 +2420,6 @@ def test_download_stellar_spectra_no_mapping(mock_get_info):
     # ValueError could be raised by an earlier guard that never reached
     # the source-info layer).
     mock_get_info.assert_called()
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_melting_curves_no_mapping(mock_get_info):
-    """Test melting curves download raises error when no mapping found."""
-    from unittest.mock import MagicMock
-
-    from proteus.config import Config
-    from proteus.utils.data import download_melting_curves
-
-    mock_config = MagicMock(spec=Config)
-    mock_config.interior_struct.melting_dir = 'UnknownCurve'
-    mock_get_info.return_value = None
-
-    with pytest.raises(ValueError, match='No data source mapping found'):
-        download_melting_curves(mock_config)
-    # Discrimination: confirm the registry lookup ran with the configured
-    # melting_dir; a regression that raised before consulting the registry
-    # would still pass the raises-match check.
-    mock_get_info.assert_called()
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
-@patch('proteus.utils.data.safe_rm')
-def test_download_melting_curves_canonical_copy(mock_rm, mock_getfwl, mock_download, tmp_path):
-    """Test canonical P-T copy from legacy Zenodo names (solidus.dat → solidus_P-T.dat)."""
-    from proteus.utils.data import download_melting_curves
-
-    mock_getfwl.return_value = tmp_path
-
-    # Create legacy files that Zenodo would download
-    mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
-    mc_dir.mkdir(parents=True)
-    (mc_dir / 'solidus.dat').write_text('solidus data')
-    (mc_dir / 'liquidus.dat').write_text('liquidus data')
-
-    mock_config = MagicMock()
-    mock_config.interior_struct.melting_dir = 'Wolf_Bower+2018'
-
-    download_melting_curves(mock_config, clean=False)
-
-    # Canonical copies should be created
-    assert (mc_dir / 'solidus_P-T.dat').exists()
-    assert (mc_dir / 'liquidus_P-T.dat').exists()
-    assert (mc_dir / 'solidus_P-T.dat').read_text() == 'solidus data'
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
-@patch('proteus.utils.data.safe_rm')
-def test_download_melting_curves_canonical_skip_existing(
-    mock_rm, mock_getfwl, mock_download, tmp_path
-):
-    """Canonical copy is skipped when P-T file already exists."""
-    from proteus.utils.data import download_melting_curves
-
-    mock_getfwl.return_value = tmp_path
-
-    mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
-    mc_dir.mkdir(parents=True)
-    (mc_dir / 'solidus.dat').write_text('old solidus')
-    (mc_dir / 'solidus_P-T.dat').write_text('existing canonical')
-    (mc_dir / 'liquidus.dat').write_text('old liquidus')
-
-    mock_config = MagicMock()
-    mock_config.interior_struct.melting_dir = 'Wolf_Bower+2018'
-
-    download_melting_curves(mock_config, clean=False)
-
-    # Should NOT overwrite existing canonical file
-    assert (mc_dir / 'solidus_P-T.dat').read_text() == 'existing canonical'
-    # Discrimination: the legacy source file must also be untouched (a
-    # regression that re-copied from solidus.dat to solidus_P-T.dat
-    # without the skip-guard would have rewritten the canonical file).
-    assert (mc_dir / 'solidus.dat').read_text() == 'old solidus'
 
 
 @pytest.mark.unit
@@ -3081,35 +3190,19 @@ def test_seager_fallback_families_match_registry():
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_eos_dynamic_calls_download(mock_info, mock_dl):
-    """download_eos_dynamic calls download with the legacy folder path."""
+@patch('proteus.data.fetch_dataset')
+def test_download_eos_dynamic_fetches_lookup_dataset(mock_fetch, tmp_path, monkeypatch):
+    """download_eos_dynamic fetches the Wolf and Bower P-S lookup dataset through fwl-io."""
+    from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
     from proteus.utils.data import download_eos_dynamic
 
-    mock_info.return_value = {'osf_project': 'abc123', 'zenodo_id': '999'}
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    target_dir = dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=tmp_path)
+    mock_fetch.return_value = [target_dir / 'temperature_melt.dat']
+
     download_eos_dynamic('WolfBower2018_MgSiO3')
 
-    mock_dl.assert_called_once()
-    call_kwargs = mock_dl.call_args
-    assert 'interior_lookup_tables' in str(call_kwargs)
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_eos_dynamic_no_mapping(mock_info, mock_dl):
-    """download_eos_dynamic returns early when no source mapping found."""
-    from proteus.utils.data import download_eos_dynamic
-
-    mock_info.return_value = None
-    download_eos_dynamic('UnknownEOS')
-
-    mock_dl.assert_not_called()
-    # Discrimination: confirm the mapping lookup actually ran with the
-    # caller's key; otherwise assert_not_called could pass on a regression
-    # that early-exited before consulting the registry at all.
-    mock_info.assert_called_once()
+    mock_fetch.assert_called_once_with(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=tmp_path)
 
 
 @pytest.mark.unit
@@ -3125,38 +3218,6 @@ def test_download_eos_static_delegates(mock_seager):
     # with its own defaults); a regression that forwarded a stray arg would
     # break this pin.
     assert mock_seager.call_args == ((), {})
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
-def test_download_melting_curves_skips_when_canonical_files_exist(
-    mock_getfwl, mock_download, tmp_path
-):
-    """download_melting_curves should return early when all canonical files already exist."""
-    from unittest.mock import MagicMock
-
-    from proteus.utils.data import download_melting_curves
-
-    mock_getfwl.return_value = tmp_path
-
-    mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
-    mc_dir.mkdir(parents=True, exist_ok=True)
-
-    for name in ['solidus_P-T.dat', 'liquidus_P-T.dat', 'solidus_P-S.dat', 'liquidus_P-S.dat']:
-        (mc_dir / name).write_text('dummy\n')
-
-    mock_config = MagicMock()
-    mock_config.interior_struct.melting_dir = 'Wolf_Bower+2018'
-
-    download_melting_curves(mock_config, clean=False)
-
-    mock_download.assert_not_called()
-    # Discrimination: pre-existing dummy files must remain unmodified; a
-    # regression that issued a Zenodo download anyway would either rewrite
-    # them or leave the directory tree in a different state.
-    for name in ['solidus_P-T.dat', 'liquidus_P-T.dat', 'solidus_P-S.dat', 'liquidus_P-S.dat']:
-        assert (mc_dir / name).read_text() == 'dummy\n'
 
 
 # ============================================================================
@@ -4497,27 +4558,6 @@ def test_download_scattering_no_mapping_raises(mock_info):
     mock_info.assert_called_once()
 
 
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.get_data_source_info', return_value=None)
-@patch('proteus.utils.data.GetFWLData')
-def test_download_interior_lookuptables_warns_and_skips_unmapped(
-    mock_getfwl, mock_info, mock_download, tmp_path, caplog
-):
-    """When the source mapping is missing, the function warns and does not call download()."""
-    from proteus.utils.data import download_interior_lookuptables
-
-    mock_getfwl.return_value = tmp_path
-
-    with caplog.at_level('WARNING'):
-        download_interior_lookuptables(clean=False)
-
-    # Discrimination: the registry lookup was attempted but download
-    # was skipped because the mapping is None.
-    mock_info.assert_called()
-    mock_download.assert_not_called()
-
-
 # ============================================================================
 # download_melting_curves additional coverage
 # ============================================================================
@@ -4546,118 +4586,75 @@ def test_download_melting_curves_none_dir_is_noop(mock_getfwl, mock_download, tm
     mock_getfwl.assert_not_called()
 
 
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
-def test_download_melting_curves_clean_removes_dir(mock_getfwl, mock_download, tmp_path):
-    """When clean=True, the folder_dir is removed before download is attempted."""
-    from unittest.mock import MagicMock
-
-    from proteus.utils.data import download_melting_curves
-
-    mock_getfwl.return_value = tmp_path
-
-    folder_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
-    folder_dir.mkdir(parents=True, exist_ok=True)
-    stale = folder_dir / 'stale.dat'
-    stale.write_text('old')
-
-    config = MagicMock()
-    config.interior_struct.melting_dir = 'Wolf_Bower+2018'
-
-    download_melting_curves(config, clean=True)
-
-    # Discrimination: clean=True must have removed the stale file
-    # before consulting the source mapping; download() may or may not
-    # have been invoked depending on the flat-layout shortcut.
-    assert not stale.exists()
-    # The parent directory itself is still intact (safe_rm removed only
-    # the contents under folder_dir during cleanup).
-    assert tmp_path.exists()
-
-
 # ============================================================================
 # download_eos_dynamic manifest validation coverage
 # ============================================================================
 
 
+_LOOKUP_EXPECTED_FILES = [
+    'temperature_melt.dat',
+    'temperature_solid.dat',
+    'density_melt.dat',
+    'density_solid.dat',
+    'heat_capacity_melt.dat',
+    'heat_capacity_solid.dat',
+    'adiabat_temp_grad_melt.dat',
+    'adiabat_temp_grad_solid.dat',
+    'thermal_exp_melt.dat',
+    'thermal_exp_solid.dat',
+    'solidus_P-S.dat',
+    'liquidus_P-S.dat',
+]
+
+
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.data.fetch_dataset')
 def test_download_eos_dynamic_manifest_complete_no_warning(
-    mock_getfwl, mock_download, tmp_path, caplog
+    mock_fetch, tmp_path, monkeypatch, caplog
 ):
-    """When all 12 expected files are present, no manifest-incomplete warning fires."""
+    """When all 12 expected files are present, no missing-file warning fires."""
+    from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
     from proteus.utils.data import download_eos_dynamic
 
-    mock_getfwl.return_value = tmp_path
-    mock_download.return_value = True
-
-    target_dir = (
-        tmp_path
-        / 'interior_lookup_tables'
-        / '1TPa-dK09-elec-free'
-        / 'MgSiO3_Wolf_Bower_2018_1TPa'
-    )
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    target_dir = dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=tmp_path)
     target_dir.mkdir(parents=True, exist_ok=True)
-    expected_files = [
-        'temperature_melt.dat',
-        'temperature_solid.dat',
-        'density_melt.dat',
-        'density_solid.dat',
-        'heat_capacity_melt.dat',
-        'heat_capacity_solid.dat',
-        'adiabat_temp_grad_melt.dat',
-        'adiabat_temp_grad_solid.dat',
-        'thermal_exp_melt.dat',
-        'thermal_exp_solid.dat',
-        'solidus_P-S.dat',
-        'liquidus_P-S.dat',
-    ]
-    for fname in expected_files:
+    for fname in _LOOKUP_EXPECTED_FILES:
         (target_dir / fname).write_text('data')
+    mock_fetch.return_value = [target_dir / fname for fname in _LOOKUP_EXPECTED_FILES]
 
     with caplog.at_level('WARNING'):
         download_eos_dynamic('WolfBower2018_MgSiO3')
 
-    # Discrimination: no "missing" warning should have fired.
-    missing_warnings = [r for r in caplog.records if 'missing' in r.getMessage().lower()]
-    assert missing_warnings == []
-    # And the download function was called.
-    mock_download.assert_called_once()
+    assert [r for r in caplog.records if 'missing' in r.getMessage().lower()] == []
+    mock_fetch.assert_called_once()
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.data.fetch_dataset')
 def test_download_eos_dynamic_manifest_incomplete_warns(
-    mock_getfwl, mock_download, tmp_path, caplog
+    mock_fetch, tmp_path, monkeypatch, caplog
 ):
-    """When some expected files are missing, the manifest-incomplete warning fires."""
+    """When files are missing, the warning names the count of missing files."""
+    from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
     from proteus.utils.data import download_eos_dynamic
 
-    mock_getfwl.return_value = tmp_path
-    mock_download.return_value = True
-
-    target_dir = (
-        tmp_path
-        / 'interior_lookup_tables'
-        / '1TPa-dK09-elec-free'
-        / 'MgSiO3_Wolf_Bower_2018_1TPa'
-    )
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    target_dir = dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=tmp_path)
     target_dir.mkdir(parents=True, exist_ok=True)
-    # Only create 2 of 12 files
     (target_dir / 'density_melt.dat').write_text('data')
     (target_dir / 'density_solid.dat').write_text('data')
+    mock_fetch.return_value = [
+        target_dir / 'density_melt.dat',
+        target_dir / 'density_solid.dat',
+    ]
 
     with caplog.at_level('WARNING'):
         download_eos_dynamic('WolfBower2018_MgSiO3')
 
-    # Discrimination: the manifest warning must include the count of
-    # missing files (10 of 12) so consumers can act on it.
     messages = ' '.join(r.getMessage() for r in caplog.records)
-    assert 'missing' in messages.lower() or 'fall back' in messages.lower()
-    mock_download.assert_called_once()
+    assert 'missing 10 of 12' in messages
+    mock_fetch.assert_called_once()
 
 
 # ============================================================================
@@ -5144,9 +5141,7 @@ def test_get_zalmoxis_melting_curves_none_dir_returns_none(monkeypatch, tmp_path
 
 @pytest.mark.unit
 def test_get_zalmoxis_melting_curves_missing_dir_raises(monkeypatch, tmp_path):
-    """When the melting curves directory is missing, FileNotFoundError is raised."""
-    from unittest.mock import MagicMock
-
+    """When a free-form melting curve directory is absent, FileNotFoundError names the file."""
     import proteus.utils.data as data_mod
     from proteus.utils.data import get_zalmoxis_melting_curves
 
@@ -5155,12 +5150,57 @@ def test_get_zalmoxis_melting_curves_missing_dir_raises(monkeypatch, tmp_path):
     config = MagicMock()
     config.interior_struct.melting_dir = 'NonexistentCurve'
 
-    with pytest.raises(FileNotFoundError, match='Melting curves'):
+    with pytest.raises(FileNotFoundError, match='Melting curve file not found'):
         get_zalmoxis_melting_curves(config)
-    # Discrimination: confirm the directory really does not exist (so
-    # the error path was reached for the right reason).
     missing = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'NonexistentCurve'
     assert not missing.exists()
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_melting_curves_reads_manifest_dataset(monkeypatch, tmp_path):
+    """A known name without a local directory is read from its versioned dataset."""
+    import proteus.utils.data as data_mod
+    from proteus.data import MELTING_MONTEUX_PLUS600, dataset_dir
+    from proteus.utils.data import get_zalmoxis_melting_curves
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    folder = dataset_dir(MELTING_MONTEUX_PLUS600, data_root=tmp_path)
+    folder.mkdir(parents=True)
+    (folder / 'solidus.dat').write_text('1e9 2000\n2e9 3000\n')
+    (folder / 'liquidus.dat').write_text('1e9 2500\n2e9 3500\n')
+
+    config = MagicMock()
+    config.interior_struct.melting_dir = 'Monteux+600'
+
+    sol, liq = get_zalmoxis_melting_curves(config)
+
+    assert float(sol(1.5e9)) == pytest.approx(2500.0, rel=1e-12)
+    assert float(liq(1.5e9)) == pytest.approx(3000.0, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_melting_curves_local_dir_beats_manifest(monkeypatch, tmp_path):
+    """When both exist, the local P-T files are read, not the dataset files."""
+    import proteus.utils.data as data_mod
+    from proteus.data import MELTING_MONTEUX_PLUS600, dataset_dir
+    from proteus.utils.data import get_zalmoxis_melting_curves
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    folder = dataset_dir(MELTING_MONTEUX_PLUS600, data_root=tmp_path)
+    folder.mkdir(parents=True)
+    (folder / 'solidus.dat').write_text('1e9 1000\n2e9 1000\n')
+    (folder / 'liquidus.dat').write_text('1e9 1000\n2e9 1000\n')
+    local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Monteux+600'
+    local.mkdir(parents=True)
+    (local / 'solidus_P-T.dat').write_text('1e9 2000\n2e9 3000\n')
+    (local / 'liquidus_P-T.dat').write_text('1e9 2500\n2e9 3500\n')
+
+    config = MagicMock()
+    config.interior_struct.melting_dir = 'Monteux+600'
+
+    sol, _ = get_zalmoxis_melting_curves(config)
+
+    assert float(sol(1.5e9)) == pytest.approx(2500.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -5295,107 +5335,102 @@ def test_get_zalmoxis_EOS_seager_missing_fetches(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
-def test_get_zalmoxis_EOS_wb_pt_subfolder_takes_precedence(monkeypatch, tmp_path):
-    """When EOS/dynamic/WolfBower2018_MgSiO3/P-T exists, it is preferred over the parent."""
+def test_get_zalmoxis_EOS_wb_versioned_dir_with_optional_tables(monkeypatch, tmp_path):
+    """Wolf and Bower paths point into the versioned dataset; optional tables are listed."""
     import proteus.utils.data as data_mod
+    from proteus.data import EOS_WOLF_BOWER_2018, dataset_dir
     from proteus.utils.data import get_zalmoxis_EOS
 
     monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-
-    eos_base = tmp_path / 'interior_lookup_tables' / 'EOS'
-    seager_unified = eos_base / 'static' / 'Seager2007'
-    seager_unified.mkdir(parents=True, exist_ok=True)
-    for fname in (
-        'eos_seager07_iron.txt',
-        'eos_seager07_silicate.txt',
-        'eos_seager07_water.txt',
-    ):
-        (seager_unified / fname).write_text('eos')
-
-    wb_pt = eos_base / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
-    wb_pt.mkdir(parents=True, exist_ok=True)
-    # Optional Cp + adiabat-grad files: when present, they should be
-    # included in the dict.
-    (wb_pt / 'heat_capacity_melt.dat').write_text('cp')
-    (wb_pt / 'heat_capacity_solid.dat').write_text('cp')
-    (wb_pt / 'adiabat_temp_grad_melt.dat').write_text('grad')
+    _seed_seager(tmp_path)
+    wb = dataset_dir(EOS_WOLF_BOWER_2018, data_root=tmp_path)
+    wb.mkdir(parents=True)
+    (wb / 'heat_capacity_melt.dat').write_text('cp')
+    (wb / 'heat_capacity_solid.dat').write_text('cp')
+    (wb / 'adiabat_temp_grad_melt.dat').write_text('grad')
 
     _, iron_Tdep, _, _ = get_zalmoxis_EOS()
 
-    # Discrimination: the cp_file and adiabat_grad_file entries appear
-    # because the optional files exist on disk; a regression that
-    # dropped the conditional include would leave one or both absent.
     assert 'cp_file' in iron_Tdep['melted_mantle']
     assert 'adiabat_grad_file' in iron_Tdep['melted_mantle']
     assert 'cp_file' in iron_Tdep['solid_mantle']
-    # Density paths must point inside the P-T subfolder.
-    assert 'WolfBower2018_MgSiO3/P-T' in iron_Tdep['melted_mantle']['eos_file']
+    assert Path(iron_Tdep['melted_mantle']['eos_file']) == wb / 'density_melt.dat'
+    assert Path(iron_Tdep['solid_mantle']['eos_file']) == wb / 'density_solid.dat'
 
 
 @pytest.mark.unit
-def test_get_zalmoxis_EOS_rt_legacy_folder_used(monkeypatch, tmp_path, caplog):
-    """When the unified RTPress folder is missing but legacy exists, it is used."""
+def test_get_zalmoxis_EOS_wb_without_optional_tables_omits_keys(monkeypatch, tmp_path):
+    """Without the optional Cp and gradient tables the dict omits their keys."""
     import proteus.utils.data as data_mod
+    from proteus.data import EOS_WOLF_BOWER_2018, dataset_dir
     from proteus.utils.data import get_zalmoxis_EOS
 
     monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-
     _seed_seager(tmp_path)
+    dataset_dir(EOS_WOLF_BOWER_2018, data_root=tmp_path).mkdir(parents=True)
 
-    rt_legacy = tmp_path / 'EOS_material_properties' / 'EOS_RTPress_melt_100TPa'
-    rt_legacy.mkdir(parents=True, exist_ok=True)
-    (rt_legacy / 'heat_capacity_melt.dat').write_text('cp')
-    (rt_legacy / 'adiabat_temp_grad_melt.dat').write_text('grad')
+    _, iron_Tdep, _, _ = get_zalmoxis_EOS()
+
+    assert 'cp_file' not in iron_Tdep['melted_mantle']
+    assert 'adiabat_grad_file' not in iron_Tdep['melted_mantle']
+    assert 'cp_file' not in iron_Tdep['solid_mantle']
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_EOS_rt_versioned_folder_used(monkeypatch, tmp_path, caplog):
+    """The RTPress tables are read from their versioned dataset directory."""
+    import proteus.utils.data as data_mod
+    from proteus.data import EOS_RTPRESS_100TPA, dataset_dir
+    from proteus.utils.data import get_zalmoxis_EOS
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    _seed_seager(tmp_path)
+    rt = dataset_dir(EOS_RTPRESS_100TPA, data_root=tmp_path)
+    rt.mkdir(parents=True)
+    (rt / 'heat_capacity_melt.dat').write_text('cp')
+    (rt / 'adiabat_temp_grad_melt.dat').write_text('grad')
 
     with caplog.at_level('WARNING'):
         _, _, _, iron_rt = get_zalmoxis_EOS()
 
-    # Discrimination: the RTPress path lands in the legacy folder
-    # (because the unified EOS/RTPress_melt_100TPa subfolder is missing).
-    assert 'EOS_RTPress_melt_100TPa' in iron_rt['melted_mantle']['eos_file']
-    # cp_file is populated because the file exists.
-    assert 'cp_file' in iron_rt['melted_mantle']
-    # No "RTPress100TPa EOS folder not found" warning fires; only the
-    # Cp-table warning would fire if missing, and we created it.
-    folder_warnings = [r for r in caplog.records if 'EOS folder not found' in r.getMessage()]
-    assert folder_warnings == []
+    assert Path(iron_rt['melted_mantle']['eos_file']) == rt / 'density_melt.dat'
+    assert Path(iron_rt['melted_mantle']['cp_file']) == rt / 'heat_capacity_melt.dat'
+    assert (
+        Path(iron_rt['melted_mantle']['adiabat_grad_file']) == rt / 'adiabat_temp_grad_melt.dat'
+    )
+    assert [r for r in caplog.records if 'EOS folder not found' in r.getMessage()] == []
 
 
 @pytest.mark.unit
 def test_get_zalmoxis_EOS_rt_missing_cp_warns(monkeypatch, tmp_path, caplog):
     """When the RTPress Cp table is missing, a warning fires and the dict omits cp_file."""
     import proteus.utils.data as data_mod
+    from proteus.data import EOS_RTPRESS_100TPA, dataset_dir
     from proteus.utils.data import get_zalmoxis_EOS
 
     monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-
-    eos_base = tmp_path / 'interior_lookup_tables' / 'EOS'
     _seed_seager(tmp_path)
-
-    rt_unified = eos_base / 'RTPress_melt_100TPa'
-    rt_unified.mkdir(parents=True, exist_ok=True)
-    # Do NOT create heat_capacity_melt.dat
+    # The versioned folder exists but holds no heat_capacity_melt.dat.
+    dataset_dir(EOS_RTPRESS_100TPA, data_root=tmp_path).mkdir(parents=True)
 
     with caplog.at_level('WARNING'):
         _, _, _, iron_rt = get_zalmoxis_EOS()
 
-    # Discrimination: a "Cp table not found" warning fired; the cp_file
-    # key is absent from the dict.
     cp_warnings = [r for r in caplog.records if 'Cp table not found' in r.getMessage()]
+    folder_warnings = [r for r in caplog.records if 'EOS folder not found' in r.getMessage()]
     assert len(cp_warnings) >= 1
+    assert folder_warnings == []
     assert 'cp_file' not in iron_rt['melted_mantle']
 
 
 @pytest.mark.unit
 def test_get_zalmoxis_EOS_rt_folder_missing_warns(monkeypatch, tmp_path, caplog):
-    """When neither unified nor legacy RTPress folder exists, a folder-not-found warning fires."""
+    """When the versioned RTPress folder is absent, a folder-not-found warning fires."""
     import proteus.utils.data as data_mod
+    from proteus.data import EOS_RTPRESS_100TPA, dataset_dir
     from proteus.utils.data import get_zalmoxis_EOS
 
     monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-
-    # Only Seager is present (legacy); RTPress folder is absent in BOTH
-    # locations.
     _seed_seager(tmp_path)
 
     with caplog.at_level('WARNING'):
@@ -5405,14 +5440,11 @@ def test_get_zalmoxis_EOS_rt_folder_missing_warns(monkeypatch, tmp_path, caplog)
         r for r in caplog.records if 'RTPress100TPa EOS folder not found' in r.getMessage()
     ]
     cp_warnings = [r for r in caplog.records if 'Cp table not found' in r.getMessage()]
-    # Discrimination: exactly the folder-not-found warning fired AND the
-    # Cp-table warning ALSO fired (because the file under the missing
-    # folder cannot exist either).
     assert len(folder_warnings) >= 1
     assert len(cp_warnings) >= 1
-    # The returned dict still resolves a path (legacy default) for the
-    # density_melt eos_file, even though no file exists on disk.
-    assert 'RTPress' in iron_rt['melted_mantle']['eos_file']
+    # The path still resolves inside the versioned dataset directory.
+    rt = dataset_dir(EOS_RTPRESS_100TPA, data_root=tmp_path)
+    assert Path(iron_rt['melted_mantle']['eos_file']) == rt / 'density_melt.dat'
 
 
 # ============================================================================

@@ -75,7 +75,7 @@ Historical and future spectra are from
 
 ### MUSCLES / Mega-MUSCLES spectra
 
-Observed UV–optical–IR spectra from the
+Observed UV-optical-IR spectra from the
 [MUSCLES](https://archive.stsci.edu/prepds/muscles/) and
 [Mega-MUSCLES](https://archive.stsci.edu/prepds/mega-muscles/) surveys,
 stored under `$FWL_DATA/stellar_spectra/muscles/r<record>/` as `<star_name>.txt`.
@@ -85,42 +85,42 @@ stored under `$FWL_DATA/stellar_spectra/muscles/r<record>/` as `<star_name>.txt`
 
     | Star | `star_name` | Type | Teff (K) | Age | L (L☉) | M (M☉) | R (R☉) | Survey |
     |---|---|---|---|---|---|---|---|---|
-    | [Epsilon Eridani](https://exoplanetarchive.ipac.caltech.edu/overview/eps%20Eri) | `v-eps-eri` | K2V | 5020 | 400–800 Myr | 0.32 | 0.82 | 0.759 | MUSCLES |
-    | [GJ 1132](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201132) | `gj1132` | M4.5V | 3229 | — | 0.005 | 0.195 | 0.221 | Mega-MUSCLES |
-    | [GJ 1214](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201214) | `gj1214` | M4V | 3100 | 5–10 Gyr | 0.00351 | 0.182 | 0.216 | MUSCLES |
-    | [GJ 15 A](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%2015) | `gj15a` | M1–M2V | ~3700 | — | ~0.021 | ~0.40 | ~0.38 | Mega-MUSCLES |
-    | [GJ 163](https://exoplanetarchive.ipac.caltech.edu/overview/gj%20163%20b) | `gj163` | M3.5V | ~3300–3500 | ~2–10 Gyr | ~0.02 | ~0.40 | ~0.41 | Mega-MUSCLES |
+    | [Epsilon Eridani](https://exoplanetarchive.ipac.caltech.edu/overview/eps%20Eri) | `v-eps-eri` | K2V | 5020 | 400-800 Myr | 0.32 | 0.82 | 0.759 | MUSCLES |
+    | [GJ 1132](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201132) | `gj1132` | M4.5V | 3229 | n/a | 0.005 | 0.195 | 0.221 | Mega-MUSCLES |
+    | [GJ 1214](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201214) | `gj1214` | M4V | 3100 | 5-10 Gyr | 0.00351 | 0.182 | 0.216 | MUSCLES |
+    | [GJ 15 A](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%2015) | `gj15a` | M1-M2V | ~3700 | n/a | ~0.021 | ~0.40 | ~0.38 | Mega-MUSCLES |
+    | [GJ 163](https://exoplanetarchive.ipac.caltech.edu/overview/gj%20163%20b) | `gj163` | M3.5V | ~3300-3500 | ~2-10 Gyr | ~0.02 | ~0.40 | ~0.41 | Mega-MUSCLES |
     | [GJ 176](https://exoplanetarchive.ipac.caltech.edu/overview/HD%20285968) | `gj176` | M2.5V | ~3700 | ~4 Gyr | 0.034 | 0.51 | 0.48 | MUSCLES |
-    | [GJ 436](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20436) | `gj436` | M2.5–M3V | ~3600 | ~6–15 Gyr | 0.023 | 0.44 | 0.42 | MUSCLES |
-    | [GJ 551 (Proxima Cen)](https://exoplanetarchive.ipac.caltech.edu/overview/alpha%20Cen) | `gj551` | M5.5Ve | ~2900–3000 | ~4.8 Gyr | 0.0015 | 0.12 | 0.14 | MUSCLES |
+    | [GJ 436](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20436) | `gj436` | M2.5-M3V | ~3600 | ~6-15 Gyr | 0.023 | 0.44 | 0.42 | MUSCLES |
+    | [GJ 551 (Proxima Cen)](https://exoplanetarchive.ipac.caltech.edu/overview/alpha%20Cen) | `gj551` | M5.5Ve | ~2900-3000 | ~4.8 Gyr | 0.0015 | 0.12 | 0.14 | MUSCLES |
     | [GJ 581](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20581) | `gj581` | M3V | ~3500 | ~4 Gyr | ~0.012 | ~0.30 | ~0.30 | MUSCLES |
-    | [GJ 649](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20649) | `gj649` | M1–M2V | ~3700 | — | ~0.044 | 0.51 | 0.50 | Mega-MUSCLES |
-    | [GJ 667 C](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20667C) | `gj667c` | M1.5V | ~3700 | >2 Gyr | ~0.014 | ~0.33 | ~0.32–0.42 | MUSCLES |
-    | [GJ 674](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20674) | `gj674` | M2.5V | ~3400–3600 | ~0.5–3 Gyr | 0.017 | 0.35 | 0.36 | Mega-MUSCLES |
-    | [GJ 676 A](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20676A) | `gj676a` | M0V | ~3800–4000 | — | 0.083 | 0.63 | 0.65 | Mega-MUSCLES |
-    | [GJ 699 (Barnard's Star)](https://exoplanetarchive.ipac.caltech.edu/overview/barnard's%20star) | `gj699` | M3.5–4V | ~3200–3300 | ~10 Gyr | 0.0035 | ~0.16 | ~0.19 | Mega-MUSCLES |
-    | [GJ 729 (Ross 154)](https://simbad.cds.unistra.fr/simbad/sim-id?Ident=GJ+729) | `gj729` | M3.5V | ~3200–3300 | <1–2 Gyr | ~0.004–0.005 | ~0.18 | ~0.20 | Mega-MUSCLES |
-    | [GJ 832](https://exoplanetarchive.ipac.caltech.edu/overview/HIP%20106440) | `gj832` | M1–M3V | ~3500 | ~4–12 Gyr | ~0.03 | 0.45 | 0.45 | MUSCLES |
-    | GJ 832 (synthetic) | `gj832_synth` | M1–M3V | ~3500 | ~4–12 Gyr | ~0.03 | 0.45 | 0.45 | MUSCLES |
+    | [GJ 649](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20649) | `gj649` | M1-M2V | ~3700 | n/a | ~0.044 | 0.51 | 0.50 | Mega-MUSCLES |
+    | [GJ 667 C](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20667C) | `gj667c` | M1.5V | ~3700 | >2 Gyr | ~0.014 | ~0.33 | ~0.32-0.42 | MUSCLES |
+    | [GJ 674](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20674) | `gj674` | M2.5V | ~3400-3600 | ~0.5-3 Gyr | 0.017 | 0.35 | 0.36 | Mega-MUSCLES |
+    | [GJ 676 A](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20676A) | `gj676a` | M0V | ~3800-4000 | n/a | 0.083 | 0.63 | 0.65 | Mega-MUSCLES |
+    | [GJ 699 (Barnard's Star)](https://exoplanetarchive.ipac.caltech.edu/overview/barnard's%20star) | `gj699` | M3.5-4V | ~3200-3300 | ~10 Gyr | 0.0035 | ~0.16 | ~0.19 | Mega-MUSCLES |
+    | [GJ 729 (Ross 154)](https://simbad.cds.unistra.fr/simbad/sim-id?Ident=GJ+729) | `gj729` | M3.5V | ~3200-3300 | <1-2 Gyr | ~0.004-0.005 | ~0.18 | ~0.20 | Mega-MUSCLES |
+    | [GJ 832](https://exoplanetarchive.ipac.caltech.edu/overview/HIP%20106440) | `gj832` | M1-M3V | ~3500 | ~4-12 Gyr | ~0.03 | 0.45 | 0.45 | MUSCLES |
+    | GJ 832 (synthetic) | `gj832_synth` | M1-M3V | ~3500 | ~4-12 Gyr | ~0.03 | 0.45 | 0.45 | MUSCLES |
     | [GJ 849](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20849) | `gj849` | M3.5V | 3467 | >3 Gyr | 0.02887 | 0.45 | 0.45 | Mega-MUSCLES |
-    | [GJ 876](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20876) | `gj876` | M2–4V | ~3200–3300 | ~2–15 Gyr | ~0.013 | ~0.37 | ~0.37 | MUSCLES |
-    | [HAT-P-12](https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-12) | `hat-p-12` | K4V | 4500–4800 | 2–14 Gyr | ~0.20 | 0.74 | 0.70 | MUSCLES ext. |
-    | [HAT-P-26](https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-26) | `hat-p-26` | K1V | ~5050 | 4–12 Gyr | ~0.44 | 0.85 | 0.86 | MUSCLES ext. |
-    | [HD 40307](https://exoplanetarchive.ipac.caltech.edu/overview/HD%2040307) | `hd40307` | K2.5V | ~4800–5000 | ~2–5 Gyr | ~0.22 | ~0.79 | ~0.71 | MUSCLES |
+    | [GJ 876](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20876) | `gj876` | M2-4V | ~3200-3300 | ~2-15 Gyr | ~0.013 | ~0.37 | ~0.37 | MUSCLES |
+    | [HAT-P-12](https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-12) | `hat-p-12` | K4V | 4500-4800 | 2-14 Gyr | ~0.20 | 0.74 | 0.70 | MUSCLES ext. |
+    | [HAT-P-26](https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-26) | `hat-p-26` | K1V | ~5050 | 4-12 Gyr | ~0.44 | 0.85 | 0.86 | MUSCLES ext. |
+    | [HD 40307](https://exoplanetarchive.ipac.caltech.edu/overview/HD%2040307) | `hd40307` | K2.5V | ~4800-5000 | ~2-5 Gyr | ~0.22 | ~0.79 | ~0.71 | MUSCLES |
     | [HD 85512](https://exoplanetarchive.ipac.caltech.edu/overview/HD%2085512) | `hd85512` | M0V | ~4400 | ~6 Gyr | 0.17 | 0.69 | 0.69 | MUSCLES |
     | [HD 97658](https://exoplanetarchive.ipac.caltech.edu/overview/HD%2097658%20b) | `hd97658` | K1V | 5212 | 3.9 Gyr | 0.351 | 0.773 | 0.728 | MUSCLES |
-    | [HD 149026](https://exoplanetarchive.ipac.caltech.edu/overview/HD%20149026%20b) | `hd-149026` | G0V | ~6100–6200 | ~2–3 Gyr | ~2.6 | ~1.14 | ~1.46 | MUSCLES ext. |
+    | [HD 149026](https://exoplanetarchive.ipac.caltech.edu/overview/HD%20149026%20b) | `hd-149026` | G0V | ~6100-6200 | ~2-3 Gyr | ~2.6 | ~1.14 | ~1.46 | MUSCLES ext. |
     | [L 98-59](https://exoplanetarchive.ipac.caltech.edu/overview/L%2098-59) | `l-98-59` | M3V | 3415 | ~5 Gyr | 0.012 | 0.292 | 0.316 | Mega-MUSCLES |
-    | [L 678-39 (GJ 357)](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20357) | `l-678-39` | M2.5V | ~3500 | — | 0.0017 | ~0.34 | ~0.34 | MUSCLES ext. |
-    | [L 980-5](https://simbad.u-strasbg.fr/simbad/sim-id?Ident=l+980-5) | `l-980-5` | M4V | — | — | — | — | — | Mega-MUSCLES |
-    | [LHS 2686](https://simbad.cds.unistra.fr/simbad/sim-id?Ident=LHS+2686) | `lhs-2686` | M5V | — | — | — | — | — | Mega-MUSCLES |
+    | [L 678-39 (GJ 357)](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20357) | `l-678-39` | M2.5V | ~3500 | n/a | 0.0017 | ~0.34 | ~0.34 | MUSCLES ext. |
+    | [L 980-5](https://simbad.u-strasbg.fr/simbad/sim-id?Ident=l+980-5) | `l-980-5` | M4V | n/a | n/a | n/a | n/a | n/a | Mega-MUSCLES |
+    | [LHS 2686](https://simbad.cds.unistra.fr/simbad/sim-id?Ident=LHS+2686) | `lhs-2686` | M5V | n/a | n/a | n/a | n/a | n/a | Mega-MUSCLES |
     | [LP 791-18](https://exoplanetarchive.ipac.caltech.edu/overview/LP%20791-18) | `lp-791-18` | M6V | ~2960 | >0.5 Gyr | ~0.002 | 0.139 | 0.182 | MUSCLES ext. |
-    | [TOI-193 (LTT 9779)](https://exoplanetarchive.ipac.caltech.edu/overview/LTT%209779) | `toi-193` | G7V | ~5400–5500 | ~2 Gyr | ~0.7 | ~1.0 | ~0.95 | MUSCLES ext. |
+    | [TOI-193 (LTT 9779)](https://exoplanetarchive.ipac.caltech.edu/overview/LTT%209779) | `toi-193` | G7V | ~5400-5500 | ~2 Gyr | ~0.7 | ~1.0 | ~0.95 | MUSCLES ext. |
     | [TRAPPIST-1](https://exoplanetarchive.ipac.caltech.edu/overview/TRAPPIST-1) | `trappist-1` | M8V | 2566 | ~8 Gyr | 0.000553 | 0.0898 | 0.1192 | Mega-MUSCLES |
-    | [WASP-17](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-17) | `wasp-17` | F4–F6V | ~6550 | ~3 Gyr | ~4 | 1.35 | 1.57 | MUSCLES ext. |
+    | [WASP-17](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-17) | `wasp-17` | F4-F6V | ~6550 | ~3 Gyr | ~4 | 1.35 | 1.57 | MUSCLES ext. |
     | [WASP-43](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-43) | `wasp-43` | K7V | ~4100 | ~7 Gyr | ~0.15 | ~0.65 | ~0.76 | MUSCLES ext. |
     | [WASP-77 A](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-77%20A) | `wasp-77a` | G8V | ~5600 | ~6 Gyr | ~0.74 | ~0.90 | ~0.91 | MUSCLES ext. |
-    | [WASP-127](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-127) | `wasp-127` | G5 | ~5600–5800 | ~10–12 Gyr | ~1.8 | ~0.95–1.10 | ~1.3 | MUSCLES ext. |
+    | [WASP-127](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-127) | `wasp-127` | G5 | ~5600-5800 | ~10-12 Gyr | ~1.8 | ~0.95-1.10 | ~1.3 | MUSCLES ext. |
 
 ### PHOENIX synthetic spectra
 
@@ -251,3 +251,23 @@ All equation-of-state tables are fetched through fwl-io into `$FWL_DATA/interior
 | `chabrier_2021` | Chabrier et al. hydrogen and helium tables | archive extracted into `r<record-id>/EOS_Chabrier2021_HHe/` |
 
 Copies of these tables under `$FWL_DATA/zalmoxis_eos` and `$FWL_DATA/EOS_material_properties` are not read and can be deleted.
+
+---
+
+## Melting curves and P-S lookup tables
+
+The `monteux_plus600`, `monteux_minus600` and `wolf_bower_2018` solidus/liquidus
+curves used by `interior_struct.melting_dir` and by Zalmoxis are fetched
+through fwl-io into `$FWL_DATA/interior_struct/melting_curves/<dataset>/r<record-id>/`.
+A curve generated locally by `tools/solidus_func.py` into
+`$FWL_DATA/interior_lookup_tables/Melting_curves/<melting_dir>/` takes
+precedence over the fetched copy; see [Melting curves](melting_curves.md) for
+the full list of parametrizations and how to generate them.
+
+The Wolf and Bower (2018) pressure-entropy lookup table that SPIDER and
+Aragog read for `eos_dir = "WolfBower2018_MgSiO3"` is fetched the same way,
+into `$FWL_DATA/interior_struct/lookup/wolf_bower_2018_1tpa/r<record-id>/`. A
+local table under `$FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-S/`
+takes precedence, and the table bundled with SPIDER
+(`lookup_data/1TPa-dK09-elec-free/`) is used only when neither the local nor
+the fetched table is available.
