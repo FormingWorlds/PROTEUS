@@ -66,10 +66,15 @@ def _make_handler(
     return handler
 
 
+def _phoenix_dir(tmp_path: Path) -> Path:
+    """Return the versioned PHOENIX dataset directory under a test data root."""
+    from proteus.data import STELLAR_SPECTRA_PHOENIX, dataset_dir
+
+    return dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path)
+
+
 def _raw_phoenix_path(tmp_path: Path, raw_name: str, FeH_str: str, alpha_str: str) -> Path:
-    return (
-        tmp_path / 'stellar_spectra' / 'PHOENIX' / f'FeH{FeH_str}_alpha{alpha_str}' / raw_name
-    )
+    return _phoenix_dir(tmp_path) / f'FeH{FeH_str}_alpha{alpha_str}' / raw_name
 
 
 def _install_fake_mors(monkeypatch):
@@ -269,7 +274,7 @@ def test_get_phoenix_modern_spectrum_offline_missing_raw_raises(tmp_path, monkey
     # before raising. A regression that wrote a zero-flux fallback to disk
     # and then raised (or that swallowed the raise) would corrupt the
     # downstream pipeline; assert no PHOENIX 1AU directory was created.
-    one_au_dir = tmp_path / 'stellar_spectra' / 'PHOENIX' / '1AU'
+    one_au_dir = _phoenix_dir(tmp_path) / '1AU'
     assert not one_au_dir.exists() or not any(one_au_dir.iterdir())
 
 
@@ -522,7 +527,7 @@ def test_init_star_phoenix_branch_uses_get_phoenix_modern_spectrum(tmp_path, mon
 
     fake_mors = _install_fake_mors(monkeypatch)
 
-    phoenix_modern = tmp_path / 'stellar_spectra' / 'PHOENIX' / '1AU' / 'fake_phoenix.txt'
+    phoenix_modern = _phoenix_dir(tmp_path) / '1AU' / 'fake_phoenix.txt'
     _write_spectrum_file(phoenix_modern, fl=(7.0, 8.0))
 
     calls = {'n': 0, 'track_type': None}
@@ -565,7 +570,7 @@ def test_init_star_phoenix_branch_tolerates_star_name_none(tmp_path, monkeypatch
 
     _install_fake_mors(monkeypatch)
 
-    phoenix_modern = tmp_path / 'stellar_spectra' / 'PHOENIX' / '1AU' / 'fake_phoenix.txt'
+    phoenix_modern = _phoenix_dir(tmp_path) / '1AU' / 'fake_phoenix.txt'
     _write_spectrum_file(phoenix_modern, fl=(7.0, 8.0))
 
     calls = {'n': 0}

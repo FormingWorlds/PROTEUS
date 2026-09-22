@@ -110,6 +110,11 @@ name = "MUSCLES observed stellar spectra"
 zenodo = "10.5281/zenodo.17802209"
 required_by = ["proteus"]
 
+[stellar_spectra.phoenix]
+name = "PHOENIX synthetic stellar spectra grid, one archive per [Fe/H] and [alpha/M]"
+zenodo = "10.5281/zenodo.17674612"
+required_by = ["proteus"]
+
 [interior_struct.eos.wolf_bower_2018]
 name = "Wolf & Bower (2018) MgSiO3 equation of state to 1 TPa, Zalmoxis tables"
 zenodo = "10.5281/zenodo.17417017"

@@ -34,6 +34,7 @@ EOS_CHABRIER_2021 = 'interior_struct.eos.chabrier_2021'
 STELLAR_SPECTRA_SOLAR = 'stellar_spectra.solar'
 STELLAR_SPECTRA_NAMED = 'stellar_spectra.named'
 STELLAR_SPECTRA_MUSCLES = 'stellar_spectra.muscles'
+STELLAR_SPECTRA_PHOENIX = 'stellar_spectra.phoenix'
 
 
 def spectral_file_key(group: str, bands: str | int) -> str:

@@ -29,7 +29,7 @@ used with lower rate limits.
 | Dataset | Provisioned by | Downloaded by |
 |---|---|---|
 | Stellar spectra (solar, named stars, MUSCLES) | fwl-io | `proteus get solar`, `proteus get muscles` |
-| PHOENIX synthetic spectra | PROTEUS downloader | `proteus get phoenix` |
+| PHOENIX synthetic spectra | fwl-io | `proteus get phoenix`, or fetched when a run needs a grid |
 | Stellar evolution tracks | PROTEUS downloader | `proteus get stellar` |
 | Spectral k-tables | fwl-io | `proteus get spectral` |
 | Surface albedos | fwl-io | `proteus get surfaces` |
@@ -125,8 +125,11 @@ stored under `$FWL_DATA/stellar_spectra/muscles/r<record>/` as `<star_name>.txt`
 ### PHOENIX synthetic spectra
 
 Med-resolution synthetic spectra from the PHOENIX library, stored under
-`$FWL_DATA/stellar_spectra/PHOENIX/<FeH>_<alpha>/`. Each subdirectory
-corresponds to one metallicity–alpha combination (e.g. `FeH-0.5_alpha+0.0/`).
+`$FWL_DATA/stellar_spectra/phoenix/r17674612/FeH<FeH>_alpha<alpha>/`. Each
+subdirectory corresponds to one metallicity-alpha combination
+(e.g. `FeH-0.5_alpha+0.0/`). The Zenodo record holds one zip archive per
+combination. PROTEUS fetches only the archive that a run needs, checks it
+against the committed checksum, and unpacks it next to the archive.
 
 Parameters defining the PHOENIX grid:
 

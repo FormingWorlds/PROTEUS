@@ -1044,10 +1044,10 @@ def test_download_folder_mode_fails_if_no_sources_available(mock_check, mock_get
 def test_get_data_source_info():
     """Test unified data source mapping lookup."""
     # Test known mapping
-    info = get_data_source_info('PHOENIX')
+    info = get_data_source_info('scattering')
     assert info is not None
-    assert info['zenodo_id'] == '17674612'
-    assert info['osf_project'] == '8r2sw'
+    assert info['zenodo_id'] == '19294180'
+    assert info['osf_project'] == 'vehxg'
 
     # Test unknown mapping
     info = get_data_source_info('UnknownFolder')
@@ -1057,7 +1057,7 @@ def test_get_data_source_info():
 @pytest.mark.unit
 def test_get_osf_project():
     """Test OSF project ID lookup."""
-    assert get_osf_project('PHOENIX') == '8r2sw'
+    assert get_osf_project('scattering') == 'vehxg'
     assert get_osf_project('UnknownFolder') is None
 
 
@@ -1078,7 +1078,7 @@ def test_get_zenodo_from_osf():
 @pytest.mark.unit
 def test_get_osf_from_zenodo():
     """Test reverse lookup: Zenodo ID -> OSF project."""
-    assert get_osf_from_zenodo('17674612') == '8r2sw'  # PHOENIX
+    assert get_osf_from_zenodo('19294180') == 'vehxg'  # scattering
     assert get_osf_from_zenodo('99999999') is None  # Unknown
 
 
@@ -1267,7 +1267,7 @@ def test_download_automatic_mapping(
     mock_download_zenodo.return_value = True
     mock_validate.return_value = True
 
-    folder_dir = tmp_path / 'target' / 'PHOENIX'
+    folder_dir = tmp_path / 'target' / 'scattering'
     folder_dir.mkdir(parents=True, exist_ok=True)
     (folder_dir / 'test_file.txt').write_text('test')
 
@@ -1278,7 +1278,7 @@ def test_download_automatic_mapping(
 
         # Call download without explicit IDs - should use mapping
         result = download(
-            folder='PHOENIX',
+            folder='scattering',
             target='target',
             desc='test data',
             # No osf_id or zenodo_id provided - should use mapping
@@ -1288,7 +1288,7 @@ def test_download_automatic_mapping(
     mock_download_zenodo.assert_called_once()
     # Should have used mapped Zenodo ID (check kwargs since it's called with keyword args)
     call_kwargs = mock_download_zenodo.call_args.kwargs
-    assert call_kwargs['zenodo_id'] == '17674612'  # Zenodo ID from mapping
+    assert call_kwargs['zenodo_id'] == '19294180'  # Zenodo ID from mapping
     assert result is True
 
 
@@ -1397,198 +1397,220 @@ def test_download_no_mapping_no_ids(
     mock_download_zenodo.assert_not_called()
 
 
+def _phoenix_zip(
+    path, lte_name='LTE_T05800_logg4.50_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt'
+):
+    """Write a small zip that holds one PHOENIX spectrum file."""
+    import zipfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, 'w') as zf:
+        if lte_name:
+            zf.writestr(lte_name, 'dummy spectrum')
+        else:
+            zf.writestr('README.txt', 'no spectra here')
+    return path
+
+
 @pytest.mark.unit
-@patch('proteus.utils.data.zipfile.ZipFile')
-@patch('proteus.utils.data.download')
-def test_download_phoenix(mock_download, mock_zipfile, tmp_path, monkeypatch):
-    """Test PHOENIX stellar spectra download wrapper (single-file + unzip + cleanup)."""
-
+@patch('proteus.data.fetch_dataset_file')
+def test_download_phoenix_fetches_one_zip_and_unpacks(mock_fetch_file, tmp_path, monkeypatch):
+    """``download_phoenix`` asks fwl-io for the single zip of the requested
+    grid, unpacks it into the versioned dataset directory and keeps the zip.
+    """
+    from proteus.data import STELLAR_SPECTRA_PHOENIX, dataset_dir
     from proteus.utils.data import download_phoenix
-    from proteus.utils.phoenix_helper import phoenix_param
 
-    # Arrange inputs
-    FeH = 0.0
-    alpha = 0.0
-    feh_str = phoenix_param(FeH, kind='FeH')
-    alpha_str = phoenix_param(alpha, kind='alpha')
-    zip_name = f'FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip'
-
-    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
-    base_dir.mkdir(parents=True, exist_ok=True)
-
-    # Make GetFWLData() return tmp_path
     monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    base_dir = dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path)
+    zip_name = 'FeH-0.0_alpha+0.0_phoenixMedRes_R05000.zip'
+    zip_path = _phoenix_zip(base_dir / zip_name)
+    mock_fetch_file.return_value = zip_path
 
-    # Our function expects the zip to exist at base_dir/zip_name after download.
-    # The production code will check zip_path.is_file(), so create it.
-    zip_path = base_dir / zip_name
-    zip_path.write_bytes(b'dummy zip bytes')
+    assert download_phoenix(alpha=0.0, FeH=0.0) is True
 
-    # Simulate extracted LTE file presence by patching Path.glob used in:
-    # any(grid_dir.glob("LTE_T*_phoenixMedRes_R05000.txt"))
-    grid_dir = base_dir / f'FeH{feh_str}_alpha{alpha_str}'
-    grid_dir.mkdir(parents=True, exist_ok=True)
-    lte_file = grid_dir / 'LTE_T05800_logg4.50_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt'
-    lte_file.write_text('dummy spectrum')
+    mock_fetch_file.assert_called_once_with(
+        STELLAR_SPECTRA_PHOENIX, zip_name, data_root=tmp_path
+    )
+    grid_dir = base_dir / 'FeH-0.0_alpha+0.0'
+    assert any(grid_dir.glob('LTE_T*_phoenixMedRes_R05000.txt'))
+    assert zip_path.is_file()
+    assert not list(base_dir.glob('*.partial'))
+    assert base_dir == tmp_path / 'stellar_spectra' / 'phoenix' / 'r17674612'
 
-    # Mock ZipFile context manager so no real unzip is attempted
-    zf = MagicMock()
-    mock_zipfile.return_value.__enter__.return_value = zf
 
-    # Make download() report success
-    mock_download.return_value = True
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+def test_download_phoenix_skips_fetch_when_grid_is_unpacked(
+    mock_fetch_file, tmp_path, monkeypatch
+):
+    """An unpacked grid is found on disk and nothing is fetched."""
+    from proteus.data import STELLAR_SPECTRA_PHOENIX, dataset_dir
+    from proteus.utils.data import download_phoenix
 
-    # Also create a marker to verify it gets removed
-    marker = base_dir / f'.extracted_{zip_path.stem}'
-    marker.write_text('marker')
-
-    # Act
-    ok = download_phoenix(alpha=alpha, FeH=FeH, force=False)
-
-    # Assert: download() called with new single-file mode
-    mock_download.assert_called_once_with(
-        folder='PHOENIX',
-        target='stellar_spectra',
-        desc='PHOENIX stellar spectra (alpha=+0.0, [Fe/H]=+0.0)',
-        force=False,
-        file=zip_name,
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    grid_dir = dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path) / 'FeH-0.0_alpha+0.0'
+    grid_dir.mkdir(parents=True)
+    (grid_dir / 'LTE_T05800_logg4.50_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt').write_text(
+        'x'
     )
 
-    assert ok is True
-
-    assert not zip_path.exists()
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.zipfile.ZipFile')
-def test_download_phoenix_unzips_and_cleans_up(
-    mock_zipfile, mock_download, tmp_path, monkeypatch
-):
-    """Covers the unzip path: ZipFile/extractall called, LTE file appears, zip removed."""
-
-    from proteus.utils.data import download_phoenix
-    from proteus.utils.phoenix_helper import phoenix_param
-
-    # Arrange inputs
-    FeH = 0.0
-    alpha = 0.0
-    feh_str = phoenix_param(FeH, kind='FeH')
-    alpha_str = phoenix_param(alpha, kind='alpha')
-    zip_name = f'FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip'
-
-    # Make GetFWLData() return tmp_path
-    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
-
-    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
-    base_dir.mkdir(parents=True, exist_ok=True)
-
-    # Production expects zip at base_dir/zip_name after download()
-    zip_path = base_dir / zip_name
-    zip_path.write_bytes(b'dummy zip bytes')
-
-    # grid_dir where extraction happens
-    grid_dir = base_dir / f'FeH{feh_str}_alpha{alpha_str}'
-
-    # IMPORTANT: do NOT pre-create LTE file here; we want the unzip path.
-
-    # Mock download() report success
-    mock_download.return_value = True
-
-    # Mock ZipFile so no real unzip occurs; simulate extraction by creating LTE file
-    zf = MagicMock()
-
-    def extractall_side_effect(dest):
-        dest = Path(dest)
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / 'LTE_T02300_logg0.00_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt').write_text(
-            'dummy spectrum'
-        )
-
-    zf.extractall.side_effect = extractall_side_effect
-    mock_zipfile.return_value.__enter__.return_value = zf
-
-    # Act
-    ok = download_phoenix(alpha=alpha, FeH=FeH, force=True)
-
-    # Assert
-    assert ok is True
-
-    # unzip was actually attempted
-    mock_zipfile.assert_called_once_with(zip_path, 'r')
-    zf.extractall.assert_called_once_with(grid_dir)
-
-    # LTE file now exists after "extraction"
-    assert any(grid_dir.glob('LTE_T*_phoenixMedRes_R05000.txt'))
-
-    # zip removed after successful unpack
-    assert not zip_path.exists()
+    assert download_phoenix(alpha=0.0, FeH=0.0) is True
+    mock_fetch_file.assert_not_called()
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.safe_rm')
-@patch('proteus.utils.data.zipfile.ZipFile')
-@patch('proteus.utils.data.download')
-def test_download_phoenix_force_removes_existing_grid_dir(
-    mock_download, mock_zipfile, mock_safe_rm, tmp_path, monkeypatch
-):
-    """``download_phoenix(force=True)`` removes the pre-existing PHOENIX
-    grid directory before re-extracting, so a corrupted prior download
-    cannot leak stale files into the new grid.
+@patch('proteus.data.fetch_dataset_file')
+def test_download_phoenix_force_replaces_stale_grid(mock_fetch_file, tmp_path, monkeypatch):
+    """``force=True`` removes the unpacked grid and the archive, fetches again,
+    and leaves no file of the old grid behind.
     """
+    from proteus.data import STELLAR_SPECTRA_PHOENIX, dataset_dir
     from proteus.utils.data import download_phoenix
-    from proteus.utils.phoenix_helper import phoenix_param
 
     monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
-    mock_download.return_value = True
+    base_dir = dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path)
+    zip_name = 'FeH-0.0_alpha+0.0_phoenixMedRes_R05000.zip'
+    grid_dir = base_dir / 'FeH-0.0_alpha+0.0'
+    grid_dir.mkdir(parents=True)
+    stale = grid_dir / 'LTE_T99999_stale_phoenixMedRes_R05000.txt'
+    stale.write_text('old')
 
-    FeH = 0.0
-    alpha = 0.0
-    feh_str = phoenix_param(FeH, kind='FeH')
-    alpha_str = phoenix_param(alpha, kind='alpha')
-    zip_name = f'FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip'
+    def fetch_again(key, name, data_root=None):
+        assert not (base_dir / name).exists(), 'the old archive was not removed first'
+        return _phoenix_zip(base_dir / name)
 
-    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
-    base_dir.mkdir(parents=True, exist_ok=True)
-    (base_dir / zip_name).write_bytes(b'zip')
+    mock_fetch_file.side_effect = fetch_again
 
-    grid_dir = base_dir / f'FeH{feh_str}_alpha{alpha_str}'
-    grid_dir.mkdir(parents=True, exist_ok=True)
-
-    # Make extraction succeed by pre-creating LTE file after "extractall"
-    def extractall_side_effect(_dest):
-        dest = Path(_dest)
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / 'LTE_T02300_logg0.00_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt').write_text(
-            'ok'
-        )
-
-    zf = MagicMock()
-    zf.extractall.side_effect = extractall_side_effect
-    mock_zipfile.return_value.__enter__.return_value = zf
-
-    ok = download_phoenix(alpha=alpha, FeH=FeH, force=True)
-    assert ok is True
-    mock_safe_rm.assert_called_once()
+    assert download_phoenix(alpha=0.0, FeH=0.0, force=True) is True
+    mock_fetch_file.assert_called_once()
+    assert not stale.exists()
+    assert (
+        grid_dir / 'LTE_T05800_logg4.50_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt'
+    ).is_file()
+    assert (base_dir / zip_name).is_file()
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-def test_download_phoenix_returns_false_if_download_fails(mock_download, tmp_path, monkeypatch):
-    """``download_phoenix`` returns False when the underlying ``download``
-    helper returns False, propagating the failure rather than raising.
+@patch('proteus.data.fetch_dataset_file')
+def test_download_phoenix_alpha_grid_uses_its_own_zip(mock_fetch_file, tmp_path, monkeypatch):
+    """A grid with nonzero alpha and metallicity is a different zip, named with
+    explicit signs, and the alpha=0 grid of the same metallicity is another one.
     """
+    from proteus.data import STELLAR_SPECTRA_PHOENIX
     from proteus.utils.data import download_phoenix
 
     monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
-    mock_download.return_value = False
+    mock_fetch_file.side_effect = lambda key, name, data_root=None: _phoenix_zip(
+        tmp_path / name, lte_name=None
+    )
 
-    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
-    assert ok is False
-    # Discrimination: confirm the download helper was actually invoked;
-    # a regression that returned False from an unrelated early-exit
-    # (e.g. force-check or alpha/FeH guard) would still pass `is False`.
-    mock_download.assert_called()
+    # The stub zips hold no spectra, so the call fails after the fetch; the
+    # requested archive name is what this test pins.
+    assert download_phoenix(alpha=0.2, FeH=-0.5) is False
+    assert download_phoenix(alpha=0.0, FeH=-0.5) is False
+    names = [c.args[1] for c in mock_fetch_file.call_args_list]
+    assert names == [
+        'FeH-0.5_alpha+0.2_phoenixMedRes_R05000.zip',
+        'FeH-0.5_alpha+0.0_phoenixMedRes_R05000.zip',
+    ]
+    assert all(c.args[0] == STELLAR_SPECTRA_PHOENIX for c in mock_fetch_file.call_args_list)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('error', [KeyError('no such file'), RuntimeError('mirror down')])
+@patch('proteus.data.fetch_dataset_file')
+def test_download_phoenix_returns_false_if_fetch_fails(
+    mock_fetch_file, error, tmp_path, monkeypatch
+):
+    """A missing registry name or an exhausted mirror gives False, not a raise."""
+    from proteus.utils.data import download_phoenix
+
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    mock_fetch_file.side_effect = error
+
+    assert download_phoenix(alpha=0.0, FeH=0.0) is False
+    mock_fetch_file.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+def test_download_phoenix_rejects_archive_without_spectra(
+    mock_fetch_file, tmp_path, monkeypatch
+):
+    """A zip that unpacks without any LTE file gives False and leaves no
+    grid directory that a later call could mistake for a complete grid.
+    """
+    from proteus.data import STELLAR_SPECTRA_PHOENIX, dataset_dir
+    from proteus.utils.data import download_phoenix
+
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    base_dir = dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path)
+    mock_fetch_file.return_value = _phoenix_zip(
+        base_dir / 'FeH-0.0_alpha+0.0_phoenixMedRes_R05000.zip', lte_name=None
+    )
+
+    assert download_phoenix(alpha=0.0, FeH=0.0) is False
+    assert not (base_dir / 'FeH-0.0_alpha+0.0').exists()
+    assert not list(base_dir.glob('*.partial'))
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+def test_download_phoenix_rejects_corrupt_archive(mock_fetch_file, tmp_path, monkeypatch):
+    """A file that is not a zip gives False and leaves no partial directory."""
+    from proteus.data import STELLAR_SPECTRA_PHOENIX, dataset_dir
+    from proteus.utils.data import download_phoenix
+
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    base_dir = dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path)
+    bad = base_dir / 'FeH-0.0_alpha+0.0_phoenixMedRes_R05000.zip'
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    bad.write_bytes(b'not a zip')
+    mock_fetch_file.return_value = bad
+
+    assert download_phoenix(alpha=0.0, FeH=0.0) is False
+    assert not (base_dir / 'FeH-0.0_alpha+0.0').exists()
+    assert not list(base_dir.glob('*.partial'))
+
+
+@pytest.mark.unit
+def test_phoenix_registry_covers_every_reachable_grid():
+    """Every (FeH, alpha) pair that ``phoenix_to_grid`` can return names a zip
+    in the dataset registry, so the runtime alpha override never asks for a
+    file the record does not hold.
+    """
+    import logging
+
+    import numpy as np
+
+    from proteus.data import STELLAR_SPECTRA_PHOENIX, manifest_path
+    from proteus.utils.phoenix_helper import phoenix_param, phoenix_to_grid
+
+    registry = manifest_path().with_name(f'{STELLAR_SPECTRA_PHOENIX}.registry.txt')
+    names = {line.split()[0] for line in registry.read_text().splitlines() if line.strip()}
+    assert len(names) == 52
+
+    logging.disable(logging.CRITICAL)
+    try:
+        pairs = set()
+        for feh in np.arange(-4.5, 1.6, 0.1):
+            for alpha in np.arange(-0.4, 1.5, 0.1):
+                for teff in (None, 2500, 3000, 4000, 5800, 7500, 9000):
+                    grid = phoenix_to_grid(
+                        FeH=feh, alpha=alpha, Teff=teff, logg=4.5 if teff else None
+                    )
+                    pairs.add((grid['FeH'], grid['alpha']))
+    finally:
+        logging.disable(logging.NOTSET)
+
+    assert len(pairs) > 40
+    for feh, alpha in sorted(pairs):
+        name = (
+            f'FeH{phoenix_param(feh, kind="FeH")}_alpha{phoenix_param(alpha, kind="alpha")}'
+            '_phoenixMedRes_R05000.zip'
+        )
+        assert name in names, name
 
 
 @pytest.mark.unit
@@ -1758,18 +1780,16 @@ def test_download_stellar_spectra_default(mock_fetch, mock_download):
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
 @patch('proteus.data.fetch_dataset')
-def test_download_stellar_spectra_custom(mock_fetch, mock_download):
-    """A collection still in DATA_SOURCE_MAP keeps its legacy download path."""
-    from proteus.data import STELLAR_SPECTRA_NAMED
+def test_download_stellar_spectra_phoenix_is_not_a_bulk_collection(mock_fetch):
+    """PHOENIX is fetched one grid at a time through download_phoenix, so the
+    bulk collection downloader rejects it instead of pulling the 9 GB record.
+    """
     from proteus.utils.data import download_stellar_spectra
 
-    download_stellar_spectra(folders=('Named', 'PHOENIX'))
-
-    mock_fetch.assert_called_once_with(STELLAR_SPECTRA_NAMED)
-    mock_download.assert_called_once()
-    assert mock_download.call_args.kwargs['folder'] == 'PHOENIX'
+    with pytest.raises(ValueError, match='No data source mapping found'):
+        download_stellar_spectra(folders=('PHOENIX',))
+    mock_fetch.assert_not_called()
 
 
 @pytest.mark.unit
@@ -4442,133 +4462,6 @@ def test_download_folder_mode_osf_raises_caught(
 
 
 # ============================================================================
-# download_phoenix additional edge-case coverage
-# ============================================================================
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
-def test_download_phoenix_zip_not_at_canonical_path_found_via_rglob(
-    mock_getfwl, mock_download, tmp_path, monkeypatch
-):
-    """When the PHOENIX zip lands at a non-canonical location, rglob finds it."""
-    import zipfile
-
-    import proteus.utils.data as data_mod
-    from proteus.utils.data import download_phoenix
-
-    mock_getfwl.return_value = tmp_path
-    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-    mock_download.return_value = True
-
-    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
-    base_dir.mkdir(parents=True, exist_ok=True)
-    # Place the zip in a non-canonical subdirectory
-    alt_zip = base_dir / 'weird_layout' / 'FeH-0.0_alpha+0.0_phoenixMedRes_R05000.zip'
-    alt_zip.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(alt_zip, 'w') as zf:
-        zf.writestr('LTE_T03000_phoenixMedRes_R05000.txt', 'spectrum data')
-
-    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
-    assert ok is True
-    # Discrimination: the canonical zip path should now be gone (the
-    # function unlinks the zip after a successful extract), and the
-    # extracted LTE file must be present.
-    grid_dir = base_dir / 'FeH-0.0_alpha+0.0'
-    assert (grid_dir / 'LTE_T03000_phoenixMedRes_R05000.txt').exists()
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
-def test_download_phoenix_zip_not_found_returns_false(
-    mock_getfwl, mock_download, tmp_path, monkeypatch
-):
-    """When download() claims success but no zip is found anywhere, returns False."""
-    import proteus.utils.data as data_mod
-    from proteus.utils.data import download_phoenix
-
-    mock_getfwl.return_value = tmp_path
-    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-    mock_download.return_value = True
-    # Do not create any zip; rglob will return empty
-
-    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
-    assert ok is False
-    # Discrimination: confirm download() was actually invoked (the False
-    # came from the post-download zip lookup, not from an earlier guard).
-    mock_download.assert_called_once()
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
-def test_download_phoenix_extraction_missing_lte_files_returns_false(
-    mock_getfwl, mock_download, tmp_path, monkeypatch
-):
-    """If the zip extracts but no LTE_T* files appear, function returns False."""
-    import zipfile
-
-    import proteus.utils.data as data_mod
-    from proteus.utils.data import download_phoenix
-
-    mock_getfwl.return_value = tmp_path
-    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-    mock_download.return_value = True
-
-    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
-    base_dir.mkdir(parents=True, exist_ok=True)
-    zip_path = base_dir / 'FeH-0.0_alpha+0.0_phoenixMedRes_R05000.zip'
-    # Create a zip with the wrong contents (no LTE_T* files)
-    with zipfile.ZipFile(zip_path, 'w') as zf:
-        zf.writestr('readme.txt', 'no spectra here')
-
-    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
-    assert ok is False
-    # Discrimination: the wrong-content file actually landed in grid_dir
-    # (so extraction ran), but the LTE check failed and the function
-    # returned False rather than crashing.
-    grid_dir = base_dir / 'FeH-0.0_alpha+0.0'
-    assert (grid_dir / 'readme.txt').exists()
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
-def test_download_phoenix_extraction_marker_cleanup(
-    mock_getfwl, mock_download, tmp_path, monkeypatch
-):
-    """When a stale .extracted_<stem> marker exists, it is removed after extraction."""
-    import zipfile
-
-    import proteus.utils.data as data_mod
-    from proteus.utils.data import download_phoenix
-
-    mock_getfwl.return_value = tmp_path
-    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-    mock_download.return_value = True
-
-    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
-    base_dir.mkdir(parents=True, exist_ok=True)
-    zip_path = base_dir / 'FeH-0.0_alpha+0.0_phoenixMedRes_R05000.zip'
-    with zipfile.ZipFile(zip_path, 'w') as zf:
-        zf.writestr('LTE_T03000_phoenixMedRes_R05000.txt', 'spectrum data')
-
-    # Plant a stale marker
-    marker = base_dir / '.extracted_FeH-0.0_alpha+0.0_phoenixMedRes_R05000'
-    marker.write_text('stale')
-
-    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
-    assert ok is True
-    # Discrimination: marker was removed by the cleanup branch.
-    assert not marker.exists()
-    # The LTE file is extracted in place.
-    grid_dir = base_dir / 'FeH-0.0_alpha+0.0'
-    assert (grid_dir / 'LTE_T03000_phoenixMedRes_R05000.txt').exists()
-
-
-# ============================================================================
 # download_scattering / download_interior_lookuptables additional coverage
 # ============================================================================
 
@@ -5520,44 +5413,6 @@ def test_get_zalmoxis_EOS_rt_folder_missing_warns(monkeypatch, tmp_path, caplog)
     # The returned dict still resolves a path (legacy default) for the
     # density_melt eos_file, even though no file exists on disk.
     assert 'RTPress' in iron_rt['melted_mantle']['eos_file']
-
-
-# ============================================================================
-# download_phoenix existing-grid skip branch
-# ============================================================================
-
-
-@pytest.mark.unit
-@patch('proteus.utils.data.download')
-@patch('proteus.utils.data.GetFWLData')
-def test_download_phoenix_existing_grid_keeps_zip_and_returns_true(
-    mock_getfwl, mock_download, tmp_path, monkeypatch
-):
-    """If grid_dir already has LTE files and a leftover zip is present, it is removed and True returned."""
-    import proteus.utils.data as data_mod
-    from proteus.utils.data import download_phoenix
-
-    mock_getfwl.return_value = tmp_path
-    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
-    mock_download.return_value = True
-
-    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
-    base_dir.mkdir(parents=True, exist_ok=True)
-    grid_dir = base_dir / 'FeH-0.0_alpha+0.0'
-    grid_dir.mkdir(parents=True, exist_ok=True)
-    (grid_dir / 'LTE_T03000_phoenixMedRes_R05000.txt').write_text('spectrum')
-
-    # A leftover zip from a previous run
-    zip_path = base_dir / 'FeH-0.0_alpha+0.0_phoenixMedRes_R05000.zip'
-    zip_path.write_bytes(b'leftover')
-
-    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
-    assert ok is True
-    # Discrimination: the leftover zip is removed AND the LTE file is
-    # untouched. A regression that re-extracted would have overwritten
-    # the LTE contents.
-    assert not zip_path.exists()
-    assert (grid_dir / 'LTE_T03000_phoenixMedRes_R05000.txt').read_text() == 'spectrum'
 
 
 # ============================================================================

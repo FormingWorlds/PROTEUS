@@ -480,10 +480,8 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
         'osf_id': 'phsxf',
         'osf_project': 'phsxf',
     },
-    # Stellar spectra - PHOENIX (OSF project: 8r2sw)
-    'PHOENIX': {'zenodo_id': '17674612', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
     # The surface albedos, the Seager EOS tables, the exoplanet catalogue, the
-    # mass-radius relations, the solar, Named and MUSCLES stellar spectra and the
+    # mass-radius relations, the solar, Named, MUSCLES and PHOENIX stellar spectra and the
     # Zalmoxis equations of state are declared in
     # src/proteus/data/proteus_manifest.toml and fetched through fwl-io, so their
     # record pins live there and are absent here.
@@ -1123,75 +1121,77 @@ def download_spectral_files(name: str | None = None, bands: str | None = None):
 
 
 def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = False) -> bool:
-    """Download PHOENIX stellar spectra into `FWL_DATA`.
+    """Fetch one PHOENIX grid through fwl-io and unpack it.
 
-    Used by `proteus.star.phoenix`. The current implementation downloads the
-    PHOENIX bundle via the unified `download()` mechanism.
+    The dataset holds one zip archive per ([Fe/H], [alpha/M]) pair. Only the
+    archive for the requested pair is fetched and verified against the registry
+    checksum; the other archives of the record are not downloaded. The archive
+    is unpacked into ``FeH<FeH>_alpha<alpha>/`` inside the dataset directory
+    and kept beside it.
 
-    Downloads the FeH/alpha-specific PHOENIX zip bundle as a single file, then unzips it.
+    Parameters
+    ----------
+    alpha : float
+        Alpha-element enhancement [alpha/M] of the grid.
+    FeH : float
+        Metallicity [Fe/H] of the grid.
+    force : bool
+        Remove the unpacked grid and its archive first, so both are fetched again.
+
+    Returns
+    -------
+    bool
+        True if the unpacked grid is on disk.
     """
-    desc = f'PHOENIX stellar spectra (alpha={alpha:+0.1f}, [Fe/H]={FeH:+0.1f})'
+    from proteus.data import STELLAR_SPECTRA_PHOENIX, dataset_dir, fetch_dataset_file
 
     feh_str = phoenix_param(FeH, kind='FeH')
     alpha_str = phoenix_param(alpha, kind='alpha')
-
-    # Published zip name
     zip_name = f'FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip'
+    lte_glob = 'LTE_T*_phoenixMedRes_R05000.txt'
 
-    base_dir = GetFWLData() / 'stellar_spectra' / 'PHOENIX'
-    zip_path = base_dir / zip_name
-
-    # Where unpacked files are stored
+    fwl_data = GetFWLData()
+    base_dir = dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=fwl_data)
     grid_dir = base_dir / f'FeH{feh_str}_alpha{alpha_str}'
 
-    ok = download(
-        folder='PHOENIX',
-        target='stellar_spectra',
-        desc=desc,
-        force=force,
-        file=zip_name,
-    )
-    if not ok:
-        return False
-
-    if not zip_path.is_file():
-        matches = [p for p in base_dir.rglob(zip_name) if p.is_file()]
-        if not matches:
-            log.error(f'Downloaded PHOENIX bundle but cannot find zip on disk: {zip_name}')
-            return False
-        zip_path = matches[0]
-
-    # Skip if already there and no force (zip still removed below only if we unzip)
-    if (
-        not force
-        and grid_dir.exists()
-        and any(grid_dir.glob('LTE_T*_phoenixMedRes_R05000.txt'))
-    ):
-        # If zip exists from a previous run, remove it
-        if zip_path.exists():
-            zip_path.unlink()
+    if force:
+        safe_rm(str(grid_dir))
+        safe_rm(str(base_dir / zip_name))
+    elif any(grid_dir.glob(lte_glob)):
         return True
 
-    if force and grid_dir.exists():
-        safe_rm(grid_dir)
-    grid_dir.mkdir(parents=True, exist_ok=True)
-
-    log.info(f'Unpacking PHOENIX zip: {zip_path.name} -> {grid_dir}')
-    with zipfile.ZipFile(zip_path, 'r') as zf:
-        zf.extractall(grid_dir)
-
-    if not any(grid_dir.glob('LTE_T*_phoenixMedRes_R05000.txt')):
-        log.error(f'Extraction completed but LTE files not found where expected: {grid_dir}')
+    log.info(f'Fetching PHOENIX grid [Fe/H]={FeH:+0.1f}, [alpha/M]={alpha:+0.1f}: {zip_name}')
+    try:
+        zip_path = fetch_dataset_file(STELLAR_SPECTRA_PHOENIX, zip_name, data_root=fwl_data)
+    except KeyError:
+        log.error(f'No PHOENIX grid archive named {zip_name} in the dataset registry')
+        return False
+    except Exception as exc:  # noqa: BLE001 - the caller reports the failed download
+        log.error(f'Failed to fetch PHOENIX grid {zip_name}: {exc}')
         return False
 
-    # Remove extraction marker
-    marker = base_dir / f'.extracted_{zip_path.stem}'
-    if marker.exists():
-        marker.unlink()
+    # Unpack next to the final directory and rename, so an interrupted
+    # extraction is never mistaken for a complete grid.
+    partial_dir = grid_dir.with_name(grid_dir.name + '.partial')
+    safe_rm(str(partial_dir))
+    partial_dir.mkdir(parents=True, exist_ok=True)
 
-    # Remove the zip after successful unpack
-    zip_path.unlink()
+    log.info(f'Unpacking PHOENIX zip: {zip_path.name} -> {grid_dir}')
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            zf.extractall(partial_dir)
+    except zipfile.BadZipFile as exc:
+        log.error(f'PHOENIX archive {zip_path.name} cannot be unpacked: {exc}')
+        safe_rm(str(partial_dir))
+        return False
 
+    if not any(partial_dir.glob(lte_glob)):
+        log.error(f'Extraction completed but LTE files not found where expected: {partial_dir}')
+        safe_rm(str(partial_dir))
+        return False
+
+    safe_rm(str(grid_dir))
+    partial_dir.rename(grid_dir)
     return True
 
 

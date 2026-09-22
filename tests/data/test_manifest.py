@@ -35,6 +35,7 @@ from proteus.data import (
     MASS_RADIUS_ZENG_2019,
     STELLAR_SPECTRA_MUSCLES,
     STELLAR_SPECTRA_NAMED,
+    STELLAR_SPECTRA_PHOENIX,
     STELLAR_SPECTRA_SOLAR,
     SURFACE_ALBEDOS_HAMMOND_2024,
     _dataset,
@@ -56,6 +57,7 @@ SEAGER_2007_RECORD = '15727998'
 SOLAR_RECORD = '17981836'
 NAMED_RECORD = '15721440'
 MUSCLES_RECORD = '17802209'
+PHOENIX_RECORD = '17674612'
 WOLF_BOWER_RECORD = '17417017'
 RTPRESS_RECORD = '18819027'
 PALEOS_2PHASE_RECORD = '19680050'
@@ -105,6 +107,7 @@ _OWNED_KEYS = {
     STELLAR_SPECTRA_SOLAR,
     STELLAR_SPECTRA_NAMED,
     STELLAR_SPECTRA_MUSCLES,
+    STELLAR_SPECTRA_PHOENIX,
     *EOS_DATASETS,
 } | {spectral_file_key(group, bands) for group, bands in SPECTRAL_RECORDS}
 
@@ -138,9 +141,11 @@ def test_manifest_declares_the_datasets():
     assert datasets[STELLAR_SPECTRA_SOLAR].subdir == 'stellar_spectra/solar'
     assert datasets[STELLAR_SPECTRA_NAMED].subdir == 'stellar_spectra/named'
     assert datasets[STELLAR_SPECTRA_MUSCLES].subdir == 'stellar_spectra/muscles'
+    assert datasets[STELLAR_SPECTRA_PHOENIX].subdir == 'stellar_spectra/phoenix'
     assert datasets[STELLAR_SPECTRA_SOLAR].zenodo == f'10.5281/zenodo.{SOLAR_RECORD}'
     assert datasets[STELLAR_SPECTRA_NAMED].zenodo == f'10.5281/zenodo.{NAMED_RECORD}'
     assert datasets[STELLAR_SPECTRA_MUSCLES].zenodo == f'10.5281/zenodo.{MUSCLES_RECORD}'
+    assert datasets[STELLAR_SPECTRA_PHOENIX].zenodo == f'10.5281/zenodo.{PHOENIX_RECORD}'
     assert datasets[SURFACE_ALBEDOS_HAMMOND_2024].zenodo == (
         f'10.5281/zenodo.{HAMMOND_2024_RECORD}'
     )
@@ -286,6 +291,9 @@ def test_dataset_dir_is_versioned(tmp_path):
     )
     assert dataset_dir(STELLAR_SPECTRA_MUSCLES, data_root=tmp_path) == (
         tmp_path / 'stellar_spectra' / 'muscles' / f'r{MUSCLES_RECORD}'
+    )
+    assert dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path) == (
+        tmp_path / 'stellar_spectra' / 'phoenix' / f'r{PHOENIX_RECORD}'
     )
 
 
@@ -538,7 +546,8 @@ def test_migrated_datasets_are_not_also_pinned_in_the_legacy_map():
     assert 'Named' not in DATA_SOURCE_MAP
     assert 'solar' not in DATA_SOURCE_MAP
     assert 'MUSCLES' not in DATA_SOURCE_MAP
-    assert 'PHOENIX' in DATA_SOURCE_MAP
+    assert 'PHOENIX' not in DATA_SOURCE_MAP
+    assert 'scattering' in DATA_SOURCE_MAP
     pinned_records = {entry['zenodo_id'] for entry in DATA_SOURCE_MAP.values()}
     assert EXOPLANET_RECORD not in pinned_records
     assert HAMMOND_2024_RECORD not in pinned_records
@@ -547,6 +556,7 @@ def test_migrated_datasets_are_not_also_pinned_in_the_legacy_map():
     assert SOLAR_RECORD not in pinned_records
     assert NAMED_RECORD not in pinned_records
     assert MUSCLES_RECORD not in pinned_records
+    assert PHOENIX_RECORD not in pinned_records
 
 
 def test_fetch_dataset_delegates_to_the_pinned_fetcher(monkeypatch, tmp_path):

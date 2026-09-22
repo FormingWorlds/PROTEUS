@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from proteus.data import STELLAR_SPECTRA_PHOENIX, dataset_dir
 from proteus.utils.constants import AU, M_sun, R_sun, const_G
 from proteus.utils.data import GetFWLData, download_phoenix
 from proteus.utils.helper import UpdateStatusfile
@@ -138,8 +139,8 @@ def get_phoenix_modern_spectrum(
     """
     Get a PHOENIX 'modern' spectrum scaled to 1 AU and return its path.
 
-    Raw files in stellar_spectra/PHOENIX/FeH*_alpha*/
-    Scaled 1 AU files in stellar_spectra/PHOENIX/1AU/
+    Raw files in the PHOENIX dataset directory, under FeH*_alpha*/
+    Scaled 1 AU files in the same directory, under 1AU/
     """
 
     # parameters
@@ -168,7 +169,7 @@ def get_phoenix_modern_spectrum(
     )
     log.info('')
 
-    base_dir = GetFWLData() / 'stellar_spectra' / 'PHOENIX'
+    base_dir = dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=GetFWLData())
 
     feh_str = phoenix_param(FeH_g, kind='FeH')
     alpha_str = phoenix_param(alpha_g, kind='alpha')
