@@ -1051,9 +1051,9 @@ class AragogRunner:
         )
 
         ar_sec = config.interior_energetics.aragog
-        stress_mode = getattr(ar_sec, 'stress_closure_mode', 'local')
+        stress_mode = getattr(ar_sec, 'stress_closure_mode', 'global')
         if not isinstance(stress_mode, str) or stress_mode not in ('local', 'global'):
-            stress_mode = 'local'
+            stress_mode = 'global'
 
         lid_mode = getattr(ar_sec, 'lid_base_mode', 'fixed')
         if not isinstance(lid_mode, str) or lid_mode not in ('fixed', 'rheological'):

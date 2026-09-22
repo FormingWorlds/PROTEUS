@@ -172,9 +172,9 @@ def _phase_params_from_config(config: Config) -> _PhaseParamsInputs:
         except (TypeError, ValueError):
             return default
 
-    stress_closure = getattr(ie.aragog, 'stress_closure_mode', 'local')
+    stress_closure = getattr(ie.aragog, 'stress_closure_mode', 'global')
     if not isinstance(stress_closure, str) or stress_closure not in ('local', 'global'):
-        stress_closure = 'local'
+        stress_closure = 'global'
 
     lid_mode = getattr(ie.aragog, 'lid_base_mode', 'fixed')
     if not isinstance(lid_mode, str) or lid_mode not in ('fixed', 'rheological'):
