@@ -415,6 +415,18 @@ config_version = "3.0"
         # the integrator to 1 yr steps (max_step = 1 yr vs 100 yr) every step and can stall
         # the run; keep it of order a few hundred.
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
+        enabled                       = false    # switch for solid-state Arrhenius rheology and yielding closures
+        arrhenius_t_ref               = 1600.0   # reference temperature [K] for Arrhenius diffusion creep viscosity
+        yield_stress_max              = 500.0e6  # maximum yield stress [Pa] cap applied to plastic yielding
+        viscosity_max_log10           = 40.0     # upper bound on log10 diffusion creep viscosity [log10(Pa s)]
+        lid_base_mode                 = "fixed"  # mode for stagnant lid base determination: fixed | rheological
+        lid_base_temperature          = 1400.0   # fixed lid base temperature [K] when lid_base_mode = "fixed"
+        lid_contrast_coeff            = 2.2      # Frank-Kamenetskii rheological temperature contrast coefficient
+        activation_energy             = 300e3    # activation energy for diffusion creep [J/mol]
+        activation_volume             = 5e-6     # activation volume for diffusion creep [m3/mol]
+        yield_stress_c                = 50e6     # cohesion for plastic yielding [Pa]
+        yield_stress_mu               = 0.6      # friction coefficient for plastic yielding
+        stress_closure_mode           = "global" # convective stress closure mode: local | global
 
     # SPIDER-only parameters
     [interior_energetics.spider]

@@ -83,6 +83,13 @@ def _make_full_config(*, separation_viscosity: str = 'mixture'):
     ie.aragog.lid_base_mode = 'rheological'
     ie.aragog.lid_base_temperature = 1450.0
     ie.aragog.lid_contrast_coeff = 2.5
+    ie.aragog.stress_closure_mode = 'global'
+    ie.aragog.activation_energy = 320e3
+    ie.aragog.activation_volume = 4.5e-6
+    ie.aragog.yield_stress_c = 45e6
+    ie.aragog.yield_stress_mu = 0.55
+    ie.aragog.viscosity_max_log10 = 38.0
+    ie.aragog.enabled = False
     # Numpy mixed-phase parameters only.
     ie.latent_heat_of_fusion = 4.1e5
     ie.phase_transition_width = 0.019
@@ -181,6 +188,20 @@ def test_shared_quantities_match_across_numpy_and_jax():
     assert jax_params.lid_base_temperature == pytest.approx(ie.aragog.lid_base_temperature)
     assert numpy_params.lid_contrast_coeff == pytest.approx(ie.aragog.lid_contrast_coeff)
     assert jax_params.lid_contrast_coeff == pytest.approx(ie.aragog.lid_contrast_coeff)
+    assert numpy_params.stress_closure_mode == ie.aragog.stress_closure_mode
+    assert jax_params.stress_closure_mode == ie.aragog.stress_closure_mode
+    assert numpy_params.activation_energy == pytest.approx(ie.aragog.activation_energy)
+    assert jax_params.activation_energy == pytest.approx(ie.aragog.activation_energy)
+    assert numpy_params.activation_volume == pytest.approx(ie.aragog.activation_volume)
+    assert jax_params.activation_volume == pytest.approx(ie.aragog.activation_volume)
+    assert numpy_params.yield_stress_c == pytest.approx(ie.aragog.yield_stress_c)
+    assert jax_params.yield_stress_c == pytest.approx(ie.aragog.yield_stress_c)
+    assert numpy_params.yield_stress_mu == pytest.approx(ie.aragog.yield_stress_mu)
+    assert jax_params.yield_stress_mu == pytest.approx(ie.aragog.yield_stress_mu)
+    assert numpy_params.viscosity_max_log10 == pytest.approx(ie.aragog.viscosity_max_log10)
+    assert jax_params.viscosity_max_log10 == pytest.approx(ie.aragog.viscosity_max_log10)
+    assert numpy_params.enabled == ie.aragog.enabled
+    assert jax_params.enabled == ie.aragog.enabled
 
 
 @pytest.mark.parametrize(

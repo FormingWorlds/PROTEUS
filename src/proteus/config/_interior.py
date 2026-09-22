@@ -250,16 +250,32 @@ class Aragog:
     rejected at load, since it cannot be told apart from the unset default;
     any other negative, NaN, or infinity is rejected too."""
 
+    enabled: bool = field(default=False)
+    """Switch for solid-state Arrhenius rheology and yielding closures.
+    When False (default), bypasses Arrhenius viscosity calculation
+    and uses unyielded bulk viscosity."""
     arrhenius_t_ref: float = field(default=1600.0, validator=gt(0))
+    """Reference temperature [K] for Arrhenius diffusion creep viscosity."""
     yield_stress_max: float = field(default=500.0e6, validator=gt(0))
+    """Maximum yield stress [Pa] cap applied to plastic yielding."""
+    viscosity_max_log10: float = field(default=40.0, validator=gt(0))
+    """Upper bound on log10 diffusion creep viscosity [log10(Pa s)]."""
     lid_base_mode: str = field(default='fixed', validator=in_(('fixed', 'rheological')))
+    """Mode for stagnant lid base determination: 'fixed' or 'rheological'."""
     lid_base_temperature: float = field(default=1400.0, validator=gt(0))
+    """Fixed lid base temperature [K] when lid_base_mode='fixed'."""
     lid_contrast_coeff: float = field(default=2.2, validator=gt(0))
-    activation_energy: float = field(default=300e3, validator=gt(0))
+    """Frank-Kamenetskii rheological temperature contrast coefficient."""
+    activation_energy: float = field(default=300e3, validator=ge(0))
+    """Activation energy for diffusion creep [J/mol]. Must be non-negative."""
     activation_volume: float = field(default=5e-6, validator=ge(0))
+    """Activation volume for diffusion creep [m^3/mol]."""
     yield_stress_c: float = field(default=50e6, validator=ge(0))
+    """Cohesion for plastic yielding [Pa]."""
     yield_stress_mu: float = field(default=0.6, validator=ge(0))
+    """Friction coefficient for plastic yielding."""
     stress_closure_mode: str = field(default='global', validator=in_(('local', 'global')))
+    """Convective stress closure mode: 'local' or 'global'."""
 
     temperature_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell temperature step cap [K]. Shares the same root

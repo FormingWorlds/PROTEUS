@@ -108,6 +108,13 @@ class _PhaseParamsInputs:
     yield_stress_c: float
     yield_stress_mu: float
     stress_closure_mode: str
+    arrhenius_t_ref: float
+    yield_stress_max: float
+    viscosity_max_log10: float
+    lid_base_mode: str
+    lid_base_temperature: float
+    lid_contrast_coeff: float
+    enabled: bool
 
     # Numpy mixed-phase parameters only.
     latent_heat_of_fusion: float
@@ -132,17 +139,6 @@ class _PhaseParamsInputs:
     mixing: bool
     eddy_diff_thermal: float
     eddy_diff_chemical: float
-
-    activation_energy: float
-    activation_volume: float
-    yield_stress_c: float
-    yield_stress_mu: float
-    stress_closure_mode: str
-    arrhenius_t_ref: float
-    yield_stress_max: float
-    lid_base_mode: str
-    lid_base_temperature: float
-    lid_contrast_coeff: float
     kappah_floor: float
     phase_smoothing: str
 
@@ -168,6 +164,30 @@ def _phase_params_from_config(config: Config) -> _PhaseParamsInputs:
     store an identical value; the numpy site does not consume it.
     """
     ie = config.interior_energetics
+
+    def _float_attr(section, name: str, default: float) -> float:
+        val = getattr(section, name, default)
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return default
+
+    stress_closure = getattr(ie.aragog, 'stress_closure_mode', 'local')
+    if not isinstance(stress_closure, str) or stress_closure not in ('local', 'global'):
+        stress_closure = 'local'
+
+    lid_mode = getattr(ie.aragog, 'lid_base_mode', 'fixed')
+    if not isinstance(lid_mode, str) or lid_mode not in ('fixed', 'rheological'):
+        lid_mode = 'fixed'
+
+    enabled_val = getattr(ie.aragog, 'enabled', False)
+    if not isinstance(enabled_val, bool):
+        enabled_val = False
+
+    phase_smooth = getattr(ie.aragog, 'phase_smoothing', 'tanh')
+    if not isinstance(phase_smooth, str):
+        phase_smooth = 'tanh'
+
     return _PhaseParamsInputs(
         rheological_transition_melt_fraction=ie.rfront_loc,
         rheological_transition_width=ie.rfront_wid,
@@ -194,18 +214,20 @@ def _phase_params_from_config(config: Config) -> _PhaseParamsInputs:
         mixing=ie.trans_mixing,
         eddy_diff_thermal=float(ie.eddy_diffusivity_thermal),
         eddy_diff_chemical=float(ie.eddy_diffusivity_chemical),
-        activation_energy=float(ie.aragog.activation_energy),
-        activation_volume=float(ie.aragog.activation_volume),
-        yield_stress_c=float(ie.aragog.yield_stress_c),
-        yield_stress_mu=float(ie.aragog.yield_stress_mu),
-        stress_closure_mode=ie.aragog.stress_closure_mode,
-        arrhenius_t_ref=float(ie.aragog.arrhenius_t_ref),
-        yield_stress_max=float(ie.aragog.yield_stress_max),
-        lid_base_mode=ie.aragog.lid_base_mode,
-        lid_base_temperature=float(ie.aragog.lid_base_temperature),
-        lid_contrast_coeff=float(ie.aragog.lid_contrast_coeff),
+        activation_energy=_float_attr(ie.aragog, 'activation_energy', 300.0e3),
+        activation_volume=_float_attr(ie.aragog, 'activation_volume', 5.0e-6),
+        yield_stress_c=_float_attr(ie.aragog, 'yield_stress_c', 50.0e6),
+        yield_stress_mu=_float_attr(ie.aragog, 'yield_stress_mu', 0.6),
+        stress_closure_mode=stress_closure,
+        arrhenius_t_ref=_float_attr(ie.aragog, 'arrhenius_t_ref', 1600.0),
+        yield_stress_max=_float_attr(ie.aragog, 'yield_stress_max', 500.0e6),
+        viscosity_max_log10=_float_attr(ie.aragog, 'viscosity_max_log10', 40.0),
+        lid_base_mode=lid_mode,
+        lid_base_temperature=_float_attr(ie.aragog, 'lid_base_temperature', 1400.0),
+        lid_contrast_coeff=_float_attr(ie.aragog, 'lid_contrast_coeff', 2.2),
+        enabled=enabled_val,
         kappah_floor=float(ie.kappah_floor),
-        phase_smoothing=ie.aragog.phase_smoothing,
+        phase_smoothing=phase_smooth,
     )
 
 
@@ -253,6 +275,18 @@ def build_mixed_phase_params(
         const_log10visc=inputs.const_log10visc,
         const_T_ref=inputs.const_T_ref,
         const_S_ref=inputs.const_S_ref,
+        enabled=inputs.enabled,
+        activation_energy=inputs.activation_energy,
+        activation_volume=inputs.activation_volume,
+        yield_stress_c=inputs.yield_stress_c,
+        yield_stress_mu=inputs.yield_stress_mu,
+        stress_closure_mode=inputs.stress_closure_mode,
+        arrhenius_t_ref=inputs.arrhenius_t_ref,
+        yield_stress_max=inputs.yield_stress_max,
+        viscosity_max_log10=inputs.viscosity_max_log10,
+        lid_base_mode=inputs.lid_base_mode,
+        lid_base_temperature=inputs.lid_base_temperature,
+        lid_contrast_coeff=inputs.lid_contrast_coeff,
     )
 
 
@@ -290,9 +324,11 @@ def build_jax_phase_params(config: Config) -> PhaseParams:
         stress_closure_mode=inputs.stress_closure_mode,
         arrhenius_t_ref=inputs.arrhenius_t_ref,
         yield_stress_max=inputs.yield_stress_max,
+        viscosity_max_log10=inputs.viscosity_max_log10,
         lid_base_mode=inputs.lid_base_mode,
         lid_base_temperature=inputs.lid_base_temperature,
         lid_contrast_coeff=inputs.lid_contrast_coeff,
+        enabled=inputs.enabled,
         viscosity_liquid=inputs.viscosity_liquid,
         grain_size=inputs.grain_size,
         k_solid=inputs.k_solid,

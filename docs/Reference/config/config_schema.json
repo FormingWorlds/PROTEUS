@@ -3983,6 +3983,249 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.enabled",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Switch for solid-state Arrhenius rheology and yielding closures. When False (default), bypasses Arrhenius viscosity calculation and uses unyielded bulk viscosity.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.arrhenius_t_ref",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1600.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Reference temperature [K] for Arrhenius diffusion creep viscosity.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.yield_stress_max",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "500000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum yield stress [Pa] cap applied to plastic yielding.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.viscosity_max_log10",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "40.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Upper bound on log10 diffusion creep viscosity [log10(Pa s)].",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.lid_base_mode",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"fixed\"",
+      "choices": [
+        "fixed",
+        "rheological"
+      ],
+      "bounds": null,
+      "description": "Mode for stagnant lid base determination: 'fixed' or 'rheological'.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.lid_base_temperature",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1400.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Fixed lid base temperature [K] when lid_base_mode='fixed'.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.lid_contrast_coeff",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "2.2",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Frank-Kamenetskii rheological temperature contrast coefficient.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.activation_energy",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "300000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Activation energy for diffusion creep [J/mol]. Must be non-negative.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.activation_volume",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "5e-06",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Activation volume for diffusion creep [m^3/mol].",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.yield_stress_c",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "50000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Cohesion for plastic yielding [Pa].",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.yield_stress_mu",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.6",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Friction coefficient for plastic yielding.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.stress_closure_mode",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"global\"",
+      "choices": [
+        "local",
+        "global"
+      ],
+      "bounds": null,
+      "description": "Convective stress closure mode: 'local' or 'global'.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.temperature_step_cap",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",

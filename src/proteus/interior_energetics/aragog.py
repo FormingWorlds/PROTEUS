@@ -1050,6 +1050,25 @@ class AragogRunner:
             entropy=entropy_melt_arg,
         )
 
+        ar_sec = config.interior_energetics.aragog
+        stress_mode = getattr(ar_sec, 'stress_closure_mode', 'local')
+        if not isinstance(stress_mode, str) or stress_mode not in ('local', 'global'):
+            stress_mode = 'local'
+
+        lid_mode = getattr(ar_sec, 'lid_base_mode', 'fixed')
+        if not isinstance(lid_mode, str) or lid_mode not in ('fixed', 'rheological'):
+            lid_mode = 'fixed'
+
+        def _float_ar(name: str, default: float) -> float:
+            try:
+                return float(getattr(ar_sec, name, default))
+            except (TypeError, ValueError):
+                return default
+
+        enabled_ar = getattr(ar_sec, 'enabled', False)
+        if not isinstance(enabled_ar, bool):
+            enabled_ar = False
+
         phase_solid = _PhaseParameters(
             density=LOOK_UP_DIR / 'density_solid.dat',
             viscosity=10.0 ** float(config.interior_energetics.solid_log10visc),
@@ -1058,16 +1077,18 @@ class AragogRunner:
             thermal_conductivity=float(config.interior_energetics.solid_cond),
             thermal_expansivity=LOOK_UP_DIR / 'thermal_exp_solid.dat',
             entropy=entropy_solid_arg,
-            activation_energy=float(config.interior_energetics.aragog.activation_energy),
-            activation_volume=float(config.interior_energetics.aragog.activation_volume),
-            yield_stress_c=float(config.interior_energetics.aragog.yield_stress_c),
-            yield_stress_mu=float(config.interior_energetics.aragog.yield_stress_mu),
-            stress_closure_mode=str(config.interior_energetics.aragog.stress_closure_mode),
-            arrhenius_t_ref=float(config.interior_energetics.aragog.arrhenius_t_ref),
-            yield_stress_max=float(config.interior_energetics.aragog.yield_stress_max),
-            lid_base_mode=str(config.interior_energetics.aragog.lid_base_mode),
-            lid_base_temperature=float(config.interior_energetics.aragog.lid_base_temperature),
-            lid_contrast_coeff=float(config.interior_energetics.aragog.lid_contrast_coeff),
+            activation_energy=_float_ar('activation_energy', 300.0e3),
+            activation_volume=_float_ar('activation_volume', 5.0e-6),
+            yield_stress_c=_float_ar('yield_stress_c', 50.0e6),
+            yield_stress_mu=_float_ar('yield_stress_mu', 0.6),
+            stress_closure_mode=stress_mode,
+            arrhenius_t_ref=_float_ar('arrhenius_t_ref', 1600.0),
+            yield_stress_max=_float_ar('yield_stress_max', 500.0e6),
+            viscosity_max_log10=_float_ar('viscosity_max_log10', 40.0),
+            lid_base_mode=lid_mode,
+            lid_base_temperature=_float_ar('lid_base_temperature', 1400.0),
+            lid_contrast_coeff=_float_ar('lid_contrast_coeff', 2.2),
+            enabled=enabled_ar,
         )
 
         phase_mixed = build_mixed_phase_params(config, solidus_path, liquidus_path)
@@ -1899,6 +1920,7 @@ class AragogRunner:
         interior_o.mass = out.mass_stag
         interior_o.temp = out.T_stag
         interior_o.pres = out.P_stag
+        interior_o.last_solver_output = out
 
         # Use the actual integration endpoint, not the requested end_time.
         # If the solver exits early (status != 0), dt_actual < requested dt.
