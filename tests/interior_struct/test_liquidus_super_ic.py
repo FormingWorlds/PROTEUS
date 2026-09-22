@@ -484,6 +484,33 @@ class TestSolveSuperliquidusAdiabat:
         # A 5 M_Earth core-mantle pressure is far above the Earth-like 135 GPa.
         assert res['P_cmb'] > 4e11
 
+    def test_nan_p_cmb_uses_nl20_estimate(self, monkeypatch):
+        """A NaN ``hf_row['P_cmb']`` also falls back to the NL20 estimate,
+        rather than propagating the NaN into the adiabat solve. Pins the
+        ``not np.isfinite(float(P_cmb))`` clause of the fallback gate:
+        ``not float('nan')`` and ``float('nan') <= 0`` are both False, so
+        only the isfinite clause catches it.
+        """
+        import math
+
+        _install_fake_solver_deps(monkeypatch)
+        import proteus.utils.structure_estimate as se
+        from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
+
+        seen = {}
+        real_nl20 = se.estimate_P_cmb_NL20
+
+        def spy(mass, core_frac, core_frac_mode):
+            seen['p'] = real_nl20(mass, core_frac, core_frac_mode)
+            return seen['p']
+
+        monkeypatch.setattr(se, 'estimate_P_cmb_NL20', spy)
+        cfg = self._cfg(delta_T_super=300.0, mass_tot=5.0)
+        res = solve_superliquidus_adiabat(cfg, {'P_cmb': math.nan})
+        assert 'p' in seen  # NL20 was consulted despite a present P_cmb key
+        assert res['P_cmb'] == pytest.approx(seen['p'])
+        assert res['P_cmb'] > 4e11
+
 
 # ----------------------------------------------------------------------
 # (3) End-to-end plumbing through load_zalmoxis_configuration

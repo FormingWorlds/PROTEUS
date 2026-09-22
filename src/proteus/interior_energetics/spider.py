@@ -612,6 +612,23 @@ def _interp_ps_lookup(S: float, P: float, lookup: np.ndarray) -> float:
 
 
 # ====================================================================
+def _compute_spider_initial_entropy(config: Config, hf_row: dict, spider_eos_dir: str) -> float:
+    """Compute SPIDER's initial mantle entropy via the shared PALEOS lookup.
+
+    This is the entry point SPIDER's own t=0 setup calls in `_try_spider`;
+    kept as a standalone function so it can be exercised the same way
+    Aragog's `AragogRunner._set_entropy_ic` is, for parity testing between
+    the two interior energetics modules.
+    """
+    from proteus.interior_energetics.common import compute_initial_entropy
+
+    return compute_initial_entropy(
+        config,
+        hf_row,
+        spider_eos_dir=spider_eos_dir,
+    )
+
+
 def _try_spider(
     dirs: dict,
     config: Config,
@@ -801,14 +818,8 @@ def _try_spider(
         )
     else:
         # Compute initial entropy from planet temperature settings (PALEOS lookup)
-        from proteus.interior_energetics.common import compute_initial_entropy
-
         spider_eos_dir = os.path.join(dirs['output/data'], 'spider_eos')
-        ini_entropy = compute_initial_entropy(
-            config,
-            hf_row,
-            spider_eos_dir=spider_eos_dir,
-        )
+        ini_entropy = _compute_spider_initial_entropy(config, hf_row, spider_eos_dir)
         call_sequence.extend(
             [
                 '-ic_adiabat_entropy',

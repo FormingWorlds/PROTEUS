@@ -644,7 +644,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     delta = float(config.planet.delta_T_super)
 
     P_cmb = hf_row.get('P_cmb') if isinstance(hf_row, dict) else None
-    if not P_cmb or P_cmb <= 0:
+    if not P_cmb or P_cmb <= 0 or not np.isfinite(float(P_cmb)):
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
 
         P_cmb = estimate_P_cmb_NL20(

@@ -13,11 +13,16 @@ real EOS or melting-curve table.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
 
 from proteus.interior_energetics import common
+from proteus.interior_energetics.aragog import AragogRunner
 from proteus.interior_energetics.common import solve_superliquidus_entropy_from_tables
+from proteus.interior_energetics.spider import _compute_spider_initial_entropy
 from proteus.interior_struct import zalmoxis as zmod
 from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
@@ -134,6 +139,66 @@ def test_table_path_clamps_at_its_own_ceiling(_table_env):
     assert res['clamped'] is True
     assert 0.0 <= res['achieved_superheat'] < 1000.0
     assert res['achieved_superheat'] == pytest.approx(900.0, abs=1.0)
+
+
+def _shared_ic_config(delta, ic_module):
+    """Same table-path config as ``_shared_config``, extended with the
+    fields ``AragogRunner._set_entropy_ic`` and ``_compute_spider_initial_entropy``
+    read on their way to ``compute_initial_entropy``: ``interior_energetics.module``
+    records which module is under test, ``interior_struct.module`` stays off
+    ``'zalmoxis'`` so both modules resolve through the same table path.
+    """
+    config = _shared_config(delta)
+    config.interior_energetics = SimpleNamespace(module=ic_module)
+    config.planet.temperature_mode = 'liquidus_super'
+    config.planet.ini_dsdr = 0.0
+    config.interior_struct.module = 'non_zalmoxis_struct'
+    return config
+
+
+def _aragog_S_target(config, hf_row):
+    """Drive Aragog's own IC entry point and read back its uniform S_target."""
+    solver = MagicMock()
+    solver._P_stag_flat = np.array([1e10, 5e10])
+    solver._r_basic_flat = np.array([6e6, 5e6, 4e6])
+    interior_o = SimpleNamespace(aragog_solver=solver, _spider_eos_dir='unused')
+
+    AragogRunner._set_entropy_ic(config, interior_o, 'unused_outdir', hf_row)
+
+    S_init = solver.set_initial_entropy.call_args[0][0]
+    assert np.allclose(S_init, S_init[0]), 'ini_dsdr=0 must give a uniform profile'
+    return float(S_init[0])
+
+
+def test_aragog_and_spider_raise_identically_on_sub_liquidus_config(_table_env):
+    """Same config, same sub-liquidus case, driven through each module's own
+    IC entry point: both must raise, with the same error phrase.
+    """
+    hf_row = {'P_cmb': 3000e9}
+    match = 'no fully-molten initial condition is reachable within'
+
+    aragog_config = _shared_ic_config(delta=200.0, ic_module='aragog')
+    with pytest.raises(RuntimeError, match=match):
+        _aragog_S_target(aragog_config, hf_row)
+
+    spider_config = _shared_ic_config(delta=200.0, ic_module='spider')
+    with pytest.raises(RuntimeError, match=match):
+        _compute_spider_initial_entropy(spider_config, hf_row, spider_eos_dir='unused')
+
+
+def test_aragog_and_spider_clamp_to_same_S_target(_table_env):
+    """Same config, same reduced-superheat case, driven through each
+    module's own IC entry point: both must clamp to the same S_target.
+    """
+    hf_row = {'P_cmb': 100e9}
+
+    aragog_config = _shared_ic_config(delta=1000.0, ic_module='aragog')
+    aragog_S = _aragog_S_target(aragog_config, hf_row)
+
+    spider_config = _shared_ic_config(delta=1000.0, ic_module='spider')
+    spider_S = _compute_spider_initial_entropy(spider_config, hf_row, spider_eos_dir='unused')
+
+    assert aragog_S == pytest.approx(spider_S, abs=1e-6)
 
 
 def test_zalmoxis_path_clamps_at_its_own_ceiling(_zalmoxis_env):
