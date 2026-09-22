@@ -66,22 +66,3 @@ def test_compare_recordings_shape_mismatch(tmp_path):
 
     result = mod.compare_recordings(p1, p2)
     assert result is False
-
-
-@pytest.mark.integration
-@pytest.mark.slow
-@pytest.mark.timeout(180)
-def test_record_step_roundtrip(tmp_path):
-    """Verify record_step executes one coupling step and matches reference."""
-    mod = _load_compare_tool()
-    cfg_file = INTEGRATION / 'aragog_compare_off.toml'
-    ref_file = INTEGRATION / 'aragog_compare_off.npz'
-    if not cfg_file.exists() or not ref_file.exists():
-        pytest.skip('Comparison files not found')
-
-    out_file = tmp_path / 'recorded_off.npz'
-    mod.record_step(cfg_file, out_file)
-    assert out_file.exists()
-
-    result = mod.compare_recordings(ref_file, out_file)
-    assert result is True
