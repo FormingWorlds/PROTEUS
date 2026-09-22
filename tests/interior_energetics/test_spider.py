@@ -1902,6 +1902,7 @@ def test_read_spider_cmb_pressure_and_flux(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_read_spider_t_cmb_node_is_last_basic_node(tmp_path):
     """ReadSPIDER reports ``T_cmb_node`` from the last ``temp_b`` entry.
 

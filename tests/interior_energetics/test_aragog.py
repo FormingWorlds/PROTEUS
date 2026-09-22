@@ -1456,6 +1456,7 @@ def test_paleos_melting_curves_follow_mzf_in_reused_outdir(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_helpfile_output_t_cmb_node_is_cmb_basic_node():
     """``T_cmb_node`` is the first basic-node temperature, ``T_cmb`` the bottom cell.
 

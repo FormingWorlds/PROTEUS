@@ -157,6 +157,7 @@ def test_get_helpfile_keys_no_duplicates():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_helpfile_has_t_cmb_node_column_distinct_from_t_cmb():
     """``T_cmb_node`` is a helpfile column placed directly after ``T_cmb``."""
     keys = GetHelpfileKeys()
@@ -638,7 +639,7 @@ def test_helpfile_without_diagnostic_column_resumes_with_zero_fill(caplog):
         # A row appended after resume is a full-schema row, so the backfilled
         # frame extends without a key gap.
         extended = ExtendHelpfile(hf, {**hf.iloc[-1].to_dict(), 'T_cmb_node': 4321.0})
-        assert extended['T_cmb_node'].iloc[-1] == 4321.0
+        assert extended['T_cmb_node'].iloc[-1] == pytest.approx(4321.0)
 
 
 @pytest.mark.unit
