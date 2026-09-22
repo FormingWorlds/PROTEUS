@@ -153,6 +153,20 @@ def test_reachable_target_does_not_warn(fake_tables, caplog):
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
+def test_sub_liquidus_at_table_maximum_raises(monkeypatch, fake_tables):
+    """When the adiabat stays below the liquidus even at the table's maximum
+    entropy, no fully-molten initial condition exists and the solve must
+    raise, not clamp. Lowering S_max to 50 keeps T(P, S_max) below T_liq(P)
+    across the whole pressure range: at P_cmb, T=1340 K vs T_liq=2800 K.
+    """
+    monkeypatch.setattr(_FakeEOS, 'S_max', 50.0)
+
+    with pytest.raises(
+        RuntimeError, match='no fully-molten initial condition is reachable within'
+    ):
+        solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+
+
 @pytest.mark.physics_invariant
 def test_entropy_is_monotonic_in_requested_superheat(fake_tables):
     """A larger requested superheat needs a strictly larger initial entropy."""
@@ -201,6 +215,23 @@ def test_missing_melting_curve_falls_back_to_table_liquidus(monkeypatch, tmp_pat
 
     # The table liquidus lies 50 K below the melting curve, so 200 K above it
     # needs 50/A less entropy than 200 K above the melting curve.
+    assert res['S_target'] == pytest.approx(_S_expected(200.0) - 50.0 / A, rel=1e-6)
+    assert any('unavailable' in r.getMessage() for r in caplog.records)
+
+
+def test_missing_melting_curve_directory_falls_back_to_table_liquidus(
+    monkeypatch, tmp_path, caplog
+):
+    """A real, unmocked FileNotFoundError from get_zalmoxis_melting_curves()
+    (a nonexistent melting_dir) is caught and falls back to the table
+    liquidus, exactly like the mocked-None case above.
+    """
+    monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _FakeEOS())
+
+    cfg = _config(200.0, melting_dir='does-not-exist-zzz')
+    with caplog.at_level(logging.WARNING):
+        res = solve_superliquidus_entropy_from_tables(cfg, {'P_cmb': P_CMB}, str(tmp_path))
+
     assert res['S_target'] == pytest.approx(_S_expected(200.0) - 50.0 / A, rel=1e-6)
     assert any('unavailable' in r.getMessage() for r in caplog.records)
 
@@ -272,6 +303,21 @@ def test_missing_p_cmb_uses_mass_aware_estimate(fake_tables, monkeypatch):
         'proteus.utils.structure_estimate.estimate_P_cmb_NL20', lambda m, f, mode: 7.5e10
     )
     res = solve_superliquidus_entropy_from_tables(_config(200.0), {}, fake_tables)
+
+    assert res['P_cmb'] == pytest.approx(7.5e10, rel=1e-12)
+    assert res['S_target'] == pytest.approx(_S_expected(200.0, 7.5e10), rel=1e-6)
+
+
+def test_nan_p_cmb_uses_mass_aware_estimate(fake_tables, monkeypatch):
+    """A NaN P_cmb also falls back to the Noack and Lasbleis estimate; the
+    ``not P_cmb or P_cmb <= 0`` gate alone does not catch NaN.
+    """
+    monkeypatch.setattr(
+        'proteus.utils.structure_estimate.estimate_P_cmb_NL20', lambda m, f, mode: 7.5e10
+    )
+    res = solve_superliquidus_entropy_from_tables(
+        _config(200.0), {'P_cmb': float('nan')}, fake_tables
+    )
 
     assert res['P_cmb'] == pytest.approx(7.5e10, rel=1e-12)
     assert res['S_target'] == pytest.approx(_S_expected(200.0, 7.5e10), rel=1e-6)

@@ -622,10 +622,13 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     Raises
     ------
     RuntimeError
-        If no valid molten adiabat exists at this pressure, or the solved
-        adiabat leaves the EOS table. An unreachable ``delta_T_super`` does
-        not raise: the solve clamps to the largest achievable superheat,
-        reports it in ``achieved_superheat`` and emits a warning.
+        If no valid molten adiabat exists at this pressure, if the solved
+        adiabat leaves the EOS table, or if no fully-molten adiabat is
+        reachable within the table (the hottest valid adiabat still sits
+        below the liquidus). A reachable but insufficient
+        ``delta_T_super`` does not raise: the solve clamps to the largest
+        achievable superheat, reports it in ``achieved_superheat`` and
+        emits a warning.
     """
     try:
         from zalmoxis.eos_export import compute_entropy_adiabat
@@ -759,7 +762,15 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     # EOS-table ceiling; restrict the solve to that increasing branch.
     superheats = [d['superheat'] for _, d in scan]
     branch = scan[: int(np.argmax(superheats)) + 1]
-    clamped = branch[-1][1]['superheat'] < delta
+    best = branch[-1][1]
+    if best['superheat'] < 0:
+        raise RuntimeError(
+            'liquidus_super: no fully-molten initial condition is reachable within '
+            f'the EOS table; even the hottest valid adiabat (surface T={branch[-1][0]:.0f} K) '
+            f"is {-best['superheat']:.0f} K below the liquidus at "
+            f"P={best['binding_P'] / 1e9:.0f} GPa."
+        )
+    clamped = best['superheat'] < delta
     if clamped:
         # Unreachable target: use the hottest valid adiabat on the branch, the
         # largest superheat the EOS table supports, and say so.

@@ -238,8 +238,11 @@ def solve_superliquidus_entropy_from_tables(
     (``T(P, S_liq(P))``) is used. No Zalmoxis or PALEOS data are read.
 
     When the requested superheat is not reachable inside the table entropy
-    range, the entropy is clamped to the table maximum and a warning names the
-    requested and achieved superheat.
+    range but the table maximum entropy still clears the liquidus, the
+    entropy is clamped to the table maximum and a warning names the
+    requested and achieved superheat. When even the table maximum entropy
+    stays below the liquidus, no fully-molten initial condition exists in
+    the table and a ``RuntimeError`` is raised instead.
 
     Parameters
     ----------
@@ -265,13 +268,15 @@ def solve_superliquidus_entropy_from_tables(
     FileNotFoundError
         If ``eos_dir`` is not a directory.
     RuntimeError
-        If the liquidus is undefined at every evaluated pressure.
+        If the liquidus is undefined at every evaluated pressure, or if no
+        fully-molten initial condition is reachable within the table entropy
+        range.
     """
     eos = _load_entropy_eos(eos_dir)
     delta = float(config.planet.delta_T_super)
 
     P_cmb = hf_row.get('P_cmb') if isinstance(hf_row, dict) else None
-    if not P_cmb or P_cmb <= 0:
+    if not P_cmb or P_cmb <= 0 or not np.isfinite(float(P_cmb)):
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
 
         P_cmb = estimate_P_cmb_NL20(
@@ -293,7 +298,10 @@ def solve_superliquidus_entropy_from_tables(
     T_liq = None
     from proteus.utils.data import get_zalmoxis_melting_curves
 
-    curves = get_zalmoxis_melting_curves(config)
+    try:
+        curves = get_zalmoxis_melting_curves(config)
+    except FileNotFoundError:
+        curves = None
     if curves is not None and curves[1] is not None:
         T_liq = np.asarray(curves[1](P), dtype=float)
     if T_liq is None or not np.isfinite(T_liq).any():
@@ -324,7 +332,13 @@ def solve_superliquidus_entropy_from_tables(
 
     S_lo, S_hi = float(eos.S_min), float(eos.S_max)
     clamped = False
-    sh_hi, _ = _probe(S_hi)
+    sh_hi, P_hi = _probe(S_hi)
+    if sh_hi < 0:
+        raise RuntimeError(
+            'liquidus_super: no fully-molten initial condition is reachable within '
+            f'the EOS table; even at the table maximum entropy ({S_hi:.1f} J/kg/K) '
+            f'the adiabat is {-sh_hi:.0f} K below the liquidus at P={P_hi / 1e9:.0f} GPa.'
+        )
     if sh_hi < delta:
         clamped = True
         S = S_hi
@@ -489,7 +503,7 @@ def compute_initial_entropy(
         P_cmb = None
         if hf_row is not None:
             P_cmb = hf_row.get('P_cmb', None)
-        if not P_cmb or P_cmb <= 0:
+        if not P_cmb or P_cmb <= 0 or not np.isfinite(float(P_cmb)):
             # First-call fallback: hf_row['P_cmb'] is not yet populated.
             # Use a Noack & Lasbleis (2020) mass-aware estimate so super-
             # Earth runs do not anchor to the Earth-like 135 GPa value.

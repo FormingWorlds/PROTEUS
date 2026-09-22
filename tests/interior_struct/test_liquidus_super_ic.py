@@ -433,6 +433,20 @@ class TestSolveSuperliquidusAdiabat:
         assert f'{res["achieved_superheat"]:.0f} K' in msg
         assert 'Lower delta_T_super' in msg
 
+    def test_unreachable_superheat_raises(self, monkeypatch):
+        """When even the hottest valid adiabat sits below the liquidus, the
+        solve raises instead of clamping to a negative superheat.
+        """
+        _install_fake_solver_deps(monkeypatch, ceiling_T=3000.0)  # below the 3700 K offset
+        from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
+
+        cfg = self._cfg(delta_T_super=500.0)
+        with pytest.raises(RuntimeError, match='no fully-molten initial condition is reachable') as exc:
+            solve_superliquidus_adiabat(cfg, {'P_cmb': 1.5e11})
+        msg = str(exc.value)
+        assert 'below the liquidus' in msg
+        assert 'GPa' in msg
+
     def test_reachable_superheat_is_not_clamped(self, monkeypatch, caplog):
         """A reachable superheat is not flagged as clamped and emits no
         unreachable-superheat warning.
