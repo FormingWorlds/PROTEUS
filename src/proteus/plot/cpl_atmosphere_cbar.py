@@ -40,7 +40,7 @@ def plot_atmosphere_cbar(output_dir, times, profiles, plot_format='pdf'):
     ax.invert_yaxis()
     ax.set_yscale('log')
 
-    tmp_max = 1000.0
+    tmp_max = 300.0
     prs_max = 1.0
     for i, t in enumerate(times):
         prof = profiles[i]
@@ -74,7 +74,7 @@ def plot_atmosphere_cbar(output_dir, times, profiles, plot_format='pdf'):
 
 def plot_atmosphere_cbar_entry(handler: Proteus):
     plot_times, _ = sample_output(handler, tmin=1e4, extension='_atm.nc', nsamp=40)
-    print('Snapshots:', plot_times)
+    log.info('Snapshots: %s', plot_times)
     profiles = read_atmosphere_data(handler.directories['output'], plot_times)
 
     plot_atmosphere_cbar(

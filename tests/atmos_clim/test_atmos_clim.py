@@ -17,12 +17,10 @@ Physics tested:
 - Net flux constraint (prevent warming: F_atm >= 0)
 
 All tests use mocked config objects to isolate physics calculations (<100ms runtime).
-See docs/test_infrastructure.md, docs/test_building.md for testing standards.
 
 Related documentation:
-- docs/test_infrastructure.md: Test framework and CI integration
-- docs/test_categorization.md: Test markers and categories
-- docs/test_building.md: Best practices for writing robust tests
+- docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
+- docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 """
 
 from __future__ import annotations
@@ -33,12 +31,16 @@ import pytest
 
 from proteus.utils.constants import const_R, const_sigma
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # =======================================================================================
-# SECTION: RunDummyAtm() — Fixed surface temperature mode
+# SECTION: RunDummyAtm(), fixed surface temperature mode
 # =======================================================================================
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_fixed_surface():
     """Test dummy atmosphere with fixed surface temperature (surf_state='fixed').
 
@@ -55,7 +57,7 @@ def test_rundummyatm_fixed_surface():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.1  # Low surface albedo
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     # Minimal dirs (not used in fixed mode but required by function signature)
     dirs = {}
@@ -94,10 +96,11 @@ def test_rundummyatm_fixed_surface():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_transparent_atmosphere():
     """Test dummy atmosphere with gamma=0 (transparent atmosphere).
 
-    Physical scenario: Planet with no atmospheric opacity (OLR = σT⁴).
+    Physical scenario: Planet with no atmospheric opacity (OLR = sigma T^4).
     Validates that gamma=0 gives full surface emission (no atmospheric absorption).
     """
     from proteus.atmos_clim.dummy import RunDummyAtm
@@ -110,7 +113,7 @@ def test_rundummyatm_transparent_atmosphere():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.0  # Zero surface albedo
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -127,12 +130,21 @@ def test_rundummyatm_transparent_atmosphere():
     # Call RunDummyAtm
     output = RunDummyAtm(dirs, config, hf_row)
 
-    # With gamma=0, OLR should equal σT⁴ exactly
+    # With gamma=0, OLR should equal sigma T^4 exactly
     expected_olr = const_sigma * hf_row['T_magma'] ** 4.0
     assert output['F_olr'] == pytest.approx(expected_olr, rel=1e-8)
+    # Exponent guard: a T^3 regression at T=1500 would land at
+    # 5.67e-8 * 1500**3 = 1.91e2 W/m^2 vs T^4 at 2.87e5 W/m^2.
+    # The two differ by a factor 1500 (well above any tolerance).
+    wrong_t3 = const_sigma * hf_row['T_magma'] ** 3.0
+    assert abs(output['F_olr'] - wrong_t3) > 1.0e4
+    # Sign / positivity guard: Stefan-Boltzmann produces strictly positive
+    # OLR for T > 0; a sign flip would land below zero.
+    assert output['F_olr'] > 0.0
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_opaque_atmosphere():
     """Test dummy atmosphere with gamma=1 (fully opaque atmosphere).
 
@@ -149,7 +161,7 @@ def test_rundummyatm_opaque_atmosphere():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.0
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -168,10 +180,17 @@ def test_rundummyatm_opaque_atmosphere():
 
     # With gamma=1, OLR should be zero (fully absorbed by atmosphere)
     assert output['F_olr'] == pytest.approx(0.0, abs=1e-10)
+    # Limit-input invariant: a regression that omitted the (1-gamma)
+    # opacity factor would still emit ~sigma T^4 ~ 2.87e5 W/m^2 at
+    # T_magma=1500 K (orders of magnitude above the 1e-10 tolerance).
+    # Pin the symbolic limit with the absolute scale of the failure
+    # mode.
+    full_emission = const_sigma * hf_row['T_magma'] ** 4.0
+    assert output['F_olr'] < full_emission * 1e-9
 
 
 # =======================================================================================
-# SECTION: RunDummyAtm() — Conductive boundary layer (skin) mode
+# SECTION: RunDummyAtm(), conductive boundary layer (skin) mode
 # =======================================================================================
 
 
@@ -192,7 +211,7 @@ def test_rundummyatm_skin_mode():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.1
     config.atmos_clim.surf_state = 'skin'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
     config.atmos_clim.surface_k = 2.0  # W/(m·K); thermal conductivity
     config.atmos_clim.surface_d = 1000.0  # m; conductive lid thickness
 
@@ -241,7 +260,7 @@ def test_rundummyatm_skin_convergence():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.2
     config.atmos_clim.surf_state = 'skin'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
     config.atmos_clim.surface_k = 3.0  # W/(m·K)
     config.atmos_clim.surface_d = 500.0  # m
 
@@ -266,11 +285,12 @@ def test_rundummyatm_skin_convergence():
 
 
 # =======================================================================================
-# SECTION: RunDummyAtm() — Flux physics and edge cases
+# SECTION: RunDummyAtm(), flux physics and edge cases
 # =======================================================================================
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_prevent_warming():
     """Test prevent_warming constraint enforces F_atm >= 1e-8 W/m².
 
@@ -287,7 +307,7 @@ def test_rundummyatm_prevent_warming():
     config.orbit.s0_factor = 0.1  # Very low insolation factor
     config.atmos_clim.surf_greyalbedo = 0.9  # High surface albedo
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = True  # Enable constraint
+    config.planet.prevent_warming = True  # Enable constraint
 
     dirs = {}
 
@@ -306,9 +326,25 @@ def test_rundummyatm_prevent_warming():
 
     # Verify F_atm >= 1e-8 (prevent_warming enforced)
     assert output['F_atm'] >= 1.0e-8
+    # Sign guard: a regression that flipped the clamp's sign would
+    # produce a negative result not satisfying the >= 1e-8 already,
+    # but pin positivity explicitly to discriminate the strict-zero
+    # vs strict-positive boundary.
+    assert output['F_atm'] > 0.0
+    # Re-run with prevent_warming disabled on the same hf_row. The
+    # unclamped F_atm must be identically positive here (T_magma=500 K
+    # emits ~3.5e3 W/m^2 of OLR even at gamma=0.1) AND must not differ
+    # from the clamped output, since the clamp only activates when
+    # F_atm < 1e-8. A regression that always clamped (independent of
+    # the prevent_warming flag) would produce 1e-8 here.
+    config.planet.prevent_warming = False
+    output2 = RunDummyAtm(dirs, config, hf_row)
+    assert output2['F_atm'] == pytest.approx(output['F_atm'], rel=1e-12)
+    assert output2['F_atm'] > 1.0
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_scale_height():
     """Test scale height calculation H = RT/(μg).
 
@@ -325,7 +361,7 @@ def test_rundummyatm_scale_height():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.1
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -348,9 +384,58 @@ def test_rundummyatm_scale_height():
     # Verify R_obs = R_int + height_factor * H
     R_obs_expected = hf_row['R_int'] + config.atmos_clim.dummy.height_factor * H_expected
     assert output['R_obs'] == pytest.approx(R_obs_expected, rel=1e-8)
+    # Monotonicity guard: the atmosphere always adds thickness, so
+    # R_obs must strictly exceed R_int by a positive (height_factor * H).
+    # At T~1200 K, mu=0.029, g=10, H ~ R*T/(mu*g) ~ 3.4e4 m, and
+    # height_factor=2 puts R_obs about 6.8e4 m above R_int (far above
+    # any tolerance). A sign-flipped or zero-H regression would either
+    # subtract or land on R_int exactly.
+    assert output['R_obs'] - hf_row['R_int'] > 1.0e4
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_gobs_inverse_square_of_robs():
+    """Observed gravity obeys the inverse-square law against R_obs.
+
+    Physical scenario: the dummy atmosphere reports its constraining
+    observable at the level R_obs, which sits height_factor scale heights
+    above the surface R_int. Gravity is (R_int/R_obs)**2
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.4
+    config.atmos_clim.dummy.height_factor = 3.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = 'fixed'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1200.0,  # K
+        'albedo_pl': 0.3,
+        'F_ins': 1000.0,  # W/m^2
+        'atm_kg_per_mol': 0.029,  # kg/mol; N2
+        'gravity': 10.0,  # m/s^2 surface gravity
+        'R_int': 6.0e6,  # m
+        'P_surf': 1e5,  # Pa
+    }
+
+    output = RunDummyAtm({}, config, hf_row)
+
+    # Scaled gravity from surface
+    g_expected = hf_row['gravity'] * (hf_row['R_int'] / output['R_obs']) ** 2
+    assert output['g_obs'] == pytest.approx(g_expected, rel=1e-10)
+
+    # g_obs must be strictly weaker than the surface gravity
+    assert output['R_obs'] > hf_row['R_int']
+    assert output['g_obs'] < hf_row['gravity']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_zenith_angle_effect():
     """Test that zenith angle reduces scattered solar flux via cosine factor.
 
@@ -366,7 +451,7 @@ def test_rundummyatm_zenith_angle_effect():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.1
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -389,8 +474,15 @@ def test_rundummyatm_zenith_angle_effect():
     output_60deg = RunDummyAtm(dirs, config, hf_row)
 
     # Verify F_sct (scattered SW) decreases with zenith angle
-    # At 60°, cos(60°) = 0.5, so F_D_SW is halved, thus F_sct is halved
+    # At 60 deg, cos(60) = 0.5, so F_D_SW is halved, thus F_sct is halved
     assert output_60deg['F_sct'] < output_0deg['F_sct']
+    # Quantitative monotonicity: the cosine geometry predicts a factor
+    # of ~2 reduction (cos(60)/cos(0) = 0.5). A regression that used
+    # sin(theta) or omitted the geometry entirely would either invert
+    # the ordering or leave the ratio at 1.0. Pin the magnitude of
+    # the reduction within a wide band that still discriminates.
+    ratio = output_60deg['F_sct'] / output_0deg['F_sct']
+    assert 0.3 < ratio < 0.7
 
 
 @pytest.mark.unit
@@ -411,7 +503,7 @@ def test_rundummyatm_invalid_surf_state(mock_update):
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.1
     config.atmos_clim.surf_state = 'invalid_state'  # Invalid
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -428,6 +520,13 @@ def test_rundummyatm_invalid_surf_state(mock_update):
     # Verify ValueError is raised
     with pytest.raises(ValueError, match='Invalid surface state'):
         RunDummyAtm(dirs, config, hf_row)
+    # Discrimination: a valid surface state on the same hf_row must
+    # complete normally and return a well-formed output. This rules
+    # out a regression that hard-raises on every input regardless of
+    # surf_state (which would also pass the pytest.raises block).
+    config.atmos_clim.surf_state = 'fixed'
+    output = RunDummyAtm(dirs, config, hf_row)
+    assert output['T_surf'] == pytest.approx(hf_row['T_magma'], rel=1e-8)
 
 
 @pytest.mark.unit
@@ -448,7 +547,7 @@ def test_rundummyatm_albedo_calculation():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.5  # Moderate surface reflectivity
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -471,6 +570,83 @@ def test_rundummyatm_albedo_calculation():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_albedo_zero_when_no_downwelling_flux():
+    """Regression: zero instellation (F_ins=0, e.g. night side / a star
+    that has switched off) drives the downwelling shortwave flux to zero.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.3
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.5
+    config.atmos_clim.surf_state = 'fixed'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1400.0,
+        'albedo_pl': 0.2,
+        'F_ins': 0.0,  # no instellation -> fl_D_SW == 0.0
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+
+    # Zero instellation gives zero albedo
+    output = RunDummyAtm({}, config, hf_row)
+    assert output['albedo'] == pytest.approx(0.0, abs=1e-15)
+
+    # Discrimination: the rest of the flux chain (surface emission) is
+    # unaffected by the F_ins=0 change, so F_olr must stay positive
+    assert output['F_olr'] > 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_albedo_formula_flux_positive():
+    """The zero-flux guard must only fire on the degenerate F_ins=0 case;
+    with positive instellation, albedo is still the closed-form
+    ``surf_greyalbedo / (1 - surf_greyalbedo)`` (the F_ins-dependent
+    prefactor cancels between numerator and denominator).
+
+    surf_greyalbedo=0.25 -> expected = 0.25 / 0.75 = 1/3.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.3
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.25
+    config.atmos_clim.surf_state = 'fixed'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1400.0,
+        'albedo_pl': 0.2,
+        'F_ins': 1361.0,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+
+    # albedo derived correctly from F_ins and surf_greyalbedo
+    output = RunDummyAtm({}, config, hf_row)
+    assert output['albedo'] == pytest.approx(1.0 / 3.0, rel=1e-12)
+
+    # Discrimination: the zero-flux guard's hardcoded 0.0 must NOT have
+    # leaked into this positive-flux case
+    assert output['albedo'] != pytest.approx(0.0, abs=1e-6)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_output_keys():
     """Test that all expected output keys are present in returned dictionary.
 
@@ -487,7 +663,7 @@ def test_rundummyatm_output_keys():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.1
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -514,8 +690,221 @@ def test_rundummyatm_output_keys():
         'albedo',
         'p_xuv',
         'R_xuv',
+        'T_xuv',
+        'g_xuv',
         'p_obs',
         'P_surf_clim',
     ]
     for key in required_keys:
         assert key in output
+    # The dummy XUV level coincides with the observed one, so its temperature
+    # is the surface temperature and its gravity matches g_obs; hardcoded
+    # zeros would fail both pins.
+    assert output['T_xuv'] == pytest.approx(output['T_surf'], rel=1e-12)
+    assert output['g_xuv'] == pytest.approx(output['g_obs'], rel=1e-12)
+    assert output['g_xuv'] > 0.0
+    # Positivity guard on the physical quantities: temperature, radii,
+    # and pressures must all be strictly positive. A regression that
+    # populated these keys with default zeros or NaN would still pass
+    # the membership check above but fail the physics contract.
+    assert output['T_surf'] > 0.0
+    assert output['R_obs'] > 0.0
+    assert output['P_surf_clim'] > 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_clips_the_xuv_radius_to_the_hill_radius():
+    """With the clip enabled and a Hill radius below the observed radius, the
+    dummy XUV level moves to the Hill radius while the observed level stays,
+    and g_xuv strengthens by the inverse square of the ratio.
+
+    Discrimination: without the clip the XUV level coincides with the observed
+    one and g_xuv equals g_obs; with it, g_xuv exceeds g_obs by the squared
+    radius ratio, which the final pin resolves far outside tolerance.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.5
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.atmos_clim.dummy.fixed_flux = -1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = 'fixed'
+    config.planet.prevent_warming = False
+    config.escape.hill_clamp = True
+    config.escape.hill_clamp_frac = 1.0
+
+    hf_row = {
+        'T_magma': 2500.0,
+        'albedo_pl': 0.1,
+        'F_ins': 1000.0,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+    output = RunDummyAtm({}, config, dict(hf_row))
+    r_obs = output['R_obs']
+    assert r_obs > 6.371e6  # the scale height lifted the observed level
+
+    # Hill radius between R_int and R_obs, so the clip engages.
+    hf_row['hill_radius'] = 6.371e6 + 0.4 * (r_obs - 6.371e6)
+    clipped = RunDummyAtm({}, config, dict(hf_row))
+
+    assert clipped['R_xuv'] == pytest.approx(hf_row['hill_radius'], rel=1e-12)
+    assert clipped['R_obs'] == pytest.approx(r_obs, rel=1e-12)  # untouched
+    expected_g = 9.8 * (6.371e6 / hf_row['hill_radius']) ** 2
+    assert clipped['g_xuv'] == pytest.approx(expected_g, rel=1e-10)
+    assert clipped['g_xuv'] > clipped['g_obs']  # deeper level, stronger gravity
+    assert clipped['g_xuv'] != pytest.approx(clipped['g_obs'], rel=1e-3)
+
+
+# =======================================================================================
+# SECTION: RunDummyAtm() fixed_flux bypass mode
+# =======================================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_fixed_flux_bypasses_grey_body_computation():
+    """``config.atmos_clim.dummy.fixed_flux > 0`` short-circuits the
+    full grey-body chain and returns the supplied flux directly.
+
+    Physical scenario: forcing the atmosphere flux to a prescribed
+    value, useful for parameter sweeps where the radiative response
+    is held at a fixed offset. The wrapper must not call the Stefan-
+    Boltzmann path; the returned ``F_atm`` and ``F_olr`` are exactly
+    the configured flux and ``F_sct`` collapses to zero.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+    from proteus.utils.constants import gas_list
+
+    config = MagicMock()
+    config.atmos_clim.dummy.fixed_flux = 250.0  # W/m^2
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.atmos_clim.surf_state = 'fixed'  # irrelevant in this branch
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1800.0,
+        'P_surf': 1e5,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'albedo_pl': 0.3,
+    }
+    for g in gas_list:
+        hf_row[f'{g}_vmr'] = 0.0
+    hf_row['H2O_vmr'] = 0.5
+    hf_row['CO2_vmr'] = 0.5
+
+    output = RunDummyAtm({}, config, hf_row)
+
+    # The fixed-flux mode pins F_atm and F_olr to the input and zeroes
+    # the scattered shortwave contribution.
+    assert output['F_atm'] == pytest.approx(250.0, rel=1e-12)
+    assert output['F_olr'] == pytest.approx(250.0, rel=1e-12)
+    assert output['F_sct'] == pytest.approx(0.0, abs=1e-15)
+    assert output['albedo'] == pytest.approx(0.0, abs=1e-15)
+    # Discrimination guard: a regression that fell through to the
+    # grey-body branch on this config (e.g. by checking the wrong
+    # attribute name) would compute F_olr via sigma * T^4 and land
+    # around 5.95e5 W/m^2 for T_magma = 1800 K, three orders of
+    # magnitude above the configured 250.
+    assert output['F_olr'] < 1e3
+    # T_surf must equal the magma temperature in this branch.
+    assert output['T_surf'] == pytest.approx(1800.0, rel=1e-12)
+    # Scale-height path is still taken: R_obs > R_int.
+    assert output['R_obs'] > hf_row['R_int']
+    # The XUV mixing ratios were copied from the volatile mixing
+    # ratios. H2O and CO2 were set above; verify the pass-through.
+    assert hf_row['H2O_vmr_xuv'] == pytest.approx(0.5, rel=1e-12)
+    assert hf_row['CO2_vmr_xuv'] == pytest.approx(0.5, rel=1e-12)
+    # An untouched species defaults to zero, not the MagicMock that a
+    # raw .get on the missing key would otherwise return.
+    assert hf_row['N2_vmr_xuv'] == pytest.approx(0.0, abs=1e-15)
+    # Type guard: a regression that returned MagicMock here would not
+    # be a plain float.
+    assert isinstance(hf_row['N2_vmr_xuv'], float)
+
+
+@pytest.mark.unit
+def test_rundummyatm_fixed_flux_ignored_when_value_non_positive():
+    """``fixed_flux <= 0`` (the default sentinel) must fall through to
+    the grey-body computation. Pinning fixed_flux = -1.0 confirms the
+    sentinel is treated as a flag and not as a real flux value.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.fixed_flux = -1.0  # sentinel
+    config.atmos_clim.dummy.gamma = 0.5
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = 'fixed'
+    config.interior_energetics.module = 'aragog'  # anything other than 'boundary'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1800.0,
+        'albedo_pl': 0.3,
+        'F_ins': 1361.0,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+
+    output = RunDummyAtm({}, config, hf_row)
+
+    # OLR must be the Stefan-Boltzmann value, not the sentinel.
+    # sigma * (T - gamma*T)**4 = sigma * (T*0.5)**4 at gamma=0.5.
+    assert output['F_olr'] > 0.0
+    assert output['F_olr'] != pytest.approx(-1.0)
+    # F_sct in the grey-body path is non-zero (zenith=0, albedo_s=0.1).
+    assert output['F_sct'] > 0.0
+
+
+@pytest.mark.unit
+def test_rundummyatm_boundary_module_keeps_existing_t_surf():
+    """When ``interior_energetics.module = 'boundary'`` and surf_state
+    is ``'fixed'``, the dummy atmosphere must read the surface
+    temperature from ``hf_row['T_surf']`` (already advanced by the
+    boundary backend) rather than from ``hf_row['T_magma']``.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.fixed_flux = -1.0
+    config.atmos_clim.dummy.gamma = 0.5
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = 'fixed'
+    config.interior_energetics.module = 'boundary'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 2000.0,
+        'T_surf': 1450.0,  # distinct from T_magma to discriminate
+        'albedo_pl': 0.3,
+        'F_ins': 1361.0,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+
+    output = RunDummyAtm({}, config, hf_row)
+
+    # In the boundary branch, T_surf is honoured as-is.
+    assert output['T_surf'] == pytest.approx(1450.0, rel=1e-12)
+    # Discrimination guard: a regression that always reads T_magma
+    # would land at 2000 K, 550 K above the boundary-advanced value.
+    assert output['T_surf'] < 1800.0

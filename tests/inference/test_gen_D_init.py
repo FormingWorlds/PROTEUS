@@ -2,9 +2,8 @@
 Unit tests for inference initial-dataset generation utilities.
 
 References:
-  - docs/How-to/test_infrastructure.md
-  - docs/How-to/test_categorization.md
-  - docs/How-to/test_building.md
+  - docs/How-to/testing.md
+  - docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -13,38 +12,96 @@ import numpy as np
 import pandas as pd
 import pytest
 import toml
-import torch
 
-import proteus.inference.gen_D_init as init_mod
+# The Bayesian-optimisation stack ships as the optional `inference` extra,
+# which installs all three together. Guarding the whole stack keeps a
+# partial environment skipping rather than failing collection.
+torch = pytest.importorskip('torch')
+pytest.importorskip('botorch')
+pytest.importorskip('gpytorch')
+
+import proteus.inference.gen_D_init as init_mod  # noqa: E402
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.unit
-def test_create_init_rejects_small_sample_count():
-    config = {'init_grid': 'none', 'init_samps': 1}
-    with pytest.raises(ValueError, match='must contain >1 sample'):
-        init_mod.create_init(config)
+def test_create_init_falls_back_to_n_workers_when_init_samps_less_than_one(monkeypatch):
+    """When ``init_samps < 1``, ``create_init`` falls back to the number of
+    workers rather than raising an error. The fallback allows the caller to
+    omit an explicit sample count when the worker count is the natural default.
+    """
+    received: list = []
+
+    def _mock_bounds(
+        output, ref_config, parameters, observables, n, seed, n_workers, failure_codes
+    ):
+        received.append(n)
+        return n
+
+    monkeypatch.setattr(init_mod, 'sample_from_bounds', _mock_bounds)
+
+    config = {
+        'init_grid': 'none',
+        'init_samps': 0,
+        'output': 'out',
+        'ref_config': 'ref.toml',
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
+        'observables': {'R_obs': 1.0},
+        'seed': 1,
+        'n_workers': 4,
+        'failure_codes': [],
+    }
+    result = init_mod.create_init(config)
+
+    assert received == [4], 'expected sample_from_bounds to be called with n_workers=4'
+    assert result == 4
 
 
 @pytest.mark.unit
 def test_create_init_routes_to_sample_from_bounds(monkeypatch):
+    """``create_init`` with ``init_grid='none'`` dispatches to
+    ``sample_from_bounds`` (Halton-sequence sampling of the parameter
+    box), not to ``sample_from_grid``.
+    """
     config = {
         'init_grid': 'none',
         'init_samps': 4,
         'output': 'out',
         'ref_config': 'ref.toml',
-        'parameters': {'struct.mass_tot': [0.7, 3.0]},
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
         'observables': {'R_obs': 1.0},
         'seed': 1,
         'n_workers': 2,
+        'failure_codes': [],
     }
+    grid_calls: list = []
+    monkeypatch.setattr(
+        init_mod, 'sample_from_grid', lambda *a, **kw: grid_calls.append((a, kw))
+    )
     monkeypatch.setattr(init_mod, 'sample_from_bounds', lambda *args, **kwargs: 4)
     assert init_mod.create_init(config) == 4
+    # Discrimination: with init_grid='none' the wrapper must dispatch ONLY to
+    # sample_from_bounds. A regression that called both backends would still
+    # return 4 from the bounds shim.
+    assert grid_calls == []
 
 
 @pytest.mark.unit
 def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
+    """``create_init`` with a non-'none' ``init_grid`` dispatches to
+    ``sample_from_grid`` and resolves the grid path through the output root,
+    so a relocated output root (PROTEUS_OUTPUT_PATH) is honoured rather than
+    hard-coding ``<proteus>/output``.
+    """
     observed = {}
-    monkeypatch.setattr(init_mod, 'get_proteus_directories', lambda: {'proteus': str(tmp_path)})
+    # Model the output root as <tmp_path>/output; the grid name is appended to
+    # it, mirroring get_proteus_directories(outdir)['output'].
+    monkeypatch.setattr(
+        init_mod,
+        'get_proteus_directories',
+        lambda outdir: {'output': str(tmp_path / 'output' / outdir)},
+    )
 
     def fake_sample_from_grid(output, params, observables, grid_dir):
         observed['grid_dir'] = grid_dir
@@ -55,16 +112,26 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
         'init_grid': 'my_grid',
         'init_samps': 3,
         'output': 'out',
-        'parameters': {'struct.mass_tot': [0.7, 3.0]},
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
         'observables': {'R_obs': 1.0},
+        'failure_codes': [],
     }
 
     assert init_mod.create_init(config) == 6
+    # The grid dir is resolved through get_proteus_directories(grid)['output'],
+    # i.e. the (possibly relocated) output root joined with the grid name, not a
+    # hard-coded <proteus>/output. Pinning the full path discriminates a
+    # regression that ignored the grid name or reintroduced the hard-coded root.
     assert observed['grid_dir'] == str(tmp_path / 'output' / 'my_grid')
 
 
 @pytest.mark.unit
 def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
+    """``sample_from_grid`` walks each ``case_N/`` subdirectory, reads
+    the case parameters from ``init_coupler.toml``, reads the observable
+    from ``runtime_helpfile.csv``, and saves the combined dataset as
+    ``init.csv`` with canonical columns ``x_0, y``.
+    """
     grid_dir = tmp_path / 'grid'
     output_dir = tmp_path / 'output'
     output_dir.mkdir(parents=True)
@@ -75,7 +142,7 @@ def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
             case / 'runtime_helpfile.csv', sep=' ', index=False
         )
         (case / 'init_coupler.toml').write_text(
-            toml.dumps({'struct': {'mass_tot': mass}}), encoding='utf-8'
+            toml.dumps({'planet': {'mass_tot': mass}}), encoding='utf-8'
         )
 
     monkeypatch.setattr(
@@ -84,7 +151,7 @@ def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
 
     n = init_mod.sample_from_grid(
         output='ignored',
-        params={'struct.mass_tot': [0.0, 10.0]},
+        params={'planet.mass_tot': [0.0, 10.0]},
         observables={'R_obs': 1.0},
         grid_dir=str(grid_dir),
     )
@@ -97,6 +164,10 @@ def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_sample_from_bounds_rejects_invalid_worker_count():
+    """``sample_from_bounds`` rejects ``n_workers < 1`` with an
+    'at least 1' message, so a misconfigured worker pool fails loudly
+    rather than silently producing zero samples.
+    """
     with pytest.raises(ValueError, match='at least 1'):
         init_mod.sample_from_bounds(
             output='out',
@@ -106,15 +177,51 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
             nsamp=2,
             seed=1,
             n_workers=0,
+            failure_codes=[],
+        )
+    # Discrimination: negative worker counts must also raise. A regression
+    # that only guarded the n_workers==0 boundary (e.g. `if n == 0`) would
+    # let -1 slip through and crash multiprocessing.Pool with an opaque
+    # error far from the user's misconfiguration.
+    with pytest.raises(ValueError, match='at least 1'):
+        init_mod.sample_from_bounds(
+            output='out',
+            ref_config='ref.toml',
+            params={'a': [0.0, 1.0]},
+            observables={'obs': 1.0},
+            nsamp=2,
+            seed=1,
+            n_workers=-1,
+            failure_codes=[],
+        )
+    # Discrimination: negative worker counts must also raise. A regression
+    # that only guarded the n_workers==0 boundary (e.g. `if n == 0`) would
+    # let -1 slip through and crash multiprocessing.Pool with an opaque
+    # error far from the user's misconfiguration.
+    with pytest.raises(ValueError, match='at least 1'):
+        init_mod.sample_from_bounds(
+            output='out',
+            ref_config='ref.toml',
+            params={'a': [0.0, 1.0]},
+            observables={'obs': 1.0},
+            nsamp=2,
+            seed=1,
+            n_workers=-1,
+            failure_codes=[],
         )
 
 
 @pytest.mark.unit
 def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
+    """``sample_from_bounds`` caps the worker pool at ``cpu_count - 1``
+    (3 in this test, with cpu_count=4 mocked) regardless of the user's
+    request, uses Halton sequences for the initial design, and saves
+    the resulting (X, Y) dataset to ``init.csv``.
+    """
     captured = {}
 
     class FakeHalton:
-        def __init__(self, d, seed, scramble):
+        def __init__(self, d, rng, scramble):
             captured['dims'] = d
             captured['scramble'] = scramble
 
@@ -131,9 +238,16 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def starmap(self, func, args):
+        def starmap_async(self, func, args):
             captured['task_count'] = len(args)
-            return [torch.tensor([[0.2]], dtype=torch.double) for _ in args]
+            results = [torch.tensor([[0.2]], dtype=torch.double) for _ in args]
+
+            class _AsyncResult:
+                def get(self, timeout=None):
+                    captured['pool_timeout'] = timeout
+                    return results
+
+            return _AsyncResult()
 
     monkeypatch.setattr(init_mod.os, 'cpu_count', lambda: 4)
     monkeypatch.setattr(init_mod, 'Halton', FakeHalton)
@@ -156,6 +270,7 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
         nsamp=2,
         seed=11,
         n_workers=10,
+        failure_codes=[1, 10],
     )
 
     assert n == 2
@@ -163,3 +278,43 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     assert captured['task_count'] == 2
     assert captured['saved_shape'] == ((2, 1), (2, 1))
     assert captured['saved_path'].endswith('init.csv')
+    # The batch is bounded so a wedged worker cannot hang it indefinitely:
+    # the default per-child timeout (6 h) yields a positive, finite pool cap.
+    assert captured['pool_timeout'] is not None
+    assert captured['pool_timeout'] > 0
+
+
+@pytest.mark.unit
+def test_real_halton_accepts_rng_keyword_and_is_deterministic():
+    """Check halton sampler accepts rng and behaves pseudo-deterministically.
+
+    ``sample_from_bounds`` constructs ``Halton(d=..., rng=..., scramble=True)``.
+    The ``rng=`` keyword replaced the deprecated ``seed=`` in scipy 1.15.0
+    """
+    import scipy
+    from packaging.version import Version
+    from scipy.stats.qmc import Halton
+
+    # Version floor recorded in pyproject.toml (scipy>=1.15.0).
+    assert Version(scipy.__version__) >= Version('1.15.0')
+
+    # Set up sampler with fixed seed of 42 (answer to life, universe, and everything).
+    dims = 3
+    nsamp = 5
+    sampler = Halton(d=dims, rng=np.random.default_rng(42), scramble=True)
+    x = np.asarray(sampler.random(nsamp))
+
+    # Shape and unit-hypercube bounds: Halton draws live in [0, 1).
+    assert x.shape == (nsamp, dims)
+    assert x.min() >= 0.0
+    assert x.max() < 1.0
+
+    # Determinism guard. This rules out a silently non-seeded sampler.
+    x_same = np.asarray(
+        Halton(d=dims, rng=np.random.default_rng(42), scramble=True).random(nsamp)
+    )
+    x_diff = np.asarray(
+        Halton(d=dims, rng=np.random.default_rng(7), scramble=True).random(nsamp)
+    )
+    np.testing.assert_allclose(x, x_same, rtol=0.0, atol=0.0)
+    assert not np.allclose(x, x_diff)

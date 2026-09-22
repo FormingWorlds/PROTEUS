@@ -1,0 +1,15 @@
+output = "chili_venus_grid"
+ref_config = "input/chili/intercomp/venus.toml"
+symlink = ""
+use_slurm = false
+max_jobs = 9
+max_days = 1
+max_mem = 6
+
+["planet.elements.H_budget"]
+method = "direct"
+values = [1.6e+20, 7.8e+20, 1.6e+21]
+
+["planet.elements.C_budget"]
+method = "direct"
+values = [1.36e+20, 2.73e+20, 5.44e+20]

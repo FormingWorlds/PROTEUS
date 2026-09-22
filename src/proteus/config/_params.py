@@ -4,7 +4,7 @@ It also defines stopping criteria."""
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, lt
+from attrs.validators import ge, gt, in_, lt, optional
 
 from ._converters import none_if_none
 
@@ -15,6 +15,7 @@ def valid_path(instance, attribute, value):
 
 
 def max_bigger_than_min(instance, attribute, value):
+    """The maximum must exceed the minimum on the same section."""
     if value <= instance.minimum:
         raise ValueError("'maximum' has to be bigger than 'minimum'.")
 
@@ -28,18 +29,26 @@ def valid_mod(instance, attribute, value):
 
 @define
 class OutputParams:
-    """Parameters for output files and logging
+    """Parameters for output files and logging.
+
+    Note that `write_mod` and `dt_write_rel` are independent triggers for
+    writing output files. The model will write output if either trigger
+    is individually satisfied.
 
     Attributes
     ----------
     path: str
-        Path to output folder relative to `PROTEUS/output/`.
+        Output folder name inside ``PROTEUS/output/``. Set to ``"auto"``
+        (default) for a unique timestamped name (``run_YYYYMMDD_HHMMSS_xxxx``),
+        or any string for a fixed folder (e.g. ``"my_earth_run"``).
     logging: str
         Log verbosity. Choices: 'INFO', 'DEBUG', 'ERROR', 'WARNING'.
     plot_fmt: str
         Plotting output file format. Choices: "png", "pdf".
     write_mod: int
-        Write CSV frequency. 0: wait until completion. n: every n iterations.
+        Write data iteration-interval trigger. 0: wait until completion. n: every n iterations.
+    dt_write_rel: float
+        Write data time-interval trigger. Expressed as a fraction of the current simulation time. Set to 0 to disable.
     plot_mod: int | None
         Plotting frequency. 0: wait until completion. n: every n iterations. None: never plot.
     archive_mod: int | None
@@ -48,56 +57,25 @@ class OutputParams:
         Remove SOCRATES spectral files after model terminates.
     """
 
-    path: str = field(validator=valid_path)
+    path: str = field(default='auto', validator=valid_path)
     logging: str = field(default='INFO', validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
     plot_fmt: str = field(default='png', validator=in_(('pdf', 'png')))
     write_mod: int = field(default=1, validator=ge(0))
-    plot_mod = field(default=10, validator=valid_mod, converter=none_if_none)
-    archive_mod = field(default=None, validator=valid_mod, converter=none_if_none)
+    dt_write_rel: float = field(default=0.0, validator=ge(0))
+    # Type hint includes `str` so cattrs can structure the literal string
+    # "none" before the `none_if_none` converter maps it to Python None.
+    # Without `str` in the union, `int("none")` raises ValueError at
+    # structure time. Same pattern as star._star.Mors.rot_period.
+    plot_mod: int | str | None = field(default=5, validator=valid_mod, converter=none_if_none)
+    archive_mod: int | str | None = field(
+        default=None, validator=valid_mod, converter=none_if_none
+    )
     remove_sf: bool = field(default=False)
 
 
 @define
-class DtProportional:
-    """Parameters used to configure the proportional time-stepping scheme.
-
-    Attributes
-    ----------
-    propconst: float
-        Proportionality constant.
-    """
-
-    propconst: float = field(default=52.0, validator=gt(0))
-
-
-@define
-class DtAdaptive:
-    """Parameters used to configure the adaptive time-stepping scheme.
-
-    Attributes
-    ----------
-    atol: float
-        Absolute tolerance on time-step size [yr].
-    rtol: float
-        Relative tolerance on time-step size [dimensionless].
-    scale_incr: float
-        Scale factor to increase time-step [dimensionless].
-    scale_decr: float
-        Scale factor to decrease time-step [dimensionless].
-    window: int
-        Number of previous steps to consider for comparison [dimensionless].
-    """
-
-    atol: float = field(default=0.02, validator=gt(0))
-    rtol: float = field(default=0.10, validator=gt(0))
-    scale_incr: float = field(default=1.6, validator=gt(1))
-    scale_decr: float = field(default=0.8, validator=(gt(0), lt(1)))
-    window: int = field(default=3, validator=ge(1))
-
-
-@define
 class TimeStepParams:
-    """Parameters for time-stepping parameters
+    """Parameters for time-stepping.
 
     Attributes
     ----------
@@ -107,8 +85,6 @@ class TimeStepParams:
         Minimum relative time-step size [dimensionless].
     maximum: float
         Maximum time-step size [yr].
-    maximum_rel: float
-        Maximum relative time-step size [dimensionless].
     initial: float
         Initial time-step size [yr].
     starspec: float
@@ -117,27 +93,151 @@ class TimeStepParams:
         Maximum interval at which to recalculate instellation flux [yr].
     method: str
         Time-stepping method. Choices: 'proportional', 'adaptive', 'maximum'.
-    proportional: DtProportional
-        Parameters used to configure the proportional time-stepping scheme.
-    adaptive: DtAdaptive
-        Parameters used to configure the adaptive time-stepping scheme.
+    propconst: float
+        Proportionality constant (proportional method).
+    atol: float
+        Absolute tolerance on time-step size (adaptive method) [yr].
+    rtol: float
+        Relative tolerance on time-step size (adaptive method) [dimensionless].
+    scale_incr: float
+        Scale factor to grow time-step on a successful adaptive step
+        [dimensionless, must be >1].
+    scale_decr: float
+        Scale factor to shrink time-step on a rejected adaptive step
+        [dimensionless, in (0, 1)].
+    window: int
+        Number of previous steps to consider for adaptive-method comparison
+        [dimensionless].
+    max_growth_factor: float
+        Cap on the dt growth ratio between consecutive steps [dimensionless].
+        Bounds dtswitch / dtprev, preventing large jumps that can wedge the
+        interior solver; 0 (default) disables the cap.
+    maximum_rel: float
+        Time-fraction allowance added to ``dt.maximum`` on every step
+        [dimensionless]. The effective per-step cap is the sum
+        ``dt.maximum + maximum_rel * Time``, so at the default 1.0 the
+        allowance grows linearly with simulation Time, and the absolute
+        ``dt.maximum`` acts as the early-time floor (cap doubles at
+        ``Time = dt.maximum``). Set ``maximum_rel = 0.0`` to disable the
+        time-proportional allowance and recover the strict
+        ``dt = min(dt.maximum, ...)`` cap.
+    mushy_maximum: float
+        Maximum time-step size [yr] during the mushy-zone transition
+        (``phi_crit < Phi_global < mushy_upper``). Tighter than
+        ``maximum`` because the interior solver hits stiffness
+        cliffs in this regime (phase-boundary Jgrav + rheology
+        contrast). Set to 0 (default) to disable the mushy-regime
+        cap, in which case ``maximum`` applies throughout. A
+        typical value for Aragog at 1 M_E is ~4e3 yr; see
+        ``input/tutorials/tutorial_earth.toml``.
+    mushy_upper: float
+        Upper bound of the mushy regime [dimensionless melt
+        fraction]. When ``Phi_global < mushy_upper`` AND
+        ``Phi_global > stop.solid.phi_crit``, ``mushy_maximum``
+        takes over from ``maximum``. Default 0.99 so the cap kicks
+        in as soon as the first cell crystallises.
+    evection_maximum: float | str
+        Ceiling on the time-step size [yr] while the planet-satellite
+        system is inside, or approaching, the evection resonance band.
+        Must be > 0 when set. Default ``'none'`` (disables the whole
+        mechanism).
+    evection_target_rel_de: float
+        Target maximum fractional change in ``eccentricity_sat`` per
+        macro-step while inside/approaching the evection band. Obliqua's
+        own adaptive mode-window selection is keyed on the eccentricity
+        it is given at call time, and that window is then held fixed for
+        the whole of the following macro-step, so a large fractional swing
+        in ``e`` within one step risks needing modes outside that window.
+        Default 0.05 (5%).
+    evection_de_floor: float
+        Floor on the eccentricity value used in the
+        ``evection_target_rel_de`` ratio's denominator, so a tiny
+        eccentricity right at capture onset does not make the allowed
+        step blow up. Default 0.02.
+    evection_rate_window: int
+        Number of trailing accepted macro-steps used to estimate the
+        SECULAR ``|de/dt|`` this cap bounds against (a least-squares
+        linear fit for windows > 2, the plain two-point difference at
+        the default of 2). Default 2, preserves the two-point behaviour.
+    evection_growth_factor: float | str
+        Cap on the dt growth ratio between consecutive steps while the
+        system is inside/approaching the evection band, or within
+        ``evection_cooldown_iters`` steps of having left it. Separate
+        from the global ``max_growth_factor`` (which most evection runs
+        leave disabled, since it would also throttle ordinary bulk
+        evolution for the rest of the run). Must be > 0 when set. Default
+        ``'none'`` (disabled).
+    evection_cooldown_iters: int | str
+        Number of PROTEUS iterations, after the system is no longer judged
+        in/near the evection band, during which ``evection_growth_factor``
+        remains active. Refreshed to this value on every iteration the
+        zone is active, so a long stay in the band does not exhaust it
+        before exit. Must be > 0 when set. Default ``'none'`` (no cooldown
+        tail; growth limiting turns off the instant the zone is left).
+    hysteresis_iters: int
+        Number of PROTEUS iterations after an adaptive "slow down"
+        decision during which the speed-up factor is suppressed.
+        Prevents the controller from ramping dt straight back into
+        the same stiffness cliff it just escaped from. Default 3;
+        set to 0 to disable.
+    hysteresis_sfinc: float
+        Replacement speed-up factor applied while the hysteresis
+        counter is active. Must be ``>= 1.0`` and ``<= SFINC``
+        (1.6). Default 1.1 (gentle ramp-up).
     """
 
-    starspec: float = field(default=3e6, validator=ge(0))
-    starinst: float = field(default=1e3, validator=ge(0))
+    starspec: float = field(default=1e8, validator=ge(0))
+    starinst: float = field(default=1e2, validator=ge(0))
 
     method: str = field(
         default='adaptive', validator=in_(('proportional', 'adaptive', 'maximum'))
     )
 
-    proportional: DtProportional = field(factory=DtProportional)
-    adaptive: DtAdaptive = field(factory=DtAdaptive)
+    propconst: float = field(default=52.0, validator=gt(0))
+    atol: float = field(default=0.02, validator=gt(0))
+    rtol: float = field(default=0.10, validator=gt(0))
+    scale_incr: float = field(default=1.6, validator=gt(1))
+    scale_decr: float = field(default=0.8, validator=(gt(0), lt(1)))
+    window: int = field(default=3, validator=ge(1))
 
-    minimum: float = field(default=3e2, validator=gt(0))
-    minimum_rel: float = field(default=1e-6, validator=gt(0))
+    minimum: float = field(default=1e4, validator=gt(0))
+    minimum_rel: float = field(default=1e-5, validator=gt(0))
     maximum: float = field(default=1e7, validator=gt(0))
-    maximum_rel: float = field(default=1.0, validator=gt(0))
-    initial: float = field(default=1e3, validator=gt(0))
+    maximum_rel: float = field(default=1.0, validator=ge(0))
+    initial: float = field(default=3e1, validator=gt(0))
+
+    # Stiffness-aware adaptive time-stepping extensions.
+    # Defaults OFF (mushy_maximum=0, hysteresis_iters=0); enable via
+    # positive config values. The evection_* trio below use 'none' rather
+    # than 0 as their opt-out sentinel (see each field's own docstring
+    # above): 0 is not a meaningful value for any of the three (a zero
+    # ceiling/growth-factor/cooldown is behaviourally identical to
+    # disabled, so collapsing that ambiguity into an explicit 'none'
+    # avoids a silently-degenerate positive-looking config value).
+    mushy_maximum: float = field(default=0.0, validator=ge(0))
+    mushy_upper: float = field(default=0.99, validator=(gt(0), lt(1)))
+    evection_maximum: float | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
+    evection_target_rel_de: float = field(default=0.05, validator=gt(0))
+    evection_de_floor: float = field(default=0.02, validator=gt(0))
+    evection_rate_window: int = field(default=2, validator=ge(2))
+    evection_growth_factor: float | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
+    evection_cooldown_iters: int | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
+    hysteresis_iters: int = field(default=0, validator=ge(0))
+    hysteresis_sfinc: float = field(default=1.1, validator=ge(1.0))
+
+    # Cap on dt growth ratio between consecutive steps. Bounds
+    # dtswitch / dtprev to at most max_growth_factor, preventing
+    # large dt jumps that can push stiff solvers past their error-test
+    # margin. Default 0.0 = disabled. Typical value for
+    # stability-sensitive runs is 3.0; CHILI Aragog
+    # sets this to smooth the initial 10x dt jump that can wedge CVODE.
+    max_growth_factor: float = field(default=0.0, validator=ge(0))
 
 
 @define
@@ -185,13 +285,21 @@ class StopSolid:
     Attributes
     ----------
     enabled: bool
-        Enable criteria if True.
+        Enable termination at solidification if True.
     phi_crit: float
-        Model will terminate when global melt fraction is less than this value [dimensionless].
+        Model will terminate (if enabled) or freeze volatiles (if
+        freeze_volatiles) when global melt fraction drops below this value.
+    freeze_volatiles: bool
+        When True, outgassing stops at crystallization (Phi_global < phi_crit)
+        but the simulation continues. Dissolved volatiles are trapped in the
+        solid mantle and preserved in the helpfile. The atmosphere retains
+        its current composition. When False, outgassing continues regardless
+        of melt fraction.
     """
 
     phi_crit: float = field(default=0.01, validator=(gt(0), lt(1)))
     enabled: bool = field(default=True)
+    freeze_volatiles: bool = field(default=False)
 
 
 @define
@@ -226,7 +334,7 @@ class StopEscape:
     """
 
     enabled: bool = field(default=True)
-    p_stop: float = field(default=1, validator=(gt(0), lt(1e6)))
+    p_stop: float = field(default=3.0, validator=(gt(0), lt(1e6)))
 
 
 @define
@@ -257,6 +365,86 @@ class StopDisint:
 
 
 @define
+class StopDisintSat:
+    """Parameters for satellite disintegration stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable all planet disintegration criteria if True
+    roche_enabled: bool
+        Disable Roche limit criterion
+    offset_roche: float
+        Absolute correction (+/-) to (increase/decrease) calculated Roche limit [m].
+    spin_enabled: bool
+        Disable Breakup period criterion
+    offset_spin: float
+        Absolute correction (+/-) to (increase/decrease) calculated Breakup period [s].
+    """
+
+    enabled: bool = field(default=False)
+
+    roche_enabled: bool = field(default=True)
+    offset_roche: float = field(default=0)
+
+    spin_enabled: bool = field(default=True)
+    offset_spin: float = field(default=0)
+
+
+@define
+class StopSatellite:
+    """Parameters for satellite escape stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable criteria if True
+    sma_max: float
+        Maximum semi-major axis for the satellite [R_Earth].
+    """
+
+    enabled: bool = field(default=False)
+    sma_max: float = field(default=60)
+
+
+@define
+class StopClock:
+    """Parameters for maximum clock runtime stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable criteria if True
+    maximum: float
+        Model will terminate when runtime exceeds this value [s].
+    """
+
+    enabled: bool = field(default=True)
+    maximum: float = field(default=60 * 60 * 24 * 7, validator=gt(0))
+
+
+@define
+class StopStall:
+    """Parameters for the unconverged-atmosphere stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable criteria if True
+    maximum: int
+        Model will terminate after this many consecutive iterations without a
+        converged atmosphere solve, whatever the interior is doing. Sized on 27
+        stalled GJ 9827 d cases as they stood on 2026-08-08: the deepest streak
+        a run recovered from is 126 and the deepest open one, which never
+        converged, is 233. Raising it past the open streak defeats the
+        criterion; lowering it below the recovered one ends runs that come back.
+    """
+
+    enabled: bool = field(default=True)
+    maximum: int = field(default=150, validator=gt(0))
+
+
+@define
 class StopParams:
     """Parameters for termination criteria.
 
@@ -276,6 +464,12 @@ class StopParams:
         Parameters for escape criteria.
     disint: StopDisint
         Parameters for planet disintegration criteria.
+    disint_sat: StopDisintSat
+        Parameters for satellite disintegration criteria.
+    clock: StopClock
+        Parameters for maximum clock runtime criteria.
+    stall: StopStall
+        Parameters for the unconverged-atmosphere criteria.
     """
 
     iters: StopIters = field(factory=StopIters)
@@ -284,6 +478,10 @@ class StopParams:
     radeqm: StopRadeqm = field(factory=StopRadeqm)
     escape: StopEscape = field(factory=StopEscape)
     disint: StopDisint = field(factory=StopDisint)
+    disint_sat: StopDisintSat = field(factory=StopDisintSat)
+    satellite: StopSatellite = field(factory=StopSatellite)
+    clock: StopClock = field(factory=StopClock)
+    stall: StopStall = field(factory=StopStall)
 
     strict: bool = field(default=False)
 
@@ -300,6 +498,12 @@ class Params:
         Parameters for time-stepping.
     stop: StopParams
         Parameters for stopping criteria.
+    resume: bool
+        Resume the simulation from the last archived state in the output
+        folder, instead of starting from scratch.
+    offline: bool
+        Run without network access; never download reference data, and fail
+        if a required file is missing locally.
     """
 
     out: OutputParams = field(factory=OutputParams)

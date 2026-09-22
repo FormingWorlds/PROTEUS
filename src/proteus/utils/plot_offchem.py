@@ -3,37 +3,45 @@
 from __future__ import annotations
 
 import glob
-import json
+import logging
+import os
 import pickle as pkl
+import re
 
 import numpy as np
 
 from proteus.config import read_config
 
+log = logging.getLogger('fwl.' + __name__)
+
 
 def offchem_read_year(
     output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0, read_const=False
 ):
-    """Read PT profile, VULCAN output file, and optionally runtime mixing ratios.
+    """Read PT profile and VULCAN output for one snapshot.
 
-    Given the path to an offline chemistry output folder, containing year
-    subfolders, this function reads data from a given year. It optionally
-    reads the mixing ratios calculated by SPIDER at runtime, and also applies
-    a clip to the mixing ratios.
+    Snapshot files live as ``offchem/vulcan_<year>.pkl`` (online mode) or
+    as ``offchem/vulcan.pkl`` (offline mode, single fixed file). The
+    function tries the per-year file first and falls back to the fixed
+    name.
 
     Parameters
     ----------
         output_dir : str
-            Path to offline chemistry output folder
+            Path to run output folder (must end with the trailing separator
+            or be joined accordingly).
         year_int : int
-            Year to be read from `output_dir`
+            Snapshot year to read.
 
         mx_clip_min=1e-30 : float
             Mixing ratio floor
         mx_clip_max=1.0 : float
             Mixing ratio ceiling
         read_const=False : bool
-            Read the mixing ratios that were used during the PROTEUS simulation?
+            Deprecated and unsupported. The per-year ``vulcan_cfg.py``
+            dump is not emitted, so reading initial-composition mixing
+            ratios from this output raises ``NotImplementedError``. Pull
+            the ``<vol>_vmr`` columns from ``runtime_helpfile.csv`` instead.
 
     Returns
     ----------
@@ -41,10 +49,25 @@ def offchem_read_year(
             Dictionary of output arrays for the given year.
     """
 
+    if read_const:
+        raise NotImplementedError(
+            'read_const is not supported with the flat vulcan.pkl layout; '
+            'read <vol>_vmr columns from runtime_helpfile.csv instead'
+        )
+
     year_data = {}  # Dictionary of mixing ratios, pressure, temperature
 
-    # Read VULCAN output file
-    with open(output_dir + 'offchem/%d/output.vul' % year_int, 'rb') as handle:
+    # Read VULCAN output file (online per-snapshot first, then offline single-file)
+    candidates = [
+        os.path.join(output_dir, 'offchem', f'vulcan_{int(year_int)}.pkl'),
+        os.path.join(output_dir, 'offchem', 'vulcan.pkl'),
+    ]
+    handle_path = next((p for p in candidates if os.path.isfile(p)), None)
+    if handle_path is None:
+        raise FileNotFoundError(
+            f'No VULCAN snapshot found under {output_dir}/offchem/ (looked for: {candidates})'
+        )
+    with open(handle_path, 'rb') as handle:
         vul_data = pkl.load(handle)
 
     # Save year
@@ -61,25 +84,6 @@ def offchem_read_year(
     vul_atm = vul_data['atm']
     year_data['pressure'] = np.array(vul_atm['pco']) / 1e6  # convert to bar
     year_data['temperature'] = np.array(vul_atm['Tco'])
-
-    # Read melt-vapour eqm mixing ratios which were used to initialise VULCAN
-    if read_const:
-        vol_data_str = None
-        with open(output_dir + 'offchem/%d/vulcan_cfg.py' % year_int, 'r') as f:
-            lines = f.read().splitlines()
-            for ln in lines:
-                if 'const_mix' in ln:
-                    vol_data_str = ln.split('=')[1].replace("'", '"')
-                    break
-
-        if vol_data_str is None:
-            raise Exception('Could not parse vulcan cfg file!')
-
-        vol_data = json.loads(vol_data_str)
-        for vol in vol_data:
-            mv_mx = float(vol_data[vol])
-            if mv_mx > 1e-12:
-                year_data['mv_' + vol] = mv_mx
 
     return year_data
 
@@ -119,15 +123,16 @@ def offchem_read_grid(grid_dir):
     grid_years = []  # For each gp, get years
     grid_opts = []  # For each gp, read-in OPTIONS
     grid_data = []  # For each gp, for each year, get offchem data
+    year_re = re.compile(r'vulcan_(\d+)\.pkl$')
     for i in range(gpoints):
         fol = point_folders[i]  # folder
-        years_read = glob.glob(fol + '/offchem/*/')  # years as file paths
-
-        # years as integers
-        def ytoint(ypath):
-            return int(str(ypath).split('/')[-2])
-
-        gp_years = sorted([ytoint(y) for y in years_read])
+        # Per-snapshot files are flat: offchem/vulcan_<year>.pkl
+        pkl_paths = glob.glob(os.path.join(fol, 'offchem', 'vulcan_*.pkl'))
+        gp_years = sorted(
+            int(m.group(1))
+            for m in (year_re.search(os.path.basename(p)) for p in pkl_paths)
+            if m is not None
+        )
         grid_years.append(gp_years)
 
         # OPTIONS dictionary
@@ -138,8 +143,8 @@ def offchem_read_grid(grid_dir):
 
         # offchem data
         gp_data = []  # for each year in this gp
-        for i, y in enumerate(gp_years):
-            year_data = offchem_read_year(fol, y, read_const=True)
+        for y in gp_years:
+            year_data = offchem_read_year(fol, y)
             gp_data.append(year_data)
         grid_data.append(gp_data)
 
@@ -202,7 +207,7 @@ def offchem_slice_grid(years, opts, data, cvar_filter):
         for k in cvar_filter.keys():
             # Mismatching keys (this can just be ignored I think?)
             if k not in gp_opts.keys():
-                print("WARNING: filter key '%s' is not present in OPTIONS" % k)
+                log.warning("Filter key '%s' is not present in OPTIONS", k)
                 continue
 
             # Does not match
@@ -221,6 +226,6 @@ def offchem_slice_grid(years, opts, data, cvar_filter):
     slice_data = np.array(slice_data, dtype=dict)
 
     if np.shape(slice_opts)[0] == 0:
-        print('WARNING: No grid points left after slicing')
+        log.warning('No grid points left after slicing')
 
     return slice_years, slice_opts, slice_data

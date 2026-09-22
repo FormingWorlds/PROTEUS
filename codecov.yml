@@ -1,4 +1,7 @@
 coverage:
+  # Badge colour gradient: red at 70%, bright green at 90%.
+  # Matches the PROTEUS ecosystem 90% coverage ceiling.
+  range: "70...90"
   status:
     project:
       default:

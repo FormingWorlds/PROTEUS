@@ -7,15 +7,18 @@ from ._converters import none_if_none
 
 
 def valid_mors(instance, attribute, value):
+    """Validate MORS settings: positive age, spectrum-source requirements, and rotation
+    set by exactly one of percentile or period."""
     if instance.module != 'mors':
         return
 
     if (instance.mors.age_now is None) or (instance.mors.age_now <= 0):
         raise ValueError('mors.age_now must be > 0')
-    if instance.mors.star_name is None:
-        raise ValueError('Must provide mors.star_name')
-
     src = instance.mors.spectrum_source
+
+    # star_name required for solar and muscles spectra (not for phoenix)
+    if instance.mors.star_name is None and src in ('solar', 'muscles'):
+        raise ValueError('Must provide mors.star_name for spectrum_source=%s' % src)
     if src == 'phoenix':
         if instance.mors.phoenix_alpha is None or instance.mors.phoenix_FeH is None:
             raise ValueError(
@@ -71,15 +74,21 @@ class Mors:
         Effective temperature [K]. If 'none', Teff will be calculated will be calculated using mors' stellar tracks, if spectrum_source is 'phoenix'.
     """
 
-    age_now = field(default=None)
-    star_name = field(default=None, converter=none_if_none)
-    star_path = field(default=None, converter=none_if_none)
-    rot_pcntle = field(default=None, converter=none_if_none)
-    rot_period = field(default=None, converter=none_if_none)
+    age_now: float = field(default=4.567)
+    star_name: str | None = field(default=None, converter=none_if_none)
+    star_path: str | None = field(default=None, converter=none_if_none)
+    # Type hint includes `str` so cattrs can structure the literal string
+    # `"none"` (or other sentinels) before the `none_if_none` converter
+    # maps them to Python None. Pure `float | None` would make cattrs try
+    # `float("none")` and raise `could not convert string to float: 'none'`,
+    # because None is a singleton type not a string-coercion target. Same
+    # pattern as phoenix_radius/log_g/Teff below.
+    rot_pcntle: float | str | None = field(default=50.0, converter=none_if_none)
+    rot_period: float | str | None = field(default=None, converter=none_if_none)
     tracks: str = field(default='spada', validator=in_(('spada', 'baraffe')))
 
     spectrum_source: str = field(
-        default=None,
+        default='phoenix',
         validator=in_(('solar', 'muscles', 'phoenix', None)),
         converter=none_if_none,
     )
@@ -102,7 +111,18 @@ class Mors:
     )
 
 
+def valid_bol_scale_start(instance, attribute, value):
+    """A bolometric scaling other than 1 requires bol_scale_start and a positive duration."""
+    if instance.bol_scale == 1.0:
+        return
+    if value is None:
+        raise ValueError('star.bol_scale_start must be set when star.bol_scale != 1.0')
+    if instance.bol_scale_duration <= 0.0:
+        raise ValueError('star.bol_scale_duration must be > 0 when star.bol_scale != 1.0')
+
+
 def valid_stardummy(instance, attribute, value):
+    """Dummy star requires a consistent radius specification and a valid Teff."""
     if instance.module != 'dummy':
         return
 
@@ -132,7 +152,7 @@ class StarDummy:
         Observed effective temperature [K].
     """
 
-    Teff = field(default=5780)
+    Teff: float = field(default=5772.0)
     radius: float | str = field(default=None, converter=none_if_none)
     calculate_radius: bool = field(default=False)
 
@@ -141,18 +161,22 @@ class StarDummy:
 class Star:
     """Stellar parameters, model selection.
 
-    You can find useful reference data in the [documentation](https://proteus-framework.org/proteus/data.html#stars).
+    You can find useful reference data in the [documentation](https://proteus-framework.org/PROTEUS/Reference/data.html).
 
     Attributes
     ----------
     bol_scale: float
-        Scale factor to increase the luminosity.
+        Scale factor applied to bolometrically modulate the stellar fluxes.
+    bol_scale_start: float | None
+        Stellar age from which bol_scale is applied [Gyr]. 'None' to disable.
+    bol_scale_duration: float
+        Duration for which bol_scale is applied [Gyr].
     mass: float
         Stellar mass [M_sun]. Note that for Mors,
         it should be between 0.1 and 1.25 solar masses.
         Values outside of the valid range will be clipped.
     age_ini: float
-        Age of system at model initialisation [Gyr].
+        Stellar age at model initialisation, relative to stellar birthline [Gyr].
     module: str | None
         Select star module to use.
     mors: Mors
@@ -162,14 +186,24 @@ class Star:
     """
 
     module: str | None = field(
+        default='mors',
         validator=in_((None, 'mors', 'dummy')),
         converter=none_if_none,
     )
 
-    mass: float = field(validator=gt(0))
-    age_ini: float = field(validator=gt(0))
+    mass: float = field(default=1.0, validator=gt(0))
+    age_ini: float = field(default=0.1, validator=gt(0))
 
     mors: Mors = field(factory=Mors, validator=valid_mors)
     dummy: StarDummy = field(factory=StarDummy, validator=valid_stardummy)
 
     bol_scale: float = field(default=1.0, validator=ge(0.0))
+    # Must be defined before bol_scale_start: attrs sets attributes in
+    # field-definition order, and valid_bol_scale_start (below) reads
+    # instance.bol_scale_duration, which must already exist on the instance.
+    bol_scale_duration: float = field(default=0.0, validator=ge(0.0))
+    bol_scale_start: float | str | None = field(
+        default=None,
+        converter=none_if_none,
+        validator=[optional(ge(0.0)), valid_bol_scale_start],
+    )

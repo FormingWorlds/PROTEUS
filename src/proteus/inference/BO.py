@@ -18,11 +18,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import torch
-from botorch.acquisition import (
-    LogExpectedImprovement,
-    UpperConfidenceBound,
-    qLogExpectedImprovement,
-)
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from botorch.models.transforms import Normalize, Standardize
@@ -30,7 +25,7 @@ from botorch.optim import optimize_acqf
 from botorch.optim.fit import fit_gpytorch_mll_torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
-from proteus.inference.utils import get_kernel_w_prior
+from proteus.inference.utils import get_acqf, get_kernel
 
 # Set tensor dtype for consistent precision
 dtype = torch.double
@@ -114,18 +109,10 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
 
         t_0_ac = time.perf_counter()
 
-        # build acquisition function
-        if acqf == 'UCB':
-            acqf = UpperConfidenceBound(gp, beta=2.0)
-        elif acqf == 'LogEI':
-            acqf = LogExpectedImprovement(gp, best_f=best)
-        elif acqf == 'E-LogEI':
-            acqf = qLogExpectedImprovement(gp, best_f=best, X_pending=busys)
-        else:
-            raise ValueError('Unknown acquisition function, choices are UCB or LogEI')
+        acqf_f = get_acqf(acqf, gp, best)
 
         x, _ = optimize_acqf(
-            acq_function=acqf,  # expects outputs shape (N)
+            acq_function=acqf_f,  # expects outputs shape (N)
             bounds=unit_bounds(d),
             q=1,
             num_restarts=10,
@@ -187,17 +174,24 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
     )
 
 
-def init_locs(n_workers: int, D: dict) -> torch.Tensor:
-    """Generate initial sample locations using batch acqf.
+def init_locs(
+    n_workers: int, D: dict, acqf: str = 'LogEI', kernel: str = 'RBF'
+) -> torch.Tensor:
+    """Generate initial sample locations for each worker using the configured acqf.
+
+    Calls optimize_acqf once per worker with q=1. Analytic acquisition functions
+    (UCB, LogEI, LogPI) require q=1 and cannot optimise a joint batch in one call.
 
     Parameters
     ----------
-    - n_workers (int): Number of initial points to generate.
-    - D (dict): Shared dict with key 'X' to infer problem dimension.
+    - n_workers (int): Number of workers; one candidate is generated per worker.
+    - D (dict): Shared dict with keys 'X' and 'Y' containing observed data.
+    - acqf (str): Name of the acquisition function to use.
+    - kernel (str): Kernel type ('RBF', 'MAT1/2', 'MAT3/2', 'MAT5/2').
 
     Returns
     ----------
-    - torch.Tensor: Tensor of shape (n_workers, d) in [0, 1]^d for initial sampling.
+    - torch.Tensor: Tensor of shape (n_workers, d) in [0, 1]^d.
     """
 
     X, Y = D['X'], D['Y']
@@ -207,7 +201,7 @@ def init_locs(n_workers: int, D: dict) -> torch.Tensor:
     best = Y.max().item()
 
     noise = 1e-4
-    kernel = get_kernel_w_prior(d, use_rbf_kernel=False, nu=1.5)
+    kernel = get_kernel(kernel, d)
     gp = SingleTaskGP(
         train_X=X,
         train_Y=Y,
@@ -225,19 +219,20 @@ def init_locs(n_workers: int, D: dict) -> torch.Tensor:
         kwargs={'pick_best_of_all_attempts': True, 'max_attempts': 10},
     )
 
-    # build acquisition function
-    acqf = qLogExpectedImprovement(gp, best_f=best)
+    candidates = []
+    for _ in range(n_workers):
+        acqf_f = get_acqf(acqf, gp, best)
+        x_single, _ = optimize_acqf(
+            acq_function=acqf_f,
+            bounds=unit_bounds(d),
+            q=1,
+            num_restarts=10,
+            raw_samples=1000 * d,
+            options={'maxiter': 1000},
+        )
+        candidates.append(x_single)
 
-    x_batch, _ = optimize_acqf(
-        acq_function=acqf,
-        bounds=unit_bounds(d),
-        q=n_workers,
-        num_restarts=10,
-        raw_samples=1000 * d,
-        options={'maxiter': 1000},
-    )
-
-    return x_batch  # (n_workers, d)
+    return torch.cat(candidates, dim=0)  # (n_workers, d)
 
 
 def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):

@@ -35,11 +35,13 @@ set -e
 # in PROTEUS's conda environment.
 # -----------------------------------------------------------------------------
 portable_realpath() {
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$1"
-    else
-        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
+    # Keep this helper in sync across the get_* scripts. A path that does not
+    # exist yet is rejected by realpath (BSD refuses a missing leaf, GNU a
+    # missing parent), so fall through to python3 there too.
+    if command -v realpath >/dev/null 2>&1 && realpath "$1" 2>/dev/null; then
+        return 0
     fi
+    python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
 }
 
 # -----------------------------------------------------------------------------
@@ -71,7 +73,7 @@ on_error() {
             echo "   - Check petsc/configure.log for details"
             echo "   - On macOS: ensure Xcode CLI tools are installed (xcode-select --install)"
             echo "   - Verify MPI is installed (mpicc --version)"
-            echo "   - See PROTEUS docs/troubleshooting.md for platform-specific fixes"
+            echo "   - See PROTEUS docs/How-to/troubleshooting.md for platform-specific fixes"
             ;;
         *"Build"*)
             echo "   - Check petsc/make.log for compiler errors"
@@ -82,10 +84,10 @@ on_error() {
             echo "   - PETSc built but tests failed"
             echo "   - Check petsc/make.log for details"
             echo "   - On macOS: check /etc/hosts for localhost entry"
-            echo "     (see docs/troubleshooting.md: PETSc tests error)"
+            echo "     (see docs/How-to/troubleshooting.md: PETSc tests error)"
             ;;
         *)
-            echo "   - See docs/troubleshooting.md for platform-specific advice"
+            echo "   - See docs/How-to/troubleshooting.md for platform-specific advice"
             ;;
     esac
     echo "========================================"
@@ -182,7 +184,13 @@ if [[ "$OSTYPE" == "linux"* ]]; then
         else
             echo "    mpicc not in PATH — will download MPICH"
         fi
-        blas_flag=""
+
+        if [[ "$host" == *"ast.cam.ac.uk" ]]; then
+            echo "    Detected IoA cluster "
+        else
+            blas_flag=""
+        fi
+
         # RHEL 9+ / Rocky 9+ GCC enables -Werror=format-security by default,
         # which breaks sundials 2.5. LTO type-mismatch warnings also cause
         # PETSc's library probe to fail. Suppress both.

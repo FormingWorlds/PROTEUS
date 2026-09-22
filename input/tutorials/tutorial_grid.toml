@@ -1,0 +1,53 @@
+# PROTEUS tutorial: parameter grid sweep (all-dummy, fast)
+#
+# Illustrates three sweep methods across three axes, including orbital distance.
+# The base is the all-dummy config, so every case runs in seconds. Each case
+# stops at solidification or at energy balance (see [params.stop] below).
+#
+# Run: proteus grid -c input/tutorials/tutorial_grid.toml
+
+config_version = "3.0"
+
+# Base config: each grid point starts from this all-dummy file
+ref_config = "input/dummy.toml"
+
+# Output folder inside output/
+output  = "tutorial_grid"
+symlink = ""
+
+# Local execution
+use_slurm = false
+max_jobs  = 8
+max_days  = 1     # per-job walltime limit [days] (used by Slurm)
+max_mem   = 12    # per-CPU memory limit [GB] (used by Slurm)
+
+# Stop every case at solidification (already on in the base) or at energy
+# balance, whichever comes first. A single value sets the field for all cases.
+["params.stop.radeqm.enabled"]
+    method = "direct"
+    values = [true]
+
+# -------------------------------------------------------
+# Parameter axes (Cartesian product = 3 x 3 x 3 = 27 cases)
+# -------------------------------------------------------
+
+# Planet mass [M_earth]: explicit values
+["planet.mass_tot"]
+    method = "direct"
+    values = [0.5, 1.0, 2.0]
+
+# Orbital distance [AU]: log-spaced. The range spans the close-in regime where
+# instellation keeps the magma ocean molten (stops at energy balance) out to
+# where it solidifies, so this axis drives a clear change in outcome.
+["orbit.semimajoraxis"]
+    method = "logspace"
+    start  = 0.03
+    stop   = 0.5
+    count  = 3
+
+# Hydrogen inventory [ppmw]: linearly spaced
+["planet.elements.H_budget"]
+    method = "linspace"
+    start  = 1000
+    stop   = 9000
+    count  = 3

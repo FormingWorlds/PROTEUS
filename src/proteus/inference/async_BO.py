@@ -26,7 +26,7 @@ import pandas as pd
 import torch
 
 from proteus.inference.BO import BO_step, init_locs
-from proteus.inference.utils import get_kernel_w_prior, load_dataset_csv, save_dataset_csv
+from proteus.inference.utils import get_kernel, load_dataset_csv, save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
 
 # Tensor dtype for all computations
@@ -187,6 +187,7 @@ def parallel_process(
     ref_config: str,
     observables: dict,
     parameters: dict,
+    failure_codes: list[int],
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -205,6 +206,7 @@ def parallel_process(
     - ref_config (str): Path to reference config to pass to objective_builder.
     - observables (dict): Target observables (keys) and values.
     - parameters (dict):  Parameters (keys) with bounds (values) for inference.
+    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
 
     Returns
     ----------
@@ -220,20 +222,12 @@ def parallel_process(
         parameters=parameters,
         ref_config=ref_config,
         output=output,
+        failure_codes=failure_codes,
     )
 
     # Build kernel
     d = len(parameters)
-    if kernel == 'RBF':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=True)
-    elif kernel == 'MAT1/2':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=0.5)
-    elif kernel == 'MAT3/2':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=1.5)
-    elif kernel == 'MAT5/2':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=2.5)
-    else:
-        raise ValueError('Unknown kernel, choices are RBF or MAT{1/2, 3/2, 5/2}')
+    kernel = get_kernel(kernel, d)
 
     process_fun = partial(
         BO_step,
@@ -260,7 +254,7 @@ def parallel_process(
     log_list = mgr.list([None] * n_init)  # no logs from init data
 
     # Generate initial candidate locations and busy-map
-    X_init = init_locs(n_workers, D_shared)
+    X_init = init_locs(n_workers, D_shared, acqf=acqf)  # shape (n_workers, d)
     B = mgr.dict()
 
     # Shared list for end times

@@ -17,7 +17,7 @@ repos:
       - id: check-added-large-files
         args: ['--maxkb=500']
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.1
+    rev: v0.15.12
     hooks:
       - id: ruff
         args: [--fix]
@@ -31,10 +31,10 @@ repos:
   - repo: local
     hooks:
       - id: check-file-sizes
-        name: Check copilot-instructions.md and copilot-memory.md line limits
+        name: Check copilot-instructions.md line limit
         entry: bash tools/check_file_sizes.sh
         language: system
-        files: \.github/(copilot-instructions|copilot-memory)\.md$
+        files: \.github/copilot-instructions\.md$
         pass_filenames: false
 
 exclude: 'examples/.*'

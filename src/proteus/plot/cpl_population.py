@@ -27,13 +27,68 @@ LEG_KWARGS = {
 }
 
 
+def _dataset_dir_or_none(key: str, fwl_dir: str):
+    """Resolve a dataset's version directory; return None if it cannot be resolved.
+
+    The population overlays are decorative, so a data tree that fwl-io cannot
+    resolve (an unset root, a stale fwl-io, an unreadable manifest) has to warn
+    and skip like a missing file rather than fail the run.
+    """
+    from proteus.data import dataset_dir
+
+    try:
+        return dataset_dir(key, data_root=fwl_dir)
+    except Exception as exc:
+        log.warning(
+            'plot_population: could not resolve dataset %s under %s (%s); '
+            'population diagram will be skipped.',
+            key,
+            fwl_dir,
+            exc,
+        )
+        return None
+
+
 def _get_exo_data(fwl_dir: str):
-    popfile = os.path.join(fwl_dir, 'planet_reference', 'Exoplanets', 'DACE_PlanetS.csv')
+    """Load DACE_PlanetS.csv; return None if the file is absent.
+
+    Returning None lets the population-plot wrappers skip cleanly on
+    partial fwl_data installs (e.g., CI Docker images that don't ship
+    the exoplanet catalogue). The data is decorative for the
+    simulation; missing it should not crash the run.
+    """
+    from proteus.data import EXOPLANET_REFERENCE
+
+    exo_dir = _dataset_dir_or_none(EXOPLANET_REFERENCE, fwl_dir)
+    if exo_dir is None:
+        return None
+
+    popfile = os.path.join(exo_dir, 'DACE_PlanetS.csv')
+    if not os.path.isfile(popfile):
+        log.warning(
+            'plot_population: DACE_PlanetS.csv not found at %s; '
+            'population diagram will be skipped. Run `proteus get reference` '
+            'to download the exoplanet catalogue.',
+            popfile,
+        )
+        return None
     return pd.read_csv(popfile, comment='#')
 
 
 def _get_mr_data(fwl_dir: str):
-    z19 = os.path.join(fwl_dir, 'mass_radius', 'Zeng2019')
+    """Load Zeng-2019 mass-radius curves; return None if any file is absent.
+
+    Same defensive contract as `_get_exo_data`: the curves are decorative
+    overlays, so a missing file should warn and skip rather than crash
+    the simulation.
+    """
+    from proteus.data import MASS_RADIUS_ZENG_2019
+
+    mr_dir = _dataset_dir_or_none(MASS_RADIUS_ZENG_2019, fwl_dir)
+    if mr_dir is None:
+        return None
+
+    z19 = os.fspath(mr_dir)
 
     # Set paths
     curves = {
@@ -43,6 +98,18 @@ def _get_mr_data(fwl_dir: str):
         r'H$_2$O, 300 K': os.path.join(z19, 'massradius_100percentH2O_300K_1mbar.txt'),
         r'Cold H$_2$': os.path.join(z19, 'massradiushydrogen.txt'),
     }
+
+    missing = [path for path in curves.values() if not os.path.isfile(path)]
+    if missing:
+        log.warning(
+            'plot_population: %d Zeng-2019 mass-radius curve files missing under %s; '
+            'population diagram will be skipped. Run `proteus get reference` '
+            'to download them. First missing: %s',
+            len(missing),
+            z19,
+            missing[0],
+        )
+        return None
 
     # Replace paths with the data
     for k in curves.keys():
@@ -77,12 +144,17 @@ def plot_population_mass_radius(
     m_max = max(m_max, np.amax(hf_crop['M_planet']) / M_earth + 1)
     m_min = min(m_min, np.amin(hf_crop['M_planet']) / M_earth)
 
+    # Get exoplanet values from database; skip the plot if reference data
+    # is absent (defensive against partial fwl_data installs).
+    exo = _get_exo_data(fwl_dir)
+    mrdata = _get_mr_data(fwl_dir)
+    if exo is None or mrdata is None:
+        return
+
     log.info('Plot population (mass-radius)')
     sim_rad = np.array(hf_crop['R_obs']) / R_earth
     sim_mas = np.array(hf_crop['M_planet']) / M_earth
 
-    # Get exoplanet values from database
-    exo = _get_exo_data(fwl_dir)
     exo = exo.loc[exo['Planet Mass [Mjup]'] * M_jupiter / M_earth <= m_max * 1.1]
 
     exo_mas_val = exo['Planet Mass [Mjup]'] * M_jupiter / M_earth
@@ -92,9 +164,6 @@ def plot_population_mass_radius(
     exo_rad_val = exo['Planet Radius [Rjup]'] * R_jupiter / R_earth
     exo_rad_upp = exo['Planet Radius - Upper Unc [Rjup]'] * R_jupiter / R_earth
     exo_rad_low = exo['Planet Radius - Lower Unc [Rjup]'] * R_jupiter / R_earth
-
-    # Get Mass-Radius curves from files
-    mrdata = _get_mr_data(fwl_dir)
 
     # Create plot
     scale = 1.05
@@ -182,13 +251,17 @@ def plot_population_time_density(
         log.warning('Cannot make plot_population with less than 3 samples')
         return
 
+    # Get exoplanet values from database; skip the plot if reference data
+    # is absent (defensive against partial fwl_data installs).
+    exo = _get_exo_data(fwl_dir)
+    if exo is None:
+        return
+
     log.info('Plot population (time-density)')
     sim_rad = np.array(hf_crop['R_obs'])
     sim_mas = np.array(hf_crop['M_planet'])
     sim_rho = 3 * sim_mas / (4 * np.pi * sim_rad**3) * 0.001
 
-    # Get values from database
-    exo = _get_exo_data(fwl_dir)
     exo_age_val = np.array(exo['Stellar Age [Gyr]']) * 1e9  # yr
     exo_rho_val = np.array(exo['Planet Density [g/cm**3] - Computation'])  # g cm-3
     xmax = max(np.nanmax(exo_age_val), np.amax(time))

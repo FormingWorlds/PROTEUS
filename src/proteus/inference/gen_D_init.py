@@ -18,10 +18,10 @@ import numpy as np
 import pandas as pd
 import toml
 import torch
-from botorch.utils.transforms import normalize
 from scipy.stats.qmc import Halton
 
-from proteus.inference.objective import eval_obj, prot_builder
+from proteus.inference.objective import child_timeout_s, eval_obj, prot_builder
+from proteus.inference.transforms import normalize_parameters
 from proteus.inference.utils import save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.helper import recursive_get
@@ -52,10 +52,10 @@ def create_init(config):
     if init_grid.lower().strip() == 'none':
         init_grid = None
         init_samps = int(config['init_samps'])
-        if init_samps < 2:
-            raise ValueError('Initial guess dataset must contain >1 sample')
+        if init_samps < 1:
+            init_samps = int(config['n_workers'])
     else:
-        init_grid = os.path.join(get_proteus_directories()['proteus'], 'output', init_grid)
+        init_grid = get_proteus_directories(init_grid)['output']
         init_samps = None
 
     # create new initial guess data by sampling bounds
@@ -70,6 +70,7 @@ def create_init(config):
             init_samps,
             config['seed'],
             config['n_workers'],
+            config['failure_codes'],
         )
 
     # read from grid
@@ -144,7 +145,7 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
         raw_x = torch.tensor(raw_x, dtype=dtype)
 
         # Generate normalised INPUT parameters
-        nrm_x = normalize(raw_x, bounds).flatten()
+        nrm_x = normalize_parameters(raw_x, bounds, keys).flatten()
         X[i, :] = nrm_x[:]  # store (list of floats)
 
         # Get values of OUTPUT observables from grid point data (list of floats)
@@ -184,9 +185,24 @@ def f_aug(x, iter, builder_args):
         iter=iter,
         ref_config=builder_args['ref_config'],
         output=builder_args['output'],
+        failure_codes=builder_args['failure_codes'],
     )
 
     return f(x)
+
+
+def _pool_timeout(n_tasks: int, n_workers: int) -> float | None:
+    """Total timeout for the initial-sampling pool, or None when disabled.
+
+    Each worker runs about ``ceil(n_tasks / n_workers)`` child PROTEUS runs in
+    sequence, each bounded by the per-child timeout, so the batch is allowed
+    that long plus a fixed margin.
+    """
+    per_child = child_timeout_s()
+    if per_child is None:
+        return None
+    per_worker = int(np.ceil(n_tasks / max(n_workers, 1)))
+    return per_worker * per_child + 300.0
 
 
 def sample_from_bounds(
@@ -197,6 +213,7 @@ def sample_from_bounds(
     nsamp: int,
     seed: int,
     n_workers: int,
+    failure_codes: list[int],
 ) -> int:
     """Generate initial BO data by evaluating Halton samples in parameter space.
 
@@ -209,6 +226,7 @@ def sample_from_bounds(
     - nsamp (int): Number of initial samples to evaluate.
     - seed (int): RNG seed for Halton sequence generation.
     - n_workers (int): Number of parallel workers to use for evaluation.
+    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
 
     Returns
     ----------
@@ -230,14 +248,18 @@ def sample_from_bounds(
 
     # prepare parallel proteus runs
     builder_args = dict(
-        parameters=params, observables=observables, ref_config=ref_config, output=output
+        parameters=params,
+        observables=observables,
+        ref_config=ref_config,
+        output=output,
+        failure_codes=failure_codes,
     )
 
     # Generate n random points in [0,1]^d and evaluate the objective
     #     Each of the parameters are evaluated in space 0-1, normalised to the bounds
     #     This variable is 2D, with shape [nsamp, dims]
 
-    sampler = Halton(d=dims, seed=np.random.default_rng(seed), scramble=True)
+    sampler = Halton(d=dims, rng=np.random.default_rng(seed), scramble=True)
     X = sampler.random(n=nsamp)
     X = torch.tensor(X, dtype=dtype)
 
@@ -251,7 +273,11 @@ def sample_from_bounds(
 
     t0 = time.perf_counter()
     with Pool(processes=n_workers) as pool:
-        results = pool.starmap(f_aug, aug_args)
+        async_result = pool.starmap_async(f_aug, aug_args)
+        # Bound the whole batch so a worker that wedges outside the per-child
+        # subprocess timeout cannot hang the run indefinitely. Leaving the Pool
+        # context terminates any still-running workers if this raises.
+        results = async_result.get(timeout=_pool_timeout(len(aug_args), n_workers))
     t1 = time.perf_counter()
 
     log.info(f'Initial sampling took {t1 - t0:.2f}s')

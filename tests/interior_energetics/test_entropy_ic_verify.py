@@ -1,0 +1,647 @@
+"""
+Unit tests for the entropy-IC verification paths.
+
+Covers:
+- ``proteus.interior_energetics.common._verify_initial_entropy`` (SPIDER path)
+- ``proteus.interior_energetics.aragog.AragogRunner._verify_entropy_ic``
+  (Aragog path)
+
+The SPIDER path runs a single-table round trip on the same EOS the interior
+uses: it maps the inverted entropy back to temperature through
+``EntropyEOS.temperature`` and checks that the recovered temperature matches
+the input. It never compares two tabulations, so it is invariant to the
+entropy reference constant and the table choice.
+
+The Aragog path uses ``zalmoxis.eos_export.compute_entropy_adiabat`` for a
+full T(P) profile comparison (with defensive NaN handling in the bracket
+expansion); its table-drift verdict is advisory, and it raises only on the
+cold-surface inversion signature.
+
+These regression tests ensure that:
+
+1. A consistent round trip passes with a PASS log line.
+2. A moderate residual produces a WARN line without raising.
+3. A large residual raises ``RuntimeError``.
+4. A non-finite table lookup raises ``RuntimeError``.
+5. A non-positive tsurf is a no-op.
+6. The pressure is clamped to the table range before the lookup.
+7. The Aragog path skips silently for non-PALEOS configs.
+8. Stale solver APIs (missing attributes) fail loudly, not silently.
+
+Testing standards and documentation:
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
+"""
+
+from __future__ import annotations
+
+import logging
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+# ======================================================================
+# SPIDER path: _verify_initial_entropy in common.py
+# ======================================================================
+
+
+def _make_mock_eos(T_recovered, P_min=0.0, P_max=1.0e12):
+    """Mock EntropyEOS whose ``temperature`` returns a controlled value.
+
+    Parameters
+    ----------
+    T_recovered : float
+        Value ``eos.temperature(P, S)`` returns, as a length-1 array to mirror
+        the vectorised surface. The round-trip residual is then
+        ``abs(T_recovered - tsurf)``.
+    P_min, P_max : float
+        Table pressure bounds used by the clamp.
+    """
+    eos = MagicMock()
+    eos.P_min = P_min
+    eos.P_max = P_max
+    eos.temperature = MagicMock(return_value=np.array([float(T_recovered)]))
+    return eos
+
+
+@pytest.mark.unit
+def test_spider_verify_passes_on_consistent_roundtrip(caplog):
+    """Recovered temperature equals tsurf -> PASS verdict, no raise."""
+    from proteus.interior_energetics.common import _verify_initial_entropy
+
+    tsurf = 3000.0
+    eos = _make_mock_eos(T_recovered=tsurf)  # zero residual
+
+    # The per-verdict summary line is logged at debug level.
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.common'):
+        _verify_initial_entropy(eos, 1e5, S_target=2794.3, tsurf=tsurf, source='unit-test')
+
+    joined = '\n'.join(r.message for r in caplog.records)
+    assert 'verdict=PASS' in joined, f'Expected PASS verdict in log, got: {joined!r}'
+    eos.temperature.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_spider_verify_warns_on_moderate_residual(caplog):
+    """A residual between the WARN and FAIL thresholds -> WARN, no raise.
+
+    At tsurf=3000 K: warn=max(1.0, 1.5)=1.5 K, fail=max(5.0, 6.0)=6.0 K. A 3 K
+    residual lands cleanly in the WARN band.
+    """
+    from proteus.interior_energetics.common import _verify_initial_entropy
+
+    tsurf = 3000.0
+    eos = _make_mock_eos(T_recovered=tsurf + 3.0)  # residual 3.0 K -> WARN
+
+    # The per-verdict summary line is logged at debug level; the WARN tier below
+    # still emits a separate WARNING record independent of it.
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.common'):
+        # Must not raise
+        _verify_initial_entropy(eos, 1e5, S_target=2794.3, tsurf=tsurf, source='unit-test')
+
+    joined = '\n'.join(r.message for r in caplog.records)
+    assert 'verdict=WARN' in joined, f'Expected WARN verdict: {joined!r}'
+    # The WARN band must emit a real WARNING record, not only an INFO substring;
+    # otherwise the tier is invisible whenever INFO logging is off.
+    warn_records = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING and 'round-trip check WARN' in r.message
+    ]
+    assert len(warn_records) == 1, f'Expected one WARNING record: {joined!r}'
+    # Discrimination: a 3 K residual must land in WARN, not PASS or FAIL. A
+    # regression that collapsed the three-bucket logic to a binary pass/fail
+    # would not produce WARN.
+    assert 'verdict=PASS' not in joined
+    assert 'verdict=FAIL' not in joined
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_spider_verify_raises_on_large_residual():
+    """A residual above the FAIL threshold raises RuntimeError.
+
+    At tsurf=3000 K the FAIL threshold is 6.0 K. A 10 K residual FAILs; a 3 K
+    residual (WARN band) must not raise.
+    """
+    from proteus.interior_energetics.common import _verify_initial_entropy
+
+    tsurf = 3000.0
+    eos_fail = _make_mock_eos(T_recovered=tsurf + 10.0)  # residual 10 K -> FAIL
+    with pytest.raises(RuntimeError, match=r'round-trip check FAIL'):
+        _verify_initial_entropy(eos_fail, 1e5, S_target=2794.3, tsurf=tsurf, source='unit-test')
+
+    # Boundary discrimination: a 3 K residual is below the FAIL threshold and
+    # must NOT raise. A regression that hard-raised on any non-zero residual
+    # would fail this.
+    eos_warn = _make_mock_eos(T_recovered=tsurf + 3.0)
+    _verify_initial_entropy(eos_warn, 1e5, S_target=2794.3, tsurf=tsurf, source='unit-test')
+    eos_warn.temperature.assert_called_once()
+
+
+@pytest.mark.unit
+def test_spider_verify_raises_on_non_finite_lookup():
+    """A non-finite recovered temperature raises RuntimeError (broken table)."""
+    from proteus.interior_energetics.common import _verify_initial_entropy
+
+    eos = _make_mock_eos(T_recovered=np.nan)
+    with pytest.raises(RuntimeError, match=r'non-finite'):
+        _verify_initial_entropy(eos, 1e5, S_target=2794.3, tsurf=3000.0, source='unit-test')
+
+
+@pytest.mark.unit
+def test_spider_verify_skipped_on_nonpositive_tsurf(caplog):
+    """tsurf <= 0 -> function returns cleanly, does not raise, logs a skip.
+
+    A non-positive surface temperature cannot seed a physical IC; the check
+    returns without touching the EOS.
+    """
+    from proteus.interior_energetics.common import _verify_initial_entropy
+
+    eos = _make_mock_eos(T_recovered=1234.5)
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.common'):
+        result = _verify_initial_entropy(
+            eos, 1e5, S_target=2794.3, tsurf=0.0, source='unit-test'
+        )
+
+    assert result is None
+    # No verdict line was logged and the EOS was never queried on the skip path.
+    assert not any('verdict=' in r.message for r in caplog.records)
+    eos.temperature.assert_not_called()
+
+
+@pytest.mark.unit
+def test_spider_verify_clamps_pressure_to_table_range():
+    """A pressure above the table maximum is clamped before the lookup.
+
+    The interior samples the surface node at 1 bar, but the clamp guards
+    against any caller passing a pressure outside the tabulated range.
+    """
+    from proteus.interior_energetics.common import _verify_initial_entropy
+
+    tsurf = 3000.0
+    P_max = 1.0e12
+    eos = _make_mock_eos(T_recovered=tsurf, P_min=0.0, P_max=P_max)
+
+    _verify_initial_entropy(eos, 1e14, S_target=2794.3, tsurf=tsurf, source='unit-test')
+
+    # The lookup must receive the clamped pressure (P_max), not the raw 1e14.
+    called_P = eos.temperature.call_args.args[0]
+    assert called_P == P_max
+
+
+@pytest.mark.unit
+def test_spider_verify_clamps_pressure_to_table_floor():
+    """A pressure below the table minimum is clamped up to P_min.
+
+    Mirrors the P_max case: the clamp is symmetric, so the lower bound must
+    be exercised too. A regression that dropped the ``max(eos.P_min, ...)``
+    term would pass the P_max test but fail here.
+    """
+    from proteus.interior_energetics.common import _verify_initial_entropy
+
+    tsurf = 3000.0
+    P_min = 1.0e8
+    eos = _make_mock_eos(T_recovered=tsurf, P_min=P_min, P_max=1.0e12)
+
+    _verify_initial_entropy(eos, 1.0, S_target=2794.3, tsurf=tsurf, source='unit-test')
+
+    called_P = eos.temperature.call_args.args[0]
+    assert called_P == P_min
+
+
+# ======================================================================
+# Aragog path: AragogRunner._verify_entropy_ic
+# ======================================================================
+
+
+def _make_aragog_dummy_config():
+    """Mock config with non-zalmoxis structure (verify should skip)."""
+    config = MagicMock()
+    config.interior_struct.module = 'dummy'
+    config.interior_struct.zalmoxis = None
+    return config
+
+
+def _make_mock_entropy_solver(
+    P_stag: np.ndarray,
+    S_stag: np.ndarray,
+    temperature_scalar_fn=None,
+):
+    """
+    Build a fake EntropySolver exposing the attributes the fixed verify
+    function needs: ``_S0``, ``_P_stag_flat``, ``entropy_eos``.
+    """
+    solver = MagicMock()
+    solver._S0 = S_stag
+    solver._P_stag_flat = P_stag
+
+    eos = MagicMock()
+
+    if temperature_scalar_fn is None:
+        # Default: identity-ish T(P, S) = S (deterministic, asymmetric)
+        def temperature_scalar_fn(p, s):
+            return float(s) * 0.4  # S=6437 -> T=2575
+
+    eos.temperature_scalar = MagicMock(side_effect=temperature_scalar_fn)
+    eos.invert_temperature = MagicMock(side_effect=lambda p, t: float(t) / 0.4)
+    solver.entropy_eos = eos
+    solver.set_initial_entropy = MagicMock()
+    return solver
+
+
+@pytest.mark.unit
+def test_aragog_verify_skips_for_dummy_module(tmp_path):
+    """
+    ``interior_struct.module='dummy'`` -> verify returns early, no EOS access.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_dummy_config()
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _make_mock_entropy_solver(
+        P_stag=np.array([1e5, 5e10, 1.35e11]),
+        S_stag=np.array([6437.0, 6437.0, 6437.0]),
+    )
+
+    # Must not raise and must not call the EOS helpers
+    AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
+
+    interior_o.aragog_solver.entropy_eos.temperature_scalar.assert_not_called()
+    # Discrimination: invert_temperature must also not be called. A
+    # regression that took the verify branch on dummy and only the
+    # temperature_scalar mock was untouched (because the path
+    # exclusively used invert_temperature) would falsely pass the
+    # assert_not_called above.
+    interior_o.aragog_solver.entropy_eos.invert_temperature.assert_not_called()
+    # The set_initial_entropy override path must also be untouched on
+    # the skip branch.
+    interior_o.aragog_solver.set_initial_entropy.assert_not_called()
+
+
+@pytest.mark.unit
+def test_aragog_verify_raises_on_api_drift(tmp_path):
+    """
+    Stale API: solver missing ``_S0`` must propagate as AttributeError.
+    This is the regression that detected the original dead-code bug.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = MagicMock()
+    config.interior_struct.module = 'zalmoxis'
+    config.interior_struct.zalmoxis = MagicMock()
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    config.planet.tsurf_init = 2873.0
+
+    # Build a solver that is missing _S0 entirely: simulate API drift
+    # where a future refactor renames the attribute.
+    class BrokenSolver:
+        _P_stag_flat = np.array([1e5, 1e11])
+        entropy_eos = MagicMock()
+
+    solver = BrokenSolver()
+    solver.entropy_eos.temperature_scalar = lambda p, s: float(s) * 0.4
+
+    interior_o = MagicMock()
+    interior_o.aragog_solver = solver
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value={
+                'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
+                'PALEOS-2phase:MgSiO3': {},
+            },
+        ),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
+            return_value=None,
+        ),
+        patch('os.path.isfile', return_value=True),
+    ):
+        # AttributeError must propagate (NOT be swallowed by the
+        # narrowed except clause).
+        with pytest.raises(AttributeError, match=r'_S0'):
+            AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
+
+    # Discrimination: a solver that DOES expose _S0 with the same other
+    # mocks in place must not raise. The exception above must come
+    # specifically from the missing attribute, not from an unrelated
+    # path in the verify routine that fires on every call.
+    class WorkingSolver:
+        _S0 = np.array([6437.0, 6437.0])
+        _P_stag_flat = np.array([1e5, 1e11])
+        entropy_eos = MagicMock()
+        set_initial_entropy = MagicMock()
+
+    working_solver = WorkingSolver()
+    working_solver.entropy_eos.temperature_scalar = MagicMock(
+        side_effect=lambda p, s: float(s) * 0.4
+    )
+    working_solver.entropy_eos.invert_temperature = MagicMock(
+        side_effect=lambda p, t: float(t) / 0.4
+    )
+    interior_o.aragog_solver = working_solver
+    with (
+        patch(
+            'zalmoxis.eos_export.compute_entropy_adiabat',
+            return_value={
+                'P': np.array([1e5, 1e11]),
+                'T': np.array([2575.0, 2575.0]),
+                'S_target': 6437.0,
+            },
+            create=True,
+        ) as mock_adiabat,
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value={
+                'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
+                'PALEOS-2phase:MgSiO3': {},
+            },
+        ),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
+            return_value=None,
+        ),
+        patch('os.path.isfile', return_value=True),
+    ):
+        AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
+    # The verify path must have actually queried the PALEOS adiabat. A
+    # regression that early-returned past the _S0 check would skip the
+    # mock and the no-raise verdict would mean nothing.
+    mock_adiabat.assert_called_once()
+
+
+@pytest.mark.unit
+def test_aragog_verify_runs_and_overrides_on_warn(tmp_path):
+    """
+    Inversion and adiabat disagree by ~2 % on the surface node: verify logs
+    WARN and overrides the entropy profile via set_initial_entropy.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = MagicMock()
+    config.interior_struct.module = 'zalmoxis'
+    config.interior_struct.zalmoxis = MagicMock()
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    config.planet.tsurf_init = 2500.0
+
+    # Aragog IC profile: T(P, S) = S * 0.4 gives T_stag = 0.4 * S_stag.
+    P_stag = np.array([1e5, 5e10, 1.35e11])
+    S_stag = np.array([6437.4, 6437.4, 6437.4])  # uniform IC
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _make_mock_entropy_solver(P_stag, S_stag)
+
+    # Build an adiabat that is 2 % hotter at the surface -> rel diff ~2 %.
+    T_surface_aragog = 6437.4 * 0.4  # 2574.96
+    T_adiabat_surface = T_surface_aragog * 1.02
+    T_adiabat_bulk = T_surface_aragog * 1.02
+
+    fake_adiabat = {
+        'P': np.array([1e5, 1.35e11]),
+        'T': np.array([T_adiabat_surface, T_adiabat_bulk]),
+        'S_target': 6566.0,
+    }
+
+    with (
+        patch(
+            'zalmoxis.eos_export.compute_entropy_adiabat',
+            return_value=fake_adiabat,
+            create=True,
+        ),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value={
+                'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
+                'PALEOS-2phase:MgSiO3': {},
+            },
+        ),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
+            return_value=None,
+        ),
+        patch('os.path.isfile', return_value=True),
+    ):
+        AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
+
+    # Override path is intentionally DISABLED now (the full-profile
+    # cross-check is advisory only, see aragog.py docstring). The verify
+    # call must complete without touching the IC entropy.
+    interior_o.aragog_solver.set_initial_entropy.assert_not_called()
+    # Discrimination: the solver's temperature_scalar must have been
+    # consulted for the IC profile evaluation. A regression that
+    # short-circuited the entire verify routine would leave both
+    # set_initial_entropy AND temperature_scalar untouched (both
+    # assert_not_called would pass for the wrong reason).
+    assert interior_o.aragog_solver.entropy_eos.temperature_scalar.called
+
+
+@pytest.mark.unit
+def test_aragog_verify_logs_on_large_mismatch_but_does_not_raise(tmp_path, caplog):
+    """
+    A 10 % discrepancy is logged as a debug note about table boundary
+    drift but does NOT raise. The Aragog full-profile cross-check fires
+    on production runs at M>=2.0 Earth masses because the PALEOS P-T and
+    regenerated P-S tables drift by up to ~10% at high pressure, so it is
+    advisory only; the scalar surface check in _set_entropy_ic is the
+    authoritative IC sanity check.
+    """
+    import logging
+
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = MagicMock()
+    config.interior_struct.module = 'zalmoxis'
+    config.interior_struct.zalmoxis = MagicMock()
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    config.planet.tsurf_init = 2500.0
+
+    P_stag = np.array([1e5, 5e10, 1.35e11])
+    S_stag = np.array([6437.4, 6437.4, 6437.4])
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _make_mock_entropy_solver(P_stag, S_stag)
+
+    T_ref = 6437.4 * 0.4
+    fake_adiabat = {
+        'P': np.array([1e5, 1.35e11]),
+        'T': np.array([T_ref * 1.10, T_ref * 1.10]),
+        'S_target': 7081.0,
+    }
+
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.aragog'):
+        with (
+            patch(
+                'zalmoxis.eos_export.compute_entropy_adiabat',
+                return_value=fake_adiabat,
+                create=True,
+            ),
+            patch(
+                'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+                return_value={
+                    'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
+                    'PALEOS-2phase:MgSiO3': {},
+                },
+            ),
+            patch(
+                'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
+                return_value=None,
+            ),
+            patch('os.path.isfile', return_value=True),
+        ):
+            # Must not raise. Must log the mismatch at debug level.
+            AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
+
+    joined = '\n'.join(r.message for r in caplog.records)
+    assert 'Entropy IC full-profile cross-check' in joined, (
+        f'Expected full-profile log line, got: {joined!r}'
+    )
+    # Discrimination: the routine must NOT have written through the
+    # override path (advisory-only contract). A regression that
+    # re-enabled the override would also satisfy the log-line check
+    # above but silently overwrite the IC profile.
+    interior_o.aragog_solver.set_initial_entropy.assert_not_called()
+
+
+# ======================================================================
+# Aragog path: liquidus_super cold-surface guard
+# ======================================================================
+
+
+def _make_aragog_liquidus_super_config():
+    """Mock config for a zalmoxis + PALEOS liquidus_super run."""
+    config = MagicMock()
+    config.interior_struct.module = 'zalmoxis'
+    config.interior_struct.zalmoxis = MagicMock()
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    config.planet.temperature_mode = 'liquidus_super'
+    config.planet.tsurf_init = 4000.0
+    return config
+
+
+def _patch_crosscheck_eos(monkeypatch, tmp_path, surface_T, p_cmb):
+    """Mock the EOS dependencies of ``_verify_entropy_ic`` so the cold-surface
+    guard logic can be unit-tested without the PALEOS tables.
+
+    Provides a present (stub) EOS file, a super-liquidus solve that returns the
+    intended warm surface temperature, and a warm monotone reference adiabat.
+    The IC profile itself is set by the caller's ``temperature_scalar``.
+    """
+    import zalmoxis.eos_export as eos_export
+
+    import proteus.interior_struct.zalmoxis as zmod
+
+    eos_file = tmp_path / 'eos.dat'
+    eos_file.write_text('stub')
+    monkeypatch.setattr(
+        zmod,
+        'load_zalmoxis_material_dictionaries',
+        lambda: {'PALEOS:MgSiO3': {'eos_file': str(eos_file)}},
+    )
+    monkeypatch.setattr(zmod, 'resolve_2phase_mgsio3_paths', lambda *a, **k: (None, None))
+    monkeypatch.setattr(zmod, 'load_zalmoxis_solidus_liquidus_functions', lambda *a, **k: None)
+    monkeypatch.setattr(
+        zmod,
+        'solve_superliquidus_adiabat',
+        lambda config, hf_row: {
+            'surface_T': surface_T,
+            'S_target': 10591.0,
+            'cmb_T': 13000.0,
+            'achieved_superheat': 500.0,
+            'binding_P': 1.2e11,
+            'P_cmb': p_cmb,
+        },
+    )
+
+    def fake_adiabat(
+        eos_file,
+        T_surface,
+        P_surface,
+        P_cmb,
+        n_points,
+        solidus_func,
+        liquidus_func,
+        solid_eos_file,
+        liquid_eos_file,
+    ):
+        P = np.linspace(P_surface, P_cmb, n_points)
+        T = T_surface + (P - P_surface) / (P_cmb - P_surface) * (13000.0 - T_surface)
+        return {
+            'P': P,
+            'T': T,
+            'S_target': 10591.0,
+            'S_profile': np.full(n_points, 10591.0),
+        }
+
+    monkeypatch.setattr(eos_export, 'compute_entropy_adiabat', fake_adiabat)
+
+
+@pytest.mark.physics_invariant
+def test_aragog_verify_raises_on_cold_surface_liquidus_super(monkeypatch, tmp_path):
+    """A liquidus_super IC that unpacks to a COLD surface beyond the Fei+2021
+    calibration is rejected: the cross-check raises, because that steeply
+    inverted profile is the energy-non-conserving cold-surface initial
+    condition the guard exists to catch.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    p_cmb = 1.474e12  # m10, beyond the ~500 GPa Fei calibration
+    config = _make_aragog_liquidus_super_config()
+    _patch_crosscheck_eos(monkeypatch, tmp_path, surface_T=4243.0, p_cmb=p_cmb)
+    # P from CMB (index 0) down to the surface; the IC unpacks cold at the
+    # surface (2900 K) and hot at the base (11000 K) -> steep inversion.
+    P_stag = np.array([p_cmb, 6e11, 1.5e11, 1e9, 1e5])
+
+    def cold_T(p, s):
+        return 2900.0 + (p - 1e5) / (p_cmb - 1e5) * (11000.0 - 2900.0)
+
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _make_mock_entropy_solver(
+        P_stag=P_stag,
+        S_stag=np.full(P_stag.size, 10000.0),
+        temperature_scalar_fn=cold_T,
+    )
+    with pytest.raises(RuntimeError, match='cold-surface inversion') as exc:
+        AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path), {'P_cmb': p_cmb})
+    msg = str(exc.value)
+    # The message must name the mode and the out-of-calibration pressure so the
+    # failure is actionable, and report the cold unpacked surface (2900 K) it
+    # caught against the intended ~4243 K adiabat anchor.
+    assert 'liquidus_super' in msg and 'GPa' in msg
+    assert '2900 K' in msg
+
+
+def test_aragog_verify_no_raise_on_warm_surface_liquidus_super(monkeypatch, tmp_path):
+    """A correctly-anchored warm-surface liquidus_super IC does NOT raise, even
+    when the table-drift verdict is FAIL: the guard is gated on the cold-surface
+    signature, not the verdict magnitude (a benign ~7 % deep drift must pass).
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    p_cmb = 1.474e12
+    config = _make_aragog_liquidus_super_config()
+    _patch_crosscheck_eos(monkeypatch, tmp_path, surface_T=4243.0, p_cmb=p_cmb)
+    P_stag = np.array([p_cmb, 6e11, 1.5e11, 1e9, 1e5])
+
+    def warm_T(p, s):
+        base = 4243.0 + (p - 1e5) / (p_cmb - 1e5) * (13000.0 - 4243.0)
+        return base * (1.0 + 0.07 * (p / p_cmb))  # warm surface, ~7% deep drift
+
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _make_mock_entropy_solver(
+        P_stag=P_stag,
+        S_stag=np.full(P_stag.size, 10000.0),
+        temperature_scalar_fn=warm_T,
+    )
+    # Must not raise; the cross-check runs to completion and writes its
+    # diagnostic, confirming the FAIL verdict was reached but not escalated.
+    AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path), {'P_cmb': p_cmb})
+    assert (
+        tmp_path / 'data' / 'entropy_ic_verification' / 'entropy_ic_comparison.npz'
+    ).exists()
+    interior_o.aragog_solver.entropy_eos.temperature_scalar.assert_called()

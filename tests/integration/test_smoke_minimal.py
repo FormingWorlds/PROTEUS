@@ -14,6 +14,8 @@ from helpers import PROTEUS_ROOT
 from proteus import Proteus
 from proteus.config import Config
 
+pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
+
 
 @pytest.mark.smoke
 def test_proteus_dummy_init():
@@ -29,7 +31,7 @@ def test_proteus_dummy_init():
     - Directory structure is set up
     - All required attributes are present
     """
-    config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+    config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
     # Initialize PROTEUS with minimal config
     runner = Proteus(config_path=config_path)
@@ -37,7 +39,7 @@ def test_proteus_dummy_init():
     # Validate that config loaded successfully
     assert runner.config is not None
     assert isinstance(runner.config, Config)
-    assert runner.config.version == '2.0'
+    assert runner.config.config_version == '3.0'
 
     # Validate that directories are initialized
     assert runner.directories is not None

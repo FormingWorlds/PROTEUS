@@ -10,12 +10,22 @@ if TYPE_CHECKING:
 from calliope.constants import molar_mass, ocean_moles
 from calliope.solve import (
     equilibrium_atmosphere,
+    equilibrium_atmosphere_authoritative_O,
     get_target_from_params,
     get_target_from_pressures,
 )
 
 from proteus.outgas.common import expected_keys
-from proteus.utils.constants import C_solar, N_solar, S_solar, element_list, vol_list
+from proteus.utils.constants import (
+    C_solar,
+    N_solar,
+    S_solar,
+    element_list,
+    noble_gases,
+    noble_solar_mass_ratio,
+    vol_element_list,
+    vol_list,
+)
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger('fwl.' + __name__)
@@ -28,8 +38,6 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     """
     Construct CALLIOPE options dictionary
     """
-
-    invalid = False  # Invalid options set by config
 
     solvevol_inp = {}
 
@@ -46,12 +54,13 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
 
     # Surface properties
     solvevol_inp['T_magma'] = hf_row['T_magma']
+
     solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
 
     # Volatile inventory
     for s in vol_list:
         if s != 'O2':
-            pressure = config.delivery.volatiles.get_pressure(s)
+            pressure = config.planet.gas_prs.get_pressure(s)
             included = config.outgas.calliope.is_included(s)
         else:
             pressure = 0.0
@@ -64,109 +73,138 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
             UpdateStatusfile(dirs, 20)
             raise ValueError(f'Missing required volatile {s}')
 
-    # Set by volatiles?
-    if config.delivery.initial == 'volatiles':
+    # Noble gases default to excluded with no pressure and no budget. The
+    # element-abundance branch below overrides the inclusion flag and the
+    # ppmw budget for any noble gas the user has switched on. Noble gases are
+    # not yet supported through the partial-pressure (gas_prs) mode, so they
+    # stay excluded there.
+    for gas in noble_gases:
+        solvevol_inp[f'{gas}_included'] = 0
+        solvevol_inp[f'{gas}_initial_bar'] = 0.0
+        solvevol_inp[f'{gas}_ppmw'] = 0.0
+
+    # Set by partial pressures?
+    if config.planet.volatile_mode == 'gas_prs':
         return solvevol_inp
 
-    # Calculate hydrogen inventory...
+    # --- Element abundance mode ---
+    elem = config.planet.elements
 
-    #    absolute part (H_kg = H_oceans * number_ocean_moles * molar_mass['H2'])
-    H_abs = float(config.delivery.elements.H_oceans) * mass_ocean
-    H_abs += float(config.delivery.elements.H_kg)
-
-    #    relative part (H_kg = H_rel * 1e-6 * M_mantle)
-    H_rel = config.delivery.elements.H_ppmw * 1e-6 * hf_row['M_mantle']
-
-    #    use whichever was set (one of these will be zero)
-    if H_abs < 1.0:
-        if H_rel < 1.0:
-            log.error('Hydrogen inventory is unspecified')
-            invalid = True
-        else:
-            H_kg = H_rel
-    elif H_rel < 1.0:
-        H_kg = H_abs
+    # Reservoir mass for ppmw calculations
+    M_mantle = hf_row['M_mantle']
+    if config.planet.volatile_reservoir == 'mantle+core':
+        M_reservoir = hf_row['M_int']  # M_mantle + M_core
     else:
-        log.error('Hydrogen inventory must be specified by H_oceans or H_ppmw, not both')
-        invalid = True
-        H_kg = -1  # dummy value
+        M_reservoir = M_mantle
 
-    # calculating elemental abundances using metallicity
-    if config.delivery.elements.use_metallicity:
-        CH_ratio = config.delivery.elements.metallicity * C_solar
-        N_ppmw = 0.0
-        S_ppmw = 0.0
+    # Hydrogen inventory [kg]
+    match elem.H_mode:
+        case 'oceans':
+            H_kg = float(elem.H_budget) * mass_ocean
+        case 'ppmw':
+            H_kg = float(elem.H_budget) * 1e-6 * M_reservoir
+        case 'kg':
+            H_kg = float(elem.H_budget)
 
-        # if planet has nitrogen
-        if config.delivery.elements.NH_ratio > 0.0:
-            NH_ratio = config.delivery.elements.metallicity * N_solar
-            N_ppmw = 1e6 * NH_ratio * H_kg / hf_row['M_mantle']
-
-        # if planet has sulfur
-        if config.delivery.elements.SH_ratio > 0.0:
-            SH_ratio = config.delivery.elements.metallicity * S_solar
-            S_ppmw = 1e6 * SH_ratio * H_kg / hf_row['M_mantle']
-
-    else:
-        # Calculate carbon inventory (we need CH_ratio for calliope)
-        CH_ratio = float(config.delivery.elements.CH_ratio)
-        C_ppmw = float(config.delivery.elements.C_ppmw)
-        if CH_ratio > 1e-10:
-            # check that C_ppmw isn't also set
-            if C_ppmw > 1e-10:
-                log.error('Carbon inventory must be specified by CH_ratio or C_ppmw, not both')
-                invalid = True
-        else:
-            # calculate C/H ratio for calliope from C_kg and H_kg
-            C_kg = float(config.delivery.elements.C_ppmw) * 1e-6 * hf_row['M_mantle']
-            C_kg += float(config.delivery.elements.C_kg)
-            CH_ratio = C_kg / H_kg
-
-        # Calculate nitrogen inventory (we need N_ppmw for calliope)
-        NH_ratio = float(config.delivery.elements.NH_ratio)
-        N_ppmw = float(config.delivery.elements.N_ppmw)
-        N_ppmw += float(config.delivery.elements.N_kg) / (1e-6 * hf_row['M_mantle'])
-        if NH_ratio > 1e-10:
-            # check that N_ppmw isn't also set
-            if N_ppmw > 1e-10:
-                log.error(
-                    'Nitrogen inventory must be specified by NH_ratio or N_ppmw, not both'
-                )
-                invalid = True
-            # calculate N_ppmw
-            N_ppmw = 1e6 * NH_ratio * H_kg / hf_row['M_mantle']
-
-        # Calculate sulfur inventory (we need S_ppmw for calliope)
-        SH_ratio = float(config.delivery.elements.SH_ratio)
-        S_ppmw = float(config.delivery.elements.S_ppmw)
-        S_ppmw += float(config.delivery.elements.S_kg) / (1e-6 * hf_row['M_mantle'])
-        if SH_ratio > 1e-10:
-            # check that S_ppmw isn't also set
-            if S_ppmw > 1e-10:
-                log.error('Sulfur inventory must be specified by SH_ratio or S_ppmw, not both')
-                invalid = True
-            # calculate S_ppmw
-            S_ppmw = 1e6 * SH_ratio * H_kg / hf_row['M_mantle']
-
-    # Volatile abundances are over-specified in the config file.
-    # The code exits here, rather than above, in case there are multiple
-    #   instances of volatiles being over-specified in the file.
-    if invalid:
-        log.error('  a) set X by metallicity, e.g. XH_ratio=1.2 and X_ppmw=0')
-        log.error('  b) set X by concentration, e.g. XH_ratio=0 and X_ppmw=2.01')
+    if H_kg < 1.0:
         log.error(
-            '  Can also specify X_ppmw and X_kg together, to set the absolute X inventory'
+            'Hydrogen inventory is zero or unspecified (H_mode=%s, H_budget=%g)',
+            elem.H_mode,
+            elem.H_budget,
         )
         UpdateStatusfile(dirs, 20)
-        raise ValueError('Invalid volatile inventory configuration')
+        raise ValueError('Hydrogen inventory must be > 0')
 
-    # Pass elemental inventory
+    # C/N/S inventories
+    if elem.use_metallicity:
+        # Scale from solar metallicity relative to H
+        CH_ratio = elem.metallicity * C_solar
+        N_kg = elem.metallicity * N_solar * H_kg
+        S_kg = elem.metallicity * S_solar * H_kg
+    else:
+        # Carbon
+        C_kg = _resolve_element(elem.C_mode, elem.C_budget, H_kg, M_reservoir, 'C')
+        CH_ratio = C_kg / H_kg if H_kg > 0 else 0.0
+
+        # Nitrogen
+        N_kg = _resolve_element(elem.N_mode, elem.N_budget, H_kg, M_reservoir, 'N')
+
+        # Sulfur
+        S_kg = _resolve_element(elem.S_mode, elem.S_budget, H_kg, M_reservoir, 'S')
+
+    # Convert to CALLIOPE's internal units (always relative to M_mantle)
+    N_ppmw = 1e6 * N_kg / M_mantle if M_mantle > 0 else 0.0
+    S_ppmw = 1e6 * S_kg / M_mantle if M_mantle > 0 else 0.0
+
     solvevol_inp['hydrogen_earth_oceans'] = H_kg / mass_ocean
     solvevol_inp['CH_ratio'] = CH_ratio
     solvevol_inp['nitrogen_ppmw'] = N_ppmw
     solvevol_inp['sulfur_ppmw'] = S_ppmw
 
+    # Noble gas inventories. A gas is passed to CALLIOPE only when it is both
+    # switched on in the outgassing config and carries a positive budget. Its
+    # budget is converted to ppmw relative to the mantle mass, the unit
+    # CALLIOPE expects for the noble gases.
+    for gas in noble_gases:
+        if not config.outgas.calliope.is_included(gas):
+            continue
+        mode = getattr(elem, f'{gas}_mode')
+        budget = float(getattr(elem, f'{gas}_budget'))
+        gas_kg = _resolve_element(mode, budget, H_kg, M_reservoir, gas)
+        if gas_kg <= 0.0:
+            continue
+        solvevol_inp[f'{gas}_included'] = 1
+        solvevol_inp[f'{gas}_ppmw'] = 1e6 * gas_kg / M_mantle if M_mantle > 0 else 0.0
+
     return solvevol_inp
+
+
+def _resolve_element(
+    mode: str, budget: float, H_kg: float, M_reservoir: float, name: str
+) -> float:
+    """Convert an element mode+budget to absolute mass [kg].
+
+    Handles both the reacting elements and the noble gases; the two share
+    the 'ppmw' and 'kg' modes and differ only in the ratio mode. A reacting
+    element uses the 'X/H' mode, where the mode string is '<name>/H' and the
+    budget is the mass ratio to hydrogen directly. A noble gas uses the
+    'solar' mode, where the budget is a multiple of the fixed protosolar X/H
+    mass ratio for that gas.
+
+    Parameters
+    ----------
+    mode : str
+        '<name>/H' (mass ratio to H), 'solar' (multiple of the protosolar X/H
+        ratio, noble gases only), 'ppmw' (relative to M_reservoir), or 'kg'.
+    budget : float
+        The value in the units defined by mode.
+    H_kg : float
+        Hydrogen mass [kg] (for the 'X/H' and 'solar' modes).
+    M_reservoir : float
+        Reservoir mass [kg] for ppmw (M_mantle or M_int).
+    name : str
+        Element or noble gas symbol (for the solar ratio and error messages).
+
+    Returns
+    -------
+    float
+        Element mass [kg].
+    """
+    ratio_key = f'{name}/H'
+    match mode:
+        case _ if mode == ratio_key:
+            return float(budget) * H_kg
+        case 'solar':
+            return float(budget) * noble_solar_mass_ratio[name] * H_kg
+        case 'ppmw':
+            return float(budget) * 1e-6 * M_reservoir
+        case 'kg':
+            return float(budget)
+        case _:
+            raise ValueError(
+                f"Unknown {name}_mode: '{mode}'. "
+                f"Expected '{ratio_key}', 'solar', 'ppmw', or 'kg'"
+            )
 
 
 def calc_target_masses(dirs: dict, config: Config, hf_row: dict):
@@ -174,7 +212,7 @@ def calc_target_masses(dirs: dict, config: Config, hf_row: dict):
     solvevol_inp = construct_options(dirs, config, hf_row)
 
     # calculate target mass of atoms (except O, which is derived from fO2)
-    if config.delivery.initial == 'elements':
+    if config.planet.volatile_mode == 'elements':
         solvevol_target = get_target_from_params(solvevol_inp)
     else:
         solvevol_target = get_target_from_pressures(solvevol_inp)
@@ -212,6 +250,19 @@ def construct_guess(hf_row: dict, target: dict, mass_thresh: float) -> dict | No
         log.debug('    providing None, allowing CALLIOPE to guess')
         return None
 
+    # Noble gas partial pressures are not carried in the helpfile (the noble
+    # gases are tracked as element masses, not as radiative gas species), so a
+    # warm guess cannot supply them. When any noble gas is active, defer to
+    # CALLIOPE's own two-stage cold start rather than hand it an incomplete
+    # guess that would omit the required noble pressures. The trigger is any
+    # positive noble inventory, not a mass_thresh comparison: noble budgets are
+    # intrinsically trace and routinely sit below the major-volatile threshold,
+    # so a threshold test would miss an active noble gas and let an incomplete
+    # warm guess reach CALLIOPE.
+    if any(target.get(gas, 0.0) > 0.0 for gas in noble_gases):
+        log.debug('    noble gas active; providing None for a full cold start')
+        return None
+
     # Dictionary of partial pressures [bar] for H2O, CO2, N2, S2
     p_guess = {}
 
@@ -224,7 +275,7 @@ def construct_guess(hf_row: dict, target: dict, mass_thresh: float) -> dict | No
     for s in vol_list:
         # check if any of the elements are zero in the planet
         is_zero = False
-        for e in element_list:
+        for e in vol_element_list:
             if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
                 continue
             if (e in s) and (target[e] < mass_thresh):  # kg
@@ -283,11 +334,30 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # make solvevol options
     opts = construct_options(dirs, config, hf_row)
 
-    # convert masses to dict for calliope
+    # convert masses to dict for calliope. Under planet.fO2_source =
+    # "from_O_budget" we additionally pass the running O budget
+    # so the authoritative-O entry point can invert against it. The
+    # 'from_O_budget' source
+    # requires hf_row['O_kg_total'] to be populated by
+    # calc_target_elemental_inventories (IC) and maintained by the escape
+    # debits (subsequent iterations); the Config-level validator already
+    # forbids the combination with O_mode = "ic_chemistry", where this
+    # value would not be available.
+    # CALLIOPE handles the volatile elements and the noble gases.
+    target_elements = vol_element_list + noble_gases
     target = {}
     for e in element_list:
-        if e != 'O':
+        if e in target_elements:
             target[e] = hf_row[e + '_kg_total']
+    if config.planet.fO2_source == 'from_O_budget':
+        if 'O_kg_total' not in hf_row:
+            raise ValueError(
+                'planet.fO2_source = "from_O_budget" requires '
+                'hf_row["O_kg_total"]. It is written by '
+                'calc_target_elemental_inventories on a fresh run and must '
+                'be present in runtime_helpfile.csv on a resume.'
+            )
+        target['O'] = hf_row['O_kg_total']
 
     # construct guess for CALLIOPE
     p_guess = construct_guess(hf_row, target, config.outgas.mass_thresh)
@@ -300,24 +370,51 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         opts[f'{s}_included'] = int(p_incl[s])
 
     # Do not allow low temperatures
-    if opts['T_magma'] < config.outgas.calliope.T_floor:
-        opts['T_magma'] = config.outgas.calliope.T_floor
+    if opts['T_magma'] < config.outgas.T_floor:
+        opts['T_magma'] = config.outgas.T_floor
         log.warning('Outgassing temperature clipped to %.1f K' % opts['T_magma'])
 
-    # get atmospheric compositison
+    # Dispatch on planet.fO2_source. The two entry points share the
+    # output-dict schema (volatile partial pressures, per-species reservoir
+    # masses, elemental totals, atmospheric diagnostics) so downstream
+    # consumers are agnostic; the 'from_O_budget' source adds two extra keys
+    # (fO2_shift_derived, O_res) that we plumb into hf_row below.
     try:
-        solvevol_result = equilibrium_atmosphere(
-            target,
-            opts,
-            xtol=config.outgas.calliope.xtol,
-            rtol=config.outgas.calliope.rtol,
-            atol=config.outgas.mass_thresh,
-            nguess=config.outgas.calliope.nguess,
-            nsolve=config.outgas.calliope.nsolve,
-            p_guess=p_guess,
-            print_result=False,
-            opt_solver=False,
-        )
+        if config.planet.fO2_source == 'from_O_budget':
+            solvevol_result = equilibrium_atmosphere_authoritative_O(
+                target,
+                opts,
+                fO2_hint=config.outgas.fO2_shift_IW,
+                xtol=config.outgas.solver_atol,
+                rtol=config.outgas.solver_rtol,
+                atol=config.outgas.mass_thresh,
+                nguess=config.outgas.calliope.nguess,
+                nsolve=config.outgas.calliope.nsolve,
+                p_guess=p_guess,
+                p_guess_max=config.outgas.calliope.p_guess_max,
+                # Fixed seed so the Monte-Carlo restart draws are
+                # reproducible run to run. Without it the first-iteration
+                # cold solve (no p_guess) and any restart draw from the
+                # global RNG, so the derived IC redox state varies between
+                # identical runs and cannot be pinned by --deterministic.
+                random_seed=42,
+                print_result=False,
+                opt_solver=False,
+            )
+        else:
+            solvevol_result = equilibrium_atmosphere(
+                target,
+                opts,
+                xtol=config.outgas.solver_atol,
+                rtol=config.outgas.solver_rtol,
+                atol=config.outgas.mass_thresh,
+                nguess=config.outgas.calliope.nguess,
+                nsolve=config.outgas.calliope.nsolve,
+                p_guess=p_guess,
+                p_guess_max=config.outgas.calliope.p_guess_max,
+                print_result=False,
+                opt_solver=False,
+            )
     except RuntimeError as e:
         log.error('Outgassing calculation with CALLIOPE failed')
         UpdateStatusfile(dirs, 27)
@@ -327,3 +424,27 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     for k in expected_keys():
         if k in solvevol_result:
             hf_row[k] = solvevol_result[k]
+
+    # Invariant for the 'from_O_budget' source: the user-supplied O budget
+    # is the authoritative
+    # input, not an output for the solver to perturb. The solver's
+    # output O_kg_total is mass_atm['O'] + mass_int['O'] which equals
+    # target['O'] only up to the solver residual; letting that contaminate
+    # hf_row['O_kg_total'] would propagate a tiny non-conservation across
+    # iterations and into the escape pipeline that reads this column to
+    # compute the next debit. Restore the authoritative value.
+    if config.planet.fO2_source == 'from_O_budget':
+        hf_row['O_kg_total'] = float(target['O'])
+
+    # Plumb the derived IW-buffer offset and O-mass residual into hf_row.
+    # For the 'from_O_budget' source the solver returns these as part of
+    # solvevol_result;
+    # for the user_constant path the buffer offset is the user-supplied
+    # config.outgas.fO2_shift_IW (echoed for column uniformity) and there
+    # is no O residual (O is an output, not a constraint).
+    if config.planet.fO2_source == 'from_O_budget':
+        hf_row['fO2_shift_IW_derived'] = float(solvevol_result['fO2_shift_derived'])
+        hf_row['O_res'] = float(solvevol_result['O_res'])
+    else:
+        hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
+        hf_row['O_res'] = 0.0

@@ -9,6 +9,9 @@ step-by-step guide or the advice below,
 
 | Error / symptom | Section |
 |---|---|
+| `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
+| `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
+| Simulation fails to converge (general) | [Stabilise a simulation](stabilise_run.md) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
 | `Out-of-date modules detected` | [Module updates](#out-of-date-modules-detected) |
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
@@ -22,6 +25,44 @@ step-by-step guide or the advice below,
 ---
 
 ## General (all platforms)
+
+### Numerically fragile coupled runs {#numerically-fragile-coupled-runs}
+
+Some coupled atmosphere-interior-outgassing configurations occasionally fail with messages such as `RuntimeError: Aragog retry ladder exhausted` or with warnings about T_core jumping >1500 K despite Aragog reporting `status=0`. The same config may succeed on one launch and fail on the next.
+
+The cause is sub-1e-7 floating-point noise in JAX/XLA reduction order that compounds through Aragog's tight tolerances and lands the solver on a wrong P-S branch within ~15 iterations.
+
+Workaround: launch PROTEUS with `--deterministic`:
+
+```bash
+nohup proteus start -c <cfg.toml> --offline --deterministic \
+    > output/<run>/launch.log 2>&1 & disown
+```
+
+The flag intercepts itself in `sys.argv` *before* any heavy imports, sets `JAX_ENABLE_X64=1` and `XLA_FLAGS=--xla_cpu_enable_fast_math=false`, and self-re-execs once. PROTEUS already pins BLAS thread counts at import time; `--deterministic` adds the JAX/XLA layer that BLAS pinning alone does not cover.
+
+Do not enable by default; the flag has a small per-step cost. Use only when a config shows noise-floor divergence between launches.
+
+For broader convergence problems,see [stabilising simulations](stabilise_run.md).
+
+### Resuming a run written by an older PROTEUS {#resuming-a-run-written-by-an-older-proteus}
+
+`proteus start --resume` stops with a message naming columns the run's `runtime_helpfile.csv` does not carry:
+
+```text
+Helpfile 'output/<run>/runtime_helpfile.csv' was written before 3 column(s)
+of the current output schema existed: R_xuv, T_xuv, g_xuv.
+Run this configuration again from t=0, or read this run with the PROTEUS
+version that wrote it.
+```
+
+PROTEUS records one column per output quantity, and a resumed run reads its starting state from the last line of that file. A run paused before a quantity was added holds no value for it, so the run stops.
+
+Either run the configuration again from `t = 0`, or check out the PROTEUS version the run was launched with and read it under that version. There is deliberately no option to continue anyway. The absent columns cannot be filled with a placeholder, because several modules decide what to do by testing whether a quantity is present at all: CALLIOPE refuses a run whose oxygen budget is missing, the dummy and boundary interiors fall back to a configured core size, and the atmosphere lower boundary moves to the solvus only when a solvus radius exists. Supplying a placeholder satisfies each of those tests and passes the placeholder to the solver behind it, which produces a result that looks ordinary and is wrong.
+
+`proteus observe` and `proteus offchem` are held to a smaller set of columns, because reading a stored run to synthesise an observation or run offline chemistry touches only a small part of the schema. An archived run stays postprocessable after a schema addition it never used, and stops only when a column those commands actually read is absent. When that happens, the practical remedy for a run that is expensive or no longer possible to reproduce is the second one: check out the PROTEUS version the run was launched with and postprocess it under that version. Re-running from `t = 0` under current code does not reproduce the archived run, it produces a different one.
+
+To keep a long run resumable across an upgrade, note the PROTEUS version it was launched with and stay on it until the run finishes.
 
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 
@@ -95,13 +136,13 @@ This happens when compiling SPIDER within a Python environment that is incompati
 
 ### Julia compatibility error {#julia-compatibility-error}
 
-There are incompatibilities between Python and some versions of Julia. Julia version 1.12+ is not yet supported because it requires a version of the OpenSSL library that is incompatible with Python.
+There are incompatibilities between Python and some versions of Julia. Supported Julia versions are **1.11.x and 1.12.x**; newer releases (including the 1.13 release candidates) are untested and may fail when juliacall resolves shared libraries.
 
-You must use **Python 3.12** and **Julia 1.11** to avoid these problems:
+You must use **Python 3.12** with a supported Julia to avoid these problems:
 
 ```console
-juliaup add 1.11
-juliaup default 1.11
+juliaup add 1.12
+juliaup default 1.12
 ```
 
 ---

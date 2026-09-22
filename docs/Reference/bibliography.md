@@ -4,9 +4,9 @@ For a full list of papers that use PROTEUS, see the [PROTEUS bibliography on Sci
 
 **Works describing and further developing PROTEUS**
 
-* Nicholls et al. (2025a, _Monthly Notices of the Royal Astronomical Society_) –– [doi:10.1093/mnras/stae2772](https://doi.org/10.1093/mnras/stae2772) –– [arXiv PDF](https://arxiv.org/pdf/2412.11987)
-* Nicholls et al. (2024, _Journal of Geophysical Research: Planets_) –– [doi:10.1029/2024JE008576](https://doi.org/10.1029/2024JE008576) –– [arXiv PDF](https://arxiv.org/pdf/2411.19137)
-* Lichtenberg et al. (2021, _Journal of Geophysical Research: Planets_) –– [doi:10.1029/2020JE006711](https://doi.org/10.1029/2020JE006711) –– [arXiv PDF](https://arxiv.org/pdf/2101.10991)
+* Nicholls et al. (2025a, _Monthly Notices of the Royal Astronomical Society_) | [doi:10.1093/mnras/stae2772](https://doi.org/10.1093/mnras/stae2772) | [arXiv PDF](https://arxiv.org/pdf/2412.11987)
+* Nicholls et al. (2024, _Journal of Geophysical Research: Planets_) | [doi:10.1029/2024JE008576](https://doi.org/10.1029/2024JE008576) | [arXiv PDF](https://arxiv.org/pdf/2411.19137)
+* Lichtenberg et al. (2021, _Journal of Geophysical Research: Planets_) | [doi:10.1029/2020JE006711](https://doi.org/10.1029/2020JE006711) | [arXiv PDF](https://arxiv.org/pdf/2101.10991)
 
 
 ```bibtex

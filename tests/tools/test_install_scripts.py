@@ -1,22 +1,42 @@
 """
-Unit tests for PETSc/SPIDER installation shell scripts.
+Unit tests for the installation shell scripts and the repository and CI
+configuration invariants they depend on.
 
-Tests the reusable shell logic extracted from ``tools/get_petsc.sh`` and
+Reusable shell logic replicated inline from ``tools/get_petsc.sh`` and
 ``tools/get_spider.sh``:
-- ``portable_realpath()`` — cross-platform path resolution
-- ERR trap — exit-code and step-name capture
-- Platform detection — PETSC_ARCH assignment
-- Homebrew prefix fallback — architecture-aware default
-- Workpath argument handling — ``$1`` override vs default
-- PETSc library detection — versioned ``.so``, ``.dylib``, missing
+- ERR trap: exit-code and step-name capture
+- Platform detection: PETSC_ARCH assignment
+- Homebrew prefix fallback: architecture-aware default
+- Workpath argument handling: ``$1`` override vs default
+- PETSc library detection: versioned ``.so``, ``.dylib``, missing
 
-Each test runs an isolated bash snippet via ``subprocess.run()`` — no
-network access, no real builds.
+Blocks lifted out of the shipped scripts at run time, so that rewording a
+script re-runs its cases against the new text:
+- ``portable_realpath()``: cross-platform path resolution, including a
+  destination that does not exist yet, plus the invariant that every
+  ``get_*.sh`` copy of the helper carries the same text
+- ``tools/get_aragog.sh``: the dirty-checkout guard shared across ``get_*.sh``
+- ``tools/get_socrates.sh``: the portable-flag rewrite, its post-build flag
+  check, the install-path resolution, and the conditional AGNI-wrapper
+  rebuild note
+
+Also pins invariants that live in checked-in configuration and documentation
+rather than in shell, each of which fails silently when its counterpart moves:
+- ``pyproject.toml`` module pins and optional-dependency extras, which the
+  scripts resolve through ``tools/_module_pins.py``
+- the extras the ``setup-proteus`` composite action installs, against the
+  extra keys pyproject declares
+- the installation docs' guidance on editable installs, against those pins
+- CI config leaving USER at the runner default, which the action's macOS
+  ``brew install`` step requires
+
+Each shell test runs an isolated bash snippet via ``subprocess.run()``, with
+no network access and no real builds; the configuration tests read the
+checked-in files directly.
 
 See also:
-- docs/test_infrastructure.md
-- docs/test_categorization.md
-- docs/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -31,17 +51,30 @@ import pytest
 # ---------------------------------------------------------------------------
 # Helper: extract portable_realpath function from a script
 # ---------------------------------------------------------------------------
+def _extract_shell_function(script: str, name: str) -> str:
+    """Return the shipped bash source of ``name`` in ``tools/<script>``.
+
+    Lifting the definition out of the script under test, rather than copying
+    it here, keeps the cases below running against the shipped text.
+    """
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    lines = (tools_dir / script).read_text().splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.startswith(f'{name}() {{'))
+    end = next(i for i, ln in enumerate(lines) if ln == '}' and i > start)
+    return '\n'.join(lines[start : end + 1]) + '\n'
+
+
 def _portable_realpath_fn() -> str:
-    """Return the bash source for ``portable_realpath()``."""
-    return """\
-portable_realpath() {
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$1"
-    else
-        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
-    fi
-}
-"""
+    """Return the bash source for the shipped ``portable_realpath()``.
+
+    Nine ``get_*.sh`` scripts carry the helper, so which one is read is
+    arbitrary; ``get_socrates.sh`` is the one whose install-path handling is
+    exercised further down this file. Reading a single copy is sound only
+    because ``test_portable_realpath_identical_across_get_scripts`` pins the
+    copies as the same text: drop that test and these cases stop covering
+    the other eight.
+    """
+    return _extract_shell_function('get_socrates.sh', 'portable_realpath')
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +149,7 @@ def test_portable_realpath_python_fallback(tmp_path):
     target = tmp_path / 'target'
     target.mkdir()
 
-    # Build a PATH with *only* python3 — no realpath anywhere.
+    # Build a PATH with *only* python3, no realpath anywhere.
     python_bin = sys.executable
     safe_bin = tmp_path / 'safe_bin'
     safe_bin.mkdir()
@@ -139,6 +172,53 @@ def test_portable_realpath_python_fallback(tmp_path):
     resolved = result.stdout.strip()
     assert os.path.isabs(resolved)
     assert resolved == str(target)
+
+
+@pytest.mark.unit
+def test_portable_realpath_resolves_missing_path(tmp_path):
+    """Resolves a destination that does not exist yet, as an install path.
+
+    BSD realpath (macOS) rejects a missing leaf and GNU realpath a missing
+    parent, so both a missing leaf and a missing nested path are covered.
+    An empty result here is the regression: the caller feeds the value
+    straight to ``git clone``, which then fails on an empty work-tree name.
+    """
+    leaf = tmp_path / 'not-created-yet'
+    nested = tmp_path / 'no' / 'such' / 'tree'
+    snippet = (
+        _portable_realpath_fn() + f'\nportable_realpath "{leaf}"\nportable_realpath "{nested}"'
+    )
+    result = subprocess.run(['bash', '-c', snippet], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    resolved = result.stdout.split()
+    assert len(resolved) == 2, result.stdout
+    # tmp_path is under a symlinked /var on macOS, so compare against the
+    # resolved parent rather than against the literal input path.
+    real_root = os.path.realpath(tmp_path)
+    assert resolved[0] == os.path.join(real_root, 'not-created-yet')
+    assert resolved[1] == os.path.join(real_root, 'no', 'such', 'tree')
+
+
+@pytest.mark.unit
+def test_portable_realpath_identical_across_get_scripts():
+    """Every ``tools/get_*.sh`` copy of the helper is the same text.
+
+    The helper is duplicated because the scripts are standalone; a fix
+    applied to one copy and not the others reintroduces the missing-path
+    failure in whichever script was missed.
+    """
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    copies = {
+        script.name: _extract_shell_function(script.name, 'portable_realpath')
+        for script in sorted(tools_dir.glob('get_*.sh'))
+        if 'portable_realpath() {' in script.read_text()
+    }
+
+    # Guard the guard: a mis-rooted glob would make the comparison vacuous.
+    assert len(copies) >= 5, sorted(copies)
+    assert 'get_socrates.sh' in copies
+    assert len(set(copies.values())) == 1, sorted(copies)
 
 
 # ---------------------------------------------------------------------------
@@ -470,3 +550,741 @@ def test_spider_lib_check_fails_on_empty_dir(tmp_path):
     )
     assert result.returncode != 0
     assert 'NOT_FOUND' in result.stdout
+
+
+# ============================================================================
+# Regression: installation.md does not promote editable installs of PyPI deps
+# ============================================================================
+
+
+import re  # noqa: E402
+import tomllib  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import pytest  # noqa: E402
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+@pytest.mark.unit
+def test_installation_md_does_not_clone_aragog_or_zalmoxis():
+    """Regression for PR #673 follow-up: installation.md must not tell
+    users to ``git clone`` and ``pip install -e`` Aragog or Zalmoxis.
+    These are PyPI deps (``fwl-aragog``, ``fwl-zalmoxis``) declared in
+    pyproject.toml and installed automatically by
+    ``pip install -e ".[develop]"``. Re-introducing editable-install
+    instructions silently shadows the PyPI versions and breaks the
+    documented dependency pinning.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+
+    installation_text = (repo_root / 'docs' / 'How-to' / 'installation.md').read_text(
+        encoding='utf-8'
+    )
+    manual_text = (repo_root / 'docs' / 'How-to' / 'manual_installation.md').read_text(
+        encoding='utf-8'
+    )
+
+    combined = installation_text + '\n' + manual_text
+
+    # Match `git clone <url>/<aragog|Zalmoxis>` or `pip install -e <aragog|Zalmoxis>`.
+    forbidden = re.compile(
+        r'(git\s+clone[^\n]*?(aragog|Zalmoxis))'
+        r'|(pip\s+install\s+-e\s+(aragog|Zalmoxis))',
+        re.IGNORECASE,
+    )
+    matches = forbidden.findall(combined)
+    assert not matches, (
+        f'installation.md re-introduced editable-install of Aragog/Zalmoxis: {matches!r}'
+    )
+    # Discrimination: installation.md must still cover the PyPI install
+    # path. An empty file would also have zero matches above but would
+    # silently delete the install instructions; pin the canonical PyPI
+    # package name as evidence the file still documents the supported
+    # path.
+    assert 'fwl-aragog' in combined or 'pip install -e ".[develop]"' in combined
+
+
+@pytest.mark.unit
+def test_pyproject_pins_aragog_and_zalmoxis_pypi_packages():
+    """Companion guarantee: pyproject.toml must continue pinning the
+    PyPI distributions ``fwl-aragog`` and ``fwl-zalmoxis``. If either
+    pin is removed, the rationale for not editable-installing them
+    breaks and installation.md must be rewritten."""
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / 'pyproject.toml').read_text(encoding='utf-8')
+    assert 'fwl-aragog' in text, 'pyproject.toml must pin fwl-aragog'
+    assert 'fwl-zalmoxis' in text, 'pyproject.toml must pin fwl-zalmoxis'
+
+
+@pytest.mark.unit
+def test_pyproject_keeps_boreas_out_of_mandatory_dependencies():
+    """BOREAS is installed only explicitly, via ``bash tools/get_boreas.sh``.
+
+    Two clauses:
+    1. ``[project] dependencies`` must not list boreas. Re-adding the
+       direct git URL there would make BOREAS mandatory again and would
+       also block PyPI uploads of fwl-proteus, since PyPI rejects
+       packages whose dependency metadata contains direct references.
+       The PyPI name ``boreas`` belongs to an unrelated project, so a
+       plain ``boreas`` version pin would resolve to the wrong package.
+    2. The pin lives in ``[tool.proteus.modules.boreas]`` with the
+       ExoInteriors GitHub URL and a full 40-character commit SHA, which
+       tools/get_boreas.sh and the CI setup action resolve through
+       tools/_module_pins.py.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+
+    deps = data['project']['dependencies']
+    boreas_deps = [d for d in deps if 'boreas' in d.lower()]
+    assert boreas_deps == [], (
+        f'boreas must not be a mandatory dependency of fwl-proteus: {boreas_deps!r}'
+    )
+    # Discrimination: an empty dependencies list would also pass the
+    # check above; pin a known-mandatory package as evidence the list
+    # is intact.
+    assert any('fwl-calliope' in d for d in deps), 'mandatory dependency list is intact'
+
+    spec = data['tool']['proteus']['modules']['boreas']
+    assert spec['url'].startswith('https://github.com/ExoInteriors/BOREAS'), (
+        f'boreas pin must point at the ExoInteriors repo, got {spec["url"]!r}'
+    )
+    # Full-SHA pin: reproducible clone, short refs are ambiguous and
+    # mutable upstream.
+    assert re.fullmatch(r'[0-9a-f]{40}', spec['ref']), (
+        f'boreas ref must be a full commit SHA, got {spec["ref"]!r}'
+    )
+
+
+@pytest.mark.unit
+def test_optional_backends_vulcan_atmodeller_are_extras_not_mandatory():
+    """VULCAN and atmodeller are optional backends, installed on demand.
+
+    A standard PROTEUS run uses CALLIOPE for outgassing and no atmospheric
+    chemistry, so neither package should be a mandatory dependency. Each
+    must instead live in ``[project.optional-dependencies]`` under its own
+    extra, keeping the published version pins so the optional install is
+    reproducible. Re-adding either to ``[project] dependencies`` would force
+    every PROTEUS user to pull a GPL-3.0 package the core does not need.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+
+    deps = data['project']['dependencies']
+    mandatory = [d for d in deps if 'vulcan' in d.lower() or 'atmodeller' in d.lower()]
+    assert mandatory == [], (
+        f'vulcan/atmodeller must not be mandatory dependencies: {mandatory!r}'
+    )
+    # Discrimination: an empty or truncated dependency list would also pass
+    # the check above; confirm a known-mandatory backend is still present.
+    assert any('fwl-calliope' in d for d in deps), 'mandatory dependency list is intact'
+
+    extras = data['project']['optional-dependencies']
+    # Membership, not exact-list: an extra may gain a second requirement
+    # later (e.g. a transitive pin) without this guard going stale.
+    assert any(r.startswith('atmodeller>=1.0.2') for r in extras.get('atmodeller', [])), (
+        f'atmodeller extra must keep its pin, got {extras.get("atmodeller")!r}'
+    )
+    assert any(r.startswith('fwl-vulcan>=26.04.22') for r in extras.get('vulcan', [])), (
+        f'vulcan extra must keep its pin, got {extras.get("vulcan")!r}'
+    )
+    # The default Aragog interior solver runs on JAX and its modules are
+    # equinox Modules, so the jax/equinox stack must stay MANDATORY, not be
+    # gated behind the optional atmodeller extra. The pinned equinox build
+    # targets a jax API that changed in 0.10, which is why jax/jaxlib are held
+    # <0.10; the pin is the combination the Aragog numerics are validated
+    # against. Lifting any of these would break a standard run.
+    assert 'jax<0.10' in deps and 'jaxlib<0.10' in deps, (
+        'jax/jaxlib must stay pinned <0.10 for the default Aragog jax solver'
+    )
+    assert 'equinox==0.13.8' in deps, (
+        'equinox must be a mandatory dependency for the default Aragog jax solver; '
+        'it was previously pulled only transitively via atmodeller'
+    )
+
+    # VULCAN is a single-source PyPI package like fwl-aragog/fwl-zalmoxis: its
+    # only pin is the extra above, and tools/get_vulcan.sh checks out the git
+    # tag matching that floor. It must NOT also carry a [tool.proteus.modules]
+    # SHA pin, which could drift from the PyPI release (the dual-pin trap).
+    git_modules = data['tool']['proteus']['modules']
+    assert 'vulcan' not in git_modules, (
+        'vulcan must not have a [tool.proteus.modules] git pin; it is pinned '
+        'once via the fwl-vulcan extra and the matching git tag, like '
+        f'fwl-aragog/fwl-zalmoxis. Found: {sorted(git_modules)}'
+    )
+
+
+@pytest.mark.unit
+def test_ci_setup_installs_every_declared_extra():
+    """The CI setup action must install extras whose keys exist in pyproject.
+
+    The CI composite action installs PROTEUS with a literal extras list, e.g.
+    ``pip install -e ".[develop,vulcan,atmodeller]"``. pip treats an unknown
+    extra as a warning and still exits 0, so a typo or a renamed extra would
+    silently stop installing the optional backends, and their tests would skip
+    instead of failing. This guard ties the CI string to the pyproject extra
+    keys: every extra named in the action must be a real optional-dependency
+    group.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    action = (repo_root / '.github/actions/setup-proteus/action.yml').read_text(
+        encoding='utf-8'
+    )
+    data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+    extra_keys = set(data['project']['optional-dependencies'])
+
+    # Extract the bracketed extras from the `pip install -e ".[...]"` line(s).
+    matches = re.findall(r'pip install -e "\.\[([^\]]+)\]"', action)
+    assert matches, (
+        'no `pip install -e ".[...]"` line found in setup-proteus action; '
+        'the extras-install guard cannot verify CI'
+    )
+    ci_extras = {e.strip() for group in matches for e in group.split(',')}
+    # The two optional physics backends must be installed by CI so their tests
+    # run rather than skip.
+    assert {'vulcan', 'atmodeller'} <= ci_extras, (
+        f'CI must install the vulcan + atmodeller extras; found {sorted(ci_extras)}'
+    )
+    # Every extra named in CI must be a real pyproject extra (catches typos /
+    # renames that pip would otherwise swallow).
+    unknown = ci_extras - extra_keys
+    assert not unknown, (
+        f'CI references extras not declared in pyproject [project.optional-dependencies]: '
+        f'{sorted(unknown)}; known extras are {sorted(extra_keys)}'
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dirty-checkout guard (shared shape across tools/get_*.sh)
+# ---------------------------------------------------------------------------
+
+
+def _extract_guard_block() -> str:
+    """Extract the shipped dirty-checkout guard from tools/get_aragog.sh.
+
+    Reading the block from the script under test (rather than copying it
+    into the test) pins the exact shipped lines: any rewording or logic
+    change in the guard re-runs through these cases.
+    """
+    from pathlib import Path
+
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    script = (tools_dir / 'get_aragog.sh').read_text().splitlines()
+    start = next(i for i, ln in enumerate(script) if 'Refuse to delete a checkout' in ln)
+    end = next(i for i, ln in enumerate(script) if ln.startswith('rm -rf'))
+    return '\n'.join(script[start:end])
+
+
+def _run_guard(tmp_path, *args: str) -> subprocess.CompletedProcess:
+    """Run the extracted guard with ``root`` pointing at ``tmp_path``."""
+    snippet = 'root="$GUARD_ROOT"\n' + _extract_guard_block() + '\necho GUARD_PASSED\n'
+    return subprocess.run(
+        ['bash', '-c', snippet, 'guard', *args],
+        capture_output=True,
+        text=True,
+        env={**os.environ, 'GUARD_ROOT': str(tmp_path)},
+    )
+
+
+def _git(cwd, *args: str) -> None:
+    subprocess.run(
+        ['git', '-c', 'user.email=t@e.st', '-c', 'user.name=t', *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_guard_blocks_dirty_and_unpushed_checkouts(tmp_path):
+    """Tracked modifications and local-only commits block the refresh.
+
+    A modified tracked file must exit 1 with the recovery command in the
+    message; a repo whose commits exist on no remote (covers both the
+    remote-less and the never-pushed case) must also block. Untracked
+    files alone must NOT block: build artifacts and egg-info dirs are
+    routine in refreshed checkouts.
+    """
+    workdir = tmp_path / 'aragog'
+    workdir.mkdir()
+    _git(workdir, 'init', '-q')
+    (workdir / 'tracked.py').write_text('x = 1\n')
+    _git(workdir, 'add', 'tracked.py')
+    _git(workdir, 'commit', '-q', '-m', 'c1')
+
+    # Local-only commit (no remotes at all): blocked.
+    res = _run_guard(tmp_path)
+    assert res.returncode == 1
+    assert '--force' in res.stderr  # recovery command is named
+    assert 'GUARD_PASSED' not in res.stdout
+
+    # Same state plus a dirty tracked file: still blocked.
+    (workdir / 'tracked.py').write_text('x = 2\n')
+    res = _run_guard(tmp_path)
+    assert res.returncode == 1
+    assert 'uncommitted changes' in res.stderr
+
+
+def test_guard_passes_clean_remote_backed_checkout(tmp_path):
+    """A clean checkout whose commits are on a remote is refreshed.
+
+    Mimics the normal installed state: a clone (origin exists), detached
+    HEAD at a pinned ref, untracked build artifacts present. The guard
+    must stay silent. A local commit on the detached HEAD then blocks:
+    the commit exists on no remote and would be destroyed.
+    """
+    upstream = tmp_path / 'upstream'
+    upstream.mkdir()
+    _git(upstream, 'init', '-q')
+    (upstream / 'f.py').write_text('a = 1\n')
+    _git(upstream, 'add', 'f.py')
+    _git(upstream, 'commit', '-q', '-m', 'c1')
+
+    workdir = tmp_path / 'aragog'
+    _git(tmp_path, 'clone', '-q', str(upstream), str(workdir))
+    _git(workdir, 'checkout', '-q', '--detach', 'HEAD')
+    (workdir / 'build_artifact.o').write_text('')  # untracked: must not block
+
+    res = _run_guard(tmp_path)
+    assert res.returncode == 0
+    assert 'GUARD_PASSED' in res.stdout
+
+    # Local commit on the detached HEAD: reachable from HEAD, on no
+    # remote. This is the state a tag-pinned checkout enters when a
+    # developer commits without branching; it must block.
+    (workdir / 'f.py').write_text('a = 2\n')
+    _git(workdir, 'add', 'f.py')
+    _git(workdir, 'commit', '-q', '-m', 'local work')
+    res = _run_guard(tmp_path)
+    assert res.returncode == 1
+    assert 'not on a remote' in res.stderr
+
+    # --force bypasses deliberately.
+    res = _run_guard(tmp_path, '--force')
+    assert res.returncode == 0
+    assert 'GUARD_PASSED' in res.stdout
+
+
+# ---------------------------------------------------------------------------
+# Portable-flag rewrite and guards (tools/get_socrates.sh)
+# ---------------------------------------------------------------------------
+
+
+def _extract_socrates_block(start_marker: str, end_marker: str) -> str:
+    """Extract shipped lines of tools/get_socrates.sh between two markers.
+
+    Reading the block from the script under test (rather than copying it
+    into the test) pins the exact shipped lines: any rewording or logic
+    change in the flag handling re-runs through these cases.
+    """
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    script = (tools_dir / 'get_socrates.sh').read_text().splitlines()
+    start = next(i for i, ln in enumerate(script) if start_marker in ln)
+    end = next(i for i, ln in enumerate(script) if end_marker in ln and i > start)
+    return '\n'.join(script[start:end])
+
+
+def _extract_pattern_line() -> str:
+    """Return the shipped nonportable_flags definition line."""
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    script = (tools_dir / 'get_socrates.sh').read_text().splitlines()
+    return next(ln for ln in script if ln.startswith('nonportable_flags='))
+
+
+def _portable_env(workdir, portable: bool) -> dict:
+    """Build the env for a snippet run, toggling the portable-flags switch."""
+    env = {**os.environ, 'WORKDIR': str(workdir)}
+    env.pop('SOCRATES_PORTABLE_FLAGS', None)
+    if portable:
+        env['SOCRATES_PORTABLE_FLAGS'] = '1'
+    return env
+
+
+def _run_flag_rewrite(workdir, portable: bool = True) -> subprocess.CompletedProcess:
+    """Run the shipped flag rewrite and its guards against a fixture tree."""
+    block = _extract_socrates_block('A missing make/Mk_cmd', './build_code')
+    snippet = 'set -euo pipefail\ncd "$WORKDIR"\n' + block + '\necho REWRITE_OK\n'
+    return subprocess.run(
+        ['bash', '-c', snippet],
+        capture_output=True,
+        text=True,
+        env=_portable_env(workdir, portable),
+    )
+
+
+def _run_post_build_guard(workdir, portable: bool = True) -> subprocess.CompletedProcess:
+    """Run the shipped post-build flag check against a fixture bin/Mk_cmd."""
+    pattern_line = _extract_pattern_line()
+    block = _extract_socrates_block('Verify the flags that reached', '# Environment')
+    snippet = (
+        'set -euo pipefail\ncd "$WORKDIR"\n' + pattern_line + '\n' + block + '\necho GUARD_OK\n'
+    )
+    return subprocess.run(
+        ['bash', '-c', snippet],
+        capture_output=True,
+        text=True,
+        env=_portable_env(workdir, portable),
+    )
+
+
+# Shaped like real configure output, including the trailing spaces its
+# echo lines leave behind.
+_CONFIGURE_STYLE_MK_CMD = (
+    '# Generated automatically\n'
+    'FORTCOMP        = gfortran -Ofast -march=native -fallow-argument-mismatch -c \n'
+    'LINK            = gfortran -Ofast -march=native -fallow-argument-mismatch \n'
+    'LIBLINK         = ar rvu \n'
+    'OMPARG          = -fopenmp \n'
+)
+
+
+def test_flag_rewrite_makes_configure_output_portable(tmp_path):
+    """The shipped rewrite turns configure's default flags portable.
+
+    Runs the rewrite block against a fixture make/Mk_cmd shaped like real
+    configure output, with the non-portable flags on both the compile and
+    link lines. Both occurrences must become '-O2 -fno-fast-math', no
+    CPU-specific flag may remain anywhere, and OMPARG must pass through
+    untouched (OpenMP is deliberately kept by the install path).
+    """
+    (tmp_path / 'make').mkdir()
+    mk = tmp_path / 'make' / 'Mk_cmd'
+    mk.write_text(_CONFIGURE_STYLE_MK_CMD)
+
+    res = _run_flag_rewrite(tmp_path)
+
+    assert res.returncode == 0, res.stderr
+    assert 'REWRITE_OK' in res.stdout
+    rewritten = mk.read_text()
+    # Both FORTCOMP and LINK must be rewritten: a count of 1 would mean
+    # the link line kept the host-specific flags.
+    assert rewritten.count('-O2 -fno-fast-math') == 2
+    assert '-march=native' not in rewritten
+    assert '-Ofast' not in rewritten
+    assert 'OMPARG          = -fopenmp' in rewritten
+
+
+def test_flag_rewrite_stops_on_changed_configure_defaults(tmp_path):
+    """A changed configure flag string stops the build with a clear error.
+
+    If a SOCRATES release ships different optimisation defaults (here the
+    aarch64 spelling '-mcpu=native', which the rewrite pattern does not
+    match), the block must exit nonzero before ./build_code runs, name
+    the file to update in the error, and leave the fixture unmodified
+    rather than letting a host-specific binary compile.
+    """
+    (tmp_path / 'make').mkdir()
+    mk = tmp_path / 'make' / 'Mk_cmd'
+    changed = _CONFIGURE_STYLE_MK_CMD.replace('-Ofast -march=native', '-O3 -mcpu=native')
+    mk.write_text(changed)
+
+    res = _run_flag_rewrite(tmp_path)
+
+    assert res.returncode == 1
+    assert 'REWRITE_OK' not in res.stdout
+    assert 'get_socrates.sh' in res.stderr  # error names the file to update
+    assert mk.read_text() == changed  # fixture left untouched
+
+
+def test_flag_rewrite_reports_missing_mk_cmd_as_configure_failure(tmp_path):
+    """A missing make/Mk_cmd is diagnosed as a configure failure in any mode.
+
+    When configure exits zero without writing make/Mk_cmd (or the file
+    moves in a future SOCRATES release), the block must exit nonzero with
+    an error pointing at the configure step, and must not emit the
+    changed-defaults message, which would send the reader to the wrong
+    fix (the rewrite pattern instead of the configure output). The check
+    guards the default (non-portable) build path too, so it runs with the
+    portable switch off.
+    """
+    # Deliberately no make/ directory: the fixture models a configure run
+    # that produced no output file.
+    res = _run_flag_rewrite(tmp_path, portable=False)
+
+    assert res.returncode == 1
+    assert 'REWRITE_OK' not in res.stdout
+    assert 'was not generated' in res.stderr
+    # Discrimination: the changed-defaults diagnosis must not fire for a
+    # missing file; the two failure modes need different fixes.
+    assert 'defaults have' not in res.stderr
+
+
+def test_flag_rewrite_skipped_without_portable_switch(tmp_path):
+    """The default build keeps the upstream performance flags untouched.
+
+    Without SOCRATES_PORTABLE_FLAGS=1 the rewrite must not run: the
+    configure-style fixture passes through byte-identical, keeping
+    '-Ofast -march=native' and never introducing the portable spelling.
+    This pins the gate itself: local installs keep the upstream flags
+    and only opted-in builds (CI) are rewritten.
+    """
+    (tmp_path / 'make').mkdir()
+    mk = tmp_path / 'make' / 'Mk_cmd'
+    mk.write_text(_CONFIGURE_STYLE_MK_CMD)
+
+    res = _run_flag_rewrite(tmp_path, portable=False)
+
+    assert res.returncode == 0, res.stderr
+    assert 'REWRITE_OK' in res.stdout
+    # Discrimination: the file is byte-identical, the native flags are
+    # still present, and the portable spelling was never written.
+    assert mk.read_text() == _CONFIGURE_STYLE_MK_CMD
+    assert '-Ofast -march=native' in mk.read_text()
+    assert '-O2 -fno-fast-math' not in mk.read_text()
+
+
+def test_post_build_guard_inactive_without_portable_switch(tmp_path):
+    """The post-build flag check only applies to opted-in portable builds.
+
+    Without SOCRATES_PORTABLE_FLAGS=1 a bin/Mk_cmd carrying CPU-specific
+    flags is the expected outcome of a default build and must pass; the
+    same fixture fails when the switch is on (covered by the rejection
+    test above), so this pins the gate rather than the pattern.
+    """
+    (tmp_path / 'bin').mkdir()
+    binmk = tmp_path / 'bin' / 'Mk_cmd'
+    binmk.write_text('FORTCOMP = gfortran -Ofast -march=native -c \n')
+
+    res = _run_post_build_guard(tmp_path, portable=False)
+
+    assert res.returncode == 0, res.stderr
+    assert 'GUARD_OK' in res.stdout
+    # Discrimination: with the switch on, this exact fixture is rejected.
+    res_on = _run_post_build_guard(tmp_path, portable=True)
+    assert res_on.returncode == 1
+    assert 'GUARD_OK' not in res_on.stdout
+
+
+def test_post_build_guard_rejects_cpu_specific_template_flags(tmp_path):
+    """A per-host template carrying CPU-specific flags fails the build.
+
+    build_code can replace bin/Mk_cmd with a committed per-host template
+    on recognised cluster hostnames. The shipped post-build check must
+    accept the portable rewrite output and reject the known CPU-specific
+    spellings of the compilers the committed templates use (gfortran
+    '-march=native', ifx '-xHost' and '-ax<arch>').
+    """
+    (tmp_path / 'bin').mkdir()
+    binmk = tmp_path / 'bin' / 'Mk_cmd'
+
+    # Portable flags pass through.
+    binmk.write_text('FORTCOMP = gfortran -O2 -fno-fast-math -c \n')
+    res = _run_post_build_guard(tmp_path)
+    assert res.returncode == 0, res.stderr
+    assert 'GUARD_OK' in res.stdout
+
+    # Host-specific template flags fail, across compiler vocabularies.
+    for flags in ('-Ofast -march=native', '-O3 -xHost', '-O2 -axCORE-AVX512'):
+        binmk.write_text(f'FORTCOMP = ifx {flags} -c \n')
+        res = _run_post_build_guard(tmp_path)
+        assert res.returncode == 1, f'{flags} not rejected'
+        assert 'non-portable' in res.stderr
+        assert 'GUARD_OK' not in res.stdout
+
+
+# ---------------------------------------------------------------------------
+# Install-path resolution (tools/get_socrates.sh)
+# ---------------------------------------------------------------------------
+
+
+def _run_install_path_block(root, argv, stub_resolver: str = '') -> subprocess.CompletedProcess:
+    """Run the shipped argument split and install-path resolution.
+
+    ``stub_resolver`` replaces ``portable_realpath`` with a fixture, so the
+    empty-resolution branch can be reached without an unusable host.
+    """
+    block = _extract_socrates_block(
+        '# Separate the --force flag', '# Refuse to delete a checkout'
+    )
+    resolver = stub_resolver or _portable_realpath_fn()
+    snippet = f'set -u\nroot="{root}"\n' + resolver + block + '\necho "SOCPATH=$socpath"\n'
+    return subprocess.run(
+        ['bash', '-c', snippet, 'get_socrates.sh', *argv],
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.mark.unit
+def test_install_path_resolves_before_the_checkout_exists(tmp_path):
+    """A custom destination that does not exist yet resolves to a real path.
+
+    git clone creates the destination, including its parents, so the script
+    must not require the directory up front. An empty resolution is the
+    failure this pins: git clone then reports an empty work-tree name.
+    """
+    dest = tmp_path / 'no' / 'socrates-here'
+    res = _run_install_path_block(tmp_path / 'root', [str(dest)])
+
+    assert res.returncode == 0, res.stderr
+    socpath = res.stdout.strip().removeprefix('SOCPATH=')
+    assert socpath, res.stderr
+    assert socpath == os.path.join(os.path.realpath(tmp_path), 'no', 'socrates-here')
+
+
+@pytest.mark.unit
+def test_install_path_default_and_force_flag(tmp_path):
+    """--force alone keeps the default destination; a path with it is honoured.
+
+    The flag and the optional positional share one argument list, so the
+    ordering of the two must not shift which value lands in socpath.
+    """
+    root = tmp_path / 'root'
+    dest = tmp_path / 'elsewhere'
+
+    default = _run_install_path_block(root, ['--force'])
+    assert default.returncode == 0, default.stderr
+    assert default.stdout.strip() == f'SOCPATH={root}/socrates'
+
+    override = _run_install_path_block(root, ['--force', str(dest)])
+    assert override.returncode == 0, override.stderr
+    assert override.stdout.strip() == f'SOCPATH={os.path.realpath(tmp_path)}/elsewhere'
+
+
+@pytest.mark.unit
+def test_install_path_rejects_unresolvable_path(tmp_path):
+    """An empty resolution stops the script instead of reaching git clone.
+
+    set -euo pipefail is enabled further down the script, so a resolver that
+    fails here would otherwise leave socpath empty and continue.
+    """
+    stub = 'portable_realpath() {\n    return 1\n}\n'
+    res = _run_install_path_block(tmp_path / 'root', ['some/path'], stub_resolver=stub)
+
+    assert res.returncode == 1, res.stdout
+    assert 'could not resolve install path' in res.stderr
+    assert 'some/path' in res.stderr
+    assert 'SOCPATH=' not in res.stdout
+
+
+# ---------------------------------------------------------------------------
+# Post-rebuild AGNI-wrapper note (tools/get_socrates.sh)
+# ---------------------------------------------------------------------------
+
+
+def _run_agni_rebuild_note(workdir, has_agni: bool) -> subprocess.CompletedProcess:
+    """Run the shipped AGNI-rebuild note block against a fixture root.
+
+    Extracts the conditional note tools/get_socrates.sh prints after a rebuild
+    and runs it with ``root`` pointed at a fixture tree that does or does not
+    contain an AGNI checkout.
+    """
+    if has_agni:
+        (workdir / 'AGNI').mkdir()
+    block = _extract_socrates_block('if [ -d "$root/AGNI" ]', 'exit 0')
+    # The note references both the resolved root and the SOCRATES path it set
+    # earlier in the script; supply both so the printed command is complete.
+    snippet = f'root="{workdir}"\nsocpath="{workdir}/socrates"\n{block}'
+    return subprocess.run(['bash', '-c', snippet], capture_output=True, text=True)
+
+
+def test_socrates_rebuild_warns_to_regenerate_agni_wrappers(tmp_path):
+    """After a rebuild, the script tells the user to regenerate AGNI's wrappers.
+
+    Rebuilding SOCRATES re-clones its tree and deletes the Julia wrappers AGNI
+    generates under socrates/julia, so the script must point the user at the
+    AGNI rebuild that restores them. The note is conditional on an AGNI checkout
+    being present.
+    """
+    # AGNI present: the note fires and names the exact rebuild command, anchored
+    # at the resolved root so it is copy-pasteable from any directory.
+    with_agni = tmp_path / 'with_agni'
+    with_agni.mkdir()
+    res = _run_agni_rebuild_note(with_agni, has_agni=True)
+    assert res.returncode == 0, res.stderr
+    assert 'get_agni.sh" 0' in res.stdout
+    assert str(with_agni / 'tools' / 'get_agni.sh') in res.stdout
+    # The command is self-contained: it sets RAD_DIR to the SOCRATES path the
+    # script resolved, so a user who has not yet exported RAD_DIR can paste it
+    # as-is. Discrimination: a bare `bash .../get_agni.sh 0` would omit this and
+    # fail when RAD_DIR is unset.
+    assert f'RAD_DIR="{with_agni}/socrates"' in res.stdout
+    # The script path is quoted so a root containing spaces survives the paste.
+    assert f'bash "{with_agni}/tools/get_agni.sh"' in res.stdout
+
+    # Guard against the referenced rebuild script being renamed out from under
+    # the note: the command it points at must name a script that exists.
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    assert (tools_dir / 'get_agni.sh').is_file()
+
+    # Discrimination: with no AGNI checkout there is nothing to rebuild, so the
+    # note stays silent rather than point the user at a missing tree.
+    without_agni = tmp_path / 'without_agni'
+    without_agni.mkdir()
+    res_absent = _run_agni_rebuild_note(without_agni, has_agni=False)
+    assert res_absent.returncode == 0, res_absent.stderr
+    assert 'get_agni.sh' not in res_absent.stdout
+
+
+# ---------------------------------------------------------------------------
+# CI must not pin USER (breaks the macOS Homebrew install)
+# ---------------------------------------------------------------------------
+# A USER pin reaches the job environment as a block-mapping key, as a flow-
+# mapping entry, or as a dynamic export out of a run step. All three are
+# forbidden, so the scan matches all three rather than only the block form.
+_USER_PINS = (
+    re.compile(r'^\s*["\']?USER["\']?\s*:'),
+    re.compile(r'[{,]\s*["\']?USER["\']?\s*:'),
+    re.compile(r'\bUSER\s*=.*GITHUB_ENV'),
+)
+
+
+def _pins_user(line: str) -> bool:
+    """Return True when a CI config line pins USER into the job environment."""
+    # Drop trailing comments so prose naming USER cannot trip the scan.
+    text = line.split('#', 1)[0]
+    return any(pattern.search(text) for pattern in _USER_PINS)
+
+
+@pytest.mark.unit
+def test_ci_config_never_pins_user():
+    """CI config must leave USER at the runner default.
+
+    Several jobs share the macOS leg of the ``setup-proteus`` composite action,
+    which runs ``brew install``. Its preinstall check resolves the active
+    account by name, so a USER naming an account that does not exist on the
+    runner aborts the setup step before a single package is installed and every
+    macOS job fails before reaching its tests. Pinning even a real account name
+    is fragile, because it breaks whenever the runner account is renamed or the
+    jobs move back into a container. The invariant is pinned here, for every
+    workflow at once, rather than by a comment in whichever one was edited last.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    workflow_dir = repo_root / '.github/workflows'
+    workflows = sorted(workflow_dir.glob('*.yml')) + sorted(workflow_dir.glob('*.yaml'))
+    # Every composite action is scanned, not just the one that installs the
+    # macOS packages today: any action calling brew is a place where a USER
+    # pin would break the setup.
+    actions = sorted(repo_root.glob('.github/actions/*/action.yml')) + sorted(
+        repo_root.glob('.github/actions/*/action.yaml')
+    )
+
+    # Guard the guard: an empty or mis-rooted glob would make the scan below
+    # pass by finding nothing to check.
+    assert workflows, f'no workflow files resolved under {workflow_dir}'
+    assert actions, f'no composite actions resolved under {repo_root}/.github/actions'
+    targets = workflows + actions
+
+    # Discrimination: the matcher must fire on every shape that reaches the job
+    # environment and stay quiet on unrelated keys, prose, and same-suffix
+    # variables, so a broken pattern cannot make this test pass vacuously.
+    assert _pins_user('      USER: "ci-runner"')
+    assert _pins_user("      'USER': ci-runner")
+    assert _pins_user('    env: {USER: ci-runner}')
+    assert _pins_user('        echo "USER=ci-runner" >> "$GITHUB_ENV"')
+    assert not _pins_user('  COVERAGE_FILE: .coverage.unit.macos-latest')
+    assert not _pins_user('  # Leave USER at the runner default')
+    assert not _pins_user('        echo "FWL_USER=someone" >> "$GITHUB_ENV"')
+
+    offenders = []
+    for path in targets:
+        for lineno, raw in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+            if _pins_user(raw):
+                offenders.append(f'{path.relative_to(repo_root)}:{lineno}: {raw.strip()}')
+
+    assert not offenders, (
+        'CI config must leave USER at the runner default. A USER naming an '
+        'account that does not exist aborts the macOS brew install shared by '
+        'several jobs, and pinning a real account name breaks on the next '
+        f'runner rename. Remove these: {offenders}'
+    )

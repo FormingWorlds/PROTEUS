@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.utils.archive import archive_exists
-from proteus.utils.helper import mol_to_ele
+from proteus.utils.constants import vap_list
+from proteus.utils.helper import mol_to_ele, parse_subyear_time
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -32,6 +33,12 @@ _preset_colours = {
     'SO2': '#00008B',
     'H2S': '#2eff90',
     'NH3': '#675200',
+    'SiO': '#b2df8a',
+    'MgO': '#a6cee3',
+    'SiO2': '#1b9e77',
+    'FeO': '#7f0000',
+    'TiO': '#9C45BC',
+    'TiO2': '#421e39',
     # Volatile elements
     'H': '#0000cc',
     'C': '#ff0000',
@@ -44,6 +51,16 @@ _preset_colours = {
     'Si': '#aa2277',
     'Mg': '#996633',
     'Na': '#ccff00',
+    'Ti': '#0d2959',
+    'K': '#2e8b57',
+    'Al': '#5e2172',
+    'Ca': '#167A9B',
+    # Noble gases (each is both a gas species and an element)
+    'He': '#7f7f7f',
+    'Ne': '#e6550d',
+    'Ar': '#3182bd',
+    'Kr': '#31a354',
+    'Xe': '#756bb1',
     # GLobal energy fluxes
     'OLR': '#dc143c',
     'ASF': '#4169e1',
@@ -151,6 +168,17 @@ def get_colour(thing: str):
         colour = _generate_colour(thing)
 
     return colour
+
+
+def get_linestyle(thing: str):
+    """
+    Get a linestyle for something which needs one (e.g. for plotting a particular gas)
+    """
+
+    if thing in vap_list:
+        return 'dashed'
+    else:
+        return 'solid'
 
 
 def latexify(gas: str):
@@ -273,19 +301,19 @@ def sample_times(times: list, nsamp: int, tmin: float = 1.0):
     tmax = max(tmin + 1, np.amax(times))
 
     # do not allow times outside range
-    allowed_times = [int(x) for x in times if tmin <= x <= tmax]
+    allowed_times = [float(x) for x in times if tmin <= x <= tmax]
 
     # get samples on log-time scale
     sample_t = []
     sample_i = []
     for s in np.logspace(np.log10(tmin), np.log10(tmax), nsamp):  # Sample on log-scale
-        remaining = [int(v) for v in set(allowed_times) - set(sample_t)]
+        remaining = [float(v) for v in set(allowed_times) - set(sample_t)]
         if len(remaining) == 0:
             break
 
         # Get next nearest time
         val, _ = find_nearest(remaining, s)
-        sample_t.append(int(val))
+        sample_t.append(float(val))
 
         # Get the index of this time in the original array
         _, idx = find_nearest(times, val)
@@ -318,7 +346,7 @@ def sample_output(
         return [], []
 
     # get times
-    times = [int(f.split('/')[-1].split(extension)[0]) for f in files]
+    times = [parse_subyear_time(f.split('/')[-1].split(extension)[0]) for f in files]
 
     out_t, out_i = sample_times(times, nsamp, tmin=tmin)
     out_f = [files[i] for i in out_i]

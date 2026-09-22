@@ -37,11 +37,13 @@ set -e
 # in PROTEUS's conda environment.
 # -----------------------------------------------------------------------------
 portable_realpath() {
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$1"
-    else
-        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
+    # Keep this helper in sync across the get_* scripts. A path that does not
+    # exist yet is rejected by realpath (BSD refuses a missing leaf, GNU a
+    # missing parent), so fall through to python3 there too.
+    if command -v realpath >/dev/null 2>&1 && realpath "$1" 2>/dev/null; then
+        return 0
     fi
+    python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
 }
 
 # -----------------------------------------------------------------------------
@@ -70,7 +72,7 @@ on_error() {
             echo "   - Verify mpicc is working: mpicc --version"
             echo "   - Verify PETSc is intact: ls \$PETSC_DIR/\$PETSC_ARCH/lib/libpetsc.*"
             echo "   - On macOS: ensure SDKROOT is set (xcrun --show-sdk-path)"
-            echo "   - See PROTEUS docs/troubleshooting.md for platform-specific fixes"
+            echo "   - See PROTEUS docs/How-to/troubleshooting.md for platform-specific fixes"
             ;;
         *"Verif"*)
             echo "   - The build completed without make errors but no binary was produced"
@@ -78,7 +80,7 @@ on_error() {
             echo "   - Try rebuilding with verbose output: cd $workpath && make V=1"
             ;;
         *)
-            echo "   - See docs/troubleshooting.md for platform-specific advice"
+            echo "   - See docs/How-to/troubleshooting.md for platform-specific advice"
             ;;
     esac
     echo ""
@@ -201,9 +203,34 @@ fi
 current_step="Cloning SPIDER from GitHub"
 
 # Default install directory: ./SPIDER/ ; override via first argument.
+# The --force flag is separated from the optional path argument.
+force=false
+install_path=""
+for arg in "$@"; do
+    if [ "$arg" = "--force" ]; then
+        force=true
+    elif [ -z "$install_path" ]; then
+        install_path="$arg"
+    fi
+done
 workpath="SPIDER"
-if [[ -n "$1" ]]; then
-    workpath="$1"
+if [[ -n "$install_path" ]]; then
+    workpath="$install_path"
+fi
+
+# Refuse to delete a checkout holding local work unless --force is given.
+# Keep this guard in sync across the get_* scripts that refresh checkouts.
+# Guarded states: modified tracked files, and commits not on any remote.
+# Untracked files (build artifacts) do not block the refresh.
+if [ -d "$workpath/.git" ] && [ "$force" != true ]; then
+    dirty=$(git -C "$workpath" status --porcelain --untracked-files=no 2>/dev/null | head -1)
+    unpushed=$(git -C "$workpath" log HEAD --not --remotes --oneline 2>/dev/null | head -1)
+    if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
+        echo "ERROR: $workpath has uncommitted changes or commits not on a remote." >&2
+        echo "       Refusing to delete it. Commit and push your work, or run" >&2
+        echo "       bash tools/get_spider.sh --force  to discard the checkout." >&2
+        exit 1
+    fi
 fi
 
 # Remove any previous installation
@@ -214,7 +241,15 @@ fi
 
 echo ""
 echo "Cloning SPIDER from GitHub..."
-git clone https://github.com/FormingWorlds/SPIDER.git "$workpath"
+
+# Resolve the pinned URL + ref from pyproject.toml. Allow override via
+# the SPIDER_GIT_URL / SPIDER_GIT_REF env vars for local dev.
+script_root="$(cd "$(dirname "$0")/.." && pwd)"
+sp_url="${SPIDER_GIT_URL:-$(python "$script_root/tools/_module_pins.py" spider url)}"
+sp_ref="${SPIDER_GIT_REF:-$(python "$script_root/tools/_module_pins.py" spider ref)}"
+
+git clone "$sp_url" "$workpath"
+git -C "$workpath" checkout --quiet "$sp_ref"
 
 # -----------------------------------------------------------------------------
 # 6. Build SPIDER

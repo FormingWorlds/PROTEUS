@@ -1,0 +1,830 @@
+name: 'Set up PROTEUS environment'
+description: >
+  Cross-platform PROTEUS environment setup. Installs Python + Julia, the
+  system packages SOCRATES needs, the editable Python submodules, the
+  AGNI clone (at the pinned ref), and primes the SOCRATES build + Julia
+  depot + FWL_DATA caches. Exports RAD_DIR, FWL_DATA, AGNI_DIR,
+  JULIA_DEPOT_PATH as workflow env vars.
+
+inputs:
+  python-version:
+    description: >
+      Python version to install. Keep aligned with the requires-python
+      ceiling in pyproject.toml (newest minor below the ceiling).
+    required: false
+    default: '3.12'
+  julia-version:
+    description: Julia version
+    required: false
+    default: '1.13.0'
+  install-editable-submodules:
+    description: >
+      Whether to clone MORS / aragog / JANUS / CALLIOPE / ZEPHYRUS / Zalmoxis
+      and pip install them editable. Set to 'false' to rely solely on the
+      PyPI / git URLs in pyproject.toml dependencies.
+    required: false
+    default: 'false'
+  full-data:
+    description: >
+      If 'true', download the integration-tier data set (ARAGOG tables,
+      melting curves, stellar tracks). If 'false', only the smoke-tier
+      data is downloaded (spectral file + minimal stellar spectrum).
+    required: false
+    default: 'false'
+
+outputs:
+  rad-dir:
+    description: 'Absolute path to the SOCRATES install (sets RAD_DIR).'
+    value: ${{ steps.export-env.outputs.rad_dir }}
+  fwl-data:
+    description: 'Absolute path to the FWL_DATA root.'
+    value: ${{ steps.export-env.outputs.fwl_data }}
+
+runs:
+  using: composite
+  steps:
+    # ------------------------------------------------------------------
+    # 0a. Supported runners
+    # ------------------------------------------------------------------
+    # Composite actions cannot declare OS support in their metadata, so
+    # fail fast here instead of partway through a long install.
+    - name: Check runner OS is supported
+      if: runner.os != 'Linux' && runner.os != 'macOS'
+      shell: bash
+      run: |
+        echo "This action supports Linux and macOS runners only (got $RUNNER_OS)." >&2
+        exit 1
+
+    # ------------------------------------------------------------------
+    # 0b. Reclaim disk on Linux runners
+    # ------------------------------------------------------------------
+    # GHA ubuntu-latest images ship with ~14 GB free and most of that
+    # gets eaten by Android SDK + .NET + ghc + CodeQL + Haskell tools
+    # that PROTEUS does not use. The aragog + atmodeller + Julia +
+    # FWL_DATA + SOCRATES install chain has been observed to push the
+    # remaining headroom to ~61 MB on integration-tier runs, which
+    # then trips Errno 28 during a downstream pip install. Pruning the
+    # unused preinstalled toolchains up front buys ~25 GB. macOS is
+    # untouched (different image layout, smaller pip wheels, and no
+    # observed disk pressure on this branch).
+    - name: Free disk space on Linux
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        echo "Before cleanup:"
+        df -h /
+        sudo rm -rf /usr/share/dotnet \
+                    /usr/local/lib/android \
+                    /opt/ghc \
+                    /opt/hostedtoolcache/CodeQL \
+                    /opt/hostedtoolcache/go \
+                    /opt/hostedtoolcache/PyPy \
+                    /opt/hostedtoolcache/Ruby \
+                    /usr/local/share/boost \
+                    "$AGENT_TOOLSDIRECTORY/Ruby" 2>/dev/null || true
+        echo "After cleanup:"
+        df -h /
+
+    # ------------------------------------------------------------------
+    # 0c. Neutralise the console-less-runner logout hook
+    # ------------------------------------------------------------------
+    # Hosted runners have no console, so the clear_console call in the
+    # default ~/.bash_logout fails on exit. Under a login shell (bash -el,
+    # used by the conda-activating steps below and by any workflow that
+    # runs this action) that failure overrides the recorded exit status of
+    # a step whose script ends on an explicit exit, reporting a success as
+    # a failure. Removing the hook once here, ahead of the first login
+    # shell, keeps every later login-shell step in the job reporting its
+    # true status. clear_console is purely cosmetic, so dropping it is safe.
+    - name: Neutralise the console-less-runner logout hook
+      shell: bash
+      run: rm -f "$HOME/.bash_logout"
+
+    # ------------------------------------------------------------------
+    # 1a0. Apt mirror reachability (Linux)
+    # ------------------------------------------------------------------
+    # A down mirror fails every apt-get attempt the same way, so probe the
+    # mirrors actually configured on this runner and fail fast if none
+    # answer, instead of retrying against one that cannot succeed. Doesn't
+    # recognize a deb822 stanza disabled only via "Enabled: no" (no leading #).
+    - name: Check apt mirror reachability (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        mirrors="$(grep -rhvE '^[[:space:]]*#' \
+          /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources \
+          2>/dev/null | grep -oE 'https?://[^ "]+' \
+          | sed -E 's#(https?://[^/]+).*#\1#' | sort -u || true)"
+        if [ -z "$mirrors" ]; then
+          echo "No apt mirror URIs found in the sources config; skipping the reachability check."
+          exit 0
+        fi
+        reachable=""
+        while IFS= read -r mirror; do
+          code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$mirror" 2>/dev/null)" || code="000"
+          if [ "$code" != "000" ]; then
+            echo "Reachable ($code): $mirror"
+            reachable=1
+            break
+          fi
+          echo "Unreachable: $mirror"
+        done <<< "$mirrors"
+        if [ -z "$reachable" ]; then
+          echo "::error::No configured apt mirror answered; failing fast instead of retrying apt-get against a mirror that cannot succeed." >&2
+          exit 1
+        fi
+
+    # ------------------------------------------------------------------
+    # 1a. System packages (Linux)
+    # ------------------------------------------------------------------
+    - name: Install system packages (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        source "${{ github.action_path }}/retry-with-timeout.sh"
+        # apt-get can stall mid-transfer against the Ubuntu mirrors, so
+        # bound each call with the shared retry_with_timeout helper.
+        # Worst case is ~17 minutes if both calls time out on every
+        # attempt; the caller's job-level timeout must exceed that.
+        dpkg_repair() {
+          # A prior attempt killed by the timeout below can leave dpkg
+          # mid-unpack; repair that before retrying so the next attempt
+          # isn't rejected for an unrelated "packages not configured" error.
+          # Bounded for the same reason as the apt-get call itself: a wedged
+          # dpkg lock must not be able to hang the job indefinitely.
+          sudo timeout --kill-after=10 60 dpkg --configure -a >/dev/null 2>&1 || true
+        }
+        retry_with_timeout "apt-get update" 150 10 dpkg_repair \
+          sudo apt-get update -qq
+        retry_with_timeout "apt-get install" 150 10 dpkg_repair \
+          sudo apt-get install -y --no-install-recommends \
+            gfortran \
+            libnetcdff-dev \
+            netcdf-bin \
+            libssl-dev \
+            curl
+
+    # ------------------------------------------------------------------
+    # 1b. System packages (macOS)
+    # ------------------------------------------------------------------
+    # gcc/netcdf-fortran give the Fortran toolchain and nf-config for SOCRATES. brew
+    # install shares apt-get's bounded retry pattern; a nonzero exit can still mean
+    # every package poured (a Sequoia post-install warning), so verify presence before
+    # trusting it. USER must stay at the runner default: brew's preinstall passwd lookup
+    # aborts on a nonexistent account (test_install_scripts.py enforces this).
+    - name: Install system packages (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        source "${{ github.action_path }}/retry-with-timeout.sh"
+        # This gcc revision's Darwin driver exports SOCRATES's dlsym-visible
+        # shim symbols; a newer gcc drops them, so gcc stays pinned here.
+        # Formulae must live in a tap, so the formula is fetched into a
+        # throwaway tap; pinned before netcdf-fortran so its gcc dependency
+        # resolves to it. Commit 4509561fedf07807c6b806f82551e5f8dac5e678
+        # provides gcc 16.1.0.
+        gcc_formula_url="https://raw.githubusercontent.com/Homebrew/homebrew-core/4509561fedf07807c6b806f82551e5f8dac5e678/Formula/g/gcc.rb"
+        brew tap-new local/pinned-toolchain --no-git >/dev/null
+        pinned_tap_formula_dir="$(brew --repository)/Library/Taps/local/homebrew-pinned-toolchain/Formula"
+        retry_with_timeout "fetch pinned gcc formula" 60 10 "" \
+          curl -fsSL -o "$pinned_tap_formula_dir/gcc.rb" "$gcc_formula_url"
+        # Unlink any gcc the runner image already ships (a different tap, same
+        # formula name) so linking the pinned keg below cannot hit a conflict.
+        if brew list --formula gcc >/dev/null 2>&1; then
+          brew unlink gcc >/dev/null 2>&1 || true
+        fi
+        brew_rc=0
+        retry_with_timeout "brew install gcc (pinned)" 240 10 "" \
+          brew install --quiet local/pinned-toolchain/gcc || brew_rc=$?
+        # A prefix match on `brew list --versions gcc` false-fails once a
+        # second gcc keg coexists (unlink above does not remove the runner
+        # image's pre-existing keg), since the versions then print on one
+        # line in Cellar order, e.g. "gcc 15.2.0 16.1.0". Check the pinned
+        # version is present as its own token, and that it is the one
+        # actually linked.
+        gcc_versions="$(brew list --versions gcc 2>/dev/null || true)"
+        gcc_linked_keg="$(readlink "$(brew --prefix)/opt/gcc" 2>/dev/null || true)"
+        version_present=0
+        if tr ' ' '\n' <<<"$gcc_versions" | grep -qx '16\.1\..*'; then
+          version_present=1
+        fi
+        version_linked=0
+        case "$gcc_linked_keg" in
+          */gcc/16.1.*) version_linked=1 ;;
+        esac
+        if [ "$version_present" -ne 1 ] || [ "$version_linked" -ne 1 ]; then
+          echo "ERROR: brew install rc=$brew_rc, expected pinned gcc 16.1.x installed and linked, got versions: '$gcc_versions', linked keg: '$gcc_linked_keg'" >&2
+          exit 1
+        fi
+        brew pin local/pinned-toolchain/gcc
+        retry_with_timeout "brew install" 240 10 "" \
+          brew install --quiet netcdf netcdf-fortran openssl@3 || brew_rc=$?
+        missing=()
+        for pkg in gcc netcdf netcdf-fortran openssl@3; do
+          brew list "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+        done
+        if [ ${#missing[@]} -gt 0 ]; then
+          echo "ERROR: brew install rc=$brew_rc and missing packages: ${missing[*]}" >&2
+          exit "$brew_rc"
+        fi
+        if [ "$brew_rc" -ne 0 ]; then
+          echo "brew install exited $brew_rc but all packages present; continuing"
+        fi
+
+    # Homebrew ships gfortran only as a versioned binary (e.g.
+    # gfortran-15) when gcc was pre-installed on the runner image, so
+    # the plain `gfortran` command can be absent. SOCRATES's build
+    # checks `command -v gfortran`; link the newest versioned binary
+    # to the plain name when needed.
+    - name: Provide the gfortran command (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v gfortran >/dev/null 2>&1; then
+          gfortran_bin="$(ls /opt/homebrew/bin/gfortran-* 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$gfortran_bin" ]; then
+            gfortran_bin="$(ls /usr/local/bin/gfortran-* 2>/dev/null | sort -V | tail -n 1)"
+          fi
+          if [ -z "$gfortran_bin" ]; then
+            echo "ERROR: no gfortran-* binary found after brew install gcc" >&2
+            ls -la /opt/homebrew/bin/gfortran* /usr/local/bin/gfortran* 2>/dev/null || true
+            exit 1
+          fi
+          target_dir="$(dirname "$gfortran_bin")"
+          ln -sf "$gfortran_bin" "$target_dir/gfortran"
+          echo "Linked $gfortran_bin -> $target_dir/gfortran"
+        fi
+        gfortran --version | head -n 1
+
+    # ------------------------------------------------------------------
+    # 1c. Cache brew downloads on macOS
+    # ------------------------------------------------------------------
+    - name: Cache Homebrew downloads (macOS)
+      if: runner.os == 'macOS'
+      uses: actions/cache@v5
+      with:
+        path: |
+          ~/Library/Caches/Homebrew/downloads
+        key: brew-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/actions/setup-proteus/action.yml') }}
+        restore-keys: |
+          brew-${{ runner.os }}-${{ runner.arch }}-
+
+    # ------------------------------------------------------------------
+    # 2. Miniforge + conda environment (matches the developer install)
+    # ------------------------------------------------------------------
+    # Conda-forge owns SUNDIALS + scikits.odes, which the production
+    # aragog CVODE path requires. Installing via pip would need SUNDIALS
+    # 7.x from source on Linux (apt ships 6.x) and an MPI build on
+    # macOS; conda-forge provides matched binaries on both platforms.
+    - name: Set up miniforge + proteus env
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        miniforge-version: latest
+        python-version: ${{ inputs.python-version }}
+        activate-environment: proteus
+        channels: conda-forge
+        channel-priority: strict
+        auto-activate-base: false
+
+    # Install the conda-side dependencies that need native libraries
+    # (SUNDIALS for CVODE, scikits.odes for the Python bindings). The
+    # rest of PROTEUS installs via pip into the same env in step 8.
+    - name: Install conda dependencies (Linux)
+      if: runner.os == 'Linux'
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        mamba install -n proteus -c conda-forge -y sundials 'scikits.odes>=3.0.0'
+
+    # Pin BLAS/LAPACK to the Accelerate build variant in the same
+    # solve. The openblas variant drags in llvm-openmp, which loads a
+    # second libomp.dylib into the same process as torch's bundled
+    # copy and aborts the process at import time.
+    - name: Install conda dependencies (macOS)
+      if: runner.os == 'macOS'
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        mamba install -n proteus -c conda-forge -y sundials 'scikits.odes>=3.0.0' \
+          'libblas=*=*accelerate*' 'liblapack=*=*accelerate*'
+
+    - name: Verify conda dependencies
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        python -c "import scikits.odes; print('scikits.odes OK, version', scikits.odes.__version__)"
+
+    # Verify the install landed on the intended variant so a channel
+    # or solver drift back to openblas fails loudly here instead of
+    # resurfacing as an unrelated-looking pytest collection abort.
+    - name: Verify BLAS/LAPACK build (macOS)
+      if: runner.os == 'macOS'
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        blas_info="$(mamba list -n proteus '^libblas$')"
+        lapack_info="$(mamba list -n proteus '^liblapack$')"
+        echo "$blas_info"
+        echo "$lapack_info"
+        if ! grep -q accelerate <<< "$blas_info"; then
+          echo "::error::libblas did not resolve to an Accelerate build; this reintroduces the duplicate libomp.dylib SIGABRT." >&2
+          exit 1
+        fi
+        if ! grep -q accelerate <<< "$lapack_info"; then
+          echo "::error::liblapack did not resolve to an Accelerate build; this reintroduces the duplicate libomp.dylib SIGABRT." >&2
+          exit 1
+        fi
+
+    # ------------------------------------------------------------------
+    # 3. Julia
+    # ------------------------------------------------------------------
+    - name: Set up Julia
+      uses: julia-actions/setup-julia@v2
+      with:
+        version: ${{ inputs.julia-version }}
+
+    # ------------------------------------------------------------------
+    # 4. Resolve pinned refs from pyproject.toml (for cache keys)
+    # ------------------------------------------------------------------
+    - name: Read module pins
+      id: pins
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        echo "agni_ref=$(python tools/_module_pins.py agni ref)" >> "$GITHUB_OUTPUT"
+        echo "agni_url=$(python tools/_module_pins.py agni url)" >> "$GITHUB_OUTPUT"
+        echo "socrates_ref=$(python tools/_module_pins.py socrates ref)" >> "$GITHUB_OUTPUT"
+
+    # ------------------------------------------------------------------
+    # 5. SOCRATES build cache
+    # ------------------------------------------------------------------
+    # CI builds SOCRATES with portable optimisation flags (the build step
+    # sets SOCRATES_PORTABLE_FLAGS=1), so the compiled tree runs on any
+    # CPU model in the hosted runner fleets, which mix processor
+    # generations within the same OS/arch label. One cache per OS/arch is
+    # therefore sufficient. The '-portable' key component separates these
+    # caches from any tree built with the default performance flags.
+    # The key also carries the hosted runner's ImageVersion: a compiled
+    # shared library that resolves its symbols correctly on one runner
+    # image can fail to resolve them at runtime on a later image of the
+    # same OS/arch label, so the cache must not survive an image bump.
+    # No restore-keys: a prefix-restored tree would be deleted and rebuilt
+    # from scratch by get_socrates.sh anyway, so a partial restore is pure
+    # download cost.
+    - name: Read runner image version
+      id: runner-image
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="${ImageVersion:-unknown}"
+        if [ "$version" = "unknown" ]; then
+          echo "::warning::ImageVersion is not set on this runner; the SOCRATES and Julia depot cache keys fall back to a constant value and will not bust on an image bump"
+        fi
+        echo "Runner ImageVersion: $version"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - name: Cache SOCRATES build
+      id: cache-socrates
+      uses: actions/cache@v5
+      with:
+        path: socrates/
+        key: socrates-${{ runner.os }}-${{ runner.arch }}-portable-${{ steps.runner-image.outputs.version }}-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh') }}
+
+    - name: Build SOCRATES (cache miss)
+      if: steps.cache-socrates.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Portable flags: cached trees are restored across runner machines
+        # with mixed CPU generations, so the binaries must not carry
+        # build-host CPU extensions.
+        export SOCRATES_PORTABLE_FLAGS=1
+        # Make the script's GitHub SSH probe (and any git-over-SSH it
+        # selects) non-interactive and fast-failing; the runner has no
+        # GitHub SSH key, so the probe fails and the script uses HTTPS.
+        export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -o ConnectTimeout=1 -o BatchMode=yes'
+        # --force: never block on the dirty-tree guard; CI checkouts are
+        # disposable.
+        bash tools/get_socrates.sh --force
+
+    # ------------------------------------------------------------------
+    # 6. AGNI clone (the source tree itself; Julia depot is a separate cache)
+    # ------------------------------------------------------------------
+    - name: Cache AGNI clone
+      id: cache-agni
+      uses: actions/cache@v5
+      with:
+        path: AGNI/
+        key: agni-clone-${{ runner.os }}-${{ steps.pins.outputs.agni_ref }}
+        restore-keys: |
+          agni-clone-${{ runner.os }}-
+
+    - name: Clone AGNI (cache miss)
+      if: steps.cache-agni.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        rm -rf AGNI
+        git clone "${{ steps.pins.outputs.agni_url }}" AGNI
+        git -C AGNI checkout --quiet "${{ steps.pins.outputs.agni_ref }}"
+
+    - name: Pin AGNI to configured ref (cache hit reconcile)
+      if: steps.cache-agni.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Even on a cache hit, the cached clone may have been keyed under
+        # a restore-key fallback; reconcile by fetching + checking out the
+        # pinned ref so the AGNI tree always matches the manifest.
+        cur="$(git -C AGNI rev-parse HEAD 2>/dev/null || echo unknown)"
+        if [ "$cur" != "${{ steps.pins.outputs.agni_ref }}" ]; then
+          git -C AGNI fetch --quiet origin
+          git -C AGNI checkout --quiet "${{ steps.pins.outputs.agni_ref }}"
+        fi
+        echo "AGNI at $(git -C AGNI rev-parse --short HEAD)"
+
+    # ------------------------------------------------------------------
+    # 7. Julia depot cache (AGNI's Pkg.instantiate output)
+    # ------------------------------------------------------------------
+    # The depot holds Julia's own precompiled package cache and downloaded
+    # JLL binary artifacts, which dlopen/dlsym against native shared
+    # libraries the same way the SOCRATES build cache above does (the
+    # libSOCRATES_C ccall bindings AGNI compiles live in socrates/, under
+    # the separate cache above, not in this depot). The key carries the
+    # same ImageVersion component to avoid serving artifacts across an
+    # image bump. Both restore-key tiers below carry it too, so an image
+    # bump forces a full Pkg.instantiate() on the next run instead of a
+    # partial restore; that cost is accepted to keep the cache correct.
+    - name: Cache Julia depot
+      id: cache-julia
+      uses: actions/cache@v5
+      with:
+        path: ~/.julia
+        key: julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.runner-image.outputs.version }}-${{ steps.pins.outputs.agni_ref }}-${{ hashFiles('AGNI/Project.toml','AGNI/Manifest.toml') }}
+        restore-keys: |
+          julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.runner-image.outputs.version }}-${{ steps.pins.outputs.agni_ref }}-
+          julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.runner-image.outputs.version }}-
+
+    - name: Fetch AGNI spectral data (with retry)
+      shell: bash
+      run: |
+        set -euo pipefail
+        # AGNI's deps/build.jl normally calls src/get_data.sh to pull the basic
+        # spectral, stellar, thermodynamic and scattering data from Zenodo. That
+        # script pre-flights the connection and hard-exits on any non-2xx/3xx
+        # response, so a transient Zenodo 5xx aborts the whole setup and reddens
+        # every PR and nightly that lands during the blip. Fetch the data here
+        # first, retrying with backoff, then build AGNI with the download skipped
+        # (build.jl nodata) so the build never re-fetches it.
+        #
+        # The fetch runs on every setup rather than trusting the cached AGNI/
+        # tree: get_data.sh basic is safely re-runnable (each file is overwritten
+        # by wget -qO and each archive re-extracted with unzip -oq), so re-running
+        # replaces rather than corrupts res/ and completes a partial tree.
+        # Skipping it on a cache hit would instead let a partial res/ left by a
+        # green-but-incomplete fetch persist unrepaired.
+        #
+        # Bound every wget the script issues via a per-step WGETRC so a hung
+        # connection times out and the outer loop retries it, instead of stalling
+        # to the job wall-clock; get_data.sh passes no timeout of its own.
+        wgetrc="$(mktemp)"
+        printf 'timeout = 60\ntries = 2\n' > "$wgetrc"
+        export WGETRC="$wgetrc"
+        #
+        # get_data.sh runs with errexit disabled and its unzip wrapper ignores
+        # unzip's exit code, so a green get_data.sh does not by itself prove res/
+        # is complete: a transient 200-with-empty-body writes a zero-byte file and
+        # still exits 0. res_complete asserts a representative artifact from each
+        # basic sub-fetch is present, and it runs inside the retry loop, so an
+        # incomplete tree is retried like any other failure rather than failing
+        # the job on the first try or handing an empty tree to the nodata build.
+        res="$GITHUB_WORKSPACE/AGNI/res"
+        required_files=(
+          "$res/spectral_files/Oak/318/Oak.sf"
+          "$res/spectral_files/Oak/318/Oak.sf_k"
+          "$res/spectral_files/Dayspring/48/Dayspring.sf"
+          "$res/spectral_files/Dayspring/48/Dayspring.sf_k"
+          "$res/spectral_files/Dayspring/16/Dayspring.sf"
+          "$res/spectral_files/Dayspring/16/Dayspring.sf_k"
+          "$res/stellar_spectra/sun.txt"
+          "$res/thermodynamics/H2O.nc"
+          "$res/parfiles/h2o-co2_4000-5000.par"
+        )
+        res_complete() {
+          local p rc=0
+          for p in "${required_files[@]}"; do
+            [ -s "$p" ] || { echo "missing AGNI data file: $p" >&2; rc=1; }
+          done
+          # The scattering payload is a set of .mon files whose names track the
+          # Zenodo record, so require at least one real file rather than a fixed
+          # name. res/scattering/_readme.txt is part of the AGNI checkout and is
+          # excluded from the archive, so a plain directory-non-empty test would
+          # pass before any .mon file downloads; exclude it explicitly.
+          if [ -z "$(find "$res/scattering" -maxdepth 1 -type f ! -name '_readme.txt' 2>/dev/null)" ]; then
+            echo "missing AGNI scattering data (only _readme.txt present in $res/scattering)" >&2
+            rc=1
+          fi
+          return $rc
+        }
+        # Skip the fetch when a warm cache already holds a complete res/ tree.
+        # res_complete asserts every required artifact is present AND non-empty
+        # (a zero-byte file from a green-but-empty fetch fails the -s test), so a
+        # tree that passes needs no repair and re-pulling it is pure download
+        # cost (~200 s, dominated by the thermodynamics archive). An incomplete
+        # or partially-written tree fails the check and falls through to the
+        # retry loop below, which overwrites and repairs it, so the repair path
+        # the unconditional fetch was added for is preserved.
+        if res_complete 2>/dev/null; then
+          echo "AGNI basic data already complete in res/ (warm cache); skipping fetch."
+          exit 0
+        fi
+        fetch="$GITHUB_WORKSPACE/AGNI/src/get_data.sh"
+        delays=(10 30 60)
+        attempts=$(( ${#delays[@]} + 1 ))
+        n=1
+        while true; do
+          if bash "$fetch" basic && res_complete; then
+            echo "AGNI basic data fetched and verified on attempt $n"
+            break
+          fi
+          if [ "$n" -ge "$attempts" ]; then
+            echo "AGNI data fetch failed after $attempts attempts (see errors above)" >&2
+            exit 1
+          fi
+          delay="${delays[$((n - 1))]}"
+          echo "AGNI data fetch attempt $n incomplete; retrying in ${delay}s" >&2
+          sleep "$delay"
+          n=$((n + 1))
+        done
+
+    - name: Build AGNI (Pkg.instantiate)
+      shell: bash
+      run: |
+        set -euo pipefail
+        # AGNI's own src/get_agni.sh starts with `git pull`, which fails on
+        # the detached-HEAD checkout we pinned via tools/_module_pins.py.
+        # Run the build steps directly so we keep the pinned ref intact.
+        # RAD_DIR is exported by the later "Export environment" step but
+        # AGNI's deps/build.jl reads it inline, so we set it here too. The
+        # basic spectral data is fetched by the preceding step, so the build
+        # runs with `nodata` and does not re-fetch it.
+        #
+        # Order matters: Pkg.instantiate must run BEFORE deps/build.jl,
+        # because deps/build.jl includes SOCRATES's clean_wrappers.jl
+        # which does `using Glob`. With AGNI's project activated and
+        # instantiated, Glob (and every other dep in the manifest) is
+        # available to the build script. Running the build first would
+        # invoke `using Glob` against Julia's default environment,
+        # which carries no AGNI deps and fails with
+        # "Package Glob not found in current path."
+        #
+        # AGNI ships no Manifest.toml; any manifest present here was
+        # carried over by the AGNI-clone cache from an earlier run.
+        # Keep it when it matches the running Julia (re-resolving on
+        # every run costs ~4 min even on a depot cache hit), but drop
+        # it when it was resolved under a different Julia minor: the
+        # stdlib set differs between minors (MbedTLS_jll is a stdlib
+        # JLL on 1.11 but a regular package on 1.12), and
+        # Pkg.instantiate honours the stale manifest instead of
+        # re-resolving, leaving those packages uninstalled.
+        export RAD_DIR="$GITHUB_WORKSPACE/socrates"
+        cd AGNI
+        if [ -f Manifest.toml ]; then
+          mver=$(grep -m1 '^julia_version' Manifest.toml | grep -oE '[0-9]+\.[0-9]+' | head -1)
+          jver=$(julia -e 'print(string(VERSION.major,".",VERSION.minor))')
+          if [ "$mver" != "$jver" ]; then
+            echo "Dropping cached Manifest.toml (resolved under Julia $mver, running $jver)"
+            rm Manifest.toml
+          fi
+        fi
+        julia --project=. -e 'using Pkg; Pkg.instantiate()'
+        julia --project=. deps/build.jl nodata
+
+    # ------------------------------------------------------------------
+    # 7b. Verify the SOCRATES shim's symbol export (macOS only)
+    # ------------------------------------------------------------------
+    # deps/build.jl above recompiles socrates/julia/lib/libSOCRATES_C.so on
+    # every run, regardless of the SOCRATES-build or Julia-depot cache
+    # state, so this check always sees the shim this job just built and
+    # cannot pass on a stale cached artifact. Guards against Homebrew's gcc
+    # Darwin driver dropping this symbol from the shim's external symbol
+    # table, which breaks Julia's dlsym lookup in AGNI; the gcc pin earlier
+    # in this action keeps it exported.
+    - name: Verify SOCRATES shim exports PS_real_kind_bytes (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        shim="$GITHUB_WORKSPACE/socrates/julia/lib/libSOCRATES_C.so"
+        if ! symbols="$(nm -gU "$shim" 2>&1)"; then
+          echo "nm failed on $shim:" >&2
+          echo "$symbols" >&2
+          exit 1
+        fi
+        if ! grep -q PS_real_kind_bytes <<<"$symbols"; then
+          echo "PS_real_kind_bytes is not an external symbol in $shim" >&2
+          grep -i real_kind <<<"$symbols" >&2 || echo "(no real_kind symbol found at all)" >&2
+          exit 1
+        fi
+        echo "PS_real_kind_bytes confirmed exported in $shim"
+
+    # ------------------------------------------------------------------
+    # 8. PROTEUS pip install (resolves PyPI + git deps in pyproject.toml)
+    # ------------------------------------------------------------------
+    - name: Install PROTEUS
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        python -m pip install --upgrade pip
+        # Install the optional vulcan + atmodeller backends and the
+        # inference extra alongside the develop extras so their tests run
+        # in CI rather than skip. All three are optional for end users (a
+        # standard run uses calliope and no Bayesian optimisation).
+        pip install -e ".[develop,vulcan,atmodeller,inference]"
+
+    # ------------------------------------------------------------------
+    # 8b. Paired-branch submodules (aragog, Zalmoxis). When PROTEUS is on a
+    # feature branch that the submodule also carries, install that submodule
+    # branch editable so it shadows the released fwl-* pulled in by the PROTEUS
+    # install above, and CI exercises the real paired code. main and branches
+    # with no matching submodule branch are untouched and keep the PyPI release.
+    # ------------------------------------------------------------------
+    - name: Install paired-branch submodules
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        # This step runs in a login shell (needed for the conda env used
+        # by the install scripts below). A login shell must never end on
+        # an explicit exit 0 here: on the hosted runners the logout hook
+        # (~/.bash_logout -> clear_console) fails on the console-less
+        # runner and overwrites an explicitly requested zero exit status,
+        # while natural end-of-script completion is unaffected. Both
+        # success arms therefore fall through to the end of the script;
+        # only genuine failures use explicit nonzero exits.
+        branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+        case "$branch" in
+          '' | main | master)
+            echo "On '${branch:-detached HEAD}'; keeping the released submodules (no paired branch)." ;;
+          *)
+            # name|repo-url|install-script
+            for spec in \
+              "aragog|https://github.com/FormingWorlds/aragog.git|tools/get_aragog.sh" \
+              "Zalmoxis|https://github.com/FormingWorlds/Zalmoxis.git|tools/get_zalmoxis.sh"; do
+              name="${spec%%|*}"; rest="${spec#*|}"; url="${rest%%|*}"; script="${rest#*|}"
+              # git ls-remote --exit-code: 0 = branch present, 2 = genuinely absent,
+              # any other code = probe failure (e.g. a network blip). Only a clean
+              # "absent" keeps the PyPI release; a probe failure on a feature branch
+              # fails loudly rather than silently dropping paired-branch-only code,
+              # which would otherwise resurface as an AttributeError or a non-
+              # converging solve in the slow tests.
+              rc=0
+              git ls-remote --exit-code --heads "$url" "$branch" >/dev/null 2>&1 || rc=$?
+              if [ "$rc" -eq 0 ]; then
+                echo "$name has a matching '$branch' branch; installing it editable to shadow the PyPI release."
+                bash "$script" --force
+              elif [ "$rc" -eq 2 ]; then
+                echo "No $name branch named '$branch'; keeping the released $name (PyPI)."
+              else
+                echo "ERROR: git ls-remote failed (exit $rc) probing $name for branch '$branch'; refusing to silently keep the PyPI release." >&2
+                exit 1
+              fi
+            done ;;
+        esac
+
+    # BOREAS is an optional dependency: users opt in via
+    # tools/get_boreas.sh. CI installs it explicitly (at the ref pinned
+    # in [tool.proteus.modules.boreas]) so the BOREAS escape tests run
+    # rather than skip.
+    - name: Install BOREAS (optional escape module)
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        b_url="$(python tools/_module_pins.py boreas url)"
+        b_ref="$(python tools/_module_pins.py boreas ref)"
+        pip install "boreas @ git+${b_url}@${b_ref}"
+
+    # ------------------------------------------------------------------
+    # 9. FWL_DATA cache + smoke / full data download
+    # ------------------------------------------------------------------
+    # The key hashes BOTH dataset descriptors: .github/data-manifest.yaml (the
+    # older download() datasets: spectral files, stellar spectra, tracks) and
+    # src/proteus/data/proteus_manifest.toml (the fwl-io pins for the exoplanet
+    # + mass-radius reference data). Keying on the fwl-io manifest as well means
+    # a Zenodo re-pin busts the cache and forces a fresh save. Without it, files
+    # pinned after the cache was first frozen re-download on every run: the key
+    # stays constant, actions/cache exact-hits and never re-saves, so the stale
+    # tree can never pick them up. The key also carries a full-data flavor
+    # segment, so full-data: 'true' and 'false' jobs keep separate cache
+    # lineages: a smoke-only save can never satisfy a full-data restore, or
+    # the reverse, which would otherwise freeze a job on incomplete content
+    # under actions/cache's skip-save-on-hit behavior.
+    - name: Cache FWL_DATA
+      uses: actions/cache@v5
+      with:
+        path: ~/fwl_data
+        key: fwl-data-${{ runner.os }}-${{ inputs.full-data }}-${{ hashFiles('.github/data-manifest.yaml', 'src/proteus/data/proteus_manifest.toml') }}
+        restore-keys: |
+          fwl-data-${{ runner.os }}-${{ inputs.full-data }}-
+
+    - name: Download smoke data
+      shell: bash -el {0}
+      env:
+        FWL_DATA: ${{ github.workspace }}/../fwl_data
+      run: |
+        set -euo pipefail
+        # The cache restored ~/fwl_data; symlink it to the workspace-local
+        # path the test fixtures expect, so we don't have to special-case
+        # absolute paths across platforms.
+        mkdir -p "$HOME/fwl_data"
+        export FWL_DATA="$HOME/fwl_data"
+        echo "FWL_DATA=$FWL_DATA" >> $GITHUB_ENV
+        python -c "
+        from proteus.utils.data import (
+            download_spectral_file,
+            download_stellar_spectra,
+            download_exoplanet_data,
+            download_massradius_data,
+        )
+        download_spectral_file('Dayspring', '16')
+        download_stellar_spectra(folders=('solar',))
+        download_exoplanet_data()
+        download_massradius_data()
+        "
+
+    - name: Download full integration data
+      if: inputs.full-data == 'true'
+      shell: bash -el {0}
+      env:
+        FWL_DATA: ${{ env.FWL_DATA }}
+      run: |
+        set -euo pipefail
+        python - <<'PY'
+        from proteus.config import read_config_object
+        from proteus.utils.data import download_sufficient_data, download_eos_dynamic
+
+        # Reference configs that drive the integration / slow tier downloads.
+        for cfg_path in ('input/all_options.toml',
+                         'tests/integration/aragog_janus.toml'):
+            try:
+                cfg = read_config_object(cfg_path)
+                if cfg_path.endswith('aragog_janus.toml'):
+                    cfg.atmos_clim.module = 'agni'
+                download_sufficient_data(cfg, clean=False)
+            except Exception as exc:
+                print(f'warning: download_sufficient_data({cfg_path}) -> {exc}')
+
+        try:
+            download_eos_dynamic('WolfBower2018_MgSiO3')
+        except Exception as exc:
+            print(f'warning: download_eos_dynamic -> {exc}')
+        PY
+
+    # ------------------------------------------------------------------
+    # 10. Final env export so calling jobs see RAD_DIR / FWL_DATA / AGNI_DIR
+    # ------------------------------------------------------------------
+    - name: Export environment
+      id: export-env
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        RAD_DIR="$GITHUB_WORKSPACE/socrates"
+        FWL_DATA="${FWL_DATA:-$HOME/fwl_data}"
+        AGNI_DIR="$GITHUB_WORKSPACE/AGNI"
+        echo "RAD_DIR=$RAD_DIR" >> $GITHUB_ENV
+        echo "FWL_DATA=$FWL_DATA" >> $GITHUB_ENV
+        echo "AGNI_DIR=$AGNI_DIR" >> $GITHUB_ENV
+        # Point juliapkg at the Julia we installed via setup-julia. Use
+        # PYTHON_JULIAPKG_EXE (the same variable the installer sets); juliacall
+        # 0.9.35 rejects a lone PYTHON_JULIACALL_* exe/bindir without a matching
+        # project, so the older PYTHON_JULIACALL_BINDIR form no longer works.
+        if command -v julia >/dev/null 2>&1; then
+          JULIA_BINDIR="$(dirname "$(command -v julia)")"
+          echo "JULIA_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
+          echo "PYTHON_JULIAPKG_EXE=$JULIA_BINDIR/julia" >> $GITHUB_ENV
+          echo "PYTHON_JULIACALL_HANDLE_SIGNALS=yes" >> $GITHUB_ENV
+        fi
+        # juliacall matches the Julia OpenSSL_jll to the Python interpreter's
+        # OpenSSL; Julia 1.12 ships OpenSSL_jll 3.5+, so the environment must
+        # provide OpenSSL >= 3.5. conda-forge does; assert it so a future
+        # environment change surfaces here instead of as an opaque OpenSSL_jll
+        # resolve failure at the first "import proteus".
+        if ! python -c "import ssl, sys; sys.exit(0 if ssl.OPENSSL_VERSION_INFO[:2] >= (3, 5) else 1)"; then
+          echo "::error::Python links $(python -c 'import ssl; print(ssl.OPENSSL_VERSION)') but Julia 1.12 needs OpenSSL >= 3.5"
+          exit 1
+        fi
+        echo "rad_dir=$RAD_DIR" >> $GITHUB_OUTPUT
+        echo "fwl_data=$FWL_DATA" >> $GITHUB_OUTPUT
+        echo ""
+        echo "===== setup-proteus done ====="
+        echo "  RAD_DIR     = $RAD_DIR"
+        echo "  FWL_DATA    = $FWL_DATA"
+        echo "  AGNI_DIR    = $AGNI_DIR"
+        echo "  python      = $(command -v python)  $(python --version)"
+        echo "  julia       = $(command -v julia)   $(julia --version 2>&1 | head -1)"
+        echo "  gfortran    = $(command -v gfortran || true)"
+        echo "  nf-config   = $(command -v nf-config || true)"
+        echo "  socrates    = $(ls socrates/bin/radlib.a 2>/dev/null || echo MISSING)"

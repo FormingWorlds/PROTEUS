@@ -22,8 +22,9 @@ import pandas as pd
 from proteus import Proteus
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.config import read_config_object
-from proteus.interior.spider import read_jsons
+from proteus.interior_energetics.aragog import read_ncdf
 from proteus.utils.constants import R_earth, vol_list
+from proteus.utils.helper import format_subyear_time
 from proteus.utils.plot import get_colour, latexify
 
 # Target times for sampling profile [log years]
@@ -53,6 +54,15 @@ def postproc_once(simdir: str, plot: bool = True):
         if f'chili_{k}' in simdir:
             name = pl_names[k]
 
+    # Validate inputs before touching the output folder, so a call on
+    # a directory without a finished run leaves no side effects.
+    hfpath = os.path.join(simdir, 'runtime_helpfile.csv')
+    if not os.path.isfile(hfpath):
+        raise FileNotFoundError(f'Cannot find {hfpath}')
+    config_path = os.path.join(simdir, 'init_coupler.toml')
+    if not os.path.isfile(config_path):
+        raise FileNotFoundError(f'Cannot find {config_path}')
+
     # Make chili folder
     chilidir = os.path.join(simdir, 'chili') + '/'
     if os.path.isdir(chilidir):
@@ -60,14 +70,10 @@ def postproc_once(simdir: str, plot: bool = True):
     os.mkdir(chilidir)
 
     # Read simulation helpfile
-    hfpath = os.path.join(simdir, 'runtime_helpfile.csv')
-    if not os.path.isfile(hfpath):
-        raise FileNotFoundError(f'Cannot find {hfpath}')
     hf_all = pd.read_csv(hfpath, delimiter=r'\s+')
 
     # Copy config
     print('    copy config file')
-    config_path = os.path.join(simdir, 'init_coupler.toml')
     copyfile(config_path, os.path.join(chilidir, f'evolution-proteus-{name}-config.in'))
 
     # Read config
@@ -118,12 +124,17 @@ def postproc_once(simdir: str, plot: bool = True):
 
     visc_arr = []
     for idx_t, t in enumerate(out['t(yr)']):
-        int_data = read_jsons(simdir, [t])[0]
-        int_tmp = int_data.get_dict_values(['data', 'temp_b'])
-        int_eta = int_data.get_dict_values(['data', 'visc_b'])
-        # get viscosity of mantle layer equal to potential temperature
+        # Snapshot filenames use format_subyear_time (p decimal separator).
+        ncfile = os.path.join(simdir, 'data', format_subyear_time(t) + '_int.nc')
+        if not os.path.isfile(ncfile):
+            visc_arr.append(np.nan)
+            continue
+        int_data = read_ncdf(ncfile)
+        int_tmp = np.asarray(int_data['temp_s'])
+        int_eta = 10.0 ** np.asarray(int_data['log10visc_s'])
+        # viscosity of the mantle layer whose temperature matches T_pot
         idx_z = np.argmin(np.abs(int_tmp - hf_all['T_pot'].iloc[idx_t]))
-        visc_arr.append(int_eta[idx_z])
+        visc_arr.append(float(int_eta[idx_z]))
     out['viscosity(Pa.s)'] = np.array(visc_arr)
 
     # Additional columns
@@ -147,7 +158,7 @@ def postproc_once(simdir: str, plot: bool = True):
         else:
             print(f'      tau{tau} -> {tclose:.2e} yr')
 
-        ncfile = os.path.join(simdir, 'data', f'{tclose:.0f}_atm.nc')
+        ncfile = os.path.join(simdir, 'data', format_subyear_time(tclose) + '_atm.nc')
         atm = read_ncdf_profile(ncfile, extra_keys=['x_gas'], combine_edges=False)
 
         # climate profile
@@ -304,8 +315,8 @@ def postproc_grid(griddir: str):
     # Read grid config to work out which cases are high/mid/low in volatiles
     with open(griddir + '/copy.grid.toml', 'rb') as hdl:
         gridtoml = tomllib.load(hdl)
-    arr_Hkg = np.unique(gridtoml['delivery.elements.H_kg']['values'])
-    arr_Ckg = np.unique(gridtoml['delivery.elements.C_kg']['values'])
+    arr_Hkg = np.unique(gridtoml['planet.elements.H_budget']['values'])
+    arr_Ckg = np.unique(gridtoml['planet.elements.C_budget']['values'])
 
     # Run them
     N = len(cases)
@@ -317,8 +328,8 @@ def postproc_grid(griddir: str):
         print('    copy files')
         with open(c + '/init_coupler.toml', 'rb') as hdl:
             thistoml = tomllib.load(hdl)
-            Hkg = float(thistoml['delivery']['elements']['H_kg'])
-            Ckg = float(thistoml['delivery']['elements']['C_kg'])
+            Hkg = float(thistoml['planet']['elements']['H_budget'])
+            Ckg = float(thistoml['planet']['elements']['C_budget'])
         for fold in glob(c + '/chili/evolution-proteus*'):
             # new file name
             fnew = os.path.basename(fold).split('-')

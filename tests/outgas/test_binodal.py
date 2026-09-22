@@ -1,0 +1,320 @@
+"""Unit tests for the binodal H2 partitioning module
+(``proteus.outgas.binodal``).
+
+Exercises early-return guards, the Rogers+2025 sigma plumbing, and
+the bookkeeping that recomputes partial pressures, VMRs, and the
+atmospheric mean molecular weight after redistribution.
+
+Anti-happy-path coverage:
+
+- Each early-return guard (H2 not included, zero H2 mass, missing
+  state variables) is tested individually so a regression that
+  drops one of them is caught.
+- Sigma is mocked at three discriminating values (0, 0.5, 1) to
+  verify the linear partition ``H2_kg_liquid = sigma * H2_kg_total``
+  and the H2_solid := 0 invariant.
+- VMR closure is checked: the new ``H2_vmr`` plus the other
+  species' VMRs must sum to 1.0 exactly within float precision.
+- Adversarial inputs: zero ``M_mantle``, zero ``R_int``, and zero
+  ``gravity`` must all trip the guard, leaving ``hf_row``
+  unchanged.
+"""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from typing import Any, cast
+from unittest.mock import patch
+
+import pytest
+
+from proteus.outgas.binodal import apply_binodal_h2
+from proteus.utils.constants import gas_list
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+def _make_config(h2_included: bool = True) -> Any:
+    """Minimal Config stub exposing ``config.outgas.calliope.is_included``."""
+    calliope = SimpleNamespace(
+        is_included=lambda species: h2_included if species == 'H2' else False
+    )
+    outgas = SimpleNamespace(calliope=calliope)
+    return cast(Any, SimpleNamespace(outgas=outgas))
+
+
+def _make_hf_row(
+    *,
+    H2_kg_total: float = 1e18,
+    H2_kg_atm: float = 1e18,
+    H2_kg_liquid: float = 0.0,
+    T_magma: float = 3000.0,
+    P_surf_bar: float = 100.0,
+    M_mantle: float = 4e24,
+    R_int: float = 6.371e6,
+    gravity: float = 9.81,
+    extra: dict | None = None,
+) -> dict:
+    row = {
+        'H2_kg_total': H2_kg_total,
+        'H2_kg_atm': H2_kg_atm,
+        'H2_kg_liquid': H2_kg_liquid,
+        'T_magma': T_magma,
+        'P_surf': P_surf_bar,
+        'M_mantle': M_mantle,
+        'R_int': R_int,
+        'gravity': gravity,
+        # Seed the other species so VMR closure can be checked.
+        'H2O_bar': 100.0,
+    }
+    for s in gas_list:
+        row.setdefault(s + '_bar', 0.0)
+    if extra:
+        row.update(extra)
+    return row
+
+
+# ---------------------------------------------------------------------------
+# Early-return guards
+# ---------------------------------------------------------------------------
+
+
+def test_returns_early_when_h2_not_included_in_calliope():
+    """If CALLIOPE does not include H2 the function must return without
+    touching ``hf_row``."""
+    cfg = _make_config(h2_included=False)
+    hf_row = _make_hf_row()
+    snapshot = dict(hf_row)
+    apply_binodal_h2(hf_row, cfg)
+    assert hf_row == snapshot
+    # No-side-effect discriminator: the binodal partition writes the
+    # bookkeeping keys H2_mol_total, H2_kg_solid, atm_kg_per_mol when
+    # the partition path runs. A regression that bypassed the guard
+    # would seed at least one of these keys on hf_row even if the
+    # numerical state happened to equal the input.
+    assert 'H2_mol_total' not in hf_row
+    assert 'atm_kg_per_mol' not in hf_row
+
+
+def test_returns_early_for_zero_h2_total_mass():
+    """Zero total H2 mass: no partitioning, no log noise."""
+    cfg = _make_config()
+    hf_row = _make_hf_row(H2_kg_total=0.0)
+    snapshot = dict(hf_row)
+    apply_binodal_h2(hf_row, cfg)
+    assert hf_row == snapshot
+    # No-side-effect discriminator: as in the not-included guard, the
+    # zero-mass guard must short-circuit before the bookkeeping block
+    # that would otherwise seed H2_mol_total / atm_kg_per_mol.
+    assert 'H2_mol_total' not in hf_row
+    assert 'atm_kg_per_mol' not in hf_row
+
+
+@pytest.mark.parametrize(
+    'override',
+    [
+        {'T_magma': 0.0},
+        {'M_mantle': 0.0},
+        {'R_int': 0.0},
+        {'gravity': 0.0},
+        {'T_magma': -10.0},  # negative is treated identically to zero
+    ],
+)
+def test_returns_early_when_any_state_variable_is_non_physical(override):
+    """Each adversarial-zero (or negative) state variable must trip the
+    guard separately. A regression that dropped one of these checks
+    would let the function continue into a divide-by-zero or NaN path.
+    """
+    cfg = _make_config()
+    hf_row = _make_hf_row(**override)
+    snapshot = dict(hf_row)
+    apply_binodal_h2(hf_row, cfg)
+    assert hf_row == snapshot
+    # No-side-effect discriminator: a regression that downgraded any
+    # of these adversarial-zero checks to a warning would have entered
+    # the partition path and seeded the bookkeeping keys, even if the
+    # numerical state happened to round-trip back to the input.
+    assert 'H2_mol_total' not in hf_row
+    assert 'atm_kg_per_mol' not in hf_row
+
+
+# ---------------------------------------------------------------------------
+# Sigma plumbing: partition between dissolved and atmospheric reservoirs
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    'sigma,expected_liquid_frac,expected_atm_frac',
+    [
+        (0.0, 0.0, 1.0),  # Fully immiscible: everything in the atmosphere
+        (0.5, 0.5, 0.5),  # Equal split
+        (1.0, 1.0, 0.0),  # Fully miscible: everything dissolved
+    ],
+)
+@pytest.mark.physics_invariant
+def test_sigma_partitions_h2_linearly(sigma, expected_liquid_frac, expected_atm_frac):
+    """``H2_kg_liquid = sigma * H2_kg_total`` and
+    ``H2_kg_atm = (1 - sigma) * H2_kg_total``: linear partition.
+    """
+    cfg = _make_config()
+    hf_row = _make_hf_row(H2_kg_total=1e18)
+    with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=sigma):
+        apply_binodal_h2(hf_row, cfg)
+    assert hf_row['H2_kg_liquid'] == pytest.approx(expected_liquid_frac * 1e18, rel=1e-12)
+    assert hf_row['H2_kg_atm'] == pytest.approx(expected_atm_frac * 1e18, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_solid_h2_reservoir_is_always_zero():
+    """H2 does not partition into solid silicate; the solid reservoir
+    must be zeroed regardless of sigma."""
+    cfg = _make_config()
+    hf_row = _make_hf_row(extra={'H2_kg_solid': 1e20})  # stale junk to be cleared
+    with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=0.3):
+        apply_binodal_h2(hf_row, cfg)
+    assert hf_row['H2_kg_solid'] == pytest.approx(0.0, abs=1e-12)
+    assert hf_row['H2_mol_solid'] == pytest.approx(0.0, abs=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025():
+    """Pin the molar-mass conversion the binodal partition applies to
+    every H2 reservoir, against an independent computation that uses
+    scipy.constants.Avogadro and ``M(H2) = 2.016e-3 kg/mol`` (Rogers et
+    al. 2025 Section 3.2; the partition leaves the chemistry-side molar
+    bookkeeping untouched, so ``H2_mol_total = H2_kg_total / M_H2 /
+    N_av``).
+
+    The kg-closure ``atm + liquid + solid = total`` is structurally
+    trivial here (``sigma * T + (1-sigma) * T + 0 = T`` for the
+    source's three assignments), so the discriminating assertion is the
+    molar-mass pin: a regression that mistook M(H2) for M(H) (the H
+    atomic mass, 1.008e-3 kg/mol, a recurring confusion in legacy
+    geochemistry code) would inflate the mol total by a factor of two
+    and would be caught by the rel=1e-12 pin below.
+
+    See ``docs/Validation/outgas/binodal.md`` for the validation
+    registry entry.
+    """
+    import scipy.constants as const
+
+    cfg = _make_config()
+    hf_row = _make_hf_row(H2_kg_total=5e17)
+    with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=0.4):
+        apply_binodal_h2(hf_row, cfg)
+
+    # kg closure (still required, but it's a sanity rail not a discrimination guard).
+    assert hf_row['H2_kg_atm'] + hf_row['H2_kg_liquid'] + hf_row[
+        'H2_kg_solid'
+    ] == pytest.approx(5e17, rel=1e-12)
+
+    # Molar-mass pin: H2 molecular mass 2.016 g/mol, NOT H atomic mass 1.008 g/mol.
+    M_H2 = 2.016e-3
+    expected_mol_total = 5e17 / M_H2 / const.Avogadro
+    assert hf_row['H2_mol_total'] == pytest.approx(expected_mol_total, rel=1e-12)
+
+    # Mole closure across reservoirs.
+    assert hf_row['H2_mol_atm'] + hf_row['H2_mol_liquid'] + hf_row[
+        'H2_mol_solid'
+    ] == pytest.approx(expected_mol_total, rel=1e-12)
+
+    # Discrimination guard: with M(H2)=2.016e-3 the mol_total lands at
+    # ~4.12e-4; a regression to M(H)=1.008e-3 would land at ~8.24e-4
+    # (factor of 2). The bracket [3e-4, 5e-4] catches the latter.
+    assert 3e-4 < hf_row['H2_mol_total'] < 5e-4
+    # Sign guards on reservoirs.
+    assert hf_row['H2_kg_atm'] >= 0.0
+    assert hf_row['H2_kg_liquid'] >= 0.0
+    assert hf_row['H2_kg_solid'] == pytest.approx(
+        0.0, abs=1e-12
+    )  # H2 has no solid silicate sink
+
+
+# ---------------------------------------------------------------------------
+# Bookkeeping: partial pressure, VMRs, MMW
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.physics_invariant
+def test_h2_partial_pressure_uses_g_over_area_in_pa_to_bar():
+    """``P_H2 = m * g / (4 pi R^2)`` then ``/ 1e5`` to convert Pa to bar."""
+    import math
+
+    cfg = _make_config()
+    hf_row = _make_hf_row(
+        H2_kg_total=1e18,
+        R_int=6.371e6,
+        gravity=9.81,
+        extra={'H2O_bar': 0.0},  # isolate H2 contribution
+    )
+    with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=0.0):
+        # sigma=0 → all H2 in the atmosphere
+        apply_binodal_h2(hf_row, cfg)
+    area = 4.0 * math.pi * 6.371e6**2
+    expected_bar = 1e18 * 9.81 / area / 1e5
+    assert hf_row['H2_bar'] == pytest.approx(expected_bar, rel=1e-12)
+    # Sign / positivity guard (Section 3): atmospheric partial pressure
+    # must be strictly positive when H2 sits entirely in the atmosphere.
+    # A regression that swapped the sign on g (a recurring source of
+    # column-mass-vs-weight confusion) would emit a negative bar.
+    assert hf_row['H2_bar'] > 0.0
+    # Unit-scale guard: the /1e5 Pa-to-bar conversion is the
+    # off-by-five-orders-of-magnitude failure mode that has bitten the
+    # outgas pipeline before. Expected lands at ~0.193 bar; without
+    # the /1e5 the value would be ~19 300 bar. The bracket below
+    # rules that bug class out independently of the pin above.
+    assert 0.01 < hf_row['H2_bar'] < 1.0
+
+
+@pytest.mark.physics_invariant
+def test_vmr_closure_after_partition():
+    """Volume mixing ratios must sum to 1.0 once ``P_surf`` is rebuilt."""
+    cfg = _make_config()
+    hf_row = _make_hf_row(H2_kg_total=1e18, extra={'H2O_bar': 50.0, 'CO2_bar': 25.0})
+    with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=0.5):
+        apply_binodal_h2(hf_row, cfg)
+    vmr_sum = sum(hf_row[s + '_vmr'] for s in gas_list)
+    assert vmr_sum == pytest.approx(1.0, rel=1e-12)
+    # Boundedness invariant (Section 3): every individual VMR must lie
+    # in [0, 1]. A regression that emitted a negative VMR for an absent
+    # species (sign error in the normalisation) would still let the sum
+    # round to 1.0 if a positive companion compensated.
+    for s in gas_list:
+        assert 0.0 <= hf_row[s + '_vmr'] <= 1.0
+
+
+@pytest.mark.physics_invariant
+def test_atmospheric_mmw_recomputed_when_h2_mass_changes():
+    """Redistributing H2 (lighter than H2O) into the dissolved phase
+    must increase the atmospheric MMW, not decrease it.
+    """
+    cfg = _make_config()
+    hf_row = _make_hf_row(H2_kg_total=1e18, extra={'H2O_bar': 50.0})
+    # sigma=0 → H2-dominated atmosphere → light MMW
+    with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=0.0):
+        apply_binodal_h2(hf_row, cfg)
+        mmw_h2_heavy = hf_row['atm_kg_per_mol']
+
+    # Reset hf_row to the same starting state but with sigma=1
+    hf_row2 = _make_hf_row(H2_kg_total=1e18, extra={'H2O_bar': 50.0})
+    with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=1.0):
+        apply_binodal_h2(hf_row2, cfg)
+        mmw_h2_dissolved = hf_row2['atm_kg_per_mol']
+
+    # With H2 dissolved (sigma=1), only H2O remains in the atmosphere
+    # → MMW should be heavier (closer to 18 g/mol vs 2 g/mol).
+    assert mmw_h2_dissolved > mmw_h2_heavy
+    # Bounded discriminator (Section 3 boundedness): MMW in kg/mol
+    # must remain bounded by the range spanned by the two contributing
+    # species (H2 ~ 2e-3, H2O ~ 18e-3) regardless of partition. A
+    # regression that emitted MMW in g/mol would land at ~18 here,
+    # roughly 1000x above the upper bound below.
+    assert 1.0e-3 < mmw_h2_dissolved < 2.0e-2
+    assert 1.0e-3 < mmw_h2_heavy < 2.0e-2
+    # H2O-saturation discriminator: with sigma=1 every H2 atom is
+    # dissolved, so the atmosphere is pure H2O. The MMW must pin
+    # against the H2O molecular mass 18.015 g/mol. A regression that
+    # left a residual H2 contribution in the atmosphere at sigma=1
+    # would land mmw_h2_dissolved measurably below 18.015e-3.
+    assert mmw_h2_dissolved == pytest.approx(18.015e-3, rel=1e-3)

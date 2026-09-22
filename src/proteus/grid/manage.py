@@ -11,7 +11,6 @@ import multiprocessing
 import os
 import shutil
 import subprocess
-import sys
 import time
 from copy import deepcopy
 from datetime import datetime
@@ -22,61 +21,11 @@ import toml
 
 from proteus.config import Config, read_config_object
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
+from proteus.utils.logs import setup_logger
 
 PROTEUS_DIR = get_proteus_dir()
 
-
-# Custom logger instance
-def setup_logger(logpath: str = 'new.log', level=1, logterm=True):
-    # https://stackoverflow.com/a/61457119
-
-    custom_logger = logging.getLogger()
-    custom_logger.handlers.clear()
-
-    if os.path.exists(logpath):
-        os.remove(logpath)
-
-    fmt = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-
-    level_code = logging.INFO
-    match level:
-        case 0:
-            level_code = logging.DEBUG
-        case 2:
-            level_code = logging.WARNING
-        case 3:
-            level_code = logging.ERROR
-        case 4:
-            level_code = logging.CRITICAL
-
-    # Add terminal output to logger
-    if logterm:
-        sh = logging.StreamHandler(sys.stdout)
-        sh.setFormatter(fmt)
-        sh.setLevel(level_code)
-        custom_logger.addHandler(sh)
-
-    # Add file output to logger
-    fh = logging.FileHandler(logpath)
-    fh.setFormatter(fmt)
-    fh.setLevel(level)
-    custom_logger.addHandler(fh)
-    custom_logger.setLevel(level_code)
-
-    # Capture unhandled exceptions
-    # https://stackoverflow.com/a/16993115
-    def handle_exception(exc_type, exc_value, exc_traceback):
-        if issubclass(exc_type, KeyboardInterrupt):
-            custom_logger.error('KeyboardInterrupt')
-            sys.__excepthook__(exc_type, exc_value, exc_traceback)
-            return
-        custom_logger.critical(
-            'Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback)
-        )
-
-    sys.excepthook = handle_exception
-
-    return
+log = logging.getLogger('fwl.' + __name__)
 
 
 # Thread target
@@ -168,10 +117,15 @@ class Grid:
         # Make copy of REFERENCE config file
         shutil.copyfile(self.conf, os.path.join(self.outdir, 'ref_config.toml'))
 
-        # Setup logging
-        setup_logger(logpath=os.path.join(self.outdir, 'manager.log'), logterm=True, level=1)
-        global log
-        log = logging.getLogger(__name__)
+        # Setup logging. Keep the plain timestamped layout the grid manager has
+        # always written to manager.log, via the shared setup_logger.
+        setup_logger(
+            logpath=os.path.join(self.outdir, 'manager.log'),
+            logterm=True,
+            level='INFO',
+            fmt='[%(asctime)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+        )
 
         log.info("Grid '%s' initialised empty" % self.name)
 
@@ -192,6 +146,12 @@ class Grid:
             raise Exception("Dimension '%s' cannot be added twice" % name)
 
         log.info("Added new dimension '%s' " % name)
+        log.debug(
+            "Dimension '%s' maps to parameter '%s' (total dims: %d)",
+            name,
+            var,
+            len(self.dim_names) + 1,
+        )
         self.dim_names.append(name)
         self.dim_param.append(var)
         self.dim_avars[name] = None
@@ -205,6 +165,9 @@ class Grid:
     def set_dimension_linspace(self, name: str, start: float, stop: float, count: int):
         self.dim_avars[name] = list(np.linspace(start, stop, count))
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        log.debug(
+            "Dimension '%s' linspace: %d points in [%.6g, %.6g]", name, count, start, stop
+        )
 
     # Set a dimension by arange (inclusive of endpoint)
     def set_dimension_arange(self, name: str, start: float, stop: float, step: float):
@@ -212,11 +175,22 @@ class Grid:
         if not np.isclose(self.dim_avars[name][-1], stop):
             self.dim_avars[name].append(stop)
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        log.debug(
+            "Dimension '%s' arange: %d points in [%.6g, %.6g] (step=%.6g)",
+            name,
+            len(self.dim_avars[name]),
+            start,
+            stop,
+            step,
+        )
 
     # Set a dimension by logspace
     def set_dimension_logspace(self, name: str, start: float, stop: float, count: int):
         self.dim_avars[name] = list(np.logspace(np.log10(start), np.log10(stop), count))
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        log.debug(
+            "Dimension '%s' logspace: %d points in [%.6g, %.6g]", name, count, start, stop
+        )
 
     # Set a dimension directly
     def set_dimension_direct(self, name: str, values: list, sort: bool = True):
@@ -224,6 +198,12 @@ class Grid:
         if (not isinstance(values[0], str)) and sort:  # sort if numeric
             the_list = sorted(the_list)
         self.dim_avars[name] = the_list
+        log.debug(
+            "Dimension '%s' direct: %d values (deduplicated from %d)",
+            name,
+            len(the_list),
+            len(values),
+        )
 
     # Print current setup
     def print_setup(self):
@@ -266,6 +246,10 @@ class Grid:
         for v in values:
             self.size *= len(v)
         log.info('    %d points expected' % self.size)
+        log.debug(
+            'Grid size breakdown: %s',
+            ' x '.join('%s(%d)' % (n, len(self.dim_avars[n])) for n in self.dim_names),
+        )
 
         # Create flattened parameter grid
         flat_values = list(itertools.product(*values))
@@ -338,6 +322,12 @@ class Grid:
 
         # do not use more threads than are available
         num_threads = min(num_threads, os.cpu_count())
+        log.debug(
+            'Thread pool: %d threads (grid_size=%d, cpu_count=%d)',
+            num_threads,
+            self.size,
+            os.cpu_count(),
+        )
 
         # Print warning
         if not test_run:
@@ -451,6 +441,7 @@ class Grid:
                     if status[i] == 0:
                         status[i] = 1
                         start_new = False
+                        log.debug('Dispatching case %06d (step %d)', i, step)
                         threads[i].start()
                         break
 
@@ -492,7 +483,12 @@ class Grid:
         )
 
     def slurm_config(
-        self, max_jobs: int, test_run: bool = False, max_days: int = 1, max_mem: int = 3
+        self,
+        max_jobs: int,
+        test_run: bool = False,
+        max_days: int = 1,
+        max_mem: int = 12,
+        jax_cache: bool = False,
     ):
         """Write slurm config file.
 
@@ -509,6 +505,13 @@ class Grid:
             Maximum number of days to run
         max_mem : int
             Maximum memory per CPU in GB
+        jax_cache : bool
+            If true, the generated script enables a bounded JAX persistent
+            compilation cache shared across the array tasks (stored under the
+            grid output directory) so compiled executables are reused and JIT
+            recompiles are cut. An LRU size bound caps the cache so it cannot
+            fill the filesystem. Default false: no cache environment variables
+            are written and the script behaves exactly as before.
         """
 
         max_days = int(max_days)  # ensure integer
@@ -533,6 +536,22 @@ class Grid:
 
         log_file = os.path.join(self.logdir, 'proteus-%A_%a.log')
 
+        # Optional bounded JAX persistent compilation cache. The size bound uses
+        # JAX's own LRU eviction so the cache plateaus instead of growing without
+        # limit; the min-compile-time and min-entry-size thresholds keep trivial
+        # compilations out of it. Disabled by default so the generated script is
+        # unchanged unless the cache is explicitly requested.
+        if jax_cache:
+            jax_cache_dir = os.path.join(self.outdir, 'jax_cache')
+            jax_env = (
+                f'export JAX_COMPILATION_CACHE_DIR={jax_cache_dir}\n'
+                'export JAX_COMPILATION_CACHE_MAX_SIZE=85899345920\n'
+                'export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=1\n'
+                'export JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES=4096\n'
+            )
+        else:
+            jax_env = ''
+
         string = f"""#!/bin/sh
 #SBATCH -J proteus.grid.array
 #SBATCH --export=ALL
@@ -542,7 +561,7 @@ class Grid:
 #SBATCH -o {log_file}
 #SBATCH --array=0-{self.size - 1}%{max_jobs}
 
-i=$SLURM_ARRAY_TASK_ID
+{jax_env}i=$SLURM_ARRAY_TASK_ID
 
 while [ $i -lt {self.size} ]; do
     printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}.toml" $((i))
@@ -580,6 +599,13 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
 
     # Output folder name, created inside `PROTEUS/output/`
     folder = str(config['output'])
+    if folder.strip().lower() == 'auto':
+        import secrets
+        from datetime import datetime
+
+        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        suffix = secrets.token_hex(2)
+        folder = f'grid_{stamp}_{suffix}'
 
     # Set this string to have the output files created at an alternative location. The
     #   output 'folder' in `PROTEUS/output/` will then by symbolically linked to this
@@ -599,6 +625,10 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     max_jobs = int(config['max_jobs'])  # maximum number of concurrent tasks (e.g. 300)
     max_days = int(config['max_days'])  # maximum number of days to run (e.g. 1)
     max_mem = int(config['max_mem'])  # maximum memory per CPU in GB (e.g. 3)
+
+    # Optional bounded JAX persistent compilation cache (Slurm runs only).
+    # Absent or false leaves the generated script cache-free.
+    jax_cache = bool(config.get('jax_cache', False))
 
     # Base config file
     cfg_base = os.path.join(PROTEUS_DIR, str(config['ref_config']))
@@ -653,7 +683,13 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     # Run the grid
     if use_slurm:
         # Generate Slurm batch file, use `sbatch` to submit
-        pg.slurm_config(max_jobs, test_run=test_run, max_days=max_days, max_mem=max_mem)
+        pg.slurm_config(
+            max_jobs,
+            test_run=test_run,
+            max_days=max_days,
+            max_mem=max_mem,
+            jax_cache=jax_cache,
+        )
     else:
         # Alternatively, let grid_proteus.py manage the jobs
         pg.run(max_jobs, test_run=test_run, check_interval=check_interval)

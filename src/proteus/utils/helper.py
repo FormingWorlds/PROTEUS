@@ -7,12 +7,35 @@ import logging
 import os
 import re
 import shutil
+from pathlib import Path
 
 import numpy as np
 
 from proteus.utils.constants import element_list, element_mmw
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+def resolve_fwl_data_dir() -> Path:
+    """Return the FWL_DATA directory.
+
+    The single source of truth for the FWL data location: the ``FWL_DATA``
+    environment variable when set, otherwise a repo-local default
+    (``FWL_DATA`` alongside the proteus package source). Both the CLI and
+    ``utils.data`` resolve through this so the two cannot diverge.
+
+    Returns
+    -------
+    Path
+        Directory where FWL reference data is stored.
+    """
+    env = os.environ.get('FWL_DATA')
+    if env:
+        # expanduser matches how fwl-io resolves the same variable. Without it
+        # a value carrying a literal '~' becomes a directory of that name below
+        # the working directory, and the two resolvers point at different trees.
+        return Path(env).expanduser()
+    return Path(__file__).resolve().parents[2] / 'FWL_DATA'
 
 
 def get_proteus_dir():
@@ -33,6 +56,89 @@ def get_proteus_dir():
         raise EnvironmentError(f"Cannot locate PROTEUS directory. Tried '{root}' ")
 
     return root
+
+
+def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
+    """Return the snapshot path for a time, preferring the sub-year name.
+
+    A snapshot filename can take three forms: the ``p`` sub-year form
+    ``format_subyear_time(time) + suffix`` (e.g. ``'884p700_int.nc'``),
+    the dot-decimal sub-year form ``'%.3f' + suffix`` (e.g.
+    ``'884.700_int.nc'``), or the whole-year form ``'%.0f' + suffix``
+    (e.g. ``'884_int.nc'``). Probes in that order.
+
+    Parameters
+    ----------
+    data_dir : str
+        Directory holding the snapshot files (a run's ``data/``).
+    time : float
+        Simulation time [yr] to build the filename from.
+    suffix : str
+        Filename suffix after the formatted time, e.g. ``'_int.nc'`` or
+        ``'_atm.nc'``.
+
+    Returns
+    -------
+    str
+        Path to the existing snapshot. When no form exists, the ``p``
+        sub-year path is returned so the caller reports a consistent name.
+    """
+    subyear = os.path.join(data_dir, format_subyear_time(time) + suffix)
+    if os.path.exists(subyear):
+        return subyear
+    dotform = os.path.join(data_dir, '%.3f%s' % (time, suffix))
+    if os.path.exists(dotform):
+        return dotform
+    wholeyear = os.path.join(data_dir, '%.0f%s' % (time, suffix))
+    if os.path.exists(wholeyear):
+        return wholeyear
+    return subyear
+
+
+def format_subyear_time(time: float) -> str:
+    """Format a simulation time with sub-year precision for snapshot filenames.
+
+    Uses ``p`` as the decimal separator so the resulting token has no dot,
+    avoiding ambiguity with file extensions.  E.g. ``884.7`` becomes
+    ``'884p700'`` and ``0.0`` becomes ``'0p000'``.
+
+    Parameters
+    ----------
+    time : float
+        Simulation time [yr].
+
+    Returns
+    -------
+    str
+        Formatted time token, e.g. ``'884p700'``.
+    """
+    return ('%.3f' % time).replace('.', 'p')
+
+
+def parse_subyear_time(token: str) -> float:
+    """Parse a sub-year time token back to a float.
+
+    Accepts both the ``p`` convention (``'884p700'``) and the plain-dot
+    convention (``'884.700'``).
+
+    Parameters
+    ----------
+    token : str
+        The numeric portion of a snapshot filename.
+
+    Returns
+    -------
+    float
+        The simulation time [yr].
+
+    Raises
+    ------
+    ValueError
+        If the token contains more than one ``p``.
+    """
+    if token.count('p') > 1:
+        raise ValueError(f"Snapshot time token '{token}' contains multiple 'p' characters")
+    return float(token.replace('p', '.'))
 
 
 def PrintSeparator():
@@ -57,6 +163,34 @@ def multiple(a: int, b: int) -> bool:
         return bool(a % b == 0)
 
 
+def is_write_snapshot(
+    loops_total: int,
+    write_mod: int,
+    dt_write_rel: float,
+    cur_time: float,
+    last_write_time: float,
+) -> bool:
+    """
+    Decide whether the current iteration of PROTEUS should write data to disk.
+
+    Two criteria, each individually sufficient:
+      1. Iteration count is a multiple of ``write_mod``.
+      2. Enough simulation time has elapsed since the last write, where the
+         relative interval is ``dt_write_rel * max(cur_time, 1)``.
+    """
+
+    # Iteration criterion
+    iter_ok = multiple(loops_total, write_mod)
+
+    # Time criterion
+    time_ok = False
+    if dt_write_rel > 0:
+        time_ok = bool(cur_time - last_write_time >= dt_write_rel * max(cur_time, 1.0))
+
+    # Logical OR of the two criteria
+    return iter_ok or time_ok
+
+
 def mol_to_ele(mol: str):
     """
     Return the number of atoms of each element in a given molecule, as a dictionary
@@ -76,7 +210,7 @@ def mol_to_ele(mol: str):
             val = 1
         else:
             val = int(ev[1])
-        elems[str(ev[0])] = val
+        elems[str(ev[0])] = elems.get(ev[0], 0) + val
 
     # Check that what we got is reasonable
     if not elems:
@@ -155,7 +289,7 @@ def CommentFromStatus(status: int):
         case 10:
             desc = 'Completed (solidified)'
         case 11:
-            desc = 'UNUSED_STATUS_CODE (11)'
+            desc = 'Completed (maximum clock runtime)'
         case 12:
             desc = 'Completed (maximum iterations)'
         case 13:
@@ -166,6 +300,10 @@ def CommentFromStatus(status: int):
             desc = 'Completed (volatiles escaped)'
         case 16:
             desc = 'Completed (planet disintegrated)'
+        case 17:
+            desc = 'Completed (satellite escaped)'
+        case 18:
+            desc = 'Completed (satellite disintegrated)'
         # Error cases
         case 20:
             desc = 'Error (generic case, or configuration issue)'
@@ -185,6 +323,8 @@ def CommentFromStatus(status: int):
             desc = 'Error (Outgassing model)'
         case 28:
             desc = 'Error (Escape model)'
+        case 29:
+            desc = 'Completed (planet evaporated)'
         # Default case
         case _:
             desc = 'UNHANDLED STATUS (%d)' % status

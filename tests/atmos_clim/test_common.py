@@ -6,10 +6,10 @@ This module tests the shared utility functions used by all atmosphere-climate mo
 - Robust NetCDF data ingestion (reading profiles, handling flags)
 - Physical state conversions (pressure <-> radius)
 - Configuration helpers (spectral file paths)
-- Interpolation of lookup tables (Albedo)
 
 See also:
-- docs/test_infrastructure.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -20,7 +20,8 @@ import numpy as np
 import pytest
 
 from proteus.atmos_clim.common import (
-    Albedo_t,
+    clip_radius_to_hill,
+    find_latest_atmosphere_time,
     get_oarr_from_parr,
     get_radius_from_pressure,
     get_spfile_name_and_bands,
@@ -29,6 +30,8 @@ from proteus.atmos_clim.common import (
     read_atmosphere_data,
     read_ncdf_profile,
 )
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.unit
@@ -51,9 +54,25 @@ def test_ncdf_flag_to_bool():
     assert ncdf_flag_to_bool(n) is False
     assert ncdf_flag_to_bool(N) is False
 
-    # Ensure it fails safely on invalid input
-    with pytest.raises(ValueError):
-        ncdf_flag_to_bool(np.array([b'x'], dtype='S1'))
+
+@pytest.mark.unit
+def test_ncdf_flag_to_bool_logs_and_returns_none_on_invalid_input(caplog):
+    """An unparseable flag byte must fail safely, not raise.
+
+    Contract clause: a malformed NetCDF flag is reported via the logger and
+    the caller decides the fallback (see `read_ncdf_profile`, which treats a
+    `None` return as `False`), rather than aborting the whole profile read.
+
+    Discrimination guard: a regression that silently swallowed the bad input
+    and returned e.g. `False` (indistinguishable from a legitimate 'n') would
+    still pass a bare `is None` check on its own, but not alongside the error
+    log assertion below, which pins the caller-visible signal too.
+    """
+    with caplog.at_level('ERROR', logger='fwl.proteus.atmos_clim.common'):
+        result = ncdf_flag_to_bool(np.array([b'x'], dtype='S1'))
+
+    assert result is None
+    assert any('Could not parse' in rec.message for rec in caplog.records)
 
 
 @pytest.mark.unit
@@ -83,6 +102,7 @@ def test_read_ncdf_profile(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -102,19 +122,20 @@ def test_read_ncdf_profile(mock_ds, mock_isfile):
     )
 
     # Verify values are correctly extracted
-    assert result['p'][0] == 110.0  # Should match first element of pl
-    assert result['p'][1] == 100.0  # Should match first element of p
-    assert result['p'][2] == 90.0  # Should match second element of pl
-    assert result['t'][1] == 300.0  # Temperature
+    assert result['p'][0] == pytest.approx(110.0, rel=1e-12)  # first element of pl
+    assert result['p'][1] == pytest.approx(100.0, rel=1e-12)  # first element of p
+    assert result['p'][2] == pytest.approx(90.0, rel=1e-12)  # second element of pl
+    assert result['t'][1] == pytest.approx(300.0, rel=1e-12)  # Temperature
+    assert result['g'] == pytest.approx(np.array([9.8, 9.8, 9.8]), rel=1e-12)
 
     # The function converts all outputs to float arrays, even booleans
-    assert result['transparent'] == 1.0
+    assert result['transparent'] == pytest.approx(1.0, rel=1e-12)
 
     # Verify AGNI-style radius/height logic (default path in function)
     # r = z + rp => z = r - rp
     # rp = 6.0e6
     # r[0] = 6.4e6 => z[0]Approx 4.0e5
-    assert result['r'][1] == 6.4e6
+    assert result['r'][1] == pytest.approx(6.4e6, rel=1e-12)
     assert result['z'][1] == pytest.approx(4.0e5)
 
     mock_ds.assert_called_with('dummy.nc')
@@ -138,6 +159,7 @@ def test_read_ncdf_profile_without_combining_edges(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0, 80.0]),
         'pl': np.array([110.0, 90.0, 70.0]),
+        'gravity': np.array([9.8, 9.6]),
         'tmp': np.array([500.0, 450.0]),
         'tmpl': np.array([520.0, 470.0, 430.0]),
         'z': np.array([1.0e4, 2.0e4]),
@@ -150,6 +172,7 @@ def test_read_ncdf_profile_without_combining_edges(mock_ds, mock_isfile):
 
     np.testing.assert_allclose(result['p'], np.array([100.0, 80.0]))
     np.testing.assert_allclose(result['pl'], np.array([110.0, 90.0, 70.0]))
+    np.testing.assert_allclose(result['g'], np.array([9.8, 9.6]))
     np.testing.assert_allclose(result['t'], np.array([500.0, 450.0]))
     np.testing.assert_allclose(result['tmpl'], np.array([520.0, 470.0, 430.0]))
 
@@ -157,9 +180,9 @@ def test_read_ncdf_profile_without_combining_edges(mock_ds, mock_isfile):
     np.testing.assert_allclose(result['r'], np.array([6.01e6, 6.02e6]))
     np.testing.assert_allclose(result['rl'], np.array([6.0e6, 6.015e6, 6.025e6]))
 
-    assert result['solved'] == 0.0
-    assert result['transparent'] == 0.0
-    assert result['converged'] == 0.0
+    assert result['solved'] == pytest.approx(0.0, abs=1e-12)
+    assert result['transparent'] == pytest.approx(0.0, abs=1e-12)
+    assert result['converged'] == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.unit
@@ -182,6 +205,7 @@ def test_read_ncdf_profile_with_aerosols(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -272,6 +296,7 @@ def test_read_ncdf_profile_gases_list(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -318,6 +343,7 @@ def test_read_ncdf_profile_aerosols_list_only(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -363,6 +389,7 @@ def test_read_ncdf_profile_no_aerosols_in_file(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0]),
         'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
         'tmp': np.array([300.0]),
         'tmpl': np.array([310.0, 290.0]),
         'r': np.array([6.4e6]),
@@ -401,6 +428,7 @@ def test_read_ncdf_profile_with_clouds(mock_ds, mock_isfile):
     ds_instance.variables = {
         'p': np.array([100.0, 200.0]),
         'pl': np.array([110.0, 150.0, 190.0]),
+        'gravity': np.array([9.8, 9.7]),
         'tmp': np.array([300.0, 280.0]),
         'tmpl': np.array([310.0, 290.0, 270.0]),
         'r': np.array([6.4e6, 6.3e6]),
@@ -423,6 +451,92 @@ def test_read_ncdf_profile_with_clouds(mock_ds, mock_isfile):
     np.testing.assert_allclose(result['cloud_mmr'], np.array([1e-5, 2e-5]))
     np.testing.assert_allclose(result['cloud_area'], np.array([0.5, 0.8]))
     np.testing.assert_allclose(result['cloud_size'], np.array([1e-5, 1.2e-5]))
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_missing_gravity_falls_back_to_zeros(mock_ds, mock_isfile, caplog):
+    """A NetCDF file with no `gravity` variable must not abort the read.
+
+    Contract clause: an older or hand-built NetCDF file may predate the
+    `gravity` output field. Reading it must fail safely (log + zero-filled
+    fallback) rather than raising `KeyError`, so a single malformed archive
+    does not stop a batch read of many profiles.
+
+    Discrimination guard: the zero fallback is checked against every level,
+    not just the first, so a regression that only zeroed `g[0]` would still
+    be caught.
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    ds_instance.variables = {
+        'p': np.array([100.0, 200.0]),
+        'pl': np.array([110.0, 150.0, 190.0]),
+        # 'gravity' deliberately absent.
+        'tmp': np.array([300.0, 280.0]),
+        'tmpl': np.array([310.0, 290.0, 270.0]),
+        'r': np.array([6.4e6, 6.3e6]),
+        'rl': np.array([6.5e6, 6.35e6, 6.2e6]),
+        'planet_radius': [6.0e6],
+    }
+
+    with caplog.at_level('ERROR', logger='fwl.proteus.atmos_clim.common'):
+        result = read_ncdf_profile('dummy.nc', combine_edges=False)
+
+    assert any('gravity' in rec.message for rec in caplog.records)
+    # Every level is zero, not just the first (rules out a partial fallback).
+    np.testing.assert_array_equal(result['g'], np.zeros(2))
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_invalid_flag_falls_back_to_false(mock_ds, mock_isfile, caplog):
+    """An unparseable metadata flag in the file must read back as False.
+
+    Contract clause: `ncdf_flag_to_bool` now returns `None` (logged, not
+    raised) on a byte it cannot parse; `read_ncdf_profile` must catch that
+    `None` and coerce it to `False` rather than propagating a non-boolean
+    value into the profile dict.
+
+    Discrimination guard: the two untouched flags ('solved', 'converged',
+    absent from this file) still take the plain "not found" default of
+    False, so a regression that defaulted every flag to False regardless of
+    the parse result would not be distinguishable without also asserting the
+    error was actually logged for the malformed one.
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    ds_instance.variables = {
+        'p': np.array([100.0]),
+        'pl': np.array([110.0, 90.0]),
+        'gravity': np.array([9.8]),
+        'tmp': np.array([300.0]),
+        'tmpl': np.array([310.0, 290.0]),
+        'r': np.array([6.4e6]),
+        'rl': np.array([6.3e6, 6.5e6]),
+        'planet_radius': [6.0e6],
+        # Malformed byte: neither 'y' nor 'n'.
+        'transparent': np.array([b'x'], dtype='S1'),
+    }
+
+    with caplog.at_level('ERROR', logger='fwl.proteus.atmos_clim.common'):
+        result = read_ncdf_profile('dummy.nc')
+
+    # Every value is coerced to a float array at the end of the read, so the
+    # fallback surfaces as 0.0 rather than the Python singleton `False`.
+    assert float(result['transparent']) == pytest.approx(0.0)
+    assert any('Could not parse' in rec.message for rec in caplog.records)
+    # Untouched flags still take the plain "not found" default.
+    assert float(result['solved']) == pytest.approx(0.0)
+    assert float(result['converged']) == pytest.approx(0.0)
 
 
 @pytest.mark.unit
@@ -457,12 +571,12 @@ def test_get_oarr_from_parr():
 
     # Exact match
     p_close, o_close = get_oarr_from_parr(p_arr, o_arr, 10.0)
-    assert p_close == 10.0
-    assert o_close == 20.0
+    assert p_close == pytest.approx(10.0, rel=1e-12)
+    assert o_close == pytest.approx(20.0, rel=1e-12)
 
     # Nearest neighbor
     p_close, o_close = get_oarr_from_parr(p_arr, o_arr, 50.0)
-    assert p_close == 10.0
+    assert p_close == pytest.approx(10.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -478,13 +592,13 @@ def test_get_radius_from_pressure():
 
     # Exact match: Target 10 Pa => expect 20 m
     p_close, r_close = get_radius_from_pressure(p_arr, r_arr, 10.0)
-    assert p_close == 10.0
-    assert r_close == 20.0
+    assert p_close == pytest.approx(10.0, rel=1e-12)
+    assert r_close == pytest.approx(20.0, rel=1e-12)
 
     # Nearest neighbor: Target 50 Pa
     # In linear space: |100-50|=50, |10-50|=40. So 10 Pa is closer.
     p_close, r_close = get_radius_from_pressure(p_arr, r_arr, 50.0)
-    assert p_close == 10.0
+    assert p_close == pytest.approx(10.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -498,8 +612,8 @@ def test_spfile_helpers():
     # Mock config object
     mock_conf = MagicMock()
     mock_conf.atmos_clim.module = 'janus'
-    mock_conf.atmos_clim.janus.spectral_bands = '16'
-    mock_conf.atmos_clim.janus.spectral_group = 'Dayspring'
+    mock_conf.atmos_clim.spectral_bands = '16'
+    mock_conf.atmos_clim.spectral_group = 'Dayspring'
 
     # Test get_spfile_name_and_bands
     group, bands = get_spfile_name_and_bands(mock_conf)
@@ -512,40 +626,155 @@ def test_spfile_helpers():
     assert path == '/fwl/data/spectral_files/Dayspring/16/Dayspring.sf'
 
 
-@pytest.mark.unit
-@patch('proteus.atmos_clim.common.pd.read_csv')
-@patch('proteus.atmos_clim.common.os.path.isfile')
-def test_albedo_t(mock_isfile, mock_read_csv):
+# ---------------------------------------------------------------------------
+# Coverage for previously-untested error branches: missing NetCDF file,
+# archived-data warning.
+# ---------------------------------------------------------------------------
+
+
+def test_read_ncdf_profile_returns_none_when_file_missing(caplog, tmp_path):
+    """read_ncdf_profile must log an error and return None when the
+    NetCDF file is absent. The main loop relies on this contract to
+    gate downstream reads.
+
+    Discriminating: a regression that raised FileNotFoundError instead
+    of returning None would crash the loop. Pin both the return value
+    and the error log message.
     """
-    Test Albedo_t lookup table class.
+    import logging
 
-    Verifies:
-    1. CSV reading logic (mocked).
-    2. Interpolation of albedo vs temperature.
-    3. Clamping behavior outside the data range.
+    from proteus.atmos_clim.common import read_ncdf_profile
+
+    nc_fpath = str(tmp_path / 'does_not_exist.nc')
+    with caplog.at_level(logging.ERROR, logger='fwl.proteus.atmos_clim.common'):
+        result = read_ncdf_profile(nc_fpath)
+    assert result is None
+    assert any('Could not find NetCDF file' in rec.message for rec in caplog.records)
+
+
+def test_read_atmosphere_data_returns_none_when_any_profile_missing(
+    caplog, tmp_path, monkeypatch
+):
+    """When at least one timestep NetCDF is unreadable, the helper
+    logs a warning and returns None. The 'extract archived data'
+    hint should also fire when a data.tar exists in the output
+    folder, pointing the user at the recovery path.
+
+    Discriminating: a regression that returned the partial list
+    (with None entries) would fail any `is None` check at the call
+    site. Pin both the return value and the archived-data warning.
     """
-    mock_isfile.return_value = True
+    import logging
 
-    # Mock DataFrame response
-    # mock_df = MagicMock() - Responding to ruff F841
-    # mimic dict access data['tmp']
-    data_dict = {'tmp': np.array([100.0, 300.0, 1000.0]), 'albedo': np.array([0.5, 0.3, 0.1])}
-    mock_read_csv.return_value = data_dict
+    from proteus.atmos_clim import common
+    from proteus.atmos_clim.common import read_atmosphere_data
 
-    # Initialize class
-    alb = Albedo_t('dummy.csv')
-    assert alb.ok
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    (data_dir / 'data.tar').write_bytes(b'fake-archive-bytes')
+    monkeypatch.setattr(common, 'read_ncdf_profile', lambda *_a, **_k: None)
 
-    # Test evaluation (interpolation)
-    # At 100K -> 0.5 (exact)
-    assert alb.evaluate(100.0) == pytest.approx(0.5)
-    # At 1000K -> 0.1 (exact)
-    assert alb.evaluate(1000.0) == pytest.approx(0.1)
-    # At 300K -> 0.3 (exact)
-    assert alb.evaluate(300.0) == pytest.approx(0.3)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.common'):
+        result = read_atmosphere_data(str(tmp_path), times=[0.0, 1.0])
+    assert result is None
+    messages = [r.message for r in caplog.records]
+    assert any('NetCDF files could not be found' in m for m in messages)
+    assert any('extract archived data' in m for m in messages)
 
-    # Test clamping behavior (physics safety check)
-    # Below min temp -> stay at min albedo val (0.5), don't extrapolate
-    assert alb.evaluate(50.0) == pytest.approx(0.5)
-    # Above max temp -> stay at max albedo val (0.1)
-    assert alb.evaluate(2000.0) == pytest.approx(0.1)
+
+def test_find_latest_atmosphere_time_returns_max(tmp_path):
+    """The latest snapshot is the maximum parsed time, not the first globbed
+    or the file count.
+
+    Files are created out of chronological order and with a count (3) that
+    differs from every time key, so a regression returning the glob-order
+    first element, the minimum, or len(files) would all disagree with the
+    correct maximum (5000).
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (999, 5000, 100):
+        (data / f'{t}_atm.nc').write_text('x')
+    # An unrelated file must be ignored by the *_atm.nc glob.
+    (data / '5000.sflux').write_text('x')
+
+    latest = find_latest_atmosphere_time(str(tmp_path))
+    assert latest == pytest.approx(5000.0, rel=1e-12)
+    # Discrimination: not the count of files, not the minimum.
+    assert latest != pytest.approx(3.0)
+    assert latest != pytest.approx(100.0)
+
+
+def test_find_latest_atmosphere_time_empty_returns_none(tmp_path):
+    """With no atmosphere NetCDF files the helper returns None rather than
+    raising, so callers can degrade gracefully.
+
+    The data directory contains a non-matching file to confirm the glob is
+    specific to the ``*_atm.nc`` pattern.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    (data / '1000.sflux').write_text('x')
+
+    assert find_latest_atmosphere_time(str(tmp_path)) is None
+    # Also handles a missing data directory without raising.
+    assert find_latest_atmosphere_time(str(tmp_path / 'nonexistent')) is None
+
+
+# ---------------------------------------------------------------------------
+# clip_radius_to_hill: the XUV level never sizes escape beyond the Hill radius
+# ---------------------------------------------------------------------------
+
+
+def _clip_config(enabled: bool = True, frac: float = 1.0):
+    """Escape-config namespace carrying only what the clip reads."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(escape=SimpleNamespace(hill_clamp=enabled, hill_clamp_frac=frac))
+
+
+@pytest.mark.physics_invariant
+def test_clip_radius_to_hill_bounds_the_radius():
+    """A radius beyond the Hill radius comes back at frac * R_Hill, and one
+    inside comes back untouched, so the escape cross-section is bounded.
+
+    The energy-limited rate goes as the radius cubed: the unclipped input at
+    6x the Hill radius would inflate the rate 216-fold, so the discriminating
+    check is that the clipped output removes that factor entirely.
+    """
+    hf_row = {'hill_radius': 1.0e8, 'R_int': 6.4e6}
+
+    clipped = clip_radius_to_hill(_clip_config(), hf_row, 6.0e8)
+    assert clipped == pytest.approx(1.0e8, rel=1e-12)
+    assert (6.0e8 / clipped) ** 3 == pytest.approx(216.0, rel=1e-9)
+
+    inside = clip_radius_to_hill(_clip_config(), hf_row, 7.0e7)
+    assert inside == pytest.approx(7.0e7, rel=1e-12)
+
+    # The fraction scales the limit, not the radius.
+    half = clip_radius_to_hill(_clip_config(frac=0.5), hf_row, 6.0e8)
+    assert half == pytest.approx(5.0e7, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_clip_radius_to_hill_never_goes_below_the_solid_body():
+    """The limit floors at R_int: the solid body is bound by definition, so a
+    Hill radius inside the planet must not shrink the level below the surface.
+    """
+    hf_row = {'hill_radius': 3.0e6, 'R_int': 6.4e6}  # Hill inside the planet
+    clipped = clip_radius_to_hill(_clip_config(), hf_row, 1.0e7)
+    assert clipped == pytest.approx(6.4e6, rel=1e-12)
+    # Discrimination: the naive frac * R_Hill limit is a factor 2.1 smaller.
+    assert clipped != pytest.approx(3.0e6, rel=1e-1)
+
+
+def test_clip_radius_to_hill_skips_when_disabled_or_unset():
+    """Disabled config or a Hill radius that is zero (before the first orbit
+    update) or non-finite leaves the radius untouched rather than clipping
+    against a value that does not exist.
+    """
+    r = 6.0e8
+    assert clip_radius_to_hill(_clip_config(enabled=False), {'hill_radius': 1.0e8}, r) == r
+    assert clip_radius_to_hill(_clip_config(), {'hill_radius': 0.0}, r) == r
+    assert clip_radius_to_hill(_clip_config(), {'hill_radius': float('nan')}, r) == r
+    assert clip_radius_to_hill(_clip_config(), {}, r) == r

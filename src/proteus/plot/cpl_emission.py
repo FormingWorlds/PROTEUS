@@ -11,6 +11,7 @@ import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import LogLocator
 
+from proteus.utils.helper import snapshot_path_for_time
 from proteus.utils.plot import latex_float, sample_output
 
 if TYPE_CHECKING:
@@ -63,7 +64,7 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
         label = latex_float(t) + ' yr'
         color = sm.to_rgba(t)
 
-        atm_file = os.path.join(output_dir, 'data', '%.0f_atm.nc' % t)
+        atm_file = snapshot_path_for_time(os.path.join(output_dir, 'data'), t, '_atm.nc')
         ds = nc.Dataset(atm_file)
 
         x_arr = []
@@ -151,7 +152,7 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
 
 def plot_emission_entry(handler: Proteus):
     plot_times, _ = sample_output(handler, tmin=1000.0, extension='_atm.nc')
-    print('Snapshots:', plot_times)
+    log.info('Snapshots: %s', plot_times)
 
     # Plot fixed set from above
     plot_emission(

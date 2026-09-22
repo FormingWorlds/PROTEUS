@@ -20,7 +20,7 @@ import proteus.inference.plot as plotBO
 # bayesopt source files
 from proteus.inference.async_BO import checkpoint, parallel_process
 from proteus.inference.gen_D_init import create_init
-from proteus.inference.objective import prot_builder
+from proteus.inference.objective import prot_builder, set_child_timeout
 from proteus.inference.utils import print_results, str_time
 
 # proteus libraries
@@ -67,11 +67,20 @@ def run_inference(config):
     # Starting message
     log.info(f'Inference started at {str_time()}')
 
-    # Save a timestamped copy of the reference config
-    with open(os.path.join(dirs['output'], 'copy.infer.toml'), 'w') as file:
+    # Save a timestamped copy of the inference config
+    infer_config = os.path.abspath(os.path.join(dirs['output'], 'copy.infer.toml'))
+    with open(infer_config, 'w') as file:
         file.write(f'# Created: {str_time()}\n\n')
         toml.dump(config, file)
+    log.info(f'Inference config: {infer_config}')
 
+    # Bound each child PROTEUS run so one wedged simulation cannot hang the
+    # whole batch. Tunable via the optional `child_timeout_s` config field;
+    # plumbed to worker processes through the environment.
+    set_child_timeout(config.get('child_timeout_s'))
+
+    # Default for configs that pre-date this field
+    config.setdefault('failure_codes', [])
     # Ensure there are enough CPU cores for the specified number of workers
     if config['n_workers'] >= os.cpu_count():
         raise RuntimeError(f'Not enough CPU cores for {config["n_workers"]} workers')
@@ -119,6 +128,7 @@ def run_inference(config):
         config['ref_config'],
         config['observables'],
         config['parameters'],
+        config['failure_codes'],
     )
 
     t_1 = time.perf_counter()
@@ -159,7 +169,7 @@ def infer_from_config(config_fpath: str):
     """
 
     # Load configuration from TOML file
-    print(f'Inference config: {config_fpath}')
+    log.info(f'Inference config: {config_fpath}')
     with open(config_fpath, 'r') as file:
         config = toml.load(file)
 

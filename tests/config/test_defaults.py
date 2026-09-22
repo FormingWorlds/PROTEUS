@@ -7,9 +7,8 @@ This ensures that the simulation defaults to a known state (usually Earth-like o
 without preventing manual configuration.
 
 See also:
-- docs/test_infrastructure.md
-- docs/test_categorization.md
-- docs/test_building.md
+- docs/How-to/testing.md
+- docs/Explanations/test_framework.md
 """
 
 from __future__ import annotations
@@ -18,8 +17,6 @@ import pytest
 
 from proteus.config._interior import Aragog, Interior, InteriorDummy, Spider
 from proteus.config._params import (
-    DtAdaptive,
-    DtProportional,
     OutputParams,
     Params,
     StopDisint,
@@ -31,6 +28,8 @@ from proteus.config._params import (
     StopTime,
     TimeStepParams,
 )
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.unit
@@ -48,7 +47,7 @@ def test_output_params_defaults():
     assert out.logging == 'INFO'
     assert out.plot_fmt == 'png'
     assert out.write_mod == 1  # Write every step (safe for short runs)
-    assert out.plot_mod == 10  # Plot every 10 steps
+    assert out.plot_mod == 5  # Plot every 10 steps
     assert out.archive_mod is None  # Archiving disabled by default
     assert out.remove_sf is False  # Keep spectral files by default for debugging
 
@@ -65,18 +64,48 @@ def test_dt_params_defaults():
     """
     dt = TimeStepParams()
     assert dt.method == 'adaptive'
-    assert dt.minimum == 3e2  # Minimum step 300 years
-    assert dt.minimum_rel == 1e-6  # Relative minimum precision
-    assert dt.maximum == 1e7  # Maximum step 10 Myr
-    assert dt.initial == 1e3  # Start with 1000 years
+    assert dt.minimum == pytest.approx(1e4, rel=1e-12)  # Minimum step 300 years
+    assert dt.minimum_rel == pytest.approx(1e-5, rel=1e-12)  # Relative minimum precision
+    assert dt.maximum == pytest.approx(1e7, rel=1e-12)  # Maximum step 10 Myr
+    assert dt.initial == pytest.approx(3e1, rel=1e-12)  # Start with 1000 years
 
-    # Sub-configs
-    assert isinstance(dt.proportional, DtProportional)
-    assert dt.proportional.propconst == 52.0
+    # Proportional and adaptive parameters (flattened)
+    assert dt.propconst == pytest.approx(52.0, rel=1e-12)
+    assert dt.atol == pytest.approx(0.02, rel=1e-12)
+    assert dt.rtol == pytest.approx(0.10, rel=1e-12)
 
-    assert isinstance(dt.adaptive, DtAdaptive)
-    assert dt.adaptive.atol == 0.02
-    assert dt.adaptive.rtol == 0.10
+    # Evection dt-cap trio: opt-in, disabled by default via None rather
+    # than a numeric 0 (which would be behaviourally indistinguishable
+    # from disabled but pass the >0 validator's exclusion silently).
+    assert dt.evection_maximum is None
+    assert dt.evection_growth_factor is None
+    assert dt.evection_cooldown_iters is None
+
+
+@pytest.mark.unit
+def test_dt_params_evection_trio_accepts_none_string_and_rejects_non_positive():
+    """The evection dt-cap trio (evection_maximum/evection_growth_factor/
+    evection_cooldown_iters) must accept the TOML string sentinel
+    ``'none'`` (structured to Python ``None`` by the ``none_if_none``
+    converter, the same mechanism ``rot_period``/``phoenix_radius`` use)
+    and a strictly positive value, but reject both a zero and a negative
+    value -- 0 is deliberately NOT a valid opt-out spelling any more (it
+    was, before this test), only ``None``/``'none'`` disables the
+    mechanism.
+    """
+    for field_name in ('evection_maximum', 'evection_growth_factor', 'evection_cooldown_iters'):
+        # 'none' string (TOML spelling) structures to Python None.
+        assert getattr(TimeStepParams(**{field_name: 'none'}), field_name) is None
+        # A genuine positive value is accepted and passed through untouched.
+        assert getattr(TimeStepParams(**{field_name: 5}), field_name) == 5
+
+        # Discrimination: 0 (the OLD opt-out spelling) and a negative
+        # value must both now be rejected, not silently accepted as
+        # another way to disable the mechanism.
+        with pytest.raises(ValueError):
+            TimeStepParams(**{field_name: 0})
+        with pytest.raises(ValueError):
+            TimeStepParams(**{field_name: -1})
 
 
 @pytest.mark.unit
@@ -101,22 +130,22 @@ def test_stop_params_defaults():
     # Time
     assert isinstance(stop.time, StopTime)
     assert stop.time.enabled is True
-    assert stop.time.maximum == 6e9
+    assert stop.time.maximum == pytest.approx(6e9, rel=1e-12)
 
     # Solid
     assert isinstance(stop.solid, StopSolid)
     assert stop.solid.enabled is True
-    assert stop.solid.phi_crit == 0.01
+    assert stop.solid.phi_crit == pytest.approx(0.01, rel=1e-12)
 
     # Radeqm
     assert isinstance(stop.radeqm, StopRadeqm)
     assert stop.radeqm.enabled is True
-    assert stop.radeqm.atol == 1.0
+    assert stop.radeqm.atol == pytest.approx(1.0, rel=1e-12)
 
     # Escape
     assert isinstance(stop.escape, StopEscape)
     assert stop.escape.enabled is True
-    assert stop.escape.p_stop == 1
+    assert stop.escape.p_stop == pytest.approx(3.0, rel=1e-12)
 
     # Disint (defaults to disabled)
     assert isinstance(stop.disint, StopDisint)
@@ -151,36 +180,34 @@ def test_interior_defaults():
 
     Checks default physics settings for the interior layer:
     - radiogenic/tidal heating: Enabled by default (energy sources)
-    - grain size: 0.1 m (standard crystal size)
+    - grain size: 1e-3 m (standard crystal size)
     - Initial flux: 1000 W/m^2 (hot start)
     """
     # Interior requires module argument
     # If module='spider', we must provide a valid spider config
-    spider_cfg = Spider(ini_entropy=3000.0)
+    spider_cfg = Spider()
     i = Interior(module='spider', spider=spider_cfg)
     assert i.module == 'spider'
     assert i.spider == spider_cfg
-    assert i.radiogenic_heat is True  # Heating terms on
-    assert i.tidal_heat is True
-    assert i.grain_size == 0.1  # 10 cm crystals
-    assert i.F_initial == 1e3  # 1000 W/m^2
+    assert i.heat_radiogenic is True  # Heating terms on
+    assert i.heat_tidal is False
+    assert i.grain_size == pytest.approx(1e-3, rel=1e-12)  # 1 mm crystals
+    assert i.flux_guess == -1  # Auto-detect
 
     # Sub-modules defaults
     assert isinstance(i.aragog, Aragog)
-    assert i.aragog.num_levels == 100
-    assert i.aragog.logging == 'ERROR'
+    assert i.num_levels == 80  # num_levels is on Interior, not Aragog
 
     assert isinstance(i.dummy, InteriorDummy)
-    assert i.dummy.tmagma_atol == 30.0
 
     # Test Aragog module selection
-    aragog_cfg = Aragog(ini_tmagma=3000.0)
+    aragog_cfg = Aragog()
     i2 = Interior(module='aragog', aragog=aragog_cfg)
     assert i2.module == 'aragog'
     assert i2.aragog == aragog_cfg
 
     # Test Dummy module selection
-    dummy_cfg = InteriorDummy(ini_tmagma=3000.0)
+    dummy_cfg = InteriorDummy()
     i3 = Interior(module='dummy', dummy=dummy_cfg)
     assert i3.module == 'dummy'
     assert i3.dummy == dummy_cfg
@@ -191,18 +218,25 @@ def test_spider_defaults():
     """
     Test verification of Spider specific defaults.
 
-    Verifies SPIDER (C-based interior module) defaults:
-    - 190 grid levels (high resolution)
-    - Mixing length 2 (standard convection parameter)
-    - BDF solver (Backwards Differentiation Formula, stable for stiff systems)
+    History:
+    - Tier 4 (2026-04-08) promoted ``tolerance_rel`` and
+      ``matprop_smooth_width`` from Spider to the top-level Interior
+      class, leaving only ``solver_type`` as SPIDER-specific.
+    - 2026-04-09 reverted ``matprop_smooth_width`` back to Spider as
+      a real field (default 1e-2) after Aragog's Jgrav smoothing was
+      replaced with a parameter-free cubic Hermite polynomial that
+      does not need a width knob.
+
+    ``tolerance_rel`` remains a deprecation-aliased sentinel field
+    (default -1.0 = "not set"; a positive value is copied to
+    ``Interior.rtol`` with a DeprecationWarning).
     """
     s = Spider()
-    assert s.num_levels == 190
-    assert s.mixing_length == 2
-    assert s.tolerance == 1e-10
     assert s.solver_type == 'bdf'
-    assert s.convection is True
-    assert s.matprop_smooth_width == 1e-2
+    # Deprecation alias sentinel (not set)
+    assert s.tolerance_rel == pytest.approx(-1.0, abs=1e-12)
+    # Real SPIDER-only field (post 2026-04-09)
+    assert s.matprop_smooth_width == pytest.approx(1e-2)
 
 
 @pytest.mark.unit
@@ -210,14 +244,63 @@ def test_aragog_defaults():
     """
     Test verification of Aragog specific defaults.
 
-    Verifies ARAGOG (Python-based interior module) defaults:
-    - 100 grid levels
-    - Initial condition 1 (Linear temperature profile)
-    - Bulk modulus 260 GPa (Earth-like mantle)
+    Verifies ARAGOG (Python-based interior module) defaults.
     """
     a = Aragog()
-    assert a.logging == 'ERROR'
-    assert a.num_levels == 100
-    assert a.initial_condition == 1
-    assert a.tolerance == 1e-10
-    assert a.bulk_modulus == 260e9
+    assert a.mass_coordinates is True
+    assert a.backend == 'jax'
+    assert a.separation_viscosity == 'mixture'
+    assert not hasattr(a, 'jax')
+    assert not hasattr(a, 'use_jax_jacobian')
+    assert not hasattr(a, 'dilatation'), (
+        'dilatation slot must be removed; existing TOMLs setting '
+        'this field should now fail to load.'
+    )
+    # Per-call step caps: schema defaults 0.0, which the wrapper reads as off
+    # (no cap) on every interior. -1.0 is the single off sentinel; any other
+    # negative, NaN, or infinity is rejected at load.
+    assert a.phi_step_cap == pytest.approx(0.0)
+    assert a.temperature_step_cap == pytest.approx(0.0)
+    assert a.entropy_step_cap == pytest.approx(0.0)
+    # The -1.0 sentinel is admitted and round-trips unchanged.
+    assert Aragog(phi_step_cap=-1.0).phi_step_cap == pytest.approx(-1.0)
+    assert Aragog(temperature_step_cap=-1.0).temperature_step_cap == pytest.approx(-1.0)
+    assert Aragog(entropy_step_cap=-1.0).entropy_step_cap == pytest.approx(-1.0)
+    # A non-sentinel negative (differs from -1.0 by well over any tolerance) is
+    # rejected on every step-cap field, so a malformed value cannot silently
+    # disable the guard.
+    with pytest.raises(ValueError):
+        Aragog(phi_step_cap=-0.01)
+    with pytest.raises(ValueError):
+        Aragog(temperature_step_cap=-5.0)
+    with pytest.raises(ValueError):
+        Aragog(entropy_step_cap=-5.0)
+    # Positive values persist.
+    assert Aragog(phi_step_cap=0.05).phi_step_cap == pytest.approx(0.05)
+    assert Aragog(temperature_step_cap=150.0).temperature_step_cap == pytest.approx(150.0)
+    assert Aragog(entropy_step_cap=80.0).entropy_step_cap == pytest.approx(80.0)
+    # Phase-boundary entropy margin: a positive-float proximity band whose
+    # default 200.0 matches Aragog's own default, so a config that omits the
+    # key is bit-identical to current behaviour. Unlike the step caps (which
+    # admit the -1.0 off sentinel and 0.0) this uses gt(0): a proximity band
+    # has no meaningful disabled state, so both 0.0 and negatives are rejected.
+    # Pinning the exact 200.0 band is itself the discrimination guard: it
+    # rejects a 0.0 that would silently switch off the near-boundary max_step
+    # tightening this band controls.
+    assert a.phase_boundary_entropy_margin == pytest.approx(200.0)
+    with pytest.raises(ValueError):
+        Aragog(phase_boundary_entropy_margin=0.0)
+    with pytest.raises(ValueError):
+        Aragog(phase_boundary_entropy_margin=-50.0)
+    assert Aragog(
+        phase_boundary_entropy_margin=350.0
+    ).phase_boundary_entropy_margin == pytest.approx(350.0)
+    import pytest as _pt
+
+    with _pt.raises(ValueError):
+        Aragog(backend='diffrax')
+    # The deleted dilatation kwarg must now raise: an unknown attrs
+    # kwarg is the user-facing signal that an old TOML carries a stale
+    # field. ``TypeError`` from attrs' ``__init__``.
+    with _pt.raises(TypeError):
+        Aragog(dilatation=True)

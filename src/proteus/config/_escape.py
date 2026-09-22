@@ -1,21 +1,22 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import ge, in_, le
+from attrs.validators import ge, gt, in_, le
 
 from ._converters import none_if_none, zero_if_none
 
 
 def valid_zephyrus(instance, attribute, value):
+    """Validate ZEPHYRUS settings: Pxuv within (0, 10] bar and efficiency within [0, 1]."""
     if instance.module != 'zephyrus':
         return
 
     Pxuv = instance.zephyrus.Pxuv
-    if (not Pxuv) or (Pxuv < 0) or (Pxuv > 10):
-        raise ValueError('`zephyrus.Pxuv` must be >0 and < 10 bar')
+    if Pxuv is None or Pxuv <= 0 or Pxuv > 10:
+        raise ValueError('`zephyrus.Pxuv` must be >0 and <= 10 bar')
 
     efficiency = instance.zephyrus.efficiency
-    if (not efficiency) or (efficiency < 0) or (efficiency > 1):
+    if efficiency is None or efficiency < 0 or efficiency > 1:
         raise ValueError('`zephyrus.efficiency` must be >=0 and <=1')
 
 
@@ -39,12 +40,13 @@ class Zephyrus:
 
 
 def valid_escapedummy(instance, attribute, value):
+    """Dummy escape requires a non-negative escape rate."""
     if instance.module != 'dummy':
         return
 
     rate = instance.dummy.rate
-    if (not rate) or (rate < 0):
-        raise ValueError('`escape.dummy.rate` must be >0')
+    if rate is None or rate < 0:
+        raise ValueError('`escape.dummy.rate` must be >= 0')
 
 
 @define
@@ -61,6 +63,7 @@ class EscapeDummy:
 
 
 def valid_escapeboreas(instance, attribute, value):
+    """Hook for BOREAS cross-field checks; no active constraints at present."""
     if instance.module != 'boreas':
         return
 
@@ -132,6 +135,7 @@ class EscapeBoreas:
 
 
 def valid_reservoir(instance, attribute, value):
+    """Escape reservoir must be one of 'bulk', 'outgas', or 'pxuv'."""
     ress = ('bulk', 'outgas', 'pxuv')
     if instance.reservoir not in ress:
         raise ValueError(f'Escape reservoir must be one of: {ress}')
@@ -153,10 +157,37 @@ class Escape:
         Parameters for dummy escape module.
     boreas: EscapeBoreas
         Parameters for BOREAS escape module.
+    hill_clamp: bool
+        Limit the XUV level to the Hill radius. Gas beyond the Hill radius is
+        not bound to the planet, so an XUV radius outside it sizes the escape
+        cross-section with material the planet does not hold.
+    hill_clamp_frac: float
+        Fraction of the Hill radius used as that limit, when hill_clamp is
+        enabled.
+    step_max_frac: float
+        Largest share of the escapable reservoir a single step may remove. The
+        bulk rate is sized without reference to how much mass remains, so over
+        a long step it can ask for many times the reservoir.
+
+        The default guards reduced compositions rather than limiting the grid.
+        Measured on production cases, every one at IW-5 asks for more than it at
+        some step and the worst for eighty times the reservoir, while cases from
+        IW-1 to IW+5 stay under a thousandth of it and never meet the cap at
+        all. A larger value lets one step take more of what is left, so a
+        reduced case draws its reservoir down in fewer and coarser steps. The
+        cap keeps binding at every setting in this range, because an unchanged
+        rate settles at ``max_frac / (1 - max_frac)``, which is above the cap
+        for every value it accepts.
+    step_dt_floor_frac: float
+        How far below ``params.dt.minimum`` a capped step may shorten the next
+        one. The floor otherwise overrides the shortened step on 94 % of the
+        steps the cap binds on, leaving the reduction inert where it is needed.
     """
 
     module: str | None = field(
-        validator=in_((None, 'dummy', 'zephyrus', 'boreas')), converter=none_if_none
+        default='zephyrus',
+        validator=in_((None, 'dummy', 'zephyrus', 'boreas')),
+        converter=none_if_none,
     )
 
     zephyrus: Zephyrus = field(factory=Zephyrus, validator=valid_zephyrus)
@@ -164,6 +195,12 @@ class Escape:
     boreas: EscapeBoreas = field(factory=EscapeBoreas, validator=valid_escapeboreas)
 
     reservoir: str = field(default='outgas', validator=valid_reservoir)
+
+    hill_clamp: bool = field(default=True)
+    hill_clamp_frac: float = field(default=1.0, validator=(gt(0.0), le(1.0)))
+
+    step_max_frac: float = field(default=0.25, validator=(gt(0.0), le(1.0)))
+    step_dt_floor_frac: float = field(default=1.0e-3, validator=(gt(0.0), le(1.0)))
 
     @property
     def xuv_defined_by_radius(self) -> bool:

@@ -51,7 +51,7 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     cd /dataserver/users/formingworlds/<username>
     ```
 
-4. To avoid the cluster terminating PROTEUS jobs, increase the temporary file limit for your user by adding to your shell rc file (e.g., '~/.bashrc'):
+4. To avoid the cluster terminating PROTEUS jobs, increase the temporary file limit:
     ```console
     echo "ulimit -Sn 4000000" >> "$HOME/.bashrc"
     echo "ulimit -Hn 5000000" >> "$HOME/.bashrc"
@@ -61,78 +61,97 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     source "$HOME/.bashrc"
     ```
 
-5. You can now follow the usual installation steps [here](installation.md), but, since your home folder is capped
-   at 9GB, you need to install Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>".
-    ### Julia considerations
-    If you have already installed Julia in your home folder, you could remove that through `rm -rf ~/.julia`.
+5. Install conda and create the PROTEUS environment, by following the
+   [installation steps](installation.md) up to and including
+   `conda activate proteus`. Since your home folder is capped at 9GB, install
+   Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>"
+   rather than in the default location. See [Julia considerations](#julia-considerations)
+   and [Miniconda and conda-forge considerations](#miniconda-and-conda-forge-considerations)
+   below.
 
-    If you install Julia through Juliaup this involves:
+6. Install NetCDF-Fortran into that environment. The Kapteyn module system
+   does not provide it, and SOCRATES needs it both to build and to run:
     ```console
-    export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
-    curl -fsSL https://install.julialang.org | sh
+    conda install -c conda-forge netcdf-fortran
+    conda env config vars set LD_LIBRARY_PATH="$CONDA_PREFIX/lib"
+    conda activate proteus
     ```
+    The last command reactivates the environment so that the variable takes
+    effect. Setting `LD_LIBRARY_PATH` is necessary because SOCRATES links
+    against the absolute path that `nf-config` reports but records no run path
+    of its own. Without the variable SOCRATES still compiles, and the binaries
+    it produces then fail with `libnetcdff.so.7: cannot open shared object
+    file`.
 
-    To also make sure that the Julia ecosystem, such as Julia packages, are also not installed in `$HOME`, add `JULIA_DEPOT_PATH` to your `~/.shellrc`, e.g. `~/.bashrc`:
-    ```console
-    export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia
-    ```
-    Setting only this variable will be sufficient if you have not installed Julia through Juliaup.
-    In any case, it is best to have both of these Julia environment variables exported when you log in,
-    so please add this to your `~/.shellrc`, e.g. `~/.bashrc`:
-    ```console
-    export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
-    export JULIA_DEPOT_PATH="/dataserver/users/formingworlds/<username>/.julia"
-    ```
-    If you install Julia using `tar`, use the following steps:
+7. You can now run the installer and complete the remaining
+   [installation steps](installation.md).
 
-   ```
-    export JULIA_DIR=/dataserver/users/formingworlds/<username>/julia-1.11.6
+### Julia considerations
+If you have already installed Julia in your home folder, you could remove that through `rm -rf ~/.julia`.
 
-    mkdir -p $JULIA_DIR
+If you install Julia through Juliaup this involves:
+```console
+export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
+curl -fsSL https://install.julialang.org | sh
+```
 
-    cd /dataserver/users/formingworlds/<username>
+To also make sure that the Julia ecosystem, such as Julia packages, are also not installed in `$HOME`, add `JULIA_DEPOT_PATH` to your `~/.shellrc`, e.g. `~/.bashrc`:
+```console
+export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia
+```
+Setting only this variable will be sufficient if you have not installed Julia through Juliaup.
+In any case, it is best to have both of these Julia environment variables exported when you log in,
+so please add this to your `~/.shellrc`, e.g. `~/.bashrc`:
+```console
+export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
+export JULIA_DEPOT_PATH="/dataserver/users/formingworlds/<username>/.julia"
+```
+If you install Julia using `tar`, use the following steps:
 
-    wget https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.6-linux-x86_64.tar.gz
+```
+export JULIA_DIR=/dataserver/users/formingworlds/<username>/julia-1.11.6
 
-    tar -xvzf julia-1.11.6-linux-x86_64.tar.gz
+mkdir -p $JULIA_DIR
 
-    echo 'export PATH=/dataserver/users/formingworlds/<username>/julia-1.11.6/bin:$PATH' >> ~/.bashrc
+cd /dataserver/users/formingworlds/<username>
 
-    echo 'export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia' >> ~/.bashrc
+wget https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.6-linux-x86_64.tar.gz
 
-    source ~/.bashrc
-   ```
+tar -xvzf julia-1.11.6-linux-x86_64.tar.gz
 
-    ### Miniconda and conda-forge considerations
-    When installing miniconda or conda-forge, make sure you do not choose the default path, which is always your home folder. Adjust it to `/dataserver/users/formingworlds/<username>`.
-    Alternatively, you can set default paths upfront for miniconda:
-    ```console
-    mkdir -p /dataserver/users/formingworlds/<username>/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O
-        /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
-    bash /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh -b -u -p
-        /dataserver/users/formingworlds/<username>/miniconda3
-    rm /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
-    ```
-    and similarly for conda-forge:
-    ```console
-    mkdir -p /dataserver/users/formingworlds/${USER}/miniforge3
-    wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" -O
-        /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh
-    bash /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh -b -p
-        /dataserver/users/formingworlds/${USER}/miniforge3
-    rm /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh
-    ```
-    For both Miniconda and conda-forge follow the instructions wrt updating your `~/.shellrc` file.
+echo 'export PATH=/dataserver/users/formingworlds/<username>/julia-1.11.6/bin:$PATH' >> ~/.bashrc
 
-    ### Pip cache consideration
-    The pip cache can easily take more than 3 GB when installing PROTEUS and this may exceed your
-    disk quota on your home directory. Therefore, you need to setup your pip cache folder in a different
-    place:
-    ```console
-    mkdir /dataserver/users/formingworlds/${USER}/.pip-cache
-    export PIP_CACHE_DIR=/dataserver/users/formingworlds/${USER}/.pip-cache
-    ```
+echo 'export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia' >> ~/.bashrc
+
+source ~/.bashrc
+```
+
+### Miniconda and conda-forge considerations
+When installing miniconda or conda-forge, make sure you do not choose the default path, which is always your home folder. Adjust it to `/dataserver/users/formingworlds/<username>`.
+Alternatively, you can set default paths upfront for miniconda:
+```console
+mkdir -p /dataserver/users/formingworlds/<username>/miniconda3
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
+bash /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh -b -u -p /dataserver/users/formingworlds/<username>/miniconda3
+rm /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
+```
+and similarly for conda-forge:
+```console
+mkdir -p /dataserver/users/formingworlds/${USER}/miniforge3
+wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" -O /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh
+bash /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh -b -p /dataserver/users/formingworlds/${USER}/miniforge3
+rm /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh
+```
+For both Miniconda and conda-forge follow the instructions wrt updating your `~/.shellrc` file.
+
+### Pip cache consideration
+The pip cache can easily take more than 3 GB when installing PROTEUS and this may exceed your
+disk quota on your home directory. Therefore, you need to setup your pip cache folder in a different
+place:
+```console
+mkdir /dataserver/users/formingworlds/${USER}/.pip-cache
+export PIP_CACHE_DIR=/dataserver/users/formingworlds/${USER}/.pip-cache
+```
 
 ## Queuing Manager: Condormaster
 
@@ -154,17 +173,17 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
 
 - You can copy and paste the example submit script below (to start a single PROTEUS simulation) and modify it according to your needs.
 
-```console
-    getenv = True
-    universe = vanilla
-    executable = /dataserver/users/formingworlds/${USER}/miniconda3/bin/conda
-    arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/${USER}/PROTEUS/input/demos/escape.toml
-    log = condor_outputs/log/logfile.$(PROCESS)
-    output = condor_outputs/output/outfile.$(PROCESS)
-    error = condor_outputs/output/errfile.$(PROCESS)
-    notify_user = <your-email>@astro.rug.nl
-    Requirements = (Cluster == "normas")
-    queue 1
+```text
+getenv = True
+universe = vanilla
+executable = /dataserver/users/formingworlds/${USER}/miniconda3/bin/conda
+arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/${USER}/PROTEUS/input/dummy.toml
+log = condor_outputs/log/logfile.$(PROCESS)
+output = condor_outputs/output/outfile.$(PROCESS)
+error = condor_outputs/output/errfile.$(PROCESS)
+notify_user = <your-email>@astro.rug.nl
+Requirements = (Cluster == "normas")
+queue 1
 ```
 
 To exit nano, press `Ctrl+X`, then press `Enter` when prompted to save the file.
@@ -221,19 +240,36 @@ This displays the jobs currently running on Condormaster, including both your jo
 
 ### NetCDF Error
 
-SOCRATES is using the NetCDF version installed by Python in your PROTEUS environment instead of the NetCDF version installed on the Kapteyn cluster system.
+Either the SOCRATES build stops with `ERROR: NetCDF-Fortran library is not
+installed`, or a run fails with `libnetcdff.so.7: cannot open shared object
+file`.
 
-To resolve this issue:
+The cluster provides no NetCDF-Fortran of its own, so both the library and the
+path to it come from your conda environment. Check that the environment is
+active and that it supplies them:
 
-1. Deactivate all conda environments.
-2. Go to the PROTEUS folder : `cd PROTEUS/`
-3. Delete the `socrates/` directory using `rm -r socrates/`
-4. Run the `./tools/get_socrates.sh` command to download SOCRATES again, ensuring this is done OUTSIDE of any conda environment.
-5. Execute the `cat socrates/set_rad_env` command to verify that SOCRATES is pointing to the correct NetCDF version (i.e. the NetCDF version installed on the Kapteyn cluster system).
-6. Finally, run a PROTEUS simulation using the `default.toml` configuration file to confirm it is working correctly.
+```console
+conda activate proteus
+nf-config --flibs
+echo $LD_LIBRARY_PATH
+```
+
+`nf-config` should report a `-L` path inside your conda environment, and
+`LD_LIBRARY_PATH` should contain that same environment's `lib` directory. If
+either is missing, apply the NetCDF-Fortran installation step from the
+[installation section](#installation) above and reactivate the environment.
+
+To check that an existing SOCRATES build can find the library at run time:
+
+```console
+ldd $RAD_DIR/bin/l_run_cdf | grep netcdff
+```
+
+A working installation prints a path to `libnetcdff.so`; a broken one prints
+`not found`.
 
 ### Error reporting
 
 - If you encounter an error that is not listed here, please create a new issue on the [PROTEUS GitHub webpage](https://github.com/FormingWorlds/PROTEUS/issues) (green button 'New issue' on the top right, choose 'Bug').
 - Include details about what you were trying to do and how the error occurred. Providing a screenshot or copying/pasting the error message and log file can help others understand the issue better.
-- Once the issue has been resolved, ensure that this troubleshooting section is updated to include the solution for future reference. You can check [here](CONTRIBUTING.md) how to edit the documentation.
+- Once the issue has been resolved, ensure that this troubleshooting section is updated to include the solution for future reference. You can check the [documentation guide](documentation.md) for how to edit the docs.
