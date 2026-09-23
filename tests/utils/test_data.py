@@ -2143,7 +2143,14 @@ def test_required_dataset_failure_does_not_stop_later_fetches(monkeypatch, tmp_p
 @pytest.mark.unit
 @pytest.mark.parametrize(
     'error',
-    ['DownloadError', 'OfflineDataError', 'ArchiveError', 'MissingDataRootError', 'OSError'],
+    [
+        'DownloadError',
+        'OfflineDataError',
+        'ArchiveError',
+        'MissingDataRootError',
+        'OSError',
+        'RuntimeError',
+    ],
 )
 def test_attempt_reports_fetch_errors_and_passes_other_errors(error, caplog):
     """Every fetch error is logged and reported, a programming error still raises."""
@@ -2158,6 +2165,7 @@ def test_attempt_reports_fetch_errors_and_passes_other_errors(error, caplog):
         'ArchiveError': ArchiveError,
         'MissingDataRootError': fwl_io.MissingDataRootError,
         'OSError': OSError,
+        'RuntimeError': RuntimeError,
     }
 
     def _fail():

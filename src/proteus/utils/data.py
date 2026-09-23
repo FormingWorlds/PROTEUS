@@ -12,8 +12,6 @@ from time import sleep
 from typing import TYPE_CHECKING
 
 import numpy as np
-from fwl_io import DownloadError, MissingDataRootError, OfflineDataError
-from fwl_io.archive import ArchiveError
 from osfclient.api import OSF
 from scipy.interpolate import interp1d
 
@@ -1601,9 +1599,10 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
             )
 
 
-# What a start-of-run fetch raises when a dataset cannot be obtained: the
-# filesystem errors, and fwl-io's own errors, which derive from RuntimeError.
-_FETCH_ERRORS = (OSError, DownloadError, OfflineDataError, ArchiveError, MissingDataRootError)
+# What a start-of-run fetch raises when a dataset cannot be obtained: filesystem
+# errors, fwl-io's errors (RuntimeError subclasses) and the downloaders' own
+# RuntimeError, such as a failed stellar-track download.
+_FETCH_ERRORS = (OSError, RuntimeError)
 
 
 def _attempt(desc: str, func, *args, **kwargs) -> bool:
