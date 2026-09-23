@@ -683,8 +683,10 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     When ``interior_struct.melting_dir`` is set, the two P-S melting curves
     are derived from its P-T files in every case above, and missing P-T files
     raise ``MissingMeltingCurveError`` instead of leaving the curves of the
-    source. An unset melting_dir raises ``MissingMeltingCurveError`` too,
-    except for a SPIDER run with constant properties, which reads no curves. This helper is not called when Zalmoxis generates a PALEOS table
+    source. When melting_dir is unset and case 1 does not apply, the helper
+    raises ``MissingMeltingCurveError`` rather than take the curves of the
+    source; a SPIDER run with constant properties reads no curves and is
+    exempt. This helper is not called when Zalmoxis generates a PALEOS table
     set; those runs use the PALEOS-derived curves and do not read melting_dir.
 
     Side effects: sets ``dirs['spider_eos_dir']``,
@@ -701,15 +703,6 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     # `melting_dir = "PALEOS-Fei2021"` using the configured P-S curves
     # at runtime instead of the WB+2018 curves.
     melting_dir = getattr(config.interior_struct, 'melting_dir', None)
-    energetics = getattr(config, 'interior_energetics', None)
-    if melting_dir is None and getattr(energetics, 'const_properties', False) is not True:
-        # Without melting_dir the curves would be whatever set is on disk.
-        raise MissingMeltingCurveError(
-            'interior_struct.melting_dir is not set and no PALEOS table set provides '
-            'the melting curves. Set melting_dir to a melting curve name (e.g. '
-            '"Monteux-600"), or use a PALEOS mantle EOS with interior_struct.module '
-            '= "zalmoxis".'
-        )
     derive_melting = melting_dir is not None
     if derive_melting:
         from proteus.utils.data import resolve_melting_curve_files
@@ -750,6 +743,20 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
             'spider_eos_dir=%s exists but is missing %d file(s); repopulating',
             existing,
             len(missing),
+        )
+
+    energetics = getattr(config, 'interior_energetics', None)
+    const_spider = (
+        getattr(energetics, 'module', None) == 'spider'
+        and getattr(energetics, 'const_properties', False) is True
+    )
+    if not derive_melting and not const_spider:
+        # Without melting_dir the curves would be whatever set is on disk.
+        zalmoxis_cfg = getattr(config.interior_struct, 'zalmoxis', None)
+        raise MissingMeltingCurveError(
+            'interior_struct.melting_dir is not set and no PALEOS table set was '
+            f'generated (mantle EOS {getattr(zalmoxis_cfg, "mantle_eos", None)!r}). '
+            'Set melting_dir to a melting curve name (e.g. "Monteux-600").'
         )
 
     os.makedirs(target_dir, exist_ok=True)

@@ -265,3 +265,14 @@ class TestMeltingDirWithPaleos:
             caplog, module='zalmoxis', zalmoxis=wb, melting_dir='Monteux-600'
         )
         assert not self._warned(caplog, module='zalmoxis', melting_dir=None)
+
+    def test_no_warning_for_a_paleos_mixture(self, caplog):
+        """A mixture string gets no generated PALEOS table set, so melting_dir is read."""
+        mix = Zalmoxis(mantle_eos='PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1')
+        assert not self._warned(
+            caplog, module='zalmoxis', zalmoxis=mix, melting_dir='Monteux-600'
+        )
+        single = Zalmoxis(mantle_eos='PALEOS-2phase:MgSiO3')
+        assert self._warned(
+            caplog, module='zalmoxis', zalmoxis=single, melting_dir='Monteux-600'
+        )

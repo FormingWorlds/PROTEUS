@@ -126,7 +126,8 @@ liquidus at the binding depth.
     - `"spider"`, or `"zalmoxis"` and `"dummy"` when no PALEOS table set is
       generated: the tables come from FWL_DATA or the SPIDER lookup data,
       `interior_struct.melting_dir` must be set (the run stops when it is
-      unset), and PROTEUS derives `liquidus_P-S.dat` from that P-T curve.
+      unset, except for SPIDER with `const_properties = true`), and PROTEUS
+      derives `liquidus_P-S.dat` from that P-T curve.
 
     With `"zalmoxis"`, the structure solve also anchors its temperature profile
     on a P-T adiabat that is `delta_T_super` above the P-T liquidus, while the

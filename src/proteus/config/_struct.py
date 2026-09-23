@@ -322,7 +322,7 @@ class Struct:
     melting_dir: str
         Melting curve name in FWL_DATA. Required for the SPIDER structure
         module and for any run without a PALEOS table set; not read with
-        module = 'zalmoxis' and a PALEOS mantle EOS.
+        module = 'zalmoxis' and a single PALEOS mantle EOS.
     eos_dir: str
         EOS folder name in FWL_DATA, for the SPIDER structure module.
     """
@@ -367,16 +367,18 @@ class Struct:
                     f'`{param_name}` must be "self" or a positive number, got {val!r}'
                 )
 
-        # Zalmoxis with a PALEOS mantle derives the curves from PALEOS
+        # Zalmoxis with a single PALEOS mantle EOS derives the curves from PALEOS;
+        # a mixture string gets no generated table set, so melting_dir is read.
         if (
             self.module == 'zalmoxis'
             and self.melting_dir is not None
             and self.zalmoxis is not None
             and self.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
+            and '+' not in self.zalmoxis.mantle_eos
         ):
-            import logging
+            import logging as _logging
 
-            logging.getLogger('fwl.' + __name__).warning(
+            _logging.getLogger('fwl.' + __name__).warning(
                 'interior_struct.melting_dir=%r is not read: with module = "zalmoxis" and '
                 'the PALEOS mantle EOS %s, the solidus and liquidus are derived from PALEOS.',
                 self.melting_dir,

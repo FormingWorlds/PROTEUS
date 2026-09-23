@@ -3267,22 +3267,46 @@ def test_provide_spider_eos_tables_unset_melting_dir_raises(tmp_path):
     (spider_bundle / 'solidus_A11_H13.dat').write_text('# bundled solidus\n')
     (spider_bundle / 'liquidus_A11_H13.dat').write_text('# bundled liquidus\n')
     config = SimpleNamespace(
-        interior_struct=SimpleNamespace(melting_dir=None),
-        interior_energetics=SimpleNamespace(const_properties=False),
+        interior_struct=SimpleNamespace(
+            melting_dir=None, zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3')
+        ),
+        interior_energetics=SimpleNamespace(module='aragog', const_properties=True),
     )
     dirs = {'spider': str(tmp_path / 'SPIDER')}
 
     with _patch('proteus.utils.data.GetFWLData', return_value=tmp_path / 'fwl_empty'):
+        # Aragog reads the curves even with const_properties set.
         with pytest.raises(MissingMeltingCurveError, match='melting_dir is not set') as raised:
             _provide_spider_eos_tables(config, str(tmp_path), dirs)
         assert 'spider_liquidus_ps' not in dirs
 
-        # Discrimination: constant properties need no curves, so the tables are provided.
-        config.interior_energetics.const_properties = True
+        # Discrimination: SPIDER with constant properties needs no curves.
+        config.interior_energetics.module = 'spider'
         _provide_spider_eos_tables(config, str(tmp_path), dirs)
 
-    assert 'Monteux-600' in str(raised.value)
+    assert "'WolfBower2018:MgSiO3'" in str(raised.value)
     assert dirs['spider_eos_dir'] == str(tmp_path / 'data' / 'spider_eos')
+
+
+@pytest.mark.unit
+def test_provide_spider_eos_tables_reuse_needs_no_melting_dir(tmp_path):
+    """A complete set already placed for this run is reused without melting_dir."""
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.wrapper import _provide_spider_eos_tables
+
+    eos_dir = tmp_path / 'preexisting_eos'
+    _write_complete_ps_eos_dir(str(eos_dir))
+    config = SimpleNamespace(
+        interior_struct=SimpleNamespace(melting_dir=None),
+        interior_energetics=SimpleNamespace(module='aragog', const_properties=False),
+    )
+    dirs = {'spider_eos_dir': str(eos_dir)}
+
+    _provide_spider_eos_tables(config, str(tmp_path), dirs)
+
+    assert dirs['spider_liquidus_ps'] == str(eos_dir / 'liquidus_P-S.dat')
+    assert dirs['spider_solidus_ps'] == str(eos_dir / 'solidus_P-S.dat')
 
 
 @pytest.mark.unit

@@ -26,7 +26,7 @@ with an equation of state (EOS).
 | `module` | str or none | `"zalmoxis"` | Module for solving the planet's interior structure. Choices: `none`, `"dummy"`, `"spider"`, `"zalmoxis"`. |
 | `core_density` | float | str | `"self"` | Density of the planet's core \[kg m-3\]. Set to 'self' for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis'). |
 | `core_heatcap` | float | str | `"self"` | Specific heat capacity of the planet's core \[J kg-1 K-1\]. Set to 'self' for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis'). |
-| `melting_dir` | str or none | `none` | Melting curve name in FWL_DATA. Required for the SPIDER structure module and for any run without a PALEOS table set; not read with module = 'zalmoxis' and a PALEOS mantle EOS. |
+| `melting_dir` | str or none | `none` | Melting curve name in FWL_DATA. Required for the SPIDER structure module and for any run without a PALEOS table set; not read with module = 'zalmoxis' and a single PALEOS mantle EOS. |
 | `eos_dir` | str or none | `none` | EOS folder name in FWL_DATA, for the SPIDER structure module. |
 <!-- END GENERATED: config-table [interior_struct] -->
 
