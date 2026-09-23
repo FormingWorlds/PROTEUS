@@ -2311,6 +2311,55 @@ def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path, interior_m
     assert captured['T_magma'] == pytest.approx(interior_t_magma, rel=1e-12)
 
 
+def _run_resumed_loop_until_stop(p, hf_df, fake_interior, fake_atmosphere):
+    """Resume ``p`` from ``hf_df`` with the given interior and atmosphere fakes
+    until the atmosphere fake raises ``_StopAfterAtmosphereCall``."""
+    from types import SimpleNamespace
+
+    with ExitStack() as stack:
+        for target in _MAIN_LOOP_NOOP_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                return_value=(hf_df, []),
+            )
+        )
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.assert_mass_conservation'))
+        stack.enter_context(
+            patch('proteus.utils.terminate.check_termination', return_value=False)
+        )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.interior_energetics.wrapper.run_interior',
+                side_effect=fake_interior,
+            )
+        )
+        stack.enter_context(
+            patch('proteus.atmos_clim.run_atmosphere', side_effect=fake_atmosphere)
+        )
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_interior_t.return_value = MagicMock(dt=100.0, ic=1)
+        mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
+        mock_atmos_t.return_value = SimpleNamespace(converged=True)
+        mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
+        mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
+
+        with pytest.raises(_StopAfterAtmosphereCall):
+            p.start(resume=True, offline=True)
+
+
 @pytest.mark.unit
 def test_solvus_override_restores_the_magma_ocean_state(tmp_path):
     """With global miscibility the loop hands the atmosphere the solvus as its
@@ -2321,8 +2370,6 @@ def test_solvus_override_restores_the_magma_ocean_state(tmp_path):
     the loop code for when it is enabled; SPIDER is the energetics module
     that cuts its domain at the solvus.
     """
-    from types import SimpleNamespace
-
     p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
     hf_df = _make_resume_checkpoint_df()
     hf_df['P_surf'] = 250.0
@@ -2350,48 +2397,7 @@ def test_solvus_override_restores_the_magma_ocean_state(tmp_path):
         if len(captured) == 2:
             raise _StopAfterAtmosphereCall
 
-    with ExitStack() as stack:
-        for target in _MAIN_LOOP_NOOP_PATCHES:
-            stack.enter_context(patch(target))
-        stack.enter_context(
-            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
-        )
-        stack.enter_context(
-            patch(
-                'proteus.utils.coupler.select_resumable_snapshot',
-                return_value=(hf_df, []),
-            )
-        )
-        stack.enter_context(
-            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
-        )
-        stack.enter_context(patch('proteus.utils.coupler.assert_mass_conservation'))
-        stack.enter_context(
-            patch('proteus.utils.terminate.check_termination', return_value=False)
-        )
-        stack.enter_context(
-            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
-        )
-        stack.enter_context(
-            patch(
-                'proteus.interior_energetics.wrapper.run_interior',
-                side_effect=_fake_run_interior,
-            )
-        )
-        stack.enter_context(
-            patch('proteus.atmos_clim.run_atmosphere', side_effect=_fake_run_atmosphere)
-        )
-        mock_interior_t = stack.enter_context(
-            patch('proteus.interior_energetics.common.Interior_t')
-        )
-        mock_interior_t.return_value = MagicMock(dt=100.0, ic=1)
-        mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
-        mock_atmos_t.return_value = SimpleNamespace(converged=True)
-        mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
-        mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
-
-        with pytest.raises(_StopAfterAtmosphereCall):
-            p.start(resume=True, offline=True)
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
 
     solvus_frame = [t_solvus, t_solvus, p_solvus * 1e-5, 0.9 * checkpoint['R_int']]
     np.testing.assert_allclose(np.array(captured), [solvus_frame, solvus_frame], rtol=1e-12)
@@ -2401,6 +2407,72 @@ def test_solvus_override_restores_the_magma_ocean_state(tmp_path):
     assert committed['T_surf'] == pytest.approx(checkpoint['T_surf'], rel=1e-12)
     assert committed['P_surf'] == pytest.approx(checkpoint['P_surf'], rel=1e-12)
     assert committed['R_int'] == pytest.approx(checkpoint['R_int'], rel=1e-12)
+
+
+@pytest.mark.unit
+def test_solvus_override_is_restored_when_the_atmosphere_raises(tmp_path):
+    """The solvus override is undone in a finally block, so an atmosphere step
+    that raises leaves T_magma, T_surf, P_surf and R_int in the magma-ocean
+    frame rather than in the solvus frame.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['P_surf'] = 250.0
+    checkpoint = hf_df.iloc[-1]
+    interior_t_magma, t_solvus = 3456.0, 3700.0
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        hf_row = args[3]
+        hf_row['T_magma'] = interior_t_magma
+        hf_row['R_solvus'] = 0.9 * hf_row['R_int']
+        hf_row['T_solvus'] = t_solvus
+        hf_row['P_solvus'] = 2.0e10
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        captured.append(args[8]['T_magma'])
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    assert captured == [pytest.approx(t_solvus, rel=1e-12)]  # the override was active
+    assert p.hf_row['T_magma'] == pytest.approx(interior_t_magma, rel=1e-12)
+    assert p.hf_row['T_surf'] == pytest.approx(checkpoint['T_surf'], rel=1e-12)
+    assert p.hf_row['P_surf'] == pytest.approx(checkpoint['P_surf'], rel=1e-12)
+    assert p.hf_row['R_int'] == pytest.approx(checkpoint['R_int'], rel=1e-12)
+
+
+@pytest.mark.unit
+def test_solvus_at_the_surface_leaves_the_atmosphere_boundary_unchanged(tmp_path):
+    """A solvus at R_int itself (R_solvus == R_int) is not below the surface,
+    so the atmosphere keeps the magma-ocean boundary.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['P_surf'] = 250.0
+    checkpoint = hf_df.iloc[-1]
+    interior_t_magma = 3456.0
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        hf_row = args[3]
+        hf_row['T_magma'] = interior_t_magma
+        hf_row['R_solvus'] = hf_row['R_int']
+        hf_row['T_solvus'] = 3700.0
+        hf_row['P_solvus'] = 2.0e10
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        hf_row = args[8]
+        captured.append((hf_row['T_magma'], hf_row['P_surf'], hf_row['R_int']))
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    np.testing.assert_allclose(
+        np.array(captured),
+        [[interior_t_magma, checkpoint['P_surf'], checkpoint['R_int']]],
+        rtol=1e-12,
+    )
 
 
 @pytest.mark.unit
