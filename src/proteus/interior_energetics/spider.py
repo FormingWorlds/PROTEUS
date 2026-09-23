@@ -1377,6 +1377,9 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     # Core (CMB) temperature: last staggered node (SPIDER ordering is surface-to-CMB)
     output['T_cmb'] = float(interior_o.temp[-1])
 
+    # Temperature at the CMB basic node itself (last basic node in the surface-to-CMB order)
+    output['T_cmb_node'] = float(json_file.get_dict_values(['data', 'temp_b'])[-1])
+
     # Core (CMB) pressure and heat flux: last basic node (SPIDER ordering is surface-to-CMB)
     output['P_cmb'] = float(json_file.get_dict_values(['data', 'pressure_b'])[-1])
     output['F_cmb'] = float(json_file.get_dict_values(['data', 'Jtot_b'])[-1])

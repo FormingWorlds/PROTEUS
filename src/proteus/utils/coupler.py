@@ -853,7 +853,8 @@ def GetHelpfileKeys():
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
-        'T_cmb',           # core temperature [K]
+        'T_cmb',           # core temperature, bottom mantle cell [K]
+        'T_cmb_node',      # temperature at the core-mantle boundary basic node [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
         'T_skin',           # grey radiative skin temperature [K]
         'T_surface_initial',  # self-consistent T_surf from accretion mode [K]
@@ -1405,6 +1406,41 @@ def _describe_missing_columns(missing: list[str]) -> str:
     return shown
 
 
+# Derived diagnostic columns that nothing reads back to build state. A
+# helpfile written before one of them joined the schema still resumes: the
+# reader backfills these with zeros. Add a column here only if no module,
+# resume path or solver consumes it.
+_DIAGNOSTIC_KEYS = ('T_cmb_node',)
+
+
+def GetHelpfileDiagnosticKeys():
+    """
+    Helpfile columns that are derived diagnostics, not simulation state.
+
+    A helpfile that lacks one of these is still resumable, because no module
+    reads the column back. `ReadHelpfileFromCSV` zero-fills it on load.
+
+    Returns
+    -------
+    list of str
+        Column names, all of which are also in `GetHelpfileKeys()`.
+    """
+    return list(_DIAGNOSTIC_KEYS)
+
+
+def GetHelpfileCoreKeys():
+    """
+    Helpfile columns that a stored run must carry to be resumed.
+
+    Returns
+    -------
+    list of str
+        Every column of `GetHelpfileKeys()` except the diagnostic ones.
+    """
+    diagnostic = set(_DIAGNOSTIC_KEYS)
+    return [k for k in GetHelpfileKeys() if k not in diagnostic]
+
+
 # Columns the observation and offline-chemistry pipelines index without a
 # fallback. Every other quantity they touch is read through `in` or `.get`
 # with a default, so its absence is already handled.
@@ -1460,9 +1496,12 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     the plotting and inference code, do not come through this function and
     are not covered.
 
-    The shortfall is reported rather than filled. Seeding a value would make
-    the key present, and several modules decide what to do by testing whether
-    a key is there at all: CALLIOPE refuses a run whose oxygen budget is
+    A shortfall in the core columns is reported rather than filled. The
+    diagnostic columns of `GetHelpfileDiagnosticKeys()` are the exception:
+    nothing reads them back, so a file without them is completed with zeros
+    and a line in the log. Seeding a core value would make the key present,
+    and several modules decide what to do by testing whether a key is there
+    at all: CALLIOPE refuses a run whose oxygen budget is
     absent, the dummy and boundary interiors fall back to a configured core
     size, and the atmosphere lower boundary moves to the solvus only when a
     solvus radius exists. A seeded zero turns each of those off and reaches
@@ -1473,8 +1512,8 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     output_dir : str
         Directory holding ``runtime_helpfile.csv``.
     required_columns : list of str, optional
-        Columns the caller cannot do without. Defaults to the whole of
-        ``GetHelpfileKeys()``, which is what resuming a run needs, since a
+        Columns the caller cannot do without. Defaults to
+        ``GetHelpfileCoreKeys()``, which is what resuming a run needs, since a
         resumed row feeds every module. Postprocessing passes the smaller
         ``GetPostprocessingKeys()`` so an archived run stays readable after
         a schema addition it never used.
@@ -1482,7 +1521,8 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     Returns
     -------
     pandas.DataFrame
-        Helpfile contents as stored, carrying at least ``required_columns``.
+        Helpfile contents as stored, carrying at least ``required_columns``
+        and every diagnostic column.
 
     Raises
     ------
@@ -1490,7 +1530,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
         The file does not carry every required column.
     """
     if required_columns is None:
-        required_columns = GetHelpfileKeys()
+        required_columns = GetHelpfileCoreKeys()
 
     fpath = helpfile_path(output_dir)
     if not os.path.exists(fpath):
@@ -1505,6 +1545,16 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
             'this run with the PROTEUS version that wrote it.'
             % (fpath, len(missing), _describe_missing_columns(missing))
         )
+
+    backfill = [k for k in GetHelpfileDiagnosticKeys() if k not in hf_all.columns]
+    if backfill:
+        log.info(
+            "Helpfile '%s' predates diagnostic column(s) %s; filling with zeros.",
+            fpath,
+            ', '.join(backfill),
+        )
+        zeros = pd.DataFrame(0.0, index=hf_all.index, columns=backfill)
+        hf_all = pd.concat([hf_all, zeros], axis=1)
     return hf_all
 
 

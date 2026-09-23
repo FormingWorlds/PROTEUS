@@ -1493,6 +1493,11 @@ def _make_spider_json(filepath, step=0, sim_time=0.0, num_stag=10, num_basic=11)
             },
             'visc_b': {'scaling': 1, 'units': 'Pa.s', 'values': [1e21] * n_b},
             'temp_s': {'scaling': 1, 'units': 'K', 'values': [2500.0] * n_s},
+            'temp_b': {
+                'scaling': 1,
+                'units': 'K',
+                'values': list(np.linspace(2400.0, 4200.0, n_b)),
+            },
             'pressure_s': {
                 'scaling': 1,
                 'units': 'Pa',
@@ -1942,6 +1947,43 @@ def test_read_spider_cmb_pressure_and_flux(tmp_path):
 
     assert output['P_cmb'] == pytest.approx(150e9)
     assert output['F_cmb'] == pytest.approx(3.0)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_read_spider_t_cmb_node_is_last_basic_node(tmp_path):
+    """ReadSPIDER reports ``T_cmb_node`` from the last ``temp_b`` entry.
+
+    SPIDER's basic-node arrays run surface-to-CMB, so the CMB node is
+    ``temp_b[-1]`` (4200 K in the fixture). ``T_cmb`` stays the bottom
+    staggered cell (2500 K), so the two columns differ, and an index-0
+    read (2400 K, the surface node) would also fail the assertion.
+    """
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.spider import ReadSPIDER
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    _make_spider_json(str(data_dir / '0.json'), step=0, num_stag=10, num_basic=11)
+
+    nP, nS = 3, 4
+    lookup = np.zeros((nS, nP, 3))
+    lookup[:, :, 0] = np.linspace(0, 135e9, nP)[None, :]
+    lookup[:, :, 1] = np.linspace(2000, 3200, nS)[:, None]
+    lookup[:, :, 2] = 4000.0
+
+    interior_o = Interior_t(11)
+    interior_o.lookup_rho_melt = lookup
+
+    config = MagicMock()
+    config.planet.prevent_warming = False
+    dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
+
+    _, output = ReadSPIDER(dirs, config, R_int=6.371e6, interior_o=interior_o)
+
+    assert output['T_cmb_node'] == pytest.approx(4200.0)
+    assert output['T_cmb'] == pytest.approx(2500.0)
+    assert output['T_cmb_node'] != pytest.approx(output['T_cmb'])
 
 
 @pytest.mark.unit
