@@ -88,3 +88,13 @@ def test_missing_or_non_finite_bounds_keep_the_magma_ocean_frame():
     # Edge case: no inner bound given, so only 0 < R_solvus < R_outer applies.
     r = solvus_radius(_config(True), 0.1 * R_INT, R_INT, R_inner=None)
     assert r == pytest.approx(0.1 * R_INT, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_negative_inner_radius_keeps_positivity():
+    """A negative inner radius does not lower the floor below zero, so a
+    negative or zero solvus is still rejected; a positive one is kept."""
+    assert solvus_radius(_config(True), -5e4, R_INT, R_inner=-1e5) is None
+    assert solvus_radius(_config(True), 0.0, R_INT, R_inner=-1e5) is None
+    r = solvus_radius(_config(True), 5e4, R_INT, R_inner=-1e5)
+    assert r == pytest.approx(5e4, rel=1e-12)

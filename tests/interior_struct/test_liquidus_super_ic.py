@@ -379,14 +379,33 @@ class TestSuperliquidusMemoBound:
         import proteus.interior_struct.zalmoxis as zmod
 
         n = zmod._SUPERLIQ_CACHE_MAXSIZE
-        for memo in (zmod._SUPERLIQ_CACHE, zmod._SUPERLIQ_FAILED):
-            for i in range(n + 5):
-                memo[(i, 500.0, 'PALEOS:MgSiO3')] = {'cmb_T': 6000.0 + i}
-            assert len(memo) == n
-            assert (0, 500.0, 'PALEOS:MgSiO3') not in memo
-            assert (n + 4, 500.0, 'PALEOS:MgSiO3') in memo
-        zmod._clear_superliquidus_cache()
-        assert len(zmod._SUPERLIQ_CACHE) == 0 and len(zmod._SUPERLIQ_FAILED) == 0
+        try:
+            for memo in (zmod._SUPERLIQ_CACHE, zmod._SUPERLIQ_FAILED):
+                for i in range(n + 5):
+                    memo[(i, 500.0, 'PALEOS:MgSiO3')] = {'cmb_T': 6000.0 + i}
+                assert len(memo) == n
+                assert (0, 500.0, 'PALEOS:MgSiO3') not in memo
+                assert (n + 4, 500.0, 'PALEOS:MgSiO3') in memo
+            zmod._clear_superliquidus_cache()
+            assert len(zmod._SUPERLIQ_CACHE) == 0 and len(zmod._SUPERLIQ_FAILED) == 0
+        finally:
+            # The synthetic entries must not reach later tests in this process.
+            zmod._clear_superliquidus_cache()
+
+    def test_lru_dict_copy_keeps_entries_and_bound(self):
+        """A copy holds every entry in the same order with the same
+        ``maxsize``, and reading from it leaves the original order alone."""
+        from proteus.interior_struct.zalmoxis import _LRUDict
+
+        d = _LRUDict(maxsize=3)
+        for k in 'abc':
+            d[k] = k.upper()
+        c = d.copy()
+        assert isinstance(c, _LRUDict) and c.maxsize == 3
+        assert list(c.items()) == [('a', 'A'), ('b', 'B'), ('c', 'C')]
+        assert c['a'] == 'A' and list(d) == ['a', 'b', 'c']
+        c['d'] = 'D'
+        assert list(c) == ['c', 'a', 'd'] and len(d) == 3
 
 
 # ----------------------------------------------------------------------
