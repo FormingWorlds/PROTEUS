@@ -353,7 +353,8 @@ def solve_superliquidus_entropy_from_tables(
     if P_cmb <= P_surf:
         raise InitialConditionError(
             'liquidus_super: the core-mantle boundary pressure %.3g GPa is not above '
-            'the surface pressure %.3g GPa; there is no mantle to check for melt.'
+            'the evaluated surface pressure %.3g GPa (the larger of 1 bar and the '
+            'table minimum); there is no mantle to check for melt.'
             % (P_cmb / 1e9, P_surf / 1e9)
         )
     P = np.geomspace(P_surf, P_cmb, _TABLE_SUPERLIQ_N_POINTS)

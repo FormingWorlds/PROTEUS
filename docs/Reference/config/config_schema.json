@@ -3378,7 +3378,7 @@
       "default": "-4.698e-06",
       "choices": null,
       "bounds": null,
-      "description": "Initial entropy gradient with radius [J/kg/K/m], added to the uniform initial entropy by SPIDER and Aragog in every temperature mode; must be finite, and <= 0 with liquidus_super. CHILI Earth-SPIDER reference: -4.698e-6 (small numerical perturbation needed for SPIDER's BDF stability on a uniform IC).",
+      "description": "Initial entropy gradient with radius [J/kg/K/m], added to the uniform initial entropy by SPIDER and Aragog in every temperature mode; must be finite, and must be <= 0 with liquidus_super. CHILI Earth-SPIDER reference: -4.698e-6 (small numerical perturbation needed for SPIDER's BDF stability on a uniform IC).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -10417,7 +10417,7 @@
       "doc": "The maximum must exceed the minimum on the same section."
     },
     {
-      "validator": "_reject_positive_dsdr_for_liquidus_super",
+      "validator": "_validate_ini_dsdr",
       "module": "_planet.py",
       "attached_to": [
         "planet.ini_dsdr"

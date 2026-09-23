@@ -202,7 +202,7 @@ def _reject_reserved_fO2_source(instance, attribute, value):
         )
 
 
-def _reject_positive_dsdr_for_liquidus_super(instance, attribute, value):
+def _validate_ini_dsdr(instance, attribute, value):
     """Reject a non-finite ``ini_dsdr``, and a positive one with liquidus_super.
 
     SPIDER and Aragog add ``ini_dsdr * (r - R_surf)`` to the uniform initial
@@ -289,7 +289,7 @@ class Planet:
     ini_dsdr: float
         Initial entropy gradient with radius [J/kg/K/m], added to the uniform
         initial entropy by SPIDER and Aragog in every temperature mode; must
-        be finite, and <= 0 with liquidus_super. CHILI Earth-SPIDER reference:
+        be finite, and must be <= 0 with liquidus_super. CHILI Earth-SPIDER reference:
         -4.698e-6 (small numerical perturbation needed for SPIDER's BDF
         stability on a uniform IC).
     delta_T_super: float
@@ -378,9 +378,7 @@ class Planet:
     # temperature_mode = 'isentropic' (CHILI protocol). The interior solver
     # maps S -> T(P) via its own EOS table; tsurf_init is ignored.
     ini_entropy: float = field(default=3900.0, validator=gt(0))
-    ini_dsdr: float = field(
-        default=-4.698e-6, validator=_reject_positive_dsdr_for_liquidus_super
-    )
+    ini_dsdr: float = field(default=-4.698e-6, validator=_validate_ini_dsdr)
 
     # Minimum superheat above the liquidus for temperature_mode =
     # 'liquidus_super'. The IC adiabat is solved so its temperature exceeds the

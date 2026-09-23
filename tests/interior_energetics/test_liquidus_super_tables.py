@@ -559,13 +559,39 @@ def test_liquidus_crossing_a_table_entropy_node_is_checked(fake_tables, monkeypa
     assert res['binding_P'] == pytest.approx(P_x, rel=1e-6)
 
 
-def test_p_cmb_at_the_surface_raises(fake_tables):
+@pytest.mark.parametrize('P_cmb', [5e4, 1e5])
+def test_p_cmb_at_the_surface_raises(fake_tables, P_cmb):
     """A core-mantle boundary pressure at or below the 1 bar surface leaves no
-    mantle to check, so the solve raises instead of reversing the grid.
+    mantle to check, so the solve raises instead of reversing the grid or
+    evaluating a single pressure.
     """
     with pytest.raises(common.InitialConditionError, match='not above') as exc:
-        solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': 5e4}, fake_tables)
+        solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_cmb}, fake_tables)
     assert 'surface pressure 0.0001 GPa' in str(exc.value)
+
+
+def test_margin_kink_pressures_find_every_crossing():
+    """Crossings of a non-monotone, partly flat S_liq(P) with several table
+    entropy nodes, on a liquidus file with more segments than nodes so a
+    segment index cannot stand in for a node index. A flat segment lying on
+    a node adds no crossing (its ends are file nodes already).
+    """
+    P_file = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    S_file = np.array([10.0, 30.0, 20.0, 20.0, 40.0, 45.0])
+    S_nodes = np.array([15.0, 20.0, 25.0, 35.0])
+    eos = SimpleNamespace(
+        _liquidus={'P': P_file, 'S': S_file},
+        _tables={'temperature_melt': {'P': np.array([3.5]), 'S': S_nodes}},
+    )
+
+    with np.errstate(all='raise'):
+        kinks = common._margin_kink_pressures(eos)
+
+    crossings = np.sort(kinks[~np.isin(kinks, np.concatenate([P_file, [3.5]]))])
+    # Roots of S_liq(P) = S_node inside each segment, found by hand.
+    expected = [1.25, 1.5, 1.75, 2.5, 4.25, 4.75]
+    np.testing.assert_allclose(crossings, expected, rtol=0, atol=1e-12)
+    assert kinks.size == P_file.size + 1 + len(expected)
 
 
 def test_ini_dsdr_without_radii_warns(fake_tables, caplog):

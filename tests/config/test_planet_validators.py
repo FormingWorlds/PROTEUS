@@ -1,7 +1,8 @@
 """Unit tests for planet config validators (config/_planet.py).
 
-Covers the rule that a liquidus_super initial condition takes no positive
-initial entropy gradient.
+Covers the initial entropy gradient rules: ini_dsdr must be finite in every
+temperature mode, and a liquidus_super initial condition takes no positive
+gradient.
 
 Testing standards:
   - docs/How-to/testing.md
