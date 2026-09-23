@@ -83,6 +83,13 @@ class _LRUDict(OrderedDict):
         while len(self) > self.maxsize:
             self.popitem(last=False)
 
+    def copy(self):
+        """Return a shallow copy with the same entries, order and ``maxsize``."""
+        new = type(self)(maxsize=self.maxsize)
+        for key, value in self.items():
+            OrderedDict.__setitem__(new, key, value)
+        return new
+
 
 # Per-process memo so the three IC call sites (structure solve, energetics
 # entropy IC, Aragog cross-check) share one solve for a given input instead of
@@ -2180,6 +2187,71 @@ def read_ps_cache_pointer(outdir: str) -> str | None:
     return cache_dir or None
 
 
+def _resumed_ps_tables(outdir: str, cache_key: str) -> dict | None:
+    """Return the P-S tables a resumed run already uses, whatever their key.
+
+    Looks in the per-run ``data/spider_eos`` directory, then in the shared
+    cache directory recorded by :func:`_write_ps_cache_pointer`. A resumed run
+    continues on these tables even when the current key differs, so it does
+    not switch tables part way through its evolution. A differing key is
+    logged at WARNING, with the generator identity named when it differs or
+    the marker predates it.
+
+    Parameters
+    ----------
+    outdir : str
+        The run output directory.
+    cache_key : str
+        The key the current code would build, from :func:`_ps_cache_key`.
+
+    Returns
+    -------
+    dict or None
+        The same keys as :func:`generate_spider_tables`, or None when neither
+        location holds a marker with both phase-boundary files.
+    """
+
+    candidates = [os.path.join(outdir, 'data', 'spider_eos')]
+    pointed = read_ps_cache_pointer(outdir)
+    if pointed:
+        candidates.append(pointed)
+    want_base, _, want_gen = cache_key.partition('_gen=')
+    for eos_dir in candidates:
+        marker = os.path.join(eos_dir, '.cache_info.txt')
+        solidus_path = os.path.join(eos_dir, 'solidus_P-S.dat')
+        liquidus_path = os.path.join(eos_dir, 'liquidus_P-S.dat')
+        if not all(os.path.isfile(f) for f in (marker, solidus_path, liquidus_path)):
+            continue
+        try:
+            with open(marker) as f:
+                stored = f.read().strip()
+        except OSError:
+            continue
+        base, has_gen, gen = stored.partition('_gen=')
+        if base != want_base:
+            log.warning(
+                'Resumed run keeps its P-S entropy tables in %s: stored key %s '
+                'differs from the current key %s',
+                eos_dir,
+                stored,
+                cache_key,
+            )
+        elif gen != want_gen:
+            log.warning(
+                'Resumed run keeps its P-S entropy tables in %s: they come from '
+                'table generator %s, the current generator is %s',
+                eos_dir,
+                gen if has_gen else 'unknown',
+                want_gen,
+            )
+        return {
+            'eos_dir': eos_dir,
+            'solidus_path': solidus_path,
+            'liquidus_path': liquidus_path,
+        }
+    return None
+
+
 def _publish_ps_tables(src_dir: str, dest_dir: str) -> None:
     """Move every file from a staging dir into the shared cache dir atomically.
 
@@ -2513,6 +2585,12 @@ def generate_spider_tables(config: Config, outdir: str):
         solid_eos=solid_eos,
         liquid_eos=liquid_eos,
     )
+
+    # A resumed run stays on the tables it started with.
+    if config.params.resume:
+        resumed = _resumed_ps_tables(outdir, cache_key)
+        if resumed is not None:
+            return resumed
 
     # Table location. Default: per-run output/<run>/data/spider_eos. When
     # PROTEUS_PS_CACHE_DIR is set, the directory is keyed by cache_key so that

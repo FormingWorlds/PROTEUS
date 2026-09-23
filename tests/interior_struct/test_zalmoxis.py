@@ -2948,3 +2948,128 @@ def test_twophase_registry_key_selects_table_family(mantle_eos, expected):
     from proteus.interior_struct.zalmoxis import twophase_registry_key
 
     assert twophase_registry_key(mantle_eos) == expected
+
+
+def _generate_tables_stubbed(tmp_path, monkeypatch, *, resume, run=True):
+    """Run generate_spider_tables for a unified PALEOS entry with stubbed
+    generators; return the result, the two generator mocks and the key the
+    current code builds (the result is None when ``run`` is False)."""
+    from pathlib import Path
+
+    import zalmoxis.eos_export
+    import zalmoxis.melting_curves
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    eos = tmp_path / 'eos.dat'
+    eos.write_text('table')
+    monkeypatch.setattr(
+        zmod,
+        'load_zalmoxis_material_dictionaries',
+        lambda: {'PALEOS:MgSiO3': {'format': 'paleos_unified', 'eos_file': str(eos)}},
+    )
+    monkeypatch.setattr(zmod, 'resolve_2phase_mgsio3_paths', lambda *a: (None, None))
+    monkeypatch.setattr(
+        zalmoxis.melting_curves,
+        'get_solidus_liquidus_functions',
+        lambda **kw: (None, lambda P: 3000.0),
+    )
+    monkeypatch.setattr(zalmoxis.melting_curves, 'derive_solidus_from_liquidus', lambda f, m: f)
+
+    def _write_bounds(**kw):
+        for name in ('solidus_P-S.dat', 'liquidus_P-S.dat'):
+            (Path(kw['output_dir']) / name).write_text('NEW')
+
+    bounds = MagicMock(side_effect=_write_bounds)
+    tables = MagicMock()
+    monkeypatch.setattr(zalmoxis.eos_export, 'generate_spider_phase_boundaries', bounds)
+    monkeypatch.setattr(zalmoxis.eos_export, 'generate_spider_eos_tables', tables)
+
+    config = MagicMock()
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.8
+    config.interior_struct.zalmoxis.lookup_nP = 8
+    config.interior_struct.zalmoxis.lookup_nS = 8
+    config.planet.mass_tot = 1.0
+    config.params.resume = resume
+    key = zmod._ps_cache_key(
+        P_max=3.5e11,
+        nP=8,
+        nS=8,
+        mzf=0.8,
+        layout='unified',
+        mantle_eos='PALEOS:MgSiO3',
+        eos_file=str(eos),
+        solid_eos=None,
+        liquid_eos=None,
+    )
+    out = zmod.generate_spider_tables(config, str(tmp_path / 'run')) if run else None
+    return out, bounds, tables, key
+
+
+def _seed_tables(eos_dir, marker):
+    eos_dir.mkdir(parents=True, exist_ok=True)
+    (eos_dir / '.cache_info.txt').write_text(marker)
+    for name in ('solidus_P-S.dat', 'liquidus_P-S.dat'):
+        (eos_dir / name).write_text('OLD')
+
+
+def test_resume_keeps_run_tables_with_an_old_format_marker(tmp_path, monkeypatch, caplog):
+    """A resumed run whose marker has no generator identity keeps its own
+    tables and warns; a fresh run in the same directory rebuilds them under
+    the current key."""
+    from pathlib import Path as _Path
+
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    # The key a run made before the generator identity was part of it.
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    old_marker = key.partition('_gen=')[0]
+    _seed_tables(run_eos, old_marker)
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, tables, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+    assert _Path(out['eos_dir']) == run_eos
+    bounds.assert_not_called()
+    tables.assert_not_called()
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
+    assert (run_eos / '.cache_info.txt').read_text() == old_marker
+    assert 'generator unknown' in caplog.text
+
+    out, bounds, tables, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=False)
+    bounds.assert_called_once()
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'NEW'
+    assert (run_eos / '.cache_info.txt').read_text() == key
+
+
+def test_resume_follows_the_pointer_to_shared_cache_tables(tmp_path, monkeypatch, caplog):
+    """With a shared cache, a resumed run keeps the tables its pointer names
+    even when they come from another generator, and leaves the pointer alone;
+    an exact key match keeps them without a warning."""
+    from pathlib import Path as _Path
+
+    from proteus.interior_struct.zalmoxis import PS_CACHE_POINTER_NAME
+
+    monkeypatch.setenv('PROTEUS_PS_CACHE_DIR', str(tmp_path / 'cache'))
+    old_dir = tmp_path / 'cache' / 'old-key-dir'
+    pointer = tmp_path / 'run' / 'data' / PS_CACHE_POINTER_NAME
+    pointer.parent.mkdir(parents=True)
+    pointer.write_text(str(old_dir))
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    base = key.partition('_gen=')[0]
+    _seed_tables(old_dir, base + '_gen=0-0-1-aaaaaaaaaaaa')
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+    assert _Path(out['eos_dir']) == old_dir
+    bounds.assert_not_called()
+    assert pointer.read_text() == str(old_dir)
+    assert 'generator 0-0-1-aaaaaaaaaaaa' in caplog.text
+
+    # Edge case: the stored key equals the current key, so nothing is logged.
+    (old_dir / '.cache_info.txt').write_text(key)
+    caplog.clear()
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+    assert _Path(out['eos_dir']) == old_dir and caplog.text == ''
+    bounds.assert_not_called()
