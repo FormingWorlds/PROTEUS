@@ -185,8 +185,9 @@ class TestSolveSuperliquidusReal:
         """With the Zalmoxis structure, the initial entropy is solved on the
         run's own P-S tables (generated from PALEOS for S1_m1_dyn_IW4): at
         delta_T_super = 0 and 500 K the adiabat is at least delta - 0.5 K
-        above the tables' liquidus at every pressure from 1 bar to P_cmb,
-        and Aragog's and SPIDER's IC entry points return the same entropy.
+        above the tables' liquidus at every pressure from 1 bar to P_cmb, and
+        Aragog's and SPIDER's IC entry points pass that entropy through
+        unchanged.
         """
         from types import SimpleNamespace
         from unittest.mock import MagicMock

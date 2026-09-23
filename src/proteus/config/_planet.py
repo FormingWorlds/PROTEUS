@@ -266,9 +266,9 @@ class Planet:
             achievable superheat and emits a warning that reports it. If even
             the hottest adiabat the table supports stays below the liquidus
             somewhere in the mantle, no fully molten initial condition exists
-            and the solve raises a RuntimeError. With a structure module other
-            than zalmoxis the liquidus is the one in the interior P-S tables,
-            which the interior solver also uses for its melt fraction.
+            and the solve raises a RuntimeError. The liquidus is the one in the
+            interior P-S tables, which the interior solver also uses for its
+            melt fraction, for every structure module.
     tsurf_init: float
         Initial magma surface temperature [K] (isothermal, linear, adiabatic).
         Ignored when temperature_mode = 'isentropic', 'adiabatic_from_cmb',

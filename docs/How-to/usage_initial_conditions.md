@@ -99,7 +99,7 @@ marginally molten, just touching the liquidus at the binding depth.
     - `"zalmoxis"` and `"dummy"` with a PALEOS mantle
       (`interior_struct.zalmoxis.mantle_eos`, default `"PALEOS:MgSiO3"`) whose
       table files are present: Zalmoxis generates the tables from that EOS,
-      with the PALEOS (Fei et al. 2021) liquidus. `interior_struct.melting_dir`
+      with a liquidus derived from the PALEOS (Fei et al. 2021) curve. `interior_struct.melting_dir`
       is not used, and Zalmoxis must be installed.
     - `"spider"`, or `"zalmoxis"` and `"dummy"` when no PALEOS table set is
       generated: the tables come from FWL_DATA or the SPIDER lookup data, and

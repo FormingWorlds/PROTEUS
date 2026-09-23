@@ -552,6 +552,20 @@ def test_zalmoxis_path_extends_above_an_all_invalid_scan(monkeypatch, delta, exp
     assert res['achieved_superheat'] >= delta
 
 
+def test_zalmoxis_extension_above_an_all_invalid_scan_doubles_its_step(monkeypatch):
+    """Invalid below surface T 6500 K (S < 7500), 700 K above the scan top.
+    The doubling extensions probe 6010.5, 6431.6 and 7273.7 K and find the
+    valid edge at 6500 K; equal steps would stop at 6431.6 K and raise.
+    """
+    _install_zalmoxis_deps(monkeypatch, s_ceiling=None, invalid_bands=((0.0, 7500.0),))
+
+    res = solve_superliquidus_adiabat(_shared_config(delta=100.0), {'P_cmb': 100e9})
+
+    assert res['clamped'] is False
+    assert res['surface_T'] == pytest.approx(6500.0, abs=0.5)
+    assert res['achieved_superheat'] == pytest.approx(4500.0, abs=0.5)
+
+
 def test_zalmoxis_extension_stops_once_delta_is_reached(monkeypatch):
     """The extension past a fully valid scan stops at the first point that
     reaches delta: adiabats above 6100 K surface temperature lose superheat,

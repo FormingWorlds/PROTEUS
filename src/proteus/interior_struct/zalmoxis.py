@@ -526,10 +526,9 @@ def _resolve_zalmoxis_cmb_temperature(
     For 'liquidus_super', returns the CMB temperature of the solved
     super-liquidus adiabat (see :func:`solve_superliquidus_adiabat`), using
     hf_row['P_cmb'] when populated or a Noack & Lasbleis (2020) mass-aware
-    P_cmb estimate on the very first call. The energetics IC step
-    (compute_initial_entropy) solves the same adiabat against the converged
-    Zalmoxis P_cmb, so any first-call P_cmb mismatch is self-correcting after
-    one round-trip.
+    P_cmb estimate on the very first call; the next structure iteration
+    recomputes it against the converged Zalmoxis P_cmb. The energetics IC is
+    solved separately on the P-S tables (compute_initial_entropy).
 
     When ``external_temperature_source`` is set the structure solve is driven
     by an evolved T(r) profile (or the super-liquidus adiabat callable during
@@ -622,9 +621,10 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
 
     Raises
     ------
-    RuntimeError
-        If no valid molten adiabat exists anywhere in the coarse
-        surface-temperature scan, if the scan is valid, then invalid, then
+    InitialConditionError
+        If no valid molten adiabat exists in the surface-temperature scan, at
+        the midpoints of its intervals or in the extensions above it, if the
+        scan is valid, then invalid, then
         valid again after its first valid point (one leading invalid band at
         the cold end is tolerated; a second transition is not, since the
         bisection below needs a single validity edge), if the solved adiabat
