@@ -406,6 +406,9 @@ class Proteus:
         from proteus.orbit.common import Tides_t
         from proteus.orbit.wrapper import init_orbit, run_orbit
 
+        #   solid-phase volatile trapping
+        from proteus.outgas.trapping import run_trapping
+
         #    outgassing
         from proteus.outgas.wrapper import (
             calc_target_elemental_inventories,
@@ -1006,6 +1009,21 @@ class Proteus:
 
             ############### / INTERIOR AND STRUCTURE
 
+            ############### VOLATILE TRAPPING
+            # The solidification front has finished moving for this step and
+            # any structure re-solve is done, so M_mantle and Phi_global are
+            # final; escape and outgassing have not yet read the inventories.
+            # That makes this the one point where trapping can bury volatiles
+            # and have every downstream consumer see one consistent state.
+            # Inactive unless outgas.trap_mode is set, and on the first step,
+            # which has no previous row to difference.
+            _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+            run_trapping(self.config, self.hf_row, self.hf_all, self.interior_o)
+            if _IT_TIMING_ENABLED:
+                _t_mod['trapping'] = time.perf_counter() - _t0
+
+            ############### / VOLATILE TRAPPING
+
             ############### ORBIT AND TIDES
             PrintHalfSeparator()
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
@@ -1175,9 +1193,13 @@ class Proteus:
             # that mode. An excess larger than the vapour column explains still
             # warns, and PrintCurrentState reports the vapour budget every
             # iteration. Non-conservation is a simplification of vapourisation.
+            from proteus.outgas.trapping import derived_total_elements
+
             assert_mass_conservation(
                 self.hf_row,
                 require_atm_le_planet=not self.config.outgas.vapourise,
+                derived_elements=derived_total_elements(self.config),
+                closure_rtol=self.config.outgas.solver_rtol,
             )
 
             # P_surf = P_vol + P_vap, and P_vap == 0 when rock

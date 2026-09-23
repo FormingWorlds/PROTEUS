@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import vol_list
+from proteus.outgas.common import VOLATILE_ELEMENT_STOICH
 from proteus.utils.helper import eval_gas_mmw
 
 if TYPE_CHECKING:
@@ -75,25 +75,9 @@ def _total_volatile_oxygen_kg(hf_row: dict, element_mmw: dict) -> float:
 # excluded because atmodeller does not outgas it, and tracking Si only on the
 # atmosphere side would make M_ele backend-dependent. Keyed-to-vol_list is
 # asserted at import so a new species cannot silently leak its element mass.
-_VOLATILE_ELEMENT_STOICH = {
-    'H2O': {'H': 2, 'O': 1},
-    'CO2': {'C': 1, 'O': 2},
-    'O2': {'O': 2},
-    'H2': {'H': 2},
-    'CH4': {'C': 1, 'H': 4},
-    'CO': {'C': 1, 'O': 1},
-    'N2': {'N': 2},
-    'NH3': {'N': 1, 'H': 3},
-    'S2': {'S': 2},
-    'SO2': {'S': 1, 'O': 2},
-    'H2S': {'H': 2, 'S': 1},
-}
-
-assert set(_VOLATILE_ELEMENT_STOICH) == set(vol_list), (
-    'atmodeller _VOLATILE_ELEMENT_STOICH must cover exactly constants.vol_list; '
-    f'missing={set(vol_list) - set(_VOLATILE_ELEMENT_STOICH)} '
-    f'extra={set(_VOLATILE_ELEMENT_STOICH) - set(vol_list)}'
-)
+# Shared with the trapping step, which splits the same species masses into the
+# same elements; a second copy here would let the two drift apart.
+_VOLATILE_ELEMENT_STOICH = VOLATILE_ELEMENT_STOICH
 
 # Cache of atmodeller EquilibriumModel instances. atmodeller compiles its JIT
 # solver lazily on the first solve and caches it on the model as ``_solver``,

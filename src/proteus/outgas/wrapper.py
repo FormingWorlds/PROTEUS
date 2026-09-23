@@ -8,6 +8,13 @@ import numpy as np
 
 from proteus.outgas.common import expected_keys
 from proteus.outgas.lavatmos import run_vapourisation
+from proteus.outgas.trapping import (
+    derived_total_elements,
+    restore_locked_totals,
+    restore_solid_reservoirs,
+    snapshot_solid_reservoirs,
+    withhold_locked_totals,
+)
 from proteus.utils.constants import (
     element_list,
     element_mmw,
@@ -274,11 +281,18 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # CALLIOPE drives O_kg_total to near-zero once H/C/N/S vanish, so this
     # change rarely affects the desiccation timing, but it keeps the
     # semantics honest under whole-planet O accounting.
+    #
+    # The test is on the escapable inventory, not the whole-planet total. Mass
+    # trapped in the solid mantle cannot escape and cannot outgas, so a planet
+    # that has lost its entire atmosphere and melt would otherwise be held above
+    # the threshold forever by a reservoir nothing can reach, and would never
+    # desiccate.
+    from proteus.outgas.trapping import escapable_inventory
+
     for e in vol_element_list + noble_gases:
-        if float(hf_row.get(e + '_kg_total', 0.0)) > config.outgas.mass_thresh:
-            log.info(
-                'Not desiccated, %s = %.2e kg' % (e, float(hf_row.get(e + '_kg_total', 0.0)))
-            )
+        reachable = escapable_inventory(hf_row, e)
+        if reachable > config.outgas.mass_thresh:
+            log.info('Not desiccated, %s = %.2e kg reachable' % (e, reachable))
             return False  # return, and allow run_outgassing to proceed
 
     # Escape-balance gate. Only enforced when a baseline has been
@@ -374,6 +388,18 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
     hf_row['O_res'] = 0.0
 
+    # Solid-mantle reservoirs are owned by the trapping step, not by the
+    # chemistry. CALLIOPE has no solid reservoir and writes every
+    # `_kg_solid` field as a hard 0.0 (calliope/solve.py:784, 814, 1289,
+    # 1321), and the binodal H2 override below does the same, so a trapped
+    # inventory would be erased on every iteration it survived to. Snapshot
+    # them here and put them back after the chemistry has run.
+    solid_before = snapshot_solid_reservoirs(hf_row)
+    # The chemistry partitions a whole-planet inventory between melt and
+    # atmosphere. Hide the trapped mass from it for the duration of the solve,
+    # or it re-dissolves volatiles the mantle has already buried.
+    totals_before = withhold_locked_totals(hf_row, derived_total_elements(config))
+
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
         from proteus.outgas.calliope import calc_surface_pressures
@@ -400,6 +426,15 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
         from proteus.outgas.binodal import apply_binodal_h2
 
         apply_binodal_h2(hf_row, config)
+
+    # Restore the solid reservoirs the chemistry just flattened. `max` rather
+    # than a plain overwrite because atmodeller writes real condensate mass
+    # (graphite) into these same columns: taking the larger keeps whichever
+    # source actually filled the reservoir without counting both. Trapped melt
+    # and condensed carbon share one column and are not yet separable; see the
+    # TODO in outgas/trapping.py.
+    restore_locked_totals(hf_row, totals_before)
+    restore_solid_reservoirs(hf_row, solid_before)
 
     # P_surf here is the volatile+noble gas total
     hf_row['P_vol'] = hf_row['P_surf']

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.escape.common import calc_unfract_fluxes
+from proteus.outgas.trapping import locked_solid_mass
 from proteus.utils.constants import M_sun, element_list, noble_gases, secs_per_year
 from proteus.utils.helper import UpdateStatusfile
 
@@ -52,6 +53,21 @@ def reservoir_key(reservoir: str) -> str:
             raise ValueError(f"Invalid escape reservoir '{reservoir}'")
 
 
+def reservoir_mass(hf_row: dict, element: str, key: str) -> float:
+    """Mass of one element escape can draw on from the named reservoir [kg].
+
+    Mass trapped in the solid mantle is locked there: it is neither in the
+    atmosphere nor available to be stripped from it. The `_kg_atm` reservoir
+    never holds it, so only the whole-planet `_kg_total` reservoir needs the
+    subtraction, and sizing a loss from a reservoir that included it would ask
+    escape to remove mass it cannot reach.
+    """
+    mass = float(hf_row.get(f'{element}{key}', 0.0))
+    if key != '_kg_total' or not np.isfinite(mass):
+        return mass
+    return max(0.0, mass - locked_solid_mass(hf_row, element))
+
+
 def escapable_mass(hf_row: dict, reservoir: str) -> float:
     """Return the mass escape can draw on this step [kg].
 
@@ -68,7 +84,7 @@ def escapable_mass(hf_row: dict, reservoir: str) -> float:
             Summed elemental mass held in that reservoir [kg].
     """
     key = reservoir_key(reservoir)
-    return float(sum(float(hf_row.get(f'{e}{key}', 0.0)) for e in element_list))
+    return float(sum(reservoir_mass(hf_row, e, key) for e in element_list))
 
 
 def readable_total(hf_row: dict) -> float:
@@ -540,7 +556,7 @@ def calc_new_elements(
     # all elements proportionally rather than concentrated on H+C+N+S).
     res: dict[str, float] = {}
     for e in element_list:
-        res[e] = float(hf_row.get(f'{e}{key}', 0.0))
+        res[e] = reservoir_mass(hf_row, e, key)
 
     M_vols = float(sum(res.values()))
     # Nothing to share out, either because the reservoir is spent or because an
@@ -586,14 +602,21 @@ def calc_new_elements(
             tgt[e] = old_total
             continue
         new_total = old_total - lost
+        # Mass trapped in the solid mantle is the floor, not zero. The debit
+        # lands on `_kg_total` whichever reservoir sized it, so without this a
+        # large step under `reservoir = "outgas"` would drive the total below
+        # the solid inventory and escape mass locked in the mantle.
+        locked = locked_solid_mass(hf_row, e)
         # The desiccation floor treats a major volatile that drops below
         # min_thresh as fully depleted. Noble gases are intrinsically trace
         # (Earth-like whole-planet inventories sit orders of magnitude below
         # min_thresh), so applying the same absolute floor would zero a
         # realistic noble inventory on the first escape step. Exempt them and
-        # only clamp to non-negative.
-        if e not in noble_gases and new_total < min_thresh:
-            new_total = 0.0
-        tgt[e] = max(0.0, new_total)
+        # only clamp to the locked mass. The threshold is measured against the
+        # escapable remainder so a locked reservoir cannot hold the total above
+        # it indefinitely.
+        if e not in noble_gases and (new_total - locked) < min_thresh:
+            new_total = locked
+        tgt[e] = max(locked, new_total)
 
     return tgt

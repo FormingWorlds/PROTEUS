@@ -229,6 +229,68 @@ class Outgas:
         Relative tolerance for the volatile equilibrium solver.
     solver_atol: float
         Absolute tolerance for the volatile equilibrium solver.
+    trap_mode: str
+        Solid-phase volatile trapping during mantle crystallisation.
+        Choices: 'none' (off), 'constant' (fixed F_tl), 'dynamic'
+        (F_tl from the cooling rate, after Sim et al. 2024 Eq. 7).
+    trap_F_tl: float
+        Trapped melt fraction [1] used by `trap_mode = 'constant'`. The
+        disaggregation melt fraction that bounds F_tl in `trap_mode =
+        'dynamic'` is `interior_energetics.rfront_loc`, the melt fraction of
+        the solver's own rheological transition, not a separate field.
+    trap_tau: float
+        Compaction time scale [yr] used by `trap_mode = 'dynamic'`.
+    trap_tau_source: str
+        Where the compaction time comes from in `trap_mode = 'dynamic'`.
+        'fixed' uses `trap_tau` and `trap_delta_T`, the published linear
+        law, and works with any interior module. 'aragog' replaces both
+        by the drainage integral over the freezing front the interior
+        solver resolves, which needs neither parameter; it falls back to
+        'fixed' when the interior state is unavailable.
+    trap_phi_min: float
+        Porosity below which a node counts as solid [1]. Needed because
+        the density-derived porosity never reaches exactly zero.
+    trap_mush_log10visc: float
+        Log10 viscosity of the mush near the solidus [log10(Pa s)],
+        entering the matrix deformation time. Negative selects the
+        default of 20, mid-range of the 18 to 22 the literature allows.
+    trap_n_front_min: int
+        Fewest nodes a freezing front must span before its drainage is
+        integrated rather than bounded above.
+    trap_max_front_fraction: float
+        Largest fraction of the mantle thickness the front may occupy
+        before its drainage is bounded above instead of integrated [1].
+        The default of 1 sets no limit: where percolation controls the
+        drainage, the retained fraction depends on the ratio of drainage
+        speed to front speed and not on the front thickness, and a thicker
+        front only lengthens the residence time.
+    trap_delta_T: float
+        Solidus to freezing-front temperature difference [K]. Negative
+        derives it from the active melting curves as
+        `interior_energetics.rfront_loc * (T_liquidus - T_solidus)`;
+        positive overrides the derivation. Sim et al. fix 100 K.
+    D_const_H2O: float
+        Crystal/melt partition coefficient of H2O [1], D = w_solid / w_liquid.
+    D_const_CO2: float
+        Crystal/melt partition coefficient of CO2 [1], D = w_solid / w_liquid.
+    D_const_O2: float
+        Crystal/melt partition coefficient of O2 [1], D = w_solid / w_liquid.
+    D_const_H2: float
+        Crystal/melt partition coefficient of H2 [1], D = w_solid / w_liquid.
+    D_const_CH4: float
+        Crystal/melt partition coefficient of CH4 [1], D = w_solid / w_liquid.
+    D_const_CO: float
+        Crystal/melt partition coefficient of CO [1], D = w_solid / w_liquid.
+    D_const_N2: float
+        Crystal/melt partition coefficient of N2 [1], D = w_solid / w_liquid.
+    D_const_NH3: float
+        Crystal/melt partition coefficient of NH3 [1], D = w_solid / w_liquid.
+    D_const_S2: float
+        Crystal/melt partition coefficient of S2 [1], D = w_solid / w_liquid.
+    D_const_SO2: float
+        Crystal/melt partition coefficient of SO2 [1], D = w_solid / w_liquid.
+    D_const_H2S: float
+        Crystal/melt partition coefficient of H2S [1], D = w_solid / w_liquid.
     calliope: Calliope
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
@@ -262,6 +324,48 @@ class Outgas:
     T_floor: float = field(default=700.0, validator=validators.gt(0.0))
     solver_rtol: float = field(default=1e-4, validator=validators.gt(0.0))
     solver_atol: float = field(default=1e-6, validator=validators.gt(0.0))
+
+    # Solid-phase volatile trapping. Backend-agnostic: the bracket runs before
+    # and independently of the chemistry solve, so these sit beside T_floor
+    # rather than under [outgas.calliope]. Default 'none' leaves every existing
+    # run unchanged.
+    trap_mode: str = field(
+        default='none', validator=validators.in_(('none', 'constant', 'dynamic'))
+    )
+    trap_F_tl: float = field(default=0.01, validator=[validators.ge(0.0), validators.le(1.0)])
+    trap_tau: float = field(default=1.0e6, validator=validators.gt(0.0))
+    trap_delta_T: float = field(default=-1.0)
+
+    # Drainage-integral parameters. Used only by trap_tau_source = 'aragog',
+    # which computes the compaction time from the front the interior solver
+    # resolves instead of taking it as an input.
+    trap_tau_source: str = field(default='fixed', validator=validators.in_(('fixed', 'aragog')))
+    trap_phi_min: float = field(
+        default=0.01, validator=[validators.gt(0.0), validators.lt(1.0)]
+    )
+    trap_mush_log10visc: float = field(default=-1.0)
+    trap_n_front_min: int = field(default=3, validator=validators.ge(2))
+    trap_max_front_fraction: float = field(
+        default=1.0, validator=[validators.gt(0.0), validators.le(1.0)]
+    )
+
+    # Crystal/melt partition coefficients, D = w_solid / w_liquid, matching the
+    # per-phase mass fractions the structure side carries. Water is the only
+    # species with appreciable lattice incorporation (Hauri, Gaetani & Green
+    # 2006; Hirschmann et al. 2016); the rest are buried through the
+    # interstitial-melt term alone, which is a physical statement rather than a
+    # placeholder.
+    D_const_H2O: float = field(default=0.0017, validator=validators.ge(0.0))
+    D_const_CO2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_O2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_H2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_CH4: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_CO: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_N2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_NH3: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_S2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_SO2: float = field(default=0.0, validator=validators.ge(0.0))
+    D_const_H2S: float = field(default=0.0, validator=validators.ge(0.0))
 
     calliope: Calliope = field(factory=Calliope)
     atmodeller: Atmodeller = field(factory=Atmodeller)

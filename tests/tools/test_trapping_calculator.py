@@ -22,8 +22,17 @@ it every step from the secular cooling rate after Sim et al. (2024), Section
 * the remelting clamp, so a shrinking solid mantle never reduces the total,
 * the fully-crystallised limit, where no melt is available to draw on,
 * the supply cap, so no step buries more of a species than the melt holds,
-* the missing-column error contract and the skip path for absent species,
-* delimiter detection, since PROTEUS writes the helpfile tab-separated.
+* the default coefficient set, which spans every volatile the helpfile can
+  supply and is non-zero only for water, whose coefficient is elemental,
+* the trapping of species at ``D_Z = 0``, which the interstitial melt buries at
+  ``F_tl * C_Z * dM_RM`` although no crystal term applies to them,
+* the separation of ``D_Z = 0``, ``F_tl = 0`` and the none mode, which are three
+  different results rather than three spellings of one,
+* the missing-column error contract and the skip path for absent species, both
+  for a single species and across the full default set,
+* the plot cap and the summary grouping that keep a full-species run readable,
+* delimiter detection, since PROTEUS writes the helpfile tab-separated,
+* the figures, which carry trapped mass on one axis and nothing else.
 
 See ``docs/How-to/testing.md`` and ``docs/Explanations/test_framework.md``
 for the test framework.
@@ -731,3 +740,633 @@ def test_per_step_table_carries_the_mode_and_the_dynamic_diagnostics():
     assert (
         not pd.concat([dynamic_table, constant_table, none_table])['dm_trap_H2O'].isna().any()
     )
+
+
+@pytest.mark.physics_invariant
+def test_both_mode_pairs_the_prescriptions_without_altering_either():
+    """The combined mode reports two independent runs rather than a blend of
+    them, so each half reproduces the single-mode total for that species
+    exactly and the pair still orders constant below dynamic on a cooling run."""
+    frame = _dynamic_helpfile()
+    combined = _tc.compute_both(frame, f_tl=0.02, **_DYN_KWARGS)
+
+    assert combined.mode == 'both'
+    assert list(combined.results()) == list(_tc.COMBINED_PAIR)
+    assert combined.constant.mode == 'constant'
+    assert combined.dynamic.mode == 'dynamic'
+
+    # Each half equals what that mode produces alone. The values are the same
+    # ones pinned in the three-mode comparison, so a regression that averaged
+    # the two would land at 2.0e17 for H2O and match neither number here.
+    for name, constant_total, dynamic_total in (
+        ('H2O', 6.4998e16, 3.34539e17),
+        ('CO2', 1.2e17, 6.6e17),
+    ):
+        from_both = {
+            mode: next(s.total_trapped for s in result.species if s.name == name)
+            for mode, result in combined.results().items()
+        }
+        alone = {
+            mode: next(
+                s.total_trapped
+                for s in _tc.compute_trapping(
+                    frame, mode=mode, f_tl=0.02, **_DYN_KWARGS
+                ).species
+                if s.name == name
+            )
+            for mode in _tc.COMBINED_PAIR
+        }
+        assert from_both['constant'] == pytest.approx(constant_total, rel=1e-12)
+        assert from_both['dynamic'] == pytest.approx(dynamic_total, rel=1e-12)
+        assert from_both['constant'] == pytest.approx(alone['constant'], rel=1e-15)
+        assert from_both['dynamic'] == pytest.approx(alone['dynamic'], rel=1e-15)
+        assert from_both['constant'] < from_both['dynamic']
+        # Neither half exceeds the inventory it draws on.
+        for mode in _tc.COMBINED_PAIR:
+            inventory = next(
+                s.inventory_final for s in combined.results()[mode].species if s.name == name
+            )
+            assert from_both[mode] <= inventory
+
+    # Error contract: the combined mode is not a single result, and routing it
+    # through the single-result path is refused by name rather than silently
+    # falling back to constant.
+    with pytest.raises(ValueError, match='compute_both'):
+        _tc.compute_trapping(frame, mode='both', **_DYN_KWARGS)
+    assert 'both' not in _tc.TRAPPING_MODES
+    assert 'both' in _tc.CLI_MODES
+
+    # Edge case: the dynamic half needs a temperature column, so a helpfile
+    # without one fails the pair rather than returning a usable constant half.
+    with pytest.raises(_tc.MissingColumnError, match='T_pot'):
+        _tc.compute_both(frame.drop(columns=['T_pot']), f_tl=0.02, **_DYN_KWARGS)
+
+
+def test_combined_table_stacks_both_modes_and_keeps_their_own_columns():
+    """The combined table is the two single-mode tables stacked and told apart
+    by the mode column, so the dynamic diagnostics survive and the constant
+    rows carry the scalar rather than being padded with the dynamic series."""
+    frame = _dynamic_helpfile()
+    combined = _tc.compute_both(frame, f_tl=0.02, **_DYN_KWARGS)
+    table = _tc.build_combined_table(combined, frame)
+
+    assert len(table) == 2 * len(frame)
+    assert list(table['mode'].unique()) == ['constant', 'dynamic']
+
+    constant_rows = table[table['mode'] == 'constant']
+    dynamic_rows = table[table['mode'] == 'dynamic']
+    assert constant_rows['F_tl'].to_numpy(dtype=float) == pytest.approx(0.02, rel=1e-12)
+    np.testing.assert_allclose(
+        dynamic_rows['F_tl'].to_numpy(dtype=float),
+        [0.0, 0.03, 0.3, 0.0],
+        rtol=1e-12,
+        atol=1e-15,
+    )
+    # The dynamic-only diagnostics exist and belong to the dynamic rows alone.
+    # A regression that broadcast one mode's fraction across both blocks would
+    # leave F_tl_raw populated here.
+    assert constant_rows['F_tl_raw'].isna().all()
+    assert np.isfinite(dynamic_rows['F_tl_raw'].to_numpy(dtype=float)).all()
+    assert dynamic_rows['F_tl_raw'].to_numpy(dtype=float)[2] == pytest.approx(1.5, rel=1e-12)
+
+    # The trapped masses differ between the blocks, which is the point of
+    # running both: identical blocks would mean one mode overwrote the other.
+    assert constant_rows['cum_trap_H2O'].to_numpy(dtype=float)[-1] == pytest.approx(
+        6.4998e16, rel=1e-12
+    )
+    assert dynamic_rows['cum_trap_H2O'].to_numpy(dtype=float)[-1] == pytest.approx(
+        3.34539e17, rel=1e-12
+    )
+    # Edge case: the stacked frame has no missing trapped mass anywhere, so a
+    # reader can total the column without first filling gaps.
+    assert not table['dm_trap_H2O'].isna().any()
+
+
+def test_both_mode_summary_reports_each_mode_and_their_ratio():
+    """The combined summary carries both modes' own reports plus the two-mode
+    totals table, and the comparison covers exactly the pair that was run."""
+    frame = _dynamic_helpfile()
+    combined = _tc.compute_both(frame, f_tl=0.02, **_DYN_KWARGS)
+    text = _tc.summarise_both(combined)
+
+    assert 'constant, F_tl = 0.02' in text
+    assert 'dynamic, F_tl in [0 to 0.3]' in text
+    for token in ('H2O', 'CO2', 'Trapped mass by mode', 'Relative to constant mode'):
+        assert token in text
+    # The pair excludes the zero baseline, so the none column must not appear
+    # in the two-mode totals block even though the mode still exists.
+    totals_block = text.split('Trapped mass by mode [kg]')[1]
+    assert 'none' not in totals_block
+
+    # The dynamic-to-constant ratio is the quotient of the pinned totals,
+    # 3.34539e17 / 6.4998e16 = 5.1469..., so the ratio row is not a copy of
+    # the constant column.
+    ratio_line = [line for line in text.splitlines() if line.strip().startswith('H2O')][-1]
+    assert '5.1469' in ratio_line
+
+    # Restricting the general comparison to one mode still works, which is the
+    # contract the pair relies on.
+    single = _tc.summarise_comparison(combined.results(), modes=('dynamic',))
+    assert 'dynamic' in single and 'constant' not in single.split('\n')[2]
+
+
+def _captured_figure(monkeypatch, plt, draw):
+    """Run a plot function and return the figure it drew, still open.
+
+    Both plot functions close their figure before returning, so the only way to
+    inspect what they drew is to intercept the close. The file is still written.
+    """
+    captured = []
+    monkeypatch.setattr(plt, 'close', captured.append)
+    draw()
+    assert len(captured) == 1
+    return captured[0]
+
+
+def test_plots_carry_trapped_mass_alone_on_a_single_axis(tmp_path, monkeypatch):
+    """Both figures draw cumulative trapped mass and nothing else: one axis, one
+    unit, and no trapped-melt-fraction series or disaggregation bound overlaid on
+    it. Those are drawn by tools/plot_trapping_fraction.py instead."""
+    import matplotlib
+
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    frame = _dynamic_helpfile()
+    combined = _tc.compute_both(frame, f_tl=0.02, **_DYN_KWARGS)
+    destination = tmp_path / 'combined.png'
+    figure = _captured_figure(
+        monkeypatch, plt, lambda: _tc.plot_combined(combined, destination)
+    )
+
+    assert destination.exists()
+    written = destination.read_bytes()
+    assert written[:8] == b'\x89PNG\r\n\x1a\n'
+    assert len(written) > 10_000
+
+    # A twin axis would appear here as a second entry; the F_tl overlay was the
+    # only thing that ever created one.
+    assert len(figure.axes) == 1
+    axes = figure.axes[0]
+    assert axes.get_ylabel() == 'Cumulative trapped mass [kg]'
+    # Two species drawn for each of the two modes, and nothing else: an axhline
+    # for phi_c or a level line for the constant fraction would raise the count.
+    assert len(axes.lines) == 4
+    # Scale guard on what was drawn. Trapped masses here are of order 1e16 kg,
+    # while every fraction the removed overlay drew is bounded by phi_c = 0.3,
+    # so a fraction series reintroduced on these axes would show up as a curve
+    # whose largest value is far below any mass curve's.
+    peaks = [float(np.max(line.get_ydata())) for line in axes.lines]
+    assert min(peaks) > 1.0e15
+    plt.close(figure)
+
+    # The single-mode figure drew the conditional overlay when the mode was
+    # dynamic, so that is the case to check: mass curves only, still one axis.
+    dynamic_plot = tmp_path / 'dynamic.png'
+    figure = _captured_figure(
+        monkeypatch, plt, lambda: _tc.plot_cumulative(combined.dynamic, dynamic_plot)
+    )
+    assert len(figure.axes) == 1
+    assert len(figure.axes[0].lines) == 2
+    assert min(float(np.max(line.get_ydata())) for line in figure.axes[0].lines) > 1.0e15
+    plt.close(figure)
+
+    # Limit case: the no-trapping mode traps identically zero, so every curve is
+    # flat at the origin. The figure is still one axis with one curve per
+    # species rather than an empty or a rescaled one.
+    empty = _tc.compute_trapping(frame, mode='none', **_DYN_KWARGS)
+    figure = _captured_figure(
+        monkeypatch, plt, lambda: _tc.plot_cumulative(empty, tmp_path / 'none.png')
+    )
+    assert len(figure.axes) == 1
+    assert len(figure.axes[0].lines) == 2
+    assert max(float(np.max(line.get_ydata())) for line in figure.axes[0].lines) == 0.0
+    plt.close(figure)
+
+
+def test_log_time_axis_leaves_a_run_without_positive_times_linear():
+    """The time axis goes logarithmic from the first positive sample, since a
+    helpfile starts at t = 0, and a run with no positive time at all is left on
+    the linear default rather than raising or producing an empty axis."""
+    import matplotlib
+
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    figure, axes = plt.subplots()
+    _tc.log_time_axis(axes, np.array([0.0, 1.0e2, 2.0e2]))
+    assert axes.get_xscale() == 'log'
+    # The lower limit is the first positive time, not the first row, which a
+    # log axis could not display.
+    assert axes.get_xlim()[0] == pytest.approx(1.0e2, rel=1e-12)
+    plt.close(figure)
+
+    # Edge case: every time is zero, so there is nothing a log axis can show.
+    figure, axes = plt.subplots()
+    _tc.log_time_axis(axes, np.zeros(3))
+    assert axes.get_xscale() == 'linear'
+    plt.close(figure)
+
+    # Edge case: an empty series is handled the same way rather than indexing
+    # into an empty array.
+    figure, axes = plt.subplots()
+    _tc.log_time_axis(axes, np.array([]))
+    assert axes.get_xscale() == 'linear'
+    plt.close(figure)
+
+
+def test_both_mode_runs_end_to_end_from_the_command_line(tmp_path):
+    """The command line accepts the combined mode, writes one stacked table and
+    one plot for it, and refuses a helpfile whose temperature column is absent
+    rather than quietly reporting only the constant half."""
+    frame = _dynamic_helpfile()
+    helpfile = tmp_path / 'runtime_helpfile.csv'
+    frame.to_csv(helpfile, sep='\t', index=False)
+    table_path = tmp_path / 'table.csv'
+    plot_path = tmp_path / 'plot.png'
+
+    code = _tc.main(
+        [
+            '-i',
+            str(helpfile),
+            '--mode',
+            'both',
+            '--f-tl',
+            '0.02',
+            '--phi-c',
+            str(_DYN_PHI_C),
+            '--tau',
+            str(_DYN_TAU_YR),
+            '--delta-t',
+            str(_DYN_DELTA_T_K),
+            '--output-csv',
+            str(table_path),
+            '--plot',
+            str(plot_path),
+        ]
+    )
+    assert code == 0
+    assert plot_path.exists() and plot_path.stat().st_size > 10_000
+    written = pd.read_csv(table_path)
+    assert sorted(written['mode'].unique()) == ['constant', 'dynamic']
+    assert len(written) == 2 * len(frame)
+
+    # Edge case: --no-plot writes the table and nothing else, so the combined
+    # mode is usable where matplotlib is unwanted.
+    second_plot = tmp_path / 'absent.png'
+    code = _tc.main(
+        [
+            '-i',
+            str(helpfile),
+            '--mode',
+            'both',
+            '--no-plot',
+            '--output-csv',
+            str(tmp_path / 'table2.csv'),
+            '--plot',
+            str(second_plot),
+        ]
+    )
+    assert code == 0
+    assert not second_plot.exists()
+
+    # Error contract: the dynamic half needs its temperature column, and the
+    # run fails by name instead of degrading to a constant-only report.
+    bare = tmp_path / 'bare.csv'
+    frame.drop(columns=['T_pot']).to_csv(bare, sep='\t', index=False)
+    with pytest.raises(_tc.MissingColumnError, match='T_pot'):
+        _tc.main(
+            [
+                '-i',
+                str(bare),
+                '--mode',
+                'both',
+                '--no-plot',
+                '--output-csv',
+                str(tmp_path / 'table3.csv'),
+            ]
+        )
+
+
+# Helpfile carrying four of the tracked volatiles with melt concentrations that
+# are constant by construction, so every trapped mass below reduces to
+# D_eff * C_Z * dM_RM with no interpolation to reason about. H2O is the only
+# species with a non-zero partition coefficient; CO and N2 stand for the
+# molecular species that carry none; Xe is present but never outgassed, which is
+# the case a full-species run meets on most helpfiles.
+_MULTI_TIME = [0.0, 1.0e2, 2.0e2, 3.0e2]
+_MULTI_SOLID = [0.0, 1.0e21, 2.0e21, 3.0e21]
+_MULTI_LIQUID = [4.0e21, 3.0e21, 2.0e21, 1.0e21]
+# Melt mass fractions the species columns are built to hold at every row.
+_MULTI_C_Z = {'H2O': 1.0e-3, 'CO': 5.0e-4, 'N2': 2.0e-4, 'Xe': 0.0}
+_MULTI_TOTAL = {'H2O': 5.0e18, 'CO': 2.5e18, 'N2': 1.0e18, 'Xe': 1.0e15}
+# Every step crystallises the same mass, which makes the per-step trapped mass
+# constant and the total a clean multiple of it.
+_MULTI_DM_RM = 1.0e21
+_MULTI_STEPS = 3
+
+
+def _multi_species_helpfile() -> pd.DataFrame:
+    """Four-row helpfile over four species, three of them at D_Z = 0."""
+    data: dict[str, list[float]] = {
+        'Time': list(_MULTI_TIME),
+        'M_mantle': [4.0e21] * 4,
+        'M_mantle_solid': list(_MULTI_SOLID),
+        'M_mantle_liquid': list(_MULTI_LIQUID),
+        'Phi_global': [liquid / 4.0e21 for liquid in _MULTI_LIQUID],
+        'T_pot': [3000.0, 2900.0, 2800.0, 2700.0],
+    }
+    for name, concentration in _MULTI_C_Z.items():
+        data[f'{name}_kg_liquid'] = [concentration * melt for melt in _MULTI_LIQUID]
+        data[f'{name}_kg_total'] = [_MULTI_TOTAL[name]] * 4
+    return pd.DataFrame(data)
+
+
+def _wide_helpfile(names: list[str]) -> pd.DataFrame:
+    """Helpfile over an arbitrary species list, each at a distinct concentration.
+
+    Concentrations decrease down the list so the trapped-mass ranking the plot
+    cap applies is known in advance and is not the declaration order.
+    """
+    data: dict[str, list[float]] = {
+        'Time': list(_MULTI_TIME),
+        'M_mantle': [4.0e21] * 4,
+        'M_mantle_solid': list(_MULTI_SOLID),
+        'M_mantle_liquid': list(_MULTI_LIQUID),
+        'Phi_global': [liquid / 4.0e21 for liquid in _MULTI_LIQUID],
+        'T_pot': [3000.0, 2900.0, 2800.0, 2700.0],
+    }
+    for rank, name in enumerate(names):
+        concentration = 1.0e-3 / float(rank + 1)
+        data[f'{name}_kg_liquid'] = [concentration * melt for melt in _MULTI_LIQUID]
+        data[f'{name}_kg_total'] = [concentration * 5.0e21] * 4
+    return pd.DataFrame(data)
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_every_tracked_volatile_carries_a_coefficient_and_only_water_is_non_zero():
+    """The default set covers every volatile the helpfile can supply: the
+    CALLIOPE volatile species plus the noble gases. Only hydrogen has a measured
+    crystal/melt coefficient, so water alone is non-zero and every molecular
+    species sits at zero as a statement about lattice incorporation."""
+    expected = {
+        'H2O',
+        'CO2',
+        'O2',
+        'H2',
+        'CH4',
+        'CO',
+        'N2',
+        'NH3',
+        'S2',
+        'SO2',
+        'H2S',
+        'He',
+        'Ne',
+        'Ar',
+        'Kr',
+        'Xe',
+    }
+    assert set(_tc.DEFAULT_D_Z) == expected
+    # The olivine/melt hydrogen coefficient of Aubaud et al. (2004). Pinned
+    # because the whole crystal term scales with it.
+    assert _tc.DEFAULT_D_Z['H2O'] == pytest.approx(0.0017, rel=1e-12)
+    # Discrimination guard: the pyroxene coefficients of the same work (opx
+    # 0.019, cpx 0.023) are an order of magnitude larger, so a default swapped
+    # to one of those would land far outside this bound.
+    assert 1.0e-4 < _tc.DEFAULT_D_Z['H2O'] < 5.0e-3
+    # Every other species is exactly zero, not merely small: a value smuggled in
+    # for CO or NH3 would have no experimental basis.
+    others = [value for name, value in _tc.DEFAULT_D_Z.items() if name != 'H2O']
+    assert max(abs(value) for value in others) < 1.0e-18
+    assert len(others) == len(expected) - 1
+    # Water stays first so the two-species behaviour the defaults previously
+    # described is the leading edge of the wider set rather than a reordering.
+    assert list(_tc.DEFAULT_D_Z)[:2] == ['H2O', 'CO2']
+
+
+@pytest.mark.physics_invariant
+def test_zero_coefficient_species_still_trap_the_interstitial_melt():
+    """A species with no lattice incorporation is still buried, because the
+    trapped interstitial melt carries whatever is dissolved in it. On a helpfile
+    with constant melt concentrations the buried mass is F_tl * C_Z * dM_RM per
+    step, which is hand-computable and independent of the crystal chemistry."""
+    frame = _multi_species_helpfile()
+    result = _tc.compute_trapping(frame, mode='constant', f_tl=0.02, d_z=dict(_tc.DEFAULT_D_Z))
+    by_name = {species.name: species for species in result.species}
+    assert sorted(by_name) == ['CO', 'H2O', 'N2', 'Xe']
+
+    # CO carries D_Z = 0, so D_eff collapses to F_tl and the trapped mass is
+    # 0.02 * 5e-4 * 1e21 = 1e16 kg per step over three crystallising steps.
+    carbon = by_name['CO']
+    expected_co = 0.02 * _MULTI_C_Z['CO'] * _MULTI_DM_RM * _MULTI_STEPS
+    assert carbon.total_trapped == pytest.approx(expected_co, rel=1e-12)
+    assert carbon.d_eff == pytest.approx(0.02, rel=1e-12)
+    # Sign guard: burial adds mass to the solid, so the total is positive.
+    assert carbon.total_trapped > 0.0
+    # Scale guard: 3e16 kg, not 3e13 (a gram/kilogram slip) or 3e19 (the melt
+    # inventory itself rather than the trapped share).
+    assert 1.0e16 < carbon.total_trapped < 1.0e17
+    # Formula guard: a regression that used D_Z in place of the bracket would
+    # bury nothing at all here, since D_Z is zero for CO.
+    assert carbon.total_trapped > 1.0e16
+
+    # N2 is also at D_Z = 0 but at two-fifths the concentration, so the ratio of
+    # the two totals is the ratio of the concentrations and nothing else.
+    nitrogen = by_name['N2']
+    assert nitrogen.total_trapped / carbon.total_trapped == pytest.approx(
+        _MULTI_C_Z['N2'] / _MULTI_C_Z['CO'], rel=1e-12
+    )
+
+    # Water is the one species with a crystal term, so it is buried at a larger
+    # effective coefficient than the shared interstitial one.
+    water = by_name['H2O']
+    assert water.d_eff == pytest.approx(0.98 * 0.0017 + 0.02, rel=1e-12)
+    assert water.d_eff > carbon.d_eff
+    # Weighting guard: dropping the (1 - F_tl) factor would give 0.0217 and a
+    # total 3.3e13 kg larger, which the tolerance above resolves.
+    unweighted = (0.0017 + 0.02) * _MULTI_C_Z['H2O'] * _MULTI_DM_RM * _MULTI_STEPS
+    assert abs(water.total_trapped - unweighted) > 1.0e13
+
+    # Boundedness: no species is buried beyond the inventory it belongs to.
+    for species in result.species:
+        assert species.total_trapped <= species.inventory_final
+
+    # Edge case: a species present in the helpfile but never outgassed has zero
+    # melt concentration, so the interstitial term buries nothing for it.
+    assert by_name['Xe'].total_trapped == pytest.approx(0.0, abs=1.0e-30)
+    assert by_name['Xe'].d_eff == pytest.approx(0.02, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_zero_coefficient_and_the_no_trapping_mode_are_different_results():
+    """D_Z = 0 removes the crystal term, not the trapping: the interstitial melt
+    is still buried. The none mode removes the process itself. Collapsing the two
+    would silently zero every molecular species, which is the whole species set
+    bar water, so the distinction is pinned on both sides."""
+    frame = _multi_species_helpfile()
+    coefficients = {'H2O': 0.0017, 'CO': 0.0}
+    trapped = _tc.compute_trapping(frame, mode='constant', f_tl=0.02, d_z=coefficients)
+    absent = _tc.compute_trapping(frame, mode='none', f_tl=0.02, d_z=coefficients)
+    by_trapped = {s.name: s for s in trapped.species}
+    by_absent = {s.name: s for s in absent.species}
+
+    # Interstitial-only trapping for the D_Z = 0 species against exactly zero.
+    expected_co = 0.02 * _MULTI_C_Z['CO'] * _MULTI_DM_RM * _MULTI_STEPS
+    assert by_trapped['CO'].total_trapped == pytest.approx(expected_co, rel=1e-12)
+    assert by_absent['CO'].total_trapped == pytest.approx(0.0, abs=1.0e-30)
+    assert by_trapped['CO'].total_trapped - by_absent['CO'].total_trapped > 2.9e16
+    # The bracket is evaluated in one case and not the other, which is the
+    # structural difference behind the numeric one.
+    assert by_trapped['CO'].d_eff == pytest.approx(0.02, rel=1e-12)
+    assert by_absent['CO'].d_eff is None
+    assert trapped.f_tl == pytest.approx(0.02, rel=1e-12)
+    assert absent.f_tl is None
+
+    # The none mode is not the crystal term on its own either: water carries a
+    # non-zero D_Z and is still buried at exactly nothing.
+    assert by_absent['H2O'].total_trapped == pytest.approx(0.0, abs=1.0e-30)
+
+    # Limit input: F_tl = 0 in the constant mode is the third case, distinct
+    # from both. The bracket is evaluated and collapses to D_Z, so water is
+    # still buried at 0.0017 * 1e-3 * 1e21 * 3 = 5.1e15 kg while CO, having no
+    # crystal term to fall back on, is buried at nothing.
+    edge = _tc.compute_trapping(frame, mode='constant', f_tl=0.0, d_z=coefficients)
+    by_edge = {s.name: s for s in edge.species}
+    expected_water = 0.0017 * _MULTI_C_Z['H2O'] * _MULTI_DM_RM * _MULTI_STEPS
+    assert by_edge['H2O'].total_trapped == pytest.approx(expected_water, rel=1e-12)
+    assert 1.0e15 < by_edge['H2O'].total_trapped < 1.0e16
+    assert by_edge['CO'].total_trapped == pytest.approx(0.0, abs=1.0e-30)
+    assert by_edge['CO'].d_eff == pytest.approx(0.0, abs=1.0e-18)
+
+
+def test_absent_species_are_skipped_without_changing_the_species_that_remain():
+    """Running the full default set against a helpfile that tracked only a few
+    species reports the rest as skipped and leaves the surviving totals bit for
+    bit what a run naming only those species produces."""
+    frame = _multi_species_helpfile()
+    full = _tc.compute_trapping(frame, mode='constant', f_tl=0.02)
+    present = ['H2O', 'CO', 'N2', 'Xe']
+
+    # Order follows the default dictionary, not the helpfile column order.
+    assert [species.name for species in full.species] == present
+    assert full.skipped == [name for name in _tc.DEFAULT_D_Z if name not in present]
+    assert len(full.skipped) == len(_tc.DEFAULT_D_Z) - len(present)
+
+    restricted = _tc.compute_trapping(
+        frame,
+        mode='constant',
+        f_tl=0.02,
+        d_z={name: _tc.DEFAULT_D_Z[name] for name in present},
+    )
+    for wide, narrow in zip(full.species, restricted.species):
+        assert wide.name == narrow.name
+        assert wide.total_trapped == pytest.approx(narrow.total_trapped, rel=1e-12)
+        np.testing.assert_allclose(wide.dm_trap, narrow.dm_trap, rtol=1e-12, atol=0.0)
+    assert restricted.skipped == []
+
+    # Error contract: a species needs both of its columns. One alone is not
+    # enough to form a concentration, so it is skipped rather than half-used.
+    half = frame.drop(columns=['CO_kg_total'])
+    partial = _tc.compute_trapping(half, mode='constant', f_tl=0.02)
+    assert 'CO' in partial.skipped
+    assert [species.name for species in partial.species] == ['H2O', 'N2', 'Xe']
+    # Edge case: the surviving species are untouched by the loss of a neighbour.
+    assert partial.species[0].total_trapped == pytest.approx(
+        full.species[0].total_trapped, rel=1e-12
+    )
+
+
+def test_plot_cap_ranks_by_trapped_mass_and_never_repeats_a_style(tmp_path, monkeypatch):
+    """The full species set outnumbers the colour palette, so the figure draws
+    the largest contributors and names the rest instead of wrapping the palette
+    and giving two species the same colour."""
+    import matplotlib
+
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    names = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2']
+    frame = _wide_helpfile(names)
+    result = _tc.compute_trapping(frame, mode='constant', f_tl=0.02)
+    assert len(result.species) == len(names)
+
+    drawn, omitted = _tc.rank_species(result.species, _tc.DEFAULT_PLOT_TOP)
+    # Concentrations fall down the list, so the ranking is the declaration order
+    # here and the two smallest contributors are the ones dropped.
+    assert [species.name for species in drawn] == names[: _tc.DEFAULT_PLOT_TOP]
+    assert [species.name for species in omitted] == names[_tc.DEFAULT_PLOT_TOP :]
+    assert drawn[0].total_trapped > drawn[-1].total_trapped
+    assert min(s.total_trapped for s in drawn) >= max(s.total_trapped for s in omitted)
+
+    note = _tc.describe_omitted(drawn, omitted)
+    for name in names[_tc.DEFAULT_PLOT_TOP :]:
+        assert name in note
+    assert '8 of 10' in note
+    assert _tc.describe_omitted(result.species, []) == ''
+
+    figure = _captured_figure(
+        monkeypatch, plt, lambda: _tc.plot_cumulative(result, tmp_path / 'wide.png')
+    )
+    axes = figure.axes[0]
+    assert len(axes.lines) == _tc.DEFAULT_PLOT_TOP
+    colours = [line.get_color() for line in axes.lines]
+    assert len(set(colours)) == len(colours)
+    assert axes.get_legend().get_title().get_text() == '+2 not shown'
+    plt.close(figure)
+
+    # Edge case: lifting the cap draws every species, and the style cycle keeps
+    # each curve distinguishable past the eight colours the palette holds.
+    figure = _captured_figure(
+        monkeypatch, plt, lambda: _tc.plot_cumulative(result, tmp_path / 'all.png', top=0)
+    )
+    axes = figure.axes[0]
+    assert len(axes.lines) == len(names)
+    pairs = [(line.get_color(), line.get_linestyle()) for line in axes.lines]
+    assert len(set(pairs)) == len(pairs)
+    plt.close(figure)
+
+    # Line style is spent on the mode in the combined figure, so the cap there
+    # cannot exceed the palette however it is asked for.
+    combined = _tc.compute_both(
+        frame, f_tl=0.02, phi_c=_DYN_PHI_C, tau=_DYN_TAU_YR, delta_t=_DYN_DELTA_T_K
+    )
+    assert len(combined.constant.species) == len(names)
+    figure = _captured_figure(
+        monkeypatch,
+        plt,
+        lambda: _tc.plot_combined(combined, tmp_path / 'combined_wide.png', top=0),
+    )
+    axes = figure.axes[0]
+    assert len(axes.lines) == 2 * len(_tc.WONG_COLOURS)
+    assert len({line.get_color() for line in axes.lines}) == len(_tc.WONG_COLOURS)
+    plt.close(figure)
+
+
+def test_summary_groups_species_that_trap_nothing_but_keeps_the_zero_baseline_whole():
+    """Most of the species set traps nothing on a given run, so those are named
+    on one line while the species that do trap keep their full report. A run in
+    which nothing traps anywhere is the zero baseline itself and keeps every
+    block, so the baseline stays legible rather than collapsing to a name list."""
+    frame = _multi_species_helpfile()
+    result = _tc.compute_trapping(frame, mode='constant', f_tl=0.02)
+    text = _tc.summarise(result)
+
+    # Xe is tracked but never outgassed, so it traps nothing and is grouped.
+    assert 'trapped nothing            : Xe' in text
+    assert 'Xe: D_Z' not in text
+    for name in ('H2O', 'CO', 'N2'):
+        assert f'{name}: D_Z' in text
+    # The skipped species are a different category and stay on their own line:
+    # absent from the helpfile, not merely un-outgassed.
+    assert 'skipped (no columns)' in text
+    assert 'CO2' in text.split('skipped (no columns)')[1].split('\n')[0]
+
+    # Limit case: the none mode buries nothing anywhere, so no species is
+    # singled out as the one that trapped nothing and every block is kept.
+    baseline = _tc.summarise(_tc.compute_trapping(frame, mode='none', f_tl=0.02))
+    assert 'trapped nothing' not in baseline
+    for name in ('H2O', 'CO', 'N2', 'Xe'):
+        assert f'{name}: D_Z' in baseline
+    assert baseline.count('supply-clamped') == 4

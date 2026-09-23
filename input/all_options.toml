@@ -577,6 +577,32 @@ config_version = "3.0"
     solver_rtol               = 1e-4         # relative mass/equilibrium tolerance
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
 
+    # Solid-phase volatile trapping during mantle crystallisation
+    trap_mode                 = "none"       # none | constant | dynamic
+    trap_F_tl                 = 0.01         # trapped melt fraction [1], constant mode
+    trap_tau                  = 1.0e6        # compaction time scale [yr], dynamic mode
+    trap_delta_T              = -1.0         # solidus to freezing front [K]; negative derives it from the melting curves
+
+    # Drainage integral: compaction time from the front the solver resolves
+    trap_tau_source           = "fixed"      # fixed (published law) | aragog (drainage integral)
+    trap_phi_min              = 0.01         # porosity below which a node counts as solid [1]
+    trap_mush_log10visc       = -1.0         # log10 mush viscosity [Pa s]; negative selects 20
+    trap_n_front_min          = 3            # fewest nodes a front must span to be integrated
+    trap_max_front_fraction   = 1.0          # largest fraction of the mantle the front may occupy; 1 = no limit
+
+    # Crystal/melt partition coefficients, D = w_solid / w_liquid
+    D_const_H2O              = 0.0017       # H2O lattice incorporation [1]
+    D_const_CO2              = 0.0          # CO2 lattice incorporation [1]
+    D_const_O2               = 0.0          # O2 lattice incorporation [1]
+    D_const_H2               = 0.0          # H2 lattice incorporation [1]
+    D_const_CH4              = 0.0          # CH4 lattice incorporation [1]
+    D_const_CO               = 0.0          # CO lattice incorporation [1]
+    D_const_N2               = 0.0          # N2 lattice incorporation [1]
+    D_const_NH3              = 0.0          # NH3 lattice incorporation [1]
+    D_const_S2               = 0.0          # S2 lattice incorporation [1]
+    D_const_SO2              = 0.0          # SO2 lattice incorporation [1]
+    D_const_H2S              = 0.0          # H2S lattice incorporation [1]
+
     [outgas.calliope]
         # Species switches (false = excluded entirely from equilibrium calculation)
         include_H2O           = true

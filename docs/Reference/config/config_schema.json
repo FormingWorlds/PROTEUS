@@ -6966,6 +6966,425 @@
       "group_qualifier": null
     },
     {
+      "path": "outgas.trap_mode",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"none\"",
+      "choices": [
+        "none",
+        "constant",
+        "dynamic"
+      ],
+      "bounds": null,
+      "description": "Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off), 'constant' (fixed F_tl), 'dynamic' (F_tl from the cooling rate, after Sim et al. 2024 Eq. 7).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_F_tl",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        },
+        {
+          "op": "<=",
+          "value": 1.0
+        }
+      ],
+      "description": "Trapped melt fraction [1] used by `trap_mode = 'constant'`. The disaggregation melt fraction that bounds F_tl in `trap_mode = 'dynamic'` is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_tau",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Compaction time scale [yr] used by `trap_mode = 'dynamic'`.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_delta_T",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "-1.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Solidus to freezing-front temperature difference [K]. Negative derives it from the active melting curves as `interior_energetics.rfront_loc * (T_liquidus - T_solidus)`; positive overrides the derivation. Sim et al. fix 100 K.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_tau_source",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"fixed\"",
+      "choices": [
+        "fixed",
+        "aragog"
+      ],
+      "bounds": null,
+      "description": "Where the compaction time comes from in `trap_mode = 'dynamic'`. 'fixed' uses `trap_tau` and `trap_delta_T`, the published linear law, and works with any interior module. 'aragog' replaces both by the drainage integral over the freezing front the interior solver resolves, which needs neither parameter; it falls back to 'fixed' when the interior state is unavailable.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_phi_min",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        },
+        {
+          "op": "<",
+          "value": 1.0
+        }
+      ],
+      "description": "Porosity below which a node counts as solid [1]. Needed because the density-derived porosity never reaches exactly zero.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_mush_log10visc",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "-1.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Log10 viscosity of the mush near the solidus [log10(Pa s)], entering the matrix deformation time. Negative selects the default of 20, mid-range of the 18 to 22 the literature allows.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_n_front_min",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "int",
+      "accepts_none": false,
+      "default": "3",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 2
+        }
+      ],
+      "description": "Fewest nodes a freezing front must span before its drainage is integrated rather than bounded above.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_max_front_fraction",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        },
+        {
+          "op": "<=",
+          "value": 1.0
+        }
+      ],
+      "description": "Largest fraction of the mantle thickness the front may occupy before its drainage is bounded above instead of integrated [1]. The default of 1 sets no limit: where percolation controls the drainage, the retained fraction depends on the ratio of drainage speed to front speed and not on the front thickness, and a thicker front only lengthens the residence time.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_H2O",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0017",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of H2O [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_CO2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of CO2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_O2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of O2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_H2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of H2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_CH4",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of CH4 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_CO",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of CO [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_N2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of N2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_NH3",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of NH3 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_S2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of S2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_SO2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of SO2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_H2S",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of H2S [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "outgas.calliope.include_H2O",
       "toml_section": "outgas.calliope",
       "class": "Calliope",

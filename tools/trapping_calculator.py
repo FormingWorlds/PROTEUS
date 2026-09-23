@@ -50,6 +50,16 @@ selected mode. The mass-balance algebra is identical across modes.
         F_tl(t) = -(phi_c * tau / DeltaT) * dT/dt
 
     clamped to ``[0, phi_c]``. See the provenance note below.
+``both``
+    Not a fourth prescription for ``F_tl``. It runs the ``constant`` and
+    ``dynamic`` calculations over the same helpfile and reports them together:
+    the per-step table gains a second block of rows, told apart by the existing
+    ``mode`` column, and the plot draws both cumulative curves on one pair of
+    axes. Nothing is averaged or otherwise
+    combined between the two, and neither result differs from what the same
+    mode produces on its own. The pairing is constant against dynamic because
+    those are the two competing prescriptions; ``none`` is the zero baseline
+    and is available through ``--compare-modes``.
 
 Provenance of the dynamic form
 ------------------------------
@@ -123,13 +133,42 @@ for exactly this reason.
 
 Partition coefficients
 ----------------------
-The H2O default of 0.0017 sits in the olivine and garnet range quoted in the
-specification (Hauri, Gaetani & Green 2006; Hirschmann et al. 2016).
-Orthopyroxene and clinopyroxene values of roughly 0.005 to 0.016 can be supplied
-on the command line. CO2 defaults to 0.0 so that negligible carbon trapping is
-demonstrated by the calculation rather than assumed by leaving carbon out. Note
-that a species at ``D_Z = 0`` still traps ``F_tl * C_Z * dM_RM``, because the
-interstitial melt is buried whatever the crystal chemistry does.
+Crystal/melt partition coefficients are defined for elements entering a crystal
+lattice as point defects, not for intact molecules. Hydrogen enters nominally
+anhydrous silicates as OH groups and proton substitutions (2H+ for Mg2+, H+ with
+Al3+ for Si4+, 4H+ for Si4+; Keppler & Bolfan-Casanova 2006, Table 1). A
+molecule such as CO, NH3 or SO2 cannot partition into a lattice as a molecule:
+its carrier elements enter as chemically distinct defects (N3-, sulfide or
+sulfate, carbonate or C-H) whose speciation is set by oxygen fugacity, not by
+the gas-phase molecular identity. The coefficients measured in the literature
+are therefore elemental. Aubaud, Hauri & Hirschmann (2004) report
+D_H(olivine/melt) = 0.0017 +/- 0.0005, and the ``H2O`` entry below is
+mass-fraction bookkeeping over hydrogen rather than molecular partitioning.
+
+Every species other than H2O carries ``D_Z = 0``. That is a positive physical
+statement, not a placeholder for a value still to be looked up: lattice
+incorporation is negligible for everything except water, and no experimentally
+determined crystal/melt coefficient exists for CO, NH3, SO2 or the other
+molecular species, so supplying one would be unfounded. A species at
+``D_Z = 0`` is still trapped, at ``F_tl * C_Z * dM_RM``, because trapped
+interstitial melt physically carries whatever is dissolved in it, molecules
+included. That term is species-agnostic and molecularly sound, so ``D_Z = 0``
+removes the crystal term and not the trapping.
+
+The H2O value is the olivine/melt hydrogen coefficient of Aubaud et al. (2004),
+measured at 1 to 2 GPa and 1230 to 1380 C, so using it at magma-ocean pressures
+is an extrapolation. Pyroxene values (opx 0.019, cpx 0.023; Aubaud et al. 2004,
+2008) can be supplied as ``--d-z H2O=0.019`` for a sensitivity test.
+
+The choice has limited leverage on the totals. The interstitial term dominates
+the bracket throughout the regime, but by a margin that depends on where
+``F_tl`` sits: since ``D_eff = (1 - F_tl) * D_Z + F_tl``, the crystal term adds
+``(1 - F_tl) * D_Z / F_tl`` relative to the interstitial term, which for water
+is 17% at ``F_tl = 0.01`` and 0.4% at the disaggregation limit ``F_tl = 0.3``.
+Water is thus the one species whose ``D_Z`` matters at all, and mainly at the
+low end of the constant-mode range; for every species at ``D_Z = 0`` the
+leverage is exactly zero by construction and the trapped mass is set by ``F_tl``
+alone.
 
 Indexing convention
 -------------------
@@ -156,7 +195,13 @@ Usage
     python tools/trapping_calculator.py -i <helpfile> --mode constant --f-tl 0.03
     python tools/trapping_calculator.py -i <helpfile> --mode dynamic \
         --phi-c 0.3 --tau 1.0e6 --delta-t 100.0
+    python tools/trapping_calculator.py -i <helpfile> --mode both --f-tl 0.01
     python tools/trapping_calculator.py -i <helpfile> --compare-modes
+
+The plot drawn here carries trapped mass only. ``F_tl`` and the disaggregation
+bound ``phi_c`` are written to the per-step table and plotted separately by
+``tools/plot_trapping_fraction.py``, which draws them for one run or across
+several.
 """
 
 from __future__ import annotations
@@ -169,8 +214,26 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# Selectable trapping modes, in the order the comparison summary reports them.
+# The physics is shared with the live coupling in the PROTEUS timestep loop.
+# Both call these, so the offline diagnostic and the simulation cannot drift
+# apart on the bracket, the prefactor, or the melt concentration.
+from proteus.outgas.trapping import (
+    effective_partition,
+    melt_concentration,
+    raw_trapped_fraction,
+)
+
+# Trapping modes that each produce one TrappingResult, in the order the
+# comparison summary reports them.
 TRAPPING_MODES = ('none', 'constant', 'dynamic')
+# Runs constant and dynamic together. Deliberately kept out of TRAPPING_MODES:
+# it yields a pair of results rather than one, so anything iterating the modes
+# to build a single result per mode must not pick it up.
+COMBINED_MODE = 'both'
+# The two modes COMBINED_MODE pairs, in plotting and reporting order.
+COMBINED_PAIR = ('constant', 'dynamic')
+# What the command line accepts for --mode.
+CLI_MODES = (*TRAPPING_MODES, COMBINED_MODE)
 DEFAULT_MODE = 'constant'
 
 # Trapped-melt fraction for the constant mode. Single scalar shared by every
@@ -195,11 +258,34 @@ DEFAULT_DELTA_T_K = 100.0
 # potential temperature, whose helpfile analogue is T_pot [K].
 DEFAULT_TEMPERATURE_COLUMN = 'T_pot'
 
-# Crystal/melt partition coefficients, one per species. Species listed here that
-# the helpfile cannot supply are skipped with a note rather than failing the run.
+# Crystal/melt partition coefficients, one per species. The set is every
+# volatile PROTEUS tracks in the helpfile: the CALLIOPE volatile species
+# followed by the noble gases. Species listed here that the helpfile cannot
+# supply are skipped with a note rather than failing the run, so the same set
+# serves runs that outgassed only a subset.
+#
+# Only H2O is non-zero, and only because the measured coefficient is elemental
+# (hydrogen in the olivine lattice) rather than molecular. Every other entry is
+# zero as a physical statement about lattice incorporation, not as a missing
+# value; the interstitial-melt term traps all of them regardless. See the
+# module docstring, 'Partition coefficients'.
 DEFAULT_D_Z: dict[str, float] = {
     'H2O': 0.0017,
     'CO2': 0.0,
+    'O2': 0.0,
+    'H2': 0.0,
+    'CH4': 0.0,
+    'CO': 0.0,
+    'N2': 0.0,
+    'NH3': 0.0,
+    'S2': 0.0,
+    'SO2': 0.0,
+    'H2S': 0.0,
+    'He': 0.0,
+    'Ne': 0.0,
+    'Ar': 0.0,
+    'Kr': 0.0,
+    'Xe': 0.0,
 }
 
 # Columns the calculation cannot proceed without.
@@ -221,6 +307,18 @@ WONG_COLOURS = (
     '#F0E442',
     '#000000',
 )
+
+# Species drawn on the cumulative plot before the cap applies. The default is
+# the palette length, so the drawn species always carry distinct colours. The
+# full species set is roughly twice that, and a figure carrying all of it is
+# unreadable whatever the styling, so the cap is on by default and the species
+# it leaves out are named in a printed note. ``--plot-top 0`` lifts it.
+DEFAULT_PLOT_TOP = len(WONG_COLOURS)
+# Line styles advanced once per full colour cycle, so a run that lifts the cap
+# still gets a unique (colour, style) pair per species instead of two curves
+# drawn identically. Only the single-mode figure can use this: the combined
+# figure spends line style on the mode.
+SPECIES_STYLES = ('-', '--', '-.', ':')
 
 DEFAULT_OUTPUT_DIR = Path('output_files') / 'trapping'
 
@@ -298,29 +396,44 @@ class TrappingResult:
     dynamic: DynamicTrapping | None = None
 
 
+@dataclass
+class CombinedResult:
+    """The constant- and dynamic-mode runs over one helpfile, kept side by side.
+
+    This is a pair of independent results, not a blend of them: each field is
+    exactly what the corresponding single-mode run produces. It exists so the
+    two competing prescriptions for ``F_tl`` can be tabulated and drawn on the
+    same axes without either being averaged into the other.
+    """
+
+    constant: TrappingResult
+    dynamic: TrappingResult
+
+    @property
+    def mode(self) -> str:
+        """Name of the combined mode, mirroring ``TrappingResult.mode``."""
+        return COMBINED_MODE
+
+    def results(self) -> dict[str, TrappingResult]:
+        """The two results keyed by mode name, in ``COMBINED_PAIR`` order."""
+        return {'constant': self.constant, 'dynamic': self.dynamic}
+
+
 def validate_mode(mode: str) -> str:
-    """Return the mode unchanged, or refuse an unknown one by name."""
+    """Return the mode unchanged, or refuse an unknown one by name.
+
+    ``both`` is refused here as well. It is a valid command-line mode but not a
+    valid single-result mode, so routing it into the single-result path is a
+    caller error rather than a typo, and the message says which call to make.
+    """
+    if mode == COMBINED_MODE:
+        raise ValueError(
+            f'Mode {COMBINED_MODE!r} produces one result per mode in '
+            f'{COMBINED_PAIR}, not a single result; call compute_both() instead.'
+        )
     if mode not in TRAPPING_MODES:
         raise ValueError(f'Unknown trapping mode {mode!r}; expected one of {TRAPPING_MODES}')
     return mode
-
-
-def effective_partition(f_tl: float | np.ndarray, d_z: float) -> float | np.ndarray:
-    """Effective crystal/melt partition coefficient including trapped melt.
-
-    Reduces to ``f_tl`` for a perfectly incompatible species (``d_z = 0``) and
-    to 1 for a species that does not fractionate (``d_z = 1``). ``f_tl`` may be
-    a scalar or a per-step array; the algebra is the same either way.
-    """
-    fraction = np.asarray(f_tl, dtype=float)
-    if not np.all(np.isfinite(fraction)):
-        raise ValueError('F_tl must be finite at every step')
-    if np.any((fraction < 0.0) | (fraction > 1.0)):
-        outside = fraction[(fraction < 0.0) | (fraction > 1.0)]
-        raise ValueError(f'F_tl must lie in [0, 1], got {outside.ravel()[0]!r}')
-    if d_z < 0.0:
-        raise ValueError(f'D_Z must be non-negative, got {d_z!r}')
-    return (1.0 - f_tl) * d_z + f_tl
 
 
 def crystallised_mass(m_solid: np.ndarray) -> tuple[np.ndarray, int]:
@@ -337,19 +450,6 @@ def crystallised_mass(m_solid: np.ndarray) -> tuple[np.ndarray, int]:
         dm[1:] = np.diff(solid)
     n_negative = int(np.count_nonzero(dm < 0.0))
     return np.maximum(dm, 0.0), n_negative
-
-
-def melt_concentration(kg_liquid: np.ndarray, m_liquid: np.ndarray) -> np.ndarray:
-    """Species mass fraction in the melt [1]; zero wherever no melt remains.
-
-    A fully crystallised mantle carries no melt to draw from, so the quotient is
-    replaced by zero instead of dividing by zero.
-    """
-    kg = np.maximum(np.asarray(kg_liquid, dtype=float), 0.0)
-    melt = np.asarray(m_liquid, dtype=float)
-    c_z = np.zeros(kg.size, dtype=float)
-    np.divide(kg, melt, out=c_z, where=melt > 0.0)
-    return c_z
 
 
 def cooling_rate(time: np.ndarray, temperature: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -396,15 +496,8 @@ def dynamic_trapped_fraction(
     nor its published source, and handles warming steps, which a monotonically
     cooling magma ocean never produces; see the module docstring.
     """
-    if not 0.0 < phi_c <= 1.0:
-        raise ValueError(f'phi_c must lie in (0, 1], got {phi_c!r}')
-    if tau <= 0.0:
-        raise ValueError(f'tau must be positive, got {tau!r}')
-    if delta_t <= 0.0:
-        raise ValueError(f'DeltaT must be positive, got {delta_t!r}')
-
     dt_dt, usable = cooling_rate(time, temperature)
-    f_tl_raw = -(phi_c * tau / delta_t) * dt_dt
+    f_tl_raw = raw_trapped_fraction(dt_dt, phi_c, tau, delta_t)
     f_tl = np.where(usable, np.clip(f_tl_raw, 0.0, phi_c), 0.0)
     return DynamicTrapping(
         column=column,
@@ -567,6 +660,43 @@ def compute_trapping(
     )
 
 
+def compute_both(
+    frame: pd.DataFrame,
+    f_tl: float = DEFAULT_F_TL,
+    d_z: dict[str, float] | None = None,
+    phi_c: float = DEFAULT_PHI_C,
+    tau: float = DEFAULT_TAU_YR,
+    delta_t: float = DEFAULT_DELTA_T_K,
+    temperature_column: str = DEFAULT_TEMPERATURE_COLUMN,
+) -> CombinedResult:
+    """Run the constant and dynamic modes over one helpfile and keep both.
+
+    Every argument is forwarded unchanged, so each half is identical to what
+    ``compute_trapping`` returns for that mode alone. Nothing is averaged
+    between them.
+
+    Raises
+    ------
+    MissingColumnError
+        From the dynamic half if ``temperature_column`` is absent, or from
+        either half if a required column is. The constant half is computed
+        first, so a helpfile that supports constant but not dynamic still
+        raises rather than silently returning half a result.
+    """
+    shared = {
+        'f_tl': f_tl,
+        'd_z': d_z,
+        'phi_c': phi_c,
+        'tau': tau,
+        'delta_t': delta_t,
+        'temperature_column': temperature_column,
+    }
+    return CombinedResult(
+        constant=compute_trapping(frame, mode='constant', **shared),
+        dynamic=compute_trapping(frame, mode='dynamic', **shared),
+    )
+
+
 def build_table(result: TrappingResult, frame: pd.DataFrame | None = None) -> pd.DataFrame:
     """Per-step table: mode, time, crystallised mass, and per-species trapping.
 
@@ -593,6 +723,22 @@ def build_table(result: TrappingResult, frame: pd.DataFrame | None = None) -> pd
         data[f'dm_trap_{species.name}'] = species.dm_trap
         data[f'cum_trap_{species.name}'] = species.cumulative
     return pd.DataFrame(data)
+
+
+def build_combined_table(
+    combined: CombinedResult, frame: pd.DataFrame | None = None
+) -> pd.DataFrame:
+    """Both modes' per-step tables stacked, told apart by the ``mode`` column.
+
+    The two modes carry different diagnostic columns, since dynamic adds the
+    cooling rate and the unclamped fraction, so the stacked frame is the union
+    of both column sets and the constant rows leave the dynamic-only columns
+    empty. Stacking rather than widening keeps every column name identical to
+    the single-mode tables, so a reader that already parses one mode parses
+    this one unchanged.
+    """
+    tables = [build_table(result, frame) for result in combined.results().values()]
+    return pd.concat(tables, ignore_index=True, sort=False)
 
 
 def read_helpfile(path: Path, sep: str | None = None) -> pd.DataFrame:
@@ -645,7 +791,14 @@ def summarise(result: TrappingResult) -> str:
         ]
     if result.skipped:
         lines.append(f'  skipped (no columns)       : {", ".join(result.skipped)}')
-    for species in result.species:
+    # Over the full species set most entries trap nothing, either because the
+    # run never outgassed them or because no melt was left to draw on. They are
+    # grouped onto one line so the species that do trap stay readable. When
+    # nothing traps anywhere the mode is the zero baseline itself, and every
+    # species keeps its full block so that baseline is still reported in full.
+    trapping = [s for s in result.species if s.total_trapped > 0.0]
+    silent = [s for s in result.species if s.total_trapped <= 0.0]
+    for species in trapping or result.species:
         if species.d_eff is None:
             d_eff_text = 'not evaluated'
         else:
@@ -662,6 +815,8 @@ def summarise(result: TrappingResult) -> str:
             f'    of inventory   = {percent:.4f} % of {species.inventory_final:.4e} kg',
             f'    supply-clamped = {species.n_supply_clamped} step(s)',
         ]
+    if trapping and silent:
+        lines.append(f'  trapped nothing            : {", ".join(s.name for s in silent)}')
     return '\n'.join(lines)
 
 
@@ -690,27 +845,35 @@ def compare_modes(
     }
 
 
-def summarise_comparison(results: dict[str, TrappingResult]) -> str:
-    """Totals per species per mode, with the ratio each mode traps against constant."""
+def summarise_comparison(
+    results: dict[str, TrappingResult], modes: tuple[str, ...] | None = None
+) -> str:
+    """Totals per species per mode, with the ratio each mode traps against constant.
+
+    ``modes`` selects which of ``results`` to report and in what order,
+    defaulting to all three single-result modes. The ``both`` mode passes its
+    own pair so the summary covers exactly the two runs it performed.
+    """
+    ordered = TRAPPING_MODES if modes is None else tuple(modes)
     names: list[str] = []
-    for result in results.values():
-        for species in result.species:
+    for mode in ordered:
+        for species in results[mode].species:
             if species.name not in names:
                 names.append(species.name)
 
     lines = [
         '',
         'Trapped mass by mode [kg]',
-        f'  {"species":<8}' + ''.join(f'{mode:>16}' for mode in TRAPPING_MODES),
+        f'  {"species":<8}' + ''.join(f'{mode:>16}' for mode in ordered),
     ]
     for name in names:
         totals = []
-        for mode in TRAPPING_MODES:
+        for mode in ordered:
             match = [s for s in results[mode].species if s.name == name]
             totals.append(match[0].total_trapped if match else float('nan'))
         lines.append(f'  {name:<8}' + ''.join(f'{value:>16.4e}' for value in totals))
 
-    baseline = results.get('constant')
+    baseline = results.get('constant') if 'constant' in ordered else None
     if baseline is not None:
         lines.append('')
         lines.append('Relative to constant mode')
@@ -721,7 +884,7 @@ def summarise_comparison(results: dict[str, TrappingResult]) -> str:
                 lines.append(f'  {name:<8} constant traps nothing; ratio undefined')
                 continue
             ratios = []
-            for mode in TRAPPING_MODES:
+            for mode in ordered:
                 other = [s for s in results[mode].species if s.name == name]
                 total = other[0].total_trapped if other else 0.0
                 ratios.append(total / reference)
@@ -729,11 +892,30 @@ def summarise_comparison(results: dict[str, TrappingResult]) -> str:
     return '\n'.join(lines)
 
 
-def plot_cumulative(result: TrappingResult, path: Path) -> None:
-    """Write the cumulative trapped mass against time, one line per species.
+def summarise_both(combined: CombinedResult) -> str:
+    """Both modes' full summaries, then their totals side by side."""
+    return '\n'.join(
+        [
+            summarise(combined.constant),
+            '',
+            summarise(combined.dynamic),
+            summarise_comparison(combined.results(), modes=COMBINED_PAIR),
+        ]
+    )
 
-    Dynamic mode overlays the trapped-melt fraction on a second axis so the
-    clamped intervals are visible against the mass they produced.
+
+# Line style per mode on the combined plot. Colour is spent on species, so the
+# two modes have to be told apart some other way.
+COMBINED_STYLES = {'constant': '-', 'dynamic': '--'}
+
+
+def _styled_axes(figsize: tuple[float, float]):
+    """Figure and axes with the shared styling, returned with the pyplot module.
+
+    Both plot functions draw cumulative trapped mass against time on identical
+    axes, so the styling lives here rather than being repeated and drifting.
+    matplotlib is imported inside the function because the calculation itself
+    does not need it.
     """
     import matplotlib
 
@@ -743,43 +925,206 @@ def plot_cumulative(result: TrappingResult, path: Path) -> None:
     plt.rcParams.update(
         {'font.family': 'sans-serif', 'font.sans-serif': ['Helvetica', 'Arial', 'DejaVu Sans']}
     )
-    fig, ax = plt.subplots(figsize=(6.6, 4.4))
-    for index, species in enumerate(result.species):
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.set_xlabel('Time [yr]')
+    ax.set_ylabel('Cumulative trapped mass [kg]')
+    ax.set_yscale('log')
+    ax.tick_params(direction='in', which='both', top=True, right=True)
+    return plt, fig, ax
+
+
+def log_time_axis(ax, time: np.ndarray) -> None:
+    """Put the time axis on a log scale, starting at the first positive sample.
+
+    A helpfile starts at t = 0, which a log axis cannot show, so the lower limit
+    is the first positive time rather than the first row. A run with no positive
+    time at all is left on the linear default. Shared with
+    ``tools/plot_trapping_fraction.py`` so the two tools put time on the same
+    axis.
+    """
+    positive = np.asarray(time, dtype=float)
+    positive = positive[positive > 0.0]
+    if positive.size:
+        ax.set_xscale('log')
+        ax.set_xlim(left=float(positive.min()))
+
+
+def rank_species(
+    species: list[SpeciesResult], top: int = DEFAULT_PLOT_TOP
+) -> tuple[list[SpeciesResult], list[SpeciesResult]]:
+    """Split species into those a figure draws and those the cap leaves out.
+
+    Species are ordered by trapped mass so the cap drops the smallest
+    contributors rather than whichever happened to be declared last. A run in
+    which nothing traps at all carries no ranking to apply, so declaration
+    order is kept and the figure still shows the zero baseline. ``top`` of zero
+    or less lifts the cap.
+    """
+    if any(entry.total_trapped > 0.0 for entry in species):
+        ordered = sorted(species, key=lambda entry: entry.total_trapped, reverse=True)
+    else:
+        ordered = list(species)
+    if top <= 0 or len(ordered) <= top:
+        return ordered, []
+    return ordered[:top], ordered[top:]
+
+
+def species_style(index: int) -> tuple[str, str]:
+    """Colour and line style for the index-th species drawn on a figure.
+
+    The palette holds eight colours, so the line style advances once per full
+    colour cycle and the pair stays unique up to
+    ``len(WONG_COLOURS) * len(SPECIES_STYLES)`` species. Without this the
+    modulo on the palette alone would silently draw two species identically.
+    """
+    colour = WONG_COLOURS[index % len(WONG_COLOURS)]
+    style = SPECIES_STYLES[(index // len(WONG_COLOURS)) % len(SPECIES_STYLES)]
+    return colour, style
+
+
+def describe_omitted(drawn: list[SpeciesResult], omitted: list[SpeciesResult]) -> str:
+    """Note naming the species a figure left out, or an empty string if none.
+
+    A silently truncated figure would read as a complete one, so the omitted
+    species are named rather than merely counted.
+    """
+    if not omitted:
+        return ''
+    total = len(drawn) + len(omitted)
+    names = ', '.join(entry.name for entry in omitted)
+    return (
+        f'Note: plot shows {len(drawn)} of {total} species; '
+        f'omitted (smallest trapped mass): {names}'
+    )
+
+
+def plot_cumulative(result: TrappingResult, path: Path, top: int = DEFAULT_PLOT_TOP) -> None:
+    """Write the cumulative trapped mass against time, one line per species.
+
+    Mass is the only quantity drawn. The trapped-melt fraction that produced it
+    is written to the per-step table and plotted by
+    ``tools/plot_trapping_fraction.py``, which keeps this figure to a single
+    axis and a single unit.
+
+    The species set spans every volatile the helpfile carries, so the figure is
+    capped at the ``top`` largest contributors and the rest are named in a
+    printed note and counted in the legend title. Lifting the cap keeps the
+    curves distinguishable by advancing the line style once the palette has
+    been spent.
+    """
+    plt, fig, ax = _styled_axes((6.6, 4.4))
+    drawn, omitted = rank_species(result.species, top)
+    for index, species in enumerate(drawn):
+        colour, style = species_style(index)
         ax.plot(
             result.time,
             species.cumulative,
             lw=1.8,
-            color=WONG_COLOURS[index % len(WONG_COLOURS)],
+            ls=style,
+            color=colour,
             label=f'{species.name} (D_Z = {species.d_z:g})',
         )
-    positive = result.time[result.time > 0.0]
-    if positive.size:
-        ax.set_xscale('log')
-        ax.set_xlim(left=float(positive.min()))
-    ax.set_xlabel('Time [yr]')
-    ax.set_ylabel('Cumulative trapped mass [kg]')
+    log_time_axis(ax, result.time)
     ax.set_title(f'Solid-phase trapping: {describe_f_tl(result)}')
-    ax.tick_params(direction='in', which='both', top=True, right=True)
-    ax.legend(frameon=False, loc='upper left')
-
-    if result.dynamic is not None:
-        twin = ax.twinx()
-        twin.plot(
-            result.time,
-            result.dynamic.f_tl,
-            lw=1.2,
-            ls='--',
-            color=WONG_COLOURS[7],
-            label='F_tl(t)',
-        )
-        twin.axhline(result.dynamic.phi_c, lw=0.8, ls=':', color=WONG_COLOURS[7])
-        twin.set_ylabel('Trapped melt fraction F_tl [1]')
-        twin.set_ylim(0.0, 1.05 * result.dynamic.phi_c)
-        twin.legend(frameon=False, loc='lower right')
+    ax.legend(
+        frameon=False,
+        loc='upper left',
+        bbox_to_anchor=(0.0, 1.0),
+        title=f'+{len(omitted)} not shown' if omitted else None,
+    )
 
     fig.tight_layout()
     fig.savefig(path, dpi=200)
     plt.close(fig)
+    note = describe_omitted(drawn, omitted)
+    if note:
+        print(note)
+
+
+def plot_combined(combined: CombinedResult, path: Path, top: int = DEFAULT_PLOT_TOP) -> None:
+    """Write both modes' cumulative trapped mass on one pair of axes.
+
+    Colour separates species and line style separates modes, so the same
+    species can be read across the two prescriptions without a second panel.
+    Because that spends both visual channels, the legend is split in two: one
+    keyed by colour for the species, one keyed by line style for the modes.
+    Neither trapped-melt fraction is drawn here; both are plotted by
+    ``tools/plot_trapping_fraction.py``.
+
+    Line style being spent on the mode leaves colour as the only channel for
+    species here, so the cap cannot exceed the palette length however ``top``
+    is set; a larger request is reduced to it rather than wrapping the palette
+    and drawing two species in the same colour. Species are ranked by their
+    constant-mode trapped mass, and the ones left out are named in a printed
+    note.
+    """
+    plt, fig, ax = _styled_axes((7.4, 4.6))
+    from matplotlib.lines import Line2D
+
+    limit = len(WONG_COLOURS) if top <= 0 else min(top, len(WONG_COLOURS))
+    drawn, omitted = rank_species(combined.constant.species, limit)
+    for index, reference in enumerate(drawn):
+        colour = WONG_COLOURS[index]
+        for mode, result in combined.results().items():
+            match = [s for s in result.species if s.name == reference.name]
+            if not match:
+                continue
+            ax.plot(
+                result.time,
+                match[0].cumulative,
+                lw=1.8,
+                ls=COMBINED_STYLES[mode],
+                color=colour,
+            )
+    log_time_axis(ax, combined.constant.time)
+    ax.set_title('Melt trapping: constant and dynamic modes')
+
+    species_keys = [
+        Line2D(
+            [],
+            [],
+            lw=1.8,
+            color=WONG_COLOURS[index],
+            label=f'{species.name} (D_Z = {species.d_z:g})',
+        )
+        for index, species in enumerate(drawn)
+    ]
+    mode_keys = [
+        Line2D(
+            [], [], lw=1.8, color='black', ls=COMBINED_STYLES[mode], label=describe_f_tl(result)
+        )
+        for mode, result in combined.results().items()
+    ]
+    # Two legends on one axes: the first has to be added as an artist or the
+    # second replaces it. The mode legend carries a translucent ground because
+    # the curves it describes end in that corner of the axes. Keep the two
+    # stacked in the upper-left so the mode legend sits directly above the
+    # species legend without overlapping the plot.
+    ax.add_artist(
+        ax.legend(
+            handles=species_keys,
+            frameon=False,
+            loc='upper left',
+            bbox_to_anchor=(0, 0.99),
+            title=f'+{len(omitted)} not shown' if omitted else None,
+        )
+    )
+    ax.legend(
+        handles=mode_keys,
+        loc='upper left',
+        bbox_to_anchor=(0, 0.46),
+        fontsize='small',
+        frameon=True,
+        framealpha=0.85,
+        edgecolor='none',
+    )
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=200)
+    plt.close(fig)
+    note = describe_omitted(drawn, omitted)
+    if note:
+        print(note)
 
 
 def parse_d_z(items: list[str] | None) -> dict[str, float]:
@@ -819,10 +1164,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument('--no-plot', action='store_true', help='Skip the plot')
     parser.add_argument(
+        '--plot-top',
+        type=int,
+        default=DEFAULT_PLOT_TOP,
+        metavar='N',
+        help=f'Draw only the N species that trap the most mass; 0 draws every '
+        f'species (default {DEFAULT_PLOT_TOP}, the palette length). The combined '
+        f'mode cannot exceed the palette length, since line style is spent on '
+        f'the mode there.',
+    )
+    parser.add_argument(
         '--mode',
-        choices=TRAPPING_MODES,
+        choices=CLI_MODES,
         default=DEFAULT_MODE,
-        help=f'How F_tl is obtained (default {DEFAULT_MODE})',
+        help=f'How F_tl is obtained; {COMBINED_MODE!r} runs constant and dynamic '
+        f'together and reports both (default {DEFAULT_MODE})',
     )
     parser.add_argument(
         '--compare-modes',
@@ -869,6 +1225,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+NO_SPECIES_MESSAGE = (
+    'No requested species has both _kg_liquid and _kg_total columns; nothing to do.'
+)
+
+
+def write_outputs(table: pd.DataFrame, draw, output_csv: Path, plot: Path, make_plot: bool):
+    """Write the per-step table and, unless suppressed, the plot.
+
+    ``draw`` is called with the plot path only when a plot is wanted, so the
+    matplotlib import stays out of a ``--no-plot`` run.
+    """
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    table.to_csv(output_csv, index=False)
+    print(f'Wrote per-step table to {output_csv}')
+    if make_plot:
+        plot.parent.mkdir(parents=True, exist_ok=True)
+        draw(plot)
+        print(f'Wrote plot to {plot}')
+
+
 def main(argv: list[str] | None = None) -> int:
     """Read a helpfile, compute trapping, and write the table, plot, and summary."""
     args = build_parser().parse_args(argv)
@@ -880,47 +1256,50 @@ def main(argv: list[str] | None = None) -> int:
     output_csv = args.output_csv or DEFAULT_OUTPUT_DIR / f'{output_stem}_table.csv'
     plot = args.plot or DEFAULT_OUTPUT_DIR / f'{output_stem}_cumulative.png'
     low, high = F_TL_ADVISORY_RANGE
-    if args.mode == 'constant' and not low <= args.f_tl <= high:
+    # The advisory covers every mode that consults the scalar, which includes
+    # the combined mode: its constant half uses exactly the same value.
+    if args.mode in ('constant', COMBINED_MODE) and not low <= args.f_tl <= high:
         print(f'Note: F_tl = {args.f_tl:g} is outside the usual {low:g} to {high:g} range.')
 
     frame = read_helpfile(args.input, sep=args.sep)
-    result = compute_trapping(
-        frame,
-        mode=args.mode,
-        f_tl=args.f_tl,
-        d_z=parse_d_z(args.d_z),
-        phi_c=args.phi_c,
-        tau=args.tau,
-        delta_t=args.delta_t,
-        temperature_column=args.temperature_column,
-    )
-    if not result.species:
-        print('No requested species has both _kg_liquid and _kg_total columns; nothing to do.')
-        return 1
+    settings = {
+        'f_tl': args.f_tl,
+        'd_z': parse_d_z(args.d_z),
+        'phi_c': args.phi_c,
+        'tau': args.tau,
+        'delta_t': args.delta_t,
+        'temperature_column': args.temperature_column,
+    }
 
-    output_csv.parent.mkdir(parents=True, exist_ok=True)
-    build_table(result, frame).to_csv(output_csv, index=False)
-    print(f'Wrote per-step table to {output_csv}')
-    if not args.no_plot:
-        plot.parent.mkdir(parents=True, exist_ok=True)
-        plot_cumulative(result, plot)
-        print(f'Wrote plot to {plot}')
-    print(summarise(result))
+    if args.mode == COMBINED_MODE:
+        combined = compute_both(frame, **settings)
+        if not combined.constant.species:
+            print(NO_SPECIES_MESSAGE)
+            return 1
+        write_outputs(
+            build_combined_table(combined, frame),
+            lambda destination: plot_combined(combined, destination, args.plot_top),
+            output_csv,
+            plot,
+            not args.no_plot,
+        )
+        print(summarise_both(combined))
+    else:
+        result = compute_trapping(frame, mode=args.mode, **settings)
+        if not result.species:
+            print(NO_SPECIES_MESSAGE)
+            return 1
+        write_outputs(
+            build_table(result, frame),
+            lambda destination: plot_cumulative(result, destination, args.plot_top),
+            output_csv,
+            plot,
+            not args.no_plot,
+        )
+        print(summarise(result))
 
     if args.compare_modes:
-        print(
-            summarise_comparison(
-                compare_modes(
-                    frame,
-                    f_tl=args.f_tl,
-                    d_z=parse_d_z(args.d_z),
-                    phi_c=args.phi_c,
-                    tau=args.tau,
-                    delta_t=args.delta_t,
-                    temperature_column=args.temperature_column,
-                )
-            )
-        )
+        print(summarise_comparison(compare_modes(frame, **settings)))
     return 0
 
 

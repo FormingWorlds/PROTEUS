@@ -572,6 +572,8 @@ def assert_mass_conservation(
     atol_frac: float = 1e-6,
     *,
     require_atm_le_planet: bool = True,
+    derived_elements: tuple[str, ...] = (),
+    closure_rtol: float | None = None,
 ) -> None:
     """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, and
     M_atm <= M_planet unless the caller disables that half.
@@ -597,7 +599,20 @@ def assert_mass_conservation(
         accumulated float-rounding from the per-species sum but not
         any physically meaningful drift.
     require_atm_le_planet : bool
-        Whether to enforce M_atm <= M_planet. Ignored when the row carries no
+        Whether to enforce M_atm <= M_planet.
+    derived_elements : tuple of str
+        Elements whose whole-planet total the chemistry recomputes rather than
+        conserving, so the per-element reservoir closure does not apply to
+        them. Supplied by ``outgas.trapping.derived_total_elements``.
+    closure_rtol : float or None
+        Relative tolerance for the per-element reservoir closure only. The
+        atmospheric and liquid reservoirs come out of a nonlinear chemistry
+        solve that converges to its own relative tolerance, while the total is
+        carried forward from the escape chain, so the two can agree no more
+        tightly than the solver does. The closure is therefore checked against
+        ``max(atol_frac, closure_rtol)``; the main loop supplies
+        ``config.outgas.solver_rtol``. ``atol_frac`` itself, and with it the
+        atmosphere-mass and species-sum invariants, is unchanged. Ignored when the row carries no
         vapour column: rock vapour is the only mass the relaxation excuses, so
         with M_vaps == 0 the invariant is enforced either way.
 
@@ -684,6 +699,51 @@ def assert_mass_conservation(
                 f'(relative difference {rel * 100:.3f}%). One of the '
                 f'gas-species kg_atm fields is stale or the M_vol_atm sum '
                 f'loop is missing a species.'
+            )
+
+    # Invariant 3: each element's whole-planet inventory equals the sum of the
+    # three reservoirs it is split across. This is the check that catches a
+    # trapping bug: solid-phase trapping moves mass from `_kg_liquid` into
+    # `_kg_solid` and must leave `_kg_total` alone, so any step that debits one
+    # side without crediting the other breaks the closure here rather than
+    # drifting silently for the rest of the run. It also catches a chemistry
+    # backend that flattens `_kg_solid` after trapping has filled it.
+    #
+    # Skipped for any element whose total is not positive: an element the run
+    # never carried has all four fields at zero, and one an upstream failure
+    # left non-finite is reported by the guard above rather than here.
+    #
+    # The tolerance is the looser of atol_frac and the chemistry solver's own
+    # relative tolerance. The atm and liquid reservoirs are outputs of a
+    # nonlinear solve that converges only to that tolerance, whereas the total
+    # is carried state, so demanding tighter closure than the solver guarantees
+    # fires on healthy runs: with CALLIOPE at 1e-4 a trapping-free run closed at
+    # 1.5e-6, above the bare 1e-6. A real bookkeeping error is far larger; the
+    # oxygen debit fault this check first caught was 3.3e-4.
+    closure_tol = max(atol_frac, float(closure_rtol)) if closure_rtol else atol_frac
+    for e in element_list:
+        if e in derived_elements:
+            # This element's total is recomputed by the chemistry each step
+            # rather than carried as a conserved budget, so it cannot close
+            # against a solid reservoir trapping filled. See
+            # outgas.trapping.derived_total_elements for which, and why.
+            continue
+        total = float(hf_row.get(f'{e}_kg_total', 0.0))
+        if not np.isfinite(total) or total <= 0.0:
+            continue
+        parts = sum(float(hf_row.get(f'{e}_kg_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
+        if not np.isfinite(parts):
+            continue
+        rel = abs(parts - total) / total
+        if rel > closure_tol:
+            raise RuntimeError(
+                f'Per-element reservoir closure failed for {e}: '
+                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid='
+                f'{parts:.6e} kg (relative difference {rel * 100:.4f}%). '
+                f'atm={float(hf_row.get(f"{e}_kg_atm", 0.0)):.3e}, '
+                f'liquid={float(hf_row.get(f"{e}_kg_liquid", 0.0)):.3e}, '
+                f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e} kg. '
+                f'A reservoir was debited without the matching credit.'
             )
 
 
@@ -1021,6 +1081,23 @@ def GetHelpfileKeys():
         # distinguishable from one that ran down on its own.
         'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
         'esc_step_kg',      # loss applied on this step, after the cap [kg]
+
+        # Solid-phase volatile trapping
+        'trap_dM_RM',       # mantle mass crystallised this step [kg]
+        'trap_F_tl',        # trapped melt fraction applied this step [1]
+        'trap_dT_dt',       # secular cooling rate this step [K yr-1]
+        'trap_delta_T',     # solidus to freezing-front difference [K]
+        'trap_kg_step',     # volatile mass buried this step [kg]
+        'trap_kg_cumulative',  # volatile mass buried since the run began [kg]
+        'trap_branch',      # drainage regime code: 0 none, 1 Darcy, 2 matrix, 3 guard, 5 published, 6 fallback [1]
+        'trap_tau_D',       # percolation time at the top of the front [yr]
+        'trap_tau_s',       # matrix deformation time [yr]
+        'trap_t_res',       # parcel residence time in the front [yr]
+        'trap_n_front',     # nodes spanned by the freezing front [1]
+        'trap_L_front',     # freezing-front thickness [m]
+        'trap_v_front',     # freezing-front speed [m s-1]
+        'trap_front_courant',  # front advance over one step, in front thicknesses [1]
+        'trap_w_matrix_over_vf',  # matrix speed over front speed [1]
         ]
 
     # gases from outgassing
