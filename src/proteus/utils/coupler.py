@@ -1264,7 +1264,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     # - Unknown keys (new_row has but schema doesn't) are silently dropped
     #   by `columns=GetHelpfileKeys()` in the DataFrame construction, which
     #   means resume would lose those values. We WARN here rather than raise
-    #   so existing hf_row private/transient fields (_T_magma_raw, etc.)
+    #   so existing hf_row private/transient fields (underscore-prefixed keys)
     #   and string-valued fields (core_state_initial) don't break runs.
     # Private (underscore-prefixed) keys are intentionally transient and
     # are excluded from both checks.
