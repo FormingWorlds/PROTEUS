@@ -12,6 +12,8 @@ from time import sleep
 from typing import TYPE_CHECKING
 
 import numpy as np
+from fwl_io import DownloadError, MissingDataRootError, OfflineDataError
+from fwl_io.archive import ArchiveError
 from osfclient.api import OSF
 from scipy.interpolate import interp1d
 
@@ -1600,17 +1602,17 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
 
 
 # What a start-of-run fetch raises when a dataset cannot be obtained: filesystem
-# errors, fwl-io's errors (RuntimeError subclasses) and the downloaders' own
-# RuntimeError, such as a failed stellar-track download.
-_FETCH_ERRORS = (OSError, RuntimeError)
+# errors and fwl-io's own errors. Other RuntimeErrors (a stale fwl-io, a bug) raise.
+_FETCH_ERRORS = (OSError, DownloadError, OfflineDataError, ArchiveError, MissingDataRootError)
 
 
-def _attempt(desc: str, func, *args, **kwargs) -> bool:
+def _attempt(desc: str, func, *args, catch=_FETCH_ERRORS, **kwargs) -> bool:
     """Run one start-of-run fetch step, reporting a failure instead of raising.
 
-    Each dataset is fetched independently, so an unreachable mirror for one of
-    them does not stop the others; a dataset that is still missing fails later,
-    where it is read.
+    Each step is fetched independently, so an unreachable mirror for one
+    dataset does not stop the others; a dataset that is still missing fails
+    later, where it is read. Data whose absence a reader would silently replace
+    (the melting curves) is fetched outside this guard.
 
     Parameters
     ----------
@@ -1618,6 +1620,8 @@ def _attempt(desc: str, func, *args, **kwargs) -> bool:
         What the step fetches, for the log message.
     func : callable
         The fetch function, called with the remaining arguments.
+    catch : tuple of type
+        Exceptions reported as a failed fetch.
 
     Returns
     -------
@@ -1626,7 +1630,7 @@ def _attempt(desc: str, func, *args, **kwargs) -> bool:
     """
     try:
         func(*args, **kwargs)
-    except _FETCH_ERRORS as exc:
+    except catch as exc:
         log.warning('Problem when downloading/checking %s: %s', desc, exc)
         return False
     return True
@@ -1643,13 +1647,16 @@ def _get_sufficient(config: Config, clean: bool = False):
             folders.append('solar')
         if spec_src in (None, 'muscles'):
             folders.append('MUSCLES')
-        _attempt(
-            'stellar spectra',
-            download_stellar_spectra,
-            folders=tuple(dict.fromkeys(folders)),
-        )
+        for folder in dict.fromkeys(folders):
+            _attempt(f'stellar spectra {folder}', download_stellar_spectra, folders=(folder,))
+        # download_stellar_tracks reports a failed download as RuntimeError.
         tracks = 'Spada' if config.star.mors.tracks == 'spada' else 'Baraffe'
-        _attempt('stellar tracks', download_stellar_tracks, tracks)
+        _attempt(
+            'stellar tracks',
+            download_stellar_tracks,
+            tracks,
+            catch=_FETCH_ERRORS + (RuntimeError,),
+        )
 
     # Spectral files
     if config.atmos_clim.module in ('janus', 'agni'):
@@ -1683,8 +1690,10 @@ def _get_sufficient(config: Config, clean: bool = False):
 
     # Interior lookup tables (melting curves)
     if config.interior_energetics.module in ('aragog', 'spider'):
-        _attempt('interior lookup tables', download_interior_lookuptables, clean=clean)
-        _attempt('melting curves', download_melting_curves, config, clean=clean)
+        # Not guarded: without the configured melting curves SPIDER and Aragog
+        # fall back to other curves, so a failed fetch must stop the run here.
+        download_interior_lookuptables(clean=clean)
+        download_melting_curves(config, clean=clean)
 
     # Dynamic EOS for SPIDER and Aragog (uses struct.eos_dir, skip if None/PALEOS)
     if (
@@ -1737,7 +1746,7 @@ def download_sufficient_data(config: Config, clean: bool = False):
 
         # Some issue. Usually due to lack of internet connection, but print the error
         #     anyway so that the user knows what happened.
-        except _FETCH_ERRORS as e:
+        except OSError as e:
             log.warning('Problem when downloading/checking reference data')
             log.warning(str(e))
 
@@ -1880,20 +1889,12 @@ def download_eos_dynamic(eos_dir: str = 'WolfBower2018_MgSiO3'):
     fetch_dataset(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=fwl_data)
     target_dir = dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=fwl_data)
 
-    expected_files = (
-        'temperature_melt.dat',
-        'temperature_solid.dat',
-        'density_melt.dat',
-        'density_solid.dat',
-        'heat_capacity_melt.dat',
-        'heat_capacity_solid.dat',
-        'adiabat_temp_grad_melt.dat',
-        'adiabat_temp_grad_solid.dat',
-        'thermal_exp_melt.dat',
-        'thermal_exp_solid.dat',
-        'solidus_P-S.dat',
-        'liquidus_P-S.dat',
+    from proteus.interior_energetics.common import (
+        _SPIDER_EOS_MELTING_CURVES,
+        _SPIDER_EOS_PHASE_FILES,
     )
+
+    expected_files = _SPIDER_EOS_PHASE_FILES + _SPIDER_EOS_MELTING_CURVES
     missing = [f for f in expected_files if not (target_dir / f).is_file()]
     if missing:
         log.warning(

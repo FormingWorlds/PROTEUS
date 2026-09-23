@@ -2105,11 +2105,11 @@ def test_reference_data_failure_still_reaches_the_interior_data(monkeypatch):
 
 @pytest.mark.unit
 def test_required_dataset_failure_does_not_stop_later_fetches(monkeypatch, tmp_path):
-    """An unreachable mirror for one required dataset leaves the others to be fetched.
+    """An unreachable mirror for one dataset leaves the other datasets to be fetched.
 
     fwl-io reports a failed fetch with RuntimeError subclasses, which an OSError
-    guard does not catch; without a per-step guard the first failure (the named
-    stellar spectra) would abort the run before any interior table is tried.
+    guard does not catch; each step and each stellar collection is guarded on
+    its own, so a failing named-star record does not stop the solar spectra.
     """
     from fwl_io import DownloadError
 
@@ -2118,26 +2118,72 @@ def test_required_dataset_failure_does_not_stop_later_fetches(monkeypatch, tmp_p
 
     attempted = []
 
-    def _boom(key, *args, data_root=None):
+    def _fetch(key, *args, data_root=None):
         attempted.append(key)
-        raise DownloadError('could not obtain from any mirror')
+        if not key.startswith('interior.melting_curves.'):
+            raise DownloadError('could not obtain from any mirror')
+        return []
 
     monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path)
-    monkeypatch.setattr('proteus.data.fetch_dataset', _boom)
-    monkeypatch.setattr('proteus.data.fetch_dataset_file', _boom)
+    monkeypatch.setattr('proteus.data.fetch_dataset', _fetch)
+    monkeypatch.setattr('proteus.data.fetch_dataset_file', _fetch)
     monkeypatch.setattr(data_mod, 'download_stellar_tracks', lambda *a, **kw: None)
     cfg = read_config_object(
         str(Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml')
     )
+    cfg.star.mors.spectrum_source = None
 
     data_mod.download_sufficient_data(cfg)
 
-    assert attempted[0] == 'star.spectra.named'
-    # The spectral file, the melting curves and the Zalmoxis tables come after
-    # the failing stellar fetch and must all still be attempted.
+    assert attempted[:3] == ['star.spectra.named', 'star.spectra.solar', 'star.spectra.muscles']
     assert 'atmos_clim.spectral_files.honeyside.48' in attempted
     assert 'interior.melting_curves.wolf_bower_2018' in attempted
     assert 'interior.eos.paleos_iron' in attempted
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('melting_dir', 'failing_key'),
+    [
+        (None, 'interior.melting_curves.wolf_bower_2018'),
+        ('Monteux-600', 'interior.melting_curves.monteux_minus_600'),
+    ],
+)
+def test_melting_curve_fetch_failure_stops_the_run(
+    monkeypatch, tmp_path, melting_dir, failing_key
+):
+    """A failed melting-curve fetch raises instead of being logged.
+
+    Without the configured curves SPIDER and Aragog fall back to other curves,
+    so continuing would change the physics of the run rather than fail it.
+    """
+    from fwl_io import DownloadError
+
+    from proteus.config import read_config_object
+    from proteus.utils import data as data_mod
+
+    attempted = []
+
+    def _fetch(key, *args, data_root=None):
+        attempted.append(key)
+        if key == failing_key:
+            raise DownloadError('could not obtain from any mirror')
+        return []
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path)
+    monkeypatch.setattr('proteus.data.fetch_dataset', _fetch)
+    monkeypatch.setattr('proteus.data.fetch_dataset_file', _fetch)
+    monkeypatch.setattr(data_mod, 'download_stellar_tracks', lambda *a, **kw: None)
+    cfg = read_config_object(
+        str(Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml')
+    )
+    cfg.interior_struct.melting_dir = melting_dir
+
+    with pytest.raises(DownloadError):
+        data_mod.download_sufficient_data(cfg)
+
+    assert attempted[-1] == failing_key
+    assert 'interior.eos.paleos_iron' not in attempted
 
 
 @pytest.mark.unit
@@ -2149,7 +2195,6 @@ def test_required_dataset_failure_does_not_stop_later_fetches(monkeypatch, tmp_p
         'ArchiveError',
         'MissingDataRootError',
         'OSError',
-        'RuntimeError',
     ],
 )
 def test_attempt_reports_fetch_errors_and_passes_other_errors(error, caplog):
@@ -2165,7 +2210,6 @@ def test_attempt_reports_fetch_errors_and_passes_other_errors(error, caplog):
         'ArchiveError': ArchiveError,
         'MissingDataRootError': fwl_io.MissingDataRootError,
         'OSError': OSError,
-        'RuntimeError': RuntimeError,
     }
 
     def _fail():
@@ -2174,9 +2218,12 @@ def test_attempt_reports_fetch_errors_and_passes_other_errors(error, caplog):
     with caplog.at_level('WARNING'):
         assert _attempt('test data', _fail) is False
     assert 'test data: mirror down' in caplog.text
-    # Discrimination: an error that is not a fetch failure is not swallowed.
+    # Discrimination: an error that is not a fetch failure is not swallowed,
+    # including a plain RuntimeError such as the stale-fwl-io message.
     with pytest.raises(TypeError):
         _attempt('test data', lambda: (_ for _ in ()).throw(TypeError('bug')))
+    with pytest.raises(RuntimeError, match='stale'):
+        _attempt('test data', lambda: (_ for _ in ()).throw(RuntimeError('stale')))
 
 
 @pytest.mark.unit
@@ -5700,8 +5747,9 @@ def test_get_sufficient_mors_solar_spectrum_only(monkeypatch):
 
     data_mod._get_sufficient(config)
 
-    assert len(spectra_calls) == 1
-    folders = spectra_calls[0]
+    # One call per collection, so a failing collection does not stop the others.
+    assert spectra_calls == [('Named',), ('solar',)]
+    folders = [name for call in spectra_calls for name in call]
     # Discrimination: solar source should request 'Named' and 'solar'
     # but NOT 'MUSCLES'.
     assert 'Named' in folders
@@ -5746,7 +5794,8 @@ def test_get_sufficient_mors_muscles_spectrum_only(monkeypatch):
 
     data_mod._get_sufficient(config)
 
-    folders = spectra_calls[0]
+    folders = [name for call in spectra_calls for name in call]
+    assert len(spectra_calls) == 2
     assert 'Named' in folders
     assert 'MUSCLES' in folders
     assert 'solar' not in folders

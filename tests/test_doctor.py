@@ -242,13 +242,13 @@ class TestCheckFwlData:
         """Populated subdirectories report as present."""
         (tmp_path / 'atmos_clim' / 'spectral_files').mkdir(parents=True)
         (tmp_path / 'atmos_clim' / 'spectral_files' / 'data.bin').touch()
-        (tmp_path / 'stellar_spectra').mkdir()
-        (tmp_path / 'stellar_spectra' / 'sun.txt').touch()
+        (tmp_path / 'star' / 'spectra' / 'solar').mkdir(parents=True)
+        (tmp_path / 'star' / 'spectra' / 'solar' / 'sun.txt').touch()
         with patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}):
             results = check_fwl_data()
         statuses = {r.name: r.status for r in results}
         assert statuses['FWL_DATA/atmos_clim/spectral_files'] == PASS
-        assert statuses['FWL_DATA/stellar_spectra'] == PASS
+        assert statuses['FWL_DATA/star/spectra'] == PASS
 
     def test_reports_missing_subdirs(self, tmp_path):
         """Missing subdirectories warn with a fix command."""

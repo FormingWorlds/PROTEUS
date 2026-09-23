@@ -8,10 +8,8 @@ import os
 import re
 import shutil
 import tempfile
-from pathlib import Path
 
 import numpy as np
-import platformdirs
 from scipy.interpolate import interp1d
 from zalmoxis.mixing import _PALEOS_UNIFIED_NAMES
 from zalmoxis.solver import main
@@ -36,8 +34,6 @@ from proteus.utils.constants import (
     element_list,
 )
 from proteus.utils.data import GetFWLData, get_zalmoxis_melting_curves
-
-FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 # Set up logging
 log = logging.getLogger('fwl.' + __name__)

@@ -205,10 +205,13 @@ def test_no_record_is_declared_in_both_manifests():
     """
     from fwl_io import load_manifest
 
-    owned = {ds.zenodo for ds in load_manifest(manifest_path())}
+    owned_datasets = load_manifest(manifest_path())
+    owned = {ds.zenodo for ds in owned_datasets}
     shared = {ds.zenodo for ds in _shared_manifest().values()}
 
     assert owned & shared == set(), f'records declared twice: {sorted(owned & shared)}'
+    # A key in both would make the PROTEUS entry shadow the shared one.
+    assert {ds.key for ds in owned_datasets} & set(_shared_manifest()) == set()
     # Discrimination: both sets are populated, and the shared one holds records
     # PROTEUS reads, so the empty intersection is not from an empty load.
     assert len(owned) == len(_OWNED_KEYS)
@@ -368,7 +371,7 @@ def test_unknown_dataset_key_is_rejected():
     Silently resolving an undeclared key would create an unpinned directory with
     no registry to verify against.
     """
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError, match=f'fwl-io>={FWL_IO_FLOOR}'):
         _dataset('observe.not_a_declared_dataset')
 
     # Discrimination: a key the manifest does declare resolves, and to that

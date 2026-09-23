@@ -148,7 +148,6 @@ def _dataset(key: str):
         The key is absent from both manifests.
     """
     from fwl_io import load_manifest
-    from fwl_io.manifest import shared_manifest_path
 
     try:
         datasets = {ds.key: ds for ds in load_manifest(manifest_path())}
@@ -161,7 +160,19 @@ def _dataset(key: str):
         ) from exc
     if key in datasets:
         return datasets[key]
-    shared = {ds.key: ds for ds in load_manifest(shared_manifest_path())}
+    try:
+        from fwl_io.manifest import shared_manifest_path
+
+        shared = {ds.key: ds for ds in load_manifest(shared_manifest_path())}
+    except ImportError as exc:
+        raise RuntimeError(
+            f'the installed fwl-io ships no shared manifest; upgrade to fwl-io>={FWL_IO_FLOOR}.'
+        ) from exc
+    if key not in shared:
+        raise KeyError(
+            f'{key!r} is declared neither in the PROTEUS manifest nor in the fwl-io '
+            f'shared manifest (a key PROTEUS reads needs fwl-io>={FWL_IO_FLOOR})'
+        )
     return shared[key]
 
 

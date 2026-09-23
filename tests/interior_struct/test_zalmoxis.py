@@ -2913,9 +2913,9 @@ def test_material_dictionaries_seager_paths_use_the_versioned_dataset_dir(
 def test_material_dictionaries_read_the_tree_the_fetch_writes(monkeypatch, tmp_path):
     """The EOS paths use the data root that download_zalmoxis_eos fetches into.
 
-    The module keeps its own raw ``FWL_DATA`` value, which is not expanded and
-    has a different default; building the paths from it would send Zalmoxis to
-    another tree than the one the fetch populated.
+    The raw ``FWL_DATA`` value is not expanded and has a different default from
+    the resolved root; building the paths from it would send Zalmoxis to another
+    tree than the one the fetch populated.
     """
     from pathlib import Path
 
@@ -2924,7 +2924,7 @@ def test_material_dictionaries_read_the_tree_the_fetch_writes(monkeypatch, tmp_p
 
     fetch_root = tmp_path / 'fetched'
     monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', fetch_root)
-    monkeypatch.setattr(zalmoxis_wrapper, 'FWL_DATA_DIR', tmp_path / 'raw_env_value')
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'raw_env_value'))
 
     registry = zalmoxis_wrapper.load_zalmoxis_material_dictionaries()
 

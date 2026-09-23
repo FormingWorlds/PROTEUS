@@ -22,8 +22,10 @@ unreachable Zenodo means the fetch fails rather than falling back elsewhere.
 Data several models read (spectral files, stellar spectra, equations of state,
 melting curves, lookup tables) is declared in the shared manifest that fwl-io
 ships; data only PROTEUS reads is declared in `src/proteus/data/proteus_manifest.toml`.
-A tree laid out by an older PROTEUS moves into this layout with `fwl-io relocate`
-instead of being downloaded again.
+`fwl-io relocate` moves a folder left by an older PROTEUS into this layout
+when the folder holds every file its dataset lists. A folder that holds only
+part of a dataset, the Chabrier archive, the surface albedos and the Seager
+tables stay where they are and are downloaded again.
 
 **The PROTEUS downloader.** `proteus.utils.data` fetches a whole Zenodo record,
 retrying a few times, and falls back to the corresponding project on the
@@ -255,7 +257,7 @@ All equation-of-state tables are fetched through fwl-io into `$FWL_DATA/<dataset
 | `interior/eos/paleos_iron`, `paleos_mgsio3_unified`, `paleos_h2o` | PALEOS unified tables for iron, MgSiO3 and water | the table of each selected component |
 | `interior/eos/chabrier_2021_hhe` | Chabrier et al. hydrogen and helium tables | archive extracted into `r<record-id>/EOS_Chabrier2021_HHe/` |
 
-Tables under `$FWL_DATA/zalmoxis_eos` are not read where they are; `fwl-io relocate` moves them into the directories above. A copy under `$FWL_DATA/EOS_material_properties` is not read and can be deleted.
+Tables under `$FWL_DATA/zalmoxis_eos` and `$FWL_DATA/EOS_material_properties` are not read where they are. `fwl-io relocate` moves a `zalmoxis_eos` folder that holds every file of its dataset; the rest can be deleted once the run has fetched them.
 
 ---
 
