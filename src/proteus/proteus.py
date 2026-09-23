@@ -24,6 +24,7 @@ from proteus.config import (
     read_config_object,
     structure_config,
 )
+from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
@@ -1201,22 +1202,18 @@ class Proteus:
             # so the atmosphere is computed from the solvus outward.
             # Save originals to restore after the atmosphere step.
             _saved_atm_bc = {}
-            if (
-                self.config.interior_struct.zalmoxis.global_miscibility
-                and 'R_solvus' in self.hf_row
-            ):
-                R_sol = self.hf_row.get('R_solvus')
-                if R_sol is not None and R_sol < self.hf_row['R_int']:
-                    _saved_atm_bc = {
-                        'T_surf': self.hf_row['T_surf'],
-                        'P_surf': self.hf_row['P_surf'],
-                        'R_int': self.hf_row['R_int'],
-                        'T_magma': self.hf_row['T_magma'],
-                    }
-                    self.hf_row['T_surf'] = self.hf_row['T_solvus']
-                    self.hf_row['T_magma'] = self.hf_row['T_solvus']
-                    self.hf_row['P_surf'] = self.hf_row['P_solvus'] * 1e-5  # Pa -> bar
-                    self.hf_row['R_int'] = R_sol
+            R_sol = solvus_radius(self.config, self.hf_row)
+            if R_sol is not None:
+                _saved_atm_bc = {
+                    'T_surf': self.hf_row['T_surf'],
+                    'P_surf': self.hf_row['P_surf'],
+                    'R_int': self.hf_row['R_int'],
+                    'T_magma': self.hf_row['T_magma'],
+                }
+                self.hf_row['T_surf'] = self.hf_row['T_solvus']
+                self.hf_row['T_magma'] = self.hf_row['T_solvus']
+                self.hf_row['P_surf'] = self.hf_row['P_solvus'] * 1e-5  # Pa -> bar
+                self.hf_row['R_int'] = R_sol
 
             try:
                 run_atmosphere(

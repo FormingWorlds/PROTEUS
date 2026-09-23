@@ -15,6 +15,7 @@ from scipy.interpolate import RegularGridInterpolator
 
 from proteus.interior_energetics.common import Interior_t, get_file_tides
 from proteus.interior_energetics.timestep import next_step
+from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import radnuc_data
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 
@@ -762,23 +763,22 @@ def _try_spider(
     spider_radius = hf_row['R_int']
     spider_gravity = hf_row['gravity']
     spider_coresize = coresize
-    if config.interior_struct.zalmoxis.global_miscibility and 'R_solvus' in hf_row:
-        R_solvus = hf_row['R_solvus']
-        if R_solvus is not None and R_solvus < hf_row['R_int']:
-            spider_radius = R_solvus
-            # Gravity at solvus: interpolate from structure if available,
-            # otherwise scale by (R_solvus/R_int)^2 * M_solvus/M_int
-            spider_gravity = hf_row['gravity'] * (R_solvus / hf_row['R_int']) ** 2
-            # Coresize relative to solvus, not surface
-            R_cmb_actual = coresize * hf_row['R_int']
-            spider_coresize = R_cmb_actual / R_solvus if R_solvus > 0 else coresize
-            log.info(
-                'SPIDER domain: [%.2e, %.2e] m (solvus), coresize=%.4f, gravity=%.2f m/s^2',
-                R_cmb_actual,
-                R_solvus,
-                spider_coresize,
-                spider_gravity,
-            )
+    R_solvus = solvus_radius(config, hf_row)
+    if R_solvus is not None:
+        spider_radius = R_solvus
+        # Gravity at solvus: interpolate from structure if available,
+        # otherwise scale by (R_solvus/R_int)^2 * M_solvus/M_int
+        spider_gravity = hf_row['gravity'] * (R_solvus / hf_row['R_int']) ** 2
+        # Coresize relative to solvus, not surface
+        R_cmb_actual = coresize * hf_row['R_int']
+        spider_coresize = R_cmb_actual / R_solvus
+        log.info(
+            'SPIDER domain: [%.2e, %.2e] m (solvus), coresize=%.4f, gravity=%.2f m/s^2',
+            R_cmb_actual,
+            R_solvus,
+            spider_coresize,
+            spider_gravity,
+        )
 
     ### SPIDER base call sequence
     call_sequence = [

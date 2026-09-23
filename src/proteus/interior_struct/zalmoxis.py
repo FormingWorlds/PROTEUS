@@ -18,6 +18,7 @@ from zalmoxis.mixing import _PALEOS_UNIFIED_NAMES
 from zalmoxis.solver import main
 
 from proteus.config import Config
+from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
@@ -3526,25 +3527,24 @@ def zalmoxis_solver(
     spider_density = mantle_density
     spider_gravity = mantle_gravity
 
-    if config.interior_struct.zalmoxis.global_miscibility:
-        R_solvus = hf_row.get('R_solvus')
-        if R_solvus is not None and R_solvus < planet_radius:
-            # Truncate arrays at the solvus: SPIDER only evolves the
-            # miscible interior below the binodal surface
-            solvus_mask = mantle_radii <= R_solvus * 1.001  # small tolerance
-            if np.any(solvus_mask):
-                spider_radii = mantle_radii[solvus_mask]
-                spider_pressure = mantle_pressure[solvus_mask]
-                spider_density = mantle_density[solvus_mask]
-                spider_gravity = mantle_gravity[solvus_mask]
-                log.info(
-                    'SPIDER domain truncated at solvus: R_solvus=%.3e m '
-                    '(%.2f R_earth), %d of %d shells',
-                    R_solvus,
-                    R_solvus / R_earth,
-                    len(spider_radii),
-                    len(mantle_radii),
-                )
+    R_solvus = solvus_radius(config, hf_row, R_outer=planet_radius)
+    if R_solvus is not None:
+        # Truncate arrays at the solvus: SPIDER only evolves the
+        # miscible interior below the binodal surface
+        solvus_mask = mantle_radii <= R_solvus * 1.001  # small tolerance
+        if np.any(solvus_mask):
+            spider_radii = mantle_radii[solvus_mask]
+            spider_pressure = mantle_pressure[solvus_mask]
+            spider_density = mantle_density[solvus_mask]
+            spider_gravity = mantle_gravity[solvus_mask]
+            log.info(
+                'SPIDER domain truncated at solvus: R_solvus=%.3e m '
+                '(%.2f R_earth), %d of %d shells',
+                R_solvus,
+                R_solvus / R_earth,
+                len(spider_radii),
+                len(mantle_radii),
+            )
 
     # Write SPIDER mesh file if requested. Re-uses the possibly-collapsed
     # gravity array so the SPIDER path gets the same scalar-g override

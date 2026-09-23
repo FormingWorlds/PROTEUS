@@ -145,16 +145,24 @@ class TestZalmoxisVolatileGates:
         # Retro-compat: the default remains dry, byte-identical to baseline.
         assert Struct(module='zalmoxis').zalmoxis.dry_mantle is True
 
-    def test_spider_module_skips_the_gate(self):
-        """The miscibility gate only constrains the zalmoxis structure path:
-        a spider config carrying the same value is not validated against it
-        (the zalmoxis sub-config is inert under spider)."""
-        s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(global_miscibility=True)))
-        assert s.zalmoxis.global_miscibility is True
-        # The skip covers the whole sub-config, not the miscibility flag alone:
-        # an EOS string that fails the zalmoxis format check is equally inert
-        # under spider. Narrowing the skip to the flag, and validating EOS
-        # strings for every module, would reject this spider config.
+    @pytest.mark.parametrize('module', ['spider', 'dummy'])
+    def test_global_miscibility_is_rejected_for_every_structure(self, module):
+        """`global_miscibility = true` is rejected for every structure module:
+        only the zalmoxis structure writes the solvus that the main loop and
+        SPIDER read, so under any other module the solvus frame would start
+        from the zero-initialised helpfile values."""
+        kwargs = _spider_kwargs() if module == 'spider' else {'module': module}
+        with pytest.raises(ValueError, match='global_miscibility'):
+            Struct(**kwargs, zalmoxis=Zalmoxis(global_miscibility=True))
+        # Discrimination: the same structure with the flag off constructs.
+        s = Struct(**kwargs, zalmoxis=Zalmoxis(global_miscibility=False))
+        assert s.module == module
+        assert s.zalmoxis.global_miscibility is False
+
+    def test_spider_module_skips_the_eos_format_check(self):
+        """Under spider the zalmoxis EOS strings are inert: an EOS string that
+        fails the zalmoxis format check still constructs. The miscibility
+        rejection is the one check that applies to every module."""
         s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(core_eos='no_colon')))
         assert s.zalmoxis.core_eos == 'no_colon'
         # The paired negative: zalmoxis does enforce the format, so acceptance

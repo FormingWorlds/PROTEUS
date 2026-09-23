@@ -18,6 +18,7 @@ from proteus.interior_energetics.common import (
     InitialConditionError,
     Interior_t,
 )
+from proteus.interior_struct.common import solvus_radius
 from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
 from proteus.utils.helper import UpdateStatusfile
@@ -3046,9 +3047,8 @@ def update_structure_from_interior(
                 # When global_miscibility is enabled, SPIDER's domain
                 # extends to R_solvus, not R_int. Use the appropriate
                 # radius for entropy remapping.
-                if config.interior_struct.zalmoxis.global_miscibility and 'R_solvus' in hf_row:
-                    remap_radius = hf_row['R_solvus']
-                else:
+                remap_radius = solvus_radius(config, hf_row)
+                if remap_radius is None:
                     remap_radius = hf_row['R_int']
                 remap_entropy_for_new_mesh(
                     json_path=latest_json,

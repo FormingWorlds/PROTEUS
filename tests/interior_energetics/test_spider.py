@@ -1091,6 +1091,56 @@ def test_try_spider_init_with_mesh(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'r_solvus_frac, expected_frac',
+    [(0.0, 1.0), (-0.1, 1.0), (0.9, 0.9)],
+    ids=['zero-initialised-solvus', 'negative-solvus', 'valid-solvus'],
+)
+def test_try_spider_domain_radius_with_miscibility(tmp_path, r_solvus_frac, expected_frac):
+    """With global miscibility on, SPIDER's domain moves to the solvus only
+    when R_solvus lies strictly inside the planet. The zero-initialised or a
+    negative R_solvus keeps the surface radius and gravity, instead of a
+    zero-radius, zero-gravity domain."""
+    from proteus.interior_energetics.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, mesh_path = _setup_spider_env(
+        tmp_path, with_mesh=True
+    )
+    config.interior_struct.zalmoxis.global_miscibility = True
+    hf_row['R_solvus'] = r_solvus_frac * hf_row['R_int']
+
+    with (
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            mesh_file=mesh_path,
+        )
+
+    args = mock_run.call_args[0][0]
+    radius = float(args[args.index('-radius') + 1])
+    gravity = -float(args[args.index('-gravity') + 1])
+    assert radius == pytest.approx(expected_frac * hf_row['R_int'], rel=1e-6)
+    # Gravity scales as (R_solvus/R_int)^2 inside the solvus frame.
+    assert gravity == pytest.approx(hf_row['gravity'] * expected_frac**2, rel=1e-6)
+    assert radius > 0.0 and gravity > 0.0
+
+
+@pytest.mark.unit
 def test_try_spider_rho_core_from_zalmoxis(tmp_path):
     """When hf_row contains M_core (set by Zalmoxis), SPIDER receives
     the effective average core density derived from M_core and R_cmb,
