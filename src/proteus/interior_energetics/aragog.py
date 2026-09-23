@@ -1428,9 +1428,10 @@ class AragogRunner:
         solver, this function independently computes a PALEOS adiabat via
         ``zalmoxis.eos_export.compute_entropy_adiabat`` and compares its T(P)
         against the T(P) derived from Aragog's initialized entropy via the
-        P-S EOS tables. A mismatch > 1% triggers an override: the entropy
-        profile is replaced with values inverted from the adiabat's T profile.
-        A mismatch > 5% is raised as a ``RuntimeError`` (true code-path drift).
+        P-S EOS tables. The comparison is diagnostic: a mismatch above 1% logs
+        a warning, and a mismatch above 5% raises a ``RuntimeError`` only for
+        a liquidus_super IC with a cold surface beyond the Fei+2021 calibration
+        pressure.
 
         Parameters
         ----------
@@ -1519,13 +1520,10 @@ class AragogRunner:
             )
 
             # ---- Independent PALEOS adiabat ----
-            # Reference surface temperature for the independent adiabat.
-            # liquidus_super builds the IC by solving for the surface
-            # temperature that gives the requested superheat, so anchor the
-            # cross-check adiabat at that same solved value (tsurf_init is
-            # ignored by liquidus_super). The cold-surface guard below then
-            # compares the IC's unpacked surface against the intended surface,
-            # so a corrupted IC is still caught.
+            # For liquidus_super, anchor the independent adiabat at the surface
+            # T of the P-T adiabat that is delta_T_super above the P-T liquidus.
+            # The IC is solved on the P-S tables, so the diff includes the P-T
+            # vs P-S liquidus offset (tens of K at 1 M_Earth).
             if config.planet.temperature_mode == 'liquidus_super':
                 from proteus.interior_struct.zalmoxis import (
                     solve_superliquidus_adiabat,
