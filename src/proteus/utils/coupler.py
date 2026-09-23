@@ -1007,7 +1007,7 @@ def GetHelpfileKeys():
         'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
         # Melt Fe3+/Fe2+ redox tracking (issue #653,
-        # interior_energetics/redox.py). Populated only under
+        # interior_chem/redox.py). Populated only under
         # planet.fO2_source = "from_mantle_redox"; left at 0.0 (from
         # ZeroHelpfileRow) otherwise. fO2_shift_IW_mantle is what the
         # outgas dispatch buffers to under that source, echoed here

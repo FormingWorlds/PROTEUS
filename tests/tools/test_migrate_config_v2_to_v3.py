@@ -322,6 +322,9 @@ _REVIEWED_NEUTRAL = frozenset(
         'params.stop.solid.freeze_volatiles',
         'planet.delta_T_super',
         'planet.fO2_source',
+        # Default 0.1 is the value previously hard-coded in the redox
+        # tracker, so a migrated 2.0 config keeps its existing behaviour.
+        'planet.ferric_fraction_initial',
         'planet.f_accretion',
         'planet.f_differentiation',
         'planet.tcenter_init',

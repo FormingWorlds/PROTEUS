@@ -2105,7 +2105,7 @@ def run_interior(
     # planet.fO2_source == 'from_mantle_redox'. Placed after all T_magma
     # clamping above so the fO2 it computes is consistent with the
     # T_magma the outgas dispatch uses later this same iteration.
-    from proteus.interior_energetics.redox import update_melt_redox
+    from proteus.interior_chem.redox import update_melt_redox
 
     update_melt_redox(interior_o, hf_row, config)
 

@@ -342,7 +342,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     # every backend, 'from_O_budget' (authoritative-O chemistry) for the
     # CALLIOPE and atmodeller backends, and 'from_mantle_redox' (fO2
     # buffered to the tracked-melt-redox offset computed in
-    # interior_energetics/redox.py, hf_row['fO2_shift_IW_mantle']) for
+    # interior_chem/redox.py, hf_row['fO2_shift_IW_mantle']) for
     # every backend. The Config-level validator
     # (planet_fO2_source_compat) rejects any other value and the
     # from_O_budget + dummy combo at config-load, so this guard is

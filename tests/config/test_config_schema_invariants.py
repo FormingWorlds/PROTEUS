@@ -541,7 +541,7 @@ def test_fO2_source_user_constant_accepts_all_O_modes():
 @pytest.mark.unit
 def test_fO2_source_from_mantle_redox_accepted_with_aragog():
     """'from_mantle_redox' (radial Fe3+/Fe2+ tracking, issue #653;
-    interior_energetics/redox.py) is a real runtime path, wired for
+    interior_chem/redox.py) is a real runtime path, wired for
     interior_energetics.module in ('spider', 'aragog'). The default
     fixture uses 'aragog', so this combination must pass.
     """

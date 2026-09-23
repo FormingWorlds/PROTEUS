@@ -137,7 +137,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `T_surf` | `K` | global surface temperature | `atmos_clim/agni.py`<br>`atmos_clim/dummy.py`<br>`atmos_clim/janus.py`<br>`atmos_clim/wrapper.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/wrapper.py`<br>`interior_struct/zalmoxis.py`<br>`proteus.py` | always; atmos_clim.module = "agni"; atmos_clim.module = "dummy"; atmos_clim.module = "janus"; interior_energetics.module = "boundary"; interior_struct.module = "zalmoxis" | atmos_chem, atmos_clim, interior_energetics, main loop, plot, utils |
-| `T_magma` | `K` | global outgassing temperature | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py`<br>`interior_energetics/wrapper.py`<br>`interior_struct/zalmoxis.py`<br>`proteus.py` | always; interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider"; interior_struct.module = "zalmoxis" | atmos_clim, interior_energetics, main loop, outgas, plot, utils |
+| `T_magma` | `K` | global outgassing temperature | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py`<br>`interior_energetics/wrapper.py`<br>`interior_struct/zalmoxis.py`<br>`proteus.py` | always; interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider"; interior_struct.module = "zalmoxis" | atmos_clim, interior_chem, interior_energetics, main loop, outgas, plot, utils |
 | `T_cmb` | `K` | core temperature | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "spider" | interior_energetics |
 | `T_eqm` | `K` | grey radiative equilibrium temperature | `proteus.py`<br>`star/wrapper.py` | always | interior_energetics, interior_struct, star |
 | `T_skin` | `K` | grey radiative skin temperature | `star/wrapper.py` | always | atmos_clim |
@@ -250,8 +250,8 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `fO2_vapourise_shift_IW_derived` | `log10 bar` | rock-vapour IW offset | `outgas/lavatmos.py` | outgas.vapourise = true | outgas |
 | `O_res` | `kg` | O mass-balance residual | `outgas/atmodeller.py`<br>`outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller"; outgas.module = "calliope"; outgas.module = "dummy" |   |
 | `O_vapourised_kg` | `kg` | oxygen released by rock vapourisation (LavAtmos) | `outgas/lavatmos.py` | outgas.vapourise = true |   |
-| `fO2_shift_IW_mantle` | `log10 bar` | tracked-melt-redox surface Delta-IW | `interior_energetics/redox.py` | always | outgas |
-| `ferric_frac_mantle` | `1` | global melt Fe3+/FeT from the tracker | `interior_energetics/redox.py` | always |   |
+| `fO2_shift_IW_mantle` | `log10 bar` | tracked-melt-redox surface Delta-IW | `interior_chem/redox.py` | always | outgas |
+| `ferric_frac_mantle` | `1` | global melt Fe3+/FeT from the tracker | `interior_chem/redox.py` | always |   |
 
 ### Desiccation escape balance
 

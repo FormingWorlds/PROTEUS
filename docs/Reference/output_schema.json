@@ -927,6 +927,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "interior_chem",
         "interior_energetics",
         "main loop",
         "outgas",
@@ -2691,7 +2692,7 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/interior_energetics/redox.py",
+          "file": "src/proteus/interior_chem/redox.py",
           "condition": "always"
         }
       ],
@@ -2707,7 +2708,7 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/interior_energetics/redox.py",
+          "file": "src/proteus/interior_chem/redox.py",
           "condition": "always"
         }
       ],

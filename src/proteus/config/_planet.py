@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from attr.validators import ge, gt, in_, optional
+from attr.validators import ge, gt, in_, lt, optional
 from attrs import define, field
 
 from ._converters import none_if_none
@@ -278,12 +278,20 @@ class Planet:
         'from_mantle_redox': fO2 is derived from a Fe3+/Fe2+ ratio tracked
             through fractional crystallization of the melt (Schaefer
             et al. 2024 / issue #653; see
-            ``interior_energetics/redox.py``), using prescribed
+            ``interior_chem/redox.py``), using prescribed
             melt/solid partition coefficients rather than an equilibrium
             constant. The tracker needs a per-cell radial melt-fraction
             profile, so requires ``interior_energetics.module`` to be
             'spider' or 'aragog' (checked by the config-level
             validator).
+    ferric_fraction_initial: float
+        Initial ferric fraction Fe3+/FeT of the melt at the first
+        tracker call, in (0, 1). Seeds the global Fe3+/Fe2+ reservoirs
+        (``interior_chem/redox.py``, Step 1-2 / Eq 1-3). Default 0.1,
+        the BSE-like value used by Schaefer et al. (2024). Read only
+        when ``fO2_source = 'from_mantle_redox'``; ignored otherwise.
+        The endpoints are excluded because the tracker forms the redox
+        ratio f/(1-f), which is undefined at 1 and gives log10(0) at 0.
     prevent_warming: bool
         When True, require the planet to monotonically cool over time.
         Enforced in all atmosphere modules and termination checks.
@@ -347,7 +355,7 @@ class Planet:
     # atmospheric fO2 and the chemistry solver returns the implied O
     # inventory. 'from_O_budget' inverts the roles (O budget drives fO2);
     # 'from_mantle_redox' (issue #653) derives fO2 from a tracked melt
-    # Fe3+/Fe2+ ratio (interior_energetics/redox.py). Compatibility with
+    # Fe3+/Fe2+ ratio (interior_chem/redox.py). Compatibility with
     # interior_energetics.module is checked at the Config level, below.
     fO2_source: str = field(
         default='user_constant',
@@ -358,6 +366,12 @@ class Planet:
         # ::test_enum_and_bound_extraction_pins_real_validator_sets).
         validator=[in_(('user_constant', 'from_O_budget', 'from_mantle_redox'))],
     )
+
+    # Initial melt ferric fraction Fe3+/FeT seeding the redox tracker
+    # (interior_chem/redox.py). Only read under
+    # fO2_source = 'from_mantle_redox'. Open interval: the tracker forms
+    # f/(1-f), so f=1 divides by zero and f=0 makes log10(ratio) -inf.
+    ferric_fraction_initial: float = field(default=0.1, validator=(gt(0), lt(1)))
 
     # Structure override: bypass the root finder and use a fixed R_int.
     # Needed for SPIDER/Aragog parity runs where the two energetics

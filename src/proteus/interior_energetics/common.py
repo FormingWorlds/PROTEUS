@@ -601,7 +601,7 @@ class Interior_t:
 
         self.aragog_solver = None
 
-        # Melt Fe3+/Fe2+ redox tracking state (interior_energetics/redox.py),
+        # Melt Fe3+/Fe2+ redox tracking state (interior_chem/redox.py),
         # only used under planet.fO2_source = 'from_mantle_redox' (issue
         # #653). Lazily created on the first call to update_melt_redox so
         # that every other run pays zero cost for this feature.

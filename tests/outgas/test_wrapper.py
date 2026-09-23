@@ -1436,7 +1436,7 @@ def _write_toml(tmp_path, name: str, text: str):
 @pytest.mark.unit
 def test_config_accepts_from_mantle_redox_with_aragog(tmp_path):
     """planet.fO2_source = 'from_mantle_redox' (radial Fe3+/Fe2+ tracking,
-    issue #653; interior_energetics/redox.py) is a real runtime path now,
+    issue #653; interior_chem/redox.py) is a real runtime path now,
     wired for interior_energetics.module in ('spider', 'aragog'). The
     schema default interior module is 'aragog' (not overridden by
     _minimal_valid_toml), so this config must load cleanly.

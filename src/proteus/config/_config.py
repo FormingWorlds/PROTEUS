@@ -225,7 +225,7 @@ def planet_fO2_source_compat(instance, attribute, value):
 
     1. ``fO2_source = "from_mantle_redox"`` (the radial Fe3+/Fe2+ fO2
        framework, issue #653, Schaefer et al. 2024;
-       ``interior_energetics/redox.py``) requires a per-cell radial
+       ``interior_chem/redox.py``) requires a per-cell radial
        melt-fraction profile each step, so requires
        ``interior_energetics.module`` to be ``"spider"`` or ``"aragog"``.
        The ``dummy`` and ``boundary`` interior modules populate

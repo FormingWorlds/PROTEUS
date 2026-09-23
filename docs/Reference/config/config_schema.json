@@ -4115,7 +4115,32 @@
         "from_mantle_redox"
       ],
       "bounds": null,
-      "description": "How the chemistry solver treats atmospheric fO2. 'user_constant' (default): fO2 is buffered to the iron-wustite offset set by ``outgas.fO2_shift_IW``; atmospheric and dissolved O are derived from the equilibrium chemistry at that fO2. 'from_O_budget': the user O budget (from ``planet.elements.O_mode``/``O_budget``) is authoritative; fO2 is *derived* by the chemistry solver as the IW-buffer offset that produces the supplied O inventory. Use this when you want whole-planet O accounting to drive the redox state instead of buffering to a fixed dIW. Requires ``O_mode != 'ic_chemistry'`` (the chemistry needs an O target to invert against). 'from_mantle_redox': fO2 is derived from a Fe3+/Fe2+ ratio tracked through fractional crystallization of the melt (Schaefer et al. 2024 / issue #653; see ``interior_energetics/redox.py``), using prescribed melt/solid partition coefficients rather than an equilibrium constant. The tracker needs a per-cell radial melt-fraction profile, so requires ``interior_energetics.module`` to be 'spider' or 'aragog' (checked by the config-level validator).",
+      "description": "How the chemistry solver treats atmospheric fO2. 'user_constant' (default): fO2 is buffered to the iron-wustite offset set by ``outgas.fO2_shift_IW``; atmospheric and dissolved O are derived from the equilibrium chemistry at that fO2. 'from_O_budget': the user O budget (from ``planet.elements.O_mode``/``O_budget``) is authoritative; fO2 is *derived* by the chemistry solver as the IW-buffer offset that produces the supplied O inventory. Use this when you want whole-planet O accounting to drive the redox state instead of buffering to a fixed dIW. Requires ``O_mode != 'ic_chemistry'`` (the chemistry needs an O target to invert against). 'from_mantle_redox': fO2 is derived from a Fe3+/Fe2+ ratio tracked through fractional crystallization of the melt (Schaefer et al. 2024 / issue #653; see ``interior_chem/redox.py``), using prescribed melt/solid partition coefficients rather than an equilibrium constant. The tracker needs a per-cell radial melt-fraction profile, so requires ``interior_energetics.module`` to be 'spider' or 'aragog' (checked by the config-level validator).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "planet.ferric_fraction_initial",
+      "toml_section": "planet",
+      "class": "Planet",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Initial ferric fraction Fe3+/FeT of the melt at the first tracker call, in (0, 1). Seeds the global Fe3+/Fe2+ reservoirs (``interior_chem/redox.py``, Step 1-2 / Eq 1-3). Default 0.1, the BSE-like value used by Schaefer et al. (2024). Read only when ``fO2_source = 'from_mantle_redox'``; ignored otherwise. The endpoints are excluded because the tracker forms the redox ratio f/(1-f), which is undefined at 1 and gives log10(0) at 0.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

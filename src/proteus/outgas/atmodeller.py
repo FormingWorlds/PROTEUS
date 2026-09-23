@@ -485,7 +485,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     if fO2_source == 'user_constant':
         fugacity_constraints['O2_g'] = IronWustiteBuffer(config.outgas.fO2_shift_IW)
     elif fO2_source == 'from_mantle_redox':
-        # Tracked-melt-redox offset (interior_energetics/redox.py), same
+        # Tracked-melt-redox offset (interior_chem/redox.py), same
         # convention caveat as elsewhere in this dispatch: it was computed
         # against the O'Neill & Eggins (2002) buffer (matching CALLIOPE),
         # not atmodeller's own Hirschmann-combined buffer convention that
