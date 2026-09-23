@@ -2518,9 +2518,9 @@ def generate_spider_tables(config: Config, outdir: str):
     # PROTEUS_PS_CACHE_DIR is set, the directory is keyed by cache_key so that
     # independent runs with the same planet mass, table resolution, and mantle
     # EOS reuse one generated table instead of each rebuilding the slow
-    # full-resolution PALEOS P-S table. The cache_key encodes everything that
-    # changes the table (P_max, nP, nS, mushy_zone_factor, layout, and the
-    # resolved EOS identity), so reuse is exact.
+    # full-resolution PALEOS P-S table. The cache_key holds P_max, nP, nS,
+    # mushy_zone_factor, layout, the resolved EOS identity and the Zalmoxis
+    # table generator identity.
     _ps_cache_root = os.environ.get('PROTEUS_PS_CACHE_DIR')
     if _ps_cache_root:
         _safe_key = cache_key.replace('.', 'p').replace('=', '-').replace('+', '')
@@ -2557,6 +2557,13 @@ def generate_spider_tables(config: Config, outdir: str):
                     'solidus_path': solidus_path,
                     'liquidus_path': liquidus_path,
                 }
+        else:
+            log.info(
+                'Regenerating P-S entropy tables in %s: cache key %s does not match %s',
+                spider_eos_dir,
+                existing_key,
+                cache_key,
+            )
 
     # Choose where to generate. For a shared PROTEUS_PS_CACHE_DIR the tables are
     # written into a private staging directory on the same filesystem and then
@@ -3565,7 +3572,7 @@ def zalmoxis_solver(
     spider_density = mantle_density
     spider_gravity = mantle_gravity
 
-    R_solvus = solvus_radius(config, hf_row, R_outer=planet_radius)
+    R_solvus = solvus_radius(config, hf_row.get('R_solvus'), planet_radius, R_inner=cmb_radius)
     if R_solvus is not None:
         # Truncate arrays at the solvus: SPIDER only evolves the
         # miscible interior below the binodal surface

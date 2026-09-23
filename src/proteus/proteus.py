@@ -1202,7 +1202,12 @@ class Proteus:
             # so the atmosphere is computed from the solvus outward.
             # Save originals to restore after the atmosphere step.
             _saved_atm_bc = {}
-            R_sol = solvus_radius(self.config, self.hf_row)
+            R_sol = solvus_radius(
+                self.config,
+                self.hf_row.get('R_solvus'),
+                self.hf_row['R_int'],
+                R_inner=self.hf_row.get('R_core') or 0.0,
+            )
             if R_sol is not None:
                 _saved_atm_bc = {
                     'T_surf': self.hf_row['T_surf'],
@@ -1383,15 +1388,9 @@ class Proteus:
             self.config.interior_energetics.module == 'aragog'
             and self.interior_o.aragog_solver is not None
         ):
-            from proteus.interior_energetics.aragog import AragogRunner
+            from proteus.interior_energetics.aragog import write_final_snapshot
 
-            out = self.interior_o.aragog_solver.get_state()
-            AragogRunner._write_output_ncdf(
-                self.directories['output'],
-                self.hf_row['Time'],
-                out,
-                T_surf_coupled=self.hf_row.get('T_surf'),
-            )
+            write_final_snapshot(self.config, self.interior_o, self.directories, self.hf_row)
 
         # Ensure the final atmosphere state is on disk, since it won't always happen to
         # be written on the last iteration of the model.

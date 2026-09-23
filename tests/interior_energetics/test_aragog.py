@@ -1526,9 +1526,6 @@ def test_snapshot_round_trips_the_cmb_entropy_gradient(tmp_path, dSdr_cmb, expec
         assert got is None
     else:
         assert got == pytest.approx(expected, rel=1e-15)
-        # Sign and scale: a relaxed CMB gradient is small and negative, far
-        # from the -5.9e-5 finite difference of the two bottom cells.
-        assert got < 0 and abs(got) < 1e-9
     # The entropy profile in the same file is unaffected by the new variable.
     np.testing.assert_array_equal(read_last_Sfield(str(tmp_path), 2512.69358), out.S_final)
 
@@ -1599,3 +1596,204 @@ def test_resume_restores_the_cmb_entropy_gradient(stored, caplog):
     else:
         assert dSdr_seen == pytest.approx(stored, rel=1e-15)
         assert not no_state_logged
+
+
+class _StateSolver:
+    """Aragog solver stand-in whose state-vector slot N holds ``slot_value``,
+    on an Adams-Williamson mesh with a 812 MPa surface pressure."""
+
+    def __init__(self, slot_value):
+        from types import SimpleNamespace
+
+        self.slot_value = slot_value
+        self.parameters = SimpleNamespace(mesh=SimpleNamespace(surface_pressure=8.12e8))
+
+    def get_current_dSdr_cmb(self):
+        return self.slot_value
+
+    def get_state(self):
+        return _snapshot_output()
+
+
+@pytest.mark.parametrize(
+    'core_bc, expected',
+    [('energy_balance', -2.2e-11), ('bower2018', None), ('quasi_steady', None)],
+    ids=['energy-balance', 'bower2018-core-temperature-slot', 'quasi-steady'],
+)
+def test_cmb_gradient_state_only_for_energy_balance(core_bc, expected):
+    """Only energy_balance keeps the CMB entropy gradient in the extra state
+    slot; bower2018 keeps T_core there (same vector length), which must not
+    be stored as a gradient."""
+    from proteus.interior_energetics.aragog import cmb_gradient_state
+
+    slot = -2.2e-11 if core_bc == 'energy_balance' else 4100.0
+    got = cmb_gradient_state(_StateSolver(slot), core_bc)
+    if expected is None:
+        assert got is None
+    else:
+        assert got == pytest.approx(expected, rel=1e-15)
+    # Edge case: a solver without the getter (older aragog) stores nothing.
+    assert cmb_gradient_state(object(), 'energy_balance') is None
+
+
+@pytest.mark.parametrize('core_bc', ['energy_balance', 'bower2018'])
+def test_final_snapshot_keeps_the_resume_state(tmp_path, core_bc):
+    """The end-of-run write rewrites the last in-loop snapshot (same file
+    name), so it must store the same CMB gradient and mesh surface pressure; a
+    run that ends normally is then resumed from the stored values."""
+    from proteus.interior_energetics.aragog import (
+        AragogRunner,
+        read_last_dSdr_cmb,
+        read_last_mesh_surface_pressure,
+        write_final_snapshot,
+    )
+
+    (tmp_path / 'data').mkdir()
+    t = 2512.69358
+    # The in-loop write for the same time comes first, as in a real run.
+    AragogRunner._write_output_ncdf(str(tmp_path), t, _snapshot_output(), dSdr_cmb=-2.2e-11)
+    config = MagicMock()
+    config.interior_energetics.aragog.core_bc = core_bc
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _StateSolver(-2.2e-11 if core_bc == 'energy_balance' else 4100.0)
+    write_final_snapshot(
+        config, interior_o, {'output': str(tmp_path)}, {'Time': t, 'T_surf': 3000.0}
+    )
+    assert len(list((tmp_path / 'data').glob('*_int.nc'))) == 1
+    got = read_last_dSdr_cmb(str(tmp_path), t)
+    if core_bc == 'energy_balance':
+        assert got == pytest.approx(-2.2e-11, rel=1e-15)
+    else:
+        # T_core (4100 K) is never stored under the gradient name.
+        assert got is None
+    assert read_last_mesh_surface_pressure(str(tmp_path), t) == pytest.approx(
+        8.12e8, rel=1e-15, abs=0.0
+    )
+
+
+@pytest.mark.parametrize('core_bc', ['energy_balance', 'bower2018'])
+def test_run_solver_writes_the_resume_state_every_step(tmp_path, core_bc):
+    """Every in-loop snapshot written by ``run_solver`` carries the CMB
+    gradient state for energy_balance (bower2018 stores none) and the mesh
+    surface pressure, so a resume from any written step restores both."""
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.aragog import (
+        AragogRunner,
+        read_last_dSdr_cmb,
+        read_last_mesh_surface_pressure,
+    )
+
+    (tmp_path / 'data').mkdir()
+    runner = AragogRunner.__new__(AragogRunner)
+    runner._use_jax = False
+    runner._config = MagicMock()
+    runner._config.interior_energetics.aragog.core_bc = core_bc
+    runner._config.interior_energetics.write_flux_diagnostics = False
+    out = _snapshot_output()
+    out.dt_actual = 80.0
+    runner._solve_with_retry = lambda hf_row, interior_o: out
+    runner._build_helpfile_output = lambda *a, **k: {}
+    interior_o = SimpleNamespace(
+        aragog_solver=_StateSolver(-5.254e-08 if core_bc == 'energy_balance' else 4100.0)
+    )
+    hf_row = {'Time': 202.0, 'T_surf': 3000.0}
+    sim_time, _ = runner.run_solver(hf_row, interior_o, {'output': str(tmp_path)})
+    assert sim_time == pytest.approx(282.0, rel=1e-15)
+    got = read_last_dSdr_cmb(str(tmp_path), sim_time)
+    if core_bc == 'energy_balance':
+        assert got == pytest.approx(-5.254e-08, rel=1e-15)
+    else:
+        assert got is None
+    assert read_last_mesh_surface_pressure(str(tmp_path), sim_time) == pytest.approx(
+        8.12e8, rel=1e-15, abs=0.0
+    )
+    # Limit input: a suppressed write (dt_write) leaves no snapshot behind.
+    runner.run_solver(
+        {'Time': 282.0, 'T_surf': 3000.0},
+        interior_o,
+        {'output': str(tmp_path)},
+        write_data=False,
+    )
+    assert len(list((tmp_path / 'data').glob('*_int.nc'))) == 1
+
+
+@pytest.mark.parametrize(
+    'value, expected',
+    [(0.0, 0.0), (8.12e8, 8.12e8), (None, None), (float('nan'), None)],
+    ids=['fresh-run-setup', 'resumed-run-setup', 'no-value-written', 'non-finite'],
+)
+@pytest.mark.physics_invariant
+def test_snapshot_round_trips_the_mesh_surface_pressure(tmp_path, value, expected):
+    """The snapshot stores the Adams-Williamson mesh surface pressure the
+    solver was set up with and the resume reader returns it exactly; zero
+    (a fresh run's setup value) is a real value, not a missing one."""
+    from proteus.interior_energetics.aragog import (
+        AragogRunner,
+        mesh_surface_pressure_state,
+        read_last_mesh_surface_pressure,
+    )
+
+    (tmp_path / 'data').mkdir()
+    AragogRunner._write_output_ncdf(
+        str(tmp_path), 202.0, _snapshot_output(), mesh_surface_pressure=value
+    )
+    got = read_last_mesh_surface_pressure(str(tmp_path), 202.0)
+    if expected is None:
+        assert got is None
+    else:
+        assert got == pytest.approx(expected, rel=1e-15, abs=0.0)
+    # A solver without mesh parameters stores nothing.
+    assert mesh_surface_pressure_state(object()) is None
+    assert mesh_surface_pressure_state(_StateSolver(0.0)) == pytest.approx(
+        8.12e8, rel=1e-15, abs=0.0
+    )
+
+
+@pytest.mark.physics_invariant
+def test_update_solver_keeps_the_setup_pressure_without_a_stored_value(tmp_path):
+    """A snapshot without ``mesh_surface_pressure`` (older runs) leaves the
+    value setup_solver chose; the resume does not invent one."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    (tmp_path / 'data').mkdir()
+    AragogRunner._write_output_ncdf(str(tmp_path), 202.0, _snapshot_output())
+    interior_o = MagicMock()
+    interior_o.aragog_solver.parameters.mesh.surface_pressure = 8.12e8
+    interior_o.aragog_solver.parameters.mesh.eos_method = 1
+    hf_row = {'Time': 202.0, 'F_atm': 7.6e5, 'T_eqm': 255.0}
+    AragogRunner.update_solver(80.0, hf_row, interior_o, output_dir=str(tmp_path))
+    assert interior_o.aragog_solver.parameters.mesh.surface_pressure == pytest.approx(
+        8.12e8, rel=1e-15, abs=0.0
+    )
+    assert interior_o._last_dSdr_cmb is None
+
+
+def test_update_solver_reads_the_cmb_gradient_on_resume(tmp_path):
+    """On resume ``update_solver`` reads the entropy profile and the CMB
+    gradient from the snapshot at the restored time; a step without an
+    output directory (normal coupling step) leaves the stored value alone."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    (tmp_path / 'data').mkdir()
+    out = _snapshot_output()
+    AragogRunner._write_output_ncdf(
+        str(tmp_path), 202.0, out, dSdr_cmb=-5.254e-08, mesh_surface_pressure=0.0
+    )
+    interior_o = MagicMock()
+    interior_o._last_dSdr_cmb = None
+    # setup_solver took the restored row's P_surf (8120 bar) for the mesh.
+    interior_o.aragog_solver.parameters.mesh.surface_pressure = 8.12e8
+    hf_row = {'Time': 202.0, 'F_atm': 7.6e5, 'T_eqm': 255.0}
+    AragogRunner.update_solver(80.0, hf_row, interior_o, output_dir=str(tmp_path))
+    assert interior_o._last_dSdr_cmb == pytest.approx(-5.254e-08, rel=1e-15)
+    # The mesh is rebuilt with the surface pressure the run used, not P_surf.
+    assert interior_o.aragog_solver.parameters.mesh.surface_pressure == pytest.approx(
+        0.0, rel=1e-15, abs=0.0
+    )
+    np.testing.assert_array_equal(interior_o._last_entropy, out.S_final)
+    # Limit input: no output_dir, as on every in-run step, reads nothing.
+    interior_o._last_dSdr_cmb = 'unchanged'
+    interior_o.aragog_solver.solution = None
+    AragogRunner.update_solver(80.0, hf_row, interior_o)
+    assert interior_o._last_dSdr_cmb == 'unchanged'

@@ -320,6 +320,7 @@ class TestExternalTemperatureSourceSkipsResolve:
             cfg_eos, {'P_cmb': 6.7e11}, 'liquidus_super', external_temperature_source=True
         )
         assert T_eos == pytest.approx(6000.0)
+        assert calls['n'] == 0, 'the external path must not solve the anchor'
 
     def test_internal_dispatch_solves_despite_cached_anchor(self, monkeypatch):
         """The skip is gated on the external-source flag, not on a cached

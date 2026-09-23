@@ -148,10 +148,10 @@ under its output `data/` directory. Set the `PROTEUS_PS_CACHE_DIR`
 environment variable to an absolute path to instead share one derived copy
 across runs: tables are stored in a subdirectory keyed by pressure ceiling,
 resolution, mushy zone factor, table layout, the resolved mantle-EOS identity,
-and the Zalmoxis table generator (its version and a digest of its source), so a
-run reuses the cache only when every one of those matches, different equations
-of state never collide, and a Zalmoxis update that changes the tables starts a
-new subdirectory. This is the mitigation for the
+and the Zalmoxis table generator (its version and a digest of its table-writing
+source files), so a run reuses the cache only when every one of those matches,
+different equations of state never collide, and a new Zalmoxis version or an
+edit to its table-writing code starts a new subdirectory. This is the mitigation for the
 per-run disk duplication that a grid or batch of same-EOS runs would
 otherwise incur, since all such runs then read one shared copy. The cache
 directory is not size-limited or auto-pruned; it grows with the number of

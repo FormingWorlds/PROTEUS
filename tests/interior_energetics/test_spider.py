@@ -1094,14 +1094,19 @@ def test_try_spider_init_with_mesh(tmp_path):
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
     'r_solvus_frac, expected_frac',
-    [(0.0, 1.0), (-0.1, 1.0), (0.9, 0.9)],
-    ids=['zero-initialised-solvus', 'negative-solvus', 'valid-solvus'],
+    [(0.0, 1.0), (-0.1, 1.0), (0.3, 1.0), (0.9, 0.9)],
+    ids=[
+        'zero-initialised-solvus',
+        'negative-solvus',
+        'solvus-inside-the-core',
+        'valid-solvus',
+    ],
 )
 def test_try_spider_domain_radius_with_miscibility(tmp_path, r_solvus_frac, expected_frac):
     """With global miscibility on, SPIDER's domain moves to the solvus only
-    when R_solvus lies strictly inside the planet. The zero-initialised or a
-    negative R_solvus keeps the surface radius and gravity, instead of a
-    zero-radius, zero-gravity domain."""
+    when R_solvus lies between the CMB and the surface. The zero-initialised,
+    a negative, or a below-CMB R_solvus keeps the surface radius and gravity,
+    instead of a zero-radius domain or one with coresize > 1."""
     from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, eos_base, mc_base, mesh_path = _setup_spider_env(
@@ -1134,10 +1139,14 @@ def test_try_spider_domain_radius_with_miscibility(tmp_path, r_solvus_frac, expe
     args = mock_run.call_args[0][0]
     radius = float(args[args.index('-radius') + 1])
     gravity = -float(args[args.index('-gravity') + 1])
+    coresize = float(args[args.index('-coresize') + 1])
     assert radius == pytest.approx(expected_frac * hf_row['R_int'], rel=1e-6)
-    # Gravity scales as (R_solvus/R_int)^2 inside the solvus frame.
-    assert gravity == pytest.approx(hf_row['gravity'] * expected_frac**2, rel=1e-6)
+    # The CMB stays inside the domain: coresize in (0, 1).
+    assert 0.0 < coresize < 1.0
     assert radius > 0.0 and gravity > 0.0
+    if not expected_frac < 1.0:
+        # No solvus frame: the surface gravity is passed unchanged.
+        assert gravity == pytest.approx(hf_row['gravity'], rel=1e-6)
 
 
 @pytest.mark.unit

@@ -3047,7 +3047,12 @@ def update_structure_from_interior(
                 # When global_miscibility is enabled, SPIDER's domain
                 # extends to R_solvus, not R_int. Use the appropriate
                 # radius for entropy remapping.
-                remap_radius = solvus_radius(config, hf_row)
+                remap_radius = solvus_radius(
+                    config,
+                    hf_row.get('R_solvus'),
+                    hf_row['R_int'],
+                    R_inner=hf_row.get('R_core') or 0.0,
+                )
                 if remap_radius is None:
                     remap_radius = hf_row['R_int']
                 remap_entropy_for_new_mesh(

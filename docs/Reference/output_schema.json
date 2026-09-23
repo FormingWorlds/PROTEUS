@@ -639,7 +639,8 @@
         }
       ],
       "consumers": [
-        "interior_energetics"
+        "interior_energetics",
+        "main loop"
       ]
     },
     {
@@ -675,7 +676,9 @@
         }
       ],
       "consumers": [
-        "interior_struct"
+        "interior_energetics",
+        "interior_struct",
+        "main loop"
       ]
     },
     {

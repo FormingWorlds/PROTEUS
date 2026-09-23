@@ -1697,6 +1697,16 @@ class AragogRunner:
         if output_dir is not None:
             S_field = read_last_Sfield(output_dir, hf_row['Time'])
             interior_o._last_dSdr_cmb = read_last_dSdr_cmb(output_dir, hf_row['Time'])
+            # The run built its mesh with the surface pressure of its own setup.
+            P_mesh = read_last_mesh_surface_pressure(output_dir, hf_row['Time'])
+            if P_mesh is not None:
+                solver.parameters.mesh.surface_pressure = P_mesh
+            elif solver.parameters.mesh.eos_method == 1:
+                log.info(
+                    'Snapshot has no mesh surface pressure; the Adams-Williamson '
+                    'mesh uses P_surf of the restored row (%.3e Pa).',
+                    solver.parameters.mesh.surface_pressure,
+                )
         else:
             sol = solver.solution
             if sol is not None and sol.y.size > 0:
@@ -1902,11 +1912,10 @@ class AragogRunner:
                     self._config.interior_energetics, 'write_flux_diagnostics', False
                 ),
                 T_surf_coupled=hf_row.get('T_surf'),
-                dSdr_cmb=(
-                    interior_o.aragog_solver.get_current_dSdr_cmb()
-                    if hasattr(interior_o.aragog_solver, 'get_current_dSdr_cmb')
-                    else None
+                dSdr_cmb=cmb_gradient_state(
+                    interior_o.aragog_solver, self._config.interior_energetics.aragog.core_bc
                 ),
+                mesh_surface_pressure=mesh_surface_pressure_state(interior_o.aragog_solver),
             )
 
         return sim_time, output
@@ -2487,6 +2496,7 @@ class AragogRunner:
         write_diagnostics: bool = False,
         T_surf_coupled: float | None = None,
         dSdr_cmb: float | None = None,
+        mesh_surface_pressure: float | None = None,
     ):
         """Write entropy solver output to NetCDF using SolverOutput.
 
@@ -2507,6 +2517,10 @@ class AragogRunner:
             condition at ``time`` [J kg-1 K-1 m-1], written as
             ``dSdr_cmb_state`` so a resume restarts the boundary state where
             it was. None (other core_bc modes) writes nothing.
+        mesh_surface_pressure : float or None
+            Surface pressure of the solver's Adams-Williamson mesh [Pa], the
+            value fixed at solver setup; a resume rebuilds the same mesh from
+            it. None writes nothing.
         """
         fpath = os.path.join(output_dir, 'data', format_subyear_time(time) + '_int.nc')
         ds = nc.Dataset(fpath, mode='w')
@@ -2564,6 +2578,11 @@ class AragogRunner:
             ds['dSdr_cmb_state'][0] = float(dSdr_cmb)
             ds['dSdr_cmb_state'].units = 'J kg-1 K-1 m-1'
 
+        if mesh_surface_pressure is not None:
+            ds.createVariable('mesh_surface_pressure', np.float64)
+            ds['mesh_surface_pressure'][0] = float(mesh_surface_pressure)
+            ds['mesh_surface_pressure'].units = 'Pa'
+
         ds.close()
 
 
@@ -2579,6 +2598,82 @@ def read_last_Sfield(output_dir: str, time: float):
         S_stag = np.array(ds.get('temp_s', ds.get('temp_b', [3200.0]))[:])
     ds.close()
     return S_stag
+
+
+def cmb_gradient_state(solver, core_bc: str) -> float | None:
+    """CMB entropy gradient state of an ``energy_balance`` Aragog solve.
+
+    ``get_current_dSdr_cmb`` identifies the slot by the state-vector length
+    alone, which ``bower2018`` shares (its extra slot holds T_core), so the
+    boundary condition is checked here.
+
+    Parameters
+    ----------
+    solver : EntropySolver
+        Aragog solver after at least one solve.
+    core_bc : str
+        ``interior_energetics.aragog.core_bc``.
+
+    Returns
+    -------
+    float or None
+        dSdr_cmb [J kg-1 K-1 m-1] for ``energy_balance``, else None.
+    """
+    if core_bc != 'energy_balance' or not hasattr(solver, 'get_current_dSdr_cmb'):
+        return None
+    return solver.get_current_dSdr_cmb()
+
+
+def mesh_surface_pressure_state(solver) -> float | None:
+    """Surface pressure of the solver's Adams-Williamson mesh [Pa].
+
+    The value is set once at solver setup from the helpfile ``P_surf`` and is
+    not updated by later coupling steps, so a resume must rebuild the mesh
+    from the stored value, not from the ``P_surf`` of the restored row.
+
+    Parameters
+    ----------
+    solver : EntropySolver
+        Aragog solver.
+
+    Returns
+    -------
+    float or None
+        ``parameters.mesh.surface_pressure`` [Pa], or None when the solver
+        does not expose it.
+    """
+    try:
+        return float(solver.parameters.mesh.surface_pressure)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_row: dict):
+    """Write the Aragog state at the end of a run so a resume can find it.
+
+    The file name comes from ``hf_row['Time']``, so this rewrites the last
+    in-loop snapshot and must carry the same CMB gradient state.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration.
+    interior_o : Interior_t
+        Interior object holding the Aragog solver.
+    dirs : dict
+        Run directories; ``dirs['output']`` is the run output directory.
+    hf_row : dict
+        Final helpfile row.
+    """
+    solver = interior_o.aragog_solver
+    AragogRunner._write_output_ncdf(
+        dirs['output'],
+        hf_row['Time'],
+        solver.get_state(),
+        T_surf_coupled=hf_row.get('T_surf'),
+        dSdr_cmb=cmb_gradient_state(solver, config.interior_energetics.aragog.core_bc),
+        mesh_surface_pressure=mesh_surface_pressure_state(solver),
+    )
 
 
 def read_last_dSdr_cmb(output_dir: str, time: float) -> float | None:
@@ -2597,11 +2692,35 @@ def read_last_dSdr_cmb(output_dir: str, time: float) -> float | None:
         ``dSdr_cmb_state`` [J kg-1 K-1 m-1], or None when the snapshot does
         not hold it (other core_bc modes, older snapshots) or it is not finite.
     """
+    return _read_snapshot_scalar(output_dir, time, 'dSdr_cmb_state')
+
+
+def read_last_mesh_surface_pressure(output_dir: str, time: float) -> float | None:
+    """Read the Adams-Williamson mesh surface pressure from the Aragog snapshot.
+
+    Parameters
+    ----------
+    output_dir : str
+        Run output directory.
+    time : float
+        Snapshot time [yr].
+
+    Returns
+    -------
+    float or None
+        ``mesh_surface_pressure`` [Pa], or None when the snapshot does not
+        hold it (older snapshots) or it is not finite.
+    """
+    return _read_snapshot_scalar(output_dir, time, 'mesh_surface_pressure')
+
+
+def _read_snapshot_scalar(output_dir: str, time: float, name: str) -> float | None:
+    """Finite scalar ``name`` from the snapshot at ``time``, else None."""
     fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_int.nc')
     with nc.Dataset(fpath) as ds:
-        if 'dSdr_cmb_state' not in ds.variables:
+        if name not in ds.variables:
             return None
-        value = float(np.asarray(ds['dSdr_cmb_state'][:]).item())
+        value = float(np.asarray(ds[name][:]).item())
     return value if np.isfinite(value) else None
 
 

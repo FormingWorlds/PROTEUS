@@ -120,9 +120,9 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `M_int` | `kg` | interior mass | `interior_energetics/wrapper.py`<br>`interior_struct/dummy.py`<br>`interior_struct/zalmoxis.py` | always; interior_struct.module = "dummy"; interior_struct.module = "zalmoxis" | atmos_clim, interior_energetics, interior_struct, orbit, outgas |
 | `M_planet` | `kg` | total planet wet+dry mass | `interior_energetics/wrapper.py` | always | atmos_clim, escape, interior_energetics, orbit, outgas, plot, utils |
 | `M_vaps` | `kg` | vapourised rock mass, including the vapourised oxygen | `outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/lavatmos.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy"; outgas.vapourise = true | outgas, utils |
-| `R_core` | `m` | core radius | `interior_energetics/wrapper.py`<br>`interior_struct/dummy.py`<br>`interior_struct/zalmoxis.py` | always; interior_struct.module = "dummy"; interior_struct.module = "zalmoxis" | interior_energetics |
+| `R_core` | `m` | core radius | `interior_energetics/wrapper.py`<br>`interior_struct/dummy.py`<br>`interior_struct/zalmoxis.py` | always; interior_struct.module = "dummy"; interior_struct.module = "zalmoxis" | interior_energetics, main loop |
 | `C_int` | `kg m2` | principal moment of inertia of planet | `interior_energetics/common.py`<br>`orbit/common.py` | always | orbit |
-| `R_solvus` | `m` | solvus radius for global_miscibility mode | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct |
+| `R_solvus` | `m` | solvus radius for global_miscibility mode | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_energetics, interior_struct, main loop |
 | `P_solvus` | `Pa` | solvus pressure for global_miscibility mode | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct, main loop |
 | `T_solvus` | `K` | solvus temperature for global_miscibility mode | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct, main loop |
 | `P_center` | `Pa` | central pressure from Zalmoxis structure ; 0 for SPIDER, which models the mantle only | `interior_struct/zalmoxis.py` | interior_struct.module = "zalmoxis" | interior_struct |

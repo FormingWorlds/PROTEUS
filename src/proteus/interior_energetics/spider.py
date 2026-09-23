@@ -763,7 +763,9 @@ def _try_spider(
     spider_radius = hf_row['R_int']
     spider_gravity = hf_row['gravity']
     spider_coresize = coresize
-    R_solvus = solvus_radius(config, hf_row)
+    R_solvus = solvus_radius(
+        config, hf_row.get('R_solvus'), hf_row['R_int'], R_inner=coresize * hf_row['R_int']
+    )
     if R_solvus is not None:
         spider_radius = R_solvus
         # Gravity at solvus: interpolate from structure if available,
