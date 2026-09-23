@@ -31,7 +31,7 @@ require the optional JAX stack.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING
 
 from aragog.parser import _PhaseMixedParameters
@@ -205,46 +205,13 @@ def build_solid_rheology_params(config: Config) -> SolidRheologyParams:
     ar_sec = config.interior_energetics.aragog
     rheo = getattr(ar_sec, 'rheology', ar_sec)
 
-    enabled_raw = getattr(rheo, 'enabled', False)
-    enabled = enabled_raw if isinstance(enabled_raw, bool) else False
+    kwargs = {}
+    for f in fields(SolidRheologyParams):
+        val = getattr(rheo, f.name, None)
+        if isinstance(val, (int, float, str, bool)):
+            kwargs[f.name] = val
 
-    stress_mode_raw = getattr(rheo, 'stress_closure_mode', 'local')
-    stress_mode = stress_mode_raw if stress_mode_raw in ('local', 'global') else 'local'
-
-    lid_mode_raw = getattr(rheo, 'lid_base_mode', 'fixed')
-    lid_mode = lid_mode_raw if lid_mode_raw in ('fixed', 'rheological') else 'fixed'
-
-    def _get_float(name: str, default: float) -> float:
-        val = getattr(rheo, name, default)
-        if hasattr(val, '_mock_name'):
-            return default
-        try:
-            return float(val)
-        except (TypeError, ValueError):
-            return default
-
-    return SolidRheologyParams(
-        enabled=enabled,
-        activation_energy=_get_float('activation_energy', 300e3),
-        activation_volume=_get_float('activation_volume', 5e-6),
-        activation_volume_decay_pressure=_get_float(
-            'activation_volume_decay_pressure', float('inf')
-        ),
-        arrhenius_t_ref=_get_float('arrhenius_t_ref', 1600.0),
-        viscosity_max_log10=_get_float('viscosity_max_log10', 40.0),
-        water_prefactor=_get_float('water_prefactor', 1.0),
-        yield_stress_c=_get_float('yield_stress_c', 50e6),
-        yield_stress_mu=_get_float('yield_stress_mu', 0.6),
-        yield_stress_max=_get_float('yield_stress_max', 500e6),
-        yield_switch_width=_get_float('yield_switch_width', 0.1),
-        stress_closure_mode=stress_mode,
-        interior_flux_fraction=_get_float('interior_flux_fraction', 0.05),
-        lid_base_mode=lid_mode,
-        lid_base_temperature=_get_float('lid_base_temperature', 1400.0),
-        lid_contrast_coeff=_get_float('lid_contrast_coeff', 2.2),
-        lid_mask_width_cells=_get_float('lid_mask_width_cells', 1.0),
-        phi_visc_single=_get_float('phi_visc_single', 0.5),
-    )
+    return SolidRheologyParams(**kwargs)
 
 
 def build_mixed_phase_params(

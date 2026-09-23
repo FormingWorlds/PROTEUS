@@ -212,7 +212,7 @@ class Rheology:
     arrhenius_t_ref: float = field(default=1600.0, validator=gt(0))
     """Reference temperature [K] for Arrhenius diffusion creep viscosity."""
 
-    viscosity_max_log10: float = field(default=40.0, validator=gt(0))
+    viscosity_max_log10: float = field(default=40.0, validator=gt(20.0))
     """Upper bound on log10 diffusion creep viscosity [log10(Pa s)]."""
 
     water_prefactor: float = field(default=1.0, validator=gt(0))

@@ -306,7 +306,7 @@ convective stress closure options for Aragog.
 | `activation_volume` | float | `5e-06` | Activation volume for diffusion creep \[m^3/mol\]. Must be >= 0. |
 | `activation_volume_decay_pressure` | float | `inf` | Characteristic pressure scale \[Pa\] for exponential decay of activation volume. Must be > 0. |
 | `arrhenius_t_ref` | float | `1600.0` | Reference temperature \[K\] for Arrhenius diffusion creep viscosity. Must be > 0. |
-| `viscosity_max_log10` | float | `40.0` | Upper bound on log10 diffusion creep viscosity \[log10(Pa s)\]. Must be > 0. |
+| `viscosity_max_log10` | float | `40.0` | Upper bound on log10 diffusion creep viscosity \[log10(Pa s)\]. Must be > 20.0. |
 | `water_prefactor` | float | `1.0` | Multiplicative prefactor on Arrhenius viscosity representing hydration weakening. Must be > 0. |
 | `yield_stress_c` | float | `50000000.0` | Cohesion for plastic yielding \[Pa\]. Must be >= 0. |
 | `yield_stress_mu` | float | `0.6` | Friction coefficient for plastic yielding. Must be >= 0. |
