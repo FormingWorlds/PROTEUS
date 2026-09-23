@@ -2422,6 +2422,7 @@ class AragogRunner:
             # back to T_magma when the entire mantle is convective.
             'T_pot': _estimate_T_pot(out),
             'T_cmb': out.T_core,
+            'T_cmb_node': float(out.T_basic[0]),
             'E_th_mantle': out.E_th,
             'Cp_eff': out.Cp_eff,
             'F_radio': F_radio,

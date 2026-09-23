@@ -353,6 +353,55 @@ def test_extract_output_mass_closure(tmp_path):
 
 
 @pytest.mark.unit
+def test_extract_output_t_cmb_node_uses_basic_node_entropy(tmp_path):
+    """``_extract_output`` evaluates ``T_cmb_node`` at the CMB basic node.
+
+    The basic-node entropy is ``quantity_matrix @ S``; row 0 averages the
+    two lowest cells here, so ``T_cmb_node`` differs from the bottom-cell
+    ``T_cmb``. With ``T = 1000 + 0.1 S`` the expected values are exact.
+    """
+    config = _make_config()
+    interior_o = _make_interior_o(spider_eos_dir=str(tmp_path), prepopulate_jax=True)
+    n_stag = 5
+
+    mesh = MagicMock()
+    mesh.P_stag = np.linspace(1.0e9, 1.5e11, n_stag)
+    mesh.P_basic = np.linspace(0.0, 1.6e11, n_stag + 1)
+    mesh.volume = np.full(n_stag, 1.0e19)
+    mesh.radii_basic = np.linspace(3.0e6, 6.4e6, n_stag + 1)
+    mesh.radii_stag = np.linspace(3.1e6, 6.3e6, n_stag)
+    qm = np.eye(n_stag + 1, n_stag)
+    qm[0, 0] = 0.25
+    qm[0, 1] = 0.75
+    mesh.quantity_matrix = qm
+
+    eos = interior_o._jax_eos
+    eos.temperature = lambda P, S: 1000.0 + 0.1 * np.asarray(S)
+    eos.melt_fraction = lambda P, S: np.full(n_stag, 0.5)
+    eos.density = lambda P, S: np.full(n_stag, 4500.0)
+
+    fake_props = MagicMock()
+    fake_props.viscosity = np.full(n_stag, 1.0e2)
+    fake_props.heat_capacity = np.full(n_stag, 1200.0)
+
+    with patch.object(AragogJAXRunner, '_build_mesh_arrays', return_value=mesh):
+        runner = AragogJAXRunner(
+            config, {'output': str(tmp_path)}, {'F_atm': 1e5}, None, interior_o
+        )
+    runner._last_heating = np.zeros(n_stag)
+
+    S_final = np.linspace(2500.0, 3500.0, n_stag)
+    result = SimpleNamespace(success=True, t_final=1.0e3, n_steps=1, S_final=S_final)
+    with patch('aragog.jax.phase.evaluate_phase', return_value=fake_props):
+        out = runner._extract_output(result, {'F_atm': 1e5}, interior_o)
+
+    S_node = 0.25 * S_final[0] + 0.75 * S_final[1]
+    assert out['T_cmb'] == pytest.approx(1000.0 + 0.1 * S_final[0])
+    assert out['T_cmb_node'] == pytest.approx(1000.0 + 0.1 * S_node)
+    assert out['T_cmb_node'] != pytest.approx(out['T_cmb'])
+
+
+@pytest.mark.unit
 def test_run_solver_includes_heating_when_radiogenic_enabled(tmp_path):
     """``run_solver`` adds radiogenic heating to the JAX solver's input
     when ``config.interior_energetics.heat_radiogenic`` is True.
