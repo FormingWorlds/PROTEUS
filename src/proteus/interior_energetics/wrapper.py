@@ -641,6 +641,10 @@ def _is_spider_ps_format(path: str) -> bool:
     return len(parts) >= 2 and parts[0] == '#' and parts[1] == '5'
 
 
+class MissingMeltingCurveError(FileNotFoundError):
+    """The configured ``interior_struct.melting_dir`` has no P-T curve files."""
+
+
 def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     """Ensure that Aragog and SPIDER can find a complete P-S lookup set.
 
@@ -681,7 +685,9 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
 
     When ``interior_struct.melting_dir`` is set, the two P-S melting curves
     are derived from its P-T files in every case above, and missing P-T files
-    raise ``FileNotFoundError`` instead of leaving the curves of the source.
+    raise ``MissingMeltingCurveError`` instead of leaving the curves of the
+    source. This helper is not called when Zalmoxis generates a PALEOS table
+    set; those runs use the PALEOS-derived curves and do not read melting_dir.
 
     Side effects: sets ``dirs['spider_eos_dir']``,
     ``dirs['spider_solidus_ps']``, ``dirs['spider_liquidus_ps']``.
@@ -705,10 +711,11 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
         missing_pt = [str(p) for p in (sol_pt_path, liq_pt_path) if not p.is_file()]
         if missing_pt:
             # Other curves would change the physics of the run, so stop here.
-            raise FileNotFoundError(
+            raise MissingMeltingCurveError(
                 f'interior_struct.melting_dir={melting_dir!r} is configured but its P-T '
                 f'melting curves are missing: {", ".join(missing_pt)}. Fetch them with '
-                "'proteus get interiordata', or set melting_dir to an available curve."
+                "'proteus get interiordata --config-path <your config>', or set "
+                'melting_dir to an available curve.'
             )
 
     # Case 1: already populated (e.g. by an earlier call this session or
@@ -1046,6 +1053,8 @@ def determine_interior_radius_with_dummy(
             # The liquidus_super initial entropy solves on these tables.
             try:
                 _provide_spider_eos_tables(config, outdir, dirs)
+            except MissingMeltingCurveError:
+                raise
             except FileNotFoundError as exc:
                 raise RuntimeError(
                     "planet.temperature_mode='liquidus_super' with "

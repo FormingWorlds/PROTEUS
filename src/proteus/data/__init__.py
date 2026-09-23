@@ -160,12 +160,16 @@ def _dataset(key: str):
         ) from exc
     if key in datasets:
         return datasets[key]
-    from importlib.metadata import version
-
-    from fwl_io.manifest import shared_manifest_path
+    from importlib.metadata import PackageNotFoundError, version
 
     try:
+        from fwl_io.manifest import shared_manifest_path
+
         shared = {ds.key: ds for ds in load_manifest(shared_manifest_path())}
+    except ImportError as exc:
+        raise RuntimeError(
+            f'the installed fwl-io ships no shared manifest; upgrade to fwl-io>={FWL_IO_FLOOR}.'
+        ) from exc
     except ValueError as exc:
         if _fwl_io_derives_the_location():
             raise
@@ -174,9 +178,13 @@ def _dataset(key: str):
             f'predates the manifest schema: upgrade to fwl-io>={FWL_IO_FLOOR}.'
         ) from exc
     if key not in shared:
+        try:
+            installed = version('fwl-io')
+        except PackageNotFoundError:
+            installed = 'unknown'
         raise KeyError(
             f'{key!r} is declared neither in the PROTEUS manifest nor in the fwl-io '
-            f'shared manifest (installed fwl-io {version("fwl-io")}; PROTEUS reads the '
+            f'shared manifest (installed fwl-io {installed}; PROTEUS reads the '
             f'shared keys of fwl-io>={FWL_IO_FLOOR})'
         )
     return shared[key]

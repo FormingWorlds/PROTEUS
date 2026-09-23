@@ -3487,6 +3487,42 @@ def test_dummy_structure_provides_tables_for_liquidus_super_without_generated_se
 
 
 @pytest.mark.unit
+def test_dummy_structure_liquidus_super_passes_missing_melting_curve_through(tmp_path):
+    """A missing configured melting curve keeps its own error.
+
+    The handler around the table lookup reports a missing table set and advises
+    another temperature_mode, which does not fix a missing melting_dir curve.
+    """
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import (
+        MissingMeltingCurveError,
+        determine_interior_radius_with_dummy,
+    )
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_energetics.num_levels = 50
+    config.planet.temperature_mode = 'liquidus_super'
+    hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
+
+    with (
+        _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        _patch(
+            'proteus.interior_energetics.wrapper._provide_spider_eos_tables',
+            side_effect=MissingMeltingCurveError("melting_dir='Monteux-600' missing"),
+        ),
+        _patch('proteus.interior_energetics.wrapper.Interior_t') as interior_t,
+        pytest.raises(MissingMeltingCurveError, match='Monteux-600') as excinfo,
+    ):
+        determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
+
+    assert 'temperature_mode' not in str(excinfo.value)
+    interior_t.assert_not_called()
+
+
+@pytest.mark.unit
 def test_dummy_structure_liquidus_super_without_tables_raises_named_error(tmp_path):
     """No generated set and no FWL_DATA or SPIDER table source gives a named
     RuntimeError that names mantle_eos, the field that selects the tables.

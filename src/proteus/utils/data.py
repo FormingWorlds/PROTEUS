@@ -1322,10 +1322,11 @@ def find_lookup_table_dir(data_root: Path | str | None = None) -> Path | None:
 
 
 def download_interior_lookuptables(clean=False):
-    """Fetch the melting curves that Aragog and SPIDER always need.
+    """Fetch the Wolf and Bower 2018 melting curves.
 
-    The Wolf and Bower 2018 melting curves are fetched through fwl-io into
-    ``FWL_DATA/interior/melting_curves/wolf_bower_2018/r<record-id>/``.
+    They are fetched through fwl-io into
+    ``FWL_DATA/interior/melting_curves/wolf_bower_2018/r<record-id>/`` and read
+    when ``interior_struct.melting_dir`` is ``Wolf_Bower+2018``.
 
     Parameters
     ----------
@@ -1519,12 +1520,17 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
     Raises
     ------
     DownloadError
-        The tracks could not be obtained from MORS or the OSF fallback.
-        An error from MORS that is not a failed download (a stale fwl-io,
-        a bug) propagates unchanged.
+        The Spada tracks could not be obtained from MORS or the OSF fallback.
+    OSError or fwl-io error
+        A failed MORS download of the Baraffe tracks, or of any track set
+        when ``use_osf_fallback`` is False, re-raised as it is.
+    Exception
+        Any other error from MORS (a stale fwl-io, a bug), unchanged.
     """
+    from fwl_io import DownloadError
     from mors import data as mors_data
 
+    fetch_errors = _fetch_errors()
     log.debug(f'Downloading stellar evolution tracks: {track}')
 
     # Try MORS download first
@@ -1548,9 +1554,8 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
             log.warning(f'MORS download completed but tracks not found at {tracks_path}')
             raise FileNotFoundError(f'Tracks directory empty or missing: {tracks_path}')
     except Exception as e:
-        if not isinstance(e, _fetch_errors()):
+        if not isinstance(e, fetch_errors):
             raise
-        from fwl_io import DownloadError
 
         log.warning(f'MORS download failed for {track} tracks: {e}')
 
@@ -1595,19 +1600,19 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
                     log.debug(f'OSF project {osf_id} did not have {track} tracks: {osf_e}')
                     continue
 
-            log.error(
-                f'Could not download {track} tracks via MORS or OSF fallback. '
-                f'You may need to download manually or check network connectivity.'
-            )
-            raise DownloadError(
-                f'Failed to download {track} tracks: MORS failed, OSF fallback unavailable'
-            )
-
         except Exception as osf_fallback_error:
             log.error(f'OSF fallback also failed for {track} tracks: {osf_fallback_error}')
             raise DownloadError(
                 f'Failed to download {track} tracks: MORS error ({e}), OSF fallback error ({osf_fallback_error})'
             ) from osf_fallback_error
+
+        log.error(
+            f'Could not download {track} tracks via MORS or OSF fallback. '
+            f'You may need to download manually or check network connectivity.'
+        )
+        raise DownloadError(
+            f'Failed to download {track} tracks: MORS failed, OSF fallback unavailable'
+        ) from e
 
 
 def _fetch_errors() -> tuple[type[Exception], ...]:
@@ -1658,9 +1663,10 @@ def _attempt(desc: str, func, *args, **kwargs) -> bool:
     bool
         Whether the step finished without a fetch error.
     """
+    fetch_errors = _fetch_errors()
     try:
         func(*args, **kwargs)
-    except _fetch_errors() as exc:
+    except fetch_errors as exc:
         log.warning('Problem when downloading/checking %s: %s', desc, exc)
         return False
     return True

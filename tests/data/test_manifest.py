@@ -426,6 +426,35 @@ def test_stale_shared_manifest_is_named_as_the_stale_side(monkeypatch):
     assert isinstance(raised.value.__cause__, ValueError)
 
 
+def test_fwl_io_without_shared_manifest_is_named_as_the_stale_side(monkeypatch):
+    """An fwl-io without shared_manifest_path asks for the upgrade."""
+    import fwl_io.manifest
+
+    monkeypatch.delattr(fwl_io.manifest, 'shared_manifest_path')
+
+    with pytest.raises(RuntimeError, match=f'upgrade to fwl-io>={FWL_IO_FLOOR}') as raised:
+        _dataset(STELLAR_SPECTRA_SOLAR)
+
+    assert isinstance(raised.value.__cause__, ImportError)
+    # Discrimination: a PROTEUS-owned key still resolves without the shared manifest.
+    assert _dataset(MASS_RADIUS_ZENG_2019).key == MASS_RADIUS_ZENG_2019
+
+
+def test_unknown_key_message_survives_missing_package_metadata(monkeypatch):
+    """The KeyError is raised even when fwl-io's version cannot be read."""
+    import importlib.metadata
+
+    def _no_metadata(name):
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(importlib.metadata, 'version', _no_metadata)
+
+    with pytest.raises(KeyError, match='installed fwl-io unknown') as raised:
+        _dataset('observe.not_a_declared_dataset')
+
+    assert f'fwl-io>={FWL_IO_FLOOR}' in str(raised.value)
+
+
 def test_manifest_error_under_a_current_fwl_io_propagates(monkeypatch):
     """A real defect in the shipped manifest surfaces as itself, not as a version claim.
 

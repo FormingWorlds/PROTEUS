@@ -2208,6 +2208,27 @@ def test_fetch_errors_on_an_old_fwl_io_ask_for_the_upgrade(monkeypatch):
 
 
 @pytest.mark.unit
+def test_attempt_on_an_old_fwl_io_does_not_run_the_step(monkeypatch):
+    """The fetch error classes are resolved before the step runs.
+
+    Resolving them inside the except clause would replace an unrelated error of
+    the step with the upgrade message, hiding the real cause.
+    """
+    from proteus.utils import data as data_mod
+
+    def _stale():
+        raise RuntimeError('upgrade to fwl-io>=26.9.23')
+
+    calls = []
+    monkeypatch.setattr(data_mod, '_fetch_errors', _stale)
+
+    with pytest.raises(RuntimeError, match='upgrade to fwl-io'):
+        data_mod._attempt('test data', lambda: calls.append(1))
+
+    assert calls == []
+
+
+@pytest.mark.unit
 def test_download_stellar_tracks_passes_non_download_errors(monkeypatch):
     """An error from MORS that is not a failed download propagates unchanged.
 
@@ -5933,7 +5954,7 @@ def test_get_socrates_uses_none_dirs_when_not_given(mock_run, tmp_path, monkeypa
 
 @pytest.mark.unit
 def test_download_stellar_tracks_osf_per_project_exception_caught(tmp_path, monkeypatch):
-    """If get_osf raises for one project, the function moves on and raises RuntimeError."""
+    """If get_osf raises for every project, the function raises one DownloadError."""
     import sys
     import types
 
@@ -5961,8 +5982,10 @@ def test_download_stellar_tracks_osf_per_project_exception_caught(tmp_path, monk
     monkeypatch.setattr(data_mod, 'get_osf', bad_get_osf)
     monkeypatch.setattr(data_mod, 'download_OSF_folder', lambda **k: None)
 
-    with pytest.raises(RuntimeError, match='MORS error'):
+    with pytest.raises(DownloadError, match='OSF fallback unavailable') as raised:
         data_mod.download_stellar_tracks('Spada', use_osf_fallback=True)
+    # Not wrapped a second time by the handler of the OSF setup.
+    assert 'OSF fallback error' not in str(raised.value)
     # Discrimination: get_osf was actually called for each candidate
     # OSF project, so the per-project except path fired (not an outer
     # short-circuit).

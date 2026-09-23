@@ -929,11 +929,14 @@ def _try_spider(
     # then a local EOS directory, then the fetched dataset, then SPIDER local.
     eos_dir = _resolve_spider_eos_dir(dirs, config)
 
-    # Resolve melting curve S(P) files: the paths derived for this run from the
-    # configured melting_dir, else P-S files in its local Melting_curves folder.
-    # A configured curve that is missing stops the run rather than switching to
-    # other curves.
-    if dirs.get('spider_liquidus_ps') and os.path.isfile(dirs['spider_liquidus_ps']):
+    # Resolve melting curve S(P) files: the paths derived for this run, else P-S
+    # files in the local Melting_curves/<melting_dir> folder. A missing curve
+    # stops the run rather than switching to other curves. Constant-property
+    # runs pass no phase boundaries to SPIDER, so they need none.
+    liquidus_ps = solidus_ps = None
+    if _use_const:
+        pass
+    elif dirs.get('spider_liquidus_ps') and os.path.isfile(dirs['spider_liquidus_ps']):
         liquidus_ps = dirs['spider_liquidus_ps']
         solidus_ps = dirs['spider_solidus_ps']
         log.info(
@@ -951,8 +954,7 @@ def _try_spider(
             raise FileNotFoundError(
                 f'interior_struct.melting_dir={config.interior_struct.melting_dir!r} is '
                 f'configured but its P-S melting curves are missing: '
-                f'{", ".join(missing_ps)}. Fetch the P-T curves with '
-                "'proteus get interiordata', or generate the P-S files with "
+                f'{", ".join(missing_ps)}. Generate them with '
                 "'python tools/generate_spider_phase_boundaries.py --melting-dir "
                 f"{config.interior_struct.melting_dir}'."
             )

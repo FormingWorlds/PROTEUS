@@ -1385,6 +1385,42 @@ def test_try_spider_missing_configured_curve_ignores_bundled_curves(tmp_path):
 
 
 @pytest.mark.unit
+def test_try_spider_const_properties_needs_no_melting_curves(tmp_path):
+    """A constant-property run passes no phase boundaries, so missing curves do not stop it."""
+    from proteus.interior_energetics.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, _, _ = _setup_spider_env(tmp_path)
+    config.interior_energetics.const_properties = True
+    for name in ('rho', 'Cp', 'alpha', 'cond', 'log10visc', 'T_ref', 'S_ref'):
+        setattr(config.interior_energetics, f'const_{name}', 1.0)
+
+    with (
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', str(tmp_path / 'none')),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
+    ):
+        mock_run.return_value.returncode = 0
+        _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+        )
+
+    mock_run.assert_called_once()
+    args = mock_run.call_args.args[0]
+    assert '-use_const_properties' in args
+    assert '-melt_phase_boundary_filename' not in args
+
+
+@pytest.mark.unit
 def test_try_spider_eos_fallback_to_local(tmp_path):
     """EOS dir resolves to the SPIDER local fallback when no other EOS source exists."""
     from proteus.interior_energetics.spider import _try_spider
