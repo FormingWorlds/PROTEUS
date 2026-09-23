@@ -86,17 +86,28 @@ the solved entropy is essentially independent of planet mass, so a mass grid
 starts on a common adiabat.
 
 Whether the default `delta_T_super = 500` K is reachable depends on the P-S
-tables and the core-mantle boundary pressure. On PALEOS-generated tables it is
-reached at 1 and 10 Earth masses. On the Wolf & Bower (2018) tables from
-FWL_DATA it is reached up to a core-mantle boundary pressure of about 350 GPa.
-Above that the solve clamps to a smaller superheat (443 K at 360 GPa, 85 K at
-390 GPa), and above about 397 GPa the table liquidus entropy exceeds the table
-maximum, so no fully molten state exists and PROTEUS raises. With the Noack &
-Lasbleis (2020) pressure estimate and a core mass fraction of 0.325, this means
-500 K up to 2.5 Earth masses, 194 K at 3 Earth masses, and a raise from 3.5
-Earth masses. Setting `delta_T_super = 0`
-makes the mantle marginally molten, just touching the liquidus at the binding
-depth.
+tables, the core-mantle boundary pressure and `planet.ini_dsdr`. On
+PALEOS-generated tables it is reached at 1 and 10 Earth masses. On the Wolf &
+Bower (2018) tables from FWL_DATA, with `ini_dsdr = 0`, it is reached up to a
+core-mantle boundary pressure of about 350 GPa. Above that the solve clamps to
+a smaller superheat (443 K at 360 GPa, 85 K at 390 GPa), and above about
+397 GPa the table liquidus entropy exceeds the table maximum, so no fully
+molten state exists and PROTEUS raises. With the Noack & Lasbleis (2020)
+pressure and radius estimates and a core mass fraction of 0.325, this means
+500 K up to 2.75 Earth masses, 194 K at 3 Earth masses, and a raise above
+about 3.1 Earth masses (398 GPa at 3.15 Earth masses). With the default
+`ini_dsdr = -4.698e-6` J/kg/K/m the usable entropy is lower by
+`|ini_dsdr|` times the mantle thickness (about 19 J/kg/K at 3 Earth masses):
+2.75 Earth masses clamp to 417 K, 3 Earth masses to 73 K, and 3.1 Earth
+masses (392 GPa) raise.
+
+The molten check uses the uniform entropy of the initial adiabat. With
+`ini_dsdr < 0` the initial profile is hotter at depth, so the check is
+conservative: it can report a smaller superheat, or raise, where the deepest
+node is molten. The clamp warnings also give the superheat at the deepest
+node (194 K instead of 73 K at 3 Earth masses above). Setting
+`delta_T_super = 0` makes the mantle marginally molten, just touching the
+liquidus at the binding depth.
 
 !!! note "Requires a silicate liquidus"
     For every structure module, the initial entropy is solved on the interior
@@ -119,17 +130,26 @@ depth.
     initial entropy is solved on the P-S tables. The initial entropy solves
     this anchor again at the converged core-mantle boundary pressure. When it
     raises there, no molten state exists and the run stops at the initial
-    entropy; a raise at an intermediate pressure of the structure solve only
-    logs a warning. When the anchor clamps at the PALEOS table below
+    entropy. A raise in a structure solve, at the estimated or an
+    intermediate pressure, only logs a warning: that solve uses the last
+    solved anchor, or `tcmb_init` before any, as its core-mantle boundary
+    temperature. When the anchor clamps at the PALEOS table below
     `delta_T_super`, the initial entropy is capped at the anchor entropy, and
     a warning names the superheat the anchor reached. The generated P-S tables
     fill cells where PALEOS has no valid state, so on their own they can
     report a superheat that PALEOS does not support. For 10 Earth masses
-    (core-mantle boundary at 1474 GPa) and `delta_T_super = 5000` K, the
-    capped initial adiabat matches the anchor within 0.1 K at the surface and
-    at the core-mantle boundary, and is up to 38 K colder near 1.25 GPa: at
-    these entropies the first P-S table row above 1 bar (1.26 GPa) holds
-    cells filled with the 1 bar values.
+    (core-mantle boundary at 1474 GPa), `delta_T_super = 5000` K and
+    `ini_dsdr = 0`, the capped initial adiabat matches the anchor within
+    0.1 K at the surface and at the core-mantle boundary, and is up to 38 K
+    colder near 1.25 GPa: at these entropies the first P-S table row above
+    1 bar (1.26 GPa) holds cells filled with the 1 bar values. With
+    `ini_dsdr < 0` the deepest node sits at the cap and the rest of the
+    profile is colder.
+
+    If the anchor clamps with less superheat than the offset between the P-T
+    and P-S liquidus, the P-S adiabat at the anchor entropy is below the P-S
+    liquidus. PROTEUS then raises and names the anchor superheat and the
+    offset, since above the anchor entropy the P-S tables hold filled cells.
 
     This cap has two known limits:
 
@@ -138,7 +158,7 @@ depth.
       P-S table liquidus, and the two curves differ. For 10 Earth masses the
       anchor reaches a requested `delta_T_super` of up to about 1181 K, but
       at the anchor edge entropy the P-S tables give only about 1135 K of
-      superheat. A request in between puts the initial entropy up to about 53 J/kg/K above the anchor
+      superheat (measured with `ini_dsdr = 0`). A request in between puts the initial entropy up to about 53 J/kg/K above the anchor
       edge (at 1180 K the surface is 35 K and the core-mantle boundary 113 K
       hotter than the anchor at its edge).
     - For 10 Earth masses the anchor edge comes from a narrow band near 1 GPa
