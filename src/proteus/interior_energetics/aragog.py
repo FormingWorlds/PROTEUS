@@ -509,16 +509,17 @@ class AragogRunner:
                     # set_initial_entropy restarts the gradient from a finite
                     # difference of the two bottom cells, which drives a
                     # one-step CMB flux spike on the first step after resume.
-                    dSdr_cmb = getattr(interior_o, '_last_dSdr_cmb', None)
-                    if dSdr_cmb is None:
-                        log.info(
-                            'Snapshot has no CMB entropy gradient; it restarts '
-                            'from the finite difference of the restored profile.'
-                        )
-                    if hasattr(solver, 'set_initial_dSdr_cmb'):
-                        solver.set_initial_dSdr_cmb(dSdr_cmb)
-                    else:
-                        solver._dSdr_cmb_init = dSdr_cmb
+                    if config.interior_energetics.aragog.core_bc == 'energy_balance':
+                        dSdr_cmb = getattr(interior_o, '_last_dSdr_cmb', None)
+                        if dSdr_cmb is None:
+                            log.info(
+                                'Snapshot has no CMB entropy gradient; it restarts '
+                                'from the finite difference of the restored profile.'
+                            )
+                        if hasattr(solver, 'set_initial_dSdr_cmb'):
+                            solver.set_initial_dSdr_cmb(dSdr_cmb)
+                        else:
+                            solver._dSdr_cmb_init = dSdr_cmb
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
@@ -672,9 +673,9 @@ class AragogRunner:
             adiabatic_bulk_modulus=config.interior_energetics.adiabatic_bulk_modulus,
             adams_williamson_beta=config.interior_energetics.adams_williamson_beta,
             mass_coordinates=config.interior_energetics.aragog.mass_coordinates,
-            # Atmospheric overburden as the upper BC for the Adams-Williamson
-            # P(r) integration. hf_row['P_surf'] is in bar; Aragog wants Pa.
-            # Defaults to 0 at init when no atmosphere step has run yet.
+            # Upper BC of the Adams-Williamson P(r) integration, set once here
+            # and not updated later: 0 in a fresh run (no atmosphere step yet);
+            # a resume restores the run's value in update_solver. bar -> Pa.
             surface_pressure=float(hf_row.get('P_surf', 0.0)) * 1e5,
         )
 
@@ -1699,14 +1700,17 @@ class AragogRunner:
             interior_o._last_dSdr_cmb = read_last_dSdr_cmb(output_dir, hf_row['Time'])
             # The run built its mesh with the surface pressure of its own setup.
             P_mesh = read_last_mesh_surface_pressure(output_dir, hf_row['Time'])
+            if P_mesh is None and solver.parameters.mesh.eos_method == 1:
+                P_mesh = infer_mesh_surface_pressure(
+                    output_dir, hf_row['Time'], solver.parameters.mesh
+                )
+                log.warning(
+                    'Snapshot has no mesh surface pressure; inferred %s Pa from '
+                    'its top-cell pressure for the Adams-Williamson mesh.',
+                    'no value' if P_mesh is None else f'{P_mesh:.4e}',
+                )
             if P_mesh is not None:
                 solver.parameters.mesh.surface_pressure = P_mesh
-            elif solver.parameters.mesh.eos_method == 1:
-                log.info(
-                    'Snapshot has no mesh surface pressure; the Adams-Williamson '
-                    'mesh uses P_surf of the restored row (%.3e Pa).',
-                    solver.parameters.mesh.surface_pressure,
-                )
         else:
             sol = solver.solution
             if sol is not None and sol.y.size > 0:
@@ -2670,6 +2674,7 @@ def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_
         dirs['output'],
         hf_row['Time'],
         solver.get_state(),
+        write_diagnostics=getattr(config.interior_energetics, 'write_flux_diagnostics', False),
         T_surf_coupled=hf_row.get('T_surf'),
         dSdr_cmb=cmb_gradient_state(solver, config.interior_energetics.aragog.core_bc),
         mesh_surface_pressure=mesh_surface_pressure_state(solver),
@@ -2712,6 +2717,44 @@ def read_last_mesh_surface_pressure(output_dir: str, time: float) -> float | Non
         hold it (older snapshots) or it is not finite.
     """
     return _read_snapshot_scalar(output_dir, time, 'mesh_surface_pressure')
+
+
+def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | None:
+    """Adams-Williamson mesh surface pressure implied by a snapshot [Pa].
+
+    For a snapshot without ``mesh_surface_pressure``: the top staggered cell
+    stores P = rho_s g / beta (exp(beta (R - r)) - 1) + P_surface, so
+    P_surface follows from its pressure and radius and the mesh parameters.
+
+    Parameters
+    ----------
+    output_dir : str
+        Run output directory.
+    time : float
+        Snapshot time [yr].
+    mesh : object
+        Aragog mesh parameters (``surface_density``,
+        ``gravitational_acceleration``, ``adams_williamson_beta``,
+        ``outer_radius``).
+
+    Returns
+    -------
+    float or None
+        Surface pressure [Pa], or None when the snapshot lacks the profile or
+        the result is not finite.
+    """
+    fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_int.nc')
+    with nc.Dataset(fpath) as ds:
+        if 'pres_s' not in ds.variables or 'radius_s' not in ds.variables:
+            return None
+        P_top = float(np.asarray(ds['pres_s'][:])[-1]) * 1e9
+        r_top = float(np.asarray(ds['radius_s'][:])[-1]) * 1e3
+    rho_s = float(mesh.surface_density)
+    g = float(mesh.gravitational_acceleration)
+    beta = float(mesh.adams_williamson_beta)
+    depth = float(mesh.outer_radius) - r_top
+    value = P_top - rho_s * g / beta * np.expm1(beta * depth)
+    return value if np.isfinite(value) else None
 
 
 def _read_snapshot_scalar(output_dir: str, time: float, name: str) -> float | None:

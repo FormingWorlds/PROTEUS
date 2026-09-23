@@ -1480,14 +1480,15 @@ def test_helpfile_output_t_cmb_node_is_cmb_basic_node():
     assert res['T_cmb_node'] != pytest.approx(res['T_cmb'])
 
 
-def _snapshot_output(n_stag=6):
+def _snapshot_output(n_stag=6, diagnostics=False):
     """Minimal SolverOutput stand-in for ``_write_output_ncdf``: a molten
-    mantle column with physical profiles (entropy near 3000 J/kg/K)."""
+    mantle column with physical profiles (entropy near 3000 J/kg/K), with the
+    flux diagnostic fields when ``diagnostics``."""
     from types import SimpleNamespace
 
     r_basic = np.linspace(3.5e6, 6.371e6, n_stag + 1)
     r_stag = 0.5 * (r_basic[:-1] + r_basic[1:])
-    return SimpleNamespace(
+    out = SimpleNamespace(
         S_final=np.linspace(3100.0, 3000.0, n_stag),
         T_stag=np.linspace(4200.0, 3000.0, n_stag),
         phi_stag=np.ones(n_stag),
@@ -1501,6 +1502,14 @@ def _snapshot_output(n_stag=6):
         mass_stag=np.full(n_stag, 1.0e23),
         Phi_global=1.0,
     )
+    if diagnostics:
+        for name in ('jcond_b', 'jconv_b', 'jgrav_b', 'jmix_b', 'dSdr_b', 'eddy_diff'):
+            setattr(out, name, np.full(n_stag + 1, 1.0e3))
+        out.phi_basic = np.ones(n_stag + 1)
+        out.T_basic = np.linspace(4300.0, 2950.0, n_stag + 1)
+        out.cp_basic = np.full(n_stag + 1, 1800.0)
+        out.rho_basic = np.linspace(5100.0, 2950.0, n_stag + 1)
+    return out
 
 
 @pytest.mark.parametrize(
@@ -1549,14 +1558,17 @@ class _RestoreSolver:
 
 
 @pytest.mark.parametrize(
-    'stored', [-2.2378876e-11, None], ids=['state-in-snapshot', 'older-snapshot']
+    'core_bc, stored',
+    [('energy_balance', -2.2378876e-11), ('energy_balance', None), ('bower2018', 4100.0)],
+    ids=['state-in-snapshot', 'older-snapshot', 'bower2018-not-applied'],
 )
-def test_resume_restores_the_cmb_entropy_gradient(stored, caplog):
+def test_resume_restores_the_cmb_entropy_gradient(core_bc, stored, caplog):
     """On resume the entropy snapshot is restored together with the CMB
     entropy gradient it was written with, so the first step continues the
     boundary state instead of restarting it from a finite difference (which
     drives a one-step CMB flux spike). An older snapshot without the state
-    clears the override, keeps the finite-difference start, and says so."""
+    clears the override, keeps the finite-difference start, and says so.
+    Other core boundary conditions never apply or report the value."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     n = 6
@@ -1574,6 +1586,7 @@ def test_resume_restores_the_cmb_entropy_gradient(stored, caplog):
 
     config = MagicMock()
     config.params.resume = True
+    config.interior_energetics.aragog.core_bc = core_bc
     with (
         patch.object(AragogRunner, 'setup_solver', side_effect=_setup),
         patch.object(AragogRunner, 'update_solver', side_effect=_update),
@@ -1589,7 +1602,11 @@ def test_resume_restores_the_cmb_entropy_gradient(stored, caplog):
     S_seen, dSdr_seen = solver.seen[0]
     np.testing.assert_array_equal(S_seen, S_snap)
     no_state_logged = any('no CMB entropy gradient' in r.getMessage() for r in caplog.records)
-    if stored is None:
+    if core_bc != 'energy_balance':
+        # The value in the gradient slot (T_core) is neither applied nor logged.
+        assert dSdr_seen == pytest.approx(-9.0, rel=1e-15)
+        assert not no_state_logged
+    elif stored is None:
         # The stale -9.0 override is cleared, not reused.
         assert dSdr_seen is None
         assert no_state_logged
@@ -1612,7 +1629,7 @@ class _StateSolver:
         return self.slot_value
 
     def get_state(self):
-        return _snapshot_output()
+        return _snapshot_output(diagnostics=True)
 
 
 @pytest.mark.parametrize(
@@ -1654,6 +1671,8 @@ def test_final_snapshot_keeps_the_resume_state(tmp_path, core_bc):
     AragogRunner._write_output_ncdf(str(tmp_path), t, _snapshot_output(), dSdr_cmb=-2.2e-11)
     config = MagicMock()
     config.interior_energetics.aragog.core_bc = core_bc
+    # The in-loop write kept the flux diagnostics; the final write must too.
+    config.interior_energetics.write_flux_diagnostics = core_bc == 'energy_balance'
     interior_o = MagicMock()
     interior_o.aragog_solver = _StateSolver(-2.2e-11 if core_bc == 'energy_balance' else 4100.0)
     write_final_snapshot(
@@ -1669,6 +1688,10 @@ def test_final_snapshot_keeps_the_resume_state(tmp_path, core_bc):
     assert read_last_mesh_surface_pressure(str(tmp_path), t) == pytest.approx(
         8.12e8, rel=1e-15, abs=0.0
     )
+    import netCDF4 as nc
+
+    with nc.Dataset(next((tmp_path / 'data').glob('*_int.nc'))) as ds:
+        assert ('Jcond_b' in ds.variables) == (core_bc == 'energy_balance')
 
 
 @pytest.mark.parametrize('core_bc', ['energy_balance', 'bower2018'])
@@ -1751,21 +1774,38 @@ def test_snapshot_round_trips_the_mesh_surface_pressure(tmp_path, value, expecte
 
 
 @pytest.mark.physics_invariant
-def test_update_solver_keeps_the_setup_pressure_without_a_stored_value(tmp_path):
-    """A snapshot without ``mesh_surface_pressure`` (older runs) leaves the
-    value setup_solver chose; the resume does not invent one."""
+@pytest.mark.parametrize('eos_method', [1, 2], ids=['adams-williamson', 'mesh-file'])
+def test_update_solver_infers_the_mesh_pressure_of_an_older_snapshot(tmp_path, eos_method):
+    """A snapshot without ``mesh_surface_pressure`` (older runs) gets the value
+    its own top cell implies on the Adams-Williamson mesh, not the restored
+    row's P_surf; a mesh-file run (pressure from the file) keeps its setup."""
+    from types import SimpleNamespace
+
     from proteus.interior_energetics.aragog import AragogRunner
 
+    rho_s, g, beta, R, P_s = 4078.95, 10.4068, 1.1115e-7, 6.2848e6, 3.0e8
+    out = _snapshot_output()
+    out.r_stag = np.linspace(3.47e6, 6.2776e6, len(out.S_final))
+    out.P_stag = rho_s * g / beta * np.expm1(beta * (R - out.r_stag)) + P_s
     (tmp_path / 'data').mkdir()
-    AragogRunner._write_output_ncdf(str(tmp_path), 202.0, _snapshot_output())
+    AragogRunner._write_output_ncdf(str(tmp_path), 202.0, out)
     interior_o = MagicMock()
-    interior_o.aragog_solver.parameters.mesh.surface_pressure = 8.12e8
-    interior_o.aragog_solver.parameters.mesh.eos_method = 1
+    interior_o.aragog_solver.parameters.mesh = SimpleNamespace(
+        surface_pressure=8.12e8,  # the restored row's P_surf
+        eos_method=eos_method,
+        surface_density=rho_s,
+        gravitational_acceleration=g,
+        adams_williamson_beta=beta,
+        outer_radius=R,
+    )
     hf_row = {'Time': 202.0, 'F_atm': 7.6e5, 'T_eqm': 255.0}
     AragogRunner.update_solver(80.0, hf_row, interior_o, output_dir=str(tmp_path))
-    assert interior_o.aragog_solver.parameters.mesh.surface_pressure == pytest.approx(
-        8.12e8, rel=1e-15, abs=0.0
-    )
+    got = interior_o.aragog_solver.parameters.mesh.surface_pressure
+    if eos_method == 1:
+        # Recovered to the float64 round trip of pres_s in GPa and radius_s in km.
+        assert got == pytest.approx(P_s, rel=1e-8)
+    else:
+        assert got == pytest.approx(8.12e8, rel=1e-15, abs=0.0)
     assert interior_o._last_dSdr_cmb is None
 
 
