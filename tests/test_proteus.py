@@ -2239,12 +2239,12 @@ class _StopAfterAtmosphereCall(Exception):
 
 
 @pytest.mark.unit
-@pytest.mark.physics_invariant
 @pytest.mark.parametrize('interior_module', ['aragog', 'spider'])
 def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path, interior_module):
     """The first post-resume atmosphere call receives the interior's own
-    T_magma output, not a value anchored to the checkpoint's T_surf, and the
-    checkpoint T_surf as its surface state, matching a non-resumed run.
+    T_magma output, not a value anchored to the checkpoint's T_surf. Both
+    energetics modules are covered so that a resume override gated on the
+    module name cannot return for one of them.
     """
     from types import SimpleNamespace
 
@@ -2306,24 +2306,29 @@ def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path, interior_m
         with pytest.raises(_StopAfterAtmosphereCall):
             p.start(resume=True, offline=True)
 
+    # Discrimination: the checkpoint T_surf a surface anchor would use is far
+    # from the interior value.
+    assert abs(interior_t_magma - checkpoint_t_surf) > 100.0
     assert captured['T_magma'] == pytest.approx(interior_t_magma, rel=1e-12)
-    assert captured['T_surf'] == pytest.approx(checkpoint_t_surf, rel=1e-12)
 
 
 @pytest.mark.unit
-@pytest.mark.physics_invariant
-def test_resume_with_solvus_boundary_keeps_the_interior_t_magma(tmp_path):
-    """With global miscibility the atmosphere is solved from the solvus, so
-    after a resume it receives T_solvus as its lower boundary, and the
-    interior T_magma is back in the coupling for the next interior step and
-    in the committed helpfile row.
+def test_solvus_override_restores_the_magma_ocean_state(tmp_path):
+    """With global miscibility the loop hands the atmosphere the solvus as its
+    lower boundary (T_solvus, P_solvus in bar, R_solvus) and afterwards
+    restores T_magma, T_surf, P_surf and R_int for the interior and the
+    committed row. Config validation rejects global_miscibility for now, so
+    this pins the loop code for when it is enabled; SPIDER is the module that
+    cuts its domain at the solvus.
     """
     from types import SimpleNamespace
 
-    p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog', miscibility=True)
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
     hf_df = _make_resume_checkpoint_df()
+    hf_df['P_surf'] = 250.0
+    checkpoint = hf_df.iloc[-1]
     interior_t_magma = [3456.0, 3441.0]
-    t_solvus = 2900.0
+    t_solvus, p_solvus = 3700.0, 2.0e10
     step = {'interior': 0}
     seen_by_interior = []
     captured = []
@@ -2334,12 +2339,14 @@ def test_resume_with_solvus_boundary_keeps_the_interior_t_magma(tmp_path):
         hf_row['T_magma'] = interior_t_magma[min(step['interior'], 1)]
         hf_row['R_solvus'] = 0.9 * hf_row['R_int']
         hf_row['T_solvus'] = t_solvus
-        hf_row['P_solvus'] = 1.0e9
+        hf_row['P_solvus'] = p_solvus
         step['interior'] += 1
 
     def _fake_run_atmosphere(*args, **kwargs):
         hf_row = args[8]
-        captured.append((hf_row['T_magma'], hf_row['T_surf']))
+        captured.append(
+            (hf_row['T_magma'], hf_row['T_surf'], hf_row['P_surf'], hf_row['R_int'])
+        )
         if len(captured) == 2:
             raise _StopAfterAtmosphereCall
 
@@ -2386,13 +2393,17 @@ def test_resume_with_solvus_boundary_keeps_the_interior_t_magma(tmp_path):
         with pytest.raises(_StopAfterAtmosphereCall):
             p.start(resume=True, offline=True)
 
-    assert captured == [(t_solvus, t_solvus), (t_solvus, t_solvus)]
+    solvus_frame = [t_solvus, t_solvus, p_solvus * 1e-5, 0.9 * checkpoint['R_int']]
+    np.testing.assert_allclose(np.array(captured), [solvus_frame, solvus_frame], rtol=1e-12)
     assert seen_by_interior[1] == pytest.approx(interior_t_magma[0], rel=1e-12)
-    assert p.hf_all['T_magma'].iloc[-1] == pytest.approx(interior_t_magma[0], rel=1e-12)
+    committed = p.hf_all.iloc[-1]
+    assert committed['T_magma'] == pytest.approx(interior_t_magma[0], rel=1e-12)
+    assert committed['T_surf'] == pytest.approx(checkpoint['T_surf'], rel=1e-12)
+    assert committed['P_surf'] == pytest.approx(checkpoint['P_surf'], rel=1e-12)
+    assert committed['R_int'] == pytest.approx(checkpoint['R_int'], rel=1e-12)
 
 
 @pytest.mark.unit
-@pytest.mark.physics_invariant
 @pytest.mark.parametrize('interior_module', ['aragog', 'spider'])
 def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(
     tmp_path, interior_module
@@ -2401,7 +2412,9 @@ def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(
     below the T_magma it was given, as AGNI's conductive skin does in a magma
     ocean. Every atmosphere call still receives that iteration's interior
     T_magma, so a surface temperature below the magma temperature never
-    replaces T_magma in the coupling, however long the gap persists.
+    replaces T_magma in the coupling, however long the gap persists. The
+    atmosphere stub only sets T_surf; its fluxes are not consistent with the
+    skin drop.
     """
     from types import SimpleNamespace
 
@@ -2477,8 +2490,8 @@ def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(
 
     assert len(captured) == n_calls
     np.testing.assert_allclose(captured, interior_t_magma, rtol=1e-12)
-    # The rows committed for the completed iterations keep the interior
-    # T_magma and the surface the atmosphere returned.
+    # Commit order: each completed row holds the interior T_magma and the
+    # T_surf the atmosphere returned in that iteration.
     committed = p.hf_all.iloc[-(n_calls - 1) :]
     np.testing.assert_allclose(committed['T_magma'], interior_t_magma[:-1], rtol=1e-12)
     np.testing.assert_allclose(
