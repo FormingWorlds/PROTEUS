@@ -51,6 +51,8 @@ _SUPERLIQ_DEFAULT_MUSHY = 0.8  # fallback solidus = factor * liquidus
 # repeating the ~30-probe search. Keyed on the physical inputs only, so it is
 # deterministic; tests clear it between cases (see _clear_superliquidus_cache).
 _SUPERLIQ_CACHE: dict = {}
+# Anchor solves that raised InitialConditionError, keyed like _SUPERLIQ_CACHE.
+_SUPERLIQ_FAILED: dict = {}
 
 # CMB temperature [K] of the most recently solved super-liquidus adiabat. A
 # structure solve driven by an external temperature source discards this anchor
@@ -76,6 +78,7 @@ def _clear_superliquidus_cache() -> None:
     from proteus.interior_energetics.common import _ANCHOR_CAP_WARNED
 
     _SUPERLIQ_CACHE.clear()
+    _SUPERLIQ_FAILED.clear()
     _ANCHOR_CAP_WARNED.clear()
     _SUPERLIQ_LAST_ANCHOR = None
     _JAX_NONVIABLE_LOGGED = False
@@ -547,10 +550,13 @@ def _resolve_zalmoxis_cmb_temperature(
     avoids re-solving (and possibly raising the unreachable-superheat error) on
     every evolution re-solve over a value nothing consumes.
 
-    If the anchor raises ``InitialConditionError`` at this P_cmb, the last
-    solved anchor, or ``config.planet.tcmb_init`` before any solve, is used
-    with a warning; the initial entropy at the converged P_cmb decides
-    whether a molten state exists.
+    With a PALEOS mantle, if the anchor fails at this P_cmb (an
+    ``InitialConditionError``, or a ``ValueError`` or ``KeyError`` from its
+    integration), the last solved anchor, or ``config.planet.tcmb_init``
+    before any solve, is used with a warning; the initial entropy at the
+    converged P_cmb re-solves the anchor and decides whether a molten state
+    exists. With another mantle the error propagates, since the initial
+    entropy does not re-solve the anchor there.
 
     For all other modes, returns config.planet.tcmb_init verbatim.
     """
@@ -579,13 +585,14 @@ def _resolve_zalmoxis_cmb_temperature(
     # P-T super-liquidus adiabat. The energetics IC is solved on the P-S
     # tables, so its adiabat differs from this anchor by the P-T vs P-S
     # liquidus offset (tens of K at 1 M_Earth).
-    from proteus.interior_energetics.common import InitialConditionError
-
     try:
         res = solve_superliquidus_adiabat(config, hf_row)
-    except InitialConditionError as exc:
-        # The initial entropy re-solves the anchor at the converged P_cmb and
-        # raises there; this structure solve may use an estimated P_cmb.
+    except (RuntimeError, ValueError, KeyError) as exc:
+        # With a PALEOS mantle the initial entropy re-solves the anchor at the
+        # converged P_cmb and raises there; this solve may use an estimate.
+        mantle_eos = str(getattr(config.interior_struct.zalmoxis, 'mantle_eos', ''))
+        if not mantle_eos.startswith(PALEOS_EOS_PREFIXES):
+            raise
         from proteus.utils.structure_estimate import resolve_P_cmb
 
         fallback = _SUPERLIQ_LAST_ANCHOR
@@ -612,7 +619,53 @@ def _resolve_zalmoxis_cmb_temperature(
     return float(res['cmb_T'])
 
 
+def _superliq_cache_key(config: Config, P_cmb: float) -> tuple:
+    """Memo key of the super-liquidus anchor solve at ``P_cmb`` [Pa]."""
+    return (
+        round(P_cmb / 1e6),
+        round(float(config.planet.delta_T_super), 3),
+        str(getattr(config.interior_struct.zalmoxis, 'mantle_eos', None)),
+    )
+
+
 def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
+    """Memoised super-liquidus anchor solve, see ``_solve_superliquidus_adiabat``.
+
+    An ``InitialConditionError`` is memoised as well, under the same key, so
+    repeated structure solves at one P_cmb do not repeat a failing scan.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration.
+    hf_row : dict or None
+        Helpfile row; ``hf_row['P_cmb']`` is used when populated.
+
+    Returns
+    -------
+    dict
+        See ``_solve_superliquidus_adiabat``.
+
+    Raises
+    ------
+    InitialConditionError
+        See ``_solve_superliquidus_adiabat``; a memoised failure is raised
+        again with the same message.
+    """
+    from proteus.interior_energetics.common import InitialConditionError
+    from proteus.utils.structure_estimate import resolve_P_cmb
+
+    key = _superliq_cache_key(config, resolve_P_cmb(hf_row, config)[0])
+    if key in _SUPERLIQ_FAILED:
+        raise InitialConditionError(_SUPERLIQ_FAILED[key])
+    try:
+        return _solve_superliquidus_adiabat(config, hf_row)
+    except InitialConditionError as exc:
+        _SUPERLIQ_FAILED[key] = str(exc)
+        raise
+
+
+def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     """Solve for the coolest fully molten adiabat with a controlled superheat.
 
     The ``liquidus_super`` initial condition starts the mantle on a single
@@ -700,7 +753,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     mantle_eos = config.interior_struct.zalmoxis.mantle_eos
     P_surface = 1e5  # 1 bar surface anchor for the adiabat
     global _SUPERLIQ_LAST_ANCHOR
-    _cache_key = (round(P_cmb / 1e6), round(delta, 3), str(mantle_eos))
+    _cache_key = _superliq_cache_key(config, P_cmb)
     if _cache_key in _SUPERLIQ_CACHE:
         cached = dict(_SUPERLIQ_CACHE[_cache_key])
         _SUPERLIQ_LAST_ANCHOR = float(cached['cmb_T'])

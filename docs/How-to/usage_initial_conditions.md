@@ -98,8 +98,8 @@ pressure and radius estimates and a core mass fraction of 0.325, this means
 about 3.1 Earth masses (398 GPa at 3.15 Earth masses). With the default
 `ini_dsdr = -4.698e-6` J/kg/K/m the usable entropy is lower by
 `|ini_dsdr|` times the mantle thickness (about 19 J/kg/K at 3 Earth masses):
-2.75 Earth masses clamp to 417 K, 3 Earth masses to 73 K, and 3.1 Earth
-masses (392 GPa) raise.
+2.75 Earth masses clamp to 417 K, 3 Earth masses to 73 K, 3.05 Earth masses
+to 3 K, and 3.1 Earth masses (392 GPa) raise.
 
 The molten check uses the uniform entropy of the initial adiabat. With
 `ini_dsdr < 0` the initial profile is hotter at depth, so the check is
@@ -130,10 +130,11 @@ liquidus at the binding depth.
     initial entropy is solved on the P-S tables. The initial entropy solves
     this anchor again at the converged core-mantle boundary pressure. When it
     raises there, no molten state exists and the run stops at the initial
-    entropy. A raise in a structure solve, at the estimated or an
-    intermediate pressure, only logs a warning: that solve uses the last
-    solved anchor, or `tcmb_init` before any, as its core-mantle boundary
-    temperature. When the anchor clamps at the PALEOS table below
+    entropy. With a PALEOS mantle, a failed anchor in a structure solve, at
+    the estimated or an intermediate pressure, only logs a warning: that
+    solve uses the last solved anchor, or `tcmb_init` before any, as its
+    core-mantle boundary temperature. With another mantle the initial entropy
+    does not solve the anchor, so a failed anchor stops the structure solve. When the anchor clamps at the PALEOS table below
     `delta_T_super`, the initial entropy is capped at the anchor entropy, and
     a warning names the superheat the anchor reached. The generated P-S tables
     fill cells where PALEOS has no valid state, so on their own they can
@@ -146,10 +147,14 @@ liquidus at the binding depth.
     `ini_dsdr < 0` the deepest node sits at the cap and the rest of the
     profile is colder.
 
-    If the anchor clamps with less superheat than the offset between the P-T
-    and P-S liquidus, the P-S adiabat at the anchor entropy is below the P-S
-    liquidus. PROTEUS then raises and names the anchor superheat and the
-    offset, since above the anchor entropy the P-S tables hold filled cells.
+    The capped initial entropy is the anchor entropy less the `ini_dsdr`
+    allowance, and the molten check uses that uniform value. If the P-S
+    adiabat at that entropy is below the P-S liquidus somewhere, PROTEUS
+    raises instead of going above the anchor entropy, where the P-S tables
+    hold filled cells. The message gives the P-S superheat at the anchor
+    entropy itself: when it is negative it names the anchor superheat against
+    the P-T liquidus as well, and when it is positive it names the `ini_dsdr`
+    allowance as the cause.
 
     This cap has two known limits:
 
