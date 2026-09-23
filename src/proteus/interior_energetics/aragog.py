@@ -32,6 +32,7 @@ from aragog.parser import (
 from proteus.interior_energetics.aragog_phase import (
     build_jax_phase_params,
     build_mixed_phase_params,
+    build_solid_rheology_params,
 )
 from proteus.interior_energetics.common import Interior_t
 from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
@@ -1050,25 +1051,6 @@ class AragogRunner:
             entropy=entropy_melt_arg,
         )
 
-        ar_sec = config.interior_energetics.aragog
-        stress_mode = getattr(ar_sec, 'stress_closure_mode', 'global')
-        if not isinstance(stress_mode, str) or stress_mode not in ('local', 'global'):
-            stress_mode = 'global'
-
-        lid_mode = getattr(ar_sec, 'lid_base_mode', 'fixed')
-        if not isinstance(lid_mode, str) or lid_mode not in ('fixed', 'rheological'):
-            lid_mode = 'fixed'
-
-        def _float_ar(name: str, default: float) -> float:
-            try:
-                return float(getattr(ar_sec, name, default))
-            except (TypeError, ValueError):
-                return default
-
-        enabled_ar = getattr(ar_sec, 'enabled', False)
-        if not isinstance(enabled_ar, bool):
-            enabled_ar = False
-
         phase_solid = _PhaseParameters(
             density=LOOK_UP_DIR / 'density_solid.dat',
             viscosity=10.0 ** float(config.interior_energetics.solid_log10visc),
@@ -1077,18 +1059,7 @@ class AragogRunner:
             thermal_conductivity=float(config.interior_energetics.solid_cond),
             thermal_expansivity=LOOK_UP_DIR / 'thermal_exp_solid.dat',
             entropy=entropy_solid_arg,
-            activation_energy=_float_ar('activation_energy', 300.0e3),
-            activation_volume=_float_ar('activation_volume', 5.0e-6),
-            yield_stress_c=_float_ar('yield_stress_c', 50.0e6),
-            yield_stress_mu=_float_ar('yield_stress_mu', 0.6),
-            stress_closure_mode=stress_mode,
-            arrhenius_t_ref=_float_ar('arrhenius_t_ref', 1600.0),
-            yield_stress_max=_float_ar('yield_stress_max', 500.0e6),
-            viscosity_max_log10=_float_ar('viscosity_max_log10', 40.0),
-            lid_base_mode=lid_mode,
-            lid_base_temperature=_float_ar('lid_base_temperature', 1400.0),
-            lid_contrast_coeff=_float_ar('lid_contrast_coeff', 2.2),
-            enabled=enabled_ar,
+            rheology=build_solid_rheology_params(config),
         )
 
         phase_mixed = build_mixed_phase_params(config, solidus_path, liquidus_path)

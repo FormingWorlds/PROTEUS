@@ -70,19 +70,20 @@ config_version = "3.0"
     grain_size             = 1e-3
     write_flux_diagnostics = true
     [interior_energetics.aragog]
-        backend              = "jax"
-        enabled              = true
-        arrhenius_t_ref      = 1600.0
-        yield_stress_max     = 500.0e6
-        viscosity_max_log10  = 40.0
-        lid_base_mode        = "fixed"
-        lid_base_temperature = 1400.0
-        lid_contrast_coeff   = 2.2
-        activation_energy    = 300.0e3
-        activation_volume    = 5.0e-6
-        yield_stress_c       = 50.0e6
-        yield_stress_mu      = 0.6
-        stress_closure_mode  = "local"
+        backend = "jax"
+        [interior_energetics.aragog.rheology]
+            enabled              = true
+            arrhenius_t_ref      = 1600.0
+            yield_stress_max     = 500.0e6
+            viscosity_max_log10  = 40.0
+            lid_base_mode        = "fixed"
+            lid_base_temperature = 1400.0
+            lid_contrast_coeff   = 2.2
+            activation_energy    = 300.0e3
+            activation_volume    = 5.0e-6
+            yield_stress_c       = 50.0e6
+            yield_stress_mu      = 0.6
+            stress_closure_mode  = "local"
 
 # Outgassing: dummy
 [outgas]

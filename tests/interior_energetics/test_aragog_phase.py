@@ -45,6 +45,7 @@ from proteus.interior_energetics.aragog_phase import (  # noqa: E402
     _phase_params_from_config,
     build_jax_phase_params,
     build_mixed_phase_params,
+    build_solid_rheology_params,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -78,18 +79,18 @@ def _make_full_config(*, separation_viscosity: str = 'mixture'):
     ie.grain_size = 0.023
     ie.spider.matprop_smooth_width = 0.017
     ie.aragog.separation_viscosity = separation_viscosity
-    ie.aragog.arrhenius_t_ref = 1750.0
-    ie.aragog.yield_stress_max = 300e6
-    ie.aragog.lid_base_mode = 'rheological'
-    ie.aragog.lid_base_temperature = 1450.0
-    ie.aragog.lid_contrast_coeff = 2.5
-    ie.aragog.stress_closure_mode = 'global'
-    ie.aragog.activation_energy = 320e3
-    ie.aragog.activation_volume = 4.5e-6
-    ie.aragog.yield_stress_c = 45e6
-    ie.aragog.yield_stress_mu = 0.55
-    ie.aragog.viscosity_max_log10 = 38.0
-    ie.aragog.enabled = False
+    ie.aragog.rheology.arrhenius_t_ref = 1750.0
+    ie.aragog.rheology.yield_stress_max = 300e6
+    ie.aragog.rheology.lid_base_mode = 'rheological'
+    ie.aragog.rheology.lid_base_temperature = 1450.0
+    ie.aragog.rheology.lid_contrast_coeff = 2.5
+    ie.aragog.rheology.stress_closure_mode = 'global'
+    ie.aragog.rheology.activation_energy = 320e3
+    ie.aragog.rheology.activation_volume = 4.5e-6
+    ie.aragog.rheology.yield_stress_c = 45e6
+    ie.aragog.rheology.yield_stress_mu = 0.55
+    ie.aragog.rheology.viscosity_max_log10 = 38.0
+    ie.aragog.rheology.enabled = False
     # Numpy mixed-phase parameters only.
     ie.latent_heat_of_fusion = 4.1e5
     ie.phase_transition_width = 0.019
@@ -178,30 +179,30 @@ def test_shared_quantities_match_across_numpy_and_jax():
     assert jax_params.grain_size == pytest.approx(ie.grain_size)
     assert numpy_params.matprop_smooth_width == pytest.approx(ie.spider.matprop_smooth_width)
     assert jax_params.matprop_smooth_width == pytest.approx(ie.spider.matprop_smooth_width)
-    assert numpy_params.arrhenius_t_ref == pytest.approx(ie.aragog.arrhenius_t_ref)
-    assert jax_params.arrhenius_t_ref == pytest.approx(ie.aragog.arrhenius_t_ref)
-    assert numpy_params.yield_stress_max == pytest.approx(ie.aragog.yield_stress_max)
-    assert jax_params.yield_stress_max == pytest.approx(ie.aragog.yield_stress_max)
-    assert numpy_params.lid_base_mode == ie.aragog.lid_base_mode
-    assert jax_params.lid_base_mode == ie.aragog.lid_base_mode
-    assert numpy_params.lid_base_temperature == pytest.approx(ie.aragog.lid_base_temperature)
-    assert jax_params.lid_base_temperature == pytest.approx(ie.aragog.lid_base_temperature)
-    assert numpy_params.lid_contrast_coeff == pytest.approx(ie.aragog.lid_contrast_coeff)
-    assert jax_params.lid_contrast_coeff == pytest.approx(ie.aragog.lid_contrast_coeff)
-    assert numpy_params.stress_closure_mode == ie.aragog.stress_closure_mode
-    assert jax_params.stress_closure_mode == ie.aragog.stress_closure_mode
-    assert numpy_params.activation_energy == pytest.approx(ie.aragog.activation_energy)
-    assert jax_params.activation_energy == pytest.approx(ie.aragog.activation_energy)
-    assert numpy_params.activation_volume == pytest.approx(ie.aragog.activation_volume)
-    assert jax_params.activation_volume == pytest.approx(ie.aragog.activation_volume)
-    assert numpy_params.yield_stress_c == pytest.approx(ie.aragog.yield_stress_c)
-    assert jax_params.yield_stress_c == pytest.approx(ie.aragog.yield_stress_c)
-    assert numpy_params.yield_stress_mu == pytest.approx(ie.aragog.yield_stress_mu)
-    assert jax_params.yield_stress_mu == pytest.approx(ie.aragog.yield_stress_mu)
-    assert numpy_params.viscosity_max_log10 == pytest.approx(ie.aragog.viscosity_max_log10)
-    assert jax_params.viscosity_max_log10 == pytest.approx(ie.aragog.viscosity_max_log10)
-    assert numpy_params.enabled == ie.aragog.enabled
-    assert jax_params.enabled == ie.aragog.enabled
+
+    assert not hasattr(numpy_params, 'activation_energy')
+    assert not hasattr(numpy_params, 'yield_stress_c')
+    assert not hasattr(numpy_params, 'enabled')
+    assert not hasattr(numpy_params, 'stress_closure_mode')
+
+    solid_rheo = build_solid_rheology_params(config)
+    assert jax_params.arrhenius_t_ref == pytest.approx(ie.aragog.rheology.arrhenius_t_ref)
+    assert jax_params.yield_stress_max == pytest.approx(ie.aragog.rheology.yield_stress_max)
+    assert jax_params.lid_base_mode == ie.aragog.rheology.lid_base_mode
+    assert jax_params.lid_base_temperature == pytest.approx(
+        ie.aragog.rheology.lid_base_temperature
+    )
+    assert jax_params.lid_contrast_coeff == pytest.approx(ie.aragog.rheology.lid_contrast_coeff)
+    assert jax_params.stress_closure_mode == ie.aragog.rheology.stress_closure_mode
+    assert jax_params.activation_energy == pytest.approx(ie.aragog.rheology.activation_energy)
+    assert jax_params.activation_volume == pytest.approx(ie.aragog.rheology.activation_volume)
+    assert jax_params.yield_stress_c == pytest.approx(ie.aragog.rheology.yield_stress_c)
+    assert jax_params.yield_stress_mu == pytest.approx(ie.aragog.rheology.yield_stress_mu)
+    assert jax_params.viscosity_max_log10 == pytest.approx(
+        ie.aragog.rheology.viscosity_max_log10
+    )
+    assert jax_params.enabled == ie.aragog.rheology.enabled
+    assert jax_params.rheology == solid_rheo
 
 
 @pytest.mark.parametrize(

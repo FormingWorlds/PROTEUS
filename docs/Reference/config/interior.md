@@ -286,23 +286,40 @@ Jacobians for robust convergence.
 | `solver_method` | str | `"cvode"` | ODE solver: 'cvode' (SUNDIALS, SPIDER parity), 'radau' (scipy), 'bdf' (scipy). Choices: `"cvode"`, `"radau"`, `"bdf"`. |
 | `scalar_gravity_override` | bool | `false` | Scalar-gravity comparison knob. When True, the external mesh file that Zalmoxis writes has its gravity column overwritten with a uniform scalar (the surface value from ``hf_row['gravity']``) before Aragog reads it, so Aragog's per-node gravity path interpolates to that scalar everywhere. False by default; set True only when running a paired scalar-gravity comparison. |
 | `phi_step_cap` | float | `0.0` | Per-call melt-fraction step cap. When > 0 and any staggered cell is in or near the two-phase window at solve() entry, a CVODE root function (and the equivalent scipy event) returns control at the exact time the larger of the global mass-weighted \|ΔΦ\| and the maximum single-cell \|Δφ\| reaches this cap. Off by default: the schema default 0.0 resolves to no cap, because on a benign freezing-front crossing the root function slices the coupled step into many small ones and drives the reported CMB heat flux briefly negative where the uncapped run stays positive, so the cap is a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too. |
-| `enabled` | bool | `false` | Switch for solid-state Arrhenius rheology and yielding closures. When False (default), bypasses Arrhenius viscosity calculation and uses unyielded bulk viscosity. |
-| `arrhenius_t_ref` | float | `1600.0` | Reference temperature \[K\] for Arrhenius diffusion creep viscosity. Must be > 0. |
-| `yield_stress_max` | float | `500000000.0` | Maximum yield stress \[Pa\] cap applied to plastic yielding. Must be > 0. |
-| `viscosity_max_log10` | float | `40.0` | Upper bound on log10 diffusion creep viscosity \[log10(Pa s)\]. Must be > 0. |
-| `lid_base_mode` | str | `"fixed"` | Mode for stagnant lid base determination: 'fixed' or 'rheological'. Choices: `"fixed"`, `"rheological"`. |
-| `lid_base_temperature` | float | `1400.0` | Fixed lid base temperature \[K\] when lid_base_mode='fixed'. Must be > 0. |
-| `lid_contrast_coeff` | float | `2.2` | Frank-Kamenetskii rheological temperature contrast coefficient. Must be > 0. |
-| `activation_energy` | float | `300000.0` | Activation energy for diffusion creep \[J/mol\]. Must be non-negative. Must be >= 0. |
-| `activation_volume` | float | `5e-06` | Activation volume for diffusion creep \[m^3/mol\]. Must be >= 0. |
-| `yield_stress_c` | float | `50000000.0` | Cohesion for plastic yielding \[Pa\]. Must be >= 0. |
-| `yield_stress_mu` | float | `0.6` | Friction coefficient for plastic yielding. Must be >= 0. |
-| `stress_closure_mode` | str | `"global"` | Convective stress closure mode: 'local' or 'global'. Choices: `"local"`, `"global"`. |
 | `temperature_step_cap` | float | `0.0` | Per-call per-cell temperature step cap \[K\]. Shares the same root function as phi_step_cap and fires on the maximum single-cell \|ΔT\| since solve() entry. When enabled it bounds the per-cell temperature change on the solid adiabat just below the solidus, where the melt-fraction cap cannot act because a fully solid cell's melt fraction no longer moves. Off by default (schema default 0.0 resolves to no cap); on a benign freezing-front crossing the caps slice the coupled step into many small ones and drive the reported CMB heat flux briefly negative, so they are a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too. |
 | `entropy_step_cap` | float | `0.0` | Per-call per-cell entropy step cap \[J/kg/K\], in the native solver variable; same role as temperature_step_cap without an EOS lookup in the root function. Off by default (schema default 0.0 resolves to no cap); on a benign freezing-front crossing the caps slice the coupled step into many small ones and drive the reported CMB heat flux briefly negative, so they are a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too. |
 | `phase_boundary_entropy_margin` | float | `200.0` | Phase-boundary proximity band \[J/kg/K\] within which a staggered cell counts as near a solidus or liquidus crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase RHS across the boundary. This is a solver-accuracy control, not a cosmetic step-size setting: at the default it reproduces the fixed band and the converged trajectory is unchanged, but lowering it below the default can under-resolve a real phase crossing and shift the converged state, because CVODE's local error control can accept an over-large step across the near-discontinuous RHS. Keeping the default reproduces current behaviour, and modestly widening the band does not move a converged result because tighter steps only refine an adaptive integrator; but a value orders of magnitude above the default makes every cell count as near a boundary at all times, clamping the integrator to 1 yr steps (max_step = 1 yr, versus 100 yr otherwise) for the whole run and stalling it, so keep the band of order a few hundred J/kg/K. Default 200.0, matching Aragog's own default; a positive value is required (0 or negative is not a valid disabled state for a proximity band). Must be > 0. |
 | `tolerance_struct` | float | `100.0` | Absolute mass tolerance \[kg\] for the secant solver in determine_interior_radius. Default 100 kg; pairs with Spider's matching field so both backends drive the same outer-loop convergence criterion. Must be > 0. |
 <!-- END GENERATED: config-table [interior_energetics.aragog] -->
+
+#### Solid-state mantle rheology `[interior_energetics.aragog.rheology]`
+
+Solid-state Arrhenius mantle rheology, Byerlee plastic yielding, and
+convective stress closure options for Aragog.
+
+<!-- BEGIN GENERATED: config-table [interior_energetics.aragog.rheology] -->
+<!-- Generated by tools/generate_config_reference.py; edit src/proteus/config/, not this table -->
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | bool | `false` | Switch for solid-state Arrhenius rheology and yielding closures. When False (default), bypasses Arrhenius viscosity calculation and uses unyielded bulk viscosity. |
+| `activation_energy` | float | `300000.0` | Activation energy for diffusion creep \[J/mol\]. Must be >= 0. |
+| `activation_volume` | float | `5e-06` | Activation volume for diffusion creep \[m^3/mol\]. Must be >= 0. |
+| `activation_volume_decay_pressure` | float | `inf` | Characteristic pressure scale \[Pa\] for exponential decay of activation volume. Must be > 0. |
+| `arrhenius_t_ref` | float | `1600.0` | Reference temperature \[K\] for Arrhenius diffusion creep viscosity. Must be > 0. |
+| `viscosity_max_log10` | float | `40.0` | Upper bound on log10 diffusion creep viscosity \[log10(Pa s)\]. Must be > 0. |
+| `water_prefactor` | float | `1.0` | Multiplicative prefactor on Arrhenius viscosity representing hydration weakening. Must be > 0. |
+| `yield_stress_c` | float | `50000000.0` | Cohesion for plastic yielding \[Pa\]. Must be >= 0. |
+| `yield_stress_mu` | float | `0.6` | Friction coefficient for plastic yielding. Must be >= 0. |
+| `yield_stress_max` | float | `500000000.0` | Maximum yield stress \[Pa\] cap applied to plastic yielding. Must be > 0. |
+| `yield_switch_width` | float | `0.1` | Smoothing width for the harmonic-mean yield stress transition. Must be > 0. |
+| `stress_closure_mode` | str | `"local"` | Convective stress closure mode: 'local' or 'global'. Choices: `"local"`, `"global"`. |
+| `interior_flux_fraction` | float | `0.05` | Fraction of surface heat flux driving interior convective stress in global closure. Must be > 0 and < 1. |
+| `lid_base_mode` | str | `"fixed"` | Mode for stagnant lid base determination: 'fixed' or 'rheological'. Choices: `"fixed"`, `"rheological"`. |
+| `lid_base_temperature` | float | `1400.0` | Fixed lid base temperature \[K\] when lid_base_mode='fixed'. Must be > 0. |
+| `lid_contrast_coeff` | float | `2.2` | Frank-Kamenetskii rheological temperature contrast coefficient. Must be > 0. |
+| `lid_mask_width_cells` | float | `1.0` | Transition half-width \[cells\] for smooth lid-masking. Must be > 0. |
+| `phi_visc_single` | float | `0.5` | Melt fraction threshold separating solid from liquid viscosity blending branches. Must be > 0 and < 1. |
+<!-- END GENERATED: config-table [interior_energetics.aragog.rheology] -->
 
 ### SPIDER `[interior_energetics.spider]`
 

@@ -152,11 +152,114 @@ def valid_aragog(instance, attribute, value):
 
 
 @define
+class Rheology:
+    """Solid-state mantle rheology and yielding closure parameters.
+
+    Attributes
+    ----------
+    enabled : bool
+        Switch for solid-state Arrhenius rheology and yielding closures.
+    activation_energy : float
+        Activation energy for diffusion creep [J/mol].
+    activation_volume : float
+        Activation volume for diffusion creep [m^3/mol].
+    activation_volume_decay_pressure : float
+        Characteristic pressure scale [Pa] for exponential decay of activation volume.
+    arrhenius_t_ref : float
+        Reference temperature [K] for Arrhenius diffusion creep viscosity.
+    viscosity_max_log10 : float
+        Upper bound on log10 diffusion creep viscosity [log10(Pa s)].
+    water_prefactor : float
+        Multiplicative prefactor on Arrhenius viscosity representing hydration weakening.
+    yield_stress_c : float
+        Cohesion for plastic yielding [Pa].
+    yield_stress_mu : float
+        Friction coefficient for plastic yielding.
+    yield_stress_max : float
+        Maximum yield stress [Pa] cap applied to plastic yielding.
+    yield_switch_width : float
+        Smoothing width for the harmonic-mean yield stress transition.
+    stress_closure_mode : str
+        Convective stress closure mode: 'local' or 'global'.
+    interior_flux_fraction : float
+        Fraction of surface heat flux driving interior convective stress in global closure.
+    lid_base_mode : str
+        Mode for stagnant lid base determination: 'fixed' or 'rheological'.
+    lid_base_temperature : float
+        Fixed lid base temperature [K] when lid_base_mode='fixed'.
+    lid_contrast_coeff : float
+        Frank-Kamenetskii rheological temperature contrast coefficient.
+    lid_mask_width_cells : float
+        Transition half-width [cells] for smooth lid-masking.
+    phi_visc_single : float
+        Melt fraction threshold separating solid from liquid viscosity blending branches.
+    """
+
+    enabled: bool = field(default=False)
+    """Switch for solid-state Arrhenius rheology and yielding closures.
+    When False (default), bypasses Arrhenius viscosity calculation
+    and uses unyielded bulk viscosity."""
+
+    activation_energy: float = field(default=300e3, validator=ge(0))
+    """Activation energy for diffusion creep [J/mol]."""
+
+    activation_volume: float = field(default=5e-6, validator=ge(0))
+    """Activation volume for diffusion creep [m^3/mol]."""
+
+    activation_volume_decay_pressure: float = field(default=float('inf'), validator=gt(0))
+    """Characteristic pressure scale [Pa] for exponential decay of activation volume."""
+
+    arrhenius_t_ref: float = field(default=1600.0, validator=gt(0))
+    """Reference temperature [K] for Arrhenius diffusion creep viscosity."""
+
+    viscosity_max_log10: float = field(default=40.0, validator=gt(0))
+    """Upper bound on log10 diffusion creep viscosity [log10(Pa s)]."""
+
+    water_prefactor: float = field(default=1.0, validator=gt(0))
+    """Multiplicative prefactor on Arrhenius viscosity representing hydration weakening."""
+
+    yield_stress_c: float = field(default=50e6, validator=ge(0))
+    """Cohesion for plastic yielding [Pa]."""
+
+    yield_stress_mu: float = field(default=0.6, validator=ge(0))
+    """Friction coefficient for plastic yielding."""
+
+    yield_stress_max: float = field(default=500e6, validator=gt(0))
+    """Maximum yield stress [Pa] cap applied to plastic yielding."""
+
+    yield_switch_width: float = field(default=0.1, validator=gt(0))
+    """Smoothing width for the harmonic-mean yield stress transition."""
+
+    stress_closure_mode: str = field(default='local', validator=in_(('local', 'global')))
+    """Convective stress closure mode: 'local' or 'global'."""
+
+    interior_flux_fraction: float = field(default=0.05, validator=[gt(0), lt(1)])
+    """Fraction of surface heat flux driving interior convective stress in global closure."""
+
+    lid_base_mode: str = field(default='fixed', validator=in_(('fixed', 'rheological')))
+    """Mode for stagnant lid base determination: 'fixed' or 'rheological'."""
+
+    lid_base_temperature: float = field(default=1400.0, validator=gt(0))
+    """Fixed lid base temperature [K] when lid_base_mode='fixed'."""
+
+    lid_contrast_coeff: float = field(default=2.2, validator=gt(0))
+    """Frank-Kamenetskii rheological temperature contrast coefficient."""
+
+    lid_mask_width_cells: float = field(default=1.0, validator=gt(0))
+    """Transition half-width [cells] for smooth lid-masking."""
+
+    phi_visc_single: float = field(default=0.5, validator=[gt(0), lt(1)])
+    """Melt fraction threshold separating solid from liquid viscosity blending branches."""
+
+
+@define
 class Aragog:
     """Aragog-specific parameters.
 
     Attributes
     ----------
+    rheology: Rheology
+        Solid-state mantle rheology and yielding closure parameters.
     mass_coordinates: bool
         Whether to use mass coordinates in the model. Default is True.
         Uses uniform spacing in mass coordinate space, giving larger cells
@@ -250,32 +353,8 @@ class Aragog:
     rejected at load, since it cannot be told apart from the unset default;
     any other negative, NaN, or infinity is rejected too."""
 
-    enabled: bool = field(default=False)
-    """Switch for solid-state Arrhenius rheology and yielding closures.
-    When False (default), bypasses Arrhenius viscosity calculation
-    and uses unyielded bulk viscosity."""
-    arrhenius_t_ref: float = field(default=1600.0, validator=gt(0))
-    """Reference temperature [K] for Arrhenius diffusion creep viscosity."""
-    yield_stress_max: float = field(default=500.0e6, validator=gt(0))
-    """Maximum yield stress [Pa] cap applied to plastic yielding."""
-    viscosity_max_log10: float = field(default=40.0, validator=gt(0))
-    """Upper bound on log10 diffusion creep viscosity [log10(Pa s)]."""
-    lid_base_mode: str = field(default='fixed', validator=in_(('fixed', 'rheological')))
-    """Mode for stagnant lid base determination: 'fixed' or 'rheological'."""
-    lid_base_temperature: float = field(default=1400.0, validator=gt(0))
-    """Fixed lid base temperature [K] when lid_base_mode='fixed'."""
-    lid_contrast_coeff: float = field(default=2.2, validator=gt(0))
-    """Frank-Kamenetskii rheological temperature contrast coefficient."""
-    activation_energy: float = field(default=300e3, validator=ge(0))
-    """Activation energy for diffusion creep [J/mol]. Must be non-negative."""
-    activation_volume: float = field(default=5e-6, validator=ge(0))
-    """Activation volume for diffusion creep [m^3/mol]."""
-    yield_stress_c: float = field(default=50e6, validator=ge(0))
-    """Cohesion for plastic yielding [Pa]."""
-    yield_stress_mu: float = field(default=0.6, validator=ge(0))
-    """Friction coefficient for plastic yielding."""
-    stress_closure_mode: str = field(default='global', validator=in_(('local', 'global')))
-    """Convective stress closure mode: 'local' or 'global'."""
+    rheology: Rheology = field(factory=Rheology)
+    """Solid-state mantle rheology and yielding closure parameters."""
 
     temperature_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell temperature step cap [K]. Shares the same root

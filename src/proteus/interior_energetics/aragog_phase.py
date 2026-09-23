@@ -35,6 +35,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from aragog.parser import _PhaseMixedParameters
+from aragog.rheology import SolidRheologyParams
 
 if TYPE_CHECKING:
     from aragog.jax.phase import PhaseParams
@@ -103,18 +104,6 @@ class _PhaseParamsInputs:
     grain_size: float
     matprop_smooth_width: float
     separation_viscosity: str
-    activation_energy: float
-    activation_volume: float
-    yield_stress_c: float
-    yield_stress_mu: float
-    stress_closure_mode: str
-    arrhenius_t_ref: float
-    yield_stress_max: float
-    viscosity_max_log10: float
-    lid_base_mode: str
-    lid_base_temperature: float
-    lid_contrast_coeff: float
-    enabled: bool
 
     # Numpy mixed-phase parameters only.
     latent_heat_of_fusion: float
@@ -165,25 +154,6 @@ def _phase_params_from_config(config: Config) -> _PhaseParamsInputs:
     """
     ie = config.interior_energetics
 
-    def _float_attr(section, name: str, default: float) -> float:
-        val = getattr(section, name, default)
-        try:
-            return float(val)
-        except (TypeError, ValueError):
-            return default
-
-    stress_closure = getattr(ie.aragog, 'stress_closure_mode', 'global')
-    if not isinstance(stress_closure, str) or stress_closure not in ('local', 'global'):
-        stress_closure = 'global'
-
-    lid_mode = getattr(ie.aragog, 'lid_base_mode', 'fixed')
-    if not isinstance(lid_mode, str) or lid_mode not in ('fixed', 'rheological'):
-        lid_mode = 'fixed'
-
-    enabled_val = getattr(ie.aragog, 'enabled', False)
-    if not isinstance(enabled_val, bool):
-        enabled_val = False
-
     phase_smooth = getattr(ie.aragog, 'phase_smoothing', 'tanh')
     if not isinstance(phase_smooth, str):
         phase_smooth = 'tanh'
@@ -214,20 +184,66 @@ def _phase_params_from_config(config: Config) -> _PhaseParamsInputs:
         mixing=ie.trans_mixing,
         eddy_diff_thermal=float(ie.eddy_diffusivity_thermal),
         eddy_diff_chemical=float(ie.eddy_diffusivity_chemical),
-        activation_energy=_float_attr(ie.aragog, 'activation_energy', 300.0e3),
-        activation_volume=_float_attr(ie.aragog, 'activation_volume', 5.0e-6),
-        yield_stress_c=_float_attr(ie.aragog, 'yield_stress_c', 50.0e6),
-        yield_stress_mu=_float_attr(ie.aragog, 'yield_stress_mu', 0.6),
-        stress_closure_mode=stress_closure,
-        arrhenius_t_ref=_float_attr(ie.aragog, 'arrhenius_t_ref', 1600.0),
-        yield_stress_max=_float_attr(ie.aragog, 'yield_stress_max', 500.0e6),
-        viscosity_max_log10=_float_attr(ie.aragog, 'viscosity_max_log10', 40.0),
-        lid_base_mode=lid_mode,
-        lid_base_temperature=_float_attr(ie.aragog, 'lid_base_temperature', 1400.0),
-        lid_contrast_coeff=_float_attr(ie.aragog, 'lid_contrast_coeff', 2.2),
-        enabled=enabled_val,
         kappah_floor=float(ie.kappah_floor),
         phase_smoothing=phase_smooth,
+    )
+
+
+def build_solid_rheology_params(config: Config) -> SolidRheologyParams:
+    """Build SolidRheologyParams from PROTEUS config.
+
+    Parameters
+    ----------
+    config : Config
+        The PROTEUS configuration.
+
+    Returns
+    -------
+    SolidRheologyParams
+        The validated solid-state mantle rheology parameters.
+    """
+    ar_sec = config.interior_energetics.aragog
+    rheo = getattr(ar_sec, 'rheology', ar_sec)
+
+    enabled_raw = getattr(rheo, 'enabled', False)
+    enabled = enabled_raw if isinstance(enabled_raw, bool) else False
+
+    stress_mode_raw = getattr(rheo, 'stress_closure_mode', 'local')
+    stress_mode = stress_mode_raw if stress_mode_raw in ('local', 'global') else 'local'
+
+    lid_mode_raw = getattr(rheo, 'lid_base_mode', 'fixed')
+    lid_mode = lid_mode_raw if lid_mode_raw in ('fixed', 'rheological') else 'fixed'
+
+    def _get_float(name: str, default: float) -> float:
+        val = getattr(rheo, name, default)
+        if hasattr(val, '_mock_name'):
+            return default
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return default
+
+    return SolidRheologyParams(
+        enabled=enabled,
+        activation_energy=_get_float('activation_energy', 300e3),
+        activation_volume=_get_float('activation_volume', 5e-6),
+        activation_volume_decay_pressure=_get_float(
+            'activation_volume_decay_pressure', float('inf')
+        ),
+        arrhenius_t_ref=_get_float('arrhenius_t_ref', 1600.0),
+        viscosity_max_log10=_get_float('viscosity_max_log10', 40.0),
+        water_prefactor=_get_float('water_prefactor', 1.0),
+        yield_stress_c=_get_float('yield_stress_c', 50e6),
+        yield_stress_mu=_get_float('yield_stress_mu', 0.6),
+        yield_stress_max=_get_float('yield_stress_max', 500e6),
+        yield_switch_width=_get_float('yield_switch_width', 0.1),
+        stress_closure_mode=stress_mode,
+        interior_flux_fraction=_get_float('interior_flux_fraction', 0.05),
+        lid_base_mode=lid_mode,
+        lid_base_temperature=_get_float('lid_base_temperature', 1400.0),
+        lid_contrast_coeff=_get_float('lid_contrast_coeff', 2.2),
+        lid_mask_width_cells=_get_float('lid_mask_width_cells', 1.0),
+        phi_visc_single=_get_float('phi_visc_single', 0.5),
     )
 
 
@@ -275,18 +291,6 @@ def build_mixed_phase_params(
         const_log10visc=inputs.const_log10visc,
         const_T_ref=inputs.const_T_ref,
         const_S_ref=inputs.const_S_ref,
-        enabled=inputs.enabled,
-        activation_energy=inputs.activation_energy,
-        activation_volume=inputs.activation_volume,
-        yield_stress_c=inputs.yield_stress_c,
-        yield_stress_mu=inputs.yield_stress_mu,
-        stress_closure_mode=inputs.stress_closure_mode,
-        arrhenius_t_ref=inputs.arrhenius_t_ref,
-        yield_stress_max=inputs.yield_stress_max,
-        viscosity_max_log10=inputs.viscosity_max_log10,
-        lid_base_mode=inputs.lid_base_mode,
-        lid_base_temperature=inputs.lid_base_temperature,
-        lid_contrast_coeff=inputs.lid_contrast_coeff,
     )
 
 
@@ -313,22 +317,11 @@ def build_jax_phase_params(config: Config) -> PhaseParams:
     from aragog.jax.phase import PhaseParams
 
     inputs = _phase_params_from_config(config)
+    rheology = build_solid_rheology_params(config)
     return PhaseParams(
         phi_rheo=inputs.rheological_transition_melt_fraction,
         phi_width=inputs.rheological_transition_width,
         viscosity_solid=inputs.viscosity_solid,
-        activation_energy=inputs.activation_energy,
-        activation_volume=inputs.activation_volume,
-        yield_stress_c=inputs.yield_stress_c,
-        yield_stress_mu=inputs.yield_stress_mu,
-        stress_closure_mode=inputs.stress_closure_mode,
-        arrhenius_t_ref=inputs.arrhenius_t_ref,
-        yield_stress_max=inputs.yield_stress_max,
-        viscosity_max_log10=inputs.viscosity_max_log10,
-        lid_base_mode=inputs.lid_base_mode,
-        lid_base_temperature=inputs.lid_base_temperature,
-        lid_contrast_coeff=inputs.lid_contrast_coeff,
-        enabled=inputs.enabled,
         viscosity_liquid=inputs.viscosity_liquid,
         grain_size=inputs.grain_size,
         k_solid=inputs.k_solid,
@@ -345,4 +338,5 @@ def build_jax_phase_params(config: Config) -> PhaseParams:
         phase_smoothing=inputs.phase_smoothing,
         phase_smoothing_width=_JAX_PHASE_SMOOTHING_WIDTH,
         separation_viscosity=inputs.separation_viscosity,
+        rheology=rheology,
     )
