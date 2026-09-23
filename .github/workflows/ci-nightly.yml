@@ -314,6 +314,8 @@ jobs:
           # budget is already full. job_minutes sit above the measured runner
           # wall-time with margin for the ~1.5x runner-to-runner variance, and
           # above each shard's per-test timeout so a hung test trips first.
+          # Local times are from a Mac Studio; the runner took 47 min for the
+          # superliquidus-m1 test that runs in 151 s there.
           # ---- std-config-multi (3 coupled timesteps; ~180 min measured) ----
           - shard: std-config-multi
             tier: extended
@@ -322,7 +324,7 @@ jobs:
             select: test_integration_std_config_multi_timestep
             files: >-
               tests/integration/test_integration_std_config.py
-          # ---- superliquidus-m1 (single 1 M_Earth solve; ~47 min measured) ----
+          # ---- superliquidus-m1 (single 1 M_Earth solve; 47 min on the runner, 151 s locally) ----
           - shard: superliquidus-m1
             tier: extended
             os: ubuntu-latest
@@ -330,7 +332,7 @@ jobs:
             select: test_m1_solved_adiabat_pinned
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
-          # ---- superliquidus-massindep (three solves in series; ~141 min measured) ----
+          # ---- superliquidus-massindep (three solves in series; 141 min on the runner, 429 s locally) ----
           - shard: superliquidus-massindep
             tier: extended
             os: ubuntu-latest
@@ -338,12 +340,36 @@ jobs:
             select: test_solved_entropy_is_mass_independent
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
-          # ---- superliquidus-unreachable (one full-span scan; ~48 min measured) ----
+          # ---- superliquidus-m1-delta0 (single 1 M_Earth solve at zero superheat; 131 s locally) ----
+          - shard: superliquidus-m1-delta0
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 120
+            select: test_m1_zero_superheat_pinned
+            files: >-
+              tests/interior_struct/test_superliquidus_adiabat.py
+          # ---- superliquidus-unreachable (full-span scan plus ceiling bisection; 177 s locally) ----
           - shard: superliquidus-unreachable
             tier: extended
             os: ubuntu-latest
             job_minutes: 120
             select: test_unreachable_superheat_raises_real
+            files: >-
+              tests/interior_struct/test_superliquidus_adiabat.py
+          # ---- superliquidus-clamp (full-span scan plus ceiling bisection; 180 s locally) ----
+          - shard: superliquidus-clamp
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 120
+            select: test_unreachable_superheat_clamps_real
+            files: >-
+              tests/interior_struct/test_superliquidus_adiabat.py
+          # ---- superliquidus-own-tables (table generation plus 4 table solves; 38 s locally) ----
+          - shard: superliquidus-own-tables
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 120
+            select: test_zalmoxis_structure_ic_on_own_p_s_tables
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
     runs-on: ${{ matrix.os }}

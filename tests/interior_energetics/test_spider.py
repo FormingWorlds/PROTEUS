@@ -1151,7 +1151,9 @@ def test_try_spider_zalmoxis_eos_dir_logs_at_debug(tmp_path, caplog):
     """_try_spider logs the Zalmoxis-generated EOS table path at debug level.
 
     This line fires on every timestep when Zalmoxis provides a per-run EOS
-    directory, so it must stay off the default INFO output (#839).
+    directory, so it must stay off the default INFO output (#839). It fires
+    twice per call: once for the initial-entropy computation and once for
+    the solver's own EOS args, both resolving the same directory.
     """
     from proteus.interior_energetics.spider import _try_spider
 
@@ -1185,8 +1187,54 @@ def test_try_spider_zalmoxis_eos_dir_logs_at_debug(tmp_path, caplog):
     zalmoxis_records = [
         r for r in caplog.records if 'Zalmoxis-generated SPIDER EOS tables' in r.message
     ]
-    assert len(zalmoxis_records) == 1
-    assert zalmoxis_records[0].levelname == 'DEBUG'
+    assert len(zalmoxis_records) == 2
+    assert all(r.levelname == 'DEBUG' for r in zalmoxis_records)
+    resolved_dirs = {r.getMessage().rsplit(' ', 1)[-1] for r in zalmoxis_records}
+    assert resolved_dirs == {dirs['spider_eos_dir']}
+
+
+@pytest.mark.unit
+def test_try_spider_ic_reads_the_same_table_dir_as_aragog(tmp_path):
+    """SPIDER's t=0 entropy is solved on dirs['spider_eos_dir'], the directory
+    Aragog stores for its own IC (aragog.py) and SPIDER's solver runs on, not
+    on a stale output/data/spider_eos left by an earlier run. With
+    PROTEUS_PS_CACHE_DIR set the two locations differ.
+    """
+    from proteus.interior_energetics.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, mesh_path = _setup_spider_env(
+        tmp_path, with_mesh=True
+    )
+    shared_cache = tmp_path / 'ps_cache' / 'spider_eos'
+    shared_cache.mkdir(parents=True)
+    dirs['spider_eos_dir'] = str(shared_cache)
+    stale = os.path.join(dirs['output/data'], 'spider_eos')
+    os.makedirs(stale)
+
+    with (
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ) as mock_ic,
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            mesh_file=mesh_path,
+        )
+
+    aragog_dir = dirs.get('spider_eos_dir', '')  # what AragogRunner stores for its IC
+    assert mock_ic.call_args.kwargs['spider_eos_dir'] == aragog_dir == str(shared_cache)
+    assert mock_ic.call_args.kwargs['spider_eos_dir'] != stale
 
 
 @pytest.mark.unit

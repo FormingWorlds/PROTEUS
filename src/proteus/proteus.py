@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -371,6 +372,11 @@ class Proteus:
         offline : bool
             Run in offline mode; do not try to connect to the internet.
         """
+
+        # Anchor solves memoised by an earlier run in this process do not carry over.
+        zalmoxis_module = sys.modules.get('proteus.interior_struct.zalmoxis')
+        if zalmoxis_module is not None:
+            zalmoxis_module._clear_superliquidus_cache()
 
         # Import things needed to run PROTEUS
         #    atmospheric chemistry

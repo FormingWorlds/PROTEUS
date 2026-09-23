@@ -582,11 +582,11 @@ def _patch_crosscheck_eos(monkeypatch, tmp_path, surface_T, p_cmb):
 
 
 @pytest.mark.physics_invariant
-def test_aragog_verify_raises_on_cold_surface_liquidus_super(monkeypatch, tmp_path):
+def test_aragog_verify_warns_on_cold_surface_liquidus_super(monkeypatch, tmp_path, caplog):
     """A liquidus_super IC that unpacks to a COLD surface beyond the Fei+2021
-    calibration is rejected: the cross-check raises, because that steeply
-    inverted profile is the energy-non-conserving cold-surface initial
-    condition the guard exists to catch.
+    calibration is reported with a warning that names the inverted surface,
+    not raised: the IC comes from the P-S tables and the reference is the P-T
+    anchor, so the check is diagnostic.
     """
     from proteus.interior_energetics.aragog import AragogRunner
 
@@ -606,14 +606,48 @@ def test_aragog_verify_raises_on_cold_surface_liquidus_super(monkeypatch, tmp_pa
         S_stag=np.full(P_stag.size, 10000.0),
         temperature_scalar_fn=cold_T,
     )
-    with pytest.raises(RuntimeError, match='cold-surface inversion') as exc:
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.aragog'):
         AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path), {'P_cmb': p_cmb})
-    msg = str(exc.value)
-    # The message must name the mode and the out-of-calibration pressure so the
-    # failure is actionable, and report the cold unpacked surface (2900 K) it
-    # caught against the intended ~4243 K adiabat anchor.
-    assert 'liquidus_super' in msg and 'GPa' in msg
-    assert '2900 K' in msg
+    msgs = [
+        r.getMessage() for r in caplog.records if 'cold-surface inversion' in r.getMessage()
+    ]
+    # The warning names the mode and the out-of-calibration pressure, and the
+    # cold unpacked surface (2900 K) against the ~4243 K adiabat anchor.
+    assert len(msgs) == 1
+    assert 'liquidus_super' in msgs[0] and 'GPa' in msgs[0]
+    assert 'surface T=2900 K' in msgs[0]
+
+
+def test_aragog_verify_no_cold_surface_warning_within_the_calibration(
+    monkeypatch, tmp_path, caplog
+):
+    """The same cold-surface profile below the Fei+2021 calibration pressure
+    logs no cold-surface warning: the guard applies only where the liquidus
+    is extrapolated.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
+
+    p_cmb = 0.5 * FEI2021_LIQUIDUS_P_CALIB_PA
+    config = _make_aragog_liquidus_super_config()
+    _patch_crosscheck_eos(monkeypatch, tmp_path, surface_T=4243.0, p_cmb=p_cmb)
+    P_stag = np.array([p_cmb, 0.6 * p_cmb, 0.1 * p_cmb, 1e9, 1e5])
+
+    def cold_T(p, s):
+        return 2900.0 + (p - 1e5) / (p_cmb - 1e5) * (11000.0 - 2900.0)
+
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _make_mock_entropy_solver(
+        P_stag=P_stag,
+        S_stag=np.full(P_stag.size, 10000.0),
+        temperature_scalar_fn=cold_T,
+    )
+    with caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.aragog'):
+        AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path), {'P_cmb': p_cmb})
+
+    assert not [r for r in caplog.records if 'cold-surface inversion' in r.getMessage()]
+    # Discrimination: the profile still reached the FAIL branch.
+    assert [r for r in caplog.records if 'verdict = FAIL' in r.getMessage()]
 
 
 def test_aragog_verify_no_raise_on_warm_surface_liquidus_super(monkeypatch, tmp_path):
@@ -645,3 +679,38 @@ def test_aragog_verify_no_raise_on_warm_surface_liquidus_super(monkeypatch, tmp_
         tmp_path / 'data' / 'entropy_ic_verification' / 'entropy_ic_comparison.npz'
     ).exists()
     interior_o.aragog_solver.entropy_eos.temperature_scalar.assert_called()
+
+
+def test_aragog_verify_skips_when_pt_resolve_has_no_solution(monkeypatch, tmp_path, caplog):
+    """The IC is solved on the P-S tables, so a P-T re-solve that raises
+    InitialConditionError at the converged P_cmb skips the diagnostic with a
+    warning instead of aborting a run whose IC exists.
+    """
+    import proteus.interior_struct.zalmoxis as zmod
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.interior_energetics.common import InitialConditionError
+
+    p_cmb = 1.0e11
+    config = _make_aragog_liquidus_super_config()
+    _patch_crosscheck_eos(monkeypatch, tmp_path, surface_T=4243.0, p_cmb=p_cmb)
+
+    def _no_solution(config, hf_row):
+        raise InitialConditionError('liquidus_super: no valid molten adiabat found')
+
+    monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', _no_solution)
+    P_stag = np.array([p_cmb, 5e10, 1e9, 1e5])
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _make_mock_entropy_solver(
+        P_stag=P_stag,
+        S_stag=np.full(P_stag.size, 10000.0),
+        temperature_scalar_fn=lambda p, s: 4243.0 + p / 1e9,
+    )
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.aragog'):
+        AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path), {'P_cmb': p_cmb})
+
+    msgs = [r.getMessage() for r in caplog.records]
+    assert any('cross-check skipped' in m and 'no valid molten adiabat' in m for m in msgs), (
+        msgs
+    )
+    assert not (tmp_path / 'data' / 'entropy_ic_verification').exists()

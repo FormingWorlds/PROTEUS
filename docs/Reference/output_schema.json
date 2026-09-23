@@ -748,7 +748,7 @@
       ],
       "consumers": [
         "interior_energetics",
-        "interior_struct"
+        "utils"
       ]
     },
     {

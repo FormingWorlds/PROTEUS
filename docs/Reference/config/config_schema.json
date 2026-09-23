@@ -3236,7 +3236,7 @@
         "liquidus_super"
       ],
       "bounds": null,
-      "description": "How to set the initial mantle thermal state. 'isothermal': T = tsurf_init everywhere. 'linear': T from tsurf_init (surface) to tcenter_init (center). 'adiabatic': integrate dT/dP|_S downward from tsurf_init. 'adiabatic_from_cmb': anchor the adiabat at the core-mantle boundary (T = tcmb_init at P_cmb) and integrate upward to the surface. Use this when the surface-anchored adiabat under the current EOS would put the mantle into the mushy zone at IC and you want to force a fully molten initial state by pinning the CMB temperature instead. PROTEUS converts the (P_cmb, tcmb_init) anchor into a target entropy via PALEOS-2phase lookup, then hands that S to the interior solver as if it were the isentropic IC. 'accretion': White & Li (2025) parameterization. 'isentropic': set the initial specific entropy directly via ini_entropy + ini_dsdr (bypasses PALEOS lookup; matches the CHILI intercomparison protocol). The interior solver maps the entropy IC to T(P) via its own EOS table. 'liquidus_super' (default): start the mantle on the coolest single adiabat that is fully molten everywhere, with at least delta_T_super Kelvin of superheat above the configured liquidus. The surface temperature (hence the uniform initial entropy) is solved so the minimum superheat over the whole mantle equals delta_T_super, evaluated against the solidus/liquidus actually in use. This guarantees a fully molten initial state with a controlled margin for any planet mass and any melting-curve parameterisation, without the user having to pick a surface temperature or entropy. The solve raises if the requested superheat cannot be reached before the deep adiabat exhausts the EOS table.",
+      "description": "How to set the initial mantle thermal state. 'isothermal': T = tsurf_init everywhere. 'linear': T from tsurf_init (surface) to tcenter_init (center). 'adiabatic': integrate dT/dP|_S downward from tsurf_init. 'adiabatic_from_cmb': anchor the adiabat at the core-mantle boundary (T = tcmb_init at P_cmb) and integrate upward to the surface. Use this when the surface-anchored adiabat under the current EOS would put the mantle into the mushy zone at IC and you want to force a fully molten initial state by pinning the CMB temperature instead. PROTEUS converts the (P_cmb, tcmb_init) anchor into a target entropy via PALEOS-2phase lookup, then hands that S to the interior solver as if it were the isentropic IC. 'accretion': White & Li (2025) parameterization. 'isentropic': set the initial specific entropy directly via ini_entropy + ini_dsdr (bypasses PALEOS lookup; matches the CHILI intercomparison protocol). The interior solver maps the entropy IC to T(P) via its own EOS table. 'liquidus_super' (default): start the mantle on the coolest single adiabat that is fully molten everywhere, with at least delta_T_super Kelvin of superheat above the configured liquidus. The surface temperature (hence the uniform initial entropy) is solved so the minimum superheat over the whole mantle equals delta_T_super, evaluated against the solidus/liquidus actually in use. This controls the molten margin without the user picking a surface temperature or entropy. If the requested superheat cannot be reached before the deep adiabat exhausts the EOS table, the solve clamps to the largest achievable superheat and emits a warning that reports it. If even the hottest adiabat the table supports stays below the liquidus somewhere in the mantle, no fully molten initial condition exists and the solve raises a RuntimeError. The liquidus is the one in the interior P-S tables, which the interior solver also uses for its melt fraction, for every structure module.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -3278,7 +3278,7 @@
           "value": 0
         }
       ],
-      "description": "Initial core-mantle boundary temperature [K] (adiabatic_from_cmb only). The mantle adiabat is anchored at this temperature at P = P_cmb and integrated outward to the surface.",
+      "description": "Initial core-mantle boundary temperature [K] (adiabatic_from_cmb). The mantle adiabat is anchored at this temperature at P = P_cmb and integrated outward to the surface. With liquidus_super, the Zalmoxis structure, a PALEOS mantle and spider or aragog energetics it is also the core-mantle boundary temperature of a structure solve whose P-T anchor fails before any anchor is solved.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -3378,7 +3378,7 @@
       "default": "-4.698e-06",
       "choices": null,
       "bounds": null,
-      "description": "Initial entropy gradient with radius [J/kg/K/m] (isentropic mode). CHILI Earth-SPIDER reference: -4.698e-6 (small numerical perturbation needed for SPIDER's BDF stability on a uniform IC).",
+      "description": "Initial entropy gradient with radius [J/kg/K/m], added to the uniform initial entropy by SPIDER and Aragog in every temperature mode; must be finite, and must be <= 0 with liquidus_super. CHILI Earth-SPIDER reference: -4.698e-6 (small numerical perturbation needed for SPIDER's BDF stability on a uniform IC).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -3399,7 +3399,7 @@
           "value": 0
         }
       ],
-      "description": "Minimum superheat [K] above the liquidus for the liquidus_super initial condition (liquidus_super mode only). The initial adiabat is solved so that, at its most-constraining depth, the temperature is at least delta_T_super above the configured liquidus; this fixes the whole isentropic profile and guarantees a fully molten mantle with that margin, for any planet mass and any melting curve. The default 500 K gives a comfortably molten start across the Earth-mass to ten-Earth-mass range. delta_T_super = 0 makes the mantle marginally molten (just touching the liquidus at the binding depth). If the requested superheat cannot be reached within the EOS table, the solve raises and reports the largest achievable value.",
+      "description": "Minimum superheat [K] above the liquidus for the liquidus_super initial condition (liquidus_super mode only). The initial adiabat is solved so that, at its most-constraining depth, the temperature is at least delta_T_super above the liquidus of the interior P-S tables; this fixes the whole isentropic profile. Whether the default 500 K is reachable depends on the tables and the planet mass (see the initial-conditions guide). delta_T_super = 0 makes the mantle marginally molten (just touching the liquidus at the binding depth). If the requested superheat cannot be reached within the EOS table, the solve clamps to the largest achievable superheat and emits a warning that reports it; if no fully molten adiabat exists within the table at all, it raises a RuntimeError.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -10240,6 +10240,18 @@
       "doc": "Validate planet.fO2_source against O_mode, volatile_mode, and against availability."
     },
     {
+      "validator": "planet_liquidus_super_needs_tables",
+      "module": "_config.py",
+      "attached_to": [
+        "planet"
+      ],
+      "touches": [
+        "interior_energetics.module",
+        "interior_struct.module"
+      ],
+      "doc": "Require a P-S table route for ``temperature_mode = \"liquidus_super\"``."
+    },
+    {
       "validator": "planet_mass_valid",
       "module": "_config.py",
       "attached_to": [
@@ -10403,6 +10415,17 @@
         "minimum"
       ],
       "doc": "The maximum must exceed the minimum on the same section."
+    },
+    {
+      "validator": "_validate_ini_dsdr",
+      "module": "_planet.py",
+      "attached_to": [
+        "planet.ini_dsdr"
+      ],
+      "touches": [
+        "temperature_mode"
+      ],
+      "doc": "Reject a non-finite ``ini_dsdr``, and a positive one with liquidus_super."
     },
     {
       "validator": "valid_bol_scale_start",
