@@ -14,6 +14,7 @@ nav:
       - Install PROTEUS:
           - Quick installation: How-to/installation.md
           - Manual installation: How-to/manual_installation.md
+          - Install with pixi (experimental): How-to/pixi.md
           - Optional modules: How-to/optionalmodules_installation.md
           - Run on a local machine: How-to/local_machine_guide.md
       - Getting started:
