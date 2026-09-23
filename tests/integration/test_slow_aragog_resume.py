@@ -19,8 +19,10 @@ setups in total; the second copy runs only two steps past the seam.
 
 Invariants asserted:
 
-- The seam snapshot holds a finite CMB gradient, and the first solve after the
-  resume starts from that value, not from the finite difference.
+- The seam snapshot holds a finite CMB gradient, and the resume hands exactly
+  that value to the solver's ``set_initial_dSdr_cmb``; the copy without it
+  hands None, so the solver starts from the finite difference.
+- A fresh run's snapshot stores the setup mesh surface pressure, 0 Pa.
 - The resumed run's energy-conservation residual and first-step ``F_cmb`` are
   closer to the control than the finite-difference restart's.
 - Temperatures stay positive and melt fraction in [0, 1] after the seam.
@@ -36,8 +38,6 @@ See also:
 
 from __future__ import annotations
 
-import logging
-import re
 import shutil
 
 import netCDF4 as nc
@@ -61,8 +61,6 @@ SEAM_ITERS = 6
 # T_magma) and well below the 1e-2 and 5e-3 of a mesh built from P_surf.
 FLUX_RTOL = 2.0e-3
 TEMP_RTOL = 1.0e-5
-
-_INITIAL_STATE = re.compile(r'Initial state \(energy_balance\).*dSdr_cmb_init=([-+0-9.eE]+)')
 
 
 def _config_with_output_path(output_dir):
@@ -158,35 +156,25 @@ def _drop_gradient(snapshot):
     tmp.replace(snapshot)
 
 
-class _ListHandler(logging.Handler):
-    """Keep the formatted messages of every record it receives."""
-
-    def __init__(self):
-        super().__init__(level=logging.INFO)
-        self.messages = []
-
-    def emit(self, record):
-        self.messages.append(record.getMessage())
-
-
 def _resume(run_dir, iters_max):
-    """Resume ``run_dir``; return the helpfile and the CMB gradient that the
-    first solve after the resume started from, read from Aragog's log."""
-    handler = _ListHandler()
-    root = logging.getLogger()
-    root.addHandler(handler)
-    try:
+    """Resume ``run_dir``; return the helpfile and the first CMB gradient
+    PROTEUS hands to the solver's ``set_initial_dSdr_cmb`` (the restore call,
+    made before any solve), recorded by a wrapper around the real method."""
+    from aragog.solver import EntropySolver
+
+    real = EntropySolver.set_initial_dSdr_cmb
+    passed = []
+
+    def _spy(self, value):
+        passed.append(value)
+        return real(self, value)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(EntropySolver, 'set_initial_dSdr_cmb', _spy)
         runner = _make_runner(run_dir, iters_max)
         runner.start(resume=True, offline=True)
-    finally:
-        root.removeHandler(handler)
-    starts = [
-        float(m.group(1))
-        for msg in handler.messages
-        if (m := _INITIAL_STATE.search(msg)) is not None
-    ]
-    assert starts, 'no energy_balance initial-state line after the resume'
-    return runner.hf_all.reset_index(drop=True), starts[0]
+    assert passed, 'the resume never set the CMB gradient override'
+    return runner.hf_all.reset_index(drop=True), passed[0]
 
 
 @pytest.fixture(scope='module')
@@ -231,9 +219,9 @@ def resume_runs(tmp_path_factory):
 @pytest.mark.slow
 @pytest.mark.physics_invariant
 def test_resume_restores_the_cmb_entropy_gradient(resume_runs):
-    """A resumed Aragog run starts its first solve from the stored CMB
-    gradient, and its energy-conservation residual and first-step CMB flux
-    are closer to the uninterrupted control than a finite-difference restart.
+    """A resumed Aragog run hands the stored CMB gradient to the solver, and
+    its energy-conservation residual and first-step CMB flux are closer to the
+    uninterrupted control than a finite-difference restart.
 
     Physical scenario: a molten 1 M_Earth mantle on the real Aragog solver
     (energy_balance core boundary) with dummy structure, atmosphere, outgas and
@@ -241,13 +229,13 @@ def test_resume_restores_the_cmb_entropy_gradient(resume_runs):
     """
     r = resume_runs
     ctrl, res, fd = r['ctrl'], r['restored'], r['fd']
-    # The stored gradient is finite and is what the first solve starts from.
+    # The stored gradient is finite and is exactly what the resume hands over.
     assert np.isfinite(r['stored'])
     # A run that ends normally leaves the gradient in its final snapshot.
     assert r['final'] is not None and np.isfinite(r['final'])
-    assert r['start_restored'] == pytest.approx(r['stored'], rel=2e-3)  # log prints 4 digits
-    # Discrimination: the finite-difference start differs by orders of magnitude.
-    assert abs(r['start_fd'] - r['stored']) > 100 * abs(r['stored'])
+    assert r['start_restored'] == r['stored']
+    # Discrimination: without the stored value the override is cleared.
+    assert r['start_fd'] is None
 
     first = int(np.argmax(ctrl['Time'].to_numpy() > r['t_seam']))
     for D in (res, fd):
@@ -280,8 +268,11 @@ def test_resume_matches_the_uninterrupted_control(resume_runs):
     """
     r = resume_runs
     ctrl, res = r['ctrl'], r['restored']
-    # Discrimination: the stored mesh pressure is not the seam row's P_surf
-    # [bar], so a mesh rebuilt from the row would differ.
+    # A fresh run builds its mesh at the setup surface pressure, 0 Pa.
+    assert r['mesh_P'] == pytest.approx(0.0, abs=1.0)
+    # Discrimination: the seam row's P_surf (about 8.1e3 bar at t = 202 yr on
+    # the main-branch tables) is far from it, so a mesh rebuilt from the row
+    # would differ.
     seam_row = int(np.argmin(np.abs(ctrl['Time'].to_numpy() - r['t_seam'])))
     assert abs(float(ctrl['P_surf'].iloc[seam_row]) * 1e5 - r['mesh_P']) > 1e8
     assert len(res) == len(ctrl)
