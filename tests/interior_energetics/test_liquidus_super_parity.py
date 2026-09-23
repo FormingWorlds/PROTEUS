@@ -245,6 +245,8 @@ def test_aragog_and_spider_clamp_to_same_S_target(_table_env):
     spider_S = _compute_spider_initial_entropy(spider_config, hf_row, spider_eos_dir='unused')
 
     assert aragog_S == pytest.approx(spider_S, abs=1e-6)
+    # The table maximum gives 900 K < 1000 K, so both clamp to S_max.
+    assert spider_S == pytest.approx(S_MAX, abs=1e-6)
 
 
 def test_zalmoxis_path_clamps_at_its_own_ceiling(_zalmoxis_env):

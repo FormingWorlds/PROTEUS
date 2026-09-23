@@ -163,9 +163,11 @@ def test_sub_liquidus_at_table_maximum_raises(monkeypatch, fake_tables):
     monkeypatch.setattr(_FakeEOS, 'S_max', 50.0)
 
     with pytest.raises(
-        RuntimeError, match='no fully-molten initial condition is reachable within'
-    ):
+        common.InitialConditionError,
+        match='no fully-molten initial condition is reachable within',
+    ) as exc:
         solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+    assert 'exceeds the table maximum (50.0 J/kg/K) at 200 of 200 pressures' in str(exc.value)
 
 
 @pytest.mark.physics_invariant
@@ -283,8 +285,9 @@ def test_liquidus_undefined_everywhere_raises(monkeypatch, tmp_path):
 
     monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _NaNLiqEOS())
 
-    with pytest.raises(RuntimeError, match='liquidus is undefined at 200 of 200'):
+    with pytest.raises(common.InitialConditionError, match='undefined at 200 of 200') as exc:
         solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, str(tmp_path))
+    assert 'between 0.0001 and 100 GPa' in str(exc.value)
 
 
 def test_surface_anchor_is_raised_to_table_minimum_pressure(fake_tables, monkeypatch):
@@ -598,8 +601,9 @@ def test_load_entropy_eos_missing_directory_raises(tmp_path):
     """A non-existent table directory raises FileNotFoundError naming the path."""
     missing = tmp_path / 'absent'
 
-    with pytest.raises(FileNotFoundError, match='absent'):
+    with pytest.raises(FileNotFoundError, match='absent') as exc:
         common._load_entropy_eos(str(missing))
+    assert str(missing) in str(exc.value)
 
 
 def test_load_entropy_eos_caches_and_invalidates_on_file_change(monkeypatch, tmp_path):
