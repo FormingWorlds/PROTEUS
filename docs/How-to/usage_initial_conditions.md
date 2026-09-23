@@ -130,11 +130,12 @@ liquidus at the binding depth.
     initial entropy is solved on the P-S tables. The initial entropy solves
     this anchor again at the converged core-mantle boundary pressure. When it
     raises there, no molten state exists and the run stops at the initial
-    entropy. With a PALEOS mantle, a failed anchor in a structure solve, at
-    the estimated or an intermediate pressure, only logs a warning: that
-    solve uses the last solved anchor, or `tcmb_init` before any, as its
-    core-mantle boundary temperature. With another mantle the initial entropy
-    does not solve the anchor, so a failed anchor stops the structure solve. When the anchor clamps at the PALEOS table below
+    entropy. With a PALEOS mantle and `"spider"` or `"aragog"` energetics, a
+    failed anchor in a structure solve, at the estimated or an intermediate
+    pressure, only logs a warning: that solve uses the last solved anchor, or
+    `tcmb_init` before any, as its core-mantle boundary temperature. In other
+    cases no later step solves the anchor again, so a failed anchor stops the
+    structure solve. When the anchor clamps at the PALEOS table below
     `delta_T_super`, the initial entropy is capped at the anchor entropy, and
     a warning names the superheat the anchor reached. The generated P-S tables
     fill cells where PALEOS has no valid state, so on their own they can

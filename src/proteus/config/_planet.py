@@ -274,10 +274,10 @@ class Planet:
     tcmb_init: float
         Initial core-mantle boundary temperature [K] (adiabatic_from_cmb).
         The mantle adiabat is anchored at this temperature at P = P_cmb
-        and integrated outward to the surface. With liquidus_super and the
-        Zalmoxis structure it is also the core-mantle boundary temperature
-        of a structure solve whose PALEOS P-T anchor fails before any anchor
-        is solved.
+        and integrated outward to the surface. With liquidus_super, the
+        Zalmoxis structure, a PALEOS mantle and spider or aragog energetics
+        it is also the core-mantle boundary temperature of a structure solve
+        whose P-T anchor fails before any anchor is solved.
     tcenter_init: float
         Center temperature [K] (linear only).
     f_accretion: float

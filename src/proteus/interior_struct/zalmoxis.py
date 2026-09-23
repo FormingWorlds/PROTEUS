@@ -550,13 +550,13 @@ def _resolve_zalmoxis_cmb_temperature(
     avoids re-solving (and possibly raising the unreachable-superheat error) on
     every evolution re-solve over a value nothing consumes.
 
-    With a PALEOS mantle, if the anchor fails at this P_cmb (an
-    ``InitialConditionError``, or a ``ValueError`` or ``KeyError`` from its
-    integration), the last solved anchor, or ``config.planet.tcmb_init``
-    before any solve, is used with a warning; the initial entropy at the
-    converged P_cmb re-solves the anchor and decides whether a molten state
-    exists. With another mantle the error propagates, since the initial
-    entropy does not re-solve the anchor there.
+    With a PALEOS mantle and spider or aragog energetics, if the anchor
+    fails at this P_cmb (``InitialConditionError``; the anchor raises every
+    failure except ``FileNotFoundError`` as one), the last solved anchor, or
+    ``config.planet.tcmb_init`` before any solve, is used with a warning;
+    the initial entropy at the converged P_cmb re-solves the anchor and
+    decides whether a molten state exists. Otherwise the error propagates,
+    since no later step re-solves the anchor.
 
     For all other modes, returns config.planet.tcmb_init verbatim.
     """
@@ -585,24 +585,31 @@ def _resolve_zalmoxis_cmb_temperature(
     # P-T super-liquidus adiabat. The energetics IC is solved on the P-S
     # tables, so its adiabat differs from this anchor by the P-T vs P-S
     # liquidus offset (tens of K at 1 M_Earth).
+    from proteus.interior_energetics.common import InitialConditionError
+
     try:
         res = solve_superliquidus_adiabat(config, hf_row)
-    except (RuntimeError, ValueError, KeyError) as exc:
-        # With a PALEOS mantle the initial entropy re-solves the anchor at the
-        # converged P_cmb and raises there; this solve may use an estimate.
+    except InitialConditionError as exc:
+        # compute_initial_entropy re-solves the anchor at the converged P_cmb
+        # for a PALEOS mantle under spider or aragog; elsewhere nothing does.
         mantle_eos = str(getattr(config.interior_struct.zalmoxis, 'mantle_eos', ''))
-        if not mantle_eos.startswith(PALEOS_EOS_PREFIXES):
+        if not (
+            mantle_eos.startswith(PALEOS_EOS_PREFIXES)
+            and config.interior_energetics.module in ('spider', 'aragog')
+        ):
             raise
         from proteus.utils.structure_estimate import resolve_P_cmb
 
+        P_cmb, estimated = resolve_P_cmb(hf_row, config)
         fallback = _SUPERLIQ_LAST_ANCHOR
         source = 'the last solved anchor'
         if fallback is None:
             fallback, source = float(config.planet.tcmb_init), 'tcmb_init'
         log.warning(
-            'liquidus_super CMB anchor for Zalmoxis: no P-T anchor at P_cmb=%.0f GPa '
+            'liquidus_super CMB anchor for Zalmoxis: no P-T anchor at %sP_cmb=%.0f GPa '
             '(%s); using %s, T_cmb=%.0f K, for this structure solve.',
-            resolve_P_cmb(hf_row, config)[0] / 1e9,
+            'the estimated ' if estimated else '',
+            P_cmb / 1e9,
             exc,
             source,
             float(fallback),
@@ -631,8 +638,10 @@ def _superliq_cache_key(config: Config, P_cmb: float) -> tuple:
 def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     """Memoised super-liquidus anchor solve, see ``_solve_superliquidus_adiabat``.
 
-    An ``InitialConditionError`` is memoised as well, under the same key, so
-    repeated structure solves at one P_cmb do not repeat a failing scan.
+    Any other failure except ``FileNotFoundError`` is raised as a chained
+    ``InitialConditionError``, and a failure is memoised under the same key
+    as a success, so repeated structure solves at one P_cmb do not repeat a
+    failing scan.
 
     Parameters
     ----------
@@ -649,20 +658,33 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     Raises
     ------
     InitialConditionError
-        See ``_solve_superliquidus_adiabat``; a memoised failure is raised
-        again with the same message.
+        See ``_solve_superliquidus_adiabat``; also for any other failure of
+        the solve except ``FileNotFoundError`` (chained). A memoised failure
+        is raised again with the same message, chained to the first one.
+    FileNotFoundError
+        If an EOS or melting-curve file is missing.
     """
     from proteus.interior_energetics.common import InitialConditionError
     from proteus.utils.structure_estimate import resolve_P_cmb
 
     key = _superliq_cache_key(config, resolve_P_cmb(hf_row, config)[0])
     if key in _SUPERLIQ_FAILED:
-        raise InitialConditionError(_SUPERLIQ_FAILED[key])
+        first = _SUPERLIQ_FAILED[key]
+        raise InitialConditionError(str(first)) from first
     try:
         return _solve_superliquidus_adiabat(config, hf_row)
     except InitialConditionError as exc:
-        _SUPERLIQ_FAILED[key] = str(exc)
+        _SUPERLIQ_FAILED[key] = exc
         raise
+    except FileNotFoundError:
+        # A missing table reaches the caller's EOS-file check unchanged.
+        raise
+    except Exception as exc:
+        err = InitialConditionError(
+            f'liquidus_super: the PALEOS P-T anchor failed ({type(exc).__name__}: {exc}).'
+        )
+        _SUPERLIQ_FAILED[key] = err
+        raise err from exc
 
 
 def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:

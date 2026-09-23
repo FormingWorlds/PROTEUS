@@ -252,6 +252,11 @@ def _margin_kink_pressures(eos: EntropyEOS) -> np.ndarray:
     return np.concatenate(nodes)
 
 
+def _kelvin_or_unknown(value: float) -> str:
+    """Format a temperature difference as ``'<n> K'``, or ``'unknown'`` if NaN."""
+    return f'{value:.0f} K' if np.isfinite(value) else 'unknown'
+
+
 def _melt_entropy_range(eos: EntropyEOS) -> tuple[float, float]:
     """Entropy range [J/kg/K] of the melt temperature table.
 
@@ -625,14 +630,14 @@ def solve_superliquidus_entropy_from_tables(
             'liquidus_super: the requested superheat of %.0f K is not reachable '
             'below %s (highest usable entropy %.1f J/kg/K). The initial '
             'entropy is clamped to that value, giving %.0f K of superheat at '
-            'P=%.3g GPa (%.0f K at the deepest node with ini_dsdr) and a '
+            'P=%.3g GPa (%s at the deepest node with ini_dsdr) and a '
             'surface temperature of %.0f K.',
             delta,
             ceiling_src,
             S,
             achieved,
             P_bind / 1e9,
-            out['cmb_node_superheat'],
+            _kelvin_or_unknown(out['cmb_node_superheat']),
             out['surface_T'],
         )
     else:
@@ -766,7 +771,12 @@ def compute_initial_entropy(
                         if not getattr(exc, 'from_ceiling', False):
                             raise
                         m_anchor = float(exc.margin_at_ceiling)
-                        if m_anchor >= 0:
+                        if not np.isfinite(m_anchor):
+                            cause = (
+                                'The P-S tables give no finite temperature at the anchor '
+                                'entropy.'
+                            )
+                        elif m_anchor >= 0:
                             cause = (
                                 f'At the anchor entropy the P-S adiabat is {m_anchor:.0f} K '
                                 'above the P-S liquidus; the raise comes from the ini_dsdr '
@@ -793,14 +803,14 @@ def compute_initial_entropy(
                             'the requested %.0f K superheat above the P-T liquidus at '
                             'P_cmb=%.0f GPa; the initial entropy is capped at %.1f J/kg/K '
                             '(anchor entropy %.1f J/kg/K), %.0f K above the P-S table '
-                            'liquidus (%.0f K at the deepest node with ini_dsdr).',
+                            'liquidus (%s at the deepest node with ini_dsdr).',
                             A,
                             delta,
                             float(anchor['P_cmb']) / 1e9,
                             float(res['S_target']),
                             float(anchor['S_target']),
                             float(res['achieved_superheat']),
-                            float(res['cmb_node_superheat']),
+                            _kelvin_or_unknown(res['cmb_node_superheat']),
                         )
                     return float(res['S_target'])
         elif not spider_eos_dir:
