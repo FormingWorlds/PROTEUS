@@ -478,10 +478,9 @@ def compute_initial_entropy(
     to derive a physically consistent initial condition from
     config.planet.tsurf_init (or the accretion-mode override).
 
-    In ``liquidus_super`` mode with ``interior_struct.module`` other than
-    ``zalmoxis``, the entropy is solved on the interior P-S tables in
-    ``spider_eos_dir`` against their own liquidus, without reading any
-    Zalmoxis or PALEOS data (see ``solve_superliquidus_entropy_from_tables``).
+    In ``liquidus_super`` mode, for every structure module, the entropy is
+    solved on the interior P-S tables in ``spider_eos_dir`` against their own
+    liquidus (see ``solve_superliquidus_entropy_from_tables``).
 
     Special case: when ``config.planet.temperature_mode == 'isentropic'``,
     the entropy is taken directly from ``config.planet.ini_entropy`` and no
@@ -498,11 +497,24 @@ def compute_initial_entropy(
         (computed by Zalmoxis accretion mode) to override tsurf_init.
     fallback : float
         Entropy value [J/kg/K] returned when PALEOS is unavailable.
+    spider_eos_dir : str, optional
+        Directory of the interior P-S tables; required in ``liquidus_super``
+        mode.
 
     Returns
     -------
     float
         Initial specific entropy [J/kg/K].
+
+    Raises
+    ------
+    InitialConditionError
+        In ``liquidus_super`` mode, when no fully molten entropy exists in the
+        tables, or, with the Zalmoxis structure, when ``spider_eos_dir`` is
+        missing.
+    FileNotFoundError
+        In ``liquidus_super`` mode with another structure module, when no
+        ``spider_eos_dir`` is given.
     """
     # Direct-entropy mode: skip all EOS lookups and return the user-set value.
     # This is the CHILI-compatible path for SPIDER (and, once the "self" mode

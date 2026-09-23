@@ -97,20 +97,23 @@ marginally molten, just touching the liquidus at the binding depth.
     from depends on the structure module:
 
     - `"zalmoxis"` and `"dummy"` with a PALEOS mantle
-      (`interior_struct.zalmoxis.mantle_eos`, default `"PALEOS:MgSiO3"`):
-      Zalmoxis generates the tables from that EOS, with the PALEOS
-      (Fei et al. 2021) liquidus. `interior_struct.melting_dir` is not used,
-      and Zalmoxis must be installed.
-    - `"spider"`, or `"dummy"` with a non-PALEOS mantle: the tables come from
-      FWL_DATA or the SPIDER lookup data, and when `interior_struct.melting_dir`
-      is set PROTEUS derives `liquidus_P-S.dat` from that P-T curve.
+      (`interior_struct.zalmoxis.mantle_eos`, default `"PALEOS:MgSiO3"`) whose
+      table files are present: Zalmoxis generates the tables from that EOS,
+      with the PALEOS (Fei et al. 2021) liquidus. `interior_struct.melting_dir`
+      is not used, and Zalmoxis must be installed.
+    - `"spider"`, or `"zalmoxis"` and `"dummy"` when no PALEOS table set is
+      generated: the tables come from FWL_DATA or the SPIDER lookup data, and
+      when `interior_struct.melting_dir` is set PROTEUS derives
+      `liquidus_P-S.dat` from that P-T curve.
 
     With `"zalmoxis"`, the structure solve also anchors its temperature profile
     on a P-T adiabat that is `delta_T_super` above the P-T liquidus, while the
-    initial entropy is solved on the P-S tables. The two adiabats differ
-    slightly: for 1 Earth mass at `delta_T_super = 500` K (core-mantle
-    boundary at 103 GPa), the P-T anchor evaluated on the P-S tables is at
-    least 472 K above their liquidus, 28 K less than the initial entropy.
+    initial entropy is solved on the P-S tables. This anchor raises or clamps
+    on its own P-T criteria, so a Zalmoxis run can stop there before the
+    initial entropy is solved. The two adiabats differ slightly: for 1 Earth
+    mass at `delta_T_super = 500` K (core-mantle boundary at 103 GPa), the
+    P-T anchor evaluated on the P-S tables has a smallest margin of 472 K
+    above their liquidus, against 500 K for the initial entropy.
 
     The core-mantle boundary pressure must lie inside the table; PROTEUS raises
     if it is above the table maximum or if the table liquidus is undefined at

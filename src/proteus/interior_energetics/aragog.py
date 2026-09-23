@@ -1442,6 +1442,8 @@ class AragogRunner:
         outdir : str
             Output directory for diagnostic files.
         """
+        from proteus.interior_energetics.common import InitialConditionError
+
         if not (
             config.interior_struct.module == 'zalmoxis'
             and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
@@ -1628,14 +1630,10 @@ class AragogRunner:
                 #     converged cells). The run still conserves energy and cools
                 #     monotonically; the disagreement grows with mass and is
                 #     diagnostic only. The 1 M_Earth case already sits at ~6%.
-                # (2) The out-of-calibration liquidus_super failure mode: the
-                #     extrapolated CMB liquidus anchor inverts to a low entropy
-                #     that unpacks to a COLD surface (T well below the adiabat
-                #     anchor), a steeply inverted profile that drives a spurious
-                #     CMB flux and breaks energy conservation. compute_initial_
-                #     entropy redirects this case to the surface anchor, so it
-                #     should not normally reach here; the raise is a safety net
-                #     for any path that bypasses that redirect.
+                # (2) A liquidus_super IC beyond the Fei+2021 calibration whose
+                #     surface is far colder than the independent adiabat: a
+                #     steeply inverted profile that drives a spurious CMB flux
+                #     and breaks energy conservation.
                 #
                 # The signature that separates (2) from (1) is the COLD SURFACE,
                 # not the verdict magnitude: benign drift can also exceed the
@@ -1683,8 +1681,11 @@ class AragogRunner:
             ModuleNotFoundError,
             KeyError,
             ValueError,
+            InitialConditionError,
         ) as e:
             # Expected failures:
+            # - InitialConditionError: the P-T re-solve at the converged P_cmb
+            #   has no solution; the IC itself comes from the P-S tables
             # - FileNotFoundError / ImportError: missing PALEOS files or Zalmoxis
             #   not installed
             # - KeyError: missing config keys

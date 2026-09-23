@@ -565,11 +565,9 @@ def _resolve_zalmoxis_cmb_temperature(
         return float(config.planet.tcmb_init)
 
     # Anchor the Zalmoxis structure-solve adiabat at the CMB temperature of the
-    # solved super-liquidus adiabat the energetics IC uses, so both share the
-    # CMB anchor. Note the two profiles are integrated by different methods
-    # (Zalmoxis forward-integrates nabla_ad on the structure mesh; the
-    # energetics IC inverts the P-S table), so they coincide at the anchor and
-    # may differ in the interior by the adiabat-integration error.
+    # P-T super-liquidus adiabat. The energetics IC is solved on the P-S
+    # tables, so its adiabat differs from this anchor by the P-T vs P-S
+    # liquidus offset (tens of K at 1 M_Earth).
     res = solve_superliquidus_adiabat(config, hf_row)
     log.info(
         'liquidus_super CMB anchor for Zalmoxis: T_cmb=%.0f K (fully molten, '
@@ -658,9 +656,8 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         log.warning(
             'liquidus_super: hf_row["P_cmb"] not yet populated; using '
             'Noack & Lasbleis (2020) mass-aware fallback P_cmb=%.1f GPa '
-            '(mass_tot=%.2f M_Earth). The energetics initial condition is '
-            're-derived against the converged Zalmoxis P_cmb on the next '
-            'iteration.',
+            '(mass_tot=%.2f M_Earth). The structure anchor is re-derived '
+            'against the converged Zalmoxis P_cmb on the next iteration.',
             P_cmb / 1e9,
             float(config.planet.mass_tot),
         )
@@ -911,14 +908,13 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
             # delta: the search window, not the EOS table, is the limit here.
             log.warning(
                 'liquidus_super: the requested superheat of %.0f K was not reached at '
-                'P_cmb=%.0f GPa within a %.0f K surface-temperature search window plus '
-                '%d doubling extensions (the EOS table was not exhausted); clamped to '
+                'P_cmb=%.0f GPa within the surface-temperature search window, up to '
+                'surface T=%.0f K (the EOS table was not exhausted); clamped to '
                 'the largest superheat sampled, %.0f K (surface T=%.0f K). Widen the '
                 'search window if a larger superheat is physically expected.',
                 delta,
                 P_cmb / 1e9,
-                _SUPERLIQ_SCAN_SPAN_K,
-                _SUPERLIQ_MAX_EXTENSIONS,
+                max(T for T, _ in points),
                 d_best['superheat'],
                 T_solved,
             )
@@ -1176,11 +1172,9 @@ def load_zalmoxis_configuration(
         # 'adiabatic_from_cmb' here, with cmb_temperature derived from the
         # Fei+2021 liquidus at the converged P_cmb (or a Noack & Lasbleis
         # (2020) mass-aware P_cmb estimate on the very first call before
-        # Zalmoxis has populated P_cmb) plus delta_T_super. The energetics
-        # IC step recomputes this
-        # exact same anchor against the converged P_cmb, so the structure
-        # solve and the entropy IC stay in agreement after the first
-        # round-trip. temperature_mode_override lets SPIDER coupling force
+        # Zalmoxis has populated P_cmb) plus delta_T_super. The anchor is
+        # recomputed against the converged P_cmb on the next structure
+        # iteration. temperature_mode_override lets SPIDER coupling force
         # adiabatic without mutating the shared Config object (see proteus
         # rules §"Config mutability").
         'temperature_mode': _resolve_zalmoxis_temperature_mode(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from attr.validators import ge, gt, in_, optional
 from attrs import define, field
 
@@ -207,7 +209,14 @@ def _reject_positive_dsdr_for_liquidus_super(instance, attribute, value):
     entropy, so a positive gradient lowers the deep entropy below the adiabat
     that was certified ``delta_T_super`` above the liquidus.
     """
-    if value > 0 and instance.temperature_mode == 'liquidus_super':
+    if instance.temperature_mode != 'liquidus_super':
+        return
+    if not math.isfinite(value):
+        raise ValueError(
+            f'planet.ini_dsdr = {value} is not finite; planet.temperature_mode = '
+            '"liquidus_super" needs a finite ini_dsdr <= 0.'
+        )
+    if value > 0:
         raise ValueError(
             f'planet.ini_dsdr = {value} is positive, which lowers the deep initial '
             'entropy below the adiabat that planet.temperature_mode = '
@@ -279,9 +288,10 @@ class Planet:
         CHILI Earth-SPIDER reference: 3900.0.
     ini_dsdr: float
         Initial entropy gradient with radius [J/kg/K/m], added to the uniform
-        initial entropy in isentropic and liquidus_super modes; must be <= 0
-        with liquidus_super. CHILI Earth-SPIDER reference: -4.698e-6 (small numerical
-        perturbation needed for SPIDER's BDF stability on a uniform IC).
+        initial entropy by SPIDER and Aragog in every temperature mode; must
+        be finite and <= 0 with liquidus_super. CHILI Earth-SPIDER reference:
+        -4.698e-6 (small numerical perturbation needed for SPIDER's BDF
+        stability on a uniform IC).
     delta_T_super: float
         Minimum superheat [K] above the liquidus for the liquidus_super
         initial condition (liquidus_super mode only). The initial adiabat is

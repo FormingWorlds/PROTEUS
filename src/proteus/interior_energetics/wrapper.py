@@ -1071,8 +1071,9 @@ def determine_interior_radius_with_dummy(
                     "planet.temperature_mode='liquidus_super' with "
                     f"interior_struct.module='dummy' needs SPIDER/Aragog P-S EOS "
                     'tables, but interior_struct.zalmoxis.mantle_eos='
-                    f'{config.interior_struct.zalmoxis.mantle_eos!r} is not a PALEOS '
-                    'table set and no FWL_DATA or SPIDER lookup_data set is available. '
+                    f'{config.interior_struct.zalmoxis.mantle_eos!r} gave no generated '
+                    'PALEOS table set and no FWL_DATA or SPIDER lookup_data set is '
+                    'available. '
                     'Provide the tables, or set planet.temperature_mode to '
                     "'adiabatic' or another mode. "
                     f'Cause: {exc}'
@@ -1112,8 +1113,8 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
     to a radius too small for its own mass.
 
     The adiabat is anchored at the surface temperature returned by the memoised
-    :func:`solve_superliquidus_adiabat`, so the structure CMB anchor, the Aragog
-    entropy IC, and this ``T(P)`` profile all derive from one adiabat. The
+    :func:`solve_superliquidus_adiabat`, so the structure CMB anchor and this
+    ``T(P)`` profile derive from one P-T adiabat. The
     profile is tabulated from the 1 bar surface to ``P_cmb_target`` so the
     structure integral never extrapolates beyond the adiabat grid.
 
@@ -1167,9 +1168,8 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         if melt_funcs is not None:
             sol_func, liq_func = melt_funcs
 
-        # Match the 1 bar surface anchor used by the energetics entropy IC
-        # (common.compute_initial_entropy) and the aragog.py cross-check, so all
-        # three derive S_target from the same surface pressure.
+        # Match the 1 bar surface anchor of solve_superliquidus_adiabat and the
+        # aragog.py cross-check, so all three derive S_target at one pressure.
         result = compute_entropy_adiabat(
             eos_file=eos_file,
             T_surface=surface_T,

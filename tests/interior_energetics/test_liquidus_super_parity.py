@@ -1,8 +1,8 @@
 """Cross-path parity for the ``liquidus_super`` initial-condition solvers.
 
-``solve_superliquidus_entropy_from_tables`` (the table path, used when
-``interior_struct.module != 'zalmoxis'``) and ``solve_superliquidus_adiabat``
-(the zalmoxis-adiabat path) must make the same raise-vs-clamp decision for
+``solve_superliquidus_entropy_from_tables`` (the table path, which solves the
+initial entropy) and ``solve_superliquidus_adiabat`` (the P-T path, which
+anchors the Zalmoxis structure) must make the same raise-vs-clamp decision for
 the same config: both raise when even the hottest reachable adiabat cannot
 reach the liquidus, and both clamp (rather than raise) when the hottest
 reachable adiabat is molten but falls short of the requested superheat
@@ -359,6 +359,7 @@ def test_zalmoxis_path_reports_search_window_limit(monkeypatch, caplog):
     assert res['achieved_superheat'] == pytest.approx(T_top - _surface_T_for(0.0), abs=0.01)
     msgs = [r.getMessage() for r in caplog.records]
     assert any('search window' in m and 'EOS table was not exhausted' in m for m in msgs), msgs
+    assert any(f'up to surface T={T_top:.0f} K' in m for m in msgs), msgs
 
 
 # A ceiling 8 K above the liquidus sits below the second scan point

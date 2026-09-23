@@ -645,3 +645,38 @@ def test_aragog_verify_no_raise_on_warm_surface_liquidus_super(monkeypatch, tmp_
         tmp_path / 'data' / 'entropy_ic_verification' / 'entropy_ic_comparison.npz'
     ).exists()
     interior_o.aragog_solver.entropy_eos.temperature_scalar.assert_called()
+
+
+def test_aragog_verify_skips_when_pt_resolve_has_no_solution(monkeypatch, tmp_path, caplog):
+    """The IC is solved on the P-S tables, so a P-T re-solve that raises
+    InitialConditionError at the converged P_cmb skips the diagnostic with a
+    warning instead of aborting a run whose IC exists.
+    """
+    import proteus.interior_struct.zalmoxis as zmod
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.interior_energetics.common import InitialConditionError
+
+    p_cmb = 1.0e11
+    config = _make_aragog_liquidus_super_config()
+    _patch_crosscheck_eos(monkeypatch, tmp_path, surface_T=4243.0, p_cmb=p_cmb)
+
+    def _no_solution(config, hf_row):
+        raise InitialConditionError('liquidus_super: no valid molten adiabat found')
+
+    monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', _no_solution)
+    P_stag = np.array([p_cmb, 5e10, 1e9, 1e5])
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _make_mock_entropy_solver(
+        P_stag=P_stag,
+        S_stag=np.full(P_stag.size, 10000.0),
+        temperature_scalar_fn=lambda p, s: 4243.0 + p / 1e9,
+    )
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.aragog'):
+        AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path), {'P_cmb': p_cmb})
+
+    msgs = [r.getMessage() for r in caplog.records]
+    assert any('cross-check skipped' in m and 'no valid molten adiabat' in m for m in msgs), (
+        msgs
+    )
+    assert not (tmp_path / 'data' / 'entropy_ic_verification').exists()

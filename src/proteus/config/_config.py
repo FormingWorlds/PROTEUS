@@ -221,10 +221,9 @@ def planet_liquidus_super_needs_tables(instance, attribute, value):
     """Require a P-S table route for ``temperature_mode = "liquidus_super"``.
 
     The spider and aragog interior modules build the ``liquidus_super``
-    initial condition on interior P-S tables. With
-    ``interior_struct.module = "zalmoxis"`` the solve uses the Zalmoxis
-    adiabat; with ``"spider"`` or ``"dummy"`` the tables are supplied by the
-    interior wrapper. With no structure module, no table set is provided
+    initial condition on interior P-S tables, which the interior wrapper
+    supplies for the ``"zalmoxis"``, ``"spider"`` and ``"dummy"`` structure
+    modules. With no structure module, no table set is provided
     and the initial condition has nothing to solve on.
     """
     if value.temperature_mode != 'liquidus_super':
