@@ -94,19 +94,25 @@ marginally molten, just touching the liquidus at the binding depth.
     With `interior_struct.module = "zalmoxis"`, `liquidus_super` evaluates the
     Fei et al. (2021) liquidus through the structure module. With
     `interior_struct.module = "spider"` or `"dummy"`, the adiabat is solved on
-    the interior P-S tables and the liquidus selected by
-    `interior_struct.melting_dir`; no Zalmoxis data are read. If the requested
-    superheat exceeds what the tables reach, the entropy is clamped to the
-    table maximum and a warning reports the achieved superheat. For a run built
-    only from placeholder modules, use `adiabatic_from_cmb` instead, which
-    needs no melting-curve lookup.
+    the interior P-S tables against their own liquidus (`liquidus_P-S.dat`),
+    the same curve the interior solver uses for its melt fraction;
+    `interior_struct.melting_dir` does not enter the initial condition and no
+    Zalmoxis data are read. If that table liquidus does not cover every mantle
+    pressure, PROTEUS raises. If the requested superheat exceeds what the
+    tables reach, the entropy is clamped to the highest usable table entropy
+    (the table maximum, lowered by the entropy a negative `ini_dsdr` adds at the
+    core-mantle boundary) and a warning reports the achieved superheat. For a
+    run built only from placeholder modules, use `adiabatic_from_cmb` instead,
+    which needs no melting-curve lookup.
 
 !!! note "Very deep mantles"
     A sufficiently deep mantle cannot be made molten with an arbitrarily large
-    superheat: past a point the deep adiabat would exceed the equation-of-state
-    table. If the requested `delta_T_super` cannot be reached, PROTEUS raises
-    with the largest achievable superheat rather than using an unphysical
-    initial condition; lower `delta_T_super` (or the planet mass) in that case.
+    superheat: past a point the adiabat would exceed the equation-of-state
+    table. If the requested `delta_T_super` cannot be reached, PROTEUS clamps
+    to the largest achievable superheat and logs a warning that reports it. If
+    no adiabat inside the table is fully molten at all, PROTEUS raises a
+    `RuntimeError` rather than start from a partially molten mantle; lower the
+    planet mass or change the equation of state in that case.
 
 **Use `adiabatic_from_cmb` for a fixed CMB temperature.** This mode anchors the
 adiabat at a user-set core-mantle-boundary temperature `tcmb_init` and

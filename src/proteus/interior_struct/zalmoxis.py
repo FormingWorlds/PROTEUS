@@ -37,9 +37,11 @@ log = logging.getLogger('fwl.' + __name__)
 # search window is anchored to the configured liquidus (not a fixed Kelvin
 # band), so it adapts to whatever melting curve is in use.
 _SUPERLIQ_N_POINTS = 200  # adiabat sampling for the binding-depth search
-_SUPERLIQ_SCAN_SPAN_K = 4000.0  # scan T_surf over [T_liq(P_surf), +span]
-_SUPERLIQ_SCAN_STEPS = 20  # coarse scan resolution over that span
-_SUPERLIQ_N_BISECT = 12  # surface-T bisection iterations (sub-Kelvin final)
+_SUPERLIQ_SCAN_SPAN_K = 4000.0  # coarse-scan span above T_liq(P_surf)
+_SUPERLIQ_SCAN_STEPS = 20  # coarse-scan point count over that span
+_SUPERLIQ_MAX_EXTENSIONS = 3  # doubling-step extensions past a still-valid scan top
+_SUPERLIQ_N_BISECT = 12  # delta-crossing bisection iterations (sub-Kelvin final)
+_SUPERLIQ_N_CEILING_BISECT = 12  # last-valid/first-invalid bisection iterations
 _SUPERLIQ_MAX_S_DRIFT = 1.0e-3  # max fractional entropy drift for an in-table adiabat
 _SUPERLIQ_DEFAULT_MUSHY = 0.8  # fallback solidus = factor * liquidus
 
@@ -622,13 +624,16 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     Raises
     ------
     RuntimeError
-        If no valid molten adiabat exists at this pressure, if the solved
-        adiabat leaves the EOS table, or if no fully-molten adiabat is
-        reachable within the table (the hottest valid adiabat still sits
-        below the liquidus). A reachable but insufficient
-        ``delta_T_super`` does not raise: the solve clamps to the largest
-        achievable superheat, reports it in ``achieved_superheat`` and
-        emits a warning.
+        If no valid molten adiabat exists anywhere in the coarse
+        surface-temperature scan, if the scan is valid, then invalid, then
+        valid again after its first valid point (one leading invalid band at
+        the cold end is tolerated; a second transition is not, since the
+        bisection below needs a single validity edge), if the solved adiabat
+        leaves the EOS table, or if no fully-molten adiabat is reachable
+        within the table (the hottest valid adiabat still sits below the
+        liquidus). A reachable but insufficient ``delta_T_super`` does not
+        raise: the solve clamps to the largest achievable superheat, reports
+        it in ``achieved_superheat`` and emits a warning.
     """
     try:
         from zalmoxis.eos_export import compute_entropy_adiabat
@@ -643,15 +648,10 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
 
     delta = float(config.planet.delta_T_super)
 
-    P_cmb = hf_row.get('P_cmb') if isinstance(hf_row, dict) else None
-    if not P_cmb or P_cmb <= 0 or not np.isfinite(float(P_cmb)):
-        from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+    from proteus.utils.structure_estimate import resolve_P_cmb
 
-        P_cmb = estimate_P_cmb_NL20(
-            float(config.planet.mass_tot),
-            float(config.interior_struct.core_frac),
-            str(config.interior_struct.core_frac_mode),
-        )
+    P_cmb, estimated = resolve_P_cmb(hf_row, config)
+    if estimated:
         log.warning(
             'liquidus_super: hf_row["P_cmb"] not yet populated; using '
             'Noack & Lasbleis (2020) mass-aware fallback P_cmb=%.1f GPa '
@@ -661,7 +661,6 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
             P_cmb / 1e9,
             float(config.planet.mass_tot),
         )
-    P_cmb = float(P_cmb)
 
     mantle_eos = config.interior_struct.zalmoxis.mantle_eos
     P_surface = 1e5  # 1 bar surface anchor for the adiabat
@@ -733,70 +732,9 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
             'valid': valid,
         }
 
-    # Scan surface temperature over a window anchored to the SURFACE LIQUIDUS,
-    # so the search adapts to the configured melting curve instead of a fixed
-    # Kelvin band. The coolest valid molten adiabat brackets the delta crossing
-    # from below, so delta_T_super is honoured as a true minimum (no hot floor).
-    T_liq_surf = float(np.asarray(liq_func(P_surface)).reshape(-1)[0])
-    scan = []
-    for T_surf in np.linspace(
-        T_liq_surf, T_liq_surf + _SUPERLIQ_SCAN_SPAN_K, _SUPERLIQ_SCAN_STEPS
-    ):
-        d = _probe(float(T_surf))
-        if d['valid'] and np.isfinite(d['superheat']):
-            scan.append((float(T_surf), d))
-            # Stop once the increasing branch has bracketed the delta crossing;
-            # scanning the full span is only needed to locate the table ceiling
-            # in the unreachable-superheat (error) case.
-            if d['superheat'] >= delta:
-                break
-    if not scan:
-        raise RuntimeError(
-            'liquidus_super: no valid molten adiabat found while solving the '
-            f'initial condition (P_cmb={P_cmb / 1e9:.0f} GPa, surface '
-            f'liquidus={T_liq_surf:.0f} K). The EOS table may not support a '
-            'molten mantle at this pressure.'
-        )
-
-    # Superheat rises with surface temperature until the deep adiabat hits the
-    # EOS-table ceiling; restrict the solve to that increasing branch.
-    superheats = [d['superheat'] for _, d in scan]
-    branch = scan[: int(np.argmax(superheats)) + 1]
-    best = branch[-1][1]
-    if best['superheat'] < 0:
-        raise RuntimeError(
-            'liquidus_super: no fully-molten initial condition is reachable within '
-            f'the EOS table; even the hottest valid adiabat (surface T={branch[-1][0]:.0f} K) '
-            f"is {-best['superheat']:.0f} K below the liquidus at "
-            f"P={best['binding_P'] / 1e9:.0f} GPa."
-        )
-    clamped = best['superheat'] < delta
-    if clamped:
-        # Unreachable target: use the hottest valid adiabat on the branch, the
-        # largest superheat the EOS table supports, and say so.
-        T_solved = branch[-1][0]
-        log.warning(
-            'liquidus_super: the requested superheat of %.0f K is not reachable '
-            'at P_cmb=%.0f GPa within the EOS table; clamped to the largest '
-            'achievable superheat of %.0f K (surface T=%.0f K). Lower '
-            'delta_T_super if a full superheat margin is wanted.',
-            delta,
-            P_cmb / 1e9,
-            branch[-1][1]['superheat'],
-            T_solved,
-        )
-    elif branch[0][1]['superheat'] >= delta:
-        # The coolest in-table adiabat already meets the margin (e.g. delta=0,
-        # or the cool end of the valid band is itself table-limited): it is the
-        # coolest fully molten adiabat available, so return it.
-        T_solved = branch[0][0]
-    else:
-        # Bracket the delta crossing on the increasing branch, then bisect.
-        T_lo, T_hi = branch[0][0], branch[-1][0]
-        for k in range(1, len(branch)):
-            if branch[k][1]['superheat'] >= delta:
-                T_lo, T_hi = branch[k - 1][0], branch[k][0]
-                break
+    def _bisect_delta(T_lo: float, T_hi: float) -> float:
+        """Coolest surface T in [T_lo, T_hi] whose adiabat is valid and at least
+        ``delta`` above the liquidus; an invalid midpoint counts as not satisfied."""
         for _ in range(_SUPERLIQ_N_BISECT):
             mid = 0.5 * (T_lo + T_hi)
             dm = _probe(mid)
@@ -804,7 +742,178 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
                 T_hi = mid
             else:
                 T_lo = mid
-        T_solved = T_hi
+        return T_hi
+
+    # Coarse-scan surface temperature over a fixed window above the SURFACE
+    # LIQUIDUS, so the search adapts to the configured melting curve instead
+    # of a fixed Kelvin band. The scan runs to completion (it does not stop
+    # at the first point that reaches delta) so the checks below see the
+    # whole picture. A cold-end band just above the surface liquidus can be
+    # invalid (the PALEOS adiabat there has a cooling-with-depth kink of a few
+    # K) while hotter adiabats are valid, so one leading invalid band is
+    # tolerated; a second invalid->valid transition after the first valid
+    # point is not, since the bisection below needs a single validity edge.
+    T_liq_surf = float(np.asarray(liq_func(P_surface)).reshape(-1)[0])
+    scan_T = np.linspace(T_liq_surf, T_liq_surf + _SUPERLIQ_SCAN_SPAN_K, _SUPERLIQ_SCAN_STEPS)
+    scan = [(float(T), _probe(float(T))) for T in scan_T]
+
+    first_valid_idx: int | None = None
+    last_valid_idx: int | None = None
+    seen_invalid_after_first = False
+    for idx, (_, d) in enumerate(scan):
+        if d['valid']:
+            if seen_invalid_after_first:
+                raise RuntimeError(
+                    'liquidus_super: the coarse surface-temperature scan is valid, '
+                    'then invalid, then valid again at P_cmb=%.0f GPa; the '
+                    'single-validity-edge assumption behind this solve does not hold '
+                    'for this EOS/melting-curve combination.' % (P_cmb / 1e9)
+                )
+            if first_valid_idx is None:
+                first_valid_idx = idx
+            last_valid_idx = idx
+        elif first_valid_idx is not None:
+            seen_invalid_after_first = True
+
+    points: list[tuple[float, dict]] = [(T, d) for T, d in scan if d['valid']]
+    if not points:
+        raise RuntimeError(
+            'liquidus_super: no valid molten adiabat found while solving the '
+            f'initial condition (P_cmb={P_cmb / 1e9:.0f} GPa, surface '
+            f'liquidus={T_liq_surf:.0f} K). The EOS table may not support a '
+            'molten mantle at this pressure.'
+        )
+    for (T_a, d_a), (T_b, d_b) in zip(points, points[1:]):
+        if d_b['superheat'] < d_a['superheat'] - 1.0:
+            raise RuntimeError(
+                'liquidus_super: superheat decreases with increasing surface '
+                f'temperature between T={T_a:.0f} K ({d_a["superheat"]:.0f} K) and '
+                f'T={T_b:.0f} K ({d_b["superheat"]:.0f} K) at P_cmb={P_cmb / 1e9:.0f} '
+                'GPa; the assumed monotone superheat-vs-surface-temperature relation '
+                'does not hold for this EOS/melting-curve combination.'
+            )
+
+    # points is the contiguous valid run in scan (any leading invalid band
+    # tolerated above ends before it, and the oscillation check above rules
+    # out a second one), so the point right after its last entry, if any, is
+    # the first invalid point past the ceiling.
+    first_invalid_T = scan_T[last_valid_idx + 1] if last_valid_idx + 1 < len(scan) else None
+    window_limited = False
+    if first_invalid_T is None:
+        # The valid run reaches the end of the scan: extend upward with
+        # doubling steps (at most 3) until a point is invalid, so a table
+        # ceiling just past the scan window is not mistaken for the
+        # search-window limit.
+        step = float(scan_T[1] - scan_T[0])
+        T_last, d_last = points[-1]
+        for _ in range(_SUPERLIQ_MAX_EXTENSIONS):
+            T_next = T_last + step
+            d_next = _probe(T_next)
+            if not d_next['valid']:
+                first_invalid_T = T_next
+                break
+            if d_next['superheat'] < d_last['superheat'] - 1.0:
+                raise RuntimeError(
+                    'liquidus_super: superheat decreases with increasing surface '
+                    f'temperature during the search-window extension, between '
+                    f'T={T_last:.0f} K ({d_last["superheat"]:.0f} K) and '
+                    f'T={T_next:.0f} K ({d_next["superheat"]:.0f} K) at '
+                    f'P_cmb={P_cmb / 1e9:.0f} GPa; the assumed monotone '
+                    'superheat-vs-surface-temperature relation does not hold for '
+                    'this EOS/melting-curve combination.'
+                )
+            points.append((T_next, d_next))
+            T_last, d_last = T_next, d_next
+            step *= 2.0
+        else:
+            window_limited = True
+
+    T_best, d_best = points[-1]
+    T_sub_delta = T_best  # last point known below delta, for the delta-crossing bracket below
+    ceiling_bisected = False
+    if d_best['superheat'] < delta and first_invalid_T is not None:
+        # Bisect the validity edge between the last-valid and first-invalid
+        # points to the table's true ceiling; the raw coarse/extension-grid
+        # point can sit well short of it. Superheat is monotonic up to the
+        # edge, so the refined edge is also the refined maximum.
+        ceiling_bisected = True
+        T_lo, T_hi = T_best, float(first_invalid_T)
+        d_lo = d_best
+        for _ in range(_SUPERLIQ_N_CEILING_BISECT):
+            mid = 0.5 * (T_lo + T_hi)
+            dm = _probe(mid)
+            if dm['valid']:
+                T_lo, d_lo = mid, dm
+            else:
+                T_hi = mid
+        T_best, d_best = T_lo, d_lo
+
+    reached_delta = d_best['superheat'] >= delta
+    if d_best['superheat'] < 0 and not reached_delta:
+        raise RuntimeError(
+            'liquidus_super: no fully-molten initial condition is reachable within '
+            f'the EOS table; even the hottest valid adiabat (surface T={T_best:.0f} K) '
+            f'is {-d_best["superheat"]:.0f} K below the liquidus at '
+            f'P={d_best["binding_P"] / 1e9:.3g} GPa.'
+        )
+
+    clamped = not reached_delta
+    if clamped:
+        T_solved = T_best
+        if window_limited:
+            # The scan plus every extension stayed valid without reaching
+            # delta: the search window, not the EOS table, is the limit here.
+            log.warning(
+                'liquidus_super: the requested superheat of %.0f K was not reached at '
+                'P_cmb=%.0f GPa within a %.0f K surface-temperature search window plus '
+                '%d doubling extensions (the EOS table was not exhausted); clamped to '
+                'the largest superheat sampled, %.0f K (surface T=%.0f K). Widen the '
+                'search window if a larger superheat is physically expected.',
+                delta,
+                P_cmb / 1e9,
+                _SUPERLIQ_SCAN_SPAN_K,
+                _SUPERLIQ_MAX_EXTENSIONS,
+                d_best['superheat'],
+                T_solved,
+            )
+        else:
+            log.warning(
+                'liquidus_super: the requested superheat of %.0f K is not reachable '
+                'at P_cmb=%.0f GPa within the EOS table; clamped to the largest '
+                'achievable superheat of %.0f K (surface T=%.0f K). Lower '
+                'delta_T_super if a full superheat margin is wanted.',
+                delta,
+                P_cmb / 1e9,
+                d_best['superheat'],
+                T_solved,
+            )
+    elif points[0][1]['superheat'] >= delta:
+        if first_valid_idx == 0:
+            # The coolest scanned adiabat already meets the margin (e.g.
+            # delta=0): it is the coolest fully molten adiabat available.
+            T_solved = points[0][0]
+        else:
+            # A leading invalid band ends somewhere between the last invalid
+            # scan point and the first valid one; the coolest adiabat that is
+            # both valid and at least delta above the liquidus lies in that
+            # bracket, so refine it instead of returning the coarse point.
+            T_solved = _bisect_delta(float(scan_T[first_valid_idx - 1]), points[0][0])
+    elif ceiling_bisected:
+        # The crossing was reached only by refining the validity edge past
+        # every coarse/extension-grid point, so it lies between T_sub_delta
+        # (last point known below delta) and the refined T_best.
+        T_solved = _bisect_delta(T_sub_delta, T_best)
+    else:
+        # points is monotonic in superheat (checked above), so the first
+        # point at or above delta brackets the crossing with its predecessor.
+        T_lo, T_hi = points[0][0], points[0][0]
+        for T_pt, d_pt in points:
+            if d_pt['superheat'] < delta:
+                T_lo = T_pt
+            else:
+                T_hi = T_pt
+                break
+        T_solved = _bisect_delta(T_lo, T_hi)
 
     final = _probe(T_solved)
     if not final['valid']:
@@ -824,7 +933,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         # that is fractionally deep but below the calibration, as for a
         # low-mass planet whose whole mantle is shallow, is fine.)
         log.warning(
-            'liquidus_super: the minimum-superheat depth (binding P=%.0f GPa) '
+            'liquidus_super: the minimum-superheat depth (binding P=%.3g GPa) '
             'is beyond the liquidus calibration (~%.0f GPa), so the superheat '
             'margin there is set against an extrapolated liquidus. Verify the '
             'liquidus parameterisation is appropriate for this EOS and mass.',
@@ -835,7 +944,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     if not clamped:
         log.info(
             'liquidus_super: surface T=%.0f K gives a fully molten adiabat at least '
-            '%.0f K above the liquidus (achieved %.0f K at P=%.0f GPa = %.0f%% of '
+            '%.0f K above the liquidus (achieved %.0f K at P=%.3g GPa = %.0f%% of '
             'P_cmb); T_cmb=%.0f K, S=%.1f J/(kg K), P_cmb=%.0f GPa.',
             T_solved,
             delta,

@@ -612,6 +612,38 @@ def _interp_ps_lookup(S: float, P: float, lookup: np.ndarray) -> float:
 
 
 # ====================================================================
+def _resolve_spider_eos_dir(dirs: dict, config: Config) -> str:
+    """Resolve the P-S EOS table directory SPIDER reads for this run.
+
+    Prefers the per-run Zalmoxis/PALEOS-generated tables at
+    ``dirs['spider_eos_dir']`` (which may live outside the run's own output
+    tree when ``PROTEUS_PS_CACHE_DIR`` is set), then FWL_DATA, then SPIDER's
+    bundled lookup_data as a final fallback. Both the initial-entropy
+    computation and the solver call site use this so they always agree on
+    which directory backs the run.
+    """
+    if dirs.get('spider_eos_dir') and os.path.isdir(dirs['spider_eos_dir']):
+        eos_dir = dirs['spider_eos_dir']
+        log.debug('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
+        return eos_dir
+
+    if config.interior_struct.eos_dir is None:
+        raise FileNotFoundError(
+            'interior_struct.eos_dir must be set when no Zalmoxis-generated '
+            'EOS tables are available. Set eos_dir to a valid EOS folder name.'
+        )
+    eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.interior_struct.eos_dir, 'P-S')
+    if not os.path.isdir(eos_dir):
+        # Fall back to SPIDER's local lookup_data directory
+        eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
+    if not os.path.isdir(eos_dir):
+        raise FileNotFoundError(
+            f'SPIDER EOS directory not found: {eos_dir}. '
+            f"Check interior.eos_dir='{config.interior_struct.eos_dir}'."
+        )
+    return eos_dir
+
+
 def _compute_spider_initial_entropy(config: Config, hf_row: dict, spider_eos_dir: str) -> float:
     """Compute SPIDER's initial mantle entropy via the shared PALEOS lookup.
 
@@ -818,8 +850,9 @@ def _try_spider(
         )
     else:
         # Compute initial entropy from planet temperature settings (PALEOS lookup)
-        spider_eos_dir = os.path.join(dirs['output/data'], 'spider_eos')
-        ini_entropy = _compute_spider_initial_entropy(config, hf_row, spider_eos_dir)
+        ini_entropy = _compute_spider_initial_entropy(
+            config, hf_row, _resolve_spider_eos_dir(dirs, config)
+        )
         call_sequence.extend(
             [
                 '-ic_adiabat_entropy',
@@ -886,24 +919,7 @@ def _try_spider(
 
     # EOS lookup data: prefer per-run generated tables (from Zalmoxis/PALEOS),
     # then FWL_DATA, then SPIDER local as final fallback.
-    if dirs.get('spider_eos_dir') and os.path.isdir(dirs['spider_eos_dir']):
-        eos_dir = dirs['spider_eos_dir']
-        log.debug('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
-    else:
-        if config.interior_struct.eos_dir is None:
-            raise FileNotFoundError(
-                'interior_struct.eos_dir must be set when no Zalmoxis-generated '
-                'EOS tables are available. Set eos_dir to a valid EOS folder name.'
-            )
-        eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.interior_struct.eos_dir, 'P-S')
-        if not os.path.isdir(eos_dir):
-            # Fall back to SPIDER's local lookup_data directory
-            eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
-        if not os.path.isdir(eos_dir):
-            raise FileNotFoundError(
-                f'SPIDER EOS directory not found: {eos_dir}. '
-                f"Check interior.eos_dir='{config.interior_struct.eos_dir}'."
-            )
+    eos_dir = _resolve_spider_eos_dir(dirs, config)
 
     # Resolve melting curve S(P) files: prefer generated paths, then FWL_DATA,
     # then SPIDER's bundled lookup_data as a final fallback. The bundled

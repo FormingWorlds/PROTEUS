@@ -238,7 +238,12 @@ class Planet:
             without the user having to pick a surface temperature or entropy.
             If the requested superheat cannot be reached before the deep
             adiabat exhausts the EOS table, the solve clamps to the largest
-            achievable superheat and emits a warning that reports it.
+            achievable superheat and emits a warning that reports it. If even
+            the hottest adiabat the table supports stays below the liquidus
+            somewhere in the mantle, no fully molten initial condition exists
+            and the solve raises a RuntimeError. With a structure module other
+            than zalmoxis the liquidus is the one in the interior P-S tables,
+            which the interior solver also uses for its melt fraction.
     tsurf_init: float
         Initial magma surface temperature [K] (isothermal, linear, adiabatic).
         Ignored when temperature_mode = 'isentropic', 'adiabatic_from_cmb',
@@ -272,7 +277,8 @@ class Planet:
         molten (just touching the liquidus at the binding depth). If the
         requested superheat cannot be reached within the EOS table, the solve
         clamps to the largest achievable superheat and emits a warning that
-        reports it.
+        reports it; if no fully molten adiabat exists within the table at
+        all, it raises a RuntimeError.
     volatile_mode: str
         How to set the initial volatile inventory: 'elements' or 'gas_prs'.
     volatile_reservoir: str

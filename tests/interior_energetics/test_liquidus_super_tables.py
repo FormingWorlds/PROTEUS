@@ -2,8 +2,8 @@
 Unit tests for the table-based ``liquidus_super`` initial entropy.
 
 With ``interior_struct.module`` other than ``zalmoxis``, the ``liquidus_super``
-initial entropy is solved on the interior P-S tables and the selected melting
-curve, and no Zalmoxis or PALEOS data are read. The tests use an analytic
+initial entropy is solved on the interior P-S tables against their own P-S
+liquidus, and no Zalmoxis or PALEOS data are read. The tests use an analytic
 stand-in for the entropy EOS so that the expected entropy is known in closed
 form.
 
@@ -13,7 +13,8 @@ Testing standards and documentation:
 
 Functions tested:
 - solve_superliquidus_entropy_from_tables(): reachable target, clamp and warning,
-  table-liquidus fallback, partial melting-curve coverage
+  table liquidus as the reference, undefined liquidus, non-finite temperatures,
+  ini_dsdr entropy ceiling
 - compute_initial_entropy(): dispatch on interior_struct.module
 - _load_entropy_eos(): missing directory, cache reuse and invalidation
 - planet_liquidus_super_needs_tables(): rejection of a configuration with no
@@ -37,7 +38,7 @@ from proteus.interior_energetics.common import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Analytic stand-in: T(P, S) = T0 + A*S + B*P_GPa, liquidus T_liq(P) = L0 + L1*P_GPa.
+# Analytic stand-in: T(P, S) = T0 + A*S + B*P_GPa, table liquidus T_liq(P) = L0 + L1*P_GPa.
 # The superheat margin is then A*S + T0 - L0 + (B - L1)*P_GPa, which is
 # smallest at the largest pressure whenever B < L1, so the solution is exact.
 T0, A, B = 500.0, 0.8, 8.0
@@ -72,9 +73,12 @@ class _FakeEOS:
     def temperature(self, P, S):
         return _T(P, S)
 
+    # Pressure range of the liquidus_P-S.dat file, as aragog's EntropyEOS holds it.
+    _liquidus = {'P': np.array([1e4, 1e13])}
+
     def liquidus_entropy(self, P):
-        # Entropy of the table liquidus: a curve 50 K below the melting curve.
-        return (_T_liq(P) - 50.0 - T0 - B * np.asarray(P, dtype=float) / 1e9) / A
+        # The entropy whose temperature is the table liquidus T_liq(P).
+        return (_T_liq(P) - T0 - B * np.asarray(P, dtype=float) / 1e9) / A
 
 
 def _config(delta=200.0, module='spider', melting_dir='Monteux-600'):
@@ -83,6 +87,7 @@ def _config(delta=200.0, module='spider', melting_dir='Monteux-600'):
         planet=SimpleNamespace(
             temperature_mode='liquidus_super',
             delta_T_super=delta,
+            ini_dsdr=0.0,
             mass_tot=1.0,
         ),
         interior_struct=SimpleNamespace(
@@ -97,12 +102,8 @@ def _config(delta=200.0, module='spider', melting_dir='Monteux-600'):
 
 @pytest.fixture
 def fake_tables(monkeypatch, tmp_path):
-    """Patch the table loader and melting-curve reader with analytic stand-ins."""
+    """Patch the table loader with the analytic stand-in."""
     monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _FakeEOS())
-    monkeypatch.setattr(
-        'proteus.utils.data.get_zalmoxis_melting_curves',
-        lambda cfg: (None, _T_liq),
-    )
     return str(tmp_path)
 
 
@@ -203,78 +204,47 @@ def test_table_floor_when_target_below_lowest_entropy(fake_tables, monkeypatch):
     assert len(calls) < 10
 
 
-def test_missing_melting_curve_falls_back_to_table_liquidus(monkeypatch, tmp_path, caplog):
-    """Without a melting-curve file the table liquidus is used, with a warning."""
-    monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _FakeEOS())
-    monkeypatch.setattr('proteus.utils.data.get_zalmoxis_melting_curves', lambda cfg: None)
-
-    with caplog.at_level(logging.WARNING):
-        res = solve_superliquidus_entropy_from_tables(
-            _config(200.0), {'P_cmb': P_CMB}, str(tmp_path)
-        )
-
-    # The table liquidus lies 50 K below the melting curve, so 200 K above it
-    # needs 50/A less entropy than 200 K above the melting curve.
-    assert res['S_target'] == pytest.approx(_S_expected(200.0) - 50.0 / A, rel=1e-6)
-    assert any('unavailable' in r.getMessage() for r in caplog.records)
-
-
-def test_missing_melting_curve_directory_falls_back_to_table_liquidus(
-    monkeypatch, tmp_path, caplog
-):
-    """A real, unmocked FileNotFoundError from get_zalmoxis_melting_curves()
-    (a nonexistent melting_dir) is caught and falls back to the table
-    liquidus, exactly like the mocked-None case above.
+def test_melting_dir_curve_is_not_the_reference(fake_tables, monkeypatch):
+    """The superheat is measured against the tables' own P-S liquidus, which
+    sets the solver's melt fraction; a melting_dir P-T curve 500 K hotter must
+    not move the answer, and it is never read.
     """
-    monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _FakeEOS())
 
-    cfg = _config(200.0, melting_dir='does-not-exist-zzz')
-    with caplog.at_level(logging.WARNING):
-        res = solve_superliquidus_entropy_from_tables(cfg, {'P_cmb': P_CMB}, str(tmp_path))
+    def _boom(cfg):
+        raise AssertionError('melting_dir curve read on the table path')
 
-    assert res['S_target'] == pytest.approx(_S_expected(200.0) - 50.0 / A, rel=1e-6)
-    assert any('unavailable' in r.getMessage() for r in caplog.records)
+    monkeypatch.setattr('proteus.utils.data.get_zalmoxis_melting_curves', _boom)
+
+    res = solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+
+    assert res['S_target'] == pytest.approx(_S_expected(200.0), rel=1e-6)
+    assert res['achieved_superheat'] == pytest.approx(200.0, abs=1e-2)
 
 
-def test_melting_curve_undefined_at_depth_uses_covered_range(monkeypatch, tmp_path, caplog):
-    """A melting curve that is NaN above some pressure binds only where defined."""
-    P_edge = 5.0e10
+def test_table_liquidus_undefined_at_depth_raises(fake_tables, monkeypatch):
+    """A liquidus file that stops short of the CMB leaves the deep mantle
+    unchecked, so the solve raises and names the covered and missing ranges.
+    """
+    monkeypatch.setattr(_FakeEOS, '_liquidus', {'P': np.array([1e4, 5.0e10])})
 
-    def liq_partial(P):
-        out = _T_liq(P)
-        return np.where(np.asarray(P) > P_edge, np.nan, out)
+    with pytest.raises(RuntimeError, match='table liquidus is undefined') as exc:
+        solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
 
-    monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _FakeEOS())
-    monkeypatch.setattr(
-        'proteus.utils.data.get_zalmoxis_melting_curves', lambda cfg: (None, liq_partial)
-    )
-
-    with caplog.at_level(logging.WARNING):
-        res = solve_superliquidus_entropy_from_tables(
-            _config(200.0), {'P_cmb': P_CMB}, str(tmp_path)
-        )
-
-    # The binding pressure is the highest covered grid pressure, not the CMB.
-    assert res['binding_P'] <= P_edge
-    assert res['binding_P'] > 0.9 * P_edge
-    assert res['S_target'] < _S_expected(200.0)
-    assert any('undefined above' in r.getMessage() for r in caplog.records)
+    msg = str(exc.value)
+    assert 'covers 1e-05 to 50 GPa' in msg
+    assert 'and 100 GPa' in msg
 
 
 def test_liquidus_undefined_everywhere_raises(monkeypatch, tmp_path):
-    """A melting curve and a table liquidus that are NaN everywhere raise a clear error."""
+    """A table liquidus that is NaN everywhere raises a clear error."""
 
     class _NaNLiqEOS(_FakeEOS):
         def liquidus_entropy(self, P):
             return np.full_like(np.asarray(P, dtype=float), np.nan)
 
     monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _NaNLiqEOS())
-    monkeypatch.setattr(
-        'proteus.utils.data.get_zalmoxis_melting_curves',
-        lambda cfg: (None, lambda P: np.full_like(np.asarray(P, dtype=float), np.nan)),
-    )
 
-    with pytest.raises(RuntimeError, match='liquidus is undefined'):
+    with pytest.raises(RuntimeError, match='liquidus is undefined at 200 of 200'):
         solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, str(tmp_path))
 
 
@@ -344,19 +314,118 @@ def test_cache_keeps_other_directories_when_one_reloads(monkeypatch, tmp_path):
     assert len(common._EOS_CACHE) == common._EOS_CACHE_MAX
 
 
-def test_nan_temperatures_inside_table_range_are_ignored(fake_tables, monkeypatch):
-    """Pressures where the table returns NaN do not bias the bisection."""
+def test_nan_temperatures_at_depth_raise(fake_tables, monkeypatch):
+    """A table that has no finite temperature at some mantle pressure, for
+    every entropy, cannot certify a molten adiabat there: the solve raises
+    instead of skipping those pressures.
+    """
     real = _FakeEOS.temperature
 
     def holey(self, P, S):
         P = np.asarray(P, dtype=float)
-        return np.where((P > 2.0e10) & (P < 3.0e10), np.nan, real(self, P, S))
+        T = np.asarray(real(self, P, S), dtype=float)
+        # The liquidus itself stays defined; only adiabat lookups are NaN.
+        if np.ndim(S) and np.allclose(S, self.liquidus_entropy(P)):
+            return T
+        return np.where((P > 2.0e10) & (P < 3.0e10), np.nan, T)
 
     monkeypatch.setattr(_FakeEOS, 'temperature', holey)
+
+    with pytest.raises(RuntimeError, match='non-finite temperature at P=2'):
+        solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+
+
+def test_all_nan_table_raises(fake_tables, monkeypatch):
+    """An all-NaN temperature table raises instead of returning S_min with an
+    infinite superheat. Its table liquidus T(P, S_liq) is NaN too, so the
+    liquidus check is what raises.
+    """
+    monkeypatch.setattr(
+        _FakeEOS,
+        'temperature',
+        lambda self, P, S: np.full(np.broadcast(np.asarray(P), np.asarray(S)).shape, np.nan),
+    )
+
+    with pytest.raises(RuntimeError, match='liquidus is undefined at 200 of 200'):
+        solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+
+
+def test_entropy_dependent_nan_at_depth_is_not_satisfied(fake_tables, monkeypatch):
+    """Where the deep table is NaN below some entropy, those entropies do not
+    count as molten: the solve moves up to the first entropy with a finite
+    deep adiabat instead of dropping the deep constraint.
+    """
+    S_edge = _S_expected(400.0)
+    real = _FakeEOS.temperature
+
+    def holey(self, P, S):
+        P = np.asarray(P, dtype=float)
+        S_arr = np.broadcast_to(np.asarray(S, dtype=float), P.shape)
+        T = np.asarray(real(self, P, S), dtype=float)
+        if np.allclose(S_arr, self.liquidus_entropy(P)):
+            return T
+        return np.where((P > 5.0e10) & (S_arr < S_edge), np.nan, T)
+
+    monkeypatch.setattr(_FakeEOS, 'temperature', holey)
+
     res = solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
 
-    assert res['clamped'] is False
-    assert res['S_target'] == pytest.approx(_S_expected(200.0), rel=1e-6)
+    assert res['S_target'] == pytest.approx(S_edge, rel=1e-9)
+    assert res['achieved_superheat'] == pytest.approx(400.0, abs=1e-3)
+
+
+def test_ini_dsdr_lowers_the_entropy_ceiling(fake_tables):
+    """With ini_dsdr < 0 the clamp lands at S_max minus the entropy the
+    perturbation adds at the deeper of the two CMB radii, so every initial
+    node stays inside the table.
+    """
+    cfg = _config(1000.0)
+    cfg.planet.ini_dsdr = -4.698e-6
+    R_int, R_core = 6.371e6, 3.6e6  # core_frac * R_int = 3.504e6 is deeper
+    hf_row = {'P_cmb': P_CMB, 'R_int': R_int, 'R_core': R_core}
+
+    res = solve_superliquidus_entropy_from_tables(cfg, hf_row, fake_tables)
+
+    span = R_int - cfg.interior_struct.core_frac * R_int
+    assert res['clamped'] is True
+    assert res['S_target'] == pytest.approx(S_MAX - 4.698e-6 * span, rel=1e-12)
+    assert res['S_target'] + 4.698e-6 * span <= S_MAX + 1e-9
+
+
+def test_ini_dsdr_without_radii_warns(fake_tables, caplog):
+    """Without mantle radii the ceiling cannot be lowered, and a warning says so."""
+    cfg = _config(1000.0)
+    cfg.planet.ini_dsdr = -4.698e-6
+
+    with caplog.at_level(logging.WARNING):
+        res = solve_superliquidus_entropy_from_tables(cfg, {'P_cmb': P_CMB}, fake_tables)
+
+    assert res['S_target'] == pytest.approx(S_MAX, rel=1e-12)
+    assert any('no mantle radii' in r.getMessage() for r in caplog.records)
+
+
+def test_surface_binding_pressure_is_printed_in_gpa(fake_tables, monkeypatch, caplog):
+    """A binding at the 1 bar surface prints as 0.0001 GPa, not 0 GPa."""
+    # An adiabat steeper than the liquidus (12 K/GPa against 10 K/GPa), with
+    # the table liquidus kept at L0 + L1*P_GPa, binds at the surface.
+    monkeypatch.setattr(
+        _FakeEOS,
+        'temperature',
+        lambda self, P, S: T0 + A * np.asarray(S, dtype=float) + 12.0 * np.asarray(P) / 1e9,
+    )
+    monkeypatch.setattr(
+        _FakeEOS,
+        'liquidus_entropy',
+        lambda self, P: (_T_liq(P) - T0 - 12.0 * np.asarray(P, dtype=float) / 1e9) / A,
+    )
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.common'):
+        res = solve_superliquidus_entropy_from_tables(
+            _config(200.0), {'P_cmb': P_CMB}, fake_tables
+        )
+
+    assert res['binding_P'] == pytest.approx(1e5)
+    assert any('at P=0.0001 GPa' in r.getMessage() for r in caplog.records)
 
 
 def test_p_cmb_above_table_range_is_clipped(fake_tables, monkeypatch, caplog):

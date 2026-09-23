@@ -225,3 +225,38 @@ def estimate_P_cmb_NL20(
     g_m_av = 0.5 * (g_surf + g_cmb)
     P_cmb = g_m_av * rho_m * (R_p - R_c)
     return float(P_cmb)
+
+
+def resolve_P_cmb(hf_row, config) -> tuple[float, bool]:
+    """Core-mantle boundary pressure from the helpfile, or the NL20 estimate.
+
+    ``not P_cmb`` and ``P_cmb <= 0`` are both False for NaN, so the finite
+    check is what keeps a NaN ``hf_row['P_cmb']`` from reaching the solve.
+
+    Parameters
+    ----------
+    hf_row : dict or None
+        Helpfile row; ``hf_row['P_cmb']`` [Pa] is used when positive and finite.
+    config : Config
+        PROTEUS configuration. Uses ``planet.mass_tot``,
+        ``interior_struct.core_frac`` and ``interior_struct.core_frac_mode``.
+
+    Returns
+    -------
+    P_cmb : float
+        Core-mantle boundary pressure [Pa].
+    estimated : bool
+        True when the Noack & Lasbleis (2020) estimate replaced a missing,
+        non-positive or non-finite helpfile value.
+    """
+    P_cmb = hf_row.get('P_cmb') if hf_row is not None else None
+    if P_cmb and np.isfinite(float(P_cmb)) and float(P_cmb) > 0:
+        return float(P_cmb), False
+    return (
+        estimate_P_cmb_NL20(
+            float(config.planet.mass_tot),
+            float(config.interior_struct.core_frac),
+            str(config.interior_struct.core_frac_mode),
+        ),
+        True,
+    )

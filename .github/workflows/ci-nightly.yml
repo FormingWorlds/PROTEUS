@@ -338,8 +338,24 @@ jobs:
             select: test_solved_entropy_is_mass_independent
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
+          # ---- superliquidus-m1-delta0 (single 1 M_Earth solve at zero superheat) ----
+          - shard: superliquidus-m1-delta0
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 120
+            select: test_m1_zero_superheat_pinned
+            files: >-
+              tests/interior_struct/test_superliquidus_adiabat.py
           # ---- superliquidus-unreachable (one full-span scan; ~48 min measured) ----
           - shard: superliquidus-unreachable
+            tier: extended
+            os: ubuntu-latest
+            job_minutes: 120
+            select: test_unreachable_superheat_raises_real
+            files: >-
+              tests/interior_struct/test_superliquidus_adiabat.py
+          # ---- superliquidus-clamp (one full-span scan; ~48 min measured) ----
+          - shard: superliquidus-clamp
             tier: extended
             os: ubuntu-latest
             job_minutes: 120
