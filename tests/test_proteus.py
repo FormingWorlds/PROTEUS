@@ -2303,3 +2303,94 @@ def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path):
     assert captured['T_magma'] == pytest.approx(interior_t_magma, rel=1e-12)
     assert captured['T_magma'] != pytest.approx(checkpoint_t_magma, rel=1e-6)
     assert captured['T_magma'] != pytest.approx(checkpoint_t_surf, rel=1e-6)
+
+
+@pytest.mark.unit
+def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(tmp_path):
+    """Over several post-resume iterations the atmosphere returns T_surf 400 K
+    below the T_magma it was given, as AGNI's conductive skin does in a magma
+    ocean. Every atmosphere call still receives that iteration's interior
+    T_magma, so a surface temperature below the magma temperature never
+    replaces T_magma in the coupling, however long the gap persists.
+    """
+    from types import SimpleNamespace
+
+    p = _make_resume_main_loop_proteus(tmp_path)
+    hf_df = _make_resume_checkpoint_df()
+    # Slow interior cooling (15 K per step) against a 400 K skin drop, so a
+    # surface-anchored value would fall far below the interior sequence.
+    interior_t_magma = [3456.0, 3441.0, 3426.0, 3411.0]
+    skin_drop = 400.0
+    n_calls = len(interior_t_magma)
+    step = {'interior': 0}
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        args[3]['T_magma'] = interior_t_magma[min(step['interior'], n_calls - 1)]
+        step['interior'] += 1
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        hf_row = args[8]
+        captured.append(hf_row['T_magma'])
+        hf_row['T_surf'] = hf_row['T_magma'] - skin_drop
+        if len(captured) == n_calls:
+            raise _StopAfterAtmosphereCall
+
+    with ExitStack() as stack:
+        for target in _MAIN_LOOP_NOOP_PATCHES:
+            stack.enter_context(patch(target))
+
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                return_value=(hf_df, []),
+            )
+        )
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.assert_mass_conservation'))
+        # The stop criteria read config fields this dummy config leaves unset;
+        # the loop ends through the atmosphere sentinel instead.
+        stack.enter_context(
+            patch('proteus.utils.terminate.check_termination', return_value=False)
+        )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.interior_energetics.wrapper.run_interior',
+                side_effect=_fake_run_interior,
+            )
+        )
+        stack.enter_context(
+            patch('proteus.atmos_clim.run_atmosphere', side_effect=_fake_run_atmosphere)
+        )
+
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_interior_t.return_value = MagicMock(dt=100.0, ic=1)
+
+        mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
+        mock_atmos_t.return_value = SimpleNamespace(converged=True)
+
+        mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
+        mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
+
+        with pytest.raises(_StopAfterAtmosphereCall):
+            p.start(resume=True, offline=True)
+
+    assert len(captured) == n_calls
+    np.testing.assert_allclose(captured, interior_t_magma, rtol=1e-12)
+    # A surface-anchored coupling hands the atmosphere the previous T_surf,
+    # 400 K or more below the interior value at every step after the first.
+    for got, previous_surface in zip(captured[1:], np.array(captured[:-1]) - skin_drop):
+        assert got - previous_surface > skin_drop - 20.0
+    # Every T_magma the atmosphere received is a positive temperature above
+    # the surface it returned, the magma-ocean regime this run represents.
+    assert min(captured) > skin_drop > 0.0
