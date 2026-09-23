@@ -2259,6 +2259,8 @@ def test_solvus_override_restores_the_magma_ocean_state(tmp_path):
     assert seen_by_interior[1] == pytest.approx(interior_t_magma[0], rel=1e-12)
     committed = p.hf_all.iloc[-1]
     assert committed['T_magma'] == pytest.approx(interior_t_magma[0], rel=1e-12)
+    # Pins the current restore of T_surf in solvus mode; a change that keeps
+    # the atmosphere T_surf updates this.
     assert committed['T_surf'] == pytest.approx(checkpoint['T_surf'], rel=1e-12)
     assert committed['P_surf'] == pytest.approx(checkpoint['P_surf'], rel=1e-12)
     assert committed['R_int'] == pytest.approx(checkpoint['R_int'], rel=1e-12)
