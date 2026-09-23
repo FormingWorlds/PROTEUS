@@ -2259,7 +2259,6 @@ def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path, interior_m
 
     def _fake_run_atmosphere(*args, **kwargs):
         captured['T_magma'] = args[8]['T_magma']
-        captured['T_surf'] = args[8]['T_surf']
         raise _StopAfterAtmosphereCall
 
     with ExitStack() as stack:
@@ -2317,9 +2316,10 @@ def test_solvus_override_restores_the_magma_ocean_state(tmp_path):
     """With global miscibility the loop hands the atmosphere the solvus as its
     lower boundary (T_solvus, P_solvus in bar, R_solvus) and afterwards
     restores T_magma, T_surf, P_surf and R_int for the interior and the
-    committed row. Config validation rejects global_miscibility for now, so
-    this pins the loop code for when it is enabled; SPIDER is the module that
-    cuts its domain at the solvus.
+    committed row. Config validation rejects global_miscibility with the
+    zalmoxis structure module, the one that writes the solvus, so this pins
+    the loop code for when it is enabled; SPIDER is the energetics module
+    that cuts its domain at the solvus.
     """
     from types import SimpleNamespace
 

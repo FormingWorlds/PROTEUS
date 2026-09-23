@@ -2504,10 +2504,11 @@ class AragogRunner:
             basic-node state to the NetCDF. See
             ``config.interior_energetics.write_flux_diagnostics``.
         T_surf_coupled : float or None
-            PROTEUS-coupled surface temperature at the top of the AGNI
-            conductive skin layer, stored alongside Aragog's adiabatic temp_s
-            as a diagnostic (an in-loop snapshot holds the value from the
-            previous coupling step); a resume reads T_surf from the helpfile.
+            PROTEUS-coupled surface temperature T_surf (the top of the
+            conductive skin when AGNI runs with surf_state='skin'), stored
+            alongside Aragog's adiabatic temp_s as a diagnostic (an in-loop
+            snapshot holds the value from the previous coupling step); a
+            resume reads T_surf from the helpfile.
         """
         fpath = os.path.join(output_dir, 'data', format_subyear_time(time) + '_int.nc')
         ds = nc.Dataset(fpath, mode='w')
