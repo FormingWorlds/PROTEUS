@@ -717,13 +717,16 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
             if finite
             else np.inf
         )
+        liq = np.asarray(liq_func(P), dtype=float)
+        i = int(np.argmin(T - liq))
+        # A liquidus that is undefined (NaN) at some adiabat pressure cannot
+        # certify the adiabat as molten there, so the adiabat is invalid.
         valid = bool(
             finite
             and s_drift < _SUPERLIQ_MAX_S_DRIFT
             and np.all(np.diff(T) > -1.0)  # no gross cooling-with-depth
+            and np.isfinite(liq).all()
         )
-        liq = np.asarray(liq_func(P), dtype=float)
-        i = int(np.argmin(T - liq))
         return {
             'superheat': float(T[i] - liq[i]),
             'binding_P': float(P[i]),
@@ -734,7 +737,9 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
 
     def _bisect_delta(T_lo: float, T_hi: float) -> float:
         """Coolest surface T in [T_lo, T_hi] whose adiabat is valid and at least
-        ``delta`` above the liquidus; an invalid midpoint counts as not satisfied."""
+        ``delta`` above the liquidus; an invalid midpoint counts as not satisfied.
+        ``T_hi`` must already satisfy both conditions: it is returned as is if no
+        midpoint does."""
         for _ in range(_SUPERLIQ_N_BISECT):
             mid = 0.5 * (T_lo + T_hi)
             dm = _probe(mid)
@@ -755,12 +760,15 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     # point is not, since the bisection below needs a single validity edge.
     T_liq_surf = float(np.asarray(liq_func(P_surface)).reshape(-1)[0])
     scan_T = np.linspace(T_liq_surf, T_liq_surf + _SUPERLIQ_SCAN_SPAN_K, _SUPERLIQ_SCAN_STEPS)
-    scan = [(float(T), _probe(float(T))) for T in scan_T]
-
+    # The scan stops at the first valid point that reaches delta: the crossing
+    # is then bracketed, and hotter adiabats cannot change the answer.
+    scan: list[tuple[float, dict]] = []
     first_valid_idx: int | None = None
     last_valid_idx: int | None = None
     seen_invalid_after_first = False
-    for idx, (_, d) in enumerate(scan):
+    for idx, T_scan in enumerate(scan_T):
+        d = _probe(float(T_scan))
+        scan.append((float(T_scan), d))
         if d['valid']:
             if seen_invalid_after_first:
                 raise RuntimeError(
@@ -772,6 +780,8 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
             if first_valid_idx is None:
                 first_valid_idx = idx
             last_valid_idx = idx
+            if d['superheat'] >= delta:
+                break
         elif first_valid_idx is not None:
             seen_invalid_after_first = True
 
@@ -799,7 +809,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     # the first invalid point past the ceiling.
     first_invalid_T = scan_T[last_valid_idx + 1] if last_valid_idx + 1 < len(scan) else None
     window_limited = False
-    if first_invalid_T is None:
+    if first_invalid_T is None and points[-1][1]['superheat'] < delta:
         # The valid run reaches the end of the scan: extend upward with
         # doubling steps (at most 3) until a point is invalid, so a table
         # ceiling just past the scan window is not mistaken for the
@@ -850,9 +860,10 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
 
     reached_delta = d_best['superheat'] >= delta
     if d_best['superheat'] < 0 and not reached_delta:
+        limit = 'the surface-temperature search window' if window_limited else 'the EOS table'
         raise RuntimeError(
             'liquidus_super: no fully-molten initial condition is reachable within '
-            f'the EOS table; even the hottest valid adiabat (surface T={T_best:.0f} K) '
+            f'{limit}; even the hottest valid adiabat (surface T={T_best:.0f} K) '
             f'is {-d_best["superheat"]:.0f} K below the liquidus at '
             f'P={d_best["binding_P"] / 1e9:.3g} GPa.'
         )

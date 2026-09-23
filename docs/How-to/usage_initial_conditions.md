@@ -95,10 +95,12 @@ marginally molten, just touching the liquidus at the binding depth.
     Fei et al. (2021) liquidus through the structure module. With
     `interior_struct.module = "spider"` or `"dummy"`, the adiabat is solved on
     the interior P-S tables against their own liquidus (`liquidus_P-S.dat`),
-    the same curve the interior solver uses for its melt fraction;
-    `interior_struct.melting_dir` does not enter the initial condition and no
-    Zalmoxis data are read. If that table liquidus does not cover every mantle
-    pressure, PROTEUS raises. If the requested superheat exceeds what the
+    the same curve the interior solver uses for its melt fraction. When
+    `interior_struct.melting_dir` is set, PROTEUS derives that file from the
+    `melting_dir` P-T curve; no Zalmoxis data are read. The mantle is evaluated
+    up to the core-mantle boundary pressure or the table maximum, whichever is
+    lower (a warning names the truncation). If the table liquidus is undefined
+    at any evaluated pressure, PROTEUS raises. If the requested superheat exceeds what the
     tables reach, the entropy is clamped to the highest usable table entropy
     (the table maximum, lowered by the entropy a negative `ini_dsdr` adds at the
     core-mantle boundary) and a warning reports the achieved superheat. For a

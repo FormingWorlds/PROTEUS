@@ -235,6 +235,45 @@ def test_table_liquidus_undefined_at_depth_raises(fake_tables, monkeypatch):
     assert 'and 100 GPa' in msg
 
 
+def test_liquidus_file_ending_one_ulp_below_p_max_is_covered(fake_tables, monkeypatch, caplog):
+    """A liquidus file whose top pressure rounds one ULP below the table edge
+    P_max still covers a CMB clipped to P_max; only the clip warning fires.
+    """
+    P_max = 5.0e11
+    monkeypatch.setattr(_FakeEOS, 'P_max', P_max)
+    monkeypatch.setattr(_FakeEOS, '_liquidus', {'P': np.array([1e4, np.nextafter(P_max, 0.0)])})
+
+    with caplog.at_level(logging.WARNING):
+        res = solve_superliquidus_entropy_from_tables(
+            _config(50.0), {'P_cmb': 5.2e11}, fake_tables
+        )
+
+    # At 500 GPa the model reaches at most 100 K of superheat, so 50 K is met.
+    assert res['P_cmb'] == pytest.approx(P_max, rel=1e-12)
+    assert res['clamped'] is False
+    assert res['S_target'] == pytest.approx(_S_expected(50.0, P_max), rel=1e-6)
+    assert any('exceeds the EOS table maximum' in r.getMessage() for r in caplog.records)
+
+
+def test_liquidus_entropy_above_table_range_raises(fake_tables, monkeypatch):
+    """Where the liquidus entropy exceeds the table's S_max, no adiabat in the
+    table is molten there (and T(P, S_liq) would be a clipped table-edge
+    value), so the solve raises and names the excess.
+    """
+    real = _FakeEOS.liquidus_entropy
+
+    def _s_liq_leaves_table(self, P):
+        P = np.asarray(P, dtype=float)
+        return np.where(P > 6.0e10, S_MAX + 100.0, real(self, P))
+
+    monkeypatch.setattr(_FakeEOS, 'liquidus_entropy', _s_liq_leaves_table)
+
+    with pytest.raises(RuntimeError, match='no fully-molten initial condition') as exc:
+        solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+    assert 'exceeds the table maximum (3000.0 J/kg/K)' in str(exc.value)
+    assert 'by up to 100.0 J/kg/K' in str(exc.value)
+
+
 def test_liquidus_undefined_everywhere_raises(monkeypatch, tmp_path):
     """A table liquidus that is NaN everywhere raises a clear error."""
 

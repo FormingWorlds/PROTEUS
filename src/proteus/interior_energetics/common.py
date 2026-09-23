@@ -296,16 +296,27 @@ def solve_superliquidus_entropy_from_tables(
     # melt fraction comes from liquidus_P-S.dat, so the reference is
     # T(P, S_liq(P)). liquidus_entropy holds its end value outside the file's
     # pressure range, so coverage is checked against that range explicitly.
+    # The relative tolerance absorbs the rounding of the file's end pressures
+    # against the table edge P_max. Below S_min, T(P, S_liq) is a clipped
+    # table-edge value, not the liquidus, so it counts as undefined too.
     P_liq_file = np.asarray(eos._liquidus['P'], dtype=float)
     P_liq_lo, P_liq_hi = float(P_liq_file.min()), float(P_liq_file.max())
-    T_liq = np.asarray(eos.temperature(P, eos.liquidus_entropy(P)), dtype=float)
-    covered = (P >= P_liq_lo) & (P <= P_liq_hi) & np.isfinite(T_liq)
+    S_liq = np.asarray(eos.liquidus_entropy(P), dtype=float)
+    T_liq = np.asarray(eos.temperature(P, S_liq), dtype=float)
+    covered = (
+        (P >= P_liq_lo * (1.0 - 1e-9))
+        & (P <= P_liq_hi * (1.0 + 1e-9))
+        & (S_liq >= float(eos.S_min))
+        & np.isfinite(S_liq)
+        & np.isfinite(T_liq)
+    )
     if not covered.all():
         missing = P[~covered]
         raise RuntimeError(
             'liquidus_super: the P-S table liquidus is undefined at %d of %d '
             'pressures between %.3g and %.3g GPa (liquidus file covers %.3g to '
-            '%.3g GPa); the superheat target cannot be evaluated there.'
+            '%.3g GPa, table entropy from %.0f J/kg/K); the superheat target '
+            'cannot be evaluated there.'
             % (
                 missing.size,
                 P.size,
@@ -313,7 +324,21 @@ def solve_superliquidus_entropy_from_tables(
                 float(missing.max()) / 1e9,
                 P_liq_lo / 1e9,
                 P_liq_hi / 1e9,
+                float(eos.S_min),
             )
+        )
+    above = S_liq > float(eos.S_max)
+    if above.any():
+        # The melt starts above the highest tabulated entropy: T(P, S_liq)
+        # would be a clipped table-edge value, and no adiabat in the table is
+        # molten there.
+        i = int(np.argmax(S_liq - float(eos.S_max)))
+        raise RuntimeError(
+            'liquidus_super: no fully-molten initial condition is reachable within '
+            f'the EOS table; the table liquidus entropy exceeds the table maximum '
+            f'({float(eos.S_max):.1f} J/kg/K) at {int(above.sum())} of {P.size} '
+            f'pressures, by up to {float(S_liq[i]) - float(eos.S_max):.1f} J/kg/K '
+            f'at P={float(P[i]) / 1e9:.3g} GPa.'
         )
 
     def _probe(S: float) -> tuple[float, float]:

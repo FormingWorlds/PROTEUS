@@ -230,8 +230,8 @@ def estimate_P_cmb_NL20(
 def resolve_P_cmb(hf_row, config) -> tuple[float, bool]:
     """Core-mantle boundary pressure from the helpfile, or the NL20 estimate.
 
-    ``not P_cmb`` and ``P_cmb <= 0`` are both False for NaN, so the finite
-    check is what keeps a NaN ``hf_row['P_cmb']`` from reaching the solve.
+    A NaN is truthy and passes no comparison as False, so the explicit finite
+    check is what sends a NaN ``hf_row['P_cmb']`` to the estimate.
 
     Parameters
     ----------

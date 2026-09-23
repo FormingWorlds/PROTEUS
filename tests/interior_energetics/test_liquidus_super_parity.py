@@ -315,8 +315,10 @@ def test_zalmoxis_path_raises_on_second_validity_edge(monkeypatch, bands):
     """
     _install_zalmoxis_deps(monkeypatch, invalid_bands=bands)
 
+    # delta=800 is first met at surface T 2800 K, past the band (2420 to 2500
+    # K), so the scan runs through the band before it can stop.
     with pytest.raises(RuntimeError, match='valid, then invalid, then valid again'):
-        solve_superliquidus_adiabat(_shared_config(delta=100.0), {'P_cmb': 100e9})
+        solve_superliquidus_adiabat(_shared_config(delta=800.0), {'P_cmb': 100e9})
 
 
 def test_zalmoxis_path_extends_scan_past_window_without_ceiling(monkeypatch):
@@ -398,3 +400,64 @@ def test_aragog_ic_with_ini_dsdr_stays_inside_table(_table_env):
     S_top = _compute_spider_initial_entropy(config, hf_row, spider_eos_dir='unused')
     R_cmb_spider = config.interior_struct.core_frac * R_int
     assert S_top + 4.698e-6 * (R_int - R_cmb_spider) == pytest.approx(S_MAX, abs=1e-9)
+
+
+def test_zalmoxis_path_raises_on_nan_liquidus_at_depth(monkeypatch):
+    """A liquidus that is undefined (NaN) below 50 GPa cannot certify any
+    adiabat reaching the 100 GPa CMB as molten: the solve raises instead of
+    clamping to a NaN superheat, matching the table path.
+    """
+    _install_zalmoxis_deps(monkeypatch)
+
+    def _liq_nan_deep(P):
+        P = np.asarray(P, dtype=float)
+        return np.where(P > 50e9, np.nan, _table_liquidus(P))
+
+    monkeypatch.setattr(
+        zmod,
+        'load_zalmoxis_solidus_liquidus_functions',
+        lambda mantle_eos, config: (None, _liq_nan_deep),
+    )
+
+    with pytest.raises(RuntimeError, match='no valid molten adiabat found'):
+        solve_superliquidus_adiabat(_shared_config(delta=500.0), {'P_cmb': 100e9})
+
+
+def test_zalmoxis_path_stops_scanning_once_delta_is_reached(monkeypatch):
+    """Adiabats above a 3000 K surface temperature lose superheat with
+    temperature (a hot-end shape the solve must not need to understand). A
+    delta reached at 2100 K is solved from the first three scan points, so
+    the hot end is never probed and does not raise.
+    """
+    import zalmoxis.eos_export as eos_export
+
+    _install_zalmoxis_deps(monkeypatch, s_ceiling=None)
+    inner = eos_export.compute_entropy_adiabat
+    probed = []
+
+    def _hot_end_drops(**kw):
+        probed.append(float(kw['T_surface']))
+        out = inner(**kw)
+        if kw['T_surface'] > 3000.0:
+            out['T'] = out['T'] - 2.0 * (kw['T_surface'] - 3000.0)
+        return out
+
+    monkeypatch.setattr(eos_export, 'compute_entropy_adiabat', _hot_end_drops)
+
+    res = solve_superliquidus_adiabat(_shared_config(delta=100.0), {'P_cmb': 100e9})
+
+    assert res['clamped'] is False
+    assert res['surface_T'] == pytest.approx(_surface_T_for(100.0), abs=0.5)
+    assert max(probed) < 2300.0  # third scan point is 2221 K
+    assert len(probed) == 3 + zmod._SUPERLIQ_N_BISECT + 1
+
+
+def test_zalmoxis_path_raise_names_search_window_when_it_is_the_limit(monkeypatch):
+    """With no table ceiling, a 3000 GPa mantle is still sub-liquidus at the
+    top of the scan plus its extensions; the raise names the search window,
+    not the EOS table, as the limit.
+    """
+    _install_zalmoxis_deps(monkeypatch, s_ceiling=None)
+
+    with pytest.raises(RuntimeError, match='within the surface-temperature search window'):
+        solve_superliquidus_adiabat(_shared_config(delta=200.0), {'P_cmb': 3000e9})
