@@ -445,11 +445,6 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
 
     # Observations synthesis module
     write = 'Observe module    %s' % config.observe.module
-    # if config.observe.module == 'petitRADTRANS':
-    #    from petitRADTRANS import __version__ as obs_version
-
-    #    write += ' version ' + obs_version
-
     log.info(write)
 
     # End spacer
