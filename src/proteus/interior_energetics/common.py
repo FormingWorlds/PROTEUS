@@ -339,8 +339,10 @@ def solve_superliquidus_entropy_from_tables(
     -------
     dict
         ``S_target`` [J/kg/K], ``surface_T`` [K], ``cmb_T`` [K],
-        ``achieved_superheat`` [K], ``binding_P`` [Pa], ``P_cmb`` [Pa] and
-        ``clamped`` (bool).
+        ``achieved_superheat`` [K], ``binding_P`` [Pa], ``P_cmb`` [Pa],
+        ``clamped`` (bool) and ``capped_by_ceiling`` (True when the clamp
+        entropy comes from ``S_ceiling``; that clamp is logged at INFO, since
+        the caller that sets the ceiling reports it).
 
     Raises
     ------
@@ -520,9 +522,10 @@ def solve_superliquidus_entropy_from_tables(
         'binding_P': P_bind,
         'P_cmb': P_cmb,
         'clamped': clamped,
+        'capped_by_ceiling': bool(clamped and ceiling_src != 'the EOS table'),
     }
     if clamped:
-        log.warning(
+        (log.info if out['capped_by_ceiling'] else log.warning)(
             'liquidus_super: the requested superheat of %.0f K is not reachable '
             'below %s (highest usable entropy %.1f J/kg/K). The initial '
             'entropy is clamped to that value, giving %.0f K of superheat at '
@@ -635,25 +638,26 @@ def compute_initial_entropy(
 
                 anchor = solve_superliquidus_adiabat(config, hf_row)
                 if anchor['clamped'] and not anchor.get('window_limited', False):
-                    S_ceiling = float(anchor['S_target'])
+                    res = solve_superliquidus_entropy_from_tables(
+                        config, hf_row, spider_eos_dir, S_ceiling=float(anchor['S_target'])
+                    )
                     delta = float(config.planet.delta_T_super)
                     key = (round(float(anchor['P_cmb']) / 1e6), round(delta, 3), mantle_eos)
-                    if key not in _ANCHOR_CAP_WARNED:
+                    if res['capped_by_ceiling'] and key not in _ANCHOR_CAP_WARNED:
                         _ANCHOR_CAP_WARNED.add(key)
                         log.warning(
                             'liquidus_super: the PALEOS P-T anchor reaches only %.0f K of '
-                            'the requested %.0f K superheat at P_cmb=%.0f GPa; the initial '
-                            'entropy is capped at the anchor entropy %.1f J/kg/K.',
+                            'the requested %.0f K superheat above the P-T liquidus at '
+                            'P_cmb=%.0f GPa; the initial entropy is capped at %.1f J/kg/K '
+                            '(anchor entropy %.1f J/kg/K), %.0f K above the P-S table liquidus.',
                             float(anchor['achieved_superheat']),
                             delta,
                             float(anchor['P_cmb']) / 1e9,
-                            S_ceiling,
+                            float(res['S_target']),
+                            float(anchor['S_target']),
+                            float(res['achieved_superheat']),
                         )
-                    return float(
-                        solve_superliquidus_entropy_from_tables(
-                            config, hf_row, spider_eos_dir, S_ceiling=S_ceiling
-                        )['S_target']
-                    )
+                    return float(res['S_target'])
         elif not spider_eos_dir:
             raise FileNotFoundError(
                 "temperature_mode='liquidus_super' with "

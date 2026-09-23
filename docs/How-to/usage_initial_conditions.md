@@ -124,10 +124,30 @@ depth.
     `delta_T_super`, the initial entropy is capped at the anchor entropy, and
     a warning names the superheat the anchor reached. The generated P-S tables
     fill cells where PALEOS has no valid state, so on their own they can
-    report a superheat that PALEOS does not support; the cap puts the initial
-    adiabat on the hottest valid PALEOS adiabat (within 6 K at the core-mantle
-    boundary for 10 Earth masses). With
-    `"dummy"` and PALEOS-generated tables there is no anchor, so a large
+    report a superheat that PALEOS does not support. For 10 Earth masses
+    (core-mantle boundary at 1474 GPa) and `delta_T_super = 5000` K, the
+    capped initial adiabat matches the anchor within 0.1 K at the surface and
+    at the core-mantle boundary, and is up to 38 K colder near 1.25 GPa: at
+    these entropies the first P-S table row above 1 bar (1.26 GPa) holds
+    cells filled with the 1 bar values.
+
+    This cap has two known limits:
+
+    - The cap applies only when the anchor clamps. The anchor measures the
+      superheat against the P-T liquidus and the initial entropy against the
+      P-S table liquidus, and the two curves differ. For 10 Earth masses the
+      anchor reaches a requested `delta_T_super` of up to about 1181 K, but
+      at the anchor edge entropy the P-S tables give only about 1135 K of
+      superheat. A request in between puts the initial entropy up to about 53 J/kg/K above the anchor
+      edge (at 1180 K the surface is 35 K and the core-mantle boundary 113 K
+      hotter than the anchor at its edge).
+    - For 10 Earth masses the anchor edge comes from a narrow band near 1 GPa
+      (0.99 to 1.08 GPa) where the PALEOS liquid table has no valid state at
+      these temperatures. Whether an adiabat is marked valid depends on
+      which pressures the adiabat samples in that band, so the edge, and the
+      cap with it, can shift with the core-mantle boundary pressure.
+
+    With `"dummy"` and PALEOS-generated tables there is no anchor, so a large
     `delta_T_super` can land in those filled cells. The two adiabats differ slightly: for 1 Earth
     mass at `delta_T_super = 500` K (core-mantle boundary at 103 GPa), the
     P-T anchor evaluated on the P-S tables has a smallest margin of 472 K

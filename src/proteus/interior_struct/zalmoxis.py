@@ -69,7 +69,10 @@ _JAX_NONVIABLE_LOGGED: bool = False
 def _clear_superliquidus_cache() -> None:
     """Drop the cached super-liquidus solves (used by tests to avoid leakage)."""
     global _SUPERLIQ_LAST_ANCHOR, _JAX_NONVIABLE_LOGGED
+    from proteus.interior_energetics.common import _ANCHOR_CAP_WARNED
+
     _SUPERLIQ_CACHE.clear()
+    _ANCHOR_CAP_WARNED.clear()
     _SUPERLIQ_LAST_ANCHOR = None
     _JAX_NONVIABLE_LOGGED = False
 

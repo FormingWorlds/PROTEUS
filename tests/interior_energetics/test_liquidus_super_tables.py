@@ -774,10 +774,11 @@ def _anchor_result(S_target, clamped=True, window_limited=False, achieved=150.0)
 def test_zalmoxis_anchor_clamp_caps_the_ic_entropy(
     fake_tables, monkeypatch, caplog, ini_dsdr, S_exp
 ):
-    """When the PALEOS P-T anchor clamps at the table, the P-S IC is capped at
-    the anchor entropy, so neither end of the initial adiabat is hotter than
-    the anchor; with ini_dsdr < 0 the deepest entropy stays at the cap. One
-    warning over repeated IC calls names the anchor superheat, delta and P_cmb.
+    """When the PALEOS P-T anchor clamps at the table, the P-S IC entropy is
+    capped at the anchor entropy; with ini_dsdr < 0 the deepest entropy stays
+    at the cap. Repeated IC calls log one warning in total, naming the anchor
+    superheat, delta, P_cmb, the capped and anchor entropies and the P-S
+    superheat.
     """
     zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
     monkeypatch.setattr(common, '_ANCHOR_CAP_WARNED', set())
@@ -794,11 +795,13 @@ def test_zalmoxis_anchor_clamp_caps_the_ic_entropy(
 
     assert S[0] == pytest.approx(S_exp, rel=1e-12)
     assert S[0] == S[1] == S[2]
-    msgs = [r.getMessage() for r in caplog.records if 'PALEOS P-T anchor' in r.getMessage()]
+    msgs = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     assert len(msgs) == 1
     assert 'reaches only 150 K of the requested 500 K' in msgs[0]
     assert 'P_cmb=100 GPa' in msgs[0]
-    assert 'anchor entropy 2300.0' in msgs[0]
+    assert f'capped at {S_exp:.1f} J/kg/K (anchor entropy 2300.0 J/kg/K)' in msgs[0]
+    superheat = A * S_exp + T0 - L0 - (L1 - B) * P_CMB / 1e9
+    assert f'{superheat:.0f} K above the P-S table liquidus' in msgs[0]
 
 
 @pytest.mark.parametrize(
@@ -810,19 +813,44 @@ def test_zalmoxis_anchor_clamp_caps_the_ic_entropy(
     ],
     ids=['reached', 'window-limited', 'cap-above-target'],
 )
-def test_zalmoxis_anchor_leaves_the_ic_uncapped(fake_tables, monkeypatch, anchor):
+def test_zalmoxis_anchor_leaves_the_ic_uncapped(fake_tables, monkeypatch, caplog, anchor):
     """An anchor that reaches delta, a clamp set by the search window rather
-    than the table, and a cap above the P-S target all leave the IC at delta.
+    than the table, and a cap above the P-S target all leave the IC at delta,
+    with no cap warning.
     """
     zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
     monkeypatch.setattr(common, '_ANCHOR_CAP_WARNED', set())
     monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', lambda config, hf_row: anchor)
 
-    S = compute_initial_entropy(
-        _config(500.0, module='zalmoxis'), {'P_cmb': P_CMB}, 3300.0, fake_tables
-    )
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        S = compute_initial_entropy(
+            _config(500.0, module='zalmoxis'), {'P_cmb': P_CMB}, 3300.0, fake_tables
+        )
 
     assert S == pytest.approx(_S_expected(500.0), rel=1e-6)
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_entropy_ceiling_above_the_table_maximum_is_ignored(fake_tables, caplog):
+    """An S_ceiling above the melt-table maximum leaves the table maximum as the
+    clamp, reported as a table clamp at WARNING; a lower one binds instead.
+    """
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.common'):
+        high = solve_superliquidus_entropy_from_tables(
+            _config(1000.0), {'P_cmb': P_CMB}, fake_tables, S_ceiling=S_MAX + 500.0
+        )
+        low = solve_superliquidus_entropy_from_tables(
+            _config(1000.0), {'P_cmb': P_CMB}, fake_tables, S_ceiling=S_MAX - 200.0
+        )
+
+    assert high['S_target'] == pytest.approx(S_MAX, rel=1e-12)
+    assert high['capped_by_ceiling'] is False
+    assert low['S_target'] == pytest.approx(S_MAX - 200.0, rel=1e-12)
+    assert low['capped_by_ceiling'] is True
+    clamp = [r for r in caplog.records if 'is not reachable below' in r.getMessage()]
+    assert [r.levelno for r in clamp] == [logging.WARNING, logging.INFO]
+    assert 'below the EOS table' in clamp[0].getMessage()
+    assert 'below the P-T anchor entropy' in clamp[1].getMessage()
 
 
 def test_zalmoxis_route_with_a_non_paleos_mantle_skips_the_anchor(fake_tables, monkeypatch):
@@ -1052,3 +1080,15 @@ def test_aragog_setup_and_ic_share_one_table_load(monkeypatch, tmp_path):
     assert setup_eos is ic_eos
     assert copy_eos is not ic_eos
     assert made == [str(src), str(copy)]
+
+
+def test_clearing_the_anchor_cache_rearms_the_cap_warning():
+    """The cap warning is deduplicated with the same lifetime as the anchor
+    memo, so clearing the memo also clears the warned keys.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    common._ANCHOR_CAP_WARNED.add((100000, 500.0, 'PALEOS-2phase:MgSiO3'))
+
+    zal._clear_superliquidus_cache()
+
+    assert common._ANCHOR_CAP_WARNED == set()

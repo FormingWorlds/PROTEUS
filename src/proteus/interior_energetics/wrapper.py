@@ -1189,8 +1189,7 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
 
         log.warning(
             'liquidus_super IC adiabat: no P-T anchor at P_cmb=%.0f GPa (%s); falling '
-            'back to the linear-guess structure. The initial entropy re-checks the '
-            'anchor at the converged P_cmb.',
+            'back to the linear-guess structure.',
             resolve_P_cmb(hf_row, config)[0] / 1e9,
             exc,
         )
