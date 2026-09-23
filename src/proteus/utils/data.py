@@ -1516,12 +1516,15 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
     # Try MORS download first
     try:
         mors_data.DownloadEvolutionTracks(track)
-        # Verify the download landed. A migrated MORS fetches Baraffe through
-        # fwl-io into its versioned directory and exposes baraffe_data_dir to
-        # resolve it; an older MORS wrote Baraffe to the legacy path, like Spada.
-        # Verify wherever this MORS version actually placed the tracks.
+        # Verify the download landed. A migrated MORS fetches a track set
+        # through fwl-io into its versioned directory and exposes a
+        # <track>_data_dir accessor to resolve it; an older MORS wrote the
+        # tracks to the legacy path. Verify wherever this MORS version
+        # actually placed them.
         if track == 'Baraffe' and hasattr(mors_data, 'baraffe_data_dir'):
             tracks_path = mors_data.baraffe_data_dir()
+        elif track == 'Spada' and hasattr(mors_data, 'spada_data_dir'):
+            tracks_path = mors_data.spada_data_dir()
         else:
             tracks_path = GetFWLData() / 'stellar_evolution_tracks' / track
         if tracks_path.exists() and any(tracks_path.iterdir()):
