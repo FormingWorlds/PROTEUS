@@ -200,6 +200,9 @@ def _margin_kink_pressures(eos: EntropyEOS) -> np.ndarray:
     between liquidus-file nodes, so the margin ``T(P, S) - T(P, S_liq(P))``
     has kinks only at the melt-table pressure nodes, the liquidus-file nodes,
     and the pressures where ``S_liq(P)`` crosses a melt-table entropy node.
+    The margin is exact at these kinks; between two of them the bilinear
+    cross term makes it a parabola that can sag below both ends, by up to
+    about 1 K on the PALEOS tables.
 
     Parameters
     ----------

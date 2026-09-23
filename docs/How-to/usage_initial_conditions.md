@@ -115,6 +115,12 @@ marginally molten, just touching the liquidus at the binding depth.
     P-T anchor evaluated on the P-S tables has a smallest margin of 472 K
     above their liquidus, against 500 K for the initial entropy.
 
+    The superheat is checked exactly at every pressure where the margin can
+    change slope: the table pressure nodes, the liquidus-file nodes, and the
+    pressures where the liquidus entropy crosses a table entropy node.
+    Between two such pressures the bilinear table can let the margin sag by
+    up to about 1 K on the PALEOS tables.
+
     The core-mantle boundary pressure must lie inside the table; PROTEUS raises
     if it is above the table maximum or if the table liquidus is undefined at
     any evaluated pressure. If the requested superheat exceeds what the tables
