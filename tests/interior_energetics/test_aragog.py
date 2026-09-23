@@ -1425,3 +1425,56 @@ def test_solve_with_retry_first_solve_rejects_non_finite_tcore(monkeypatch):
     with pytest.raises(RuntimeError, match='non-finite'):
         runner._solve_with_retry(hf_row, interior_o)
     assert solver.solve.call_count == 6
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_paleos_melting_curves_follow_mzf_in_reused_outdir(tmp_path):
+    """Curves in a reused output directory are rebuilt for the current mzf.
+
+    A resumed run keeps ``<outdir>/data``. The solidus table must be rewritten
+    for the new ``mushy_zone_factor`` rather than reused from the earlier run,
+    and the liquidus table must stay unchanged. A mutant that skips writing
+    when the solidus file already exists leaves the mzf = 0.8 table in place
+    and fails the ratio check.
+    """
+    from proteus.interior_energetics.aragog import _write_paleos_melting_curves
+
+    def _run(mzf):
+        config = MagicMock()
+        config.interior_struct.zalmoxis.mantle_eos = 'PALEOS-API:MgSiO3'
+        config.interior_struct.zalmoxis.mushy_zone_factor = mzf
+        sol, liq = _write_paleos_melting_curves(tmp_path, config)
+        return np.loadtxt(sol), np.loadtxt(liq)
+
+    sol_a, liq_a = _run(0.8)
+    sol_b, liq_b = _run(0.7)
+
+    np.testing.assert_allclose(sol_a[:, 1] / liq_a[:, 1], 0.8, rtol=1e-12)
+    np.testing.assert_allclose(sol_b[:, 1] / liq_b[:, 1], 0.7, rtol=1e-12)
+    np.testing.assert_array_equal(liq_a, liq_b)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_helpfile_output_t_cmb_node_is_cmb_basic_node():
+    """``T_cmb_node`` is the first basic-node temperature, ``T_cmb`` the bottom cell.
+
+    Aragog orders basic nodes from the CMB to the surface, so the CMB node is
+    ``T_basic[0]``. The values differ here (as when the bottom cell drains),
+    so an index-``[-1]`` read or a copy of ``T_core`` fails.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    out = MagicMock()
+    out.T_core = 3800.0
+    out.T_basic = np.array([4100.0, 3900.0, 3500.0, 3000.0])
+    out.r_basic = np.array([3.5e6, 4.5e6, 5.5e6, 6.4e6])
+    out.mass_stag = np.ones(3)
+
+    with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
+        res = AragogRunner._build_helpfile_output(out, {'F_atm': 1e5})
+
+    assert res['T_cmb_node'] == pytest.approx(4100.0)
+    assert res['T_cmb'] == pytest.approx(3800.0)
+    assert res['T_cmb_node'] != pytest.approx(res['T_cmb'])

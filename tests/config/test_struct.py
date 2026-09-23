@@ -176,14 +176,22 @@ class TestZalmoxisMushyZoneWarning:
     """
 
     @staticmethod
-    def _warns(caplog, mantle_eos, mzf=0.8):
+    def _warns(caplog, mantle_eos, mzf=0.8, core_eos='Seager2007:iron', ice_layer_eos=None):
         """Construct a zalmoxis Struct and report whether the no-effect
-        warning fired for ``mantle_eos`` at the given factor."""
+        warning fired for the given layer EOS at the given factor.
+
+        The core defaults to a file-curve EOS so that ``mantle_eos`` alone
+        decides the outcome."""
         caplog.clear()
         with caplog.at_level(logging.WARNING, logger='fwl.proteus.config._struct'):
             Struct(
                 module='zalmoxis',
-                zalmoxis=Zalmoxis(mantle_eos=mantle_eos, mushy_zone_factor=mzf),
+                zalmoxis=Zalmoxis(
+                    core_eos=core_eos,
+                    mantle_eos=mantle_eos,
+                    ice_layer_eos=ice_layer_eos,
+                    mushy_zone_factor=mzf,
+                ),
             )
         return any('has no effect' in r.getMessage() for r in caplog.records)
 
@@ -203,6 +211,28 @@ class TestZalmoxisMushyZoneWarning:
         factor has no effect and the warning must fire."""
         for eos in ('WolfBower2018:MgSiO3', 'RTPress100TPa:MgSiO3'):
             assert self._warns(caplog, eos), eos
+
+    def test_warning_silent_when_only_the_core_is_paleos(self, caplog):
+        """A unified PALEOS core density depends on the factor, so a
+        WolfBower2018 mantle above it does not make the setting inert."""
+        assert not self._warns(caplog, 'WolfBower2018:MgSiO3', core_eos='PALEOS:iron')
+
+    def test_warning_silent_when_only_the_ice_layer_is_paleos(self, caplog):
+        """A PALEOS ice layer also honors the factor."""
+        assert not self._warns(
+            caplog,
+            'WolfBower2018:MgSiO3',
+            ice_layer_eos='PALEOS:H2O',
+        )
+
+    def test_warning_fires_when_no_layer_is_paleos(self, caplog):
+        """Paired negative: with no PALEOS layer anywhere, the warning fires."""
+        assert self._warns(
+            caplog,
+            'WolfBower2018:MgSiO3',
+            core_eos='Seager2007:iron',
+            ice_layer_eos='Seager2007:H2O',
+        )
 
     def test_warning_tracks_the_factor_not_only_the_eos(self, caplog):
         """The warning depends on mushy_zone_factor < 1: at the sharp-boundary

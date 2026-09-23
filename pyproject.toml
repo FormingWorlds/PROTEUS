@@ -53,7 +53,7 @@ dependencies = [
     # lookups, which the super-liquidus interior initial condition
     # requires (Zalmoxis #79), on top of the JAX structure path for
     # unified PALEOS and wet mantles (Zalmoxis #78).
-    "fwl-zalmoxis>=26.07.17",
+    "fwl-zalmoxis>=26.09.21",
     # The default Aragog interior solver runs on JAX: its eos/phase/solver
     # modules are equinox Modules, so jax, jaxlib, and equinox are needed by
     # a standard run, not only by the optional atmodeller backend. The three
@@ -82,11 +82,11 @@ dependencies = [
     "sympy",
     "astropy",
     "toml",
-    # 26.7.25 bounds the time a fetch can take: every request carries an
+    # This floor bounds the time a fetch can take: every request carries an
     # explicit connect and read timeout, and a transient failure is retried
     # with backoff instead of ending the fetch. Below that floor a stalled
     # mirror hangs the start of a run with no diagnostic.
-    "fwl-io>=26.7.25",
+    "fwl-io>=26.8.31",
     "zenodo-get",
     "zenodo-client>=0.4.1",
     "osfclient",
