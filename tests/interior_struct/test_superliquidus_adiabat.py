@@ -139,21 +139,27 @@ class TestSolveSuperliquidusReal:
 
         import numpy as np
 
-        import proteus.interior_struct.zalmoxis as zmod
+        from proteus.interior_struct.zalmoxis import (
+            load_zalmoxis_solidus_liquidus_functions,
+            solve_superliquidus_adiabat,
+        )
 
-        real = zmod.load_zalmoxis_solidus_liquidus_functions
+        real = load_zalmoxis_solidus_liquidus_functions
 
         def _hot_liquidus(mantle_eos, config):
             sol, liq = real(mantle_eos, config)
             return sol, (lambda P: np.asarray(liq(P), dtype=float) + 1500.0)
 
-        monkeypatch.setattr(zmod, 'load_zalmoxis_solidus_liquidus_functions', _hot_liquidus)
+        monkeypatch.setattr(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
+            _hot_liquidus,
+        )
         cfg = _cfg('S1_m1_dyn_IW4.toml')
         object.__setattr__(cfg.planet, 'delta_T_super', 0.0)
         with pytest.raises(
             RuntimeError, match='no fully-molten initial condition is reachable'
         ) as exc:
-            zmod.solve_superliquidus_adiabat(cfg, {'P_cmb': 1.42e11})
+            solve_superliquidus_adiabat(cfg, {'P_cmb': 1.42e11})
         msg = str(exc.value)
         assert 'below the liquidus' in msg
         assert re.search(r'surface T=47[67]\d K', msg), msg
