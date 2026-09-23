@@ -37,22 +37,23 @@ install in the same directory reproduces exactly what it records. Run
 
 ## Kapteyn
 
-Kapteyn provides no netcdf-fortran. As in the
-[conda instructions](kapteyn_cluster_guide.md), it has to come from the
-environment, and SOCRATES needs its library directory on `LD_LIBRARY_PATH` at
-run time:
+Kapteyn provides no netcdf-fortran (see the
+[Kapteyn guide](kapteyn_cluster_guide.md)), so it has to come from the
+environment, together with a gfortran that can read its Fortran module files.
+The system gfortran is too old for the current conda-forge build:
 
 ```console
-pixi add netcdf-fortran
+pixi add netcdf-fortran gfortran
 ```
 
-and add to `pixi.toml`:
+SOCRATES also needs the library directory on `LD_LIBRARY_PATH` at run time, so
+add to `pixi.toml`:
 
 ```toml
 [activation.env]
 LD_LIBRARY_PATH = "$CONDA_PREFIX/lib"
 ```
 
-Both are local edits to a tracked file.
+These are local edits to a tracked file.
 [#886](https://github.com/FormingWorlds/PROTEUS/issues/886) looks into removing
 the need for the run-time path.
