@@ -62,7 +62,7 @@ def _shared_config(delta):
     from types import SimpleNamespace
 
     return SimpleNamespace(
-        planet=SimpleNamespace(delta_T_super=delta, ini_dsdr=0.0, mass_tot=5.972e24),
+        planet=SimpleNamespace(delta_T_super=delta, ini_dsdr=0.0, mass_tot=1.0),
         interior_struct=SimpleNamespace(
             core_frac=0.5,
             core_frac_mode='mass',
@@ -637,3 +637,36 @@ def test_zalmoxis_path_raises_when_superheat_dips_between_scan_points(monkeypatc
         solve_superliquidus_adiabat(_shared_config(delta=1000.0), {'P_cmb': 100e9})
     assert 'between T=2221 K' in str(exc.value)
     assert 'P_cmb=100 GPa' in str(exc.value)
+
+
+def test_aragog_cross_check_reuses_the_ic_anchor(monkeypatch, tmp_path):
+    """On the Zalmoxis route the IC solves the P-T anchor at the final P_cmb;
+    the Aragog cross-check then asks for the same anchor and gets the cached
+    result, so a fresh aragog run pays for one P-T solve, not two.
+    """
+    import zalmoxis.eos_export as eos_export
+
+    from proteus.interior_energetics.common import compute_initial_entropy
+
+    _install_zalmoxis_deps(monkeypatch)
+    monkeypatch.setattr(common, '_load_entropy_eos', lambda eos_dir: _FakeEOS())
+    inner = eos_export.compute_entropy_adiabat
+    probes = []
+
+    def _counting(*args, **kwargs):
+        probes.append(kwargs.get('T_surface'))
+        return inner(*args, **kwargs)
+
+    monkeypatch.setattr(eos_export, 'compute_entropy_adiabat', _counting)
+    config = _shared_ic_config(delta=200.0, ic_module='aragog')
+    config.interior_struct.module = 'zalmoxis'
+    hf_row = {'P_cmb': 100e9}
+
+    S_ic = compute_initial_entropy(config, hf_row, spider_eos_dir=str(tmp_path))
+    n_after_ic = len(probes)
+    anchor = solve_superliquidus_adiabat(config, hf_row)
+
+    assert n_after_ic > 0
+    assert len(probes) == n_after_ic
+    assert anchor['surface_T'] == pytest.approx(_surface_T_for(200.0), abs=0.5)
+    assert S_ic == pytest.approx((200.0 + (L0 - T0) + (L1 - B) * 100.0) / A, rel=1e-9)

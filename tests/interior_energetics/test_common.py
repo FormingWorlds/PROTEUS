@@ -913,8 +913,8 @@ def test_compute_initial_entropy_adiabatic_from_cmb_uses_provided_pcmb_no_fallba
     monkeypatch, caplog
 ):
     """When P_cmb IS supplied in hf_row, the NL20 fallback warning must NOT
-    fire. Anti-happy-path: this pins the gate ``not P_cmb or P_cmb <= 0``,
-    catching a regression that always fell to the NL20 path regardless of
+    fire. Anti-happy-path: this pins ``resolve_P_cmb``'s use of a populated
+    P_cmb, catching a regression that always fell to the NL20 path regardless of
     user input.
     """
     import sys
@@ -954,7 +954,7 @@ def test_compute_initial_entropy_adiabatic_from_cmb_negative_pcmb_falls_back(
     monkeypatch, caplog
 ):
     """A non-positive P_cmb in hf_row also triggers the NL20 fallback. This
-    pins the second clause of the ``not P_cmb or P_cmb <= 0`` gate.
+    pins the ``float(P_cmb) > 0`` check in ``resolve_P_cmb``.
     """
     import sys
     from types import SimpleNamespace
@@ -994,9 +994,8 @@ def test_compute_initial_entropy_adiabatic_from_cmb_negative_pcmb_falls_back(
 
 def test_compute_initial_entropy_adiabatic_from_cmb_nan_pcmb_falls_back(monkeypatch, caplog):
     """A NaN P_cmb in hf_row also triggers the NL20 fallback. This pins the
-    third clause of the ``not P_cmb or P_cmb <= 0 or not np.isfinite(...)``
-    gate: ``not float('nan')`` is False and ``float('nan') <= 0`` is False,
-    so only the isfinite clause catches it.
+    ``np.isfinite`` check in ``resolve_P_cmb``: a NaN is truthy and passes
+    no comparison, so only the finite check catches it.
     """
     import math
     import sys

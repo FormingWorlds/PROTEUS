@@ -321,8 +321,9 @@ def test_missing_p_cmb_uses_mass_aware_estimate(fake_tables, monkeypatch):
 
 
 def test_nan_p_cmb_uses_mass_aware_estimate(fake_tables, monkeypatch):
-    """A NaN P_cmb also falls back to the Noack and Lasbleis estimate; the
-    ``not P_cmb or P_cmb <= 0`` gate alone does not catch NaN.
+    """A NaN P_cmb also falls back to the Noack and Lasbleis estimate:
+    ``resolve_P_cmb``'s finite check catches it where a sign check alone
+    would not.
     """
     monkeypatch.setattr(
         'proteus.utils.structure_estimate.estimate_P_cmb_NL20', lambda m, f, mode: 7.5e10
@@ -544,7 +545,7 @@ def test_liquidus_crossing_a_table_entropy_node_is_checked(fake_tables, monkeypa
 
     class _CrossEOS(_FakeEOS):
         _liquidus = {'P': P_file, 'S': _FakeEOS().liquidus_entropy(P_file)}
-        _tables = {'temperature_melt': {'P': P_file, 'S': np.array([S_x])}}
+        _tables = {'temperature_melt': {'P': P_file, 'S': np.array([0.0, S_x, S_MAX])}}
 
         def temperature(self, P, S):
             hat = np.clip(1.0 - np.abs(np.asarray(S, dtype=float) - S_x) / 0.75, 0.0, None)
@@ -592,6 +593,52 @@ def test_margin_kink_pressures_find_every_crossing():
     expected = [1.25, 1.5, 1.75, 2.5, 4.25, 4.75]
     np.testing.assert_allclose(crossings, expected, rtol=0, atol=1e-12)
     assert kinks.size == P_file.size + 1 + len(expected)
+
+
+class _NarrowMeltEOS(_FakeEOS):
+    """Solid table reaches 0-3000 J/kg/K, melt table only 1700-2600."""
+
+    _tables = {
+        'temperature_melt': {'P': np.array([1e4, 1e13]), 'S': np.array([1700.0, 2600.0])}
+    }
+
+
+def test_liquidus_below_the_melt_table_raises(fake_tables, monkeypatch):
+    """T(P, S_liq) reads the melt table, so a liquidus entropy below the melt
+    table's lowest entropy (1625 + 2.5 P_GPa < 1700 for P < 30 GPa) is
+    undefined even though the solid table covers it.
+    """
+    monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _NarrowMeltEOS())
+
+    with pytest.raises(
+        common.InitialConditionError, match='table liquidus is undefined'
+    ) as exc:
+        solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+    assert 'table entropy from 1700 J/kg/K' in str(exc.value)
+
+
+def test_melt_table_maximum_is_the_entropy_ceiling(fake_tables, monkeypatch):
+    """The molten adiabat reads the melt table, so the clamp ceiling is the
+    melt table's highest entropy (2600), not the 3000 J/kg/K overall maximum.
+    """
+
+    class _Eos(_NarrowMeltEOS):
+        S_min = 1500.0  # liquidus stays inside the melt range at every P
+
+    monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _Eos())
+    monkeypatch.setattr(
+        _Eos,
+        '_tables',
+        {'temperature_melt': {'P': np.array([1e4, 1e13]), 'S': np.array([1600.0, 2600.0])}},
+    )
+
+    res = solve_superliquidus_entropy_from_tables(
+        _config(1500.0), {'P_cmb': P_CMB}, fake_tables
+    )
+
+    assert res['clamped'] is True
+    assert res['S_target'] == pytest.approx(2600.0, rel=1e-12)
+    assert res['achieved_superheat'] == pytest.approx(A * 2600.0 - (L0 - T0) - (L1 - B) * 100.0)
 
 
 def test_ini_dsdr_without_radii_warns(fake_tables, caplog):
@@ -647,17 +694,20 @@ def test_p_cmb_above_table_maximum_raises(fake_tables, monkeypatch):
     assert 'table covers 1e-05 to 200 GPa' in msg
 
 
-def test_ic_entropy_never_reads_zalmoxis_for_any_structure_module(fake_tables, monkeypatch):
+def test_ic_entropy_reads_zalmoxis_only_on_the_zalmoxis_route(fake_tables, monkeypatch):
     """The initial entropy comes from the P-S tables for every structure
-    module, the Zalmoxis structure included: the solve completes with every
-    Zalmoxis entry point raising, and all three modules give the same S.
+    module. The spider and dummy routes never touch Zalmoxis; the Zalmoxis
+    route calls the P-T anchor once, and an anchor that reaches delta leaves
+    the entropy equal to the other routes.
     """
     zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    calls = []
 
-    def _boom(*args, **kwargs):
-        raise AssertionError('Zalmoxis was called for the initial entropy')
+    def _anchor(config, hf_row):
+        calls.append(config.interior_struct.module)
+        return {'clamped': False, 'achieved_superheat': 200.0, 'P_cmb': P_CMB}
 
-    monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _boom)
+    monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _anchor)
     monkeypatch.setitem(sys.modules, 'zalmoxis.melting_curves', None)
 
     S = {
@@ -667,9 +717,59 @@ def test_ic_entropy_never_reads_zalmoxis_for_any_structure_module(fake_tables, m
         for module in ('spider', 'dummy', 'zalmoxis')
     }
 
+    assert calls == ['zalmoxis']
     for module, value in S.items():
         assert value == pytest.approx(_S_expected(200.0), rel=1e-6), module
     assert S['zalmoxis'] == pytest.approx(S['dummy'], rel=1e-12)
+
+
+@pytest.mark.parametrize('achieved', [150.0, 0.0])
+def test_zalmoxis_anchor_clamp_caps_the_ic_superheat(
+    fake_tables, monkeypatch, caplog, achieved
+):
+    """When the PALEOS P-T anchor clamps below delta, the P-S tables (whose
+    filled cells hide the validity ceiling) are solved for the superheat the
+    anchor reached, with one warning naming both numbers and P_cmb.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    monkeypatch.setattr(
+        zal,
+        'solve_superliquidus_adiabat',
+        lambda config, hf_row: {
+            'clamped': True,
+            'achieved_superheat': achieved,
+            'P_cmb': P_CMB,
+        },
+    )
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        S = compute_initial_entropy(
+            _config(500.0, module='zalmoxis'), {'P_cmb': P_CMB}, 3300.0, fake_tables
+        )
+
+    assert S == pytest.approx(_S_expected(achieved), rel=1e-6)
+    msgs = [r.getMessage() for r in caplog.records if 'PALEOS P-T anchor' in r.getMessage()]
+    assert len(msgs) == 1
+    assert f'reaches only {achieved:.0f} K of the requested 500 K' in msgs[0]
+    assert 'P_cmb=100 GPa' in msgs[0]
+
+
+def test_zalmoxis_anchor_raise_is_the_ic_raise(fake_tables, monkeypatch):
+    """No molten P-T anchor at this P_cmb means no initial condition on the
+    Zalmoxis route: the anchor's InitialConditionError reaches the caller.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+
+    def _raise(config, hf_row):
+        raise common.InitialConditionError('liquidus_super: no valid molten adiabat found')
+
+    monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _raise)
+
+    with pytest.raises(common.InitialConditionError, match='no valid molten adiabat') as exc:
+        compute_initial_entropy(
+            _config(500.0, module='zalmoxis'), {'P_cmb': P_CMB}, 3300.0, fake_tables
+        )
+    assert 'P-S' not in str(exc.value)
 
 
 def test_zalmoxis_structure_without_table_dir_raises_initial_condition_error(tmp_path):
@@ -827,3 +927,35 @@ def test_route_check_ignores_other_temperature_modes_and_solvers():
     # solver both apply.
     with pytest.raises(ValueError):
         planet_liquidus_super_needs_tables(_instance('spider', struct), None, planet_ls)
+
+
+def test_aragog_setup_and_ic_share_one_table_load(monkeypatch, tmp_path):
+    """The Aragog solver setup and the liquidus_super IC read the same table
+    set through one cache, so a fresh aragog run builds EntropyEOS once; a
+    copy with the same names, sizes and modification times reuses it.
+    """
+    import shutil
+
+    from proteus.interior_energetics.aragog import _cached_entropy_eos
+
+    made = []
+
+    class _Counting:
+        def __init__(self, d):
+            made.append(d)
+
+    aragog_entropy = pytest.importorskip('aragog.eos.entropy')
+    monkeypatch.setattr(aragog_entropy, 'EntropyEOS', _Counting)
+    monkeypatch.setattr(common, '_EOS_CACHE', {})
+    src = tmp_path / 'spider_eos'
+    src.mkdir()
+    (src / 'density_melt.dat').write_text('1 2 3\n')
+    copy = tmp_path / 'copy'
+    shutil.copytree(src, copy, copy_function=shutil.copy2)
+
+    setup_eos = _cached_entropy_eos(str(src))
+    ic_eos = common._load_entropy_eos(str(src))
+    copy_eos = common._load_entropy_eos(str(copy))
+
+    assert len(made) == 1
+    assert setup_eos is ic_eos is copy_eos

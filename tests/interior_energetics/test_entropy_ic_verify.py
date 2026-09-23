@@ -582,11 +582,11 @@ def _patch_crosscheck_eos(monkeypatch, tmp_path, surface_T, p_cmb):
 
 
 @pytest.mark.physics_invariant
-def test_aragog_verify_raises_on_cold_surface_liquidus_super(monkeypatch, tmp_path):
+def test_aragog_verify_warns_on_cold_surface_liquidus_super(monkeypatch, tmp_path, caplog):
     """A liquidus_super IC that unpacks to a COLD surface beyond the Fei+2021
-    calibration is rejected: the cross-check raises, because that steeply
-    inverted profile is the energy-non-conserving cold-surface initial
-    condition the guard exists to catch.
+    calibration is reported with a warning that names the inverted surface,
+    not raised: the IC comes from the P-S tables and the reference is the P-T
+    anchor, so the check is diagnostic.
     """
     from proteus.interior_energetics.aragog import AragogRunner
 
@@ -606,14 +606,16 @@ def test_aragog_verify_raises_on_cold_surface_liquidus_super(monkeypatch, tmp_pa
         S_stag=np.full(P_stag.size, 10000.0),
         temperature_scalar_fn=cold_T,
     )
-    with pytest.raises(RuntimeError, match='cold-surface inversion') as exc:
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.aragog'):
         AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path), {'P_cmb': p_cmb})
-    msg = str(exc.value)
-    # The message must name the mode and the out-of-calibration pressure so the
-    # failure is actionable, and report the cold unpacked surface (2900 K) it
-    # caught against the intended ~4243 K adiabat anchor.
-    assert 'liquidus_super' in msg and 'GPa' in msg
-    assert '2900 K' in msg
+    msgs = [
+        r.getMessage() for r in caplog.records if 'cold-surface inversion' in r.getMessage()
+    ]
+    # The warning names the mode and the out-of-calibration pressure, and the
+    # cold unpacked surface (2900 K) against the ~4243 K adiabat anchor.
+    assert len(msgs) == 1
+    assert 'liquidus_super' in msgs[0] and 'GPa' in msgs[0]
+    assert 'surface T=2900 K' in msgs[0]
 
 
 def test_aragog_verify_no_raise_on_warm_surface_liquidus_super(monkeypatch, tmp_path):

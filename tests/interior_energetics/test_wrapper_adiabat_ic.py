@@ -1500,3 +1500,25 @@ def test_monotonic_radius_tolerance_is_tiny_and_positive():
     # Discrimination: the band is well below the ~1e-4 representation up-step the
     # guard must catch, and not, e.g., a 1e-2 typo that would absorb real rises.
     assert _MONOTONIC_RINT_REL_TOL < 1.0e-6
+
+
+def test_adiabat_tp_reraises_initial_condition_error():
+    """No molten adiabat at this P_cmb is an initial-condition failure, not a
+    construction problem: the builder re-raises it instead of falling back to
+    the linear-guess structure, while other RuntimeErrors still fall back.
+    """
+    from proteus.interior_energetics.common import InitialConditionError
+
+    config = _config()
+    with patch(
+        'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',
+        side_effect=InitialConditionError('liquidus_super: no valid molten adiabat found'),
+    ):
+        with pytest.raises(InitialConditionError, match='no valid molten adiabat'):
+            _build_superliquidus_adiabat_tp(config, {}, P_cmb_target=1.4e12)
+
+    with patch(
+        'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',
+        side_effect=RuntimeError('transient EOS failure'),
+    ):
+        assert _build_superliquidus_adiabat_tp(config, {}, P_cmb_target=1.4e12) is None

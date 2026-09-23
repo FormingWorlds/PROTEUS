@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
-from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.common import InitialConditionError, Interior_t
 from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
 from proteus.utils.helper import UpdateStatusfile
@@ -1181,6 +1181,9 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
             solid_eos_file=solid_eos,
             liquid_eos_file=liquid_eos,
         )
+    except InitialConditionError:
+        # No molten adiabat exists at this P_cmb; the linear guess would hide it.
+        raise
     except (
         ImportError,
         ModuleNotFoundError,
@@ -1904,7 +1907,6 @@ def run_interior(
 
     if config.interior_energetics.module == 'spider':
         # Import
-        from proteus.interior_energetics.common import InitialConditionError
         from proteus.interior_energetics.spider import ReadSPIDER, RunSPIDER
 
         # Run SPIDER (pass external mesh file if available from Zalmoxis).

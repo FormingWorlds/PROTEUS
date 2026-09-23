@@ -16,7 +16,6 @@ import pandas as pd
 import platformdirs
 
 from aragog import aragog_file_logger
-from aragog.eos.entropy import EntropyEOS
 from aragog.mesh import derive_core_density_from_mesh
 from aragog.solver import EntropySolver, SolverOutput
 from aragog.parser import (
@@ -60,7 +59,6 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN = 200.0
 
 
-_entropy_eos_cache: dict = {}
 _entropy_eos_jax_cache: dict = {}
 
 
@@ -138,21 +136,15 @@ def _eos_content_key(eos_dir_str: str) -> str:
 
 
 def _cached_entropy_eos(eos_dir_str: str):
-    """Construct an EntropyEOS, caching by content fingerprint.
+    """Return the shared, cached EntropyEOS for ``eos_dir_str``.
 
-    PALEOS table load + scipy interpolator construction takes ~10 s on
-    macOS arm64 and ~390 s on Linux x86 per PROTEUS timestep. The result
-    depends only on the file contents and is read-only after
-    construction (pure lookup methods, no mutation API), so a single
-    cached instance can be shared across PROTEUS timesteps and across
-    pytest tests in the same process.
+    The table load and interpolator construction is slow and the result is
+    read-only, so the solver setup and the liquidus_super initial condition
+    share one instance through ``common._load_entropy_eos``.
     """
-    key = _eos_content_key(eos_dir_str)
-    cached = _entropy_eos_cache.get(key)
-    if cached is None:
-        cached = EntropyEOS(Path(eos_dir_str))
-        _entropy_eos_cache[key] = cached
-    return cached
+    from proteus.interior_energetics.common import _load_entropy_eos
+
+    return _load_entropy_eos(eos_dir_str)
 
 
 def _cached_entropy_eos_jax(eos_dir_str: str):
@@ -1428,10 +1420,9 @@ class AragogRunner:
         solver, this function independently computes a PALEOS adiabat via
         ``zalmoxis.eos_export.compute_entropy_adiabat`` and compares its T(P)
         against the T(P) derived from Aragog's initialized entropy via the
-        P-S EOS tables. The comparison is diagnostic: a mismatch above 1% logs
-        a warning, and a mismatch above 5% raises a ``RuntimeError`` only for
-        a liquidus_super IC with a cold surface beyond the Fei+2021 calibration
-        pressure.
+        P-S EOS tables. The comparison is diagnostic and never raises: a
+        mismatch above 1% logs a warning, and so does a liquidus_super IC
+        with a cold surface beyond the Fei+2021 calibration pressure.
 
         Parameters
         ----------
@@ -1637,8 +1628,8 @@ class AragogRunner:
                 #
                 # The signature that separates (2) from (1) is the COLD SURFACE,
                 # not the verdict magnitude: benign drift can also exceed the
-                # FAIL threshold, so gating the raise on the verdict alone would
-                # wrongly block a correctly-anchored high-mass run.
+                # FAIL threshold. The IC comes from the P-S tables and the
+                # reference is the P-T anchor, so (2) is reported, not raised.
                 isurf = int(np.argmin(P_stag))
                 surface_too_cold = T_stag_aragog[isurf] < 0.9 * T_adiabat_interp[isurf]
                 is_liquidus_super = config.planet.temperature_mode == 'liquidus_super'
@@ -1647,18 +1638,20 @@ class AragogRunner:
                     and P_cmb_adiabat > FEI2021_LIQUIDUS_P_CALIB_PA
                     and surface_too_cold
                 ):
-                    raise RuntimeError(
-                        f'Entropy IC cross-check FAILED with a cold-surface '
-                        f'inversion (surface T={T_stag_aragog[isurf]:.0f} K vs '
-                        f'adiabat {T_adiabat_interp[isurf]:.0f} K; max '
-                        f'{max_diff:.0f} K / {max_rel:.1f}%) for liquidus_super '
-                        f'at P_cmb={P_cmb_adiabat / 1e9:.0f} GPa, beyond the '
-                        f'Fei+2021 calibration '
-                        f'(~{FEI2021_LIQUIDUS_P_CALIB_PA / 1e9:.0f} GPa). The '
-                        'initial condition unpacks to a steeply inverted, '
-                        'energy-non-conserving profile. Use an adiabatic '
-                        '(surface-anchored) initial condition for this planet '
-                        'mass.'
+                    log.warning(
+                        'Entropy IC cross-check: cold-surface inversion (surface '
+                        'T=%.0f K vs P-T adiabat %.0f K; max %.0f K / %.1f%%) for '
+                        'liquidus_super at P_cmb=%.0f GPa, beyond the Fei+2021 '
+                        'calibration (~%.0f GPa). The initial condition may unpack '
+                        'to a steeply inverted, energy-non-conserving profile; '
+                        'check the run or use an adiabatic (surface-anchored) '
+                        'initial condition for this planet mass.',
+                        T_stag_aragog[isurf],
+                        T_adiabat_interp[isurf],
+                        max_diff,
+                        max_rel,
+                        P_cmb_adiabat / 1e9,
+                        FEI2021_LIQUIDUS_P_CALIB_PA / 1e9,
                     )
                 log.debug(
                     'Entropy IC full-profile cross-check > %.1f%% '

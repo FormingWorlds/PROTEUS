@@ -489,9 +489,8 @@ class TestSolveSuperliquidusAdiabat:
     def test_nan_p_cmb_uses_nl20_estimate(self, monkeypatch):
         """A NaN ``hf_row['P_cmb']`` also falls back to the NL20 estimate,
         rather than propagating the NaN into the adiabat solve. Pins the
-        ``not np.isfinite(float(P_cmb))`` clause of the fallback gate:
-        ``not float('nan')`` and ``float('nan') <= 0`` are both False, so
-        only the isfinite clause catches it.
+        ``np.isfinite`` check in ``resolve_P_cmb``: a NaN is truthy and
+        passes no comparison, so only the finite check catches it.
         """
         import math
 
