@@ -2588,7 +2588,8 @@ def test_update_gravity_matches_newton_inverse_square():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
-    """calculate_core_mass writes hf_row['M_core'] = rho_core * (4/3) * pi * (R_int * core_frac)^3.
+    """calculate_core_mass writes hf_row['M_core'] = rho_core * (4/3) * pi * (R_int * core_frac)^3,
+    and persists the resolved core density to hf_row['core_density'].
 
     Physics invariant: mass is strictly positive given positive density
     and radius, and the closed-form pin is matched to 12 digits.
@@ -2608,7 +2609,10 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
             core_frac_mode='radius',
         )
     )
-    hf_row = {'R_int': R_int}
+    # hf_row starts with core_density absent from an implicit stale
+    # ZeroHelpfileRow() default of 0.0, matching a live run before this
+    # function has ever been called for it.
+    hf_row = {'R_int': R_int, 'core_density': 0.0}
     calculate_core_mass(hf_row, config)
     expected = rho_core * (4.0 / 3.0) * np.pi * (R_int * core_frac) ** 3
     assert hf_row['M_core'] == pytest.approx(expected, rel=1e-12)
@@ -2618,6 +2622,9 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
     # instead of R**3 would give a number ~6 orders of magnitude smaller.
     wrong_square = rho_core * (4.0 / 3.0) * np.pi * (R_int * core_frac) ** 2
     assert abs(hf_row['M_core'] - wrong_square) > 1e15
+    # core_density must be overwritten with the resolved value, not left at
+    # its stale zero default.
+    assert hf_row['core_density'] == pytest.approx(rho_core, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -3443,6 +3450,84 @@ def test_determine_interior_radius_with_dummy_sets_mesh_paths_for_spider(tmp_pat
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ('temperature_mode', 'expect_call'),
+    [('liquidus_super', True), ('adiabatic', False)],
+)
+def test_dummy_structure_provides_tables_for_liquidus_super_without_generated_set(
+    tmp_path, temperature_mode, expect_call
+):
+    """With no generated P-S set, only liquidus_super requests the FWL_DATA tables."""
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_energetics.num_levels = 50
+    config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
+    config.planet.temperature_mode = temperature_mode
+    hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
+
+    with (
+        _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        _patch('proteus.interior_energetics.wrapper._provide_spider_eos_tables') as provide,
+        _patch('proteus.interior_energetics.wrapper.Interior_t'),
+        _patch('proteus.interior_energetics.wrapper.run_interior'),
+        _patch('proteus.interior_energetics.wrapper.update_gravity'),
+        _patch('proteus.interior_energetics.wrapper.calc_target_elemental_inventories'),
+        _patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
+
+    assert provide.called is expect_call
+    if expect_call:
+        assert provide.call_args.args[1] == str(tmp_path)
+
+
+@pytest.mark.unit
+def test_dummy_structure_liquidus_super_without_tables_raises_named_error(tmp_path):
+    """No generated set and no FWL_DATA or SPIDER table source gives a named
+    RuntimeError that names mantle_eos, the field that selects the tables.
+    """
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_energetics.num_levels = 50
+    config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
+    config.interior_struct.zalmoxis.mantle_eos = 'Stixrude14:MgSiO3'
+    config.planet.temperature_mode = 'liquidus_super'
+    hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
+
+    with (
+        _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        _patch(
+            'proteus.interior_energetics.wrapper._provide_spider_eos_tables',
+            side_effect=FileNotFoundError('no P-S tables'),
+        ),
+        _patch('proteus.interior_energetics.wrapper.Interior_t') as interior_t,
+        pytest.raises(RuntimeError) as excinfo,
+    ):
+        determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
+
+    msg = str(excinfo.value)
+    assert 'temperature_mode' in msg
+    assert 'liquidus_super' in msg
+    assert 'interior_struct.module' in msg
+    assert "interior_struct.zalmoxis.mantle_eos='Stixrude14:MgSiO3'" in msg
+    assert 'WolfBower2018_MgSiO3' not in msg
+    assert 'no P-S tables' in msg
+    assert not isinstance(excinfo.value, FileNotFoundError)
+    # The failure happens before the first interior step is built.
+    interior_t.assert_not_called()
+
+
+@pytest.mark.unit
 def test_determine_interior_radius_with_dummy_no_mesh_for_non_spider(tmp_path):
     """For Aragog (no separate mesh file), solve_dummy_structure returns
     None and the helper skips the spider_mesh path entirely.
@@ -3689,6 +3774,125 @@ def test_run_interior_spider_fallback_aborts_after_max_consecutive():
     assert interior_o.spider_fail_count == _w._SPIDER_MAX_CONSECUTIVE_FAILS
 
     interior_o.spider_fail_count = 0  # cleanup
+
+
+@pytest.mark.unit
+def test_run_interior_spider_initial_condition_error_is_not_retried(caplog):
+    """A liquidus_super initial condition that does not exist raises on the
+    first SPIDER call: it is not counted as a CVode failure and not retried,
+    matching Aragog, where the same error escapes at once.
+    """
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.common import InitialConditionError
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='spider')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 1
+    interior_o._spider_cumulative_time = 0.0
+    interior_o.spider_fail_count = 0
+
+    with (
+        _patch(
+            'proteus.interior_energetics.spider.RunSPIDER',
+            side_effect=InitialConditionError('no fully-molten initial condition'),
+        ) as mock_run,
+        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        with pytest.raises(InitialConditionError, match='no fully-molten'):
+            run_interior(
+                {'spider': '/tmp/spider'}, config, hf_all, hf_row, interior_o, verbose=False
+            )
+
+    mock_run.assert_called_once()
+    assert interior_o.spider_fail_count == 0
+    assert not [r for r in caplog.records if 'CVode failure' in r.getMessage()]
+    # The subclass still satisfies callers that catch RuntimeError.
+    assert issubclass(InitialConditionError, RuntimeError)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'error',
+    [
+        NotImplementedError('method not available'),
+        RecursionError('maximum recursion depth exceeded'),
+        UnicodeDecodeError('utf-8', b'\\xff', 0, 1, 'invalid start byte'),
+    ],
+    ids=lambda e: type(e).__name__,
+)
+def test_run_interior_spider_passthrough_errors_are_not_retried(caplog, error):
+    """Programming and decoding errors from the SPIDER call, two of which
+    subclass RuntimeError, propagate on the first call and are not counted as
+    CVode failures.
+    """
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='spider')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 1
+    interior_o._spider_cumulative_time = 0.0
+    interior_o.spider_fail_count = 0
+
+    with (
+        _patch('proteus.interior_energetics.spider.RunSPIDER', side_effect=error) as mock_run,
+        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        with pytest.raises(type(error)) as exc:
+            run_interior(
+                {'spider': '/tmp/spider'}, config, hf_all, hf_row, interior_o, verbose=False
+            )
+
+    assert exc.value is error
+    mock_run.assert_called_once()
+    assert interior_o.spider_fail_count == 0
+    assert not [r for r in caplog.records if 'CVode failure' in r.getMessage()]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('kind', ['InitialConditionError', 'NotImplementedError'])
+def test_run_interior_aragog_ic_errors_are_not_retried(kind, tmp_path):
+    """The Aragog IC is solved when the runner is built, outside the retry
+    ladder, so an IC error or a programming error from it propagates at once
+    and is not counted as a retry-ladder failure.
+    """
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.common import InitialConditionError
+    from proteus.interior_energetics.wrapper import run_interior
+
+    error = (
+        InitialConditionError('no fully-molten initial condition')
+        if kind == 'InitialConditionError'
+        else NotImplementedError('method not available')
+    )
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    config.params.out.logging = 'INFO'
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 1
+    interior_o.aragog_fail_count = 0
+
+    with _patch(
+        'proteus.interior_energetics.aragog.AragogRunner.setup_or_update_solver',
+        side_effect=error,
+    ) as mock_setup:
+        with pytest.raises(type(error)) as exc:
+            run_interior(
+                {'output': str(tmp_path)}, config, hf_all, hf_row, interior_o, verbose=False
+            )
+
+    assert exc.value is error
+    mock_setup.assert_called_once()
+    assert interior_o.aragog_fail_count == 0
 
 
 # ============================================================================

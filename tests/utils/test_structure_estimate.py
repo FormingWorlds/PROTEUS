@@ -313,3 +313,49 @@ class TestEstimatePCMB:
             assert isinstance(P, float)
             assert math.isfinite(P)
             assert P > 0
+
+
+# ----------------------------------------------------------------------
+# resolve_P_cmb
+# ----------------------------------------------------------------------
+
+
+class TestResolvePCmb:
+    """The helpfile P_cmb is used when positive and finite; otherwise the
+    NL20 estimate for the configured planet stands in."""
+
+    @staticmethod
+    def _config():
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            planet=SimpleNamespace(mass_tot=5.0),
+            interior_struct=SimpleNamespace(core_frac=0.325, core_frac_mode='mass'),
+        )
+
+    def test_positive_value_passes_through(self):
+        """A positive finite helpfile value is returned unchanged, as a float."""
+        import numpy as np
+
+        from proteus.utils.structure_estimate import resolve_P_cmb
+
+        for value in (1.42e11, np.float32(1.42e11), np.array(1.42e11)):
+            P, estimated = resolve_P_cmb({'P_cmb': value}, self._config())
+            assert estimated is False
+            assert isinstance(P, float)
+            assert P == pytest.approx(1.42e11, rel=1e-7)
+
+    @pytest.mark.parametrize(
+        'hf_row',
+        [None, {}, {'P_cmb': None}, {'P_cmb': 0.0}, {'P_cmb': -1.0e9}, {'P_cmb': float('nan')}],
+    )
+    def test_missing_or_unphysical_value_uses_nl20(self, hf_row):
+        """None, a missing key, zero, a negative value and NaN all fall back
+        to the NL20 estimate for the configured 5 M_Earth planet."""
+        from proteus.utils.structure_estimate import estimate_P_cmb_NL20, resolve_P_cmb
+
+        P, estimated = resolve_P_cmb(hf_row, self._config())
+
+        assert estimated is True
+        assert P == pytest.approx(estimate_P_cmb_NL20(5.0, 0.325, 'mass'), rel=1e-12)
+        assert math.isfinite(P) and P > 4e11  # far above the Earth-like 135 GPa

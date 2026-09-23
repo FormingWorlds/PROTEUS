@@ -49,7 +49,7 @@ belong to the experimental binodal-aware mode.
 | `core_eos` | str | `"PALEOS:iron"` | EOS for the core layer. Format: "<source>:<material>". Tabulated: "PALEOS:iron" (default), "Seager2007:iron". Analytic: "Analytic:iron", "Analytic:MgFeSiO3", etc. |
 | `mantle_eos` | str | `"PALEOS:MgSiO3"` | EOS for the mantle layer. Format: "<source>:<material>". Tabulated: "PALEOS:MgSiO3" (default), "PALEOS-2phase:MgSiO3", "Seager2007:MgSiO3", "WolfBower2018:MgSiO3". Analytic: "Analytic:MgSiO3", "Analytic:MgFeSiO3", etc. |
 | `ice_layer_eos` | str or none | `none` | EOS for the ice/water layer (3-layer model). 'none' for 2-layer model (core + mantle only). Tabulated: "PALEOS:H2O", "Seager2007:H2O". Analytic: "Analytic:H2O". |
-| `mushy_zone_factor` | float | `0.8` | Cryoscopic depression factor controlling the width of the mushy zone (partially molten region) in the PALEOS EOS family. Defines the solidus as T_sol = T_liq * mushy_zone_factor. 1.0 = sharp phase boundary (no mushy zone). 0.8 = solidus at 80% of the liquidus temperature, roughly matching the Stixrude+2014 cryoscopic depression for MgSiO3. Must be in \[0.7, 1.0\]. Applies to the PALEOS EOS family (PALEOS, PALEOS-2phase, PALEOS-API, PALEOS-API-2phase); ignored for WolfBower2018 and RTPress100TPa (which use explicit melting curve files) and for Seager2007/Analytic (no derived solidus). Must be >= 0.7 and <= 1.0. |
+| `mushy_zone_factor` | float | `0.8` | Cryoscopic depression factor controlling the width of the mushy zone (partially molten region) in the PALEOS EOS family. Defines the solidus as T_sol = T_liq * mushy_zone_factor. 1.0 = sharp phase boundary (no mushy zone). 0.8 = solidus at 80% of the liquidus temperature, the constant solidus-to-liquidus ratio of Stixrude+2014 for MgSiO3, applied here to the PALEOS liquidus. Must be in \[0.7, 1.0\]. Applies to the PALEOS EOS family (PALEOS, PALEOS-2phase, PALEOS-API, PALEOS-API-2phase); ignored for WolfBower2018 and RTPress100TPa (which use explicit melting curve files) and for Seager2007/Analytic (no derived solidus). Must be >= 0.7 and <= 1.0. |
 | `mantle_mass_fraction` | float | `0` | Fraction of the planet's interior mass corresponding to the mantle. Required for 3-layer models (with ice layer) and for T-dependent 2-layer models (WolfBower2018, RTPress100TPa) where it partitions mass between core and mantle layers. Must be >= 0 and < 1. |
 | `dry_mantle` | bool | `true` | Structure EOS assumes a dry mantle. Set False for melt-fraction-aware dissolved-volatile mixing in the mantle density (per-shell volatile profile); the dissolved mass then stays inside the interior mass target. |
 
@@ -119,11 +119,18 @@ The MgSiO$_3$ mantle EOS resolves through two distinct paths depending on the `<
 With `mantle_eos = "PALEOS:MgSiO3"` (the default), the hydrostatic structure solve uses the PALEOS *unified* MgSiO$_3$ table for the density profile.
 The phase-specific property surfaces used by Aragog (density, heat capacity, thermal expansion, adiabatic gradient) and the pressure-entropy lookup tables are built from the PALEOS *two-phase* solid and liquid tables shipped with Zalmoxis when those tables are present, which keeps the properties well resolved across the melting-curve discontinuity that a single unified table interpolates through.
 If the two-phase tables are not available, the property surfaces are built from the unified table alone, and the entropy near the melting curve is less reliable.
-The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa, Fei et al. 2021 above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8), the constant solidus-to-liquidus ratio of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization.
+The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa, Fei et al. 2021 above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8).
+The default is the constant solidus-to-liquidus ratio ($\approx 0.809$) of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization, applied to the PALEOS liquidus instead of the Stixrude liquidus.
+The derived solidus is therefore a constant depression of the PALEOS liquidus, not the Stixrude solidus curve: its absolute value lies well above the Stixrude solidus at low to moderate pressure (about 2900 K against 1700 K at 20 GPa, and about 10% higher at 140 GPa) and below it above roughly 200 GPa.
 The melt fraction then follows from the lever rule between this solidus and liquidus.
 
-With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the solid and liquid tables define the phase boundaries directly.
-`mushy_zone_factor` is treated as 1.0 so the solidus coincides with the liquidus, and the latent-heat gap is supplied by the entropy difference between the solid and liquid tables rather than by a fixed temperature depression.
+With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the SPIDER/Aragog entropy tables use the separate solid and liquid PALEOS tables, which supply the latent-heat entropy gap across the melting curve directly rather than through a single interpolated unified table.
+Their phase boundaries follow the same construction as the unified case: the liquidus is the analytic PALEOS curve, and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor`.
+
+!!! note "`mushy_zone_factor` and the two-phase structure solve"
+    In a PROTEUS-coupled run, `load_zalmoxis_solidus_liquidus_functions` builds the `mushy_zone_factor * liquidus` solidus described above and passes it into the Zalmoxis structure solve. The same curve pair sets the SPIDER/Aragog table boundaries, the adiabatic gradient in the mushy zone, and the two-phase density (`PALEOS-2phase`, `PALEOS-API-2phase`), so `mushy_zone_factor` acts consistently in the tables and in the structure.
+    A standalone Zalmoxis run uses its own `rock_solidus` and `rock_liquidus` keys (Stixrude 2014 by default). With those defaults a two-phase mantle does not depend on `mushy_zone_factor`; with no unified PALEOS layer elsewhere (for example a `Seager2007:iron` core), a value below 1.0 is rejected at validation. A unified PALEOS layer such as a `PALEOS:iron` core does honor the factor in its own density, so validation accepts it, but it does not change the two-phase mantle. Setting `rock_liquidus = "PALEOS-liquidus"` selects the PALEOS liquidus and derives the solidus as `mushy_zone_factor * liquidus`, as in the coupled case.
+    For a 1 $M_\oplus$ planet with a `Seager2007:iron` core and a `PALEOS-2phase:MgSiO3` mantle in a standalone Zalmoxis run with a linear temperature profile, the default Stixrude (2014) curves give a radius that does not depend on `mushy_zone_factor`, whereas `rock_liquidus = "PALEOS-liquidus"` makes the resolved radius respond to `mushy_zone_factor`, so `mushy_zone_factor = 0.8` and `1.0` give different radii. Run this standalone case to quantify the shift for a given planet and table set.
 
 !!! note "Two-phase table versions"
     Two versions of the PALEOS two-phase MgSiO$_3$ tables are in circulation: the set shipped in the Zalmoxis data directory, and the finer-grid set on Zenodo that the reference-data manifest fetches.
@@ -212,6 +219,7 @@ controlled parity tests.
 |---|---|---|---|
 | `tmagma_atol` | float | `20.0` | Maximum absolute change in T_magma per PROTEUS step \[K\]. Must be >= 0. |
 | `tmagma_rtol` | float | `0.02` | Maximum relative change in T_magma per PROTEUS step. Must be >= 0. |
+| `tmagma_tides_step` | float | `10.0` | Maximum change in T_magma allowed when tides are active \[K\]. Must be >= 0. |
 
 **Ultra-thin boundary layer**
 
@@ -338,6 +346,8 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 | `nusselt_exponent` | float | `0.33` | Nusselt-Rayleigh scaling exponent \[-\]. Must be > 0. |
 | `silicate_heat_capacity` | float | `1200.0` | Silicate heat capacity \[J/kg/K\]. Must be > 0. |
 | `core_density` | float | `10738.0` | Core density \[kg/m^3\]. Must be > 0. |
+| `core_shear` | float | `0.1` | Core shear modulus \[Pa\]. Must be > 0. |
+| `core_bulk` | float | `500000000000.0` | Core bulk modulus \[Pa\]. Must be > 0. |
 | `atm_heat_capacity_const` | bool | `true` | Always use fallback atmosphere heat capacity?. |
 | `atm_heat_capacity` | float | `17000.0` | Used as fallback for atmosphere heat capacity when layer-specific value is not available \[J/kg/K\]. Must be > 0. |
 | `silicate_density` | float | `4103.0` | Silicate density \[kg/m^3\]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F). Must be > 0. |
@@ -360,7 +370,7 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 Cross-field constraints enforced when the config file loads:
 
 - Boundary backend assumes a fixed surface state coupling.
-- Interior tidal heating requires an orbit module to be enabled.
+- Interior tidal heating requires an tides module to be enabled.
 - Aragog requires at least one energy transport term to be enabled.
 - Validate Boundary backend's solidus/liquidus ordering.
 - Dummy interior requires the liquidus to sit above the solidus.

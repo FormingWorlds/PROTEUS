@@ -16,7 +16,7 @@ inputs:
   julia-version:
     description: Julia version
     required: false
-    default: '1.12.6'
+    default: '1.13.0'
   install-editable-submodules:
     description: >
       Whether to clone MORS / aragog / JANUS / CALLIOPE / ZEPHYRUS / Zalmoxis
@@ -717,15 +717,18 @@ runs:
     # a Zenodo re-pin busts the cache and forces a fresh save. Without it, files
     # pinned after the cache was first frozen re-download on every run: the key
     # stays constant, actions/cache exact-hits and never re-saves, so the stale
-    # tree can never pick them up. The restore-keys prefix still lets a fresh
-    # save build on the previous tree instead of re-downloading everything.
+    # tree can never pick them up. The key also carries a full-data flavor
+    # segment, so full-data: 'true' and 'false' jobs keep separate cache
+    # lineages: a smoke-only save can never satisfy a full-data restore, or
+    # the reverse, which would otherwise freeze a job on incomplete content
+    # under actions/cache's skip-save-on-hit behavior.
     - name: Cache FWL_DATA
       uses: actions/cache@v5
       with:
         path: ~/fwl_data
-        key: fwl-data-${{ runner.os }}-${{ hashFiles('.github/data-manifest.yaml', 'src/proteus/data/proteus_manifest.toml') }}
+        key: fwl-data-${{ runner.os }}-${{ inputs.full-data }}-${{ hashFiles('.github/data-manifest.yaml', 'src/proteus/data/proteus_manifest.toml') }}
         restore-keys: |
-          fwl-data-${{ runner.os }}-
+          fwl-data-${{ runner.os }}-${{ inputs.full-data }}-
 
     - name: Download smoke data
       shell: bash -el {0}

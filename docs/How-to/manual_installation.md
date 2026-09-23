@@ -81,8 +81,8 @@ conda activate proteus
 
 ## 3. Install Julia
 
-Some PROTEUS modules (AGNI, LovePy) are written in Julia. Install via the
-official installer:
+Some PROTEUS modules (AGNI, LovePy, Obliqua) are written in Julia. Install via
+the official installer:
 
 ```console
 curl -fsSL https://install.julialang.org | sh

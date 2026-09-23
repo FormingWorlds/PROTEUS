@@ -1,6 +1,7 @@
 """
 Unit tests for proteus.proteus module: Zalmoxis mesh restoration on resume,
-atmosphere-interior deadlock detection, and main-loop plot cadence.
+atmosphere-interior deadlock detection, main-loop plot cadence, and the
+T_magma handed to the atmosphere after a resume.
 
 Tests the resume code path in Proteus.start() that restores the Zalmoxis
 mesh file path when resuming a SPIDER interior simulation, and the main
@@ -15,6 +16,8 @@ Functions tested:
 - Proteus.start(): main-loop plot generation cadence (plot_mod)
 - Proteus.__init__(): stall criterion read from params.stop.stall
 - Proteus._check_atmosphere_deadlock()
+- Proteus.start(): resumed main loop hands the atmosphere the interior T_magma
+  (or the solvus boundary with global miscibility)
 """
 
 from __future__ import annotations
@@ -1151,108 +1154,6 @@ def test_proteus_resume_too_short_raises(tmp_path):
         assert len(short_df) == 1
 
 
-# ---------------------------------------------------------------------------
-# Global miscibility solvus override (proteus.py L816-831)
-# ---------------------------------------------------------------------------
-
-
-def test_solvus_override_saves_and_restores_boundary_conditions(tmp_path):
-    """When global_miscibility is enabled and R_solvus < R_int, the
-    atmosphere BC values (T_surf, P_surf, R_int, T_magma) are
-    temporarily overridden to the solvus values, then restored.
-
-    Discrimination: after restoration, hf_row must hold the original
-    values, not the solvus-overridden ones. A regression that skipped
-    the restore block would leave the solvus values in place.
-    """
-    from types import SimpleNamespace
-
-    original = {
-        'T_surf': 2000.0,
-        'P_surf': 100.0,
-        'R_int': 6.4e6,
-        'T_magma': 2500.0,
-        'R_solvus': 6.0e6,
-        'T_solvus': 1800.0,
-        'P_solvus': 5e9,
-    }
-    hf_row = dict(original)
-
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(global_miscibility=True),
-        ),
-    )
-
-    # The production override logic from proteus.py L816-831
-    _saved_atm_bc = {}
-    if config.interior_struct.zalmoxis.global_miscibility and 'R_solvus' in hf_row:
-        R_sol = hf_row.get('R_solvus')
-        if R_sol is not None and R_sol < hf_row['R_int']:
-            _saved_atm_bc = {
-                'T_surf': hf_row['T_surf'],
-                'P_surf': hf_row['P_surf'],
-                'R_int': hf_row['R_int'],
-                'T_magma': hf_row['T_magma'],
-            }
-            hf_row['T_surf'] = hf_row['T_solvus']
-            hf_row['T_magma'] = hf_row['T_solvus']
-            hf_row['P_surf'] = hf_row['P_solvus'] * 1e-5
-            hf_row['R_int'] = R_sol
-
-    # Verify override happened
-    assert hf_row['T_surf'] == pytest.approx(1800.0, rel=1e-12)
-    assert hf_row['P_surf'] == pytest.approx(5e4, rel=1e-6)
-    assert hf_row['R_int'] == pytest.approx(6.0e6, rel=1e-12)
-
-    # Restore
-    if _saved_atm_bc:
-        for key, val in _saved_atm_bc.items():
-            hf_row[key] = val
-
-    # After restoration, original values must be back
-    assert hf_row['T_surf'] == pytest.approx(2000.0, rel=1e-12)
-    assert hf_row['P_surf'] == pytest.approx(100.0, rel=1e-12)
-    assert hf_row['R_int'] == pytest.approx(6.4e6, rel=1e-12)
-    assert hf_row['T_magma'] == pytest.approx(2500.0, rel=1e-12)
-    # Discrimination: the solvus values are NOT the restored values
-    assert hf_row['T_surf'] != pytest.approx(1800.0)
-
-
-def test_solvus_override_no_op_when_r_solvus_exceeds_r_int():
-    """When R_solvus >= R_int, the override block must not fire.
-
-    Edge: the solvus is deeper than the interior radius, so the
-    atmosphere BC stays at the magma ocean surface.
-    """
-    from types import SimpleNamespace
-
-    hf_row = {
-        'T_surf': 2000.0,
-        'P_surf': 100.0,
-        'R_int': 6.4e6,
-        'T_magma': 2500.0,
-        'R_solvus': 6.5e6,
-        'T_solvus': 1800.0,
-        'P_solvus': 5e9,
-    }
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(global_miscibility=True),
-        ),
-    )
-
-    _saved_atm_bc = {}
-    if config.interior_struct.zalmoxis.global_miscibility and 'R_solvus' in hf_row:
-        R_sol = hf_row.get('R_solvus')
-        if R_sol is not None and R_sol < hf_row['R_int']:
-            _saved_atm_bc = {'T_surf': hf_row['T_surf']}
-
-    # Override must NOT have fired
-    assert _saved_atm_bc == {}
-    assert hf_row['T_surf'] == pytest.approx(2000.0, rel=1e-12)
-
-
 # ============================================================================
 # _solve_structure_baseline_if_needed: one-time callable-representation baseline
 # ============================================================================
@@ -1779,6 +1680,27 @@ def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
     )
 
 
+def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog):
+    """With the opt-in ``PROTEUS_TIMING`` instrumentation enabled (here
+    patched directly on the frozen module constant, since it is normally
+    read from the environment once at import time), the main loop must
+    record the orbit stage's wall-time in ``_t_mod`` and surface it in
+    the per-iteration ``[IT_TIMING]`` log line -- not just the other
+    instrumented stages.
+    """
+    import logging
+
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'):
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+
+    timing_records = [rec.message for rec in caplog.records if '[IT_TIMING]' in rec.message]
+    assert len(timing_records) > 0, 'no [IT_TIMING] log line was emitted'
+    assert any('orbit=' in msg for msg in timing_records)
+
+
 # =======================================================================================
 # SECTION: mass conservation across a multi-iteration run
 # =======================================================================================
@@ -2108,3 +2030,353 @@ def test_stall_criterion_is_configurable_and_matches_its_constant(tmp_path):
             stuck._check_atmosphere_deadlock()
     args, _ = mock_update.call_args
     assert args[1] == 22
+
+
+# =======================================================================================
+# SECTION: resumed run drives the atmosphere from the interior's own T_magma
+# =======================================================================================
+
+
+def _make_resume_checkpoint_df():
+    """5-row checkpoint helpfile for a resumed run.
+
+    5 rows clears the `len(hf_all) > init_loops+1 == 4` resume-eligibility
+    check and keeps `loops['total']=5` below the `>init_loops+2` threshold
+    that gates the escape block's active branch, so escape takes its
+    inactive branch on the first post-resume iteration. The crystallization
+    check is skipped for a separate reason: the test config sets
+    `freeze_volatiles` to False. Every row starts from `ZeroHelpfileRow()`
+    so every real helpfile column the main loop reads is present.
+    """
+    from proteus.utils.coupler import ZeroHelpfileRow
+
+    times = [0.0, 100.0, 200.0, 300.0, 400.0]
+    ages = [1.0e6 + t for t in times]
+    magmas = [3000.0, 2900.0, 2800.0, 2700.0, 2600.0]
+    rows = []
+    for time, age, magma in zip(times, ages, magmas):
+        row = ZeroHelpfileRow()
+        row.update(
+            {
+                'Time': time,
+                'age_star': age,
+                'R_int': 6.371e6,
+                'gravity': 9.81,
+                'separation': 1.0,
+                'T_magma': magma,
+                'T_surf': magma - 50.0,
+                'T_eqm': 255.0,
+                'F_atm': 100.0,
+            }
+        )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=False):
+    """Build a Proteus instance for a resumed run driven into the main loop.
+
+    Mirrors `_make_main_loop_proteus`'s dummy-module, full-loop-capable
+    config, since a resumed run reaches the same main-loop code once
+    resume setup completes. ``interior_module`` selects the energetics
+    module and ``miscibility`` the Zalmoxis global_miscibility switch.
+    """
+    from proteus.config._params import StopStall
+    from proteus.proteus import Proteus
+
+    config = MagicMock()
+    config.interior_struct.module = 'dummy'
+    config.interior_struct.zalmoxis.update_interval = 0
+    config.interior_struct.zalmoxis.global_miscibility = miscibility
+    config.interior_struct.eos_dir = None
+    config.interior_energetics.module = interior_module
+    config.interior_energetics.flux_guess = 100.0
+    config.orbit.module = None
+    config.observe.module = None
+    config.atmos_chem.when = 'never'
+    config.outgas.vapourise = True
+    config.planet.temperature_mode = 'isothermal'
+    config.planet.volatile_mode = 'elements'
+    config.planet.gas_prs.get_pressure = lambda _s: 0.0
+    config.outgas.calliope.is_included = lambda _s: False
+    config.params.out.logging = 'WARNING'
+    config.params.out.plot_mod = 100
+    config.params.out.write_mod = 100
+    config.params.out.dt_write_rel = 0.0
+    config.params.out.archive_mod = None
+    config.params.stop.iters.minimum = 10
+    config.params.stop.iters.maximum = 1000
+    config.params.stop.solid.freeze_volatiles = False
+    config.params.stop.solid.phi_crit = 0.01
+    config.params.stop.stall = StopStall(enabled=True, maximum=STALL_MAX_CONFIGURED)
+    config.params.dt.starinst = 1e8
+    config.params.dt.starspec = 1e8
+
+    directories = {
+        'output': str(tmp_path),
+        'output/data': str(tmp_path / 'data'),
+        'output/observe': str(tmp_path / 'observe'),
+        'output/offchem': str(tmp_path / 'offchem'),
+        'output/plots': str(tmp_path / 'plots'),
+        'spider': str(tmp_path / 'spider'),
+        'fwl': str(tmp_path / 'fwl'),
+    }
+    for path in directories.values():
+        Path(path).mkdir(parents=True, exist_ok=True)
+
+    with (
+        patch('proteus.proteus.read_config_object', return_value=config),
+        patch('proteus.utils.coupler.set_directories', return_value=directories),
+    ):
+        p = Proteus(config_path='dummy.toml')
+
+    return p
+
+
+class _StopAfterAtmosphereCall(Exception):
+    """Sentinel exception to stop start() once the atmosphere call captures T_magma."""
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('interior_module', ['aragog', 'spider'])
+def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path, interior_module):
+    """The first post-resume atmosphere call receives the interior's own
+    T_magma output, not a value anchored to the checkpoint's T_surf. Both
+    energetics modules are covered so that a resume override gated on the
+    module name cannot return for one of them.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module=interior_module)
+    hf_df = _make_resume_checkpoint_df()
+    checkpoint_t_surf = hf_df['T_surf'].iloc[-1]
+    interior_t_magma = 3456.0
+    captured = {}
+
+    def _fake_run_interior(*args, **kwargs):
+        args[3]['T_magma'] = interior_t_magma
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        captured['T_magma'] = args[8]['T_magma']
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    # Discrimination: the checkpoint T_surf a surface anchor would use is far
+    # from the interior value.
+    assert abs(interior_t_magma - checkpoint_t_surf) > 100.0
+    assert captured['T_magma'] == pytest.approx(interior_t_magma, rel=1e-12)
+
+
+def _run_resumed_loop_until_stop(p, hf_df, fake_interior, fake_atmosphere):
+    """Resume ``p`` from ``hf_df`` with the given interior and atmosphere fakes
+    until the atmosphere fake raises ``_StopAfterAtmosphereCall``."""
+    from types import SimpleNamespace
+
+    with ExitStack() as stack:
+        for target in _MAIN_LOOP_NOOP_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                return_value=(hf_df, []),
+            )
+        )
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.assert_mass_conservation'))
+        stack.enter_context(
+            patch('proteus.utils.terminate.check_termination', return_value=False)
+        )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.interior_energetics.wrapper.run_interior',
+                side_effect=fake_interior,
+            )
+        )
+        stack.enter_context(
+            patch('proteus.atmos_clim.run_atmosphere', side_effect=fake_atmosphere)
+        )
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_interior_t.return_value = MagicMock(dt=100.0, ic=1)
+        mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
+        mock_atmos_t.return_value = SimpleNamespace(converged=True)
+        mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
+        mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
+
+        with pytest.raises(_StopAfterAtmosphereCall):
+            p.start(resume=True, offline=True)
+
+
+@pytest.mark.unit
+def test_solvus_override_restores_the_magma_ocean_state(tmp_path):
+    """With global miscibility the loop hands the atmosphere the solvus as its
+    lower boundary (T_solvus, P_solvus in bar, R_solvus) and afterwards
+    restores T_magma, T_surf, P_surf and R_int for the interior and the
+    committed row. Config validation rejects global_miscibility with the
+    zalmoxis structure module, the one that writes the solvus, so this pins
+    the loop code for when it is enabled; SPIDER is the energetics module
+    that cuts its domain at the solvus.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['P_surf'] = 250.0
+    checkpoint = hf_df.iloc[-1]
+    interior_t_magma = [3456.0, 3441.0]
+    t_solvus, p_solvus = 3700.0, 2.0e10
+    step = {'interior': 0}
+    seen_by_interior = []
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        hf_row = args[3]
+        seen_by_interior.append(hf_row['T_magma'])
+        hf_row['T_magma'] = interior_t_magma[min(step['interior'], 1)]
+        hf_row['R_solvus'] = 0.9 * hf_row['R_int']
+        hf_row['T_solvus'] = t_solvus
+        hf_row['P_solvus'] = p_solvus
+        step['interior'] += 1
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        hf_row = args[8]
+        captured.append(
+            (hf_row['T_magma'], hf_row['T_surf'], hf_row['P_surf'], hf_row['R_int'])
+        )
+        if len(captured) == 2:
+            raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    solvus_frame = [t_solvus, t_solvus, p_solvus * 1e-5, 0.9 * checkpoint['R_int']]
+    np.testing.assert_allclose(np.array(captured), [solvus_frame, solvus_frame], rtol=1e-12)
+    assert seen_by_interior[1] == pytest.approx(interior_t_magma[0], rel=1e-12)
+    committed = p.hf_all.iloc[-1]
+    assert committed['T_magma'] == pytest.approx(interior_t_magma[0], rel=1e-12)
+    # Pins the current restore of T_surf in solvus mode; a change that keeps
+    # the atmosphere T_surf updates this.
+    assert committed['T_surf'] == pytest.approx(checkpoint['T_surf'], rel=1e-12)
+    assert committed['P_surf'] == pytest.approx(checkpoint['P_surf'], rel=1e-12)
+    assert committed['R_int'] == pytest.approx(checkpoint['R_int'], rel=1e-12)
+
+
+@pytest.mark.unit
+def test_solvus_override_is_restored_when_the_atmosphere_raises(tmp_path):
+    """The solvus override is undone in a finally block, so an atmosphere step
+    that raises leaves T_magma, T_surf, P_surf and R_int in the magma-ocean
+    frame rather than in the solvus frame.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['P_surf'] = 250.0
+    checkpoint = hf_df.iloc[-1]
+    interior_t_magma, t_solvus = 3456.0, 3700.0
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        hf_row = args[3]
+        hf_row['T_magma'] = interior_t_magma
+        hf_row['R_solvus'] = 0.9 * hf_row['R_int']
+        hf_row['T_solvus'] = t_solvus
+        hf_row['P_solvus'] = 2.0e10
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        captured.append(args[8]['T_magma'])
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    assert captured == [pytest.approx(t_solvus, rel=1e-12)]  # the override was active
+    assert p.hf_row['T_magma'] == pytest.approx(interior_t_magma, rel=1e-12)
+    assert p.hf_row['T_surf'] == pytest.approx(checkpoint['T_surf'], rel=1e-12)
+    assert p.hf_row['P_surf'] == pytest.approx(checkpoint['P_surf'], rel=1e-12)
+    assert p.hf_row['R_int'] == pytest.approx(checkpoint['R_int'], rel=1e-12)
+
+
+@pytest.mark.unit
+def test_solvus_at_the_surface_leaves_the_atmosphere_boundary_unchanged(tmp_path):
+    """A solvus at R_int itself (R_solvus == R_int) is not below the surface,
+    so the atmosphere keeps the magma-ocean boundary.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['P_surf'] = 250.0
+    checkpoint = hf_df.iloc[-1]
+    interior_t_magma = 3456.0
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        hf_row = args[3]
+        hf_row['T_magma'] = interior_t_magma
+        hf_row['R_solvus'] = hf_row['R_int']
+        hf_row['T_solvus'] = 3700.0
+        hf_row['P_solvus'] = 2.0e10
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        hf_row = args[8]
+        captured.append((hf_row['T_magma'], hf_row['P_surf'], hf_row['R_int']))
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    # A stray extra call with the same values would still broadcast-match the
+    # single-row check below, so the call count is its own assertion.
+    assert len(captured) == 1
+    np.testing.assert_allclose(
+        np.array(captured),
+        [[interior_t_magma, checkpoint['P_surf'], checkpoint['R_int']]],
+        rtol=1e-12,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('interior_module', ['aragog', 'spider'])
+def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(
+    tmp_path, interior_module
+):
+    """Over 3 post-resume iterations the atmosphere returns T_surf 400 K
+    below the T_magma it was given, as AGNI's conductive skin does in a magma
+    ocean. Every atmosphere call still receives that iteration's interior
+    T_magma, so a surface temperature below the magma temperature never
+    replaces T_magma in the coupling across those 3 iterations. The
+    atmosphere stub only sets T_surf; its fluxes are not consistent with the
+    skin drop.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module=interior_module)
+    hf_df = _make_resume_checkpoint_df()
+    # Slow interior cooling (15 K per step) against a 400 K skin drop, so a
+    # surface-anchored value would fall far below the interior sequence.
+    interior_t_magma = [3456.0, 3441.0, 3426.0]
+    skin_drop = 400.0
+    n_calls = len(interior_t_magma)
+    step = {'interior': 0}
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        args[3]['T_magma'] = interior_t_magma[min(step['interior'], n_calls - 1)]
+        step['interior'] += 1
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        hf_row = args[8]
+        captured.append(hf_row['T_magma'])
+        hf_row['T_surf'] = hf_row['T_magma'] - skin_drop
+        if len(captured) == n_calls:
+            raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    assert len(captured) == n_calls
+    np.testing.assert_allclose(captured, interior_t_magma, rtol=1e-12)
+    # Commit order: each completed row holds the interior T_magma and the
+    # T_surf the atmosphere returned in that iteration.
+    committed = p.hf_all.iloc[-(n_calls - 1) :]
+    np.testing.assert_allclose(committed['T_magma'], interior_t_magma[:-1], rtol=1e-12)
+    np.testing.assert_allclose(
+        committed['T_surf'], np.array(interior_t_magma[:-1]) - skin_drop, rtol=1e-12
+    )

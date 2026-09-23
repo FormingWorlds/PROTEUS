@@ -45,6 +45,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 LOCKFILE_NAME = 'keepalive'
 AGNI_MIN_VERSION = '1.8.0'
+OBLIQUA_MIN_VERSION = '0.1.0'
 
 
 def _get_current_time():
@@ -136,6 +137,17 @@ def _get_agni_version(dirs: dict):
     with open(os.path.join(dirs['agni'], 'Project.toml'), 'rb') as hdl:
         agni_meta = tomlload(hdl)
     return agni_meta['version']
+
+
+def _get_obliqua_version(dirs: dict):
+    """
+    Get the installed Obliqua version
+    """
+    from tomllib import load as tomlload
+
+    with open(os.path.join(dirs['obliqua'], 'Project.toml'), 'rb') as hdl:
+        obliqua_meta = tomlload(hdl)
+    return obliqua_meta['version']
 
 
 def _get_julia_version():
@@ -294,6 +306,10 @@ def validate_module_versions(dirs: dict, config: Config):
 
         valid &= _valid_ver(mors_version, _get_expver('fwl-mors'), 'MORS')
 
+    # Orbit module
+    if config.orbit.module == 'obliqua':
+        valid &= _valid_ver(_get_obliqua_version(dirs), OBLIQUA_MIN_VERSION, 'Obliqua')
+
     # Exit
     if not valid:
         UpdateStatusfile(dirs, 20)
@@ -408,8 +424,11 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(write)
 
     # Orbit module
-    log.info('Orbit module      %s' % config.orbit.module)
-    if config.orbit.module == 'lovepy':
+    write = 'Orbit module      %s' % config.orbit.module
+    if config.orbit.module == 'obliqua':
+        write += ' version ' + _get_obliqua_version(dirs)
+    log.info(write)
+    if config.orbit.module in ['lovepy', 'obliqua']:
         log.info('  - Julia         version ' + _get_julia_version())
 
     # Accretion module
@@ -782,20 +801,37 @@ def GetHelpfileKeys():
 
         # Orbital and spin parameters of planet
         'semimajorax',      # semi-major axis [m]
+        'sma_dot_planet',   # semi-major axis derivative [m s-1]
         'separation',       # time-averaged separation [m]
         'perihelion',       # lowest point in orbit [m]
         'orbital_period',   # orbital duration [s]
         'eccentricity',     # orbital eccentricity [1]
-        'Imk2',             # Imaginary part of k2 Love Number [1]
+        'ecc_dot_planet',   # eccentricity derivative [1 s-1]
+        'plan_star_am',     # angular momentum of star+planet [kg m2 s-1]
         'axial_period',     # day length of planet around its axis [s]
+
+        'Imk2',             # Imaginary part of k2 Love Number [1]
+
         'longitude',        # column longitude relative to substellar point [deg]
         'latitude',         # column latitude relative to substellar point [deg]
 
         # Satellite system
-        'perigee',          # lowest point in orbit [m]
         'semimajorax_sat',  # semi-major axis [m]
+        'sma_dot_sat',      # semi-major axis derivative [m s-1]
+        'separation_sat',   # time-averaged separation [m]
+        'perigee',          # lowest point in orbit [m]
+        'orbital_period_sat', # orbital duration [s]
+        'eccentricity_sat', # orbital eccentricity of satellite [1]
+        'ecc_dot_sat',      # eccentricity derivative [1 s-1]
+        'plan_sat_am',      # angular momentum of satellite+planet [kg m2 s-1]
+        'axial_period_sat', # day length of satellite around its axis [s]
+
+        'R_sat',            # radius of satellite [m]
         'M_sat',            # mass of satellite [kg]
-        'plan_sat_am',      # angular momentum of sat+pla [kg m2 s-1],
+        'C_sat',            # principal moment of inertia of satellite [kg m2]
+
+        'evection_angle',   # evection angle [rad]
+        'evection_dt_cap_yr', # next macro-step dt cap, rate + growth limiter folded in [yr]
 
         # Planet structure
         'R_int',            # interior radius [m]
@@ -803,6 +839,7 @@ def GetHelpfileKeys():
         'M_planet',         # total planet wet+dry mass [kg]
         'M_vaps',           # vapourised rock mass, including the vapourised oxygen [kg]
         'R_core',           # core radius [m]
+        'C_int',            # principal moment of inertia of planet [kg m2]
         'R_solvus',         # solvus radius for global_miscibility mode [m]
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]
         'T_solvus',         # solvus temperature for global_miscibility mode [K]
@@ -816,7 +853,8 @@ def GetHelpfileKeys():
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
-        'T_cmb',           # core temperature [K]
+        'T_cmb',           # core temperature, bottom mantle cell [K]
+        'T_cmb_node',      # temperature at the core-mantle boundary basic node [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
         'T_skin',           # grey radiative skin temperature [K]
         'T_surface_initial',  # self-consistent T_surf from accretion mode [K]
@@ -1036,13 +1074,15 @@ def GetHelpfileKeys():
         keys.append(s + '_ocean')       # ocean surface density [kg m-2]
 
     # Diagnostic variables
-    keys.append('wtg_surf')         # Weak temperature gradient parameter at the surface [1]
-    keys.append('roche_limit')      # Roche limit, orbital distance  [m]
-    keys.append('breakup_period')   # Critical day length [s]
-    keys.append('hill_radius')      # Hill radius, radial distance [m]
+    keys.append('wtg_surf')             # Weak temperature gradient parameter at the surface [1]
+    keys.append('roche_limit')          # Roche limit, orbital distance  [m]
+    keys.append('breakup_period')       # Critical day length [s]
+    keys.append('hill_radius')          # Hill radius, radial distance [m]
+    keys.append('roche_limit_sat')      # Roche limit, orbital distance for the satellite [m]
+    keys.append('breakup_period_sat')   # Critical day length for satellite [s]
 
     # Simulation's computational variables
-    keys.append('runtime')          # Simulation wall-clock runtime [s]
+    keys.append('runtime')              # Simulation wall-clock runtime [s]
     # fmt: on
 
     return keys
@@ -1224,7 +1264,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     # - Unknown keys (new_row has but schema doesn't) are silently dropped
     #   by `columns=GetHelpfileKeys()` in the DataFrame construction, which
     #   means resume would lose those values. We WARN here rather than raise
-    #   so existing hf_row private/transient fields (_T_magma_raw, etc.)
+    #   so existing hf_row private/transient fields (underscore-prefixed keys)
     #   and string-valued fields (core_state_initial) don't break runs.
     # Private (underscore-prefixed) keys are intentionally transient and
     # are excluded from both checks.
@@ -1366,6 +1406,41 @@ def _describe_missing_columns(missing: list[str]) -> str:
     return shown
 
 
+# Derived diagnostic columns that nothing reads back to build state. A
+# helpfile written before one of them joined the schema still resumes: the
+# reader backfills these with zeros. Add a column here only if no module,
+# resume path or solver consumes it.
+_DIAGNOSTIC_KEYS = ('T_cmb_node',)
+
+
+def GetHelpfileDiagnosticKeys():
+    """
+    Helpfile columns that are derived diagnostics, not simulation state.
+
+    A helpfile that lacks one of these is still resumable, because no module
+    reads the column back. `ReadHelpfileFromCSV` zero-fills it on load.
+
+    Returns
+    -------
+    list of str
+        Column names, all of which are also in `GetHelpfileKeys()`.
+    """
+    return list(_DIAGNOSTIC_KEYS)
+
+
+def GetHelpfileCoreKeys():
+    """
+    Helpfile columns that a stored run must carry to be resumed.
+
+    Returns
+    -------
+    list of str
+        Every column of `GetHelpfileKeys()` except the diagnostic ones.
+    """
+    diagnostic = set(_DIAGNOSTIC_KEYS)
+    return [k for k in GetHelpfileKeys() if k not in diagnostic]
+
+
 # Columns the observation and offline-chemistry pipelines index without a
 # fallback. Every other quantity they touch is read through `in` or `.get`
 # with a default, so its absence is already handled.
@@ -1421,9 +1496,12 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     the plotting and inference code, do not come through this function and
     are not covered.
 
-    The shortfall is reported rather than filled. Seeding a value would make
-    the key present, and several modules decide what to do by testing whether
-    a key is there at all: CALLIOPE refuses a run whose oxygen budget is
+    A shortfall in the core columns is reported rather than filled. The
+    diagnostic columns of `GetHelpfileDiagnosticKeys()` are the exception:
+    nothing reads them back, so a file without them is completed with zeros
+    and a line in the log. Seeding a core value would make the key present,
+    and several modules decide what to do by testing whether a key is there
+    at all: CALLIOPE refuses a run whose oxygen budget is
     absent, the dummy and boundary interiors fall back to a configured core
     size, and the atmosphere lower boundary moves to the solvus only when a
     solvus radius exists. A seeded zero turns each of those off and reaches
@@ -1434,8 +1512,8 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     output_dir : str
         Directory holding ``runtime_helpfile.csv``.
     required_columns : list of str, optional
-        Columns the caller cannot do without. Defaults to the whole of
-        ``GetHelpfileKeys()``, which is what resuming a run needs, since a
+        Columns the caller cannot do without. Defaults to
+        ``GetHelpfileCoreKeys()``, which is what resuming a run needs, since a
         resumed row feeds every module. Postprocessing passes the smaller
         ``GetPostprocessingKeys()`` so an archived run stays readable after
         a schema addition it never used.
@@ -1443,7 +1521,8 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     Returns
     -------
     pandas.DataFrame
-        Helpfile contents as stored, carrying at least ``required_columns``.
+        Helpfile contents as stored, carrying at least ``required_columns``
+        and every diagnostic column.
 
     Raises
     ------
@@ -1451,7 +1530,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
         The file does not carry every required column.
     """
     if required_columns is None:
-        required_columns = GetHelpfileKeys()
+        required_columns = GetHelpfileCoreKeys()
 
     fpath = helpfile_path(output_dir)
     if not os.path.exists(fpath):
@@ -1466,6 +1545,16 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
             'this run with the PROTEUS version that wrote it.'
             % (fpath, len(missing), _describe_missing_columns(missing))
         )
+
+    backfill = [k for k in GetHelpfileDiagnosticKeys() if k not in hf_all.columns]
+    if backfill:
+        log.info(
+            "Helpfile '%s' predates diagnostic column(s) %s; filling with zeros.",
+            fpath,
+            ', '.join(backfill),
+        )
+        zeros = pd.DataFrame(0.0, index=hf_all.index, columns=backfill)
+        hf_all = pd.concat([hf_all, zeros], axis=1)
     return hf_all
 
 
@@ -1863,6 +1952,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     # Import utilities
     from proteus.atmos_clim.common import read_atmosphere_data
     from proteus.interior_energetics.wrapper import read_interior_data
+    from proteus.orbit.wrapper import read_tides_data
 
     # Import plotting functions
     from proteus.plot.cpl_atmosphere import plot_atmosphere
@@ -1875,7 +1965,11 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     from proteus.plot.cpl_global import plot_global
     from proteus.plot.cpl_interior import plot_interior
     from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
-    from proteus.plot.cpl_orbit import plot_orbit
+    from proteus.plot.cpl_orbit import (
+        plot_lovenumber,
+        plot_orbit,
+        plot_orbit_system,
+    )
     from proteus.plot.cpl_population import (
         plot_population_mass_radius,
         plot_population_time_density,
@@ -1898,6 +1992,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     agni = config.atmos_clim.module == 'agni'
     spider = config.interior_energetics.module == 'spider'
     aragog = config.interior_energetics.module == 'aragog'
+    obliqua = config.orbit.module == 'obliqua'
     observed = bool(config.observe.module is not None)
 
     # Get all output times
@@ -1919,8 +2014,22 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
 
     # Planet and satellite orbit parameters
-    if config.orbit.evolve or config.orbit.satellite:
-        plot_orbit(hf_all, output_dir, config.params.out.plot_fmt)
+    if (
+        config.orbit.star_planet_model is not None
+        or config.orbit.planet_satellite_model is not None
+    ):
+        plot_orbit(
+            hf_all,
+            output_dir,
+            config.orbit.satellite.include_satellite,
+            plot_format=config.params.out.plot_fmt,
+        )
+        plot_orbit_system(
+            hf_all,
+            output_dir,
+            config.orbit.planet_satellite_model is not None,
+            plot_format=config.params.out.plot_fmt,
+        )
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:
@@ -1978,6 +2087,21 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
             # Energy flux profiles
             plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
+
+    # Lovenumber spectra for tidal dissipation
+    if obliqua:
+        # Which times do we have tides data for?
+        ncs = glob.glob(os.path.join(output_dir, 'data', '*_obliqua.nc'))
+        plot_times_obliqua = [int(f.split('/')[-1].split('_obliqua')[0]) for f in ncs]
+
+        tide_data = read_tides_data(output_dir, 'obliqua', plot_times_obliqua)
+
+        plot_lovenumber(
+            output_dir=output_dir,
+            times=plot_times_obliqua,
+            data=tide_data,
+            plot_format=config.params.out.plot_fmt,
+        )
 
     # Only at the end of the simulation
     if end:
@@ -2119,6 +2243,7 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         'proteus': root_dir,
         'agni': os.path.join(root_dir, 'AGNI'),
         'lovepy': os.path.join(root_dir, 'lovepy'),
+        'obliqua': os.path.join(root_dir, 'Obliqua'),
         'input': os.path.join(root_dir, 'input'),
         'spider': os.path.join(root_dir, 'SPIDER'),
         'aragog': os.path.join(root_dir, 'aragog'),
