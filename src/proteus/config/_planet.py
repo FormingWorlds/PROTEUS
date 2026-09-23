@@ -200,6 +200,22 @@ def _reject_reserved_fO2_source(instance, attribute, value):
         )
 
 
+def _reject_positive_dsdr_for_liquidus_super(instance, attribute, value):
+    """Reject a positive ``ini_dsdr`` with ``temperature_mode = 'liquidus_super'``.
+
+    The interior solvers add ``ini_dsdr * (r - R_surf)`` to the solved uniform
+    entropy, so a positive gradient lowers the deep entropy below the adiabat
+    that was certified ``delta_T_super`` above the liquidus.
+    """
+    if value > 0 and instance.temperature_mode == 'liquidus_super':
+        raise ValueError(
+            f'planet.ini_dsdr = {value} is positive, which lowers the deep initial '
+            'entropy below the adiabat that planet.temperature_mode = '
+            '"liquidus_super" solves to be fully molten. Use ini_dsdr <= 0 with '
+            'liquidus_super.'
+        )
+
+
 @define
 class Planet:
     """Bulk planet properties, initial temperature profile, and volatile inventory.
@@ -262,8 +278,9 @@ class Planet:
         Initial specific entropy at the surface [J/kg/K] (isentropic mode).
         CHILI Earth-SPIDER reference: 3900.0.
     ini_dsdr: float
-        Initial entropy gradient with radius [J/kg/K/m] (isentropic mode).
-        CHILI Earth-SPIDER reference: -4.698e-6 (small numerical
+        Initial entropy gradient with radius [J/kg/K/m], added to the uniform
+        initial entropy in isentropic and liquidus_super modes; must be <= 0
+        with liquidus_super. CHILI Earth-SPIDER reference: -4.698e-6 (small numerical
         perturbation needed for SPIDER's BDF stability on a uniform IC).
     delta_T_super: float
         Minimum superheat [K] above the liquidus for the liquidus_super
@@ -351,7 +368,9 @@ class Planet:
     # temperature_mode = 'isentropic' (CHILI protocol). The interior solver
     # maps S -> T(P) via its own EOS table; tsurf_init is ignored.
     ini_entropy: float = field(default=3900.0, validator=gt(0))
-    ini_dsdr: float = field(default=-4.698e-6)
+    ini_dsdr: float = field(
+        default=-4.698e-6, validator=_reject_positive_dsdr_for_liquidus_super
+    )
 
     # Minimum superheat above the liquidus for temperature_mode =
     # 'liquidus_super'. The IC adiabat is solved so its temperature exceeds the

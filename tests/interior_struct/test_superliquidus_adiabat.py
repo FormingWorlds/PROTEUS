@@ -127,7 +127,7 @@ class TestSolveSuperliquidusReal:
         assert 0.0 <= r['achieved_superheat'] < 1.0
         assert r['clamped'] is False
 
-    @pytest.mark.timeout(5400)  # 90 min ceiling; the scan measures ~48 min on the runner
+    @pytest.mark.timeout(5400)  # 90 min ceiling; about 3 min locally
     def test_unreachable_superheat_raises_real(self, monkeypatch):
         """A liquidus the EOS table cannot clear raises instead of returning a
         partially molten initial condition. The real PALEOS adiabat clears the
@@ -158,7 +158,7 @@ class TestSolveSuperliquidusReal:
         assert 'below the liquidus' in msg
         assert re.search(r'surface T=47[67]\d K', msg), msg
 
-    @pytest.mark.timeout(5400)  # 90 min ceiling; the scan measures ~48 min on the runner
+    @pytest.mark.timeout(5400)  # 90 min ceiling; about 3 min locally
     def test_unreachable_superheat_clamps_real(self, caplog):
         """A superheat larger than the EOS table supports, on a molten
         adiabat, clamps to the largest achievable value (~1180 K, set by the
@@ -178,3 +178,51 @@ class TestSolveSuperliquidusReal:
         assert res['surface_T'] == pytest.approx(4777.0, abs=20.0)
         msgs = [r.getMessage() for r in caplog.records]
         assert any('not reachable' in m and 'within the EOS table' in m for m in msgs), msgs
+
+    @pytest.mark.physics_invariant
+    @pytest.mark.timeout(5400)  # 90 min ceiling; one table generation plus four table solves
+    def test_zalmoxis_structure_ic_on_own_p_s_tables(self, tmp_path):
+        """With the Zalmoxis structure, the initial entropy is solved on the
+        run's own P-S tables (generated from PALEOS for S1_m1_dyn_IW4): at
+        delta_T_super = 0 and 500 K the adiabat is at least delta - 0.5 K
+        above the tables' liquidus at every pressure from 1 bar to P_cmb,
+        and Aragog's and SPIDER's IC entry points return the same entropy.
+        """
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        import numpy as np
+        from aragog.eos.entropy import EntropyEOS
+
+        from proteus.interior_energetics.aragog import AragogRunner
+        from proteus.interior_energetics.spider import _compute_spider_initial_entropy
+        from proteus.interior_struct.zalmoxis import generate_spider_tables
+
+        cfg = _cfg('S1_m1_dyn_IW4.toml')
+        assert cfg.interior_struct.module == 'zalmoxis'
+        tables = generate_spider_tables(cfg, str(tmp_path))
+        eos = EntropyEOS(tables['eos_dir'])
+        hf_row = {'P_cmb': 1.42e11, 'R_int': 6.4e6, 'R_core': 3.5e6}
+        P = np.geomspace(1e5, hf_row['P_cmb'], 400)
+        T_liq = eos.temperature(P, eos.liquidus_entropy(P))
+
+        for delta in (0.0, 500.0):
+            object.__setattr__(cfg.planet, 'delta_T_super', delta)
+            object.__setattr__(cfg.planet, 'ini_dsdr', 0.0)
+
+            solver = MagicMock()
+            solver._P_stag_flat = np.array([1e10, 5e10])
+            solver._r_basic_flat = np.array([3.5e6, 5.0e6, 6.4e6])
+            interior_o = SimpleNamespace(
+                aragog_solver=solver, _spider_eos_dir=tables['eos_dir']
+            )
+            AragogRunner._set_entropy_ic(cfg, interior_o, str(tmp_path), hf_row)
+            S_aragog = float(solver.set_initial_entropy.call_args[0][0][0])
+            S_spider = _compute_spider_initial_entropy(cfg, hf_row, tables['eos_dir'])
+
+            assert S_aragog == pytest.approx(S_spider, abs=1e-9)
+            margin = eos.temperature(P, np.full_like(P, S_spider)) - T_liq
+            assert np.all(np.isfinite(margin))
+            assert margin.min() >= delta - 0.5, (delta, float(margin.min()))
+            # Coolest such adiabat: the binding margin sits within 1 K of delta.
+            assert margin.min() == pytest.approx(delta, abs=1.0)

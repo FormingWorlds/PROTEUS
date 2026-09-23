@@ -40,6 +40,7 @@ _SUPERLIQ_N_POINTS = 200  # adiabat sampling for the binding-depth search
 _SUPERLIQ_SCAN_SPAN_K = 4000.0  # coarse-scan span above T_liq(P_surf)
 _SUPERLIQ_SCAN_STEPS = 20  # coarse-scan point count over that span
 _SUPERLIQ_MAX_EXTENSIONS = 3  # doubling-step extensions past a still-valid scan top
+_SUPERLIQ_REFINE_LEVELS = 2  # spacing halvings when no coarse-scan point is valid
 _SUPERLIQ_N_BISECT = 12  # delta-crossing bisection iterations (sub-Kelvin final)
 _SUPERLIQ_N_CEILING_BISECT = 12  # last-valid/first-invalid bisection iterations
 _SUPERLIQ_MAX_S_DRIFT = 1.0e-3  # max fractional entropy drift for an in-table adiabat
@@ -635,11 +636,13 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         raise: the solve clamps to the largest achievable superheat, reports
         it in ``achieved_superheat`` and emits a warning.
     """
+    from proteus.interior_energetics.common import InitialConditionError
+
     try:
         from zalmoxis.eos_export import compute_entropy_adiabat
         from zalmoxis.melting_curves import paleos_liquidus
     except (ImportError, ModuleNotFoundError) as e:
-        raise RuntimeError(
+        raise InitialConditionError(
             'liquidus_super mode requires Zalmoxis '
             '(zalmoxis.eos_export.compute_entropy_adiabat and '
             'zalmoxis.melting_curves.paleos_liquidus); import failed: '
@@ -750,28 +753,60 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         return T_hi
 
     # Coarse-scan surface temperature over a fixed window above the SURFACE
-    # LIQUIDUS, so the search adapts to the configured melting curve instead
-    # of a fixed Kelvin band. The scan runs to completion (it does not stop
-    # at the first point that reaches delta) so the checks below see the
-    # whole picture. A cold-end band just above the surface liquidus can be
-    # invalid (the PALEOS adiabat there has a cooling-with-depth kink of a few
-    # K) while hotter adiabats are valid, so one leading invalid band is
-    # tolerated; a second invalid->valid transition after the first valid
-    # point is not, since the bisection below needs a single validity edge.
+    # LIQUIDUS, so the search adapts to the configured melting curve. The scan
+    # stops at the first valid point that reaches delta: the crossing is then
+    # bracketed, and hotter adiabats cannot change the answer. A cold-end band
+    # just above the surface liquidus can be invalid (the PALEOS adiabat there
+    # has a cooling-with-depth kink of a few K) while hotter adiabats are
+    # valid, so one leading invalid band is tolerated.
     T_liq_surf = float(np.asarray(liq_func(P_surface)).reshape(-1)[0])
     scan_T = np.linspace(T_liq_surf, T_liq_surf + _SUPERLIQ_SCAN_SPAN_K, _SUPERLIQ_SCAN_STEPS)
-    # The scan stops at the first valid point that reaches delta: the crossing
-    # is then bracketed, and hotter adiabats cannot change the answer.
+    scan_step = float(scan_T[1] - scan_T[0])
     scan: list[tuple[float, dict]] = []
+    for T_scan in scan_T:
+        d = _probe(float(T_scan))
+        scan.append((float(T_scan), d))
+        if d['valid'] and d['superheat'] >= delta:
+            break
+
+    if not any(d['valid'] for _, d in scan):
+        # A valid band narrower than the scan spacing, or one that starts
+        # above the scan window, is missed by the coarse points: halve the
+        # spacing up to _SUPERLIQ_REFINE_LEVELS times, then extend above the
+        # scan top with doubling steps, stopping at the first valid adiabat.
+        # A valid band narrower than the finest spacing is still missed.
+        found = False
+        for _ in range(_SUPERLIQ_REFINE_LEVELS):
+            refined: list[tuple[float, dict]] = [scan[0]]
+            for (T_a, _d_a), (T_b, d_b) in zip(scan, scan[1:]):
+                T_mid = 0.5 * (T_a + T_b)
+                if not found:
+                    d_mid = _probe(T_mid)
+                    refined.append((T_mid, d_mid))
+                    found = d_mid['valid']
+                refined.append((T_b, d_b))
+            scan = refined
+            if found:
+                break
+        if not found:
+            T_ext, step = scan[-1][0], scan_step
+            for _ in range(_SUPERLIQ_MAX_EXTENSIONS):
+                T_ext += step
+                d_ext = _probe(T_ext)
+                scan.append((T_ext, d_ext))
+                if d_ext['valid']:
+                    break
+                step *= 2.0
+
+    # A second invalid->valid transition after the first valid point breaks
+    # the single validity edge the bisections below rely on.
     first_valid_idx: int | None = None
     last_valid_idx: int | None = None
     seen_invalid_after_first = False
-    for idx, T_scan in enumerate(scan_T):
-        d = _probe(float(T_scan))
-        scan.append((float(T_scan), d))
+    for idx, (_, d) in enumerate(scan):
         if d['valid']:
             if seen_invalid_after_first:
-                raise RuntimeError(
+                raise InitialConditionError(
                     'liquidus_super: the coarse surface-temperature scan is valid, '
                     'then invalid, then valid again at P_cmb=%.0f GPa; the '
                     'single-validity-edge assumption behind this solve does not hold '
@@ -780,22 +815,21 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
             if first_valid_idx is None:
                 first_valid_idx = idx
             last_valid_idx = idx
-            if d['superheat'] >= delta:
-                break
         elif first_valid_idx is not None:
             seen_invalid_after_first = True
 
     points: list[tuple[float, dict]] = [(T, d) for T, d in scan if d['valid']]
     if not points:
-        raise RuntimeError(
+        raise InitialConditionError(
             'liquidus_super: no valid molten adiabat found while solving the '
             f'initial condition (P_cmb={P_cmb / 1e9:.0f} GPa, surface '
-            f'liquidus={T_liq_surf:.0f} K). The EOS table may not support a '
-            'molten mantle at this pressure.'
+            f'liquidus={T_liq_surf:.0f} K), in the scan, at the midpoints of its '
+            f'intervals, or above it up to T={scan[-1][0]:.0f} K. The EOS table '
+            'may not support a molten mantle at this pressure.'
         )
     for (T_a, d_a), (T_b, d_b) in zip(points, points[1:]):
         if d_b['superheat'] < d_a['superheat'] - 1.0:
-            raise RuntimeError(
+            raise InitialConditionError(
                 'liquidus_super: superheat decreases with increasing surface '
                 f'temperature between T={T_a:.0f} K ({d_a["superheat"]:.0f} K) and '
                 f'T={T_b:.0f} K ({d_b["superheat"]:.0f} K) at P_cmb={P_cmb / 1e9:.0f} '
@@ -803,18 +837,17 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
                 'does not hold for this EOS/melting-curve combination.'
             )
 
-    # points is the contiguous valid run in scan (any leading invalid band
-    # tolerated above ends before it, and the oscillation check above rules
-    # out a second one), so the point right after its last entry, if any, is
-    # the first invalid point past the ceiling.
-    first_invalid_T = scan_T[last_valid_idx + 1] if last_valid_idx + 1 < len(scan) else None
+    # points is the contiguous valid run in scan (the check above rules out a
+    # second one), so the point right after its last entry, if any, is the
+    # first invalid point past the ceiling.
+    first_invalid_T = scan[last_valid_idx + 1][0] if last_valid_idx + 1 < len(scan) else None
     window_limited = False
     if first_invalid_T is None and points[-1][1]['superheat'] < delta:
         # The valid run reaches the end of the scan: extend upward with
-        # doubling steps (at most 3) until a point is invalid, so a table
-        # ceiling just past the scan window is not mistaken for the
-        # search-window limit.
-        step = float(scan_T[1] - scan_T[0])
+        # doubling steps (at most 3) until a point is invalid or reaches
+        # delta, so a table ceiling just past the scan window is not mistaken
+        # for the search-window limit.
+        step = scan_step
         T_last, d_last = points[-1]
         for _ in range(_SUPERLIQ_MAX_EXTENSIONS):
             T_next = T_last + step
@@ -823,7 +856,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
                 first_invalid_T = T_next
                 break
             if d_next['superheat'] < d_last['superheat'] - 1.0:
-                raise RuntimeError(
+                raise InitialConditionError(
                     'liquidus_super: superheat decreases with increasing surface '
                     f'temperature during the search-window extension, between '
                     f'T={T_last:.0f} K ({d_last["superheat"]:.0f} K) and '
@@ -834,6 +867,8 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
                 )
             points.append((T_next, d_next))
             T_last, d_last = T_next, d_next
+            if d_next['superheat'] >= delta:
+                break
             step *= 2.0
         else:
             window_limited = True
@@ -861,7 +896,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     reached_delta = d_best['superheat'] >= delta
     if d_best['superheat'] < 0 and not reached_delta:
         limit = 'the surface-temperature search window' if window_limited else 'the EOS table'
-        raise RuntimeError(
+        raise InitialConditionError(
             'liquidus_super: no fully-molten initial condition is reachable within '
             f'{limit}; even the hottest valid adiabat (surface T={T_best:.0f} K) '
             f'is {-d_best["superheat"]:.0f} K below the liquidus at '
@@ -908,7 +943,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
             # scan point and the first valid one; the coolest adiabat that is
             # both valid and at least delta above the liquidus lies in that
             # bracket, so refine it instead of returning the coarse point.
-            T_solved = _bisect_delta(float(scan_T[first_valid_idx - 1]), points[0][0])
+            T_solved = _bisect_delta(scan[first_valid_idx - 1][0], points[0][0])
     elif ceiling_bisected:
         # The crossing was reached only by refining the validity edge past
         # every coarse/extension-grid point, so it lies between T_sub_delta
@@ -928,7 +963,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
 
     final = _probe(T_solved)
     if not final['valid']:
-        raise RuntimeError(
+        raise InitialConditionError(
             f'liquidus_super: solved surface T={T_solved:.0f} K yielded an '
             f'out-of-table adiabat (P_cmb={P_cmb / 1e9:.0f} GPa); the EOS table '
             'is exhausted at this mass.'

@@ -84,7 +84,7 @@ def _table_env(monkeypatch):
     monkeypatch.setattr(common, '_load_entropy_eos', lambda eos_dir: _FakeEOS())
 
 
-def _install_zalmoxis_deps(monkeypatch, s_ceiling=S_MAX, invalid_bands=()):
+def _install_zalmoxis_deps(monkeypatch, s_ceiling=S_MAX, invalid_bands=(), superheat_dip=None):
     """Drive ``solve_superliquidus_adiabat`` through the shared linear model.
 
     Adiabats with ``S > s_ceiling`` plateau at ``s_ceiling`` at the deepest
@@ -92,7 +92,8 @@ def _install_zalmoxis_deps(monkeypatch, s_ceiling=S_MAX, invalid_bands=()):
     ``s_ceiling=None`` removes the ceiling. Adiabats with ``S`` inside any
     ``(S_lo, S_hi)`` of ``invalid_bands`` get a 5 K cooling-with-depth kink
     near the surface, the shape of the real near-liquidus monotonicity band,
-    while their superheat is left unchanged.
+    while their superheat is left unchanged. ``superheat_dip=(T_lo, T_hi, dT)``
+    cools the whole adiabat by ``dT`` for surface T in ``[T_lo, T_hi]``.
     """
     import zalmoxis.eos_export as eos_export
 
@@ -115,6 +116,8 @@ def _install_zalmoxis_deps(monkeypatch, s_ceiling=S_MAX, invalid_bands=()):
         T = T0 + A * S_profile + B * (P / 1e9)
         if any(lo <= S < hi for lo, hi in invalid_bands):
             T[1] = T[0] - 5.0
+        if superheat_dip is not None and superheat_dip[0] <= T_surface <= superheat_dip[1]:
+            T = T - superheat_dip[2]
         return {
             'P': P,
             'T': T,
@@ -317,8 +320,11 @@ def test_zalmoxis_path_raises_on_second_validity_edge(monkeypatch, bands):
 
     # delta=800 is first met at surface T 2800 K, past the band (2420 to 2500
     # K), so the scan runs through the band before it can stop.
-    with pytest.raises(RuntimeError, match='valid, then invalid, then valid again'):
+    with pytest.raises(
+        common.InitialConditionError, match='valid, then invalid, then valid again'
+    ) as exc:
         solve_superliquidus_adiabat(_shared_config(delta=800.0), {'P_cmb': 100e9})
+    assert 'P_cmb=100 GPa' in str(exc.value)
 
 
 def test_zalmoxis_path_extends_scan_past_window_without_ceiling(monkeypatch):
@@ -379,8 +385,8 @@ def test_zalmoxis_path_refines_ceiling_near_liquidus(
 
 def test_aragog_ic_with_ini_dsdr_stays_inside_table(_table_env):
     """A clamped table-path solve with the default ini_dsdr keeps every Aragog
-    initial node at or below S_max, and SPIDER's deepest node (at
-    core_frac * R_int) at S_max exactly.
+    initial node at or below S_max, and SPIDER's deepest basic node (at
+    R_core, where the dummy structure's mesh ends) at S_max exactly.
     """
     config = _shared_ic_config(delta=1000.0, ic_module='aragog')
     config.planet.ini_dsdr = -4.698e-6
@@ -398,8 +404,7 @@ def test_aragog_ic_with_ini_dsdr_stays_inside_table(_table_env):
     assert S_init.max() > S_init.min()  # the perturbation was applied
 
     S_top = _compute_spider_initial_entropy(config, hf_row, spider_eos_dir='unused')
-    R_cmb_spider = config.interior_struct.core_frac * R_int
-    assert S_top + 4.698e-6 * (R_int - R_cmb_spider) == pytest.approx(S_MAX, abs=1e-9)
+    assert S_top + 4.698e-6 * (R_int - R_core) == pytest.approx(S_MAX, abs=1e-9)
 
 
 def test_zalmoxis_path_raises_on_nan_liquidus_at_depth(monkeypatch):
@@ -419,8 +424,11 @@ def test_zalmoxis_path_raises_on_nan_liquidus_at_depth(monkeypatch):
         lambda mantle_eos, config: (None, _liq_nan_deep),
     )
 
-    with pytest.raises(RuntimeError, match='no valid molten adiabat found'):
+    with pytest.raises(
+        common.InitialConditionError, match='no valid molten adiabat found'
+    ) as exc:
         solve_superliquidus_adiabat(_shared_config(delta=500.0), {'P_cmb': 100e9})
+    assert 'P_cmb=100 GPa' in str(exc.value)
 
 
 def test_zalmoxis_path_stops_scanning_once_delta_is_reached(monkeypatch):
@@ -459,5 +467,156 @@ def test_zalmoxis_path_raise_names_search_window_when_it_is_the_limit(monkeypatc
     """
     _install_zalmoxis_deps(monkeypatch, s_ceiling=None)
 
-    with pytest.raises(RuntimeError, match='within the surface-temperature search window'):
+    with pytest.raises(
+        common.InitialConditionError, match='within the surface-temperature search window'
+    ) as exc:
         solve_superliquidus_adiabat(_shared_config(delta=200.0), {'P_cmb': 3000e9})
+    assert 'below the liquidus at P=3e+03 GPa' in str(exc.value)
+    assert 'the EOS table' not in str(exc.value)
+
+
+# Case A: every molten state lies between two coarse scan points. Invalid
+# below surface T 2020 K (S < 1900), table ceiling at surface T 2100 K
+# (S_ceiling = 2000); the scan points 2010.5 K and 2221 K are both invalid.
+_CASE_A = dict(s_ceiling=2000.0, invalid_bands=((0.0, 1900.0),))
+
+
+@pytest.mark.parametrize(
+    ('delta', 'clamped', 'expected_T', 'expected_superheat'),
+    [
+        (50.0, False, 2050.0, 50.0),
+        # Clamps at the ceiling: 0.8 * 2000 - 1500 = 100 K, plus up to 2.4 K
+        # of the solver's entropy-drift tolerance above S_ceiling.
+        (500.0, True, 2100.0, 100.0),
+    ],
+)
+def test_zalmoxis_path_finds_a_band_between_scan_points(
+    monkeypatch, delta, clamped, expected_T, expected_superheat
+):
+    """A valid band narrower than the scan spacing is found by refining the
+    scan instead of raising, and the solve then agrees with the table path
+    under the same ceiling: delta=50 is met, delta=500 clamps at 100 K.
+    """
+    _install_zalmoxis_deps(monkeypatch, **_CASE_A)
+
+    res = solve_superliquidus_adiabat(_shared_config(delta=delta), {'P_cmb': 100e9})
+
+    assert res['clamped'] is clamped
+    assert res['surface_T'] == pytest.approx(expected_T, abs=3.0)
+    assert res['achieved_superheat'] == pytest.approx(expected_superheat, abs=3.0)
+    assert 2020.0 - 0.5 <= res['surface_T'] <= 2103.0  # inside the valid band
+
+
+def test_zalmoxis_path_raises_when_no_refined_or_extended_point_is_valid(monkeypatch):
+    """A valid band narrower than the finest refinement spacing (~53 K) is
+    still missed; with no valid point anywhere, the solve raises and says
+    where it looked.
+    """
+    # Valid only for surface T 2020 to 2030 K: invalid below S 1900 and above
+    # the ceiling S 1912.5 (plus the drift tolerance).
+    _install_zalmoxis_deps(monkeypatch, s_ceiling=1912.5, invalid_bands=((0.0, 1900.0),))
+
+    with pytest.raises(
+        common.InitialConditionError, match='no valid molten adiabat found'
+    ) as exc:
+        solve_superliquidus_adiabat(_shared_config(delta=0.0), {'P_cmb': 100e9})
+
+    assert 'at the midpoints of its intervals, or above it' in str(exc.value)
+
+
+# Case D: invalid up to surface T 5900 K (S < 6750), no ceiling; every
+# coarse point up to 5800 K is invalid and the first extension point
+# (6010.5 K) is valid.
+_CASE_D = dict(s_ceiling=None, invalid_bands=((0.0, 6750.0),))
+
+
+@pytest.mark.parametrize(
+    ('delta', 'expected_T'),
+    [(4000.0, 6000.0), (100.0, 5900.0)],
+)
+def test_zalmoxis_path_extends_above_an_all_invalid_scan(monkeypatch, delta, expected_T):
+    """With no valid coarse or refined point, the extension above the scan
+    top finds the valid adiabats: delta=4000 is met at its exact crossing,
+    delta=100 at the lower edge of the valid range (superheat 3900 K there).
+    """
+    _install_zalmoxis_deps(monkeypatch, **_CASE_D)
+
+    res = solve_superliquidus_adiabat(_shared_config(delta=delta), {'P_cmb': 100e9})
+
+    assert res['clamped'] is False
+    assert res['surface_T'] == pytest.approx(expected_T, abs=0.5)
+    assert res['achieved_superheat'] == pytest.approx(expected_T - 2000.0, abs=0.5)
+    assert res['achieved_superheat'] >= delta
+
+
+def test_zalmoxis_extension_stops_once_delta_is_reached(monkeypatch):
+    """The extension past a fully valid scan stops at the first point that
+    reaches delta: adiabats above 6100 K surface temperature lose superheat,
+    and a delta met at 6000 K is solved without probing them or raising.
+    """
+    import zalmoxis.eos_export as eos_export
+
+    _install_zalmoxis_deps(monkeypatch, s_ceiling=None)
+    inner = eos_export.compute_entropy_adiabat
+    probed = []
+
+    def _hot_end_drops(**kw):
+        probed.append(float(kw['T_surface']))
+        out = inner(**kw)
+        if kw['T_surface'] > 6100.0:
+            out['T'] = out['T'] - 2.0 * (kw['T_surface'] - 6100.0)
+        return out
+
+    monkeypatch.setattr(eos_export, 'compute_entropy_adiabat', _hot_end_drops)
+
+    res = solve_superliquidus_adiabat(_shared_config(delta=4000.0), {'P_cmb': 100e9})
+
+    assert res['clamped'] is False
+    assert res['surface_T'] == pytest.approx(_surface_T_for(4000.0), abs=0.5)
+    # Scan top 5800 K, first extension 6010.5 K; the next would be 6431.6 K.
+    assert max(probed) < 6100.0
+
+
+def test_zalmoxis_structure_ic_follows_the_solver_p_s_tables(monkeypatch, tmp_path):
+    """With the Zalmoxis structure, the P-T liquidus of the structure adiabat
+    and the P-S tables' own liquidus can differ (100 K here). The initial
+    entropy follows the P-S tables the solver uses for its melt fraction;
+    the Zalmoxis adiabat, which only anchors the structure profile, keeps
+    following the P-T curve.
+    """
+    from proteus.interior_energetics.common import compute_initial_entropy
+
+    _install_zalmoxis_deps(monkeypatch)
+
+    class _HotterPS(_FakeEOS):
+        def liquidus_entropy(self, P):
+            T_liq = _table_liquidus(P) + 100.0
+            return (T_liq - T0 - B * np.asarray(P, dtype=float) / 1e9) / A
+
+    monkeypatch.setattr(common, '_load_entropy_eos', lambda eos_dir: _HotterPS())
+    config = _shared_ic_config(delta=200.0, ic_module='aragog')
+    config.interior_struct.module = 'zalmoxis'
+    hf_row = {'P_cmb': 100e9}
+
+    S_ic = compute_initial_entropy(config, hf_row, spider_eos_dir=str(tmp_path))
+    S_pt = solve_superliquidus_adiabat(config, hf_row)['S_target']
+
+    S_ps_expected = (200.0 + 100.0 + (L0 - T0) + (L1 - B) * 100.0) / A
+    assert S_ic == pytest.approx(S_ps_expected, rel=1e-9)
+    assert S_pt == pytest.approx(S_ps_expected - 100.0 / A, abs=1.0)
+    # The two differ by the 100 K liquidus offset, 125 J/kg/K at A = 0.8.
+    assert S_ic - S_pt == pytest.approx(100.0 / A, abs=1.0)
+
+
+def test_zalmoxis_path_raises_when_superheat_dips_between_scan_points(monkeypatch):
+    """A superheat that falls as the surface temperature rises breaks the
+    monotone relation the bisection relies on, so the solve raises rather
+    than bisecting across the dip. The dip cools the scan points at 2432 and
+    2642 K by 300 K, so superheat drops by about 90 K after the 2221 K point.
+    """
+    _install_zalmoxis_deps(monkeypatch, s_ceiling=None, superheat_dip=(2400.0, 2700.0, 300.0))
+
+    with pytest.raises(common.InitialConditionError, match='superheat decreases') as exc:
+        solve_superliquidus_adiabat(_shared_config(delta=1000.0), {'P_cmb': 100e9})
+    assert 'between T=2221 K' in str(exc.value)
+    assert 'P_cmb=100 GPa' in str(exc.value)

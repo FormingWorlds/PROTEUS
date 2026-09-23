@@ -91,21 +91,36 @@ Earth-mass to ten-Earth-mass range. Setting `delta_T_super = 0` makes the mantle
 marginally molten, just touching the liquidus at the binding depth.
 
 !!! note "Requires a silicate liquidus"
-    With `interior_struct.module = "zalmoxis"`, `liquidus_super` evaluates the
-    Fei et al. (2021) liquidus through the structure module. With
-    `interior_struct.module = "spider"` or `"dummy"`, the adiabat is solved on
-    the interior P-S tables against their own liquidus (`liquidus_P-S.dat`),
-    the same curve the interior solver uses for its melt fraction. When
-    `interior_struct.melting_dir` is set, PROTEUS derives that file from the
-    `melting_dir` P-T curve; no Zalmoxis data are read. The mantle is evaluated
-    up to the core-mantle boundary pressure or the table maximum, whichever is
-    lower (a warning names the truncation). If the table liquidus is undefined
-    at any evaluated pressure, PROTEUS raises. If the requested superheat exceeds what the
-    tables reach, the entropy is clamped to the highest usable table entropy
-    (the table maximum, lowered by the entropy a negative `ini_dsdr` adds at the
-    core-mantle boundary) and a warning reports the achieved superheat. For a
-    run built only from placeholder modules, use `adiabatic_from_cmb` instead,
-    which needs no melting-curve lookup.
+    For every structure module, the initial entropy is solved on the interior
+    P-S tables against their own liquidus (`liquidus_P-S.dat`), the same curve
+    the interior solver uses for its melt fraction. Where those tables come
+    from depends on the structure module:
+
+    - `"zalmoxis"` and `"dummy"` with a PALEOS mantle
+      (`interior_struct.zalmoxis.mantle_eos`, default `"PALEOS:MgSiO3"`):
+      Zalmoxis generates the tables from that EOS, with the PALEOS
+      (Fei et al. 2021) liquidus. `interior_struct.melting_dir` is not used,
+      and Zalmoxis must be installed.
+    - `"spider"`, or `"dummy"` with a non-PALEOS mantle: the tables come from
+      FWL_DATA or the SPIDER lookup data, and when `interior_struct.melting_dir`
+      is set PROTEUS derives `liquidus_P-S.dat` from that P-T curve.
+
+    With `"zalmoxis"`, the structure solve also anchors its temperature profile
+    on a P-T adiabat that is `delta_T_super` above the P-T liquidus, while the
+    initial entropy is solved on the P-S tables. The two adiabats differ
+    slightly: for 1 Earth mass at `delta_T_super = 500` K, the P-T anchor
+    evaluated on the P-S tables is 459 K above their liquidus at the
+    core-mantle boundary, 41 K less than the initial entropy.
+
+    The core-mantle boundary pressure must lie inside the table; PROTEUS raises
+    if it is above the table maximum or if the table liquidus is undefined at
+    any evaluated pressure. If the requested superheat exceeds what the tables
+    reach, the entropy is clamped to the highest usable table entropy (the
+    table maximum, lowered by the entropy a negative `ini_dsdr` adds at the
+    core-mantle boundary) and a warning reports the achieved superheat. A
+    positive `ini_dsdr` is rejected with `liquidus_super`. For a run built only
+    from placeholder modules, use `adiabatic_from_cmb` instead, which needs no
+    melting-curve lookup.
 
 !!! note "Very deep mantles"
     A sufficiently deep mantle cannot be made molten with an arbitrarily large

@@ -183,6 +183,16 @@ _TABLE_SUPERLIQ_N_POINTS = 200
 _TABLE_SUPERLIQ_N_BISECT = 60
 
 
+class InitialConditionError(RuntimeError):
+    """The requested initial condition does not exist for this planet and EOS.
+
+    Raised by the liquidus_super solves when no fully molten initial state is
+    reachable or the melting curve is undefined where it must be checked.
+    Retrying the interior step cannot change the outcome, so interior
+    wrappers must not treat it as a transient solver failure.
+    """
+
+
 def _load_entropy_eos(eos_dir: str) -> EntropyEOS:
     """Load (and memoise) the P-S EOS tables in ``eos_dir``.
 
@@ -250,8 +260,9 @@ def solve_superliquidus_entropy_from_tables(
     ----------
     config : Config
         PROTEUS configuration. Uses ``planet.delta_T_super``,
-        ``planet.ini_dsdr``, ``planet.mass_tot``, ``interior_struct.core_frac``
-        and ``interior_struct.core_frac_mode``.
+        ``planet.ini_dsdr``, and ``planet.mass_tot``,
+        ``interior_struct.core_frac`` and ``interior_struct.core_frac_mode``
+        for the Noack & Lasbleis (2020) P_cmb estimate only.
     hf_row : dict or None
         Helpfile row. ``hf_row['P_cmb']`` is used when populated; otherwise a
         Noack & Lasbleis (2020) mass-aware estimate is used. ``R_int`` and
@@ -280,14 +291,28 @@ def solve_superliquidus_entropy_from_tables(
 
     from proteus.utils.structure_estimate import resolve_P_cmb
 
-    P_cmb, _ = resolve_P_cmb(hf_row, config)
-    if P_cmb > float(eos.P_max):
+    P_cmb, estimated = resolve_P_cmb(hf_row, config)
+    if estimated:
         log.warning(
-            'liquidus_super: the core-mantle boundary pressure %.3g GPa exceeds the '
-            'EOS table maximum %.3g GPa; the superheat is evaluated up to the '
-            'table maximum.',
+            'liquidus_super: hf_row["P_cmb"] not yet populated; using '
+            'Noack & Lasbleis (2020) mass-aware fallback P_cmb=%.1f GPa '
+            '(mass_tot=%.2f M_Earth).',
             P_cmb / 1e9,
-            float(eos.P_max) / 1e9,
+            float(config.planet.mass_tot),
+        )
+    # The deep mantle past the table cannot be certified molten, so there is
+    # no clip; the tolerance only absorbs rounding of the table's end pressure.
+    if P_cmb > float(eos.P_max) * (1.0 + 1e-9):
+        raise InitialConditionError(
+            'liquidus_super: the core-mantle boundary pressure %.3g GPa is above '
+            'the EOS table maximum %.3g GPa (table covers %.3g to %.3g GPa); the '
+            'deepest mantle cannot be checked for melt.'
+            % (
+                P_cmb / 1e9,
+                float(eos.P_max) / 1e9,
+                float(eos.P_min) / 1e9,
+                float(eos.P_max) / 1e9,
+            )
         )
     P_cmb = min(P_cmb, float(eos.P_max))
     P = np.geomspace(max(1e5, float(eos.P_min)), P_cmb, _TABLE_SUPERLIQ_N_POINTS)
@@ -312,7 +337,7 @@ def solve_superliquidus_entropy_from_tables(
     )
     if not covered.all():
         missing = P[~covered]
-        raise RuntimeError(
+        raise InitialConditionError(
             'liquidus_super: the P-S table liquidus is undefined at %d of %d '
             'pressures between %.3g and %.3g GPa (liquidus file covers %.3g to '
             '%.3g GPa, table entropy from %.0f J/kg/K); the superheat target '
@@ -333,7 +358,7 @@ def solve_superliquidus_entropy_from_tables(
         # would be a clipped table-edge value, and no adiabat in the table is
         # molten there.
         i = int(np.argmax(S_liq - float(eos.S_max)))
-        raise RuntimeError(
+        raise InitialConditionError(
             'liquidus_super: no fully-molten initial condition is reachable within '
             f'the EOS table; the table liquidus entropy exceeds the table maximum '
             f'({float(eos.S_max):.1f} J/kg/K) at {int(above.sum())} of {P.size} '
@@ -351,16 +376,17 @@ def solve_superliquidus_entropy_from_tables(
     # With ini_dsdr < 0 the modules add |ini_dsdr| * (R_surf - r) to the
     # uniform S_target, so the deepest node sits that much above S_target;
     # lower the usable ceiling by the same amount to keep it inside the table.
-    # Aragog's mesh ends at hf_row R_core, SPIDER's at core_frac * R_int: use
-    # the deeper of the two so neither module's CMB node passes S_max.
+    # Both solvers' meshes end at hf_row R_core on this path: Aragog's inner
+    # radius is R_core, and SPIDER's coresize is R_core / R_int (from the dummy
+    # structure's mesh file, or core_frac in radius mode for the spider
+    # structure, which sets R_core = core_frac * R_int).
     S_lo, S_hi = float(eos.S_min), float(eos.S_max)
     ini_dsdr = float(config.planet.ini_dsdr)
     if ini_dsdr < 0:
         R_int = hf_row.get('R_int') if hf_row is not None else None
         R_core = hf_row.get('R_core') if hf_row is not None else None
         if R_int and R_core and np.isfinite(R_int - R_core) and R_int > R_core:
-            R_cmb = min(float(R_core), float(config.interior_struct.core_frac) * float(R_int))
-            S_hi -= -ini_dsdr * (float(R_int) - R_cmb)
+            S_hi -= -ini_dsdr * (float(R_int) - float(R_core))
         else:
             log.warning(
                 'liquidus_super: hf_row has no mantle radii (R_int, R_core), so '
@@ -370,13 +396,13 @@ def solve_superliquidus_entropy_from_tables(
 
     sh_hi, P_hi = _probe(S_hi)
     if not np.isfinite(sh_hi):
-        raise RuntimeError(
+        raise InitialConditionError(
             'liquidus_super: the EOS table gives a non-finite temperature at '
             f'P={P_hi / 1e9:.3g} GPa even at the highest usable entropy '
             f'({S_hi:.1f} J/kg/K); the superheat target cannot be evaluated.'
         )
     if sh_hi < 0:
-        raise RuntimeError(
+        raise InitialConditionError(
             'liquidus_super: no fully-molten initial condition is reachable within '
             f'the EOS table; even at the highest usable entropy ({S_hi:.1f} J/kg/K) '
             f'the adiabat is {-sh_hi:.0f} K below the liquidus at P={P_hi / 1e9:.3g} GPa.'
@@ -483,54 +509,29 @@ def compute_initial_entropy(
 
     # liquidus_super: start the mantle on the coolest single adiabat that is
     # fully molten everywhere with delta_T_super of superheat above the
-    # configured liquidus. The superheat is solved against the actual melting
-    # curve at the most-constraining depth, so the initial condition is robust
-    # to the liquidus parameterisation and to planet mass instead of relying on
-    # a fixed surface temperature or entropy value (see
-    # zalmoxis.solve_superliquidus_adiabat). Anchoring at the CMB liquidus
-    # instead extrapolates the melting curve past its calibration at high mass
-    # and yields a cold-surface, energy-non-conserving IC.
+    # liquidus, at the most-constraining depth. The entropy is solved on the
+    # interior solver's own P-S tables against their own liquidus, the curve
+    # that sets its melt fraction, for every structure module. With the
+    # Zalmoxis structure the PALEOS P-T adiabat (solve_superliquidus_adiabat)
+    # only anchors the structure solve's temperature profile.
     if config.planet.temperature_mode == 'liquidus_super':
-        if config.interior_struct.module != 'zalmoxis':
-            # Without a Zalmoxis structure, solve on the interior tables and
-            # their own P-S liquidus; no Zalmoxis or PALEOS data are read.
-            if not spider_eos_dir:
-                raise FileNotFoundError(
-                    "temperature_mode='liquidus_super' with "
-                    f"interior_struct.module='{config.interior_struct.module}' "
-                    'needs the interior P-S EOS tables, but no table directory '
-                    'was provided.'
+        if config.interior_struct.module == 'zalmoxis':
+            if not spider_eos_dir or not os.path.isdir(spider_eos_dir):
+                raise InitialConditionError(
+                    "temperature_mode='liquidus_super' solves the initial entropy "
+                    "on the run's P-S tables (dirs['spider_eos_dir']), but that "
+                    f'directory is missing: {spider_eos_dir!r}.'
                 )
-            return float(
-                solve_superliquidus_entropy_from_tables(config, hf_row, spider_eos_dir)[
-                    'S_target'
-                ]
+        elif not spider_eos_dir:
+            raise FileNotFoundError(
+                "temperature_mode='liquidus_super' with "
+                f"interior_struct.module='{config.interior_struct.module}' "
+                'needs the interior P-S EOS tables, but no table directory '
+                f'was provided ({spider_eos_dir!r}).'
             )
-
-        from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
-
-        res = solve_superliquidus_adiabat(config, hf_row)
-        surface_T = res['surface_T']
-        if spider_eos_dir and os.path.isdir(spider_eos_dir):
-            try:
-                from aragog.eos.entropy import EntropyEOS
-
-                S = float(EntropyEOS(spider_eos_dir).invert_temperature(1e5, surface_T))
-                log.info(
-                    'liquidus_super initial entropy from surface P-S inversion: '
-                    'surface T=%.0f K -> S=%.1f J/kg/K',
-                    surface_T,
-                    S,
-                )
-                return S
-            except (ImportError, ValueError, FileNotFoundError) as e:
-                log.warning(
-                    'liquidus_super surface P-S inversion failed (%s); using the '
-                    'PALEOS adiabat entropy S=%.1f J/kg/K.',
-                    e,
-                    res['S_target'],
-                )
-        return float(res['S_target'])
+        return float(
+            solve_superliquidus_entropy_from_tables(config, hf_row, spider_eos_dir)['S_target']
+        )
 
     # adiabatic_from_cmb: invert (P_cmb, tcmb_init) -> S via the same entropy
     # tables the interior solver integrates with. Because S is conserved along

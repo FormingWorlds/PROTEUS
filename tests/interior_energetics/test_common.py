@@ -870,18 +870,17 @@ def test_compute_initial_entropy_adiabatic_from_cmb_uses_pcmb_fallback(monkeypat
     assert 'adiabatic_from_cmb' in nl20_msgs[0]
 
 
-def test_compute_initial_entropy_liquidus_super_missing_melting_curves_import_raises_runtime_error(
+def test_solve_superliquidus_adiabat_missing_melting_curves_import_raises_runtime_error(
     monkeypatch,
 ):
-    """liquidus_super mode requires the zalmoxis melting_curves import for
-    paleos_liquidus; a missing import must raise RuntimeError with a clear
-    message even though the zalmoxis module itself is selected.
+    """The Zalmoxis-structure liquidus_super adiabat (the structure solve's
+    CMB temperature anchor) needs the zalmoxis melting_curves import for
+    paleos_liquidus; a missing import raises RuntimeError with a clear message.
     """
     import sys
     from types import SimpleNamespace
 
-    import proteus.interior_struct.zalmoxis  # noqa: F401  (import before blocking)
-    from proteus.interior_energetics.common import compute_initial_entropy
+    from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
     # Force the paleos_liquidus import to fail.
     monkeypatch.setitem(sys.modules, 'zalmoxis.melting_curves', None)
@@ -902,7 +901,7 @@ def test_compute_initial_entropy_liquidus_super_missing_melting_curves_import_ra
     hf_row = {'P_cmb': 1.35e11}  # valid CMB pressure, ~135 GPa
 
     with pytest.raises(RuntimeError, match='liquidus_super mode requires Zalmoxis') as exc:
-        compute_initial_entropy(config, hf_row=hf_row, fallback=3300.0)
+        solve_superliquidus_adiabat(config, hf_row)
     # Discrimination: the message names BOTH the mode and the module that
     # would have provided the curve. A regression that swallowed the import
     # error and silently fell back to the user fallback would not raise at all.

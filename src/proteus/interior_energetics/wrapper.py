@@ -1070,9 +1070,9 @@ def determine_interior_radius_with_dummy(
                 raise RuntimeError(
                     "planet.temperature_mode='liquidus_super' with "
                     f"interior_struct.module='dummy' needs SPIDER/Aragog P-S EOS "
-                    f'tables, but the mantle EOS '
-                    f'{config.interior_struct.eos_dir!r} has no PALEOS table set '
-                    'and no FWL_DATA or SPIDER lookup_data set is available. '
+                    'tables, but interior_struct.zalmoxis.mantle_eos='
+                    f'{config.interior_struct.zalmoxis.mantle_eos!r} is not a PALEOS '
+                    'table set and no FWL_DATA or SPIDER lookup_data set is available. '
                     'Provide the tables, or set planet.temperature_mode to '
                     "'adiabatic' or another mode. "
                     f'Cause: {exc}'
@@ -1904,6 +1904,7 @@ def run_interior(
 
     if config.interior_energetics.module == 'spider':
         # Import
+        from proteus.interior_energetics.common import InitialConditionError
         from proteus.interior_energetics.spider import ReadSPIDER, RunSPIDER
 
         # Run SPIDER (pass external mesh file if available from Zalmoxis).
@@ -1913,6 +1914,9 @@ def run_interior(
         try:
             RunSPIDER(dirs, config, hf_all, hf_row, interior_o, mesh_file=mesh_file)
             interior_o.spider_fail_count = 0
+        except InitialConditionError:
+            # No valid initial condition exists; a retry cannot produce one.
+            raise
         except RuntimeError as e:
             interior_o.spider_fail_count += 1
             log.warning(

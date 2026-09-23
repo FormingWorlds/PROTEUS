@@ -237,7 +237,7 @@ def test_table_liquidus_undefined_at_depth_raises(fake_tables, monkeypatch):
 
 def test_liquidus_file_ending_one_ulp_below_p_max_is_covered(fake_tables, monkeypatch, caplog):
     """A liquidus file whose top pressure rounds one ULP below the table edge
-    P_max still covers a CMB clipped to P_max; only the clip warning fires.
+    P_max still covers a CMB at P_max, with no warning.
     """
     P_max = 5.0e11
     monkeypatch.setattr(_FakeEOS, 'P_max', P_max)
@@ -245,14 +245,14 @@ def test_liquidus_file_ending_one_ulp_below_p_max_is_covered(fake_tables, monkey
 
     with caplog.at_level(logging.WARNING):
         res = solve_superliquidus_entropy_from_tables(
-            _config(50.0), {'P_cmb': 5.2e11}, fake_tables
+            _config(50.0), {'P_cmb': P_max}, fake_tables
         )
 
     # At 500 GPa the model reaches at most 100 K of superheat, so 50 K is met.
     assert res['P_cmb'] == pytest.approx(P_max, rel=1e-12)
     assert res['clamped'] is False
     assert res['S_target'] == pytest.approx(_S_expected(50.0, P_max), rel=1e-6)
-    assert any('exceeds the EOS table maximum' in r.getMessage() for r in caplog.records)
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
 def test_liquidus_entropy_above_table_range_raises(fake_tables, monkeypatch):
@@ -370,8 +370,11 @@ def test_nan_temperatures_at_depth_raise(fake_tables, monkeypatch):
 
     monkeypatch.setattr(_FakeEOS, 'temperature', holey)
 
-    with pytest.raises(RuntimeError, match='non-finite temperature at P=2'):
+    with pytest.raises(
+        common.InitialConditionError, match='non-finite temperature at P=2'
+    ) as exc:
         solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+    assert 'highest usable entropy (3000.0 J/kg/K)' in str(exc.value)
 
 
 def test_all_nan_table_raises(fake_tables, monkeypatch):
@@ -385,8 +388,9 @@ def test_all_nan_table_raises(fake_tables, monkeypatch):
         lambda self, P, S: np.full(np.broadcast(np.asarray(P), np.asarray(S)).shape, np.nan),
     )
 
-    with pytest.raises(RuntimeError, match='liquidus is undefined at 200 of 200'):
+    with pytest.raises(common.InitialConditionError, match='undefined at 200 of 200') as exc:
         solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+    assert 'between 0.0001 and 100 GPa' in str(exc.value)
 
 
 def test_entropy_dependent_nan_at_depth_is_not_satisfied(fake_tables, monkeypatch):
@@ -415,20 +419,78 @@ def test_entropy_dependent_nan_at_depth_is_not_satisfied(fake_tables, monkeypatc
 
 def test_ini_dsdr_lowers_the_entropy_ceiling(fake_tables):
     """With ini_dsdr < 0 the clamp lands at S_max minus the entropy the
-    perturbation adds at the deeper of the two CMB radii, so every initial
-    node stays inside the table.
+    perturbation adds between the surface and hf_row R_core, where both
+    solvers' meshes end, so every initial node stays inside the table.
     """
     cfg = _config(1000.0)
     cfg.planet.ini_dsdr = -4.698e-6
-    R_int, R_core = 6.371e6, 3.6e6  # core_frac * R_int = 3.504e6 is deeper
+    R_int, R_core = 6.371e6, 3.6e6
     hf_row = {'P_cmb': P_CMB, 'R_int': R_int, 'R_core': R_core}
 
     res = solve_superliquidus_entropy_from_tables(cfg, hf_row, fake_tables)
 
-    span = R_int - cfg.interior_struct.core_frac * R_int
+    span = R_int - R_core
     assert res['clamped'] is True
     assert res['S_target'] == pytest.approx(S_MAX - 4.698e-6 * span, rel=1e-12)
-    assert res['S_target'] + 4.698e-6 * span <= S_MAX + 1e-9
+    assert res['S_target'] + 4.698e-6 * span == pytest.approx(S_MAX, rel=1e-12)
+
+
+def test_ini_dsdr_ceiling_ignores_a_mass_core_fraction(fake_tables):
+    """In core_frac_mode 'mass', core_frac * R_int is not a radius. The
+    ceiling uses R_core, so a molten state that exists within the table
+    clamps (+3.1 K here) instead of raising: reading 0.325 * R_int as the
+    CMB would give a 1.6 times longer span and a ceiling 2.2 K below the
+    liquidus at 543 GPa.
+    """
+    cfg = _config(50.0)
+    cfg.planet.ini_dsdr = -4.698e-6
+    cfg.interior_struct.core_frac = 0.325
+    cfg.interior_struct.core_frac_mode = 'mass'
+    R_int, R_core, P_cmb = 6.371e6, 3.48e6, 543e9
+    hf_row = {'P_cmb': P_cmb, 'R_int': R_int, 'R_core': R_core}
+
+    res = solve_superliquidus_entropy_from_tables(cfg, hf_row, fake_tables)
+
+    S_ceiling = S_MAX - 4.698e-6 * (R_int - R_core)
+    expected = A * S_ceiling + T0 - L0 - (L1 - B) * P_cmb / 1e9
+    assert res['clamped'] is True
+    assert res['S_target'] == pytest.approx(S_ceiling, rel=1e-12)
+    assert res['achieved_superheat'] == pytest.approx(expected, abs=1e-6)
+    assert 0.0 < res['achieved_superheat'] < 50.0
+    # The mass-fraction reading lands below the liquidus at this pressure.
+    S_wrong = S_MAX - 4.698e-6 * (R_int - 0.325 * R_int)
+    assert A * S_wrong + T0 - L0 - (L1 - B) * P_cmb / 1e9 < 0.0
+
+
+def test_ini_dsdr_ceiling_below_the_liquidus_raises(fake_tables):
+    """The liquidus entropy stays inside the table (2987.5 J/kg/K at 545 GPa),
+    but the ini_dsdr ceiling S_max - 4.698e-6 * 2.891e6 = 2986.4 J/kg/K puts
+    the adiabat 0.9 K below the liquidus there, so no molten IC exists.
+    """
+    cfg = _config(50.0)
+    cfg.planet.ini_dsdr = -4.698e-6
+    hf_row = {'P_cmb': 545e9, 'R_int': 6.371e6, 'R_core': 3.48e6}
+
+    with pytest.raises(common.InitialConditionError, match='1 K below the liquidus') as exc:
+        solve_superliquidus_entropy_from_tables(cfg, hf_row, fake_tables)
+    assert 'highest usable entropy (2986.4 J/kg/K)' in str(exc.value)
+    assert 'P=545 GPa' in str(exc.value)
+
+
+def test_liquidus_entropy_below_table_minimum_raises(fake_tables, monkeypatch):
+    """Below S_min, T(P, S_liq) is a clipped table-edge value, not the
+    liquidus. With S_min = 1700 J/kg/K the stand-in liquidus entropy
+    (1625 + 2.5 P_GPa) is below it for P < 30 GPa, so the solve raises.
+    """
+    monkeypatch.setattr(_FakeEOS, 'S_min', 1700.0)
+
+    with pytest.raises(
+        common.InitialConditionError, match='table liquidus is undefined'
+    ) as exc:
+        solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+    msg = str(exc.value)
+    assert 'table entropy from 1700 J/kg/K' in msg
+    assert 'between 0.0001 and 28.7 GPa' in msg
 
 
 def test_ini_dsdr_without_radii_warns(fake_tables, caplog):
@@ -467,42 +529,59 @@ def test_surface_binding_pressure_is_printed_in_gpa(fake_tables, monkeypatch, ca
     assert any('at P=0.0001 GPa' in r.getMessage() for r in caplog.records)
 
 
-def test_p_cmb_above_table_range_is_clipped(fake_tables, monkeypatch, caplog):
-    """A CMB pressure beyond the table maximum is clipped to the maximum, with a warning."""
+def test_p_cmb_above_table_maximum_raises(fake_tables, monkeypatch):
+    """A CMB pressure beyond the table maximum leaves the deepest mantle
+    unchecked, so the solve raises and names both pressures instead of
+    clipping to the table edge.
+    """
     monkeypatch.setattr(_FakeEOS, 'P_max', 2.0e11)
-    with caplog.at_level(logging.WARNING):
-        res = solve_superliquidus_entropy_from_tables(
-            _config(200.0), {'P_cmb': 5e12}, fake_tables
-        )
-    assert any('exceeds the EOS table maximum' in r.getMessage() for r in caplog.records)
 
-    assert res['P_cmb'] == pytest.approx(2.0e11, rel=1e-12)
-    assert res['S_target'] == pytest.approx(_S_expected(200.0, 2.0e11), rel=1e-6)
-    # Discrimination: differs from the entropy solved at the unclipped 5 TPa.
-    assert res['S_target'] != pytest.approx(_S_expected(200.0, 5.0e12), rel=1e-3)
+    with pytest.raises(
+        common.InitialConditionError, match='above the EOS table maximum'
+    ) as exc:
+        solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': 5e12}, fake_tables)
+
+    msg = str(exc.value)
+    assert '5e+03 GPa' in msg
+    assert 'table covers 1e-05 to 200 GPa' in msg
 
 
-def test_no_zalmoxis_or_paleos_read_on_non_zalmoxis_path(fake_tables, monkeypatch):
-    """The non-Zalmoxis path completes with every Zalmoxis entry point raising."""
+def test_ic_entropy_never_reads_zalmoxis_for_any_structure_module(fake_tables, monkeypatch):
+    """The initial entropy comes from the P-S tables for every structure
+    module, the Zalmoxis structure included: the solve completes with every
+    Zalmoxis entry point raising, and all three modules give the same S.
+    """
     zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
 
     def _boom(*args, **kwargs):
-        raise AssertionError('Zalmoxis was called on the table-based path')
+        raise AssertionError('Zalmoxis was called for the initial entropy')
 
     monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _boom)
     monkeypatch.setitem(sys.modules, 'zalmoxis.melting_curves', None)
 
-    for module in ('spider', 'dummy'):
-        S = compute_initial_entropy(
+    S = {
+        module: compute_initial_entropy(
             _config(200.0, module=module), {'P_cmb': P_CMB}, 3300.0, fake_tables
         )
-        assert S == pytest.approx(_S_expected(200.0), rel=1e-6)
+        for module in ('spider', 'dummy', 'zalmoxis')
+    }
 
-    # Control: the same patch is live, so the Zalmoxis structure module reaches it.
-    with pytest.raises(AssertionError, match='table-based path'):
-        compute_initial_entropy(
-            _config(200.0, module='zalmoxis'), {'P_cmb': P_CMB}, 3300.0, fake_tables
-        )
+    for module, value in S.items():
+        assert value == pytest.approx(_S_expected(200.0), rel=1e-6), module
+    assert S['zalmoxis'] == pytest.approx(S['dummy'], rel=1e-12)
+
+
+def test_zalmoxis_structure_without_table_dir_raises_initial_condition_error(tmp_path):
+    """With the Zalmoxis structure there is no fallback to a P-T adiabat: a
+    missing or non-directory table path raises and names the field."""
+    missing = str(tmp_path / 'absent')
+    for table_dir in (None, missing):
+        with pytest.raises(common.InitialConditionError) as exc:
+            compute_initial_entropy(
+                _config(200.0, module='zalmoxis'), {'P_cmb': P_CMB}, 3300.0, table_dir
+            )
+        assert "dirs['spider_eos_dir']" in str(exc.value)
+        assert repr(table_dir) in str(exc.value)
 
 
 def test_non_zalmoxis_path_without_table_dir_raises_naming_both_fields():

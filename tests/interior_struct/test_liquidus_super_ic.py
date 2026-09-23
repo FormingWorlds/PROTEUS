@@ -441,7 +441,9 @@ class TestSolveSuperliquidusAdiabat:
         from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
         cfg = self._cfg(delta_T_super=500.0)
-        with pytest.raises(RuntimeError, match='no fully-molten initial condition is reachable') as exc:
+        with pytest.raises(
+            RuntimeError, match='no fully-molten initial condition is reachable'
+        ) as exc:
             solve_superliquidus_adiabat(cfg, {'P_cmb': 1.5e11})
         msg = str(exc.value)
         assert 'below the liquidus' in msg

@@ -3488,7 +3488,9 @@ def test_dummy_structure_provides_tables_for_liquidus_super_without_generated_se
 
 @pytest.mark.unit
 def test_dummy_structure_liquidus_super_without_tables_raises_named_error(tmp_path):
-    """No generated set and no FWL_DATA or SPIDER table source gives a named RuntimeError."""
+    """No generated set and no FWL_DATA or SPIDER table source gives a named
+    RuntimeError that names mantle_eos, the field that selects the tables.
+    """
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
@@ -3497,6 +3499,7 @@ def test_dummy_structure_liquidus_super_without_tables_raises_named_error(tmp_pa
     config.interior_energetics.module = 'aragog'
     config.interior_energetics.num_levels = 50
     config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
+    config.interior_struct.zalmoxis.mantle_eos = 'Stixrude14:MgSiO3'
     config.planet.temperature_mode = 'liquidus_super'
     hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
 
@@ -3516,7 +3519,8 @@ def test_dummy_structure_liquidus_super_without_tables_raises_named_error(tmp_pa
     assert 'temperature_mode' in msg
     assert 'liquidus_super' in msg
     assert 'interior_struct.module' in msg
-    assert 'WolfBower2018_MgSiO3' in msg
+    assert "interior_struct.zalmoxis.mantle_eos='Stixrude14:MgSiO3'" in msg
+    assert 'WolfBower2018_MgSiO3' not in msg
     assert 'no P-S tables' in msg
     assert not isinstance(excinfo.value, FileNotFoundError)
     # The failure happens before the first interior step is built.
@@ -3770,6 +3774,44 @@ def test_run_interior_spider_fallback_aborts_after_max_consecutive():
     assert interior_o.spider_fail_count == _w._SPIDER_MAX_CONSECUTIVE_FAILS
 
     interior_o.spider_fail_count = 0  # cleanup
+
+
+@pytest.mark.unit
+def test_run_interior_spider_initial_condition_error_is_not_retried(caplog):
+    """A liquidus_super initial condition that does not exist raises on the
+    first SPIDER call: it is not counted as a CVode failure and not retried,
+    matching Aragog, where the same error escapes at once.
+    """
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.common import InitialConditionError
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='spider')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 1
+    interior_o._spider_cumulative_time = 0.0
+    interior_o.spider_fail_count = 0
+
+    with (
+        _patch(
+            'proteus.interior_energetics.spider.RunSPIDER',
+            side_effect=InitialConditionError('no fully-molten initial condition'),
+        ) as mock_run,
+        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        with pytest.raises(InitialConditionError, match='no fully-molten'):
+            run_interior(
+                {'spider': '/tmp/spider'}, config, hf_all, hf_row, interior_o, verbose=False
+            )
+
+    mock_run.assert_called_once()
+    assert interior_o.spider_fail_count == 0
+    assert not [r for r in caplog.records if 'CVode failure' in r.getMessage()]
+    # The subclass still satisfies callers that catch RuntimeError.
+    assert issubclass(InitialConditionError, RuntimeError)
 
 
 # ============================================================================
