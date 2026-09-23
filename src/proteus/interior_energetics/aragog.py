@@ -1420,9 +1420,10 @@ class AragogRunner:
         solver, this function independently computes a PALEOS adiabat via
         ``zalmoxis.eos_export.compute_entropy_adiabat`` and compares its T(P)
         against the T(P) derived from Aragog's initialized entropy via the
-        P-S EOS tables. The comparison is diagnostic and never raises: a
-        mismatch above 1% logs a warning, and so does a liquidus_super IC
-        with a cold surface beyond the Fei+2021 calibration pressure.
+        P-S EOS tables. The temperature comparison is diagnostic: a mismatch
+        above 1% logs a warning, and so does a liquidus_super IC with a cold
+        surface beyond the Fei+2021 calibration pressure. A solver entropy
+        array whose shape differs from the pressure grid raises RuntimeError.
 
         Parameters
         ----------
@@ -1677,8 +1678,8 @@ class AragogRunner:
             InitialConditionError,
         ) as e:
             # Expected failures:
-            # - InitialConditionError: the P-T re-solve at the converged P_cmb
-            #   has no solution; the IC itself comes from the P-S tables
+            # - InitialConditionError: no P-T anchor at this P_cmb (on the
+            #   Zalmoxis + PALEOS route the initial entropy raises first)
             # - FileNotFoundError / ImportError: missing PALEOS files or Zalmoxis
             #   not installed
             # - KeyError: missing config keys

@@ -1135,7 +1135,8 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         ``(temperature_function, P_arr, T_arr)`` where ``temperature_function``
         is the closure ``f(r, P) -> T`` consumed by the Zalmoxis numpy path
         (``r`` is ignored; ``P`` is clipped into the adiabat grid). Returns
-        ``None`` when the adiabat cannot be built or contains NaNs, so the
+        ``None`` when the adiabat cannot be built or contains NaNs, or when
+        the P-T anchor raises ``InitialConditionError`` at this P_cmb, so the
         caller can fall back to the linear-guess result.
     """
     try:
@@ -1181,9 +1182,19 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
             solid_eos_file=solid_eos,
             liquid_eos_file=liquid_eos,
         )
-    except InitialConditionError:
-        # No molten adiabat exists at this P_cmb; the linear guess would hide it.
-        raise
+    except InitialConditionError as exc:
+        # The initial entropy re-solves the anchor at the converged P_cmb and
+        # raises there; this P_cmb is an intermediate structure value.
+        from proteus.utils.structure_estimate import resolve_P_cmb
+
+        log.warning(
+            'liquidus_super IC adiabat: no P-T anchor at P_cmb=%.0f GPa (%s); falling '
+            'back to the linear-guess structure. The initial entropy re-checks the '
+            'anchor at the converged P_cmb.',
+            resolve_P_cmb(hf_row, config)[0] / 1e9,
+            exc,
+        )
+        return None
     except (
         ImportError,
         ModuleNotFoundError,

@@ -640,9 +640,9 @@ def test_zalmoxis_path_raises_when_superheat_dips_between_scan_points(monkeypatc
 
 
 def test_aragog_cross_check_reuses_the_ic_anchor(monkeypatch, tmp_path):
-    """On the Zalmoxis route the IC solves the P-T anchor at the final P_cmb;
-    the Aragog cross-check then asks for the same anchor and gets the cached
-    result, so a fresh aragog run pays for one P-T solve, not two.
+    """On the Zalmoxis route the IC solves the P-T anchor at the final P_cmb.
+    A second anchor call with the same config and hf_row, the call the Aragog
+    cross-check makes, gets the cached result and runs no P-T probe.
     """
     import zalmoxis.eos_export as eos_export
 

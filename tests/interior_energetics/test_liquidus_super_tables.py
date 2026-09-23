@@ -95,7 +95,7 @@ def _config(delta=200.0, module='spider', melting_dir='Monteux-600'):
             melting_dir=melting_dir,
             core_frac=0.55,
             core_frac_mode='radius',
-            zalmoxis=None,
+            zalmoxis=SimpleNamespace(mantle_eos='PALEOS-2phase:MgSiO3'),
         ),
     )
 
@@ -623,7 +623,7 @@ def test_melt_table_maximum_is_the_entropy_ceiling(fake_tables, monkeypatch):
     """
 
     class _Eos(_NarrowMeltEOS):
-        S_min = 1500.0  # liquidus stays inside the melt range at every P
+        pass
 
     monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _Eos())
     monkeypatch.setattr(
@@ -639,6 +639,39 @@ def test_melt_table_maximum_is_the_entropy_ceiling(fake_tables, monkeypatch):
     assert res['clamped'] is True
     assert res['S_target'] == pytest.approx(2600.0, rel=1e-12)
     assert res['achieved_superheat'] == pytest.approx(A * 2600.0 - (L0 - T0) - (L1 - B) * 100.0)
+
+
+def test_melt_table_floor_tolerates_one_ulp_at_the_surface_liquidus(fake_tables, monkeypatch):
+    """A melt table whose lowest entropy is the surface liquidus entropy
+    rounded 1 ULP up still covers the liquidus; 1 J/kg/K up does not.
+    """
+    S_surf = float(_FakeEOS().liquidus_entropy(1e5))
+
+    class _Eos(_NarrowMeltEOS):
+        pass
+
+    monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _Eos())
+    for S_floor, ok in ((np.nextafter(S_surf, np.inf), True), (S_surf + 1.0, False)):
+        monkeypatch.setattr(
+            _Eos,
+            '_tables',
+            {
+                'temperature_melt': {
+                    'P': np.array([1e4, 1e13]),
+                    'S': np.array([S_floor, 2600.0]),
+                }
+            },
+        )
+        if ok:
+            res = solve_superliquidus_entropy_from_tables(
+                _config(200.0), {'P_cmb': P_CMB}, fake_tables
+            )
+            assert res['S_target'] == pytest.approx(_S_expected(200.0), rel=1e-6)
+        else:
+            with pytest.raises(common.InitialConditionError, match='undefined'):
+                solve_superliquidus_entropy_from_tables(
+                    _config(200.0), {'P_cmb': P_CMB}, fake_tables
+                )
 
 
 def test_ini_dsdr_without_radii_warns(fake_tables, caplog):
@@ -723,35 +756,93 @@ def test_ic_entropy_reads_zalmoxis_only_on_the_zalmoxis_route(fake_tables, monke
     assert S['zalmoxis'] == pytest.approx(S['dummy'], rel=1e-12)
 
 
-@pytest.mark.parametrize('achieved', [150.0, 0.0])
-def test_zalmoxis_anchor_clamp_caps_the_ic_superheat(
-    fake_tables, monkeypatch, caplog, achieved
+def _anchor_result(S_target, clamped=True, window_limited=False, achieved=150.0):
+    """Return a P-T anchor result as solve_superliquidus_adiabat builds it."""
+    return {
+        'S_target': S_target,
+        'clamped': clamped,
+        'window_limited': window_limited,
+        'achieved_superheat': achieved,
+        'P_cmb': P_CMB,
+    }
+
+
+@pytest.mark.parametrize(
+    ('ini_dsdr', 'S_exp'),
+    [(0.0, 2300.0), (-1.0e-5, 2300.0 - 1.0e-5 * 3.0e6)],
+)
+def test_zalmoxis_anchor_clamp_caps_the_ic_entropy(
+    fake_tables, monkeypatch, caplog, ini_dsdr, S_exp
 ):
-    """When the PALEOS P-T anchor clamps below delta, the P-S tables (whose
-    filled cells hide the validity ceiling) are solved for the superheat the
-    anchor reached, with one warning naming both numbers and P_cmb.
+    """When the PALEOS P-T anchor clamps at the table, the P-S IC is capped at
+    the anchor entropy, so neither end of the initial adiabat is hotter than
+    the anchor; with ini_dsdr < 0 the deepest entropy stays at the cap. One
+    warning over repeated IC calls names the anchor superheat, delta and P_cmb.
     """
     zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    monkeypatch.setattr(common, '_ANCHOR_CAP_WARNED', set())
+    monkeypatch.setattr(
+        zal, 'solve_superliquidus_adiabat', lambda config, hf_row: _anchor_result(2300.0)
+    )
+    cfg = _config(500.0, module='zalmoxis')
+    cfg.planet.ini_dsdr = ini_dsdr
+    hf_row = {'P_cmb': P_CMB, 'R_int': 6.0e6, 'R_core': 3.0e6}
+    assert _S_expected(500.0) > 2300.0  # the cap binds
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        S = [compute_initial_entropy(cfg, hf_row, 3300.0, fake_tables) for _ in range(3)]
+
+    assert S[0] == pytest.approx(S_exp, rel=1e-12)
+    assert S[0] == S[1] == S[2]
+    msgs = [r.getMessage() for r in caplog.records if 'PALEOS P-T anchor' in r.getMessage()]
+    assert len(msgs) == 1
+    assert 'reaches only 150 K of the requested 500 K' in msgs[0]
+    assert 'P_cmb=100 GPa' in msgs[0]
+    assert 'anchor entropy 2300.0' in msgs[0]
+
+
+@pytest.mark.parametrize(
+    'anchor',
+    [
+        _anchor_result(2300.0, clamped=False, achieved=500.0),
+        _anchor_result(2300.0, window_limited=True),
+        _anchor_result(2600.0),
+    ],
+    ids=['reached', 'window-limited', 'cap-above-target'],
+)
+def test_zalmoxis_anchor_leaves_the_ic_uncapped(fake_tables, monkeypatch, anchor):
+    """An anchor that reaches delta, a clamp set by the search window rather
+    than the table, and a cap above the P-S target all leave the IC at delta.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    monkeypatch.setattr(common, '_ANCHOR_CAP_WARNED', set())
+    monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', lambda config, hf_row: anchor)
+
+    S = compute_initial_entropy(
+        _config(500.0, module='zalmoxis'), {'P_cmb': P_CMB}, 3300.0, fake_tables
+    )
+
+    assert S == pytest.approx(_S_expected(500.0), rel=1e-6)
+
+
+def test_zalmoxis_route_with_a_non_paleos_mantle_skips_the_anchor(fake_tables, monkeypatch):
+    """The PALEOS anchor bounds only PALEOS-generated tables: a non-PALEOS
+    mantle on the Zalmoxis route solves the IC on its tables alone.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    calls = []
     monkeypatch.setattr(
         zal,
         'solve_superliquidus_adiabat',
-        lambda config, hf_row: {
-            'clamped': True,
-            'achieved_superheat': achieved,
-            'P_cmb': P_CMB,
-        },
+        lambda config, hf_row: calls.append(1) or _anchor_result(2300.0),
     )
+    cfg = _config(500.0, module='zalmoxis')
+    cfg.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
-    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
-        S = compute_initial_entropy(
-            _config(500.0, module='zalmoxis'), {'P_cmb': P_CMB}, 3300.0, fake_tables
-        )
+    S = compute_initial_entropy(cfg, {'P_cmb': P_CMB}, 3300.0, fake_tables)
 
-    assert S == pytest.approx(_S_expected(achieved), rel=1e-6)
-    msgs = [r.getMessage() for r in caplog.records if 'PALEOS P-T anchor' in r.getMessage()]
-    assert len(msgs) == 1
-    assert f'reaches only {achieved:.0f} K of the requested 500 K' in msgs[0]
-    assert 'P_cmb=100 GPa' in msgs[0]
+    assert calls == []
+    assert S == pytest.approx(_S_expected(500.0), rel=1e-6)
 
 
 def test_zalmoxis_anchor_raise_is_the_ic_raise(fake_tables, monkeypatch):
@@ -932,7 +1023,8 @@ def test_route_check_ignores_other_temperature_modes_and_solvers():
 def test_aragog_setup_and_ic_share_one_table_load(monkeypatch, tmp_path):
     """The Aragog solver setup and the liquidus_super IC read the same table
     set through one cache, so a fresh aragog run builds EntropyEOS once; a
-    copy with the same names, sizes and modification times reuses it.
+    copy with the same names, sizes and modification times is another table
+    set and loads its own instance.
     """
     import shutil
 
@@ -957,5 +1049,6 @@ def test_aragog_setup_and_ic_share_one_table_load(monkeypatch, tmp_path):
     ic_eos = common._load_entropy_eos(str(src))
     copy_eos = common._load_entropy_eos(str(copy))
 
-    assert len(made) == 1
-    assert setup_eos is ic_eos is copy_eos
+    assert setup_eos is ic_eos
+    assert copy_eos is not ic_eos
+    assert made == [str(src), str(copy)]

@@ -80,18 +80,21 @@ where $T_\mathrm{ad}$ is the (isentropic) initial adiabat and $T_\mathrm{liq}$
 is the configured silicate liquidus. PROTEUS solves for the surface temperature,
 and hence the uniform initial entropy, that satisfies this at the
 most-constraining depth, checking the superheat against the liquidus actually in
-use. This guarantees a fully molten initial state with a known margin for any
-planet mass and any melting-curve parameterisation, without you choosing a
-surface temperature or entropy by hand. Because the binding depth is shallow,
+use. Where the tables reach it, this gives a fully molten initial state with a
+known margin, without you choosing a surface temperature or entropy by hand. Because the binding depth is shallow,
 the solved entropy is essentially independent of planet mass, so a mass grid
 starts on a common adiabat.
 
 Whether the default `delta_T_super = 500` K is reachable depends on the P-S
-tables and the planet mass. On PALEOS-generated tables it is reached at 1 and
-10 Earth masses. On the Wolf & Bower (2018) tables from FWL_DATA it is reached
-up to 2.5 Earth masses; at 3 Earth masses the solve clamps to 387 K, and from
-3.5 Earth masses the table liquidus entropy exceeds the table maximum, so no
-fully molten state exists and PROTEUS raises. Setting `delta_T_super = 0`
+tables and the core-mantle boundary pressure. On PALEOS-generated tables it is
+reached at 1 and 10 Earth masses. On the Wolf & Bower (2018) tables from
+FWL_DATA it is reached up to a core-mantle boundary pressure of about 350 GPa.
+Above that the solve clamps to a smaller superheat (443 K at 360 GPa, 85 K at
+390 GPa), and above about 397 GPa the table liquidus entropy exceeds the table
+maximum, so no fully molten state exists and PROTEUS raises. With the Noack &
+Lasbleis (2020) pressure estimate and a core mass fraction of 0.325, this means
+500 K up to 2.5 Earth masses, 194 K at 3 Earth masses, and a raise from 3.5
+Earth masses. Setting `delta_T_super = 0`
 makes the mantle marginally molten, just touching the liquidus at the binding
 depth.
 
@@ -113,12 +116,17 @@ depth.
 
     With `"zalmoxis"`, the structure solve also anchors its temperature profile
     on a P-T adiabat that is `delta_T_super` above the P-T liquidus, while the
-    initial entropy is solved on the P-S tables. This anchor raises or clamps
-    on its own P-T criteria: when it raises, the run stops; when it clamps
-    below `delta_T_super`, the initial entropy is solved for the superheat the
-    anchor reached, and a warning names both values. The generated P-S tables
+    initial entropy is solved on the P-S tables. The initial entropy solves
+    this anchor again at the converged core-mantle boundary pressure. When it
+    raises there, no molten state exists and the run stops at the initial
+    entropy; a raise at an intermediate pressure of the structure solve only
+    logs a warning. When the anchor clamps at the PALEOS table below
+    `delta_T_super`, the initial entropy is capped at the anchor entropy, and
+    a warning names the superheat the anchor reached. The generated P-S tables
     fill cells where PALEOS has no valid state, so on their own they can
-    report a superheat that PALEOS does not support; the anchor caps it. With
+    report a superheat that PALEOS does not support; the cap puts the initial
+    adiabat on the hottest valid PALEOS adiabat (within 6 K at the core-mantle
+    boundary for 10 Earth masses). With
     `"dummy"` and PALEOS-generated tables there is no anchor, so a large
     `delta_T_super` can land in those filled cells. The two adiabats differ slightly: for 1 Earth
     mass at `delta_T_super = 500` K (core-mantle boundary at 103 GPa), the

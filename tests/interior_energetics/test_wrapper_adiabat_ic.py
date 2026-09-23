@@ -1502,20 +1502,39 @@ def test_monotonic_radius_tolerance_is_tiny_and_positive():
     assert _MONOTONIC_RINT_REL_TOL < 1.0e-6
 
 
-def test_adiabat_tp_reraises_initial_condition_error():
-    """No molten adiabat at this P_cmb is an initial-condition failure, not a
-    construction problem: the builder re-raises it instead of falling back to
-    the linear-guess structure, while other RuntimeErrors still fall back.
+def test_anchor_raise_falls_back_at_intermediate_p_cmb_and_raises_at_the_ic(tmp_path, caplog):
+    """An anchor raise at an intermediate structure P_cmb falls back to the
+    linear guess with a warning that names the error and that P_cmb; the
+    initial entropy at the converged P_cmb still raises when the anchor
+    raises there.
     """
-    from proteus.interior_energetics.common import InitialConditionError
+    from proteus.interior_energetics.common import (
+        InitialConditionError,
+        compute_initial_entropy,
+    )
+
+    P_intermediate, P_final = 1.3e12, 1.2e12
+
+    def _anchor(config, hf_row):
+        raise InitialConditionError(
+            f'liquidus_super: no valid molten adiabat found (P_cmb={hf_row["P_cmb"] / 1e9:.0f} GPa)'
+        )
 
     config = _config()
-    with patch(
-        'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',
-        side_effect=InitialConditionError('liquidus_super: no valid molten adiabat found'),
-    ):
-        with pytest.raises(InitialConditionError, match='no valid molten adiabat'):
-            _build_superliquidus_adiabat_tp(config, {}, P_cmb_target=1.4e12)
+    config.planet.delta_T_super = 500.0
+    with patch('proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat', _anchor):
+        with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'):
+            built = _build_superliquidus_adiabat_tp(
+                config, {'P_cmb': P_intermediate}, P_cmb_target=1.4e12
+            )
+        assert built is None
+        msgs = [r.getMessage() for r in caplog.records if 'no P-T anchor' in r.getMessage()]
+        assert len(msgs) == 1
+        assert 'P_cmb=1300 GPa' in msgs[0]
+        assert 'no valid molten adiabat found' in msgs[0]
+
+        with pytest.raises(InitialConditionError, match='P_cmb=1200 GPa'):
+            compute_initial_entropy(config, {'P_cmb': P_final}, 3300.0, str(tmp_path))
 
     with patch(
         'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',

@@ -616,8 +616,10 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     -------
     dict
         ``surface_T`` [K], ``S_target`` [J/(kg K)], ``cmb_T`` [K],
-        ``achieved_superheat`` [K], ``binding_P`` [Pa], ``P_cmb`` [Pa] and
-        ``clamped`` (True when the requested superheat was unreachable).
+        ``achieved_superheat`` [K], ``binding_P`` [Pa], ``P_cmb`` [Pa],
+        ``clamped`` (True when the requested superheat was unreachable) and
+        ``window_limited`` (True when the clamp comes from the search window,
+        not from the EOS table).
 
     Raises
     ------
@@ -1004,6 +1006,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         'binding_P': float(final['binding_P']),
         'P_cmb': P_cmb,
         'clamped': clamped,
+        'window_limited': bool(clamped and window_limited),
     }
     _SUPERLIQ_CACHE[_cache_key] = dict(out)
     _SUPERLIQ_LAST_ANCHOR = float(out['cmb_T'])

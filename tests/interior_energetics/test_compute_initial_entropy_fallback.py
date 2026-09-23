@@ -41,7 +41,7 @@ def _make_minimal_config(
     cfg.planet.ini_entropy = 3000.0
     cfg.interior_struct.core_frac = core_frac
     cfg.interior_struct.core_frac_mode = core_frac_mode
-    cfg.interior_struct.module = 'zalmoxis'
+    cfg.interior_struct.module = 'dummy'
     cfg.interior_struct.zalmoxis = None
     return cfg
 
