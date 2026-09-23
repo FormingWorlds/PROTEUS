@@ -270,7 +270,9 @@ through fwl-io into `$FWL_DATA/interior/melting_curves/<dataset>/r<record-id>/`
 A curve generated locally by `tools/solidus_func.py` into
 `$FWL_DATA/interior_lookup_tables/Melting_curves/<melting_dir>/` takes
 precedence over the fetched copy; see [Melting curves](melting_curves.md) for
-the full list of parametrizations and how to generate them.
+the full list of parametrizations and how to generate them. A configured
+`melting_dir` whose curve files are missing stops SPIDER and Aragog runs with
+an error naming the missing files; they never switch to other curves.
 
 The Wolf and Bower (2018) pressure-entropy lookup table that SPIDER and
 Aragog read for `eos_dir = "WolfBower2018_MgSiO3"` is fetched the same way,

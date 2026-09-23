@@ -401,6 +401,31 @@ def test_stale_fwl_io_is_named_as_the_stale_side(monkeypatch):
     assert isinstance(excinfo.value.__cause__, ValueError), 'the original error stays attached'
 
 
+def test_stale_shared_manifest_is_named_as_the_stale_side(monkeypatch):
+    """A shared-manifest schema error on an old fwl-io asks for the upgrade.
+
+    A shared key is resolved after the PROTEUS manifest loads, so the stale
+    case has to be caught on that second load as well.
+    """
+    import fwl_io
+
+    real_load = fwl_io.load_manifest
+
+    def _load(path):
+        if Path(path) == manifest_path():
+            return real_load(path)
+        raise ValueError('"subdir" is not a manifest field')
+
+    monkeypatch.setattr(fwl_io, 'load_manifest', _load)
+    monkeypatch.setattr('proteus.data._fwl_io_derives_the_location', lambda: False)
+
+    with pytest.raises(RuntimeError, match=f'upgrade to fwl-io>={FWL_IO_FLOOR}') as raised:
+        _dataset(STELLAR_SPECTRA_SOLAR)
+
+    assert 'shared manifest' in str(raised.value)
+    assert isinstance(raised.value.__cause__, ValueError)
+
+
 def test_manifest_error_under_a_current_fwl_io_propagates(monkeypatch):
     """A real defect in the shipped manifest surfaces as itself, not as a version claim.
 

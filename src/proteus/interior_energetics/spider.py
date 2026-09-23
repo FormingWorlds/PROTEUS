@@ -929,10 +929,10 @@ def _try_spider(
     # then a local EOS directory, then the fetched dataset, then SPIDER local.
     eos_dir = _resolve_spider_eos_dir(dirs, config)
 
-    # Resolve melting curve S(P) files: prefer generated paths, then FWL_DATA,
-    # then SPIDER's bundled lookup_data as a final fallback. The bundled
-    # lookup_data ships P-S melting curves (Andrault+2011 / Hirschmann+2013)
-    # usable directly without Zalmoxis pre-processing.
+    # Resolve melting curve S(P) files: the paths derived for this run from the
+    # configured melting_dir, else P-S files in its local Melting_curves folder.
+    # A configured curve that is missing stops the run rather than switching to
+    # other curves.
     if dirs.get('spider_liquidus_ps') and os.path.isfile(dirs['spider_liquidus_ps']):
         liquidus_ps = dirs['spider_liquidus_ps']
         solidus_ps = dirs['spider_solidus_ps']
@@ -946,37 +946,16 @@ def _try_spider(
         mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior_struct.melting_dir)
         liquidus_ps = os.path.join(mc_dir, 'liquidus_P-S.dat')
         solidus_ps = os.path.join(mc_dir, 'solidus_P-S.dat')
-        if not (os.path.isfile(liquidus_ps) and os.path.isfile(solidus_ps)):
-            # Fall back to SPIDER's bundled lookup_data (P-S, ships with the
-            # SPIDER source tree). The A11_H13 file names are after
-            # Andrault+2011 (solidus) and Hirschmann+2013 (liquidus).
-            spider_local_eos = os.path.join(
-                dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free'
+        missing_ps = [p for p in (solidus_ps, liquidus_ps) if not os.path.isfile(p)]
+        if missing_ps:
+            raise FileNotFoundError(
+                f'interior_struct.melting_dir={config.interior_struct.melting_dir!r} is '
+                f'configured but its P-S melting curves are missing: '
+                f'{", ".join(missing_ps)}. Fetch the P-T curves with '
+                "'proteus get interiordata', or generate the P-S files with "
+                "'python tools/generate_spider_phase_boundaries.py --melting-dir "
+                f"{config.interior_struct.melting_dir}'."
             )
-            liquidus_local = os.path.join(spider_local_eos, 'liquidus_A11_H13.dat')
-            solidus_local = os.path.join(spider_local_eos, 'solidus_A11_H13.dat')
-            if os.path.isfile(liquidus_local) and os.path.isfile(solidus_local):
-                liquidus_ps = liquidus_local
-                solidus_ps = solidus_local
-                log.info(
-                    'Using SPIDER-bundled A11_H13 phase boundaries from %s '
-                    '(no Zalmoxis-generated or FWL_DATA P-S melting curves '
-                    'found for melting_dir=%s)',
-                    spider_local_eos,
-                    config.interior_struct.melting_dir,
-                )
-            else:
-                raise FileNotFoundError(
-                    f'SPIDER phase boundary files not found at any of: '
-                    f'\n  {liquidus_ps}'
-                    f'\n  {solidus_ps}'
-                    f'\n  {liquidus_local}'
-                    f'\n  {solidus_local}'
-                    f'\nEither generate them with '
-                    f"'python tools/generate_spider_phase_boundaries.py "
-                    f"--melting-dir {config.interior_struct.melting_dir}' "
-                    f'or use a melting_dir that ships P-S files.'
-                )
 
     # EOS table setup: skip entirely when const_properties is active
     # (SPIDER creates a dummy single-phase EOS internally, no tables needed)

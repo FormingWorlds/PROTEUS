@@ -2914,8 +2914,8 @@ def test_material_dictionaries_read_the_tree_the_fetch_writes(monkeypatch, tmp_p
     """The EOS paths use the data root that download_zalmoxis_eos fetches into.
 
     The raw ``FWL_DATA`` value is not expanded and has a different default from
-    the resolved root; building the paths from it would send Zalmoxis to another
-    tree than the one the fetch populated.
+    the resolved root. It is set to another tree here, so paths built from it
+    instead of the resolved root fail the test.
     """
     from pathlib import Path
 

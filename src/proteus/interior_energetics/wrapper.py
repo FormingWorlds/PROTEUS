@@ -679,6 +679,10 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
        ``FileNotFoundError`` with a clear message pointing the user at
        ``proteus get all`` or the Zenodo record.
 
+    When ``interior_struct.melting_dir`` is set, the two P-S melting curves
+    are derived from its P-T files in every case above, and missing P-T files
+    raise ``FileNotFoundError`` instead of leaving the curves of the source.
+
     Side effects: sets ``dirs['spider_eos_dir']``,
     ``dirs['spider_solidus_ps']``, ``dirs['spider_liquidus_ps']``.
     """
@@ -698,15 +702,14 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
         from proteus.utils.data import resolve_melting_curve_files
 
         sol_pt_path, liq_pt_path = resolve_melting_curve_files(melting_dir)
-        melting_pt_dir = sol_pt_path.parent
-        if not (sol_pt_path.is_file() and liq_pt_path.is_file()):
-            log.warning(
-                'melting_dir=%s configured but P-T files missing at %s; '
-                'falling back to byte-copy from upstream EoS distribution',
-                melting_dir,
-                melting_pt_dir,
+        missing_pt = [str(p) for p in (sol_pt_path, liq_pt_path) if not p.is_file()]
+        if missing_pt:
+            # Other curves would change the physics of the run, so stop here.
+            raise FileNotFoundError(
+                f'interior_struct.melting_dir={melting_dir!r} is configured but its P-T '
+                f'melting curves are missing: {", ".join(missing_pt)}. Fetch them with '
+                "'proteus get interiordata', or set melting_dir to an available curve."
             )
-            derive_melting = False
 
     # Case 1: already populated (e.g. by an earlier call this session or
     # by Zalmoxis's generate_spider_tables in a prior structure solve).

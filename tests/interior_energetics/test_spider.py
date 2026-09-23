@@ -26,6 +26,7 @@ import json
 import os
 import shutil
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -1328,7 +1329,7 @@ def test_try_spider_missing_melting_curves(tmp_path):
             return_value=3000.0,
         ),
     ):
-        with pytest.raises(FileNotFoundError, match='SPIDER phase boundary file'):
+        with pytest.raises(FileNotFoundError, match='melting curves are missing'):
             _try_spider(
                 dirs,
                 config,
@@ -1344,6 +1345,43 @@ def test_try_spider_missing_melting_curves(tmp_path):
         # sp.run be called even though the same exception type is
         # eventually raised.
         mock_run.assert_not_called()
+
+
+@pytest.mark.unit
+def test_try_spider_missing_configured_curve_ignores_bundled_curves(tmp_path):
+    """A missing configured melting curve stops the run even when SPIDER bundles others.
+
+    Falling back to the bundled Andrault/Hirschmann curves would run a different
+    solidus and liquidus than the configured melting_dir.
+    """
+    from proteus.interior_energetics.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, _, _ = _setup_spider_env(tmp_path)
+    bundle = Path(dirs['spider']) / 'lookup_data' / '1TPa-dK09-elec-free'
+    bundle.mkdir(parents=True)
+    (bundle / 'solidus_A11_H13.dat').write_text('# bundled solidus\n')
+    (bundle / 'liquidus_A11_H13.dat').write_text('# bundled liquidus\n')
+
+    with (
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', str(tmp_path / 'none')),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
+    ):
+        with pytest.raises(FileNotFoundError, match="melting_dir='Wolf_Bower\\+2018'"):
+            _try_spider(
+                dirs,
+                config,
+                IC_INTERIOR=1,
+                hf_all=None,
+                hf_row=hf_row,
+                step_sf=1.0,
+                atol_sf=1.0,
+            )
+    mock_run.assert_not_called()
 
 
 @pytest.mark.unit

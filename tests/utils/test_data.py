@@ -20,6 +20,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+from fwl_io import DownloadError
 
 from proteus.utils.data import (
     GetFWLData,
@@ -2149,16 +2150,16 @@ def test_required_dataset_failure_does_not_stop_later_fetches(monkeypatch, tmp_p
         ('Monteux-600', 'interior.melting_curves.monteux_minus_600'),
     ],
 )
-def test_melting_curve_fetch_failure_stops_the_run(
-    monkeypatch, tmp_path, melting_dir, failing_key
+@pytest.mark.parametrize('error', [DownloadError, PermissionError])
+def test_melting_curve_fetch_failure_is_reported_and_later_steps_run(
+    monkeypatch, tmp_path, melting_dir, failing_key, error
 ):
-    """A failed melting-curve fetch raises instead of being logged.
+    """A failed melting-curve fetch is logged and the EOS fetch still runs.
 
-    Without the configured curves SPIDER and Aragog fall back to other curves,
-    so continuing would change the physics of the run rather than fail it.
+    A configured curve that is still missing stops the run where it is read
+    (_provide_spider_eos_tables), so the fetch step needs no special case;
+    an OSError such as a read-only data root is handled like a mirror error.
     """
-    from fwl_io import DownloadError
-
     from proteus.config import read_config_object
     from proteus.utils import data as data_mod
 
@@ -2167,7 +2168,7 @@ def test_melting_curve_fetch_failure_stops_the_run(
     def _fetch(key, *args, data_root=None):
         attempted.append(key)
         if key == failing_key:
-            raise DownloadError('could not obtain from any mirror')
+            raise error('could not obtain from any mirror')
         return []
 
     monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path)
@@ -2179,11 +2180,63 @@ def test_melting_curve_fetch_failure_stops_the_run(
     )
     cfg.interior_struct.melting_dir = melting_dir
 
-    with pytest.raises(DownloadError):
-        data_mod.download_sufficient_data(cfg)
+    data_mod.download_sufficient_data(cfg)
 
-    assert attempted[-1] == failing_key
-    assert 'interior.eos.paleos_iron' not in attempted
+    assert failing_key in attempted
+    assert 'interior.eos.paleos_iron' in attempted
+
+
+@pytest.mark.unit
+def test_fetch_errors_on_an_old_fwl_io_ask_for_the_upgrade(monkeypatch):
+    """An fwl-io without the fetch error classes is reported as too old.
+
+    Importing the classes at module level would fail on import of
+    proteus.utils.data, before any message could name the required version.
+    """
+    import sys
+
+    from proteus.data import FWL_IO_FLOOR
+    from proteus.utils.data import _fetch_errors
+
+    assert DownloadError in _fetch_errors()
+    monkeypatch.setitem(sys.modules, 'fwl_io.archive', None)
+
+    with pytest.raises(RuntimeError, match=f'upgrade to fwl-io>={FWL_IO_FLOOR}') as raised:
+        _fetch_errors()
+
+    assert isinstance(raised.value.__cause__, ImportError)
+
+
+@pytest.mark.unit
+def test_download_stellar_tracks_passes_non_download_errors(monkeypatch):
+    """An error from MORS that is not a failed download propagates unchanged.
+
+    A stale fwl-io inside MORS raises RuntimeError; reporting it as a failed
+    download would hide the actionable message behind a network warning.
+    """
+    import sys
+    import types
+
+    from proteus.utils import data as data_mod
+
+    def _stale(track):
+        raise RuntimeError('upgrade to fwl-io>=26.9.0')
+
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = _stale
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+    osf_calls = []
+    monkeypatch.setattr(data_mod, 'download_OSF_folder', lambda **k: osf_calls.append('x'))
+
+    with pytest.raises(RuntimeError, match='upgrade to fwl-io') as raised:
+        data_mod.download_stellar_tracks('Spada')
+
+    # Discrimination: not converted into the download failure the OSF path raises.
+    assert not isinstance(raised.value, DownloadError)
+    assert osf_calls == []
 
 
 @pytest.mark.unit
@@ -5137,7 +5190,7 @@ def test_download_stellar_tracks_osf_fallback_succeeds(tmp_path, monkeypatch):
     monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
 
     def fake_download(track):
-        raise RuntimeError('MORS HTTP 503')
+        raise DownloadError('MORS HTTP 503')
 
     fake_mors_data = types.ModuleType('mors.data')
     fake_mors_data.DownloadEvolutionTracks = fake_download
@@ -5890,7 +5943,7 @@ def test_download_stellar_tracks_osf_per_project_exception_caught(tmp_path, monk
     monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
 
     def fake_download(track):
-        raise RuntimeError('MORS HTTP 503')
+        raise DownloadError('MORS HTTP 503')
 
     fake_mors_data = types.ModuleType('mors.data')
     fake_mors_data.DownloadEvolutionTracks = fake_download

@@ -12,8 +12,6 @@ from time import sleep
 from typing import TYPE_CHECKING
 
 import numpy as np
-from fwl_io import DownloadError, MissingDataRootError, OfflineDataError
-from fwl_io.archive import ArchiveError
 from osfclient.api import OSF
 from scipy.interpolate import interp1d
 
@@ -1394,7 +1392,7 @@ def download_melting_curves(config: Config, clean: bool = False):
 
 def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
     """
-    Download stellar spectra collections into ``FWL_DATA/stellar_spectra``.
+    Download stellar spectra collections into ``FWL_DATA/star/spectra``.
 
     Notes
     -----
@@ -1517,6 +1515,13 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
         Track name ('Spada' or 'Baraffe')
     use_osf_fallback : bool
         If True, attempt OSF download if MORS download fails
+
+    Raises
+    ------
+    DownloadError
+        The tracks could not be obtained from MORS or the OSF fallback.
+        An error from MORS that is not a failed download (a stale fwl-io,
+        a bug) propagates unchanged.
     """
     from mors import data as mors_data
 
@@ -1543,6 +1548,10 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
             log.warning(f'MORS download completed but tracks not found at {tracks_path}')
             raise FileNotFoundError(f'Tracks directory empty or missing: {tracks_path}')
     except Exception as e:
+        if not isinstance(e, _fetch_errors()):
+            raise
+        from fwl_io import DownloadError
+
         log.warning(f'MORS download failed for {track} tracks: {e}')
 
         # Baraffe is hash-verified by fwl-io and has no OSF mirror, so a failure
@@ -1590,29 +1599,52 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
                 f'Could not download {track} tracks via MORS or OSF fallback. '
                 f'You may need to download manually or check network connectivity.'
             )
-            raise RuntimeError(
+            raise DownloadError(
                 f'Failed to download {track} tracks: MORS failed, OSF fallback unavailable'
             )
 
         except Exception as osf_fallback_error:
             log.error(f'OSF fallback also failed for {track} tracks: {osf_fallback_error}')
-            raise RuntimeError(
+            raise DownloadError(
                 f'Failed to download {track} tracks: MORS error ({e}), OSF fallback error ({osf_fallback_error})'
-            )
+            ) from osf_fallback_error
 
 
-# What a start-of-run fetch raises when a dataset cannot be obtained: filesystem
-# errors and fwl-io's own errors. Other RuntimeErrors (a stale fwl-io, a bug) raise.
-_FETCH_ERRORS = (OSError, DownloadError, OfflineDataError, ArchiveError, MissingDataRootError)
+def _fetch_errors() -> tuple[type[Exception], ...]:
+    """Return what a fetch raises when a dataset cannot be obtained.
+
+    Filesystem errors and fwl-io's own download errors; any other error (a
+    stale fwl-io, a bug) is not a failed download and must propagate.
+
+    Returns
+    -------
+    tuple of type
+        ``(OSError, DownloadError, OfflineDataError, ArchiveError,
+        MissingDataRootError)``.
+
+    Raises
+    ------
+    RuntimeError
+        The installed fwl-io lacks these classes, so it predates the floor.
+    """
+    try:
+        from fwl_io import DownloadError, MissingDataRootError, OfflineDataError
+        from fwl_io.archive import ArchiveError
+    except ImportError as exc:
+        from proteus.data import FWL_IO_FLOOR
+
+        raise RuntimeError(
+            f'the installed fwl-io is too old for PROTEUS; upgrade to fwl-io>={FWL_IO_FLOOR}.'
+        ) from exc
+    return (OSError, DownloadError, OfflineDataError, ArchiveError, MissingDataRootError)
 
 
-def _attempt(desc: str, func, *args, catch=_FETCH_ERRORS, **kwargs) -> bool:
+def _attempt(desc: str, func, *args, **kwargs) -> bool:
     """Run one start-of-run fetch step, reporting a failure instead of raising.
 
     Each step is fetched independently, so an unreachable mirror for one
     dataset does not stop the others; a dataset that is still missing fails
-    later, where it is read. Data whose absence a reader would silently replace
-    (the melting curves) is fetched outside this guard.
+    later, where it is read.
 
     Parameters
     ----------
@@ -1620,8 +1652,6 @@ def _attempt(desc: str, func, *args, catch=_FETCH_ERRORS, **kwargs) -> bool:
         What the step fetches, for the log message.
     func : callable
         The fetch function, called with the remaining arguments.
-    catch : tuple of type
-        Exceptions reported as a failed fetch.
 
     Returns
     -------
@@ -1630,7 +1660,7 @@ def _attempt(desc: str, func, *args, catch=_FETCH_ERRORS, **kwargs) -> bool:
     """
     try:
         func(*args, **kwargs)
-    except catch as exc:
+    except _fetch_errors() as exc:
         log.warning('Problem when downloading/checking %s: %s', desc, exc)
         return False
     return True
@@ -1649,14 +1679,8 @@ def _get_sufficient(config: Config, clean: bool = False):
             folders.append('MUSCLES')
         for folder in dict.fromkeys(folders):
             _attempt(f'stellar spectra {folder}', download_stellar_spectra, folders=(folder,))
-        # download_stellar_tracks reports a failed download as RuntimeError.
         tracks = 'Spada' if config.star.mors.tracks == 'spada' else 'Baraffe'
-        _attempt(
-            'stellar tracks',
-            download_stellar_tracks,
-            tracks,
-            catch=_FETCH_ERRORS + (RuntimeError,),
-        )
+        _attempt('stellar tracks', download_stellar_tracks, tracks)
 
     # Spectral files
     if config.atmos_clim.module in ('janus', 'agni'):
@@ -1690,10 +1714,9 @@ def _get_sufficient(config: Config, clean: bool = False):
 
     # Interior lookup tables (melting curves)
     if config.interior_energetics.module in ('aragog', 'spider'):
-        # Not guarded: without the configured melting curves SPIDER and Aragog
-        # fall back to other curves, so a failed fetch must stop the run here.
-        download_interior_lookuptables(clean=clean)
-        download_melting_curves(config, clean=clean)
+        # A configured curve that is still missing stops the run where it is read.
+        _attempt('Wolf and Bower melting curves', download_interior_lookuptables, clean=clean)
+        _attempt('melting curves', download_melting_curves, config, clean=clean)
 
     # Dynamic EOS for SPIDER and Aragog (uses struct.eos_dir, skip if None/PALEOS)
     if (

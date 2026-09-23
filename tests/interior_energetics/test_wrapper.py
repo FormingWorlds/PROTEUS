@@ -4450,6 +4450,41 @@ def test_provide_spider_eos_tables_spider_submodule_fallback(tmp_path):
     assert dirs['spider_solidus_ps'] == str(target / 'solidus_P-S.dat')
 
 
+@pytest.mark.unit
+def test_provide_spider_eos_tables_missing_configured_curve_raises(tmp_path):
+    """A configured melting_dir without its P-T files stops the run.
+
+    Continuing would leave the bundled A11_H13 curves in place, so the run
+    would use another solidus and liquidus than the one configured.
+    """
+    from types import SimpleNamespace
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import (
+        _SPIDER_EOS_PHASE_FILES,
+        _provide_spider_eos_tables,
+    )
+
+    config = SimpleNamespace(interior_struct=SimpleNamespace(melting_dir='Monteux-600'))
+    spider_bundle = tmp_path / 'SPIDER' / 'lookup_data' / '1TPa-dK09-elec-free'
+    spider_bundle.mkdir(parents=True)
+    for f in _SPIDER_EOS_PHASE_FILES:
+        _write_synthetic_ps_table(spider_bundle / f, NX=3, NY=4)
+    (spider_bundle / 'solidus_A11_H13.dat').write_text('# bundled solidus\n')
+    (spider_bundle / 'liquidus_A11_H13.dat').write_text('# bundled liquidus\n')
+    dirs = {'spider': str(tmp_path / 'SPIDER')}
+
+    with (
+        _patch('proteus.utils.data.GetFWLData', return_value=tmp_path / 'fwl_empty'),
+        pytest.raises(FileNotFoundError, match="melting_dir='Monteux-600'") as raised,
+    ):
+        _provide_spider_eos_tables(config, str(tmp_path), dirs)
+
+    # The message names the P-T files that are missing.
+    assert 'monteux_minus_600' in str(raised.value)
+    assert 'spider_solidus_ps' not in dirs
+
+
 # ============================================================================
 # run_interior: output-conversion exception bubbles up
 # ============================================================================
