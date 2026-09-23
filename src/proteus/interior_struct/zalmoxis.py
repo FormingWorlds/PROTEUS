@@ -2194,8 +2194,8 @@ def _resumed_ps_tables(outdir: str, cache_key: str) -> dict | None:
     cache directory recorded by :func:`_write_ps_cache_pointer`. A resumed run
     continues on these tables even when the current key differs, so it does
     not switch tables part way through its evolution. A differing key is
-    logged at WARNING, with the generator identity named when it differs or
-    the marker predates it.
+    logged at WARNING with both keys, naming the generator identity when only
+    that differs or the marker predates it.
 
     Parameters
     ----------
@@ -2228,21 +2228,21 @@ def _resumed_ps_tables(outdir: str, cache_key: str) -> dict | None:
         except OSError:
             continue
         base, has_gen, gen = stored.partition('_gen=')
-        if base != want_base:
+        if stored != cache_key:
+            if base == want_base:
+                change = 'the new table generator (generator %s, current %s)' % (
+                    gen if has_gen else 'unknown',
+                    want_gen,
+                )
+            else:
+                change = 'the changed settings'
             log.warning(
-                'Resumed run keeps its P-S entropy tables in %s: stored key %s '
-                'differs from the current key %s',
+                'Resumed run keeps its original P-S entropy tables in %s and ignores %s: '
+                'stored key %s, current key %s',
                 eos_dir,
+                change,
                 stored,
                 cache_key,
-            )
-        elif gen != want_gen:
-            log.warning(
-                'Resumed run keeps its P-S entropy tables in %s: they come from '
-                'table generator %s, the current generator is %s',
-                eos_dir,
-                gen if has_gen else 'unknown',
-                want_gen,
             )
         return {
             'eos_dir': eos_dir,

@@ -3034,7 +3034,8 @@ def test_resume_keeps_run_tables_with_an_old_format_marker(tmp_path, monkeypatch
     tables.assert_not_called()
     assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
     assert (run_eos / '.cache_info.txt').read_text() == old_marker
-    assert 'generator unknown' in caplog.text
+    assert 'keeps its original P-S entropy tables' in caplog.text
+    assert 'generator unknown' in caplog.text and key in caplog.text
 
     out, bounds, tables, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=False)
     bounds.assert_called_once()
@@ -3073,3 +3074,26 @@ def test_resume_follows_the_pointer_to_shared_cache_tables(tmp_path, monkeypatch
         out, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
     assert _Path(out['eos_dir']) == old_dir and caplog.text == ''
     bounds.assert_not_called()
+
+
+def test_resume_keeps_run_tables_after_a_settings_change(tmp_path, monkeypatch, caplog):
+    """A resumed run whose stored key differs in a physical setting (here the
+    pressure ceiling) keeps its tables and warns with both keys that the
+    changed settings are ignored."""
+    from pathlib import Path as _Path
+
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    stored = key.replace('P_max=3.500000e+11', 'P_max=4.000000e+11')
+    assert stored != key
+    _seed_tables(run_eos, stored)
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, tables, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+    assert _Path(out['eos_dir']) == run_eos
+    bounds.assert_not_called()
+    tables.assert_not_called()
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
+    assert 'ignores the changed settings' in caplog.text
+    assert stored in caplog.text and key in caplog.text
