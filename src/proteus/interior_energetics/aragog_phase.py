@@ -34,6 +34,7 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING
 
+import numpy as np
 from aragog.parser import _PhaseMixedParameters
 from aragog.rheology import SolidRheologyParams
 
@@ -202,14 +203,17 @@ def build_solid_rheology_params(config: Config) -> SolidRheologyParams:
     SolidRheologyParams
         The validated solid-state mantle rheology parameters.
     """
-    ar_sec = config.interior_energetics.aragog
-    rheo = getattr(ar_sec, 'rheology', ar_sec)
+    ar_sec = getattr(config.interior_energetics, 'aragog', None)
+    rheo = getattr(ar_sec, 'rheology', None)
+    if rheo is None:
+        return SolidRheologyParams()
 
     kwargs = {}
+    valid_types = (int, float, str, bool, np.number, np.bool_)
     for f in fields(SolidRheologyParams):
         val = getattr(rheo, f.name, None)
-        if isinstance(val, (int, float, str, bool)):
-            kwargs[f.name] = val
+        if isinstance(val, valid_types):
+            kwargs[f.name] = val.item() if isinstance(val, (np.number, np.bool_)) else val
 
     return SolidRheologyParams(**kwargs)
 

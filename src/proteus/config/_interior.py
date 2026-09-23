@@ -251,6 +251,17 @@ class Rheology:
     phi_visc_single: float = field(default=0.5, validator=[gt(0), lt(1)])
     """Melt fraction threshold separating solid from liquid viscosity blending branches."""
 
+    def __attrs_post_init__(self) -> None:
+        if (
+            self.enabled
+            and self.lid_base_mode == 'rheological'
+            and self.activation_energy <= 0.0
+        ):
+            raise ValueError(
+                f"Invalid combination: lid_base_mode='rheological' requires positive activation_energy, "
+                f'got activation_energy={self.activation_energy}'
+            )
+
 
 @define
 class Aragog:

@@ -60,3 +60,9 @@ def test_build_solid_rheology_params_translates_config():
             assert p_val == pytest.approx(s_val)
         else:
             assert p_val == s_val
+
+
+def test_rheology_cross_field_validation():
+    """Rheology rejects rheological lid_base_mode with non-positive activation_energy."""
+    with pytest.raises(ValueError, match='Invalid combination'):
+        Rheology(enabled=True, lid_base_mode='rheological', activation_energy=0.0)
