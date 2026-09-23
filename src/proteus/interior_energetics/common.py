@@ -719,9 +719,9 @@ def compute_initial_entropy(
         tables. With the Zalmoxis structure also when ``spider_eos_dir`` or
         the ``interior_struct.zalmoxis`` section is missing, when the PALEOS
         P-T anchor finds no molten adiabat at P_cmb or its integration fails
-        numerically (chained; programming and I/O errors propagate), and when the anchor clamps and the P-S adiabat at the
-        anchor entropy, less the ``ini_dsdr`` allowance, is below the P-S
-        liquidus somewhere.
+        numerically (chained; programming and I/O errors propagate), and
+        when the anchor clamps and the P-S adiabat at the anchor entropy,
+        less the ``ini_dsdr`` allowance, is below the P-S liquidus somewhere.
     FileNotFoundError
         In ``liquidus_super`` mode with another structure module, when no
         ``spider_eos_dir`` is given.

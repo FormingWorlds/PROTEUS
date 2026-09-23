@@ -81,9 +81,9 @@ is the configured silicate liquidus. PROTEUS solves for the surface temperature,
 and hence the uniform initial entropy, that satisfies this at the
 most-constraining depth, checking the superheat against the liquidus actually in
 use. Where the tables reach it, this gives a fully molten initial state with a
-known margin, without you choosing a surface temperature or entropy by hand. Because the binding depth is shallow,
-the solved entropy is essentially independent of planet mass, so a mass grid
-starts on a common adiabat.
+known margin, without you choosing a surface temperature or entropy by hand.
+Because the binding depth is shallow, the solved entropy is essentially
+independent of planet mass, so a mass grid starts on a common adiabat.
 
 Whether the default `delta_T_super = 500` K is reachable depends on the P-S
 tables, the core-mantle boundary pressure and `planet.ini_dsdr`. On
@@ -118,8 +118,9 @@ liquidus at the binding depth.
     - `"zalmoxis"` and `"dummy"` with a PALEOS mantle
       (`interior_struct.zalmoxis.mantle_eos`, default `"PALEOS:MgSiO3"`) whose
       table files are present: Zalmoxis generates the tables from that EOS,
-      with a liquidus derived from the PALEOS (Fei et al. 2021) curve. `interior_struct.melting_dir`
-      is not used, and Zalmoxis must be installed.
+      with a liquidus derived from the PALEOS (Fei et al. 2021) curve.
+      `interior_struct.melting_dir` is not used, and Zalmoxis must be
+      installed.
     - `"spider"`, or `"zalmoxis"` and `"dummy"` when no PALEOS table set is
       generated: the tables come from FWL_DATA or the SPIDER lookup data, and
       when `interior_struct.melting_dir` is set PROTEUS derives
@@ -137,8 +138,9 @@ liquidus at the binding depth.
     logs a warning: the structure solve uses the last solved anchor, or
     `tcmb_init` before any, as its core-mantle boundary temperature, and the
     re-solve keeps the linear-guess structure. In other cases no later step
-    solves the anchor again, so a failed anchor stops the run there. When the anchor clamps at the PALEOS table below
-    `delta_T_super`, the initial entropy is capped at the anchor entropy, and
+    solves the anchor again, so a failed anchor stops the run there. When
+    the anchor clamps at the PALEOS table below `delta_T_super`, the initial
+    entropy is capped at the anchor entropy, and
     a warning names the superheat the anchor reached. The generated P-S tables
     fill cells where PALEOS has no valid state, so on their own they can
     report a superheat that PALEOS does not support. For 10 Earth masses
@@ -166,9 +168,10 @@ liquidus at the binding depth.
       P-S table liquidus, and the two curves differ. For 10 Earth masses the
       anchor reaches a requested `delta_T_super` of up to about 1181 K, but
       at the anchor edge entropy the P-S tables give only about 1135 K of
-      superheat (measured with `ini_dsdr = 0`). A request in between puts the initial entropy up to about 53 J/kg/K above the anchor
-      edge (at 1180 K the surface is 35 K and the core-mantle boundary 113 K
-      hotter than the anchor at its edge).
+      superheat (measured with `ini_dsdr = 0`). A request in between puts
+      the initial entropy up to about 53 J/kg/K above the anchor edge (at
+      1180 K the surface is 35 K and the core-mantle boundary 113 K hotter
+      than the anchor at its edge).
     - For 10 Earth masses the anchor edge comes from a narrow band near 1 GPa
       (0.99 to 1.08 GPa) where the PALEOS liquid table has no valid state at
       these temperatures. Whether an adiabat is marked valid depends on
@@ -176,8 +179,9 @@ liquidus at the binding depth.
       cap with it, can shift with the core-mantle boundary pressure.
 
     With `"dummy"` and PALEOS-generated tables there is no anchor, so a large
-    `delta_T_super` can land in those filled cells. The two adiabats differ slightly: for 1 Earth
-    mass at `delta_T_super = 500` K (core-mantle boundary at 103 GPa), the
+    `delta_T_super` can land in those filled cells. The two adiabats differ
+    slightly: for 1 Earth mass at `delta_T_super = 500` K (core-mantle
+    boundary at 103 GPa), the
     P-T anchor evaluated on the P-S tables has a smallest margin of 472 K
     above their liquidus, against 500 K for the initial entropy.
 

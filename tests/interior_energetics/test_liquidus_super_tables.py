@@ -1614,9 +1614,14 @@ def test_numerical_anchor_failures_are_wrapped_and_memoised(monkeypatch, error):
     with pytest.raises(common.InitialConditionError, match=type(error).__name__) as exc:
         zal.solve_superliquidus_adiabat(cfg, {'P_cmb': P_CMB})
     assert exc.value.__cause__ is error
-    with pytest.raises(common.InitialConditionError, match=type(error).__name__):
+    with pytest.raises(common.InitialConditionError, match=type(error).__name__) as again:
         zal.solve_superliquidus_adiabat(cfg, {'P_cmb': P_CMB})
     assert len(calls) == 1
+    # The memo holds a copy without traceback or cause, not the raised error.
+    stored = again.value.__cause__
+    assert stored is not exc.value
+    assert stored.__traceback__ is None
+    assert stored.__cause__ is None
 
 
 @pytest.mark.parametrize(
