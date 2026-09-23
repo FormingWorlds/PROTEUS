@@ -1478,3 +1478,124 @@ def test_helpfile_output_t_cmb_node_is_cmb_basic_node():
     assert res['T_cmb_node'] == pytest.approx(4100.0)
     assert res['T_cmb'] == pytest.approx(3800.0)
     assert res['T_cmb_node'] != pytest.approx(res['T_cmb'])
+
+
+def _snapshot_output(n_stag=6):
+    """Minimal SolverOutput stand-in for ``_write_output_ncdf``: a molten
+    mantle column with physical profiles (entropy near 3000 J/kg/K)."""
+    from types import SimpleNamespace
+
+    r_basic = np.linspace(3.5e6, 6.371e6, n_stag + 1)
+    r_stag = 0.5 * (r_basic[:-1] + r_basic[1:])
+    return SimpleNamespace(
+        S_final=np.linspace(3100.0, 3000.0, n_stag),
+        T_stag=np.linspace(4200.0, 3000.0, n_stag),
+        phi_stag=np.ones(n_stag),
+        r_stag=r_stag,
+        P_stag=np.linspace(135e9, 1e5, n_stag),
+        r_basic=r_basic,
+        visc_stag=np.full(n_stag, 0.1),
+        rho_stag=np.linspace(5000.0, 3000.0, n_stag),
+        heat_flux=np.full(n_stag + 1, 1.0e4),
+        heating=np.zeros(n_stag),
+        mass_stag=np.full(n_stag, 1.0e23),
+        Phi_global=1.0,
+    )
+
+
+@pytest.mark.parametrize(
+    'dSdr_cmb, expected',
+    [(-2.2378876e-11, -2.2378876e-11), (None, None), (float('nan'), None)],
+    ids=['energy-balance-state', 'no-state-written', 'non-finite-state'],
+)
+def test_snapshot_round_trips_the_cmb_entropy_gradient(tmp_path, dSdr_cmb, expected):
+    """The Aragog snapshot stores the CMB entropy gradient state and the resume
+    reader returns it bit for bit; a snapshot without it, or with a non-finite
+    value, reads as None so the resume keeps the finite-difference start."""
+    from proteus.interior_energetics.aragog import (
+        AragogRunner,
+        read_last_dSdr_cmb,
+        read_last_Sfield,
+    )
+
+    (tmp_path / 'data').mkdir()
+    out = _snapshot_output()
+    AragogRunner._write_output_ncdf(str(tmp_path), 2512.69358, out, dSdr_cmb=dSdr_cmb)
+    got = read_last_dSdr_cmb(str(tmp_path), 2512.69358)
+    if expected is None:
+        assert got is None
+    else:
+        assert got == pytest.approx(expected, rel=1e-15)
+        # Sign and scale: a relaxed CMB gradient is small and negative, far
+        # from the -5.9e-5 finite difference of the two bottom cells.
+        assert got < 0 and abs(got) < 1e-9
+    # The entropy profile in the same file is unaffected by the new variable.
+    np.testing.assert_array_equal(read_last_Sfield(str(tmp_path), 2512.69358), out.S_final)
+
+
+class _RestoreSolver:
+    """Records the CMB gradient override that ``set_initial_entropy`` sees."""
+
+    def __init__(self, n_stag):
+        self._n_stag = n_stag
+        self._dSdr_cmb_init = -9.0  # a stale override from before the resume
+        self.seen = []
+
+    def initialize(self):
+        pass
+
+    def set_initial_dSdr_cmb(self, value):
+        self._dSdr_cmb_init = None if value is None else float(value)
+
+    def set_initial_entropy(self, S):
+        self.seen.append((np.asarray(S).copy(), self._dSdr_cmb_init))
+
+
+@pytest.mark.parametrize(
+    'stored', [-2.2378876e-11, None], ids=['state-in-snapshot', 'older-snapshot']
+)
+def test_resume_restores_the_cmb_entropy_gradient(stored, caplog):
+    """On resume the entropy snapshot is restored together with the CMB
+    entropy gradient it was written with, so the first step continues the
+    boundary state instead of restarting it from a finite difference (which
+    drives a one-step CMB flux spike). An older snapshot without the state
+    clears the override, keeps the finite-difference start, and says so."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    n = 6
+    S_snap = np.linspace(3100.0, 3000.0, n)
+    interior_o = MagicMock()
+    interior_o.aragog_solver = None
+    solver = _RestoreSolver(n)
+
+    def _setup(config, hf_row, interior_o, outdir):
+        interior_o.aragog_solver = solver
+
+    def _update(dt, hf_row, interior_o, output_dir=None):
+        interior_o._last_entropy = S_snap
+        interior_o._last_dSdr_cmb = stored
+
+    config = MagicMock()
+    config.params.resume = True
+    with (
+        patch.object(AragogRunner, 'setup_solver', side_effect=_setup),
+        patch.object(AragogRunner, 'update_solver', side_effect=_update),
+        patch.object(AragogRunner, '_maybe_install_jax_cvode_factory'),
+        patch('proteus.interior_energetics.aragog._maybe_log_solver_environment'),
+        caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.aragog'),
+    ):
+        AragogRunner.setup_or_update_solver(
+            config, {'Time': 2512.69358}, interior_o, 100.0, {'output': 'unused'}
+        )
+
+    assert len(solver.seen) == 1
+    S_seen, dSdr_seen = solver.seen[0]
+    np.testing.assert_array_equal(S_seen, S_snap)
+    no_state_logged = any('no CMB entropy gradient' in r.getMessage() for r in caplog.records)
+    if stored is None:
+        # The stale -9.0 override is cleared, not reused.
+        assert dSdr_seen is None
+        assert no_state_logged
+    else:
+        assert dSdr_seen == pytest.approx(stored, rel=1e-15)
+        assert not no_state_logged

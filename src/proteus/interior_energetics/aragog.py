@@ -504,10 +504,21 @@ class AragogRunner:
                     )
                     AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
                 else:
-                    # Clear stale dSdr_cmb so set_initial_entropy recomputes
-                    # it from the restored profile via finite differences.
-                    if hasattr(solver, '_dSdr_cmb_init'):
-                        solver._dSdr_cmb_init = None
+                    # Restore the CMB entropy gradient the solver held when the
+                    # snapshot was written (energy_balance state). Without it
+                    # set_initial_entropy restarts the gradient from a finite
+                    # difference of the two bottom cells, which drives a
+                    # one-step CMB flux spike on the first step after resume.
+                    dSdr_cmb = getattr(interior_o, '_last_dSdr_cmb', None)
+                    if dSdr_cmb is None:
+                        log.info(
+                            'Snapshot has no CMB entropy gradient; it restarts '
+                            'from the finite difference of the restored profile.'
+                        )
+                    if hasattr(solver, 'set_initial_dSdr_cmb'):
+                        solver.set_initial_dSdr_cmb(dSdr_cmb)
+                    else:
+                        solver._dSdr_cmb_init = dSdr_cmb
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
@@ -1685,6 +1696,7 @@ class AragogRunner:
         # accessor to handle variable state vector sizes.
         if output_dir is not None:
             S_field = read_last_Sfield(output_dir, hf_row['Time'])
+            interior_o._last_dSdr_cmb = read_last_dSdr_cmb(output_dir, hf_row['Time'])
         else:
             sol = solver.solution
             if sol is not None and sol.y.size > 0:
@@ -1890,6 +1902,11 @@ class AragogRunner:
                     self._config.interior_energetics, 'write_flux_diagnostics', False
                 ),
                 T_surf_coupled=hf_row.get('T_surf'),
+                dSdr_cmb=(
+                    interior_o.aragog_solver.get_current_dSdr_cmb()
+                    if hasattr(interior_o.aragog_solver, 'get_current_dSdr_cmb')
+                    else None
+                ),
             )
 
         return sim_time, output
@@ -2469,6 +2486,7 @@ class AragogRunner:
         out: SolverOutput,
         write_diagnostics: bool = False,
         T_surf_coupled: float | None = None,
+        dSdr_cmb: float | None = None,
     ):
         """Write entropy solver output to NetCDF using SolverOutput.
 
@@ -2484,6 +2502,11 @@ class AragogRunner:
             alongside Aragog's adiabatic temp_s as a diagnostic (an in-loop
             snapshot holds the value from the previous coupling step); a
             resume reads T_surf from the helpfile.
+        dSdr_cmb : float or None
+            CMB entropy gradient state of the ``energy_balance`` core boundary
+            condition at ``time`` [J kg-1 K-1 m-1], written as
+            ``dSdr_cmb_state`` so a resume restarts the boundary state where
+            it was. None (other core_bc modes) writes nothing.
         """
         fpath = os.path.join(output_dir, 'data', format_subyear_time(time) + '_int.nc')
         ds = nc.Dataset(fpath, mode='w')
@@ -2536,6 +2559,11 @@ class AragogRunner:
             ds['T_surf_coupled'][0] = float(T_surf_coupled)
             ds['T_surf_coupled'].units = 'K'
 
+        if dSdr_cmb is not None:
+            ds.createVariable('dSdr_cmb_state', np.float64)
+            ds['dSdr_cmb_state'][0] = float(dSdr_cmb)
+            ds['dSdr_cmb_state'].units = 'J kg-1 K-1 m-1'
+
         ds.close()
 
 
@@ -2551,6 +2579,30 @@ def read_last_Sfield(output_dir: str, time: float):
         S_stag = np.array(ds.get('temp_s', ds.get('temp_b', [3200.0]))[:])
     ds.close()
     return S_stag
+
+
+def read_last_dSdr_cmb(output_dir: str, time: float) -> float | None:
+    """Read the CMB entropy gradient state from the Aragog NetCDF snapshot.
+
+    Parameters
+    ----------
+    output_dir : str
+        Run output directory.
+    time : float
+        Snapshot time [yr].
+
+    Returns
+    -------
+    float or None
+        ``dSdr_cmb_state`` [J kg-1 K-1 m-1], or None when the snapshot does
+        not hold it (other core_bc modes, older snapshots) or it is not finite.
+    """
+    fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_int.nc')
+    with nc.Dataset(fpath) as ds:
+        if 'dSdr_cmb_state' not in ds.variables:
+            return None
+        value = float(np.asarray(ds['dSdr_cmb_state'][:]).item())
+    return value if np.isfinite(value) else None
 
 
 def get_all_output_times(output_dir: str):
