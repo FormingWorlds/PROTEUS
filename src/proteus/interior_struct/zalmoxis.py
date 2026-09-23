@@ -1,6 +1,7 @@
 # Zalmoxis interior module
 from __future__ import annotations
 
+import functools
 import hashlib
 import logging
 import math
@@ -2240,6 +2241,7 @@ def _ps_cache_key(
     eos_file: str | None,
     solid_eos: str | None,
     liquid_eos: str | None,
+    generator: str | None = None,
 ) -> str:
     """Build the identity string for a generated P-S EOS table set.
 
@@ -2267,6 +2269,10 @@ def _ps_cache_key(
         Resolved paths of the tables that seed the generation. These
         distinguish EOS that share a registry name but resolve to different
         files (e.g. distinct PALEOS-API table versions).
+    generator : str or None
+        Identity of the Zalmoxis table generator; defaults to
+        :func:`_ps_generator_identity`, so tables built by a different
+        Zalmoxis release or source land on a distinct key.
 
     Returns
     -------
@@ -2276,10 +2282,42 @@ def _ps_cache_key(
     eos_identity = '|'.join(str(p) for p in (mantle_eos, eos_file, solid_eos, liquid_eos))
     eos_digest = hashlib.sha1(eos_identity.encode()).hexdigest()[:12]
     eos_name = re.sub(r'[^A-Za-z0-9]+', '-', str(mantle_eos)).strip('-')
+    if generator is None:
+        generator = _ps_generator_identity()
+    gen_name = re.sub(r'[^A-Za-z0-9]+', '-', str(generator)).strip('-')
     return (
         f'P_max={P_max:.6e}_nP={nP}_nS={nS}_mzf={mzf}'
-        f'_layout={layout}_eos={eos_name}-{eos_digest}'
+        f'_layout={layout}_eos={eos_name}-{eos_digest}_gen={gen_name}'
     )
+
+
+@functools.lru_cache(maxsize=1)
+def _ps_generator_identity() -> str:
+    """Identity of the Zalmoxis code that generates the P-S tables.
+
+    The installed Zalmoxis version plus a digest of the table generator
+    (``zalmoxis.eos_export``) and the melting curves it reads
+    (``zalmoxis.melting_curves``). The digest covers editable installs, whose
+    version metadata is fixed at install time while the source moves on.
+
+    Returns
+    -------
+    str
+        ``'<version>-<digest>'``, or ``'<version>'`` when a module source file
+        cannot be read.
+    """
+    import zalmoxis
+    import zalmoxis.eos_export
+    import zalmoxis.melting_curves
+
+    version = str(getattr(zalmoxis, '__version__', 'unknown'))
+    h = hashlib.sha1()
+    try:
+        for mod in (zalmoxis.eos_export, zalmoxis.melting_curves):
+            h.update(Path(mod.__file__).read_bytes())
+    except (OSError, TypeError):
+        return version
+    return f'{version}-{h.hexdigest()[:12]}'
 
 
 def generate_spider_tables(config: Config, outdir: str):

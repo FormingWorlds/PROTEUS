@@ -2422,6 +2422,70 @@ def test_ps_cache_key_sanitises_names_and_tolerates_missing_paths():
     assert key != key_other
 
 
+def test_ps_cache_key_separates_table_generators():
+    """Tables built by a different Zalmoxis generator land on a different key.
+
+    A shared PROTEUS_PS_CACHE_DIR would otherwise keep serving tables written by
+    an older Zalmoxis after the generator changed (for example a corrected
+    liquidus curve). Identical inputs and generator still give one key, so a
+    genuine cache hit is kept.
+    """
+    from proteus.interior_struct.zalmoxis import _ps_cache_key, _ps_generator_identity
+
+    common = dict(
+        P_max=3.5e11,
+        nP=1350,
+        nS=280,
+        mzf=0.8,
+        layout='2phase',
+        mantle_eos='PALEOS-2phase:MgSiO3',
+        eos_file='/data/unified.dat',
+        solid_eos='/data/solid.dat',
+        liquid_eos='/data/liquid.dat',
+    )
+    key_old = _ps_cache_key(**common, generator='26.9.21-aaaaaaaaaaaa')
+    key_new = _ps_cache_key(**common, generator='26.9.21-bbbbbbbbbbbb')
+    assert key_old != key_new
+    # Only the generator token differs; the EOS identity part is unchanged.
+    assert key_old.partition('_gen=')[0] == key_new.partition('_gen=')[0]
+    assert key_old == _ps_cache_key(**common, generator='26.9.21-aaaaaaaaaaaa')
+    # The default is the installed generator identity, filesystem safe.
+    key_default = _ps_cache_key(**common)
+    assert key_default == _ps_cache_key(**common, generator=_ps_generator_identity())
+    assert '/' not in key_default and ':' not in key_default
+
+
+def test_ps_generator_identity_follows_the_generator_source(tmp_path, monkeypatch):
+    """The generator identity changes when the table generator source changes,
+    even at a fixed version string (an editable install keeps the version from
+    install time), and falls back to the version when a source file is missing.
+    """
+    import zalmoxis.eos_export
+    import zalmoxis.melting_curves
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    src = tmp_path / 'eos_export.py'
+    src.write_text('# generator A\n')
+    monkeypatch.setattr(zalmoxis.eos_export, '__file__', str(src))
+    zmod._ps_generator_identity.cache_clear()
+    try:
+        ident_a = zmod._ps_generator_identity()
+        src.write_text('# generator B\n')
+        zmod._ps_generator_identity.cache_clear()
+        ident_b = zmod._ps_generator_identity()
+        version = str(zalmoxis.__version__)
+        assert ident_a != ident_b
+        assert ident_a.startswith(version + '-') and ident_b.startswith(version + '-')
+        # Edge case: an unreadable source leaves the version alone.
+        monkeypatch.setattr(zalmoxis.melting_curves, '__file__', str(tmp_path / 'missing.py'))
+        zmod._ps_generator_identity.cache_clear()
+        assert zmod._ps_generator_identity() == version
+    finally:
+        monkeypatch.undo()
+        zmod._ps_generator_identity.cache_clear()
+
+
 def test_jax_nonviable_fallback_logs_once_per_run(caplog):
     """The JAX to numpy structure fallback is announced once, not per re-solve.
 
