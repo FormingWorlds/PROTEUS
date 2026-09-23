@@ -833,6 +833,11 @@ def _try_spider(
     call_sequence.extend(['-ic_surface_entropy', '-1'])
     call_sequence.extend(['-ic_core_entropy', '-1'])
 
+    # EOS lookup data: prefer per-run generated tables (from Zalmoxis/PALEOS),
+    # then FWL_DATA, then SPIDER local as final fallback. The initial entropy
+    # and the solver arguments both read this one directory.
+    eos_dir = _resolve_spider_eos_dir(dirs, config)
+
     # Initial condition
     if IC_INTERIOR == 2:
         # get last JSON File
@@ -850,9 +855,7 @@ def _try_spider(
         )
     else:
         # Compute initial entropy from planet temperature settings (PALEOS lookup)
-        ini_entropy = _compute_spider_initial_entropy(
-            config, hf_row, _resolve_spider_eos_dir(dirs, config)
-        )
+        ini_entropy = _compute_spider_initial_entropy(config, hf_row, eos_dir)
         call_sequence.extend(
             [
                 '-ic_adiabat_entropy',
@@ -916,10 +919,6 @@ def _try_spider(
     if config.interior_energetics.heat_tidal:
         call_sequence.extend(['-HTIDAL', '2'])
         call_sequence.extend(['-htidal_filename', get_file_tides(dirs['output'])])
-
-    # EOS lookup data: prefer per-run generated tables (from Zalmoxis/PALEOS),
-    # then FWL_DATA, then SPIDER local as final fallback.
-    eos_dir = _resolve_spider_eos_dir(dirs, config)
 
     # Resolve melting curve S(P) files: prefer generated paths, then FWL_DATA,
     # then SPIDER's bundled lookup_data as a final fallback. The bundled

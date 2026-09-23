@@ -1151,9 +1151,9 @@ def test_try_spider_zalmoxis_eos_dir_logs_at_debug(tmp_path, caplog):
     """_try_spider logs the Zalmoxis-generated EOS table path at debug level.
 
     This line fires on every timestep when Zalmoxis provides a per-run EOS
-    directory, so it must stay off the default INFO output (#839). It fires
-    twice per call: once for the initial-entropy computation and once for
-    the solver's own EOS args, both resolving the same directory.
+    directory, so it must stay off the default INFO output (#839). The
+    directory is resolved once per call and serves both the initial-entropy
+    computation and the solver's own EOS args, so the line fires once.
     """
     from proteus.interior_energetics.spider import _try_spider
 
@@ -1187,7 +1187,7 @@ def test_try_spider_zalmoxis_eos_dir_logs_at_debug(tmp_path, caplog):
     zalmoxis_records = [
         r for r in caplog.records if 'Zalmoxis-generated SPIDER EOS tables' in r.message
     ]
-    assert len(zalmoxis_records) == 2
+    assert len(zalmoxis_records) == 1
     assert all(r.levelname == 'DEBUG' for r in zalmoxis_records)
     resolved_dirs = {r.getMessage().rsplit(' ', 1)[-1] for r in zalmoxis_records}
     assert resolved_dirs == {dirs['spider_eos_dir']}

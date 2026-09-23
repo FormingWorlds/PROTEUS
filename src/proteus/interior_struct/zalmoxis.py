@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import tempfile
+from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
@@ -46,14 +47,49 @@ _SUPERLIQ_N_CEILING_BISECT = 12  # last-valid/first-invalid bisection iterations
 _SUPERLIQ_MAX_S_DRIFT = 1.0e-3  # max fractional entropy drift for an in-table adiabat
 _SUPERLIQ_DEFAULT_MUSHY = 0.8  # fallback solidus = factor * liquidus
 
+# Entries kept in each super-liquidus memo before the least recently used goes.
+_SUPERLIQ_CACHE_MAXSIZE = 64
+
+
+class _LRUDict(OrderedDict):
+    """Mapping that keeps at most ``maxsize`` entries.
+
+    Reads and writes mark an entry as most recently used; an insert beyond
+    ``maxsize`` drops the least recently used entry, so a long-lived process
+    (grid driver, notebook) holds a bounded number of solves.
+
+    Parameters
+    ----------
+    maxsize : int
+        Maximum number of entries, at least 1.
+    """
+
+    def __init__(self, maxsize: int = _SUPERLIQ_CACHE_MAXSIZE):
+        if maxsize < 1:
+            raise ValueError(f'maxsize must be >= 1, got {maxsize}')
+        super().__init__()
+        self.maxsize = maxsize
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        self.move_to_end(key)
+        return value
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        while len(self) > self.maxsize:
+            self.popitem(last=False)
+
+
 # Per-process memo so the three IC call sites (structure solve, energetics
 # entropy IC, Aragog cross-check) share one solve for a given input instead of
 # repeating the ~30-probe search. Keyed on the physical inputs only, so it is
 # deterministic; tests clear it between cases (see _clear_superliquidus_cache).
-_SUPERLIQ_CACHE: dict = {}
+_SUPERLIQ_CACHE: _LRUDict = _LRUDict()
 # Traceback-free copies of anchor failures that depend only on the key
 # (InitialConditionError and wrapped numerical errors), keyed like _SUPERLIQ_CACHE.
-_SUPERLIQ_FAILED: dict = {}
+_SUPERLIQ_FAILED: _LRUDict = _LRUDict()
 
 # CMB temperature [K] of the most recently solved super-liquidus adiabat. A
 # structure solve driven by an external temperature source discards this anchor
@@ -550,7 +586,8 @@ def _resolve_zalmoxis_cmb_temperature(
     super-liquidus CMB anchor is not the temperature source for this call and
     the solved value is discarded. Those calls reuse the anchor the
     internal-dispatch IC solve already produced and skip the scan-and-bisection;
-    before any solve has run they fall back to ``config.planet.tcmb_init``. This
+    when no anchor was solved for the same ``delta_T_super`` and mantle EOS they
+    fall back to ``config.planet.tcmb_init``. This
     avoids re-solving (and possibly raising the unreachable-superheat error) on
     every evolution re-solve over a value nothing consumes.
 
@@ -574,7 +611,8 @@ def _resolve_zalmoxis_cmb_temperature(
 
     if external_temperature_source:
         anchor = _SUPERLIQ_LAST_ANCHOR
-        if anchor is not None:
+        # Reuse the anchor only for the superheat and mantle EOS it was solved for.
+        if anchor is not None and _SUPERLIQ_LAST_ANCHOR_FOR == _superliq_anchor_for(config):
             log.debug(
                 'liquidus_super: structure solve uses an external temperature '
                 'source; reusing the last solved CMB anchor T_cmb=%.0f K and '
@@ -584,8 +622,8 @@ def _resolve_zalmoxis_cmb_temperature(
             return float(anchor)
         log.debug(
             'liquidus_super: structure solve uses an external temperature '
-            'source before any super-liquidus solve; using tcmb_init=%.0f K as '
-            'the unconsumed CMB anchor.',
+            'source with no super-liquidus solve for this superheat and mantle '
+            'EOS; using tcmb_init=%.0f K as the unconsumed CMB anchor.',
             float(config.planet.tcmb_init),
         )
         return float(config.planet.tcmb_init)
