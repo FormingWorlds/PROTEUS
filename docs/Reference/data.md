@@ -12,13 +12,18 @@ Each dataset is provisioned by one of two mechanisms, named per dataset in the
 table below.
 
 **fwl-io.** [fwl-io](https://github.com/FormingWorlds/fwl-io) pins a dataset to
-a Zenodo version DOI declared in `src/proteus/data/proteus_manifest.toml`,
-verifies every file against a checksum registry committed beside that manifest,
+a Zenodo version DOI declared in a manifest, verifies every file against a
+checksum registry committed beside that manifest,
 and places the files in a version directory named for the record, so a re-pinned
 deposit lands beside its predecessor rather than overwriting it. Every request
 carries a connect and read timeout, and a transient failure is retried with
 backoff. Zenodo is currently the only mirror these datasets declare, so an
 unreachable Zenodo means the fetch fails rather than falling back elsewhere.
+Data several models read (spectral files, stellar spectra, equations of state,
+melting curves, lookup tables) is declared in the shared manifest that fwl-io
+ships; data only PROTEUS reads is declared in `src/proteus/data/proteus_manifest.toml`.
+A tree laid out by an older PROTEUS moves into this layout with `fwl-io relocate`
+instead of being downloaded again.
 
 **The PROTEUS downloader.** `proteus.utils.data` fetches a whole Zenodo record,
 retrying a few times, and falls back to the corresponding project on the
@@ -36,7 +41,8 @@ used with lower rate limits.
 | Scattering properties | PROTEUS downloader | `proteus get scattering` |
 | Exoplanet populations, mass-radius curves | fwl-io | `proteus get reference` |
 | Interior structure EOS tables | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
-| Interior lookup tables, melting curves | PROTEUS downloader | `proteus get interiordata` |
+| Melting curves | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
+| P-S lookup tables | fwl-io | fetched when a run sets `interior_struct.eos_dir` |
 
 To configure a Zenodo API token, see the
 [Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
@@ -52,7 +58,7 @@ for full usage instructions.
 
 ### Solar spectra
 
-Observed solar spectra are stored under `$FWL_DATA/stellar_spectra/solar/r<record>/`,
+Observed solar spectra are stored under `$FWL_DATA/star/spectra/solar/r<record>/`,
 where `<record>` is the Zenodo record that the manifest pins.
 The modern spectrum is from [Gueymard (2003)](https://www.sciencedirect.com/science/article/pii/S0038092X03003967)
 via [NREL](https://www.nrel.gov/grid/solar-resource/spectra.html).
@@ -78,7 +84,7 @@ Historical and future spectra are from
 Observed UV-optical-IR spectra from the
 [MUSCLES](https://archive.stsci.edu/prepds/muscles/) and
 [Mega-MUSCLES](https://archive.stsci.edu/prepds/mega-muscles/) surveys,
-stored under `$FWL_DATA/stellar_spectra/muscles/r<record>/` as `<star_name>.txt`.
+stored under `$FWL_DATA/star/spectra/muscles/r<record>/` as `<star_name>.txt`.
 `star_name` matching is case-insensitive.
 
 ??? info "Full star catalog"
@@ -125,7 +131,7 @@ stored under `$FWL_DATA/stellar_spectra/muscles/r<record>/` as `<star_name>.txt`
 ### PHOENIX synthetic spectra
 
 Med-resolution synthetic spectra from the PHOENIX library, stored under
-`$FWL_DATA/stellar_spectra/phoenix/r17674612/FeH<FeH>_alpha<alpha>/`. Each
+`$FWL_DATA/star/spectra/phoenix/r17674612/FeH<FeH>_alpha<alpha>/`. Each
 subdirectory corresponds to one metallicity-alpha combination
 (e.g. `FeH-0.5_alpha+0.0/`). The Zenodo record holds one zip archive per
 combination. PROTEUS fetches only the archive that a run needs, checks it
@@ -169,7 +175,7 @@ with `#`.
 Correlated-k opacity tables used by the atmosphere climate modules
 (AGNI, JANUS). Selected via `atmos_clim.spectral_group` and
 `atmos_clim.spectral_bands` in the config. Stored under
-`$FWL_DATA/atmos_clim/spectral_files/<group>_<bands>/r<record-id>/`, with the group name in lower case.
+`$FWL_DATA/atmos_clim/spectral_files/<group>/<bands>/r<record-id>/`, with the group name in lower case.
 For a full description of each group's spectral coverage and gas
 species, see `docs/assets/spectral_files.pdf` in the PROTEUS repository.
 
@@ -238,27 +244,27 @@ not read and can be deleted.
 
 The interior structure solver of PROTEUS, Zalmoxis, uses equation-of-state tables by [Seager et al. (2007)](https://iopscience.iop.org/article/10.1086/521346), and from [PALEOS](https://github.com/maraattia/PALEOS) by [Attia et al. (2026)](https://ui.adsabs.harvard.edu/abs/2026arXiv260503741A/abstract). An overview of equation of state tables can be found [here](https://proteus-framework.org/Zalmoxis/Reference/data.html#data-inventory).
 
-All equation-of-state tables are fetched through fwl-io into `$FWL_DATA/interior_struct/eos/<dataset>/r<record-id>/`, on the same terms as the datasets above. Only the tables that the selected equations of state reference are fetched. A copy under `$FWL_DATA/EOS_material_properties/EOS_Seager2007` is not read and can be deleted.
+All equation-of-state tables are fetched through fwl-io into `$FWL_DATA/<dataset directory>/r<record-id>/`, on the same terms as the datasets above. Only the files that the selected equations of state read are fetched.
 
 | Dataset directory | Contents | Fetched |
 |---|---|---|
-| `seager_2007` | Seager et al. (2007) iron, silicate and water tables | whole record |
-| `wolf_bower_2018` | Wolf and Bower (2018) MgSiO3 melt and solid tables to 1 TPa | whole dataset for `WolfBower2018`; the solid density file alone for `RTPress100TPa` |
-| `rtpress_100tpa` | RTPress MgSiO3 melt tables to 100 TPa | whole dataset |
-| `paleos_mgsio3_2phase` | PALEOS MgSiO3 solid and liquid tables, 150 points per decade | whole dataset |
-| `paleos_mgsio3_2phase_highres` | PALEOS MgSiO3 solid and liquid tables, 600 points per decade | whole dataset, only for `PALEOS-2phase:MgSiO3-highres` |
-| `paleos_unified` | PALEOS unified tables for iron, MgSiO3 and water | one file per selected component, not the full 2.29 GB record |
-| `chabrier_2021` | Chabrier et al. hydrogen and helium tables | archive extracted into `r<record-id>/EOS_Chabrier2021_HHe/` |
+| `interior_struct/eos/seager_2007` | Seager et al. (2007) iron, silicate and water tables | whole record |
+| `interior/eos/wolf_bower_2018_1tpa` | Wolf and Bower (2018) MgSiO3 melt and solid tables to 1 TPa | melt density, melt adiabatic gradient and solid density for `WolfBower2018`; the solid density alone for `RTPress100TPa` |
+| `interior/eos/rtpress_melt_100tpa` | RTPress MgSiO3 melt tables to 100 TPa | melt density and melt adiabatic gradient |
+| `interior/eos/paleos_mgsio3` | PALEOS MgSiO3 solid and liquid tables, 150 and 600 points per decade | the 150 points-per-decade pair for `PALEOS-2phase:MgSiO3`, the 600 points-per-decade pair for `PALEOS-2phase:MgSiO3-highres` |
+| `interior/eos/paleos_iron`, `paleos_mgsio3_unified`, `paleos_h2o` | PALEOS unified tables for iron, MgSiO3 and water | the table of each selected component |
+| `interior/eos/chabrier_2021_hhe` | Chabrier et al. hydrogen and helium tables | archive extracted into `r<record-id>/EOS_Chabrier2021_HHe/` |
 
-Copies of these tables under `$FWL_DATA/zalmoxis_eos` and `$FWL_DATA/EOS_material_properties` are not read and can be deleted.
+Tables under `$FWL_DATA/zalmoxis_eos` are not read where they are; `fwl-io relocate` moves them into the directories above. A copy under `$FWL_DATA/EOS_material_properties` is not read and can be deleted.
 
 ---
 
 ## Melting curves and P-S lookup tables
 
-The `monteux_plus600`, `monteux_minus600` and `wolf_bower_2018` solidus/liquidus
+The `Monteux+600`, `Monteux-600` and `Wolf_Bower+2018` solidus/liquidus
 curves used by `interior_struct.melting_dir` and by Zalmoxis are fetched
-through fwl-io into `$FWL_DATA/interior_struct/melting_curves/<dataset>/r<record-id>/`.
+through fwl-io into `$FWL_DATA/interior/melting_curves/<dataset>/r<record-id>/`
+(datasets `monteux_plus_600`, `monteux_minus_600` and `wolf_bower_2018`).
 A curve generated locally by `tools/solidus_func.py` into
 `$FWL_DATA/interior_lookup_tables/Melting_curves/<melting_dir>/` takes
 precedence over the fetched copy; see [Melting curves](melting_curves.md) for
@@ -266,8 +272,9 @@ the full list of parametrizations and how to generate them.
 
 The Wolf and Bower (2018) pressure-entropy lookup table that SPIDER and
 Aragog read for `eos_dir = "WolfBower2018_MgSiO3"` is fetched the same way,
-into `$FWL_DATA/interior_struct/lookup/wolf_bower_2018_1tpa/r<record-id>/`. A
-local table under `$FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-S/`
-takes precedence, and the table bundled with SPIDER
-(`lookup_data/1TPa-dK09-elec-free/`) is used only when neither the local nor
-the fetched table is available.
+into `$FWL_DATA/interior/eos/dk09_1tpa_elec_free/mgsio3_wolf_bower_2018_1tpa/r<record-id>/`
+when a run sets `eos_dir`. A local table takes precedence: SPIDER reads
+`$FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-S/` and Aragog reads
+`$FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-T/`. SPIDER uses the
+table bundled with it (`lookup_data/1TPa-dK09-elec-free/`) when neither the
+local nor a complete fetched table is available.

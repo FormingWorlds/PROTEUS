@@ -1,5 +1,0 @@
-Dayspring.chk md5:bfa0e8f873ca26e5420d09c298a879df
-Dayspring.chk_k md5:0067ee8d145216771c4c1bbfa2951bb7
-Dayspring.sf md5:2e4b9f055620606d6eb5947974dccdde
-Dayspring.sf_k md5:58294dd2e05821860921692c4751f578
-ds16.log md5:31c8f66ced3e4185edafce8d0abe4ebc

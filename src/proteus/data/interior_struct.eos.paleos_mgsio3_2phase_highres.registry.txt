@@ -1,2 +1,0 @@
-paleos_mgsio3_tables_pt_proteus_liquid_highres.dat md5:f67e0f049fe5f3d5cba0adef6ab7632f
-paleos_mgsio3_tables_pt_proteus_solid_highres.dat md5:fddb2c3f392e1c2f73a326d702a98c70

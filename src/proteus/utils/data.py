@@ -12,6 +12,8 @@ from time import sleep
 from typing import TYPE_CHECKING
 
 import numpy as np
+from fwl_io import DownloadError, MissingDataRootError, OfflineDataError
+from fwl_io.archive import ArchiveError
 from osfclient.api import OSF
 from scipy.interpolate import interp1d
 
@@ -1302,14 +1304,21 @@ def find_lookup_table_dir(data_root: Path | str | None = None) -> Path | None:
     Returns
     -------
     Path or None
-        The dataset directory when it holds the SPIDER phase files, else None
-        (also when the data root cannot be created).
+        The dataset directory when it holds every SPIDER phase file and both
+        P-S melting curves, else None (also when the data root cannot be
+        created), so an interrupted fetch never shadows a complete table set.
     """
+    from proteus.interior_energetics.common import (
+        _SPIDER_EOS_MELTING_CURVES,
+        _SPIDER_EOS_PHASE_FILES,
+    )
+
     try:
         folder = resolve_lookup_table_dir(data_root)
     except OSError:
         return None
-    if (folder / 'thermal_exp_melt.dat').is_file() and (folder / 'density_melt.dat').is_file():
+    names = _SPIDER_EOS_PHASE_FILES + _SPIDER_EOS_MELTING_CURVES
+    if all((folder / name).is_file() for name in names):
         return folder
     return None
 
@@ -1318,7 +1327,7 @@ def download_interior_lookuptables(clean=False):
     """Fetch the melting curves that Aragog and SPIDER always need.
 
     The Wolf and Bower 2018 melting curves are fetched through fwl-io into
-    ``FWL_DATA/interior_struct/melting_curves/wolf_bower_2018/r<record-id>/``.
+    ``FWL_DATA/interior/melting_curves/wolf_bower_2018/r<record-id>/``.
 
     Parameters
     ----------
@@ -1341,7 +1350,7 @@ def download_melting_curves(config: Config, clean: bool = False):
     with ``solidus_P-T.dat`` and ``liquidus_P-T.dat`` is used as it is and
     nothing is fetched. Otherwise ``Monteux+600``, ``Monteux-600`` and
     ``Wolf_Bower+2018`` are fetched through fwl-io into
-    ``FWL_DATA/interior_struct/melting_curves/<name>/r<record-id>/``.
+    ``FWL_DATA/interior/melting_curves/<key>/r<record-id>/``.
 
     Parameters
     ----------
@@ -1390,8 +1399,8 @@ def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
     Notes
     -----
     Each collection is a manifest dataset and lands in its own version
-    directory: ``stellar_spectra/solar/``, ``stellar_spectra/named/`` and
-    ``stellar_spectra/muscles/``, each below an ``r<record-id>`` directory.
+    directory: ``star/spectra/solar/``, ``star/spectra/named/`` and
+    ``star/spectra/muscles/``, each below an ``r<record-id>`` directory.
 
     Parameters
     ----------
@@ -1592,6 +1601,38 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
             )
 
 
+# What a start-of-run fetch raises when a dataset cannot be obtained: the
+# filesystem errors, and fwl-io's own errors, which derive from RuntimeError.
+_FETCH_ERRORS = (OSError, DownloadError, OfflineDataError, ArchiveError, MissingDataRootError)
+
+
+def _attempt(desc: str, func, *args, **kwargs) -> bool:
+    """Run one start-of-run fetch step, reporting a failure instead of raising.
+
+    Each dataset is fetched independently, so an unreachable mirror for one of
+    them does not stop the others; a dataset that is still missing fails later,
+    where it is read.
+
+    Parameters
+    ----------
+    desc : str
+        What the step fetches, for the log message.
+    func : callable
+        The fetch function, called with the remaining arguments.
+
+    Returns
+    -------
+    bool
+        Whether the step finished without a fetch error.
+    """
+    try:
+        func(*args, **kwargs)
+    except _FETCH_ERRORS as exc:
+        log.warning('Problem when downloading/checking %s: %s', desc, exc)
+        return False
+    return True
+
+
 def _get_sufficient(config: Config, clean: bool = False):
     # Star stuff
     if config.star.module == 'mors':
@@ -1603,16 +1644,18 @@ def _get_sufficient(config: Config, clean: bool = False):
             folders.append('solar')
         if spec_src in (None, 'muscles'):
             folders.append('MUSCLES')
-        download_stellar_spectra(folders=tuple(dict.fromkeys(folders)))
-        if config.star.mors.tracks == 'spada':
-            download_stellar_tracks('Spada')
-        else:
-            download_stellar_tracks('Baraffe')
+        _attempt(
+            'stellar spectra',
+            download_stellar_spectra,
+            folders=tuple(dict.fromkeys(folders)),
+        )
+        tracks = 'Spada' if config.star.mors.tracks == 'spada' else 'Baraffe'
+        _attempt('stellar tracks', download_stellar_tracks, tracks)
 
     # Spectral files
     if config.atmos_clim.module in ('janus', 'agni'):
         # High-res file often used for post-processing
-        download_spectral_file('Honeyside', '4096')
+        _attempt('spectral file Honeyside/4096', download_spectral_file, 'Honeyside', '4096')
 
         # Skip the group/bands download when AGNI takes its spectral file
         # directly from the user (a custom path, or 'greygas').
@@ -1623,15 +1666,15 @@ def _get_sufficient(config: Config, clean: bool = False):
             from proteus.atmos_clim.common import get_spfile_name_and_bands
 
             group, bands = get_spfile_name_and_bands(config)
-            download_spectral_file(group, bands)
+            _attempt(f'spectral file {group}/{bands}', download_spectral_file, group, bands)
 
     # Surface single-scattering data
     if config.atmos_clim.module == 'agni':
-        download_surface_albedos()
+        _attempt('surface albedos', download_surface_albedos)
 
     # Aerosol scattering data
     if config.atmos_clim.module == 'agni' and config.atmos_clim.aerosols_enabled:
-        download_scattering()
+        _attempt('aerosol scattering data', download_scattering)
 
     # Exoplanet population data
     download_exoplanet_data()
@@ -1641,18 +1684,18 @@ def _get_sufficient(config: Config, clean: bool = False):
 
     # Interior lookup tables (melting curves)
     if config.interior_energetics.module in ('aragog', 'spider'):
-        download_interior_lookuptables(clean=clean)
-        download_melting_curves(config, clean=clean)
+        _attempt('interior lookup tables', download_interior_lookuptables, clean=clean)
+        _attempt('melting curves', download_melting_curves, config, clean=clean)
 
     # Dynamic EOS for SPIDER and Aragog (uses struct.eos_dir, skip if None/PALEOS)
     if (
         config.interior_energetics.module in ('spider', 'aragog')
         and config.interior_struct.eos_dir is not None
     ):
-        download_eos_dynamic(config.interior_struct.eos_dir)
+        _attempt('EOS lookup tables', download_eos_dynamic, config.interior_struct.eos_dir)
 
     # EOS for Zalmoxis (derived from struct.zalmoxis config, not struct.eos_dir)
-    download_zalmoxis_eos_for_config(config)
+    _attempt('Zalmoxis EOS tables', download_zalmoxis_eos_for_config, config)
 
 
 def download_zalmoxis_eos_for_config(config) -> None:
@@ -1695,7 +1738,7 @@ def download_sufficient_data(config: Config, clean: bool = False):
 
         # Some issue. Usually due to lack of internet connection, but print the error
         #     anyway so that the user knows what happened.
-        except OSError as e:
+        except _FETCH_ERRORS as e:
             log.warning('Problem when downloading/checking reference data')
             log.warning(str(e))
 
@@ -1816,8 +1859,8 @@ def download_eos_static():
 def download_eos_dynamic(eos_dir: str = 'WolfBower2018_MgSiO3'):
     """Fetch the Wolf and Bower 2018 P-S lookup tables through fwl-io.
 
-    The tables land in
-    ``FWL_DATA/interior_struct/lookup/wolf_bower_2018_1tpa/r19473625/``. The
+    The tables land in ``FWL_DATA/interior/eos/dk09_1tpa_elec_free/
+    mgsio3_wolf_bower_2018_1tpa/r19473625/``. The
     record provides the complete P-S set that both SPIDER and Aragog consume
     at runtime: 10 phase-property files (temperature, density, heat capacity,
     adiabatic gradient, thermal expansivity for melt and solid) plus the two
@@ -1885,14 +1928,9 @@ def download_Seager_EOS():
 
 # ── Zalmoxis EOS download helpers ────────────────────────────────────
 #
-# Each function downloads a specific Zalmoxis EOS dataset into
-# ``FWL_DATA/zalmoxis_eos/<folder>/``.  The folder names and Zenodo
-# record IDs mirror the Zalmoxis-internal ``setup_utils.download_data()``
-# so that every file ends up at a predictable path.
-#
-# ``download_zalmoxis_eos()`` is the top-level dispatcher called from
-# ``_get_sufficient()``; it inspects the mantle/core EOS config and
-# downloads only the datasets required for the current run.
+# ``download_zalmoxis_eos()`` is called from ``_get_sufficient()``; it
+# inspects the mantle/core EOS config and fetches only the manifest files
+# the current run reads.
 # ─────────────────────────────────────────────────────────────────────
 
 # Mantle EOS family prefixes whose registry entry carries the Seager iron
@@ -1911,20 +1949,26 @@ SEAGER_FALLBACK_FAMILIES = (
 )
 
 
-# PALEOS unified component -> table file inside the shared record.
-_PALEOS_UNIFIED_TABLES = {
-    'PALEOS:iron': 'paleos_iron_eos_table_pt.dat',
-    'PALEOS:MgSiO3': 'paleos_mgsio3_eos_table_pt.dat',
-    'PALEOS:H2O': 'paleos_water_eos_table_pt.dat',
-}
+# Files Zalmoxis reads from each dataset whose record holds more than it needs.
+_WOLF_BOWER_EOS_FILES = ('density_melt.dat', 'adiabat_temp_grad_melt.dat', 'density_solid.dat')
+_RTPRESS_EOS_FILES = ('density_melt.dat', 'adiabat_temp_grad_melt.dat')
+_PALEOS_2PHASE_FILES = (
+    'paleos_mgsio3_tables_pt_proteus_liquid.dat',
+    'paleos_mgsio3_tables_pt_proteus_solid.dat',
+)
+_PALEOS_2PHASE_HIGHRES_FILES = (
+    'paleos_mgsio3_tables_pt_proteus_liquid_highres.dat',
+    'paleos_mgsio3_tables_pt_proteus_solid_highres.dat',
+)
 
 
 def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: str = ''):
     """Download Zalmoxis EOS data required for the given EOS configuration.
 
     Inspects the mantle, core, and ice layer EOS identifiers and downloads
-    only the datasets needed.  Each dataset lands in its own directory under
-    ``FWL_DATA/interior_struct/eos/`` (see ``proteus_manifest.toml``).
+    only the files needed. Seager 2007 lands under ``FWL_DATA/interior_struct/eos/``
+    (``proteus_manifest.toml``); the other datasets land under
+    ``FWL_DATA/interior/eos/`` (the fwl-io shared manifest).
 
     Parameters
     ----------
@@ -1937,14 +1981,19 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
     """
     from proteus.data import (
         EOS_CHABRIER_2021,
-        EOS_PALEOS_MGSIO3_2PHASE,
-        EOS_PALEOS_MGSIO3_2PHASE_HIGHRES,
-        EOS_PALEOS_UNIFIED,
+        EOS_PALEOS_H2O,
+        EOS_PALEOS_IRON,
+        EOS_PALEOS_MGSIO3,
+        EOS_PALEOS_MGSIO3_UNIFIED,
         EOS_RTPRESS_100TPA,
         EOS_WOLF_BOWER_2018,
         fetch_dataset,
         fetch_dataset_file,
     )
+
+    def fetch_files(key, names):
+        for name in names:
+            fetch_dataset_file(key, name, data_root=FWL_DATA_DIR)
 
     all_eos = [e for e in (mantle_eos, core_eos, ice_layer_eos) if e]
 
@@ -1973,26 +2022,31 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
     needs_wb = any(c.startswith('WolfBower2018') for c in components)
     needs_rtpress = any(c.startswith('RTPress100TPa') for c in components)
     if needs_wb:
-        fetch_dataset(EOS_WOLF_BOWER_2018, data_root=FWL_DATA_DIR)
+        fetch_files(EOS_WOLF_BOWER_2018, _WOLF_BOWER_EOS_FILES)
     elif needs_rtpress:
-        fetch_dataset_file(EOS_WOLF_BOWER_2018, 'density_solid.dat', data_root=FWL_DATA_DIR)
+        fetch_files(EOS_WOLF_BOWER_2018, ('density_solid.dat',))
 
     # RTPress 100 TPa extended melt
     if needs_rtpress:
-        fetch_dataset(EOS_RTPRESS_100TPA, data_root=FWL_DATA_DIR)
+        fetch_files(EOS_RTPRESS_100TPA, _RTPRESS_EOS_FILES)
 
-    # PALEOS 2-phase MgSiO3 (separate solid/liquid). The default entry uses
-    # 150 pts/decade tables; the -highres entry uses 600 pts/decade. Each is its
-    # own dataset, so the highres pair (~1.3 GB) is fetched only when selected.
+    # PALEOS 2-phase MgSiO3 (separate solid/liquid), one record holding the
+    # 150 pts/decade pair and the 600 pts/decade (-highres) pair; fetch only the
+    # selected pair, since the highres pair alone is about 1.3 GB.
     if 'PALEOS-2phase:MgSiO3' in components:
-        fetch_dataset(EOS_PALEOS_MGSIO3_2PHASE, data_root=FWL_DATA_DIR)
+        fetch_files(EOS_PALEOS_MGSIO3, _PALEOS_2PHASE_FILES)
     if 'PALEOS-2phase:MgSiO3-highres' in components:
-        fetch_dataset(EOS_PALEOS_MGSIO3_2PHASE_HIGHRES, data_root=FWL_DATA_DIR)
+        fetch_files(EOS_PALEOS_MGSIO3, _PALEOS_2PHASE_HIGHRES_FILES)
 
-    # PALEOS unified tables share one record; fetch only the selected tables.
-    for component, table in _PALEOS_UNIFIED_TABLES.items():
+    # PALEOS unified tables: one dataset per material.
+    unified = {
+        'PALEOS:iron': (EOS_PALEOS_IRON, 'paleos_iron_eos_table_pt.dat'),
+        'PALEOS:MgSiO3': (EOS_PALEOS_MGSIO3_UNIFIED, 'paleos_mgsio3_eos_table_pt.dat'),
+        'PALEOS:H2O': (EOS_PALEOS_H2O, 'paleos_water_eos_table_pt.dat'),
+    }
+    for component, (key, table) in unified.items():
         if component in components:
-            fetch_dataset_file(EOS_PALEOS_UNIFIED, table, data_root=FWL_DATA_DIR)
+            fetch_files(key, (table,))
 
     # Chabrier H/He
     if any(c.startswith('Chabrier') for c in components):

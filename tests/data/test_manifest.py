@@ -24,9 +24,10 @@ import pytest
 
 from proteus.data import (
     EOS_CHABRIER_2021,
-    EOS_PALEOS_MGSIO3_2PHASE,
-    EOS_PALEOS_MGSIO3_2PHASE_HIGHRES,
-    EOS_PALEOS_UNIFIED,
+    EOS_PALEOS_H2O,
+    EOS_PALEOS_IRON,
+    EOS_PALEOS_MGSIO3,
+    EOS_PALEOS_MGSIO3_UNIFIED,
     EOS_RTPRESS_100TPA,
     EOS_SEAGER_2007,
     EOS_WOLF_BOWER_2018,
@@ -72,40 +73,35 @@ MELTING_MONTEUX_PLUS600_RECORD = '15728091'
 MELTING_MONTEUX_MINUS600_RECORD = '15728138'
 MELTING_WOLF_BOWER_2018_RECORD = '15728072'
 
-# Equation-of-state datasets: key -> (subdir, record).
-EOS_DATASETS = {
-    EOS_WOLF_BOWER_2018: ('interior_struct/eos/wolf_bower_2018', WOLF_BOWER_RECORD),
-    EOS_RTPRESS_100TPA: ('interior_struct/eos/rtpress_100tpa', RTPRESS_RECORD),
-    EOS_PALEOS_MGSIO3_2PHASE: (
-        'interior_struct/eos/paleos_mgsio3_2phase',
-        PALEOS_2PHASE_RECORD,
-    ),
-    EOS_PALEOS_MGSIO3_2PHASE_HIGHRES: (
-        'interior_struct/eos/paleos_mgsio3_2phase_highres',
-        PALEOS_2PHASE_RECORD,
-    ),
-    EOS_PALEOS_UNIFIED: ('interior_struct/eos/paleos_unified', PALEOS_UNIFIED_RECORD),
-    EOS_CHABRIER_2021: ('interior_struct/eos/chabrier_2021', CHABRIER_RECORD),
-}
-
-# Interior lookup table and melting curve datasets: key -> (subdir, record).
-LOOKUP_AND_MELTING_DATASETS = {
+# Datasets PROTEUS reads from the fwl-io shared manifest: key -> (subdir, record).
+SHARED_DATASETS = {
+    EOS_WOLF_BOWER_2018: ('interior/eos/wolf_bower_2018_1tpa', WOLF_BOWER_RECORD),
+    EOS_RTPRESS_100TPA: ('interior/eos/rtpress_melt_100tpa', RTPRESS_RECORD),
+    EOS_PALEOS_MGSIO3: ('interior/eos/paleos_mgsio3', PALEOS_2PHASE_RECORD),
+    EOS_PALEOS_IRON: ('interior/eos/paleos_iron', PALEOS_UNIFIED_RECORD),
+    EOS_PALEOS_MGSIO3_UNIFIED: ('interior/eos/paleos_mgsio3_unified', PALEOS_UNIFIED_RECORD),
+    EOS_PALEOS_H2O: ('interior/eos/paleos_h2o', PALEOS_UNIFIED_RECORD),
+    EOS_CHABRIER_2021: ('interior/eos/chabrier_2021_hhe', CHABRIER_RECORD),
     LOOKUP_WOLF_BOWER_2018_1TPA: (
-        'interior_struct/lookup/wolf_bower_2018_1tpa',
+        'interior/eos/dk09_1tpa_elec_free/mgsio3_wolf_bower_2018_1tpa',
         LOOKUP_WOLF_BOWER_2018_1TPA_RECORD,
     ),
     MELTING_MONTEUX_PLUS600: (
-        'interior_struct/melting_curves/monteux_plus600',
+        'interior/melting_curves/monteux_plus_600',
         MELTING_MONTEUX_PLUS600_RECORD,
     ),
     MELTING_MONTEUX_MINUS600: (
-        'interior_struct/melting_curves/monteux_minus600',
+        'interior/melting_curves/monteux_minus_600',
         MELTING_MONTEUX_MINUS600_RECORD,
     ),
     MELTING_WOLF_BOWER_2018: (
-        'interior_struct/melting_curves/wolf_bower_2018',
+        'interior/melting_curves/wolf_bower_2018',
         MELTING_WOLF_BOWER_2018_RECORD,
     ),
+    STELLAR_SPECTRA_SOLAR: ('star/spectra/solar', SOLAR_RECORD),
+    STELLAR_SPECTRA_NAMED: ('star/spectra/named', NAMED_RECORD),
+    STELLAR_SPECTRA_MUSCLES: ('star/spectra/muscles', MUSCLES_RECORD),
+    STELLAR_SPECTRA_PHOENIX: ('star/spectra/phoenix', PHOENIX_RECORD),
 }
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -127,18 +123,13 @@ SPECTRAL_RECORDS = {
     ('Oak', '318'): '15743843',
 }
 
+# Datasets declared in proteus_manifest.toml: only data PROTEUS alone reads.
 _OWNED_KEYS = {
     EXOPLANET_REFERENCE,
     MASS_RADIUS_ZENG_2019,
     SURFACE_ALBEDOS_HAMMOND_2024,
     EOS_SEAGER_2007,
-    STELLAR_SPECTRA_SOLAR,
-    STELLAR_SPECTRA_NAMED,
-    STELLAR_SPECTRA_MUSCLES,
-    STELLAR_SPECTRA_PHOENIX,
-    *EOS_DATASETS,
-    *LOOKUP_AND_MELTING_DATASETS,
-} | {spectral_file_key(group, bands) for group, bands in SPECTRAL_RECORDS}
+}
 
 
 def _pyproject() -> dict:
@@ -147,8 +138,16 @@ def _pyproject() -> dict:
         return tomllib.load(handle)
 
 
+def _shared_manifest() -> dict:
+    """Return the fwl-io shared manifest, keyed by dataset key."""
+    from fwl_io import load_manifest
+    from fwl_io.manifest import shared_manifest_path
+
+    return {ds.key: ds for ds in load_manifest(shared_manifest_path())}
+
+
 def test_manifest_declares_the_datasets():
-    """The manifest declares the datasets PROTEUS owns.
+    """The PROTEUS manifest declares exactly the datasets only PROTEUS reads.
 
     Both the key set and each dataset's derived location are pinned: fwl-io
     turns the dotted key into the on-disk path, so a key edit silently relocates
@@ -167,37 +166,62 @@ def test_manifest_declares_the_datasets():
     )
     assert datasets[EOS_SEAGER_2007].subdir == 'interior_struct/eos/seager_2007'
     assert datasets[EOS_SEAGER_2007].zenodo == f'10.5281/zenodo.{SEAGER_2007_RECORD}'
-    assert datasets[STELLAR_SPECTRA_SOLAR].subdir == 'stellar_spectra/solar'
-    assert datasets[STELLAR_SPECTRA_NAMED].subdir == 'stellar_spectra/named'
-    assert datasets[STELLAR_SPECTRA_MUSCLES].subdir == 'stellar_spectra/muscles'
-    assert datasets[STELLAR_SPECTRA_PHOENIX].subdir == 'stellar_spectra/phoenix'
-    assert datasets[STELLAR_SPECTRA_SOLAR].zenodo == f'10.5281/zenodo.{SOLAR_RECORD}'
-    assert datasets[STELLAR_SPECTRA_NAMED].zenodo == f'10.5281/zenodo.{NAMED_RECORD}'
-    assert datasets[STELLAR_SPECTRA_MUSCLES].zenodo == f'10.5281/zenodo.{MUSCLES_RECORD}'
-    assert datasets[STELLAR_SPECTRA_PHOENIX].zenodo == f'10.5281/zenodo.{PHOENIX_RECORD}'
     assert datasets[SURFACE_ALBEDOS_HAMMOND_2024].zenodo == (
         f'10.5281/zenodo.{HAMMOND_2024_RECORD}'
     )
     assert datasets[EXOPLANET_REFERENCE].zenodo == f'10.5281/zenodo.{EXOPLANET_RECORD}'
     assert datasets[MASS_RADIUS_ZENG_2019].zenodo == f'10.5281/zenodo.{ZENG_2019_RECORD}'
-    for key, (subdir, record) in EOS_DATASETS.items():
-        assert datasets[key].subdir == subdir
-        assert datasets[key].zenodo == f'10.5281/zenodo.{record}'
-    for key, (subdir, record) in LOOKUP_AND_MELTING_DATASETS.items():
-        assert datasets[key].subdir == subdir
-        assert datasets[key].zenodo == f'10.5281/zenodo.{record}'
     # All are PROTEUS-owned, so "proteus" has to appear in required_by or
     # "fwl-io fetch proteus" would skip them.
     for ds in datasets.values():
         assert 'proteus' in [model.lower() for model in ds.required_by]
 
 
+def test_shared_datasets_resolve_through_the_fwl_io_manifest():
+    """Every multi-model dataset PROTEUS reads comes from the fwl-io shared manifest.
+
+    The subdir and record are pinned per key, so a key that drifts from the
+    shared manifest, or a re-pin there, fails here rather than at a user's fetch.
+    """
+    shared = _shared_manifest()
+
+    for key, (subdir, record) in SHARED_DATASETS.items():
+        assert key in shared, f'{key} is not declared in the fwl-io shared manifest'
+        assert _dataset(key).subdir == subdir
+        assert _dataset(key).zenodo == f'10.5281/zenodo.{record}'
+    for (group, bands), record in SPECTRAL_RECORDS.items():
+        assert shared[spectral_file_key(group, bands)].zenodo == f'10.5281/zenodo.{record}'
+    # Discrimination: none of these keys is PROTEUS-owned, so a lookup that only
+    # read proteus_manifest.toml would have raised above.
+    assert not set(SHARED_DATASETS) & _OWNED_KEYS
+
+
+def test_no_record_is_declared_in_both_manifests():
+    """A Zenodo record is pinned in one manifest only.
+
+    Declaring a shared record again in proteus_manifest.toml under another key
+    would place a second copy elsewhere in FWL_DATA, and ``fwl-io relocate``
+    would move a legacy tree to the shared key that PROTEUS then does not read.
+    """
+    from fwl_io import load_manifest
+
+    owned = {ds.zenodo for ds in load_manifest(manifest_path())}
+    shared = {ds.zenodo for ds in _shared_manifest().values()}
+
+    assert owned & shared == set(), f'records declared twice: {sorted(owned & shared)}'
+    # Discrimination: both sets are populated, and the shared one holds records
+    # PROTEUS reads, so the empty intersection is not from an empty load.
+    assert len(owned) == len(_OWNED_KEYS)
+    assert f'10.5281/zenodo.{PHOENIX_RECORD}' in shared
+
+
 def test_registries_pin_committed_checksums():
-    """Each dataset ships a registry of file checksums generated from its record.
+    """Each dataset PROTEUS reads has a registry with the files PROTEUS fetches.
 
     The counts and one literal digest are pinned so a truncated or regenerated
     registry is caught; an empty registry would otherwise verify nothing while
-    still loading cleanly.
+    still loading cleanly. For shared datasets the files PROTEUS fetches one by
+    one must be listed, or the per-file fetch raises KeyError.
     """
     exo = _dataset(EXOPLANET_REFERENCE).registry()
     zeng = _dataset(MASS_RADIUS_ZENG_2019).registry()
@@ -208,9 +232,7 @@ def test_registries_pin_committed_checksums():
     muscles = _dataset(STELLAR_SPECTRA_MUSCLES).registry()
     wolf_bower = _dataset(EOS_WOLF_BOWER_2018).registry()
     rtpress = _dataset(EOS_RTPRESS_100TPA).registry()
-    paleos_2phase = _dataset(EOS_PALEOS_MGSIO3_2PHASE).registry()
-    paleos_highres = _dataset(EOS_PALEOS_MGSIO3_2PHASE_HIGHRES).registry()
-    paleos_unified = _dataset(EOS_PALEOS_UNIFIED).registry()
+    paleos_2phase = _dataset(EOS_PALEOS_MGSIO3).registry()
     chabrier = _dataset(EOS_CHABRIER_2021).registry()
     lookup = _dataset(LOOKUP_WOLF_BOWER_2018_1TPA).registry()
     monteux_plus600 = _dataset(MELTING_MONTEUX_PLUS600).registry()
@@ -228,28 +250,23 @@ def test_registries_pin_committed_checksums():
     assert len(solar) == 10, 'the solar record ships 10 spectra'
     assert len(named) == 11, 'the named-star record ships 11 spectra'
     assert len(muscles) == 38, 'the MUSCLES record ships 36 spectra, a readme and a table'
-    assert set(wolf_bower) == {
-        'density_melt.dat',
-        'density_solid.dat',
-        'adiabat_temp_grad_melt.dat',
-    }
-    assert set(rtpress) == {'density_melt.dat', 'adiabat_temp_grad_melt.dat'}
+    assert {'density_melt.dat', 'density_solid.dat', 'adiabat_temp_grad_melt.dat'} <= set(
+        wolf_bower
+    )
+    assert {'density_melt.dat', 'adiabat_temp_grad_melt.dat'} <= set(rtpress)
     assert set(paleos_2phase) == {
         'paleos_mgsio3_tables_pt_proteus_liquid.dat',
         'paleos_mgsio3_tables_pt_proteus_solid.dat',
-    }
-    assert set(paleos_highres) == {
         'paleos_mgsio3_tables_pt_proteus_liquid_highres.dat',
         'paleos_mgsio3_tables_pt_proteus_solid_highres.dat',
     }
     # The unified record also holds high-resolution variants (2.29 GB in all);
-    # the registry lists only the three tables the Zalmoxis registry reads, so a
-    # whole-dataset fetch never pulls the rest.
-    assert set(paleos_unified) == {
-        'paleos_iron_eos_table_pt.dat',
-        'paleos_mgsio3_eos_table_pt.dat',
-        'paleos_water_eos_table_pt.dat',
+    # each material's dataset lists only its own table.
+    assert set(_dataset(EOS_PALEOS_IRON).registry()) == {'paleos_iron_eos_table_pt.dat'}
+    assert set(_dataset(EOS_PALEOS_MGSIO3_UNIFIED).registry()) == {
+        'paleos_mgsio3_eos_table_pt.dat'
     }
+    assert set(_dataset(EOS_PALEOS_H2O).registry()) == {'paleos_water_eos_table_pt.dat'}
     assert set(chabrier) == {'EOS_Chabrier2021_HHe.tar.gz'}
     assert chabrier['EOS_Chabrier2021_HHe.tar.gz'] == 'md5:18ce96ed0526d4ade283807a7da2e091'
     assert len(lookup) == 14, 'the Wolf-Bower lookup-table record ships 14 files'
@@ -269,25 +286,7 @@ def test_registries_pin_committed_checksums():
     assert exo['DACE_PlanetS.csv'] == 'md5:367a90914eba4a209f896a1c72dd3d2b'
     # Every entry must carry an algorithm prefix, or pooch cannot know what to
     # verify against; a bare digest would silently be read as the default.
-    for registry in (
-        exo,
-        zeng,
-        hammond,
-        seager,
-        solar,
-        named,
-        muscles,
-        wolf_bower,
-        rtpress,
-        paleos_2phase,
-        paleos_highres,
-        paleos_unified,
-        chabrier,
-        lookup,
-        monteux_plus600,
-        monteux_minus600,
-        melting_wolf_bower,
-    ):
+    for registry in (exo, zeng, hammond, seager):
         assert all(':' in digest for digest in registry.values())
     assert 'massradiusEarthlikeRocky.txt' in zeng
 
@@ -330,21 +329,10 @@ def test_dataset_dir_is_versioned(tmp_path):
     assert dataset_dir(EOS_SEAGER_2007, data_root=tmp_path) == (
         tmp_path / 'interior_struct' / 'eos' / 'seager_2007' / f'r{SEAGER_2007_RECORD}'
     )
-    for key, (subdir, record) in EOS_DATASETS.items():
+    for key, (subdir, record) in SHARED_DATASETS.items():
         assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{record}'
-    for key, (subdir, record) in LOOKUP_AND_MELTING_DATASETS.items():
-        assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{record}'
-    assert dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=tmp_path) == (
-        tmp_path / 'stellar_spectra' / 'solar' / f'r{SOLAR_RECORD}'
-    )
-    assert dataset_dir(STELLAR_SPECTRA_NAMED, data_root=tmp_path) == (
-        tmp_path / 'stellar_spectra' / 'named' / f'r{NAMED_RECORD}'
-    )
-    assert dataset_dir(STELLAR_SPECTRA_MUSCLES, data_root=tmp_path) == (
-        tmp_path / 'stellar_spectra' / 'muscles' / f'r{MUSCLES_RECORD}'
-    )
     assert dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path) == (
-        tmp_path / 'stellar_spectra' / 'phoenix' / f'r{PHOENIX_RECORD}'
+        tmp_path / 'star' / 'spectra' / 'phoenix' / f'r{PHOENIX_RECORD}'
     )
 
 
@@ -375,7 +363,7 @@ def test_dataset_dir_rejects_an_unversioned_resolution(tmp_path, monkeypatch):
 
 
 def test_unknown_dataset_key_is_rejected():
-    """A key absent from the manifest raises rather than resolving somewhere.
+    """A key absent from both manifests raises rather than resolving somewhere.
 
     Silently resolving an undeclared key would create an unpinned directory with
     no registry to verify against.
@@ -519,13 +507,9 @@ def test_spectral_file_datasets_pin_their_records_and_locations(tmp_path):
         key = spectral_file_key(group, bands)
         dataset = _dataset(key)
         assert dataset.zenodo == f'10.5281/zenodo.{record}'
-        assert dataset.subdir == f'atmos_clim/spectral_files/{group.lower()}_{bands}'
+        assert dataset.subdir == f'atmos_clim/spectral_files/{group.lower()}/{bands}'
         assert dataset_dir(key, data_root=tmp_path) == (
-            tmp_path
-            / 'atmos_clim'
-            / 'spectral_files'
-            / f'{group.lower()}_{bands}'
-            / f'r{record}'
+            tmp_path / 'atmos_clim' / 'spectral_files' / group.lower() / bands / f'r{record}'
         )
         assert _dataset(key).registry(), f'empty registry for {key}'
 
@@ -543,7 +527,7 @@ def test_every_spectral_folder_has_a_dataset_and_no_legacy_entry():
     )
     for folder in SPECTRAL_FILE_FOLDERS:
         group, bands = folder.split('/')
-        assert spectral_file_key(group, bands) in _OWNED_KEYS
+        assert _dataset(spectral_file_key(group, bands)).registry()
         assert folder not in DATA_SOURCE_MAP, f'{folder} is still pinned in DATA_SOURCE_MAP'
 
 
@@ -566,8 +550,8 @@ def test_unknown_spectral_pair_is_rejected():
     """An unlisted (group, bands) pair fails loudly instead of resolving to a path."""
     key = spectral_file_key('Oak', '16')
 
-    assert key == 'atmos_clim.spectral_files.oak_16'
-    with pytest.raises(KeyError, match='oak_16'):
+    assert key == 'atmos_clim.spectral_files.oak.16'
+    with pytest.raises(KeyError, match=r'oak\.16'):
         dataset_dir(key)
 
 

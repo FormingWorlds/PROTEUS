@@ -601,7 +601,7 @@ def test_download_spectral_file_call(mock_fetch):
     """
     download_spectral_file('Oak', '318')
 
-    mock_fetch.assert_called_once_with('atmos_clim.spectral_files.oak_318')
+    mock_fetch.assert_called_once_with('atmos_clim.spectral_files.oak.318')
 
     with pytest.raises(ValueError, match='No data source mapping found for folder: Oak/16'):
         download_spectral_file('Oak', '16')
@@ -1433,7 +1433,7 @@ def test_download_phoenix_fetches_one_zip_and_unpacks(mock_fetch_file, tmp_path,
     assert any(grid_dir.glob('LTE_T*_phoenixMedRes_R05000.txt'))
     assert zip_path.is_file()
     assert not list(base_dir.glob('*.partial'))
-    assert base_dir == tmp_path / 'stellar_spectra' / 'phoenix' / 'r17674612'
+    assert base_dir == tmp_path / 'star' / 'spectra' / 'phoenix' / 'r17674612'
 
 
 @pytest.mark.unit
@@ -1581,11 +1581,10 @@ def test_phoenix_registry_covers_every_reachable_grid():
 
     import numpy as np
 
-    from proteus.data import STELLAR_SPECTRA_PHOENIX, manifest_path
+    from proteus.data import STELLAR_SPECTRA_PHOENIX, _dataset
     from proteus.utils.phoenix_helper import phoenix_param, phoenix_to_grid
 
-    registry = manifest_path().with_name(f'{STELLAR_SPECTRA_PHOENIX}.registry.txt')
-    names = {line.split()[0] for line in registry.read_text().splitlines() if line.strip()}
+    names = set(_dataset(STELLAR_SPECTRA_PHOENIX).registry())
     assert len(names) == 52
 
     logging.disable(logging.CRITICAL)
@@ -1864,13 +1863,13 @@ def test_resolve_melting_curve_files_manifest_layout(tmp_path):
     from proteus.utils.data import resolve_melting_curve_files
 
     expected = {
-        'Monteux+600': ('monteux_plus600', 'r15728091'),
-        'Monteux-600': ('monteux_minus600', 'r15728138'),
+        'Monteux+600': ('monteux_plus_600', 'r15728091'),
+        'Monteux-600': ('monteux_minus_600', 'r15728138'),
         'Wolf_Bower+2018': ('wolf_bower_2018', 'r15728072'),
     }
     for name, (folder, rec) in expected.items():
         solidus, liquidus = resolve_melting_curve_files(name, data_root=tmp_path)
-        base = tmp_path / 'interior_struct' / 'melting_curves' / folder / rec
+        base = tmp_path / 'interior' / 'melting_curves' / folder / rec
         assert solidus == base / 'solidus.dat'
         assert liquidus == base / 'liquidus.dat'
 
@@ -1902,7 +1901,7 @@ def test_resolve_melting_curve_files_partial_local_falls_back(tmp_path):
 
     solidus, liquidus = resolve_melting_curve_files('Monteux+600', data_root=tmp_path)
 
-    assert 'interior_struct' in solidus.parts
+    assert solidus.parent.parent.name == 'monteux_plus_600'
     assert solidus.name == 'solidus.dat' and liquidus.name == 'liquidus.dat'
 
 
@@ -1926,24 +1925,40 @@ def test_resolve_lookup_table_dir_layout(tmp_path):
     folder = resolve_lookup_table_dir(data_root=tmp_path)
 
     assert (
-        folder == tmp_path / 'interior_struct' / 'lookup' / 'wolf_bower_2018_1tpa' / 'r19473625'
+        folder
+        == tmp_path
+        / 'interior'
+        / 'eos'
+        / 'dk09_1tpa_elec_free'
+        / 'mgsio3_wolf_bower_2018_1tpa'
+        / 'r19473625'
     )
     assert resolve_lookup_table_dir(data_root=str(tmp_path)) == folder
 
 
 @pytest.mark.unit
 def test_find_lookup_table_dir(tmp_path):
-    """The directory is returned only once it holds the SPIDER phase files."""
+    """The directory is returned only once it holds every SPIDER table file.
+
+    fwl-io fetches the files in sorted order, so an interrupted fetch leaves the
+    last ones missing; the check must reject that state, not only an empty one.
+    """
+    from proteus.interior_energetics.common import (
+        _SPIDER_EOS_MELTING_CURVES,
+        _SPIDER_EOS_PHASE_FILES,
+    )
     from proteus.utils.data import find_lookup_table_dir, resolve_lookup_table_dir
 
     assert find_lookup_table_dir(data_root=tmp_path) is None
 
     folder = resolve_lookup_table_dir(data_root=tmp_path)
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / 'density_melt.dat').write_text('x')
+    names = sorted(_SPIDER_EOS_PHASE_FILES + _SPIDER_EOS_MELTING_CURVES)
+    for name in names[:-1]:
+        (folder / name).write_text('x')
     assert find_lookup_table_dir(data_root=tmp_path) is None
 
-    (folder / 'thermal_exp_melt.dat').write_text('x')
+    (folder / names[-1]).write_text('x')
     assert find_lookup_table_dir(data_root=tmp_path) == folder
 
 
@@ -2086,6 +2101,74 @@ def test_reference_data_failure_still_reaches_the_interior_data(monkeypatch):
 
     assert reached['interior'], 'interior lookup tables must still be fetched'
     assert reached['melting'], 'melting curves must still be fetched'
+
+
+@pytest.mark.unit
+def test_required_dataset_failure_does_not_stop_later_fetches(monkeypatch, tmp_path):
+    """An unreachable mirror for one required dataset leaves the others to be fetched.
+
+    fwl-io reports a failed fetch with RuntimeError subclasses, which an OSError
+    guard does not catch; without a per-step guard the first failure (the named
+    stellar spectra) would abort the run before any interior table is tried.
+    """
+    from fwl_io import DownloadError
+
+    from proteus.config import read_config_object
+    from proteus.utils import data as data_mod
+
+    attempted = []
+
+    def _boom(key, *args, data_root=None):
+        attempted.append(key)
+        raise DownloadError('could not obtain from any mirror')
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path)
+    monkeypatch.setattr('proteus.data.fetch_dataset', _boom)
+    monkeypatch.setattr('proteus.data.fetch_dataset_file', _boom)
+    monkeypatch.setattr(data_mod, 'download_stellar_tracks', lambda *a, **kw: None)
+    cfg = read_config_object(
+        str(Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml')
+    )
+
+    data_mod.download_sufficient_data(cfg)
+
+    assert attempted[0] == 'star.spectra.named'
+    # The spectral file, the melting curves and the Zalmoxis tables come after
+    # the failing stellar fetch and must all still be attempted.
+    assert 'atmos_clim.spectral_files.honeyside.48' in attempted
+    assert 'interior.melting_curves.wolf_bower_2018' in attempted
+    assert 'interior.eos.paleos_iron' in attempted
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'error',
+    ['DownloadError', 'OfflineDataError', 'ArchiveError', 'MissingDataRootError', 'OSError'],
+)
+def test_attempt_reports_fetch_errors_and_passes_other_errors(error, caplog):
+    """Every fetch error is logged and reported, a programming error still raises."""
+    import fwl_io
+    from fwl_io.archive import ArchiveError
+
+    from proteus.utils.data import _attempt
+
+    errors = {
+        'DownloadError': fwl_io.DownloadError,
+        'OfflineDataError': fwl_io.OfflineDataError,
+        'ArchiveError': ArchiveError,
+        'MissingDataRootError': fwl_io.MissingDataRootError,
+        'OSError': OSError,
+    }
+
+    def _fail():
+        raise errors[error]('mirror down')
+
+    with caplog.at_level('WARNING'):
+        assert _attempt('test data', _fail) is False
+    assert 'test data: mirror down' in caplog.text
+    # Discrimination: an error that is not a fetch failure is not swallowed.
+    with pytest.raises(TypeError):
+        _attempt('test data', lambda: (_ for _ in ()).throw(TypeError('bug')))
 
 
 @pytest.mark.unit
@@ -2890,15 +2973,20 @@ def test_download_zalmoxis_eos_seager(mock_static, mock_fetch, mock_file):
 @patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_wolfbower(mock_static, mock_fetch, mock_file):
-    """WolfBower2018 fetches the Seager set and the whole Wolf and Bower dataset."""
+    """WolfBower2018 fetches the Seager set and the three Wolf and Bower tables it reads."""
     from proteus.data import EOS_WOLF_BOWER_2018
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('WolfBower2018:MgSiO3', core_eos='Seager2007:iron')
 
     mock_static.assert_called_once()
-    assert _fetched_datasets(mock_fetch) == [EOS_WOLF_BOWER_2018]
-    mock_file.assert_not_called()
+    # The shared record holds 8 tables; a whole-dataset fetch would pull all of them.
+    mock_fetch.assert_not_called()
+    assert _fetched_files(mock_file) == [
+        (EOS_WOLF_BOWER_2018, 'density_melt.dat'),
+        (EOS_WOLF_BOWER_2018, 'adiabat_temp_grad_melt.dat'),
+        (EOS_WOLF_BOWER_2018, 'density_solid.dat'),
+    ]
 
 
 @pytest.mark.unit
@@ -2906,27 +2994,31 @@ def test_download_zalmoxis_eos_wolfbower(mock_static, mock_fetch, mock_file):
 @patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_rtpress(mock_static, mock_fetch, mock_file):
-    """RTPress100TPa fetches its own dataset plus the Wolf and Bower solid density only."""
+    """RTPress100TPa fetches its two melt tables plus the Wolf and Bower solid density only."""
     from proteus.data import EOS_RTPRESS_100TPA, EOS_WOLF_BOWER_2018
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('RTPress100TPa:MgSiO3', core_eos='Seager2007:iron')
 
     mock_static.assert_called_once()
-    assert _fetched_datasets(mock_fetch) == [EOS_RTPRESS_100TPA]
+    mock_fetch.assert_not_called()
     # The RTPress registry entry reads its solid density from the Wolf and
-    # Bower dataset; the whole dataset must not be pulled for that one file.
-    assert _fetched_files(mock_file) == [(EOS_WOLF_BOWER_2018, 'density_solid.dat')]
+    # Bower dataset; the rest of that dataset must not be pulled for that one file.
+    assert _fetched_files(mock_file) == [
+        (EOS_WOLF_BOWER_2018, 'density_solid.dat'),
+        (EOS_RTPRESS_100TPA, 'density_melt.dat'),
+        (EOS_RTPRESS_100TPA, 'adiabat_temp_grad_melt.dat'),
+    ]
 
 
 @pytest.mark.unit
 @patch('proteus.data.fetch_dataset_file')
 @patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_rtpress_with_wolfbower_fetches_whole_dataset(
+def test_download_zalmoxis_eos_rtpress_with_wolfbower_fetches_solid_once(
     mock_static, mock_fetch, mock_file
 ):
-    """When Wolf and Bower is selected too, its whole dataset covers the solid file."""
+    """When Wolf and Bower is selected too, its tables cover the solid file once."""
     from proteus.data import EOS_RTPRESS_100TPA, EOS_WOLF_BOWER_2018
     from proteus.utils.data import download_zalmoxis_eos
 
@@ -2934,10 +3026,13 @@ def test_download_zalmoxis_eos_rtpress_with_wolfbower_fetches_whole_dataset(
         'WolfBower2018:MgSiO3+RTPress100TPa:MgSiO3', core_eos='Seager2007:iron'
     )
 
-    assert sorted(_fetched_datasets(mock_fetch)) == sorted(
-        [EOS_WOLF_BOWER_2018, EOS_RTPRESS_100TPA]
-    )
-    mock_file.assert_not_called()
+    fetched = _fetched_files(mock_file)
+    assert fetched.count((EOS_WOLF_BOWER_2018, 'density_solid.dat')) == 1
+    assert {name for key, name in fetched if key == EOS_RTPRESS_100TPA} == {
+        'density_melt.dat',
+        'adiabat_temp_grad_melt.dat',
+    }
+    mock_fetch.assert_not_called()
 
 
 @pytest.mark.unit
@@ -2945,14 +3040,18 @@ def test_download_zalmoxis_eos_rtpress_with_wolfbower_fetches_whole_dataset(
 @patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_paleos_2phase(mock_static, mock_fetch, mock_file):
-    """PALEOS-2phase:MgSiO3 fetches the standard-resolution dataset only."""
-    from proteus.data import EOS_PALEOS_MGSIO3_2PHASE
+    """PALEOS-2phase:MgSiO3 fetches the standard-resolution pair only."""
+    from proteus.data import EOS_PALEOS_MGSIO3
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='Seager2007:iron')
 
-    assert _fetched_datasets(mock_fetch) == [EOS_PALEOS_MGSIO3_2PHASE]
-    mock_file.assert_not_called()
+    # The shared record also holds the ~1.3 GB highres pair; it must stay unfetched.
+    mock_fetch.assert_not_called()
+    assert _fetched_files(mock_file) == [
+        (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_liquid.dat'),
+        (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_solid.dat'),
+    ]
 
 
 @pytest.mark.unit
@@ -2960,14 +3059,17 @@ def test_download_zalmoxis_eos_paleos_2phase(mock_static, mock_fetch, mock_file)
 @patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_paleos_2phase_highres(mock_static, mock_fetch, mock_file):
-    """PALEOS-2phase:MgSiO3-highres fetches the high-resolution dataset only."""
-    from proteus.data import EOS_PALEOS_MGSIO3_2PHASE_HIGHRES
+    """PALEOS-2phase:MgSiO3-highres fetches the high-resolution pair only."""
+    from proteus.data import EOS_PALEOS_MGSIO3
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('PALEOS-2phase:MgSiO3-highres', core_eos='Seager2007:iron')
 
-    assert _fetched_datasets(mock_fetch) == [EOS_PALEOS_MGSIO3_2PHASE_HIGHRES]
-    mock_file.assert_not_called()
+    mock_fetch.assert_not_called()
+    assert _fetched_files(mock_file) == [
+        (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_liquid_highres.dat'),
+        (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_solid_highres.dat'),
+    ]
 
 
 @pytest.mark.unit
@@ -2975,8 +3077,8 @@ def test_download_zalmoxis_eos_paleos_2phase_highres(mock_static, mock_fetch, mo
 @patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_paleos_unified(mock_static, mock_fetch, mock_file):
-    """PALEOS unified fetches its three tables one file at a time."""
-    from proteus.data import EOS_PALEOS_UNIFIED
+    """PALEOS unified fetches each material's table from its own dataset."""
+    from proteus.data import EOS_PALEOS_H2O, EOS_PALEOS_IRON, EOS_PALEOS_MGSIO3_UNIFIED
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('PALEOS:MgSiO3', core_eos='PALEOS:iron', ice_layer_eos='PALEOS:H2O')
@@ -2987,9 +3089,9 @@ def test_download_zalmoxis_eos_paleos_unified(mock_static, mock_fetch, mock_file
     mock_fetch.assert_not_called()
     assert sorted(_fetched_files(mock_file)) == sorted(
         [
-            (EOS_PALEOS_UNIFIED, _UNIFIED_IRON),
-            (EOS_PALEOS_UNIFIED, _UNIFIED_MGSIO3),
-            (EOS_PALEOS_UNIFIED, _UNIFIED_WATER),
+            (EOS_PALEOS_IRON, _UNIFIED_IRON),
+            (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3),
+            (EOS_PALEOS_H2O, _UNIFIED_WATER),
         ]
     )
 
@@ -3002,13 +3104,13 @@ def test_download_zalmoxis_eos_paleos_unified_only_selected_tables(
     mock_static, mock_fetch, mock_file
 ):
     """Only the selected unified tables are fetched, not the whole record."""
-    from proteus.data import EOS_PALEOS_UNIFIED
+    from proteus.data import EOS_PALEOS_IRON, EOS_PALEOS_MGSIO3_UNIFIED
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('PALEOS:MgSiO3', core_eos='PALEOS:iron')
 
     assert sorted(_fetched_files(mock_file)) == sorted(
-        [(EOS_PALEOS_UNIFIED, _UNIFIED_IRON), (EOS_PALEOS_UNIFIED, _UNIFIED_MGSIO3)]
+        [(EOS_PALEOS_IRON, _UNIFIED_IRON), (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3)]
     )
     mock_fetch.assert_not_called()
 
@@ -3031,15 +3133,19 @@ def test_download_zalmoxis_eos_paleos_2phase_fetches_seager_fallback(
     mantle, PALEOS:iron core). The 2-phase tables and the unified iron
     table must download alongside.
     """
-    from proteus.data import EOS_PALEOS_MGSIO3_2PHASE, EOS_PALEOS_UNIFIED
+    from proteus.data import EOS_PALEOS_IRON, EOS_PALEOS_MGSIO3
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='PALEOS:iron')
 
     mock_static.assert_called_once()
     # The standard-resolution selection must not pull the ~1.3 GB highres pair.
-    assert _fetched_datasets(mock_fetch) == [EOS_PALEOS_MGSIO3_2PHASE]
-    assert _fetched_files(mock_file) == [(EOS_PALEOS_UNIFIED, _UNIFIED_IRON)]
+    assert _fetched_files(mock_file) == [
+        (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_liquid.dat'),
+        (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_solid.dat'),
+        (EOS_PALEOS_IRON, _UNIFIED_IRON),
+    ]
+    mock_fetch.assert_not_called()
 
 
 @pytest.mark.unit
@@ -3068,13 +3174,13 @@ def test_download_zalmoxis_eos_seager_fallback_every_family(
     iron core must download its own table alongside, and the Chabrier
     fetch must stay untouched.
     """
-    from proteus.data import EOS_CHABRIER_2021, EOS_PALEOS_UNIFIED
+    from proteus.data import EOS_CHABRIER_2021, EOS_PALEOS_IRON
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos(mantle_component, core_eos='PALEOS:iron')
 
     mock_static.assert_called_once()
-    assert (EOS_PALEOS_UNIFIED, _UNIFIED_IRON) in _fetched_files(mock_file)
+    assert (EOS_PALEOS_IRON, _UNIFIED_IRON) in _fetched_files(mock_file)
     assert EOS_CHABRIER_2021 not in _fetched_datasets(mock_fetch)
 
 
@@ -3107,7 +3213,7 @@ def test_download_zalmoxis_eos_api_2phase_fetches_only_seager(
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_multi_component(mock_static, mock_fetch, mock_file):
     """download_zalmoxis_eos handles multi-component EOS strings."""
-    from proteus.data import EOS_CHABRIER_2021, EOS_PALEOS_UNIFIED
+    from proteus.data import EOS_CHABRIER_2021, EOS_PALEOS_H2O, EOS_PALEOS_MGSIO3_UNIFIED
     from proteus.utils.data import download_zalmoxis_eos
 
     # Composite mantle with PALEOS + Chabrier
@@ -3119,7 +3225,7 @@ def test_download_zalmoxis_eos_multi_component(mock_static, mock_fetch, mock_fil
     mock_static.assert_called_once()
     assert _fetched_datasets(mock_fetch) == [EOS_CHABRIER_2021]
     assert sorted(_fetched_files(mock_file)) == sorted(
-        [(EOS_PALEOS_UNIFIED, _UNIFIED_MGSIO3), (EOS_PALEOS_UNIFIED, _UNIFIED_WATER)]
+        [(EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3), (EOS_PALEOS_H2O, _UNIFIED_WATER)]
     )
 
 

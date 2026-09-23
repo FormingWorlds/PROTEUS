@@ -621,13 +621,14 @@ def test_spfile_helpers(tmp_path):
     assert bands == '16'
 
     # Test get_spfile_path construction
-    # Expected: <fwl_dir>/atmos_clim/spectral_files/<group>_<bands>/r<record>/<group>.sf
+    # Expected: <fwl_dir>/atmos_clim/spectral_files/<group>/<bands>/r<record>/<group>.sf
     path = get_spfile_path(str(tmp_path), mock_conf)
     assert path == str(
         tmp_path
         / 'atmos_clim'
         / 'spectral_files'
-        / 'dayspring_16'
+        / 'dayspring'
+        / '16'
         / 'r15799318'
         / 'Dayspring.sf'
     )

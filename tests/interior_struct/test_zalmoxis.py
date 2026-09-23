@@ -2893,7 +2893,7 @@ def test_material_dictionaries_seager_paths_use_the_versioned_dataset_dir(
     import proteus.interior_struct.zalmoxis as zalmoxis_wrapper
     from proteus.data import EOS_SEAGER_2007, dataset_dir
 
-    monkeypatch.setattr(zalmoxis_wrapper, 'FWL_DATA_DIR', tmp_path)
+    monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path)
 
     registry = zalmoxis_wrapper.load_zalmoxis_material_dictionaries()
 
@@ -2910,27 +2910,52 @@ def test_material_dictionaries_seager_paths_use_the_versioned_dataset_dir(
     assert seager.name.startswith('r')
 
 
+def test_material_dictionaries_read_the_tree_the_fetch_writes(monkeypatch, tmp_path):
+    """The EOS paths use the data root that download_zalmoxis_eos fetches into.
+
+    The module keeps its own raw ``FWL_DATA`` value, which is not expanded and
+    has a different default; building the paths from it would send Zalmoxis to
+    another tree than the one the fetch populated.
+    """
+    from pathlib import Path
+
+    import proteus.interior_struct.zalmoxis as zalmoxis_wrapper
+    from proteus.data import EOS_PALEOS_IRON, dataset_dir
+
+    fetch_root = tmp_path / 'fetched'
+    monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', fetch_root)
+    monkeypatch.setattr(zalmoxis_wrapper, 'FWL_DATA_DIR', tmp_path / 'raw_env_value')
+
+    registry = zalmoxis_wrapper.load_zalmoxis_material_dictionaries()
+
+    iron = Path(registry['PALEOS:iron']['eos_file'])
+    assert iron == dataset_dir(EOS_PALEOS_IRON, data_root=fetch_root) / (
+        'paleos_iron_eos_table_pt.dat'
+    )
+    assert not iron.is_relative_to(tmp_path / 'raw_env_value')
+
+
 def test_material_dictionaries_mantle_paths_use_the_versioned_dataset_dirs(
     monkeypatch, tmp_path
 ):
     """Every mantle table resolves into its own fwl-io dataset directory."""
     import proteus.interior_struct.zalmoxis as zalmoxis_wrapper
     from proteus.data import (
-        EOS_PALEOS_MGSIO3_2PHASE,
-        EOS_PALEOS_MGSIO3_2PHASE_HIGHRES,
+        EOS_PALEOS_MGSIO3,
         EOS_RTPRESS_100TPA,
         EOS_WOLF_BOWER_2018,
         dataset_dir,
     )
 
-    monkeypatch.setattr(zalmoxis_wrapper, 'FWL_DATA_DIR', tmp_path)
+    monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path)
 
     registry = zalmoxis_wrapper.load_zalmoxis_material_dictionaries()
 
     wb = dataset_dir(EOS_WOLF_BOWER_2018, data_root=tmp_path)
     rt = dataset_dir(EOS_RTPRESS_100TPA, data_root=tmp_path)
-    p2 = dataset_dir(EOS_PALEOS_MGSIO3_2PHASE, data_root=tmp_path)
-    p2hr = dataset_dir(EOS_PALEOS_MGSIO3_2PHASE_HIGHRES, data_root=tmp_path)
+    # Both PALEOS 2-phase resolutions live in one shared dataset.
+    p2 = dataset_dir(EOS_PALEOS_MGSIO3, data_root=tmp_path)
+    p2hr = p2
 
     wolf = registry['WolfBower2018:MgSiO3']
     assert wolf['melted_mantle']['eos_file'] == str(wb / 'density_melt.dat')
@@ -2960,5 +2985,6 @@ def test_material_dictionaries_mantle_paths_use_the_versioned_dataset_dirs(
     assert high['solid_mantle']['eos_file'] == str(
         p2hr / 'paleos_mgsio3_tables_pt_proteus_solid_highres.dat'
     )
-    # The two PALEOS 2-phase sets share a record but not a directory.
-    assert p2 != p2hr
+    # The two PALEOS 2-phase resolutions are distinct files in the shared dataset.
+    assert high['melted_mantle']['eos_file'] != two['melted_mantle']['eos_file']
+    assert p2.parent.name == 'paleos_mgsio3'

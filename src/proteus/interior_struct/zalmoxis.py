@@ -19,9 +19,10 @@ from zalmoxis.solver import main
 from proteus.config import Config
 from proteus.data import (
     EOS_CHABRIER_2021,
-    EOS_PALEOS_MGSIO3_2PHASE,
-    EOS_PALEOS_MGSIO3_2PHASE_HIGHRES,
-    EOS_PALEOS_UNIFIED,
+    EOS_PALEOS_H2O,
+    EOS_PALEOS_IRON,
+    EOS_PALEOS_MGSIO3,
+    EOS_PALEOS_MGSIO3_UNIFIED,
     EOS_RTPRESS_100TPA,
     EOS_SEAGER_2007,
     EOS_WOLF_BOWER_2018,
@@ -34,7 +35,7 @@ from proteus.utils.constants import (
     R_earth,
     element_list,
 )
-from proteus.utils.data import get_zalmoxis_melting_curves
+from proteus.utils.data import GetFWLData, get_zalmoxis_melting_curves
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
@@ -1548,10 +1549,10 @@ def load_zalmoxis_material_dictionaries():
     """Build an EOS registry dict with file paths pointing to FWL_DATA.
 
     Returns the same dict format as Zalmoxis ``EOS_REGISTRY``, but with
-    every ``eos_file`` path resolved to the fwl-io dataset directory under
-    ``FWL_DATA/interior_struct/eos/`` instead of ``ZALMOXIS_ROOT/data/``.
-    This ensures that Zalmoxis, when called from PROTEUS, reads EOS data
-    from the central FWL_DATA location managed by ``download_zalmoxis_eos()``.
+    every ``eos_file`` path resolved to its fwl-io dataset directory in
+    ``FWL_DATA`` instead of ``ZALMOXIS_ROOT/data/``. The data root is the one
+    ``download_zalmoxis_eos()`` fetches into, so Zalmoxis, when called from
+    PROTEUS, reads the files that were fetched.
 
     Returns
     -------
@@ -1559,14 +1560,15 @@ def load_zalmoxis_material_dictionaries():
         Flat dict keyed by EOS identifier string (e.g.
         ``"Seager2007:iron"``, ``"PALEOS:MgSiO3"``, ``"Chabrier:H"``).
     """
-    seager_dir = dataset_dir(EOS_SEAGER_2007, data_root=FWL_DATA_DIR)
+    root = GetFWLData()
+    seager_dir = dataset_dir(EOS_SEAGER_2007, data_root=root)
 
     _seager_iron = {'eos_file': str(seager_dir / 'eos_seager07_iron.txt')}
     _seager_silicate = {'eos_file': str(seager_dir / 'eos_seager07_silicate.txt')}
     _seager_water = {'eos_file': str(seager_dir / 'eos_seager07_water.txt')}
 
     # Wolf & Bower 2018
-    wb_dir = dataset_dir(EOS_WOLF_BOWER_2018, data_root=FWL_DATA_DIR)
+    wb_dir = dataset_dir(EOS_WOLF_BOWER_2018, data_root=root)
     _wb_melted = {
         'eos_file': str(wb_dir / 'density_melt.dat'),
         'adiabat_grad_file': str(wb_dir / 'adiabat_temp_grad_melt.dat'),
@@ -1574,16 +1576,16 @@ def load_zalmoxis_material_dictionaries():
     _wb_solid = {'eos_file': str(wb_dir / 'density_solid.dat')}
 
     # RTPress 100 TPa
-    rt_dir = dataset_dir(EOS_RTPRESS_100TPA, data_root=FWL_DATA_DIR)
+    rt_dir = dataset_dir(EOS_RTPRESS_100TPA, data_root=root)
     _rt_melted = {
         'eos_file': str(rt_dir / 'density_melt.dat'),
         'adiabat_grad_file': str(rt_dir / 'adiabat_temp_grad_melt.dat'),
     }
 
-    # PALEOS 2-phase MgSiO3 (separate solid/liquid, Zenodo 19680050).
-    # 150 pts/decade (default) and 600 pts/decade (highres) variants.
-    paleos2ph_dir = dataset_dir(EOS_PALEOS_MGSIO3_2PHASE, data_root=FWL_DATA_DIR)
-    paleos2ph_hr_dir = dataset_dir(EOS_PALEOS_MGSIO3_2PHASE_HIGHRES, data_root=FWL_DATA_DIR)
+    # PALEOS 2-phase MgSiO3 (separate solid/liquid, Zenodo 19680050): the
+    # 150 pts/decade (default) and 600 pts/decade (highres) pairs share one dataset.
+    paleos2ph_dir = dataset_dir(EOS_PALEOS_MGSIO3, data_root=root)
+    paleos2ph_hr_dir = paleos2ph_dir
     _paleos2ph_melted = {
         'eos_file': str(paleos2ph_dir / 'paleos_mgsio3_tables_pt_proteus_liquid.dat'),
         'format': 'paleos',
@@ -1603,23 +1605,29 @@ def load_zalmoxis_material_dictionaries():
         'format': 'paleos',
     }
 
-    # PALEOS unified tables (iron, MgSiO3 and water share one dataset)
-    paleos_unified_dir = dataset_dir(EOS_PALEOS_UNIFIED, data_root=FWL_DATA_DIR)
+    # PALEOS unified tables, one dataset per material
     _paleos_iron = {
-        'eos_file': str(paleos_unified_dir / 'paleos_iron_eos_table_pt.dat'),
+        'eos_file': str(
+            dataset_dir(EOS_PALEOS_IRON, data_root=root) / 'paleos_iron_eos_table_pt.dat'
+        ),
         'format': 'paleos_unified',
     }
     _paleos_mgsio3 = {
-        'eos_file': str(paleos_unified_dir / 'paleos_mgsio3_eos_table_pt.dat'),
+        'eos_file': str(
+            dataset_dir(EOS_PALEOS_MGSIO3_UNIFIED, data_root=root)
+            / 'paleos_mgsio3_eos_table_pt.dat'
+        ),
         'format': 'paleos_unified',
     }
     _paleos_h2o = {
-        'eos_file': str(paleos_unified_dir / 'paleos_water_eos_table_pt.dat'),
+        'eos_file': str(
+            dataset_dir(EOS_PALEOS_H2O, data_root=root) / 'paleos_water_eos_table_pt.dat'
+        ),
         'format': 'paleos_unified',
     }
 
     # Chabrier H/He
-    chabrier_dir = dataset_dir(EOS_CHABRIER_2021, data_root=FWL_DATA_DIR)
+    chabrier_dir = dataset_dir(EOS_CHABRIER_2021, data_root=root)
     _chabrier_h = {
         'eos_file': str(chabrier_dir / 'EOS_Chabrier2021_HHe' / 'chabrier2021_H.dat'),
         'format': 'paleos_unified',
