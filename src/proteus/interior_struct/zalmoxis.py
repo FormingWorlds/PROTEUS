@@ -563,7 +563,9 @@ def _resolve_zalmoxis_cmb_temperature(
     fallback structure, and decides whether a molten state exists; it is
     solved before the equilibration loop and again after it. Otherwise the
     error propagates, since no later step re-solves the anchor. A resumed
-    run re-solves neither the structure anchor nor the initial entropy.
+    run that restores the entropy snapshot re-solves neither the structure
+    anchor nor the initial entropy; an Aragog resume that falls back to a
+    fresh initial entropy solves it again at the current P_cmb.
 
     For all other modes, returns config.planet.tcmb_init verbatim.
     """

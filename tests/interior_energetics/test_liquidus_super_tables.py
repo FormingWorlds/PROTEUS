@@ -182,7 +182,6 @@ def test_sub_liquidus_at_table_maximum_raises(monkeypatch, fake_tables):
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.physics_invariant
 def test_entropy_is_monotonic_in_requested_superheat(fake_tables):
     """A larger requested superheat needs a strictly larger initial entropy."""
     deltas = [0.0, 100.0, 300.0, 600.0]
@@ -1425,6 +1424,9 @@ def test_cap_raise_names_its_cause(fake_tables, monkeypatch, S_anchor, ini_dsdr,
     msg = str(exc.value)
     assert 'below the P-T anchor entropy' in msg
     assert expect in msg
+    allowance = exc.value.__cause__.from_ini_dsdr
+    assert ('no fully-molten initial condition is reachable' in msg) is not allowance
+    assert ('uniform-entropy molten check fails' in msg) is allowance
     m = superheat(S_anchor)
     if m < 0:
         assert f'P-S adiabat is {-m:.0f} K below the P-S table liquidus' in msg
@@ -1489,6 +1491,8 @@ def test_table_raise_names_the_ini_dsdr_allowance(fake_tables):
 
     assert exc.value.from_ini_dsdr
     msg = str(exc.value)
+    assert msg.startswith('liquidus_super: the uniform-entropy molten check fails below')
+    assert 'no fully-molten initial condition' not in msg
     assert 'The raise comes from the ini_dsdr allowance' in msg
     assert f'deepest-node entropy ({S_MAX:.1f} J/kg/K) would be {m_top:.0f} K above' in msg
 

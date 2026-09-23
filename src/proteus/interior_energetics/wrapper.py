@@ -14,6 +14,7 @@ import scipy.optimize as optimise
 from proteus.interior_energetics.common import (
     _SPIDER_EOS_MELTING_CURVES,
     _SPIDER_EOS_PHASE_FILES,
+    ANCHOR_PASSTHROUGH_ERRORS,
     InitialConditionError,
     Interior_t,
 )
@@ -1919,8 +1920,9 @@ def run_interior(
         try:
             RunSPIDER(dirs, config, hf_all, hf_row, interior_o, mesh_file=mesh_file)
             interior_o.spider_fail_count = 0
-        except InitialConditionError:
-            # No valid initial condition exists; a retry cannot produce one.
+        except (InitialConditionError, *ANCHOR_PASSTHROUGH_ERRORS):
+            # No valid initial condition exists, or a programming error; a retry
+            # cannot fix either.
             raise
         except RuntimeError as e:
             interior_o.spider_fail_count += 1

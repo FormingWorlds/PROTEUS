@@ -3814,6 +3814,87 @@ def test_run_interior_spider_initial_condition_error_is_not_retried(caplog):
     assert issubclass(InitialConditionError, RuntimeError)
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'error',
+    [
+        NotImplementedError('method not available'),
+        RecursionError('maximum recursion depth exceeded'),
+        UnicodeDecodeError('utf-8', b'\\xff', 0, 1, 'invalid start byte'),
+    ],
+    ids=lambda e: type(e).__name__,
+)
+def test_run_interior_spider_passthrough_errors_are_not_retried(caplog, error):
+    """Programming and decoding errors from the SPIDER call, two of which
+    subclass RuntimeError, propagate on the first call and are not counted as
+    CVode failures.
+    """
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='spider')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 1
+    interior_o._spider_cumulative_time = 0.0
+    interior_o.spider_fail_count = 0
+
+    with (
+        _patch('proteus.interior_energetics.spider.RunSPIDER', side_effect=error) as mock_run,
+        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        with pytest.raises(type(error)) as exc:
+            run_interior(
+                {'spider': '/tmp/spider'}, config, hf_all, hf_row, interior_o, verbose=False
+            )
+
+    assert exc.value is error
+    mock_run.assert_called_once()
+    assert interior_o.spider_fail_count == 0
+    assert not [r for r in caplog.records if 'CVode failure' in r.getMessage()]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('kind', ['InitialConditionError', 'NotImplementedError'])
+def test_run_interior_aragog_ic_errors_are_not_retried(kind, tmp_path):
+    """The Aragog IC is solved when the runner is built, outside the retry
+    ladder, so an IC error or a programming error from it propagates at once
+    and is not counted as a retry-ladder failure.
+    """
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.common import InitialConditionError
+    from proteus.interior_energetics.wrapper import run_interior
+
+    error = (
+        InitialConditionError('no fully-molten initial condition')
+        if kind == 'InitialConditionError'
+        else NotImplementedError('method not available')
+    )
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    config.params.out.logging = 'INFO'
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 1
+    interior_o.aragog_fail_count = 0
+
+    with _patch(
+        'proteus.interior_energetics.aragog.AragogRunner.setup_or_update_solver',
+        side_effect=error,
+    ) as mock_setup:
+        with pytest.raises(type(error)) as exc:
+            run_interior(
+                {'output': str(tmp_path)}, config, hf_all, hf_row, interior_o, verbose=False
+            )
+
+    assert exc.value is error
+    mock_setup.assert_called_once()
+    assert interior_o.aragog_fail_count == 0
+
+
 # ============================================================================
 # run_interior Aragog fallback: same pattern as SPIDER
 # ============================================================================

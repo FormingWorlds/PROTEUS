@@ -97,7 +97,7 @@ pressure and radius estimates and a core mass fraction of 0.325, this means
 500 K up to 2.75 Earth masses, 194 K at 3 Earth masses, and a raise above
 about 3.1 Earth masses (398 GPa at 3.15 Earth masses). With the default
 `ini_dsdr = -4.698e-6` J/kg/K/m the usable entropy is lower by
-`|ini_dsdr|` times the mantle thickness (about 20 J/kg/K at 3 Earth masses):
+`|ini_dsdr|` times the mantle thickness (about 19.5 J/kg/K at 3 Earth masses):
 2.75 Earth masses clamp to 417 K, 3 Earth masses to 73 K, 3.05 Earth masses
 to 3 K, and 3.1 Earth masses (392 GPa) raise.
 
@@ -143,8 +143,12 @@ liquidus at the binding depth.
     and the re-solve keeps the linear-guess structure. The initial entropy
     then decides at the core-mantle boundary pressure of that fallback
     structure. In other cases no later step solves the anchor again, so a
-    failed anchor stops the run there. A resumed run solves neither the
-    anchor nor the initial entropy again. When
+    failed anchor stops the run there. A resumed run that restores the
+    entropy snapshot solves neither the anchor nor the initial entropy
+    again. When Aragog cannot restore the snapshot (no snapshot, or a
+    snapshot length that does not match the mesh), it sets a fresh initial
+    entropy, which solves the anchor again at the current core-mantle
+    boundary pressure and can raise. When
     the anchor clamps at the PALEOS table below `delta_T_super`, the initial
     entropy is capped at the anchor entropy, and
     a warning names the superheat the anchor reached. The generated P-S tables

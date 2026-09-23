@@ -589,6 +589,7 @@ def solve_superliquidus_entropy_from_tables(
     if from_ceiling:
         S_hi = float(S_ceiling)
     ceiling_src = 'the P-T anchor entropy' if from_ceiling else 'the EOS table'
+    S_top = S_hi  # the ceiling entropy before the ini_dsdr allowance
     ini_dsdr = float(config.planet.ini_dsdr)
     dS_deep = 0.0  # entropy the ini_dsdr perturbation adds at the deepest node
     radii_known = True
@@ -615,25 +616,31 @@ def solve_superliquidus_entropy_from_tables(
             f'({S_hi:.1f} J/kg/K); the superheat target cannot be evaluated.'
         )
     if sh_hi < 0:
-        msg = (
-            'liquidus_super: no fully-molten initial condition is reachable below '
-            f'{ceiling_src}; even at the highest usable entropy ({S_hi:.1f} J/kg/K) '
-            f'the adiabat is {-sh_hi:.0f} K below the liquidus at P={P_hi / 1e9:.3g} GPa.'
-        )
-        m_deep = _probe(S_hi + dS_deep)[0] if dS_deep > 0 else -np.inf
-        allowance = bool(m_deep >= 0)
+        # One probe at the ceiling entropy serves both the allowance test and
+        # margin_at_ceiling, so the two never disagree in sign.
+        at_top = _probe(S_top) if (from_ceiling or dS_deep > 0) else (sh_hi, P_hi)
+        allowance = bool(dS_deep > 0 and at_top[0] >= 0)
+        below = f'the adiabat is {-sh_hi:.0f} K below the liquidus at P={P_hi / 1e9:.3g} GPa.'
         if allowance:
-            msg += (
-                ' The raise comes from the ini_dsdr allowance: with ini_dsdr = 0 the '
-                f'adiabat at the deepest-node entropy ({S_hi + dS_deep:.1f} J/kg/K) would be '
-                f'{m_deep:.0f} K above the liquidus.'
+            msg = (
+                'liquidus_super: the uniform-entropy molten check fails below '
+                f'{ceiling_src} at the highest usable entropy ({S_hi:.1f} J/kg/K) after '
+                f'the ini_dsdr allowance: {below} The raise comes from the '
+                'ini_dsdr allowance: with ini_dsdr = 0 the adiabat at the deepest-node '
+                f'entropy ({S_top:.1f} J/kg/K) would be {at_top[0]:.0f} K above the liquidus.'
+            )
+        else:
+            msg = (
+                'liquidus_super: no fully-molten initial condition is reachable below '
+                f'{ceiling_src}; even at the highest usable entropy ({S_hi:.1f} J/kg/K) '
+                f'{below}'
             )
         err = InitialConditionError(msg)
         err.margin, err.binding_P, err.from_ceiling = sh_hi, P_hi, from_ceiling
         err.from_ini_dsdr = allowance
         # Margin at the ceiling entropy itself, before the ini_dsdr allowance.
         err.margin_at_ceiling, err.binding_P_at_ceiling = (
-            _probe(float(S_ceiling)) if from_ceiling else (sh_hi, P_hi)
+            at_top if from_ceiling else (sh_hi, P_hi)
         )
         raise err
     clamped = sh_hi < delta
