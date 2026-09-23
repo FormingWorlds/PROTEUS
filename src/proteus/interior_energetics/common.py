@@ -487,7 +487,7 @@ def solve_superliquidus_entropy_from_tables(
             P_cmb / 1e9,
             float(config.planet.mass_tot),
         )
-    # The deep mantle past the table cannot be certified molten, so there is
+    # The deep mantle past the table cannot be shown to be molten, so there is
     # no clip; the tolerance only absorbs rounding of the table's end pressure.
     if P_cmb > float(eos.P_max) * (1.0 + 1e-9):
         raise InitialConditionError(

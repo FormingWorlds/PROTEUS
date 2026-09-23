@@ -874,7 +874,7 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         liq = np.asarray(liq_func(P), dtype=float)
         i = int(np.argmin(T - liq))
         # A liquidus that is undefined (NaN) at some adiabat pressure cannot
-        # certify the adiabat as molten there, so the adiabat is invalid.
+        # show the adiabat is molten there, so the adiabat is invalid.
         valid = bool(
             finite
             and s_drift < _SUPERLIQ_MAX_S_DRIFT

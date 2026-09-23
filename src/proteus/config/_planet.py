@@ -209,7 +209,7 @@ def _validate_ini_dsdr(instance, attribute, value):
     entropy in every temperature mode, so a non-finite value gives a
     non-finite profile. With ``temperature_mode = 'liquidus_super'`` a
     positive gradient also lowers the deep entropy below the adiabat that was
-    certified ``delta_T_super`` above the liquidus.
+    shown to be ``delta_T_super`` above the liquidus.
     """
     if not math.isfinite(value):
         raise ValueError(
@@ -259,14 +259,15 @@ class Planet:
             solved so the minimum superheat over the whole mantle equals
             delta_T_super, evaluated against the solidus/liquidus actually in
             use. This controls the molten margin without the user picking a
-            surface temperature or entropy. If the requested superheat cannot be reached before the deep
-            adiabat exhausts the EOS table, the solve clamps to the largest
-            achievable superheat and emits a warning that reports it. If even
-            the hottest adiabat the table supports stays below the liquidus
-            somewhere in the mantle, no fully molten initial condition exists
-            and the solve raises a RuntimeError. The liquidus is the one in the
-            interior P-S tables, which the interior solver also uses for its
-            melt fraction, for every structure module.
+            surface temperature or entropy. If the requested superheat cannot
+            be reached before the deep adiabat exhausts the EOS table, the
+            solve clamps to the largest achievable superheat and emits a
+            warning that reports it. If even the hottest adiabat the table
+            supports stays below the liquidus somewhere in the mantle, no fully
+            molten initial condition exists and the solve raises a
+            RuntimeError. The liquidus is the one in the interior P-S tables,
+            which the interior solver also uses for its melt fraction, for
+            every structure module.
     tsurf_init: float
         Initial magma surface temperature [K] (isothermal, linear, adiabatic).
         Ignored when temperature_mode = 'isentropic', 'adiabatic_from_cmb',
