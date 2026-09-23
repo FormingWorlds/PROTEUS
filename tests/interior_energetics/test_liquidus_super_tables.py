@@ -496,6 +496,36 @@ def test_liquidus_entropy_below_table_minimum_raises(fake_tables, monkeypatch):
     assert 'between 0.0001 and 28.7 GPa' in msg
 
 
+def test_liquidus_bump_between_grid_points_is_checked(fake_tables, monkeypatch):
+    """A 50 K liquidus bump that rises and falls between two points of the
+    200-point pressure grid, as a step in the melt temperature table does,
+    is still checked because the margin is also evaluated at the table's
+    pressure nodes. The bump then binds at the deep end of its flat top.
+    """
+    grid = np.geomspace(1e5, P_CMB, 200)
+    i = int(np.searchsorted(grid, 90e9))
+    lo, hi = grid[i - 1], grid[i]
+    nodes = lo + (hi - lo) * np.array([0.2, 0.4, 0.6, 0.8])
+    assert ((grid > nodes[0]) & (grid < nodes[-1])).sum() == 0
+
+    class _BumpEOS(_FakeEOS):
+        _tables = {'temperature_melt': {'P': nodes}}
+
+        def liquidus_entropy(self, P):
+            bump = np.interp(np.asarray(P, dtype=float), nodes, [0.0, 50.0, 50.0, 0.0])
+            return super().liquidus_entropy(P) + bump / A
+
+    monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _BumpEOS())
+
+    res = solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+
+    P_bump_GPa = nodes[2] / 1e9
+    expected = (200.0 + L0 - T0 + (L1 - B) * P_bump_GPa + 50.0) / A
+    assert res['clamped'] is False
+    assert res['S_target'] == pytest.approx(expected, abs=0.05)
+    assert res['S_target'] > _S_expected(200.0) + 5.0
+
+
 def test_ini_dsdr_without_radii_warns(fake_tables, caplog):
     """Without mantle radii the ceiling cannot be lowered, and a warning says so."""
     cfg = _config(1000.0)

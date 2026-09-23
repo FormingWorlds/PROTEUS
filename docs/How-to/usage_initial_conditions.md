@@ -108,9 +108,9 @@ marginally molten, just touching the liquidus at the binding depth.
     With `"zalmoxis"`, the structure solve also anchors its temperature profile
     on a P-T adiabat that is `delta_T_super` above the P-T liquidus, while the
     initial entropy is solved on the P-S tables. The two adiabats differ
-    slightly: for 1 Earth mass at `delta_T_super = 500` K, the P-T anchor
-    evaluated on the P-S tables is 459 K above their liquidus at the
-    core-mantle boundary, 41 K less than the initial entropy.
+    slightly: for 1 Earth mass at `delta_T_super = 500` K (core-mantle
+    boundary at 103 GPa), the P-T anchor evaluated on the P-S tables is at
+    least 472 K above their liquidus, 28 K less than the initial entropy.
 
     The core-mantle boundary pressure must lie inside the table; PROTEUS raises
     if it is above the table maximum or if the table liquidus is undefined at

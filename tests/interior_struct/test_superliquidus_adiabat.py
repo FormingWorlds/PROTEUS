@@ -203,7 +203,7 @@ class TestSolveSuperliquidusReal:
         tables = generate_spider_tables(cfg, str(tmp_path))
         eos = EntropyEOS(tables['eos_dir'])
         hf_row = {'P_cmb': 1.42e11, 'R_int': 6.4e6, 'R_core': 3.5e6}
-        P = np.geomspace(1e5, hf_row['P_cmb'], 400)
+        P = np.geomspace(1e5, hf_row['P_cmb'], 20000)
         T_liq = eos.temperature(P, eos.liquidus_entropy(P))
 
         for delta in (0.0, 500.0):

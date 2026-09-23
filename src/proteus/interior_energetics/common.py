@@ -316,6 +316,14 @@ def solve_superliquidus_entropy_from_tables(
         )
     P_cmb = min(P_cmb, float(eos.P_max))
     P = np.geomspace(max(1e5, float(eos.P_min)), P_cmb, _TABLE_SUPERLIQ_N_POINTS)
+    # The margin kinks at the melt-table and liquidus-file pressure nodes, so
+    # evaluate there too: a table step between two grid points is not missed.
+    nodes = [np.asarray(eos._liquidus['P'], dtype=float)]
+    melt_T = getattr(eos, '_tables', {}).get('temperature_melt')
+    if melt_T is not None:
+        nodes.append(np.asarray(melt_T['P'], dtype=float))
+    nodes = np.concatenate(nodes)
+    P = np.unique(np.concatenate([P, nodes[(nodes > P[0]) & (nodes < P[-1])]]))
 
     # "Fully molten" is judged against the solver's own phase boundary: the
     # melt fraction comes from liquidus_P-S.dat, so the reference is
