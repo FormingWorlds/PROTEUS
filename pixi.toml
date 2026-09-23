@@ -8,5 +8,5 @@ python = "3.12.*"
 pip = "*"
 # Julia 1.12 ships OpenSSL_jll 3.5+; juliacall matches it to Python's OpenSSL.
 openssl = ">=3.5"
-# SUNDIALS backs Aragog's CVODE solver via scikits-odes-sundials.
-sundials = ">=7,<8"
+# Prebuilt CVODE wrapper for Aragog; pulls in its matching SUNDIALS.
+scikits_odes_sundials = ">=3.1,<4"
