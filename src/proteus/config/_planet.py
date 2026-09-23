@@ -203,20 +203,20 @@ def _reject_reserved_fO2_source(instance, attribute, value):
 
 
 def _reject_positive_dsdr_for_liquidus_super(instance, attribute, value):
-    """Reject a positive ``ini_dsdr`` with ``temperature_mode = 'liquidus_super'``.
+    """Reject a non-finite ``ini_dsdr``, and a positive one with liquidus_super.
 
-    The interior solvers add ``ini_dsdr * (r - R_surf)`` to the solved uniform
-    entropy, so a positive gradient lowers the deep entropy below the adiabat
-    that was certified ``delta_T_super`` above the liquidus.
+    SPIDER and Aragog add ``ini_dsdr * (r - R_surf)`` to the uniform initial
+    entropy in every temperature mode, so a non-finite value gives a
+    non-finite profile. With ``temperature_mode = 'liquidus_super'`` a
+    positive gradient also lowers the deep entropy below the adiabat that was
+    certified ``delta_T_super`` above the liquidus.
     """
-    if instance.temperature_mode != 'liquidus_super':
-        return
     if not math.isfinite(value):
         raise ValueError(
-            f'planet.ini_dsdr = {value} is not finite; planet.temperature_mode = '
-            '"liquidus_super" needs a finite ini_dsdr <= 0.'
+            f'planet.ini_dsdr = {value} is not finite; the interior solvers add it '
+            'to the initial entropy profile.'
         )
-    if value > 0:
+    if value > 0 and instance.temperature_mode == 'liquidus_super':
         raise ValueError(
             f'planet.ini_dsdr = {value} is positive, which lowers the deep initial '
             'entropy below the adiabat that planet.temperature_mode = '
@@ -289,7 +289,7 @@ class Planet:
     ini_dsdr: float
         Initial entropy gradient with radius [J/kg/K/m], added to the uniform
         initial entropy by SPIDER and Aragog in every temperature mode; must
-        be finite and <= 0 with liquidus_super. CHILI Earth-SPIDER reference:
+        be finite, and <= 0 with liquidus_super. CHILI Earth-SPIDER reference:
         -4.698e-6 (small numerical perturbation needed for SPIDER's BDF
         stability on a uniform IC).
     delta_T_super: float

@@ -1655,10 +1655,10 @@ class AragogRunner:
                         f'at P_cmb={P_cmb_adiabat / 1e9:.0f} GPa, beyond the '
                         f'Fei+2021 calibration '
                         f'(~{FEI2021_LIQUIDUS_P_CALIB_PA / 1e9:.0f} GPa). The '
-                        'extrapolated CMB anchor produced a non-physical, '
-                        'energy-non-conserving initial condition. Use an '
-                        'adiabatic (surface-anchored) initial condition for '
-                        'this planet mass.'
+                        'initial condition unpacks to a steeply inverted, '
+                        'energy-non-conserving profile. Use an adiabatic '
+                        '(surface-anchored) initial condition for this planet '
+                        'mass.'
                     )
                 log.debug(
                     'Entropy IC full-profile cross-check > %.1f%% '

@@ -48,13 +48,11 @@ def test_ini_dsdr_accepted_where_it_cannot_erode_the_margin(mode, dsdr):
     assert planet.temperature_mode == mode
 
 
+@pytest.mark.parametrize('mode', ['liquidus_super', 'isentropic', 'adiabatic_from_cmb'])
 @pytest.mark.parametrize('dsdr', [float('nan'), float('inf'), float('-inf')])
-def test_non_finite_ini_dsdr_is_rejected_with_liquidus_super(dsdr):
-    """A non-finite ini_dsdr passes every comparison as False, so it must be
-    rejected explicitly; other modes are left to their own solvers."""
+def test_non_finite_ini_dsdr_is_rejected_in_every_mode(mode, dsdr):
+    """A non-finite ini_dsdr passes every comparison as False and gives a
+    non-finite initial entropy profile in every mode, so it is rejected."""
     with pytest.raises(ValueError, match='is not finite') as exc:
-        Planet(temperature_mode='liquidus_super', ini_dsdr=dsdr)
-    assert 'liquidus_super' in str(exc.value)
-
-    planet = Planet(temperature_mode='isentropic', ini_dsdr=dsdr)
-    assert planet.ini_dsdr == dsdr or (dsdr != dsdr and planet.ini_dsdr != planet.ini_dsdr)
+        Planet(temperature_mode=mode, ini_dsdr=dsdr)
+    assert 'planet.ini_dsdr' in str(exc.value)

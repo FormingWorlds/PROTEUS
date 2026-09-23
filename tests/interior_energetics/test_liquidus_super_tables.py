@@ -496,11 +496,12 @@ def test_liquidus_entropy_below_table_minimum_raises(fake_tables, monkeypatch):
     assert 'between 0.0001 and 28.7 GPa' in msg
 
 
-def test_liquidus_bump_between_grid_points_is_checked(fake_tables, monkeypatch):
+@pytest.mark.parametrize('node_source', ['melt_table', 'liquidus_file'])
+def test_liquidus_bump_between_grid_points_is_checked(fake_tables, monkeypatch, node_source):
     """A 50 K liquidus bump that rises and falls between two points of the
     200-point pressure grid, as a step in the melt temperature table does,
-    is still checked because the margin is also evaluated at the table's
-    pressure nodes. The bump then binds at the deep end of its flat top.
+    is still checked because the margin is also evaluated at the melt-table
+    or liquidus-file pressure nodes. It binds at the deep end of its top.
     """
     grid = np.geomspace(1e5, P_CMB, 200)
     i = int(np.searchsorted(grid, 90e9))
@@ -509,7 +510,10 @@ def test_liquidus_bump_between_grid_points_is_checked(fake_tables, monkeypatch):
     assert ((grid > nodes[0]) & (grid < nodes[-1])).sum() == 0
 
     class _BumpEOS(_FakeEOS):
-        _tables = {'temperature_melt': {'P': nodes}}
+        if node_source == 'melt_table':
+            _tables = {'temperature_melt': {'P': nodes}}
+        else:
+            _liquidus = {'P': np.concatenate([[1e4], nodes, [1e13]])}
 
         def liquidus_entropy(self, P):
             bump = np.interp(np.asarray(P, dtype=float), nodes, [0.0, 50.0, 50.0, 0.0])
@@ -524,6 +528,44 @@ def test_liquidus_bump_between_grid_points_is_checked(fake_tables, monkeypatch):
     assert res['clamped'] is False
     assert res['S_target'] == pytest.approx(expected, abs=0.05)
     assert res['S_target'] > _S_expected(200.0) + 5.0
+
+
+def test_liquidus_crossing_a_table_entropy_node_is_checked(fake_tables, monkeypatch):
+    """With bilinear tables, the liquidus temperature T(P, S_liq(P)) can
+    peak where S_liq(P) crosses a melt-table entropy node, which is neither
+    a table nor a liquidus-file pressure node. A 50 K bump in T around that
+    entropy node, 0.75 J/kg/K wide (0.3 GPa of S_liq), binds at the crossing.
+    """
+    grid = np.geomspace(1e5, P_CMB, 200)
+    i = int(np.searchsorted(grid, 90e9))
+    P_x = 0.5 * (grid[i - 1] + grid[i])
+    S_x = float(_FakeEOS().liquidus_entropy(P_x))
+    P_file = np.array([1e4, 1e13])
+
+    class _CrossEOS(_FakeEOS):
+        _liquidus = {'P': P_file, 'S': _FakeEOS().liquidus_entropy(P_file)}
+        _tables = {'temperature_melt': {'P': P_file, 'S': np.array([S_x])}}
+
+        def temperature(self, P, S):
+            hat = np.clip(1.0 - np.abs(np.asarray(S, dtype=float) - S_x) / 0.75, 0.0, None)
+            return super().temperature(P, S) + 50.0 * hat
+
+    monkeypatch.setattr(common, '_load_entropy_eos', lambda d: _CrossEOS())
+
+    res = solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
+
+    expected = (200.0 + L0 - T0 + (L1 - B) * P_x / 1e9 + 50.0) / A
+    assert res['S_target'] == pytest.approx(expected, abs=0.05)
+    assert res['binding_P'] == pytest.approx(P_x, rel=1e-6)
+
+
+def test_p_cmb_at_the_surface_raises(fake_tables):
+    """A core-mantle boundary pressure at or below the 1 bar surface leaves no
+    mantle to check, so the solve raises instead of reversing the grid.
+    """
+    with pytest.raises(common.InitialConditionError, match='not above') as exc:
+        solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': 5e4}, fake_tables)
+    assert 'surface pressure 0.0001 GPa' in str(exc.value)
 
 
 def test_ini_dsdr_without_radii_warns(fake_tables, caplog):

@@ -193,6 +193,40 @@ class InitialConditionError(RuntimeError):
     """
 
 
+def _margin_kink_pressures(eos: EntropyEOS) -> np.ndarray:
+    """Pressures [Pa] where the table superheat margin can change slope.
+
+    ``T(P, S)`` is bilinear in the melt table and ``S_liq(P)`` is linear
+    between liquidus-file nodes, so the margin ``T(P, S) - T(P, S_liq(P))``
+    has kinks only at the melt-table pressure nodes, the liquidus-file nodes,
+    and the pressures where ``S_liq(P)`` crosses a melt-table entropy node.
+
+    Parameters
+    ----------
+    eos : EntropyEOS
+        Table interpolator; ``_tables`` and the liquidus ``S`` array are
+        optional.
+
+    Returns
+    -------
+    np.ndarray
+        Unsorted kink pressures [Pa].
+    """
+    P_liq = np.asarray(eos._liquidus['P'], dtype=float)
+    nodes = [P_liq]
+    melt_T = getattr(eos, '_tables', {}).get('temperature_melt')
+    if melt_T is not None:
+        nodes.append(np.asarray(melt_T['P'], dtype=float))
+        if 'S' in eos._liquidus:
+            S_liq = np.asarray(eos._liquidus['S'], dtype=float)
+            S_node = np.asarray(melt_T['S'], dtype=float)
+            dS = S_node[None, :] - S_liq[:-1, None]
+            k, j = np.nonzero(dS * (S_node[None, :] - S_liq[1:, None]) < 0)
+            frac = dS[k, j] / (S_liq[k + 1] - S_liq[k])
+            nodes.append(P_liq[k] + frac * (P_liq[k + 1] - P_liq[k]))
+    return np.concatenate(nodes)
+
+
 def _load_entropy_eos(eos_dir: str) -> EntropyEOS:
     """Load (and memoise) the P-S EOS tables in ``eos_dir``.
 
@@ -315,15 +349,19 @@ def solve_superliquidus_entropy_from_tables(
             )
         )
     P_cmb = min(P_cmb, float(eos.P_max))
-    P = np.geomspace(max(1e5, float(eos.P_min)), P_cmb, _TABLE_SUPERLIQ_N_POINTS)
-    # The margin kinks at the melt-table and liquidus-file pressure nodes, so
-    # evaluate there too: a table step between two grid points is not missed.
-    nodes = [np.asarray(eos._liquidus['P'], dtype=float)]
-    melt_T = getattr(eos, '_tables', {}).get('temperature_melt')
-    if melt_T is not None:
-        nodes.append(np.asarray(melt_T['P'], dtype=float))
-    nodes = np.concatenate(nodes)
-    P = np.unique(np.concatenate([P, nodes[(nodes > P[0]) & (nodes < P[-1])]]))
+    P_surf = max(1e5, float(eos.P_min))
+    if P_cmb <= P_surf:
+        raise InitialConditionError(
+            'liquidus_super: the core-mantle boundary pressure %.3g GPa is not above '
+            'the surface pressure %.3g GPa; there is no mantle to check for melt.'
+            % (P_cmb / 1e9, P_surf / 1e9)
+        )
+    P = np.geomspace(P_surf, P_cmb, _TABLE_SUPERLIQ_N_POINTS)
+    # Evaluate at every kink of the margin as well: a step in the melt table
+    # (for example at the edge of its fill below the valid entropy range)
+    # between two grid points is not missed.
+    kinks = _margin_kink_pressures(eos)
+    P = np.unique(np.concatenate([P, kinks[(kinks > P[0]) & (kinks < P[-1])]]))
 
     # "Fully molten" is judged against the solver's own phase boundary: the
     # melt fraction comes from liquidus_P-S.dat, so the reference is

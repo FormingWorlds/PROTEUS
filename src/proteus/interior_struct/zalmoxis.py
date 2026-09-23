@@ -908,13 +908,12 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
             # delta: the search window, not the EOS table, is the limit here.
             log.warning(
                 'liquidus_super: the requested superheat of %.0f K was not reached at '
-                'P_cmb=%.0f GPa within the surface-temperature search window, up to '
-                'surface T=%.0f K (the EOS table was not exhausted); clamped to '
-                'the largest superheat sampled, %.0f K (surface T=%.0f K). Widen the '
+                'P_cmb=%.0f GPa within the surface-temperature search window (the EOS '
+                'table was not exhausted); clamped to the largest superheat sampled, '
+                '%.0f K, at the top of the window (surface T=%.0f K). Widen the '
                 'search window if a larger superheat is physically expected.',
                 delta,
                 P_cmb / 1e9,
-                max(T for T, _ in points),
                 d_best['superheat'],
                 T_solved,
             )

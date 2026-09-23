@@ -359,7 +359,7 @@ def test_zalmoxis_path_reports_search_window_limit(monkeypatch, caplog):
     assert res['achieved_superheat'] == pytest.approx(T_top - _surface_T_for(0.0), abs=0.01)
     msgs = [r.getMessage() for r in caplog.records]
     assert any('search window' in m and 'EOS table was not exhausted' in m for m in msgs), msgs
-    assert any(f'up to surface T={T_top:.0f} K' in m for m in msgs), msgs
+    assert any(f'top of the window (surface T={T_top:.0f} K)' in m for m in msgs), msgs
 
 
 # A ceiling 8 K above the liquidus sits below the second scan point
