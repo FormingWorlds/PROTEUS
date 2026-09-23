@@ -1421,8 +1421,8 @@ class AragogRunner:
         ``zalmoxis.eos_export.compute_entropy_adiabat`` and compares its T(P)
         against the T(P) derived from Aragog's initialized entropy via the
         P-S EOS tables. The temperature comparison is diagnostic: a mismatch
-        above 1% logs a warning, and so does a liquidus_super IC with a cold
-        surface beyond the Fei+2021 calibration pressure. A solver entropy
+        of 1 to 5% logs a warning; above 5%, only a liquidus_super IC with a
+        cold surface beyond the Fei+2021 calibration pressure does. A solver entropy
         array whose shape differs from the pressure grid raises RuntimeError.
 
         Parameters
