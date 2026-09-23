@@ -4956,7 +4956,7 @@
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Melting curve folder name in FWL_DATA, for the SPIDER structure module.",
+      "description": "Melting curve name in FWL_DATA. Required for the SPIDER structure module and for any run without a PALEOS table set; not read with module = 'zalmoxis' and a PALEOS mantle EOS.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

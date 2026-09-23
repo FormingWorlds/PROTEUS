@@ -206,6 +206,14 @@ _TABLE_SUPERLIQ_N_POINTS = 200
 _TABLE_SUPERLIQ_N_BISECT = 60
 
 
+class MissingMeltingCurveError(FileNotFoundError):
+    """The melting curves the run must read are not configured or not on disk.
+
+    Raised when ``interior_struct.melting_dir`` names curves whose files are
+    missing, or is unset while no PALEOS table set provides the curves.
+    """
+
+
 class InitialConditionError(RuntimeError):
     """The requested initial condition does not exist for this planet and EOS.
 

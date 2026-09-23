@@ -241,3 +241,27 @@ class TestZalmoxisMushyZoneWarning:
         # Paired positive: the same EOS at 0.8 fires, so silence at 1.0 is the
         # factor guard rather than the EOS being exempt.
         assert self._warns(caplog, 'WolfBower2018:MgSiO3', mzf=0.8)
+
+
+class TestMeltingDirWithPaleos:
+    """melting_dir is not read with Zalmoxis and a PALEOS mantle EOS."""
+
+    @staticmethod
+    def _warned(caplog, **kwargs):
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.config._struct'):
+            Struct(**kwargs)
+        return any('is not read' in r.getMessage() for r in caplog.records)
+
+    def test_warning_for_melting_dir_with_paleos_mantle(self, caplog):
+        """The PALEOS curves are used, so a configured melting_dir gives one warning."""
+        assert self._warned(caplog, module='zalmoxis', melting_dir='Monteux-600')
+        assert sum('is not read' in r.getMessage() for r in caplog.records) == 1
+
+    def test_no_warning_where_melting_dir_is_read(self, caplog):
+        """Discrimination: a file-curve mantle EOS or an unset melting_dir stays silent."""
+        wb = Zalmoxis(mantle_eos='WolfBower2018:MgSiO3')
+        assert not self._warned(
+            caplog, module='zalmoxis', zalmoxis=wb, melting_dir='Monteux-600'
+        )
+        assert not self._warned(caplog, module='zalmoxis', melting_dir=None)

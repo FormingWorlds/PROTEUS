@@ -17,6 +17,7 @@ from proteus.interior_energetics.common import (
     ANCHOR_PASSTHROUGH_ERRORS,
     InitialConditionError,
     Interior_t,
+    MissingMeltingCurveError,
 )
 from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
@@ -641,10 +642,6 @@ def _is_spider_ps_format(path: str) -> bool:
     return len(parts) >= 2 and parts[0] == '#' and parts[1] == '5'
 
 
-class MissingMeltingCurveError(FileNotFoundError):
-    """The configured ``interior_struct.melting_dir`` has no P-T curve files."""
-
-
 def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     """Ensure that Aragog and SPIDER can find a complete P-S lookup set.
 
@@ -686,7 +683,8 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     When ``interior_struct.melting_dir`` is set, the two P-S melting curves
     are derived from its P-T files in every case above, and missing P-T files
     raise ``MissingMeltingCurveError`` instead of leaving the curves of the
-    source. This helper is not called when Zalmoxis generates a PALEOS table
+    source. An unset melting_dir raises ``MissingMeltingCurveError`` too,
+    except for a SPIDER run with constant properties, which reads no curves. This helper is not called when Zalmoxis generates a PALEOS table
     set; those runs use the PALEOS-derived curves and do not read melting_dir.
 
     Side effects: sets ``dirs['spider_eos_dir']``,
@@ -703,6 +701,15 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     # `melting_dir = "PALEOS-Fei2021"` using the configured P-S curves
     # at runtime instead of the WB+2018 curves.
     melting_dir = getattr(config.interior_struct, 'melting_dir', None)
+    energetics = getattr(config, 'interior_energetics', None)
+    if melting_dir is None and getattr(energetics, 'const_properties', False) is not True:
+        # Without melting_dir the curves would be whatever set is on disk.
+        raise MissingMeltingCurveError(
+            'interior_struct.melting_dir is not set and no PALEOS table set provides '
+            'the melting curves. Set melting_dir to a melting curve name (e.g. '
+            '"Monteux-600"), or use a PALEOS mantle EOS with interior_struct.module '
+            '= "zalmoxis".'
+        )
     derive_melting = melting_dir is not None
     if derive_melting:
         from proteus.utils.data import resolve_melting_curve_files

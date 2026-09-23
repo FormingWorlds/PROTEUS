@@ -13,7 +13,11 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import RegularGridInterpolator
 
-from proteus.interior_energetics.common import Interior_t, get_file_tides
+from proteus.interior_energetics.common import (
+    Interior_t,
+    MissingMeltingCurveError,
+    get_file_tides,
+)
 from proteus.interior_energetics.timestep import next_step
 from proteus.utils.constants import radnuc_data
 from proteus.utils.data import find_lookup_table_dir
@@ -944,13 +948,19 @@ def _try_spider(
                 config.interior_struct.module,
                 config.interior_struct.melting_dir,
             )
+        elif config.interior_struct.melting_dir is None:
+            raise MissingMeltingCurveError(
+                'interior_struct.melting_dir is not set and no PALEOS table set provides '
+                'the P-S melting curves. Set melting_dir to a melting curve name (e.g. '
+                '"Monteux-600").'
+            )
         else:
             mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior_struct.melting_dir)
             liquidus_ps = os.path.join(mc_dir, 'liquidus_P-S.dat')
             solidus_ps = os.path.join(mc_dir, 'solidus_P-S.dat')
             missing_ps = [p for p in (solidus_ps, liquidus_ps) if not os.path.isfile(p)]
             if missing_ps:
-                raise FileNotFoundError(
+                raise MissingMeltingCurveError(
                     f'interior_struct.melting_dir={config.interior_struct.melting_dir!r} is '
                     f'configured but its P-S melting curves are missing: '
                     f'{", ".join(missing_ps)}. Generate them with '

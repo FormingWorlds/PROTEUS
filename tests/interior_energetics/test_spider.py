@@ -1354,6 +1354,7 @@ def test_try_spider_missing_configured_curve_ignores_bundled_curves(tmp_path):
     Falling back to the bundled Andrault/Hirschmann curves would run a different
     solidus and liquidus than the configured melting_dir.
     """
+    from proteus.interior_energetics.common import MissingMeltingCurveError
     from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, eos_base, _, _ = _setup_spider_env(tmp_path)
@@ -1372,7 +1373,7 @@ def test_try_spider_missing_configured_curve_ignores_bundled_curves(tmp_path):
         ),
     ):
         with pytest.raises(
-            FileNotFoundError, match="melting_dir='Wolf_Bower\\+2018'"
+            MissingMeltingCurveError, match="melting_dir='Wolf_Bower\\+2018'"
         ) as raised:
             _try_spider(
                 dirs,
@@ -1387,6 +1388,39 @@ def test_try_spider_missing_configured_curve_ignores_bundled_curves(tmp_path):
     # P-S curves come from the generate tool; the fetch command only gives P-T files.
     assert 'tools/generate_spider_phase_boundaries.py' in str(raised.value)
     assert 'proteus get interiordata' not in str(raised.value)
+
+
+@pytest.mark.unit
+def test_try_spider_unset_melting_dir_raises(tmp_path):
+    """Without melting_dir and derived P-S curves, SPIDER stops with a named error."""
+    from proteus.interior_energetics.common import MissingMeltingCurveError
+    from proteus.interior_energetics.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, _, _ = _setup_spider_env(tmp_path)
+    config.interior_struct.melting_dir = None
+    dirs.pop('spider_liquidus_ps', None)
+
+    with (
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', str(tmp_path / 'none')),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
+    ):
+        with pytest.raises(MissingMeltingCurveError, match='melting_dir is not set') as raised:
+            _try_spider(
+                dirs,
+                config,
+                IC_INTERIOR=1,
+                hf_all=None,
+                hf_row=hf_row,
+                step_sf=1.0,
+                atol_sf=1.0,
+            )
+    mock_run.assert_not_called()
+    assert 'Monteux-600' in str(raised.value)
 
 
 @pytest.mark.unit

@@ -3224,8 +3224,69 @@ def _write_complete_ps_eos_dir(target_dir):
         )
 
 
+def _configured_melting_curve(tmp_path, monkeypatch):
+    """Point melting_dir at synthetic P-T files and record the P-S override calls."""
+    from proteus.interior_energetics import wrapper as wrapper_mod
+    from proteus.utils import data as data_mod
+
+    pt_dir = tmp_path / 'melting_pt'
+    pt_dir.mkdir()
+    sol, liq = pt_dir / 'solidus_P-T.dat', pt_dir / 'liquidus_P-T.dat'
+    sol.write_text('# solidus\n')
+    liq.write_text('# liquidus\n')
+    monkeypatch.setattr(data_mod, 'resolve_melting_curve_files', lambda name: (sol, liq))
+    calls = []
+    monkeypatch.setattr(
+        wrapper_mod,
+        '_override_melting_curves_from_pt',
+        lambda eos_dir, sol_pt, liq_pt, label_prefix: calls.append((eos_dir, sol_pt, liq_pt)),
+    )
+    return calls, str(sol), str(liq)
+
+
 @pytest.mark.unit
-def test_provide_spider_eos_tables_reuses_already_populated_dir(tmp_path):
+def test_provide_spider_eos_tables_unset_melting_dir_raises(tmp_path):
+    """Without melting_dir and a PALEOS table set, the curves would depend on the disk.
+
+    A complete SPIDER bundle is present, so a fallback would succeed; the helper
+    must stop instead. A constant-property SPIDER run reads no curves and passes.
+    """
+    from types import SimpleNamespace
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import (
+        _SPIDER_EOS_PHASE_FILES,
+        MissingMeltingCurveError,
+        _provide_spider_eos_tables,
+    )
+
+    spider_bundle = tmp_path / 'SPIDER' / 'lookup_data' / '1TPa-dK09-elec-free'
+    spider_bundle.mkdir(parents=True)
+    for f in _SPIDER_EOS_PHASE_FILES:
+        _write_synthetic_ps_table(spider_bundle / f, NX=3, NY=4)
+    (spider_bundle / 'solidus_A11_H13.dat').write_text('# bundled solidus\n')
+    (spider_bundle / 'liquidus_A11_H13.dat').write_text('# bundled liquidus\n')
+    config = SimpleNamespace(
+        interior_struct=SimpleNamespace(melting_dir=None),
+        interior_energetics=SimpleNamespace(const_properties=False),
+    )
+    dirs = {'spider': str(tmp_path / 'SPIDER')}
+
+    with _patch('proteus.utils.data.GetFWLData', return_value=tmp_path / 'fwl_empty'):
+        with pytest.raises(MissingMeltingCurveError, match='melting_dir is not set') as raised:
+            _provide_spider_eos_tables(config, str(tmp_path), dirs)
+        assert 'spider_liquidus_ps' not in dirs
+
+        # Discrimination: constant properties need no curves, so the tables are provided.
+        config.interior_energetics.const_properties = True
+        _provide_spider_eos_tables(config, str(tmp_path), dirs)
+
+    assert 'Monteux-600' in str(raised.value)
+    assert dirs['spider_eos_dir'] == str(tmp_path / 'data' / 'spider_eos')
+
+
+@pytest.mark.unit
+def test_provide_spider_eos_tables_reuses_already_populated_dir(tmp_path, monkeypatch):
     """When dirs['spider_eos_dir'] already holds all 12 expected files,
     the helper short-circuits with a debug log and sets the melting-curve
     paths without re-copying anything.
@@ -3237,12 +3298,16 @@ def test_provide_spider_eos_tables_reuses_already_populated_dir(tmp_path):
 
     eos_dir = tmp_path / 'preexisting_eos'
     _write_complete_ps_eos_dir(str(eos_dir))
+    calls, sol_pt, liq_pt = _configured_melting_curve(tmp_path, monkeypatch)
 
     config = SimpleNamespace(
-        interior_struct=SimpleNamespace(melting_dir=None),
+        interior_struct=SimpleNamespace(melting_dir='Monteux-600'),
     )
     dirs = {'spider_eos_dir': str(eos_dir)}
     _provide_spider_eos_tables(config, str(tmp_path), dirs)
+
+    # The configured curves replace the P-S curves of the reused set.
+    assert calls == [(str(eos_dir), sol_pt, liq_pt)]
 
     # The reuse path sets the two melting-curve paths.
     assert dirs['spider_solidus_ps'] == str(eos_dir / 'solidus_P-S.dat')
@@ -3267,8 +3332,9 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
 
     from proteus.interior_energetics.wrapper import _provide_spider_eos_tables
 
+    _configured_melting_curve(tmp_path, monkeypatch)
     config = SimpleNamespace(
-        interior_struct=SimpleNamespace(melting_dir=None),
+        interior_struct=SimpleNamespace(melting_dir='Monteux-600'),
     )
     dirs = {'spider': str(tmp_path / 'no_spider_submodule')}
 
@@ -4440,7 +4506,7 @@ def test_override_melting_curves_from_pt_clip_warning_when_t_out_of_range(tmp_pa
 
 
 @pytest.mark.unit
-def test_provide_spider_eos_tables_spider_submodule_fallback(tmp_path):
+def test_provide_spider_eos_tables_spider_submodule_fallback(tmp_path, monkeypatch):
     """When FWL_DATA is empty but the SPIDER submodule ships lookup_data
     with the legacy *_A11_H13 filenames, the helper copies them under
     the canonical *_P-S names.
@@ -4453,7 +4519,8 @@ def test_provide_spider_eos_tables_spider_submodule_fallback(tmp_path):
         _provide_spider_eos_tables,
     )
 
-    config = SimpleNamespace(interior_struct=SimpleNamespace(melting_dir=None))
+    calls, sol_pt, liq_pt = _configured_melting_curve(tmp_path, monkeypatch)
+    config = SimpleNamespace(interior_struct=SimpleNamespace(melting_dir='Monteux-600'))
 
     # SPIDER submodule lookup_data with the legacy melting-curve names.
     spider_root = tmp_path / 'SPIDER'
@@ -4484,6 +4551,8 @@ def test_provide_spider_eos_tables_spider_submodule_fallback(tmp_path):
     # dirs updated with the new paths.
     assert dirs['spider_eos_dir'] == str(target)
     assert dirs['spider_solidus_ps'] == str(target / 'solidus_P-S.dat')
+    # The configured curves replace the copied bundle curves.
+    assert calls == [(str(target), sol_pt, liq_pt)]
 
 
 @pytest.mark.unit
