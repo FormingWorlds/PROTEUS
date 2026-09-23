@@ -45,7 +45,7 @@ dependencies = [
     "attrs",
     "cattrs",
     "fwl-janus>=24.11.05",
-    "fwl-mors>=26.01.02",
+    "fwl-mors>=26.9.23",
     "fwl-calliope>=26.06.01",
     "fwl-zephyrus>=25.03.11",
     "fwl-aragog>=26.09.18",
@@ -86,7 +86,7 @@ dependencies = [
     # explicit connect and read timeout, and a transient failure is retried
     # with backoff instead of ending the fetch. Below that floor a stalled
     # mirror hangs the start of a run with no diagnostic.
-    "fwl-io>=26.8.31",
+    "fwl-io>=26.9.23",
     "zenodo-get",
     "zenodo-client>=0.4.1",
     "osfclient",

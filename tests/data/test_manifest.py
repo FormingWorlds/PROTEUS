@@ -564,8 +564,11 @@ def test_get_spfile_path_resolves_into_the_versioned_dataset_dir(tmp_path):
 
 def test_unknown_spectral_pair_is_rejected():
     """An unlisted (group, bands) pair fails loudly instead of resolving to a path."""
-    with pytest.raises(KeyError):
-        dataset_dir(spectral_file_key('Oak', '16'))
+    key = spectral_file_key('Oak', '16')
+
+    assert key == 'atmos_clim.spectral_files.oak_16'
+    with pytest.raises(KeyError, match='oak_16'):
+        dataset_dir(key)
 
 
 def test_migrated_datasets_are_not_also_pinned_in_the_legacy_map():

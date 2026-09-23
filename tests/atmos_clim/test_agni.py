@@ -2735,4 +2735,7 @@ def test_resolve_surface_material_absolute_path_is_unchanged(tmp_path):
     """An absolute path is returned as given."""
     target = tmp_path / 'elsewhere.dat'
 
+    nested = tmp_path / 'surface_albedos' / 'Hammond24' / 'basalt.dat'
+
     assert _resolve_surface_material(str(target), str(tmp_path / 'root')) == str(target)
+    assert _resolve_surface_material(str(nested), str(tmp_path / 'root')) == str(nested)

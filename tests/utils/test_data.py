@@ -1663,6 +1663,7 @@ def test_download_muscles_reports_fetch_failure(mock_fetch):
     mock_fetch.side_effect = RuntimeError('mirror down')
 
     assert download_muscles(stars=None) is False
+    mock_fetch.assert_called_once()
 
 
 @pytest.mark.unit
@@ -1697,9 +1698,13 @@ def test_download_interior_lookuptables(mock_fetch, tmp_path, monkeypatch):
 
     monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
 
+    legacy = MagicMock()
+    monkeypatch.setattr('proteus.utils.data.download', legacy)
+
     download_interior_lookuptables(clean=False)
 
     mock_fetch.assert_called_once_with(MELTING_WOLF_BOWER_2018, data_root=tmp_path)
+    legacy.assert_not_called()
 
 
 @pytest.mark.unit
@@ -1745,6 +1750,7 @@ def test_download_melting_curves_fetches_known_name(
     download_melting_curves(config, clean=False)
 
     mock_fetch.assert_called_once_with(getattr(data_mod, attr), data_root=tmp_path)
+    assert not (tmp_path / 'interior_lookup_tables').exists()
 
 
 @pytest.mark.unit
@@ -1761,9 +1767,10 @@ def test_download_melting_curves_local_dir_wins(mock_fetch, tmp_path, monkeypatc
     config = MagicMock()
     config.interior_struct.melting_dir = 'Wolf_Bower+2018'
 
-    download_melting_curves(config, clean=False)
+    download_melting_curves(config, clean=True)
 
     mock_fetch.assert_not_called()
+    assert (local / 'solidus_P-T.dat').read_text() == 'dummy\n'
 
 
 @pytest.mark.unit
@@ -1785,6 +1792,7 @@ def test_download_melting_curves_incomplete_local_dir_fetches(
     download_melting_curves(config, clean=False)
 
     mock_fetch.assert_called_once_with(MELTING_WOLF_BOWER_2018, data_root=tmp_path)
+    assert sorted(p.name for p in local.iterdir()) == ['solidus_P-T.dat']
 
 
 @pytest.mark.unit
@@ -1816,9 +1824,10 @@ def test_download_melting_curves_unknown_name_local_dir_ok(mock_fetch, tmp_path,
     config = MagicMock()
     config.interior_struct.melting_dir = 'MyCurve'
 
-    download_melting_curves(config)
+    download_melting_curves(config, clean=True)
 
     mock_fetch.assert_not_called()
+    assert (local / 'liquidus_P-T.dat').read_text() == 'dummy\n'
 
 
 @pytest.mark.unit
@@ -1919,6 +1928,7 @@ def test_resolve_lookup_table_dir_layout(tmp_path):
     assert (
         folder == tmp_path / 'interior_struct' / 'lookup' / 'wolf_bower_2018_1tpa' / 'r19473625'
     )
+    assert resolve_lookup_table_dir(data_root=str(tmp_path)) == folder
 
 
 @pytest.mark.unit
@@ -1942,8 +1952,11 @@ def test_find_lookup_table_dir_unwritable_root_gives_none():
     """A data root that cannot be created gives None, not an error."""
     from proteus.utils.data import find_lookup_table_dir
 
-    with patch('proteus.data.dataset_dir', side_effect=OSError('read-only')):
-        assert find_lookup_table_dir(data_root='/nonexistent') is None
+    with patch('proteus.data.dataset_dir', side_effect=OSError('read-only')) as mock_dir:
+        folder = find_lookup_table_dir(data_root='/nonexistent')
+
+    assert folder is None
+    mock_dir.assert_called_once()
 
 
 @pytest.mark.unit
@@ -2218,9 +2231,13 @@ def test_download_Seager_EOS(monkeypatch, tmp_path):
         data_pkg, 'fetch_dataset', lambda key, data_root=None: calls.append((key, data_root))
     )
 
+    legacy = MagicMock()
+    monkeypatch.setattr(data_mod, 'download', legacy)
+
     download_Seager_EOS()
 
     assert calls == [('interior_struct.eos.seager_2007', tmp_path)]
+    legacy.assert_not_called()
 
 
 @pytest.mark.unit
@@ -2449,7 +2466,10 @@ def test_download_Seager_EOS_failure_raises(monkeypatch, tmp_path):
     import proteus.utils.data as data_mod
     from proteus.utils.data import download_Seager_EOS
 
+    attempts = []
+
     def boom(key, data_root=None):
+        attempts.append(key)
         raise OSError('no network')
 
     monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
@@ -2457,6 +2477,7 @@ def test_download_Seager_EOS_failure_raises(monkeypatch, tmp_path):
 
     with pytest.raises(OSError, match='no network'):
         download_Seager_EOS()
+    assert attempts == ['interior_struct.eos.seager_2007']
 
 
 @pytest.mark.unit
@@ -3200,9 +3221,13 @@ def test_download_eos_dynamic_fetches_lookup_dataset(mock_fetch, tmp_path, monke
     target_dir = dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=tmp_path)
     mock_fetch.return_value = [target_dir / 'temperature_melt.dat']
 
+    legacy = MagicMock()
+    monkeypatch.setattr('proteus.utils.data.download', legacy)
+
     download_eos_dynamic('WolfBower2018_MgSiO3')
 
     mock_fetch.assert_called_once_with(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=tmp_path)
+    legacy.assert_not_called()
 
 
 @pytest.mark.unit
@@ -5269,9 +5294,10 @@ def test_get_zalmoxis_melting_curves_local_dir_beats_manifest(monkeypatch, tmp_p
     config = MagicMock()
     config.interior_struct.melting_dir = 'Monteux+600'
 
-    sol, _ = get_zalmoxis_melting_curves(config)
+    sol, liq = get_zalmoxis_melting_curves(config)
 
     assert float(sol(1.5e9)) == pytest.approx(2500.0, rel=1e-12)
+    assert float(liq(1.5e9)) == pytest.approx(3000.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -5394,15 +5420,18 @@ def test_get_zalmoxis_EOS_seager_versioned_dir_used(monkeypatch, tmp_path):
 def test_get_zalmoxis_EOS_seager_missing_fetches(monkeypatch, tmp_path):
     """Absent Seager files trigger one fetch through download_eos_static."""
     import proteus.utils.data as data_mod
+    from proteus.data import EOS_SEAGER_2007, dataset_dir
     from proteus.utils.data import get_zalmoxis_EOS
 
     monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
     calls = []
     monkeypatch.setattr(data_mod, 'download_eos_static', lambda: calls.append(1))
 
-    get_zalmoxis_EOS()
+    eos = get_zalmoxis_EOS()
 
     assert calls == [1]
+    seager = dataset_dir(EOS_SEAGER_2007, data_root=tmp_path)
+    assert eos[0]['core']['eos_file'] == str(seager / 'eos_seager07_iron.txt')
 
 
 @pytest.mark.unit
