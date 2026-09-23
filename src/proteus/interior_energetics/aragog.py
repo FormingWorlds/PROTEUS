@@ -1704,11 +1704,19 @@ class AragogRunner:
                 P_mesh = infer_mesh_surface_pressure(
                     output_dir, hf_row['Time'], solver.parameters.mesh
                 )
-                log.warning(
-                    'Snapshot has no mesh surface pressure; inferred %s Pa from '
-                    'its top-cell pressure for the Adams-Williamson mesh.',
-                    'no value' if P_mesh is None else f'{P_mesh:.4e}',
-                )
+                if P_mesh is None:
+                    log.warning(
+                        'Snapshot has no mesh surface pressure and its top cell gives '
+                        'none; the Adams-Williamson mesh keeps %.4e Pa from the '
+                        'restored row, so the run may not follow the original.',
+                        solver.parameters.mesh.surface_pressure,
+                    )
+                else:
+                    log.warning(
+                        'Snapshot has no mesh surface pressure; the Adams-Williamson '
+                        'mesh uses %.4e Pa inferred from its top cell.',
+                        P_mesh,
+                    )
             if P_mesh is not None:
                 solver.parameters.mesh.surface_pressure = P_mesh
         else:
@@ -2741,7 +2749,8 @@ def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | N
     -------
     float or None
         Surface pressure [Pa], or None when the snapshot lacks the profile or
-        the result is not finite.
+        the result is not finite or negative (the snapshot was not written on
+        this mesh).
     """
     fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_int.nc')
     with nc.Dataset(fpath) as ds:
@@ -2754,7 +2763,8 @@ def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | N
     beta = float(mesh.adams_williamson_beta)
     depth = float(mesh.outer_radius) - r_top
     value = P_top - rho_s * g / beta * np.expm1(beta * depth)
-    return value if np.isfinite(value) else None
+    # Allow for the float round trip of pres_s [GPa] and radius_s [km].
+    return value if np.isfinite(value) and value >= -1.0 else None
 
 
 def _read_snapshot_scalar(output_dir: str, time: float, name: str) -> float | None:

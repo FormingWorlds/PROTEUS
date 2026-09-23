@@ -1559,8 +1559,13 @@ class _RestoreSolver:
 
 @pytest.mark.parametrize(
     'core_bc, stored',
-    [('energy_balance', -2.2378876e-11), ('energy_balance', None), ('bower2018', 4100.0)],
-    ids=['state-in-snapshot', 'older-snapshot', 'bower2018-not-applied'],
+    [
+        ('energy_balance', -2.2378876e-11),
+        ('energy_balance', None),
+        ('bower2018', 4100.0),
+        ('quasi_steady', -2.2378876e-11),
+    ],
+    ids=['state-in-snapshot', 'older-snapshot', 'bower2018-not-applied', 'quasi-steady'],
 )
 def test_resume_restores_the_cmb_entropy_gradient(core_bc, stored, caplog):
     """On resume the entropy snapshot is restored together with the CMB
@@ -1653,8 +1658,9 @@ def test_cmb_gradient_state_only_for_energy_balance(core_bc, expected):
     assert cmb_gradient_state(object(), 'energy_balance') is None
 
 
+@pytest.mark.parametrize('diagnostics', [True, False], ids=['diagnostics', 'no-diagnostics'])
 @pytest.mark.parametrize('core_bc', ['energy_balance', 'bower2018'])
-def test_final_snapshot_keeps_the_resume_state(tmp_path, core_bc):
+def test_final_snapshot_keeps_the_resume_state(tmp_path, core_bc, diagnostics):
     """The end-of-run write rewrites the last in-loop snapshot (same file
     name), so it must store the same CMB gradient and mesh surface pressure; a
     run that ends normally is then resumed from the stored values."""
@@ -1668,11 +1674,16 @@ def test_final_snapshot_keeps_the_resume_state(tmp_path, core_bc):
     (tmp_path / 'data').mkdir()
     t = 2512.69358
     # The in-loop write for the same time comes first, as in a real run.
-    AragogRunner._write_output_ncdf(str(tmp_path), t, _snapshot_output(), dSdr_cmb=-2.2e-11)
+    AragogRunner._write_output_ncdf(
+        str(tmp_path),
+        t,
+        _snapshot_output(diagnostics=diagnostics),
+        write_diagnostics=diagnostics,
+        dSdr_cmb=-2.2e-11,
+    )
     config = MagicMock()
     config.interior_energetics.aragog.core_bc = core_bc
-    # The in-loop write kept the flux diagnostics; the final write must too.
-    config.interior_energetics.write_flux_diagnostics = core_bc == 'energy_balance'
+    config.interior_energetics.write_flux_diagnostics = diagnostics
     interior_o = MagicMock()
     interior_o.aragog_solver = _StateSolver(-2.2e-11 if core_bc == 'energy_balance' else 4100.0)
     write_final_snapshot(
@@ -1691,7 +1702,8 @@ def test_final_snapshot_keeps_the_resume_state(tmp_path, core_bc):
     import netCDF4 as nc
 
     with nc.Dataset(next((tmp_path / 'data').glob('*_int.nc'))) as ds:
-        assert ('Jcond_b' in ds.variables) == (core_bc == 'energy_balance')
+        # The final write follows the config flag, as the in-loop write did.
+        assert ('Jcond_b' in ds.variables) == diagnostics
 
 
 @pytest.mark.parametrize('core_bc', ['energy_balance', 'bower2018'])
@@ -1774,38 +1786,67 @@ def test_snapshot_round_trips_the_mesh_surface_pressure(tmp_path, value, expecte
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('eos_method', [1, 2], ids=['adams-williamson', 'mesh-file'])
-def test_update_solver_infers_the_mesh_pressure_of_an_older_snapshot(tmp_path, eos_method):
+@pytest.mark.parametrize(
+    'case',
+    ['adams-williamson', 'mesh-file', 'no-profile', 'other-mesh'],
+)
+def test_update_solver_infers_the_mesh_pressure_of_an_older_snapshot(tmp_path, caplog, case):
     """A snapshot without ``mesh_surface_pressure`` (older runs) gets the value
-    its own top cell implies on the Adams-Williamson mesh, not the restored
-    row's P_surf; a mesh-file run (pressure from the file) keeps its setup."""
+    its own top cell implies on Aragog's Adams-Williamson mesh, not the
+    restored row's P_surf. A mesh-file run keeps its setup value, and so does a
+    snapshot without the profile or one not written on this mesh; the log says
+    which value the mesh uses."""
     from types import SimpleNamespace
 
+    pressure_eos = pytest.importorskip('aragog.mesh.pressure_eos')
     from proteus.interior_energetics.aragog import AragogRunner
 
-    rho_s, g, beta, R, P_s = 4078.95, 10.4068, 1.1115e-7, 6.2848e6, 3.0e8
+    P_s = 3.0e8  # the setup value the original run used [Pa]
+    mesh = SimpleNamespace(
+        surface_pressure=P_s,
+        eos_method=1,
+        surface_density=4078.95,
+        gravitational_acceleration=10.4068,
+        adiabatic_bulk_modulus=2.6e11,
+        adams_williamson_beta=1.1115e-7,
+        outer_radius=6.2848e6,
+    )
     out = _snapshot_output()
-    out.r_stag = np.linspace(3.47e6, 6.2776e6, len(out.S_final))
-    out.P_stag = rho_s * g / beta * np.expm1(beta * (R - out.r_stag)) + P_s
+    out.r_basic = np.linspace(3.4566e6, mesh.outer_radius, len(out.S_final) + 1)
+    out.r_stag = 0.5 * (out.r_basic[:-1] + out.r_basic[1:])
+    eos = pressure_eos.AdamsWilliamsonEOS(mesh, out.r_basic)
+    out.P_stag = np.asarray(eos.get_pressure_from_radii(out.r_stag)).ravel()
+    if case == 'other-mesh':
+        out.P_stag = 0.5 * out.P_stag  # not the Adams-Williamson profile of this mesh
     (tmp_path / 'data').mkdir()
     AragogRunner._write_output_ncdf(str(tmp_path), 202.0, out)
+    if case == 'no-profile':
+        import netCDF4 as nc
+
+        snap = next((tmp_path / 'data').glob('*_int.nc'))
+        with nc.Dataset(snap, 'r+') as ds:
+            ds.renameVariable('pres_s', 'pres_s_other')
     interior_o = MagicMock()
-    interior_o.aragog_solver.parameters.mesh = SimpleNamespace(
-        surface_pressure=8.12e8,  # the restored row's P_surf
-        eos_method=eos_method,
-        surface_density=rho_s,
-        gravitational_acceleration=g,
-        adams_williamson_beta=beta,
-        outer_radius=R,
-    )
+    mesh.surface_pressure = 8.12e8  # setup_solver took the restored row's P_surf
+    mesh.eos_method = 2 if case == 'mesh-file' else 1
+    interior_o.aragog_solver.parameters.mesh = mesh
     hf_row = {'Time': 202.0, 'F_atm': 7.6e5, 'T_eqm': 255.0}
-    AragogRunner.update_solver(80.0, hf_row, interior_o, output_dir=str(tmp_path))
-    got = interior_o.aragog_solver.parameters.mesh.surface_pressure
-    if eos_method == 1:
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.aragog'):
+        AragogRunner.update_solver(80.0, hf_row, interior_o, output_dir=str(tmp_path))
+    got = mesh.surface_pressure
+    messages = ' '.join(r.getMessage() for r in caplog.records)
+    if case == 'adams-williamson':
         # Recovered to the float64 round trip of pres_s in GPa and radius_s in km.
         assert got == pytest.approx(P_s, rel=1e-8)
+        # Discrimination: Pa, not bar or GPa, and not the row's P_surf.
+        assert 1e7 < got < 1e9 and abs(got - 8.12e8) > 1e8
+        assert 'inferred from its top cell' in messages
     else:
         assert got == pytest.approx(8.12e8, rel=1e-15, abs=0.0)
+        if case == 'mesh-file':
+            assert messages == ''
+        else:
+            assert 'keeps 8.1200e+08 Pa' in messages
     assert interior_o._last_dSdr_cmb is None
 
 
