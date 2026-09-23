@@ -258,10 +258,8 @@ class Planet:
             The surface temperature (hence the uniform initial entropy) is
             solved so the minimum superheat over the whole mantle equals
             delta_T_super, evaluated against the solidus/liquidus actually in
-            use. This guarantees a fully molten initial state with a controlled
-            margin for any planet mass and any melting-curve parameterisation,
-            without the user having to pick a surface temperature or entropy.
-            If the requested superheat cannot be reached before the deep
+            use. This controls the molten margin without the user picking a
+            surface temperature or entropy. If the requested superheat cannot be reached before the deep
             adiabat exhausts the EOS table, the solve clamps to the largest
             achievable superheat and emits a warning that reports it. If even
             the hottest adiabat the table supports stays below the liquidus
@@ -296,11 +294,10 @@ class Planet:
         Minimum superheat [K] above the liquidus for the liquidus_super
         initial condition (liquidus_super mode only). The initial adiabat is
         solved so that, at its most-constraining depth, the temperature is at
-        least delta_T_super above the configured liquidus; this fixes the whole
-        isentropic profile and guarantees a fully molten mantle with that
-        margin, for any planet mass and any melting curve. The default 500 K
-        gives a comfortably molten start across the Earth-mass to
-        ten-Earth-mass range. delta_T_super = 0 makes the mantle marginally
+        least delta_T_super above the liquidus of the interior P-S tables;
+        this fixes the whole isentropic profile. Whether the default 500 K is
+        reachable depends on the tables and the planet mass (see the
+        initial-conditions guide). delta_T_super = 0 makes the mantle marginally
         molten (just touching the liquidus at the binding depth). If the
         requested superheat cannot be reached within the EOS table, the solve
         clamps to the largest achievable superheat and emits a warning that
@@ -350,8 +347,7 @@ class Planet:
 
     # Initial temperature profile. Default 'liquidus_super' solves for the
     # coolest adiabat that is fully molten everywhere with delta_T_super of
-    # superheat above the configured liquidus, robust to planet mass and to the
-    # melting-curve choice. The other six modes cover the fixed-T_cmb adiabat
+    # superheat above the table liquidus. The other six modes cover the fixed-T_cmb adiabat
     # (adiabatic_from_cmb), surface-anchored adiabatic, isothermal, linear,
     # accretion (White & Li 2025), and isentropic (CHILI protocol) ICs.
     temperature_mode: str = field(
@@ -382,11 +378,9 @@ class Planet:
 
     # Minimum superheat above the liquidus for temperature_mode =
     # 'liquidus_super'. The IC adiabat is solved so its temperature exceeds the
-    # configured liquidus by at least delta_T_super at the most-constraining
-    # mantle depth, which fixes a fully molten isentropic profile for any mass
-    # and any melting curve. The default 500 K gives a comfortably molten start
-    # across the Earth-mass to ten-Earth-mass range; delta_T_super = 0 makes the
-    # mantle marginally molten (touching the liquidus at the binding depth).
+    # table liquidus by at least delta_T_super at the most-constraining mantle
+    # depth; delta_T_super = 0 makes the mantle marginally molten (touching the
+    # liquidus at the binding depth).
     delta_T_super: float = field(default=500.0, validator=ge(0))
 
     # Initial volatile inventory

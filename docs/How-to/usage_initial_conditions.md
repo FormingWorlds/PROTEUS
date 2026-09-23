@@ -86,9 +86,14 @@ surface temperature or entropy by hand. Because the binding depth is shallow,
 the solved entropy is essentially independent of planet mass, so a mass grid
 starts on a common adiabat.
 
-The default `delta_T_super = 500` K gives a comfortably molten start across the
-Earth-mass to ten-Earth-mass range. Setting `delta_T_super = 0` makes the mantle
-marginally molten, just touching the liquidus at the binding depth.
+Whether the default `delta_T_super = 500` K is reachable depends on the P-S
+tables and the planet mass. On PALEOS-generated tables it is reached at 1 and
+10 Earth masses. On the Wolf & Bower (2018) tables from FWL_DATA it is reached
+up to 2.5 Earth masses; at 3 Earth masses the solve clamps to 387 K, and from
+3.5 Earth masses the table liquidus entropy exceeds the table maximum, so no
+fully molten state exists and PROTEUS raises. Setting `delta_T_super = 0`
+makes the mantle marginally molten, just touching the liquidus at the binding
+depth.
 
 !!! note "Requires a silicate liquidus"
     For every structure module, the initial entropy is solved on the interior
@@ -109,8 +114,13 @@ marginally molten, just touching the liquidus at the binding depth.
     With `"zalmoxis"`, the structure solve also anchors its temperature profile
     on a P-T adiabat that is `delta_T_super` above the P-T liquidus, while the
     initial entropy is solved on the P-S tables. This anchor raises or clamps
-    on its own P-T criteria, so a Zalmoxis run can stop there before the
-    initial entropy is solved. The two adiabats differ slightly: for 1 Earth
+    on its own P-T criteria: when it raises, the run stops; when it clamps
+    below `delta_T_super`, the initial entropy is solved for the superheat the
+    anchor reached, and a warning names both values. The generated P-S tables
+    fill cells where PALEOS has no valid state, so on their own they can
+    report a superheat that PALEOS does not support; the anchor caps it. With
+    `"dummy"` and PALEOS-generated tables there is no anchor, so a large
+    `delta_T_super` can land in those filled cells. The two adiabats differ slightly: for 1 Earth
     mass at `delta_T_super = 500` K (core-mantle boundary at 103 GPa), the
     P-T anchor evaluated on the P-S tables has a smallest margin of 472 K
     above their liquidus, against 500 K for the initial entropy.
