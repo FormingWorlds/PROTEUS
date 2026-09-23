@@ -127,10 +127,9 @@ def _cached_entropy_eos(eos_dir_str: str):
 def _cached_entropy_eos_jax(eos_dir_str: str):
     """Return the cached EntropyEOS_JAX for ``eos_dir_str``.
 
-    The JAX EOS trace and compile is slow and the result is immutable, so it
-    is cached with the same key as the numpy EOS
-    (``common._cached_by_dir_stamp``), and the CVODE right-hand side reads
-    the same table set as the solver setup and the initial condition.
+    The cache uses the same key as the numpy EOS
+    (``common._cached_by_dir_stamp``), so the CVODE right-hand side reads the
+    same table set as the solver setup and the initial condition.
     """
     from aragog.jax.eos import EntropyEOS_JAX
 
@@ -477,7 +476,7 @@ class AragogRunner:
             _t_after_init = time.perf_counter()
             # Option Z: register the JAX CVODE callback factory when
             # the flag is on. No-op when the flag is off.
-            AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
+            AragogRunner._maybe_install_jax_cvode_factory(config, interior_o, dirs['output'])
             _t_after_factory = time.perf_counter()
             if os.environ.get('PROTEUS_CI_NIGHTLY') == '1':
                 log.info(
@@ -1117,7 +1116,9 @@ class AragogRunner:
             )
 
     @staticmethod
-    def _maybe_install_jax_cvode_factory(config: Config, interior_o: Interior_t) -> None:
+    def _maybe_install_jax_cvode_factory(
+        config: Config, interior_o: Interior_t, outdir: str | None = None
+    ) -> None:
         """Install a JAX CVODE callback factory on the solver (option Z).
 
         Activated only when ``config.interior_energetics.aragog.backend ==
@@ -1130,7 +1131,9 @@ class AragogRunner:
         No-op (silent) for backend='numpy'. When backend='jax' but
         JAX import or pytree construction fails, logs a warning and
         leaves the factory unset so the solver falls back to the
-        default finite-difference Jacobian path.
+        default finite-difference Jacobian path. When
+        ``interior_o._spider_eos_dir`` is empty or missing, the EOS is read
+        from ``outdir/data/spider_eos``, the directory ``setup_solver`` uses.
         """
         use_jax_jac = config.interior_energetics.aragog.backend == 'jax'
         if not use_jax_jac:
@@ -1172,6 +1175,9 @@ class AragogRunner:
 
         try:
             eos_dir = interior_o._spider_eos_dir
+            if not (eos_dir and os.path.isdir(eos_dir)) and outdir is not None:
+                # The same fallback directory as setup_solver.
+                eos_dir = Path(outdir) / 'data' / 'spider_eos'
             _t_pre_jax_eos = time.perf_counter()
             eos_jax = _cached_entropy_eos_jax(str(eos_dir))
             _t_post_jax_eos = time.perf_counter()

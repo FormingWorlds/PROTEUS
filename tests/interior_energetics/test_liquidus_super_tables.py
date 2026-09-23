@@ -116,6 +116,7 @@ def fake_tables(monkeypatch, tmp_path):
     return str(tmp_path)
 
 
+@pytest.mark.physics_invariant
 def test_reachable_target_is_honoured(fake_tables):
     """A reachable superheat is met to numerical tolerance without clamping."""
     res = solve_superliquidus_entropy_from_tables(_config(200.0), {'P_cmb': P_CMB}, fake_tables)
@@ -132,6 +133,7 @@ def test_reachable_target_is_honoured(fake_tables):
     assert abs(res['S_target'] - S_surface_bound) > 100.0
 
 
+@pytest.mark.physics_invariant
 def test_unreachable_target_clamps_and_warns(fake_tables, caplog):
     """A target above the EOS ceiling clamps to the ceiling and logs a warning."""
     delta = 1000.0
@@ -180,6 +182,7 @@ def test_sub_liquidus_at_table_maximum_raises(monkeypatch, fake_tables):
 
 
 @pytest.mark.physics_invariant
+@pytest.mark.physics_invariant
 def test_entropy_is_monotonic_in_requested_superheat(fake_tables):
     """A larger requested superheat needs a strictly larger initial entropy."""
     deltas = [0.0, 100.0, 300.0, 600.0]
@@ -215,6 +218,7 @@ def test_table_floor_when_target_below_lowest_entropy(fake_tables, monkeypatch):
     assert len(calls) < 10
 
 
+@pytest.mark.physics_invariant
 def test_melting_dir_curve_is_not_the_reference(fake_tables, monkeypatch):
     """The superheat is measured against the tables' own P-S liquidus, which
     sets the solver's melt fraction; a melting_dir P-T curve 500 K hotter must
@@ -405,6 +409,7 @@ def test_all_nan_table_raises(fake_tables, monkeypatch):
     assert 'between 0.0001 and 100 GPa' in str(exc.value)
 
 
+@pytest.mark.physics_invariant
 def test_entropy_dependent_nan_at_depth_is_not_satisfied(fake_tables, monkeypatch):
     """Where the deep table is NaN below some entropy, those entropies do not
     count as molten: the solve moves up to the first entropy with a finite
@@ -447,6 +452,7 @@ def test_ini_dsdr_lowers_the_entropy_ceiling(fake_tables):
     assert res['S_target'] + 4.698e-6 * span == pytest.approx(S_MAX, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
 def test_ini_dsdr_ceiling_ignores_a_mass_core_fraction(fake_tables):
     """In core_frac_mode 'mass', core_frac * R_int is not a radius. The
     ceiling uses R_core, so a molten state that exists within the table
@@ -625,6 +631,7 @@ def test_liquidus_below_the_melt_table_raises(fake_tables, monkeypatch):
     assert 'table entropy from 1700 J/kg/K' in str(exc.value)
 
 
+@pytest.mark.physics_invariant
 def test_melt_table_maximum_is_the_entropy_ceiling(fake_tables, monkeypatch):
     """The molten adiabat reads the melt table, so the clamp ceiling is the
     melt table's highest entropy (2600), not the 3000 J/kg/K overall maximum.
@@ -779,6 +786,7 @@ def _anchor_result(S_target, clamped=True, window_limited=False, achieved=150.0)
     ('ini_dsdr', 'S_exp'),
     [(0.0, 2300.0), (-1.0e-5, 2300.0 - 1.0e-5 * 3.0e6)],
 )
+@pytest.mark.physics_invariant
 def test_zalmoxis_anchor_clamp_caps_the_ic_entropy(
     fake_tables, monkeypatch, caplog, ini_dsdr, S_exp
 ):
@@ -1248,10 +1256,11 @@ def test_structure_anchor_raise_reuses_the_last_solved_anchor(monkeypatch, caplo
         raise common.InitialConditionError('liquidus_super: no valid molten adiabat found')
 
     monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _anchor)
-    monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
     cfg = _config(500.0, module='zalmoxis')
     cfg.planet.tcmb_init = 6000.0
     cfg.interior_energetics.module = energetics
+    monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+    monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR_FOR', zal._superliq_anchor_for(cfg))
 
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
         T_cmb = zal._resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': P_CMB}, 'liquidus_super')
@@ -1261,6 +1270,61 @@ def test_structure_anchor_raise_reuses_the_last_solved_anchor(monkeypatch, caplo
     assert len(msgs) == 1
     assert 'at P_cmb=100 GPa' in msgs[0]
     assert 'estimated' not in msgs[0]
+
+
+def test_last_anchor_fallback_is_keyed_on_superheat_and_mantle_eos(monkeypatch, caplog):
+    """Configs in one process: an anchor solved for one superheat and mantle
+    EOS stands in for a structure-solve raise of the same pair only; another
+    superheat or mantle EOS falls back to its own tcmb_init.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+
+    def _solve(config, hf_row):
+        raise common.InitialConditionError('liquidus_super: no valid molten adiabat found')
+
+    monkeypatch.setattr(zal, '_solve_superliquidus_adiabat', _solve)
+    cfg_a = _config(500.0, module='zalmoxis')
+    cfg_a.planet.tcmb_init = 6000.0
+    # The state a successful anchor solve for cfg_a leaves behind.
+    monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+    monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR_FOR', zal._superliq_anchor_for(cfg_a))
+
+    cfg_b = _config(300.0, module='zalmoxis')
+    cfg_b.planet.tcmb_init = 6000.0
+    cfg_c = _config(500.0, module='zalmoxis')
+    cfg_c.planet.tcmb_init = 6000.0
+    cfg_c.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        T = [
+            zal._resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': P_CMB}, 'liquidus_super')
+            for cfg in (cfg_a, cfg_b, cfg_c)
+        ]
+
+    assert T == pytest.approx([8765.0, 6000.0, 6000.0])
+    msgs = [r.getMessage() for r in caplog.records if 'no P-T anchor' in r.getMessage()]
+    assert 'the last solved anchor' in msgs[0]
+    assert all('using tcmb_init' in m for m in msgs[1:])
+
+
+def test_proteus_start_clears_the_superliquidus_caches(monkeypatch):
+    """Proteus.start clears the anchor memo, failure memo and last anchor
+    before anything else, so a second run in one process starts clean.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    from proteus.proteus import Proteus
+
+    zal._SUPERLIQ_LAST_ANCHOR = 8765.0
+    zal._SUPERLIQ_LAST_ANCHOR_FOR = (500.0, 'PALEOS-2phase:MgSiO3')
+    zal._SUPERLIQ_FAILED[(100000, 500.0, 'x')] = common.InitialConditionError('old')
+
+    # Stop start() at its first import after the cache clear.
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_chem.wrapper', None)
+    with pytest.raises(ImportError):
+        Proteus.start(object.__new__(Proteus))
+    assert zal._SUPERLIQ_LAST_ANCHOR is None
+    assert zal._SUPERLIQ_LAST_ANCHOR_FOR is None
+    assert not zal._SUPERLIQ_FAILED
 
 
 def test_zalmoxis_route_without_a_zalmoxis_section_raises(fake_tables):
@@ -1278,31 +1342,61 @@ def test_zalmoxis_route_without_a_zalmoxis_section_raises(fake_tables):
 
 
 def test_anchor_failures_other_than_the_ic_error_are_chained(fake_tables, monkeypatch):
-    """A table-load or integration failure inside the anchor stops the IC as
-    InitialConditionError with the cause chained, so SPIDER does not retry it.
+    """A numerical failure inside the anchor stops the IC as
+    InitialConditionError that names P_cmb, with the cause chained, so SPIDER
+    does not retry it.
     """
     zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    error = ValueError('f(a) and f(b) must have different signs')
 
-    def _anchor(config, hf_row):
-        raise ValueError('f(a) and f(b) must have different signs')
+    def _solve(config, hf_row):
+        raise error
 
-    monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _anchor)
+    monkeypatch.setattr(zal, '_solve_superliquidus_adiabat', _solve)
 
     with pytest.raises(common.InitialConditionError, match='ValueError: f\\(a\\)') as exc:
         compute_initial_entropy(
             _config(500.0, module='zalmoxis'), {'P_cmb': P_CMB}, 3300.0, fake_tables
         )
-    assert isinstance(exc.value.__cause__, ValueError)
+    assert 'the PALEOS P-T anchor failed at P_cmb=100 GPa' in str(exc.value)
+    assert exc.value.__cause__ is error
+
+
+def test_ic_error_from_the_anchor_solve_is_not_rewrapped(fake_tables, monkeypatch):
+    """An InitialConditionError from the anchor solve reaches the IC and a
+    non-deferred structure solve with its own message, not wrapped as a
+    numerical anchor failure.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    zal._clear_superliquidus_cache()
+
+    def _solve(config, hf_row):
+        raise common.InitialConditionError('liquidus_super: no valid molten adiabat found')
+
+    monkeypatch.setattr(zal, '_solve_superliquidus_adiabat', _solve)
+    cfg = _config(500.0, module='zalmoxis')
+    with pytest.raises(common.InitialConditionError) as ic:
+        compute_initial_entropy(cfg, {'P_cmb': P_CMB}, 3300.0, fake_tables)
+    cfg_struct = _config(500.0, module='zalmoxis')
+    cfg_struct.interior_energetics.module = 'dummy'
+    with pytest.raises(common.InitialConditionError) as struct:
+        zal._resolve_zalmoxis_cmb_temperature(cfg_struct, {'P_cmb': P_CMB}, 'liquidus_super')
+    for exc in (ic.value, struct.value):
+        assert str(exc) == 'liquidus_super: no valid molten adiabat found'
+        assert 'the PALEOS P-T anchor failed' not in str(exc)
+    zal._clear_superliquidus_cache()
 
 
 @pytest.mark.parametrize(
     ('S_anchor', 'ini_dsdr', 'expect'),
     [
         (1800.0, 0.0, 'below the P-S table liquidus'),
-        (1900.0, -1.0e-5, 'comes from the ini_dsdr allowance'),
+        (1800.0, -1.0e-5, 'below the P-S table liquidus'),
+        (1900.0, -1.0e-5, 'The raise comes from the ini_dsdr allowance'),
     ],
-    ids=['anchor-entropy-not-molten', 'ini_dsdr-allowance'],
+    ids=['anchor-entropy-not-molten', 'not-molten-with-ini_dsdr', 'ini_dsdr-allowance'],
 )
+@pytest.mark.physics_invariant
 def test_cap_raise_names_its_cause(fake_tables, monkeypatch, S_anchor, ini_dsdr, expect):
     """A capped IC that raises names the P-S margin at the anchor entropy
     itself. When that margin is negative the message gives both superheats;
@@ -1335,11 +1429,14 @@ def test_cap_raise_names_its_cause(fake_tables, monkeypatch, S_anchor, ini_dsdr,
     if m < 0:
         assert f'P-S adiabat is {-m:.0f} K below the P-S table liquidus' in msg
         assert 'is 20 K above the P-T liquidus' in msg
+        assert 'ini_dsdr allowance' not in msg
     else:
-        assert f'P-S adiabat is {m:.0f} K above the P-S liquidus' in msg
+        assert f'would be {m:.0f} K above the liquidus' in msg
         assert 'P-T liquidus' not in msg
+        assert exc.value.__cause__.from_ini_dsdr
 
 
+@pytest.mark.physics_invariant
 def test_clamp_warnings_give_the_deepest_node_superheat(fake_tables, monkeypatch, caplog):
     """With ini_dsdr < 0 the deepest node holds S + |ini_dsdr| (R_int - R_core),
     so both clamp warnings give its superheat next to the uniform-entropy one.
@@ -1372,6 +1469,42 @@ def test_clamp_warnings_give_the_deepest_node_superheat(fake_tables, monkeypatch
     assert f'({superheat(S_MAX):.0f} K at the deepest node with ini_dsdr)' in msgs[1]
     # Discrimination: the uniform-entropy superheat is lower by A * dS.
     assert superheat(S_MAX) - res['achieved_superheat'] == pytest.approx(A * dS)
+
+
+@pytest.mark.physics_invariant
+def test_table_raise_names_the_ini_dsdr_allowance(fake_tables):
+    """On the table route, a raise that ini_dsdr = 0 would avoid names the
+    allowance and the margin at the deepest-node entropy.
+    """
+    P_cmb = P_CMB
+    cfg = _config(200.0)
+    cfg.planet.ini_dsdr = -4.0e-4
+    hf_row = {'P_cmb': P_cmb, 'R_int': 6.0e6, 'R_core': 3.0e6}
+    dS = 4.0e-4 * 3.0e6
+    m_top = A * S_MAX + T0 - L0 + (B - L1) * P_cmb / 1e9
+    assert m_top - A * dS < 0  # the uniform-entropy check fails at S_MAX - dS
+
+    with pytest.raises(common.InitialConditionError) as exc:
+        solve_superliquidus_entropy_from_tables(cfg, hf_row, fake_tables)
+
+    assert exc.value.from_ini_dsdr
+    msg = str(exc.value)
+    assert 'The raise comes from the ini_dsdr allowance' in msg
+    assert f'deepest-node entropy ({S_MAX:.1f} J/kg/K) would be {m_top:.0f} K above' in msg
+
+
+def test_clamp_warning_omits_the_deepest_node_without_ini_dsdr(fake_tables, caplog):
+    """With ini_dsdr = 0 the deepest node equals the uniform adiabat, so the
+    clamp warning gives no separate deepest-node superheat.
+    """
+    cfg = _config(1000.0)
+    cfg.planet.ini_dsdr = 0.0
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        solve_superliquidus_entropy_from_tables(cfg, {'P_cmb': P_CMB}, fake_tables)
+    msgs = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(msgs) == 1
+    assert 'clamped' in msgs[0]
+    assert 'deepest node' not in msgs[0]
 
 
 def test_cap_warning_key_separates_delta_and_p_cmb(fake_tables, monkeypatch, caplog):
@@ -1593,6 +1726,7 @@ def test_cap_raise_without_a_table_temperature_at_the_anchor_entropy(fake_tables
         IndexError('index 200 is out of bounds'),
         ZeroDivisionError('float division by zero'),
         FloatingPointError('overflow encountered'),
+        OverflowError('math range error'),
         RuntimeError('integration did not converge'),
     ],
     ids=lambda e: type(e).__name__,
@@ -1631,6 +1765,9 @@ def test_numerical_anchor_failures_are_wrapped_and_memoised(monkeypatch, error):
         AttributeError('module has no attribute'),
         FileNotFoundError('paleos_mgsio3_tables_pt_proteus_liquid.dat'),
         PermissionError('lock.pid'),
+        NotImplementedError('method not available'),
+        RecursionError('maximum recursion depth exceeded'),
+        UnicodeDecodeError('utf-8', b'\\xff', 0, 1, 'invalid start byte'),
     ],
     ids=lambda e: type(e).__name__,
 )

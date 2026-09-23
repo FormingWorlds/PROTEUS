@@ -216,16 +216,18 @@ class InitialConditionError(RuntimeError):
     """
 
 
-# Numerical failures of the PALEOS P-T anchor integration that are raised as a
-# chained InitialConditionError; programming and I/O errors propagate unchanged.
+# Numerical failures of the PALEOS P-T anchor integration, raised as a chained
+# InitialConditionError. The pass-through types below, and every other type
+# (TypeError, AttributeError, OSError, MemoryError), propagate unchanged.
 ANCHOR_NUMERICAL_ERRORS = (
     ValueError,
     KeyError,
     IndexError,
-    ZeroDivisionError,
-    FloatingPointError,
+    ArithmeticError,
     RuntimeError,
 )
+# Programming and decoding errors that subclass a numerical type above.
+ANCHOR_PASSTHROUGH_ERRORS = (NotImplementedError, RecursionError, UnicodeError)
 
 
 def _margin_kink_pressures(eos: EntropyEOS) -> np.ndarray:
@@ -268,6 +270,15 @@ def _margin_kink_pressures(eos: EntropyEOS) -> np.ndarray:
 def _kelvin_or_unknown(value: float) -> str:
     """Format a temperature difference as ``'<n> K'``, or ``'unknown'`` if NaN."""
     return f'{value:.0f} K' if np.isfinite(value) else 'unknown'
+
+
+def _deepest_node_clause(res: dict) -> str:
+    """Log clause with the deepest-node superheat, empty unless ini_dsdr < 0."""
+    if not res.get('ini_dsdr_applies', False):
+        return ''
+    return (
+        f' ({_kelvin_or_unknown(res["cmb_node_superheat"])} at the deepest node with ini_dsdr)'
+    )
 
 
 def _melt_entropy_range(eos: EntropyEOS) -> tuple[float, float]:
@@ -439,7 +450,7 @@ def solve_superliquidus_entropy_from_tables(
         ``achieved_superheat`` [K], ``binding_P`` [Pa], ``P_cmb`` [Pa],
         ``cmb_node_superheat`` [K] (at the deepest node, with the
         ``ini_dsdr`` perturbation; NaN when ``ini_dsdr < 0`` and ``hf_row``
-        has no mantle radii), ``clamped`` (bool) and
+        has no mantle radii), ``ini_dsdr_applies`` (``ini_dsdr < 0``), ``clamped`` (bool) and
         ``capped_by_ceiling`` (True when the clamp entropy comes from
         ``S_ceiling``; that clamp is logged at INFO, since the caller that
         sets the ceiling reports it).
@@ -455,6 +466,8 @@ def solve_superliquidus_entropy_from_tables(
         highest usable entropy, or if no fully-molten initial condition is
         reachable below that entropy. That last error carries the negative
         margin and its pressure as ``margin`` [K] and ``binding_P`` [Pa],
+        ``from_ini_dsdr`` (True when the adiabat at the deepest-node entropy
+        would be molten, and the message then says so),
         ``from_ceiling`` (True when ``S_ceiling`` set the highest entropy),
         ``margin_at_ceiling`` [K] and ``binding_P_at_ceiling`` [Pa] (the
         margin at that entropy before the ``ini_dsdr`` allowance, and where
@@ -602,12 +615,22 @@ def solve_superliquidus_entropy_from_tables(
             f'({S_hi:.1f} J/kg/K); the superheat target cannot be evaluated.'
         )
     if sh_hi < 0:
-        err = InitialConditionError(
+        msg = (
             'liquidus_super: no fully-molten initial condition is reachable below '
             f'{ceiling_src}; even at the highest usable entropy ({S_hi:.1f} J/kg/K) '
             f'the adiabat is {-sh_hi:.0f} K below the liquidus at P={P_hi / 1e9:.3g} GPa.'
         )
+        m_deep = _probe(S_hi + dS_deep)[0] if dS_deep > 0 else -np.inf
+        allowance = bool(m_deep >= 0)
+        if allowance:
+            msg += (
+                ' The raise comes from the ini_dsdr allowance: with ini_dsdr = 0 the '
+                f'adiabat at the deepest-node entropy ({S_hi + dS_deep:.1f} J/kg/K) would be '
+                f'{m_deep:.0f} K above the liquidus.'
+            )
+        err = InitialConditionError(msg)
         err.margin, err.binding_P, err.from_ceiling = sh_hi, P_hi, from_ceiling
+        err.from_ini_dsdr = allowance
         # Margin at the ceiling entropy itself, before the ini_dsdr allowance.
         err.margin_at_ceiling, err.binding_P_at_ceiling = (
             _probe(float(S_ceiling)) if from_ceiling else (sh_hi, P_hi)
@@ -638,6 +661,7 @@ def solve_superliquidus_entropy_from_tables(
         'binding_P': P_bind,
         'P_cmb': P_cmb,
         'cmb_node_superheat': T_deep - float(T_liq[-1]) if radii_known else float('nan'),
+        'ini_dsdr_applies': ini_dsdr < 0,
         'clamped': clamped,
         'capped_by_ceiling': bool(clamped and from_ceiling),
     }
@@ -646,14 +670,13 @@ def solve_superliquidus_entropy_from_tables(
             'liquidus_super: the requested superheat of %.0f K is not reachable '
             'below %s (highest usable entropy %.1f J/kg/K). The initial '
             'entropy is clamped to that value, giving %.0f K of superheat at '
-            'P=%.3g GPa (%s at the deepest node with ini_dsdr) and a '
-            'surface temperature of %.0f K.',
+            'P=%.3g GPa%s and a surface temperature of %.0f K.',
             delta,
             ceiling_src,
             S,
             achieved,
             P_bind / 1e9,
-            _kelvin_or_unknown(out['cmb_node_superheat']),
+            _deepest_node_clause(out),
             out['surface_T'],
         )
     else:
@@ -719,7 +742,8 @@ def compute_initial_entropy(
         tables. With the Zalmoxis structure also when ``spider_eos_dir`` or
         the ``interior_struct.zalmoxis`` section is missing, when the PALEOS
         P-T anchor finds no molten adiabat at P_cmb or its integration fails
-        numerically (chained; programming and I/O errors propagate), and
+        with one of ``ANCHOR_NUMERICAL_ERRORS`` (chained; see
+        ``solve_superliquidus_adiabat`` for the types that propagate), and
         when the anchor clamps and the P-S adiabat at the anchor entropy,
         less the ``ini_dsdr`` allowance, is below the P-S liquidus somewhere.
     FileNotFoundError
@@ -766,17 +790,8 @@ def compute_initial_entropy(
             if mantle_eos.startswith(PALEOS_EOS_PREFIXES):
                 from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
-                try:
-                    anchor = solve_superliquidus_adiabat(config, hf_row)
-                except InitialConditionError:
-                    raise
-                except ANCHOR_NUMERICAL_ERRORS as exc:
-                    # A numerical anchor failure stops the IC; a plain error
-                    # would be retried as a solver failure.
-                    raise InitialConditionError(
-                        'liquidus_super: the PALEOS P-T anchor failed at the converged '
-                        f'P_cmb ({type(exc).__name__}: {exc}).'
-                    ) from exc
+                # The anchor raises its numerical failures as InitialConditionError.
+                anchor = solve_superliquidus_adiabat(config, hf_row)
                 if anchor['clamped'] and not anchor.get('window_limited', False):
                     A = float(anchor['achieved_superheat'])
                     try:
@@ -787,17 +802,12 @@ def compute_initial_entropy(
                         if not getattr(exc, 'from_ceiling', False):
                             raise
                         m_anchor = float(exc.margin_at_ceiling)
-                        if not np.isfinite(m_anchor):
+                        if getattr(exc, 'from_ini_dsdr', False):
+                            cause = ''  # the solver message names the allowance
+                        elif not np.isfinite(m_anchor):
                             cause = (
                                 'The P-S tables give no finite temperature at the anchor '
                                 f'entropy at P={exc.binding_P_at_ceiling / 1e9:.3g} GPa.'
-                            )
-                        elif m_anchor >= 0:
-                            cause = (
-                                f'At the anchor entropy the P-S adiabat is {m_anchor:.0f} K '
-                                'above the P-S liquidus; the raise comes from the ini_dsdr '
-                                'allowance, which keeps the deepest node at the anchor entropy '
-                                'and so lowers the uniform entropy the molten check uses.'
                             )
                         else:
                             cause = (
@@ -807,8 +817,9 @@ def compute_initial_entropy(
                             )
                         # Above the anchor entropy the P-S tables hold filled cells.
                         raise InitialConditionError(
-                            f'{exc} {cause} The initial entropy is not raised past the '
-                            'anchor entropy, where the P-S tables hold filled cells.'
+                            f'{exc} {cause}'.rstrip()
+                            + ' The initial entropy is not raised past the anchor entropy, '
+                            'where the P-S tables hold filled cells.'
                         ) from exc
                     delta = float(config.planet.delta_T_super)
                     key = (round(float(anchor['P_cmb']) / 1e6), round(delta, 3), mantle_eos)
@@ -819,14 +830,14 @@ def compute_initial_entropy(
                             'the requested %.0f K superheat above the P-T liquidus at '
                             'P_cmb=%.0f GPa; the initial entropy is capped at %.1f J/kg/K '
                             '(anchor entropy %.1f J/kg/K), %.0f K above the P-S table '
-                            'liquidus (%s at the deepest node with ini_dsdr).',
+                            'liquidus%s.',
                             A,
                             delta,
                             float(anchor['P_cmb']) / 1e9,
                             float(res['S_target']),
                             float(anchor['S_target']),
                             float(res['achieved_superheat']),
-                            _kelvin_or_unknown(res['cmb_node_superheat']),
+                            _deepest_node_clause(res),
                         )
                     return float(res['S_target'])
         elif not spider_eos_dir:

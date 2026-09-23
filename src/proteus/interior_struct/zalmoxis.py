@@ -62,6 +62,8 @@ _SUPERLIQ_FAILED: dict = {}
 # repeating the scan-and-bisection at a drifted P_cmb. None until the first
 # solve completes.
 _SUPERLIQ_LAST_ANCHOR: float | None = None
+# (delta_T_super, mantle_eos) of the solve that set _SUPERLIQ_LAST_ANCHOR.
+_SUPERLIQ_LAST_ANCHOR_FOR: tuple | None = None
 
 # Set once a run has reported that the Zalmoxis JAX structure path is not
 # viable for the configured EOS, so the numpy-fallback provenance is logged a
@@ -75,13 +77,14 @@ def _clear_superliquidus_cache() -> None:
     Also clears ``common._ANCHOR_CAP_WARNED``, the anchor-cap warnings that
     share the lifetime of these solves.
     """
-    global _SUPERLIQ_LAST_ANCHOR, _JAX_NONVIABLE_LOGGED
+    global _SUPERLIQ_LAST_ANCHOR, _SUPERLIQ_LAST_ANCHOR_FOR, _JAX_NONVIABLE_LOGGED
     from proteus.interior_energetics.common import _ANCHOR_CAP_WARNED
 
     _SUPERLIQ_CACHE.clear()
     _SUPERLIQ_FAILED.clear()
     _ANCHOR_CAP_WARNED.clear()
     _SUPERLIQ_LAST_ANCHOR = None
+    _SUPERLIQ_LAST_ANCHOR_FOR = None
     _JAX_NONVIABLE_LOGGED = False
 
 
@@ -553,11 +556,14 @@ def _resolve_zalmoxis_cmb_temperature(
 
     With a PALEOS mantle and spider or aragog energetics, if the anchor
     fails at this P_cmb (``InitialConditionError``, which includes numerical
-    integration failures), the last solved anchor, or
-    ``config.planet.tcmb_init`` before any solve, is used with a warning;
-    the initial entropy at the converged P_cmb re-solves the anchor and
-    decides whether a molten state exists. Otherwise the error propagates,
-    since no later step re-solves the anchor.
+    integration failures), the last solved anchor for the same
+    ``delta_T_super`` and mantle EOS, or else ``config.planet.tcmb_init``,
+    is used with a warning. The initial entropy then re-solves the anchor at
+    the P_cmb of the structure it gets, which after this fallback is the
+    fallback structure, and decides whether a molten state exists; it is
+    solved before the equilibration loop and again after it. Otherwise the
+    error propagates, since no later step re-solves the anchor. A resumed
+    run re-solves neither the structure anchor nor the initial entropy.
 
     For all other modes, returns config.planet.tcmb_init verbatim.
     """
@@ -596,9 +602,10 @@ def _resolve_zalmoxis_cmb_temperature(
         from proteus.utils.structure_estimate import resolve_P_cmb
 
         P_cmb, estimated = resolve_P_cmb(hf_row, config)
+        # The last anchor stands in only for the same superheat and mantle EOS.
         fallback = _SUPERLIQ_LAST_ANCHOR
         source = 'the last solved anchor'
-        if fallback is None:
+        if fallback is None or _SUPERLIQ_LAST_ANCHOR_FOR != _superliq_anchor_for(config):
             fallback, source = float(config.planet.tcmb_init), 'tcmb_init'
         log.warning(
             'liquidus_super CMB anchor for Zalmoxis: no P-T anchor at %sP_cmb=%.0f GPa '
@@ -644,24 +651,33 @@ def _anchor_failure_deferred(config: Config) -> bool:
     )
 
 
-def _superliq_cache_key(config: Config, P_cmb: float) -> tuple:
-    """Memo key of the super-liquidus anchor solve at ``P_cmb`` [Pa]."""
+def _superliq_anchor_for(config: Config) -> tuple:
+    """The (delta_T_super, mantle_eos) an anchor was solved for."""
     return (
-        round(P_cmb / 1e6),
         round(float(config.planet.delta_T_super), 3),
         str(getattr(config.interior_struct.zalmoxis, 'mantle_eos', None)),
     )
 
 
+def _superliq_cache_key(config: Config, P_cmb: float) -> tuple:
+    """Memo key of the super-liquidus anchor solve at ``P_cmb`` [Pa]."""
+    return (round(P_cmb / 1e6), *_superliq_anchor_for(config))
+
+
 def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     """Memoised super-liquidus anchor solve, see ``_solve_superliquidus_adiabat``.
 
-    A numerical failure of the integration (``common.ANCHOR_NUMERICAL_ERRORS``)
-    is raised as a chained ``InitialConditionError``; programming and I/O
-    errors propagate unchanged and are not memoised. An
-    ``InitialConditionError`` is memoised under the same key as a success, as
-    a copy without traceback, so repeated structure solves at one P_cmb do
-    not repeat a failing scan.
+    A failure of the integration with ``ValueError``, ``KeyError``,
+    ``IndexError``, ``ArithmeticError`` or ``RuntimeError``
+    (``common.ANCHOR_NUMERICAL_ERRORS``) is raised as a chained
+    ``InitialConditionError`` that names the type and P_cmb.
+    ``NotImplementedError``, ``RecursionError`` and ``UnicodeError``
+    (``common.ANCHOR_PASSTHROUGH_ERRORS``), and every other type such as
+    ``TypeError``, ``AttributeError``, ``OSError`` or ``MemoryError``,
+    propagate unchanged and are not memoised. An ``InitialConditionError``
+    from the solve is raised as is. Both are memoised under the same key as
+    a success, as a copy without traceback, so repeated structure solves at
+    one P_cmb do not repeat a failing scan.
 
     Parameters
     ----------
@@ -686,11 +702,13 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     """
     from proteus.interior_energetics.common import (
         ANCHOR_NUMERICAL_ERRORS,
+        ANCHOR_PASSTHROUGH_ERRORS,
         InitialConditionError,
     )
     from proteus.utils.structure_estimate import resolve_P_cmb
 
-    key = _superliq_cache_key(config, resolve_P_cmb(hf_row, config)[0])
+    P_cmb = resolve_P_cmb(hf_row, config)[0]
+    key = _superliq_cache_key(config, P_cmb)
     if key in _SUPERLIQ_FAILED:
         first = _SUPERLIQ_FAILED[key]
         raise InitialConditionError(str(first)) from first
@@ -699,8 +717,13 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     except InitialConditionError as exc:
         _SUPERLIQ_FAILED[key] = InitialConditionError(str(exc))
         raise
+    except ANCHOR_PASSTHROUGH_ERRORS:
+        raise
     except ANCHOR_NUMERICAL_ERRORS as exc:
-        msg = f'liquidus_super: the PALEOS P-T anchor failed ({type(exc).__name__}: {exc}).'
+        msg = (
+            f'liquidus_super: the PALEOS P-T anchor failed at P_cmb={P_cmb / 1e9:.0f} GPa '
+            f'({type(exc).__name__}: {exc}).'
+        )
         _SUPERLIQ_FAILED[key] = InitialConditionError(msg)
         raise InitialConditionError(msg) from exc
 
@@ -792,11 +815,12 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
 
     mantle_eos = config.interior_struct.zalmoxis.mantle_eos
     P_surface = 1e5  # 1 bar surface anchor for the adiabat
-    global _SUPERLIQ_LAST_ANCHOR
+    global _SUPERLIQ_LAST_ANCHOR, _SUPERLIQ_LAST_ANCHOR_FOR
     _cache_key = _superliq_cache_key(config, P_cmb)
     if _cache_key in _SUPERLIQ_CACHE:
         cached = dict(_SUPERLIQ_CACHE[_cache_key])
         _SUPERLIQ_LAST_ANCHOR = float(cached['cmb_T'])
+        _SUPERLIQ_LAST_ANCHOR_FOR = _superliq_anchor_for(config)
         return cached
 
     mat_dicts = load_zalmoxis_material_dictionaries()
@@ -1136,6 +1160,7 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     }
     _SUPERLIQ_CACHE[_cache_key] = dict(out)
     _SUPERLIQ_LAST_ANCHOR = float(out['cmb_T'])
+    _SUPERLIQ_LAST_ANCHOR_FOR = _superliq_anchor_for(config)
     return out
 
 

@@ -89,7 +89,7 @@ Whether the default `delta_T_super = 500` K is reachable depends on the P-S
 tables, the core-mantle boundary pressure and `planet.ini_dsdr`. On
 PALEOS-generated tables it is reached at 1 and 10 Earth masses. On the Wolf &
 Bower (2018) tables from FWL_DATA, with `ini_dsdr = 0`, it is reached up to a
-core-mantle boundary pressure of about 350 GPa. Above that the solve clamps to
+core-mantle boundary pressure of about 355 GPa. Above that the solve clamps to
 a smaller superheat (443 K at 360 GPa, 85 K at 390 GPa), and above about
 397 GPa the table liquidus entropy exceeds the table maximum, so no fully
 molten state exists and PROTEUS raises. With the Noack & Lasbleis (2020)
@@ -97,7 +97,7 @@ pressure and radius estimates and a core mass fraction of 0.325, this means
 500 K up to 2.75 Earth masses, 194 K at 3 Earth masses, and a raise above
 about 3.1 Earth masses (398 GPa at 3.15 Earth masses). With the default
 `ini_dsdr = -4.698e-6` J/kg/K/m the usable entropy is lower by
-`|ini_dsdr|` times the mantle thickness (about 19 J/kg/K at 3 Earth masses):
+`|ini_dsdr|` times the mantle thickness (about 20 J/kg/K at 3 Earth masses):
 2.75 Earth masses clamp to 417 K, 3 Earth masses to 73 K, 3.05 Earth masses
 to 3 K, and 3.1 Earth masses (392 GPa) raise.
 
@@ -105,7 +105,9 @@ The molten check uses the uniform entropy of the initial adiabat. With
 `ini_dsdr < 0` the initial profile is hotter at depth, so the check is
 conservative: it can report a smaller superheat, or raise, where the deepest
 node is molten. The clamp warnings also give the superheat at the deepest
-node (194 K instead of 73 K at 3 Earth masses above). Setting
+node (194 K instead of 73 K at 3 Earth masses above). When the check raises
+but the adiabat at the deepest-node entropy is molten, the message names the
+`ini_dsdr` allowance as the cause and gives that margin. Setting
 `delta_T_super = 0` makes the mantle marginally molten, just touching the
 liquidus at the binding depth.
 
@@ -129,16 +131,20 @@ liquidus at the binding depth.
     With `"zalmoxis"`, the structure solve also anchors its temperature profile
     on a P-T adiabat that is `delta_T_super` above the P-T liquidus, while the
     initial entropy is solved on the P-S tables. The initial entropy solves
-    this anchor again at the converged core-mantle boundary pressure. When it
-    raises there, no molten state exists and the run stops at the initial
-    entropy; the same error is raised when the anchor integration fails
-    numerically. With a PALEOS mantle and `"spider"` or `"aragog"`
-    energetics, a failed anchor in a structure solve or in the adiabat
-    structure re-solve, at the estimated or an intermediate pressure, only
-    logs a warning: the structure solve uses the last solved anchor, or
-    `tcmb_init` before any, as its core-mantle boundary temperature, and the
-    re-solve keeps the linear-guess structure. In other cases no later step
-    solves the anchor again, so a failed anchor stops the run there. When
+    this anchor again at the core-mantle boundary pressure of the current
+    structure, before and after the structure equilibration. When it raises
+    there, no molten state exists and the run stops at the initial entropy;
+    the same error is raised when the anchor integration fails numerically.
+    With a PALEOS mantle and `"spider"` or `"aragog"` energetics, a failed
+    anchor in a structure solve or in the adiabat structure re-solve, at the
+    estimated or an intermediate pressure, only logs a warning: the structure
+    solve uses the last solved anchor for the same `delta_T_super` and mantle
+    EOS, or `tcmb_init` otherwise, as its core-mantle boundary temperature,
+    and the re-solve keeps the linear-guess structure. The initial entropy
+    then decides at the core-mantle boundary pressure of that fallback
+    structure. In other cases no later step solves the anchor again, so a
+    failed anchor stops the run there. A resumed run solves neither the
+    anchor nor the initial entropy again. When
     the anchor clamps at the PALEOS table below `delta_T_super`, the initial
     entropy is capped at the anchor entropy, and
     a warning names the superheat the anchor reached. The generated P-S tables
@@ -156,10 +162,10 @@ liquidus at the binding depth.
     allowance, and the molten check uses that uniform value. If the P-S
     adiabat at that entropy is below the P-S liquidus somewhere, PROTEUS
     raises instead of going above the anchor entropy, where the P-S tables
-    hold filled cells. The message gives the P-S superheat at the anchor
-    entropy itself: when it is negative it names the anchor superheat against
-    the P-T liquidus as well, and when it is positive it names the `ini_dsdr`
-    allowance as the cause.
+    hold filled cells. When the P-S adiabat at the anchor entropy itself is
+    molten, the message names the `ini_dsdr` allowance as the cause; when it
+    is not, the message gives its P-S superheat and the anchor superheat
+    against the P-T liquidus.
 
     This cap has two known limits:
 
