@@ -209,10 +209,23 @@ class InitialConditionError(RuntimeError):
     """The requested initial condition does not exist for this planet and EOS.
 
     Raised by the liquidus_super solves when no fully molten initial state is
-    reachable or the melting curve is undefined where it must be checked.
-    Retrying the interior step cannot change the outcome, so interior
-    wrappers must not treat it as a transient solver failure.
+    reachable, the melting curve is undefined where it must be checked, or
+    the PALEOS P-T anchor integration fails numerically (the cause is
+    chained). Retrying the interior step cannot change the outcome, so
+    interior wrappers must not treat it as a transient solver failure.
     """
+
+
+# Numerical failures of the PALEOS P-T anchor integration that are raised as a
+# chained InitialConditionError; programming and I/O errors propagate unchanged.
+ANCHOR_NUMERICAL_ERRORS = (
+    ValueError,
+    KeyError,
+    IndexError,
+    ZeroDivisionError,
+    FloatingPointError,
+    RuntimeError,
+)
 
 
 def _margin_kink_pressures(eos: EntropyEOS) -> np.ndarray:
@@ -442,9 +455,10 @@ def solve_superliquidus_entropy_from_tables(
         highest usable entropy, or if no fully-molten initial condition is
         reachable below that entropy. That last error carries the negative
         margin and its pressure as ``margin`` [K] and ``binding_P`` [Pa],
-        ``from_ceiling`` (True when ``S_ceiling`` set the highest entropy) and
-        ``margin_at_ceiling`` [K] (the margin at that entropy before the
-        ``ini_dsdr`` allowance).
+        ``from_ceiling`` (True when ``S_ceiling`` set the highest entropy),
+        ``margin_at_ceiling`` [K] and ``binding_P_at_ceiling`` [Pa] (the
+        margin at that entropy before the ``ini_dsdr`` allowance, and where
+        it is smallest).
     """
     eos = _load_entropy_eos(eos_dir)
     delta = float(config.planet.delta_T_super)
@@ -595,7 +609,9 @@ def solve_superliquidus_entropy_from_tables(
         )
         err.margin, err.binding_P, err.from_ceiling = sh_hi, P_hi, from_ceiling
         # Margin at the ceiling entropy itself, before the ini_dsdr allowance.
-        err.margin_at_ceiling = _probe(float(S_ceiling))[0] if from_ceiling else sh_hi
+        err.margin_at_ceiling, err.binding_P_at_ceiling = (
+            _probe(float(S_ceiling)) if from_ceiling else (sh_hi, P_hi)
+        )
         raise err
     clamped = sh_hi < delta
     if clamped:
@@ -702,8 +718,8 @@ def compute_initial_entropy(
         In ``liquidus_super`` mode, when no fully molten entropy exists in the
         tables. With the Zalmoxis structure also when ``spider_eos_dir`` or
         the ``interior_struct.zalmoxis`` section is missing, when the PALEOS
-        P-T anchor finds no molten adiabat at P_cmb or fails in any other way
-        (chained), and when the anchor clamps and the P-S adiabat at the
+        P-T anchor finds no molten adiabat at P_cmb or its integration fails
+        numerically (chained; programming and I/O errors propagate), and when the anchor clamps and the P-S adiabat at the
         anchor entropy, less the ``ini_dsdr`` allowance, is below the P-S
         liquidus somewhere.
     FileNotFoundError
@@ -754,9 +770,9 @@ def compute_initial_entropy(
                     anchor = solve_superliquidus_adiabat(config, hf_row)
                 except InitialConditionError:
                     raise
-                except Exception as exc:
-                    # Any anchor failure (table load, integration) stops the IC;
-                    # a plain error would be retried as a solver failure.
+                except ANCHOR_NUMERICAL_ERRORS as exc:
+                    # A numerical anchor failure stops the IC; a plain error
+                    # would be retried as a solver failure.
                     raise InitialConditionError(
                         'liquidus_super: the PALEOS P-T anchor failed at the converged '
                         f'P_cmb ({type(exc).__name__}: {exc}).'
@@ -774,7 +790,7 @@ def compute_initial_entropy(
                         if not np.isfinite(m_anchor):
                             cause = (
                                 'The P-S tables give no finite temperature at the anchor '
-                                'entropy.'
+                                f'entropy at P={exc.binding_P_at_ceiling / 1e9:.3g} GPa.'
                             )
                         elif m_anchor >= 0:
                             cause = (

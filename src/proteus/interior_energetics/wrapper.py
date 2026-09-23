@@ -1119,8 +1119,14 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         is the closure ``f(r, P) -> T`` consumed by the Zalmoxis numpy path
         (``r`` is ignored; ``P`` is clipped into the adiabat grid). Returns
         ``None`` when the adiabat cannot be built or contains NaNs, or when
-        the P-T anchor raises ``InitialConditionError`` at this P_cmb, so the
-        caller can fall back to the linear-guess result.
+        the P-T anchor raises ``InitialConditionError`` at this P_cmb and the
+        initial entropy re-solves it later (``_anchor_failure_deferred``), so
+        the caller can fall back to the linear-guess result.
+
+    Raises
+    ------
+    InitialConditionError
+        If the anchor fails and no later step re-solves it.
     """
     try:
         from zalmoxis.eos_export import compute_entropy_adiabat
@@ -1166,9 +1172,13 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
             liquid_eos_file=liquid_eos,
         )
     except InitialConditionError as exc:
-        # The initial entropy re-solves the anchor at the converged P_cmb and
-        # raises there; this P_cmb is an intermediate structure value.
+        # Fall back only where the initial entropy re-solves the anchor at the
+        # converged P_cmb; elsewhere nothing would check it again.
+        from proteus.interior_struct.zalmoxis import _anchor_failure_deferred
         from proteus.utils.structure_estimate import resolve_P_cmb
+
+        if not _anchor_failure_deferred(config):
+            raise
 
         log.warning(
             'liquidus_super IC adiabat: no P-T anchor at P_cmb=%.0f GPa (%s); falling '

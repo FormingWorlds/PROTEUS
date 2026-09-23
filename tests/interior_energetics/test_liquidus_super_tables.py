@@ -1184,10 +1184,12 @@ def test_clearing_the_anchor_cache_rearms_the_cap_warning():
     """
     zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
     common._ANCHOR_CAP_WARNED.add((100000, 500.0, 'PALEOS-2phase:MgSiO3'))
+    zal._SUPERLIQ_FAILED[(100000, 500.0, 'PALEOS-2phase:MgSiO3')] = 'failed'
 
     zal._clear_superliquidus_cache()
 
     assert common._ANCHOR_CAP_WARNED == set()
+    assert zal._SUPERLIQ_FAILED == {}
 
 
 def test_structure_anchor_raise_falls_back_and_the_ic_at_the_final_p_cmb_decides(
@@ -1234,9 +1236,11 @@ def test_structure_anchor_raise_falls_back_and_the_ic_at_the_final_p_cmb_decides
         compute_initial_entropy(cfg, {'P_cmb': 1.3e11}, 3300.0, fake_tables)
 
 
-def test_structure_anchor_raise_reuses_the_last_solved_anchor(monkeypatch, caplog):
+@pytest.mark.parametrize('energetics', ['spider', 'aragog'])
+def test_structure_anchor_raise_reuses_the_last_solved_anchor(monkeypatch, caplog, energetics):
     """After a successful anchor solve, a later raise in a structure solve
-    falls back to that anchor's CMB temperature, not to tcmb_init.
+    falls back to that anchor's CMB temperature, not to tcmb_init, under
+    either energetics module that re-solves the anchor in the IC.
     """
     zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
 
@@ -1247,6 +1251,7 @@ def test_structure_anchor_raise_reuses_the_last_solved_anchor(monkeypatch, caplo
     monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
     cfg = _config(500.0, module='zalmoxis')
     cfg.planet.tcmb_init = 6000.0
+    cfg.interior_energetics.module = energetics
 
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
         T_cmb = zal._resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': P_CMB}, 'liquidus_super')
@@ -1265,8 +1270,11 @@ def test_zalmoxis_route_without_a_zalmoxis_section_raises(fake_tables):
     cfg = _config(500.0, module='zalmoxis')
     cfg.interior_struct.zalmoxis = None
 
-    with pytest.raises(common.InitialConditionError, match='interior_struct.zalmoxis section'):
+    with pytest.raises(
+        common.InitialConditionError, match='interior_struct.zalmoxis section'
+    ) as exc:
         compute_initial_entropy(cfg, {'P_cmb': P_CMB}, 3300.0, fake_tables)
+    assert 'mantle_eos' in str(exc.value)
 
 
 def test_anchor_failures_other_than_the_ic_error_are_chained(fake_tables, monkeypatch):
@@ -1419,6 +1427,11 @@ def test_structure_anchor_raise_propagates_for_a_non_paleos_mantle(monkeypatch):
 
     with pytest.raises(common.InitialConditionError, match='no valid molten adiabat'):
         zal._resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': P_CMB}, 'liquidus_super')
+    # Discrimination: a PALEOS mantle with the same input falls back.
+    cfg.interior_struct.zalmoxis.mantle_eos = 'PALEOS-2phase:MgSiO3'
+    monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR', None)
+    T_cmb = zal._resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': P_CMB}, 'liquidus_super')
+    assert T_cmb == pytest.approx(6000.0)
 
 
 def test_structure_anchor_integration_error_falls_back(monkeypatch, caplog):
@@ -1440,9 +1453,10 @@ def test_structure_anchor_integration_error_falls_back(monkeypatch, caplog):
 
     assert T_cmb == pytest.approx(6000.0)
     assert any('ValueError: f(a)' in r.getMessage() for r in caplog.records)
-    with pytest.raises(common.InitialConditionError) as exc:
-        zal.solve_superliquidus_adiabat(cfg, {'P_cmb': P_CMB})
-    assert isinstance(exc.value.__cause__.__cause__, ValueError)
+    # A first raise at a new key chains the ValueError itself.
+    with pytest.raises(common.InitialConditionError, match='ValueError: f') as exc:
+        zal.solve_superliquidus_adiabat(cfg, {'P_cmb': 1.1 * P_CMB})
+    assert isinstance(exc.value.__cause__, ValueError)
 
 
 def test_failed_anchor_solve_is_memoised(monkeypatch):
@@ -1468,9 +1482,12 @@ def test_failed_anchor_solve_is_memoised(monkeypatch):
             zal.solve_superliquidus_adiabat(cfg, {'P_cmb': P_CMB})
         raised.append(exc.value)
     assert calls == [P_CMB]
-    # Later raises are chained to the first one.
-    assert raised[1].__cause__ is raised[0]
-    assert raised[2].__cause__ is raised[0]
+    # Later raises are chained to one stored copy that holds no traceback.
+    stored = raised[1].__cause__
+    assert stored is raised[2].__cause__
+    assert stored is not raised[0]
+    assert stored.__traceback__ is None
+    assert str(stored) == str(raised[0])
     # Another P_cmb is another key.
     with pytest.raises(common.InitialConditionError):
         zal.solve_superliquidus_adiabat(cfg, {'P_cmb': 1.1 * P_CMB})
@@ -1496,7 +1513,7 @@ def test_deepest_node_superheat_is_nan_without_mantle_radii(fake_tables):
     assert np.isfinite(res['achieved_superheat'])
 
 
-def test_structure_anchor_raise_propagates_without_an_ic_re_solve(monkeypatch):
+def test_structure_anchor_raise_propagates_without_an_ic_re_solve(monkeypatch, caplog):
     """With dummy energetics nothing re-solves the anchor at the converged
     P_cmb, so a structure solve keeps the anchor's raise even for a PALEOS
     mantle.
@@ -1511,8 +1528,16 @@ def test_structure_anchor_raise_propagates_without_an_ic_re_solve(monkeypatch):
     cfg.planet.tcmb_init = 6000.0
     cfg.interior_energetics.module = 'dummy'
 
-    with pytest.raises(common.InitialConditionError, match='no valid molten adiabat'):
-        zal._resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': P_CMB}, 'liquidus_super')
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        with pytest.raises(common.InitialConditionError, match='no valid molten adiabat'):
+            zal._resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': P_CMB}, 'liquidus_super')
+    assert not [r for r in caplog.records if 'no P-T anchor' in r.getMessage()]
+
+    # Discrimination: the same input under spider energetics falls back.
+    cfg.interior_energetics.module = 'spider'
+    monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR', None)
+    T_cmb = zal._resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': P_CMB}, 'liquidus_super')
+    assert T_cmb == pytest.approx(6000.0)
 
 
 def test_clamp_warning_says_unknown_without_mantle_radii(fake_tables, caplog):
@@ -1555,5 +1580,92 @@ def test_cap_raise_without_a_table_temperature_at_the_anchor_entropy(fake_tables
         )
 
     msg = str(exc.value)
-    assert 'no finite temperature at the anchor entropy' in msg
+    # Every pressure is non-finite at 1900, so the first (1 bar) is named.
+    assert 'no finite temperature at the anchor entropy at P=0.0001 GPa' in msg
     assert 'inf' not in msg
+
+
+@pytest.mark.parametrize(
+    'error',
+    [
+        ValueError('f(a) and f(b) must have different signs'),
+        KeyError('S_profile'),
+        IndexError('index 200 is out of bounds'),
+        ZeroDivisionError('float division by zero'),
+        FloatingPointError('overflow encountered'),
+        RuntimeError('integration did not converge'),
+    ],
+    ids=lambda e: type(e).__name__,
+)
+def test_numerical_anchor_failures_are_wrapped_and_memoised(monkeypatch, error):
+    """Each numerical failure of the anchor integration is raised as a
+    chained InitialConditionError that names its type, and is memoised.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    calls = []
+
+    def _solve(config, hf_row):
+        calls.append(1)
+        raise error
+
+    monkeypatch.setattr(zal, '_solve_superliquidus_adiabat', _solve)
+    cfg = _config(500.0, module='zalmoxis')
+
+    with pytest.raises(common.InitialConditionError, match=type(error).__name__) as exc:
+        zal.solve_superliquidus_adiabat(cfg, {'P_cmb': P_CMB})
+    assert exc.value.__cause__ is error
+    with pytest.raises(common.InitialConditionError, match=type(error).__name__):
+        zal.solve_superliquidus_adiabat(cfg, {'P_cmb': P_CMB})
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    'error',
+    [
+        TypeError('unexpected keyword argument'),
+        AttributeError('module has no attribute'),
+        FileNotFoundError('paleos_mgsio3_tables_pt_proteus_liquid.dat'),
+        PermissionError('lock.pid'),
+    ],
+    ids=lambda e: type(e).__name__,
+)
+def test_programming_and_io_errors_propagate_and_are_not_memoised(monkeypatch, error):
+    """Programming and I/O errors from the anchor propagate unchanged,
+    through the structure solve as well, and a later call solves again.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    calls = []
+
+    def _solve(config, hf_row):
+        calls.append(1)
+        raise error
+
+    monkeypatch.setattr(zal, '_solve_superliquidus_adiabat', _solve)
+    cfg = _config(500.0, module='zalmoxis')
+    cfg.planet.tcmb_init = 6000.0
+
+    with pytest.raises(type(error)) as exc:
+        zal.solve_superliquidus_adiabat(cfg, {'P_cmb': P_CMB})
+    assert exc.value is error
+    with pytest.raises(type(error)):
+        zal._resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': P_CMB}, 'liquidus_super')
+    assert len(calls) == 2
+    assert not zal._SUPERLIQ_FAILED
+
+
+def test_ic_passes_programming_errors_from_the_anchor_through(fake_tables, monkeypatch):
+    """compute_initial_entropy wraps only numerical anchor failures; a
+    TypeError reaches the caller unchanged.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+
+    def _anchor(config, hf_row):
+        raise TypeError('unexpected keyword argument')
+
+    monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _anchor)
+
+    with pytest.raises(TypeError, match='unexpected keyword') as exc:
+        compute_initial_entropy(
+            _config(500.0, module='zalmoxis'), {'P_cmb': P_CMB}, 3300.0, fake_tables
+        )
+    assert not isinstance(exc.value, common.InitialConditionError)

@@ -1528,3 +1528,21 @@ def test_builder_falls_back_on_an_anchor_raise_and_names_it(caplog):
         side_effect=RuntimeError('transient EOS failure'),
     ):
         assert _build_superliquidus_adiabat_tp(config, {}, P_cmb_target=1.4e12) is None
+
+
+@pytest.mark.parametrize('energetics', ['dummy', 'boundary'])
+def test_builder_raises_an_anchor_failure_nothing_re_solves(energetics, caplog):
+    """With dummy or boundary energetics no initial entropy re-solves the
+    anchor, so the builder raises the anchor's error instead of falling back.
+    """
+    from proteus.interior_energetics.common import InitialConditionError
+
+    def _anchor(config, hf_row):
+        raise InitialConditionError('liquidus_super: no valid molten adiabat found')
+
+    config = _config(module=energetics)
+    with patch('proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat', _anchor):
+        with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'):
+            with pytest.raises(InitialConditionError, match='no valid molten adiabat'):
+                _build_superliquidus_adiabat_tp(config, {'P_cmb': 1.3e12}, P_cmb_target=1.4e12)
+    assert not [r for r in caplog.records if 'no P-T anchor' in r.getMessage()]
