@@ -116,7 +116,7 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.Parameters') as mock_params,
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog.EntropyEOS'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
@@ -169,7 +169,7 @@ def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog.EntropyEOS'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
         patch('proteus.interior_energetics.aragog._InitialConditionParameters') as mock_ic,
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
@@ -210,7 +210,7 @@ def test_setup_solver_eos_fallback(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
-        patch('proteus.interior_energetics.aragog.EntropyEOS'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
@@ -576,7 +576,7 @@ def test_setup_solver_threads_phase_boundary_margin(tmp_path):
             ),
             patch('proteus.interior_energetics.aragog.Parameters'),
             patch('proteus.interior_energetics.aragog.EntropySolver'),
-            patch('proteus.interior_energetics.aragog.EntropyEOS'),
+            patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
             patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
             patch('proteus.interior_energetics.aragog.log') as mock_log,
         ):
@@ -632,7 +632,7 @@ def test_setup_solver_threads_resolved_step_caps(tmp_path):
             patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / name),
             patch('proteus.interior_energetics.aragog.Parameters'),
             patch('proteus.interior_energetics.aragog.EntropySolver'),
-            patch('proteus.interior_energetics.aragog.EntropyEOS'),
+            patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
             patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
             patch('proteus.interior_energetics.aragog.log'),
         ):
@@ -669,7 +669,7 @@ def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / 'nondefault'),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog.EntropyEOS'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
         patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
         patch('proteus.interior_energetics.aragog.log') as mock_log,
     ):
@@ -697,7 +697,7 @@ def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / 'default'),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog.EntropyEOS'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
         patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
         patch('proteus.interior_energetics.aragog.log') as mock_log,
     ):
@@ -1437,3 +1437,28 @@ def test_paleos_melting_curves_follow_mzf_in_reused_outdir(tmp_path):
     np.testing.assert_allclose(sol_a[:, 1] / liq_a[:, 1], 0.8, rtol=1e-12)
     np.testing.assert_allclose(sol_b[:, 1] / liq_b[:, 1], 0.7, rtol=1e-12)
     np.testing.assert_array_equal(liq_a, liq_b)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_helpfile_output_t_cmb_node_is_cmb_basic_node():
+    """``T_cmb_node`` is the first basic-node temperature, ``T_cmb`` the bottom cell.
+
+    Aragog orders basic nodes from the CMB to the surface, so the CMB node is
+    ``T_basic[0]``. The values differ here (as when the bottom cell drains),
+    so an index-``[-1]`` read or a copy of ``T_core`` fails.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    out = MagicMock()
+    out.T_core = 3800.0
+    out.T_basic = np.array([4100.0, 3900.0, 3500.0, 3000.0])
+    out.r_basic = np.array([3.5e6, 4.5e6, 5.5e6, 6.4e6])
+    out.mass_stag = np.ones(3)
+
+    with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
+        res = AragogRunner._build_helpfile_output(out, {'F_atm': 1e5})
+
+    assert res['T_cmb_node'] == pytest.approx(4100.0)
+    assert res['T_cmb'] == pytest.approx(3800.0)
+    assert res['T_cmb_node'] != pytest.approx(res['T_cmb'])

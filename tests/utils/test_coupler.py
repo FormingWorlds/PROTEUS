@@ -24,6 +24,7 @@ Fixtures from conftest.py:
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import sys
@@ -44,6 +45,8 @@ from proteus.utils.coupler import (
     CreateHelpfileFromDict,
     CreateLockFile,
     ExtendHelpfile,
+    GetHelpfileCoreKeys,
+    GetHelpfileDiagnosticKeys,
     GetHelpfileKeys,
     GetPostprocessingKeys,
     HelpfileRow,
@@ -151,6 +154,17 @@ def test_get_helpfile_keys_no_duplicates():
     # trivially satisfy the no-duplicate check; pin a substantial lower
     # bound on the schema size so an accidental truncation is caught.
     assert len(keys) > 50
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_helpfile_has_t_cmb_node_column_distinct_from_t_cmb():
+    """``T_cmb_node`` is a helpfile column placed directly after ``T_cmb``."""
+    keys = GetHelpfileKeys()
+    assert 'T_cmb_node' in keys
+    assert 'T_cmb' in keys
+    assert keys.index('T_cmb_node') == keys.index('T_cmb') + 1
+    assert ZeroHelpfileRow()['T_cmb_node'] == 0.0
 
 
 # =============================================================================
@@ -308,7 +322,7 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     import logging
 
     row = ZeroHelpfileRow()
-    row['_T_magma_raw'] = 3000.0  # private transient key: must not warn
+    row['_transient_scratch'] = 3000.0  # private transient key: must not warn
     row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
     row['nonsense_future_key'] = 1.0  # genuine drift: must warn
     hf = CreateHelpfileFromDict(ZeroHelpfileRow())
@@ -319,7 +333,7 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
     joined = '\n'.join(r.message for r in warns)
     assert 'nonsense_future_key' in joined, f'Expected unknown-key warning, got: {joined!r}'
-    assert '_T_magma_raw' not in joined, 'Private key leaked into warning'
+    assert '_transient_scratch' not in joined, 'Private key leaked into warning'
     assert 'core_state_initial' not in joined, 'Allowlisted key triggered warning'
 
 
@@ -589,6 +603,68 @@ def test_read_helpfile_refuses_a_file_that_predates_schema_columns():
         recovered = pd.read_csv(os.path.join(tmpdir, 'runtime_helpfile.csv'), sep=r'\s+')
         assert len(recovered) == 3
         assert not set(dropped) & set(recovered.columns)
+
+
+@pytest.mark.unit
+def test_helpfile_without_diagnostic_column_resumes_with_zero_fill(caplog):
+    """A helpfile short only of a diagnostic column loads, with that column zeroed.
+
+    ``T_cmb_node`` is derived output that nothing reads back, so a run written
+    before it existed must still resume. The backfill is logged and every
+    other column keeps the value the file holds.
+    """
+    diagnostic = GetHelpfileDiagnosticKeys()
+    assert 'T_cmb_node' in diagnostic
+    assert 'T_cmb_node' not in GetHelpfileCoreKeys()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, diagnostic, n_rows=3)
+        raw = pd.read_csv(os.path.join(tmpdir, 'runtime_helpfile.csv'), sep=r'\s+')
+        assert 'T_cmb_node' not in raw.columns
+
+        with caplog.at_level(logging.INFO, logger='fwl.proteus.utils.coupler'):
+            hf = ReadHelpfileFromCSV(tmpdir)
+
+        assert len(hf) == 3
+        assert (hf['T_cmb_node'] == 0.0).all()
+        assert any('T_cmb_node' in r.getMessage() for r in caplog.records)
+        # Discrimination: real columns are not zeroed by the backfill.
+        assert hf['T_cmb'].iloc[-1] > 0.0
+        assert set(GetHelpfileKeys()) <= set(hf.columns)
+        # The reader does not rewrite the file it completes.
+        assert (
+            'T_cmb_node'
+            not in pd.read_csv(os.path.join(tmpdir, 'runtime_helpfile.csv'), sep=r'\s+').columns
+        )
+
+        # A row appended after resume is a full-schema row, so the backfilled
+        # frame extends without a key gap.
+        extended = ExtendHelpfile(hf, {**hf.iloc[-1].to_dict(), 'T_cmb_node': 4321.0})
+        assert extended['T_cmb_node'].iloc[-1] == pytest.approx(4321.0)
+
+
+@pytest.mark.unit
+def test_diagnostic_backfill_does_not_excuse_a_missing_core_column():
+    """A file missing a diagnostic and a core column is still refused, naming only the core one."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, ['T_cmb_node', 'M_atm'])
+
+        with pytest.raises(HelpfileSchemaDriftError) as excinfo:
+            ReadHelpfileFromCSV(tmpdir)
+
+        message = str(excinfo.value)
+        assert 'M_atm' in message
+        assert 'before 1 column(s)' in message
+        assert 'T_cmb_node' not in message
+
+
+@pytest.mark.unit
+def test_explicit_required_columns_still_demand_a_diagnostic_column():
+    """A caller that names a diagnostic column in ``required_columns`` gets the refusal."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, ['T_cmb_node'])
+
+        with pytest.raises(HelpfileSchemaDriftError, match='T_cmb_node'):
+            ReadHelpfileFromCSV(tmpdir, required_columns=['Time', 'T_cmb_node'])
 
 
 @pytest.mark.unit

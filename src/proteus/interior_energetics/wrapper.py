@@ -11,7 +11,13 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
-from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.common import (
+    _SPIDER_EOS_MELTING_CURVES,
+    _SPIDER_EOS_PHASE_FILES,
+    ANCHOR_PASSTHROUGH_ERRORS,
+    InitialConditionError,
+    Interior_t,
+)
 from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
 from proteus.utils.helper import UpdateStatusfile
@@ -252,28 +258,6 @@ def get_nlevb(config: Config):
         case 'dummy':
             return 2
     raise ValueError(f"Invalid interior module selected '{config.interior_energetics.module}'")
-
-
-# The 10 phase-property files Aragog's EntropyEOS and SPIDER's lookup
-# loader both expect, in SPIDER's canonical P-S header format.
-_SPIDER_EOS_PHASE_FILES = (
-    'temperature_melt.dat',
-    'temperature_solid.dat',
-    'density_melt.dat',
-    'density_solid.dat',
-    'heat_capacity_melt.dat',
-    'heat_capacity_solid.dat',
-    'adiabat_temp_grad_melt.dat',
-    'adiabat_temp_grad_solid.dat',
-    'thermal_exp_melt.dat',
-    'thermal_exp_solid.dat',
-)
-
-# P-S melting curves. Aragog's `_load_spider_phase_boundary` hardcodes
-# these filenames. SPIDER's bundled lookup_data ships them under the
-# `{solidus,liquidus}_A11_H13.dat` names; we rename on copy so a
-# single canonical layout satisfies both solvers.
-_SPIDER_EOS_MELTING_CURVES = ('solidus_P-S.dat', 'liquidus_P-S.dat')
 
 
 def _rectangularize_spider_ps_file(src: str, dst: str) -> None:
@@ -1055,6 +1039,22 @@ def determine_interior_radius_with_dummy(
             dirs['spider_eos_dir'] = spider_tables['eos_dir']
             dirs['spider_solidus_ps'] = spider_tables['solidus_path']
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
+        elif config.planet.temperature_mode == 'liquidus_super':
+            # The liquidus_super initial entropy solves on these tables.
+            try:
+                _provide_spider_eos_tables(config, outdir, dirs)
+            except FileNotFoundError as exc:
+                raise RuntimeError(
+                    "planet.temperature_mode='liquidus_super' with "
+                    f"interior_struct.module='dummy' needs SPIDER/Aragog P-S EOS "
+                    'tables, but interior_struct.zalmoxis.mantle_eos='
+                    f'{config.interior_struct.zalmoxis.mantle_eos!r} gave no generated '
+                    'PALEOS table set and no FWL_DATA or SPIDER lookup_data set is '
+                    'available. '
+                    'Provide the tables, or set planet.temperature_mode to '
+                    "'adiabatic' or another mode. "
+                    f'Cause: {exc}'
+                ) from exc
 
     # Derived quantities
     hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']
@@ -1090,8 +1090,8 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
     to a radius too small for its own mass.
 
     The adiabat is anchored at the surface temperature returned by the memoised
-    :func:`solve_superliquidus_adiabat`, so the structure CMB anchor, the Aragog
-    entropy IC, and this ``T(P)`` profile all derive from one adiabat. The
+    :func:`solve_superliquidus_adiabat`, so the structure CMB anchor and this
+    ``T(P)`` profile derive from one P-T adiabat. The
     profile is tabulated from the 1 bar surface to ``P_cmb_target`` so the
     structure integral never extrapolates beyond the adiabat grid.
 
@@ -1112,8 +1112,15 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         ``(temperature_function, P_arr, T_arr)`` where ``temperature_function``
         is the closure ``f(r, P) -> T`` consumed by the Zalmoxis numpy path
         (``r`` is ignored; ``P`` is clipped into the adiabat grid). Returns
-        ``None`` when the adiabat cannot be built or contains NaNs, so the
-        caller can fall back to the linear-guess result.
+        ``None`` when the adiabat cannot be built or contains NaNs, or when
+        the P-T anchor raises ``InitialConditionError`` at this P_cmb and the
+        initial entropy re-solves it later (``_anchor_failure_deferred``), so
+        the caller can fall back to the linear-guess result.
+
+    Raises
+    ------
+    InitialConditionError
+        If the anchor fails and no later step re-solves it.
     """
     try:
         from zalmoxis.eos_export import compute_entropy_adiabat
@@ -1145,9 +1152,8 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         if melt_funcs is not None:
             sol_func, liq_func = melt_funcs
 
-        # Match the 1 bar surface anchor used by the energetics entropy IC
-        # (common.compute_initial_entropy) and the aragog.py cross-check, so all
-        # three derive S_target from the same surface pressure.
+        # Match the 1 bar surface anchor of solve_superliquidus_adiabat and the
+        # aragog.py cross-check, so all three derive S_target at one pressure.
         result = compute_entropy_adiabat(
             eos_file=eos_file,
             T_surface=surface_T,
@@ -1159,6 +1165,22 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
             solid_eos_file=solid_eos,
             liquid_eos_file=liquid_eos,
         )
+    except InitialConditionError as exc:
+        # Fall back only where the initial entropy re-solves the anchor at the
+        # converged P_cmb; elsewhere nothing would check it again.
+        from proteus.interior_struct.zalmoxis import _anchor_failure_deferred
+        from proteus.utils.structure_estimate import resolve_P_cmb
+
+        if not _anchor_failure_deferred(config):
+            raise
+
+        log.warning(
+            'liquidus_super IC adiabat: no P-T anchor at P_cmb=%.0f GPa (%s); falling '
+            'back to the linear-guess structure.',
+            resolve_P_cmb(hf_row, config)[0] / 1e9,
+            exc,
+        )
+        return None
     except (
         ImportError,
         ModuleNotFoundError,
@@ -1891,6 +1913,10 @@ def run_interior(
         try:
             RunSPIDER(dirs, config, hf_all, hf_row, interior_o, mesh_file=mesh_file)
             interior_o.spider_fail_count = 0
+        except (InitialConditionError, *ANCHOR_PASSTHROUGH_ERRORS):
+            # No valid initial condition exists, or a programming error; a retry
+            # cannot fix either.
+            raise
         except RuntimeError as e:
             interior_o.spider_fail_count += 1
             log.warning(

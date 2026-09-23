@@ -1151,7 +1151,9 @@ def test_try_spider_zalmoxis_eos_dir_logs_at_debug(tmp_path, caplog):
     """_try_spider logs the Zalmoxis-generated EOS table path at debug level.
 
     This line fires on every timestep when Zalmoxis provides a per-run EOS
-    directory, so it must stay off the default INFO output (#839).
+    directory, so it must stay off the default INFO output (#839). It fires
+    twice per call: once for the initial-entropy computation and once for
+    the solver's own EOS args, both resolving the same directory.
     """
     from proteus.interior_energetics.spider import _try_spider
 
@@ -1185,8 +1187,54 @@ def test_try_spider_zalmoxis_eos_dir_logs_at_debug(tmp_path, caplog):
     zalmoxis_records = [
         r for r in caplog.records if 'Zalmoxis-generated SPIDER EOS tables' in r.message
     ]
-    assert len(zalmoxis_records) == 1
-    assert zalmoxis_records[0].levelname == 'DEBUG'
+    assert len(zalmoxis_records) == 2
+    assert all(r.levelname == 'DEBUG' for r in zalmoxis_records)
+    resolved_dirs = {r.getMessage().rsplit(' ', 1)[-1] for r in zalmoxis_records}
+    assert resolved_dirs == {dirs['spider_eos_dir']}
+
+
+@pytest.mark.unit
+def test_try_spider_ic_reads_the_same_table_dir_as_aragog(tmp_path):
+    """SPIDER's t=0 entropy is solved on dirs['spider_eos_dir'], the directory
+    Aragog stores for its own IC (aragog.py) and SPIDER's solver runs on, not
+    on a stale output/data/spider_eos left by an earlier run. With
+    PROTEUS_PS_CACHE_DIR set the two locations differ.
+    """
+    from proteus.interior_energetics.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, mesh_path = _setup_spider_env(
+        tmp_path, with_mesh=True
+    )
+    shared_cache = tmp_path / 'ps_cache' / 'spider_eos'
+    shared_cache.mkdir(parents=True)
+    dirs['spider_eos_dir'] = str(shared_cache)
+    stale = os.path.join(dirs['output/data'], 'spider_eos')
+    os.makedirs(stale)
+
+    with (
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ) as mock_ic,
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            mesh_file=mesh_path,
+        )
+
+    aragog_dir = dirs.get('spider_eos_dir', '')  # what AragogRunner stores for its IC
+    assert mock_ic.call_args.kwargs['spider_eos_dir'] == aragog_dir == str(shared_cache)
+    assert mock_ic.call_args.kwargs['spider_eos_dir'] != stale
 
 
 @pytest.mark.unit
@@ -1486,6 +1534,11 @@ def _make_spider_json(filepath, step=0, sim_time=0.0, num_stag=10, num_basic=11)
             },
             'visc_b': {'scaling': 1, 'units': 'Pa.s', 'values': [1e21] * n_b},
             'temp_s': {'scaling': 1, 'units': 'K', 'values': [2500.0] * n_s},
+            'temp_b': {
+                'scaling': 1,
+                'units': 'K',
+                'values': list(np.linspace(2400.0, 4200.0, n_b)),
+            },
             'pressure_s': {
                 'scaling': 1,
                 'units': 'Pa',
@@ -1935,6 +1988,43 @@ def test_read_spider_cmb_pressure_and_flux(tmp_path):
 
     assert output['P_cmb'] == pytest.approx(150e9)
     assert output['F_cmb'] == pytest.approx(3.0)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_read_spider_t_cmb_node_is_last_basic_node(tmp_path):
+    """ReadSPIDER reports ``T_cmb_node`` from the last ``temp_b`` entry.
+
+    SPIDER's basic-node arrays run surface-to-CMB, so the CMB node is
+    ``temp_b[-1]`` (4200 K in the fixture). ``T_cmb`` stays the bottom
+    staggered cell (2500 K), so the two columns differ, and an index-0
+    read (2400 K, the surface node) would also fail the assertion.
+    """
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.spider import ReadSPIDER
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    _make_spider_json(str(data_dir / '0.json'), step=0, num_stag=10, num_basic=11)
+
+    nP, nS = 3, 4
+    lookup = np.zeros((nS, nP, 3))
+    lookup[:, :, 0] = np.linspace(0, 135e9, nP)[None, :]
+    lookup[:, :, 1] = np.linspace(2000, 3200, nS)[:, None]
+    lookup[:, :, 2] = 4000.0
+
+    interior_o = Interior_t(11)
+    interior_o.lookup_rho_melt = lookup
+
+    config = MagicMock()
+    config.planet.prevent_warming = False
+    dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
+
+    _, output = ReadSPIDER(dirs, config, R_int=6.371e6, interior_o=interior_o)
+
+    assert output['T_cmb_node'] == pytest.approx(4200.0)
+    assert output['T_cmb'] == pytest.approx(2500.0)
+    assert output['T_cmb_node'] != pytest.approx(output['T_cmb'])
 
 
 @pytest.mark.unit

@@ -7,11 +7,10 @@ The previous implementation raised ``ValueError`` for any
 ``mass_tot`` outside [0.5, 2.0] M_Earth; the new implementation
 accepts the full 0.5-10 M_Earth band and logs the NL20 result.
 
-We test by capturing the warning log emitted before the downstream
-EntropyEOS / Zalmoxis-adiabat path runs. The downstream path needs
-real EOS data files we don't want to mock, so we let it raise its
-own (non-ValueError) failure mode and confirm only the *guard*
-behaviour at the top of the function.
+We test by capturing the warning log emitted before the P-S table solve
+reads any table value. The solve runs on a stub table set and fails
+there with a non-ValueError, so only the *guard* behaviour at the top of
+the solve is confirmed.
 """
 
 from __future__ import annotations
@@ -21,15 +20,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Tests run in the fast PR check. _make_minimal_config explicitly sets
-# interior_struct.zalmoxis = None so compute_initial_entropy returns at
-# the early Zalmoxis-config-absent fallback after emitting the NL20 log
-# line. The earlier hang on hosted CI was a MagicMock leak: without the
-# explicit None, MagicMock auto-creates interior_struct.zalmoxis and the
-# function descended into the real 2-phase EOS loaders with MagicMock
-# paths, which could feed JAX compilation or disk scans that never
-# terminate on the hosted runner. The 30 s per-test timeout is a
-# defensive ceiling against any future regression of the same shape.
+# The IC solve runs against a stub table loader (see
+# _call_and_swallow_downstream), so no real EOS data is read; the 30 s
+# per-test timeout is a defensive ceiling.
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
@@ -48,37 +41,34 @@ def _make_minimal_config(
     cfg.planet.ini_entropy = 3000.0
     cfg.interior_struct.core_frac = core_frac
     cfg.interior_struct.core_frac_mode = core_frac_mode
-    cfg.interior_struct.module = 'dummy'
-    # Explicitly None out interior_struct.zalmoxis. The liquidus_super solve
-    # resolves P_cmb and emits the Noack & Lasbleis (2020) fallback log line
-    # before it reads interior_struct.zalmoxis.mantle_eos, so this lets the
-    # solve stop with a harmless AttributeError right after the log we assert
-    # on, instead of descending into the real PALEOS adiabat. Without it
-    # MagicMock auto-creates the field and the solve runs the real EOS loaders
-    # with MagicMock paths, which can hang on a hosted CI image where the
-    # MagicMock paths feed into JAX compilation or disk-scan loops.
-    cfg.interior_struct.zalmoxis = None
+    cfg.interior_struct.module = 'zalmoxis'
+    # A non-PALEOS mantle skips the P-T anchor, so the P-S table solve runs.
+    cfg.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
     return cfg
 
 
-def _call_and_swallow_downstream(config):
-    """Call compute_initial_entropy and absorb downstream failures.
+def _call_and_swallow_downstream(config, table_dir):
+    """Call compute_initial_entropy and absorb the stub table's stop.
 
     The fallback log line we want to assert on fires before any EOS
-    table is touched, so the only failure mode that matters here is
-    the deleted Earth-window ``ValueError``. Anything else from deeper
-    in the call chain (FileNotFoundError, RuntimeError on missing
-    EOS, ImportError on missing Zalmoxis melting_curves, ...) is
-    expected in this stripped test environment and gets swallowed.
+    table is touched, so the failure mode that matters here is the
+    deleted Earth-window ``ValueError``. The stub table set has no
+    pressure range, so the solve then stops with InitialConditionError
+    (P_cmb above the table maximum), which is swallowed.
     """
+    from unittest.mock import patch
+
     from proteus.interior_energetics import common
 
     try:
-        common.compute_initial_entropy(
-            config,
-            hf_row=None,
-            spider_eos_dir=None,
-        )
+        # A stub table set: the solve resolves P_cmb and logs the fallback
+        # before it reads any table value, then fails on the stub.
+        with patch.object(common, '_load_entropy_eos', return_value=MagicMock()):
+            common.compute_initial_entropy(
+                config,
+                hf_row=None,
+                spider_eos_dir=str(table_dir),
+            )
     except ValueError as e:
         msg = str(e)
         # Regression guard: the deleted Earth-window guard must NOT
@@ -89,14 +79,12 @@ def _call_and_swallow_downstream(config):
         assert 'cannot use the Earth-like' not in msg, (
             f'Earth-window ValueError guard still active: {msg}'
         )
-    except Exception:
-        # Downstream EOS / Zalmoxis-adiabat failures are expected here
-        # and not what this test is about.
-        pass
+    except common.InitialConditionError as e:
+        assert 'above the EOS table maximum' in str(e)
 
 
 @pytest.mark.parametrize('mass_tot', [0.5, 1.0, 3.0, 5.0, 10.0])
-def test_super_earth_no_longer_raises_earth_window_error(mass_tot, caplog):
+def test_super_earth_no_longer_raises_earth_window_error(mass_tot, caplog, tmp_path):
     """The pre-fix implementation raised a ValueError that explicitly
     mentioned ``"cannot use the Earth-like 135 GPa P_cmb fallback"``
     for mass_tot outside [0.5, 2.0] M_Earth. Verify that error is
@@ -105,9 +93,9 @@ def test_super_earth_no_longer_raises_earth_window_error(mass_tot, caplog):
     cfg = _make_minimal_config(mass_tot=mass_tot)
     caplog.set_level(
         logging.WARNING,
-        logger='fwl.proteus.interior_struct.zalmoxis',
+        logger='fwl.proteus.interior_energetics.common',
     )
-    _call_and_swallow_downstream(cfg)
+    _call_and_swallow_downstream(cfg, tmp_path)
     # The Noack & Lasbleis (2020) fallback log must appear regardless
     # of downstream success.
     text = '\n'.join(rec.message for rec in caplog.records)
@@ -119,21 +107,21 @@ def test_super_earth_no_longer_raises_earth_window_error(mass_tot, caplog):
     )
 
 
-def test_NL20_log_lines_pcmb_scales_with_mass(caplog):
+def test_NL20_log_lines_pcmb_scales_with_mass(caplog, tmp_path):
     """The NL20 log line must echo a P_cmb that scales with mass.
     Discriminating: a regression to a constant fallback would emit
     the same P_cmb GPa value regardless of mass.
     """
     caplog.set_level(
         logging.WARNING,
-        logger='fwl.proteus.interior_struct.zalmoxis',
+        logger='fwl.proteus.interior_energetics.common',
     )
 
     p_cmb_logged = {}
     for mass_tot in (1.0, 5.0):
         caplog.clear()
         cfg = _make_minimal_config(mass_tot=mass_tot)
-        _call_and_swallow_downstream(cfg)
+        _call_and_swallow_downstream(cfg, tmp_path)
         text = '\n'.join(rec.message for rec in caplog.records)
         # Extract "P_cmb=NNN.N GPa" from the log
         import re
