@@ -72,7 +72,7 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
 6. Install NetCDF-Fortran into that environment. The Kapteyn module system
    does not provide it, and SOCRATES needs it both to build and to run:
     ```console
-    conda install -c conda-forge netcdf-fortran
+    conda install -c conda-forge netcdf-fortran gfortran
     conda env config vars set LD_LIBRARY_PATH="$CONDA_PREFIX/lib"
     conda activate proteus
     ```
@@ -81,7 +81,9 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     against the absolute path that `nf-config` reports but records no run path
     of its own. Without the variable SOCRATES still compiles, and the binaries
     it produces then fail with `libnetcdff.so.7: cannot open shared object
-    file`.
+    file`. Installing `gfortran` alongside NetCDF-Fortran makes SOCRATES build
+    with a compiler that can read its module files, which the system compiler
+    cannot always do.
 
 7. You can now run the installer and complete the remaining
    [installation steps](installation.md).
