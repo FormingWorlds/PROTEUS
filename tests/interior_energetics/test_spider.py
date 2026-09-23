@@ -1371,7 +1371,9 @@ def test_try_spider_missing_configured_curve_ignores_bundled_curves(tmp_path):
             return_value=3000.0,
         ),
     ):
-        with pytest.raises(FileNotFoundError, match="melting_dir='Wolf_Bower\\+2018'"):
+        with pytest.raises(
+            FileNotFoundError, match="melting_dir='Wolf_Bower\\+2018'"
+        ) as raised:
             _try_spider(
                 dirs,
                 config,
@@ -1382,6 +1384,9 @@ def test_try_spider_missing_configured_curve_ignores_bundled_curves(tmp_path):
                 atol_sf=1.0,
             )
     mock_run.assert_not_called()
+    # P-S curves come from the generate tool; the fetch command only gives P-T files.
+    assert 'tools/generate_spider_phase_boundaries.py' in str(raised.value)
+    assert 'proteus get interiordata' not in str(raised.value)
 
 
 @pytest.mark.unit

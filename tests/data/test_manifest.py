@@ -440,6 +440,28 @@ def test_fwl_io_without_shared_manifest_is_named_as_the_stale_side(monkeypatch):
     assert _dataset(MASS_RADIUS_ZENG_2019).key == MASS_RADIUS_ZENG_2019
 
 
+def test_import_error_inside_the_shared_manifest_load_is_not_relabelled(monkeypatch):
+    """Only a missing shared_manifest_path is reported as a stale fwl-io."""
+    import fwl_io
+    from fwl_io.manifest import shared_manifest_path
+
+    real_load = fwl_io.load_manifest
+
+    def _load(path):
+        if path == shared_manifest_path():
+            raise ImportError('a broken dependency')
+        return real_load(path)
+
+    monkeypatch.setattr(fwl_io, 'load_manifest', _load)
+
+    with pytest.raises(ImportError, match='a broken dependency') as raised:
+        _dataset(STELLAR_SPECTRA_SOLAR)
+
+    assert raised.type is ImportError
+    # Discrimination: the PROTEUS manifest still loads through the same wrapper.
+    assert _dataset(MASS_RADIUS_ZENG_2019).key == MASS_RADIUS_ZENG_2019
+
+
 def test_unknown_key_message_survives_missing_package_metadata(monkeypatch):
     """The KeyError is raised even when fwl-io's version cannot be read."""
     import importlib.metadata

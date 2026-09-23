@@ -934,30 +934,29 @@ def _try_spider(
     # stops the run rather than switching to other curves. Constant-property
     # runs pass no phase boundaries to SPIDER, so they need none.
     liquidus_ps = solidus_ps = None
-    if _use_const:
-        pass
-    elif dirs.get('spider_liquidus_ps') and os.path.isfile(dirs['spider_liquidus_ps']):
-        liquidus_ps = dirs['spider_liquidus_ps']
-        solidus_ps = dirs['spider_solidus_ps']
-        log.info(
-            'Using P-S phase boundaries from %s (interior_struct.module=%s, melting_dir=%s)',
-            os.path.dirname(liquidus_ps),
-            config.interior_struct.module,
-            config.interior_struct.melting_dir,
-        )
-    else:
-        mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior_struct.melting_dir)
-        liquidus_ps = os.path.join(mc_dir, 'liquidus_P-S.dat')
-        solidus_ps = os.path.join(mc_dir, 'solidus_P-S.dat')
-        missing_ps = [p for p in (solidus_ps, liquidus_ps) if not os.path.isfile(p)]
-        if missing_ps:
-            raise FileNotFoundError(
-                f'interior_struct.melting_dir={config.interior_struct.melting_dir!r} is '
-                f'configured but its P-S melting curves are missing: '
-                f'{", ".join(missing_ps)}. Generate them with '
-                "'python tools/generate_spider_phase_boundaries.py --melting-dir "
-                f"{config.interior_struct.melting_dir}'."
+    if not _use_const:
+        if dirs.get('spider_liquidus_ps') and os.path.isfile(dirs['spider_liquidus_ps']):
+            liquidus_ps = dirs['spider_liquidus_ps']
+            solidus_ps = dirs['spider_solidus_ps']
+            log.info(
+                'Using P-S phase boundaries from %s (interior_struct.module=%s, melting_dir=%s)',
+                os.path.dirname(liquidus_ps),
+                config.interior_struct.module,
+                config.interior_struct.melting_dir,
             )
+        else:
+            mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior_struct.melting_dir)
+            liquidus_ps = os.path.join(mc_dir, 'liquidus_P-S.dat')
+            solidus_ps = os.path.join(mc_dir, 'solidus_P-S.dat')
+            missing_ps = [p for p in (solidus_ps, liquidus_ps) if not os.path.isfile(p)]
+            if missing_ps:
+                raise FileNotFoundError(
+                    f'interior_struct.melting_dir={config.interior_struct.melting_dir!r} is '
+                    f'configured but its P-S melting curves are missing: '
+                    f'{", ".join(missing_ps)}. Generate them with '
+                    "'python tools/generate_spider_phase_boundaries.py --melting-dir "
+                    f"{config.interior_struct.melting_dir}'."
+                )
 
     # EOS table setup: skip entirely when const_properties is active
     # (SPIDER creates a dummy single-phase EOS internally, no tables needed)

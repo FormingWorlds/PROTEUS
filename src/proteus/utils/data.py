@@ -1527,10 +1527,11 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
     Exception
         Any other error from MORS (a stale fwl-io, a bug), unchanged.
     """
-    from fwl_io import DownloadError
     from mors import data as mors_data
 
     fetch_errors = _fetch_errors()
+    from fwl_io import DownloadError
+
     log.debug(f'Downloading stellar evolution tracks: {track}')
 
     # Try MORS download first

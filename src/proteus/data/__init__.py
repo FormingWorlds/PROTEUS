@@ -164,12 +164,12 @@ def _dataset(key: str):
 
     try:
         from fwl_io.manifest import shared_manifest_path
-
-        shared = {ds.key: ds for ds in load_manifest(shared_manifest_path())}
     except ImportError as exc:
         raise RuntimeError(
             f'the installed fwl-io ships no shared manifest; upgrade to fwl-io>={FWL_IO_FLOOR}.'
         ) from exc
+    try:
+        shared = {ds.key: ds for ds in load_manifest(shared_manifest_path())}
     except ValueError as exc:
         if _fwl_io_derives_the_location():
             raise

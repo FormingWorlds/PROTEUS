@@ -2229,6 +2229,35 @@ def test_attempt_on_an_old_fwl_io_does_not_run_the_step(monkeypatch):
 
 
 @pytest.mark.unit
+def test_download_stellar_tracks_on_an_old_fwl_io_asks_for_the_upgrade(monkeypatch):
+    """An fwl-io without the error classes gives the upgrade message, not an ImportError.
+
+    MORS is not called, so its own failure cannot hide the stale fwl-io.
+    """
+    import sys
+    import types
+
+    import fwl_io
+
+    from proteus.utils import data as data_mod
+
+    calls = []
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = lambda track: calls.append(track)
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+    monkeypatch.delattr(fwl_io, 'DownloadError')
+
+    with pytest.raises(RuntimeError, match='upgrade to fwl-io') as raised:
+        data_mod.download_stellar_tracks('Spada')
+
+    assert isinstance(raised.value.__cause__, ImportError)
+    assert calls == []
+
+
+@pytest.mark.unit
 def test_download_stellar_tracks_passes_non_download_errors(monkeypatch):
     """An error from MORS that is not a failed download propagates unchanged.
 
@@ -5986,6 +6015,7 @@ def test_download_stellar_tracks_osf_per_project_exception_caught(tmp_path, monk
         data_mod.download_stellar_tracks('Spada', use_osf_fallback=True)
     # Not wrapped a second time by the handler of the OSF setup.
     assert 'OSF fallback error' not in str(raised.value)
+    assert 'MORS HTTP 503' in str(raised.value.__cause__)
     # Discrimination: get_osf was actually called for each candidate
     # OSF project, so the per-project except path fired (not an outer
     # short-circuit).
