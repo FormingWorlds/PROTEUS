@@ -1,6 +1,7 @@
 """
 Unit tests for proteus.proteus module: Zalmoxis mesh restoration on resume,
-atmosphere-interior deadlock detection, and main-loop plot cadence.
+atmosphere-interior deadlock detection, main-loop plot cadence, and the
+T_magma handed to the atmosphere after a resume.
 
 Tests the resume code path in Proteus.start() that restores the Zalmoxis
 mesh file path when resuming a SPIDER interior simulation, and the main
@@ -15,6 +16,8 @@ Functions tested:
 - Proteus.start(): main-loop plot generation cadence (plot_mod)
 - Proteus.__init__(): stall criterion read from params.stop.stall
 - Proteus._check_atmosphere_deadlock()
+- Proteus.start(): resumed main loop hands the atmosphere the interior T_magma
+  (or the solvus boundary with global miscibility)
 """
 
 from __future__ import annotations
@@ -2171,12 +2174,13 @@ def _make_resume_checkpoint_df():
     return pd.DataFrame(rows)
 
 
-def _make_resume_main_loop_proteus(tmp_path):
+def _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=False):
     """Build a Proteus instance for a resumed run driven into the main loop.
 
     Mirrors `_make_main_loop_proteus`'s dummy-module, full-loop-capable
     config, since a resumed run reaches the same main-loop code once
-    resume setup completes.
+    resume setup completes. ``interior_module`` selects the energetics
+    module and ``miscibility`` the Zalmoxis global_miscibility switch.
     """
     from proteus.config._params import StopStall
     from proteus.proteus import Proteus
@@ -2184,9 +2188,9 @@ def _make_resume_main_loop_proteus(tmp_path):
     config = MagicMock()
     config.interior_struct.module = 'dummy'
     config.interior_struct.zalmoxis.update_interval = 0
-    config.interior_struct.zalmoxis.global_miscibility = False
+    config.interior_struct.zalmoxis.global_miscibility = miscibility
     config.interior_struct.eos_dir = None
-    config.interior_energetics.module = 'spider'
+    config.interior_energetics.module = interior_module
     config.interior_energetics.flux_guess = 100.0
     config.orbit.module = None
     config.observe.module = None
@@ -2235,16 +2239,17 @@ class _StopAfterAtmosphereCall(Exception):
 
 
 @pytest.mark.unit
-def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path):
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('interior_module', ['aragog', 'spider'])
+def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path, interior_module):
     """The first post-resume atmosphere call receives the interior's own
-    T_magma output, not a value anchored to the checkpoint's T_surf or
-    T_magma, matching a non-resumed run's per-iteration flow.
+    T_magma output, not a value anchored to the checkpoint's T_surf, and the
+    checkpoint T_surf as its surface state, matching a non-resumed run.
     """
     from types import SimpleNamespace
 
-    p = _make_resume_main_loop_proteus(tmp_path)
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module=interior_module)
     hf_df = _make_resume_checkpoint_df()
-    checkpoint_t_magma = hf_df['T_magma'].iloc[-1]
     checkpoint_t_surf = hf_df['T_surf'].iloc[-1]
     interior_t_magma = 3456.0
     captured = {}
@@ -2254,6 +2259,7 @@ def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path):
 
     def _fake_run_atmosphere(*args, **kwargs):
         captured['T_magma'] = args[8]['T_magma']
+        captured['T_surf'] = args[8]['T_surf']
         raise _StopAfterAtmosphereCall
 
     with ExitStack() as stack:
@@ -2301,12 +2307,96 @@ def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path):
             p.start(resume=True, offline=True)
 
     assert captured['T_magma'] == pytest.approx(interior_t_magma, rel=1e-12)
-    assert captured['T_magma'] != pytest.approx(checkpoint_t_magma, rel=1e-6)
-    assert captured['T_magma'] != pytest.approx(checkpoint_t_surf, rel=1e-6)
+    assert captured['T_surf'] == pytest.approx(checkpoint_t_surf, rel=1e-12)
 
 
 @pytest.mark.unit
-def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(tmp_path):
+@pytest.mark.physics_invariant
+def test_resume_with_solvus_boundary_keeps_the_interior_t_magma(tmp_path):
+    """With global miscibility the atmosphere is solved from the solvus, so
+    after a resume it receives T_solvus as its lower boundary, and the
+    interior T_magma is back in the coupling for the next interior step and
+    in the committed helpfile row.
+    """
+    from types import SimpleNamespace
+
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog', miscibility=True)
+    hf_df = _make_resume_checkpoint_df()
+    interior_t_magma = [3456.0, 3441.0]
+    t_solvus = 2900.0
+    step = {'interior': 0}
+    seen_by_interior = []
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        hf_row = args[3]
+        seen_by_interior.append(hf_row['T_magma'])
+        hf_row['T_magma'] = interior_t_magma[min(step['interior'], 1)]
+        hf_row['R_solvus'] = 0.9 * hf_row['R_int']
+        hf_row['T_solvus'] = t_solvus
+        hf_row['P_solvus'] = 1.0e9
+        step['interior'] += 1
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        hf_row = args[8]
+        captured.append((hf_row['T_magma'], hf_row['T_surf']))
+        if len(captured) == 2:
+            raise _StopAfterAtmosphereCall
+
+    with ExitStack() as stack:
+        for target in _MAIN_LOOP_NOOP_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                return_value=(hf_df, []),
+            )
+        )
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.assert_mass_conservation'))
+        stack.enter_context(
+            patch('proteus.utils.terminate.check_termination', return_value=False)
+        )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.interior_energetics.wrapper.run_interior',
+                side_effect=_fake_run_interior,
+            )
+        )
+        stack.enter_context(
+            patch('proteus.atmos_clim.run_atmosphere', side_effect=_fake_run_atmosphere)
+        )
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_interior_t.return_value = MagicMock(dt=100.0, ic=1)
+        mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
+        mock_atmos_t.return_value = SimpleNamespace(converged=True)
+        mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
+        mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
+
+        with pytest.raises(_StopAfterAtmosphereCall):
+            p.start(resume=True, offline=True)
+
+    assert captured == [(t_solvus, t_solvus), (t_solvus, t_solvus)]
+    assert seen_by_interior[1] == pytest.approx(interior_t_magma[0], rel=1e-12)
+    assert p.hf_all['T_magma'].iloc[-1] == pytest.approx(interior_t_magma[0], rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('interior_module', ['aragog', 'spider'])
+def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(
+    tmp_path, interior_module
+):
     """Over several post-resume iterations the atmosphere returns T_surf 400 K
     below the T_magma it was given, as AGNI's conductive skin does in a magma
     ocean. Every atmosphere call still receives that iteration's interior
@@ -2315,7 +2405,7 @@ def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(tmp_
     """
     from types import SimpleNamespace
 
-    p = _make_resume_main_loop_proteus(tmp_path)
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module=interior_module)
     hf_df = _make_resume_checkpoint_df()
     # Slow interior cooling (15 K per step) against a 400 K skin drop, so a
     # surface-anchored value would fall far below the interior sequence.
@@ -2387,10 +2477,10 @@ def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(tmp_
 
     assert len(captured) == n_calls
     np.testing.assert_allclose(captured, interior_t_magma, rtol=1e-12)
-    # A surface-anchored coupling hands the atmosphere the previous T_surf,
-    # 400 K or more below the interior value at every step after the first.
-    for got, previous_surface in zip(captured[1:], np.array(captured[:-1]) - skin_drop):
-        assert got - previous_surface > skin_drop - 20.0
-    # Every T_magma the atmosphere received is a positive temperature above
-    # the surface it returned, the magma-ocean regime this run represents.
-    assert min(captured) > skin_drop > 0.0
+    # The rows committed for the completed iterations keep the interior
+    # T_magma and the surface the atmosphere returned.
+    committed = p.hf_all.iloc[-(n_calls - 1) :]
+    np.testing.assert_allclose(committed['T_magma'], interior_t_magma[:-1], rtol=1e-12)
+    np.testing.assert_allclose(
+        committed['T_surf'], np.array(interior_t_magma[:-1]) - skin_drop, rtol=1e-12
+    )
