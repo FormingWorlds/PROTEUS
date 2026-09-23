@@ -1725,10 +1725,10 @@ def _get_sufficient(config: Config, clean: bool = False):
         _attempt('Wolf and Bower melting curves', download_interior_lookuptables, clean=clean)
         _attempt('melting curves', download_melting_curves, config, clean=clean)
 
-    # Dynamic EOS for SPIDER and Aragog (uses struct.eos_dir, skip if None/PALEOS)
-    if (
-        config.interior_energetics.module in ('spider', 'aragog')
-        and config.interior_struct.eos_dir is not None
+    # Dynamic EOS for SPIDER and Aragog: set by struct.eos_dir, and always read
+    # with the dummy structure, which never uses PALEOS tables
+    if config.interior_energetics.module in ('spider', 'aragog') and (
+        config.interior_struct.eos_dir is not None or config.interior_struct.module == 'dummy'
     ):
         _attempt('EOS lookup tables', download_eos_dynamic, config.interior_struct.eos_dir)
 

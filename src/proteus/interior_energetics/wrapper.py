@@ -902,8 +902,8 @@ def determine_interior_radius(
 
     # Provide P-S lookup tables for Aragog's entropy solver (and SPIDER
     # when it runs under this structure path). Mirrors the
-    # generate_spider_tables() call at the top of the zalmoxis and dummy
-    # structure paths. The helper resolves from FWL_DATA/Zenodo first,
+    # table provision at the top of the zalmoxis and dummy structure
+    # paths. The helper resolves from FWL_DATA/Zenodo first,
     # then the SPIDER submodule as a fallback.
     if config.interior_energetics.module in ('spider', 'aragog'):
         _provide_spider_eos_tables(config, outdir, dirs)
@@ -1054,33 +1054,21 @@ def determine_interior_radius_with_dummy(
         dirs['spider_mesh'] = spider_mesh_file
         dirs['spider_mesh_prev'] = spider_mesh_file + '.prev'
 
-    # Generate P-S EOS tables for SPIDER/Aragog (if PALEOS)
+    # P-S EOS tables and melting curves for SPIDER/Aragog. The dummy structure
+    # never uses PALEOS tables: it reads the FWL_DATA or SPIDER set and melting_dir.
     if config.interior_energetics.module in ('spider', 'aragog'):
-        from proteus.interior_struct.zalmoxis import generate_spider_tables
-
-        spider_tables = generate_spider_tables(config, outdir)
-        if spider_tables is not None:
-            dirs['spider_eos_dir'] = spider_tables['eos_dir']
-            dirs['spider_solidus_ps'] = spider_tables['solidus_path']
-            dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
-        elif config.planet.temperature_mode == 'liquidus_super':
-            # The liquidus_super initial entropy solves on these tables.
-            try:
-                _provide_spider_eos_tables(config, outdir, dirs)
-            except MissingMeltingCurveError:
-                raise
-            except FileNotFoundError as exc:
-                raise RuntimeError(
-                    "planet.temperature_mode='liquidus_super' with "
-                    f"interior_struct.module='dummy' needs SPIDER/Aragog P-S EOS "
-                    'tables, but interior_struct.zalmoxis.mantle_eos='
-                    f'{config.interior_struct.zalmoxis.mantle_eos!r} gave no generated '
-                    'PALEOS table set and no FWL_DATA or SPIDER lookup_data set is '
-                    'available. '
-                    'Provide the tables, or set planet.temperature_mode to '
-                    "'adiabatic' or another mode. "
-                    f'Cause: {exc}'
-                ) from exc
+        try:
+            _provide_spider_eos_tables(config, outdir, dirs)
+        except MissingMeltingCurveError:
+            raise
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "interior_struct.module='dummy' with interior_energetics.module="
+                f'{config.interior_energetics.module!r} needs the SPIDER/Aragog P-S EOS '
+                'tables from FWL_DATA or the SPIDER lookup_data, and neither is '
+                "available. Fetch them with 'proteus get all'. "
+                f'Cause: {exc}'
+            ) from exc
 
     # Derived quantities
     hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']

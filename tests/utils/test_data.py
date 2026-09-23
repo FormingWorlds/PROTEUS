@@ -3002,6 +3002,40 @@ def test_get_sufficient_zalmoxis_wolf_bower(
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.download_zalmoxis_eos_for_config')
+@patch('proteus.utils.data.download_eos_dynamic')
+@patch('proteus.utils.data.download_melting_curves')
+@patch('proteus.utils.data.download_interior_lookuptables')
+@patch('proteus.utils.data.download_massradius_data')
+@patch('proteus.utils.data.download_surface_albedos')
+@patch('proteus.utils.data.download_exoplanet_data')
+@patch('proteus.utils.data.download_stellar_spectra')
+@patch('proteus.utils.data.download_spectral_file')
+@patch('proteus.utils.data.download_phoenix')
+def test_get_sufficient_dummy_structure_fetches_ps_tables_without_eos_dir(
+    _m_ph, _m_sp, _m_st, _m_ex, _m_sa, _m_mr, _m_il, _m_mc, mock_dyn, _m_zal
+):
+    """The dummy structure always reads the P-S set, so it is fetched without eos_dir."""
+    from unittest.mock import MagicMock
+
+    from proteus.utils.data import _get_sufficient
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_struct.module = 'dummy'
+    config.interior_struct.eos_dir = None
+
+    _get_sufficient(config, clean=False)
+    assert mock_dyn.call_count == 1
+
+    # Discrimination: Zalmoxis without eos_dir takes its tables from its own EOS.
+    mock_dyn.reset_mock()
+    config.interior_struct.module = 'zalmoxis'
+    _get_sufficient(config, clean=False)
+    assert mock_dyn.call_count == 0
+
+
+@pytest.mark.unit
 @patch('proteus.utils.data.download_zalmoxis_eos')
 @patch('proteus.utils.data.download_eos_dynamic')
 @patch('proteus.utils.data.download_melting_curves')

@@ -3514,13 +3514,10 @@ def test_determine_interior_radius_with_dummy_sets_mesh_paths_for_spider(tmp_pat
             'proteus.interior_struct.dummy.solve_dummy_structure',
             return_value=mesh_file,
         ),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables') as generate,
         _patch(
-            'proteus.interior_struct.zalmoxis.generate_spider_tables',
-            return_value={
-                'eos_dir': str(tmp_path / 'eos'),
-                'solidus_path': str(tmp_path / 'eos/solidus_P-S.dat'),
-                'liquidus_path': str(tmp_path / 'eos/liquidus_P-S.dat'),
-            },
+            'proteus.interior_energetics.wrapper._provide_spider_eos_tables',
+            side_effect=lambda cfg, out, d: d.update(spider_eos_dir=str(tmp_path / 'eos')),
         ),
         _patch('proteus.interior_energetics.wrapper.Interior_t'),
         _patch('proteus.interior_energetics.wrapper.run_interior'),
@@ -3534,20 +3531,15 @@ def test_determine_interior_radius_with_dummy_sets_mesh_paths_for_spider(tmp_pat
     assert dirs['spider_mesh_prev'] == mesh_file + '.prev'
     # M_mantle = M_int - M_core
     assert hf_row['M_mantle'] == pytest.approx(5.972e24 - 2.0e24, rel=1e-12)
-    # Sanity: dispatch was the SPIDER branch so the EOS-table generator
-    # was wired.
+    # The dummy structure never uses PALEOS tables; the FWL_DATA/SPIDER set is provided.
+    generate.assert_not_called()
     assert dirs['spider_eos_dir'] == str(tmp_path / 'eos')
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    ('temperature_mode', 'expect_call'),
-    [('liquidus_super', True), ('adiabatic', False)],
-)
-def test_dummy_structure_provides_tables_for_liquidus_super_without_generated_set(
-    tmp_path, temperature_mode, expect_call
-):
-    """With no generated P-S set, only liquidus_super requests the FWL_DATA tables."""
+@pytest.mark.parametrize('temperature_mode', ['liquidus_super', 'adiabatic'])
+def test_dummy_structure_provides_tables_in_every_temperature_mode(tmp_path, temperature_mode):
+    """The dummy structure takes the FWL_DATA/SPIDER tables in every temperature mode."""
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
@@ -3561,7 +3553,7 @@ def test_dummy_structure_provides_tables_for_liquidus_super_without_generated_se
 
     with (
         _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
-        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables') as generate,
         _patch('proteus.interior_energetics.wrapper._provide_spider_eos_tables') as provide,
         _patch('proteus.interior_energetics.wrapper.Interior_t'),
         _patch('proteus.interior_energetics.wrapper.run_interior'),
@@ -3571,9 +3563,9 @@ def test_dummy_structure_provides_tables_for_liquidus_super_without_generated_se
     ):
         determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
 
-    assert provide.called is expect_call
-    if expect_call:
-        assert provide.call_args.args[1] == str(tmp_path)
+    generate.assert_not_called()
+    assert provide.call_count == 1
+    assert provide.call_args.args[1] == str(tmp_path)
 
 
 @pytest.mark.unit
@@ -3613,10 +3605,8 @@ def test_dummy_structure_liquidus_super_passes_missing_melting_curve_through(tmp
 
 
 @pytest.mark.unit
-def test_dummy_structure_liquidus_super_without_tables_raises_named_error(tmp_path):
-    """No generated set and no FWL_DATA or SPIDER table source gives a named
-    RuntimeError that names mantle_eos, the field that selects the tables.
-    """
+def test_dummy_structure_without_tables_raises_named_error(tmp_path):
+    """No FWL_DATA or SPIDER table source gives a named RuntimeError in any mode."""
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
@@ -3625,13 +3615,11 @@ def test_dummy_structure_liquidus_super_without_tables_raises_named_error(tmp_pa
     config.interior_energetics.module = 'aragog'
     config.interior_energetics.num_levels = 50
     config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
-    config.interior_struct.zalmoxis.mantle_eos = 'Stixrude14:MgSiO3'
-    config.planet.temperature_mode = 'liquidus_super'
+    config.planet.temperature_mode = 'adiabatic'
     hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
 
     with (
         _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
-        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
         _patch(
             'proteus.interior_energetics.wrapper._provide_spider_eos_tables',
             side_effect=FileNotFoundError('no P-S tables'),
@@ -3642,11 +3630,9 @@ def test_dummy_structure_liquidus_super_without_tables_raises_named_error(tmp_pa
         determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
 
     msg = str(excinfo.value)
-    assert 'temperature_mode' in msg
-    assert 'liquidus_super' in msg
-    assert 'interior_struct.module' in msg
-    assert "interior_struct.zalmoxis.mantle_eos='Stixrude14:MgSiO3'" in msg
-    assert 'WolfBower2018_MgSiO3' not in msg
+    assert "interior_struct.module='dummy'" in msg
+    assert "interior_energetics.module='aragog'" in msg
+    assert 'proteus get all' in msg
     assert 'no P-S tables' in msg
     assert not isinstance(excinfo.value, FileNotFoundError)
     # The failure happens before the first interior step is built.
@@ -3680,10 +3666,7 @@ def test_determine_interior_radius_with_dummy_no_mesh_for_non_spider(tmp_path):
             'proteus.interior_struct.dummy.solve_dummy_structure',
             return_value=None,
         ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.generate_spider_tables',
-            return_value=None,
-        ),
+        _patch('proteus.interior_energetics.wrapper._provide_spider_eos_tables'),
         _patch('proteus.interior_energetics.wrapper.Interior_t'),
         _patch('proteus.interior_energetics.wrapper.run_interior'),
         _patch('proteus.interior_energetics.wrapper.update_gravity'),
@@ -3694,8 +3677,6 @@ def test_determine_interior_radius_with_dummy_no_mesh_for_non_spider(tmp_path):
 
     # No mesh file -> no spider_mesh key in dirs.
     assert 'spider_mesh' not in dirs
-    # generate_spider_tables returned None -> no spider_eos_dir.
-    assert 'spider_eos_dir' not in dirs
     # M_mantle still set.
     assert hf_row['M_mantle'] == pytest.approx(5.972e24 - 2.0e24, rel=1e-12)
 

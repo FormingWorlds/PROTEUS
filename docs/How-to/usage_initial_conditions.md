@@ -117,13 +117,12 @@ liquidus at the binding depth.
     the interior solver uses for its melt fraction. Where those tables come
     from depends on the structure module:
 
-    - `"zalmoxis"` and `"dummy"` with a PALEOS mantle
-      (`interior_struct.zalmoxis.mantle_eos`, default `"PALEOS:MgSiO3"`) whose
-      table files are present: Zalmoxis generates the tables from that EOS,
-      with a liquidus derived from the PALEOS (Fei et al. 2021) curve.
-      `interior_struct.melting_dir` is not used, and Zalmoxis must be
-      installed.
-    - `"spider"`, or `"zalmoxis"` and `"dummy"` when no PALEOS table set is
+    - `"zalmoxis"` with a PALEOS mantle (`interior_struct.zalmoxis.mantle_eos`,
+      default `"PALEOS:MgSiO3"`) whose table files are present: Zalmoxis
+      generates the tables from that EOS, with a liquidus derived from the
+      PALEOS (Fei et al. 2021) curve. `interior_struct.melting_dir` is not
+      used.
+    - `"spider"` and `"dummy"`, or `"zalmoxis"` when no PALEOS table set is
       generated: the tables come from FWL_DATA or the SPIDER lookup data,
       `interior_struct.melting_dir` must be set (the run stops when it is
       unset, except for SPIDER with `const_properties = true`), and PROTEUS
@@ -188,13 +187,6 @@ liquidus at the binding depth.
       these temperatures. Whether an adiabat is marked valid depends on
       which pressures the adiabat samples in that band, so the edge, and the
       cap with it, can shift with the core-mantle boundary pressure.
-
-    With `"dummy"` and PALEOS-generated tables there is no anchor, so a large
-    `delta_T_super` can land in those filled cells. The two adiabats differ
-    slightly: for 1 Earth mass at `delta_T_super = 500` K (core-mantle
-    boundary at 103 GPa), the
-    P-T anchor evaluated on the P-S tables has a smallest margin of 472 K
-    above their liquidus, against 500 K for the initial entropy.
 
     The superheat is checked exactly at every pressure where the margin can
     change slope: the table pressure nodes, the liquidus-file nodes, and the
