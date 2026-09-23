@@ -1502,39 +1502,26 @@ def test_monotonic_radius_tolerance_is_tiny_and_positive():
     assert _MONOTONIC_RINT_REL_TOL < 1.0e-6
 
 
-def test_anchor_raise_falls_back_at_intermediate_p_cmb_and_raises_at_the_ic(tmp_path, caplog):
-    """An anchor raise at an intermediate structure P_cmb falls back to the
-    linear guess with a warning that names the error and that P_cmb; the
-    initial entropy at the converged P_cmb still raises when the anchor
-    raises there.
+def test_builder_falls_back_on_an_anchor_raise_and_names_it(caplog):
+    """An anchor raise inside the IC builder falls back to the linear guess
+    with a warning that names the error and the P_cmb it was solved at.
     """
-    from proteus.interior_energetics.common import (
-        InitialConditionError,
-        compute_initial_entropy,
-    )
-
-    P_intermediate, P_final = 1.3e12, 1.2e12
+    from proteus.interior_energetics.common import InitialConditionError
 
     def _anchor(config, hf_row):
-        raise InitialConditionError(
-            f'liquidus_super: no valid molten adiabat found (P_cmb={hf_row["P_cmb"] / 1e9:.0f} GPa)'
-        )
+        raise InitialConditionError('liquidus_super: no valid molten adiabat found')
 
     config = _config()
-    config.planet.delta_T_super = 500.0
     with patch('proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat', _anchor):
         with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'):
             built = _build_superliquidus_adiabat_tp(
-                config, {'P_cmb': P_intermediate}, P_cmb_target=1.4e12
+                config, {'P_cmb': 1.3e12}, P_cmb_target=1.4e12
             )
-        assert built is None
-        msgs = [r.getMessage() for r in caplog.records if 'no P-T anchor' in r.getMessage()]
-        assert len(msgs) == 1
-        assert 'P_cmb=1300 GPa' in msgs[0]
-        assert 'no valid molten adiabat found' in msgs[0]
-
-        with pytest.raises(InitialConditionError, match='P_cmb=1200 GPa'):
-            compute_initial_entropy(config, {'P_cmb': P_final}, 3300.0, str(tmp_path))
+    assert built is None
+    msgs = [r.getMessage() for r in caplog.records if 'no P-T anchor' in r.getMessage()]
+    assert len(msgs) == 1
+    assert 'P_cmb=1300 GPa' in msgs[0]
+    assert 'no valid molten adiabat found' in msgs[0]
 
     with patch(
         'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',

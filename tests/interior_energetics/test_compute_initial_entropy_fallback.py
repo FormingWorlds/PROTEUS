@@ -41,20 +41,20 @@ def _make_minimal_config(
     cfg.planet.ini_entropy = 3000.0
     cfg.interior_struct.core_frac = core_frac
     cfg.interior_struct.core_frac_mode = core_frac_mode
-    cfg.interior_struct.module = 'dummy'
-    cfg.interior_struct.zalmoxis = None
+    cfg.interior_struct.module = 'zalmoxis'
+    # A non-PALEOS mantle skips the P-T anchor, so the P-S table solve runs.
+    cfg.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
     return cfg
 
 
 def _call_and_swallow_downstream(config, table_dir):
-    """Call compute_initial_entropy and absorb downstream failures.
+    """Call compute_initial_entropy and absorb the stub table's stop.
 
     The fallback log line we want to assert on fires before any EOS
-    table is touched, so the only failure mode that matters here is
-    the deleted Earth-window ``ValueError``. Anything else from deeper
-    in the call chain (FileNotFoundError, RuntimeError on missing
-    EOS, ImportError on missing Zalmoxis melting_curves, ...) is
-    expected in this stripped test environment and gets swallowed.
+    table is touched, so the failure mode that matters here is the
+    deleted Earth-window ``ValueError``. The stub table set has no
+    pressure range, so the solve then stops with InitialConditionError
+    (P_cmb above the table maximum), which is swallowed.
     """
     from unittest.mock import patch
 
@@ -79,10 +79,8 @@ def _call_and_swallow_downstream(config, table_dir):
         assert 'cannot use the Earth-like' not in msg, (
             f'Earth-window ValueError guard still active: {msg}'
         )
-    except Exception:
-        # Downstream EOS / Zalmoxis-adiabat failures are expected here
-        # and not what this test is about.
-        pass
+    except common.InitialConditionError as e:
+        assert 'above the EOS table maximum' in str(e)
 
 
 @pytest.mark.parametrize('mass_tot', [0.5, 1.0, 3.0, 5.0, 10.0])

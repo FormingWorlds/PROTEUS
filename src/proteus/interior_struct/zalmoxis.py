@@ -67,7 +67,11 @@ _JAX_NONVIABLE_LOGGED: bool = False
 
 
 def _clear_superliquidus_cache() -> None:
-    """Drop the cached super-liquidus solves (used by tests to avoid leakage)."""
+    """Drop the cached super-liquidus solves (used by tests to avoid leakage).
+
+    Also clears ``common._ANCHOR_CAP_WARNED``, the anchor-cap warnings that
+    share the lifetime of these solves.
+    """
     global _SUPERLIQ_LAST_ANCHOR, _JAX_NONVIABLE_LOGGED
     from proteus.interior_energetics.common import _ANCHOR_CAP_WARNED
 
@@ -543,6 +547,11 @@ def _resolve_zalmoxis_cmb_temperature(
     avoids re-solving (and possibly raising the unreachable-superheat error) on
     every evolution re-solve over a value nothing consumes.
 
+    If the anchor raises ``InitialConditionError`` at this P_cmb, the last
+    solved anchor, or ``config.planet.tcmb_init`` before any solve, is used
+    with a warning; the initial entropy at the converged P_cmb decides
+    whether a molten state exists.
+
     For all other modes, returns config.planet.tcmb_init verbatim.
     """
     if mode != 'liquidus_super':
@@ -570,7 +579,28 @@ def _resolve_zalmoxis_cmb_temperature(
     # P-T super-liquidus adiabat. The energetics IC is solved on the P-S
     # tables, so its adiabat differs from this anchor by the P-T vs P-S
     # liquidus offset (tens of K at 1 M_Earth).
-    res = solve_superliquidus_adiabat(config, hf_row)
+    from proteus.interior_energetics.common import InitialConditionError
+
+    try:
+        res = solve_superliquidus_adiabat(config, hf_row)
+    except InitialConditionError as exc:
+        # The initial entropy re-solves the anchor at the converged P_cmb and
+        # raises there; this structure solve may use an estimated P_cmb.
+        from proteus.utils.structure_estimate import resolve_P_cmb
+
+        fallback = _SUPERLIQ_LAST_ANCHOR
+        source = 'the last solved anchor'
+        if fallback is None:
+            fallback, source = float(config.planet.tcmb_init), 'tcmb_init'
+        log.warning(
+            'liquidus_super CMB anchor for Zalmoxis: no P-T anchor at P_cmb=%.0f GPa '
+            '(%s); using %s, T_cmb=%.0f K, for this structure solve.',
+            resolve_P_cmb(hf_row, config)[0] / 1e9,
+            exc,
+            source,
+            float(fallback),
+        )
+        return float(fallback)
     log.info(
         'liquidus_super CMB anchor for Zalmoxis: T_cmb=%.0f K (fully molten, '
         '%.0f K above the liquidus; surface T=%.0f K, P_cmb=%.0f GPa).',

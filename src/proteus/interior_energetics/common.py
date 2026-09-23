@@ -179,6 +179,27 @@ def _verify_initial_entropy(
 
 _EOS_CACHE: dict = {}
 _EOS_CACHE_MAX = 4
+
+# The 10 phase-property files Aragog's EntropyEOS and SPIDER's lookup
+# loader both expect, in SPIDER's canonical P-S header format.
+_SPIDER_EOS_PHASE_FILES = (
+    'temperature_melt.dat',
+    'temperature_solid.dat',
+    'density_melt.dat',
+    'density_solid.dat',
+    'heat_capacity_melt.dat',
+    'heat_capacity_solid.dat',
+    'adiabat_temp_grad_melt.dat',
+    'adiabat_temp_grad_solid.dat',
+    'thermal_exp_melt.dat',
+    'thermal_exp_solid.dat',
+)
+
+# P-S melting curves. Aragog's `_load_spider_phase_boundary` hardcodes
+# these filenames. SPIDER's bundled lookup_data ships them under the
+# `{solidus,liquidus}_A11_H13.dat` names; we rename on copy so a
+# single canonical layout satisfies both solvers.
+_SPIDER_EOS_MELTING_CURVES = ('solidus_P-S.dat', 'liquidus_P-S.dat')
 _ANCHOR_CAP_WARNED: set = set()
 _TABLE_SUPERLIQ_N_POINTS = 200
 _TABLE_SUPERLIQ_N_BISECT = 60
@@ -252,14 +273,70 @@ def _melt_entropy_range(eos: EntropyEOS) -> tuple[float, float]:
     return float(S_node.min()), float(S_node.max())
 
 
+def _eos_dir_stamp(eos_dir: str) -> tuple | None:
+    """Cache key for the P-S table set in ``eos_dir``.
+
+    Parameters
+    ----------
+    eos_dir : str
+        Directory holding the SPIDER-format P-S tables.
+
+    Returns
+    -------
+    tuple or None
+        The resolved directory path and the name, size and modification time
+        of each phase-property and melting-curve file, or None when one of
+        them cannot be stat'ed, so the caller loads without caching. Other
+        files in the directory are not part of the key.
+    """
+    stamp = []
+    for name in _SPIDER_EOS_PHASE_FILES + _SPIDER_EOS_MELTING_CURVES:
+        try:
+            st = os.stat(os.path.join(eos_dir, name))
+        except OSError:
+            return None
+        stamp.append((name, st.st_size, st.st_mtime_ns))
+    # Table sets of one grid have identical file sizes, so the path is part of the key.
+    return (os.path.realpath(eos_dir), tuple(stamp))
+
+
+def _cached_by_dir_stamp(cache: dict, eos_dir: str, build):
+    """Return ``build(eos_dir)`` from ``cache``, keyed by ``_eos_dir_stamp``.
+
+    A new stamp for a directory replaces its older entries, and at most
+    ``_EOS_CACHE_MAX`` table sets are kept, the oldest evicted first.
+
+    Parameters
+    ----------
+    cache : dict
+        Cache to read and fill.
+    eos_dir : str
+        Directory holding the SPIDER-format P-S tables.
+    build : callable
+        Constructor called with ``eos_dir`` on a miss.
+
+    Returns
+    -------
+    object
+        The cached or newly built table object.
+    """
+    key = _eos_dir_stamp(eos_dir)
+    if key is None:
+        return build(eos_dir)
+    if key not in cache:
+        for old in [k for k in cache if k[0] == key[0]]:
+            del cache[old]
+        while len(cache) >= _EOS_CACHE_MAX:
+            del cache[next(iter(cache))]
+        cache[key] = build(eos_dir)
+    return cache[key]
+
+
 def _load_entropy_eos(eos_dir: str) -> EntropyEOS:
     """Load (and memoise) the P-S EOS tables in ``eos_dir``.
 
-    The cache key holds the resolved directory path and the name, size and
-    modification time of every file in it, so a regenerated table set is
-    reloaded and two directories never share an instance. Aragog's solver
-    setup uses the same cache. At most 4 table sets are kept, the oldest evicted
-    first.
+    See ``_cached_by_dir_stamp`` for the cache key and eviction. Aragog's
+    solver setup uses the same cache.
 
     Parameters
     ----------
@@ -278,19 +355,9 @@ def _load_entropy_eos(eos_dir: str) -> EntropyEOS:
     """
     if not os.path.isdir(eos_dir):
         raise FileNotFoundError(f'SPIDER EOS table directory not found: {eos_dir}')
-    stamp = []
-    for name in sorted(os.listdir(eos_dir)):
-        st = os.stat(os.path.join(eos_dir, name))
-        stamp.append((name, st.st_size, st.st_mtime_ns))
-    # Table sets of one grid have identical file sizes, so the path is part of the key.
-    key = (os.path.realpath(eos_dir), tuple(stamp))
-    if key not in _EOS_CACHE:
-        from aragog.eos.entropy import EntropyEOS
+    from aragog.eos.entropy import EntropyEOS
 
-        while len(_EOS_CACHE) >= _EOS_CACHE_MAX:
-            del _EOS_CACHE[next(iter(_EOS_CACHE))]
-        _EOS_CACHE[key] = EntropyEOS(eos_dir)
-    return _EOS_CACHE[key]
+    return _cached_by_dir_stamp(_EOS_CACHE, eos_dir, EntropyEOS)
 
 
 def solve_superliquidus_entropy_from_tables(
@@ -308,14 +375,21 @@ def solve_superliquidus_entropy_from_tables(
     from the tables' ``liquidus_P-S.dat``; ``interior_struct.melting_dir`` is
     not read here. No Zalmoxis or PALEOS data are read.
 
-    The highest usable entropy is the table maximum, lowered for
-    ``planet.ini_dsdr < 0`` by the entropy that perturbation adds at the
-    core-mantle boundary, so the deepest initial entropy stays inside the
-    table. When the requested superheat is not reachable below that ceiling
-    but the ceiling still clears the liquidus, the entropy is clamped to it
-    and a warning names the requested and achieved superheat. When even the
-    ceiling stays below the liquidus somewhere, no fully-molten initial
-    condition exists in the table and a ``RuntimeError`` is raised instead.
+    The highest usable entropy is the melt-table maximum, or ``S_ceiling``
+    when that is lower, lowered for ``planet.ini_dsdr < 0`` by the entropy
+    that perturbation adds at the core-mantle boundary, so the deepest
+    initial entropy stays below it. When the requested superheat is not
+    reachable below that ceiling but the ceiling still clears the liquidus,
+    the entropy is clamped to it and a warning names the requested and
+    achieved superheat. When even the ceiling stays below the liquidus
+    somewhere, no fully-molten initial condition exists below it and an
+    ``InitialConditionError`` is raised instead.
+
+    The molten check uses the uniform entropy ``S_target``. With
+    ``ini_dsdr < 0`` the initial profile is hotter at depth, so the check is
+    conservative: it can raise or report a smaller superheat where the real
+    deepest node is molten. The clamp warning also gives the superheat at
+    the deepest node, ``S_target + |ini_dsdr| (R_int - R_core)`` at P_cmb.
 
     Parameters
     ----------
@@ -340,9 +414,11 @@ def solve_superliquidus_entropy_from_tables(
     dict
         ``S_target`` [J/kg/K], ``surface_T`` [K], ``cmb_T`` [K],
         ``achieved_superheat`` [K], ``binding_P`` [Pa], ``P_cmb`` [Pa],
-        ``clamped`` (bool) and ``capped_by_ceiling`` (True when the clamp
-        entropy comes from ``S_ceiling``; that clamp is logged at INFO, since
-        the caller that sets the ceiling reports it).
+        ``cmb_node_superheat`` [K] (at the deepest node, with the
+        ``ini_dsdr`` perturbation), ``clamped`` (bool) and
+        ``capped_by_ceiling`` (True when the clamp entropy comes from
+        ``S_ceiling``; that clamp is logged at INFO, since the caller that
+        sets the ceiling reports it).
 
     Raises
     ------
@@ -353,7 +429,9 @@ def solve_superliquidus_entropy_from_tables(
         the table liquidus is undefined at any evaluated pressure or above the
         melt-table maximum, if the table temperature is not finite at the
         highest usable entropy, or if no fully-molten initial condition is
-        reachable below that entropy.
+        reachable below that entropy. That last error carries the negative
+        margin and its pressure as ``margin`` [K] and ``binding_P`` [Pa], and
+        ``from_ceiling`` (True when ``S_ceiling`` set the highest entropy).
     """
     eos = _load_entropy_eos(eos_dir)
     delta = float(config.planet.delta_T_super)
@@ -467,16 +545,18 @@ def solve_superliquidus_entropy_from_tables(
     # structure's mesh file, or core_frac in radius mode for the spider
     # structure, which sets R_core = core_frac * R_int).
     S_lo, S_hi = S_tab_lo, S_tab_hi
-    ceiling_src = 'the EOS table'
-    if S_ceiling is not None and float(S_ceiling) < S_hi:
+    from_ceiling = S_ceiling is not None and float(S_ceiling) < S_hi
+    if from_ceiling:
         S_hi = float(S_ceiling)
-        ceiling_src = 'the P-T anchor entropy'
+    ceiling_src = 'the P-T anchor entropy' if from_ceiling else 'the EOS table'
     ini_dsdr = float(config.planet.ini_dsdr)
+    dS_deep = 0.0  # entropy the ini_dsdr perturbation adds at the deepest node
     if ini_dsdr < 0:
         R_int = hf_row.get('R_int') if hf_row is not None else None
         R_core = hf_row.get('R_core') if hf_row is not None else None
         if R_int and R_core and np.isfinite(R_int - R_core) and R_int > R_core:
-            S_hi -= -ini_dsdr * (float(R_int) - float(R_core))
+            dS_deep = -ini_dsdr * (float(R_int) - float(R_core))
+            S_hi -= dS_deep
         else:
             log.warning(
                 'liquidus_super: hf_row has no mantle radii (R_int, R_core), so '
@@ -493,11 +573,13 @@ def solve_superliquidus_entropy_from_tables(
             f'({S_hi:.1f} J/kg/K); the superheat target cannot be evaluated.'
         )
     if sh_hi < 0:
-        raise InitialConditionError(
+        err = InitialConditionError(
             'liquidus_super: no fully-molten initial condition is reachable below '
             f'{ceiling_src}; even at the highest usable entropy ({S_hi:.1f} J/kg/K) '
             f'the adiabat is {-sh_hi:.0f} K below the liquidus at P={P_hi / 1e9:.3g} GPa.'
         )
+        err.margin, err.binding_P, err.from_ceiling = sh_hi, P_hi, from_ceiling
+        raise err
     clamped = sh_hi < delta
     if clamped:
         S = S_hi
@@ -514,6 +596,7 @@ def solve_superliquidus_entropy_from_tables(
 
     achieved, P_bind = _probe(S)
     T_prof = np.asarray(eos.temperature(P, np.full_like(P, S)), dtype=float)
+    T_deep = float(np.asarray(eos.temperature(P[-1:], np.array([S + dS_deep])))[0])
     out = {
         'S_target': float(S),
         'surface_T': float(T_prof[0]),
@@ -521,20 +604,23 @@ def solve_superliquidus_entropy_from_tables(
         'achieved_superheat': achieved,
         'binding_P': P_bind,
         'P_cmb': P_cmb,
+        'cmb_node_superheat': T_deep - float(T_liq[-1]),
         'clamped': clamped,
-        'capped_by_ceiling': bool(clamped and ceiling_src != 'the EOS table'),
+        'capped_by_ceiling': bool(clamped and from_ceiling),
     }
     if clamped:
         (log.info if out['capped_by_ceiling'] else log.warning)(
             'liquidus_super: the requested superheat of %.0f K is not reachable '
             'below %s (highest usable entropy %.1f J/kg/K). The initial '
             'entropy is clamped to that value, giving %.0f K of superheat at '
-            'P=%.3g GPa and a surface temperature of %.0f K.',
+            'P=%.3g GPa (%.0f K at the deepest node with ini_dsdr) and a '
+            'surface temperature of %.0f K.',
             delta,
             ceiling_src,
             S,
             achieved,
             P_bind / 1e9,
+            out['cmb_node_superheat'],
             out['surface_T'],
         )
     else:
@@ -597,8 +683,12 @@ def compute_initial_entropy(
     ------
     InitialConditionError
         In ``liquidus_super`` mode, when no fully molten entropy exists in the
-        tables, or, with the Zalmoxis structure, when ``spider_eos_dir`` is
-        missing or the PALEOS P-T anchor finds no molten adiabat at P_cmb.
+        tables. With the Zalmoxis structure also when ``spider_eos_dir`` or
+        the ``interior_struct.zalmoxis`` section is missing, when the PALEOS
+        P-T anchor finds no molten adiabat at P_cmb or fails in any other way
+        (chained), and when the anchor clamps with a superheat below the
+        P-T to P-S liquidus offset, so the P-S adiabat at the anchor entropy
+        is below the P-S liquidus.
     FileNotFoundError
         In ``liquidus_super`` mode with another structure module, when no
         ``spider_eos_dir`` is given.
@@ -632,15 +722,46 @@ def compute_initial_entropy(
             # The PALEOS P-T anchor finds the validity ceiling that the generated
             # P-S tables hide by filling invalid cells. The two tables share one
             # entropy scale, so a table clamp caps the IC at the anchor entropy.
-            mantle_eos = str(config.interior_struct.zalmoxis.mantle_eos)
+            zcfg = config.interior_struct.zalmoxis
+            if zcfg is None:
+                raise InitialConditionError(
+                    "temperature_mode='liquidus_super' with interior_struct.module="
+                    "'zalmoxis' reads interior_struct.zalmoxis.mantle_eos, but the "
+                    'interior_struct.zalmoxis section is missing.'
+                )
+            mantle_eos = str(zcfg.mantle_eos)
             if mantle_eos.startswith(PALEOS_EOS_PREFIXES):
                 from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
-                anchor = solve_superliquidus_adiabat(config, hf_row)
+                try:
+                    anchor = solve_superliquidus_adiabat(config, hf_row)
+                except InitialConditionError:
+                    raise
+                except Exception as exc:
+                    # Any anchor failure (table load, integration) stops the IC;
+                    # a plain error would be retried as a solver failure.
+                    raise InitialConditionError(
+                        'liquidus_super: the PALEOS P-T anchor failed at the converged '
+                        f'P_cmb ({type(exc).__name__}: {exc}).'
+                    ) from exc
                 if anchor['clamped'] and not anchor.get('window_limited', False):
-                    res = solve_superliquidus_entropy_from_tables(
-                        config, hf_row, spider_eos_dir, S_ceiling=float(anchor['S_target'])
-                    )
+                    A = float(anchor['achieved_superheat'])
+                    try:
+                        res = solve_superliquidus_entropy_from_tables(
+                            config, hf_row, spider_eos_dir, S_ceiling=float(anchor['S_target'])
+                        )
+                    except InitialConditionError as exc:
+                        if not getattr(exc, 'from_ceiling', False):
+                            raise
+                        # Above the anchor entropy the P-S tables hold filled cells.
+                        raise InitialConditionError(
+                            f'{exc} The PALEOS P-T anchor reaches only {A:.0f} K above the '
+                            'P-T liquidus, so along this adiabat the P-S table liquidus lies '
+                            f'at least {A - exc.margin:.0f} K above the P-T liquidus at '
+                            f'P={exc.binding_P / 1e9:.3g} GPa; the initial entropy is not '
+                            'raised past the anchor entropy, where the P-S tables hold '
+                            'filled cells.'
+                        ) from exc
                     delta = float(config.planet.delta_T_super)
                     key = (round(float(anchor['P_cmb']) / 1e6), round(delta, 3), mantle_eos)
                     if res['capped_by_ceiling'] and key not in _ANCHOR_CAP_WARNED:
@@ -649,13 +770,15 @@ def compute_initial_entropy(
                             'liquidus_super: the PALEOS P-T anchor reaches only %.0f K of '
                             'the requested %.0f K superheat above the P-T liquidus at '
                             'P_cmb=%.0f GPa; the initial entropy is capped at %.1f J/kg/K '
-                            '(anchor entropy %.1f J/kg/K), %.0f K above the P-S table liquidus.',
-                            float(anchor['achieved_superheat']),
+                            '(anchor entropy %.1f J/kg/K), %.0f K above the P-S table '
+                            'liquidus (%.0f K at the deepest node with ini_dsdr).',
+                            A,
                             delta,
                             float(anchor['P_cmb']) / 1e9,
                             float(res['S_target']),
                             float(anchor['S_target']),
                             float(res['achieved_superheat']),
+                            float(res['cmb_node_superheat']),
                         )
                     return float(res['S_target'])
         elif not spider_eos_dir:

@@ -112,29 +112,6 @@ def _write_paleos_melting_curves(outdir, config):
     return sol_file, liq_file
 
 
-def _eos_content_key(eos_dir_str: str) -> str:
-    """Compute a content fingerprint for an EOS directory.
-
-    The PROTEUS test fixture materialises the EOS tables into a fresh
-    per-test ``outdir/data/spider_eos`` directory each time, so a path
-    based cache key misses across tests. The content fingerprint is a
-    sorted tuple of ``(filename, file size)`` pairs for every regular
-    file in the directory; it is stable across distinct on-disk copies
-    of the same tables but cheap to compute (one ``os.listdir`` + one
-    ``getsize`` per file).
-    """
-    try:
-        pairs = []
-        for name in sorted(os.listdir(eos_dir_str)):
-            full = os.path.join(eos_dir_str, name)
-            if os.path.isfile(full):
-                pairs.append((name, os.path.getsize(full)))
-        return repr(pairs)
-    except OSError:
-        # Filesystem error: fall back to the path as the key.
-        return eos_dir_str
-
-
 def _cached_entropy_eos(eos_dir_str: str):
     """Return the shared, cached EntropyEOS for ``eos_dir_str``.
 
@@ -148,21 +125,18 @@ def _cached_entropy_eos(eos_dir_str: str):
 
 
 def _cached_entropy_eos_jax(eos_dir_str: str):
-    """Construct an EntropyEOS_JAX, caching by content fingerprint.
+    """Return the cached EntropyEOS_JAX for ``eos_dir_str``.
 
-    Same motivation as ``_cached_entropy_eos``: the JAX-side EOS trace
-    + compile is ~7 s on macOS arm64 and ~310 s on Linux x86, the result
-    is an equinox Module (immutable pytree), and the construction
-    depends only on the file contents.
+    The JAX EOS trace and compile is slow and the result is immutable, so it
+    is cached with the same key as the numpy EOS
+    (``common._cached_by_dir_stamp``), and the CVODE right-hand side reads
+    the same table set as the solver setup and the initial condition.
     """
-    key = _eos_content_key(eos_dir_str)
-    cached = _entropy_eos_jax_cache.get(key)
-    if cached is None:
-        from aragog.jax.eos import EntropyEOS_JAX
+    from aragog.jax.eos import EntropyEOS_JAX
 
-        cached = EntropyEOS_JAX(eos_dir_str)
-        _entropy_eos_jax_cache[key] = cached
-    return cached
+    from proteus.interior_energetics.common import _cached_by_dir_stamp
+
+    return _cached_by_dir_stamp(_entropy_eos_jax_cache, eos_dir_str, EntropyEOS_JAX)
 
 
 # Research-only flag. Flip to True to enable the diffrax direct-JAX
@@ -1657,8 +1631,10 @@ class AragogRunner:
                 log.debug(
                     'Entropy IC full-profile cross-check > %.1f%% '
                     '(max %.1f K / %.2f%% at depth). Diagnostic only; benign '
-                    'PALEOS P-T vs regenerated P-S table drift (P_cmb=%.0f GPa, '
-                    'surface T=%.0f K vs adiabat %.0f K), not a coupling bug. '
+                    'PALEOS P-T vs regenerated P-S table drift, or on the Zalmoxis '
+                    'route an initial entropy capped at the PALEOS anchor entropy '
+                    '(P_cmb=%.0f GPa, surface T=%.0f K vs adiabat %.0f K), not a '
+                    'coupling bug. '
                     'The scalar surface cross-check logged by _set_entropy_ic '
                     'is the authoritative IC sanity check.',
                     FAIL_PCT,

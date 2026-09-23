@@ -618,6 +618,38 @@ def test_aragog_verify_warns_on_cold_surface_liquidus_super(monkeypatch, tmp_pat
     assert 'surface T=2900 K' in msgs[0]
 
 
+def test_aragog_verify_no_cold_surface_warning_within_the_calibration(
+    monkeypatch, tmp_path, caplog
+):
+    """The same cold-surface profile below the Fei+2021 calibration pressure
+    logs no cold-surface warning: the guard applies only where the liquidus
+    is extrapolated.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
+
+    p_cmb = 0.5 * FEI2021_LIQUIDUS_P_CALIB_PA
+    config = _make_aragog_liquidus_super_config()
+    _patch_crosscheck_eos(monkeypatch, tmp_path, surface_T=4243.0, p_cmb=p_cmb)
+    P_stag = np.array([p_cmb, 0.6 * p_cmb, 0.1 * p_cmb, 1e9, 1e5])
+
+    def cold_T(p, s):
+        return 2900.0 + (p - 1e5) / (p_cmb - 1e5) * (11000.0 - 2900.0)
+
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _make_mock_entropy_solver(
+        P_stag=P_stag,
+        S_stag=np.full(P_stag.size, 10000.0),
+        temperature_scalar_fn=cold_T,
+    )
+    with caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.aragog'):
+        AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path), {'P_cmb': p_cmb})
+
+    assert not [r for r in caplog.records if 'cold-surface inversion' in r.getMessage()]
+    # Discrimination: the profile still reached the FAIL branch.
+    assert [r for r in caplog.records if 'verdict = FAIL' in r.getMessage()]
+
+
 def test_aragog_verify_no_raise_on_warm_surface_liquidus_super(monkeypatch, tmp_path):
     """A correctly-anchored warm-surface liquidus_super IC does NOT raise, even
     when the table-drift verdict is FAIL: the guard is gated on the cold-surface

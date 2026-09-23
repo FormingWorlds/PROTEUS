@@ -11,7 +11,12 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
-from proteus.interior_energetics.common import InitialConditionError, Interior_t
+from proteus.interior_energetics.common import (
+    _SPIDER_EOS_MELTING_CURVES,
+    _SPIDER_EOS_PHASE_FILES,
+    InitialConditionError,
+    Interior_t,
+)
 from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
 from proteus.utils.helper import UpdateStatusfile
@@ -252,28 +257,6 @@ def get_nlevb(config: Config):
         case 'dummy':
             return 2
     raise ValueError(f"Invalid interior module selected '{config.interior_energetics.module}'")
-
-
-# The 10 phase-property files Aragog's EntropyEOS and SPIDER's lookup
-# loader both expect, in SPIDER's canonical P-S header format.
-_SPIDER_EOS_PHASE_FILES = (
-    'temperature_melt.dat',
-    'temperature_solid.dat',
-    'density_melt.dat',
-    'density_solid.dat',
-    'heat_capacity_melt.dat',
-    'heat_capacity_solid.dat',
-    'adiabat_temp_grad_melt.dat',
-    'adiabat_temp_grad_solid.dat',
-    'thermal_exp_melt.dat',
-    'thermal_exp_solid.dat',
-)
-
-# P-S melting curves. Aragog's `_load_spider_phase_boundary` hardcodes
-# these filenames. SPIDER's bundled lookup_data ships them under the
-# `{solidus,liquidus}_A11_H13.dat` names; we rename on copy so a
-# single canonical layout satisfies both solvers.
-_SPIDER_EOS_MELTING_CURVES = ('solidus_P-S.dat', 'liquidus_P-S.dat')
 
 
 def _rectangularize_spider_ps_file(src: str, dst: str) -> None:

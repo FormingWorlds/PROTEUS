@@ -24,6 +24,7 @@ Functions tested:
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from types import SimpleNamespace
 
@@ -98,6 +99,13 @@ def _config(delta=200.0, module='spider', melting_dir='Monteux-600'):
             zalmoxis=SimpleNamespace(mantle_eos='PALEOS-2phase:MgSiO3'),
         ),
     )
+
+
+def _write_table_set(d, text='1 2 3\n'):
+    """Write every file of a SPIDER-format table set into ``d`` with ``text``."""
+    d.mkdir(parents=True, exist_ok=True)
+    for name in common._SPIDER_EOS_PHASE_FILES + common._SPIDER_EOS_MELTING_CURVES:
+        (d / name).write_text(text)
 
 
 @pytest.fixture
@@ -344,8 +352,7 @@ def test_cache_keeps_other_directories_when_one_reloads(monkeypatch, tmp_path):
     dirs = []
     for i in range(common._EOS_CACHE_MAX + 2):
         d = tmp_path / f'set{i}'
-        d.mkdir()
-        (d / 'f.dat').write_text('x')
+        _write_table_set(d)
         dirs.append(str(d))
 
     first = common._load_entropy_eos(dirs[0])
@@ -934,18 +941,92 @@ def test_load_entropy_eos_caches_and_invalidates_on_file_change(monkeypatch, tmp
     aragog_entropy = pytest.importorskip('aragog.eos.entropy')
     monkeypatch.setattr(aragog_entropy, 'EntropyEOS', _Counting)
     monkeypatch.setattr(common, '_EOS_CACHE', {})
-    table = tmp_path / 'density_melt.dat'
-    table.write_text('1 2 3\n')
+    _write_table_set(tmp_path)
 
     a = common._load_entropy_eos(str(tmp_path))
     b = common._load_entropy_eos(str(tmp_path))
     assert a is b
     assert len(made) == 1
 
-    table.write_text('1 2 3 4 5 6\n')
+    (tmp_path / 'density_melt.dat').write_text('1 2 3 4 5 6\n')
     c = common._load_entropy_eos(str(tmp_path))
     assert c is not a
     assert len(made) == 2
+    assert len(common._EOS_CACHE) == 1
+
+
+def test_rewrites_of_one_directory_keep_one_entry_and_spare_others(monkeypatch, tmp_path):
+    """Each rewrite of a table set replaces that directory's entry, so 4
+    rewrites of one directory neither fill the cache nor evict another set.
+    """
+    made = []
+    aragog_entropy = pytest.importorskip('aragog.eos.entropy')
+    monkeypatch.setattr(aragog_entropy, 'EntropyEOS', lambda d: made.append(d) or object())
+    monkeypatch.setattr(common, '_EOS_CACHE', {})
+    a, b = tmp_path / 'a', tmp_path / 'b'
+    _write_table_set(a)
+    _write_table_set(b)
+    eos_b = common._load_entropy_eos(str(b))
+
+    for i in range(4):
+        (a / 'temperature_melt.dat').write_text('1 2 3' + ' 4' * (i + 1) + '\n')
+        common._load_entropy_eos(str(a))
+
+    assert len(common._EOS_CACHE) == 2
+    assert common._load_entropy_eos(str(b)) is eos_b
+    assert made.count(str(b)) == 1
+
+
+def test_extra_files_do_not_change_the_cache_key(monkeypatch, tmp_path):
+    """Files other than the table set, such as the cache marker or a
+    short-lived temporary file, do not force a reload when they appear or
+    vanish; a table file that cannot be stat'ed loads without caching.
+    """
+    made = []
+    aragog_entropy = pytest.importorskip('aragog.eos.entropy')
+    monkeypatch.setattr(aragog_entropy, 'EntropyEOS', lambda d: made.append(d) or object())
+    monkeypatch.setattr(common, '_EOS_CACHE', {})
+    _write_table_set(tmp_path)
+
+    first = common._load_entropy_eos(str(tmp_path))
+    (tmp_path / '.cache_info.txt').write_text('marker\n')
+    tmp_file = tmp_path / '.tmp-123'
+    tmp_file.write_text('partial')
+    assert common._load_entropy_eos(str(tmp_path)) is first
+    tmp_file.unlink()
+    assert common._load_entropy_eos(str(tmp_path)) is first
+    assert len(made) == 1
+
+    (tmp_path / 'liquidus_P-S.dat').unlink()
+    common._load_entropy_eos(str(tmp_path))
+    common._load_entropy_eos(str(tmp_path))
+    assert len(made) == 3
+    assert len(common._EOS_CACHE) == 1
+
+
+def test_jax_eos_cache_keys_on_path_and_modification(monkeypatch, tmp_path):
+    """Two table sets with the same file sizes but different content load
+    two JAX EOS instances, and an in-place rewrite reloads it.
+    """
+    jax_eos = pytest.importorskip('aragog.jax.eos')
+    from proteus.interior_energetics import aragog as aragog_mod
+
+    made = []
+    monkeypatch.setattr(jax_eos, 'EntropyEOS_JAX', lambda d: made.append(d) or object())
+    monkeypatch.setattr(aragog_mod, '_entropy_eos_jax_cache', {})
+    a, b = tmp_path / 'a', tmp_path / 'b'
+    _write_table_set(a, '1 2 3\n')
+    _write_table_set(b, '4 5 6\n')
+
+    eos_a = aragog_mod._cached_entropy_eos_jax(str(a))
+    eos_b = aragog_mod._cached_entropy_eos_jax(str(b))
+    assert eos_a is not eos_b
+    assert aragog_mod._cached_entropy_eos_jax(str(a)) is eos_a
+
+    (a / 'temperature_melt.dat').write_text('7 8 9\n')
+    os.utime(a / 'temperature_melt.dat', ns=(1, 1))
+    assert aragog_mod._cached_entropy_eos_jax(str(a)) is not eos_a
+    assert made == [str(a), str(b), str(a)]
 
 
 def _planet_and_struct(temperature_mode, struct_module):
@@ -1068,8 +1149,7 @@ def test_aragog_setup_and_ic_share_one_table_load(monkeypatch, tmp_path):
     monkeypatch.setattr(aragog_entropy, 'EntropyEOS', _Counting)
     monkeypatch.setattr(common, '_EOS_CACHE', {})
     src = tmp_path / 'spider_eos'
-    src.mkdir()
-    (src / 'density_melt.dat').write_text('1 2 3\n')
+    _write_table_set(src)
     copy = tmp_path / 'copy'
     shutil.copytree(src, copy, copy_function=shutil.copy2)
 
@@ -1092,3 +1172,193 @@ def test_clearing_the_anchor_cache_rearms_the_cap_warning():
     zal._clear_superliquidus_cache()
 
     assert common._ANCHOR_CAP_WARNED == set()
+
+
+def test_structure_anchor_raise_falls_back_and_the_ic_at_the_final_p_cmb_decides(
+    fake_tables, monkeypatch, caplog
+):
+    """The first structure solve runs the anchor at the Noack & Lasbleis (2020)
+    P_cmb estimate (about 138 GPa here); a raise there falls back to tcmb_init
+    with a warning. The initial entropy then runs the anchor at the converged
+    P_cmb: below the 120 GPa limit of this fake it gives the P-S entropy, above
+    it the run stops with the anchor's error.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    from proteus.utils.structure_estimate import resolve_P_cmb
+
+    P_limit = 1.2e11
+
+    def _anchor(config, hf_row):
+        P = resolve_P_cmb(hf_row, config)[0]
+        if P > P_limit:
+            raise common.InitialConditionError(
+                f'liquidus_super: no valid molten adiabat found (P_cmb={P / 1e9:.0f} GPa)'
+            )
+        return _anchor_result(2600.0, clamped=False, achieved=500.0)
+
+    monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _anchor)
+    monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR', None)
+    cfg = _config(500.0, module='zalmoxis')
+    cfg.planet.tcmb_init = 6000.0
+    P_estimate = resolve_P_cmb({}, cfg)[0]
+    assert P_estimate > P_limit  # the first structure solve hits the raise
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        T_cmb = zal._resolve_zalmoxis_cmb_temperature(cfg, {}, 'liquidus_super')
+
+    assert T_cmb == pytest.approx(6000.0)
+    msgs = [r.getMessage() for r in caplog.records if 'no P-T anchor' in r.getMessage()]
+    assert len(msgs) == 1
+    assert f'P_cmb={P_estimate / 1e9:.0f} GPa' in msgs[0]
+    assert 'tcmb_init' in msgs[0]
+
+    S = compute_initial_entropy(cfg, {'P_cmb': P_CMB}, 3300.0, fake_tables)
+    assert S == pytest.approx(_S_expected(500.0), rel=1e-6)
+    with pytest.raises(common.InitialConditionError, match='P_cmb=130 GPa'):
+        compute_initial_entropy(cfg, {'P_cmb': 1.3e11}, 3300.0, fake_tables)
+
+
+def test_structure_anchor_raise_reuses_the_last_solved_anchor(monkeypatch):
+    """After a successful anchor solve, a later raise in a structure solve
+    falls back to that anchor's CMB temperature, not to tcmb_init.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+
+    def _anchor(config, hf_row):
+        raise common.InitialConditionError('liquidus_super: no valid molten adiabat found')
+
+    monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _anchor)
+    monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+    cfg = _config(500.0, module='zalmoxis')
+    cfg.planet.tcmb_init = 6000.0
+
+    T_cmb = zal._resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': P_CMB}, 'liquidus_super')
+
+    assert T_cmb == pytest.approx(8765.0)
+
+
+def test_zalmoxis_route_without_a_zalmoxis_section_raises(fake_tables):
+    """The Zalmoxis route reads interior_struct.zalmoxis.mantle_eos; without
+    that section the IC stops with an error that names it.
+    """
+    cfg = _config(500.0, module='zalmoxis')
+    cfg.interior_struct.zalmoxis = None
+
+    with pytest.raises(common.InitialConditionError, match='interior_struct.zalmoxis section'):
+        compute_initial_entropy(cfg, {'P_cmb': P_CMB}, 3300.0, fake_tables)
+
+
+def test_anchor_failures_other_than_the_ic_error_are_chained(fake_tables, monkeypatch):
+    """A table-load or integration failure inside the anchor stops the IC as
+    InitialConditionError with the cause chained, so SPIDER does not retry it.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+
+    def _anchor(config, hf_row):
+        raise ValueError('f(a) and f(b) must have different signs')
+
+    monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _anchor)
+
+    with pytest.raises(common.InitialConditionError, match='ValueError: f\\(a\\)') as exc:
+        compute_initial_entropy(
+            _config(500.0, module='zalmoxis'), {'P_cmb': P_CMB}, 3300.0, fake_tables
+        )
+    assert isinstance(exc.value.__cause__, ValueError)
+
+
+def test_cap_below_the_p_s_liquidus_raises_naming_the_offset(fake_tables, monkeypatch):
+    """An anchor that clamps with less superheat than the P-T to P-S liquidus
+    offset leaves the P-S adiabat at the anchor entropy below the P-S
+    liquidus: the IC raises and names the anchor superheat, the offset bound
+    and the binding pressure.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    S_anchor = 1800.0
+    monkeypatch.setattr(
+        zal,
+        'solve_superliquidus_adiabat',
+        lambda config, hf_row: _anchor_result(S_anchor, achieved=20.0),
+    )
+    margin = A * S_anchor + T0 - L0 - (L1 - B) * P_CMB / 1e9
+    assert margin < 0  # the P-S adiabat at the anchor entropy is not molten
+
+    with pytest.raises(common.InitialConditionError) as exc:
+        compute_initial_entropy(
+            _config(500.0, module='zalmoxis'), {'P_cmb': P_CMB}, 3300.0, fake_tables
+        )
+
+    msg = str(exc.value)
+    assert 'below the P-T anchor entropy' in msg
+    assert 'reaches only 20 K above the P-T liquidus' in msg
+    assert f'at least {20.0 - margin:.0f} K above the P-T liquidus at P=100 GPa' in msg
+
+
+def test_clamp_warnings_give_the_deepest_node_superheat(fake_tables, monkeypatch, caplog):
+    """With ini_dsdr < 0 the deepest node holds S + |ini_dsdr| (R_int - R_core),
+    so both clamp warnings give its superheat next to the uniform-entropy one.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    monkeypatch.setattr(common, '_ANCHOR_CAP_WARNED', set())
+    monkeypatch.setattr(
+        zal, 'solve_superliquidus_adiabat', lambda config, hf_row: _anchor_result(2300.0)
+    )
+    hf_row = {'P_cmb': P_CMB, 'R_int': 6.0e6, 'R_core': 3.0e6}
+    dS = 1.0e-5 * 3.0e6
+    S_cap = 2300.0 - dS
+
+    def superheat(S):
+        return A * S + T0 - L0 - (L1 - B) * P_CMB / 1e9
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        cfg = _config(500.0, module='zalmoxis')
+        cfg.planet.ini_dsdr = -1.0e-5
+        compute_initial_entropy(cfg, hf_row, 3300.0, fake_tables)
+        cfg_table = _config(1000.0)
+        cfg_table.planet.ini_dsdr = -1.0e-5
+        res = solve_superliquidus_entropy_from_tables(cfg_table, hf_row, fake_tables)
+
+    msgs = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(msgs) == 2
+    assert f'{superheat(S_cap):.0f} K above the P-S table liquidus' in msgs[0]
+    assert f'({superheat(2300.0):.0f} K at the deepest node with ini_dsdr)' in msgs[0]
+    assert res['cmb_node_superheat'] == pytest.approx(superheat(S_MAX), rel=1e-9)
+    assert f'({superheat(S_MAX):.0f} K at the deepest node with ini_dsdr)' in msgs[1]
+    # Discrimination: the uniform-entropy superheat is lower by A * dS.
+    assert superheat(S_MAX) - res['achieved_superheat'] == pytest.approx(A * dS)
+
+
+def test_cap_warning_key_separates_delta_and_p_cmb(fake_tables, monkeypatch, caplog):
+    """The cap warning is logged once per (P_cmb, delta): a new delta or a
+    new P_cmb logs again, a repeat does not.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    monkeypatch.setattr(common, '_ANCHOR_CAP_WARNED', set())
+
+    def _anchor(config, hf_row):
+        return {**_anchor_result(2300.0), 'P_cmb': hf_row['P_cmb']}
+
+    monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _anchor)
+    calls = [(500.0, P_CMB), (500.0, P_CMB), (600.0, P_CMB), (500.0, 0.99 * P_CMB)]
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        for delta, P in calls:
+            compute_initial_entropy(
+                _config(delta, module='zalmoxis'), {'P_cmb': P}, 3300.0, fake_tables
+            )
+
+    msgs = [r.getMessage() for r in caplog.records if 'PALEOS P-T anchor' in r.getMessage()]
+    assert len(msgs) == 3
+    assert 'requested 600 K' in msgs[1]
+    assert 'P_cmb=99 GPa' in msgs[2]
+
+
+def test_entropy_ceiling_equal_to_the_table_maximum_is_a_table_clamp(fake_tables):
+    """An S_ceiling equal to the melt-table maximum is not lower than it, so
+    the clamp is reported as a table clamp.
+    """
+    res = solve_superliquidus_entropy_from_tables(
+        _config(1000.0), {'P_cmb': P_CMB}, fake_tables, S_ceiling=S_MAX
+    )
+
+    assert res['S_target'] == pytest.approx(S_MAX, rel=1e-12)
+    assert res['clamped'] is True
+    assert res['capped_by_ceiling'] is False
