@@ -126,9 +126,9 @@ phases.
     Aragog integrates with SUNDIALS CVODE by default (`solver_method = "cvode"`).
     The installer builds it (`scikits-odes-sundials` on the SUNDIALS C library,
     through `tools/get_cvode.sh`, which needs an active conda environment) and
-    stops with an error when that fails. A run with Aragog on the default
-    `solver_method = "cvode"` also stops at setup, with the same install command
-    in the message, when CVODE cannot be imported.
+    warns when that fails, since only Aragog on the default solver needs it.
+    A run with Aragog on the default `solver_method = "cvode"` stops at setup,
+    with the same install command in the message, when CVODE cannot be imported.
     Choosing `solver_method = "radau"` or `"bdf"` selects scipy on purpose and
     does not need CVODE. See [Aragog stops at setup](troubleshooting.md#aragog-stops-at-setup-cvode-cannot-be-imported).
 
