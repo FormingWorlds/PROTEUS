@@ -37,7 +37,7 @@ def _two_phase_tables():
     """Fetch the 2-phase MgSiO3 pair the pinned solves read, and require it on disk.
 
     The solves build the adiabat from that pair when both files exist and from
-    the unified table the configs name otherwise; the pins are for the pair.
+    the unified table the configs name otherwise; the zero-superheat pin is for the pair.
     """
     from proteus.interior_struct.zalmoxis import (
         load_zalmoxis_material_dictionaries,
