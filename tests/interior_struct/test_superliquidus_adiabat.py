@@ -32,6 +32,24 @@ def _cfg(name: str):
     return read_config_object(os.path.join(_GRID, name))
 
 
+@pytest.fixture(scope='module', autouse=True)
+def _two_phase_tables():
+    """Fetch the 2-phase MgSiO3 pair the pinned solves read, and require it on disk.
+
+    The solves build the adiabat from that pair when both files exist and from
+    the unified table the configs name otherwise; the pins are for the pair.
+    """
+    from proteus.interior_struct.zalmoxis import (
+        load_zalmoxis_material_dictionaries,
+        resolve_2phase_mgsio3_paths,
+    )
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='PALEOS:iron')
+    tables = resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', load_zalmoxis_material_dictionaries())
+    assert all(tables), f'the 2-phase MgSiO3 tables are missing from FWL_DATA: {tables}'
+
+
 @pytest.fixture(autouse=True)
 def _clear_solver_cache():
     from proteus.interior_struct.zalmoxis import _clear_superliquidus_cache
