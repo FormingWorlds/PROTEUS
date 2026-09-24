@@ -841,12 +841,11 @@ bash tools/get_aragog.sh 2>&1
 info "Setting up Zalmoxis..."
 bash tools/get_zalmoxis.sh 2>&1
 
-# Install the SUNDIALS CVODE solver (Aragog's production integration path).
-# Without it Aragog falls back to scipy Radau, which is slower and step-size-
-# fragile on coupled cooling runs.
+# Install the SUNDIALS CVODE solver, Aragog's default integrator. A run with
+# Aragog stops at setup without it.
 info "Setting up the SUNDIALS CVODE solver..."
 bash tools/get_cvode.sh 2>&1 \
-    || warn "CVODE install failed; Aragog will fall back to scipy Radau"
+    || die "CVODE install failed. Aragog needs it for solver_method = \"cvode\". Fix the error above, then re-run bash tools/get_cvode.sh."
 
 # Install PROTEUS itself
 info "Installing PROTEUS and remaining dependencies..."

@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
-# Install the SUNDIALS CVODE solver for Aragog's production integration path.
-#
-# Aragog's production interior solver (interior_energetics.aragog.solver_method
-# = "cvode") imports CVODE from scikits_odes_sundials, the Python wrapper around
-# the SUNDIALS C library. Without it Aragog silently falls back to scipy Radau,
-# which is slower and step-size-fragile on multi-Myr coupled cooling runs (it
-# trips the core-temperature-jump guard at loose tolerance and stalls at tight
-# tolerance). CVODE is the same SUNDIALS integrator SPIDER uses.
-#
-# This installs the SUNDIALS C library from conda-forge and builds the
-# scikits-odes-sundials wrapper against it. It is idempotent: it exits early
-# when CVODE already imports. Requires an active conda environment.
+# Install CVODE (scikits-odes-sundials on the conda-forge SUNDIALS library), which
+# Aragog's default solver_method = "cvode" needs; PROTEUS stops at setup without it.
+# Idempotent; needs an active conda environment. "radau" or "bdf" select scipy instead.
 set -euo pipefail
 
 if python -c "import scikits_odes_sundials.cvode" >/dev/null 2>&1; then

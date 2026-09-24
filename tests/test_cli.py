@@ -2679,3 +2679,77 @@ def test_start_defaults_to_no_resume_no_offline(monkeypatch, tmp_path):
     inst = _FakeProteusStart.instances[0]
     assert inst.resume is False
     assert inst.offline is False
+
+
+def _cvode_recorder(fail: bool):
+    """Return a subprocess.run stand-in that records commands and can fail get_cvode.sh."""
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        if fail and str(cmd[1]).endswith('get_cvode.sh'):
+            raise cli.subprocess.CalledProcessError(1, cmd)
+        return type('R', (), {'returncode': 0})()
+
+    return fake_run, calls
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('command', ['install-all', 'update-all'])
+def test_a_failed_cvode_install_stops_the_command_with_an_error(monkeypatch, tmp_path, command):
+    """A CVODE install failure is an error: exit 1, a red message, and nothing after it runs.
+
+    Aragog's default solver needs CVODE and PROTEUS stops at setup without it,
+    so continuing an install past this step would only defer the failure to the
+    first run. The message must name the package and the manual command.
+    """
+    _pin_proteus_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    (tmp_path / 'fwl_data').mkdir()
+    (tmp_path / 'socrates').mkdir()
+    (tmp_path / 'AGNI').mkdir()
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+    fake_run, calls = _cvode_recorder(fail=True)
+    monkeypatch.setattr(cli.subprocess, 'run', fake_run)
+
+    res = runner.invoke(cli.cli, [command])
+
+    assert res.exit_code == 1
+    assert 'Failed to install CVODE' in res.output
+    assert 'scikits-odes-sundials' in res.output
+    assert 'bash tools/get_cvode.sh' in res.output
+    assert 'completed' not in res.output
+    # Nothing after the CVODE step ran: the last command is the failed script.
+    assert str(calls[-1][1]).endswith('get_cvode.sh')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('command', ['install-all', 'update-all'])
+def test_a_successful_cvode_install_runs_the_script_from_the_source_tree(
+    monkeypatch, tmp_path, command
+):
+    """Both commands run tools/get_cvode.sh from the PROTEUS root and go on to finish."""
+    _pin_proteus_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    (tmp_path / 'fwl_data').mkdir()
+    (tmp_path / 'socrates').mkdir()
+    (tmp_path / 'AGNI').mkdir()
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+    fake_run, calls = _cvode_recorder(fail=False)
+    monkeypatch.setattr(cli.subprocess, 'run', fake_run)
+
+    res = runner.invoke(cli.cli, [command])
+
+    assert res.exit_code == 0, res.output
+    cvode_calls = [c for c in calls if str(c[1]).endswith('get_cvode.sh')]
+    assert cvode_calls == [['bash', str(tmp_path / 'tools' / 'get_cvode.sh')]]
+    assert 'CVODE available' in res.output
+    assert 'completed' in res.output

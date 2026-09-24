@@ -15,6 +15,7 @@ Functions tested:
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import MagicMock, create_autospec, patch
 
 import numpy as np
@@ -777,19 +778,15 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
 ):
     """A retry-ladder exhaustion names the integrator that actually ran.
 
-    ``solver_method`` can ask for CVODE and still run scipy: the wrapper is
-    compiled against SUNDIALS and falls back silently on a build or ABI
-    mismatch, so trusting the config name mislabels every scipy-fallback
-    failure as a CVODE one. Covers CVODE available, CVODE unavailable
-    (silent fallback to Radau), an explicit 'radau', and an explicit 'bdf',
-    so a mutant that drops the solver_method check or collapses Radau/BDF
-    into one label fails at least one branch. Each case also asserts
+    ``require_cvode`` stops a run that asks for CVODE without it, so the
+    configured name is the integrator that ran. Covers 'cvode', an explicit
+    'radau' and an explicit 'bdf', so a mutant that drops the solver_method
+    check or collapses Radau/BDF into one label fails at least one branch.
+    Each case also asserts
     ``solve()`` ran once per attempt, so a mutant that breaks the retry loop
     itself (wrong attempt count, early exit) fails alongside the label.
     """
     from proteus.interior_energetics.aragog import AragogRunner
-
-    module_path = 'aragog.solver.entropy_solver'
 
     def _build_runner(status, solver_method='cvode'):
         runner = AragogRunner.__new__(AragogRunner)
@@ -817,7 +814,6 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
 
     max_attempts = 6
 
-    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', True)
     cvode_runner, cvode_interior_o, cvode_hf_row = _build_runner(status=-1)
     with pytest.raises(RuntimeError, match='CVODE status=-1') as cvode_info:
         cvode_runner._solve_with_retry(cvode_hf_row, cvode_interior_o)
@@ -825,15 +821,6 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
     assert 'BDF status=' not in str(cvode_info.value)
     assert cvode_runner.aragog_solver.solve.call_count == max_attempts
 
-    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', False)
-    fallback_runner, fallback_interior_o, fallback_hf_row = _build_runner(status=-1)
-    with pytest.raises(RuntimeError, match='Radau status=-1') as fallback_info:
-        fallback_runner._solve_with_retry(fallback_hf_row, fallback_interior_o)
-    assert 'CVODE status=' not in str(fallback_info.value)
-    assert 'BDF status=' not in str(fallback_info.value)
-    assert fallback_runner.aragog_solver.solve.call_count == max_attempts
-
-    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', True)
     radau_runner, radau_interior_o, radau_hf_row = _build_runner(
         status=-1, solver_method='radau'
     )
@@ -843,7 +830,6 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
     assert 'BDF status=' not in str(radau_info.value)
     assert radau_runner.aragog_solver.solve.call_count == max_attempts
 
-    monkeypatch.setattr(f'{module_path}._CVODE_AVAILABLE', True)
     bdf_runner, bdf_interior_o, bdf_hf_row = _build_runner(status=-1, solver_method='bdf')
     with pytest.raises(RuntimeError, match='BDF status=-1') as bdf_info:
         bdf_runner._solve_with_retry(bdf_hf_row, bdf_interior_o)
@@ -852,97 +838,129 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
     assert bdf_runner.aragog_solver.solve.call_count == max_attempts
 
 
-@pytest.mark.unit
-def test_active_solver_name_reports_unknown_when_cvode_probe_fails(monkeypatch):
-    """A missing/renamed aragog CVODE flag yields an explicit unknown label.
+def _cvode_config(*, module='aragog', solver_method='cvode'):
+    """Config stand-in carrying only the fields ``require_cvode`` reads."""
+    config = MagicMock()
+    config.interior_energetics.module = module
+    config.interior_energetics.aragog.solver_method = solver_method
+    return config
 
-    ``_aragog_cvode_available()`` reads aragog's private ``_CVODE_AVAILABLE``
-    flag. aragog is a separate, actively developed package that owes that
-    private name no stability guarantee. When that name is absent, the cvode
-    branch must report the probe failure, not coerce to Radau, because a real
-    CVODE run would then mislabel as scipy. The probe must never raise: the
-    retry ladder relies on the intended ``RuntimeError``, not an uncaught
-    ``ImportError``.
-    """
-    from proteus.interior_energetics.aragog import AragogRunner
 
-    monkeypatch.delattr('aragog.solver.entropy_solver._CVODE_AVAILABLE')
-
-    runner = AragogRunner.__new__(AragogRunner)
-    runner._config = MagicMock()
-    runner._config.interior_energetics.aragog.solver_method = 'cvode'
-    name = runner._active_solver_name()
-    assert 'unknown' in name.lower()
-    assert name not in ('CVODE', 'Radau', 'BDF')
-
-    # The missing flag must not leak into or corrupt the 'bdf' branch,
-    # which never consults _CVODE_AVAILABLE in the first place.
-    runner._config.interior_energetics.aragog.solver_method = 'bdf'
-    assert runner._active_solver_name() == 'BDF'
+@pytest.fixture
+def cvode_missing(monkeypatch):
+    """Make ``import scikits_odes_sundials.cvode`` fail as on a machine without CVODE."""
+    monkeypatch.setitem(sys.modules, 'scikits_odes_sundials.cvode', None)
 
 
 @pytest.mark.unit
-def test_aragog_still_exposes_cvode_availability_flag():
-    """``_aragog_cvode_available`` depends on aragog's ``_CVODE_AVAILABLE``.
+def test_require_cvode_stops_an_aragog_cvode_run_without_cvode(cvode_missing):
+    """Aragog on the default CVODE path stops with an install message when CVODE is missing.
 
-    aragog owes that private name no stability guarantee. If a later aragog
-    renames or removes it while still satisfying the ``fwl-aragog>=26.07.04``
-    floor, the CVODE label silently reverts to Radau in production. This test
-    fails the moment the depended-on symbol disappears, so the drift is caught
-    here instead of in a mislabelled run.
+    Without CVODE the aragog library runs scipy Radau after a log warning, which
+    is a different integrator. The message must name the package, the install
+    command and the deliberate scipy choice, so nobody has to read source to
+    fix it.
     """
+    from proteus.interior_energetics.aragog import require_cvode
+
+    with pytest.raises(ImportError) as info:
+        require_cvode(_cvode_config())
+
+    msg = str(info.value)
+    assert 'scikits_odes_sundials.cvode cannot be imported' in msg
+    assert 'bash tools/get_cvode.sh' in msg
+    assert 'solver_method = "radau" or "bdf"' in msg
+    assert isinstance(info.value.__cause__, ImportError)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('module', 'solver_method'),
+    [('aragog', 'radau'), ('aragog', 'bdf'), ('spider', 'cvode'), ('dummy', 'cvode')],
+)
+def test_require_cvode_allows_every_run_that_does_not_need_it(
+    cvode_missing, module, solver_method
+):
+    """An explicit scipy solver, or another interior module, never needs CVODE.
+
+    The guard must not block the deliberate ``radau``/``bdf`` choice, and must
+    not fire for SPIDER or the dummy module whose config still carries an
+    Aragog table with the default ``solver_method = "cvode"``.
+    """
+    from proteus.interior_energetics.aragog import require_cvode
+
+    assert require_cvode(_cvode_config(module=module, solver_method=solver_method)) is None
+    with pytest.raises(ImportError):
+        require_cvode(_cvode_config())  # same environment: the default path still stops
+
+
+@pytest.mark.unit
+def test_require_cvode_passes_when_cvode_imports():
+    """With CVODE importable the check returns and Aragog's own flag agrees.
+
+    The guard imports ``scikits_odes_sundials.cvode`` itself; aragog decides
+    between CVODE and Radau from its private ``_CVODE_AVAILABLE`` flag. If a
+    later aragog renames that flag or changes the import, the two could
+    disagree and the silent fallback would return, so pin them together.
+    """
+    pytest.importorskip('scikits_odes_sundials.cvode')
     import aragog.solver.entropy_solver as entropy_solver
 
-    assert hasattr(entropy_solver, '_CVODE_AVAILABLE'), (
-        'aragog.solver.entropy_solver._CVODE_AVAILABLE is gone; '
-        'AragogRunner._aragog_cvode_available can no longer detect CVODE'
-    )
+    from proteus.interior_energetics.aragog import require_cvode
+
+    assert require_cvode(_cvode_config()) is None
+    assert entropy_solver._CVODE_AVAILABLE is True
 
 
 @pytest.mark.unit
-def test_retry_exhaustion_labels_unknown_when_cvode_probe_fails(monkeypatch):
-    """Exhaustion names the probe failure, not a wrong integrator.
+def test_setup_or_update_solver_refuses_to_build_without_cvode(cvode_missing):
+    """The first-build branch stops before any solver or parameter object exists.
 
-    When the aragog CVODE flag is absent, the retry-ladder exhaustion message
-    must name the probe failure rather than a specific integrator, so a real
-    CVODE run does not mislabel as Radau. The path still raises the
-    ``RuntimeError`` the retry ladder depends on, not an ``ImportError``.
+    Direct users of ``AragogRunner`` reach the solver through
+    ``setup_or_update_solver``, so the guard must sit there and run before
+    ``setup_solver``.
     """
     from proteus.interior_energetics.aragog import AragogRunner
 
-    monkeypatch.delattr('aragog.solver.entropy_solver._CVODE_AVAILABLE')
+    interior_o = MagicMock()
+    interior_o.aragog_solver = None
+    with (
+        patch.object(AragogRunner, 'setup_solver') as mock_setup,
+        pytest.raises(ImportError, match='bash tools/get_cvode.sh'),
+    ):
+        AragogRunner.setup_or_update_solver(
+            _cvode_config(), {'R_int': 1.0e6}, interior_o, 1.0, {'output': 'unused'}
+        )
 
-    runner = AragogRunner.__new__(AragogRunner)
-    runner._config = MagicMock()
-    runner._config.interior_energetics.aragog.solver_method = 'cvode'
-    runner._config.planet.mass_tot = 1.0
+    mock_setup.assert_not_called()
+    assert interior_o.aragog_solver is None
 
-    out = MagicMock()
-    out.status = -1
-    out.T_core = 0.0
 
-    solver = MagicMock()
-    solver.parameters.solver.start_time = 0.0
-    solver.parameters.solver.end_time = 1.0
-    solver.get_current_dSdr_cmb.return_value = None
-    solver._dSdr_cmb_init = None
-    solver.get_state.return_value = out
-    runner.aragog_solver = solver
+@pytest.mark.unit
+def test_setup_or_update_solver_builds_with_explicit_radau_without_cvode(cvode_missing):
+    """An explicit ``radau`` reaches ``setup_solver`` on a machine without CVODE."""
+    from proteus.interior_energetics.aragog import AragogRunner
 
     interior_o = MagicMock()
-    interior_o._last_entropy = None
-    hf_row = {'Time': 2.15e5, 'T_cmb': 0.0}
+    interior_o.aragog_solver = None
+    config = _cvode_config(solver_method='radau')
+    config.params.resume = False
 
-    with pytest.raises(RuntimeError) as info:
-        runner._solve_with_retry(hf_row, interior_o)
-    msg = str(info.value)
-    assert 'unknown' in msg.lower()
-    assert 'Radau status=' not in msg
-    assert 'CVODE status=' not in msg
+    def _build(cfg, hf_row, interior, outdir):
+        interior.aragog_solver = MagicMock()
 
-    # The label is built only on the exhaustion branch, so confirm the ladder
-    # ran the full six attempts rather than raising early.
-    assert runner.aragog_solver.solve.call_count == 6
+    with (
+        patch.object(AragogRunner, 'setup_solver', side_effect=_build) as mock_setup,
+        patch.object(AragogRunner, '_maybe_install_jax_cvode_factory'),
+        patch.object(AragogRunner, '_set_entropy_ic'),
+        patch.object(AragogRunner, '_verify_entropy_ic'),
+    ):
+        AragogRunner.setup_or_update_solver(
+            config, {'R_int': 1.0e6}, interior_o, 1.0, {'output': 'unused'}
+        )
+
+    mock_setup.assert_called_once()
+    interior_o.aragog_solver.initialize.assert_called_once()
 
 
 # --- Failure-mode-branched retry ladder ------------------------------------
@@ -1023,7 +1041,6 @@ def _retry_runner(solver, monkeypatch, *, T_core_pre=2000.0, mass_tot=1.0):
     """Bind the scripted solver to an AragogRunner and return (runner, hf_row)."""
     from proteus.interior_energetics.aragog import AragogRunner
 
-    monkeypatch.setattr('aragog.solver.entropy_solver._CVODE_AVAILABLE', True)
     runner = AragogRunner.__new__(AragogRunner)
     runner._config = MagicMock()
     runner._config.interior_energetics.aragog.solver_method = 'cvode'

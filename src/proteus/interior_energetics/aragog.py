@@ -247,6 +247,44 @@ def _is_plausible_core_density(rho_core: float) -> bool:
 _DIAG_ENV_LOGGED = False
 
 
+def require_cvode(config: Config) -> None:
+    """Stop when Aragog is asked for CVODE and CVODE cannot be imported.
+
+    The default Aragog integrator is SUNDIALS CVODE, imported by Aragog from
+    ``scikits_odes_sundials``. Aragog itself falls back to scipy Radau when
+    that import fails, which is a different integrator and not a like-for-like
+    substitute. Only an explicit ``solver_method`` of ``radau`` or ``bdf``
+    selects scipy, so this refuses to continue without CVODE otherwise.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration. Nothing is checked unless the interior module is
+        Aragog and ``interior_energetics.aragog.solver_method`` is ``'cvode'``.
+
+    Raises
+    ------
+    ImportError
+        When ``scikits_odes_sundials.cvode`` cannot be imported. The message
+        names the package, the install command and the explicit scipy options.
+    """
+    if config.interior_energetics.module != 'aragog':
+        return
+    if config.interior_energetics.aragog.solver_method != 'cvode':
+        return
+    try:
+        import scikits_odes_sundials.cvode  # noqa: F401
+    except ImportError as exc:
+        raise ImportError(
+            'Aragog needs the SUNDIALS CVODE solver (solver_method = "cvode"), but '
+            f'scikits_odes_sundials.cvode cannot be imported ({exc}). Install it with '
+            '"bash tools/get_cvode.sh" from the PROTEUS root (needs an active conda '
+            'environment), or choose scipy explicitly with '
+            '[interior_energetics.aragog] solver_method = "radau" or "bdf".'
+        ) from exc
+    log.info('CVODE (scikits_odes_sundials) is available for Aragog')
+
+
 def _maybe_log_solver_environment(config: Config) -> None:
     """One-shot diagnostic log of the host + JAX + solver configuration.
 
@@ -466,6 +504,7 @@ class AragogRunner:
         config: Config, hf_row: dict, interior_o: Interior_t, dt: float, dirs: dict
     ):
         if interior_o.aragog_solver is None:
+            require_cvode(config)
             _maybe_log_solver_environment(config)
             _t_setup = time.perf_counter()
             AragogRunner.setup_solver(config, hf_row, interior_o, dirs['output'])
@@ -1894,55 +1933,21 @@ class AragogRunner:
 
         return sim_time, output
 
-    @staticmethod
-    def _aragog_cvode_available() -> bool | None:
-        """Report whether aragog has CVODE built, or ``None`` if it cannot tell.
-
-        aragog exposes no public capability check as of fwl-aragog 26.07.04,
-        so this reads the private ``_CVODE_AVAILABLE`` flag. A ``None`` return
-        means that private name is absent, because aragog renamed or removed
-        it. The caller must treat ``None`` as 'cannot determine', never as
-        'unavailable', or a real CVODE run mislabels as Radau.
-
-        Returns
-        -------
-        bool or None
-            The aragog flag, or ``None`` when the probe symbol is missing.
-        """
-        try:
-            from aragog.solver.entropy_solver import _CVODE_AVAILABLE
-        except ImportError:
-            return None
-        return bool(_CVODE_AVAILABLE)
-
     def _active_solver_name(self) -> str:
-        """Name the integrator that is actually running, not the one configured.
+        """Name the integrator that is running, for the retry-ladder failure message.
 
-        ``solver_method`` can ask for CVODE and still run scipy: the wrapper
-        is compiled against SUNDIALS and falls back silently on a build or
-        ABI mismatch, so trusting the config name mislabels every failure
-        the fallback produces. Mirrors aragog's own Radau/BDF choice
-        (entropy_solver.py) so a scipy fallback names the integrator that
-        ran instead of a generic 'scipy'.
+        ``require_cvode`` has already stopped the run when ``solver_method`` is
+        ``'cvode'`` and CVODE cannot be imported, so the configured name is the
+        one that runs.
 
         Returns
         -------
         str
-            'CVODE' when the configured and available integrator is CVODE,
-            'BDF' when ``solver_method='bdf'``, 'Radau' for an explicit scipy
-            request or a CVODE fallback. When the aragog capability probe
-            fails (the private flag is gone), returns an explicit
-            'unknown (aragog CVODE probe failed)' rather than a wrong name.
+            'CVODE', 'BDF' or 'Radau' for ``solver_method`` ``'cvode'``,
+            ``'bdf'`` or ``'radau'``.
         """
         method = str(self._config.interior_energetics.aragog.solver_method or '')
-        if method == 'bdf':
-            return 'BDF'
-        if method != 'cvode':
-            return 'Radau'
-        available = self._aragog_cvode_available()
-        if available is None:
-            return 'unknown (aragog CVODE probe failed)'
-        return 'CVODE' if available else 'Radau'
+        return {'cvode': 'CVODE', 'bdf': 'BDF'}.get(method, 'Radau')
 
     def _solve_with_retry(self, hf_row, interior_o) -> SolverOutput:
         """Run aragog_solver.solve() with a failure-mode-branched retry ladder.

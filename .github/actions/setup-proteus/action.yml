@@ -317,6 +317,7 @@ runs:
       run: |
         set -euo pipefail
         python -c "import scikits.odes; print('scikits.odes OK, version', scikits.odes.__version__)"
+        python -c "import scikits_odes_sundials.cvode as c; print('CVODE wrapper OK:', c.__file__)"
 
     # Verify the install landed on the intended variant so a channel
     # or solver drift back to openblas fails loudly here instead of
@@ -694,6 +695,21 @@ runs:
               fi
             done ;;
         esac
+
+    # Aragog's default solver is CVODE and PROTEUS stops at setup without it.
+    # Aragog itself falls back to scipy Radau when the import fails, so this
+    # step fails the job on that fallback and prints the flag the tests rely on.
+    - name: Verify Aragog runs on CVODE
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        python - <<'PY'
+        import scikits_odes_sundials.cvode as cvode
+        from aragog.solver.entropy_solver import _CVODE_AVAILABLE
+
+        assert _CVODE_AVAILABLE, 'aragog reports CVODE unavailable (scipy Radau fallback)'
+        print('aragog CVODE available:', _CVODE_AVAILABLE, '|', cvode.__file__)
+        PY
 
     # BOREAS is an optional dependency: users opt in via
     # tools/get_boreas.sh. CI installs it explicitly (at the ref pinned

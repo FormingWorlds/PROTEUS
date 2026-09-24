@@ -12,6 +12,7 @@ step-by-step guide or the advice below,
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
 | `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
 | Simulation fails to converge (general) | [Stabilise a simulation](stabilise_run.md) |
+| `Aragog needs the SUNDIALS CVODE solver` / `scikits_odes_sundials.cvode cannot be imported` | [Aragog stops at setup](#aragog-stops-at-setup-cvode-cannot-be-imported) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
 | `Out-of-date modules detected` | [Module updates](#out-of-date-modules-detected) |
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
@@ -44,6 +45,19 @@ The flag intercepts itself in `sys.argv` *before* any heavy imports, sets `JAX_E
 Do not enable by default; the flag has a small per-step cost. Use only when a config shows noise-floor divergence between launches.
 
 For broader convergence problems,see [stabilising simulations](stabilise_run.md).
+
+### Aragog stops at setup: CVODE cannot be imported {#aragog-stops-at-setup-cvode-cannot-be-imported}
+
+`proteus start` with `interior_energetics.module = "aragog"` stops before any work with `ImportError: Aragog needs the SUNDIALS CVODE solver (solver_method = "cvode"), but scikits_odes_sundials.cvode cannot be imported`. The default Aragog integrator is CVODE from the SUNDIALS library; the Aragog package alone would switch to scipy Radau without telling you, so PROTEUS refuses to start instead.
+
+Install CVODE into the active conda environment from the PROTEUS root:
+
+```bash
+bash tools/get_cvode.sh
+python -c "import scikits_odes_sundials.cvode"
+```
+
+`proteus install-all`, `proteus update-all` and `install.sh` run the same script and stop with an error when it fails. To use scipy on purpose, set `solver_method = "radau"` or `"bdf"` in `[interior_energetics.aragog]`; the run then needs no CVODE, and its results are those of a different integrator.
 
 ### Resuming a run written by an older PROTEUS {#resuming-a-run-written-by-an-older-proteus}
 
