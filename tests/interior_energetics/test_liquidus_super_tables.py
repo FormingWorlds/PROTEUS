@@ -866,6 +866,9 @@ def test_anchor_failure_is_deferred_only_where_the_ic_resolves_it(
     cfg.interior_struct.zalmoxis.mantle_eos = mantle_eos
     cfg.interior_energetics.module = energetics
     assert zal._anchor_failure_deferred(cfg) is deferred
+    # Energetics without an IC anchor re-solve never defer.
+    cfg.interior_energetics.module = 'dummy'
+    assert zal._anchor_failure_deferred(cfg) is False
 
 
 @pytest.mark.parametrize(
