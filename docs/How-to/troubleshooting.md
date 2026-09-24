@@ -48,7 +48,7 @@ For broader convergence problems,see [stabilising simulations](stabilise_run.md)
 
 ### Aragog stops at setup: CVODE cannot be imported {#aragog-stops-at-setup-cvode-cannot-be-imported}
 
-`proteus start` with `interior_energetics.module = "aragog"` stops before any work with `ImportError: Aragog needs the SUNDIALS CVODE solver (solver_method = "cvode"), but scikits_odes_sundials.cvode cannot be imported`. The default Aragog integrator is CVODE from the SUNDIALS library; the Aragog package alone would switch to scipy Radau without telling you, so PROTEUS refuses to start instead.
+`proteus start` with `interior_energetics.module = "aragog"` stops before any work with `ImportError: Aragog needs the SUNDIALS CVODE solver (solver_method = "cvode"), but scikits_odes_sundials.cvode cannot be imported`. The default Aragog integrator is CVODE from the SUNDIALS library; the Aragog package alone would switch to scipy Radau with only a log warning, so PROTEUS refuses to start instead.
 
 Install CVODE into the active conda environment from the PROTEUS root:
 

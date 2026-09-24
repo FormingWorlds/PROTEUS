@@ -126,8 +126,9 @@ phases.
     Aragog integrates with SUNDIALS CVODE by default (`solver_method = "cvode"`).
     The installer builds it (`scikits-odes-sundials` on the SUNDIALS C library,
     through `tools/get_cvode.sh`, which needs an active conda environment) and
-    stops with an error when that fails. A run with Aragog also stops at setup,
-    with the same install command in the message, when CVODE cannot be imported.
+    stops with an error when that fails. A run with Aragog on the default
+    `solver_method = "cvode"` also stops at setup, with the same install command
+    in the message, when CVODE cannot be imported.
     Choosing `solver_method = "radau"` or `"bdf"` selects scipy on purpose and
     does not need CVODE. See [Aragog stops at setup](troubleshooting.md#aragog-stops-at-setup-cvode-cannot-be-imported).
 
@@ -141,7 +142,7 @@ phases.
 
 !!! tip "CLI alternative: `proteus install-all`"
     If PROTEUS is already importable in your environment, `proteus install-all`
-    performs the same setup from the CLI: it installs PROTEUS, the SUNDIALS CVODE solver and the required
+    performs the same setup from the CLI: it installs the SUNDIALS CVODE solver and the required
     submodules (SOCRATES, AGNI), downloads reference data, checks for sufficient
     disk space, creates `FWL_DATA` if needed, and sets the environment variables. 
 
