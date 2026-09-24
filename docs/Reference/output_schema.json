@@ -748,7 +748,7 @@
       ],
       "consumers": [
         "interior_energetics",
-        "interior_struct"
+        "utils"
       ]
     },
     {
@@ -937,7 +937,7 @@
     {
       "name": "T_cmb",
       "unit": "K",
-      "description": "core temperature",
+      "description": "core temperature, bottom mantle cell",
       "group": "Temperatures",
       "origin": "literal",
       "producers": [
@@ -957,6 +957,28 @@
       "consumers": [
         "interior_energetics"
       ]
+    },
+    {
+      "name": "T_cmb_node",
+      "unit": "K",
+      "description": "temperature at the core-mantle boundary basic node",
+      "group": "Temperatures",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/aragog_jax.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/spider.py",
+          "condition": "interior_energetics.module = \"spider\""
+        }
+      ],
+      "consumers": []
     },
     {
       "name": "T_eqm",

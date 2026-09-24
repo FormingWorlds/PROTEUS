@@ -16,7 +16,6 @@ import pandas as pd
 import platformdirs
 
 from aragog import aragog_file_logger
-from aragog.eos.entropy import EntropyEOS
 from aragog.mesh import derive_core_density_from_mesh
 from aragog.solver import EntropySolver, SolverOutput
 from aragog.parser import (
@@ -34,7 +33,7 @@ from proteus.interior_energetics.aragog_phase import (
     build_mixed_phase_params,
 )
 from proteus.interior_energetics.common import Interior_t
-from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
+from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, PALEOS_EOS_PREFIXES
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
@@ -60,67 +59,83 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN = 200.0
 
 
-_entropy_eos_cache: dict = {}
 _entropy_eos_jax_cache: dict = {}
 
 
-def _eos_content_key(eos_dir_str: str) -> str:
-    """Compute a content fingerprint for an EOS directory.
+def _write_paleos_melting_curves(outdir, config):
+    """Write the PALEOS-derived solidus and liquidus tables for Aragog.
 
-    The PROTEUS test fixture materialises the EOS tables into a fresh
-    per-test ``outdir/data/spider_eos`` directory each time, so a path
-    based cache key misses across tests. The content fingerprint is a
-    sorted tuple of ``(filename, file size)`` pairs for every regular
-    file in the directory; it is stable across distinct on-disk copies
-    of the same tables but cheap to compute (one ``os.listdir`` + one
-    ``getsize`` per file).
+    The tables are rewritten on every call, so a resumed run in an existing
+    output directory never reuses curves built with a different
+    ``mushy_zone_factor``.
+
+    Parameters
+    ----------
+    outdir : str or Path
+        Run output directory; tables go to ``<outdir>/data/paleos_melting``.
+    config : Config
+        PROTEUS configuration; ``interior_struct.zalmoxis`` supplies the
+        mantle EOS and ``mushy_zone_factor``.
+
+    Returns
+    -------
+    tuple of Path
+        Paths of the solidus and liquidus ``P-T`` tables.
     """
-    try:
-        pairs = []
-        for name in sorted(os.listdir(eos_dir_str)):
-            full = os.path.join(eos_dir_str, name)
-            if os.path.isfile(full):
-                pairs.append((name, os.path.getsize(full)))
-        return repr(pairs)
-    except OSError:
-        # Filesystem error: fall back to the path as the key.
-        return eos_dir_str
+    paleos_melt_dir = Path(outdir) / 'data' / 'paleos_melting'
+    paleos_melt_dir.mkdir(parents=True, exist_ok=True)
+    sol_file = paleos_melt_dir / 'solidus_P-T.dat'
+    liq_file = paleos_melt_dir / 'liquidus_P-T.dat'
+
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_solidus_liquidus_functions
+
+    melt_fns = load_zalmoxis_solidus_liquidus_functions(
+        config.interior_struct.zalmoxis.mantle_eos, config
+    )
+    if melt_fns is not None:
+        s_fn, l_fn = melt_fns
+    else:
+        from zalmoxis.melting_curves import derive_solidus_from_liquidus
+        from zalmoxis.melting_curves import get_solidus_liquidus_functions as _gslf
+
+        _, l_fn = _gslf('Stixrude14-solidus', 'PALEOS-liquidus')
+        s_fn = derive_solidus_from_liquidus(
+            l_fn, config.interior_struct.zalmoxis.mushy_zone_factor
+        )
+
+    P_arr = np.logspace(8, 12, 500)
+    sol_data = np.column_stack([P_arr, [s_fn(P) for P in P_arr]])
+    liq_data = np.column_stack([P_arr, [l_fn(P) for P in P_arr]])
+    np.savetxt(str(sol_file), sol_data, header='pressure temperature', comments='#')
+    np.savetxt(str(liq_file), liq_data, header='pressure temperature', comments='#')
+    log.info('Generated PALEOS melting curves for Aragog: %s', paleos_melt_dir)
+    return sol_file, liq_file
 
 
 def _cached_entropy_eos(eos_dir_str: str):
-    """Construct an EntropyEOS, caching by content fingerprint.
+    """Return the shared, cached EntropyEOS for ``eos_dir_str``.
 
-    PALEOS table load + scipy interpolator construction takes ~10 s on
-    macOS arm64 and ~390 s on Linux x86 per PROTEUS timestep. The result
-    depends only on the file contents and is read-only after
-    construction (pure lookup methods, no mutation API), so a single
-    cached instance can be shared across PROTEUS timesteps and across
-    pytest tests in the same process.
+    The table load and interpolator construction is slow and the result is
+    read-only, so the solver setup and the liquidus_super initial condition
+    share one instance through ``common._load_entropy_eos``.
     """
-    key = _eos_content_key(eos_dir_str)
-    cached = _entropy_eos_cache.get(key)
-    if cached is None:
-        cached = EntropyEOS(Path(eos_dir_str))
-        _entropy_eos_cache[key] = cached
-    return cached
+    from proteus.interior_energetics.common import _load_entropy_eos
+
+    return _load_entropy_eos(eos_dir_str)
 
 
 def _cached_entropy_eos_jax(eos_dir_str: str):
-    """Construct an EntropyEOS_JAX, caching by content fingerprint.
+    """Return the cached EntropyEOS_JAX for ``eos_dir_str``.
 
-    Same motivation as ``_cached_entropy_eos``: the JAX-side EOS trace
-    + compile is ~7 s on macOS arm64 and ~310 s on Linux x86, the result
-    is an equinox Module (immutable pytree), and the construction
-    depends only on the file contents.
+    The cache uses the same key as the numpy EOS
+    (``common._cached_by_dir_stamp``), so the CVODE right-hand side reads the
+    same table set as the solver setup and the initial condition.
     """
-    key = _eos_content_key(eos_dir_str)
-    cached = _entropy_eos_jax_cache.get(key)
-    if cached is None:
-        from aragog.jax.eos import EntropyEOS_JAX
+    from aragog.jax.eos import EntropyEOS_JAX
 
-        cached = EntropyEOS_JAX(eos_dir_str)
-        _entropy_eos_jax_cache[key] = cached
-    return cached
+    from proteus.interior_energetics.common import _cached_by_dir_stamp
+
+    return _cached_by_dir_stamp(_entropy_eos_jax_cache, eos_dir_str, EntropyEOS_JAX)
 
 
 # Research-only flag. Flip to True to enable the diffrax direct-JAX
@@ -461,7 +476,7 @@ class AragogRunner:
             _t_after_init = time.perf_counter()
             # Option Z: register the JAX CVODE callback factory when
             # the flag is on. No-op when the flag is off.
-            AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
+            AragogRunner._maybe_install_jax_cvode_factory(config, interior_o, dirs['output'])
             _t_after_factory = time.perf_counter()
             if os.environ.get('PROTEUS_CI_NIGHTLY') == '1':
                 log.info(
@@ -811,9 +826,7 @@ class AragogRunner:
         # curve discontinuity.
         elif (
             config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith(
-                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
-            )
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
         ):
             from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
 
@@ -845,13 +858,9 @@ class AragogRunner:
             # shipped-Zenodo ones that live under the PALEOS-2phase key).
             # The -highres variant (Zenodo 19680050, 600 pts/decade) is
             # opt-in; default is the 150-pts/decade tables.
-            _mantle_eos_sel = config.interior_struct.zalmoxis.mantle_eos
-            if _mantle_eos_sel.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')):
-                _twophase_key = 'PALEOS-API-2phase:MgSiO3'
-            elif _mantle_eos_sel == 'PALEOS-2phase:MgSiO3-highres':
-                _twophase_key = 'PALEOS-2phase:MgSiO3-highres'
-            else:
-                _twophase_key = 'PALEOS-2phase:MgSiO3'
+            from proteus.interior_struct.zalmoxis import twophase_registry_key
+
+            _twophase_key = twophase_registry_key(config.interior_struct.zalmoxis.mantle_eos)
             twophase_entry = mat_dicts.get(_twophase_key, {})
             # PALEOS-API entries carry grid metadata, not file paths. Materialise
             # cached .dat paths now so the `eos_file` lookups below find concrete
@@ -975,42 +984,9 @@ class AragogRunner:
         # making melt fractions incomparable.
         if (
             config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith(
-                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
-            )
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
         ):
-            paleos_melt_dir = Path(outdir) / 'data' / 'paleos_melting'
-            paleos_melt_dir.mkdir(parents=True, exist_ok=True)
-            sol_file = paleos_melt_dir / 'solidus_P-T.dat'
-            liq_file = paleos_melt_dir / 'liquidus_P-T.dat'
-            if not sol_file.is_file():
-                from proteus.interior_struct.zalmoxis import (
-                    _make_derived_solidus,
-                    load_zalmoxis_solidus_liquidus_functions,
-                )
-
-                melt_fns = load_zalmoxis_solidus_liquidus_functions(
-                    config.interior_struct.zalmoxis.mantle_eos, config
-                )
-                if melt_fns is not None:
-                    s_fn, l_fn = melt_fns
-                else:
-                    from zalmoxis.melting_curves import (
-                        get_solidus_liquidus_functions as _gslf,
-                    )
-
-                    _, l_fn = _gslf('Stixrude14-solidus', 'PALEOS-liquidus')
-                    s_fn = _make_derived_solidus(
-                        l_fn, config.interior_struct.zalmoxis.mushy_zone_factor
-                    )
-
-                P_arr = np.logspace(8, 12, 500)
-                sol_data = np.column_stack([P_arr, [s_fn(P) for P in P_arr]])
-                liq_data = np.column_stack([P_arr, [l_fn(P) for P in P_arr]])
-                np.savetxt(str(sol_file), sol_data, header='pressure temperature', comments='#')
-                np.savetxt(str(liq_file), liq_data, header='pressure temperature', comments='#')
-                log.info('Generated PALEOS melting curves for Aragog: %s', paleos_melt_dir)
-
+            sol_file, liq_file = _write_paleos_melting_curves(outdir, config)
             solidus_path = sol_file
             liquidus_path = liq_file
         else:
@@ -1140,7 +1116,9 @@ class AragogRunner:
             )
 
     @staticmethod
-    def _maybe_install_jax_cvode_factory(config: Config, interior_o: Interior_t) -> None:
+    def _maybe_install_jax_cvode_factory(
+        config: Config, interior_o: Interior_t, outdir: str | None = None
+    ) -> None:
         """Install a JAX CVODE callback factory on the solver (option Z).
 
         Activated only when ``config.interior_energetics.aragog.backend ==
@@ -1153,7 +1131,9 @@ class AragogRunner:
         No-op (silent) for backend='numpy'. When backend='jax' but
         JAX import or pytree construction fails, logs a warning and
         leaves the factory unset so the solver falls back to the
-        default finite-difference Jacobian path.
+        default finite-difference Jacobian path. When
+        ``interior_o._spider_eos_dir`` is empty or missing, the EOS is read
+        from ``outdir/data/spider_eos``, the directory ``setup_solver`` uses.
         """
         use_jax_jac = config.interior_energetics.aragog.backend == 'jax'
         if not use_jax_jac:
@@ -1195,6 +1175,9 @@ class AragogRunner:
 
         try:
             eos_dir = interior_o._spider_eos_dir
+            if not (eos_dir and os.path.isdir(eos_dir)) and outdir is not None:
+                # The same fallback directory as setup_solver.
+                eos_dir = Path(outdir) / 'data' / 'spider_eos'
             _t_pre_jax_eos = time.perf_counter()
             eos_jax = _cached_entropy_eos_jax(str(eos_dir))
             _t_post_jax_eos = time.perf_counter()
@@ -1417,9 +1400,10 @@ class AragogRunner:
         solver, this function independently computes a PALEOS adiabat via
         ``zalmoxis.eos_export.compute_entropy_adiabat`` and compares its T(P)
         against the T(P) derived from Aragog's initialized entropy via the
-        P-S EOS tables. A mismatch > 1% triggers an override: the entropy
-        profile is replaced with values inverted from the adiabat's T profile.
-        A mismatch > 5% is raised as a ``RuntimeError`` (true code-path drift).
+        P-S EOS tables. The temperature comparison is diagnostic: a mismatch
+        of 1 to 5% logs a warning; above 5%, only a liquidus_super IC with a
+        cold surface beyond the Fei+2021 calibration pressure does. A solver entropy
+        array whose shape differs from the pressure grid raises RuntimeError.
 
         Parameters
         ----------
@@ -1430,11 +1414,11 @@ class AragogRunner:
         outdir : str
             Output directory for diagnostic files.
         """
+        from proteus.interior_energetics.common import InitialConditionError
+
         if not (
             config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith(
-                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
-            )
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
         ):
             log.debug(
                 'Entropy IC cross-check skipped: not zalmoxis+PALEOS '
@@ -1510,13 +1494,10 @@ class AragogRunner:
             )
 
             # ---- Independent PALEOS adiabat ----
-            # Reference surface temperature for the independent adiabat.
-            # liquidus_super builds the IC by solving for the surface
-            # temperature that gives the requested superheat, so anchor the
-            # cross-check adiabat at that same solved value (tsurf_init is
-            # ignored by liquidus_super). The cold-surface guard below then
-            # compares the IC's unpacked surface against the intended surface,
-            # so a corrupted IC is still caught.
+            # For liquidus_super, anchor the independent adiabat at the surface
+            # T of the P-T adiabat that is delta_T_super above the P-T liquidus.
+            # The IC is solved on the P-S tables, so the diff includes the P-T
+            # vs P-S liquidus offset (tens of K at 1 M_Earth).
             if config.planet.temperature_mode == 'liquidus_super':
                 from proteus.interior_struct.zalmoxis import (
                     solve_superliquidus_adiabat,
@@ -1621,19 +1602,15 @@ class AragogRunner:
                 #     converged cells). The run still conserves energy and cools
                 #     monotonically; the disagreement grows with mass and is
                 #     diagnostic only. The 1 M_Earth case already sits at ~6%.
-                # (2) The out-of-calibration liquidus_super failure mode: the
-                #     extrapolated CMB liquidus anchor inverts to a low entropy
-                #     that unpacks to a COLD surface (T well below the adiabat
-                #     anchor), a steeply inverted profile that drives a spurious
-                #     CMB flux and breaks energy conservation. compute_initial_
-                #     entropy redirects this case to the surface anchor, so it
-                #     should not normally reach here; the raise is a safety net
-                #     for any path that bypasses that redirect.
+                # (2) A liquidus_super IC beyond the Fei+2021 calibration whose
+                #     surface is far colder than the independent adiabat: a
+                #     steeply inverted profile that drives a spurious CMB flux
+                #     and breaks energy conservation.
                 #
                 # The signature that separates (2) from (1) is the COLD SURFACE,
                 # not the verdict magnitude: benign drift can also exceed the
-                # FAIL threshold, so gating the raise on the verdict alone would
-                # wrongly block a correctly-anchored high-mass run.
+                # FAIL threshold. The IC comes from the P-S tables and the
+                # reference is the P-T anchor, so (2) is reported, not raised.
                 isurf = int(np.argmin(P_stag))
                 surface_too_cold = T_stag_aragog[isurf] < 0.9 * T_adiabat_interp[isurf]
                 is_liquidus_super = config.planet.temperature_mode == 'liquidus_super'
@@ -1642,24 +1619,28 @@ class AragogRunner:
                     and P_cmb_adiabat > FEI2021_LIQUIDUS_P_CALIB_PA
                     and surface_too_cold
                 ):
-                    raise RuntimeError(
-                        f'Entropy IC cross-check FAILED with a cold-surface '
-                        f'inversion (surface T={T_stag_aragog[isurf]:.0f} K vs '
-                        f'adiabat {T_adiabat_interp[isurf]:.0f} K; max '
-                        f'{max_diff:.0f} K / {max_rel:.1f}%) for liquidus_super '
-                        f'at P_cmb={P_cmb_adiabat / 1e9:.0f} GPa, beyond the '
-                        f'Fei+2021 calibration '
-                        f'(~{FEI2021_LIQUIDUS_P_CALIB_PA / 1e9:.0f} GPa). The '
-                        'extrapolated CMB anchor produced a non-physical, '
-                        'energy-non-conserving initial condition. Use an '
-                        'adiabatic (surface-anchored) initial condition for '
-                        'this planet mass.'
+                    log.warning(
+                        'Entropy IC cross-check: cold-surface inversion (surface '
+                        'T=%.0f K vs P-T adiabat %.0f K; max %.0f K / %.1f%%) for '
+                        'liquidus_super at P_cmb=%.0f GPa, beyond the Fei+2021 '
+                        'calibration (~%.0f GPa). The initial condition may unpack '
+                        'to a steeply inverted, energy-non-conserving profile; '
+                        'check the run or use an adiabatic (surface-anchored) '
+                        'initial condition for this planet mass.',
+                        T_stag_aragog[isurf],
+                        T_adiabat_interp[isurf],
+                        max_diff,
+                        max_rel,
+                        P_cmb_adiabat / 1e9,
+                        FEI2021_LIQUIDUS_P_CALIB_PA / 1e9,
                     )
                 log.debug(
                     'Entropy IC full-profile cross-check > %.1f%% '
                     '(max %.1f K / %.2f%% at depth). Diagnostic only; benign '
-                    'PALEOS P-T vs regenerated P-S table drift (P_cmb=%.0f GPa, '
-                    'surface T=%.0f K vs adiabat %.0f K), not a coupling bug. '
+                    'PALEOS P-T vs regenerated P-S table drift, or on the Zalmoxis '
+                    'route an initial entropy capped at the PALEOS anchor entropy '
+                    '(P_cmb=%.0f GPa, surface T=%.0f K vs adiabat %.0f K), not a '
+                    'coupling bug. '
                     'The scalar surface cross-check logged by _set_entropy_ic '
                     'is the authoritative IC sanity check.',
                     FAIL_PCT,
@@ -1676,8 +1657,11 @@ class AragogRunner:
             ModuleNotFoundError,
             KeyError,
             ValueError,
+            InitialConditionError,
         ) as e:
             # Expected failures:
+            # - InitialConditionError: no P-T anchor at this P_cmb (on the
+            #   Zalmoxis + PALEOS route the initial entropy raises first)
             # - FileNotFoundError / ImportError: missing PALEOS files or Zalmoxis
             #   not installed
             # - KeyError: missing config keys
@@ -2413,6 +2397,7 @@ class AragogRunner:
             # back to T_magma when the entire mantle is convective.
             'T_pot': _estimate_T_pot(out),
             'T_cmb': out.T_core,
+            'T_cmb_node': float(out.T_basic[0]),
             'E_th_mantle': out.E_th,
             'Cp_eff': out.Cp_eff,
             'F_radio': F_radio,
@@ -2494,9 +2479,11 @@ class AragogRunner:
             basic-node state to the NetCDF. See
             ``config.interior_energetics.write_flux_diagnostics``.
         T_surf_coupled : float or None
-            PROTEUS-coupled surface temperature (post AGNI skin-layer
-            correction). Stored alongside Aragog's adiabatic temp_s so
-            resume can initialize AGNI at the correct T_surf.
+            PROTEUS-coupled surface temperature T_surf (the top of the
+            conductive skin when AGNI runs with surf_state='skin'), stored
+            alongside Aragog's adiabatic temp_s as a diagnostic (an in-loop
+            snapshot holds the value from the previous coupling step); a
+            resume reads T_surf from the helpfile.
         """
         fpath = os.path.join(output_dir, 'data', format_subyear_time(time) + '_int.nc')
         ds = nc.Dataset(fpath, mode='w')

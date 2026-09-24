@@ -387,6 +387,34 @@ def test_cvode_factory_site_delegates_to_the_shared_jax_builder(tmp_path):
     mock_builder.assert_called_once_with(config)
 
 
+@pytest.mark.parametrize('spider_eos_dir', ['', 'missing'])
+def test_cvode_factory_reads_the_setup_solver_fallback_tables(tmp_path, spider_eos_dir):
+    """With no usable ``_spider_eos_dir`` the JAX EOS is read from
+    ``outdir/data/spider_eos``, the directory ``setup_solver`` falls back to.
+    """
+    config = _make_full_config()
+    config.interior_energetics.aragog.backend = 'jax'
+    eos_dir = str(tmp_path / spider_eos_dir) if spider_eos_dir else ''
+    interior_o = _make_runner_interior_o(spider_eos_dir=eos_dir)
+
+    with (
+        patch(
+            'proteus.interior_energetics.aragog._cached_entropy_eos_jax',
+            return_value=MagicMock(),
+        ) as mock_eos,
+        patch('aragog.jax.phase.MeshArrays.from_numpy_mesh', return_value=MagicMock()),
+        patch(
+            'proteus.interior_energetics.aragog.build_jax_phase_params',
+            return_value=MagicMock(),
+        ),
+    ):
+        AragogRunner._maybe_install_jax_cvode_factory(config, interior_o, str(tmp_path))
+
+    mock_eos.assert_called_once_with(str(tmp_path / 'data' / 'spider_eos'))
+    # Discrimination: the configured directory is not what the EOS reads.
+    assert mock_eos.call_args.args[0] != eos_dir
+
+
 def test_numpy_setup_solver_site_delegates_to_the_shared_builder():
     """The numpy entropy solver builds the mixed-phase parameters through
     ``build_mixed_phase_params``, never by constructing ``_PhaseMixedParameters``

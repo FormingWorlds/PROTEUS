@@ -870,16 +870,17 @@ def test_compute_initial_entropy_adiabatic_from_cmb_uses_pcmb_fallback(monkeypat
     assert 'adiabatic_from_cmb' in nl20_msgs[0]
 
 
-def test_compute_initial_entropy_liquidus_super_without_zalmoxis_raises_runtime_error(
+def test_solve_superliquidus_adiabat_missing_melting_curves_import_raises_runtime_error(
     monkeypatch,
 ):
-    """liquidus_super mode requires Zalmoxis for paleos_liquidus; a missing
-    import must raise RuntimeError with a clear message.
+    """The Zalmoxis-structure liquidus_super adiabat (the structure solve's
+    CMB temperature anchor) needs the zalmoxis melting_curves import for
+    paleos_liquidus; a missing import raises RuntimeError with a clear message.
     """
     import sys
     from types import SimpleNamespace
 
-    from proteus.interior_energetics.common import compute_initial_entropy
+    from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
     # Force the paleos_liquidus import to fail.
     monkeypatch.setitem(sys.modules, 'zalmoxis.melting_curves', None)
@@ -891,7 +892,7 @@ def test_compute_initial_entropy_liquidus_super_without_zalmoxis_raises_runtime_
             delta_T_super=200.0,
         ),
         interior_struct=SimpleNamespace(
-            module='dummy',
+            module='zalmoxis',
             core_frac=0.3,
             core_frac_mode='mass',
             zalmoxis=None,
@@ -900,7 +901,7 @@ def test_compute_initial_entropy_liquidus_super_without_zalmoxis_raises_runtime_
     hf_row = {'P_cmb': 1.35e11}  # valid CMB pressure, ~135 GPa
 
     with pytest.raises(RuntimeError, match='liquidus_super mode requires Zalmoxis') as exc:
-        compute_initial_entropy(config, hf_row=hf_row, fallback=3300.0)
+        solve_superliquidus_adiabat(config, hf_row)
     # Discrimination: the message names BOTH the mode and the module that
     # would have provided the curve. A regression that swallowed the import
     # error and silently fell back to the user fallback would not raise at all.
@@ -912,8 +913,8 @@ def test_compute_initial_entropy_adiabatic_from_cmb_uses_provided_pcmb_no_fallba
     monkeypatch, caplog
 ):
     """When P_cmb IS supplied in hf_row, the NL20 fallback warning must NOT
-    fire. Anti-happy-path: this pins the gate ``not P_cmb or P_cmb <= 0``,
-    catching a regression that always fell to the NL20 path regardless of
+    fire. Anti-happy-path: this pins ``resolve_P_cmb``'s use of a populated
+    P_cmb, catching a regression that always fell to the NL20 path regardless of
     user input.
     """
     import sys
@@ -953,7 +954,7 @@ def test_compute_initial_entropy_adiabatic_from_cmb_negative_pcmb_falls_back(
     monkeypatch, caplog
 ):
     """A non-positive P_cmb in hf_row also triggers the NL20 fallback. This
-    pins the second clause of the ``not P_cmb or P_cmb <= 0`` gate.
+    pins the ``float(P_cmb) > 0`` check in ``resolve_P_cmb``.
     """
     import sys
     from types import SimpleNamespace
@@ -988,6 +989,45 @@ def test_compute_initial_entropy_adiabatic_from_cmb_negative_pcmb_falls_back(
     # Zalmoxis-unavailable + adiabatic_from_cmb returns the fallback entropy,
     # not the function default; discriminates against a regression that
     # ignored the kwarg.
+    assert S == pytest.approx(3300.0, rel=1e-12)
+
+
+def test_compute_initial_entropy_adiabatic_from_cmb_nan_pcmb_falls_back(monkeypatch, caplog):
+    """A NaN P_cmb in hf_row also triggers the NL20 fallback. This pins the
+    ``np.isfinite`` check in ``resolve_P_cmb``: a NaN is truthy and passes
+    no comparison, so only the finite check catches it.
+    """
+    import math
+    import sys
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.common import compute_initial_entropy
+
+    monkeypatch.setitem(sys.modules, 'zalmoxis.eos_export', None)
+    monkeypatch.setitem(sys.modules, 'proteus.interior_struct.zalmoxis', None)
+
+    config = SimpleNamespace(
+        planet=SimpleNamespace(
+            temperature_mode='adiabatic_from_cmb',
+            tcmb_init=4500.0,
+            mass_tot=1.0,
+        ),
+        interior_struct=SimpleNamespace(
+            module='dummy',
+            core_frac=0.3,
+            core_frac_mode='mass',
+            zalmoxis=None,
+        ),
+    )
+    hf_row = {'P_cmb': math.nan}  # invalid: NaN
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        S = compute_initial_entropy(config, hf_row=hf_row, fallback=3300.0)
+
+    # NaN P_cmb routes through the NL20 fallback just like missing or negative P_cmb.
+    assert any('Noack & Lasbleis (2020)' in r.message for r in caplog.records), (
+        'NL20 fallback did not fire on NaN P_cmb; gate accepts NaN'
+    )
     assert S == pytest.approx(3300.0, rel=1e-12)
 
 
