@@ -1004,13 +1004,12 @@ class AragogRunner:
                 if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
                     LOOK_UP_DIR = default_lookup
             P_cmb = float(hf_row.get('P_cmb') or 0.0)
-            if P_cmb > _WB_TABLE_P_MAX:
+            if LOOK_UP_DIR == default_lookup and P_cmb > _WB_TABLE_P_MAX:
                 log.warning(
-                    'P_cmb=%.0f GPa is above the %.0f GPa edge of the Aragog lookup '
-                    'tables in %s; the deep mantle reads values at the table edge.',
+                    'P_cmb=%.0f GPa is above the %.0f GPa edge of the Wolf and Bower '
+                    '(2018) tables; the deep mantle reads values at the table edge.',
                     P_cmb / 1e9,
                     _WB_TABLE_P_MAX / 1e9,
-                    LOOK_UP_DIR,
                 )
         solidus_path, liquidus_path = _melting_curve_files(config, outdir)
 

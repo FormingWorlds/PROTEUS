@@ -125,9 +125,7 @@ def _install_zalmoxis_deps(monkeypatch, s_ceiling=S_MAX, invalid_bands=(), super
             'S_profile': S_profile,
         }
 
-    monkeypatch.setattr(
-        zmod, 'load_zalmoxis_material_dictionaries', lambda: {'PALEOS:MgSiO3': {}}
-    )
+    monkeypatch.setattr(zmod, 'load_zalmoxis_material_dictionaries', lambda: {})
     monkeypatch.setattr(
         zmod,
         'resolve_2phase_mgsio3_paths',

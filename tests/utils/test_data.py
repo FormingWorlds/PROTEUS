@@ -3068,6 +3068,7 @@ def test_needs_spider_ps_tables(energetics, struct, eos_dir, mantle_eos, expecte
     # A set eos_dir asks for the set whenever SPIDER or Aragog run.
     config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
     assert needs_spider_ps_tables(config) is (energetics in ('spider', 'aragog'))
+    assert needs_spider_ps_tables({'fake': 'config'}) is False
 
 
 @pytest.mark.unit

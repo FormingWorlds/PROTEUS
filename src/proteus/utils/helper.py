@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from proteus.utils.constants import PALEOS_EOS_PREFIXES, element_list, element_mmw
+from proteus.utils.constants import PALEOS_REGISTRY_KEYS, element_list, element_mmw
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -20,9 +20,10 @@ def generates_paleos_tables(interior_struct) -> bool:
     """Return whether Zalmoxis generates a PALEOS table set for this structure.
 
     Only a mantle EOS that is a PALEOS key of the Zalmoxis material registry,
-    under the Zalmoxis structure, gets one, the same lookup generate_spider_tables
-    does; SPIDER, Aragog and the table fetch then use the PALEOS-derived curves
-    instead of interior_struct.melting_dir. A mixture is not a registry key.
+    under the Zalmoxis structure, gets one: generate_spider_tables looks up the
+    exact key. SPIDER, Aragog and the table fetch then use the PALEOS-derived
+    curves instead of interior_struct.melting_dir. A mixture is not a registry
+    key. The table files are not checked.
 
     Parameters
     ----------
@@ -37,11 +38,7 @@ def generates_paleos_tables(interior_struct) -> bool:
     if getattr(interior_struct, 'module', None) != 'zalmoxis':
         return False
     mantle = getattr(getattr(interior_struct, 'zalmoxis', None), 'mantle_eos', None)
-    if not isinstance(mantle, str) or not mantle.startswith(PALEOS_EOS_PREFIXES):
-        return False
-    from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
-
-    return mantle in load_zalmoxis_material_dictionaries()
+    return mantle in PALEOS_REGISTRY_KEYS
 
 
 def resolve_fwl_data_dir() -> Path:

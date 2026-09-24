@@ -824,26 +824,39 @@ def test_parse_subyear_time_rejects_multiple_p():
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ('module', 'mantle_eos', 'expected'),
+    ('mantle_eos', 'expected'),
     [
-        ('zalmoxis', 'PALEOS:MgSiO3', True),
-        ('zalmoxis', 'PALEOS-2phase:MgSiO3-highres', True),
-        ('zalmoxis', 'PALEOS:MgSiO3:1.0', False),
-        ('zalmoxis', 'PALEOS:MgSiO3 ', False),
-        ('zalmoxis', 'PALEOS:Olivine', False),
-        ('zalmoxis', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
-        ('zalmoxis', 'WolfBower2018:MgSiO3', False),
-        ('zalmoxis', None, False),
-        ('dummy', 'PALEOS:MgSiO3', False),
+        ('PALEOS:MgSiO3', True),
+        ('PALEOS-2phase:MgSiO3-highres', True),
+        ('PALEOS-API:MgSiO3', True),
+        ('PALEOS:MgSiO3:1.0', False),
+        ('PALEOS:MgSiO3 ', False),
+        ('PALEOS:Olivine', False),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+        ('WolfBower2018:MgSiO3', False),
+        (None, False),
     ],
 )
-def test_generates_paleos_tables_matches_the_registry_lookup(module, mantle_eos, expected):
-    """Only an exact PALEOS registry key, as generate_spider_tables looks it up, counts."""
+def test_generates_paleos_tables_needs_an_exact_registry_key(mantle_eos, expected):
+    """Only an exact PALEOS registry key under the Zalmoxis structure counts."""
     from types import SimpleNamespace
 
-    from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
     from proteus.utils.helper import generates_paleos_tables
 
-    struct = SimpleNamespace(module=module, zalmoxis=SimpleNamespace(mantle_eos=mantle_eos))
+    struct = SimpleNamespace(module='zalmoxis', zalmoxis=SimpleNamespace(mantle_eos=mantle_eos))
     assert generates_paleos_tables(struct) is expected
-    assert not expected or mantle_eos in load_zalmoxis_material_dictionaries()
+    struct.module = 'dummy'
+    assert generates_paleos_tables(struct) is False
+
+
+@pytest.mark.unit
+def test_paleos_registry_keys_match_the_zalmoxis_registry():
+    """The static key set equals the PALEOS keys that generate_spider_tables can find."""
+    pytest.importorskip('zalmoxis')
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
+    from proteus.utils.constants import PALEOS_EOS_PREFIXES, PALEOS_REGISTRY_KEYS
+
+    registry = load_zalmoxis_material_dictionaries()
+    paleos = {k for k in registry if k.startswith(PALEOS_EOS_PREFIXES)}
+    assert paleos == PALEOS_REGISTRY_KEYS
+    assert all(k.startswith(PALEOS_EOS_PREFIXES) for k in PALEOS_REGISTRY_KEYS)

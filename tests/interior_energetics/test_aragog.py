@@ -1505,21 +1505,23 @@ def test_helpfile_output_t_cmb_node_is_cmb_basic_node():
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ('mantle_eos', 'paleos_tables'),
+    ('mantle_eos', 'eos_dir', 'P_cmb', 'tables', 'warns'),
     [
-        ('PALEOS-2phase:MgSiO3', True),
-        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+        ('PALEOS-2phase:MgSiO3', None, 1.2e12, 'paleos', False),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', None, 1.2e12, 'wb', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', None, 0.9e12, 'wb', False),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'Custom', 1.2e12, 'custom', False),
     ],
 )
 def test_setup_solver_property_tables_follow_the_generated_set(
-    tmp_path, caplog, mantle_eos, paleos_tables
+    tmp_path, caplog, mantle_eos, eos_dir, P_cmb, tables, warns
 ):
     """Only a generated PALEOS set gives PALEOS property tables; a mixture reads the WB set."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = tmp_path / 'out'
     config = _make_aragog_config(struct_module='zalmoxis', mantle_eos=mantle_eos)
-    config.interior_struct.eos_dir = None
+    config.interior_struct.eos_dir = eos_dir
     config.planet.mass_tot = 1.0
     pt_dir = outdir / 'data' / 'aragog_pt'
     pt_dir.mkdir(parents=True)
@@ -1535,10 +1537,13 @@ def test_setup_solver_property_tables_follow_the_generated_set(
         }
     }
     wb_dir = _seed_lookup_tables(tmp_path)
+    custom_dir = tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'Custom' / 'P-T'
+    custom_dir.mkdir(parents=True)
+    (custom_dir / 'heat_capacity_melt.dat').write_text('dummy')
     hf_row = {
         'R_int': 6.371e6,
         'R_core': 3.48e6,
-        'P_cmb': 1.2e12,
+        'P_cmb': P_cmb,
         'gravity': 9.81,
         'T_magma': 3000.0,
         'T_eqm': 255.0,
@@ -1566,6 +1571,6 @@ def test_setup_solver_property_tables_follow_the_generated_set(
         AragogRunner.setup_solver(config, hf_row, interior_o, str(outdir))
 
     dirs = {Path(c.kwargs['density']).parent for c in mock_phase.call_args_list}
-    assert dirs == {pt_dir if paleos_tables else wb_dir}
-    # P_cmb = 1.2 TPa is past the WB table edge; the PALEOS set is built to reach it.
-    assert ('edge of the Aragog lookup tables' in caplog.text) is not paleos_tables
+    assert dirs == {{'paleos': pt_dir, 'wb': wb_dir, 'custom': custom_dir}[tables]}
+    # Only the fetched WB set has the fixed 1 TPa edge.
+    assert ('edge of the Wolf and Bower' in caplog.text) is warns
