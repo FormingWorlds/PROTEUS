@@ -109,17 +109,17 @@ export JULIA_DEPOT_PATH="/dataserver/users/formingworlds/<username>/.julia"
 If you install Julia using `tar`, use the following steps:
 
 ```
-export JULIA_DIR=/dataserver/users/formingworlds/<username>/julia-1.11.6
+export JULIA_DIR=/dataserver/users/formingworlds/<username>/julia-1.13.0
 
 mkdir -p $JULIA_DIR
 
 cd /dataserver/users/formingworlds/<username>
 
-wget https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.6-linux-x86_64.tar.gz
+wget https://julialang-s3.julialang.org/bin/linux/x64/1.13/julia-1.13.0-linux-x86_64.tar.gz
 
-tar -xvzf julia-1.11.6-linux-x86_64.tar.gz
+tar -xvzf julia-1.13.0-linux-x86_64.tar.gz
 
-echo 'export PATH=/dataserver/users/formingworlds/<username>/julia-1.11.6/bin:$PATH' >> ~/.bashrc
+echo 'export PATH=/dataserver/users/formingworlds/<username>/julia-1.13.0/bin:$PATH' >> ~/.bashrc
 
 echo 'export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia' >> ~/.bashrc
 

@@ -228,7 +228,7 @@ class Aragog:
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),
     )
-    """ODE solver: 'cvode' (SUNDIALS, SPIDER parity), 'radau' (scipy), 'bdf' (scipy)."""
+    """ODE solver: 'cvode' (SUNDIALS, SPIDER parity; needs scikits-odes-sundials and stops the run at setup without it), 'radau' (scipy), 'bdf' (scipy)."""
     scalar_gravity_override: bool = field(default=False)
     """Scalar-gravity comparison knob. When True, the external mesh file that
     Zalmoxis writes has its gravity column overwritten with a uniform scalar

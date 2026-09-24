@@ -317,6 +317,7 @@ runs:
       run: |
         set -euo pipefail
         python -c "import scikits.odes; print('scikits.odes OK, version', scikits.odes.__version__)"
+        python -c "import scikits_odes_sundials.cvode as c; from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum; print('CVODE wrapper OK:', c.__file__)"
 
     # Verify the install landed on the intended variant so a channel
     # or solver drift back to openblas fails loudly here instead of
@@ -695,6 +696,21 @@ runs:
             done ;;
         esac
 
+    # Aragog's default solver is CVODE and PROTEUS stops at setup without it.
+    # Aragog itself falls back to scipy Radau when the import fails, so this
+    # step fails the job on that fallback and prints the flag the tests rely on.
+    - name: Verify Aragog runs on CVODE
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        python - <<'PY'
+        import scikits_odes_sundials.cvode as cvode
+        from aragog.solver.entropy_solver import _CVODE_AVAILABLE
+
+        assert _CVODE_AVAILABLE, 'aragog reports CVODE unavailable (scipy Radau fallback)'
+        print('aragog CVODE available:', _CVODE_AVAILABLE, '|', cvode.__file__)
+        PY
+
     # BOREAS is an optional dependency: users opt in via
     # tools/get_boreas.sh. CI installs it explicitly (at the ref pinned
     # in [tool.proteus.modules.boreas]) so the BOREAS escape tests run
@@ -808,12 +824,12 @@ runs:
           echo "PYTHON_JULIACALL_HANDLE_SIGNALS=yes" >> $GITHUB_ENV
         fi
         # juliacall matches the Julia OpenSSL_jll to the Python interpreter's
-        # OpenSSL; Julia 1.12 ships OpenSSL_jll 3.5+, so the environment must
+        # OpenSSL; Julia 1.12 and newer ship OpenSSL_jll 3.5+, so the environment must
         # provide OpenSSL >= 3.5. conda-forge does; assert it so a future
         # environment change surfaces here instead of as an opaque OpenSSL_jll
         # resolve failure at the first "import proteus".
         if ! python -c "import ssl, sys; sys.exit(0 if ssl.OPENSSL_VERSION_INFO[:2] >= (3, 5) else 1)"; then
-          echo "::error::Python links $(python -c 'import ssl; print(ssl.OPENSSL_VERSION)') but Julia 1.12 needs OpenSSL >= 3.5"
+          echo "::error::Python links $(python -c 'import ssl; print(ssl.OPENSSL_VERSION)') but Julia 1.12 and newer need OpenSSL >= 3.5"
           exit 1
         fi
         echo "rad_dir=$RAD_DIR" >> $GITHUB_OUTPUT
