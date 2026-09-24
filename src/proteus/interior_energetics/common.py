@@ -214,6 +214,14 @@ class MissingMeltingCurveError(FileNotFoundError):
     """
 
 
+def _mantle_note(config) -> str:
+    """Name the Zalmoxis mantle EOS in an error, only when Zalmoxis is the structure."""
+    struct = config.interior_struct
+    if getattr(struct, 'module', None) != 'zalmoxis':
+        return ''
+    return f' (mantle EOS {getattr(getattr(struct, "zalmoxis", None), "mantle_eos", None)!r})'
+
+
 class InitialConditionError(RuntimeError):
     """The requested initial condition does not exist for this planet and EOS.
 

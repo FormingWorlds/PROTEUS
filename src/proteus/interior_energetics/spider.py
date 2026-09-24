@@ -16,6 +16,7 @@ from scipy.interpolate import RegularGridInterpolator
 from proteus.interior_energetics.common import (
     Interior_t,
     MissingMeltingCurveError,
+    _mantle_note,
     get_file_tides,
 )
 from proteus.interior_energetics.timestep import next_step
@@ -949,11 +950,10 @@ def _try_spider(
                 config.interior_struct.melting_dir,
             )
         elif config.interior_struct.melting_dir is None:
-            zalmoxis_cfg = getattr(config.interior_struct, 'zalmoxis', None)
             raise MissingMeltingCurveError(
                 'interior_struct.melting_dir is not set and no PALEOS table set was '
-                f'generated (mantle EOS {getattr(zalmoxis_cfg, "mantle_eos", None)!r}). '
-                'Set melting_dir to a melting curve name (e.g. "Monteux-600").'
+                f'generated{_mantle_note(config)}. Set melting_dir to a melting curve '
+                'name (e.g. "Monteux-600").'
             )
         else:
             mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior_struct.melting_dir)

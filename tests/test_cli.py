@@ -665,6 +665,45 @@ def test_get_interiordata_fetches_zalmoxis_eos(monkeypatch, tmp_path):
     assert calls == [('zalmoxis_eos', 'PALEOS:MgSiO3', 'PALEOS:iron', '')]
 
 
+@pytest.mark.unit
+def test_get_interiordata_fetches_ps_lookup_set_for_dummy(monkeypatch, tmp_path):
+    """``proteus get interiordata`` fetches the P-S lookup set a dummy-structure run reads."""
+    from types import SimpleNamespace
+
+    runner = CliRunner()
+    calls = []
+    fake_config = SimpleNamespace(
+        interior_energetics=SimpleNamespace(module='aragog'),
+        interior_struct=SimpleNamespace(module='dummy', eos_dir=None, zalmoxis=None),
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_interior_lookuptables', lambda clean=False: None
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_melting_curves', lambda configuration, clean=False: None
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_eos_dynamic', lambda *a, **k: calls.append('ps_set')
+    )
+    monkeypatch.setattr(cli, 'read_config_object', lambda path: fake_config)
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('unused')
+
+    res = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(cfg)])
+    assert res.exit_code == 0, res.output
+    assert calls == ['ps_set']
+
+    # Discrimination: Zalmoxis with a PALEOS mantle generates its own tables.
+    calls.clear()
+    fake_config.interior_struct = SimpleNamespace(
+        module='zalmoxis', eos_dir=None, zalmoxis=SimpleNamespace(mantle_eos='PALEOS:MgSiO3')
+    )
+    monkeypatch.setattr('proteus.utils.data.download_zalmoxis_eos_for_config', lambda c: None)
+    res = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(cfg)])
+    assert res.exit_code == 0, res.output
+    assert calls == []
+
+
 # ---- tool setup subcommands ----
 
 

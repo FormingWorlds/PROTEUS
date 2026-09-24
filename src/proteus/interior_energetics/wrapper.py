@@ -18,6 +18,7 @@ from proteus.interior_energetics.common import (
     InitialConditionError,
     Interior_t,
     MissingMeltingCurveError,
+    _mantle_note,
 )
 from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
@@ -664,7 +665,8 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     2. **FWL_DATA (Zenodo 19473625)**: if the canonical Zenodo download
        target exists and is complete, copy the 12 files into the output
        directory. This is the self-sufficient path: once the user runs
-       ``proteus get all`` (or any non-offline start), the Zenodo record
+       ``proteus get interiordata --config-path <config>`` (or any non-offline
+       start), the Zenodo record
        populates FWL_DATA and subsequent runs find the complete set
        here.
 
@@ -678,7 +680,7 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
 
     4. **Hard failure**: if neither source yields a complete set, raise
        ``FileNotFoundError`` with a clear message pointing the user at
-       ``proteus get all`` or the Zenodo record.
+       ``proteus get interiordata --config-path <config>``.
 
     When ``interior_struct.melting_dir`` is set, the two P-S melting curves
     are derived from its P-T files in every case above, and missing P-T files
@@ -752,11 +754,10 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     )
     if not derive_melting and not const_spider:
         # Without melting_dir the curves would be whatever set is on disk.
-        zalmoxis_cfg = getattr(config.interior_struct, 'zalmoxis', None)
         raise MissingMeltingCurveError(
             'interior_struct.melting_dir is not set and no PALEOS table set was '
-            f'generated (mantle EOS {getattr(zalmoxis_cfg, "mantle_eos", None)!r}). '
-            'Set melting_dir to a melting curve name (e.g. "Monteux-600").'
+            f'generated{_mantle_note(config)}. Set melting_dir to a melting curve name '
+            '(e.g. "Monteux-600").'
         )
 
     os.makedirs(target_dir, exist_ok=True)
@@ -786,7 +787,7 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
             'in SPIDER P-S format. This usually means the directory was '
             'populated by the Zenodo 17417017 record (P-T format). '
             'Falling through to the SPIDER submodule. Refresh FWL_DATA '
-            'with `proteus get all` to fetch Zenodo 19473625.',
+            'with `proteus get interiordata --config-path <your config>`.',
             zenodo_root,
         )
     if zenodo_format_ok:
@@ -881,7 +882,7 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
         f'{len(zenodo_files)} required files '
         f'({zenodo_missing[:3]}...), and the SPIDER submodule fallback '
         f'was unavailable at {dirs.get("spider", "<no spider dir set>")}'
-        '/lookup_data/1TPa-dK09-elec-free/. Run `proteus get all` to '
+        '/lookup_data/1TPa-dK09-elec-free/. Run `proteus get interiordata --config-path <your config>` to '
         'fetch Zenodo record 19473625, or ensure the SPIDER submodule '
         'is cloned.'
     )
@@ -1066,7 +1067,8 @@ def determine_interior_radius_with_dummy(
                 "interior_struct.module='dummy' with interior_energetics.module="
                 f'{config.interior_energetics.module!r} needs the SPIDER/Aragog P-S EOS '
                 'tables from FWL_DATA or the SPIDER lookup_data, and neither is '
-                "available. Fetch them with 'proteus get all'. "
+                "available. Fetch them with 'proteus get interiordata --config-path "
+                "<your config>'. "
                 f'Cause: {exc}'
             ) from exc
 

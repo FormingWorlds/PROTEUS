@@ -3028,11 +3028,44 @@ def test_get_sufficient_dummy_structure_fetches_ps_tables_without_eos_dir(
     _get_sufficient(config, clean=False)
     assert mock_dyn.call_count == 1
 
-    # Discrimination: Zalmoxis without eos_dir takes its tables from its own EOS.
+    # Discrimination: Zalmoxis with a PALEOS mantle generates its own tables.
     mock_dyn.reset_mock()
     config.interior_struct.module = 'zalmoxis'
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
     _get_sufficient(config, clean=False)
     assert mock_dyn.call_count == 0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('energetics', 'struct', 'eos_dir', 'mantle_eos', 'expected'),
+    [
+        ('aragog', 'dummy', None, 'PALEOS:MgSiO3', True),
+        ('spider', 'dummy', None, 'PALEOS:MgSiO3', True),
+        ('spider', 'spider', 'WolfBower2018_MgSiO3', 'PALEOS:MgSiO3', True),
+        ('aragog', 'zalmoxis', None, 'PALEOS:MgSiO3', False),
+        ('aragog', 'zalmoxis', None, 'PALEOS-2phase:MgSiO3', False),
+        ('aragog', 'zalmoxis', None, 'WolfBower2018:MgSiO3', True),
+        ('spider', 'zalmoxis', None, 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', True),
+        ('aragog', 'zalmoxis', 'WolfBower2018_MgSiO3', 'PALEOS:MgSiO3', True),
+        ('dummy', 'dummy', None, 'PALEOS:MgSiO3', False),
+    ],
+)
+def test_needs_spider_ps_tables(energetics, struct, eos_dir, mantle_eos, expected):
+    """The P-S lookup set is needed exactly when no PALEOS table set is generated."""
+    from types import SimpleNamespace
+
+    from proteus.utils.data import needs_spider_ps_tables
+
+    config = SimpleNamespace(
+        interior_energetics=SimpleNamespace(module=energetics),
+        interior_struct=SimpleNamespace(
+            module=struct, eos_dir=eos_dir, zalmoxis=SimpleNamespace(mantle_eos=mantle_eos)
+        ),
+    )
+    assert needs_spider_ps_tables(config) is expected
+    # A config without these sections needs nothing.
+    assert needs_spider_ps_tables({'fake': 'config'}) is False
 
 
 @pytest.mark.unit

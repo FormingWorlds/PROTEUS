@@ -3268,7 +3268,9 @@ def test_provide_spider_eos_tables_unset_melting_dir_raises(tmp_path):
     (spider_bundle / 'liquidus_A11_H13.dat').write_text('# bundled liquidus\n')
     config = SimpleNamespace(
         interior_struct=SimpleNamespace(
-            melting_dir=None, zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3')
+            module='zalmoxis',
+            melting_dir=None,
+            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
         ),
         interior_energetics=SimpleNamespace(module='aragog', const_properties=True),
     )
@@ -3280,11 +3282,21 @@ def test_provide_spider_eos_tables_unset_melting_dir_raises(tmp_path):
             _provide_spider_eos_tables(config, str(tmp_path), dirs)
         assert 'spider_liquidus_ps' not in dirs
 
+        # SPIDER without constant properties reads the curves too; the dummy
+        # structure message names no Zalmoxis mantle EOS.
+        config.interior_energetics = SimpleNamespace(module='spider', const_properties=False)
+        config.interior_struct.module = 'dummy'
+        with pytest.raises(
+            MissingMeltingCurveError, match='melting_dir is not set'
+        ) as raised_dummy:
+            _provide_spider_eos_tables(config, str(tmp_path), dirs)
+        assert 'mantle EOS' not in str(raised_dummy.value)
+
         # Discrimination: SPIDER with constant properties needs no curves.
-        config.interior_energetics.module = 'spider'
+        config.interior_energetics.const_properties = True
         _provide_spider_eos_tables(config, str(tmp_path), dirs)
 
-    assert "'WolfBower2018:MgSiO3'" in str(raised.value)
+    assert "(mantle EOS 'WolfBower2018:MgSiO3')" in str(raised.value)
     assert dirs['spider_eos_dir'] == str(tmp_path / 'data' / 'spider_eos')
 
 
@@ -3370,7 +3382,7 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
     # Discrimination: the message points users at the remediation
     # (`proteus get all`); a regression that silently fell through
     # would not raise at all.
-    assert 'proteus get all' in str(exc.value)
+    assert 'proteus get interiordata --config-path' in str(exc.value)
 
 
 # ============================================================================
@@ -3632,7 +3644,7 @@ def test_dummy_structure_without_tables_raises_named_error(tmp_path):
     msg = str(excinfo.value)
     assert "interior_struct.module='dummy'" in msg
     assert "interior_energetics.module='aragog'" in msg
-    assert 'proteus get all' in msg
+    assert 'proteus get interiordata --config-path' in msg
     assert 'no P-S tables' in msg
     assert not isinstance(excinfo.value, FileNotFoundError)
     # The failure happens before the first interior step is built.

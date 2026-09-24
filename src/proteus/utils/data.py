@@ -1673,6 +1673,36 @@ def _attempt(desc: str, func, *args, **kwargs) -> bool:
     return True
 
 
+def needs_spider_ps_tables(config) -> bool:
+    """Return whether a run reads the Wolf and Bower P-S lookup set.
+
+    SPIDER and Aragog read it unless Zalmoxis generates a PALEOS table set,
+    which happens for a single-component PALEOS mantle EOS.
+
+    Parameters
+    ----------
+    config : Config
+        The run configuration.
+
+    Returns
+    -------
+    bool
+        True when the run needs the lookup set in FWL_DATA.
+    """
+    from proteus.utils.constants import PALEOS_EOS_PREFIXES
+
+    energetics = getattr(getattr(config, 'interior_energetics', None), 'module', None)
+    if energetics not in ('spider', 'aragog'):
+        return False
+    struct = getattr(config, 'interior_struct', None)
+    if getattr(struct, 'eos_dir', None) is not None:
+        return True
+    if getattr(struct, 'module', None) == 'zalmoxis':
+        mantle = str(getattr(getattr(struct, 'zalmoxis', None), 'mantle_eos', '') or '')
+        return not (mantle.startswith(PALEOS_EOS_PREFIXES) and '+' not in mantle)
+    return True
+
+
 def _get_sufficient(config: Config, clean: bool = False):
     # Star stuff
     if config.star.module == 'mors':
@@ -1725,12 +1755,9 @@ def _get_sufficient(config: Config, clean: bool = False):
         _attempt('Wolf and Bower melting curves', download_interior_lookuptables, clean=clean)
         _attempt('melting curves', download_melting_curves, config, clean=clean)
 
-    # Dynamic EOS for SPIDER and Aragog: set by struct.eos_dir, and always read
-    # with the dummy structure, which never uses PALEOS tables
-    if config.interior_energetics.module in ('spider', 'aragog') and (
-        config.interior_struct.eos_dir is not None or config.interior_struct.module == 'dummy'
-    ):
-        _attempt('EOS lookup tables', download_eos_dynamic, config.interior_struct.eos_dir)
+    # P-S lookup set for SPIDER and Aragog, unless Zalmoxis generates PALEOS tables
+    if needs_spider_ps_tables(config):
+        _attempt('EOS lookup tables', download_eos_dynamic)
 
     # EOS for Zalmoxis (derived from struct.zalmoxis config, not struct.eos_dir)
     _attempt('Zalmoxis EOS tables', download_zalmoxis_eos_for_config, config)

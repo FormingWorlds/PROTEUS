@@ -44,7 +44,7 @@ used with lower rate limits.
 | Exoplanet populations, mass-radius curves | fwl-io | `proteus get reference` |
 | Interior structure EOS tables | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
 | Melting curves | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
-| P-S lookup tables | fwl-io | fetched when a run sets `interior_struct.eos_dir` |
+| P-S lookup tables | fwl-io | fetched when SPIDER or Aragog run without a generated PALEOS table set |
 
 To configure a Zenodo API token, see the
 [Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
@@ -284,7 +284,10 @@ is exempt.
 The Wolf and Bower (2018) pressure-entropy lookup table that SPIDER and
 Aragog read for `eos_dir = "WolfBower2018_MgSiO3"` is fetched the same way,
 into `$FWL_DATA/interior/eos/dk09_1tpa_elec_free/mgsio3_wolf_bower_2018_1tpa/r<record-id>/`
-when a run sets `eos_dir`. A local table takes precedence: SPIDER reads
+when SPIDER or Aragog run without a generated PALEOS table set: with the dummy or
+SPIDER structure, or with Zalmoxis and a non-PALEOS or mixed mantle EOS.
+`proteus get interiordata --config-path <config>` fetches it for such a config
+before an offline run. A local table takes precedence: SPIDER reads
 `$FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-S/` and Aragog reads
 `$FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-T/`. SPIDER uses the
 table bundled with it (`lookup_data/1TPa-dK09-elec-free/`) when neither the
