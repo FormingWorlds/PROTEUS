@@ -63,9 +63,6 @@ _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN = 200.0
 
 _entropy_eos_jax_cache: dict = {}
 
-# Upper pressure of the Wolf and Bower (2018) lookup set (Pa), dataset 1TPa-dK09.
-_WB_TABLE_P_MAX = 1.0e12
-
 
 def _melting_curve_files(config, outdir):
     """Return the (solidus, liquidus) files Aragog reads for this run.
@@ -1003,14 +1000,6 @@ class AragogRunner:
                 )
                 if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
                     LOOK_UP_DIR = default_lookup
-            P_cmb = float(hf_row.get('P_cmb') or 0.0)
-            if LOOK_UP_DIR == default_lookup and P_cmb > _WB_TABLE_P_MAX:
-                log.warning(
-                    'P_cmb=%.0f GPa is above the %.0f GPa edge of the Wolf and Bower '
-                    '(2018) tables; the deep mantle reads values at the table edge.',
-                    P_cmb / 1e9,
-                    _WB_TABLE_P_MAX / 1e9,
-                )
         solidus_path, liquidus_path = _melting_curve_files(config, outdir)
 
         # check data exist
@@ -1120,6 +1109,17 @@ class AragogRunner:
                         f'PALEOS P-S tables not found. Aragog entropy solver '
                         f'requires P-S tables. Checked: {spider_eos_dir}, {fallback_dir}'
                     )
+            from proteus.utils.structure_estimate import resolve_P_cmb
+
+            P_cmb, estimated = resolve_P_cmb(hf_row, config)
+            if P_cmb > entropy_eos.P_max:
+                log.warning(
+                    'P_cmb=%.0f GPa%s is above the %.0f GPa edge of the P-S tables; '
+                    'the deep mantle reads values at the table edge.',
+                    P_cmb / 1e9,
+                    ' (estimated)' if estimated else '',
+                    entropy_eos.P_max / 1e9,
+                )
         _t_post_eos = time.perf_counter()
         interior_o.aragog_solver = EntropySolver(param, entropy_eos)
         _t_post_solver = time.perf_counter()

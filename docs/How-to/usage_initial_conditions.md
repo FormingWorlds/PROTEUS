@@ -125,13 +125,16 @@ liquidus at the binding depth.
     - `"spider"` and `"dummy"`, or `"zalmoxis"` when no PALEOS table set is
       generated, which includes a PALEOS mixture (a `+` in `mantle_eos`): the
       tables come from FWL_DATA (SPIDER also falls back to its own lookup
-      data), Aragog reads its phase-property tables from the same Wolf & Bower
-      (2018) P-S set or `interior_struct.eos_dir`, `interior_struct.melting_dir`
+      data), Aragog also takes its phase-property files from that Wolf & Bower
+      (2018) set or `interior_struct.eos_dir`, `interior_struct.melting_dir`
       must be set (the run stops when it is unset, except for
       `interior_energetics.module = "spider"` with `const_properties = true`),
-      and PROTEUS derives `liquidus_P-S.dat` from that P-T curve. The Wolf &
-      Bower (2018) tables end at 1 TPa; with `"zalmoxis"`, Aragog logs a
-      warning when the core-mantle boundary pressure is above that.
+      and PROTEUS derives `liquidus_P-S.dat` from that P-T curve.
+
+    Aragog takes its thermodynamics and melt fraction from the P-S tables. It
+    logs a warning when the core-mantle boundary pressure, or the Noack &
+    Lasbleis (2020) estimate where the structure gives none, is above the edge
+    of those tables; the Wolf & Bower (2018) set ends at about 1 TPa.
 
     With `"zalmoxis"`, the structure solve also anchors its temperature profile
     on a P-T adiabat that is `delta_T_super` above the P-T liquidus, while the

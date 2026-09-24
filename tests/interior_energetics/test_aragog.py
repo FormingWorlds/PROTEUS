@@ -29,6 +29,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config = MagicMock()
     config.interior_struct.module = struct_module
     config.interior_struct.core_frac = 0.55
+    config.interior_struct.core_frac_mode = 'mass'
     config.interior_struct.zalmoxis.mantle_eos = mantle_eos
     config.interior_struct.core_density = 12500.0
     config.interior_struct.core_heatcap = 880.0
@@ -75,6 +76,10 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     return config
 
 
+# Entropy EOS stand-in whose P-S tables reach past any P_cmb in these tests.
+_EOS = MagicMock(P_max=1.0e13)
+
+
 def _seed_lookup_tables(root):
     """Create the versioned Wolf and Bower lookup dataset directory under ``root``."""
     from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
@@ -117,7 +122,7 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.Parameters') as mock_params,
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
@@ -170,7 +175,7 @@ def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
         patch('proteus.interior_energetics.aragog._InitialConditionParameters') as mock_ic,
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
@@ -211,7 +216,7 @@ def test_setup_solver_eos_fallback(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
@@ -577,7 +582,7 @@ def test_setup_solver_threads_phase_boundary_margin(tmp_path):
             ),
             patch('proteus.interior_energetics.aragog.Parameters'),
             patch('proteus.interior_energetics.aragog.EntropySolver'),
-            patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+            patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
             patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
             patch('proteus.interior_energetics.aragog.log') as mock_log,
         ):
@@ -633,7 +638,7 @@ def test_setup_solver_threads_resolved_step_caps(tmp_path):
             patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / name),
             patch('proteus.interior_energetics.aragog.Parameters'),
             patch('proteus.interior_energetics.aragog.EntropySolver'),
-            patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+            patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
             patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
             patch('proteus.interior_energetics.aragog.log'),
         ):
@@ -670,7 +675,7 @@ def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / 'nondefault'),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
         patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
         patch('proteus.interior_energetics.aragog.log') as mock_log,
     ):
@@ -698,7 +703,7 @@ def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / 'default'),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
         patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
         patch('proteus.interior_energetics.aragog.log') as mock_log,
     ):
@@ -1505,16 +1510,16 @@ def test_helpfile_output_t_cmb_node_is_cmb_basic_node():
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ('mantle_eos', 'eos_dir', 'P_cmb', 'tables', 'warns'),
+    ('mantle_eos', 'eos_dir', 'tables'),
     [
-        ('PALEOS-2phase:MgSiO3', None, 1.2e12, 'paleos', False),
-        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', None, 1.2e12, 'wb', True),
-        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', None, 0.9e12, 'wb', False),
-        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'Custom', 1.2e12, 'custom', False),
+        ('PALEOS-2phase:MgSiO3', None, 'paleos'),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', None, 'wb'),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'Custom', 'custom'),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'Missing', 'wb'),
     ],
 )
 def test_setup_solver_property_tables_follow_the_generated_set(
-    tmp_path, caplog, mantle_eos, eos_dir, P_cmb, tables, warns
+    tmp_path, mantle_eos, eos_dir, tables
 ):
     """Only a generated PALEOS set gives PALEOS property tables; a mixture reads the WB set."""
     from proteus.interior_energetics.aragog import AragogRunner
@@ -1543,7 +1548,6 @@ def test_setup_solver_property_tables_follow_the_generated_set(
     hf_row = {
         'R_int': 6.371e6,
         'R_core': 3.48e6,
-        'P_cmb': P_cmb,
         'gravity': 9.81,
         'T_magma': 3000.0,
         'T_eqm': 255.0,
@@ -1566,14 +1570,13 @@ def test_setup_solver_property_tables_follow_the_generated_set(
         patch('proteus.interior_energetics.aragog._PhaseParameters') as mock_phase,
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, str(outdir))
 
     dirs = {Path(c.kwargs['density']).parent for c in mock_phase.call_args_list}
     assert dirs == {{'paleos': pt_dir, 'wb': wb_dir, 'custom': custom_dir}[tables]}
-    # Only the fetched WB set has the fixed 1 TPa edge.
-    assert ('edge of the Wolf and Bower' in caplog.text) is warns
+    assert len(mock_phase.call_args_list) == 2
 
 
 @pytest.mark.unit
@@ -1604,3 +1607,46 @@ def test_setup_solver_offline_mixture_names_the_fetch_command(tmp_path):
         AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
     assert not mock_solver.called
     assert not (tmp_path / 'out' / 'data' / 'aragog_pt').exists()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('P_cmb', 'mass_tot', 'message'),
+    [
+        (1.2e12, 1.0, 'P_cmb=1200 GPa is above the 1000 GPa edge'),
+        (0.9e12, 1.0, None),
+        (None, 15.0, 'P_cmb=1229 GPa (estimated) is above the 1000 GPa edge'),
+        (None, 1.0, None),
+    ],
+)
+def test_setup_solver_warns_past_the_ps_table_edge(tmp_path, caplog, P_cmb, mass_tot, message):
+    """P_cmb, or its estimate without a structure value, is checked against the P-S tables."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(struct_module='spider')
+    config.planet.mass_tot = mass_tot
+    _seed_lookup_tables(tmp_path)
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    interior_o._spider_eos_dir = str(tmp_path)
+    hf_row = {'R_int': 6.371e6, 'gravity': 9.81, 'T_magma': 3000.0, 'T_eqm': 255.0}
+    hf_row['F_atm'] = 100.0
+    if P_cmb is not None:
+        hf_row['P_cmb'] = P_cmb
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch(
+            'proteus.interior_energetics.aragog._cached_entropy_eos',
+            return_value=MagicMock(P_max=1.0e12),
+        ),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
+
+    edge = [
+        r.getMessage() for r in caplog.records if 'edge of the P-S tables' in r.getMessage()
+    ]
+    assert len(edge) == (message is not None)
+    assert message is None or message in edge[0]
