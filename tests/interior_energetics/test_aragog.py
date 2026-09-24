@@ -938,7 +938,7 @@ def test_require_cvode_passes_when_cvode_imports():
     from proteus.interior_energetics.aragog import require_cvode
 
     assert require_cvode(_cvode_config()) is None
-    assert getattr(entropy_solver, '_CVODE_AVAILABLE', None) is True
+    assert entropy_solver._CVODE_AVAILABLE is True
 
 
 @pytest.mark.unit

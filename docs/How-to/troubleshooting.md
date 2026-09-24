@@ -54,7 +54,7 @@ Install CVODE into the active conda environment from the PROTEUS root:
 
 ```bash
 bash tools/get_cvode.sh
-python -c "import scikits_odes_sundials.cvode"
+python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum"
 ```
 
 `proteus install-all`, `proteus update-all` and `install.sh` run the same script and stop with an error when it fails. To use scipy on purpose, set `solver_method = "radau"` or `"bdf"` in `[interior_energetics.aragog]`; the run then needs no CVODE, and its results are those of a different integrator.

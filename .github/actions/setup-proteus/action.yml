@@ -704,12 +704,11 @@ runs:
       run: |
         set -euo pipefail
         python - <<'PY'
-        import aragog.solver.entropy_solver as solver
         import scikits_odes_sundials.cvode as cvode
+        from aragog.solver.entropy_solver import _CVODE_AVAILABLE
 
-        flag = getattr(solver, '_CVODE_AVAILABLE', None)
-        assert flag, f'aragog CVODE flag is {flag!r} (missing means the flag was renamed)'
-        print('aragog CVODE available:', flag, '|', cvode.__file__)
+        assert _CVODE_AVAILABLE, 'aragog reports CVODE unavailable (scipy Radau fallback)'
+        print('aragog CVODE available:', _CVODE_AVAILABLE, '|', cvode.__file__)
         PY
 
     # BOREAS is an optional dependency: users opt in via
