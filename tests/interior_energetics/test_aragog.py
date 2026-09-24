@@ -1893,11 +1893,11 @@ def test_update_solver_infers_the_mesh_pressure_of_an_older_snapshot(tmp_path, c
     assert interior_o._last_dSdr_cmb is None
 
 
-@pytest.mark.parametrize('case', ['masked-profile', 'empty-profile'])
+@pytest.mark.parametrize('case', ['masked-profile', 'empty-profile', 'both-empty'])
 def test_mesh_pressure_inference_rejects_unusable_profiles(tmp_path, case):
-    """An unwritten (masked) pressure profile, or one whose size does not
-    match the radii, gives no surface pressure instead of a fill-value
-    result or a broadcast error. A valid profile of the same snapshot gives
+    """An unwritten (masked) pressure profile, one whose size does not match
+    the radii, or an empty pair gives no surface pressure instead of a
+    fill-value result, a broadcast error or an index error. A valid profile of the same snapshot gives
     its setup value (canary)."""
     from types import SimpleNamespace
 
@@ -1928,6 +1928,11 @@ def test_mesh_pressure_inference_rejects_unusable_profiles(tmp_path, case):
         else:
             ds.createDimension('empty', 0)
             ds.createVariable('pres_s', np.float64, ('empty',))
+    if case == 'both-empty':
+        # A second rename in the same netCDF session raises an HDF error.
+        with nc.Dataset(snap, 'r+') as ds:
+            ds.renameVariable('radius_s', 'radius_s_written')
+            ds.createVariable('radius_s', np.float64, ('empty',))
     assert infer_mesh_surface_pressure(str(tmp_path), 202.0, mesh) is None
 
 

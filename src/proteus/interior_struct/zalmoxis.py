@@ -2420,11 +2420,19 @@ def _ps_generator_identity() -> str:
     return f'{version}-{h.hexdigest()[:12]}'
 
 
+class _NoPSTables(ValueError):
+    """The mantle EOS gives no PALEOS P-S tables; ``level`` is the log level of the reason."""
+
+    def __init__(self, reason: str, level: int = logging.WARNING):
+        super().__init__(reason)
+        self.level = level
+
+
 def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
     """Resolve the PALEOS files and the cache key of the P-S tables.
 
     Materialises PALEOS-API entries, which can build their tables on a cold
-    cache, and logs why no tables can be made.
+    cache. Logs nothing about a missing or non-PALEOS EOS; it raises instead.
 
     Parameters
     ----------
@@ -2437,9 +2445,13 @@ def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
 
     Returns
     -------
-    tuple or None
-        ``(eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key)``,
-        or None when the mantle EOS is not PALEOS or its files are missing.
+    tuple
+        ``(eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key)``.
+
+    Raises
+    ------
+    _NoPSTables
+        When the mantle EOS is not PALEOS or its files are missing.
     """
     mantle_eos = config.interior_struct.zalmoxis.mantle_eos
     # PALEOS-API live tabulation: materialise cached .dat paths in place so the
@@ -2467,12 +2479,10 @@ def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
     )
 
     if not (is_unified or is_twophase):
-        log.info(
-            'Mantle EOS %s is neither PALEOS unified nor PALEOS-2phase; '
-            'using pre-existing SPIDER tables.',
-            mantle_eos,
+        raise _NoPSTables(
+            f'mantle EOS {mantle_eos} is neither PALEOS unified nor PALEOS-2phase',
+            logging.INFO,
         )
-        return None
 
     # Resolve unified file (if present) and 2-phase files (if present).
     eos_file = eos_entry.get('eos_file', '')
@@ -2506,19 +2516,15 @@ def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
         if solid_eos is not None:
             eos_file = solid_eos
         else:
-            log.warning(
-                'No PALEOS EOS file available for %s '
-                '(unified missing and 2-phase incomplete); skipping table gen.',
-                mantle_eos,
+            raise _NoPSTables(
+                f'no PALEOS EOS file is available for {mantle_eos} '
+                '(unified missing and 2-phase incomplete)'
             )
-            return None
 
     if is_twophase and not (solid_eos and liquid_eos):
-        log.warning(
-            'PALEOS-2phase entry %s missing solid or liquid file; skipping.',
-            mantle_eos,
+        raise _NoPSTables(
+            f'PALEOS-2phase entry {mantle_eos} is missing its solid or liquid file'
         )
-        return None
 
     # Determine pressure range from planet mass (higher mass needs wider range)
     mass_tot = config.planet.mass_tot or 1.0
@@ -2528,9 +2534,6 @@ def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
     # interior_energetics/aragog.py for the matching cap and the
     # comment on EOS / melting-curve calibration ranges.
     P_max = min(1.0e13, 150e9 * mass_tot + 200e9)
-
-    if solid_eos and liquid_eos:
-        log.info('Using PALEOS-2phase tables for entropy-IC table generation')
 
     # Table resolution from config
     nP = config.interior_struct.zalmoxis.lookup_nP
@@ -2553,16 +2556,16 @@ def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
     return eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key
 
 
-def _ps_resume_key(config: Config, eos_entry: dict, mat_dicts: dict) -> str:
+def _ps_resume_key(config: Config, eos_entry: dict | None, mat_dicts: dict) -> str:
     """Current P-S cache key for the resume warning, without building PALEOS-API tables."""
     from zalmoxis.eos.dispatch import _is_paleos_api
 
+    if eos_entry is None:
+        mantle_eos = config.interior_struct.zalmoxis.mantle_eos
+        raise _NoPSTables(f'mantle EOS {mantle_eos} is not in the material dictionary')
     if _is_paleos_api(eos_entry):
         raise ValueError('a PALEOS-API mantle EOS is not resolved on resume')
-    inputs = _ps_table_inputs(config, eos_entry, mat_dicts)
-    if inputs is None:
-        raise ValueError('the current PALEOS files are not available')
-    return inputs[-1]
+    return _ps_table_inputs(config, eos_entry, mat_dicts)[-1]
 
 
 def generate_spider_tables(config: Config, outdir: str):
@@ -2622,13 +2625,6 @@ def generate_spider_tables(config: Config, outdir: str):
     mat_dicts = load_zalmoxis_material_dictionaries()
     eos_entry = mat_dicts.get(mantle_eos)
 
-    if eos_entry is None:
-        log.info(
-            'Mantle EOS %s not found in material dictionary; using pre-existing SPIDER tables.',
-            mantle_eos,
-        )
-        return None
-
     # A resumed run stays on the tables it started with; the key only feeds the warning.
     if config.params.resume:
         resumed = _resumed_ps_tables(
@@ -2637,10 +2633,20 @@ def generate_spider_tables(config: Config, outdir: str):
         if resumed is not None:
             return resumed
 
-    inputs = _ps_table_inputs(config, eos_entry, mat_dicts)
-    if inputs is None:
+    if eos_entry is None:
+        log.info(
+            'Mantle EOS %s not found in material dictionary; using pre-existing SPIDER tables.',
+            mantle_eos,
+        )
+        return None
+    try:
+        inputs = _ps_table_inputs(config, eos_entry, mat_dicts)
+    except _NoPSTables as exc:
+        log.log(exc.level, 'No PALEOS P-S tables: %s; using pre-existing SPIDER tables.', exc)
         return None
     eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key = inputs
+    if solid_eos and liquid_eos:
+        log.info('Using PALEOS-2phase tables for entropy-IC table generation')
     nP = config.interior_struct.zalmoxis.lookup_nP
     nS = config.interior_struct.zalmoxis.lookup_nS
     if config.params.resume:
