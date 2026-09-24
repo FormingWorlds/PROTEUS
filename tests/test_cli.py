@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import builtins
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -2681,13 +2682,19 @@ def test_start_defaults_to_no_resume_no_offline(monkeypatch, tmp_path):
     assert inst.offline is False
 
 
-def _cvode_recorder(fail: bool):
-    """Return a subprocess.run stand-in that records commands and can fail get_cvode.sh."""
+def _cvode_recorder(fail: bool, import_fails: bool = False):
+    """Return a subprocess.run stand-in that records commands and can fail the install.
+
+    ``fail`` makes tools/get_cvode.sh fail; ``import_fails`` makes the follow-up
+    import check in the interpreter running PROTEUS fail.
+    """
     calls = []
 
     def fake_run(cmd, **kwargs):
         calls.append(list(cmd))
         if fail and str(cmd[1]).endswith('get_cvode.sh'):
+            raise cli.subprocess.CalledProcessError(1, cmd)
+        if import_fails and cmd[1:] == ['-c', cli._CVODE_IMPORT]:
             raise cli.subprocess.CalledProcessError(1, cmd)
         return type('R', (), {'returncode': 0})()
 
@@ -2722,6 +2729,7 @@ def test_a_failed_cvode_install_stops_the_command_with_an_error(monkeypatch, tmp
     assert 'Failed to install CVODE' in res.output
     assert 'scikits-odes-sundials' in res.output
     assert 'bash tools/get_cvode.sh' in res.output
+    assert f'"proteus {command}"' in res.output.replace('\n', ' ')
     assert 'completed' not in res.output
     # Nothing after the CVODE step ran: the last command is the failed script.
     assert str(calls[-1][1]).endswith('get_cvode.sh')
@@ -2751,5 +2759,33 @@ def test_a_successful_cvode_install_runs_the_script_from_the_source_tree(
     assert res.exit_code == 0, res.output
     cvode_calls = [c for c in calls if str(c[1]).endswith('get_cvode.sh')]
     assert cvode_calls == [['bash', str(tmp_path / 'tools' / 'get_cvode.sh')]]
+    assert [sys.executable, '-c', cli._CVODE_IMPORT] in calls
     assert 'CVODE available' in res.output
     assert 'completed' in res.output
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('command', ['install-all', 'update-all'])
+def test_cvode_that_does_not_import_in_this_interpreter_stops_the_command(
+    monkeypatch, tmp_path, command
+):
+    """A script that succeeds for another Python does not count: the running one must import it."""
+    _pin_proteus_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    (tmp_path / 'fwl_data').mkdir()
+    (tmp_path / 'socrates').mkdir()
+    (tmp_path / 'AGNI').mkdir()
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+    fake_run, calls = _cvode_recorder(fail=False, import_fails=True)
+    monkeypatch.setattr(cli.subprocess, 'run', fake_run)
+
+    res = runner.invoke(cli.cli, [command])
+
+    assert res.exit_code == 1
+    assert 'CVODE available' not in res.output
+    assert sys.executable in res.output.replace('\n', '')
+    assert calls[-1] == [sys.executable, '-c', cli._CVODE_IMPORT]

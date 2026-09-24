@@ -2383,28 +2383,37 @@ def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(
     )
 
 
-def test_start_stops_before_touching_output_when_aragog_lacks_cvode(monkeypatch, tmp_path):
-    """A fresh Aragog run without CVODE stops before it cleans the output directory.
+@pytest.fixture
+def cvode_missing(monkeypatch):
+    """Make ``import scikits_odes_sundials.cvode`` fail as on a machine without CVODE."""
+    # aragog reads its CVODE flag once, at first import: load it before hiding the module.
+    pytest.importorskip('aragog.solver.entropy_solver')
+    monkeypatch.setitem(sys.modules, 'scikits_odes_sundials.cvode', None)
 
-    ``start`` wipes the output directories of a fresh run, so the CVODE check
-    has to come first: a broken environment must not cost the user the files
-    of an earlier run. The error carries the install command.
+
+def test_start_stops_before_touching_output_when_aragog_lacks_cvode(
+    monkeypatch, tmp_path, cvode_missing
+):
+    """A fresh Aragog run without CVODE stops before the status file and the output are touched.
+
+    ``start`` writes the status file and wipes the output directories of a
+    fresh run, so the CVODE check has to come first: a broken environment must
+    not cost the user the files of an earlier run. The error carries the
+    install command.
     """
     p = _make_proteus_instance(tmp_path, interior_module='aragog')
     p.config.interior_energetics.aragog.solver_method = 'cvode'
-    kept = tmp_path / 'earlier_run.txt'
-    kept.write_text('x', encoding='utf-8')
-    monkeypatch.setitem(sys.modules, 'scikits_odes_sundials.cvode', None)
 
     with ExitStack() as stack:
         for target in _START_PATCHES:
             stack.enter_context(patch(target))
+        status = stack.enter_context(patch('proteus.proteus.UpdateStatusfile'))
         clean = stack.enter_context(patch('proteus.proteus.CleanDir'))
         with pytest.raises(ImportError, match='bash tools/get_cvode.sh'):
             p.start(resume=False, offline=True)
 
+    status.assert_not_called()
     clean.assert_not_called()
-    assert kept.read_text(encoding='utf-8') == 'x'
 
 
 @pytest.mark.parametrize(
@@ -2412,12 +2421,11 @@ def test_start_stops_before_touching_output_when_aragog_lacks_cvode(monkeypatch,
     [('aragog', 'radau'), ('aragog', 'bdf'), ('spider', 'cvode')],
 )
 def test_start_goes_ahead_without_cvode_when_it_is_not_needed(
-    monkeypatch, tmp_path, interior_module, solver_method
+    monkeypatch, tmp_path, interior_module, solver_method, cvode_missing
 ):
     """An explicit scipy solver, or SPIDER, reaches the output cleaning with CVODE missing."""
     p = _make_proteus_instance(tmp_path, interior_module=interior_module)
     p.config.interior_energetics.aragog.solver_method = solver_method
-    monkeypatch.setitem(sys.modules, 'scikits_odes_sundials.cvode', None)
 
     with ExitStack() as stack:
         for target in _START_PATCHES:

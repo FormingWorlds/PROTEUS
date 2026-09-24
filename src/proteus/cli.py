@@ -946,31 +946,42 @@ def _resolve_proteus_root() -> Path:
     return root
 
 
-def _install_cvode(root: Path) -> None:
+_CVODE_IMPORT = 'from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum'
+
+
+def _install_cvode(root: Path, command: str) -> None:
     """Install the SUNDIALS CVODE solver, or stop the command with exit code 1.
 
     CVODE lives outside the pip dependency tree because it needs the SUNDIALS C
     library. Aragog's default solver imports it, and a run without it stops at
     setup, so a failed install is an error here. The helper script is
-    idempotent and returns early when CVODE already imports.
+    idempotent and returns early when CVODE already imports. Its own Python may
+    not be the one running PROTEUS, so the import is checked again here.
 
     Parameters
     ----------
     root : Path
         PROTEUS source tree that holds ``tools/get_cvode.sh``.
+    command : str
+        Name of the calling command, quoted in the message so a user knows what
+        to re-run once CVODE is fixed.
 
     Raises
     ------
     SystemExit
-        With code 1 when the install script fails.
+        With code 1 when the install script fails or CVODE does not import in
+        the interpreter running PROTEUS.
     """
     click.secho('[+] Installing the SUNDIALS CVODE solver...', fg='blue')
     try:
         subprocess.run(['bash', str(root / 'tools' / 'get_cvode.sh')], cwd=root, check=True)
+        subprocess.run([sys.executable, '-c', _CVODE_IMPORT], check=True, capture_output=True)
     except subprocess.CalledProcessError:
         click.secho(
-            '[x] Failed to install CVODE (scikits-odes-sundials). Aragog needs it for '
-            'solver_method = "cvode". Fix the error above, then run "bash tools/get_cvode.sh".',
+            '[x] Failed to install CVODE (scikits-odes-sundials), or it does not import in '
+            f'{sys.executable}. Aragog needs it for solver_method = "cvode". Fix the error '
+            'above ("bash tools/get_cvode.sh" retries the install alone), then re-run '
+            f'"proteus {command}": it stopped here, before its remaining steps.',
             fg='red',
         )
         raise SystemExit(1) from None
@@ -1018,7 +1029,7 @@ def install_all(export_env: bool, config_path: Path | None):
     click.secho(f'[+] FWL_DATA directory: {fwl_data}', fg='green')
 
     # --- Step 1b: Install CVODE (Aragog's default solver) ---
-    _install_cvode(root)
+    _install_cvode(root, 'install-all')
 
     # --- Step 2: Install SOCRATES ---
     socrates_dir = root / 'socrates'
@@ -1141,7 +1152,7 @@ def update_all(export_env: bool, config_path: Path | None):
     subprocess.run([sys.executable, '-m', 'pip', 'install', '-U', '-e', str(root)], check=True)
 
     # --- Step 1b: ensure the SUNDIALS CVODE solver (Aragog's default solver) ---
-    _install_cvode(root)
+    _install_cvode(root, 'update-all')
 
     # --- Step 2: FWL_DATA check ---
     # resolve_fwl_data_dir always returns a path; an update only makes sense
