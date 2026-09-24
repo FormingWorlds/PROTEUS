@@ -15,6 +15,7 @@ Functions tested:
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import MagicMock, create_autospec, patch
 
 import numpy as np
@@ -1520,21 +1521,22 @@ def _snapshot_output(n_stag=6, diagnostics=False):
 def test_snapshot_round_trips_the_cmb_entropy_gradient(tmp_path, dSdr_cmb, expected):
     """The Aragog snapshot stores the CMB entropy gradient state and the resume
     reader returns it bit for bit; a snapshot without it, or with a non-finite
-    value, reads as None so the resume keeps the finite-difference start."""
+    value (not written), reads as absent so the resume keeps the
+    finite-difference start."""
     from proteus.interior_energetics.aragog import (
         AragogRunner,
-        read_last_dSdr_cmb,
+        _snapshot_scalar,
         read_last_Sfield,
     )
 
     (tmp_path / 'data').mkdir()
     out = _snapshot_output()
     AragogRunner._write_output_ncdf(str(tmp_path), 2512.69358, out, dSdr_cmb=dSdr_cmb)
-    got = read_last_dSdr_cmb(str(tmp_path), 2512.69358)
+    got, status = _snapshot_scalar(str(tmp_path), 2512.69358, 'dSdr_cmb_state')
     if expected is None:
-        assert got is None
+        assert (got, status) == (None, 'absent')
     else:
-        assert got == pytest.approx(expected, rel=1e-15)
+        assert status == 'ok' and got == pytest.approx(expected, rel=1e-15)
     # The entropy profile in the same file is unaffected by the new variable.
     np.testing.assert_array_equal(read_last_Sfield(str(tmp_path), 2512.69358), out.S_final)
 
@@ -1558,22 +1560,30 @@ class _RestoreSolver:
 
 
 @pytest.mark.parametrize(
-    'core_bc, stored',
+    'core_bc, stored, status',
     [
-        ('energy_balance', -2.2378876e-11),
-        ('energy_balance', None),
-        ('bower2018', 4100.0),
-        ('quasi_steady', -2.2378876e-11),
+        ('energy_balance', -2.2378876e-11, 'ok'),
+        ('energy_balance', None, 'absent'),
+        ('energy_balance', None, 'not finite'),
+        ('bower2018', 4100.0, 'ok'),
+        ('quasi_steady', -2.2378876e-11, 'ok'),
     ],
-    ids=['state-in-snapshot', 'older-snapshot', 'bower2018-not-applied', 'quasi-steady'],
+    ids=[
+        'state-in-snapshot',
+        'older-snapshot',
+        'not-finite-state',
+        'bower2018-not-applied',
+        'quasi-steady',
+    ],
 )
-def test_resume_restores_the_cmb_entropy_gradient(core_bc, stored, caplog):
+def test_resume_restores_the_cmb_entropy_gradient(core_bc, stored, status, caplog):
     """On resume the entropy snapshot is restored together with the CMB
     entropy gradient it was written with, so the first step continues the
     boundary state instead of restarting it from a finite difference (which
     drives a one-step CMB flux spike). An older snapshot without the state
-    clears the override, keeps the finite-difference start, and says so.
-    Other core boundary conditions never apply or report the value."""
+    clears the override, keeps the finite-difference start, and says so at
+    WARNING with the snapshot status (absent or not finite). Other core
+    boundary conditions never apply or report the value."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     n = 6
@@ -1588,7 +1598,7 @@ def test_resume_restores_the_cmb_entropy_gradient(core_bc, stored, caplog):
     def _update(dt, hf_row, interior_o, output_dir=None):
         interior_o._last_entropy = S_snap
         interior_o._last_dSdr_cmb = stored
-        interior_o._last_dSdr_cmb_status = 'absent' if stored is None else 'ok'
+        interior_o._last_dSdr_cmb_status = status
 
     config = MagicMock()
     config.params.resume = True
@@ -1607,9 +1617,8 @@ def test_resume_restores_the_cmb_entropy_gradient(core_bc, stored, caplog):
     assert len(solver.seen) == 1
     S_seen, dSdr_seen = solver.seen[0]
     np.testing.assert_array_equal(S_seen, S_snap)
-    no_state_logged = any(
-        'CMB entropy gradient is absent' in r.getMessage() for r in caplog.records
-    )
+    no_state = [r for r in caplog.records if 'CMB entropy gradient is' in r.getMessage()]
+    no_state_logged = bool(no_state)
     if core_bc != 'energy_balance':
         # The value in the gradient slot (T_core) is neither applied nor logged.
         assert dSdr_seen == pytest.approx(-9.0, rel=1e-15)
@@ -1617,7 +1626,8 @@ def test_resume_restores_the_cmb_entropy_gradient(core_bc, stored, caplog):
     elif stored is None:
         # The stale -9.0 override is cleared, not reused.
         assert dSdr_seen is None
-        assert no_state_logged
+        assert [r.levelno for r in no_state] == [logging.WARNING]
+        assert f'CMB entropy gradient is {status};' in no_state[0].getMessage()
     else:
         assert dSdr_seen == pytest.approx(stored, rel=1e-15)
         assert not no_state_logged
@@ -1669,8 +1679,7 @@ def test_final_snapshot_keeps_the_resume_state(tmp_path, core_bc, diagnostics):
     run that ends normally is then resumed from the stored values."""
     from proteus.interior_energetics.aragog import (
         AragogRunner,
-        read_last_dSdr_cmb,
-        read_last_mesh_surface_pressure,
+        _snapshot_scalar,
         write_final_snapshot,
     )
 
@@ -1693,15 +1702,14 @@ def test_final_snapshot_keeps_the_resume_state(tmp_path, core_bc, diagnostics):
         config, interior_o, {'output': str(tmp_path)}, {'Time': t, 'T_surf': 3000.0}
     )
     assert len(list((tmp_path / 'data').glob('*_int.nc'))) == 1
-    got = read_last_dSdr_cmb(str(tmp_path), t)
+    got, status = _snapshot_scalar(str(tmp_path), t, 'dSdr_cmb_state')
     if core_bc == 'energy_balance':
-        assert got == pytest.approx(-2.2e-11, rel=1e-15)
+        assert status == 'ok' and got == pytest.approx(-2.2e-11, rel=1e-15)
     else:
         # T_core (4100 K) is never stored under the gradient name.
-        assert got is None
-    assert read_last_mesh_surface_pressure(str(tmp_path), t) == pytest.approx(
-        8.12e8, rel=1e-15, abs=0.0
-    )
+        assert (got, status) == (None, 'absent')
+    P_mesh, status = _snapshot_scalar(str(tmp_path), t, 'mesh_surface_pressure')
+    assert status == 'ok' and P_mesh == pytest.approx(8.12e8, rel=1e-15, abs=0.0)
     import netCDF4 as nc
 
     with nc.Dataset(next((tmp_path / 'data').glob('*_int.nc'))) as ds:
@@ -1716,11 +1724,7 @@ def test_run_solver_writes_the_resume_state_every_step(tmp_path, core_bc):
     surface pressure, so a resume from any written step restores both."""
     from types import SimpleNamespace
 
-    from proteus.interior_energetics.aragog import (
-        AragogRunner,
-        read_last_dSdr_cmb,
-        read_last_mesh_surface_pressure,
-    )
+    from proteus.interior_energetics.aragog import AragogRunner, _snapshot_scalar
 
     (tmp_path / 'data').mkdir()
     runner = AragogRunner.__new__(AragogRunner)
@@ -1738,14 +1742,13 @@ def test_run_solver_writes_the_resume_state_every_step(tmp_path, core_bc):
     hf_row = {'Time': 202.0, 'T_surf': 3000.0}
     sim_time, _ = runner.run_solver(hf_row, interior_o, {'output': str(tmp_path)})
     assert sim_time == pytest.approx(282.0, rel=1e-15)
-    got = read_last_dSdr_cmb(str(tmp_path), sim_time)
+    got, status = _snapshot_scalar(str(tmp_path), sim_time, 'dSdr_cmb_state')
     if core_bc == 'energy_balance':
-        assert got == pytest.approx(-5.254e-08, rel=1e-15)
+        assert status == 'ok' and got == pytest.approx(-5.254e-08, rel=1e-15)
     else:
-        assert got is None
-    assert read_last_mesh_surface_pressure(str(tmp_path), sim_time) == pytest.approx(
-        8.12e8, rel=1e-15, abs=0.0
-    )
+        assert (got, status) == (None, 'absent')
+    P_mesh, status = _snapshot_scalar(str(tmp_path), sim_time, 'mesh_surface_pressure')
+    assert status == 'ok' and P_mesh == pytest.approx(8.12e8, rel=1e-15, abs=0.0)
     # Limit input: a suppressed write (dt_write) leaves no snapshot behind.
     runner.run_solver(
         {'Time': 282.0, 'T_surf': 3000.0},
@@ -1768,19 +1771,19 @@ def test_snapshot_round_trips_the_mesh_surface_pressure(tmp_path, value, expecte
     (a fresh run's setup value) is a real value, not a missing one."""
     from proteus.interior_energetics.aragog import (
         AragogRunner,
+        _snapshot_scalar,
         mesh_surface_pressure_state,
-        read_last_mesh_surface_pressure,
     )
 
     (tmp_path / 'data').mkdir()
     AragogRunner._write_output_ncdf(
         str(tmp_path), 202.0, _snapshot_output(), mesh_surface_pressure=value
     )
-    got = read_last_mesh_surface_pressure(str(tmp_path), 202.0)
+    got, status = _snapshot_scalar(str(tmp_path), 202.0, 'mesh_surface_pressure')
     if expected is None:
-        assert got is None
+        assert (got, status) == (None, 'absent')
     else:
-        assert got == pytest.approx(expected, rel=1e-15, abs=0.0)
+        assert status == 'ok' and got == pytest.approx(expected, rel=1e-15, abs=0.0)
     # A solver without mesh parameters stores nothing.
     assert mesh_surface_pressure_state(object()) is None
     assert mesh_surface_pressure_state(_StateSolver(0.0)) == pytest.approx(
@@ -1798,31 +1801,38 @@ def test_snapshot_round_trips_the_mesh_surface_pressure(tmp_path, value, expecte
         'no-profile',
         'negative-surface',
         'other-mesh-0.5',
+        'other-mesh-1.000001',
         'other-mesh-1.1',
         'other-mesh-2',
+        'shifted-profile',
+        'fresh-run-rounded-helpfile',
+        'not-finite-stored',
     ],
 )
 def test_update_solver_infers_the_mesh_pressure_of_an_older_snapshot(tmp_path, caplog, case):
-    """A snapshot without ``mesh_surface_pressure`` (older runs) gets the value
-    its own top cell implies on Aragog's Adams-Williamson mesh, not the
-    restored row's P_surf. A mesh-file run keeps its setup value, and so does a
-    snapshot without the profile or one not written on this mesh; the log says
-    which value the mesh uses."""
+    """A snapshot without a finite ``mesh_surface_pressure`` (older runs) gets
+    the surface pressure its Adams-Williamson profile implies on Aragog's
+    mesh, not the restored row's P_surf, also when the helpfile rounds R and g
+    (a fresh run's 0 Pa comes back as exactly 0). A mesh-file run keeps its
+    setup value, and so does a snapshot without the profile or one not written
+    on this mesh, even at a relative difference of 1e-6; the log says at
+    WARNING which value the mesh uses and whether the stored value was absent
+    or not finite."""
     from types import SimpleNamespace
 
     pressure_eos = pytest.importorskip('aragog.mesh.pressure_eos')
     from proteus.interior_energetics.aragog import AragogRunner
 
     # Setup value of the original run [Pa]; a negative one is not physical.
-    P_s = {'fresh-run': 0.0, 'negative-surface': -2.0e8}.get(case, 3.0e8)
+    P_s = {'negative-surface': -2.0e8}.get(case, 0.0 if case.startswith('fresh') else 3.0e8)
     mesh = SimpleNamespace(
         surface_pressure=P_s,
         eos_method=1,
         surface_density=4078.95,
-        gravitational_acceleration=10.4068,
+        gravitational_acceleration=10.40681234564321,
         adiabatic_bulk_modulus=2.6e11,
         adams_williamson_beta=1.1115e-7,
-        outer_radius=6.2848e6,
+        outer_radius=6.28481234564321e6,
     )
     out = _snapshot_output()
     out.r_basic = np.linspace(3.4566e6, mesh.outer_radius, len(out.S_final) + 1)
@@ -1832,14 +1842,25 @@ def test_update_solver_infers_the_mesh_pressure_of_an_older_snapshot(tmp_path, c
     if case.startswith('other-mesh'):
         # Not the Adams-Williamson profile of this mesh (lower or higher pressures).
         out.P_stag = float(case.split('-')[-1]) * out.P_stag
+    elif case == 'shifted-profile':
+        out.P_stag = out.P_stag + 1.0e7
     (tmp_path / 'data').mkdir()
     AragogRunner._write_output_ncdf(str(tmp_path), 202.0, out)
-    if case == 'no-profile':
-        import netCDF4 as nc
+    import netCDF4 as nc
 
-        snap = next((tmp_path / 'data').glob('*_int.nc'))
+    snap = next((tmp_path / 'data').glob('*_int.nc'))
+    if case == 'no-profile':
         with nc.Dataset(snap, 'r+') as ds:
             ds.renameVariable('pres_s', 'pres_s_other')
+    elif case == 'not-finite-stored':
+        with nc.Dataset(snap, 'r+') as ds:
+            ds.createVariable('mesh_surface_pressure', np.float64)
+            ds['mesh_surface_pressure'][0] = np.nan
+    elif case == 'fresh-run-rounded-helpfile':
+        # A resumed run rebuilds R and g from the helpfile, written with %.10e;
+        # R rounds down here, which leaves a positive residue of about 2 Pa.
+        mesh.outer_radius = float('%.10e' % mesh.outer_radius)
+        mesh.gravitational_acceleration = float('%.10e' % mesh.gravitational_acceleration)
     interior_o = MagicMock()
     mesh.surface_pressure = 8.12e8  # setup_solver took the restored row's P_surf
     mesh.eos_method = 2 if case == 'mesh-file' else 1
@@ -1849,15 +1870,19 @@ def test_update_solver_infers_the_mesh_pressure_of_an_older_snapshot(tmp_path, c
         AragogRunner.update_solver(80.0, hf_row, interior_o, output_dir=str(tmp_path))
     got = mesh.surface_pressure
     messages = ' '.join(r.getMessage() for r in caplog.records)
-    if case == 'adams-williamson':
+    if case in ('adams-williamson', 'not-finite-stored', 'shifted-profile'):
         # Recovered to the float64 round trip of pres_s in GPa and radius_s in km.
-        assert got == pytest.approx(P_s, rel=1e-8)
+        assert got == pytest.approx(
+            P_s + (1.0e7 if case == 'shifted-profile' else 0.0), rel=1e-8
+        )
         # Discrimination: Pa, not bar or GPa, and not the row's P_surf.
         assert 1e7 < got < 1e9 and abs(got - 8.12e8) > 1e8
         assert 'inferred from its profile' in messages
-    elif case == 'fresh-run':
-        # A fresh run's mesh had exactly 0 Pa; the round-trip residue is clamped.
-        assert got == 0.0
+        status = 'not finite' if case == 'not-finite-stored' else 'absent'
+        assert f'mesh surface pressure is {status};' in messages
+    elif case.startswith('fresh-run'):
+        # A fresh run's mesh had exactly 0 Pa; the round-off residue is snapped to 0.
+        assert got == 0.0  # exact: 0 Pa is the setup value, not a tolerance match
         assert 'inferred from its profile' in messages
     else:
         assert got == pytest.approx(8.12e8, rel=1e-15, abs=0.0)
@@ -1866,6 +1891,44 @@ def test_update_solver_infers_the_mesh_pressure_of_an_older_snapshot(tmp_path, c
         else:
             assert 'keeps 8.1200e+08 Pa' in messages
     assert interior_o._last_dSdr_cmb is None
+
+
+@pytest.mark.parametrize('case', ['masked-profile', 'empty-profile'])
+def test_mesh_pressure_inference_rejects_unusable_profiles(tmp_path, case):
+    """An unwritten (masked) pressure profile, or one whose size does not
+    match the radii, gives no surface pressure instead of a fill-value
+    result or a broadcast error. A valid profile of the same snapshot gives
+    its setup value (canary)."""
+    from types import SimpleNamespace
+
+    import netCDF4 as nc
+
+    from proteus.interior_energetics.aragog import AragogRunner, infer_mesh_surface_pressure
+
+    rho_s, g, beta, R, P_s = 4000.0, 10.0, 1.0e-7, 6.0e6, 5.0e3
+    mesh = SimpleNamespace(
+        surface_density=rho_s,
+        gravitational_acceleration=g,
+        adams_williamson_beta=beta,
+        outer_radius=R,
+    )
+    out = _snapshot_output()
+    out.r_stag = np.linspace(3.5e6, 5.9e6, len(out.S_final))
+    out.P_stag = rho_s * g / beta * np.expm1(beta * (R - out.r_stag)) + P_s
+    (tmp_path / 'data').mkdir()
+    AragogRunner._write_output_ncdf(str(tmp_path), 202.0, out)
+    assert infer_mesh_surface_pressure(str(tmp_path), 202.0, mesh) == pytest.approx(
+        P_s, rel=1e-6
+    )
+    snap = next((tmp_path / 'data').glob('*_int.nc'))
+    with nc.Dataset(snap, 'r+') as ds:
+        ds.renameVariable('pres_s', 'pres_s_written')
+        if case == 'masked-profile':
+            ds.createVariable('pres_s', np.float64, ('staggered',))  # never assigned
+        else:
+            ds.createDimension('empty', 0)
+            ds.createVariable('pres_s', np.float64, ('empty',))
+    assert infer_mesh_surface_pressure(str(tmp_path), 202.0, mesh) is None
 
 
 def test_final_snapshot_skipped_on_the_diffrax_path(tmp_path, monkeypatch):
@@ -1890,9 +1953,10 @@ def test_final_snapshot_skipped_on_the_diffrax_path(tmp_path, monkeypatch):
 
 
 def test_snapshot_scalar_tells_absent_from_not_finite(tmp_path, caplog):
-    """The writer leaves out a non-finite resume state with a warning; the
-    reader reports a missing or never-assigned (masked) scalar as absent and a
-    stored NaN as not finite, both without a value."""
+    """The writer leaves out a non-finite resume state with a warning but
+    keeps a non-finite diagnostic surface temperature; the reader reports a
+    missing, never-assigned (masked) or empty scalar as absent and a stored
+    NaN as not finite, both without a value."""
     import netCDF4 as nc
 
     from proteus.interior_energetics.aragog import AragogRunner, _snapshot_scalar
@@ -1905,15 +1969,21 @@ def test_snapshot_scalar_tells_absent_from_not_finite(tmp_path, caplog):
             _snapshot_output(),
             dSdr_cmb=float('nan'),
             mesh_surface_pressure=float('inf'),
+            T_surf_coupled=float('nan'),
         )
     assert sum('Not writing non-finite' in r.getMessage() for r in caplog.records) == 2
     assert _snapshot_scalar(str(tmp_path), 202.0, 'dSdr_cmb_state') == (None, 'absent')
+    # T_surf_coupled is a diagnostic record, written whatever its value.
+    assert _snapshot_scalar(str(tmp_path), 202.0, 'T_surf_coupled') == (None, 'not finite')
     snap = next((tmp_path / 'data').glob('*_int.nc'))
     with nc.Dataset(snap, 'r+') as ds:
         ds.createVariable('dSdr_cmb_state', np.float64)  # created, never assigned
         ds.createVariable('mesh_surface_pressure', np.float64)
         ds['mesh_surface_pressure'][0] = np.nan
+        ds.createDimension('empty', 0)
+        ds.createVariable('empty_scalar', np.float64, ('empty',))
     assert _snapshot_scalar(str(tmp_path), 202.0, 'dSdr_cmb_state') == (None, 'absent')
+    assert _snapshot_scalar(str(tmp_path), 202.0, 'empty_scalar') == (None, 'absent')
     assert _snapshot_scalar(str(tmp_path), 202.0, 'mesh_surface_pressure') == (
         None,
         'not finite',

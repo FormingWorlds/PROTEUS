@@ -233,7 +233,7 @@ def test_resume_restores_the_cmb_entropy_gradient(resume_runs):
     assert np.isfinite(r['stored'])
     # A run that ends normally leaves the gradient in its final snapshot.
     assert r['final'] is not None and np.isfinite(r['final'])
-    assert r['start_restored'] == r['stored']
+    assert r['start_restored'] == r['stored']  # exact: handed over, not recomputed
     # Discrimination: without the stored value the override is cleared.
     assert r['start_fd'] is None
 
@@ -270,9 +270,8 @@ def test_resume_matches_the_uninterrupted_control(resume_runs):
     ctrl, res = r['ctrl'], r['restored']
     # A fresh run builds its mesh at the setup surface pressure, 0 Pa.
     assert r['mesh_P'] == pytest.approx(0.0, abs=1.0)
-    # Discrimination: the seam row's P_surf (about 8.1e3 bar at t = 202 yr on
-    # the main-branch tables) is far from it, so a mesh rebuilt from the row
-    # would differ.
+    # Discrimination: the seam row's P_surf, about 8.1e3 bar in this setup, is
+    # far from it, so a mesh rebuilt from the row would differ.
     seam_row = int(np.argmin(np.abs(ctrl['Time'].to_numpy() - r['t_seam'])))
     assert abs(float(ctrl['P_surf'].iloc[seam_row]) * 1e5 - r['mesh_P']) > 1e8
     assert len(res) == len(ctrl)

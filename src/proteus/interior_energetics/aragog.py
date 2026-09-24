@@ -2671,8 +2671,9 @@ def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_
 
     The file name comes from ``hf_row['Time']``, so this rewrites the last
     in-loop snapshot and must carry the same CMB gradient state. Nothing is
-    written on the research-only diffrax path, whose runner writes its own
-    snapshots from a solver this one does not advance.
+    written on the research-only diffrax path: this solver is not advanced
+    there, and that runner writes snapshots only on its written steps, so a
+    final time that is not a written step has no snapshot to resume from.
 
     Parameters
     ----------
@@ -2700,44 +2701,6 @@ def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_
     )
 
 
-def read_last_dSdr_cmb(output_dir: str, time: float) -> float | None:
-    """Read the CMB entropy gradient state from the Aragog NetCDF snapshot.
-
-    Parameters
-    ----------
-    output_dir : str
-        Run output directory.
-    time : float
-        Snapshot time [yr].
-
-    Returns
-    -------
-    float or None
-        ``dSdr_cmb_state`` [J kg-1 K-1 m-1], or None when the snapshot does
-        not hold it (other core_bc modes, older snapshots) or it is not finite.
-    """
-    return _read_snapshot_scalar(output_dir, time, 'dSdr_cmb_state')
-
-
-def read_last_mesh_surface_pressure(output_dir: str, time: float) -> float | None:
-    """Read the Adams-Williamson mesh surface pressure from the Aragog snapshot.
-
-    Parameters
-    ----------
-    output_dir : str
-        Run output directory.
-    time : float
-        Snapshot time [yr].
-
-    Returns
-    -------
-    float or None
-        ``mesh_surface_pressure`` [Pa], or None when the snapshot does not
-        hold it (older snapshots) or it is not finite.
-    """
-    return _read_snapshot_scalar(output_dir, time, 'mesh_surface_pressure')
-
-
 def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | None:
     """Adams-Williamson mesh surface pressure implied by a snapshot [Pa].
 
@@ -2747,7 +2710,7 @@ def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | N
     It is taken from the top cell and accepted only if every cell gives the
     same value within 1e-9 of the largest pressure plus 1 Pa, which covers the
     float round trip of the stored profile and the helpfile rounding of g and
-    R. A tiny negative value is returned as 0.
+    R. A value within that tolerance of 0 is returned as exactly 0.
 
     Parameters
     ----------
@@ -2763,48 +2726,50 @@ def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | N
     Returns
     -------
     float or None
-        Surface pressure [Pa], or None when the snapshot lacks the profile, the
-        result is not finite, or the profile does not follow this mesh.
+        Surface pressure [Pa], or None when the snapshot lacks the profile, holds
+        unwritten (masked) or mismatched pressure and radius arrays, the result
+        is not finite, or the profile does not follow this mesh.
     """
     fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_int.nc')
     with nc.Dataset(fpath) as ds:
         if 'pres_s' not in ds.variables or 'radius_s' not in ds.variables:
             return None
-        P = np.asarray(ds['pres_s'][:], dtype=float).ravel() * 1e9
-        r = np.asarray(ds['radius_s'][:], dtype=float).ravel() * 1e3
+        P_raw, r_raw = ds['pres_s'][:], ds['radius_s'][:]
+        if np.ma.is_masked(P_raw) or np.ma.is_masked(r_raw):
+            return None
+        P = np.asarray(P_raw, dtype=float).ravel() * 1e9
+        r = np.asarray(r_raw, dtype=float).ravel() * 1e3
+    if P.size == 0 or P.size != r.size:
+        return None
     rho_s = float(mesh.surface_density)
     g = float(mesh.gravitational_acceleration)
     beta = float(mesh.adams_williamson_beta)
     P_surf_cells = P - rho_s * g / beta * np.expm1(beta * (float(mesh.outer_radius) - r))
-    if P.size == 0 or not np.all(np.isfinite(P_surf_cells)):
+    if not np.all(np.isfinite(P_surf_cells)):
         return None
     value = float(P_surf_cells[-1])
     tol = 1e-9 * float(np.max(np.abs(P))) + 1.0
     if np.max(np.abs(P_surf_cells - value)) > tol or value < -tol:
         return None
-    return max(value, 0.0)
+    return 0.0 if abs(value) <= tol else value
 
 
 def _snapshot_scalar(output_dir: str, time: float, name: str) -> tuple[float | None, str]:
     """Scalar ``name`` from the snapshot at ``time`` and its status.
 
     Returns ``(value, 'ok')`` for a finite value, else ``(None, status)`` with
-    status ``'absent'`` (not in the file, or never assigned) or ``'not finite'``.
+    status ``'absent'`` (not in the file, never assigned, or not one value) or
+    ``'not finite'``.
     """
     fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_int.nc')
     with nc.Dataset(fpath) as ds:
         if name not in ds.variables:
             return None, 'absent'
         raw = ds[name][:]
-        if np.ma.is_masked(raw):
+        if np.size(raw) != 1 or np.ma.is_masked(raw):
             return None, 'absent'
         value = float(np.asarray(raw).item())
     return (value, 'ok') if np.isfinite(value) else (None, 'not finite')
-
-
-def _read_snapshot_scalar(output_dir: str, time: float, name: str) -> float | None:
-    """Finite scalar ``name`` from the snapshot at ``time``, else None."""
-    return _snapshot_scalar(output_dir, time, name)[0]
 
 
 def get_all_output_times(output_dir: str):
