@@ -25,11 +25,11 @@ set -euo pipefail
 # requires-python ceiling once the repo root is known (see below).
 REQUIRED_PYTHON_MAJOR=3
 REQUIRED_PYTHON_MINOR=12
-# Julia: 1.11.x and 1.12.x are both supported; fresh installs pin the
+# Julia: 1.11.x, 1.12.x and 1.13.x are supported; fresh installs pin the
 # version below (matches what CI tests).
 REQUIRED_JULIA_MAJOR=1
-REQUIRED_JULIA_MINOR=12
-ACCEPTED_JULIA_MINORS="11 12"
+REQUIRED_JULIA_MINOR=13
+ACCEPTED_JULIA_MINORS="11 12 13"
 MIN_DISK_GB=10
 
 # ---------------------------------------------------------------------------
@@ -165,9 +165,9 @@ reset_julia_env() {
 }
 
 # juliacall builds a Julia environment whose OpenSSL_jll is matched to the
-# OpenSSL the Python interpreter links against. Julia 1.12 provides OpenSSL_jll
-# 3.5 and newer only, so a Python interpreter linking OpenSSL < 3.5 pins
-# OpenSSL_jll to the 3.0 series and leaves the Julia 1.12 resolve unsatisfiable.
+# OpenSSL the Python interpreter links against. Julia 1.12 and newer provide
+# OpenSSL_jll 3.5 and newer only, so a Python interpreter linking OpenSSL < 3.5
+# pins OpenSSL_jll to the 3.0 series and leaves the resolve unsatisfiable.
 python_openssl_below_35() {
     python3 - <<'PY' 2>/dev/null
 import ssl, sys
@@ -193,7 +193,7 @@ conda_openssl_too_old_for_julia() {
 
 fix_conda_openssl() {
     command_exists conda || { warn "conda not on PATH; cannot upgrade OpenSSL."; return 1; }
-    info "Upgrading OpenSSL to >= 3.5 (required by the Julia 1.12 environment)..."
+    info "Upgrading OpenSSL to >= 3.5 (required by Julia 1.12 and newer)..."
     # Redirect stdin so an unexpected channel Terms-of-Service prompt fails fast
     # instead of hanging a non-interactive install.
     conda install -y -c conda-forge "openssl>=3.5" </dev/null 2>&1 || return 1
@@ -263,7 +263,7 @@ verify_proteus_import() {
         fi
     fi
     # Self-heal the Julia / OpenSSL mismatch in the juliacall environment. Julia
-    # 1.12 ships OpenSSL_jll 3.5+, so a Python linking OpenSSL < 3.5 cannot
+    # 1.12 and newer ship OpenSSL_jll 3.5+, so a Python linking OpenSSL < 3.5 cannot
     # resolve it. Two routes: move the bridge to Julia 1.11 (which ships
     # OpenSSL_jll for the 3.0 series), or raise the Python OpenSSL to >= 3.5.
     if printf '%s' "$import_log" | grep -qi 'OpenSSL_jll'; then
@@ -279,7 +279,7 @@ verify_proteus_import() {
                 printf '%s\n' "$import_log"
             fi
         fi
-        # Otherwise raise the Python OpenSSL so Julia 1.12 can resolve.
+        # Otherwise raise the Python OpenSSL so Julia 1.12 or newer can resolve.
         if conda_openssl_too_old_for_julia && fix_conda_openssl; then
             warn "Upgraded OpenSSL to match the Julia environment. Retrying import..."
             if import_log=$(python3 -c "import proteus" 2>&1); then
@@ -289,10 +289,10 @@ verify_proteus_import() {
             fail "Still failing after the OpenSSL upgrade. Error output:"
             printf '%s\n' "$import_log"
         fi
-        warn "The Julia environment cannot resolve OpenSSL_jll: Julia 1.12 needs OpenSSL >= 3.5"
+        warn "The Julia environment cannot resolve OpenSSL_jll: Julia >= 1.12 needs OpenSSL >= 3.5"
         warn "in this Python environment. Fix it with either:"
         warn "  juliaup add 1.11 && juliaup default 1.11      (use Julia 1.11 instead)"
-        warn "  conda install -c conda-forge 'openssl>=3.5'   (keep Julia 1.12, then re-run)"
+        warn "  conda install -c conda-forge 'openssl>=3.5'   (keep your Julia, then re-run)"
     fi
     die "PROTEUS Python package failed to import. The full error is above and in $LOGFILE."
 }

@@ -110,7 +110,7 @@ bash install.sh
 The installer runs through the following phases automatically:
 
 1. Pre-flight checks (OS, disk space, Python version, system dependencies)
-2. Julia installation and version pinning (1.12)
+2. Julia installation and version pinning (1.13)
 3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`)
 4. SOCRATES compilation and `RAD_DIR` setup
 5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry)

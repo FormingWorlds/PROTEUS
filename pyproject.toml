@@ -68,7 +68,7 @@ dependencies = [
     # Pinned >=0.9.35: 0.9.33-0.9.34 mis-resolve the PythonCall.jl dev-path on
     # conda envs, and 0.9.35 restores resolution by registered version.
     # Separately, juliacall matches the Julia OpenSSL_jll to the Python
-    # interpreter's OpenSSL; Julia 1.12 ships OpenSSL_jll 3.5+, so the conda
+    # interpreter's OpenSSL; Julia 1.12 and newer ship OpenSSL_jll 3.5+, so the conda
     # environment must provide OpenSSL >= 3.5 (install.sh aligns it).
     "juliacall>=0.9.35",
     "matplotlib",
