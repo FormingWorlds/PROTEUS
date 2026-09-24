@@ -29,7 +29,15 @@ echo "Building scikits-odes-sundials against SUNDIALS..."
 # prefix; expose it both ways so older and newer build backends find it.
 export CMAKE_PREFIX_PATH="${CONDA_PREFIX}:${CMAKE_PREFIX_PATH:-}"
 export SUNDIALS_INST="${CONDA_PREFIX}"
-pip install 'scikits-odes-sundials>=3.0,<4'
+if pip show scikits-odes-sundials >/dev/null 2>&1; then
+    # Installed but not importing: pip would call it satisfied, so rebuild it from
+    # source against the SUNDIALS above (--no-deps leaves the rest of the env alone).
+    echo "scikits-odes-sundials is installed but does not import; rebuilding it..."
+    pip install --force-reinstall --no-deps --no-cache-dir --no-binary scikits-odes-sundials \
+        'scikits-odes-sundials>=3.0,<4'
+else
+    pip install 'scikits-odes-sundials>=3.0,<4'
+fi
 
 # Hard gate: a wrapper that builds but does not import (wrong/missing SUNDIALS,
 # ABI mismatch) is exactly what this script exists to catch, so fail loudly

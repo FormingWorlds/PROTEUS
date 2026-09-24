@@ -851,6 +851,10 @@ bash tools/get_cvode.sh 2>&1 \
 info "Installing PROTEUS and remaining dependencies..."
 pip install -e ".[develop]"
 
+# The PROTEUS install can replace packages; CVODE must still import for Aragog.
+python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum" >/dev/null 2>&1 \
+    || die "CVODE does not import after the PROTEUS install. Re-run bash tools/get_cvode.sh."
+
 info "Setting up pre-commit hooks..."
 pre-commit install -f 2>&1 || warn "pre-commit install failed (non-critical)"
 

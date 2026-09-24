@@ -898,15 +898,18 @@ def test_require_cvode_allows_every_run_that_does_not_need_it(
 
 
 @pytest.mark.unit
-def test_require_cvode_stops_when_the_module_lacks_a_name_aragog_imports(monkeypatch):
-    """A cvode module without ``CV_RootFunction`` makes Aragog fall back, so the guard stops too."""
+@pytest.mark.parametrize('missing', ['CVODE', 'CV_RootFunction', 'StatusEnum'])
+def test_require_cvode_stops_when_the_module_lacks_a_name_aragog_imports(monkeypatch, missing):
+    """A cvode module without one of the three names makes Aragog fall back, so the guard stops."""
     pytest.importorskip('aragog.solver.entropy_solver')
     partial = types.ModuleType('scikits_odes_sundials.cvode')
-    partial.CVODE = partial.StatusEnum = object
+    for name in ('CVODE', 'CV_RootFunction', 'StatusEnum'):
+        if name != missing:
+            setattr(partial, name, object)
     monkeypatch.setitem(sys.modules, 'scikits_odes_sundials.cvode', partial)
     from proteus.interior_energetics.aragog import require_cvode
 
-    with pytest.raises(ImportError, match='CV_RootFunction'):
+    with pytest.raises(ImportError, match=missing):
         require_cvode(_cvode_config())
 
 
