@@ -47,7 +47,8 @@ def _two_phase_tables():
 
     download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='PALEOS:iron')
     tables = resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', load_zalmoxis_material_dictionaries())
-    assert all(tables), f'the 2-phase MgSiO3 tables are missing from FWL_DATA: {tables}'
+    solid, liquid = tables
+    assert solid and liquid, f'2-phase MgSiO3 tables missing from FWL_DATA: {solid=}, {liquid=}'
 
 
 @pytest.fixture(autouse=True)
