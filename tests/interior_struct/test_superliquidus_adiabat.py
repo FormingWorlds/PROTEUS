@@ -205,7 +205,7 @@ class TestSolveSuperliquidusReal:
         assert any('not reachable' in m and 'within the EOS table' in m for m in msgs), msgs
 
     @pytest.mark.physics_invariant
-    @pytest.mark.timeout(5400)  # 90 min ceiling; one table generation plus four table solves
+    @pytest.mark.timeout(9000)  # 150 min; ~82 min on the runner, 8-9 min locally
     def test_zalmoxis_structure_ic_on_own_p_s_tables(self, tmp_path):
         """With the Zalmoxis structure, the initial entropy is solved on the
         run's own P-S tables (generated from PALEOS for S1_m1_dyn_IW4): at
