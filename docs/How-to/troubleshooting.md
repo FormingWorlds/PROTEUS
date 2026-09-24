@@ -136,13 +136,13 @@ This happens when compiling SPIDER within a Python environment that is incompati
 
 ### Julia compatibility error {#julia-compatibility-error}
 
-There are incompatibilities between Python and some versions of Julia. Supported Julia versions are **1.11.x and 1.12.x**; newer releases (including the 1.13 release candidates) are untested and may fail when juliacall resolves shared libraries.
+There are incompatibilities between Python and some versions of Julia. Supported Julia versions are **1.11.x, 1.12.x and 1.13.x**. Support for 1.11 is deprecated and will be dropped in a future release; `install.sh` and `proteus doctor` warn when they find it. Newer releases are untested and may fail when juliacall resolves shared libraries.
 
 You must use **Python 3.12** with a supported Julia to avoid these problems:
 
 ```console
-juliaup add 1.12
-juliaup default 1.12
+juliaup add 1.13
+juliaup default 1.13
 ```
 
 ---
