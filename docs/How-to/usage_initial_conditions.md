@@ -131,10 +131,10 @@ liquidus at the binding depth.
       `interior_energetics.module = "spider"` with `const_properties = true`),
       and PROTEUS derives `liquidus_P-S.dat` from that P-T curve.
 
-    Aragog takes its thermodynamics and melt fraction from the P-S tables. It
-    logs a warning when the core-mantle boundary pressure, or the Noack &
-    Lasbleis (2020) estimate where the structure gives none, is above the edge
-    of those tables; the Wolf & Bower (2018) set ends at about 1 TPa.
+    Aragog takes its thermodynamics and melt fraction from the P-S tables. With
+    `"zalmoxis"`, which gives the core-mantle boundary pressure, Aragog logs a
+    warning when that pressure is above the highest pressure of the P-S table
+    set in use (about 1 TPa for the fetched Wolf & Bower (2018) set).
 
     With `"zalmoxis"`, the structure solve also anchors its temperature profile
     on a P-T adiabat that is `delta_T_super` above the P-T liquidus, while the

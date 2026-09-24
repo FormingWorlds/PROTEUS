@@ -29,7 +29,6 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config = MagicMock()
     config.interior_struct.module = struct_module
     config.interior_struct.core_frac = 0.55
-    config.interior_struct.core_frac_mode = 'mass'
     config.interior_struct.zalmoxis.mantle_eos = mantle_eos
     config.interior_struct.core_density = 12500.0
     config.interior_struct.core_heatcap = 880.0
@@ -1611,20 +1610,20 @@ def test_setup_solver_offline_mixture_names_the_fetch_command(tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ('P_cmb', 'mass_tot', 'message'),
+    ('P_cmb', 'P_max', 'message'),
     [
-        (1.2e12, 1.0, 'P_cmb=1200 GPa is above the 1000 GPa edge'),
-        (0.9e12, 1.0, None),
-        (None, 15.0, 'P_cmb=1229 GPa (estimated) is above the 1000 GPa edge'),
+        (1.2e12, 1.0e12, 'P_cmb=1200 GPa is above the 1000 GPa edge'),
+        (1.0e12 * (1 + 5e-10), 1.0e12, None),
+        (0.9e12, 1.0e12, None),
+        (6.0e11, 5.0e11, 'P_cmb=600 GPa is above the 500 GPa edge'),
         (None, 1.0, None),
     ],
 )
-def test_setup_solver_warns_past_the_ps_table_edge(tmp_path, caplog, P_cmb, mass_tot, message):
-    """P_cmb, or its estimate without a structure value, is checked against the P-S tables."""
+def test_setup_solver_warns_past_the_ps_table_edge(tmp_path, caplog, P_cmb, P_max, message):
+    """A structure P_cmb above the P-S table edge warns; without one nothing is checked."""
     from proteus.interior_energetics.aragog import AragogRunner
 
-    config = _make_aragog_config(struct_module='spider')
-    config.planet.mass_tot = mass_tot
+    config = _make_aragog_config(struct_module='dummy')
     _seed_lookup_tables(tmp_path)
     interior_o = MagicMock()
     interior_o.tides = np.zeros(20)
@@ -1640,7 +1639,7 @@ def test_setup_solver_warns_past_the_ps_table_edge(tmp_path, caplog, P_cmb, mass
         patch('proteus.interior_energetics.aragog.EntropySolver'),
         patch(
             'proteus.interior_energetics.aragog._cached_entropy_eos',
-            return_value=MagicMock(P_max=1.0e12),
+            return_value=MagicMock(P_max=P_max),
         ),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
@@ -1650,3 +1649,28 @@ def test_setup_solver_warns_past_the_ps_table_edge(tmp_path, caplog, P_cmb, mass
     ]
     assert len(edge) == (message is not None)
     assert message is None or message in edge[0]
+
+
+@pytest.mark.unit
+def test_setup_solver_missing_ps_tables_names_the_fetch_command(tmp_path):
+    """Missing P-S tables stop the setup with the fetch command, before the solver."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(struct_module='dummy')
+    _seed_lookup_tables(tmp_path)
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    interior_o._spider_eos_dir = str(tmp_path / 'absent')
+    hf_row = {'R_int': 6.371e6, 'gravity': 9.81, 'T_magma': 3000.0, 'T_eqm': 255.0}
+    hf_row['F_atm'] = 100.0
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
+        pytest.raises(
+            FileNotFoundError, match='P-S tables not found.*proteus get interiordata'
+        ),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
+    assert not mock_solver.called

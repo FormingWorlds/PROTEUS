@@ -1107,17 +1107,17 @@ class AragogRunner:
                 else:
                     raise FileNotFoundError(
                         f'PALEOS P-S tables not found. Aragog entropy solver '
-                        f'requires P-S tables. Checked: {spider_eos_dir}, {fallback_dir}'
+                        f'requires P-S tables. Checked: {spider_eos_dir}, {fallback_dir}. '
+                        "Fetch them with 'proteus get interiordata --config-path "
+                        "<your config>'."
                     )
-            from proteus.utils.structure_estimate import resolve_P_cmb
-
-            P_cmb, estimated = resolve_P_cmb(hf_row, config)
-            if P_cmb > entropy_eos.P_max:
+            # Only a structure P_cmb (Zalmoxis) is checked; the tolerance absorbs rounding.
+            P_cmb = hf_row.get('P_cmb')
+            if P_cmb and P_cmb > float(entropy_eos.P_max) * (1.0 + 1e-9):
                 log.warning(
-                    'P_cmb=%.0f GPa%s is above the %.0f GPa edge of the P-S tables; '
+                    'P_cmb=%.0f GPa is above the %.0f GPa edge of the P-S tables; '
                     'the deep mantle reads values at the table edge.',
                     P_cmb / 1e9,
-                    ' (estimated)' if estimated else '',
                     entropy_eos.P_max / 1e9,
                 )
         _t_post_eos = time.perf_counter()
