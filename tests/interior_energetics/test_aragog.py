@@ -1940,8 +1940,9 @@ def test_final_snapshot_skipped_on_the_diffrax_path(tmp_path, monkeypatch):
     """On the research-only diffrax path the end-of-run write would replace
     the runner's own last snapshot with the stale numpy solver state, so it
     writes nothing; the numpy path still writes the file."""
-    import proteus.interior_energetics.aragog as aragog_mod
+    from proteus.interior_energetics.aragog import write_final_snapshot
 
+    flag = 'proteus.interior_energetics.aragog._DIFFRAX_RESEARCH_ONLY'
     (tmp_path / 'data').mkdir()
     config = MagicMock()
     config.interior_energetics.aragog.core_bc = 'energy_balance'
@@ -1949,11 +1950,11 @@ def test_final_snapshot_skipped_on_the_diffrax_path(tmp_path, monkeypatch):
     interior_o = MagicMock()
     interior_o.aragog_solver = _StateSolver(-2.2e-11)
     dirs, row = {'output': str(tmp_path)}, {'Time': 282.0, 'T_surf': 3000.0}
-    monkeypatch.setattr(aragog_mod, '_DIFFRAX_RESEARCH_ONLY', True)
-    aragog_mod.write_final_snapshot(config, interior_o, dirs, row)
+    monkeypatch.setattr(flag, True)
+    write_final_snapshot(config, interior_o, dirs, row)
     assert list((tmp_path / 'data').glob('*_int.nc')) == []
-    monkeypatch.setattr(aragog_mod, '_DIFFRAX_RESEARCH_ONLY', False)
-    aragog_mod.write_final_snapshot(config, interior_o, dirs, row)
+    monkeypatch.setattr(flag, False)
+    write_final_snapshot(config, interior_o, dirs, row)
     assert len(list((tmp_path / 'data').glob('*_int.nc'))) == 1
 
 

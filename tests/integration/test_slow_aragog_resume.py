@@ -106,7 +106,7 @@ def _ensure_aragog_data(runner):
     try:
         download_sufficient_data(runner.config, clean=False)
     except OSError:
-        pass
+        pass  # offline: the missing file raises FileNotFoundError later
     finally:
         runner.config.params.offline = was_offline
 
