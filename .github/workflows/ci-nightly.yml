@@ -222,10 +222,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ---- shard: aragog (real Aragog + real outgas) ----
+          # ---- shard: aragog (real Aragog + real outgas). Per-test timeouts 3600 +
+          # 3600 + 7200 s plus about 10 min setup; the job cap sits above that sum. ----
           - shard: aragog
             tier: critical
             os: ubuntu-latest
+            job_minutes: 270
             files: >-
               tests/integration/test_slow_aragog_calliope.py
               tests/integration/test_slow_aragog_atmodeller.py
@@ -233,6 +235,7 @@ jobs:
           - shard: aragog
             tier: critical
             os: macos-latest
+            job_minutes: 270
             files: >-
               tests/integration/test_slow_aragog_calliope.py
               tests/integration/test_slow_aragog_atmodeller.py

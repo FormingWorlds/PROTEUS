@@ -48,7 +48,8 @@ from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
 
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
+# resume_runs setup counts against the first test: 2613-2898 s on CI, over 3600 s on a slow runner.
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(7200)]
 
 CONFIG = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
