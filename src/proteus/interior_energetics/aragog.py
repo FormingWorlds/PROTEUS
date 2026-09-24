@@ -504,11 +504,9 @@ class AragogRunner:
                     )
                     AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
                 else:
-                    # Restore the CMB entropy gradient the solver held when the
-                    # snapshot was written (energy_balance state). Without it
-                    # set_initial_entropy restarts the gradient from a finite
-                    # difference of the two bottom cells, which drives a
-                    # one-step CMB flux spike on the first step after resume.
+                    # Restore the snapshot's energy_balance CMB entropy gradient. Else
+                    # set_initial_entropy restarts it from a bottom-cell finite
+                    # difference, which spikes the CMB flux on the first resumed step.
                     if config.interior_energetics.aragog.core_bc == 'energy_balance':
                         dSdr_cmb = getattr(interior_o, '_last_dSdr_cmb', None)
                         if dSdr_cmb is None:

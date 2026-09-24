@@ -12,10 +12,9 @@ from ._converters import none_if_none
 
 def valid_zalmoxis(instance, attribute, value):
     """Validate Zalmoxis EOS format strings and reject unsupported miscibility options."""
-    # Binodal-aware miscibility (`global_miscibility`) requires the H2-silicate
-    # binodal handoff on the Zalmoxis side (Zalmoxis tracker #64), which is not
-    # yet implemented. It is rejected for every structure module: only the
-    # zalmoxis structure writes the solvus that the main loop and SPIDER read.
+    # `global_miscibility` needs the H2-silicate binodal handoff (Zalmoxis tracker #64),
+    # not yet implemented. Reject it for every structure module: only the zalmoxis
+    # structure writes the solvus that the main loop and SPIDER read.
     if getattr(instance.zalmoxis, 'global_miscibility', False):
         raise ValueError(
             '`interior_struct.zalmoxis.global_miscibility = true` is not yet usable: '

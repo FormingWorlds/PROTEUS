@@ -2426,7 +2426,10 @@ def generate_spider_tables(config: Config, outdir: str):
     config : Config
         Configuration object with struct.zalmoxis settings.
     outdir : str
-        Output directory. Tables are written to ``outdir/data/spider_eos/``.
+        Output directory. Tables are written to ``outdir/data/spider_eos/``, or,
+        when the ``PROTEUS_PS_CACHE_DIR`` environment variable is set, to a
+        subdirectory of it named after the sanitised :func:`_ps_cache_key` string, which
+        independent runs with the same key share.
 
     Returns
     -------
@@ -2592,13 +2595,9 @@ def generate_spider_tables(config: Config, outdir: str):
         if resumed is not None:
             return resumed
 
-    # Table location. Default: per-run output/<run>/data/spider_eos. When
-    # PROTEUS_PS_CACHE_DIR is set, the directory is keyed by cache_key so that
-    # independent runs with the same planet mass, table resolution, and mantle
-    # EOS reuse one generated table instead of each rebuilding the slow
-    # full-resolution PALEOS P-S table. The cache_key holds P_max, nP, nS,
-    # mushy_zone_factor, layout, the resolved EOS identity and the Zalmoxis
-    # table generator identity.
+    # Table location: output/<run>/data/spider_eos, or with PROTEUS_PS_CACHE_DIR a
+    # shared directory keyed by cache_key (fields in _ps_cache_key), so runs with
+    # the same key reuse one slow full-resolution PALEOS P-S table.
     _ps_cache_root = os.environ.get('PROTEUS_PS_CACHE_DIR')
     if _ps_cache_root:
         _safe_key = cache_key.replace('.', 'p').replace('=', '-').replace('+', '')
