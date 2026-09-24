@@ -764,7 +764,11 @@ runs:
         set -euo pipefail
         python - <<'PY'
         from proteus.config import read_config_object
-        from proteus.utils.data import download_sufficient_data, download_eos_dynamic
+        from proteus.utils.data import (
+            download_sufficient_data,
+            download_eos_dynamic,
+            download_zalmoxis_eos,
+        )
 
         # Reference configs that drive the integration / slow tier downloads.
         for cfg_path in ('input/all_options.toml',
@@ -781,6 +785,13 @@ runs:
             download_eos_dynamic('WolfBower2018_MgSiO3')
         except Exception as exc:
             print(f'warning: download_eos_dynamic -> {exc}')
+
+        # The pinned super-liquidus solves read the 2-phase MgSiO3 pair when
+        # it is on disk; the unified table the configs name does not fetch it.
+        try:
+            download_zalmoxis_eos('PALEOS-2phase:MgSiO3')
+        except Exception as exc:
+            print(f'warning: download_zalmoxis_eos -> {exc}')
         PY
 
     # ------------------------------------------------------------------
