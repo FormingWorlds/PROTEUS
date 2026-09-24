@@ -1391,7 +1391,7 @@ def _install_sh_block(marker: str) -> str:
 
 
 def _run_install_block(tmp_path, marker: str, *, exit_code: int):
-    """Run one ``install.sh`` block with ``die`` printing DIE and a stub for what it calls."""
+    """Run one ``install.sh`` block with ``warn`` and ``die`` printing WARN and DIE, and stubs."""
     (tmp_path / 'tools').mkdir()
     (tmp_path / 'tools' / 'get_cvode.sh').write_text(f'exit {exit_code}\n')
     stubs = tmp_path / 'bin'
@@ -1399,7 +1399,7 @@ def _run_install_block(tmp_path, marker: str, *, exit_code: int):
     (stubs / 'python').write_text(f'#!/usr/bin/env bash\nexit {exit_code}\n')
     (stubs / 'python').chmod(0o755)
     snippet = (
-        'info() { :; }\ndie() { echo "DIE: $1" >&2; exit 1; }\n'
+        'info() { :; }\nwarn() { echo "WARN: $1" >&2; }\ndie() { echo "DIE: $1" >&2; exit 1; }\n'
         + _install_sh_block(marker)
         + 'echo REACHED\n'
     )
@@ -1415,14 +1415,19 @@ def _run_install_block(tmp_path, marker: str, *, exit_code: int):
     ['Setting up the SUNDIALS CVODE solver', 'python -c "from scikits_odes_sundials.cvode'],
     ids=['install-step', 'after-proteus-install'],
 )
-def test_install_sh_aborts_when_cvode_fails(tmp_path, marker):
-    """A failed CVODE install, or a CVODE that stops importing, ends install.sh with die."""
+def test_install_sh_warns_and_goes_on_when_cvode_fails(tmp_path, marker):
+    """A failed CVODE install, or a CVODE that stops importing, warns and the installer goes on.
+
+    Only Aragog on ``solver_method = "cvode"`` needs it, and that run stops at
+    setup, so SPIDER, radau and bdf users can finish the installation.
+    """
     res = _run_install_block(tmp_path, marker, exit_code=1)
 
-    assert res.returncode == 1
-    assert 'DIE: CVODE' in res.stderr
+    assert res.returncode == 0, res.stderr
+    assert 'WARN: CVODE' in res.stderr
+    assert 'DIE' not in res.stderr
     assert 'bash tools/get_cvode.sh' in res.stderr
-    assert 'REACHED' not in res.stdout
+    assert 'REACHED' in res.stdout
 
 
 @pytest.mark.unit
@@ -1432,8 +1437,9 @@ def test_install_sh_aborts_when_cvode_fails(tmp_path, marker):
     ids=['install-step', 'after-proteus-install'],
 )
 def test_install_sh_goes_on_when_cvode_works(tmp_path, marker):
-    """The same blocks let the installer continue when CVODE installs and imports."""
+    """The same blocks stay silent when CVODE installs and imports."""
     res = _run_install_block(tmp_path, marker, exit_code=0)
 
     assert res.returncode == 0, res.stderr
+    assert 'WARN' not in res.stderr
     assert 'REACHED' in res.stdout

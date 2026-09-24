@@ -845,15 +845,15 @@ bash tools/get_zalmoxis.sh 2>&1
 # Aragog stops at setup without it.
 info "Setting up the SUNDIALS CVODE solver..."
 bash tools/get_cvode.sh 2>&1 \
-    || die "CVODE install failed. Aragog needs it for solver_method = \"cvode\". Fix the error above, then re-run bash tools/get_cvode.sh."
+    || warn "CVODE install failed. Aragog with solver_method = \"cvode\" stops at setup until it imports; fix the error above and re-run bash tools/get_cvode.sh. Other interior modules, radau and bdf do not need it."
 
 # Install PROTEUS itself
 info "Installing PROTEUS and remaining dependencies..."
 pip install -e ".[develop]"
 
-# The PROTEUS install can replace packages; CVODE must still import for Aragog.
+# The PROTEUS install can replace packages; Aragog on "cvode" needs CVODE to still import.
 python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum" >/dev/null 2>&1 \
-    || die "CVODE does not import after the PROTEUS install. Re-run bash tools/get_cvode.sh."
+    || warn "CVODE does not import after the PROTEUS install. Aragog with solver_method = \"cvode\" stops at setup until it does; re-run bash tools/get_cvode.sh."
 
 info "Setting up pre-commit hooks..."
 pre-commit install -f 2>&1 || warn "pre-commit install failed (non-critical)"
