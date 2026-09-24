@@ -641,7 +641,7 @@ def _anchor_failure_deferred(config: Config) -> bool:
     """Whether a failed P-T anchor in a structure solve can fall back.
 
     ``compute_initial_entropy`` re-solves the anchor at the converged P_cmb only
-    for a PALEOS mantle under spider or aragog energetics; everywhere else no
+    for a generated PALEOS table set under spider or aragog energetics; everywhere else no
     later step does, so the failure must propagate.
 
     Parameters
@@ -654,8 +654,9 @@ def _anchor_failure_deferred(config: Config) -> bool:
     bool
         True when the initial entropy re-solves the anchor.
     """
-    mantle_eos = str(getattr(config.interior_struct.zalmoxis, 'mantle_eos', ''))
-    return mantle_eos.startswith(PALEOS_EOS_PREFIXES) and (
+    from proteus.utils.helper import generates_paleos_tables
+
+    return generates_paleos_tables(config.interior_struct) and (
         config.interior_energetics.module in ('spider', 'aragog')
     )
 

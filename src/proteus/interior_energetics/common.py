@@ -9,8 +9,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.special import erf
 
-from proteus.utils.constants import PALEOS_EOS_PREFIXES, B_ein
+from proteus.utils.constants import B_ein
 from proteus.utils.data import find_lookup_table_dir
+from proteus.utils.helper import generates_paleos_tables
 
 if TYPE_CHECKING:
     from aragog.eos.entropy import EntropyEOS
@@ -811,7 +812,8 @@ def compute_initial_entropy(
                     'interior_struct.zalmoxis section is missing.'
                 )
             mantle_eos = str(zcfg.mantle_eos)
-            if mantle_eos.startswith(PALEOS_EOS_PREFIXES):
+            # Only a generated PALEOS table set has the filled cells the cap avoids.
+            if generates_paleos_tables(config.interior_struct):
                 from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
                 # The anchor raises its numerical failures as InitialConditionError.
