@@ -2187,22 +2187,30 @@ def read_ps_cache_pointer(outdir: str) -> str | None:
     return cache_dir or None
 
 
-def _resumed_ps_tables(outdir: str, cache_key: str) -> dict | None:
+# Kept-table directories already reported in this process.
+_PS_RESUME_REPORTED: set[str] = set()
+
+
+def _resumed_ps_tables(outdir: str, current_key) -> dict | None:
     """Return the P-S tables a resumed run already uses, whatever their key.
 
     Looks in the per-run ``data/spider_eos`` directory, then in the shared
-    cache directory recorded by :func:`_write_ps_cache_pointer`. A resumed run
-    continues on these tables even when the current key differs, so it does
-    not switch tables part way through its evolution. A differing key is
-    logged at WARNING with both keys, naming the generator identity when only
-    that differs or the marker predates it.
+    cache directory recorded by :func:`_write_ps_cache_pointer`, for a marker
+    with both phase-boundary files. A resumed run continues on these tables
+    even when the current key differs, so it does not switch tables part way
+    through its evolution. The first time a directory is kept in a process,
+    ``current_key()`` is called and a differing key is logged at WARNING with
+    both keys, naming the generator identity when only that differs or the
+    marker predates it. When ``current_key()`` raises, the tables are still
+    kept and a WARNING gives the reason the key was not checked.
 
     Parameters
     ----------
     outdir : str
         The run output directory.
-    cache_key : str
-        The key the current code would build, from :func:`_ps_cache_key`.
+    current_key : callable
+        No-argument callable returning the key the current code would build
+        (from :func:`_ps_cache_key`); it raises when that key cannot be built.
 
     Returns
     -------
@@ -2215,7 +2223,6 @@ def _resumed_ps_tables(outdir: str, cache_key: str) -> dict | None:
     pointed = read_ps_cache_pointer(outdir)
     if pointed:
         candidates.append(pointed)
-    want_base, _, want_gen = cache_key.partition('_gen=')
     for eos_dir in candidates:
         marker = os.path.join(eos_dir, '.cache_info.txt')
         solidus_path = os.path.join(eos_dir, 'solidus_P-S.dat')
@@ -2227,29 +2234,50 @@ def _resumed_ps_tables(outdir: str, cache_key: str) -> dict | None:
                 stored = f.read().strip()
         except OSError:
             continue
-        base, has_gen, gen = stored.partition('_gen=')
-        if stored != cache_key:
-            if base == want_base:
-                change = 'the new table generator (generator %s, current %s)' % (
-                    gen if has_gen else 'unknown',
-                    want_gen,
-                )
-            else:
-                change = 'the changed settings'
-            log.warning(
-                'Resumed run keeps its original P-S entropy tables in %s and ignores %s: '
-                'stored key %s, current key %s',
-                eos_dir,
-                change,
-                stored,
-                cache_key,
-            )
+        if eos_dir not in _PS_RESUME_REPORTED:
+            _PS_RESUME_REPORTED.add(eos_dir)
+            _report_kept_ps_tables(eos_dir, stored, current_key)
         return {
             'eos_dir': eos_dir,
             'solidus_path': solidus_path,
             'liquidus_path': liquidus_path,
         }
     return None
+
+
+def _report_kept_ps_tables(eos_dir: str, stored: str, current_key) -> None:
+    """Log at WARNING how kept P-S tables differ from the current key, if they do."""
+    try:
+        cache_key = current_key()
+    except Exception as exc:
+        log.warning(
+            'Resumed run keeps its original energetics P-S entropy tables in %s '
+            '(stored key %s); the current key is not checked: %s',
+            eos_dir,
+            stored,
+            exc,
+        )
+        return
+    if stored == cache_key:
+        return
+    want_base, _, want_gen = cache_key.partition('_gen=')
+    base, has_gen, gen = stored.partition('_gen=')
+    if base == want_base:
+        change = 'the new table generator (generator %s, current %s)' % (
+            gen if has_gen else 'unknown',
+            want_gen,
+        )
+    else:
+        change = 'the changed settings'
+    log.warning(
+        'Resumed run keeps its original energetics P-S entropy tables in %s and '
+        'ignores %s: stored key %s, current key %s. The structure solve uses the '
+        'current melting curves.',
+        eos_dir,
+        change,
+        stored,
+        cache_key,
+    )
 
 
 def _publish_ps_tables(src_dir: str, dest_dir: str) -> None:
@@ -2392,70 +2420,28 @@ def _ps_generator_identity() -> str:
     return f'{version}-{h.hexdigest()[:12]}'
 
 
-def generate_spider_tables(config: Config, outdir: str):
-    """Generate P-S EOS tables and phase boundaries from PALEOS data.
+def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
+    """Resolve the PALEOS files and the cache key of the P-S tables.
 
-    Produces P-S lookup tables for density, temperature, heat capacity,
-    thermal expansion, and adiabatic gradient, plus solidus/liquidus phase
-    boundaries in S(P) format. These are consumed by the entropy-IC verify
-    in Aragog (and by SPIDER if the structure module is SPIDER).
-
-    Supports two PALEOS layouts:
-
-    1. ``paleos_unified`` (e.g. ``PALEOS:MgSiO3``): the structural backbone is
-       the single unified P-T table covering both phases plus mushy zone, while
-       the per-phase property surfaces are built from the sibling two-phase
-       solid + liquid tables when those are present (see the unified branch
-       below), so the densities stay resolved across the melting-curve
-       discontinuity. The solidus is derived from ``mushy_zone_factor *
-       liquidus`` (default 0.8, the constant Stixrude 2014 solidus/liquidus
-       ratio applied to the PALEOS liquidus); the liquidus is the analytic
-       PALEOS Belonoshko+2005 / Fei+2021 curve.
-    2. ``PALEOS-2phase:<solid>`` (e.g. ``PALEOS-2phase:MgSiO3``): separate
-       solid + liquid PALEOS tables. The solidus is derived exactly as in the
-       unified layout, ``mushy_zone_factor * liquidus`` (default 0.8); the
-       two-phase tables additionally supply the latent-heat entropy gap
-       between the liquid-table entropy at the liquidus and the solid-table
-       entropy at the derived solidus.
-
-    For non-PALEOS EOS types (WolfBower2018, RTPress100TPa), returns None
-    and the caller is expected to fall back on pre-existing SPIDER tables.
+    Materialises PALEOS-API entries, which can build their tables on a cold
+    cache, and logs why no tables can be made.
 
     Parameters
     ----------
     config : Config
         Configuration object with struct.zalmoxis settings.
-    outdir : str
-        Output directory. Tables are written to ``outdir/data/spider_eos/``, or,
-        when the ``PROTEUS_PS_CACHE_DIR`` environment variable is set, to a
-        subdirectory of it named after the sanitised :func:`_ps_cache_key` string, which
-        independent runs with the same key share.
+    eos_entry : dict
+        Registry entry of the mantle EOS.
+    mat_dicts : dict
+        Zalmoxis material dictionaries.
 
     Returns
     -------
-    dict or None
-        Keys ``'eos_dir'``, ``'solidus_path'``, ``'liquidus_path'`` with
-        absolute paths. Returns None if the mantle EOS is not PALEOS.
+    tuple or None
+        ``(eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key)``,
+        or None when the mantle EOS is not PALEOS or its files are missing.
     """
-    from zalmoxis.eos_export import generate_spider_eos_tables, generate_spider_phase_boundaries
-    from zalmoxis.melting_curves import (
-        derive_solidus_from_liquidus,
-        get_solidus_liquidus_functions,
-    )
-
     mantle_eos = config.interior_struct.zalmoxis.mantle_eos
-
-    # Use FWL_DATA paths (not ZALMOXIS_ROOT) for EOS file lookup
-    mat_dicts = load_zalmoxis_material_dictionaries()
-    eos_entry = mat_dicts.get(mantle_eos)
-
-    if eos_entry is None:
-        log.info(
-            'Mantle EOS %s not found in material dictionary; using pre-existing SPIDER tables.',
-            mantle_eos,
-        )
-        return None
-
     # PALEOS-API live tabulation: materialise cached .dat paths in place so the
     # downstream format / eos_file lookups see concrete paths. No-op for
     # non-PALEOS-API entries. First call on a cold cache triggers generation.
@@ -2534,32 +2520,6 @@ def generate_spider_tables(config: Config, outdir: str):
         )
         return None
 
-    # Phase boundaries: PALEOS-liquidus is the analytic Belonoshko+2005 /
-    # Fei+2021 Simon-Glatzel curve. The derived solidus is
-    # T_solidus = T_liquidus * mushy_zone_factor for both layouts. A two-phase
-    # table adds the latent-heat gap between liquid_table.s(P, T_liq) and
-    # solid_table.s(P, T_sol) with T_sol = mushy_zone_factor * T_liq.
-    _, liquidus_func = get_solidus_liquidus_functions(
-        solidus_id='Stixrude14-solidus',  # unused, but API requires it
-        liquidus_id='PALEOS-liquidus',
-    )
-    mzf = config.interior_struct.zalmoxis.mushy_zone_factor
-    solidus_func = derive_solidus_from_liquidus(liquidus_func, mzf)
-    if is_twophase:
-        # This solidus_func also reaches Zalmoxis's own 2-phase structure
-        # solve via load_zalmoxis_solidus_liquidus_functions, so mzf moves
-        # nabla_ad there too, separately from the density blend below.
-        log.info(
-            'PALEOS-2phase phase boundaries: solidus = liquidus * %.2f '
-            '(mushy_zone_factor); latent heat from 2-phase tables',
-            mzf,
-        )
-    else:
-        log.info(
-            'PALEOS unified phase boundaries: solidus = liquidus * %.2f (mushy_zone_factor)',
-            mzf,
-        )
-
     # Determine pressure range from planet mass (higher mass needs wider range)
     mass_tot = config.planet.mass_tot or 1.0
     # P_max for the SPIDER P-S lookup grid. Must cover the actual P_cmb
@@ -2576,6 +2536,7 @@ def generate_spider_tables(config: Config, outdir: str):
     nP = config.interior_struct.zalmoxis.lookup_nP
     nS = config.interior_struct.zalmoxis.lookup_nS
 
+    mzf = config.interior_struct.zalmoxis.mushy_zone_factor
     layout = '2phase' if is_twophase else 'unified'
     cache_key = _ps_cache_key(
         P_max=P_max,
@@ -2589,11 +2550,132 @@ def generate_spider_tables(config: Config, outdir: str):
         liquid_eos=liquid_eos,
     )
 
-    # A resumed run stays on the tables it started with.
+    return eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key
+
+
+def _ps_resume_key(config: Config, eos_entry: dict, mat_dicts: dict) -> str:
+    """Current P-S cache key for the resume warning, without building PALEOS-API tables."""
+    from zalmoxis.eos.dispatch import _is_paleos_api
+
+    if _is_paleos_api(eos_entry):
+        raise ValueError('a PALEOS-API mantle EOS is not resolved on resume')
+    inputs = _ps_table_inputs(config, eos_entry, mat_dicts)
+    if inputs is None:
+        raise ValueError('the current PALEOS files are not available')
+    return inputs[-1]
+
+
+def generate_spider_tables(config: Config, outdir: str):
+    """Generate P-S EOS tables and phase boundaries from PALEOS data.
+
+    Produces P-S lookup tables for density, temperature, heat capacity,
+    thermal expansion, and adiabatic gradient, plus solidus/liquidus phase
+    boundaries in S(P) format. These are consumed by the entropy-IC verify
+    in Aragog (and by SPIDER if the structure module is SPIDER).
+
+    Supports two PALEOS layouts:
+
+    1. ``paleos_unified`` (e.g. ``PALEOS:MgSiO3``): the structural backbone is
+       the single unified P-T table covering both phases plus mushy zone, while
+       the per-phase property surfaces are built from the sibling two-phase
+       solid + liquid tables when those are present (see the unified branch
+       below), so the densities stay resolved across the melting-curve
+       discontinuity. The solidus is derived from ``mushy_zone_factor *
+       liquidus`` (default 0.8, the constant Stixrude 2014 solidus/liquidus
+       ratio applied to the PALEOS liquidus); the liquidus is the analytic
+       PALEOS Belonoshko+2005 / Fei+2021 curve.
+    2. ``PALEOS-2phase:<solid>`` (e.g. ``PALEOS-2phase:MgSiO3``): separate
+       solid + liquid PALEOS tables. The solidus is derived exactly as in the
+       unified layout, ``mushy_zone_factor * liquidus`` (default 0.8); the
+       two-phase tables additionally supply the latent-heat entropy gap
+       between the liquid-table entropy at the liquidus and the solid-table
+       entropy at the derived solidus.
+
+    For non-PALEOS EOS types (WolfBower2018, RTPress100TPa), returns None
+    and the caller is expected to fall back on pre-existing SPIDER tables.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object with struct.zalmoxis settings.
+    outdir : str
+        Output directory. Tables are written to ``outdir/data/spider_eos/``, or,
+        when the ``PROTEUS_PS_CACHE_DIR`` environment variable is set, to a
+        subdirectory of it named after the sanitised :func:`_ps_cache_key` string, which
+        independent runs with the same key share.
+
+    Returns
+    -------
+    dict or None
+        Keys ``'eos_dir'``, ``'solidus_path'``, ``'liquidus_path'`` with
+        absolute paths. Returns None if the mantle EOS is not PALEOS.
+    """
+    from zalmoxis.eos_export import generate_spider_eos_tables, generate_spider_phase_boundaries
+    from zalmoxis.melting_curves import (
+        derive_solidus_from_liquidus,
+        get_solidus_liquidus_functions,
+    )
+
+    mantle_eos = config.interior_struct.zalmoxis.mantle_eos
+
+    # Use FWL_DATA paths (not ZALMOXIS_ROOT) for EOS file lookup
+    mat_dicts = load_zalmoxis_material_dictionaries()
+    eos_entry = mat_dicts.get(mantle_eos)
+
+    if eos_entry is None:
+        log.info(
+            'Mantle EOS %s not found in material dictionary; using pre-existing SPIDER tables.',
+            mantle_eos,
+        )
+        return None
+
+    # A resumed run stays on the tables it started with; the key only feeds the warning.
     if config.params.resume:
-        resumed = _resumed_ps_tables(outdir, cache_key)
+        resumed = _resumed_ps_tables(
+            outdir, lambda: _ps_resume_key(config, eos_entry, mat_dicts)
+        )
         if resumed is not None:
             return resumed
+
+    inputs = _ps_table_inputs(config, eos_entry, mat_dicts)
+    if inputs is None:
+        return None
+    eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key = inputs
+    nP = config.interior_struct.zalmoxis.lookup_nP
+    nS = config.interior_struct.zalmoxis.lookup_nS
+    if config.params.resume:
+        log.warning(
+            'Resumed run has no kept P-S entropy tables in %s or at its shared-cache '
+            'pointer; it continues on the tables of the current key %s, built now if absent',
+            os.path.join(outdir, 'data', 'spider_eos'),
+            cache_key,
+        )
+
+    mzf = config.interior_struct.zalmoxis.mushy_zone_factor
+    # Phase boundaries: PALEOS-liquidus is the analytic Belonoshko+2005 /
+    # Fei+2021 Simon-Glatzel curve. The derived solidus is
+    # T_solidus = T_liquidus * mushy_zone_factor for both layouts. A two-phase
+    # table adds the latent-heat gap between liquid_table.s(P, T_liq) and
+    # solid_table.s(P, T_sol) with T_sol = mushy_zone_factor * T_liq.
+    _, liquidus_func = get_solidus_liquidus_functions(
+        solidus_id='Stixrude14-solidus',  # unused, but API requires it
+        liquidus_id='PALEOS-liquidus',
+    )
+    solidus_func = derive_solidus_from_liquidus(liquidus_func, mzf)
+    if is_twophase:
+        # This solidus_func also reaches Zalmoxis's own 2-phase structure
+        # solve via load_zalmoxis_solidus_liquidus_functions, so mzf moves
+        # nabla_ad there too, separately from the density blend below.
+        log.info(
+            'PALEOS-2phase phase boundaries: solidus = liquidus * %.2f '
+            '(mushy_zone_factor); latent heat from 2-phase tables',
+            mzf,
+        )
+    else:
+        log.info(
+            'PALEOS unified phase boundaries: solidus = liquidus * %.2f (mushy_zone_factor)',
+            mzf,
+        )
 
     # Table location: output/<run>/data/spider_eos, or with PROTEUS_PS_CACHE_DIR a
     # shared directory keyed by cache_key (fields in _ps_cache_key), so runs with

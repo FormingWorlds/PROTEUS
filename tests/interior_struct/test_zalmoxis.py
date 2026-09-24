@@ -3022,7 +3022,7 @@ def test_resume_keeps_run_tables_with_an_old_format_marker(tmp_path, monkeypatch
 
     monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
     run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
-    # The key a run made before the generator identity was part of it.
+    # A marker without a generator suffix (base key only).
     _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
     old_marker = key.partition('_gen=')[0]
     _seed_tables(run_eos, old_marker)
@@ -3034,7 +3034,8 @@ def test_resume_keeps_run_tables_with_an_old_format_marker(tmp_path, monkeypatch
     tables.assert_not_called()
     assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
     assert (run_eos / '.cache_info.txt').read_text() == old_marker
-    assert 'keeps its original P-S entropy tables' in caplog.text
+    assert 'keeps its original energetics P-S entropy tables' in caplog.text
+    assert 'structure solve uses the current melting curves' in caplog.text
     assert 'generator unknown' in caplog.text and key in caplog.text
 
     out, bounds, tables, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=False)
@@ -3049,6 +3050,7 @@ def test_resume_follows_the_pointer_to_shared_cache_tables(tmp_path, monkeypatch
     an exact key match keeps them without a warning."""
     from pathlib import Path as _Path
 
+    from proteus.interior_struct import zalmoxis as zmod
     from proteus.interior_struct.zalmoxis import PS_CACHE_POINTER_NAME
 
     monkeypatch.setenv('PROTEUS_PS_CACHE_DIR', str(tmp_path / 'cache'))
@@ -3067,8 +3069,10 @@ def test_resume_follows_the_pointer_to_shared_cache_tables(tmp_path, monkeypatch
     assert pointer.read_text() == str(old_dir)
     assert 'generator 0-0-1-aaaaaaaaaaaa' in caplog.text
 
-    # Edge case: the stored key equals the current key, so nothing is logged.
+    # Edge case: the stored key equals the current key, so nothing is logged
+    # (a new process, since each kept directory is reported once per process).
     (old_dir / '.cache_info.txt').write_text(key)
+    monkeypatch.setattr(zmod, '_PS_RESUME_REPORTED', set())
     caplog.clear()
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
         out, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
@@ -3097,3 +3101,64 @@ def test_resume_keeps_run_tables_after_a_settings_change(tmp_path, monkeypatch, 
     assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
     assert 'ignores the changed settings' in caplog.text
     assert stored in caplog.text and key in caplog.text
+
+
+def test_resume_reports_kept_tables_once_per_process(tmp_path, monkeypatch, caplog):
+    """The kept-table WARNING is logged the first time a resumed run asks for
+    its tables, not at every later call in the same process."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    _seed_tables(tmp_path / 'run' / 'data' / 'spider_eos', key.partition('_gen=')[0])
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        for _ in range(3):
+            out, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+            bounds.assert_not_called()
+    assert caplog.text.count('keeps its original energetics P-S entropy tables') == 1
+
+
+def test_resume_keeps_tables_without_resolving_a_paleos_api_eos(tmp_path, monkeypatch, caplog):
+    """A resumed PALEOS-API run keeps its tables without resolving the API
+    cache, which can build for an hour or fail offline; the key is then not
+    checked, and the WARNING says why."""
+    import zalmoxis.eos.dispatch
+    import zalmoxis.eos.paleos_api_cache
+
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    _seed_tables(tmp_path / 'run' / 'data' / 'spider_eos', key)
+    monkeypatch.setattr(zalmoxis.eos.dispatch, '_is_paleos_api', lambda entry: True)
+    resolve = MagicMock(side_effect=OSError('offline'))
+    monkeypatch.setattr(zalmoxis.eos.paleos_api_cache, 'resolve_registry_entry', resolve)
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, tables, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+    resolve.assert_not_called()
+    bounds.assert_not_called()
+    tables.assert_not_called()
+    assert out['eos_dir'] == str(tmp_path / 'run' / 'data' / 'spider_eos')
+    assert 'current key is not checked: a PALEOS-API mantle EOS is not resolved' in caplog.text
+    # Discrimination: a fresh PALEOS-API run resolves its tables.
+    with pytest.raises(OSError, match='offline'):
+        _generate_tables_stubbed(tmp_path, monkeypatch, resume=False)
+    resolve.assert_called_once()
+
+
+def test_resume_without_kept_tables_warns_before_the_build(tmp_path, monkeypatch, caplog):
+    """A resumed run with tables but no marker (the marker is the completion
+    sentinel) keeps nothing, says at WARNING that it continues on newly built
+    tables, and builds them under the current key."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    _seed_tables(run_eos, 'unused')
+    (run_eos / '.cache_info.txt').unlink()
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+    bounds.assert_called_once()
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'NEW'
+    assert (run_eos / '.cache_info.txt').read_text() == key
+    assert 'has no kept P-S entropy tables' in caplog.text and key in caplog.text
+    # Discrimination: a fresh run builds the same tables without the warning.
+    caplog.clear()
+    (run_eos / '.cache_info.txt').unlink()
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        _generate_tables_stubbed(tmp_path, monkeypatch, resume=False)
+    assert 'has no kept' not in caplog.text
