@@ -329,6 +329,7 @@ jobs:
             tier: extended
             os: ubuntu-latest
             job_minutes: 120
+            coverage: false
             select: test_m1_solved_adiabat_pinned
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
@@ -337,6 +338,7 @@ jobs:
             tier: extended
             os: ubuntu-latest
             job_minutes: 270
+            coverage: false
             select: test_solved_entropy_is_mass_independent
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
@@ -345,6 +347,7 @@ jobs:
             tier: extended
             os: ubuntu-latest
             job_minutes: 120
+            coverage: false
             select: test_m1_zero_superheat_pinned
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
@@ -353,6 +356,7 @@ jobs:
             tier: extended
             os: ubuntu-latest
             job_minutes: 120
+            coverage: false
             select: test_unreachable_superheat_raises_real
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
@@ -361,6 +365,7 @@ jobs:
             tier: extended
             os: ubuntu-latest
             job_minutes: 120
+            coverage: false
             select: test_unreachable_superheat_clamps_real
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
@@ -369,6 +374,7 @@ jobs:
             tier: extended
             os: ubuntu-latest
             job_minutes: 180
+            coverage: false
             select: test_zalmoxis_structure_ic_on_own_p_s_tables
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
@@ -390,22 +396,25 @@ jobs:
       - name: Run slow shard
         env:
           SHARD_SELECT: ${{ matrix.select }}
+          SHARD_COVERAGE: ${{ matrix.coverage }}
         run: |
           # Heavy shards select a single test by name via matrix.select; other
           # shards run their whole file list. Test names are plain identifiers,
           # so the unquoted expansion is a single -k token (empty when unset).
           SELECT_ARG=""
           if [ -n "$SHARD_SELECT" ]; then SELECT_ARG="-k $SHARD_SELECT"; fi
+          COV_ARGS=(--cov=proteus
+            --cov-report=xml:coverage-slow-${{ matrix.shard }}-${{ matrix.os }}.xml
+            --cov-report= --cov-fail-under=0)
+          # matrix.coverage: false drops the tracer, which slows the PALEOS table parsing >50x.
+          if [ "$SHARD_COVERAGE" = "false" ]; then COV_ARGS=(); fi
           pytest -m "slow and not unit and not smoke and not integration" \
             ${{ matrix.files }} \
             $SELECT_ARG \
             -p no:faulthandler \
             --durations=0 \
             --junitxml=junit-slow-${{ matrix.shard }}-${{ matrix.os }}.xml \
-            --cov=proteus \
-            --cov-report=xml:coverage-slow-${{ matrix.shard }}-${{ matrix.os }}.xml \
-            --cov-report= \
-            --cov-fail-under=0 \
+            "${COV_ARGS[@]}" \
             --log-cli-level=INFO \
             --log-cli-format='%(asctime)s %(levelname)s %(name)s: %(message)s' \
             -v --tb=short
