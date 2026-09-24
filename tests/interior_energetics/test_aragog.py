@@ -1412,6 +1412,44 @@ def test_solve_with_retry_first_solve_rejects_non_finite_tcore(monkeypatch):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ('struct_module', 'mantle_eos', 'expect_paleos'),
+    [
+        ('zalmoxis', 'PALEOS:MgSiO3', True),
+        ('zalmoxis', 'PALEOS-2phase:MgSiO3', True),
+        ('zalmoxis', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+        ('zalmoxis', 'WolfBower2018:MgSiO3', False),
+        ('dummy', 'PALEOS:MgSiO3', False),
+    ],
+)
+def test_melting_curve_files_follow_the_generated_table_set(
+    tmp_path, struct_module, mantle_eos, expect_paleos
+):
+    """Aragog reads PALEOS curves only with a generated PALEOS set, else melting_dir.
+
+    A PALEOS mixture gets no generated set, so SPIDER and the P-S tables use
+    melting_dir; Aragog must read the same curves.
+    """
+    from proteus.interior_energetics import aragog as aragog_mod
+
+    config = _make_aragog_config(struct_module=struct_module, mantle_eos=mantle_eos)
+    config.interior_struct.melting_dir = 'Monteux-600'
+    paleos = (str(tmp_path / 'paleos_sol.dat'), str(tmp_path / 'paleos_liq.dat'))
+    fetched = (tmp_path / 'monteux_sol.dat', tmp_path / 'monteux_liq.dat')
+
+    with (
+        patch.object(aragog_mod, '_write_paleos_melting_curves', return_value=paleos),
+        patch.object(aragog_mod, 'resolve_melting_curve_files', return_value=fetched) as rmc,
+    ):
+        result = aragog_mod._melting_curve_files(config, str(tmp_path))
+
+    assert result == (paleos if expect_paleos else fetched)
+    assert rmc.called is (not expect_paleos)
+    if not expect_paleos:
+        assert rmc.call_args.args[0] == 'Monteux-600'
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_paleos_melting_curves_follow_mzf_in_reused_outdir(tmp_path):
     """Curves in a reused output directory are rebuilt for the current mzf.

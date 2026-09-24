@@ -1689,7 +1689,7 @@ def needs_spider_ps_tables(config) -> bool:
     bool
         True when the run needs the lookup set in FWL_DATA.
     """
-    from proteus.utils.constants import PALEOS_EOS_PREFIXES
+    from proteus.utils.helper import generates_paleos_tables
 
     energetics = getattr(getattr(config, 'interior_energetics', None), 'module', None)
     if energetics not in ('spider', 'aragog'):
@@ -1697,10 +1697,7 @@ def needs_spider_ps_tables(config) -> bool:
     struct = getattr(config, 'interior_struct', None)
     if getattr(struct, 'eos_dir', None) is not None:
         return True
-    if getattr(struct, 'module', None) == 'zalmoxis':
-        mantle = str(getattr(getattr(struct, 'zalmoxis', None), 'mantle_eos', '') or '')
-        return not (mantle.startswith(PALEOS_EOS_PREFIXES) and '+' not in mantle)
-    return True
+    return not generates_paleos_tables(struct)
 
 
 def _get_sufficient(config: Config, clean: bool = False):

@@ -11,9 +11,32 @@ from pathlib import Path
 
 import numpy as np
 
-from proteus.utils.constants import element_list, element_mmw
+from proteus.utils.constants import PALEOS_EOS_PREFIXES, element_list, element_mmw
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+def generates_paleos_tables(interior_struct) -> bool:
+    """Return whether Zalmoxis generates a PALEOS table set for this structure.
+
+    Only a single-component PALEOS mantle EOS under the Zalmoxis structure gets
+    one; SPIDER, Aragog and the table fetch then use the PALEOS-derived curves
+    instead of interior_struct.melting_dir.
+
+    Parameters
+    ----------
+    interior_struct : Struct
+        The interior_struct section of the configuration.
+
+    Returns
+    -------
+    bool
+        True for module 'zalmoxis' with a PALEOS mantle EOS that is not a mixture.
+    """
+    if getattr(interior_struct, 'module', None) != 'zalmoxis':
+        return False
+    mantle = str(getattr(getattr(interior_struct, 'zalmoxis', None), 'mantle_eos', '') or '')
+    return mantle.startswith(PALEOS_EOS_PREFIXES) and '+' not in mantle
 
 
 def resolve_fwl_data_dir() -> Path:

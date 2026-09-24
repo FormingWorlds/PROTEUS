@@ -38,6 +38,7 @@ from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
 from proteus.utils.data import resolve_lookup_table_dir, resolve_melting_curve_files
+from proteus.utils.helper import generates_paleos_tables
 from proteus.utils.helper import format_subyear_time, parse_subyear_time, snapshot_path_for_time
 
 log = logging.getLogger('fwl.' + __name__)
@@ -61,6 +62,43 @@ _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN = 200.0
 
 
 _entropy_eos_jax_cache: dict = {}
+
+
+def _melting_curve_files(config, outdir):
+    """Return the (solidus, liquidus) files Aragog reads for this run.
+
+    The PALEOS-derived pair when Zalmoxis generates a PALEOS table set, else the
+    curves named by interior_struct.melting_dir: the same curves as SPIDER and
+    the P-S tables.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration.
+    outdir : str
+        Output directory, where the PALEOS-derived curves are written.
+
+    Returns
+    -------
+    tuple
+        Paths of the solidus and liquidus files.
+
+    Raises
+    ------
+    ValueError
+        interior_struct.melting_dir is unset and no PALEOS table set is generated.
+    """
+    if generates_paleos_tables(config.interior_struct):
+        return _write_paleos_melting_curves(outdir, config)
+    if config.interior_struct.melting_dir is None:
+        raise ValueError(
+            'interior_struct.melting_dir must be set without a generated PALEOS '
+            'table set (a single PALEOS mantle EOS with the Zalmoxis structure). '
+            'Provide a melting curve folder name (e.g. "Monteux-600").'
+        )
+    return resolve_melting_curve_files(
+        config.interior_struct.melting_dir, data_root=FWL_DATA_DIR
+    )
 
 
 def _write_paleos_melting_curves(outdir, config):
@@ -969,27 +1007,7 @@ class AragogRunner:
                 )
                 if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
                     LOOK_UP_DIR = default_lookup
-        # Determine melting curves. When using PALEOS EOS via Zalmoxis,
-        # generate PALEOS-derived melting curves so Aragog uses the SAME
-        # solidus/liquidus as SPIDER (PALEOS-liquidus * mushy_zone_factor).
-        # Without this, Aragog uses Monteux-600 which differs by ~600 K,
-        # making melt fractions incomparable.
-        if (
-            config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
-        ):
-            sol_file, liq_file = _write_paleos_melting_curves(outdir, config)
-            solidus_path = sol_file
-            liquidus_path = liq_file
-        else:
-            if config.interior_struct.melting_dir is None:
-                raise ValueError(
-                    'interior_struct.melting_dir must be set for non-PALEOS EOS. '
-                    'Provide a melting curve folder name (e.g. "Monteux-600").'
-                )
-            solidus_path, liquidus_path = resolve_melting_curve_files(
-                config.interior_struct.melting_dir, data_root=FWL_DATA_DIR
-            )
+        solidus_path, liquidus_path = _melting_curve_files(config, outdir)
 
         # check data exist
         if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
@@ -1406,10 +1424,7 @@ class AragogRunner:
         """
         from proteus.interior_energetics.common import InitialConditionError
 
-        if not (
-            config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
-        ):
+        if not generates_paleos_tables(config.interior_struct):
             log.debug(
                 'Entropy IC cross-check skipped: not zalmoxis+PALEOS '
                 "(interior_struct.module='%s')",
