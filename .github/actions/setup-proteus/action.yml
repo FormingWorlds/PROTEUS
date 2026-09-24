@@ -317,7 +317,7 @@ runs:
       run: |
         set -euo pipefail
         python -c "import scikits.odes; print('scikits.odes OK, version', scikits.odes.__version__)"
-        python -c "import scikits_odes_sundials.cvode as c; print('CVODE wrapper OK:', c.__file__)"
+        python -c "import scikits_odes_sundials.cvode as c; from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum; print('CVODE wrapper OK:', c.__file__)"
 
     # Verify the install landed on the intended variant so a channel
     # or solver drift back to openblas fails loudly here instead of
@@ -704,11 +704,12 @@ runs:
       run: |
         set -euo pipefail
         python - <<'PY'
+        import aragog.solver.entropy_solver as solver
         import scikits_odes_sundials.cvode as cvode
-        from aragog.solver.entropy_solver import _CVODE_AVAILABLE
 
-        assert _CVODE_AVAILABLE, 'aragog reports CVODE unavailable (scipy Radau fallback)'
-        print('aragog CVODE available:', _CVODE_AVAILABLE, '|', cvode.__file__)
+        flag = getattr(solver, '_CVODE_AVAILABLE', None)
+        assert flag, f'aragog CVODE flag is {flag!r} (missing means the flag was renamed)'
+        print('aragog CVODE available:', flag, '|', cvode.__file__)
         PY
 
     # BOREAS is an optional dependency: users opt in via

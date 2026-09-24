@@ -265,15 +265,17 @@ def require_cvode(config: Config) -> None:
     Raises
     ------
     ImportError
-        When ``scikits_odes_sundials.cvode`` cannot be imported. The message
-        names the package, the install command and the explicit scipy options.
+        When ``scikits_odes_sundials.cvode`` or one of the three names Aragog
+        imports from it (``CVODE``, ``CV_RootFunction``, ``StatusEnum``) cannot be
+        imported. The message names the package, the install command and the
+        explicit scipy options.
     """
     if config.interior_energetics.module != 'aragog':
         return
     if config.interior_energetics.aragog.solver_method != 'cvode':
         return
     try:
-        import scikits_odes_sundials.cvode  # noqa: F401
+        from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum  # noqa: F401
     except ImportError as exc:
         raise ImportError(
             'Aragog needs the SUNDIALS CVODE solver (solver_method = "cvode"), but '

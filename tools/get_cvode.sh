@@ -4,7 +4,7 @@
 # Idempotent; needs an active conda environment. "radau" or "bdf" select scipy instead.
 set -euo pipefail
 
-if python -c "import scikits_odes_sundials.cvode" >/dev/null 2>&1; then
+if python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum" >/dev/null 2>&1; then
     echo "CVODE (scikits-odes-sundials) already installed; nothing to do."
     exit 0
 fi
@@ -34,7 +34,7 @@ pip install 'scikits-odes-sundials>=3.0,<4'
 # Hard gate: a wrapper that builds but does not import (wrong/missing SUNDIALS,
 # ABI mismatch) is exactly what this script exists to catch, so fail loudly
 # instead of reporting success.
-if ! python -c "import scikits_odes_sundials.cvode" >/dev/null 2>&1; then
+if ! python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum" >/dev/null 2>&1; then
     echo "ERROR: scikits-odes-sundials installed but does not import." >&2
     echo "       Check the SUNDIALS build against the conda library above." >&2
     exit 1

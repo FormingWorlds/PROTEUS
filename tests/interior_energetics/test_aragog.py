@@ -16,6 +16,7 @@ Functions tested:
 from __future__ import annotations
 
 import sys
+import types
 from unittest.mock import MagicMock, create_autospec, patch
 
 import numpy as np
@@ -849,6 +850,8 @@ def _cvode_config(*, module='aragog', solver_method='cvode'):
 @pytest.fixture
 def cvode_missing(monkeypatch):
     """Make ``import scikits_odes_sundials.cvode`` fail as on a machine without CVODE."""
+    # aragog reads its CVODE flag once, at first import: load it before hiding the module.
+    pytest.importorskip('aragog.solver.entropy_solver')
     monkeypatch.setitem(sys.modules, 'scikits_odes_sundials.cvode', None)
 
 
@@ -895,6 +898,32 @@ def test_require_cvode_allows_every_run_that_does_not_need_it(
 
 
 @pytest.mark.unit
+def test_require_cvode_stops_when_the_module_lacks_a_name_aragog_imports(monkeypatch):
+    """A cvode module without ``CV_RootFunction`` makes Aragog fall back, so the guard stops too."""
+    pytest.importorskip('aragog.solver.entropy_solver')
+    partial = types.ModuleType('scikits_odes_sundials.cvode')
+    partial.CVODE = partial.StatusEnum = object
+    monkeypatch.setitem(sys.modules, 'scikits_odes_sundials.cvode', partial)
+    from proteus.interior_energetics.aragog import require_cvode
+
+    with pytest.raises(ImportError, match='CV_RootFunction'):
+        require_cvode(_cvode_config())
+
+
+@pytest.mark.unit
+def test_require_cvode_stops_a_real_tutorial_config_without_cvode(cvode_missing, proteus_root):
+    """The guard reads the attribute path of a real Config, not only of a mock."""
+    from proteus.config import read_config_object
+    from proteus.interior_energetics.aragog import require_cvode
+
+    cfg = read_config_object(proteus_root / 'input' / 'tutorials' / 'tutorial_earth.toml')
+    assert cfg.interior_energetics.module == 'aragog'
+    assert cfg.interior_energetics.aragog.solver_method == 'cvode'
+    with pytest.raises(ImportError, match='bash tools/get_cvode.sh'):
+        require_cvode(cfg)
+
+
+@pytest.mark.unit
 def test_require_cvode_passes_when_cvode_imports():
     """With CVODE importable the check returns and Aragog's own flag agrees.
 
@@ -909,7 +938,7 @@ def test_require_cvode_passes_when_cvode_imports():
     from proteus.interior_energetics.aragog import require_cvode
 
     assert require_cvode(_cvode_config()) is None
-    assert entropy_solver._CVODE_AVAILABLE is True
+    assert getattr(entropy_solver, '_CVODE_AVAILABLE', None) is True
 
 
 @pytest.mark.unit
