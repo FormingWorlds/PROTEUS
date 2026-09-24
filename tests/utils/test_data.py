@@ -3035,6 +3035,11 @@ def test_get_sufficient_dummy_structure_fetches_ps_tables_without_eos_dir(
     _get_sufficient(config, clean=False)
     assert mock_dyn.call_count == 0
 
+    # A PALEOS mixture gets no generated set, so Aragog reads the fetched set.
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1'
+    _get_sufficient(config, clean=False)
+    assert mock_dyn.call_count == 1
+
 
 @pytest.mark.unit
 @pytest.mark.parametrize(

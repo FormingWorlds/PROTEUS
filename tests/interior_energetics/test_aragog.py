@@ -242,7 +242,7 @@ def test_setup_solver_eos_not_found(tmp_path):
     with (
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
-        pytest.raises(FileNotFoundError, match='Aragog lookup data not found'),
+        pytest.raises(FileNotFoundError, match='not found at .*proteus get interiordata'),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
@@ -1574,3 +1574,33 @@ def test_setup_solver_property_tables_follow_the_generated_set(
     assert dirs == {{'paleos': pt_dir, 'wb': wb_dir, 'custom': custom_dir}[tables]}
     # Only the fetched WB set has the fixed 1 TPa edge.
     assert ('edge of the Wolf and Bower' in caplog.text) is warns
+
+
+@pytest.mark.unit
+def test_setup_solver_offline_mixture_names_the_fetch_command(tmp_path):
+    """A PALEOS mixture without the fetched WB set stops with the fetch command."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(
+        struct_module='zalmoxis', mantle_eos='PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1'
+    )
+    config.interior_struct.eos_dir = None
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    hf_row = {
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+    }
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
+        pytest.raises(FileNotFoundError, match='proteus get interiordata --config-path'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
+    assert not mock_solver.called
+    assert not (tmp_path / 'out' / 'data' / 'aragog_pt').exists()
