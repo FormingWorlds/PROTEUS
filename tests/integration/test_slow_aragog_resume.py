@@ -99,12 +99,14 @@ def _make_runner(output_dir, iters_max):
 def _ensure_aragog_data(runner):
     """Download the Aragog lookup data if missing, as the shared slow-tier
     fixture does; a network error leaves the later FileNotFoundError to report."""
-    from proteus.utils.data import download_sufficient_data
+    from proteus.utils.data import download_sufficient_data, download_zalmoxis_eos
 
     was_offline = runner.config.params.offline
     runner.config.params.offline = False
     try:
         download_sufficient_data(runner.config, clean=False)
+        # The P-S tables use these siblings of the unified table when present.
+        download_zalmoxis_eos('PALEOS-2phase:MgSiO3')
     except OSError:
         pass  # offline: the missing file raises FileNotFoundError later
     finally:
