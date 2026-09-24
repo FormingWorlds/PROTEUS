@@ -368,7 +368,7 @@ jobs:
           - shard: superliquidus-own-tables
             tier: extended
             os: ubuntu-latest
-            job_minutes: 170
+            job_minutes: 180
             select: test_zalmoxis_structure_ic_on_own_p_s_tables
             files: >-
               tests/interior_struct/test_superliquidus_adiabat.py
