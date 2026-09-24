@@ -3047,6 +3047,7 @@ def test_get_sufficient_dummy_structure_fetches_ps_tables_without_eos_dir(
         ('aragog', 'zalmoxis', None, 'PALEOS-2phase:MgSiO3', False),
         ('aragog', 'zalmoxis', None, 'WolfBower2018:MgSiO3', True),
         ('spider', 'zalmoxis', None, 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', True),
+        ('aragog', 'zalmoxis', None, 'PALEOS:MgSiO3:1.0', True),
         ('aragog', 'zalmoxis', 'WolfBower2018_MgSiO3', 'PALEOS:MgSiO3', True),
         ('dummy', 'dummy', None, 'PALEOS:MgSiO3', False),
     ],
@@ -3064,8 +3065,9 @@ def test_needs_spider_ps_tables(energetics, struct, eos_dir, mantle_eos, expecte
         ),
     )
     assert needs_spider_ps_tables(config) is expected
-    # A config without these sections needs nothing.
-    assert needs_spider_ps_tables({'fake': 'config'}) is False
+    # A set eos_dir asks for the set whenever SPIDER or Aragog run.
+    config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
+    assert needs_spider_ps_tables(config) is (energetics in ('spider', 'aragog'))
 
 
 @pytest.mark.unit

@@ -285,7 +285,8 @@ The Wolf and Bower (2018) pressure-entropy lookup table that SPIDER and
 Aragog read for `eos_dir = "WolfBower2018_MgSiO3"` is fetched the same way,
 into `$FWL_DATA/interior/eos/dk09_1tpa_elec_free/mgsio3_wolf_bower_2018_1tpa/r<record-id>/`
 when SPIDER or Aragog run without a generated PALEOS table set: with the dummy or
-SPIDER structure, or with Zalmoxis and a non-PALEOS or mixed mantle EOS.
+SPIDER structure, or with Zalmoxis and a non-PALEOS or mixed mantle EOS. It is
+also fetched whenever `interior_struct.eos_dir` is set.
 `proteus get interiordata --config-path <config>` fetches it for such a config
 before an offline run. A local table takes precedence: SPIDER reads
 `$FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-S/` and Aragog reads

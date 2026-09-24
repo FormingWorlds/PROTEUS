@@ -33,7 +33,7 @@ from proteus.interior_energetics.aragog_phase import (
     build_mixed_phase_params,
 )
 from proteus.interior_energetics.common import Interior_t
-from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, PALEOS_EOS_PREFIXES
+from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
@@ -62,6 +62,9 @@ _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN = 200.0
 
 
 _entropy_eos_jax_cache: dict = {}
+
+# Upper pressure of the Wolf and Bower (2018) lookup set (Pa), dataset 1TPa-dK09.
+_WB_TABLE_P_MAX = 1.0e12
 
 
 def _melting_curve_files(config, outdir):
@@ -857,16 +860,13 @@ class AragogRunner:
                 LOOK_UP_DIR = Path(outdir) / 'data' / 'spider_eos'
 
         # EOS lookup directory for phase properties (Cp, alpha, density, entropy).
-        # For PALEOS EOS: generate P-T tables from PALEOS data.
+        # With a generated PALEOS set: P-T tables from PALEOS; a mixture reads the WB set.
         # Prefer PALEOS-2phase (separate solid/liquid) over unified table:
         # 2-phase tables give clean phase-specific entropy values at
         # solidus/liquidus, enabling correct Delta_S for mixing flux and IC.
         # The unified table has interpolation artifacts across the melting
         # curve discontinuity.
-        elif (
-            config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith(PALEOS_EOS_PREFIXES)
-        ):
+        elif generates_paleos_tables(config.interior_struct):
             from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
 
             mat_dicts = load_zalmoxis_material_dictionaries()
@@ -1007,6 +1007,15 @@ class AragogRunner:
                 )
                 if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
                     LOOK_UP_DIR = default_lookup
+            P_cmb = float(hf_row.get('P_cmb') or 0.0)
+            if P_cmb > _WB_TABLE_P_MAX:
+                log.warning(
+                    'P_cmb=%.0f GPa is above the %.0f GPa edge of the Aragog lookup '
+                    'tables in %s; the deep mantle reads values at the table edge.',
+                    P_cmb / 1e9,
+                    _WB_TABLE_P_MAX / 1e9,
+                    LOOK_UP_DIR,
+                )
         solidus_path, liquidus_path = _melting_curve_files(config, outdir)
 
         # check data exist

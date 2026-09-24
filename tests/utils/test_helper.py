@@ -820,3 +820,30 @@ def test_parse_subyear_time_rejects_multiple_p():
         parse_subyear_time('1p2p3')
     with pytest.raises(ValueError, match="multiple 'p' characters"):
         parse_subyear_time('884pp700')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('module', 'mantle_eos', 'expected'),
+    [
+        ('zalmoxis', 'PALEOS:MgSiO3', True),
+        ('zalmoxis', 'PALEOS-2phase:MgSiO3-highres', True),
+        ('zalmoxis', 'PALEOS:MgSiO3:1.0', False),
+        ('zalmoxis', 'PALEOS:MgSiO3 ', False),
+        ('zalmoxis', 'PALEOS:Olivine', False),
+        ('zalmoxis', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+        ('zalmoxis', 'WolfBower2018:MgSiO3', False),
+        ('zalmoxis', None, False),
+        ('dummy', 'PALEOS:MgSiO3', False),
+    ],
+)
+def test_generates_paleos_tables_matches_the_registry_lookup(module, mantle_eos, expected):
+    """Only an exact PALEOS registry key, as generate_spider_tables looks it up, counts."""
+    from types import SimpleNamespace
+
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
+    from proteus.utils.helper import generates_paleos_tables
+
+    struct = SimpleNamespace(module=module, zalmoxis=SimpleNamespace(mantle_eos=mantle_eos))
+    assert generates_paleos_tables(struct) is expected
+    assert not expected or mantle_eos in load_zalmoxis_material_dictionaries()

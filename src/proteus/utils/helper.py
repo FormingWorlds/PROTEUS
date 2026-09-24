@@ -19,9 +19,10 @@ log = logging.getLogger('fwl.' + __name__)
 def generates_paleos_tables(interior_struct) -> bool:
     """Return whether Zalmoxis generates a PALEOS table set for this structure.
 
-    Only a single-component PALEOS mantle EOS under the Zalmoxis structure gets
-    one; SPIDER, Aragog and the table fetch then use the PALEOS-derived curves
-    instead of interior_struct.melting_dir.
+    Only a mantle EOS that is a PALEOS key of the Zalmoxis material registry,
+    under the Zalmoxis structure, gets one, the same lookup generate_spider_tables
+    does; SPIDER, Aragog and the table fetch then use the PALEOS-derived curves
+    instead of interior_struct.melting_dir. A mixture is not a registry key.
 
     Parameters
     ----------
@@ -31,12 +32,16 @@ def generates_paleos_tables(interior_struct) -> bool:
     Returns
     -------
     bool
-        True for module 'zalmoxis' with a PALEOS mantle EOS that is not a mixture.
+        True for module 'zalmoxis' with a mantle EOS that is a PALEOS registry key.
     """
     if getattr(interior_struct, 'module', None) != 'zalmoxis':
         return False
-    mantle = str(getattr(getattr(interior_struct, 'zalmoxis', None), 'mantle_eos', '') or '')
-    return mantle.startswith(PALEOS_EOS_PREFIXES) and '+' not in mantle
+    mantle = getattr(getattr(interior_struct, 'zalmoxis', None), 'mantle_eos', None)
+    if not isinstance(mantle, str) or not mantle.startswith(PALEOS_EOS_PREFIXES):
+        return False
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
+
+    return mantle in load_zalmoxis_material_dictionaries()
 
 
 def resolve_fwl_data_dir() -> Path:

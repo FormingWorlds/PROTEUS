@@ -117,16 +117,22 @@ liquidus at the binding depth.
     the interior solver uses for its melt fraction. Where those tables come
     from depends on the structure module:
 
-    - `"zalmoxis"` with a PALEOS mantle (`interior_struct.zalmoxis.mantle_eos`,
-      default `"PALEOS:MgSiO3"`) whose table files are present: Zalmoxis
-      generates the tables from that EOS, with a liquidus derived from the
-      PALEOS (Fei et al. 2021) curve. `interior_struct.melting_dir` is not
-      used.
+    - `"zalmoxis"` with a mantle EOS (`interior_struct.zalmoxis.mantle_eos`,
+      default `"PALEOS:MgSiO3"`) that is one PALEOS material, with its table
+      files present: Zalmoxis generates the tables from that EOS, with a
+      liquidus derived from the PALEOS (Fei et al. 2021) curve, and Aragog
+      builds its P-T property tables from PALEOS too.
+      `interior_struct.melting_dir` is not used.
     - `"spider"` and `"dummy"`, or `"zalmoxis"` when no PALEOS table set is
-      generated: the tables come from FWL_DATA or the SPIDER lookup data,
-      `interior_struct.melting_dir` must be set (the run stops when it is
-      unset, except for SPIDER with `const_properties = true`), and PROTEUS
-      derives `liquidus_P-S.dat` from that P-T curve.
+      generated, which includes a PALEOS mixture (a `+` in `mantle_eos`): the
+      tables come from FWL_DATA (SPIDER also falls back to its own lookup
+      data), Aragog reads its P-T property tables from the same Wolf & Bower
+      (2018) set or `interior_struct.eos_dir`, `interior_struct.melting_dir`
+      must be set (the run stops when it is unset, except for
+      `interior_energetics.module = "spider"` with `const_properties = true`),
+      and PROTEUS derives `liquidus_P-S.dat` from that P-T curve. These tables
+      end at 1 TPa; Aragog logs a warning when the core-mantle boundary
+      pressure is above that.
 
     With `"zalmoxis"`, the structure solve also anchors its temperature profile
     on a P-T adiabat that is `delta_T_super` above the P-T liquidus, while the

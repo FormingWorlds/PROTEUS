@@ -15,6 +15,7 @@ Functions tested:
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, create_autospec, patch
 
 import numpy as np
@@ -1500,3 +1501,71 @@ def test_helpfile_output_t_cmb_node_is_cmb_basic_node():
     assert res['T_cmb_node'] == pytest.approx(4100.0)
     assert res['T_cmb'] == pytest.approx(3800.0)
     assert res['T_cmb_node'] != pytest.approx(res['T_cmb'])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('mantle_eos', 'paleos_tables'),
+    [
+        ('PALEOS-2phase:MgSiO3', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+    ],
+)
+def test_setup_solver_property_tables_follow_the_generated_set(
+    tmp_path, caplog, mantle_eos, paleos_tables
+):
+    """Only a generated PALEOS set gives PALEOS property tables; a mixture reads the WB set."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = tmp_path / 'out'
+    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos=mantle_eos)
+    config.interior_struct.eos_dir = None
+    config.planet.mass_tot = 1.0
+    pt_dir = outdir / 'data' / 'aragog_pt'
+    pt_dir.mkdir(parents=True)
+    for name in ('density_melt.dat', 'heat_capacity_melt.dat'):
+        (pt_dir / name).write_text('dummy')
+    solid, liquid = tmp_path / 'solid.dat', tmp_path / 'liquid.dat'
+    solid.write_text('dummy')
+    liquid.write_text('dummy')
+    registry = {
+        'PALEOS-2phase:MgSiO3': {
+            'solid_mantle': {'eos_file': str(solid)},
+            'melted_mantle': {'eos_file': str(liquid)},
+        }
+    }
+    wb_dir = _seed_lookup_tables(tmp_path)
+    hf_row = {
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'P_cmb': 1.2e12,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+    }
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    interior_o._spider_eos_dir = str(tmp_path)
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value=registry,
+        ),
+        patch(
+            'proteus.interior_energetics.aragog._melting_curve_files',
+            return_value=(solid, liquid),
+        ),
+        patch('proteus.interior_energetics.aragog._PhaseParameters') as mock_phase,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(outdir))
+
+    dirs = {Path(c.kwargs['density']).parent for c in mock_phase.call_args_list}
+    assert dirs == {pt_dir if paleos_tables else wb_dir}
+    # P_cmb = 1.2 TPa is past the WB table edge; the PALEOS set is built to reach it.
+    assert ('edge of the Aragog lookup tables' in caplog.text) is not paleos_tables
