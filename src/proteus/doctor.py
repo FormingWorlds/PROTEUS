@@ -388,12 +388,24 @@ def check_julia() -> CheckResult:
             fix_cmd='curl -fsSL https://install.julialang.org | sh',
         )
     parts = ver.split('.')
-    if len(parts) >= 2 and parts[0] == '1' and parts[1] in ('11', '12', '13'):
+    if len(parts) >= 2 and parts[0] == '1' and parts[1] in ('12', '13'):
         return CheckResult(
             name='julia',
             category='environment',
             status=PASS,
             message=f'{ver}',
+        )
+    if len(parts) >= 2 and parts[0] == '1' and parts[1] == '11':
+        # Still supported, but deprecated. Not auto-fixable: a Python linking
+        # OpenSSL < 3.5 needs 1.11, so switching the global default is the
+        # user's call.
+        return CheckResult(
+            name='julia',
+            category='environment',
+            status=WARN,
+            message=f'{ver} (1.11 is deprecated and will be dropped; use 1.13)',
+            fix_cmd='juliaup add 1.13 && juliaup default 1.13',
+            auto_fixable=False,
         )
     return CheckResult(
         name='julia',

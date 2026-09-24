@@ -32,7 +32,7 @@ command you can run manually or let `proteus update` handle.
 | `RAD_DIR` | Set, directory exists, and `bin/radlib.a` is present | Not set, path missing, or SOCRATES not compiled |
 | `FC_DIR` | Set and directory exists | Not set (only required when AGNI chemistry is enabled) |
 | `PYTHON_JULIAPKG_EXE` | Set | Not set |
-| `julia` | Julia is on PATH and version is 1.11.x, 1.12.x or 1.13.x | Missing or wrong version |
+| `julia` | Julia is on PATH and version is 1.12.x or 1.13.x | Missing or wrong version; 1.11.x warns as deprecated |
 
 ### Reference data
 

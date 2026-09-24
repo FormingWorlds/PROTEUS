@@ -184,6 +184,13 @@ julia_minor_at_least_12() {
     [ "$maj" -eq 1 ] && [ "$min" -ge 12 ]
 }
 
+# Julia 1.11 still works but is deprecated. It aborts at run time on some
+# hosts (#885), and only the OpenSSL < 3.5 fallback below still needs it.
+warn_julia_111_deprecated() {
+    warn "Julia 1.11 is deprecated and support will be dropped in a future release."
+    warn "  Switch with: juliaup add $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR && juliaup default $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
+}
+
 conda_openssl_too_old_for_julia() {
     command_exists conda || return 1
     julia_minor_at_least_12 || return 1
@@ -273,6 +280,9 @@ verify_proteus_import() {
                 warn "Moved the juliacall environment to Julia 1.11. Retrying import..."
                 if import_log=$(python3 -c "import proteus" 2>&1); then
                     info "PROTEUS import OK on Julia 1.11"
+                    warn "Julia 1.11 is deprecated and support will be dropped in a future release."
+                    warn "  OpenSSL >= 3.5 in this environment removes the need for it:"
+                    warn "  conda install -c conda-forge 'openssl>=3.5'"
                     return 0
                 fi
                 fail "Still failing after switching to Julia 1.11. Error output:"
@@ -291,8 +301,8 @@ verify_proteus_import() {
         fi
         warn "The Julia environment cannot resolve OpenSSL_jll: Julia >= 1.12 needs OpenSSL >= 3.5"
         warn "in this Python environment. Fix it with either:"
-        warn "  juliaup add 1.11 && juliaup default 1.11      (use Julia 1.11 instead)"
         warn "  conda install -c conda-forge 'openssl>=3.5'   (keep your Julia, then re-run)"
+        warn "  juliaup add 1.11 && juliaup default 1.11      (use Julia 1.11, deprecated)"
     fi
     die "PROTEUS Python package failed to import. The full error is above and in $LOGFILE."
 }
@@ -595,6 +605,8 @@ if command_exists julia; then
             echo "        juliaup default $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
             die "Julia version mismatch."
         fi
+    elif [ "$julia_minor" -eq 11 ]; then
+        warn_julia_111_deprecated
     fi
 else
     info "Julia not found."
