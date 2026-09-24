@@ -859,13 +859,9 @@ class AragogRunner:
             else:
                 LOOK_UP_DIR = Path(outdir) / 'data' / 'spider_eos'
 
-        # EOS lookup directory for phase properties (Cp, alpha, density, entropy).
-        # With a generated PALEOS set: P-T tables from PALEOS; a mixture reads the WB set.
-        # Prefer PALEOS-2phase (separate solid/liquid) over unified table:
-        # 2-phase tables give clean phase-specific entropy values at
-        # solidus/liquidus, enabling correct Delta_S for mixing flux and IC.
-        # The unified table has interpolation artifacts across the melting
-        # curve discontinuity.
+        # Phase-property tables (Cp, alpha, density, entropy) from PALEOS only with a
+        # generated PALEOS set, preferring PALEOS-2phase: its separate solid/liquid tables
+        # avoid the unified table's artifacts at the melting curve. A mixture reads WB.
         elif generates_paleos_tables(config.interior_struct):
             from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
 
