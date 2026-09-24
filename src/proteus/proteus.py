@@ -454,6 +454,12 @@ class Proteus:
         # termination criteria
         from proteus.utils.terminate import check_termination, print_termination_criteria
 
+        # Stop before any output is touched when Aragog needs CVODE and it is missing
+        if self.config.interior_energetics.module == 'aragog':
+            from proteus.interior_energetics.aragog import require_cvode
+
+            require_cvode(self.config)
+
         # First things
         start_time = datetime.now()
         self.config.params.resume = resume

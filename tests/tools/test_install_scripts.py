@@ -1288,3 +1288,158 @@ def test_ci_config_never_pins_user():
         'several jobs, and pinning a real account name breaks on the next '
         f'runner rename. Remove these: {offenders}'
     )
+
+
+# CVODE install: tools/get_cvode.sh run against stub python, pip and conda, and
+# the two install.sh blocks that turn a CVODE failure into an abort.
+_CVODE_INSTALL = 'pip install scikits-odes-sundials>=3.0,<4'
+_CVODE_REBUILD = (
+    'pip install --force-reinstall --no-deps --no-cache-dir --no-binary '
+    'scikits-odes-sundials scikits-odes-sundials>=3.0,<4'
+)
+
+
+def _run_get_cvode(tmp_path, *, importable: str, present: bool, after: str):
+    """Run the shipped ``tools/get_cvode.sh`` with stubs; return (result, pip/conda log).
+
+    ``importable`` is whether the CVODE import works before the script runs,
+    ``present`` whether pip lists the package, ``after`` whether the import
+    works once a ``pip install`` has run. No network and no build happen.
+    """
+    stubs = tmp_path / 'bin'
+    state = tmp_path / 'state'
+    stubs.mkdir()
+    state.mkdir()
+    (state / 'importable').write_text(importable)
+    if present:
+        (state / 'pkg').write_text('')
+    scripts = {
+        'python': '[ "$(cat "$STATE/importable")" = yes ]\n',
+        'pip': (
+            'echo "pip $*" >> "$STATE/log"\n'
+            'case "$1" in\n'
+            '  show) [ -e "$STATE/pkg" ] ;;\n'
+            '  install) : > "$STATE/pkg"; echo "$AFTER" > "$STATE/importable" ;;\n'
+            'esac\n'
+        ),
+        'conda': 'echo "conda $*" >> "$STATE/log"\n',
+    }
+    for name, body in scripts.items():
+        path = stubs / name
+        path.write_text('#!/usr/bin/env bash\n' + body)
+        path.chmod(0o755)
+    script = Path(__file__).resolve().parents[2] / 'tools' / 'get_cvode.sh'
+    env = {
+        **os.environ,
+        'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}',
+        'CONDA_PREFIX': str(tmp_path / 'env'),
+        'CONDA_EXE': str(stubs / 'conda'),
+        'STATE': str(state),
+        'AFTER': after,
+    }
+    res = subprocess.run(['bash', str(script)], capture_output=True, text=True, env=env)
+    log = (state / 'log').read_text() if (state / 'log').exists() else ''
+    return res, log
+
+
+@pytest.mark.unit
+def test_get_cvode_does_nothing_when_the_three_names_import(tmp_path):
+    """A working CVODE is left alone: no conda call, no pip call."""
+    res, log = _run_get_cvode(tmp_path, importable='yes', present=True, after='yes')
+
+    assert res.returncode == 0, res.stderr
+    assert 'nothing to do' in res.stdout
+    assert log == ''
+
+
+@pytest.mark.unit
+def test_get_cvode_installs_a_missing_package_without_forcing(tmp_path):
+    """No wrapper installed: a plain pip install, not a forced rebuild."""
+    res, log = _run_get_cvode(tmp_path, importable='no', present=False, after='yes')
+
+    assert res.returncode == 0, res.stderr
+    assert _CVODE_INSTALL in log
+    assert '--force-reinstall' not in log
+
+
+@pytest.mark.unit
+def test_get_cvode_rebuilds_an_installed_wrapper_that_does_not_import(tmp_path):
+    """pip calls an installed wrapper satisfied, so a broken one needs a forced source rebuild."""
+    res, log = _run_get_cvode(tmp_path, importable='no', present=True, after='yes')
+
+    assert res.returncode == 0, res.stderr
+    assert _CVODE_REBUILD in log
+    assert 'rebuilding' in res.stdout
+
+
+@pytest.mark.unit
+def test_get_cvode_fails_when_the_wrapper_still_does_not_import(tmp_path):
+    """The hard gate after the install exits 1 instead of reporting success."""
+    res, _ = _run_get_cvode(tmp_path, importable='no', present=True, after='no')
+
+    assert res.returncode == 1
+    assert 'does not import' in res.stderr
+    assert 'importable' not in res.stdout
+
+
+def _install_sh_block(marker: str) -> str:
+    """The shipped lines of ``install.sh`` from the one holding ``marker`` to the next blank line."""
+    lines = (Path(__file__).resolve().parents[2] / 'install.sh').read_text().splitlines()
+    start = next(i for i, ln in enumerate(lines) if marker in ln)
+    end = next(i for i, ln in enumerate(lines) if not ln.strip() and i > start)
+    return '\n'.join(lines[start:end]) + '\n'
+
+
+def _run_install_block(tmp_path, marker: str, *, exit_code: int):
+    """Run one ``install.sh`` block with ``warn`` and ``die`` printing WARN and DIE, and stubs."""
+    (tmp_path / 'tools').mkdir()
+    (tmp_path / 'tools' / 'get_cvode.sh').write_text(f'exit {exit_code}\n')
+    stubs = tmp_path / 'bin'
+    stubs.mkdir()
+    (stubs / 'python').write_text(f'#!/usr/bin/env bash\nexit {exit_code}\n')
+    (stubs / 'python').chmod(0o755)
+    snippet = (
+        'info() { :; }\nwarn() { echo "WARN: $1" >&2; }\ndie() { echo "DIE: $1" >&2; exit 1; }\n'
+        + _install_sh_block(marker)
+        + 'echo REACHED\n'
+    )
+    env = {**os.environ, 'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}'}
+    return subprocess.run(
+        ['bash', '-c', snippet], capture_output=True, text=True, cwd=tmp_path, env=env
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'marker',
+    ['Setting up the SUNDIALS CVODE solver', 'python -c "from scikits_odes_sundials.cvode'],
+    ids=['install-step', 'after-proteus-install'],
+)
+def test_install_sh_warns_and_goes_on_when_cvode_fails(tmp_path, marker):
+    """A failed CVODE install, or a CVODE that stops importing, warns and the installer goes on.
+
+    Only Aragog on ``solver_method = "cvode"`` needs it, and that run stops at
+    setup, so SPIDER, radau and bdf users can finish the installation.
+    """
+    res = _run_install_block(tmp_path, marker, exit_code=1)
+
+    assert res.returncode == 0, res.stderr
+    assert 'WARN: CVODE' in res.stderr
+    assert 'DIE' not in res.stderr
+    assert 'bash tools/get_cvode.sh' in res.stderr
+    assert 'REACHED' in res.stdout
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'marker',
+    ['Setting up the SUNDIALS CVODE solver', 'python -c "from scikits_odes_sundials.cvode'],
+    ids=['install-step', 'after-proteus-install'],
+)
+def test_install_sh_goes_on_when_cvode_works(tmp_path, marker):
+    """The same blocks stay silent when CVODE installs and imports."""
+    res = _run_install_block(tmp_path, marker, exit_code=0)
+
+    assert res.returncode == 0, res.stderr
+    assert 'WARN' not in res.stderr
+    assert 'REACHED' in res.stdout
