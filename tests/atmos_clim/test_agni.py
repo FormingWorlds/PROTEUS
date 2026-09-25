@@ -595,6 +595,25 @@ def test_init_agni_atmos_missing_surface_albedo_file_stops_with_its_fetch_comman
 
 
 @pytest.mark.unit
+def test_init_agni_atmos_missing_spectral_file_stops_with_status_20(monkeypatch, tmp_path):
+    """With a stellar spectrum but no spectral file of the configured group in FWL_DATA,
+    AGNI writes status 20 and names `proteus get spectral` and `fwl-io relocate`."""
+    fake_jl = SimpleNamespace(AGNI=_FakeAGNI(), Dict=dict, Char=str)
+    (tmp_path / 'out' / 'data').mkdir(parents=True)
+    (tmp_path / 'out' / 'data' / '100.sflux').write_text('sflux', encoding='utf-8')
+    dirs = {'output': str(tmp_path / 'out'), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
+    config = _build_greygas_config()
+    config.atmos_clim.agni.spectral_file = None
+    config.atmos_clim.spectral_group, config.atmos_clim.spectral_bands = 'Dayspring', '48'
+    hf_row = {'P_surf': 1.0, 'T_surf': 900.0, 'gravity': 9.8, 'R_int': 6.4e6}
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    with pytest.raises(FileNotFoundError, match='`proteus get spectral`.*`fwl-io relocate`'):
+        init_agni_atmos(dirs, config, hf_row)
+    assert (tmp_path / 'out' / 'status').read_text().splitlines()[0] == '20'
+
+
+@pytest.mark.unit
 def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
     """Regression: in grey-gas mode, init_agni_atmos must not require any
     *.sflux file to exist. Before this fix, an unconditional

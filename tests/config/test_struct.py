@@ -328,6 +328,7 @@ def test_two_mgsio3_sources_are_rejected_at_load(mantle, rejected):
         ('PALEOS:MgSiO3:0.5:0.5', True),
         ('PALEOS:MgSiO3: 0.9', True),
         ('PALEOS:nan', True),
+        ('PALEOS:MgSiO3:nan', True),
         ('0.5:MgSiO3', True),
         ('PALEOS:MgSiO3:0.9+', True),
         ('PALEOS:MgSiO3:0.9++PALEOS:H2O:0.1', True),

@@ -265,11 +265,12 @@ def test_get_phoenix_modern_spectrum_offline_missing_raw_raises(tmp_path, monkey
     from proteus.star.phoenix import get_phoenix_modern_spectrum
 
     monkeypatch.setattr(phoenix_mod, 'GetFWLData', lambda: tmp_path)
-    handler = _make_handler(tmp_path=tmp_path, offline=True, Teff=5800.0, logg=4.5, radius=1.0)
+    handler = _make_handler(
+        tmp_path=tmp_path, offline=True, Teff=5800.0, logg=4.5, radius=1.0, FeH=-1.0, alpha=0.4
+    )
 
     with pytest.raises(
-        FileNotFoundError,
-        match=r'`proteus get phoenix --feh [+-]\d\.\d --alpha [+-]\d\.\d`.*relocate',
+        FileNotFoundError, match=r'`proteus get phoenix --feh -1\.0 --alpha \+0\.4`.*relocate'
     ):
         get_phoenix_modern_spectrum(handler, stellar_track=None)
     assert (tmp_path / 'out' / 'status').read_text().splitlines()[0] == '23'
@@ -451,7 +452,7 @@ def test_init_star_source_muscles_falls_back_to_solar_with_warning(
         ('muscles', '', 'proteus get muscles --star <name>'),
     ],
 )
-def test_init_star_source_none_missing_both_raises(
+def test_init_star_missing_spectrum_names_its_catalogue_command(
     tmp_path, monkeypatch, caplog, source, star, command
 ):
     """With neither solar nor MUSCLES on disk, ``init_star`` raises FileNotFoundError
@@ -465,7 +466,9 @@ def test_init_star_source_none_missing_both_raises(
 
     with pytest.raises(FileNotFoundError, match=f'with `{command}`. .*`fwl-io relocate`'):
         init_star(handler)
-    assert all(command in s for s in caplog.messages if 'muscles --star' in s)
+    # The error is logged before the stop, and no log line names another --star.
+    assert any(r.levelname == 'ERROR' for r in caplog.records)
+    assert not [s for s in caplog.messages if 'muscles --star' in s and command not in s]
 
     # Discrimination: the raise must fire BEFORE any backup spectrum is
     # written. A regression that silently produced a zero-flux fallback

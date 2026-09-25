@@ -2945,8 +2945,11 @@ def test_energetics_need_a_mantle_eos_with_energetics_tables(energetics, mantle,
             energetics_needs_a_thermal_mantle_eos(instance, None, value)
     else:
         assert energetics_needs_a_thermal_mantle_eos(instance, None, value) is None
-    # A structure without a Zalmoxis section has no mantle EOS to check.
-    struct.zalmoxis = None
+    # Another structure module does not read the Zalmoxis mantle EOS, and a structure
+    # without a Zalmoxis section has none to check.
+    struct.module = 'spider'
+    assert energetics_needs_a_thermal_mantle_eos(instance, None, value) is None
+    struct.module, struct.zalmoxis = 'zalmoxis', None
     assert energetics_needs_a_thermal_mantle_eos(instance, None, value) is None
 
 

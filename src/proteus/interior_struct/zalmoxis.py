@@ -1994,8 +1994,9 @@ def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict, required: bool
     mat_dicts : dict
         Zalmoxis material dictionaries.
     required : bool
-        Raise instead of returning None for a missing table; callers set it for a
-        run with a generated PALEOS table set, which requires the pair.
+        Raise instead of returning None for a missing table. The initial-condition
+        solves that read the pair always set it, the surface-entropy lookup sets it
+        for a generated PALEOS table set, and the P-S export leaves it off.
 
     Returns
     -------

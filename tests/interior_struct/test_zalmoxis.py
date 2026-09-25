@@ -1205,7 +1205,8 @@ def test_resolve_2phase_paths_stops_on_a_missing_table_when_required(tmp_path, m
 
 
 def test_resolve_2phase_paths_required_returns_a_full_pair_and_names_two_missing(tmp_path):
-    """A required pair on disk returns both paths; with both tables absent both are named."""
+    """A required pair on disk returns both paths; with both tables absent both are named,
+    with the download command and the relocate hint."""
     from proteus.interior_struct import zalmoxis as zmod
 
     registry = _paleos_registry(tmp_path)
@@ -1214,7 +1215,8 @@ def test_resolve_2phase_paths_required_returns_a_full_pair_and_names_two_missing
     for name in ('solid', 'liquid'):
         (tmp_path / f'{name}.dat').unlink()
     with pytest.raises(
-        zmod.ZalmoxisMissingEOSFilesError, match=r'not available: solid, liquid\.'
+        zmod.ZalmoxisMissingEOSFilesError,
+        match=r'not available: solid, liquid\. Download them with .*`fwl-io relocate`',
     ):
         zmod.resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', registry, required=True)
 

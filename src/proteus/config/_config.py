@@ -251,15 +251,14 @@ def energetics_needs_a_thermal_mantle_eos(instance, attribute, value):
     from proteus.utils.helper import energetics_eos_key
 
     struct = instance.interior_struct
-    if value.module not in ('spider', 'aragog') or struct.module != 'zalmoxis':
+    zc = struct.zalmoxis if struct.module == 'zalmoxis' else None
+    if value.module not in ('spider', 'aragog') or zc is None:
         return
-    if struct.zalmoxis is None:
-        return
-    key = energetics_eos_key(struct.zalmoxis.mantle_eos)
+    key = energetics_eos_key(zc.mantle_eos)
     if not (key or '').startswith(PALEOS_EOS_PREFIXES + TDEP_EOS_PREFIXES):
         raise ValueError(
             f"interior_energetics.module = '{value.module}' with mantle_eos="
-            f"'{struct.zalmoxis.mantle_eos}' has no energetics tables (energetics key: {key}). "
+            f"'{zc.mantle_eos}' has no energetics tables (energetics key: {key}). "
             'Use a PALEOS, WolfBower2018 or RTPress100TPa mantle EOS, or an MgSiO3 component '
             'of one of them in a mixture.'
         )
