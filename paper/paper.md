@@ -69,6 +69,12 @@ authors:
   - name: Leoni Janssen
     orcid: 0009-0002-9902-731X
     affiliation: 11
+  - name: Anna Grace Ulses
+    orcid: 0000-0002-9031-0824
+    affiliation: 12
+  - name: Tadahiro Kimura
+    orcid: 0000-0001-8477-2523
+    affiliation: 13
   - name: Mark Hammond
     orcid: 0000-0002-6893-522X
     affiliation: 2
@@ -111,6 +117,10 @@ affiliations:
    index: 10
  - name: Leiden Observatory, Leiden University, Leiden, The Netherlands
    index: 11
+ - name: University of Washington, Seattle, WA, USA
+   index: 12
+ - name: UTokyo Organization for Planetary and Space Science, University of Tokyo, Tokyo, Japan
+   index: 13
 
 date: 25 September 2026
 bibliography: paper.bib
