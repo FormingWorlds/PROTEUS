@@ -1923,8 +1923,8 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
     Requires every table file of the core, mantle and ice-layer EOS and,
     for a mantle with a PALEOS component, the MgSiO3 2-phase pair. A resumed
     run that keeps its P-S tables is held only to its layer tables. A PALEOS
-    H2O or iron mantle gets one WARNING: its energetics use the MgSiO3
-    melting curves and P-S tables.
+    H2O or iron mantle gets one WARNING when its energetics or its
+    liquidus_super initial adiabat use MgSiO3 tables.
 
     Parameters
     ----------
@@ -1947,17 +1947,23 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
         outdir, lambda: _ps_resume_key(config, mat_dicts.get(zc.mantle_eos), mat_dicts)
     )
     check_zalmoxis_eos_files(layers, mat_dicts, paleos_companions=not kept)
-    if (
-        config.interior_energetics.module in ('spider', 'aragog')
-        and zc.mantle_eos in PALEOS_REGISTRY_KEYS
-        and zc.mantle_eos.endswith((':H2O', ':iron'))
+    if zc.mantle_eos not in PALEOS_REGISTRY_KEYS or not zc.mantle_eos.endswith(
+        (':H2O', ':iron')
     ):
+        return
+    uses = []
+    if config.interior_energetics.module in ('spider', 'aragog'):
+        uses.append(
+            'the energetics use the MgSiO3 melting curves (PALEOS liquidus, '
+            f'solidus = {zc.mushy_zone_factor:.2f} x liquidus) and MgSiO3 P-S tables'
+        )
+    if config.planet.temperature_mode == 'liquidus_super':
+        uses.append('the liquidus_super initial adiabat is solved on the MgSiO3 2-phase tables')
+    if uses:
         log.warning(
-            'mantle_eos=%s: the structure uses its density, while the energetics use the '
-            'MgSiO3 melting curves (PALEOS liquidus, solidus = %.2f x liquidus) and '
-            'MgSiO3 P-S tables',
+            'mantle_eos=%s: the structure uses its density, while %s',
             zc.mantle_eos,
-            zc.mushy_zone_factor,
+            '; '.join(uses),
         )
 
 

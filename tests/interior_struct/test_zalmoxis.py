@@ -820,6 +820,7 @@ def _require_config(mantle_eos, *, resume=False, ice=None):
     zc.core_eos, zc.mantle_eos, zc.ice_layer_eos = 'PALEOS:iron', mantle_eos, ice
     zc.mushy_zone_factor = 0.8
     config.interior_energetics.module = 'aragog'
+    config.planet.temperature_mode = 'adiabatic'
     config.params.resume = resume
     config.params.offline = True
     return config
@@ -988,13 +989,17 @@ def test_require_paleos_tables_warns_once_for_a_water_or_iron_mantle(
     if warned:
         assert f'mantle_eos={mantle}' in messages[0]
         assert 'solidus = 0.80 x liquidus' in messages[0]
-    # Energetics without P-S tables build none, so no warning.
-    caplog.clear()
-    config = _require_config(mantle)
-    config.interior_energetics.module = 'dummy'
-    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
-        zmod.require_paleos_tables(config, str(tmp_path))
-    assert 'MgSiO3 melting curves' not in caplog.text
+    # Energetics without P-S tables build none, so no warning, unless the
+    # liquidus_super initial adiabat is solved on the MgSiO3 pair.
+    for mode, adiabat_warned in (('adiabatic', False), ('liquidus_super', warned)):
+        caplog.clear()
+        config = _require_config(mantle)
+        config.interior_energetics.module = 'dummy'
+        config.planet.temperature_mode = mode
+        with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+            zmod.require_paleos_tables(config, str(tmp_path))
+        assert 'MgSiO3 melting curves' not in caplog.text
+        assert ('initial adiabat is solved on the MgSiO3' in caplog.text) is adiabat_warned
 
 
 def test_generate_spider_tables_stops_on_a_missing_pair_table(tmp_path, monkeypatch):

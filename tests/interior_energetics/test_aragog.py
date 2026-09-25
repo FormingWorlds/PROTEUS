@@ -1629,11 +1629,11 @@ def test_setup_solver_property_tables_follow_the_generated_set(
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('kept', [False, True])
-def test_setup_solver_stops_without_the_paleos_pair(tmp_path, kept):
-    """A PALEOS mantle whose 2-phase liquid table is absent stops at setup and names
-    it, instead of building its property tables from the unified table; a run that
-    already has its own Aragog tables keeps them."""
+@pytest.mark.parametrize('kept, liquid_path', [(False, True), (True, True), (False, False)])
+def test_setup_solver_stops_without_the_paleos_pair(tmp_path, kept, liquid_path):
+    """A PALEOS mantle whose 2-phase liquid table is absent, or has no registry path,
+    stops at setup and names it, instead of building its property tables from the
+    unified table; a run that already has its own Aragog tables keeps them."""
     from proteus.interior_energetics.aragog import AragogRunner
     from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
 
@@ -1654,7 +1654,7 @@ def test_setup_solver_stops_without_the_paleos_pair(tmp_path, kept):
         'PALEOS:MgSiO3': {'format': 'paleos_unified', 'eos_file': str(unified)},
         'PALEOS-2phase:MgSiO3': {
             'solid_mantle': {'eos_file': str(solid)},
-            'melted_mantle': {'eos_file': str(liquid)},
+            'melted_mantle': {'eos_file': str(liquid)} if liquid_path else {},
         },
     }
     hf_row = {
@@ -1694,7 +1694,9 @@ def test_setup_solver_stops_without_the_paleos_pair(tmp_path, kept):
         dirs = {Path(c.kwargs['density']).parent for c in mock_phase.call_args_list}
         assert dirs == {pt_dir}
     else:
-        assert str(liquid) in str(excinfo.value)
+        # A registry entry without a path names the phase instead of a file.
+        missing = str(liquid) if liquid_path else 'liquid table (no registry path)'
+        assert missing in str(excinfo.value)
         assert str(solid) not in str(excinfo.value)
         assert 'solid table' not in str(excinfo.value)
         assert 'proteus get interiordata' in str(excinfo.value)

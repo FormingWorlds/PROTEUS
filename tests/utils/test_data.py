@@ -3382,6 +3382,35 @@ def test_download_zalmoxis_eos_one_failed_file_does_not_stop_the_rest(
 @pytest.mark.unit
 @patch('proteus.data.fetch_dataset_file')
 @patch('proteus.data.fetch_dataset')
+def test_download_zalmoxis_eos_seager_failure_does_not_stop_the_pair(
+    mock_fetch, mock_file, caplog
+):
+    """A 2-phase mantle whose Seager fallback set cannot be fetched still gets its pair
+    and core table attempted, then the Seager error is raised."""
+    from fwl_io import DownloadError
+
+    from proteus.data import EOS_PALEOS_IRON, EOS_PALEOS_MGSIO3
+    from proteus.utils.data import download_zalmoxis_eos
+
+    with (
+        patch(
+            'proteus.utils.data.download_eos_static',
+            side_effect=DownloadError('seager mirror down'),
+        ),
+        caplog.at_level('WARNING'),
+        pytest.raises(DownloadError, match='seager mirror down'),
+    ):
+        download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='PALEOS:iron')
+
+    assert sorted(_fetched_files(mock_file)) == sorted(
+        [(EOS_PALEOS_IRON, _UNIFIED_IRON), *((EOS_PALEOS_MGSIO3, name) for name in _PAIR)]
+    )
+    assert 'Could not fetch the Seager 2007 tables' in caplog.text
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_water_mantle_fetches_the_mgsio3_pair(
     mock_static, mock_fetch, mock_file

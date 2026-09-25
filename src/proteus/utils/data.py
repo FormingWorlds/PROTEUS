@@ -2048,14 +2048,17 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
 
     failed = []
 
+    def attempt(what, func, *args, **kwargs):
+        # One unreachable dataset does not stop the others; the first failure is raised at the end.
+        try:
+            func(*args, **kwargs)
+        except _fetch_errors() as exc:
+            log.warning('Could not fetch %s: %s', what, exc)
+            failed.append(exc)
+
     def fetch_files(key, names):
-        # One unreachable file does not stop the others; the first failure is raised at the end.
         for name in names:
-            try:
-                fetch_dataset_file(key, name, data_root=FWL_DATA_DIR)
-            except _fetch_errors() as exc:
-                log.warning('Could not fetch %s from %s: %s', name, key, exc)
-                failed.append(exc)
+            attempt(f'{name} from {key}', fetch_dataset_file, key, name, data_root=FWL_DATA_DIR)
 
     all_eos = [e for e in (mantle_eos, core_eos, ice_layer_eos) if e]
 
@@ -2077,7 +2080,7 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
         or any(c.startswith(SEAGER_FALLBACK_FAMILIES) for c in components)
         or not core_eos
     ):
-        download_eos_static()
+        attempt('the Seager 2007 tables', download_eos_static)
 
     # A PALEOS mantle also reads the MgSiO3 2-phase pair.
     components.update(paleos_companion_keys(mantle_eos))
@@ -2115,7 +2118,9 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
 
     # Chabrier H/He
     if any(c.startswith('Chabrier') for c in components):
-        fetch_dataset(EOS_CHABRIER_2021, data_root=FWL_DATA_DIR)
+        attempt(
+            'the Chabrier 2021 tables', fetch_dataset, EOS_CHABRIER_2021, data_root=FWL_DATA_DIR
+        )
 
     # Defensive warn for any component key that no handler above recognised.
     # PALEOS-API:* and PALEOS-API-2phase:* are intentionally not downloaded
