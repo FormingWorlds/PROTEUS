@@ -1932,7 +1932,9 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
     if config.interior_energetics.module in ('spider', 'aragog'):
         key = energetics_eos_key(zc.mantle_eos)
         if not generates_paleos_tables(config.interior_struct):
-            uses.append(f'the energetics and melting curves follow {key} and melting_dir')
+            uses.append(
+                f'the energetics and melting curves follow {key or zc.mantle_eos} and melting_dir'
+            )
         elif mixture:
             uses.append(
                 f'the energetics and melting curves are PALEOS MgSiO3 ({key}, solidus = '

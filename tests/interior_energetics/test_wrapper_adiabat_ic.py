@@ -1546,3 +1546,24 @@ def test_builder_raises_an_anchor_failure_nothing_re_solves(energetics, caplog):
             with pytest.raises(InitialConditionError, match='no valid molten adiabat'):
                 _build_superliquidus_adiabat_tp(config, {'P_cmb': 1.3e12}, P_cmb_target=1.4e12)
     assert not [r for r in caplog.records if 'no P-T anchor' in r.getMessage()]
+
+
+def test_adiabat_tp_passes_a_missing_table_stop_through():
+    """A missing-table stop in the anchor stops the run instead of the linear-guess
+    fallback that other construction failures take."""
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',
+            side_effect=ZalmoxisMissingEOSFilesError('pair not available'),
+        ),
+        pytest.raises(ZalmoxisMissingEOSFilesError, match='pair not available'),
+    ):
+        _build_superliquidus_adiabat_tp(_config(), {}, P_cmb_target=1.4e12)
+    # Discrimination: another RuntimeError still falls back to the linear guess.
+    with patch(
+        'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',
+        side_effect=RuntimeError('numerical'),
+    ):
+        assert _build_superliquidus_adiabat_tp(_config(), {}, P_cmb_target=1.4e12) is None

@@ -1130,7 +1130,12 @@ def test_a_paleos_mixture_gets_the_ps_key_of_its_mgsio3_set(tmp_path, mixture, s
 
 
 @pytest.mark.parametrize(
-    'mantle', ['WolfBower2018:MgSiO3', 'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1']
+    'mantle',
+    [
+        'WolfBower2018:MgSiO3',
+        'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1',
+        'RTPress100TPa:MgSiO3:0.9+PALEOS:H2O:0.1',
+    ],
 )
 def test_generate_spider_tables_builds_no_set_for_a_wolf_bower_mantle(
     tmp_path, monkeypatch, mantle
@@ -1142,12 +1147,8 @@ def test_generate_spider_tables_builds_no_set_for_a_wolf_bower_mantle(
     solid, melt = tmp_path / 'wb_solid.dat', tmp_path / 'wb_melt.dat'
     solid.write_text('stub')
     melt.write_text('stub')
-    registry = {
-        'WolfBower2018:MgSiO3': {
-            'melted_mantle': {'eos_file': str(melt)},
-            'solid_mantle': {'eos_file': str(solid)},
-        }
-    }
+    entry = {'melted_mantle': {'eos_file': str(melt)}, 'solid_mantle': {'eos_file': str(solid)}}
+    registry = {'WolfBower2018:MgSiO3': entry, 'RTPress100TPa:MgSiO3': entry}
     monkeypatch.setattr(zmod, 'load_zalmoxis_material_dictionaries', lambda: registry)
     monkeypatch.setattr(
         zmod, 'check_zalmoxis_eos_files', lambda *a, **k: pytest.fail('checked tables')
@@ -1157,17 +1158,18 @@ def test_generate_spider_tables_builds_no_set_for_a_wolf_bower_mantle(
     assert zmod.generate_spider_tables(config, str(tmp_path)) is None
 
 
-def test_resolve_2phase_paths_stops_on_a_missing_table_when_required(tmp_path):
+@pytest.mark.parametrize('missing, other', [('liquid', 'solid'), ('solid', 'liquid')])
+def test_resolve_2phase_paths_stops_on_a_missing_table_when_required(tmp_path, missing, other):
     """A required pair with a missing table raises and names the table; otherwise the
     missing table is None."""
     from proteus.interior_struct import zalmoxis as zmod
 
-    registry = _paleos_registry(tmp_path, 'liquid')
-    assert zmod.resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', registry) == (
-        str(tmp_path / 'solid.dat'),
-        None,
+    registry = _paleos_registry(tmp_path, missing)
+    paths = dict(
+        zip(('solid', 'liquid'), zmod.resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', registry))
     )
-    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='not available: liquid'):
+    assert paths == {missing: None, other: str(tmp_path / f'{other}.dat')}
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match=rf'not available: {missing}\.'):
         zmod.resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', registry, required=True)
 
 
@@ -1182,7 +1184,6 @@ def test_superliquidus_anchor_passes_a_missing_table_stop_through(monkeypatch):
     monkeypatch.setattr(zmod, '_solve_superliquidus_adiabat', _missing)
     monkeypatch.setattr(zmod, '_SUPERLIQ_FAILED', {})
     config = _require_config('PALEOS:MgSiO3')
-    config.planet.mass_tot = 1.0
     with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='pair not available'):
         zmod.solve_superliquidus_adiabat(config, {'P_cmb': 1.2e11})
 

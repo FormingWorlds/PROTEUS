@@ -139,7 +139,11 @@ def twophase_registry_key(mantle_eos: str) -> str:
         A PALEOS MgSiO3 component, when present, alone sets the family.
     """
     components = eos_components(mantle_eos)
-    mgsio3 = [c for c in components if c.startswith(PALEOS_EOS_PREFIXES) and ':MgSiO3' in c]
+    mgsio3 = [
+        c
+        for c in components
+        if c.startswith(PALEOS_EOS_PREFIXES) and c.partition(':')[2].startswith('MgSiO3')
+    ]
     components = mgsio3 or components
     if any(c.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')) for c in components):
         return 'PALEOS-API-2phase:MgSiO3'
