@@ -4956,7 +4956,7 @@
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Melting curve folder name in FWL_DATA, for the SPIDER structure module.",
+      "description": "Melting curve name in FWL_DATA. Required for the SPIDER structure module and for any run without a PALEOS table set; not read with module = 'zalmoxis' and a single PALEOS mantle EOS.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -7720,7 +7720,7 @@
       "default": "\"greybody\"",
       "choices": null,
       "bounds": null,
-      "description": "Surface scattering material file. Set to 'greybody' to use surf_greyalbedo.",
+      "description": "Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.",
       "doc_source": "attributes",
       "group_order": 1,
       "group_position": 0,
@@ -10115,6 +10115,17 @@
       "doc": "Reject enabling this option when the dummy atmos_clim module is selected."
     },
     {
+      "validator": "aragog_needs_melting_curves",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct.melting_dir"
+      ],
+      "doc": "Require ``interior_struct.melting_dir`` for Aragog without a PALEOS table set."
+    },
+    {
       "validator": "boreas_requires_atmosphere",
       "module": "_config.py",
       "attached_to": [
@@ -10150,6 +10161,17 @@
         "outgas.module"
       ],
       "doc": "Check that required external packages are importable for the selected modules."
+    },
+    {
+      "validator": "energetics_needs_a_thermal_mantle_eos",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct"
+      ],
+      "doc": "Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog."
     },
     {
       "validator": "instmethod_dummy",

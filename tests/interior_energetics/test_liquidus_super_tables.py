@@ -819,6 +819,61 @@ def test_zalmoxis_anchor_clamp_caps_the_ic_entropy(
     assert f'{superheat:.0f} K above the P-S table liquidus' in msgs[0]
 
 
+@pytest.mark.physics_invariant
+def test_wolf_bower_mixture_ic_is_solved_without_the_anchor_cap(fake_tables, monkeypatch):
+    """A mixture whose MgSiO3 component is Wolf and Bower gets no generated table set,
+    so the IC is solved on the melting_dir tables without the PALEOS P-T anchor or its
+    entropy cap; a PALEOS mixture keeps both, like a single PALEOS mantle.
+    """
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    calls = []
+
+    def _anchor(config, hf_row):
+        calls.append(config.interior_struct.zalmoxis.mantle_eos)
+        return _anchor_result(2300.0)
+
+    monkeypatch.setattr(common, '_ANCHOR_CAP_WARNED', set())
+    monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _anchor)
+    cfg = _config(500.0, module='zalmoxis')
+    cfg.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1'
+    assert _S_expected(500.0) > 2300.0  # the cap would bind
+
+    S_mix = compute_initial_entropy(cfg, {'P_cmb': P_CMB}, 3300.0, fake_tables)
+    assert S_mix == pytest.approx(_S_expected(500.0), rel=1e-6)
+    assert calls == []
+
+    # Discrimination: a single PALEOS mantle and a PALEOS mixture keep the anchor and its cap.
+    for mantle in ('PALEOS-2phase:MgSiO3', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1'):
+        cfg.interior_struct.zalmoxis.mantle_eos = mantle
+        S_paleos = compute_initial_entropy(cfg, {'P_cmb': P_CMB}, 3300.0, fake_tables)
+        assert S_paleos == pytest.approx(2300.0, rel=1e-12)
+    assert calls == ['PALEOS-2phase:MgSiO3', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1']
+
+
+@pytest.mark.parametrize(
+    ('mantle_eos', 'energetics', 'deferred'),
+    [
+        ('PALEOS-2phase:MgSiO3', 'aragog', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'aragog', True),
+        ('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', 'aragog', False),
+        ('WolfBower2018:MgSiO3', 'spider', False),
+        ('PALEOS:MgSiO3:1.0', 'aragog', True),
+    ],
+)
+def test_anchor_failure_is_deferred_only_where_the_ic_resolves_it(
+    mantle_eos, energetics, deferred
+):
+    """A failed structure anchor waits for the IC only when the IC re-solves it."""
+    zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
+    cfg = _config(500.0, module='zalmoxis')
+    cfg.interior_struct.zalmoxis.mantle_eos = mantle_eos
+    cfg.interior_energetics.module = energetics
+    assert zal._anchor_failure_deferred(cfg) is deferred
+    # Energetics without an IC anchor re-solve never defer.
+    cfg.interior_energetics.module = 'dummy'
+    assert zal._anchor_failure_deferred(cfg) is False
+
+
 @pytest.mark.parametrize(
     'anchor',
     [
@@ -1109,7 +1164,8 @@ def test_full_config_with_no_structure_module_is_rejected(energetics):
     root = pathlib.Path(__file__).resolve().parents[2]
     cfg = read_config_object(root / 'input' / 'dummy.toml')
     planet = attrs.evolve(cfg.planet, temperature_mode='liquidus_super')
-    struct = attrs.evolve(cfg.interior_struct, module=None)
+    curves = attrs.evolve(cfg.interior_struct, melting_dir='Monteux-600')
+    struct = attrs.evolve(curves, module=None)
     energ = attrs.evolve(cfg.interior_energetics, module=energetics)
 
     with pytest.raises(ValueError) as exc:
@@ -1117,7 +1173,7 @@ def test_full_config_with_no_structure_module_is_rejected(energetics):
     assert 'temperature_mode' in str(exc.value)
     assert 'interior_struct.module' in str(exc.value)
     # Discrimination: the same Config builds once a structure module is set.
-    ok = attrs.evolve(cfg, planet=planet, interior_energetics=energ)
+    ok = attrs.evolve(cfg, planet=planet, interior_struct=curves, interior_energetics=energ)
     assert ok.interior_struct.module == cfg.interior_struct.module
 
 

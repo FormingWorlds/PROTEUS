@@ -1,10 +1,12 @@
 """Datasets PROTEUS fetches through fwl-io.
 
-The datasets PROTEUS owns are declared in ``proteus_manifest.toml`` beside this
-module, one table per dataset, with a committed registry of file checksums next
-to it. fwl-io derives each dataset's location from its manifest key and places
-it in a version directory named for the pinned Zenodo record, so a dataset lands
-in ``<FWL_DATA>/<key-as-path>/r<record-id>`` and the pin, the location, and the
+Data only PROTEUS reads is declared in ``proteus_manifest.toml`` beside this
+module; data several models read (spectral files, stellar spectra, equations of
+state, melting curves) is declared in the shared manifest fwl-io ships. Each
+dataset has a committed registry of file checksums next to its manifest. fwl-io
+derives each dataset's location from its manifest key and places it in a version
+directory named for the pinned Zenodo record, so a dataset lands in
+``<FWL_DATA>/<key-as-path>/r<record-id>`` and the pin, the location, and the
 checksums have a single source of truth.
 
 Readers resolve a dataset directory through :func:`dataset_dir` rather than
@@ -18,17 +20,57 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-# Manifest keys of the datasets declared beside this module. Readers refer to
-# these constants rather than repeating the dotted strings, so a key rename is a
-# single edit here and in the manifest.
+# Manifest keys of the datasets PROTEUS reads. Readers refer to these constants
+# rather than repeating the dotted strings, so a key rename is a single edit here.
+# Declared in proteus_manifest.toml:
 EXOPLANET_REFERENCE = 'observe.exoplanet_reference'
 MASS_RADIUS_ZENG_2019 = 'observe.mass_radius.zeng_2019'
+SURFACE_ALBEDOS_HAMMOND_2024 = 'atmos_clim.surface_albedos.hammond_2024'
+EOS_SEAGER_2007 = 'interior_struct.eos.seager_2007'
+# Declared in the fwl-io shared manifest:
+EOS_WOLF_BOWER_2018 = 'interior.eos.wolf_bower_2018_1tpa'
+EOS_RTPRESS_100TPA = 'interior.eos.rtpress_melt_100tpa'
+EOS_PALEOS_MGSIO3 = 'interior.eos.paleos_mgsio3'
+EOS_PALEOS_IRON = 'interior.eos.paleos_iron'
+EOS_PALEOS_MGSIO3_UNIFIED = 'interior.eos.paleos_mgsio3_unified'
+EOS_PALEOS_H2O = 'interior.eos.paleos_h2o'
+EOS_CHABRIER_2021 = 'interior.eos.chabrier_2021_hhe'
+LOOKUP_WOLF_BOWER_2018_1TPA = 'interior.eos.dk09_1tpa_elec_free.mgsio3_wolf_bower_2018_1tpa'
+MELTING_MONTEUX_PLUS600 = 'interior.melting_curves.monteux_plus_600'
+MELTING_MONTEUX_MINUS600 = 'interior.melting_curves.monteux_minus_600'
+MELTING_WOLF_BOWER_2018 = 'interior.melting_curves.wolf_bower_2018'
+STELLAR_SPECTRA_SOLAR = 'star.spectra.solar'
+STELLAR_SPECTRA_NAMED = 'star.spectra.named'
+STELLAR_SPECTRA_MUSCLES = 'star.spectra.muscles'
+STELLAR_SPECTRA_PHOENIX = 'star.spectra.phoenix'
+
+
+def spectral_file_key(group: str, bands: str | int) -> str:
+    """Return the manifest key of one spectral-file dataset.
+
+    Parameters
+    ----------
+    group : str
+        Spectral file group, e.g. ``Dayspring``.
+    bands : str or int
+        Number of bands, e.g. ``256``.
+
+    Returns
+    -------
+    str
+        Dotted key in the fwl-io shared manifest, e.g.
+        ``atmos_clim.spectral_files.dayspring.256``. The key is not checked
+        against the manifest; an unknown pair raises ``KeyError`` when the
+        dataset is resolved.
+    """
+    return f'atmos_clim.spectral_files.{str(group).lower()}.{bands}'
+
 
 # The oldest fwl-io that reads this manifest schema. An older fwl-io reads the
 # manifest as malformed rather than as a version mismatch, so the load names
 # which side is out of date. The fwl-io requirement in pyproject.toml must be at
 # least this version; the test suite enforces the relation.
-FWL_IO_FLOOR = '26.7.25'
+FWL_IO_FLOOR = '26.9.23'
 
 
 def manifest_path() -> Path:
@@ -86,7 +128,7 @@ def _data_root() -> Path:
 
 
 def _dataset(key: str):
-    """Return one dataset declared in the shipped manifest.
+    """Return one dataset declared in the PROTEUS manifest or the fwl-io shared one.
 
     Parameters
     ----------
@@ -103,7 +145,7 @@ def _dataset(key: str):
     RuntimeError
         The installed fwl-io predates the manifest schema PROTEUS ships.
     KeyError
-        The key is absent from the manifest.
+        The key is absent from both manifests.
     """
     from fwl_io import load_manifest
 
@@ -116,7 +158,36 @@ def _dataset(key: str):
             f'fwl-io could not read the manifest PROTEUS ships ({exc}); the installed '
             f'fwl-io predates the manifest schema: upgrade to fwl-io>={FWL_IO_FLOOR}.'
         ) from exc
-    return datasets[key]
+    if key in datasets:
+        return datasets[key]
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        from fwl_io.manifest import shared_manifest_path
+    except ImportError as exc:
+        raise RuntimeError(
+            f'the installed fwl-io ships no shared manifest; upgrade to fwl-io>={FWL_IO_FLOOR}.'
+        ) from exc
+    try:
+        shared = {ds.key: ds for ds in load_manifest(shared_manifest_path())}
+    except ValueError as exc:
+        if _fwl_io_derives_the_location():
+            raise
+        raise RuntimeError(
+            f'fwl-io could not read its shared manifest ({exc}); the installed fwl-io '
+            f'predates the manifest schema: upgrade to fwl-io>={FWL_IO_FLOOR}.'
+        ) from exc
+    if key not in shared:
+        try:
+            installed = version('fwl-io')
+        except PackageNotFoundError:
+            installed = 'unknown'
+        raise KeyError(
+            f'{key!r} is declared neither in the PROTEUS manifest nor in the fwl-io '
+            f'shared manifest (installed fwl-io {installed}; PROTEUS reads the '
+            f'shared keys of fwl-io>={FWL_IO_FLOOR})'
+        )
+    return shared[key]
 
 
 def _fetcher(key: str, data_root: str | Path | None = None):
@@ -204,3 +275,34 @@ def fetch_dataset(key: str, data_root: str | Path | None = None) -> list[Path]:
         The verified files of the dataset.
     """
     return _fetcher(key, data_root=data_root).fetch_all()
+
+
+def fetch_dataset_file(key: str, name: str, data_root: str | Path | None = None) -> Path:
+    """Fetch one file of a declared dataset, verifying it against the registry.
+
+    Datasets that hold many independent files (one observed spectrum per star)
+    can be fetched file by file so a reader downloads only what it needs. The
+    fetch is idempotent: a file already present with a matching checksum is left
+    alone.
+
+    Parameters
+    ----------
+    key : str
+        Dotted manifest key of the dataset.
+    name : str
+        File name as listed in the dataset registry.
+    data_root : str or Path, optional
+        Reference-data tree to fetch into. Defaults to the tree PROTEUS resolves
+        from the environment.
+
+    Returns
+    -------
+    Path
+        The verified file.
+
+    Raises
+    ------
+    KeyError
+        ``name`` is not in the dataset registry.
+    """
+    return _fetcher(key, data_root=data_root).fetch(name)

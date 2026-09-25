@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import sys
 import types
+from pathlib import Path
 from unittest.mock import MagicMock, create_autospec, patch
 
 import numpy as np
@@ -77,6 +78,20 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     return config
 
 
+# Entropy EOS stand-in whose P-S tables reach past any P_cmb in these tests.
+_EOS = MagicMock(P_max=1.0e13)
+
+
+def _seed_lookup_tables(root):
+    """Create the versioned Wolf and Bower lookup dataset directory under ``root``."""
+    from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
+
+    folder = dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=root)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / 'heat_capacity_melt.dat').write_text('dummy')
+    return folder
+
+
 @pytest.mark.unit
 def test_setup_solver_zalmoxis_inner_radius(tmp_path):
     """setup_solver reads R_core from hf_row when struct.module='zalmoxis'."""
@@ -101,11 +116,7 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
     interior_o._spider_eos_dir = str(spider_eos_dir)
 
     # Create EOS dir
-    eos_dir = (
-        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
-    )
-    eos_dir.mkdir(parents=True)
-    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    _seed_lookup_tables(tmp_path)
     mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves'
     mc_dir.mkdir(parents=True)
 
@@ -113,7 +124,7 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.Parameters') as mock_params,
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
@@ -134,12 +145,17 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
 
 
 @pytest.mark.unit
-def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
-    """setup_solver uses Zalmoxis T-profile for WolfBower2018 EOS (initial_condition=2)."""
+@pytest.mark.parametrize(
+    'mantle_eos', ['WolfBower2018:MgSiO3', 'PALEOS:H2O:0.1+WolfBower2018:MgSiO3:0.9']
+)
+def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path, mantle_eos):
+    """setup_solver uses the Zalmoxis T-profile (initial_condition=2) for a WolfBower2018
+    MgSiO3 component, also when a mixture lists another component first."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = str(tmp_path)
-    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos='WolfBower2018:MgSiO3')
+    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos=mantle_eos)
+    config.interior_struct.melting_dir = 'Monteux-600'
 
     hf_row = {
         'R_int': 6.371e6,
@@ -154,11 +170,7 @@ def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
     spider_eos_dir.mkdir(parents=True)
     interior_o._spider_eos_dir = str(spider_eos_dir)
 
-    eos_dir = (
-        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
-    )
-    eos_dir.mkdir(parents=True)
-    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    _seed_lookup_tables(tmp_path)
     mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves'
     mc_dir.mkdir(parents=True)
 
@@ -170,7 +182,7 @@ def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
         patch('proteus.interior_energetics.aragog._InitialConditionParameters') as mock_ic,
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
@@ -184,7 +196,7 @@ def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
 
 @pytest.mark.unit
 def test_setup_solver_eos_fallback(tmp_path):
-    """setup_solver falls back to legacy EOS path when unified path is missing."""
+    """setup_solver reads the lookup tables from the versioned dataset directory."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = str(tmp_path)
@@ -203,15 +215,7 @@ def test_setup_solver_eos_fallback(tmp_path):
     spider_eos_dir.mkdir(parents=True)
     interior_o._spider_eos_dir = str(spider_eos_dir)
 
-    # Only create legacy path, NOT unified path
-    legacy_dir = (
-        tmp_path
-        / 'interior_lookup_tables'
-        / '1TPa-dK09-elec-free'
-        / 'MgSiO3_Wolf_Bower_2018_1TPa'
-    )
-    legacy_dir.mkdir(parents=True)
-    (legacy_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    _seed_lookup_tables(tmp_path)
     mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves'
     mc_dir.mkdir(parents=True)
 
@@ -219,15 +223,12 @@ def test_setup_solver_eos_fallback(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
     assert mock_solver.called
-    # Fallback-path discriminator: the solver must have been instantiated
-    # exactly once (the fallback path runs the setup body to completion;
-    # a regression that retried after the unified-path miss could call
-    # the solver more than once or zero times via a swallowed exception).
+    # The setup body must run to completion exactly once.
     assert mock_solver.call_count == 1
 
 
@@ -253,7 +254,7 @@ def test_setup_solver_eos_not_found(tmp_path):
     with (
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
-        pytest.raises(FileNotFoundError, match='Aragog lookup data not found'),
+        pytest.raises(FileNotFoundError, match='not found at .*proteus get interiordata'),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
@@ -543,7 +544,7 @@ def _caps_only_energy_stub(
 
 
 def _spider_fallback_scaffold(tmp_path):
-    """Build the (hf_row, interior_o) inputs and the legacy EOS/melting dirs a
+    """Build the (hf_row, interior_o) inputs and the lookup and melting dirs a
     spider-stack setup_solver needs to reach the _EnergyParameters call."""
     hf_row = {
         'R_int': 6.371e6,
@@ -558,16 +559,39 @@ def _spider_fallback_scaffold(tmp_path):
     spider_eos_dir.mkdir(parents=True)
     interior_o._spider_eos_dir = str(spider_eos_dir)
 
-    legacy_dir = (
-        tmp_path
-        / 'interior_lookup_tables'
-        / '1TPa-dK09-elec-free'
-        / 'MgSiO3_Wolf_Bower_2018_1TPa'
-    )
-    legacy_dir.mkdir(parents=True)
-    (legacy_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    _seed_lookup_tables(tmp_path)
     (tmp_path / 'interior_lookup_tables' / 'Melting_curves').mkdir(parents=True)
     return hf_row, interior_o
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'missing, message',
+    [('lookup', 'Aragog lookup data not found'), ('P-S', 'PALEOS P-S tables not found')],
+)
+def test_setup_solver_stops_with_a_missing_data_error(tmp_path, missing, message):
+    """A missing Aragog lookup or P-S table stops setup_solver with a missing-data error,
+    which start() turns into status 20."""
+    from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.utils.helper import MissingReferenceData
+
+    config = _make_aragog_config(struct_module='spider')
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    if missing == 'lookup':
+        (
+            dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=tmp_path)
+            / 'heat_capacity_melt.dat'
+        ).unlink()
+    else:
+        interior_o._spider_eos_dir = None
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        pytest.raises(MissingReferenceData, match=message),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
 
 
 @pytest.mark.unit
@@ -595,7 +619,7 @@ def test_setup_solver_threads_phase_boundary_margin(tmp_path):
             ),
             patch('proteus.interior_energetics.aragog.Parameters'),
             patch('proteus.interior_energetics.aragog.EntropySolver'),
-            patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+            patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
             patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
             patch('proteus.interior_energetics.aragog.log') as mock_log,
         ):
@@ -651,7 +675,7 @@ def test_setup_solver_threads_resolved_step_caps(tmp_path):
             patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / name),
             patch('proteus.interior_energetics.aragog.Parameters'),
             patch('proteus.interior_energetics.aragog.EntropySolver'),
-            patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+            patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
             patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
             patch('proteus.interior_energetics.aragog.log'),
         ):
@@ -688,7 +712,7 @@ def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / 'nondefault'),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
         patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
         patch('proteus.interior_energetics.aragog.log') as mock_log,
     ):
@@ -716,7 +740,7 @@ def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / 'default'),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
         patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
         patch('proteus.interior_energetics.aragog.log') as mock_log,
     ):
@@ -1478,6 +1502,95 @@ def test_solve_with_retry_first_solve_rejects_non_finite_tcore(monkeypatch):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ('struct_module', 'mantle_eos', 'expect_paleos'),
+    [
+        ('zalmoxis', 'PALEOS:MgSiO3', True),
+        ('zalmoxis', 'PALEOS-2phase:MgSiO3', True),
+        ('zalmoxis', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', True),
+        ('zalmoxis', 'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+        ('zalmoxis', 'WolfBower2018:MgSiO3', False),
+        ('dummy', 'PALEOS:MgSiO3', False),
+    ],
+)
+def test_melting_curve_files_follow_the_generated_table_set(
+    tmp_path, struct_module, mantle_eos, expect_paleos
+):
+    """Aragog reads PALEOS curves only with a generated PALEOS set, else melting_dir.
+
+    A mixture follows its MgSiO3 component, so SPIDER, the P-S tables and Aragog
+    read the same curves.
+    """
+    from proteus.interior_energetics import aragog as aragog_mod
+
+    config = _make_aragog_config(struct_module=struct_module, mantle_eos=mantle_eos)
+    config.interior_struct.melting_dir = 'Monteux-600'
+    paleos = (str(tmp_path / 'paleos_sol.dat'), str(tmp_path / 'paleos_liq.dat'))
+    fetched = (tmp_path / 'monteux_sol.dat', tmp_path / 'monteux_liq.dat')
+
+    with (
+        patch.object(aragog_mod, '_write_paleos_melting_curves', return_value=paleos),
+        patch.object(aragog_mod, 'resolve_melting_curve_files', return_value=fetched) as rmc,
+    ):
+        result = aragog_mod._melting_curve_files(config, str(tmp_path))
+
+    assert result == (paleos if expect_paleos else fetched)
+    assert rmc.called is (not expect_paleos)
+    if not expect_paleos:
+        assert rmc.call_args.args[0] == 'Monteux-600'
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('mantle_eos', 'key', 'paleos'),
+    [
+        ('PALEOS:MgSiO3', 'PALEOS:MgSiO3', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'PALEOS:MgSiO3', True),
+        ('Chabrier:H:0.03+PALEOS:MgSiO3:0.97', 'PALEOS:MgSiO3', True),
+        (
+            'PALEOS-API:H2O:0.2+PALEOS-2phase:MgSiO3-highres:0.8',
+            'PALEOS-2phase:MgSiO3-highres',
+            True,
+        ),
+        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', 'PALEOS-2phase:MgSiO3', True),
+        ('PALEOS:H2O:0.1+PALEOS-API:iron:0.9', 'PALEOS-API-2phase:MgSiO3', True),
+        ('PALEOS:H2O:0.1+WolfBower2018:MgSiO3:0.9', 'WolfBower2018:MgSiO3', False),
+        ('RTPress100TPa:MgSiO3:0.9+PALEOS:H2O:0.1', 'RTPress100TPa:MgSiO3', False),
+    ],
+)
+def test_structure_and_energetics_read_one_melting_curve(
+    tmp_path, monkeypatch, mantle_eos, key, paleos
+):
+    """The structure melting curve and the Aragog curve of a mantle EOS are the same,
+    for single keys and every kind of mixture."""
+    from proteus.interior_energetics import aragog as aragog_mod
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_solidus_liquidus_functions
+    from proteus.utils import data as data_mod
+    from proteus.utils.helper import energetics_eos_key, generates_paleos_tables
+
+    local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'TestCurve'
+    local.mkdir(parents=True)
+    P = np.array([1e5, 1e11, 1e12])
+    np.savetxt(local / 'solidus_P-T.dat', np.column_stack([P, [1000.0, 2000.0, 3000.0]]))
+    np.savetxt(local / 'liquidus_P-T.dat', np.column_stack([P, [1500.0, 2600.0, 3700.0]]))
+    monkeypatch.setattr(aragog_mod, 'FWL_DATA_DIR', tmp_path)
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos=mantle_eos)
+    config.interior_struct.melting_dir = 'TestCurve'
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.8
+
+    assert energetics_eos_key(mantle_eos) == key
+    assert generates_paleos_tables(config.interior_struct) is paleos
+    sol_fn, liq_fn = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
+    sol_file, liq_file = aragog_mod._melting_curve_files(config, str(tmp_path / 'out'))
+    for fn, path in ((sol_fn, sol_file), (liq_fn, liq_file)):
+        table = np.loadtxt(path)
+        assert float(fn(50e9)) == pytest.approx(np.interp(50e9, *table.T), rel=1e-3)
+    assert (float(liq_fn(50e9)) == pytest.approx(2050.0)) is not paleos
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_paleos_melting_curves_follow_mzf_in_reused_outdir(tmp_path):
     """Curves in a reused output directory are rebuilt for the current mzf.
@@ -1528,6 +1641,255 @@ def test_helpfile_output_t_cmb_node_is_cmb_basic_node():
     assert res['T_cmb_node'] == pytest.approx(4100.0)
     assert res['T_cmb'] == pytest.approx(3800.0)
     assert res['T_cmb_node'] != pytest.approx(res['T_cmb'])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('mantle_eos', 'eos_dir', 'tables'),
+    [
+        ('PALEOS-2phase:MgSiO3', None, 'paleos'),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', None, 'paleos'),
+        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', None, 'paleos'),
+        ('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', None, 'wb'),
+        ('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', 'Custom', 'custom'),
+        ('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', 'Missing', 'wb'),
+    ],
+)
+def test_setup_solver_property_tables_follow_the_generated_set(
+    tmp_path, mantle_eos, eos_dir, tables
+):
+    """A generated PALEOS set, also for a PALEOS mixture, gives PALEOS property tables;
+    a mixture whose MgSiO3 component is Wolf and Bower reads the WB set."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = tmp_path / 'out'
+    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos=mantle_eos)
+    config.interior_struct.eos_dir = eos_dir
+    config.planet.mass_tot = 1.0
+    pt_dir = outdir / 'data' / 'aragog_pt'
+    pt_dir.mkdir(parents=True)
+    for name in ('density_melt.dat', 'heat_capacity_melt.dat'):
+        (pt_dir / name).write_text('dummy')
+    solid, liquid = tmp_path / 'solid.dat', tmp_path / 'liquid.dat'
+    solid.write_text('dummy')
+    liquid.write_text('dummy')
+    registry = {
+        'PALEOS-2phase:MgSiO3': {
+            'solid_mantle': {'eos_file': str(solid)},
+            'melted_mantle': {'eos_file': str(liquid)},
+        }
+    }
+    wb_dir = _seed_lookup_tables(tmp_path)
+    custom_dir = tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'Custom' / 'P-T'
+    custom_dir.mkdir(parents=True)
+    (custom_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    hf_row = {
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+    }
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    interior_o._spider_eos_dir = str(tmp_path)
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value=registry,
+        ),
+        patch(
+            'proteus.interior_energetics.aragog._melting_curve_files',
+            return_value=(solid, liquid),
+        ),
+        patch('proteus.interior_energetics.aragog._PhaseParameters') as mock_phase,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(outdir))
+
+    dirs = {Path(c.kwargs['density']).parent for c in mock_phase.call_args_list}
+    assert dirs == {{'paleos': pt_dir, 'wb': wb_dir, 'custom': custom_dir}[tables]}
+    assert len(mock_phase.call_args_list) == 2
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('kept, liquid_path', [(False, True), (True, True), (False, False)])
+def test_setup_solver_stops_without_the_paleos_pair(tmp_path, kept, liquid_path):
+    """A PALEOS mantle whose 2-phase liquid table is absent, or has no registry path,
+    stops at setup and names it, instead of building its property tables from the
+    unified table; a run that already has its own Aragog tables keeps them."""
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    outdir = tmp_path / 'out'
+    pt_dir = outdir / 'data' / 'aragog_pt'
+    pt_dir.mkdir(parents=True)
+    if kept:
+        for name in ('density_melt.dat', 'heat_capacity_melt.dat'):
+            (pt_dir / name).write_text('dummy')
+    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos='PALEOS:MgSiO3')
+    config.interior_struct.eos_dir = None
+    config.planet.mass_tot = 1.0
+    unified, solid = tmp_path / 'unified.dat', tmp_path / 'solid.dat'
+    unified.write_text('dummy')
+    solid.write_text('dummy')
+    liquid = tmp_path / 'liquid_absent.dat'
+    registry = {
+        'PALEOS:MgSiO3': {'format': 'paleos_unified', 'eos_file': str(unified)},
+        'PALEOS-2phase:MgSiO3': {
+            'solid_mantle': {'eos_file': str(solid)},
+            'melted_mantle': {'eos_file': str(liquid)} if liquid_path else {},
+        },
+    }
+    hf_row = {
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+    }
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    interior_o._spider_eos_dir = str(tmp_path)
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value=registry,
+        ),
+        patch(
+            'proteus.interior_energetics.aragog._melting_curve_files',
+            return_value=(solid, solid),
+        ),
+        patch('zalmoxis.eos_export.generate_aragog_pt_tables') as unified_build,
+        patch('proteus.interior_energetics.aragog._PhaseParameters') as mock_phase,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
+    ):
+        if kept:
+            AragogRunner.setup_solver(config, hf_row, interior_o, str(outdir))
+        else:
+            with pytest.raises(ZalmoxisMissingEOSFilesError) as excinfo:
+                AragogRunner.setup_solver(config, hf_row, interior_o, str(outdir))
+    unified_build.assert_not_called()
+    if kept:
+        dirs = {Path(c.kwargs['density']).parent for c in mock_phase.call_args_list}
+        assert dirs == {pt_dir}
+    else:
+        # A registry entry without a path names the phase instead of a file.
+        missing = str(liquid) if liquid_path else 'liquid table (no registry path)'
+        assert missing in str(excinfo.value)
+        assert str(solid) not in str(excinfo.value)
+        assert 'solid table' not in str(excinfo.value)
+        assert 'proteus get interiordata' in str(excinfo.value)
+        assert not mock_phase.called
+
+
+@pytest.mark.unit
+def test_setup_solver_offline_wolf_bower_mixture_names_the_fetch_command(tmp_path):
+    """A Wolf and Bower mixture without the fetched WB set stops with the fetch command."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(
+        struct_module='zalmoxis', mantle_eos='WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1'
+    )
+    config.interior_struct.eos_dir = None
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    hf_row = {
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+    }
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
+        pytest.raises(FileNotFoundError, match='proteus get interiordata --config-path') as exc,
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
+    assert '`fwl-io relocate`' in str(exc.value)
+    assert not mock_solver.called
+    assert not (tmp_path / 'out' / 'data' / 'aragog_pt').exists()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('P_cmb', 'P_max', 'message'),
+    [
+        (1.2e12, 1.0e12, 'P_cmb=1200 GPa is above the 1000 GPa edge'),
+        (1.0e12 * (1 + 5e-10), 1.0e12, None),
+        (0.9e12, 1.0e12, None),
+        (6.0e11, 5.0e11, 'P_cmb=600 GPa is above the 500 GPa edge'),
+        (None, 1.0, None),
+    ],
+)
+def test_setup_solver_warns_past_the_ps_table_edge(tmp_path, caplog, P_cmb, P_max, message):
+    """A structure P_cmb above the P-S table edge warns; without one nothing is checked."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(struct_module='dummy')
+    _seed_lookup_tables(tmp_path)
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    interior_o._spider_eos_dir = str(tmp_path)
+    hf_row = {'R_int': 6.371e6, 'gravity': 9.81, 'T_magma': 3000.0, 'T_eqm': 255.0}
+    hf_row['F_atm'] = 100.0
+    if P_cmb is not None:
+        hf_row['P_cmb'] = P_cmb
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch(
+            'proteus.interior_energetics.aragog._cached_entropy_eos',
+            return_value=MagicMock(P_max=P_max),
+        ),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
+
+    edge = [
+        r.getMessage() for r in caplog.records if 'edge of the P-S tables' in r.getMessage()
+    ]
+    assert len(edge) == (message is not None)
+    assert message is None or message in edge[0]
+
+
+@pytest.mark.unit
+def test_setup_solver_missing_ps_tables_names_the_fetch_command(tmp_path):
+    """Missing P-S tables stop the setup with the fetch command, before the solver."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(struct_module='dummy')
+    _seed_lookup_tables(tmp_path)
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    interior_o._spider_eos_dir = str(tmp_path / 'absent')
+    hf_row = {'R_int': 6.371e6, 'gravity': 9.81, 'T_magma': 3000.0, 'T_eqm': 255.0}
+    hf_row['F_atm'] = 100.0
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
+        pytest.raises(
+            FileNotFoundError,
+            match='P-S tables not found.*proteus get interiordata.*fwl-io relocate',
+        ),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
+    assert not mock_solver.called
 
 
 def _snapshot_output(n_stag=6, diagnostics=False):

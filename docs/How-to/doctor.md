@@ -41,8 +41,8 @@ non-empty:
 
 | Check | Fix command |
 |-------|-------------|
-| `FWL_DATA/spectral_files` | `proteus get spectral` |
-| `FWL_DATA/stellar_spectra` | `proteus get stellar` |
+| `FWL_DATA/atmos_clim/spectral_files` | `proteus get spectral` |
+| `FWL_DATA/star/spectra` | `proteus get stellar` |
 
 ### Package versions
 
@@ -84,8 +84,8 @@ Environment
   [ok] julia: 1.13.0
 
 Reference data
-  [ok] FWL_DATA/spectral_files: present
-  [ok] FWL_DATA/stellar_spectra: present
+  [ok] FWL_DATA/atmos_clim/spectral_files: present
+  [ok] FWL_DATA/star/spectra: present
 
 Package versions
   [ok] fwl-proteus: 25.10.15 [editable @ PROTEUS -> a1b2c3d]

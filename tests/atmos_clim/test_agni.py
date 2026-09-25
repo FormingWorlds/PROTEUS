@@ -18,6 +18,7 @@ See also:
 from __future__ import annotations
 
 import logging
+import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -29,6 +30,7 @@ import proteus.atmos_clim.agni as agni_mod
 from proteus.atmos_clim.agni import (
     _determine_aerosols,
     _determine_condensates,
+    _resolve_surface_material,
     _validate_stored_profile,
     init_agni_atmos,
     write_atmos_ncdf,
@@ -362,7 +364,7 @@ def _build_greygas_config():
 
 @pytest.mark.unit
 def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
-    """Greygas path should not call get_spfile_path or pass a stellar spectrum.
+    """Greygas path should not call require_spfile_path or pass a stellar spectrum.
 
     When spectral_file='greygas' is set, AGNI uses the grey-gas RT scheme and
     does not need a SOCRATES spectral file or stellar flux to be copied into
@@ -396,9 +398,9 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
     monkeypatch.setattr(
         agni_mod,
-        'get_spfile_path',
+        'require_spfile_path',
         lambda *_a, **_k: (_ for _ in ()).throw(
-            AssertionError('get_spfile_path should not be called for greygas')
+            AssertionError('require_spfile_path should not be called for greygas')
         ),
     )
 
@@ -571,6 +573,47 @@ def test_init_agni_atmos_passes_unscaled_surface_pressure(monkeypatch, tmp_path)
 
 
 @pytest.mark.unit
+def test_init_agni_atmos_missing_surface_albedo_file_stops_with_its_fetch_command(
+    monkeypatch, tmp_path
+):
+    """A configured albedo file that is absent writes status 20 and names
+    `proteus get surfaces` and `fwl-io relocate`."""
+    fake_jl = SimpleNamespace(AGNI=_FakeAGNI(), Dict=dict, Char=str)
+    (tmp_path / 'out' / 'data').mkdir(parents=True)
+    dirs = {'output': str(tmp_path / 'out'), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
+    config = _build_greygas_config()
+    config.atmos_clim.agni.surf_material = 'lunarmarebasalt.dat'
+    hf_row = {'P_surf': 1.0, 'T_surf': 900.0, 'gravity': 9.8, 'R_int': 6.4e6}
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    status = MagicMock()
+    monkeypatch.setattr(agni_mod, 'UpdateStatusfile', status)
+    with pytest.raises(FileNotFoundError, match='`proteus get surfaces`.*`fwl-io relocate`'):
+        init_agni_atmos(dirs, config, hf_row)
+    status.assert_called_once_with(dirs, 20)
+
+
+@pytest.mark.unit
+def test_init_agni_atmos_missing_spectral_file_stops_with_status_20(monkeypatch, tmp_path):
+    """With a stellar spectrum but no spectral file of the configured group in FWL_DATA,
+    AGNI writes status 20 and names `proteus get spectral` and `fwl-io relocate`."""
+    fake_jl = SimpleNamespace(AGNI=_FakeAGNI(), Dict=dict, Char=str)
+    (tmp_path / 'out' / 'data').mkdir(parents=True)
+    (tmp_path / 'out' / 'data' / '100.sflux').write_text('sflux', encoding='utf-8')
+    dirs = {'output': str(tmp_path / 'out'), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
+    config = _build_greygas_config()
+    config.atmos_clim.agni.spectral_file = None
+    config.atmos_clim.spectral_group, config.atmos_clim.spectral_bands = 'Dayspring', '48'
+    hf_row = {'P_surf': 1.0, 'T_surf': 900.0, 'gravity': 9.8, 'R_int': 6.4e6}
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    with pytest.raises(FileNotFoundError, match='`proteus get spectral`.*`fwl-io relocate`'):
+        init_agni_atmos(dirs, config, hf_row)
+    assert (tmp_path / 'out' / 'status').read_text().splitlines()[0] == '20'
+
+
+@pytest.mark.unit
 def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
     """Regression: in grey-gas mode, init_agni_atmos must not require any
     *.sflux file to exist. Before this fix, an unconditional
@@ -606,9 +649,9 @@ def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
     monkeypatch.setattr(
         agni_mod,
-        'get_spfile_path',
+        'require_spfile_path',
         lambda *_a, **_k: (_ for _ in ()).throw(
-            AssertionError('get_spfile_path should not be called for greygas')
+            AssertionError('require_spfile_path should not be called for greygas')
         ),
     )
 
@@ -656,7 +699,7 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
     monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
     monkeypatch.setattr(agni_mod, 'UpdateStatusfile', lambda *_a, **_k: None)
-    monkeypatch.setattr(agni_mod, 'get_spfile_path', lambda *_a, **_k: '/fake/spfile')
+    monkeypatch.setattr(agni_mod, 'require_spfile_path', lambda *_a, **_k: '/fake/spfile')
 
     with pytest.raises(FileNotFoundError, match='No stellar spectrum'):
         init_agni_atmos(dirs, config, hf_row)
@@ -2675,3 +2718,65 @@ def test_a_lost_atmosphere_goes_to_transparent_mode_not_the_pressure_grid(monkey
     assert 'generate_pgrid' in fake_agni.calls
     assert 'make_transparent' not in fake_agni.calls
     status.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _resolve_surface_material: the configured surface file names
+# ---------------------------------------------------------------------------
+
+
+def _hammond_file(root, name='lunarmarebasalt.dat'):
+    """Create a stand-in Hammond file in its version directory and return it."""
+    from proteus.data import SURFACE_ALBEDOS_HAMMOND_2024, dataset_dir
+
+    folder = dataset_dir(SURFACE_ALBEDOS_HAMMOND_2024, data_root=root)
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_text('0.5 0.1\n')
+    return path
+
+
+def test_resolve_surface_material_bare_file_name(tmp_path):
+    """A bare file name selects a file of the versioned Hammond dataset."""
+    expected = _hammond_file(tmp_path)
+
+    resolved = _resolve_surface_material('lunarmarebasalt.dat', str(tmp_path))
+
+    assert resolved == str(expected)
+    assert 'r15880455' in resolved
+    assert os.path.isfile(resolved)
+
+
+def test_resolve_surface_material_legacy_prefixed_path(tmp_path):
+    """The pre-manifest value resolves to the same file as the bare name."""
+    expected = _hammond_file(tmp_path)
+
+    legacy = _resolve_surface_material(
+        'surface_albedos/Hammond24/lunarmarebasalt.dat', str(tmp_path)
+    )
+    bare = _resolve_surface_material('lunarmarebasalt.dat', str(tmp_path))
+
+    assert legacy == bare == str(expected)
+    # The legacy directory must not be joined literally: that path holds no
+    # file in the versioned layout.
+    assert legacy != str(tmp_path / 'surface_albedos' / 'Hammond24' / 'lunarmarebasalt.dat')
+
+
+def test_resolve_surface_material_other_paths_stay_relative_to_the_data_root(tmp_path):
+    """A value that is neither a bare name nor the legacy prefix keeps its old meaning."""
+    resolved = _resolve_surface_material('my_albedos/custom.dat', str(tmp_path))
+
+    assert resolved == str(tmp_path / 'my_albedos' / 'custom.dat')
+    # A deeper path under the legacy directory is not a Hammond file name.
+    nested = _resolve_surface_material('surface_albedos/Hammond24/sub/x.dat', str(tmp_path))
+    assert nested == str(tmp_path / 'surface_albedos' / 'Hammond24' / 'sub' / 'x.dat')
+
+
+def test_resolve_surface_material_absolute_path_is_unchanged(tmp_path):
+    """An absolute path is returned as given."""
+    target = tmp_path / 'elsewhere.dat'
+
+    nested = tmp_path / 'surface_albedos' / 'Hammond24' / 'basalt.dat'
+
+    assert _resolve_surface_material(str(target), str(tmp_path / 'root')) == str(target)
+    assert _resolve_surface_material(str(nested), str(tmp_path / 'root')) == str(nested)

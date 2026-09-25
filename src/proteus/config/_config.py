@@ -240,6 +240,51 @@ def planet_liquidus_super_needs_tables(instance, attribute, value):
         )
 
 
+def energetics_needs_a_thermal_mantle_eos(instance, attribute, value):
+    """Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog.
+
+    Under the Zalmoxis structure the energetics read the tables and melting
+    curves of the mantle's energetics key; a Seager2007, Chabrier or analytic
+    key has none, so the run would read another set as a stand-in.
+    """
+    from proteus.utils.constants import PALEOS_EOS_PREFIXES, TDEP_EOS_PREFIXES
+    from proteus.utils.helper import energetics_eos_key
+
+    struct = instance.interior_struct
+    zc = struct.zalmoxis if struct.module == 'zalmoxis' else None
+    if value.module not in ('spider', 'aragog') or zc is None:
+        return
+    key = energetics_eos_key(zc.mantle_eos)
+    if not (key or '').startswith(PALEOS_EOS_PREFIXES + TDEP_EOS_PREFIXES):
+        raise ValueError(
+            f"interior_energetics.module = '{value.module}' with mantle_eos="
+            f"'{zc.mantle_eos}' has no energetics tables (energetics key: {key}). "
+            'Use a PALEOS, WolfBower2018 or RTPress100TPa mantle EOS, or an MgSiO3 component '
+            'of one of them in a mixture.'
+        )
+
+
+def aragog_needs_melting_curves(instance, attribute, value):
+    """Require ``interior_struct.melting_dir`` for Aragog without a PALEOS table set.
+
+    Aragog reads a solidus and a liquidus in every mode, from the generated
+    PALEOS set or from ``melting_dir``. SPIDER is checked when the run starts
+    instead: a resumed run continues on its kept P-S tables, and a
+    ``const_properties`` run reads no curves.
+    """
+    from proteus.utils.helper import generates_paleos_tables
+
+    if value.module != 'aragog' or instance.interior_struct.melting_dir is not None:
+        return
+    if generates_paleos_tables(instance.interior_struct):
+        return
+    raise ValueError(
+        "interior_energetics.module = 'aragog' needs interior_struct.melting_dir without a "
+        'generated PALEOS table set (a PALEOS mantle EOS under the Zalmoxis structure; '
+        'a mixture follows its MgSiO3 component). Set melting_dir to a melting curve name (e.g. "Monteux-600").'
+    )
+
+
 def planet_fO2_source_compat(instance, attribute, value):
     """Validate planet.fO2_source against O_mode, volatile_mode, and
     against availability.
@@ -417,6 +462,8 @@ class Config:
         validator=(
             tides_enabled_orbit,
             boundary_requires_fixed_surface_state,
+            energetics_needs_a_thermal_mantle_eos,
+            aragog_needs_melting_curves,
         ),
     )
     outgas: Outgas = field(factory=Outgas)

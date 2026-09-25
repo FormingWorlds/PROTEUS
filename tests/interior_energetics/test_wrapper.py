@@ -1338,6 +1338,9 @@ def test_determine_zalmoxis_no_adiabatic_switch_non_tdep(caplog):
         # T-dep prefixes: override expected
         ('WolfBower2018:MgSiO3', True),
         ('WolfBower2018:Fe', True),
+        # A mixture follows its MgSiO3 component, not its first component
+        ('PALEOS:H2O:0.1+WolfBower2018:MgSiO3:0.9', True),
+        ('WolfBower2018:Fe:0.1+PALEOS:MgSiO3:0.9', False),
         ('RTPress100TPa:silicate', True),
         # Non-T-dep prefixes: override skipped
         ('Seager2007:silicate', False),
@@ -3282,8 +3285,105 @@ def _write_complete_ps_eos_dir(target_dir):
         )
 
 
+def _configured_melting_curve(tmp_path, monkeypatch):
+    """Point melting_dir at synthetic P-T files and record the P-S override calls."""
+    from proteus.interior_energetics import wrapper as wrapper_mod
+    from proteus.utils import data as data_mod
+
+    pt_dir = tmp_path / 'melting_pt'
+    pt_dir.mkdir()
+    sol, liq = pt_dir / 'solidus_P-T.dat', pt_dir / 'liquidus_P-T.dat'
+    sol.write_text('# solidus\n')
+    liq.write_text('# liquidus\n')
+    monkeypatch.setattr(data_mod, 'resolve_melting_curve_files', lambda name: (sol, liq))
+    calls = []
+    monkeypatch.setattr(
+        wrapper_mod,
+        '_override_melting_curves_from_pt',
+        lambda eos_dir, sol_pt, liq_pt, label_prefix: calls.append((eos_dir, sol_pt, liq_pt)),
+    )
+    return calls, str(sol), str(liq)
+
+
 @pytest.mark.unit
-def test_provide_spider_eos_tables_reuses_already_populated_dir(tmp_path):
+def test_provide_spider_eos_tables_unset_melting_dir_raises(tmp_path):
+    """Without melting_dir and a PALEOS table set, the curves would depend on the disk.
+
+    A complete SPIDER bundle is present, so a fallback would succeed; the helper
+    must stop instead. A constant-property SPIDER run reads no curves and passes.
+    """
+    from types import SimpleNamespace
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import (
+        _SPIDER_EOS_PHASE_FILES,
+        MissingMeltingCurveError,
+        _provide_spider_eos_tables,
+    )
+
+    spider_bundle = tmp_path / 'SPIDER' / 'lookup_data' / '1TPa-dK09-elec-free'
+    spider_bundle.mkdir(parents=True)
+    for f in _SPIDER_EOS_PHASE_FILES:
+        _write_synthetic_ps_table(spider_bundle / f, NX=3, NY=4)
+    (spider_bundle / 'solidus_A11_H13.dat').write_text('# bundled solidus\n')
+    (spider_bundle / 'liquidus_A11_H13.dat').write_text('# bundled liquidus\n')
+    config = SimpleNamespace(
+        interior_struct=SimpleNamespace(
+            module='zalmoxis',
+            melting_dir=None,
+            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
+        ),
+        interior_energetics=SimpleNamespace(module='aragog', const_properties=True),
+    )
+    dirs = {'spider': str(tmp_path / 'SPIDER')}
+
+    with _patch('proteus.utils.data.GetFWLData', return_value=tmp_path / 'fwl_empty'):
+        # Aragog reads the curves even with const_properties set.
+        with pytest.raises(MissingMeltingCurveError, match='melting_dir is not set') as raised:
+            _provide_spider_eos_tables(config, str(tmp_path), dirs)
+        assert 'spider_liquidus_ps' not in dirs
+
+        # SPIDER without constant properties reads the curves too; the dummy
+        # structure message names no Zalmoxis mantle EOS.
+        config.interior_energetics = SimpleNamespace(module='spider', const_properties=False)
+        config.interior_struct.module = 'dummy'
+        with pytest.raises(
+            MissingMeltingCurveError, match='melting_dir is not set'
+        ) as raised_dummy:
+            _provide_spider_eos_tables(config, str(tmp_path), dirs)
+        assert 'mantle EOS' not in str(raised_dummy.value)
+
+        # Discrimination: SPIDER with constant properties needs no curves.
+        config.interior_energetics.const_properties = True
+        _provide_spider_eos_tables(config, str(tmp_path), dirs)
+
+    assert "(mantle EOS 'WolfBower2018:MgSiO3')" in str(raised.value)
+    assert dirs['spider_eos_dir'] == str(tmp_path / 'data' / 'spider_eos')
+
+
+@pytest.mark.unit
+def test_provide_spider_eos_tables_reuse_needs_no_melting_dir(tmp_path):
+    """A complete set already placed for this run is reused without melting_dir."""
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.wrapper import _provide_spider_eos_tables
+
+    eos_dir = tmp_path / 'preexisting_eos'
+    _write_complete_ps_eos_dir(str(eos_dir))
+    config = SimpleNamespace(
+        interior_struct=SimpleNamespace(melting_dir=None),
+        interior_energetics=SimpleNamespace(module='aragog', const_properties=False),
+    )
+    dirs = {'spider_eos_dir': str(eos_dir)}
+
+    _provide_spider_eos_tables(config, str(tmp_path), dirs)
+
+    assert dirs['spider_liquidus_ps'] == str(eos_dir / 'liquidus_P-S.dat')
+    assert dirs['spider_solidus_ps'] == str(eos_dir / 'solidus_P-S.dat')
+
+
+@pytest.mark.unit
+def test_provide_spider_eos_tables_reuses_already_populated_dir(tmp_path, monkeypatch):
     """When dirs['spider_eos_dir'] already holds all 12 expected files,
     the helper short-circuits with a debug log and sets the melting-curve
     paths without re-copying anything.
@@ -3295,12 +3395,16 @@ def test_provide_spider_eos_tables_reuses_already_populated_dir(tmp_path):
 
     eos_dir = tmp_path / 'preexisting_eos'
     _write_complete_ps_eos_dir(str(eos_dir))
+    calls, sol_pt, liq_pt = _configured_melting_curve(tmp_path, monkeypatch)
 
     config = SimpleNamespace(
-        interior_struct=SimpleNamespace(melting_dir=None),
+        interior_struct=SimpleNamespace(melting_dir='Monteux-600'),
     )
     dirs = {'spider_eos_dir': str(eos_dir)}
     _provide_spider_eos_tables(config, str(tmp_path), dirs)
+
+    # The configured curves replace the P-S curves of the reused set.
+    assert calls == [(str(eos_dir), sol_pt, liq_pt)]
 
     # The reuse path sets the two melting-curve paths.
     assert dirs['spider_solidus_ps'] == str(eos_dir / 'solidus_P-S.dat')
@@ -3324,9 +3428,11 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import _provide_spider_eos_tables
+    from proteus.utils.helper import MissingReferenceData
 
+    _configured_melting_curve(tmp_path, monkeypatch)
     config = SimpleNamespace(
-        interior_struct=SimpleNamespace(melting_dir=None),
+        interior_struct=SimpleNamespace(melting_dir='Monteux-600'),
     )
     dirs = {'spider': str(tmp_path / 'no_spider_submodule')}
 
@@ -3338,7 +3444,9 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
     # Discrimination: the message points users at the remediation
     # (`proteus get all`); a regression that silently fell through
     # would not raise at all.
-    assert 'proteus get all' in str(exc.value)
+    assert 'proteus get interiordata --config-path' in str(exc.value)
+    assert '`fwl-io relocate`' in str(exc.value)
+    assert isinstance(exc.value, MissingReferenceData)  # start() writes status 20
 
 
 # ============================================================================
@@ -3482,13 +3590,10 @@ def test_determine_interior_radius_with_dummy_sets_mesh_paths_for_spider(tmp_pat
             'proteus.interior_struct.dummy.solve_dummy_structure',
             return_value=mesh_file,
         ),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables') as generate,
         _patch(
-            'proteus.interior_struct.zalmoxis.generate_spider_tables',
-            return_value={
-                'eos_dir': str(tmp_path / 'eos'),
-                'solidus_path': str(tmp_path / 'eos/solidus_P-S.dat'),
-                'liquidus_path': str(tmp_path / 'eos/liquidus_P-S.dat'),
-            },
+            'proteus.interior_energetics.wrapper._provide_spider_eos_tables',
+            side_effect=lambda cfg, out, d: d.update(spider_eos_dir=str(tmp_path / 'eos')),
         ),
         _patch('proteus.interior_energetics.wrapper.Interior_t'),
         _patch('proteus.interior_energetics.wrapper.run_interior'),
@@ -3502,20 +3607,15 @@ def test_determine_interior_radius_with_dummy_sets_mesh_paths_for_spider(tmp_pat
     assert dirs['spider_mesh_prev'] == mesh_file + '.prev'
     # M_mantle = M_int - M_core
     assert hf_row['M_mantle'] == pytest.approx(5.972e24 - 2.0e24, rel=1e-12)
-    # Sanity: dispatch was the SPIDER branch so the EOS-table generator
-    # was wired.
+    # The dummy structure never uses PALEOS tables; the FWL_DATA/SPIDER set is provided.
+    generate.assert_not_called()
     assert dirs['spider_eos_dir'] == str(tmp_path / 'eos')
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    ('temperature_mode', 'expect_call'),
-    [('liquidus_super', True), ('adiabatic', False)],
-)
-def test_dummy_structure_provides_tables_for_liquidus_super_without_generated_set(
-    tmp_path, temperature_mode, expect_call
-):
-    """With no generated P-S set, only liquidus_super requests the FWL_DATA tables."""
+@pytest.mark.parametrize('temperature_mode', ['liquidus_super', 'adiabatic'])
+def test_dummy_structure_provides_tables_in_every_temperature_mode(tmp_path, temperature_mode):
+    """The dummy structure takes the FWL_DATA/SPIDER tables in every temperature mode."""
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
@@ -3529,7 +3629,7 @@ def test_dummy_structure_provides_tables_for_liquidus_super_without_generated_se
 
     with (
         _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
-        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables') as generate,
         _patch('proteus.interior_energetics.wrapper._provide_spider_eos_tables') as provide,
         _patch('proteus.interior_energetics.wrapper.Interior_t'),
         _patch('proteus.interior_energetics.wrapper.run_interior'),
@@ -3539,25 +3639,28 @@ def test_dummy_structure_provides_tables_for_liquidus_super_without_generated_se
     ):
         determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
 
-    assert provide.called is expect_call
-    if expect_call:
-        assert provide.call_args.args[1] == str(tmp_path)
+    generate.assert_not_called()
+    assert provide.call_count == 1
+    assert provide.call_args.args[1] == str(tmp_path)
 
 
 @pytest.mark.unit
-def test_dummy_structure_liquidus_super_without_tables_raises_named_error(tmp_path):
-    """No generated set and no FWL_DATA or SPIDER table source gives a named
-    RuntimeError that names mantle_eos, the field that selects the tables.
+def test_dummy_structure_liquidus_super_passes_missing_melting_curve_through(tmp_path):
+    """A missing configured melting curve keeps its own error.
+
+    The handler around the table lookup reports a missing table set and advises
+    another temperature_mode, which does not fix a missing melting_dir curve.
     """
     from unittest.mock import patch as _patch
 
-    from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
+    from proteus.interior_energetics.wrapper import (
+        MissingMeltingCurveError,
+        determine_interior_radius_with_dummy,
+    )
 
     config = MagicMock()
     config.interior_energetics.module = 'aragog'
     config.interior_energetics.num_levels = 50
-    config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
-    config.interior_struct.zalmoxis.mantle_eos = 'Stixrude14:MgSiO3'
     config.planet.temperature_mode = 'liquidus_super'
     hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
 
@@ -3566,21 +3669,49 @@ def test_dummy_structure_liquidus_super_without_tables_raises_named_error(tmp_pa
         _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
         _patch(
             'proteus.interior_energetics.wrapper._provide_spider_eos_tables',
+            side_effect=MissingMeltingCurveError("melting_dir='Monteux-600' missing"),
+        ),
+        _patch('proteus.interior_energetics.wrapper.Interior_t') as interior_t,
+        pytest.raises(MissingMeltingCurveError, match='Monteux-600') as excinfo,
+    ):
+        determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
+
+    assert 'temperature_mode' not in str(excinfo.value)
+    interior_t.assert_not_called()
+
+
+@pytest.mark.unit
+def test_dummy_structure_without_tables_raises_named_error(tmp_path):
+    """No FWL_DATA or SPIDER table source gives a named missing-data error in any mode, so
+    the run stops with status 20."""
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
+    from proteus.utils.helper import MissingReferenceData
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_energetics.num_levels = 50
+    config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
+    config.planet.temperature_mode = 'adiabatic'
+    hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
+
+    with (
+        _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
+        _patch(
+            'proteus.interior_energetics.wrapper._provide_spider_eos_tables',
             side_effect=FileNotFoundError('no P-S tables'),
         ),
         _patch('proteus.interior_energetics.wrapper.Interior_t') as interior_t,
-        pytest.raises(RuntimeError) as excinfo,
+        pytest.raises(MissingReferenceData) as excinfo,
     ):
         determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
 
     msg = str(excinfo.value)
-    assert 'temperature_mode' in msg
-    assert 'liquidus_super' in msg
-    assert 'interior_struct.module' in msg
-    assert "interior_struct.zalmoxis.mantle_eos='Stixrude14:MgSiO3'" in msg
-    assert 'WolfBower2018_MgSiO3' not in msg
+    assert "interior_struct.module='dummy'" in msg
+    assert "interior_energetics.module='aragog'" in msg
+    assert 'proteus get interiordata --config-path' in msg
     assert 'no P-S tables' in msg
-    assert not isinstance(excinfo.value, FileNotFoundError)
     # The failure happens before the first interior step is built.
     interior_t.assert_not_called()
 
@@ -3612,10 +3743,7 @@ def test_determine_interior_radius_with_dummy_no_mesh_for_non_spider(tmp_path):
             'proteus.interior_struct.dummy.solve_dummy_structure',
             return_value=None,
         ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.generate_spider_tables',
-            return_value=None,
-        ),
+        _patch('proteus.interior_energetics.wrapper._provide_spider_eos_tables'),
         _patch('proteus.interior_energetics.wrapper.Interior_t'),
         _patch('proteus.interior_energetics.wrapper.run_interior'),
         _patch('proteus.interior_energetics.wrapper.update_gravity'),
@@ -3626,8 +3754,6 @@ def test_determine_interior_radius_with_dummy_no_mesh_for_non_spider(tmp_path):
 
     # No mesh file -> no spider_mesh key in dirs.
     assert 'spider_mesh' not in dirs
-    # generate_spider_tables returned None -> no spider_eos_dir.
-    assert 'spider_eos_dir' not in dirs
     # M_mantle still set.
     assert hf_row['M_mantle'] == pytest.approx(5.972e24 - 2.0e24, rel=1e-12)
 
@@ -4462,7 +4588,7 @@ def test_override_melting_curves_from_pt_clip_warning_when_t_out_of_range(tmp_pa
 
 
 @pytest.mark.unit
-def test_provide_spider_eos_tables_spider_submodule_fallback(tmp_path):
+def test_provide_spider_eos_tables_spider_submodule_fallback(tmp_path, monkeypatch):
     """When FWL_DATA is empty but the SPIDER submodule ships lookup_data
     with the legacy *_A11_H13 filenames, the helper copies them under
     the canonical *_P-S names.
@@ -4475,7 +4601,8 @@ def test_provide_spider_eos_tables_spider_submodule_fallback(tmp_path):
         _provide_spider_eos_tables,
     )
 
-    config = SimpleNamespace(interior_struct=SimpleNamespace(melting_dir=None))
+    calls, sol_pt, liq_pt = _configured_melting_curve(tmp_path, monkeypatch)
+    config = SimpleNamespace(interior_struct=SimpleNamespace(melting_dir='Monteux-600'))
 
     # SPIDER submodule lookup_data with the legacy melting-curve names.
     spider_root = tmp_path / 'SPIDER'
@@ -4506,6 +4633,47 @@ def test_provide_spider_eos_tables_spider_submodule_fallback(tmp_path):
     # dirs updated with the new paths.
     assert dirs['spider_eos_dir'] == str(target)
     assert dirs['spider_solidus_ps'] == str(target / 'solidus_P-S.dat')
+    # The configured curves replace the copied bundle curves.
+    assert calls == [(str(target), sol_pt, liq_pt)]
+
+
+@pytest.mark.unit
+def test_provide_spider_eos_tables_missing_configured_curve_raises(tmp_path):
+    """A configured melting_dir without its P-T files stops the run.
+
+    Continuing would leave the bundled A11_H13 curves in place, so the run
+    would use another solidus and liquidus than the one configured.
+    """
+    from types import SimpleNamespace
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import (
+        _SPIDER_EOS_PHASE_FILES,
+        MissingMeltingCurveError,
+        _provide_spider_eos_tables,
+    )
+
+    config = SimpleNamespace(interior_struct=SimpleNamespace(melting_dir='Monteux-600'))
+    spider_bundle = tmp_path / 'SPIDER' / 'lookup_data' / '1TPa-dK09-elec-free'
+    spider_bundle.mkdir(parents=True)
+    for f in _SPIDER_EOS_PHASE_FILES:
+        _write_synthetic_ps_table(spider_bundle / f, NX=3, NY=4)
+    (spider_bundle / 'solidus_A11_H13.dat').write_text('# bundled solidus\n')
+    (spider_bundle / 'liquidus_A11_H13.dat').write_text('# bundled liquidus\n')
+    dirs = {'spider': str(tmp_path / 'SPIDER')}
+
+    with (
+        _patch('proteus.utils.data.GetFWLData', return_value=tmp_path / 'fwl_empty'),
+        pytest.raises(FileNotFoundError, match="melting_dir='Monteux-600'") as raised,
+    ):
+        _provide_spider_eos_tables(config, str(tmp_path), dirs)
+
+    # The message names the P-T files that are missing and the fetch command.
+    assert raised.type is MissingMeltingCurveError
+    assert 'monteux_minus_600' in str(raised.value)
+    assert 'proteus get interiordata --config-path' in str(raised.value)
+    assert '`fwl-io relocate`' in str(raised.value)
+    assert 'spider_solidus_ps' not in dirs
 
 
 # ============================================================================

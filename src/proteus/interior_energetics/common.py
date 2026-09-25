@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.special import erf
 
-from proteus.utils.constants import PALEOS_EOS_PREFIXES, B_ein
+from proteus.utils.constants import B_ein
+from proteus.utils.data import find_lookup_table_dir
+from proteus.utils.helper import MissingDataError, generates_paleos_tables
 
 if TYPE_CHECKING:
     from aragog.eos.entropy import EntropyEOS
@@ -203,6 +205,22 @@ _SPIDER_EOS_MELTING_CURVES = ('solidus_P-S.dat', 'liquidus_P-S.dat')
 _ANCHOR_CAP_WARNED: set = set()
 _TABLE_SUPERLIQ_N_POINTS = 200
 _TABLE_SUPERLIQ_N_BISECT = 60
+
+
+class MissingMeltingCurveError(MissingDataError):
+    """The melting curves the run must read are not configured or not on disk.
+
+    Raised when ``interior_struct.melting_dir`` names curves whose files are
+    missing, or is unset while no PALEOS table set provides the curves.
+    """
+
+
+def _mantle_note(config) -> str:
+    """Name the Zalmoxis mantle EOS in an error, only when Zalmoxis is the structure."""
+    struct = config.interior_struct
+    if getattr(struct, 'module', None) != 'zalmoxis':
+        return ''
+    return f' (mantle EOS {getattr(getattr(struct, "zalmoxis", None), "mantle_eos", None)!r})'
 
 
 class InitialConditionError(RuntimeError):
@@ -794,7 +812,8 @@ def compute_initial_entropy(
                     'interior_struct.zalmoxis section is missing.'
                 )
             mantle_eos = str(zcfg.mantle_eos)
-            if mantle_eos.startswith(PALEOS_EOS_PREFIXES):
+            # Only a generated PALEOS table set has the filled cells the cap avoids.
+            if generates_paleos_tables(config.interior_struct):
                 from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
                 # The anchor raises its numerical failures as InitialConditionError.
@@ -937,6 +956,7 @@ def compute_initial_entropy(
             from zalmoxis.eos_export import compute_surface_entropy
 
             from proteus.interior_struct.zalmoxis import (
+                energetics_entry,
                 load_zalmoxis_material_dictionaries,
                 load_zalmoxis_solidus_liquidus_functions,
                 resolve_2phase_mgsio3_paths,
@@ -960,8 +980,11 @@ def compute_initial_entropy(
             return fallback
 
         mat_dicts = load_zalmoxis_material_dictionaries()
-        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zalmoxis_cfg.mantle_eos, mat_dicts)
-        eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
+        # The CMB lookup reads the MgSiO3 2-phase pair for any mantle.
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
+            zalmoxis_cfg.mantle_eos, mat_dicts, required=True
+        )
+        eos_entry = energetics_entry(zalmoxis_cfg.mantle_eos, mat_dicts)[1]
         paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
 
         melt_funcs = load_zalmoxis_solidus_liquidus_functions(zalmoxis_cfg.mantle_eos, config)
@@ -1036,6 +1059,7 @@ def compute_initial_entropy(
         from zalmoxis.eos_export import compute_entropy_adiabat
 
         from proteus.interior_struct.zalmoxis import (
+            energetics_entry,
             load_zalmoxis_material_dictionaries,
             load_zalmoxis_solidus_liquidus_functions,
             resolve_2phase_mgsio3_paths,
@@ -1058,9 +1082,13 @@ def compute_initial_entropy(
         # API-aware 2-phase table lookup. Required before the eos_file
         # sentinel selection so 2-phase mantle EoS configs (no top-level
         # eos_file) can use the solid sub-table as the sentinel.
-        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zalmoxis_cfg.mantle_eos, mat_dicts)
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
+            zalmoxis_cfg.mantle_eos,
+            mat_dicts,
+            required=generates_paleos_tables(config.interior_struct),
+        )
 
-        eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
+        eos_entry = energetics_entry(zalmoxis_cfg.mantle_eos, mat_dicts)[1]
         paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
         if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
             raise FileNotFoundError(f'PALEOS table not found: {paleos_eos_file}')
@@ -1092,6 +1120,10 @@ def compute_initial_entropy(
         return S_target
 
     except (RuntimeError, FileNotFoundError, KeyError, ValueError) as e:
+        from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+        if isinstance(e, ZalmoxisMissingEOSFilesError):
+            raise
         log.warning(
             'Could not compute entropy from PALEOS (%s). '
             'Using fallback S=%.1f J/kg/K for tsurf=%.0f K.',
@@ -1240,8 +1272,9 @@ class Interior_t:
         (E_th computation in :func:`spider.ReadSPIDER`). All three
         files share the same on-disk layout.
 
-        Search order: FWL_DATA dynamic EOS directory first, then
-        SPIDER's bundled ``lookup_data/1TPa-dK09-elec-free``.
+        Search order: FWL_DATA dynamic EOS directory, then the fetched
+        Wolf and Bower 2018 tables, then SPIDER's bundled
+        ``lookup_data/1TPa-dK09-elec-free``.
 
         Parameters
         ----------
@@ -1269,9 +1302,13 @@ class Interior_t:
             filename,
         )
         local_path = os.path.join(spider_dir, 'lookup_data', '1TPa-dK09-elec-free', filename)
+        fetched = find_lookup_table_dir()
+        fetched_path = str(fetched / filename) if fetched else ''
 
         if os.path.isfile(fwl_path):
             filepath = fwl_path
+        elif fetched and os.path.isfile(fetched_path):
+            filepath = fetched_path
         elif os.path.isfile(local_path):
             filepath = local_path
         else:

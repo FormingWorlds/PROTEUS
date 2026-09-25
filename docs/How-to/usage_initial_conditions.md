@@ -117,16 +117,29 @@ liquidus at the binding depth.
     the interior solver uses for its melt fraction. Where those tables come
     from depends on the structure module:
 
-    - `"zalmoxis"` and `"dummy"` with a PALEOS mantle
-      (`interior_struct.zalmoxis.mantle_eos`, default `"PALEOS:MgSiO3"`) whose
-      table files are present: Zalmoxis generates the tables from that EOS,
-      with a liquidus derived from the PALEOS (Fei et al. 2021) curve.
-      `interior_struct.melting_dir` is not used, and Zalmoxis must be
-      installed.
-    - `"spider"`, or `"zalmoxis"` and `"dummy"` when no PALEOS table set is
-      generated: the tables come from FWL_DATA or the SPIDER lookup data, and
-      when `interior_struct.melting_dir` is set PROTEUS derives
-      `liquidus_P-S.dat` from that P-T curve.
+    - `"zalmoxis"` with a PALEOS mantle EOS (`interior_struct.zalmoxis.mantle_eos`,
+      default `"PALEOS:MgSiO3"`): Zalmoxis generates the tables from that EOS,
+      with a liquidus derived from the PALEOS (Fei et al. 2021) curve, and
+      Aragog builds its phase-property tables from PALEOS too.
+      `interior_struct.melting_dir` is not used. A mixture (a `+` in
+      `mantle_eos`) follows its MgSiO$_3$ component, so a mixture with
+      `PALEOS:MgSiO3` gets the tables of a `PALEOS:MgSiO3` mantle; a PALEOS
+      mixture without an MgSiO$_3$ component gets the MgSiO$_3$ two-phase
+      tables of its PALEOS family.
+    - `"spider"` and `"dummy"`, or `"zalmoxis"` when no PALEOS table set is
+      generated, which includes a mixture whose MgSiO$_3$ component is not
+      PALEOS (for example `"WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1"`): the
+      tables come from FWL_DATA (SPIDER also falls back to its own lookup
+      data), Aragog also takes its phase-property files from that Wolf & Bower
+      (2018) set or `interior_struct.eos_dir`, `interior_struct.melting_dir`
+      must be set (the run stops when it is unset, except for
+      `interior_energetics.module = "spider"` with `const_properties = true`),
+      and PROTEUS derives `liquidus_P-S.dat` from that P-T curve.
+
+    Aragog takes its thermodynamics and melt fraction from the P-S tables. With
+    `"zalmoxis"`, which gives the core-mantle boundary pressure, Aragog logs a
+    warning when that pressure is above the highest pressure of the P-S table
+    set in use (about 1 TPa for the fetched Wolf & Bower (2018) set).
 
     With `"zalmoxis"`, the structure solve also anchors its temperature profile
     on a P-T adiabat that is `delta_T_super` above the P-T liquidus, while the
@@ -187,13 +200,6 @@ liquidus at the binding depth.
       these temperatures. Whether an adiabat is marked valid depends on
       which pressures the adiabat samples in that band, so the edge, and the
       cap with it, can shift with the core-mantle boundary pressure.
-
-    With `"dummy"` and PALEOS-generated tables there is no anchor, so a large
-    `delta_T_super` can land in those filled cells. The two adiabats differ
-    slightly: for 1 Earth mass at `delta_T_super = 500` K (core-mantle
-    boundary at 103 GPa), the
-    P-T anchor evaluated on the P-S tables has a smallest margin of 472 K
-    above their liquidus, against 500 K for the initial entropy.
 
     The superheat is checked exactly at every pressure where the margin can
     change slope: the table pressure nodes, the liquidus-file nodes, and the

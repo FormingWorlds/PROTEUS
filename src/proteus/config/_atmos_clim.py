@@ -122,7 +122,7 @@ class Agni:
     verbosity: int
         Logging and output verbosity for agni (0:none, 1:info, 2:debug).
     surf_material: str
-        Surface scattering material file. Set to 'greybody' to use surf_greyalbedo.
+        Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.
     chemistry: str | None
         Atmospheric chemistry treatment. Choices: 'none', 'eq' (FastChem).
     solve_energy: bool

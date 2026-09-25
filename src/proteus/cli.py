@@ -477,10 +477,11 @@ def phoenix(FeH: float, alpha: float, teff: float | None):
 @click.command()
 def solar():
     """Download the available solar spectra."""
+    from .data import STELLAR_SPECTRA_SOLAR, dataset_dir
     from .utils.data import GetFWLData, download_stellar_spectra
 
     # Where the data should end up
-    solar_dir = GetFWLData() / 'stellar_spectra' / 'solar'
+    solar_dir = dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=GetFWLData())
 
     try:
         download_stellar_spectra(folders=('solar',))
@@ -545,9 +546,11 @@ def reference():
 def interiordata(config_path: Path):
     """Get interior lookup tables, melting curves, and structure EOS tables"""
     from .utils.data import (
+        download_eos_dynamic,
         download_interior_lookuptables,
         download_melting_curves,
         download_zalmoxis_eos_for_config,
+        needs_spider_ps_tables,
     )
 
     download_interior_lookuptables(clean=True)
@@ -559,6 +562,10 @@ def interiordata(config_path: Path):
     # Zalmoxis setup. Without these on disk, an offline run fails inside
     # the structure solver.
     download_zalmoxis_eos_for_config(configuration)
+
+    # The P-S lookup set SPIDER and Aragog read without a PALEOS table set.
+    if needs_spider_ps_tables(configuration):
+        download_eos_dynamic()
 
 
 @click.command()

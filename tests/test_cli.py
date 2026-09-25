@@ -21,15 +21,26 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 runner = CliRunner()
 
 
+def _solar_dir(root):
+    """Version directory of the solar spectra dataset below ``root``."""
+    from proteus.data import STELLAR_SPECTRA_SOLAR, dataset_dir
+
+    return dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=root)
+
+
 @pytest.mark.unit
-def test_doctor():
+def test_doctor(monkeypatch, tmp_path):
     """``proteus doctor`` renders its report and returns a health-coded exit.
 
     The exit code is 0 when the install is healthy and 1 when a check fails, so
     both are valid here depending on the environment; the report itself, with
     the package section and the AGNI and fwl-mors checks, is rendered either
-    way. A usage error or crash would exit 2 and skip the report.
+    way. A usage error or crash would exit 2 and skip the report. A failing check
+    writes a failure log, whose environment summary runs slow commands such as
+    ``conda list``, so the summary is stubbed and the log goes to ``tmp_path``.
     """
+    monkeypatch.setattr('proteus.doctor._collect_environment_info', lambda: 'stub')
+    monkeypatch.chdir(tmp_path)
     # run PROTEUS doctor command
     response = runner.invoke(cli.doctor, [])
 
@@ -62,17 +73,14 @@ def test_get(monkeypatch, tmp_path):
     The downloaders touch the network; each is replaced with a no-op so
     the test stays a pure CLI dispatch check rather than a network smoke.
     Some subcommands also assert post-conditions (e.g. `solar` requires
-    that files exist under FWL_DATA/stellar_spectra/solar after the
+    that files exist under the solar dataset directory after the
     downloader returns), so the no-op for download_stellar_spectra writes
     a stub file at the expected path. FWL_DATA itself is monkeypatched to
     a tmp_path so the test never touches the user's real data tree.
 
-    Anti-happy-path: each subcommand assertion is its own line and asserts
-    the specific exit code; a regression in any one of them surfaces the
-    name of the failing subcommand in the assertion output. The previous
-    failure (test_get fails on `solar` in CI but not locally because the
-    user's FWL_DATA happened to have stellar_spectra/solar/ already
-    populated) is now eliminated by controlling FWL_DATA explicitly.
+    Each subcommand has its own assertion on its exit code, so a failure
+    names the subcommand. FWL_DATA points at an empty tmp_path, so the
+    result does not depend on the data tree of the machine.
     """
     # Monkeypatch FWL_DATA to a writable tmp_path so post-condition file
     # checks have a controlled environment. The module-level FWL_DATA_DIR
@@ -84,13 +92,10 @@ def test_get(monkeypatch, tmp_path):
     monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', _Path(tmp_path), raising=False)
 
     def stub_download_stellar_spectra(folders=('solar',), **kwargs):
-        # The CLI `solar` subcommand checks for files under
-        # GetFWLData()/stellar_spectra/solar after the downloader returns,
-        # raising ClickException if none are present. The no-op honours
-        # that contract by writing a stub file so the post-condition
-        # passes without touching the network.
+        # `proteus get solar` requires files in the solar dataset directory,
+        # so the stub writes one.
         for folder in folders:
-            target = tmp_path / 'stellar_spectra' / folder
+            target = _solar_dir(tmp_path)
             target.mkdir(parents=True, exist_ok=True)
             (target / '_stub.txt').write_text('stub')
         return True
@@ -447,14 +452,14 @@ def test_get_phoenix_download_failure_raises(monkeypatch):
 
 @pytest.mark.unit
 def test_get_solar_success_when_files_present(monkeypatch, tmp_path):
-    """``proteus get solar`` succeeds when files materialise under FWL_DATA/stellar_spectra/solar."""
+    """``proteus get solar`` succeeds when files materialise in the solar dataset directory."""
     runner = CliRunner()
 
     def fake_GetFWLData():
         return tmp_path
 
     def fake_download_stellar_spectra(folders=('solar',)):
-        solar_dir = tmp_path / 'stellar_spectra' / 'solar'
+        solar_dir = _solar_dir(tmp_path)
         solar_dir.mkdir(parents=True, exist_ok=True)
         (solar_dir / 'dummy.txt').write_text('ok')
 
@@ -466,7 +471,7 @@ def test_get_solar_success_when_files_present(monkeypatch, tmp_path):
     res = runner.invoke(cli.cli, ['get', 'solar'])
     assert res.exit_code == 0
     assert 'Solar spectra downloaded successfully.' in res.output
-    assert str(tmp_path / 'stellar_spectra' / 'solar') in res.output
+    assert str(_solar_dir(tmp_path)) in res.output
 
 
 @pytest.mark.unit
@@ -481,7 +486,7 @@ def test_get_solar_raises_if_no_files_found(monkeypatch, tmp_path):
 
     def fake_download_stellar_spectra(folders=('solar',)):
         # create directory but no files
-        (tmp_path / 'stellar_spectra' / 'solar').mkdir(parents=True, exist_ok=True)
+        _solar_dir(tmp_path).mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr('proteus.utils.data.GetFWLData', fake_GetFWLData)
     monkeypatch.setattr(
@@ -628,8 +633,12 @@ def test_get_interiordata_fetches_zalmoxis_eos(monkeypatch, tmp_path):
     runner = CliRunner()
     calls = []
 
-    def fake_download_zalmoxis_eos(*, mantle_eos, core_eos, ice_layer_eos):
-        calls.append(('zalmoxis_eos', mantle_eos, core_eos, ice_layer_eos))
+    def fake_download_zalmoxis_eos(
+        *, mantle_eos, core_eos, ice_layer_eos, volatile_eos, anchor_pair
+    ):
+        calls.append(
+            ('zalmoxis_eos', mantle_eos, core_eos, ice_layer_eos, volatile_eos, anchor_pair)
+        )
 
     fake_config = SimpleNamespace(
         interior_struct=SimpleNamespace(
@@ -638,6 +647,7 @@ def test_get_interiordata_fetches_zalmoxis_eos(monkeypatch, tmp_path):
                 mantle_eos='PALEOS:MgSiO3',
                 core_eos='PALEOS:iron',
                 ice_layer_eos=None,
+                dry_mantle=True,
             ),
         )
     )
@@ -658,7 +668,46 @@ def test_get_interiordata_fetches_zalmoxis_eos(monkeypatch, tmp_path):
     assert res.exit_code == 0
     # ice_layer_eos None must be coerced to '' (the downloader's no-ice value),
     # not passed through as None.
-    assert calls == [('zalmoxis_eos', 'PALEOS:MgSiO3', 'PALEOS:iron', '')]
+    assert calls == [('zalmoxis_eos', 'PALEOS:MgSiO3', 'PALEOS:iron', '', '', False)]
+
+
+@pytest.mark.unit
+def test_get_interiordata_fetches_ps_lookup_set_for_dummy(monkeypatch, tmp_path):
+    """``proteus get interiordata`` fetches the P-S lookup set a dummy-structure run reads."""
+    from types import SimpleNamespace
+
+    runner = CliRunner()
+    calls = []
+    fake_config = SimpleNamespace(
+        interior_energetics=SimpleNamespace(module='aragog'),
+        interior_struct=SimpleNamespace(module='dummy', eos_dir=None, zalmoxis=None),
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_interior_lookuptables', lambda clean=False: None
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_melting_curves', lambda configuration, clean=False: None
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_eos_dynamic', lambda *a, **k: calls.append('ps_set')
+    )
+    monkeypatch.setattr(cli, 'read_config_object', lambda path: fake_config)
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('unused')
+
+    res = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(cfg)])
+    assert res.exit_code == 0, res.output
+    assert calls == ['ps_set']
+
+    # Discrimination: Zalmoxis with a PALEOS mantle generates its own tables.
+    calls.clear()
+    fake_config.interior_struct = SimpleNamespace(
+        module='zalmoxis', eos_dir=None, zalmoxis=SimpleNamespace(mantle_eos='PALEOS:MgSiO3')
+    )
+    monkeypatch.setattr('proteus.utils.data.download_zalmoxis_eos_for_config', lambda c: None)
+    res = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(cfg)])
+    assert res.exit_code == 0, res.output
+    assert calls == []
 
 
 # ---- tool setup subcommands ----

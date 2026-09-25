@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from proteus.data import STELLAR_SPECTRA_PHOENIX, dataset_dir
 from proteus.utils.constants import AU, M_sun, R_sun, const_G
-from proteus.utils.data import GetFWLData, download_phoenix
+from proteus.utils.data import RELOCATE_HINT, GetFWLData, download_phoenix
 from proteus.utils.helper import UpdateStatusfile
 from proteus.utils.phoenix_helper import phoenix_filename, phoenix_param, phoenix_to_grid
 
@@ -138,8 +139,8 @@ def get_phoenix_modern_spectrum(
     """
     Get a PHOENIX 'modern' spectrum scaled to 1 AU and return its path.
 
-    Raw files in stellar_spectra/PHOENIX/FeH*_alpha*/
-    Scaled 1 AU files in stellar_spectra/PHOENIX/1AU/
+    Raw files in the PHOENIX dataset directory, under FeH*_alpha*/
+    Scaled 1 AU files in the same directory, under 1AU/
     """
 
     # parameters
@@ -168,7 +169,7 @@ def get_phoenix_modern_spectrum(
     )
     log.info('')
 
-    base_dir = GetFWLData() / 'stellar_spectra' / 'PHOENIX'
+    base_dir = dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=GetFWLData())
 
     feh_str = phoenix_param(FeH_g, kind='FeH')
     alpha_str = phoenix_param(alpha_g, kind='alpha')
@@ -200,7 +201,12 @@ def get_phoenix_modern_spectrum(
                 raise RuntimeError(f'PHOENIX file still missing after download: {raw_path}')
         else:
             log.error('Running in offline mode, but appropriate phoenix file is not available.')
-            raise FileNotFoundError(f'PHOENIX file not found: {raw_path} (offline mode)')
+            UpdateStatusfile(handler.directories, 23)
+            raise FileNotFoundError(
+                f'PHOENIX file not found: {raw_path} (offline mode). Fetch it with '
+                f'`proteus get phoenix --feh {FeH_g:+0.1f} --alpha {alpha_g:+0.1f}`. '
+                f'{RELOCATE_HINT}'
+            )
 
     # scale from stellar surface to 1 AU and save to PHOENIX/1AU
     if (not au_path.exists()) or (au_path.stat().st_mtime < raw_path.stat().st_mtime):

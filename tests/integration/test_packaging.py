@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from proteus.data import EXOPLANET_REFERENCE, MASS_RADIUS_ZENG_2019
+from proteus.data import EXOPLANET_REFERENCE, MASS_RADIUS_ZENG_2019, manifest_path
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
@@ -29,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_built_wheel_carries_the_manifest_and_registries(tmp_path):
-    """A built wheel contains the manifest and both committed registries.
+    """A built wheel contains the manifest and one registry per dataset.
 
     Without them the package imports cleanly and fails at the first fetch with a
     missing-manifest error, which points the reader at the wrong problem.
@@ -59,4 +59,9 @@ def test_built_wheel_carries_the_manifest_and_registries(tmp_path):
     assert f'proteus/data/{MASS_RADIUS_ZENG_2019}.registry.txt' in names
     # Discrimination: a wheel that shipped the manifest but no registry would
     # satisfy a looser check while failing every checksum verification.
-    assert len([n for n in names if n.endswith('.registry.txt')]) == 2
+    from fwl_io import load_manifest
+
+    expected = {f'proteus/data/{ds.key}.registry.txt' for ds in load_manifest(manifest_path())}
+    shipped = {n for n in names if n.endswith('.registry.txt')}
+    assert expected, 'the manifest declares no datasets'
+    assert shipped == expected

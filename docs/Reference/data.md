@@ -12,13 +12,18 @@ Each dataset is provisioned by one of two mechanisms, named per dataset in the
 table below.
 
 **fwl-io.** [fwl-io](https://github.com/FormingWorlds/fwl-io) pins a dataset to
-a Zenodo version DOI declared in `src/proteus/data/proteus_manifest.toml`,
-verifies every file against a checksum registry committed beside that manifest,
+a Zenodo version DOI declared in a manifest, verifies every file against a
+checksum registry committed beside that manifest,
 and places the files in a version directory named for the record, so a re-pinned
 deposit lands beside its predecessor rather than overwriting it. Every request
 carries a connect and read timeout, and a transient failure is retried with
 backoff. Zenodo is currently the only mirror these datasets declare, so an
 unreachable Zenodo means the fetch fails rather than falling back elsewhere.
+Data several models read (spectral files, stellar spectra, equations of state,
+melting curves, lookup tables) is declared in the shared manifest that fwl-io
+ships; data only PROTEUS reads is declared in `src/proteus/data/proteus_manifest.toml`.
+A data folder in the older layout is brought into this one as described in
+[Upgrading an older data folder](#upgrading-an-older-data-folder).
 
 **The PROTEUS downloader.** `proteus.utils.data` fetches a whole Zenodo record,
 retrying a few times, and falls back to the corresponding project on the
@@ -28,17 +33,37 @@ used with lower rate limits.
 
 | Dataset | Provisioned by | Downloaded by |
 |---|---|---|
-| Stellar spectra (solar, MUSCLES) | PROTEUS downloader | `proteus get solar`, `proteus get muscles` |
-| PHOENIX synthetic spectra | PROTEUS downloader | `proteus get phoenix` |
+| Stellar spectra (solar, named stars, MUSCLES) | fwl-io | `proteus get solar`, `proteus get muscles` |
+| PHOENIX synthetic spectra | fwl-io | `proteus get phoenix`, or fetched when a run needs a grid |
 | Stellar evolution tracks | PROTEUS downloader | `proteus get stellar` |
-| Spectral k-tables | PROTEUS downloader | `proteus get spectral` |
-| Surface albedos | PROTEUS downloader | `proteus get surfaces` |
+| Spectral k-tables | fwl-io | `proteus get spectral` |
+| Surface albedos | fwl-io | `proteus get surfaces` |
 | Scattering properties | PROTEUS downloader | `proteus get scattering` |
 | Exoplanet populations, mass-radius curves | fwl-io | `proteus get reference` |
-| Interior EOS tables, melting curves | PROTEUS downloader | `proteus get interiordata` |
+| Interior structure EOS tables | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
+| Melting curves | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
+| P-S lookup tables | fwl-io | fetched when SPIDER or Aragog run without a generated PALEOS table set |
 
 To configure a Zenodo API token, see the
 [Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
+
+### Upgrading an older data folder
+
+A `$FWL_DATA` folder written by an older PROTEUS keeps its files at paths that are no longer read. Two steps bring it into the current layout:
+
+1. Run `fwl-io relocate`. It moves every dataset whose files all match their pinned checksums into its version directory. `fwl-io relocate --dry-run` lists what would move, what is incomplete and what does not match, without moving anything.
+2. Run `proteus start --config <config.toml>` once without `--offline`, which downloads the data that configuration needs, or `proteus get interiordata --config-path <config.toml>` for the interior tables alone. This downloads what the first step left: incomplete and mismatched datasets, and those it cannot move (the Chabrier archive, the surface albedos, the Seager tables and the Spada tracks).
+
+A run with `--offline` stops when an interior EOS table, a melting curve, a P-S lookup table, a spectral file, a stellar spectrum or a surface albedo file is missing. The error names its download command and ends with: "Data kept in the older FWL_DATA layout can be moved into place with `fwl-io relocate`." Two stops have no download command. A spectral file of a group and band count that no manifest declares is not downloaded, so its error says to place the file at the path it names. PALEOS-API tables are built at start from the `paleos` package, so their error names that package.
+
+The stop writes a [status code](output.md) as follows:
+
+| Missing data | Status |
+| ---------------------------------------------------------------- | ------------------ |
+| Zalmoxis EOS tables, including the MgSiO$_3$ two-phase pair | 20 |
+| spectral file, surface albedo file | 20 |
+| solar, MUSCLES or PHOENIX spectrum | 23 |
+| melting curve, SPIDER or Aragog P-S or lookup table | 20 |
 
 ---
 
@@ -51,7 +76,8 @@ for full usage instructions.
 
 ### Solar spectra
 
-Observed solar spectra are stored under `$FWL_DATA/stellar_spectra/solar/`.
+Observed solar spectra are stored under `$FWL_DATA/star/spectra/solar/r<record>/`,
+where `<record>` is the Zenodo record that the manifest pins.
 The modern spectrum is from [Gueymard (2003)](https://www.sciencedirect.com/science/article/pii/S0038092X03003967)
 via [NREL](https://www.nrel.gov/grid/solar-resource/spectra.html).
 Historical and future spectra are from
@@ -73,58 +99,61 @@ Historical and future spectra are from
 
 ### MUSCLES / Mega-MUSCLES spectra
 
-Observed UV–optical–IR spectra from the
+Observed UV-optical-IR spectra from the
 [MUSCLES](https://archive.stsci.edu/prepds/muscles/) and
 [Mega-MUSCLES](https://archive.stsci.edu/prepds/mega-muscles/) surveys,
-stored under `$FWL_DATA/stellar_spectra/MUSCLES/` as `<star_name>.txt`.
+stored under `$FWL_DATA/star/spectra/muscles/r<record>/` as `<star_name>.txt`.
 `star_name` matching is case-insensitive.
 
 ??? info "Full star catalog"
 
     | Star | `star_name` | Type | Teff (K) | Age | L (L☉) | M (M☉) | R (R☉) | Survey |
     |---|---|---|---|---|---|---|---|---|
-    | [Epsilon Eridani](https://exoplanetarchive.ipac.caltech.edu/overview/eps%20Eri) | `v-eps-eri` | K2V | 5020 | 400–800 Myr | 0.32 | 0.82 | 0.759 | MUSCLES |
-    | [GJ 1132](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201132) | `gj1132` | M4.5V | 3229 | — | 0.005 | 0.195 | 0.221 | Mega-MUSCLES |
-    | [GJ 1214](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201214) | `gj1214` | M4V | 3100 | 5–10 Gyr | 0.00351 | 0.182 | 0.216 | MUSCLES |
-    | [GJ 15 A](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%2015) | `gj15a` | M1–M2V | ~3700 | — | ~0.021 | ~0.40 | ~0.38 | Mega-MUSCLES |
-    | [GJ 163](https://exoplanetarchive.ipac.caltech.edu/overview/gj%20163%20b) | `gj163` | M3.5V | ~3300–3500 | ~2–10 Gyr | ~0.02 | ~0.40 | ~0.41 | Mega-MUSCLES |
+    | [Epsilon Eridani](https://exoplanetarchive.ipac.caltech.edu/overview/eps%20Eri) | `v-eps-eri` | K2V | 5020 | 400-800 Myr | 0.32 | 0.82 | 0.759 | MUSCLES |
+    | [GJ 1132](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201132) | `gj1132` | M4.5V | 3229 | n/a | 0.005 | 0.195 | 0.221 | Mega-MUSCLES |
+    | [GJ 1214](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201214) | `gj1214` | M4V | 3100 | 5-10 Gyr | 0.00351 | 0.182 | 0.216 | MUSCLES |
+    | [GJ 15 A](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%2015) | `gj15a` | M1-M2V | ~3700 | n/a | ~0.021 | ~0.40 | ~0.38 | Mega-MUSCLES |
+    | [GJ 163](https://exoplanetarchive.ipac.caltech.edu/overview/gj%20163%20b) | `gj163` | M3.5V | ~3300-3500 | ~2-10 Gyr | ~0.02 | ~0.40 | ~0.41 | Mega-MUSCLES |
     | [GJ 176](https://exoplanetarchive.ipac.caltech.edu/overview/HD%20285968) | `gj176` | M2.5V | ~3700 | ~4 Gyr | 0.034 | 0.51 | 0.48 | MUSCLES |
-    | [GJ 436](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20436) | `gj436` | M2.5–M3V | ~3600 | ~6–15 Gyr | 0.023 | 0.44 | 0.42 | MUSCLES |
-    | [GJ 551 (Proxima Cen)](https://exoplanetarchive.ipac.caltech.edu/overview/alpha%20Cen) | `gj551` | M5.5Ve | ~2900–3000 | ~4.8 Gyr | 0.0015 | 0.12 | 0.14 | MUSCLES |
+    | [GJ 436](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20436) | `gj436` | M2.5-M3V | ~3600 | ~6-15 Gyr | 0.023 | 0.44 | 0.42 | MUSCLES |
+    | [GJ 551 (Proxima Cen)](https://exoplanetarchive.ipac.caltech.edu/overview/alpha%20Cen) | `gj551` | M5.5Ve | ~2900-3000 | ~4.8 Gyr | 0.0015 | 0.12 | 0.14 | MUSCLES |
     | [GJ 581](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20581) | `gj581` | M3V | ~3500 | ~4 Gyr | ~0.012 | ~0.30 | ~0.30 | MUSCLES |
-    | [GJ 649](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20649) | `gj649` | M1–M2V | ~3700 | — | ~0.044 | 0.51 | 0.50 | Mega-MUSCLES |
-    | [GJ 667 C](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20667C) | `gj667c` | M1.5V | ~3700 | >2 Gyr | ~0.014 | ~0.33 | ~0.32–0.42 | MUSCLES |
-    | [GJ 674](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20674) | `gj674` | M2.5V | ~3400–3600 | ~0.5–3 Gyr | 0.017 | 0.35 | 0.36 | Mega-MUSCLES |
-    | [GJ 676 A](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20676A) | `gj676a` | M0V | ~3800–4000 | — | 0.083 | 0.63 | 0.65 | Mega-MUSCLES |
-    | [GJ 699 (Barnard's Star)](https://exoplanetarchive.ipac.caltech.edu/overview/barnard's%20star) | `gj699` | M3.5–4V | ~3200–3300 | ~10 Gyr | 0.0035 | ~0.16 | ~0.19 | Mega-MUSCLES |
-    | [GJ 729 (Ross 154)](https://simbad.cds.unistra.fr/simbad/sim-id?Ident=GJ+729) | `gj729` | M3.5V | ~3200–3300 | <1–2 Gyr | ~0.004–0.005 | ~0.18 | ~0.20 | Mega-MUSCLES |
-    | [GJ 832](https://exoplanetarchive.ipac.caltech.edu/overview/HIP%20106440) | `gj832` | M1–M3V | ~3500 | ~4–12 Gyr | ~0.03 | 0.45 | 0.45 | MUSCLES |
-    | GJ 832 (synthetic) | `gj832_synth` | M1–M3V | ~3500 | ~4–12 Gyr | ~0.03 | 0.45 | 0.45 | MUSCLES |
+    | [GJ 649](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20649) | `gj649` | M1-M2V | ~3700 | n/a | ~0.044 | 0.51 | 0.50 | Mega-MUSCLES |
+    | [GJ 667 C](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20667C) | `gj667c` | M1.5V | ~3700 | >2 Gyr | ~0.014 | ~0.33 | ~0.32-0.42 | MUSCLES |
+    | [GJ 674](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20674) | `gj674` | M2.5V | ~3400-3600 | ~0.5-3 Gyr | 0.017 | 0.35 | 0.36 | Mega-MUSCLES |
+    | [GJ 676 A](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20676A) | `gj676a` | M0V | ~3800-4000 | n/a | 0.083 | 0.63 | 0.65 | Mega-MUSCLES |
+    | [GJ 699 (Barnard's Star)](https://exoplanetarchive.ipac.caltech.edu/overview/barnard's%20star) | `gj699` | M3.5-4V | ~3200-3300 | ~10 Gyr | 0.0035 | ~0.16 | ~0.19 | Mega-MUSCLES |
+    | [GJ 729 (Ross 154)](https://simbad.cds.unistra.fr/simbad/sim-id?Ident=GJ+729) | `gj729` | M3.5V | ~3200-3300 | <1-2 Gyr | ~0.004-0.005 | ~0.18 | ~0.20 | Mega-MUSCLES |
+    | [GJ 832](https://exoplanetarchive.ipac.caltech.edu/overview/HIP%20106440) | `gj832` | M1-M3V | ~3500 | ~4-12 Gyr | ~0.03 | 0.45 | 0.45 | MUSCLES |
+    | GJ 832 (synthetic) | `gj832_synth` | M1-M3V | ~3500 | ~4-12 Gyr | ~0.03 | 0.45 | 0.45 | MUSCLES |
     | [GJ 849](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20849) | `gj849` | M3.5V | 3467 | >3 Gyr | 0.02887 | 0.45 | 0.45 | Mega-MUSCLES |
-    | [GJ 876](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20876) | `gj876` | M2–4V | ~3200–3300 | ~2–15 Gyr | ~0.013 | ~0.37 | ~0.37 | MUSCLES |
-    | [HAT-P-12](https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-12) | `hat-p-12` | K4V | 4500–4800 | 2–14 Gyr | ~0.20 | 0.74 | 0.70 | MUSCLES ext. |
-    | [HAT-P-26](https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-26) | `hat-p-26` | K1V | ~5050 | 4–12 Gyr | ~0.44 | 0.85 | 0.86 | MUSCLES ext. |
-    | [HD 40307](https://exoplanetarchive.ipac.caltech.edu/overview/HD%2040307) | `hd40307` | K2.5V | ~4800–5000 | ~2–5 Gyr | ~0.22 | ~0.79 | ~0.71 | MUSCLES |
+    | [GJ 876](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20876) | `gj876` | M2-4V | ~3200-3300 | ~2-15 Gyr | ~0.013 | ~0.37 | ~0.37 | MUSCLES |
+    | [HAT-P-12](https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-12) | `hat-p-12` | K4V | 4500-4800 | 2-14 Gyr | ~0.20 | 0.74 | 0.70 | MUSCLES ext. |
+    | [HAT-P-26](https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-26) | `hat-p-26` | K1V | ~5050 | 4-12 Gyr | ~0.44 | 0.85 | 0.86 | MUSCLES ext. |
+    | [HD 40307](https://exoplanetarchive.ipac.caltech.edu/overview/HD%2040307) | `hd40307` | K2.5V | ~4800-5000 | ~2-5 Gyr | ~0.22 | ~0.79 | ~0.71 | MUSCLES |
     | [HD 85512](https://exoplanetarchive.ipac.caltech.edu/overview/HD%2085512) | `hd85512` | M0V | ~4400 | ~6 Gyr | 0.17 | 0.69 | 0.69 | MUSCLES |
     | [HD 97658](https://exoplanetarchive.ipac.caltech.edu/overview/HD%2097658%20b) | `hd97658` | K1V | 5212 | 3.9 Gyr | 0.351 | 0.773 | 0.728 | MUSCLES |
-    | [HD 149026](https://exoplanetarchive.ipac.caltech.edu/overview/HD%20149026%20b) | `hd-149026` | G0V | ~6100–6200 | ~2–3 Gyr | ~2.6 | ~1.14 | ~1.46 | MUSCLES ext. |
+    | [HD 149026](https://exoplanetarchive.ipac.caltech.edu/overview/HD%20149026%20b) | `hd-149026` | G0V | ~6100-6200 | ~2-3 Gyr | ~2.6 | ~1.14 | ~1.46 | MUSCLES ext. |
     | [L 98-59](https://exoplanetarchive.ipac.caltech.edu/overview/L%2098-59) | `l-98-59` | M3V | 3415 | ~5 Gyr | 0.012 | 0.292 | 0.316 | Mega-MUSCLES |
-    | [L 678-39 (GJ 357)](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20357) | `l-678-39` | M2.5V | ~3500 | — | 0.0017 | ~0.34 | ~0.34 | MUSCLES ext. |
-    | [L 980-5](https://simbad.u-strasbg.fr/simbad/sim-id?Ident=l+980-5) | `l-980-5` | M4V | — | — | — | — | — | Mega-MUSCLES |
-    | [LHS 2686](https://simbad.cds.unistra.fr/simbad/sim-id?Ident=LHS+2686) | `lhs-2686` | M5V | — | — | — | — | — | Mega-MUSCLES |
+    | [L 678-39 (GJ 357)](https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20357) | `l-678-39` | M2.5V | ~3500 | n/a | 0.0017 | ~0.34 | ~0.34 | MUSCLES ext. |
+    | [L 980-5](https://simbad.u-strasbg.fr/simbad/sim-id?Ident=l+980-5) | `l-980-5` | M4V | n/a | n/a | n/a | n/a | n/a | Mega-MUSCLES |
+    | [LHS 2686](https://simbad.cds.unistra.fr/simbad/sim-id?Ident=LHS+2686) | `lhs-2686` | M5V | n/a | n/a | n/a | n/a | n/a | Mega-MUSCLES |
     | [LP 791-18](https://exoplanetarchive.ipac.caltech.edu/overview/LP%20791-18) | `lp-791-18` | M6V | ~2960 | >0.5 Gyr | ~0.002 | 0.139 | 0.182 | MUSCLES ext. |
-    | [TOI-193 (LTT 9779)](https://exoplanetarchive.ipac.caltech.edu/overview/LTT%209779) | `toi-193` | G7V | ~5400–5500 | ~2 Gyr | ~0.7 | ~1.0 | ~0.95 | MUSCLES ext. |
+    | [TOI-193 (LTT 9779)](https://exoplanetarchive.ipac.caltech.edu/overview/LTT%209779) | `toi-193` | G7V | ~5400-5500 | ~2 Gyr | ~0.7 | ~1.0 | ~0.95 | MUSCLES ext. |
     | [TRAPPIST-1](https://exoplanetarchive.ipac.caltech.edu/overview/TRAPPIST-1) | `trappist-1` | M8V | 2566 | ~8 Gyr | 0.000553 | 0.0898 | 0.1192 | Mega-MUSCLES |
-    | [WASP-17](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-17) | `wasp-17` | F4–F6V | ~6550 | ~3 Gyr | ~4 | 1.35 | 1.57 | MUSCLES ext. |
+    | [WASP-17](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-17) | `wasp-17` | F4-F6V | ~6550 | ~3 Gyr | ~4 | 1.35 | 1.57 | MUSCLES ext. |
     | [WASP-43](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-43) | `wasp-43` | K7V | ~4100 | ~7 Gyr | ~0.15 | ~0.65 | ~0.76 | MUSCLES ext. |
     | [WASP-77 A](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-77%20A) | `wasp-77a` | G8V | ~5600 | ~6 Gyr | ~0.74 | ~0.90 | ~0.91 | MUSCLES ext. |
-    | [WASP-127](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-127) | `wasp-127` | G5 | ~5600–5800 | ~10–12 Gyr | ~1.8 | ~0.95–1.10 | ~1.3 | MUSCLES ext. |
+    | [WASP-127](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-127) | `wasp-127` | G5 | ~5600-5800 | ~10-12 Gyr | ~1.8 | ~0.95-1.10 | ~1.3 | MUSCLES ext. |
 
 ### PHOENIX synthetic spectra
 
 Med-resolution synthetic spectra from the PHOENIX library, stored under
-`$FWL_DATA/stellar_spectra/PHOENIX/<FeH>_<alpha>/`. Each subdirectory
-corresponds to one metallicity–alpha combination (e.g. `FeH-0.5_alpha+0.0/`).
+`$FWL_DATA/star/spectra/phoenix/r17674612/FeH<FeH>_alpha<alpha>/`. Each
+subdirectory corresponds to one metallicity-alpha combination
+(e.g. `FeH-0.5_alpha+0.0/`). The Zenodo record holds one zip archive per
+combination. PROTEUS fetches only the archive that a run needs, checks it
+against the committed checksum, and unpacks it next to the archive.
 
 Parameters defining the PHOENIX grid:
 
@@ -164,7 +193,7 @@ with `#`.
 Correlated-k opacity tables used by the atmosphere climate modules
 (AGNI, JANUS). Selected via `atmos_clim.spectral_group` and
 `atmos_clim.spectral_bands` in the config. Stored under
-`$FWL_DATA/spectral_files/<group>/<bands>/`.
+`$FWL_DATA/atmos_clim/spectral_files/<group>/<bands>/r<record-id>/`, with the group name in lower case.
 For a full description of each group's spectral coverage and gas
 species, see `docs/assets/spectral_files.pdf` in the PROTEUS repository.
 
@@ -182,13 +211,18 @@ increase spectral resolution and runtime cost.
 
 ## Surfaces
 
-Single-scattering albedo data from Hammond et al. (2024):
-[Zenodo record 13691960](https://zenodo.org/records/13691960).
+Surface reflectance spectra from Hammond et al. (2024):
+[Zenodo record 15880455](https://zenodo.org/records/15880455).
+`proteus get surfaces` downloads them into the versioned dataset directory `$FWL_DATA/atmos_clim/surface_albedos/hammond_2024/r15880455`.
+
+Set `atmos_clim.agni.surf_material` to the file name of a spectrum, for example `"lunarmarebasalt.dat"`.
+The path form `"surface_albedos/Hammond24/lunarmarebasalt.dat"` is also accepted and selects the same file.
 
 Available surface types can be listed with:
 
 ```console
-ls $FWL_DATA/surface_albedos/Hammond24
+proteus get surfaces
+ls $FWL_DATA/atmos_clim/surface_albedos/hammond_2024/r15880455
 ```
 
 ---
@@ -227,3 +261,55 @@ not read and can be deleted.
 ## Equations of state 
 
 The interior structure solver of PROTEUS, Zalmoxis, uses equation-of-state tables by [Seager et al. (2007)](https://iopscience.iop.org/article/10.1086/521346), and from [PALEOS](https://github.com/maraattia/PALEOS) by [Attia et al. (2026)](https://ui.adsabs.harvard.edu/abs/2026arXiv260503741A/abstract). An overview of equation of state tables can be found [here](https://proteus-framework.org/Zalmoxis/Reference/data.html#data-inventory).
+
+All equation-of-state tables are fetched through fwl-io into `$FWL_DATA/<dataset directory>/r<record-id>/`, on the same terms as the datasets above. Only the files that the selected equations of state read are fetched.
+
+| Dataset directory | Contents | Fetched |
+|---|---|---|
+| `interior_struct/eos/seager_2007` | Seager et al. (2007) iron, silicate and water tables | whole record |
+| `interior/eos/wolf_bower_2018_1tpa` | Wolf and Bower (2018) MgSiO3 melt and solid tables to 1 TPa | melt density, melt adiabatic gradient and solid density for `WolfBower2018`; the solid density alone for `RTPress100TPa` |
+| `interior/eos/rtpress_melt_100tpa` | RTPress MgSiO3 melt tables to 100 TPa | melt density and melt adiabatic gradient |
+| `interior/eos/paleos_mgsio3` | PALEOS MgSiO3 solid and liquid tables, 150 and 600 points per decade | the 150 points-per-decade pair for `PALEOS-2phase:MgSiO3`, the 600 points-per-decade pair for `PALEOS-2phase:MgSiO3-highres` |
+| `interior/eos/paleos_iron`, `paleos_mgsio3_unified`, `paleos_h2o` | PALEOS unified tables for iron, MgSiO3 and water | the table of each selected component |
+| `interior/eos/chabrier_2021_hhe` | Chabrier et al. hydrogen and helium tables | archive extracted into `r<record-id>/EOS_Chabrier2021_HHe/` |
+
+Tables under `$FWL_DATA/zalmoxis_eos` and `$FWL_DATA/EOS_material_properties` are not read where they are. `fwl-io relocate` moves a `zalmoxis_eos` folder that holds every file of its dataset; the rest can be deleted once the run has fetched them.
+
+---
+
+## Melting curves and P-S lookup tables
+
+The `Monteux+600`, `Monteux-600` and `Wolf_Bower+2018` solidus/liquidus
+curves used by `interior_struct.melting_dir` and by Zalmoxis are fetched
+through fwl-io into `$FWL_DATA/interior/melting_curves/<dataset>/r<record-id>/`
+(datasets `monteux_plus_600`, `monteux_minus_600` and `wolf_bower_2018`).
+For these three names the checksum-verified fetched copy is read; a local
+directory `$FWL_DATA/interior_lookup_tables/Melting_curves/<melting_dir>/` of the
+same name is read only while the fetched copy is not on disk. Any other name is
+read from that local directory, which holds `solidus_P-T.dat` and
+`liquidus_P-T.dat` (as written by `tools/solidus_func.py`) or `solidus.dat` and
+`liquidus.dat`; see [Melting curves](melting_curves.md) for the full list of
+parametrizations and how to generate them. When SPIDER or
+Aragog read `melting_dir`, a configured curve whose files are missing stops the
+run with an error naming the missing files instead of switching to other curves.
+With `interior_struct.module = "zalmoxis"` and a PALEOS mantle equation of
+state (for a mixture: a PALEOS MgSiO$_3$ component, or no MgSiO$_3$ component and
+a PALEOS one), the curves are derived from the PALEOS liquidus and `melting_dir` is
+not read; a configured `melting_dir` then gives a warning when the configuration
+is loaded. Without a PALEOS table set, `melting_dir` must be set, rather than
+use whichever curves are on disk: an Aragog configuration without it is rejected
+when it is loaded, and a SPIDER run stops with an error when it starts. A SPIDER
+run with `const_properties = true` reads no melting curves and is exempt.
+
+The Wolf and Bower (2018) pressure-entropy lookup table that SPIDER and
+Aragog read for `eos_dir = "WolfBower2018_MgSiO3"` is fetched the same way,
+into `$FWL_DATA/interior/eos/dk09_1tpa_elec_free/mgsio3_wolf_bower_2018_1tpa/r<record-id>/`
+when SPIDER or Aragog run without a generated PALEOS table set: with the dummy or
+SPIDER structure, or with Zalmoxis and a non-PALEOS or mixed mantle EOS. It is
+also fetched whenever `interior_struct.eos_dir` is set and SPIDER or Aragog run.
+`proteus get interiordata --config-path <config>` fetches it for such a config
+before an offline run. A local table takes precedence: SPIDER reads
+`$FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-S/` and Aragog reads
+`$FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-T/`. SPIDER uses the
+table bundled with it (`lookup_data/1TPa-dK09-elec-free/`) when neither the
+local nor a complete fetched table is available.

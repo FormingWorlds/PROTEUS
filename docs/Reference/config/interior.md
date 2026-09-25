@@ -26,7 +26,7 @@ with an equation of state (EOS).
 | `module` | str or none | `"zalmoxis"` | Module for solving the planet's interior structure. Choices: `none`, `"dummy"`, `"spider"`, `"zalmoxis"`. |
 | `core_density` | float | str | `"self"` | Density of the planet's core \[kg m-3\]. Set to 'self' for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis'). |
 | `core_heatcap` | float | str | `"self"` | Specific heat capacity of the planet's core \[J kg-1 K-1\]. Set to 'self' for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis'). |
-| `melting_dir` | str or none | `none` | Melting curve folder name in FWL_DATA, for the SPIDER structure module. |
+| `melting_dir` | str or none | `none` | Melting curve name in FWL_DATA. Required for the SPIDER structure module and for any run without a PALEOS table set; not read with module = 'zalmoxis' and a single PALEOS mantle EOS. |
 | `eos_dir` | str or none | `none` | EOS folder name in FWL_DATA, for the SPIDER structure module. |
 <!-- END GENERATED: config-table [interior_struct] -->
 
@@ -117,8 +117,7 @@ belong to the experimental binodal-aware mode.
 The MgSiO$_3$ mantle EOS resolves through two distinct paths depending on the `<source>` prefix of `mantle_eos`.
 
 With `mantle_eos = "PALEOS:MgSiO3"` (the default), the hydrostatic structure solve uses the PALEOS *unified* MgSiO$_3$ table for the density profile.
-The phase-specific property surfaces used by Aragog (density, heat capacity, thermal expansion, adiabatic gradient) and the pressure-entropy lookup tables are built from the PALEOS *two-phase* solid and liquid tables shipped with Zalmoxis when those tables are present, which keeps the properties well resolved across the melting-curve discontinuity that a single unified table interpolates through.
-If the two-phase tables are not available, the property surfaces are built from the unified table alone, and the entropy near the melting curve is less reliable.
+The phase-specific property surfaces used by Aragog (density, heat capacity, thermal expansion, adiabatic gradient) and the pressure-entropy lookup tables are built from the PALEOS *two-phase* solid and liquid tables, which keeps the properties well resolved across the melting-curve discontinuity that a single unified table interpolates through.
 The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa, Fei et al. 2021 above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8).
 The default is the constant solidus-to-liquidus ratio ($\approx 0.809$) of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization, applied to the PALEOS liquidus instead of the Stixrude liquidus.
 The derived solidus is therefore a constant depression of the PALEOS liquidus, not the Stixrude solidus curve: its absolute value lies well above the Stixrude solidus at low to moderate pressure (about 2900 K against 1700 K at 20 GPa, and about 10% higher at 140 GPa) and below it above roughly 200 GPa.
@@ -126,6 +125,16 @@ The melt fraction then follows from the lever rule between this solidus and liqu
 
 With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the SPIDER/Aragog entropy tables use the separate solid and liquid PALEOS tables, which supply the latent-heat entropy gap across the melting curve directly rather than through a single interpolated unified table.
 Their phase boundaries follow the same construction as the unified case: the liquidus is the analytic PALEOS curve, and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor`.
+
+A run with a PALEOS EOS requires the table of each PALEOS layer, with the MgSiO$_3$ unified table only when a layer is `PALEOS:MgSiO3`. A mantle with a PALEOS component also requires the MgSiO$_3$ two-phase solid and liquid pair: the high-resolution pair for `PALEOS-2phase:MgSiO3-highres`, and the PALEOS-API cache for the PALEOS-API family.
+When one is missing, the run stops before the first solve with an error that names each missing file and the command that fetches them, `proteus get interiordata --config-path <config.toml>`; it does not fall back to another table set.
+With `dry_mantle = false` it also requires the tables of the dissolved volatiles (`PALEOS:H2O` and `Chabrier:H`).
+A resumed SPIDER run that keeps its pressure-entropy tables needs only the tables of its layers. With `temperature_mode = "liquidus_super"` it also needs the two-phase pair that its anchor reads. An Aragog resume always needs the two-phase pair, which it reads when the mesh changes.
+A mixture mantle (a `+` in `mantle_eos`) takes its melting curves, in the structure and in the energetics, and its SPIDER or Aragog tables from its MgSiO$_3$ component: with `PALEOS:MgSiO3` it gets exactly the curves and tables of a `PALEOS:MgSiO3` mantle, and with `WolfBower2018:MgSiO3` the `eos_dir` P-S tables (by default Wolf and Bower 2018) and the `melting_dir` curves. The other components enter only the structure density.
+A PALEOS mantle with no MgSiO$_3$ component (for example `mantle_eos = "PALEOS:H2O"`, `"PALEOS:iron"`, or a mixture of the two) uses the density of its own material in the structure, while the PALEOS MgSiO$_3$ melting curves and the two-phase MgSiO$_3$ tables of its PALEOS family stand in for the energetics.
+With SPIDER or Aragog, the energetics must follow a PALEOS, `WolfBower2018` or `RTPress100TPa` EOS; a mantle whose energetics would follow a Seager2007, Chabrier or analytic EOS is rejected when the configuration loads.
+`temperature_mode = "liquidus_super"` solves the initial adiabat on the MgSiO$_3$ two-phase tables for every mantle, so those tables are required at the start of the run.
+The run logs one warning that names the cases that apply at the start of each run segment, so a resumed run logs it again.
 
 !!! note "`mushy_zone_factor` and the two-phase structure solve"
     In a PROTEUS-coupled run, `load_zalmoxis_solidus_liquidus_functions` builds the `mushy_zone_factor * liquidus` solidus described above and passes it into the Zalmoxis structure solve. The same curve pair sets the SPIDER/Aragog table boundaries, the adiabatic gradient in the mushy zone, and the two-phase density (`PALEOS-2phase`, `PALEOS-API-2phase`), so `mushy_zone_factor` acts consistently in the tables and in the structure.
@@ -384,7 +393,9 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 <!-- Generated by tools/generate_config_reference.py; edit src/proteus/config/, not this table -->
 Cross-field constraints enforced when the config file loads:
 
+- Require ``interior_struct.melting_dir`` for Aragog without a PALEOS table set.
 - Boundary backend assumes a fixed surface state coupling.
+- Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog.
 - Interior tidal heating requires an tides module to be enabled.
 - Aragog requires at least one energy transport term to be enabled.
 - Validate Boundary backend's solidus/liquidus ordering.

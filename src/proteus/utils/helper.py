@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import glob
 import logging
+import math
 import os
 import re
 import shutil
@@ -11,9 +12,177 @@ from pathlib import Path
 
 import numpy as np
 
-from proteus.utils.constants import element_list, element_mmw
+from proteus.utils.constants import (
+    PALEOS_EOS_PREFIXES,
+    PALEOS_REGISTRY_KEYS,
+    element_list,
+    element_mmw,
+)
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+class MissingReferenceData(Exception):
+    """Marks an error raised because reference data the run needs is missing.
+
+    ``Proteus.start`` writes status 20 when such an error stops the run.
+    """
+
+
+class MissingDataError(FileNotFoundError, MissingReferenceData):
+    """A reference data file or table the run needs is not on disk."""
+
+
+def _strip_fraction_tokens(component: str) -> str:
+    """Strip trailing mass-fraction tokens from an EOS component string.
+
+    Extended mantle EOS strings carry per-component fractions, e.g.
+    ``'PALEOS:MgSiO3:0.9800'``; the registry key is the prefix without
+    the numeric token. Only finite numbers count as fraction tokens:
+    ``'nan'`` and ``'inf'`` parse as floats but are never written by
+    the EOS extension, so they stay part of the identifier.
+    """
+    tokens = component.split(':')
+    while tokens:
+        try:
+            value = float(tokens[-1])
+        except ValueError:
+            break
+        if not math.isfinite(value):
+            break
+        tokens.pop()
+    return ':'.join(tokens)
+
+
+def eos_components(eos: str) -> list[str]:
+    """Registry keys of the components of a ``+``-joined EOS string.
+
+    Parameters
+    ----------
+    eos : str
+        EOS identifier, e.g. ``'PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1'``.
+
+    Returns
+    -------
+    list[str]
+        One key per component, with spaces and fraction tokens stripped.
+    """
+    return [k for c in str(eos or '').split('+') if (k := _strip_fraction_tokens(c.strip()))]
+
+
+def is_mgsio3(component: str) -> bool:
+    """Whether an EOS registry key names an MgSiO3 material, e.g. ``'PALEOS:MgSiO3'``."""
+    return component.partition(':')[2].startswith('MgSiO3')
+
+
+def energetics_eos_key(mantle_eos: str) -> str | None:
+    """Registry key of the EOS whose melting curves and P-S tables a mantle uses.
+
+    The structure melting curves and the energetics both follow this key, so a
+    run has one melting curve.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Mantle EOS, possibly a ``+``-joined mixture.
+
+    Returns
+    -------
+    str or None
+        The MgSiO3 component. Without one, the MgSiO3 2-phase pair of the PALEOS
+        family when a component is a PALEOS registry key (so PALEOS H2O and iron
+        mantles use MgSiO3 curves and tables); else the key of a single component,
+        or None for a mixture.
+
+    Raises
+    ------
+    ValueError
+        If a mixture has MgSiO3 components with different registry keys.
+    """
+    components = sorted(set(eos_components(mantle_eos)))
+    mgsio3 = [c for c in components if is_mgsio3(c)]
+    if len(mgsio3) > 1:
+        raise ValueError(
+            f'mantle_eos={mantle_eos!r} has MgSiO3 components from different sources '
+            f'({", ".join(mgsio3)}); the melting curves and energetics follow one '
+            'MgSiO3 component, so keep one of them.'
+        )
+    if mgsio3:
+        return mgsio3[0]
+    if any(c in PALEOS_REGISTRY_KEYS for c in components):
+        return twophase_registry_key(mantle_eos)
+    return components[0] if len(components) == 1 else None
+
+
+def generates_paleos_tables(interior_struct) -> bool:
+    """Return whether Zalmoxis generates a PALEOS table set for this structure.
+
+    Under the Zalmoxis structure, a mantle EOS gets one when its energetics key
+    (:func:`energetics_eos_key`) is a PALEOS key of the Zalmoxis material
+    registry. SPIDER, Aragog and the table fetch then use the PALEOS-derived
+    curves instead of interior_struct.melting_dir. The table files are not checked.
+
+    Parameters
+    ----------
+    interior_struct : Struct
+        The interior_struct section of the configuration.
+
+    Returns
+    -------
+    bool
+        True for module 'zalmoxis' with a PALEOS energetics key.
+    """
+    if getattr(interior_struct, 'module', None) != 'zalmoxis':
+        return False
+    mantle = getattr(getattr(interior_struct, 'zalmoxis', None), 'mantle_eos', None)
+    return energetics_eos_key(mantle or '') in PALEOS_REGISTRY_KEYS
+
+
+def twophase_registry_key(mantle_eos: str) -> str:
+    """Return the 2-phase MgSiO3 registry key matching a mantle EOS name.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Configured mantle EOS name.
+
+    Returns
+    -------
+    str
+        ``'PALEOS-API-2phase:MgSiO3'`` when a component is of the PALEOS-API
+        family, ``'PALEOS-2phase:MgSiO3-highres'`` when a component is the
+        high-resolution shipped key, and ``'PALEOS-2phase:MgSiO3'`` otherwise.
+        A PALEOS MgSiO3 component, when present, alone sets the family.
+    """
+    components = eos_components(mantle_eos)
+    mgsio3 = [c for c in components if c.startswith(PALEOS_EOS_PREFIXES) and is_mgsio3(c)]
+    components = mgsio3 or components
+    if any(c.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')) for c in components):
+        return 'PALEOS-API-2phase:MgSiO3'
+    if 'PALEOS-2phase:MgSiO3-highres' in components:
+        return 'PALEOS-2phase:MgSiO3-highres'
+    return 'PALEOS-2phase:MgSiO3'
+
+
+def paleos_companion_keys(mantle_eos: str) -> list[str]:
+    """Registry key of the table pair a PALEOS mantle reads besides its own tables.
+
+    A mantle EOS with any PALEOS component also reads the MgSiO3 2-phase
+    pair of its family (P-S tables, Aragog tables, the liquidus_super anchor).
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Configured mantle EOS, possibly a ``+``-joined mixture.
+
+    Returns
+    -------
+    list[str]
+        The 2-phase pair key, or an empty list for a mantle without a PALEOS component.
+    """
+    if not any(c.startswith(PALEOS_EOS_PREFIXES) for c in eos_components(mantle_eos)):
+        return []
+    return [twophase_registry_key(mantle_eos)]
 
 
 def resolve_fwl_data_dir() -> Path:

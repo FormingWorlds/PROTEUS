@@ -240,15 +240,15 @@ class TestCheckFwlData:
 
     def test_reports_present_subdirs(self, tmp_path):
         """Populated subdirectories report as present."""
-        (tmp_path / 'spectral_files').mkdir()
-        (tmp_path / 'spectral_files' / 'data.bin').touch()
-        (tmp_path / 'stellar_spectra').mkdir()
-        (tmp_path / 'stellar_spectra' / 'sun.txt').touch()
+        (tmp_path / 'atmos_clim' / 'spectral_files').mkdir(parents=True)
+        (tmp_path / 'atmos_clim' / 'spectral_files' / 'data.bin').touch()
+        (tmp_path / 'star' / 'spectra' / 'solar').mkdir(parents=True)
+        (tmp_path / 'star' / 'spectra' / 'solar' / 'sun.txt').touch()
         with patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}):
             results = check_fwl_data()
         statuses = {r.name: r.status for r in results}
-        assert statuses['FWL_DATA/spectral_files'] == PASS
-        assert statuses['FWL_DATA/stellar_spectra'] == PASS
+        assert statuses['FWL_DATA/atmos_clim/spectral_files'] == PASS
+        assert statuses['FWL_DATA/star/spectra'] == PASS
 
     def test_reports_missing_subdirs(self, tmp_path):
         """Missing subdirectories warn with a fix command."""
@@ -257,6 +257,57 @@ class TestCheckFwlData:
         for r in results:
             assert r.status == WARN
             assert r.fix_cmd is not None
+
+    @pytest.mark.parametrize('movable', [True, False])
+    def test_an_older_layout_is_fixed_by_relocate(self, tmp_path, movable):
+        """A data set in the older layout is fixed by moving it only when a relocate dry
+        run would move it; otherwise, e.g. with wrong checksums, by its download."""
+        from types import SimpleNamespace
+
+        legacy = tmp_path / 'spectral_files' / 'Dayspring' / '48'
+        legacy.mkdir(parents=True)
+        (legacy / 'Dayspring.sf').touch()
+        plan = SimpleNamespace(ready=[SimpleNamespace(legacy_dir=legacy)] if movable else [])
+        with (
+            patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}),
+            patch('fwl_io.relocate.plan_relocations', return_value=plan) as planned,
+        ):
+            fixes = {r.name: r.fix_cmd for r in check_fwl_data()}
+        planned.assert_called_once_with(str(tmp_path))
+        want = 'fwl-io relocate' if movable else 'proteus get spectral'
+        assert fixes['FWL_DATA/atmos_clim/spectral_files'] == want
+        assert fixes['FWL_DATA/star/spectra'] == 'proteus get stellar'
+
+    def test_the_relocate_dry_run_runs_only_for_a_missing_set_with_older_data(self, tmp_path):
+        """The dry run hashes the whole tree, so it runs only when a data set is missing
+        and its older-layout folder holds files."""
+        (tmp_path / 'atmos_clim' / 'spectral_files' / 'Dayspring').mkdir(parents=True)
+        (tmp_path / 'spectral_files' / 'Dayspring').mkdir(parents=True)
+        (tmp_path / 'spectral_files' / 'Dayspring' / 'old.sf').touch()
+        with (
+            patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}),
+            patch('fwl_io.relocate.plan_relocations') as planned,
+        ):
+            check_fwl_data()
+        planned.assert_not_called()
+
+    def test_relocate_is_proposed_through_a_symlinked_data_root(self, tmp_path):
+        """FWL_DATA reached through a symlink still matches the resolved legacy folders a
+        relocate dry run reports."""
+        from types import SimpleNamespace
+
+        real = tmp_path / 'real'
+        (real / 'spectral_files' / 'Dayspring' / '48').mkdir(parents=True)
+        (tmp_path / 'link').symlink_to(real)
+        plan = SimpleNamespace(
+            ready=[SimpleNamespace(legacy_dir=real / 'spectral_files' / 'Dayspring' / '48')]
+        )
+        with (
+            patch.dict(os.environ, {'FWL_DATA': str(tmp_path / 'link')}),
+            patch('fwl_io.relocate.plan_relocations', return_value=plan),
+        ):
+            fixes = {r.name: r.fix_cmd for r in check_fwl_data()}
+        assert fixes['FWL_DATA/atmos_clim/spectral_files'] == 'fwl-io relocate'
 
     def test_skips_when_fwl_data_unset(self):
         """No checks when FWL_DATA is not set."""
@@ -1292,7 +1343,7 @@ class TestUpdateEntry:
         """A warning with no fix is surfaced but does not mark the install
         unhealthy: warnings are not failures."""
         results = [
-            CheckResult('FWL_DATA/spectral_files', 'data', WARN, 'empty', None),
+            CheckResult('FWL_DATA/atmos_clim/spectral_files', 'data', WARN, 'empty', None),
         ]
         with patch('proteus.doctor.run_all_checks', return_value=results):
             result = update_entry(dry_run=False)

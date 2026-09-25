@@ -285,7 +285,7 @@ class TestGetDataSourceInfo:
         """Test lookup of valid folder."""
         from proteus.utils.data import get_data_source_info
 
-        result = get_data_source_info('PHOENIX')
+        result = get_data_source_info('scattering')
         assert result is not None
         assert 'zenodo_id' in result
         assert 'osf_id' in result

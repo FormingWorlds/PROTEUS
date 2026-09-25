@@ -1546,3 +1546,49 @@ def test_builder_raises_an_anchor_failure_nothing_re_solves(energetics, caplog):
             with pytest.raises(InitialConditionError, match='no valid molten adiabat'):
                 _build_superliquidus_adiabat_tp(config, {'P_cmb': 1.3e12}, P_cmb_target=1.4e12)
     assert not [r for r in caplog.records if 'no P-T anchor' in r.getMessage()]
+
+
+def test_adiabat_tp_stops_on_a_missing_pair_for_any_mantle():
+    """The liquidus_super IC adiabat is built on the MgSiO3 2-phase pair, so a missing
+    pair stops it, also for a Wolf and Bower mantle, instead of the linear-guess fallback."""
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    config = _config()
+    config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
+    registry = {
+        'WolfBower2018:MgSiO3': {'eos_file': '/fake/wb.dat'},
+        'PALEOS-2phase:MgSiO3': {},
+    }
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',
+            return_value={'surface_T': 4000.0},
+        ),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value=registry,
+        ),
+        pytest.raises(ZalmoxisMissingEOSFilesError, match='PALEOS-2phase:MgSiO3'),
+    ):
+        _build_superliquidus_adiabat_tp(config, {}, P_cmb_target=1.4e12)
+
+
+def test_adiabat_tp_passes_a_missing_table_stop_through():
+    """A missing-table stop in the anchor stops the run instead of the linear-guess
+    fallback that other construction failures take."""
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',
+            side_effect=ZalmoxisMissingEOSFilesError('pair not available'),
+        ),
+        pytest.raises(ZalmoxisMissingEOSFilesError, match='pair not available'),
+    ):
+        _build_superliquidus_adiabat_tp(_config(), {}, P_cmb_target=1.4e12)
+    # Discrimination: another RuntimeError still falls back to the linear guess.
+    with patch(
+        'proteus.interior_struct.zalmoxis.solve_superliquidus_adiabat',
+        side_effect=RuntimeError('numerical'),
+    ):
+        assert _build_superliquidus_adiabat_tp(_config(), {}, P_cmb_target=1.4e12) is None

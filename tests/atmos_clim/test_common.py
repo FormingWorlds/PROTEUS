@@ -14,6 +14,7 @@ See also:
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -602,7 +603,7 @@ def test_get_radius_from_pressure():
 
 
 @pytest.mark.unit
-def test_spfile_helpers():
+def test_spfile_helpers(tmp_path):
     """
     Test spectral file configuration helpers.
 
@@ -621,9 +622,63 @@ def test_spfile_helpers():
     assert bands == '16'
 
     # Test get_spfile_path construction
-    # Expected: <fwl_dir>/spectral_files/<group>/<bands>/<group>.sf
-    path = get_spfile_path('/fwl/data', mock_conf)
-    assert path == '/fwl/data/spectral_files/Dayspring/16/Dayspring.sf'
+    # Expected: <fwl_dir>/atmos_clim/spectral_files/<group>/<bands>/r<record>/<group>.sf
+    path = get_spfile_path(str(tmp_path), mock_conf)
+    assert path == str(
+        tmp_path
+        / 'atmos_clim'
+        / 'spectral_files'
+        / 'dayspring'
+        / '16'
+        / 'r15799318'
+        / 'Dayspring.sf'
+    )
+
+
+@pytest.mark.unit
+def test_get_spfile_path_reads_an_undeclared_group_from_the_local_tree(tmp_path, caplog):
+    """A group that no manifest declares is read from spectral_files/<group>/<bands>,
+    with an INFO line, also before the file exists."""
+    conf = MagicMock()
+    conf.atmos_clim.spectral_group = 'MyGroup'
+    conf.atmos_clim.spectral_bands = '48'
+    local = tmp_path / 'spectral_files' / 'MyGroup' / '48' / 'MyGroup.sf'
+    with caplog.at_level('INFO', logger='fwl.proteus.atmos_clim.common'):
+        assert get_spfile_path(str(tmp_path), conf) == str(local)
+    assert 'is in no manifest' in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'group, bands', [('MyGroup', '48'), ('Dayspring', '64'), ('Dayspring', '48')]
+)
+def test_require_spfile_path_stops_with_status_20_and_the_fetch_command(tmp_path, group, bands):
+    """A missing spectral file writes status 20 and, for a declared group and band count,
+    names `proteus get spectral` and `fwl-io relocate`; a present one is returned."""
+    from proteus.atmos_clim.common import require_spfile_path
+
+    conf = MagicMock()
+    conf.atmos_clim.spectral_group = group
+    conf.atmos_clim.spectral_bands = bands
+    dirs = {'fwl': str(tmp_path), 'output': str(tmp_path / 'out')}
+    fix = (
+        '`proteus get spectral`'
+        if bands == '48' and group == 'Dayspring'
+        else 'No manifest declares this group and band count'
+    )
+    with (
+        patch('proteus.atmos_clim.common.UpdateStatusfile') as status,
+        pytest.raises(FileNotFoundError, match=fix) as exc,
+    ):
+        require_spfile_path(dirs, conf)
+    status.assert_called_once_with(dirs, 20)
+    assert ('`fwl-io relocate`' in str(exc.value)) == (fix == '`proteus get spectral`')
+    path = Path(get_spfile_path(str(tmp_path), conf))
+    path.parent.mkdir(parents=True)
+    path.write_text('sf')
+    with patch('proteus.atmos_clim.common.UpdateStatusfile') as status:
+        assert require_spfile_path(dirs, conf) == str(path)
+    status.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

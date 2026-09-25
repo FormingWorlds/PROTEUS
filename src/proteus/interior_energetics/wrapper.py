@@ -17,11 +17,20 @@ from proteus.interior_energetics.common import (
     ANCHOR_PASSTHROUGH_ERRORS,
     InitialConditionError,
     Interior_t,
+    MissingMeltingCurveError,
+    _mantle_note,
 )
 from proteus.interior_struct.common import solvus_radius
 from proteus.outgas.wrapper import calc_target_elemental_inventories
-from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
-from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.constants import (
+    TDEP_EOS_PREFIXES,
+    M_earth,
+    R_earth,
+    const_G,
+    noble_gases,
+    vol_element_list,
+)
+from proteus.utils.helper import MissingDataError, UpdateStatusfile, energetics_eos_key
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -664,7 +673,8 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     2. **FWL_DATA (Zenodo 19473625)**: if the canonical Zenodo download
        target exists and is complete, copy the 12 files into the output
        directory. This is the self-sufficient path: once the user runs
-       ``proteus get all`` (or any non-offline start), the Zenodo record
+       ``proteus get interiordata --config-path <config>`` (or any non-offline
+       start), the Zenodo record
        populates FWL_DATA and subsequent runs find the complete set
        here.
 
@@ -678,7 +688,16 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
 
     4. **Hard failure**: if neither source yields a complete set, raise
        ``FileNotFoundError`` with a clear message pointing the user at
-       ``proteus get all`` or the Zenodo record.
+       ``proteus get interiordata --config-path <config>``.
+
+    When ``interior_struct.melting_dir`` is set, the two P-S melting curves
+    are derived from its P-T files in every case above, and missing P-T files
+    raise ``MissingMeltingCurveError`` instead of leaving the curves of the
+    source. When melting_dir is unset and case 1 does not apply, the helper
+    raises ``MissingMeltingCurveError`` rather than take the curves of the
+    source; a SPIDER run with constant properties reads no curves and is
+    exempt. This helper is not called when Zalmoxis generates a PALEOS table
+    set; those runs use the PALEOS-derived curves and do not read melting_dir.
 
     Side effects: sets ``dirs['spider_eos_dir']``,
     ``dirs['spider_solidus_ps']``, ``dirs['spider_liquidus_ps']``.
@@ -696,19 +715,20 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     melting_dir = getattr(config.interior_struct, 'melting_dir', None)
     derive_melting = melting_dir is not None
     if derive_melting:
-        from proteus.utils.data import GetFWLData as _GetFWL
+        from proteus.utils.data import resolve_melting_curve_files
 
-        melting_pt_dir = _GetFWL() / 'interior_lookup_tables' / 'Melting_curves' / melting_dir
-        sol_pt_path = melting_pt_dir / 'solidus_P-T.dat'
-        liq_pt_path = melting_pt_dir / 'liquidus_P-T.dat'
-        if not (sol_pt_path.is_file() and liq_pt_path.is_file()):
-            log.warning(
-                'melting_dir=%s configured but P-T files missing at %s; '
-                'falling back to byte-copy from upstream EoS distribution',
-                melting_dir,
-                melting_pt_dir,
+        sol_pt_path, liq_pt_path = resolve_melting_curve_files(melting_dir)
+        missing_pt = [str(p) for p in (sol_pt_path, liq_pt_path) if not p.is_file()]
+        if missing_pt:
+            from proteus.utils.data import RELOCATE_HINT
+
+            # Other curves would change the physics of the run, so stop here.
+            raise MissingMeltingCurveError(
+                f'interior_struct.melting_dir={melting_dir!r} is configured but its P-T '
+                f'melting curves are missing: {", ".join(missing_pt)}. Fetch them with '
+                "'proteus get interiordata --config-path <your config>', or set "
+                f'melting_dir to an available curve. {RELOCATE_HINT}'
             )
-            derive_melting = False
 
     # Case 1: already populated (e.g. by an earlier call this session or
     # by Zalmoxis's generate_spider_tables in a prior structure solve).
@@ -737,19 +757,26 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
             len(missing),
         )
 
+    energetics = getattr(config, 'interior_energetics', None)
+    const_spider = (
+        getattr(energetics, 'module', None) == 'spider'
+        and getattr(energetics, 'const_properties', False) is True
+    )
+    if not derive_melting and not const_spider:
+        # Without melting_dir the curves would be whatever set is on disk.
+        raise MissingMeltingCurveError(
+            'interior_struct.melting_dir is not set and no PALEOS table set was '
+            f'generated{_mantle_note(config)}. Set melting_dir to a melting curve name '
+            '(e.g. "Monteux-600").'
+        )
+
     os.makedirs(target_dir, exist_ok=True)
 
     # Import lazily so the helper is usable outside of a full PROTEUS
     # install (e.g. unit tests that stub out FWL_DATA).
-    from proteus.utils.data import GetFWLData
+    from proteus.utils.data import resolve_lookup_table_dir
 
-    fwl_data = GetFWLData()
-    zenodo_root = (
-        fwl_data
-        / 'interior_lookup_tables'
-        / '1TPa-dK09-elec-free'
-        / 'MgSiO3_Wolf_Bower_2018_1TPa'
-    )
+    zenodo_root = resolve_lookup_table_dir()
 
     # Case 2: FWL_DATA (Zenodo 19473625) complete set.
     # We check BOTH that all 12 files exist AND that density_melt.dat
@@ -770,7 +797,7 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
             'in SPIDER P-S format. This usually means the directory was '
             'populated by the Zenodo 17417017 record (P-T format). '
             'Falling through to the SPIDER submodule. Refresh FWL_DATA '
-            'with `proteus get all` to fetch Zenodo 19473625.',
+            'with `proteus get interiordata --config-path <your config>`.',
             zenodo_root,
         )
     if zenodo_format_ok:
@@ -858,16 +885,18 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
         )
 
     # Case 4: neither source yielded a complete set.
-    raise FileNotFoundError(
+    from proteus.utils.data import RELOCATE_HINT
+
+    raise MissingDataError(
         'Could not provide SPIDER/Aragog P-S EOS tables at '
         f'{target_dir}. FWL_DATA source '
         f'{zenodo_root} is missing {len(zenodo_missing)} of '
         f'{len(zenodo_files)} required files '
         f'({zenodo_missing[:3]}...), and the SPIDER submodule fallback '
         f'was unavailable at {dirs.get("spider", "<no spider dir set>")}'
-        '/lookup_data/1TPa-dK09-elec-free/. Run `proteus get all` to '
+        '/lookup_data/1TPa-dK09-elec-free/. Run `proteus get interiordata --config-path <your config>` to '
         'fetch Zenodo record 19473625, or ensure the SPIDER submodule '
-        'is cloned.'
+        f'is cloned. {RELOCATE_HINT}'
     )
 
 
@@ -884,11 +913,8 @@ def determine_interior_radius(
 
     log.info('Using %s interior module to solve structure' % config.interior_energetics.module)
 
-    # Provide P-S lookup tables for Aragog's entropy solver (and SPIDER
-    # when it runs under this structure path). Mirrors the
-    # generate_spider_tables() call at the top of the zalmoxis and dummy
-    # structure paths. The helper resolves from FWL_DATA/Zenodo first,
-    # then the SPIDER submodule as a fallback.
+    # P-S lookup tables for the SPIDER or Aragog energetics, as in the
+    # zalmoxis and dummy structure paths.
     if config.interior_energetics.module in ('spider', 'aragog'):
         _provide_spider_eos_tables(config, outdir, dirs)
 
@@ -1038,31 +1064,22 @@ def determine_interior_radius_with_dummy(
         dirs['spider_mesh'] = spider_mesh_file
         dirs['spider_mesh_prev'] = spider_mesh_file + '.prev'
 
-    # Generate P-S EOS tables for SPIDER/Aragog (if PALEOS)
+    # P-S EOS tables and melting curves for SPIDER/Aragog. The dummy structure
+    # never uses PALEOS tables: it reads the FWL_DATA or SPIDER set and melting_dir.
     if config.interior_energetics.module in ('spider', 'aragog'):
-        from proteus.interior_struct.zalmoxis import generate_spider_tables
-
-        spider_tables = generate_spider_tables(config, outdir)
-        if spider_tables is not None:
-            dirs['spider_eos_dir'] = spider_tables['eos_dir']
-            dirs['spider_solidus_ps'] = spider_tables['solidus_path']
-            dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
-        elif config.planet.temperature_mode == 'liquidus_super':
-            # The liquidus_super initial entropy solves on these tables.
-            try:
-                _provide_spider_eos_tables(config, outdir, dirs)
-            except FileNotFoundError as exc:
-                raise RuntimeError(
-                    "planet.temperature_mode='liquidus_super' with "
-                    f"interior_struct.module='dummy' needs SPIDER/Aragog P-S EOS "
-                    'tables, but interior_struct.zalmoxis.mantle_eos='
-                    f'{config.interior_struct.zalmoxis.mantle_eos!r} gave no generated '
-                    'PALEOS table set and no FWL_DATA or SPIDER lookup_data set is '
-                    'available. '
-                    'Provide the tables, or set planet.temperature_mode to '
-                    "'adiabatic' or another mode. "
-                    f'Cause: {exc}'
-                ) from exc
+        try:
+            _provide_spider_eos_tables(config, outdir, dirs)
+        except MissingMeltingCurveError:
+            raise
+        except FileNotFoundError as exc:
+            raise MissingDataError(
+                "interior_struct.module='dummy' with interior_energetics.module="
+                f'{config.interior_energetics.module!r} needs the SPIDER/Aragog P-S EOS '
+                'tables from FWL_DATA or the SPIDER lookup_data, and neither is '
+                "available. Fetch them with 'proteus get interiordata --config-path "
+                "<your config>'. "
+                f'Cause: {exc}'
+            ) from exc
 
     # Derived quantities
     hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']
@@ -1134,6 +1151,7 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         from zalmoxis.eos_export import compute_entropy_adiabat
 
         from proteus.interior_struct.zalmoxis import (
+            energetics_entry,
             load_zalmoxis_material_dictionaries,
             load_zalmoxis_solidus_liquidus_functions,
             resolve_2phase_mgsio3_paths,
@@ -1144,8 +1162,10 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
 
         zcfg = config.interior_struct.zalmoxis
         mat_dicts = load_zalmoxis_material_dictionaries()
-        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zcfg.mantle_eos, mat_dicts)
-        eos_entry = mat_dicts.get(zcfg.mantle_eos, {})
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
+            zcfg.mantle_eos, mat_dicts, required=True
+        )
+        eos_entry = energetics_entry(zcfg.mantle_eos, mat_dicts)[1]
         eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
         if not eos_file or not os.path.isfile(eos_file):
             log.warning(
@@ -1197,6 +1217,10 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         ValueError,
         KeyError,
     ) as exc:
+        from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+        if isinstance(exc, ZalmoxisMissingEOSFilesError):
+            raise
         log.warning(
             'liquidus_super IC adiabat construction failed (%s); falling back '
             'to the linear-guess structure.',
@@ -1553,19 +1577,16 @@ def determine_interior_radius_with_zalmoxis(
     int_o = Interior_t(nlev_b, spider_dir=spider_dir, eos_dir=config.interior_struct.eos_dir)
     int_o.ic = 1
 
-    # Set Zalmoxis to 'adiabatic' mode for T-dependent mantle EOS.
-    # NOTE: In practice, Zalmoxis converges the structure using a linear T
-    # guess and breaks on mass convergence BEFORE the adiabat gate activates.
-    # The adiabat flag is still set so that (a) the correct EOS code paths
-    # are selected inside Zalmoxis, and (b) standalone Zalmoxis can use the
-    # adiabat if the gate is ever fixed.  SPIDER provides its own T(r)
-    # through entropy evolution, so the linear T initial guess is fine.
-    _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+    # A T-dependent mantle EOS runs Zalmoxis in 'adiabatic' mode to select its EOS code
+    # paths; the structure converges on the linear T guess before the adiabat gate, and
+    # SPIDER supplies its own T(r) through entropy evolution.
     _temp_mode_override: str | None = None
     if (
         config.interior_energetics.module == 'spider'
         and config.planet.temperature_mode == 'isothermal'
-        and config.interior_struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES)
+        and (energetics_eos_key(config.interior_struct.zalmoxis.mantle_eos) or '').startswith(
+            TDEP_EOS_PREFIXES
+        )
     ):
         log.info(
             'Overriding Zalmoxis temperature_mode from isothermal to adiabatic '

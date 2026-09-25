@@ -1,0 +1,3 @@
+eos_seager07_iron.txt md5:7bf215a2bb4da6d27ceeac2ade0ce706
+eos_seager07_silicate.txt md5:60109b1bc020b70cd9371f18fffb2547
+eos_seager07_water.txt md5:b9d6d1bb0a2fe9eb4c88e32b1faf7e65

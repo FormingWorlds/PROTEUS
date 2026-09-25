@@ -120,6 +120,7 @@ _START_PATCHES = [
     'proteus.utils.coupler.validate_module_versions',
     'proteus.utils.coupler.UpdateStatusfile',
     'proteus.utils.data.download_sufficient_data',
+    'proteus.interior_struct.zalmoxis.require_paleos_tables',
     'proteus.utils.terminate.print_termination_criteria',
 ]
 
@@ -217,6 +218,135 @@ def test_proteus_resume_restores_zalmoxis_mesh(tmp_path):
     assert p.directories.get('spider_mesh_prev') == str(prev_file)
     assert p.directories.get('mesh_shift_active') is False
     assert p.directories.get('mesh_convergence_steps') == 0
+
+
+@pytest.mark.unit
+def test_proteus_resume_checks_the_eos_tables_after_unpacking(tmp_path):
+    """A resume checks its EOS tables once, after it unpacks the archived data, so
+    kept tables inside data.tar count."""
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    order = []
+    p.extract_archives = MagicMock(side_effect=lambda: order.append('extract'))
+    p._require_paleos_tables = MagicMock(side_effect=lambda: order.append('require'))
+
+    _resume_with_patches(p, _make_hf_df())
+
+    assert order == ['extract', 'require']
+    p._require_paleos_tables.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_proteus_fresh_run_checks_the_eos_tables_before_the_structure_solve(tmp_path):
+    """A fresh run checks its EOS tables once, before the first structure solve."""
+    p = _make_proteus_instance(tmp_path)
+    p.directories.update(
+        {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
+    )
+    p.config.interior_energetics.flux_guess = 100.0
+    p.config.star.age_ini = 0.1
+    order = []
+    p._require_paleos_tables = MagicMock(side_effect=lambda: order.append('require'))
+
+    def _solve(*args, **kwargs):
+        order.append('solve')
+        raise _StopAfterMeshRestore
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(patch('proteus.proteus.CleanDir'))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.solve_structure', _solve)
+        )
+        with pytest.raises(_StopAfterMeshRestore):
+            p.start(resume=False, offline=True)
+
+    assert order == ['require', 'solve']
+    p._require_paleos_tables.assert_called_once_with()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('struct_module, calls', [('zalmoxis', 1), ('spider', 0)])
+def test_require_paleos_tables_runs_only_for_the_zalmoxis_structure(
+    tmp_path, struct_module, calls
+):
+    """Only a Zalmoxis structure reads the Zalmoxis EOS tables, so only it is checked,
+    with the run's output directory."""
+    p = _make_proteus_instance(tmp_path, struct_module=struct_module)
+    with patch('proteus.interior_struct.zalmoxis.require_paleos_tables') as require:
+        p._require_paleos_tables()
+    assert require.call_count == calls
+    if calls:
+        require.assert_called_once_with(p.config, str(tmp_path))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'error, site',
+    [
+        ('missing', 'solve'),
+        ('other', 'solve'),
+        ('missing', 'start check'),
+        ('melting curve', 'solve'),
+        ('P-S table', 'solve'),
+        ('melting curve class', 'solve'),
+    ],
+)
+def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
+    tmp_path, monkeypatch, error, site
+):
+    """Missing reference data raised at the start check or mid-run, here from the
+    structure solve, leaves status 20, so the run does not read as still running: a
+    Zalmoxis EOS table, a melting curve or a SPIDER P-S table, each from its real raise
+    site. Other errors leave the status as is."""
+    from types import SimpleNamespace as NS
+
+    import proteus.interior_energetics.spider as spider
+    import proteus.utils.data as data
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    monkeypatch.setattr(data, 'FWL_DATA_DIR', tmp_path / 'fwl')
+    monkeypatch.setattr(spider, 'find_lookup_table_dir', lambda: None)
+    from proteus.interior_energetics.common import MissingMeltingCurveError
+
+    real_site = {
+        'melting curve class': MissingMeltingCurveError('melting curves not found'),
+        'melting curve': lambda *a, **k: data.get_zalmoxis_melting_curves(
+            NS(interior_struct=NS(melting_dir='Monteux-600'))
+        ),
+        'P-S table': lambda *a, **k: spider._resolve_spider_eos_dir(
+            {'spider': str(tmp_path / 'nospider')}, NS(interior_struct=NS(eos_dir='none'))
+        ),
+    }
+
+    p = _make_proteus_instance(tmp_path)
+    p.directories.update(
+        {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
+    )
+    p.config.interior_energetics.flux_guess = 100.0
+    p.config.star.age_ini = 0.1
+    exc = real_site.get(error) or (
+        ZalmoxisMissingEOSFilesError('pair') if error == 'missing' else RuntimeError('x')
+    )
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(patch('proteus.proteus.CleanDir'))
+        stack.enter_context(
+            patch(
+                'proteus.interior_struct.zalmoxis.require_paleos_tables',
+                side_effect=exc if site == 'start check' else None,
+            )
+        )
+        if site == 'solve':
+            stack.enter_context(
+                patch('proteus.interior_energetics.wrapper.solve_structure', side_effect=exc)
+            )
+        with pytest.raises(Exception, match='pair|x|not found'):
+            p.start(resume=False, offline=True)
+    status = (tmp_path / 'status').read_text().splitlines()[0]
+    assert status == ('0' if error == 'other' else '20')
 
 
 @pytest.mark.unit
@@ -1529,6 +1659,7 @@ def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel, vapo
 _MAIN_LOOP_NOOP_PATCHES = [
     'proteus.utils.coupler.CreateLockFile',
     'proteus.utils.data.download_sufficient_data',
+    'proteus.interior_struct.zalmoxis.require_paleos_tables',
     'proteus.interior_energetics.wrapper.solve_structure',
     'proteus.utils.coupler.print_citation',
     'proteus.utils.coupler.print_header',

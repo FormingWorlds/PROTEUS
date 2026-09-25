@@ -5,7 +5,7 @@ from typing import Optional
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le, lt, optional
 
-from proteus.utils.constants import PALEOS_EOS_PREFIXES
+from proteus.utils.constants import PALEOS_EOS_PREFIXES, TDEP_EOS_PREFIXES
 
 from ._converters import none_if_none
 
@@ -44,6 +44,37 @@ def valid_zalmoxis(instance, attribute, value):
             f"got '{ice_layer_eos}'"
         )
 
+    # A component is '<source>:<material>' with at most one positive fraction, as Zalmoxis
+    # parses it; Zalmoxis divides a mixture's fractions by their sum.
+    def _number(token):
+        try:
+            return float(token)
+        except ValueError:
+            return None
+
+    layers = [
+        ('core_eos', core_eos),
+        ('mantle_eos', mantle_eos),
+        ('ice_layer_eos', ice_layer_eos),
+    ]
+    for name, eos_val in (layer for layer in layers if layer[1]):
+        for comp in (c.strip() for c in eos_val.split('+')):
+            tokens = comp.split(':')
+            fraction = _number(tokens[2]) if len(tokens) == 3 else 1.0
+            if (
+                len(tokens) not in (2, 3)
+                or not all(tokens[:2])
+                or any(_number(t) is not None for t in tokens[:2])
+                or any(ch.isspace() for ch in comp)
+                or fraction is None
+                or not 0 < fraction < float('inf')
+            ):
+                raise ValueError(
+                    f"`interior_struct.zalmoxis.{name}` component '{comp}' is not "
+                    "'<source>:<material>[:<fraction>]' with a positive finite fraction "
+                    'and no spaces'
+                )
+
     # WolfBower2018 EOS is limited to 1 TPa. For planets > 2 M_earth,
     # CMB pressure exceeds this and Zalmoxis will fail to converge.
     import logging as _logging
@@ -65,8 +96,7 @@ def valid_zalmoxis(instance, attribute, value):
         )
 
     # 2-layer model (no ice layer, non-T-dep mantle): mantle_mass_fraction must be 0
-    _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
-    if ice_layer_eos is None and not mantle_eos.startswith(_TDEP_PREFIXES):
+    if ice_layer_eos is None and not mantle_eos.startswith(TDEP_EOS_PREFIXES):
         if mantle_mass_fraction != 0:
             raise ValueError(
                 '`interior_struct.zalmoxis.mantle_mass_fraction` must be 0 for a 2-layer model '
@@ -317,8 +347,9 @@ class Struct:
         Specific heat capacity of the planet's core [J kg-1 K-1]. Set to 'self'
         for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis').
     melting_dir: str
-        Melting curve folder name in FWL_DATA, for the SPIDER structure
-        module.
+        Melting curve name in FWL_DATA. Required for the SPIDER structure
+        module and for any run without a PALEOS table set; not read with
+        module = 'zalmoxis' and a single PALEOS mantle EOS.
     eos_dir: str
         EOS folder name in FWL_DATA, for the SPIDER structure module.
     """
@@ -363,14 +394,31 @@ class Struct:
                     f'`{param_name}` must be "self" or a positive number, got {val!r}'
                 )
 
+        # A PALEOS energetics key (a mixture follows its MgSiO3 component) derives the
+        # curves from PALEOS; energetics_eos_key rejects two MgSiO3 sources.
+        from proteus.utils.helper import energetics_eos_key, generates_paleos_tables
+
+        if self.module == 'zalmoxis' and self.zalmoxis is not None:
+            energetics_eos_key(self.zalmoxis.mantle_eos)
+        if self.melting_dir is not None and generates_paleos_tables(self):
+            import logging as _logging
+
+            _logging.getLogger('fwl.' + __name__).warning(
+                'interior_struct.melting_dir=%r is not read: with module = "zalmoxis" and '
+                'the PALEOS mantle EOS %s, the solidus and liquidus are derived from PALEOS.',
+                self.melting_dir,
+                self.zalmoxis.mantle_eos,
+            )
+
         # melting_dir and eos_dir: required for the spider struct module
         # (Zalmoxis and dummy derive EOS from their own config)
         if self.module == 'spider':
             if self.melting_dir is None:
                 raise ValueError(
                     'interior_struct.melting_dir must be set when module = "spider". '
-                    'Provide a melting curve folder name (e.g. "Monteux-600") from '
-                    'FWL_DATA/interior_lookup_tables/Melting_curves/.'
+                    'Provide a melting curve name (e.g. "Monteux-600"): one of the '
+                    'curves fetched into FWL_DATA/interior/melting_curves/, or a '
+                    'folder in FWL_DATA/interior_lookup_tables/Melting_curves/.'
                 )
             if self.eos_dir is None:
                 raise ValueError(
