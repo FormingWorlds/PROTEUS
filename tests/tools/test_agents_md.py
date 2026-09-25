@@ -132,6 +132,17 @@ def test_missing_root_file_and_missing_directory_fail(tmp_path):
     assert chk.main(['check', str(tmp_path / 'nope')]) == 1
 
 
+def test_tests_directory_without_its_agents_md_fails(tmp_path):
+    """A repository with a tests/ directory must carry tests/AGENTS.md."""
+    repo = _repo(tmp_path, ROOT, NESTED)
+    assert chk.check(repo) == []
+    (repo / 'tests' / 'AGENTS.md').unlink()
+    (repo / 'tests' / 'CLAUDE.md').unlink()
+    assert chk.check(repo) == [
+        'tests/AGENTS.md: missing although the repository has a tests/ directory'
+    ]
+
+
 def test_marker_named_inside_a_line_is_not_counted(tmp_path):
     """Prose that quotes the marker syntax mid-line is not taken for a broken block."""
     text = 'Blocks start with `<!-- fwl-<name>:begin sha256=<hash> -->`.\n' + _block(
@@ -154,7 +165,8 @@ def test_git_checkout_sees_untracked_and_skips_deleted_files(tmp_path):
     errors = chk.check(repo)
     assert 'src dir/AGENTS.md: 12001 B exceeds the 12000 B cap' in errors
     assert 'src dir/CLAUDE.md: must be a regular file containing only @AGENTS.md' in errors
-    assert len(errors) == 2
+    assert 'tests/AGENTS.md: missing although the repository has a tests/ directory' in errors
+    assert len(errors) == 3
 
 
 def test_missing_shared_block_fails_in_root_and_tests(tmp_path):

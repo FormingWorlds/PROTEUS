@@ -101,6 +101,8 @@ def check(root: Path) -> list[str]:
     errors = []
     if not (root / 'AGENTS.md').is_file():
         errors.append('AGENTS.md: missing at the repository root')
+    if (root / 'tests').is_dir() and not (root / 'tests' / 'AGENTS.md').is_file():
+        errors.append('tests/AGENTS.md: missing although the repository has a tests/ directory')
     for path in agents_files(root):
         rel = path.relative_to(root)
         data = path.read_bytes()
