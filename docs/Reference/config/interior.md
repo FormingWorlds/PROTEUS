@@ -393,6 +393,7 @@ Cross-field constraints enforced when the config file loads:
 
 - Require ``interior_struct.melting_dir`` for Aragog without a PALEOS table set.
 - Boundary backend assumes a fixed surface state coupling.
+- Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog.
 - Interior tidal heating requires an tides module to be enabled.
 - Aragog requires at least one energy transport term to be enabled.
 - Validate Boundary backend's solidus/liquidus ordering.

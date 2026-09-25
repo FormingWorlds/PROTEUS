@@ -43,6 +43,27 @@ def valid_zalmoxis(instance, attribute, value):
             f"`interior_struct.zalmoxis.ice_layer_eos` must be 'none' or '<source>:<material>' format, "
             f"got '{ice_layer_eos}'"
         )
+    # A component is '<source>:<material>' plus finite fraction tokens, with no inner space;
+    # a token that still parses as a number after stripping is nan or inf.
+    from proteus.utils.helper import _strip_fraction_tokens
+
+    for name, eos_val in [
+        ('core_eos', core_eos),
+        ('mantle_eos', mantle_eos),
+        ('ice_layer_eos', ice_layer_eos or ''),
+    ]:
+        for comp in filter(None, (c.strip() for c in eos_val.split('+'))):
+            key = _strip_fraction_tokens(comp)
+            try:
+                float(key.rsplit(':', 1)[-1])
+                bad = True
+            except ValueError:
+                bad = any(ch.isspace() for ch in key)
+            if bad:
+                raise ValueError(
+                    f"`interior_struct.zalmoxis.{name}` component '{comp}' is not "
+                    "'<source>:<material>' with finite fractions and no spaces"
+                )
 
     # WolfBower2018 EOS is limited to 1 TPa. For planets > 2 M_earth,
     # CMB pressure exceeds this and Zalmoxis will fail to converge.

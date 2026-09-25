@@ -240,6 +240,29 @@ def planet_liquidus_super_needs_tables(instance, attribute, value):
         )
 
 
+def energetics_needs_a_thermal_mantle_eos(instance, attribute, value):
+    """Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog.
+
+    Under the Zalmoxis structure the energetics read the tables and melting
+    curves of the mantle's energetics key; a Seager2007, Chabrier or analytic
+    key has none, so the run would read another set as a stand-in.
+    """
+    from proteus.utils.constants import PALEOS_EOS_PREFIXES, TDEP_EOS_PREFIXES
+    from proteus.utils.helper import energetics_eos_key
+
+    struct = instance.interior_struct
+    if value.module not in ('spider', 'aragog') or struct.module != 'zalmoxis':
+        return
+    key = energetics_eos_key(struct.zalmoxis.mantle_eos)
+    if not (key or '').startswith(PALEOS_EOS_PREFIXES + TDEP_EOS_PREFIXES):
+        raise ValueError(
+            f"interior_energetics.module = '{value.module}' with mantle_eos="
+            f"'{struct.zalmoxis.mantle_eos}' has no energetics tables (energetics key: {key}). "
+            'Use a PALEOS, WolfBower2018 or RTPress100TPa mantle EOS, or an MgSiO3 component '
+            'of one of them in a mixture.'
+        )
+
+
 def aragog_needs_melting_curves(instance, attribute, value):
     """Require ``interior_struct.melting_dir`` for Aragog without a PALEOS table set.
 
@@ -438,6 +461,7 @@ class Config:
         validator=(
             tides_enabled_orbit,
             boundary_requires_fixed_surface_state,
+            energetics_needs_a_thermal_mantle_eos,
             aragog_needs_melting_curves,
         ),
     )

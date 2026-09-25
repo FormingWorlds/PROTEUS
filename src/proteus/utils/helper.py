@@ -59,6 +59,11 @@ def eos_components(eos: str) -> list[str]:
     return [k for c in str(eos or '').split('+') if (k := _strip_fraction_tokens(c.strip()))]
 
 
+def is_mgsio3(component: str) -> bool:
+    """Whether an EOS registry key names an MgSiO3 material, e.g. ``'PALEOS:MgSiO3'``."""
+    return component.partition(':')[2].startswith('MgSiO3')
+
+
 def energetics_eos_key(mantle_eos: str) -> str | None:
     """Registry key of the EOS whose melting curves and P-S tables a mantle uses.
 
@@ -84,7 +89,7 @@ def energetics_eos_key(mantle_eos: str) -> str | None:
         If a mixture has MgSiO3 components with different registry keys.
     """
     components = sorted(set(eos_components(mantle_eos)))
-    mgsio3 = [c for c in components if c.partition(':')[2].startswith('MgSiO3')]
+    mgsio3 = [c for c in components if is_mgsio3(c)]
     if len(mgsio3) > 1:
         raise ValueError(
             f'mantle_eos={mantle_eos!r} has MgSiO3 components from different sources '
@@ -139,11 +144,7 @@ def twophase_registry_key(mantle_eos: str) -> str:
         A PALEOS MgSiO3 component, when present, alone sets the family.
     """
     components = eos_components(mantle_eos)
-    mgsio3 = [
-        c
-        for c in components
-        if c.startswith(PALEOS_EOS_PREFIXES) and c.partition(':')[2].startswith('MgSiO3')
-    ]
+    mgsio3 = [c for c in components if c.startswith(PALEOS_EOS_PREFIXES) and is_mgsio3(c)]
     components = mgsio3 or components
     if any(c.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')) for c in components):
         return 'PALEOS-API-2phase:MgSiO3'

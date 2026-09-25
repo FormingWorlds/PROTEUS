@@ -311,6 +311,26 @@ def test_two_mgsio3_sources_are_rejected_at_load(mantle, rejected):
         Struct(**kwargs)
 
 
+@pytest.mark.parametrize(
+    'mantle, rejected',
+    [
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:inf', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:-Infinity', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS: H2O', True),
+        ('PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1', False),
+    ],
+)
+def test_an_eos_component_with_a_space_or_a_non_finite_fraction_is_rejected(mantle, rejected):
+    """A component with an inner space or a nan or inf fraction names no registry key, so
+    the table check would skip it; it is rejected at load. Spaces around '+' are fine."""
+    kwargs = dict(module='zalmoxis', zalmoxis=Zalmoxis(mantle_eos=mantle))
+    if rejected:
+        with pytest.raises(ValueError, match='with finite fractions and no spaces'):
+            Struct(**kwargs)
+    else:
+        assert Struct(**kwargs).zalmoxis.mantle_eos == mantle
+
+
 def test_zalmoxis_structure_without_its_section_loads():
     """The MgSiO3-source check needs the Zalmoxis section and skips when it is absent."""
     assert Struct(module='zalmoxis', zalmoxis=None).zalmoxis is None

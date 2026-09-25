@@ -10163,6 +10163,17 @@
       "doc": "Check that required external packages are importable for the selected modules."
     },
     {
+      "validator": "energetics_needs_a_thermal_mantle_eos",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct"
+      ],
+      "doc": "Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog."
+    },
+    {
       "validator": "instmethod_dummy",
       "module": "_config.py",
       "attached_to": [

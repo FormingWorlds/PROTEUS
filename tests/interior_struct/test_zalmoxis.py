@@ -747,19 +747,13 @@ def _synthetic_registry(tmp_path, *, write_files: bool = True) -> dict:
 def test_check_eos_files_passes_when_tables_present(tmp_path):
     """All selected EOS table files on disk: the check is silent.
 
-    Exercises both the flat (core) and nested (mantle) registry shapes,
-    plus the lazy PALEOS-API shape that never carries a file path.
+    Exercises both the flat (core) and nested (mantle) registry shapes.
     """
     from proteus.interior_struct.zalmoxis import check_zalmoxis_eos_files
 
     registry = _synthetic_registry(tmp_path, write_files=True)
     layer_cfg = {'core': 'PALEOS:iron', 'mantle': 'PALEOS-2phase:MgSiO3'}
     assert check_zalmoxis_eos_files(layer_cfg, registry) is None
-
-    # PALEOS-API entries have no eos_file at build time (tables are
-    # generated on demand): the check must not flag them.
-    layer_cfg_api = {'mantle': 'PALEOS-API:MgSiO3'}
-    assert check_zalmoxis_eos_files(layer_cfg_api, registry) is None
 
     # Unknown identifiers are deferred to the registry lookup in the
     # solver, which produces its own error; the file check stays silent.
@@ -884,8 +878,8 @@ def test_check_eos_files_needs_the_mgsio3_unified_table_only_for_an_mgsio3_layer
 
 
 def test_check_eos_files_stops_when_the_paleos_api_resolver_is_missing(tmp_path, monkeypatch):
-    """A PALEOS-API companion that cannot be materialised stops the run; a resolver
-    that writes the tables lets it pass."""
+    """A PALEOS-API layer table or companion that cannot be materialised stops the
+    run; a resolver that writes the tables lets it pass."""
     import sys
     import types
 
@@ -904,8 +898,9 @@ def test_check_eos_files_stops_when_the_paleos_api_resolver_is_missing(tmp_path,
     assert 'PALEOS-API-2phase:MgSiO3 (PALEOS-API tables not built: ModuleNotFoundError' in str(
         excinfo.value
     )
-    # The mantle's own API table is built by the solve, not by the check.
-    assert 'PALEOS-API:MgSiO3 (PALEOS-API' not in str(excinfo.value)
+    assert 'PALEOS-API:MgSiO3 (PALEOS-API tables not built: ModuleNotFoundError' in str(
+        excinfo.value
+    )
 
     table = tmp_path / 'api.dat'
     table.write_text('eos table stub')
@@ -920,7 +915,7 @@ def test_check_eos_files_stops_when_the_paleos_api_resolver_is_missing(tmp_path,
     monkeypatch.setitem(sys.modules, 'zalmoxis.eos.paleos_api_cache', fake)
     assert check_zalmoxis_eos_files(layers, registry, paleos_companions=True) is None
     assert pair['solid_mantle']['eos_file'] == str(table)
-    assert 'eos_file' not in api
+    assert api['eos_file'] == str(table)
 
 
 @pytest.mark.parametrize('missing', ['iron', 'solid', 'h2o'])
@@ -940,8 +935,9 @@ def test_require_paleos_tables_stops_an_offline_run(tmp_path, monkeypatch, missi
 
 
 def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypatch, caplog):
-    """A resumed run with kept P-S tables continues without the pair, with one WARNING;
-    a resumed run without kept tables stops like a fresh one."""
+    """A resumed SPIDER run with kept P-S tables continues without the pair, with one
+    WARNING; an Aragog resume, which re-solves its initial condition on the pair when
+    the mesh changes, and a resume without kept tables stop like a fresh run."""
     from proteus.interior_struct import zalmoxis as zmod
 
     monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
@@ -949,6 +945,7 @@ def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypat
         zmod, 'load_zalmoxis_material_dictionaries', lambda: _paleos_registry(tmp_path, 'solid')
     )
     config = _require_config('PALEOS:MgSiO3', resume=True)
+    config.interior_energetics.module = 'spider'
     bare = tmp_path / 'bare'
     with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='solid.dat'):
         zmod.require_paleos_tables(config, str(bare))
@@ -960,6 +957,10 @@ def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypat
     warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     assert len(warnings) == 1
     assert 'keeps its original energetics P-S entropy tables' in warnings[0]
+
+    config.interior_energetics.module = 'aragog'
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='solid.dat'):
+        zmod.require_paleos_tables(config, str(kept))
 
 
 @pytest.mark.parametrize(
@@ -1063,20 +1064,23 @@ def test_check_eos_files_stops_when_the_paleos_api_build_fails(monkeypatch):
         )
 
 
+_WB_ENERGETICS = 'the energetics use the eos_dir P-S tables (by default Wolf and Bower 2018)'
+
+
 @pytest.mark.parametrize('module', ['aragog', 'spider'])
 @pytest.mark.parametrize(
     'mantle, energetics',
     [
         (
             'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1',
-            'are PALEOS MgSiO3 (PALEOS:MgSiO3, solidus = 0.80',
+            'the energetics and melting curves are PALEOS MgSiO3 (PALEOS:MgSiO3, solidus = 0.80',
         ),
-        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', 'are PALEOS MgSiO3 (PALEOS-2phase:MgSiO3, solidus'),
         (
-            'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1',
-            'follow WolfBower2018:MgSiO3 and melting_dir',
+            'PALEOS:H2O:0.5+PALEOS:iron:0.5',
+            'the energetics and melting curves are PALEOS MgSiO3 (PALEOS-2phase:MgSiO3, solidus',
         ),
-        ('PALEOS-2phase:H2O:0.5+Seager2007:iron:0.5', 'follow melting_dir'),
+        ('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', _WB_ENERGETICS),
+        ('WolfBower2018:MgSiO3:0.9+Chabrier:H:0.1', _WB_ENERGETICS),
     ],
 )
 def test_require_paleos_tables_warns_once_for_a_paleos_mixture(
@@ -1089,7 +1093,7 @@ def test_require_paleos_tables_warns_once_for_a_paleos_mixture(
     monkeypatch.setattr(
         zmod, 'load_zalmoxis_material_dictionaries', lambda: _paleos_registry(tmp_path)
     )
-    # The last case has no energetics key; its tables are not in the registry.
+    # Chabrier:H is not in the PALEOS test registry.
     monkeypatch.setattr(zmod, 'check_zalmoxis_eos_files', lambda *a, **k: None)
     config = _require_config(mantle)
     config.interior_energetics.module = module
@@ -1101,8 +1105,7 @@ def test_require_paleos_tables_warns_once_for_a_paleos_mixture(
         f'mantle_eos={mantle}: the non-MgSiO3 components enter only the structure density'
         in (warnings[0])
     )
-    assert f'the energetics and melting curves {energetics}' in warnings[0]
-    assert 'Seager2007' not in warnings[0].partition(': ')[2]
+    assert energetics in warnings[0]
 
 
 @pytest.mark.parametrize(
@@ -1193,6 +1196,28 @@ def test_resolve_2phase_paths_required_returns_a_full_pair_and_names_two_missing
         zmod.resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', registry, required=True)
 
 
+@pytest.mark.parametrize('mantle', ['WolfBower2018:MgSiO3', 'PALEOS:MgSiO3'])
+def test_liquidus_super_needs_the_2phase_pair_for_any_mantle(tmp_path, monkeypatch, mantle):
+    """The liquidus_super anchor is solved on the MgSiO3 2-phase pair for any mantle, so
+    a missing pair stops at the start check and in the anchor itself, also for a Wolf and
+    Bower mantle without a generated PALEOS set; an adiabatic start does not need it."""
+    from proteus.interior_struct import zalmoxis as zmod
+
+    registry = _paleos_registry(tmp_path, 'liquid')
+    registry['WolfBower2018:MgSiO3'] = {'eos_file': str(tmp_path / 'mgsio3.dat')}
+    monkeypatch.setattr(zmod, 'load_zalmoxis_material_dictionaries', lambda: registry)
+    monkeypatch.setattr(zmod, '_SUPERLIQ_CACHE', {})
+    config = _require_config(mantle)
+    config.interior_energetics.module = 'spider'
+    if mantle.startswith('WolfBower'):
+        assert zmod.require_paleos_tables(config, str(tmp_path)) is None
+    config.planet.temperature_mode = 'liquidus_super'
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='liquid.dat'):
+        zmod.require_paleos_tables(config, str(tmp_path))
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='not available: liquid'):
+        zmod._solve_superliquidus_adiabat(config, {'P_cmb': 1.2e11})
+
+
 def test_superliquidus_anchor_passes_a_missing_table_stop_through(monkeypatch):
     """A missing-table stop inside the anchor reaches the caller as that error, not as a
     numerical anchor failure."""
@@ -1272,7 +1297,7 @@ def test_check_eos_files_parses_extended_mantle_strings(tmp_path):
     assert _strip_fraction_tokens('PALEOS:MgSiO3:nan') == 'PALEOS:MgSiO3:nan'
 
 
-def test_check_eos_files_walks_nested_and_lazy_siblings(tmp_path):
+def test_check_eos_files_walks_nested_and_lazy_siblings(tmp_path, monkeypatch):
     """Nested role entries are walked; lazy siblings do not mask misses.
 
     The real registry nests Seager-style single-role entries
@@ -1281,6 +1306,9 @@ def test_check_eos_files_walks_nested_and_lazy_siblings(tmp_path):
     one nested entry. A missing file-backed sibling must be flagged even
     when a lazy sibling sits next to it.
     """
+    import sys
+    import types
+
     from proteus.interior_struct.zalmoxis import check_zalmoxis_eos_files
 
     present = tmp_path / 'seager_iron.txt'
@@ -1300,6 +1328,9 @@ def test_check_eos_files_walks_nested_and_lazy_siblings(tmp_path):
 
     # All file-backed paths present for the core: silent.
     assert check_zalmoxis_eos_files({'core': 'Seager2007:iron'}, registry) is None
+    fake = types.ModuleType('zalmoxis.eos.paleos_api_cache')
+    fake.resolve_registry_entry = lambda entry: None
+    monkeypatch.setitem(sys.modules, 'zalmoxis.eos.paleos_api_cache', fake)
 
     # The missing file-backed sibling is flagged; the lazy sibling is not.
     with pytest.raises(RuntimeError) as excinfo:
@@ -3695,6 +3726,8 @@ def test_resume_keeps_tables_without_resolving_a_paleos_api_eos(tmp_path, monkey
     import zalmoxis.eos.dispatch
     import zalmoxis.eos.paleos_api_cache
 
+    from proteus.interior_struct import zalmoxis as zmod
+
     monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
     _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
     _seed_tables(tmp_path / 'run' / 'data' / 'spider_eos', key)
@@ -3708,10 +3741,10 @@ def test_resume_keeps_tables_without_resolving_a_paleos_api_eos(tmp_path, monkey
     tables.assert_not_called()
     assert out['eos_dir'] == str(tmp_path / 'run' / 'data' / 'spider_eos')
     assert 'current key is not checked: a PALEOS-API mantle EOS is not resolved' in caplog.text
-    # Discrimination: a fresh PALEOS-API run resolves its tables.
-    with pytest.raises(OSError, match='offline'):
+    # Discrimination: a fresh PALEOS-API run resolves its tables and stops on the failure.
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='OSError: offline'):
         _generate_tables_stubbed(tmp_path, monkeypatch, resume=False)
-    resolve.assert_called_once()
+    resolve.assert_called()
 
 
 def test_resume_without_kept_tables_warns_before_the_build(tmp_path, monkeypatch, caplog):

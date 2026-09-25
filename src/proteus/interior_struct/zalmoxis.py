@@ -44,6 +44,7 @@ from proteus.utils.helper import (
     energetics_eos_key,
     eos_components,
     generates_paleos_tables,
+    is_mgsio3,
     paleos_companion_keys,
     twophase_registry_key,
 )
@@ -883,9 +884,7 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         return cached
 
     mat_dicts = load_zalmoxis_material_dictionaries()
-    solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
-        mantle_eos, mat_dicts, required=generates_paleos_tables(config.interior_struct)
-    )
+    solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts, required=True)
     eos_file = mat_dicts.get(energetics_eos_key(mantle_eos) or '', {}).get('eos_file', '')
     eos_file = eos_file or solid_eos or ''
     melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
@@ -1808,9 +1807,8 @@ def check_zalmoxis_eos_files(
     collects every referenced table path that does not exist, then
     raises one actionable error. Without this check the solver emits
     one read error per shell and ends in a non-convergence failure that
-    hides the real cause. Registry entries without an ``eos_file``
-    (PALEOS-API live tabulation) generate their tables on demand and
-    are skipped, except the companions, which are materialised.
+    hides the real cause. PALEOS-API entries (live tabulation) are
+    materialised here, so a failed build stops the run before any solve.
 
     Parameters
     ----------
@@ -1827,15 +1825,14 @@ def check_zalmoxis_eos_files(
         If any selected EOS table file is missing, naming every missing
         path and the command that downloads them.
     """
+    from zalmoxis.eos.dispatch import _is_paleos_api
+
     selected = [
         (role, key)
         for role, identifier in layer_eos_config.items()
         for key in eos_components(identifier)
     ]
-    companions = []
     if paleos_companions:
-        from zalmoxis.eos.dispatch import _is_paleos_api
-
         companions = paleos_companion_keys(layer_eos_config.get('mantle', ''))
         selected += [('mantle', key) for key in companions]
     missing: set[str] = set()
@@ -1844,7 +1841,7 @@ def check_zalmoxis_eos_files(
         if entry is None:
             # Unknown identifiers fail later with a registry error.
             continue
-        if key in companions and _is_paleos_api(entry):
+        if _is_paleos_api(entry):
             try:
                 from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
 
@@ -1890,12 +1887,12 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
     """Stop the run before any solve when a table of its EOS set is missing.
 
     Requires every table file of the core, mantle and ice-layer EOS and,
-    for a mantle with a PALEOS component, the MgSiO3 2-phase pair. A resumed
-    run that keeps its P-S tables is held only to its layer tables. With
+    for a mantle with a PALEOS component, the MgSiO3 2-phase pair; a resumed
+    SPIDER run that keeps its P-S tables is held only to its layer tables. The
+    liquidus_super initial adiabat requires the pair for any mantle. With
     ``dry_mantle = false`` the dissolved-volatile tables are also required. A
-    PALEOS H2O or iron mantle, and a mixture with a PALEOS component, gets one
-    WARNING that names the tables its energetics and its liquidus_super initial
-    adiabat use.
+    mantle with a non-MgSiO3 component gets one WARNING that names the tables
+    its energetics and its liquidus_super initial adiabat use.
 
     Parameters
     ----------
@@ -1921,19 +1918,27 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
         outdir,
         lambda: _ps_resume_key(config, *_energetics_entry(zc.mantle_eos, mat_dicts), mat_dicts),
     )
-    check_zalmoxis_eos_files(layers, mat_dicts, paleos_companions=not kept)
+    liquidus_super = config.planet.temperature_mode == 'liquidus_super'
+    if liquidus_super:
+        layers['anchor'] = twophase_registry_key(zc.mantle_eos)
+    # Aragog re-solves the initial condition on the pair when the mesh changes.
+    check_zalmoxis_eos_files(
+        layers,
+        mat_dicts,
+        paleos_companions=not kept or config.interior_energetics.module == 'aragog',
+    )
     components = eos_components(zc.mantle_eos)
     mixture = len(set(components)) > 1
-    if not any(c.startswith(PALEOS_EOS_PREFIXES) for c in components) or (
-        not mixture and components[0].partition(':')[2].startswith('MgSiO3')
-    ):
+    if all(is_mgsio3(c) for c in components):
         return
     uses = []
     if config.interior_energetics.module in ('spider', 'aragog'):
         key = energetics_eos_key(zc.mantle_eos)
         if not generates_paleos_tables(config.interior_struct):
-            source = f'{key} and melting_dir' if key else 'melting_dir'
-            uses.append(f'the energetics and melting curves follow {source}')
+            uses.append(
+                'the energetics use the eos_dir P-S tables (by default Wolf and Bower 2018) '
+                'and the melting_dir curves'
+            )
         elif mixture:
             uses.append(
                 f'the energetics and melting curves are PALEOS MgSiO3 ({key}, solidus = '
@@ -1944,7 +1949,7 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
                 'the energetics use the MgSiO3 melting curves (PALEOS liquidus, '
                 f'solidus = {zc.mushy_zone_factor:.2f} x liquidus) and MgSiO3 P-S tables'
             )
-    if config.planet.temperature_mode == 'liquidus_super':
+    if liquidus_super:
         uses.append('the liquidus_super initial adiabat is solved on the MgSiO3 2-phase tables')
     if uses:
         head = (

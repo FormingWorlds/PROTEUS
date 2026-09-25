@@ -914,7 +914,7 @@ class AragogRunner:
 
         # Phase-property tables (Cp, alpha, density, entropy) from PALEOS only with a
         # generated PALEOS set, preferring PALEOS-2phase: its separate solid/liquid tables
-        # avoid the unified table's artifacts at the melting curve. A mixture reads WB.
+        # avoid the unified table's artifacts at the melting curve.
         elif generates_paleos_tables(config.interior_struct):
             from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
 
