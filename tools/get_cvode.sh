@@ -15,6 +15,7 @@ if [ -z "${CONDA_PREFIX:-}" ]; then
     exit 1
 fi
 
+# Unreached under pixi: pixi.toml ships scikits_odes_sundials, so the check above exits.
 conda_bin="${CONDA_EXE:-conda}"
 
 # Pin the SUNDIALS major and the wrapper minor: a future SUNDIALS major can
