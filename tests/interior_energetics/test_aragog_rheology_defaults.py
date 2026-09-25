@@ -66,3 +66,9 @@ def test_rheology_cross_field_validation():
     """Rheology rejects rheological lid_base_mode with non-positive activation_energy."""
     with pytest.raises(ValueError, match='Invalid combination'):
         Rheology(enabled=True, lid_base_mode='rheological', activation_energy=0.0)
+
+
+def test_rheology_rejects_global_stress_closure_mode():
+    """Rheology validator rejects 'global' stress_closure_mode."""
+    with pytest.raises((ValueError, TypeError)):
+        Rheology(stress_closure_mode='global')

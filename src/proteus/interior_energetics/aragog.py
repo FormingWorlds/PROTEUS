@@ -1891,6 +1891,19 @@ class AragogRunner:
         interior_o.mass = out.mass_stag
         interior_o.temp = out.T_stag
         interior_o.pres = out.P_stag
+        interior_o.visc_eff_b = out.visc_eff_b
+        interior_o.eta_diff_b = out.eta_diff_b
+        interior_o.strain_rate_b = out.strain_rate_b
+        interior_o.tau_y_b = out.tau_y_b
+        interior_o.lid_mask_b = out.lid_mask_b
+        interior_o.yield_switch_b = out.yield_switch_b
+        interior_o.lid_thickness = float(out.lid_thickness)
+        interior_o.lid_base_temperature = float(out.lid_base_temperature)
+        interior_o.interior_temperature = float(out.interior_temperature)
+        interior_o.lid_stress = float(out.lid_stress)
+        interior_o.theta = float(out.theta)
+        interior_o.lid_regime = float(out.lid_regime)
+        interior_o.energy_residual = float(out.energy_residual)
         interior_o.last_solver_output = out
 
         # Use the actual integration endpoint, not the requested end_time.
@@ -2478,6 +2491,14 @@ class AragogRunner:
             # backend-agnostic field for downstream tooling that has to
             # compare Aragog and Boundary runs side by side.
             'boundary_layer_thickness': surface_d,
+            # Solid-state mantle convection and stagnant lid diagnostics.
+            'lid_thickness': float(out.lid_thickness),
+            'lid_base_temperature': float(out.lid_base_temperature),
+            'interior_temperature': float(out.interior_temperature),
+            'lid_stress': float(out.lid_stress),
+            'theta': float(out.theta),
+            'lid_regime': float(out.lid_regime),
+            'energy_residual': float(out.energy_residual),
         }
 
     @staticmethod
@@ -2526,6 +2547,15 @@ class AragogRunner:
         _add('Ftotal_b', out.heat_flux, 'basic', 'W m-2')
         _add('Htotal_s', out.heating, 'staggered', 'W kg-1')
         _add('mass_s', out.mass_stag, 'staggered', 'kg')
+
+        # Solid-state mantle convection diagnostics on basic nodes (always written)
+        _add('visc_eff_b', out.visc_eff_b, 'basic', 'Pa s')
+        _add('eta_diff_b', out.eta_diff_b, 'basic', 'Pa s')
+        _add('strain_rate_b', out.strain_rate_b, 'basic', 's-1')
+        _add('tau_y_b', out.tau_y_b, 'basic', 'Pa')
+        _add('lid_mask_b', out.lid_mask_b, 'basic', '')
+        _add('yield_switch_b', out.yield_switch_b, 'basic', '')
+
         # Diagnostic: per-component fluxes and basic-node state.
         # Gated by config.interior_energetics.write_flux_diagnostics.
         if write_diagnostics:
@@ -2540,17 +2570,24 @@ class AragogRunner:
             _add('cp_basic_b', out.cp_basic, 'basic', 'J kg-1 K-1')
             _add('rho_basic_b', out.rho_basic, 'basic', 'kg m-3')
 
-        ds.createVariable('time', np.float64)
-        ds['time'][0] = float(time)
-        ds['time'].units = 'yr'
+        def _add_scalar(name: str, value: float | int, units: str = ''):
+            v = ds.createVariable(name, np.float64)
+            v[0] = float(value)
+            if units:
+                v.units = units
 
-        ds.createVariable('phi_global', np.float64)
-        ds['phi_global'][0] = out.Phi_global
+        _add_scalar('time', float(time), 'yr')
+        _add_scalar('phi_global', out.Phi_global, '')
+        _add_scalar('lid_thickness', out.lid_thickness, 'm')
+        _add_scalar('lid_base_temperature', out.lid_base_temperature, 'K')
+        _add_scalar('interior_temperature', out.interior_temperature, 'K')
+        _add_scalar('lid_stress', out.lid_stress, 'Pa')
+        _add_scalar('theta', out.theta, '')
+        _add_scalar('lid_regime', out.lid_regime, '')
+        _add_scalar('energy_residual', out.energy_residual, 'W')
 
         if T_surf_coupled is not None:
-            ds.createVariable('T_surf_coupled', np.float64)
-            ds['T_surf_coupled'][0] = float(T_surf_coupled)
-            ds['T_surf_coupled'].units = 'K'
+            _add_scalar('T_surf_coupled', float(T_surf_coupled), 'K')
 
         ds.close()
 
@@ -2563,8 +2600,12 @@ def read_last_Sfield(output_dir: str, time: float):
         S_stag = np.array(ds['entropy_s'][:])
     except (KeyError, IndexError):
         # Fallback: older output format without entropy; read T and convert
-        log.warning('No entropy_s in %s; falling back to temp_s', fpath)
-        S_stag = np.array(ds.get('temp_s', ds.get('temp_b', [3200.0]))[:])
+        if 'temp_s' in ds.variables:
+            S_stag = np.array(ds.variables['temp_s'][:])
+        elif 'temp_b' in ds.variables:
+            S_stag = np.array(ds.variables['temp_b'][:])
+        else:
+            S_stag = np.array([3200.0])
     ds.close()
     return S_stag
 

@@ -1425,3 +1425,56 @@ def test_solve_with_retry_first_solve_rejects_non_finite_tcore(monkeypatch):
     with pytest.raises(RuntimeError, match='non-finite'):
         runner._solve_with_retry(hf_row, interior_o)
     assert solver.solve.call_count == 6
+
+
+@pytest.mark.unit
+def test_legacy_snapshot_reading_tolerates_absence_of_new_variables(tmp_path):
+    """Verify legacy snapshots without the new diagnostic variables read correctly."""
+    import netCDF4 as nc
+
+    from proteus.interior_energetics.aragog import read_last_Sfield, read_ncdf
+    from proteus.utils.helper import format_subyear_time
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True)
+    time_val = 0.0
+    fname = f'{format_subyear_time(time_val)}_int.nc'
+    fpath = data_dir / fname
+
+    s_expected = np.array([3000.0, 3100.0, 3200.0])
+    with nc.Dataset(fpath, 'w', format='NETCDF4') as ds:
+        ds.createDimension('n_stag', len(s_expected))
+        var_s = ds.createVariable('entropy_s', 'f8', ('n_stag',))
+        var_s[:] = s_expected
+
+    s_read = read_last_Sfield(str(tmp_path), time_val)
+    np.testing.assert_allclose(s_read, s_expected)
+
+    out = read_ncdf(str(fpath))
+    assert 'entropy_s' in out
+    assert 'visc_eff_b' not in out
+    assert 'lid_thickness' not in out
+
+
+@pytest.mark.unit
+def test_legacy_snapshot_reading_falls_back_to_temp_s(tmp_path):
+    """Verify read_last_Sfield falls back to temp_s when entropy_s is missing."""
+    import netCDF4 as nc
+
+    from proteus.interior_energetics.aragog import read_last_Sfield
+    from proteus.utils.helper import format_subyear_time
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True)
+    time_val = 10.0
+    fname = f'{format_subyear_time(time_val)}_int.nc'
+    fpath = data_dir / fname
+
+    t_expected = np.array([2500.0, 2600.0, 2700.0])
+    with nc.Dataset(fpath, 'w', format='NETCDF4') as ds:
+        ds.createDimension('n_stag', len(t_expected))
+        var_t = ds.createVariable('temp_s', 'f8', ('n_stag',))
+        var_t[:] = t_expected
+
+    s_read = read_last_Sfield(str(tmp_path), time_val)
+    np.testing.assert_allclose(s_read, t_expected)

@@ -428,9 +428,9 @@ config_version = "3.0"
             yield_stress_mu                  = 0.6      # friction coefficient for plastic yielding
             yield_stress_max                 = 500000000.0 # maximum yield stress [Pa] cap applied to plastic yielding
             yield_switch_width               = 0.1      # smoothing width for harmonic-mean yield stress transition
-            stress_closure_mode              = "local"  # convective stress closure mode: local | global
+            stress_closure_mode              = "lid"    # convective stress closure mode: lid | local
             interior_flux_fraction           = 0.05     # fraction of surface heat flux driving interior convective stress in global closure
-            lid_base_mode                    = "fixed"  # mode for stagnant lid base determination: fixed | rheological
+            lid_base_mode                    = "rheological" # mode for stagnant lid base determination: fixed | rheological
             lid_base_temperature             = 1400.0   # fixed lid base temperature [K] when lid_base_mode = "fixed"
             lid_contrast_coeff               = 2.2      # Frank-Kamenetskii rheological temperature contrast coefficient
             lid_mask_width_cells             = 1.0      # transition half-width [cells] for smooth lid-masking

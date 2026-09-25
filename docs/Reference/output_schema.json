@@ -1540,6 +1540,132 @@
       "consumers": []
     },
     {
+      "name": "lid_thickness",
+      "unit": "m",
+      "description": "physical stagnant lid thickness",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/aragog_jax.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "lid_base_temperature",
+      "unit": "K",
+      "description": "temperature at base of stagnant lid",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/aragog_jax.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "interior_temperature",
+      "unit": "K",
+      "description": "representative convective interior temperature",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/aragog_jax.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "lid_stress",
+      "unit": "Pa",
+      "description": "convective driving shear stress",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/aragog_jax.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "theta",
+      "unit": "1",
+      "description": "Frank-Kamenetskii rheological contrast parameter",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/aragog_jax.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "lid_regime",
+      "unit": "1",
+      "description": "lid regime indicator (0 none, 1 stagnant, 2 mobile)",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/aragog_jax.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "energy_residual",
+      "unit": "W",
+      "description": "discrete energy conservation residual rate",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/aragog_jax.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": []
+    },
+    {
       "name": "E_th_mantle",
       "unit": "J",
       "description": "thermal-energy proxy (do not use for conservation)",

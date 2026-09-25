@@ -641,6 +641,23 @@ class Interior_t:
         self.pres = np.zeros(self.nlev_s)  # Pressure [Pa]
         self.temp = np.zeros(self.nlev_s)  # Temperature [K]
 
+        # Solid-state mantle convection diagnostics on basic nodes
+        self.visc_eff_b = np.zeros(self.nlev_b)  # Effective viscosity [Pa s]
+        self.eta_diff_b = np.zeros(self.nlev_b)  # Diffusion creep viscosity [Pa s]
+        self.strain_rate_b = np.zeros(self.nlev_b)  # Convective strain rate [s-1]
+        self.tau_y_b = np.zeros(self.nlev_b)  # Yield stress [Pa]
+        self.lid_mask_b = np.zeros(self.nlev_b)  # Lid mask weight [1]
+        self.yield_switch_b = np.zeros(self.nlev_b)  # Yield switch weight [1]
+
+        # Solid-state mantle convection scalar diagnostics
+        self.lid_thickness = 0.0  # Stagnant lid thickness [m]
+        self.lid_base_temperature = 0.0  # Lid base temperature [K]
+        self.interior_temperature = 0.0  # Convective interior temperature [K]
+        self.lid_stress = 0.0  # Driving convective shear stress [Pa]
+        self.theta = 0.0  # Frank-Kamenetskii parameter [1]
+        self.lid_regime = 0.0  # Lid regime indicator (0 none, 1 stagnant, 2 mobile)
+        self.energy_residual = 0.0  # Energy conservation residual rate [W]
+
     def _load_ps_table(self, spider_dir: str, eos_dir: str, filename: str) -> np.ndarray | None:
         """Load a SPIDER-format P-S lookup table.
 

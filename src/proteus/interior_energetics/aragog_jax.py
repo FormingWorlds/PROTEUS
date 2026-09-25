@@ -323,6 +323,13 @@ class AragogJAXRunner:
             'Cp_eff': Cp_eff,
             'F_radio': F_radio,
             'F_tidal': F_tidal,
+            'lid_thickness': float(getattr(result, 'lid_thickness', 0.0)),
+            'lid_base_temperature': float(getattr(result, 'lid_base_temperature', 0.0)),
+            'interior_temperature': float(getattr(result, 'interior_temperature', 0.0)),
+            'lid_stress': float(getattr(result, 'lid_stress', 0.0)),
+            'theta': float(getattr(result, 'theta', 0.0)),
+            'lid_regime': float(getattr(result, 'lid_regime', 0.0)),
+            'energy_residual': float(getattr(result, 'energy_residual', 0.0)),
         }
 
     def _write_ncdf(self, output_dir: str, time: float, result):
@@ -384,12 +391,34 @@ class AragogJAXRunner:
         _add('Ftotal_b', np.asarray(flux_out.heat_flux), 'basic', 'W m-2')
         _add('Htotal_s', np.asarray(flux_out.heating), 'staggered', 'W kg-1')
 
-        ds.createVariable('time', np.float64)
-        ds['time'][0] = float(time)
-        ds['time'].units = 'yr'
+        # Solid-state mantle convection diagnostics on basic nodes (always written)
+        _add('visc_eff_b', getattr(result, 'visc_eff_b', np.zeros(n_basic)), 'basic', 'Pa s')
+        _add('eta_diff_b', getattr(result, 'eta_diff_b', np.zeros(n_basic)), 'basic', 'Pa s')
+        _add(
+            'strain_rate_b', getattr(result, 'strain_rate_b', np.zeros(n_basic)), 'basic', 's-1'
+        )
+        _add('tau_y_b', getattr(result, 'tau_y_b', np.zeros(n_basic)), 'basic', 'Pa')
+        _add('lid_mask_b', getattr(result, 'lid_mask_b', np.zeros(n_basic)), 'basic', '')
+        _add(
+            'yield_switch_b', getattr(result, 'yield_switch_b', np.zeros(n_basic)), 'basic', ''
+        )
+
+        def _add_scalar(name: str, value: float | int, units: str = ''):
+            v = ds.createVariable(name, np.float64)
+            v[0] = float(value)
+            if units:
+                v.units = units
+
+        _add_scalar('time', float(time), 'yr')
 
         vol = np.asarray(mesh.volume)
-        ds.createVariable('phi_global', np.float64)
-        ds['phi_global'][0] = float(np.dot(phi, vol) / vol.sum())
+        _add_scalar('phi_global', float(np.dot(phi, vol) / vol.sum()))
+        _add_scalar('lid_thickness', getattr(result, 'lid_thickness', 0.0), 'm')
+        _add_scalar('lid_base_temperature', getattr(result, 'lid_base_temperature', 0.0), 'K')
+        _add_scalar('interior_temperature', getattr(result, 'interior_temperature', 0.0), 'K')
+        _add_scalar('lid_stress', getattr(result, 'lid_stress', 0.0), 'Pa')
+        _add_scalar('theta', getattr(result, 'theta', 0.0), '')
+        _add_scalar('lid_regime', getattr(result, 'lid_regime', 0.0), '')
+        _add_scalar('energy_residual', getattr(result, 'energy_residual', 0.0), 'W')
 
         ds.close()

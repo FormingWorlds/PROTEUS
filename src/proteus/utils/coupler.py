@@ -857,6 +857,13 @@ def GetHelpfileKeys():
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
+        'lid_thickness',    # physical stagnant lid thickness [m]
+        'lid_base_temperature',  # temperature at base of stagnant lid [K]
+        'interior_temperature',  # representative convective interior temperature [K]
+        'lid_stress',       # convective driving shear stress [Pa]
+        'theta',            # Frank-Kamenetskii rheological contrast parameter [1]
+        'lid_regime',       # lid regime indicator (0 none, 1 stagnant, 2 mobile) [1]
+        'energy_residual',  # discrete energy conservation residual rate [W]
 
         # Energy-conservation columns: per-call integrals plus their
         # cumulative residual. The residual pairs the entropy-transported

@@ -180,7 +180,7 @@ class Rheology:
     yield_switch_width : float
         Smoothing width for the harmonic-mean yield stress transition.
     stress_closure_mode : str
-        Convective stress closure mode: 'local' or 'global'.
+        Convective stress closure mode: 'lid' or 'local'.
     interior_flux_fraction : float
         Fraction of surface heat flux driving interior convective stress in global closure.
     lid_base_mode : str
@@ -230,13 +230,13 @@ class Rheology:
     yield_switch_width: float = field(default=0.1, validator=gt(0))
     """Smoothing width for the harmonic-mean yield stress transition."""
 
-    stress_closure_mode: str = field(default='local', validator=in_(('local', 'global')))
-    """Convective stress closure mode: 'local' or 'global'."""
+    stress_closure_mode: str = field(default='lid', validator=in_(('lid', 'local')))
+    """Convective stress closure mode: 'lid' or 'local'."""
 
     interior_flux_fraction: float = field(default=0.05, validator=[gt(0), lt(1)])
     """Fraction of surface heat flux driving interior convective stress in global closure."""
 
-    lid_base_mode: str = field(default='fixed', validator=in_(('fixed', 'rheological')))
+    lid_base_mode: str = field(default='rheological', validator=in_(('fixed', 'rheological')))
     """Mode for stagnant lid base determination: 'fixed' or 'rheological'."""
 
     lid_base_temperature: float = field(default=1400.0, validator=gt(0))

@@ -171,6 +171,13 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `M_mantle_liquid` | `kg` | dry mass of liquid-phase mantle | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py`<br>`interior_energetics/wrapper.py` | always; interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider" | interior_energetics, interior_struct |
 | `T_pot` | `K` | characteristic mantle potential temperature | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider" |   |
 | `boundary_layer_thickness` | `m` | thermal boundary layer thickness | `interior_energetics/aragog.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider" |   |
+| `lid_thickness` | `m` | physical stagnant lid thickness | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py` | interior_energetics.module = "aragog" |   |
+| `lid_base_temperature` | `K` | temperature at base of stagnant lid | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py` | interior_energetics.module = "aragog" |   |
+| `interior_temperature` | `K` | representative convective interior temperature | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py` | interior_energetics.module = "aragog" |   |
+| `lid_stress` | `Pa` | convective driving shear stress | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py` | interior_energetics.module = "aragog" |   |
+| `theta` | `1` | Frank-Kamenetskii rheological contrast parameter | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py` | interior_energetics.module = "aragog" |   |
+| `lid_regime` | `1` | lid regime indicator (0 none, 1 stagnant, 2 mobile) | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py` | interior_energetics.module = "aragog" |   |
+| `energy_residual` | `W` | discrete energy conservation residual rate | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py` | interior_energetics.module = "aragog" |   |
 
 ### Energy-conservation columns
 
