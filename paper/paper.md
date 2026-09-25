@@ -62,6 +62,8 @@ authors:
   - name: Emeline Decocq
     orcid: 0009-0008-3326-9715
     affiliation: 1
+  - name: Leoni Janssen
+    affiliation: 11
   - name: Mark Hammond
     orcid: 0000-0002-6893-522X
     affiliation: 2
@@ -102,6 +104,8 @@ affiliations:
    index: 9
  - name: University of Toronto, Toronto, Canada
    index: 10
+ - name: Leiden Observatory, Leiden University, Leiden, The Netherlands
+   index: 11
 
 date: 25 September 2026
 bibliography: paper.bib
