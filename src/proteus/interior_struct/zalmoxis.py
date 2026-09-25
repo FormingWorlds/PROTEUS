@@ -1888,11 +1888,8 @@ def check_zalmoxis_eos_files(
             except ImportError as exc:
                 missing.add(f'{key} (PALEOS-API resolver unavailable: {exc})')
                 continue
-        # Flat entries carry 'eos_file' directly; nested entries map
-        # layer roles (core / melted_mantle / ...) to flat entries. A
-        # nested 'core' sub-entry is skipped only when the entry has
-        # other role-specific sub-entries to use instead; a single-key
-        # 'core' entry is read regardless of which role points at it.
+        # Nested entries map layer roles to flat entries; their 'core' sub-entry
+        # counts only for the core role or when it is the only sub-entry.
         if 'eos_file' in entry:
             subentries = [entry]
         else:
