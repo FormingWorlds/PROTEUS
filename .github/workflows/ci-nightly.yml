@@ -693,6 +693,29 @@ jobs:
           overwrite: true
           retention-days: 30
 
+  # Shared AGENTS.md blocks: fail when a module repository lags behind
+  # tools/agents/; nightly-status reports it with the tiers.
+  agents-md-sync:
+    name: AGENTS.md shared blocks in module repositories
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Clone module repositories
+        run: |
+          for repo in CALLIOPE JANUS MORS SPIDER ZEPHYRUS aragog Zalmoxis SOCRATES VULCAN fwl-io atmodeller Obliqua; do
+            git clone --depth 1 --quiet "https://github.com/FormingWorlds/${repo}.git" "../modules/${repo}"
+          done
+
+      - name: Compare shared blocks
+        run: python tools/agents/sync_core.py --check ../modules/*
+
   # ============================================================
   # Status job: enforces "any tier failure = nightly fails".
   # Reads the conclusion of each prior job from the ``needs``
@@ -704,7 +727,7 @@ jobs:
   # ============================================================
   nightly-status:
     name: Nightly status
-    needs: [unit-tier, integration-tier, slow-tier, coverage-aggregate]
+    needs: [unit-tier, integration-tier, slow-tier, coverage-aggregate, agents-md-sync]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -714,12 +737,15 @@ jobs:
           INT='${{ needs.integration-tier.result }}'
           SLOW='${{ needs.slow-tier.result }}'
           AGG='${{ needs.coverage-aggregate.result }}'
+          AGENTS='${{ needs.agents-md-sync.result }}'
           echo "unit-tier: $UNIT"
           echo "integration-tier: $INT"
           echo "slow-tier: $SLOW"
           echo "coverage-aggregate: $AGG"
+          echo "agents-md-sync: $AGENTS"
           if [ "$UNIT" != "success" ] || [ "$INT" != "success" ] || \
-             [ "$SLOW" != "success" ] || [ "$AGG" != "success" ]; then
+             [ "$SLOW" != "success" ] || [ "$AGG" != "success" ] || \
+             [ "$AGENTS" != "success" ]; then
             echo "::error::Nightly tier reported non-success; failing overall"
             exit 1
           fi

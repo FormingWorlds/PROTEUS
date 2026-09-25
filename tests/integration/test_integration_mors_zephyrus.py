@@ -19,7 +19,7 @@ Three scenarios sweep XUV environment and atmospheric inventory:
 - ``low_xuv_slow_rotator``: 1 M_Earth, 0.5 AU, 3000 ppmw H,
   10th-percentile rotation (quiet star, weak XUV).
 
-Per ``proteus-tests.md`` §1, the file also includes an explicit
+Per ``tests/AGENTS.md``, the file also includes an explicit
 error-contract test that exercises the zephyrus Pxuv schema validator.
 
 Invariants asserted per scenario:
@@ -225,7 +225,7 @@ def test_mors_zephyrus_two_timesteps(proteus_multi_timestep_run, scenario):
         assert np.all(rate < 1e10), f'esc_rate_total above physical bound: max={rate.max():.3e}'
 
     # Per-element mass closure: the conservation invariant, satisfies the
-    # exponent-error guard from proteus-tests.md §2 by construction.
+    # exponent-error guard from tests/AGENTS.md, "Discriminating values" by construction.
     for elt in ('H', 'C', 'N', 'S', 'O'):
         atm_key = f'{elt}_kg_atm'
         liq_key = f'{elt}_kg_liquid'
@@ -255,7 +255,7 @@ def test_mors_zephyrus_two_timesteps(proteus_multi_timestep_run, scenario):
 
 
 # ---------------------------------------------------------------------------
-# Error-contract path per proteus-tests.md §1 clause 2.
+# Error-contract path per tests/AGENTS.md.
 # ---------------------------------------------------------------------------
 
 
