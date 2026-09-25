@@ -136,15 +136,20 @@ def _run_preflight(bindir: Path) -> str:
 class TestPreflightChecks:
     """Verify pre-flight check failure modes."""
 
-    def test_fails_without_conda_env(self):
+    def test_fails_without_conda_env(self, tmp_path):
         """Without CONDA_DEFAULT_ENV, the installer fails with conda instructions.
 
         Discrimination: the error must mention 'conda' so users know what
         to do. A generic error would not be actionable.
         """
+        # A stub conda keeps the failure diagnostics (`conda list`) fast.
+        stub = tmp_path / 'conda'
+        stub.write_text('#!/bin/sh\nexit 0\n')
+        stub.chmod(0o755)
         env = os.environ.copy()
         env.pop('CONDA_DEFAULT_ENV', None)
         env.pop('CONDA_PREFIX', None)
+        env['PATH'] = f'{tmp_path}{os.pathsep}{env["PATH"]}'
         result = subprocess.run(
             ['bash', str(INSTALL_SH)],
             capture_output=True,
