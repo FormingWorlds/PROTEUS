@@ -43,6 +43,7 @@ authors:
     orcid: 0009-0002-9247-2437
     affiliation: 5
   - name: Ben Riegler
+    orcid: 0009-0003-9173-9539
     affiliation: 6
   - name: Hanno Spreeuw
     orcid: 0000-0002-5057-0322
