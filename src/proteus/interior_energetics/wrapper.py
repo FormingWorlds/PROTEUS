@@ -713,12 +713,14 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
         sol_pt_path, liq_pt_path = resolve_melting_curve_files(melting_dir)
         missing_pt = [str(p) for p in (sol_pt_path, liq_pt_path) if not p.is_file()]
         if missing_pt:
+            from proteus.utils.data import RELOCATE_HINT
+
             # Other curves would change the physics of the run, so stop here.
             raise MissingMeltingCurveError(
                 f'interior_struct.melting_dir={melting_dir!r} is configured but its P-T '
                 f'melting curves are missing: {", ".join(missing_pt)}. Fetch them with '
                 "'proteus get interiordata --config-path <your config>', or set "
-                'melting_dir to an available curve.'
+                f'melting_dir to an available curve. {RELOCATE_HINT}'
             )
 
     # Case 1: already populated (e.g. by an earlier call this session or
@@ -876,6 +878,8 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
         )
 
     # Case 4: neither source yielded a complete set.
+    from proteus.utils.data import RELOCATE_HINT
+
     raise FileNotFoundError(
         'Could not provide SPIDER/Aragog P-S EOS tables at '
         f'{target_dir}. FWL_DATA source '
@@ -885,7 +889,7 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
         f'was unavailable at {dirs.get("spider", "<no spider dir set>")}'
         '/lookup_data/1TPa-dK09-elec-free/. Run `proteus get interiordata --config-path <your config>` to '
         'fetch Zenodo record 19473625, or ensure the SPIDER submodule '
-        'is cloned.'
+        f'is cloned. {RELOCATE_HINT}'
     )
 
 

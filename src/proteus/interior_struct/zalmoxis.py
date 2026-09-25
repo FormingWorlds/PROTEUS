@@ -37,7 +37,7 @@ from proteus.utils.constants import (
     R_earth,
     element_list,
 )
-from proteus.utils.data import GetFWLData, get_zalmoxis_melting_curves
+from proteus.utils.data import RELOCATE_HINT, GetFWLData, get_zalmoxis_melting_curves
 from proteus.utils.helper import (
     _strip_fraction_tokens,
     energetics_eos_key,
@@ -1893,7 +1893,7 @@ def check_zalmoxis_eos_files(
             f'Interior EOS table file(s) not found:\n  {listing}\n'
             'Download them with '
             '`proteus get interiordata --config-path <config.toml>`, '
-            'or run `proteus start` once without --offline.'
+            f'or run `proteus start` once without --offline. {RELOCATE_HINT}'
         )
 
 

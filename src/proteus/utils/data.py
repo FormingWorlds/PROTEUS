@@ -30,6 +30,11 @@ from proteus.utils.phoenix_helper import phoenix_param
 log = logging.getLogger('fwl.' + __name__)
 
 FWL_DATA_DIR = resolve_fwl_data_dir()
+
+# Appended to the errors of a data file that an offline run cannot find.
+RELOCATE_HINT = (
+    'Data kept in the older FWL_DATA layout can be moved into place with `fwl-io relocate`.'
+)
 MAX_ATTEMPTS = 3
 MAX_DLTIME = 120.0  # seconds
 RETRY_WAIT = 5.0  # seconds

@@ -315,9 +315,12 @@ def run_atmosphere(
         if no_atm or update_stellar_spectrum:
             spectral_file_nostar = get_spfile_path(dirs['fwl'], config)
             if not os.path.exists(spectral_file_nostar):
+                from proteus.utils.data import RELOCATE_HINT
+
                 UpdateStatusfile(dirs, 20)
                 raise FileNotFoundError(
-                    "Spectral file does not exist at '%s'" % spectral_file_nostar
+                    f"Spectral file does not exist at '{spectral_file_nostar}'. Fetch it with "
+                    f'`proteus get spectral`. {RELOCATE_HINT}'
                 )
 
             wl = np.array(wl)

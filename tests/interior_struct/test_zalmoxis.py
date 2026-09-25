@@ -787,9 +787,10 @@ def test_check_eos_files_raises_actionable_error(tmp_path):
     assert 'paleos_iron.dat' in msg
     assert 'mgsio3_liquid.dat' in msg
     assert 'mgsio3_solid.dat' in msg
-    # The error names the command that repairs the state.
+    # The error names the commands that repair the state.
     assert 'proteus get interiordata' in msg
     assert '--offline' in msg
+    assert '`fwl-io relocate`' in msg
 
 
 def _paleos_registry(tmp_path, missing: str = '') -> dict:

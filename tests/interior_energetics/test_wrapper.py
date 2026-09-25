@@ -3444,6 +3444,7 @@ def test_provide_spider_eos_tables_hard_failure_when_no_source(tmp_path, monkeyp
     # (`proteus get all`); a regression that silently fell through
     # would not raise at all.
     assert 'proteus get interiordata --config-path' in str(exc.value)
+    assert '`fwl-io relocate`' in str(exc.value)
 
 
 # ============================================================================
@@ -4668,6 +4669,7 @@ def test_provide_spider_eos_tables_missing_configured_curve_raises(tmp_path):
     assert raised.type is MissingMeltingCurveError
     assert 'monteux_minus_600' in str(raised.value)
     assert 'proteus get interiordata --config-path' in str(raised.value)
+    assert '`fwl-io relocate`' in str(raised.value)
     assert 'spider_solidus_ps' not in dirs
 
 
