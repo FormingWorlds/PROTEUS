@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import sys
@@ -58,6 +59,22 @@ ATMOS_STALL_MAX = 150
 # not moved, after which a run ends. Much shorter than the cap above, because
 # neither side of the coupling can leave that state on its own.
 AGNI_DEADLOCK_MAX = 3
+
+
+def _status_on_missing_eos(start):
+    """Write status 20 when a missing Zalmoxis EOS table stops ``start``, wherever it is raised."""
+
+    @functools.wraps(start)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return start(self, *args, **kwargs)
+        except RuntimeError as exc:
+            zalmoxis = sys.modules.get('proteus.interior_struct.zalmoxis')
+            if zalmoxis and isinstance(exc, zalmoxis.ZalmoxisMissingEOSFilesError):
+                UpdateStatusfile(self.directories, 20)
+            raise
+
+    return wrapper
 
 
 class Proteus:
@@ -363,6 +380,7 @@ class Proteus:
         self.last_struct_Phi = new_Phi
         self._baseline_structure_done = True
 
+    @_status_on_missing_eos
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
 
@@ -1453,16 +1471,9 @@ class Proteus:
     def _require_paleos_tables(self):
         """Stop before any solve when a table of the Zalmoxis EOS set is missing."""
         if self.config.interior_struct.module == 'zalmoxis':
-            from proteus.interior_struct.zalmoxis import (
-                ZalmoxisMissingEOSFilesError,
-                require_paleos_tables,
-            )
+            from proteus.interior_struct.zalmoxis import require_paleos_tables
 
-            try:
-                require_paleos_tables(self.config, self.directories['output'])
-            except ZalmoxisMissingEOSFilesError:
-                UpdateStatusfile(self.directories, 20)
-                raise
+            require_paleos_tables(self.config, self.directories['output'])
 
     def extract_archives(self):
         """

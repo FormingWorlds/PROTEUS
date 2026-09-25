@@ -273,25 +273,40 @@ def test_require_paleos_tables_runs_only_for_the_zalmoxis_structure(
 ):
     """Only a Zalmoxis structure reads the Zalmoxis EOS tables, so only it is checked,
     with the run's output directory."""
-    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
-
     p = _make_proteus_instance(tmp_path, struct_module=struct_module)
     with patch('proteus.interior_struct.zalmoxis.require_paleos_tables') as require:
         p._require_paleos_tables()
     assert require.call_count == calls
     if calls:
         require.assert_called_once_with(p.config, str(tmp_path))
-        # A stop records the error status, so the run does not read as still running.
-        with (
-            patch(
-                'proteus.interior_struct.zalmoxis.require_paleos_tables',
-                side_effect=ZalmoxisMissingEOSFilesError('missing'),
-            ),
-            patch('proteus.proteus.UpdateStatusfile') as status,
-            pytest.raises(ZalmoxisMissingEOSFilesError),
-        ):
-            p._require_paleos_tables()
-        status.assert_called_once_with(p.directories, 20)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('error', ['missing', 'other'])
+def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(tmp_path, error):
+    """A missing Zalmoxis EOS table raised mid-run, here from the structure solve, leaves
+    status 20, so the run does not read as still running; other errors leave it as is."""
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    p = _make_proteus_instance(tmp_path)
+    p.directories.update(
+        {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
+    )
+    p.config.interior_energetics.flux_guess = 100.0
+    p.config.star.age_ini = 0.1
+    p._require_paleos_tables = MagicMock()
+    exc = ZalmoxisMissingEOSFilesError('pair') if error == 'missing' else RuntimeError('x')
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(patch('proteus.proteus.CleanDir'))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.solve_structure', side_effect=exc)
+        )
+        with pytest.raises(RuntimeError):
+            p.start(resume=False, offline=True)
+    status = (tmp_path / 'status').read_text().splitlines()[0]
+    assert status == ('20' if error == 'missing' else '0')
 
 
 @pytest.mark.unit
