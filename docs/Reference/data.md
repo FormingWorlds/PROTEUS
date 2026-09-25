@@ -54,7 +54,16 @@ A `$FWL_DATA` folder written by an older PROTEUS keeps its files at paths that a
 1. Run `fwl-io relocate`. It moves every dataset whose files all match their pinned checksums into its version directory. `fwl-io relocate --dry-run` lists what would move, what is incomplete and what does not match, without moving anything.
 2. Run `proteus start --config <config.toml>` once without `--offline`, which downloads the data that configuration needs, or `proteus get interiordata --config-path <config.toml>` for the interior tables alone. This downloads what the first step left: incomplete and mismatched datasets, and those it cannot move (the Chabrier archive, the surface albedos, the Seager tables and the Spada tracks).
 
-A run with `--offline` that finds an interior EOS table, a melting curve, a P-S lookup table, a spectral file, a solar, MUSCLES or PHOENIX spectrum or a surface albedo file missing stops with an error that names its download command and ends with: "Data kept in the older FWL_DATA layout can be moved into place with `fwl-io relocate`."
+A run with `--offline` that finds an interior EOS table, a melting curve, a P-S lookup table, a spectral file, a solar, MUSCLES or PHOENIX spectrum or a surface albedo file missing stops with an error that names its download command and ends with: "Data kept in the older FWL_DATA layout can be moved into place with `fwl-io relocate`." Two stops have no download command. A spectral file of a group and band count that no manifest declares is not downloaded, so its error says to place the file at the path it names. PALEOS-API tables are built at start from the `paleos` package, so their error names that package.
+
+The stop writes a [status code](output.md) as follows:
+
+| Missing data | Status |
+| ---------------------------------------------------------------- | ------------------ |
+| Zalmoxis EOS tables, including the MgSiO$_3$ two-phase pair | 20, wherever the run stops |
+| spectral file, surface albedo file | 20 |
+| solar, MUSCLES or PHOENIX spectrum | 23 |
+| melting curve, SPIDER or Aragog P-S or lookup table | none of its own |
 
 ---
 
