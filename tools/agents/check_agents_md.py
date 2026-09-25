@@ -116,7 +116,7 @@ def check(root: Path) -> list[str]:
             if block_hash(m['body']) != m['hash']:
                 errors.append(
                     f'{rel}: shared block fwl-{m["name"]} differs from its hash; '
-                    'edit tools/agents/ in PROTEUS and run sync_core.py'
+                    'edit tools/agents/ in PROTEUS and run tools/agents/sync_core.py <repo>'
                 )
         if len(MARKER_RE.findall(text)) != 2 * len(blocks):
             errors.append(f'{rel}: unmatched or malformed fwl- block marker')

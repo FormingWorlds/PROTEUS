@@ -10,7 +10,7 @@ The detail behind the Review section of `AGENTS.md`: the whole-planet oxygen and
 - `"kg"` sets the initial `O_kg_total` to `O_budget`; `"ppmw"` sets it to `O_budget * 1e-6` times the volatile reservoir mass (`M_mantle` or `M_int`, per `planet.volatile_reservoir`).
 - `"FeO_mantle_wt_pct"`: `O_kg_total = M_mantle * (wt% / 100) * (M_O / M_FeO)`. The mantle EOS density does not change; PALEOS keeps its built-in FeO content, so the mode only sets the volatile O budget in familiar units.
 
-Oxygen is buffered in the chemistry step and tracked in the PROTEUS mass accounting; the chemistry modules do not change for it.
+With the default `planet.fO2_source = 'user_constant'`, oxygen is buffered at the fO2 set by `outgas.fO2_shift_IW` in the chemistry step and tracked in the PROTEUS mass accounting; with `'from_O_budget'` the O budget is authoritative and the chemistry derives fO2 from it.
 
 ## Element aggregation sites
 

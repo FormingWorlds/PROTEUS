@@ -24,7 +24,7 @@ proteus start -c <config.toml> --offline
 - Physical constants come from one definition.
 - EOS tables: P-S tables are complete rectangles; each Aragog P-T table is a full rectangular grid, never filtered by phase.
 - Every attrs validator is tested with a valid and an invalid input.
-- Tests: `src/proteus/<module>/<file>.py` is tested in `tests/<module>/test_<file>.py`; each file has `pytestmark = [pytest.mark.<tier>, pytest.mark.timeout(<s>)]`; each test has a docstring, at least 2 assertions, an edge case and the error path; floats are compared with a tolerance; a test that asserts a physical invariant carries `physics_invariant`, a test against a published or analytical value also carries `reference_pinned`, and pinned values have sign, scale and wrong-formula guards.
+- Tests: `src/proteus/<module>/<file>.py` is tested in `tests/<module>/test_<file>.py`, integration tests in `tests/integration/`; each file has `pytestmark = [pytest.mark.<tier>, pytest.mark.timeout(<s>)]`; each test has a docstring, at least 2 assertions, an edge case and the error path; floats are compared with a tolerance; a test that asserts a physical invariant carries `physics_invariant`, a test against a published or analytical value also carries `reference_pinned`, and pinned values have sign, scale and wrong-formula guards.
 - Commit messages, pull-request text, comments, test names and CI job names describe the change: no tool attribution, no internal plan labels, no em or en dashes; an inline comment block has at most 4 lines.
 
-This checklist repeats the Review section of `AGENTS.md`; change both together.
+This checklist repeats review points from `AGENTS.md` (its Review section and its physics and coupling rules); change both together.

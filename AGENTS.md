@@ -72,19 +72,19 @@ Commit messages, pull-request text, code comments, docstrings, test names, test 
 ## Running PROTEUS
 
 - `proteus start -c <config.toml> --offline`. Detach long runs (`nohup ... &`, output redirected into the run directory); a foreground run dies with the shell.
-- Resume a stopped run with `proteus start -r -c <config.toml>`. It needs more than `init_loops + 1` helpfile rows and an interior snapshot under the run's `data/`, plus the matching atmosphere snapshot unless `atmos_clim.module = 'dummy'`; the files are named by simulation time in a form that depends on the module (`select_resumable_snapshot` in `src/proteus/utils/coupler.py`). Shorter runs refuse to resume.
+- Resume a stopped run with `proteus start -r -c <config.toml>`. It needs more than `init_loops + 1` helpfile rows and, under the run's `data/`, an interior snapshot (the dummy and boundary interiors write none) plus the matching atmosphere snapshot unless `atmos_clim.module = 'dummy'`; the files are named by simulation time in a form that depends on the module (`select_resumable_snapshot` in `src/proteus/utils/coupler.py`). Shorter runs refuse to resume.
 
 ## Physics and coupling contract
 
 - Do not change `Config` during a run. `Proteus.start()` sets `config.params.resume` and `config.params.offline` once at the start; a module call that needs a different setting changes it inside `try` and restores it in `finally`, as the Zalmoxis structure call does with `config.orbit.module`.
 - A temporary override of `hf_row` values for a module call is restored in a `finally` block; without it the helpfile records the override instead of the planet state.
-- When two modules compute the same quantity (Zalmoxis core mass from the EOS, SPIDER's own `rho_core`), the second must not overwrite the first in `hf_row`.
+- An `hf_row` key that two modules both write keeps one source: with a Zalmoxis mesh, SPIDER derives `rho_core` from the Zalmoxis `M_core` (`spider.py`), so the `M_core` it returns matches. A new module that returns a key another module sets derives it the same way or does not write it.
 - The main loop advances `Time` before the atmosphere step, so a comparison of `hf_row` with `hf_all.iloc[-1]` compares the new step with the previous one.
 - A user value that a solver derives again gets a one-time check at the initial condition that fails loudly on a large difference (`check_ic_oxygen_budget` for oxygen).
 
 ### Oxygen and mass accounting
 
-`planet.elements.O_mode` defaults to `'ic_chemistry'` (the initial O budget comes from the fO2-buffered chemistry); `'kg'` sets it from `O_budget` in kg, `'ppmw'` as a fraction of the volatile reservoir mass, `'FeO_mantle_wt_pct'` from the mantle FeO content. Oxygen is buffered in the chemistry step and tracked in the PROTEUS mass accounting. With `outgas.vapourise = true`, rock vapour enters `M_atm` without leaving the interior: the `M_atm <= M_planet` half of the check becomes a logged warning when the excess is larger than `M_vaps`, and the species-sum half and `atol_frac` stay unchanged. That non-conservation is intended. The aggregation sites and the initial-condition check: `.github/agent-rules/code-review.md`.
+`planet.elements.O_mode` defaults to `'ic_chemistry'` (the initial O budget comes from the fO2-buffered chemistry); `'kg'` sets it from `O_budget` in kg, `'ppmw'` as a fraction of the volatile reservoir mass, `'FeO_mantle_wt_pct'` from the mantle FeO content. With the default `planet.fO2_source = 'user_constant'`, oxygen is buffered at the fO2 set by `outgas.fO2_shift_IW` and tracked in the PROTEUS mass accounting; `'from_O_budget'` inverts this, and the O budget sets fO2. With `outgas.vapourise = true`, rock vapour enters `M_atm` without leaving the interior: the `M_atm <= M_planet` half of the check becomes a logged warning when the excess is larger than `M_vaps`, and the species-sum half and `atol_frac` stay unchanged. That non-conservation is intended. The aggregation sites and the initial-condition check: `.github/agent-rules/code-review.md`.
 
 ## Review
 
