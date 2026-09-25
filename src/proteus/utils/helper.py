@@ -73,14 +73,25 @@ def energetics_eos_key(mantle_eos: str) -> str | None:
     Returns
     -------
     str or None
-        The key of a single component. For a mixture, its first MgSiO3 component;
+        The key of a single component. For a mixture, its MgSiO3 component;
         without one, the MgSiO3 2-phase pair of its PALEOS family when a component
         is PALEOS; else None.
+
+    Raises
+    ------
+    ValueError
+        If a mixture has MgSiO3 components with different registry keys.
     """
     components = eos_components(mantle_eos)
     if len(components) == 1:
         return components[0]
-    mgsio3 = [c for c in components if c.partition(':')[2].startswith('MgSiO3')]
+    mgsio3 = sorted({c for c in components if c.partition(':')[2].startswith('MgSiO3')})
+    if len(mgsio3) > 1:
+        raise ValueError(
+            f'mantle_eos={mantle_eos!r} has MgSiO3 components from different sources '
+            f'({", ".join(mgsio3)}); the melting curves and energetics follow one '
+            'MgSiO3 component, so keep one of them.'
+        )
     if mgsio3:
         return mgsio3[0]
     if any(c.startswith(PALEOS_EOS_PREFIXES) for c in components):

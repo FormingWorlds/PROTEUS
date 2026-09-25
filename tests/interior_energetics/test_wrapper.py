@@ -1338,6 +1338,9 @@ def test_determine_zalmoxis_no_adiabatic_switch_non_tdep(caplog):
         # T-dep prefixes: override expected
         ('WolfBower2018:MgSiO3', True),
         ('WolfBower2018:Fe', True),
+        # A mixture follows its MgSiO3 component, not its first component
+        ('PALEOS:H2O:0.1+WolfBower2018:MgSiO3:0.9', True),
+        ('WolfBower2018:Fe:0.1+PALEOS:MgSiO3:0.9', False),
         ('RTPress100TPa:silicate', True),
         # Non-T-dep prefixes: override skipped
         ('Seager2007:silicate', False),

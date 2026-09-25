@@ -145,12 +145,17 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
 
 
 @pytest.mark.unit
-def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
-    """setup_solver uses Zalmoxis T-profile for WolfBower2018 EOS (initial_condition=2)."""
+@pytest.mark.parametrize(
+    'mantle_eos', ['WolfBower2018:MgSiO3', 'PALEOS:H2O:0.1+WolfBower2018:MgSiO3:0.9']
+)
+def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path, mantle_eos):
+    """setup_solver uses the Zalmoxis T-profile (initial_condition=2) for a WolfBower2018
+    MgSiO3 component, also when a mixture lists another component first."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = str(tmp_path)
-    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos='WolfBower2018:MgSiO3')
+    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos=mantle_eos)
+    config.interior_struct.melting_dir = 'Monteux-600'
 
     hf_row = {
         'R_int': 6.371e6,

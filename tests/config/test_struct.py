@@ -287,3 +287,25 @@ class TestMeltingDirWithPaleos:
         assert self._warned(
             caplog, module='zalmoxis', zalmoxis=single, melting_dir='Monteux-600'
         )
+
+
+@pytest.mark.parametrize(
+    'mantle, rejected',
+    [
+        ('PALEOS:MgSiO3:0.5+WolfBower2018:MgSiO3:0.5', True),
+        ('PALEOS:MgSiO3:0.5+PALEOS-2phase:MgSiO3:0.5', True),
+        ('PALEOS:MgSiO3:0.5+PALEOS:MgSiO3:0.5', False),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+    ],
+)
+def test_two_mgsio3_sources_are_rejected_at_load(mantle, rejected):
+    """A mixture with MgSiO3 components of different keys has no single melting curve,
+    so it is rejected, naming both; one key repeated is one material."""
+    kwargs = dict(module='zalmoxis', zalmoxis=Zalmoxis(mantle_eos=mantle))
+    if rejected:
+        with pytest.raises(ValueError, match='MgSiO3 components from different sources') as exc:
+            Struct(**kwargs)
+        for key in mantle.replace(':0.5', '').split('+'):
+            assert key in str(exc.value)
+    else:
+        Struct(**kwargs)

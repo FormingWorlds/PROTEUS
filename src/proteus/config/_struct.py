@@ -364,10 +364,12 @@ class Struct:
                     f'`{param_name}` must be "self" or a positive number, got {val!r}'
                 )
 
-        # Zalmoxis with a single PALEOS mantle EOS derives the curves from PALEOS;
-        # a mixture string gets no generated table set, so melting_dir is read.
-        from proteus.utils.helper import generates_paleos_tables
+        # A PALEOS energetics key (a mixture follows its MgSiO3 component) derives the
+        # curves from PALEOS; energetics_eos_key rejects two MgSiO3 sources.
+        from proteus.utils.helper import energetics_eos_key, generates_paleos_tables
 
+        if self.module == 'zalmoxis':
+            energetics_eos_key(self.zalmoxis.mantle_eos)
         if self.melting_dir is not None and generates_paleos_tables(self):
             import logging as _logging
 
