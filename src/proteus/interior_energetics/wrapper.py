@@ -22,7 +22,14 @@ from proteus.interior_energetics.common import (
 )
 from proteus.interior_struct.common import solvus_radius
 from proteus.outgas.wrapper import calc_target_elemental_inventories
-from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
+from proteus.utils.constants import (
+    TDEP_EOS_PREFIXES,
+    M_earth,
+    R_earth,
+    const_G,
+    noble_gases,
+    vol_element_list,
+)
 from proteus.utils.helper import UpdateStatusfile, energetics_eos_key
 
 if TYPE_CHECKING:
@@ -1144,6 +1151,7 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         from zalmoxis.eos_export import compute_entropy_adiabat
 
         from proteus.interior_struct.zalmoxis import (
+            energetics_entry,
             load_zalmoxis_material_dictionaries,
             load_zalmoxis_solidus_liquidus_functions,
             resolve_2phase_mgsio3_paths,
@@ -1157,7 +1165,7 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
             zcfg.mantle_eos, mat_dicts, required=True
         )
-        eos_entry = mat_dicts.get(energetics_eos_key(zcfg.mantle_eos) or '', {})
+        eos_entry = energetics_entry(zcfg.mantle_eos, mat_dicts)[1]
         eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
         if not eos_file or not os.path.isfile(eos_file):
             log.warning(
@@ -1569,19 +1577,15 @@ def determine_interior_radius_with_zalmoxis(
     int_o = Interior_t(nlev_b, spider_dir=spider_dir, eos_dir=config.interior_struct.eos_dir)
     int_o.ic = 1
 
-    # Set Zalmoxis to 'adiabatic' mode for T-dependent mantle EOS.
-    # NOTE: In practice, Zalmoxis converges the structure using a linear T
-    # guess and breaks on mass convergence BEFORE the adiabat gate activates.
-    # The adiabat flag is still set so that (a) the correct EOS code paths
-    # are selected inside Zalmoxis, and (b) standalone Zalmoxis can use the
-    # adiabat if the gate is ever fixed.  SPIDER provides its own T(r)
-    # through entropy evolution, so the linear T initial guess is fine.
+    # A T-dependent mantle EOS runs Zalmoxis in 'adiabatic' mode to select its EOS code
+    # paths; the structure converges on the linear T guess before the adiabat gate, and
+    # SPIDER supplies its own T(r) through entropy evolution.
     _temp_mode_override: str | None = None
     if (
         config.interior_energetics.module == 'spider'
         and config.planet.temperature_mode == 'isothermal'
         and (energetics_eos_key(config.interior_struct.zalmoxis.mantle_eos) or '').startswith(
-            ('WolfBower2018', 'RTPress100TPa')
+            TDEP_EOS_PREFIXES
         )
     ):
         log.info(

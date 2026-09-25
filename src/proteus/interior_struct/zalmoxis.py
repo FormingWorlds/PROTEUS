@@ -33,6 +33,7 @@ from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
     PALEOS_REGISTRY_KEYS,
+    TDEP_EOS_PREFIXES,
     VOLATILE_EOS_MAP,
     M_earth,
     R_earth,
@@ -885,7 +886,7 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
 
     mat_dicts = load_zalmoxis_material_dictionaries()
     solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts, required=True)
-    eos_file = mat_dicts.get(energetics_eos_key(mantle_eos) or '', {}).get('eos_file', '')
+    eos_file = energetics_entry(mantle_eos, mat_dicts)[1].get('eos_file', '')
     eos_file = eos_file or solid_eos or ''
     melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
     if melt_funcs is not None:
@@ -1877,10 +1878,10 @@ def check_zalmoxis_eos_files(
         )
 
 
-def _energetics_entry(mantle_eos: str, mat_dicts: dict) -> tuple[str | None, dict | None]:
-    """Energetics key of a mantle EOS and its registry entry (None when absent)."""
+def energetics_entry(mantle_eos: str, mat_dicts: dict) -> tuple[str | None, dict]:
+    """Energetics key of a mantle EOS and its registry entry (empty when absent)."""
     key = energetics_eos_key(mantle_eos)
-    return key, mat_dicts.get(key) if key else None
+    return key, mat_dicts.get(key or '', {})
 
 
 def require_paleos_tables(config: Config, outdir: str) -> None:
@@ -1916,7 +1917,7 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
     mat_dicts = load_zalmoxis_material_dictionaries()
     kept = config.params.resume and _resumed_ps_tables(
         outdir,
-        lambda: _ps_resume_key(config, *_energetics_entry(zc.mantle_eos, mat_dicts), mat_dicts),
+        lambda: _ps_resume_key(config, *energetics_entry(zc.mantle_eos, mat_dicts), mat_dicts),
     )
     liquidus_super = config.planet.temperature_mode == 'liquidus_super'
     if liquidus_super:
@@ -1933,21 +1934,16 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
         return
     uses = []
     if config.interior_energetics.module in ('spider', 'aragog'):
-        key = energetics_eos_key(zc.mantle_eos)
         if not generates_paleos_tables(config.interior_struct):
             uses.append(
                 'the energetics use the eos_dir P-S tables (by default Wolf and Bower 2018) '
                 'and the melting_dir curves'
             )
-        elif mixture:
-            uses.append(
-                f'the energetics and melting curves are PALEOS MgSiO3 ({key}, solidus = '
-                f'{zc.mushy_zone_factor:.2f} x PALEOS liquidus)'
-            )
         else:
             uses.append(
-                'the energetics use the MgSiO3 melting curves (PALEOS liquidus, '
-                f'solidus = {zc.mushy_zone_factor:.2f} x liquidus) and MgSiO3 P-S tables'
+                'the energetics and melting curves are PALEOS MgSiO3 '
+                f'({energetics_eos_key(zc.mantle_eos)}, solidus = '
+                f'{zc.mushy_zone_factor:.2f} x PALEOS liquidus)'
             )
     if liquidus_super:
         uses.append('the liquidus_super initial adiabat is solved on the MgSiO3 2-phase tables')
@@ -2079,18 +2075,12 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
         (solidus_func, liquidus_func) callable P [Pa] -> T [K], or None.
     """
     key = energetics_eos_key(mantle_eos) or ''
-    if key.startswith(('WolfBower2018', 'RTPress100TPa')):
+    if key.startswith(TDEP_EOS_PREFIXES):
         return get_zalmoxis_melting_curves(config)
 
-    # PALEOS unified and PALEOS-2phase: both use the same analytic Belonoshko+2005 /
-    # Fei+2021 melting curve (`PALEOS-liquidus`) as the basis for MgSiO3 phase
-    # separation. The unified path uses it for in-table density interpolation;
-    # the 2-phase path uses it inside `_compute_paleos_dtdp` to weight nabla_ad
-    # across the solid/liquid blend (mixing.py:_compute_paleos_dtdp). The solidus
-    # is derived as `liquidus * mushy_zone_factor` so the mushy band lines up with
-    # the unified PALEOS density interpolation. Without these curves, the
-    # 2-phase nabla_ad call fails and Zalmoxis structure solve diverges; the
-    # unified path falls back to phi=0.5 everywhere in VolatileProfile.
+    # PALEOS unified and 2-phase share the analytic PALEOS-liquidus (Belonoshko+2005 /
+    # Fei+2021), with solidus = mushy_zone_factor x liquidus. The 2-phase nabla_ad needs
+    # both curves, and without them the unified path falls back to phi = 0.5.
     if key.startswith(PALEOS_EOS_PREFIXES):
         try:
             from zalmoxis.melting_curves import (
@@ -2646,7 +2636,7 @@ def _ps_resume_key(
     """Current P-S cache key for the resume warning, without building PALEOS-API tables."""
     from zalmoxis.eos.dispatch import _is_paleos_api
 
-    if eos_entry is None:
+    if not eos_entry:
         mantle_eos = config.interior_struct.zalmoxis.mantle_eos
         raise _NoPSTables(f'mantle EOS {mantle_eos} is not in the material dictionary')
     if _is_paleos_api(eos_entry):
@@ -2714,7 +2704,7 @@ def generate_spider_tables(config: Config, outdir: str):
 
     # Use FWL_DATA paths (not ZALMOXIS_ROOT) for EOS file lookup
     mat_dicts = load_zalmoxis_material_dictionaries()
-    key, eos_entry = _energetics_entry(mantle_eos, mat_dicts)
+    key, eos_entry = energetics_entry(mantle_eos, mat_dicts)
 
     # A resumed run stays on the tables it started with; the key only feeds the warning.
     if config.params.resume:
@@ -2724,7 +2714,7 @@ def generate_spider_tables(config: Config, outdir: str):
         if resumed is not None:
             return resumed
 
-    if eos_entry is None or key not in PALEOS_REGISTRY_KEYS:
+    if not eos_entry or key not in PALEOS_REGISTRY_KEYS:
         log.info(
             'Mantle EOS %s has no PALEOS table set; using pre-existing SPIDER tables.',
             mantle_eos,

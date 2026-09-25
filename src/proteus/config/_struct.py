@@ -5,7 +5,7 @@ from typing import Optional
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le, lt, optional
 
-from proteus.utils.constants import PALEOS_EOS_PREFIXES
+from proteus.utils.constants import PALEOS_EOS_PREFIXES, TDEP_EOS_PREFIXES
 
 from ._converters import none_if_none
 
@@ -86,8 +86,7 @@ def valid_zalmoxis(instance, attribute, value):
         )
 
     # 2-layer model (no ice layer, non-T-dep mantle): mantle_mass_fraction must be 0
-    _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
-    if ice_layer_eos is None and not mantle_eos.startswith(_TDEP_PREFIXES):
+    if ice_layer_eos is None and not mantle_eos.startswith(TDEP_EOS_PREFIXES):
         if mantle_mass_fraction != 0:
             raise ValueError(
                 '`interior_struct.zalmoxis.mantle_mass_fraction` must be 0 for a 2-layer model '

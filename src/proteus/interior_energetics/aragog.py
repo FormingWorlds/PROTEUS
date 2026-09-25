@@ -33,7 +33,7 @@ from proteus.interior_energetics.aragog_phase import (
     build_mixed_phase_params,
 )
 from proteus.interior_energetics.common import Interior_t
-from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
+from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, TDEP_EOS_PREFIXES
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
@@ -849,18 +849,15 @@ class AragogRunner:
             init_file_temperature_profile = os.path.join(FWL_DATA_DIR, '')
         elif config.interior_struct.module == 'zalmoxis':
             _key = energetics_eos_key(config.interior_struct.zalmoxis.mantle_eos) or ''
-            if _key.startswith(('WolfBower2018', 'RTPress100TPa')):
+            if _key.startswith(TDEP_EOS_PREFIXES):
                 # When using Zalmoxis with temperature-dependent silicate EOS, set initial condition to user-defined temperature field (from file) in Aragog
                 initial_condition_temperature_profile = 2
                 init_file_temperature_profile = os.path.join(
                     outdir, 'data', 'zalmoxis_output_temp.txt'
                 )
             elif _key.startswith('PALEOS:'):
-                # For PALEOS EOS with adiabatic IC: Aragog uses IC=3 with
-                # entropy tables for its entropy-conserving adiabat. After
-                # initialization, _verify_entropy_ic compares against an
-                # independent PALEOS entropy inversion and corrects the IC
-                # if the discrepancy exceeds 1% (table resolution effect).
+                # IC=3 on the entropy tables; _verify_entropy_ic then compares it with an
+                # independent PALEOS inversion and corrects a difference above 1%.
                 initial_condition_temperature_profile = 3
                 init_file_temperature_profile = ''
             else:
@@ -1456,6 +1453,7 @@ class AragogRunner:
             from zalmoxis.eos_export import compute_entropy_adiabat
 
             from proteus.interior_struct.zalmoxis import (
+                energetics_entry,
                 load_zalmoxis_material_dictionaries,
                 load_zalmoxis_solidus_liquidus_functions,
                 resolve_2phase_mgsio3_paths,
@@ -1473,7 +1471,7 @@ class AragogRunner:
             # `eos_file` arg for compute_entropy_adiabat is a sentinel: any
             # valid PALEOS table works. Prefer unified eos_file when present
             # (paleos_unified mantle), else fall back to solid 2-phase path.
-            eos_entry = mat_dicts.get(energetics_eos_key(mantle_eos) or '', {})
+            eos_entry = energetics_entry(mantle_eos, mat_dicts)[1]
             paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
             if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
                 log.debug(

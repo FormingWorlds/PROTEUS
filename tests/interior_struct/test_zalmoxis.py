@@ -977,8 +977,8 @@ def test_require_paleos_tables_warns_once_for_a_water_or_iron_mantle(
     tmp_path, monkeypatch, caplog, mantle, warned
 ):
     """A PALEOS H2O or iron mantle gets one WARNING at the start of the run that its
-    energetics use the MgSiO3 curves and tables; the per-solve check adds none, and an
-    MgSiO3 mantle gets none."""
+    energetics and melting curves are PALEOS MgSiO3; the per-solve check adds none, and
+    an MgSiO3 mantle gets none."""
     from proteus.interior_struct import zalmoxis as zmod
 
     registry = _paleos_registry(tmp_path)
@@ -988,12 +988,12 @@ def test_require_paleos_tables_warns_once_for_a_water_or_iron_mantle(
         for _ in range(3):
             zmod.check_zalmoxis_eos_files({'core': 'PALEOS:iron', 'mantle': mantle}, registry)
     messages = [
-        r.getMessage() for r in caplog.records if 'MgSiO3 melting curves' in r.getMessage()
+        r.getMessage() for r in caplog.records if 'are PALEOS MgSiO3 (' in r.getMessage()
     ]
     assert len(messages) == (1 if warned else 0)
     if warned:
-        assert f'mantle_eos={mantle}' in messages[0]
-        assert 'solidus = 0.80 x liquidus' in messages[0]
+        assert f'mantle_eos={mantle}: the structure uses its density, while' in messages[0]
+        assert '(PALEOS-2phase:MgSiO3, solidus = 0.80 x PALEOS liquidus)' in messages[0]
     # Energetics without P-S tables build none, so no warning, unless the
     # liquidus_super initial adiabat is solved on the MgSiO3 pair.
     for mode, adiabat_warned in (('adiabatic', False), ('liquidus_super', warned)):
@@ -1003,7 +1003,7 @@ def test_require_paleos_tables_warns_once_for_a_water_or_iron_mantle(
         config.planet.temperature_mode = mode
         with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
             zmod.require_paleos_tables(config, str(tmp_path))
-        assert 'MgSiO3 melting curves' not in caplog.text
+        assert 'are PALEOS MgSiO3 (' not in caplog.text
         assert ('initial adiabat is solved on the MgSiO3' in caplog.text) is adiabat_warned
 
 
@@ -1131,7 +1131,7 @@ def test_a_paleos_mixture_gets_the_ps_key_of_its_mgsio3_set(tmp_path, mixture, s
         config.planet.mass_tot = 1.0
         config.interior_struct.zalmoxis.lookup_nP = 20
         config.interior_struct.zalmoxis.lookup_nS = 30
-        key, entry = zmod._energetics_entry(mantle, registry)
+        key, entry = zmod.energetics_entry(mantle, registry)
         keys.append((key, zmod._ps_table_inputs(config, key, entry, registry)[-1]))
     assert keys[0] == keys[1]
     assert keys[0][0] == single
