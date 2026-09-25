@@ -633,8 +633,8 @@ def test_get_interiordata_fetches_zalmoxis_eos(monkeypatch, tmp_path):
     runner = CliRunner()
     calls = []
 
-    def fake_download_zalmoxis_eos(*, mantle_eos, core_eos, ice_layer_eos):
-        calls.append(('zalmoxis_eos', mantle_eos, core_eos, ice_layer_eos))
+    def fake_download_zalmoxis_eos(*, mantle_eos, core_eos, ice_layer_eos, volatile_eos):
+        calls.append(('zalmoxis_eos', mantle_eos, core_eos, ice_layer_eos, volatile_eos))
 
     fake_config = SimpleNamespace(
         interior_struct=SimpleNamespace(
@@ -643,6 +643,7 @@ def test_get_interiordata_fetches_zalmoxis_eos(monkeypatch, tmp_path):
                 mantle_eos='PALEOS:MgSiO3',
                 core_eos='PALEOS:iron',
                 ice_layer_eos=None,
+                dry_mantle=True,
             ),
         )
     )
@@ -663,7 +664,7 @@ def test_get_interiordata_fetches_zalmoxis_eos(monkeypatch, tmp_path):
     assert res.exit_code == 0
     # ice_layer_eos None must be coerced to '' (the downloader's no-ice value),
     # not passed through as None.
-    assert calls == [('zalmoxis_eos', 'PALEOS:MgSiO3', 'PALEOS:iron', '')]
+    assert calls == [('zalmoxis_eos', 'PALEOS:MgSiO3', 'PALEOS:iron', '', '')]
 
 
 @pytest.mark.unit

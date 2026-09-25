@@ -4,7 +4,6 @@ from __future__ import annotations
 import functools
 import hashlib
 import logging
-import math
 import os
 import re
 import shutil
@@ -33,13 +32,19 @@ from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
-    PALEOS_REGISTRY_KEYS,
+    VOLATILE_EOS_MAP,
     M_earth,
     R_earth,
     element_list,
 )
 from proteus.utils.data import GetFWLData, get_zalmoxis_melting_curves
-from proteus.utils.helper import paleos_companion_keys, twophase_registry_key
+from proteus.utils.helper import (
+    _strip_fraction_tokens,
+    eos_components,
+    generates_paleos_tables,
+    paleos_companion_keys,
+    twophase_registry_key,
+)
 
 # Set up logging
 log = logging.getLogger('fwl.' + __name__)
@@ -211,12 +216,7 @@ def _structure_cache_key(config):
     )
 
 
-# Mapping from PROTEUS volatile species to Zalmoxis EOS component names.
-# Only species with Zalmoxis EOS tables are included.
-_VOLATILE_EOS_MAP = {
-    'H2O': 'PALEOS:H2O',
-    'H2': 'Chabrier:H',
-}
+_VOLATILE_EOS_MAP = VOLATILE_EOS_MAP
 
 
 def get_zalmoxis_output_filepath(outdir: str):
@@ -1769,27 +1769,6 @@ def load_zalmoxis_material_dictionaries():
     }
 
 
-def _strip_fraction_tokens(component: str) -> str:
-    """Strip trailing mass-fraction tokens from an EOS component string.
-
-    Extended mantle EOS strings carry per-component fractions, e.g.
-    ``'PALEOS:MgSiO3:0.9800'``; the registry key is the prefix without
-    the numeric token. Only finite numbers count as fraction tokens:
-    ``'nan'`` and ``'inf'`` parse as floats but are never written by
-    the EOS extension, so they stay part of the identifier.
-    """
-    tokens = component.split(':')
-    while tokens:
-        try:
-            value = float(tokens[-1])
-        except ValueError:
-            break
-        if not math.isfinite(value):
-            break
-        tokens.pop()
-    return ':'.join(tokens)
-
-
 #: EOS names whose density blend applies a configured mushy_zone_factor.
 #: Imported from Zalmoxis so both sides read the same list.
 _UNIFIED_PALEOS_MATERIALS = _PALEOS_UNIFIED_NAMES
@@ -1865,9 +1844,9 @@ def check_zalmoxis_eos_files(
         path and the command that downloads them.
     """
     selected = [
-        (role, _strip_fraction_tokens(component))
+        (role, key)
         for role, identifier in layer_eos_config.items()
-        for component in str(identifier).split('+')
+        for key in eos_components(identifier)
     ]
     companions = []
     if paleos_companions:
@@ -1886,8 +1865,8 @@ def check_zalmoxis_eos_files(
                 from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
 
                 resolve_registry_entry(entry)
-            except ImportError as exc:
-                missing.add(f'{key} (PALEOS-API resolver unavailable: {exc})')
+            except Exception as exc:
+                missing.add(f'{key} (PALEOS-API tables not built: {type(exc).__name__}: {exc})')
                 continue
         # Nested entries map layer roles to flat entries; their 'core' sub-entry
         # counts only for the core role or when it is the only sub-entry.
@@ -1917,14 +1896,21 @@ def check_zalmoxis_eos_files(
         )
 
 
+def _mantle_entry(mantle_eos: str, mat_dicts: dict) -> dict | None:
+    """Registry entry of a single-component mantle EOS, or None for a mixture."""
+    components = eos_components(mantle_eos)
+    return mat_dicts.get(components[0]) if len(components) == 1 else None
+
+
 def require_paleos_tables(config: Config, outdir: str) -> None:
     """Stop the run before any solve when a table of its EOS set is missing.
 
     Requires every table file of the core, mantle and ice-layer EOS and,
     for a mantle with a PALEOS component, the MgSiO3 2-phase pair. A resumed
-    run that keeps its P-S tables is held only to its layer tables. A PALEOS
-    H2O or iron mantle gets one WARNING when its energetics or its
-    liquidus_super initial adiabat use MgSiO3 tables.
+    run that keeps its P-S tables is held only to its layer tables. With
+    ``dry_mantle = false`` the dissolved-volatile tables are also required. A
+    PALEOS mantle without an MgSiO3 component gets one WARNING when its
+    energetics or its liquidus_super initial adiabat use MgSiO3 tables.
 
     Parameters
     ----------
@@ -1942,20 +1928,31 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
     layers = {'core': zc.core_eos, 'mantle': zc.mantle_eos}
     if zc.ice_layer_eos is not None:
         layers['ice_layer'] = zc.ice_layer_eos
+    if not zc.dry_mantle:
+        # Dissolved volatiles join the mantle EOS during the run.
+        layers['volatiles'] = '+'.join(VOLATILE_EOS_MAP.values())
     mat_dicts = load_zalmoxis_material_dictionaries()
     kept = config.params.resume and _resumed_ps_tables(
-        outdir, lambda: _ps_resume_key(config, mat_dicts.get(zc.mantle_eos), mat_dicts)
+        outdir,
+        lambda: _ps_resume_key(config, _mantle_entry(zc.mantle_eos, mat_dicts), mat_dicts),
     )
     check_zalmoxis_eos_files(layers, mat_dicts, paleos_companions=not kept)
-    if zc.mantle_eos not in PALEOS_REGISTRY_KEYS or not zc.mantle_eos.endswith(
-        (':H2O', ':iron')
+    components = eos_components(zc.mantle_eos)
+    if not any(c.startswith(PALEOS_EOS_PREFIXES) for c in components) or any(
+        c.split(':')[1].startswith('MgSiO3') for c in components if ':' in c
     ):
         return
     uses = []
-    if config.interior_energetics.module in ('spider', 'aragog'):
+    energetics = config.interior_energetics.module in ('spider', 'aragog')
+    if energetics and generates_paleos_tables(config.interior_struct):
         uses.append(
             'the energetics use the MgSiO3 melting curves (PALEOS liquidus, '
             f'solidus = {zc.mushy_zone_factor:.2f} x liquidus) and MgSiO3 P-S tables'
+        )
+    elif energetics:
+        uses.append(
+            'the energetics use the Wolf and Bower (2018) MgSiO3 tables and the '
+            f'melting_dir curves ({config.interior_struct.melting_dir})'
         )
     if config.planet.temperature_mode == 'liquidus_super':
         uses.append('the liquidus_super initial adiabat is solved on the MgSiO3 2-phase tables')
@@ -2682,7 +2679,7 @@ def generate_spider_tables(config: Config, outdir: str):
 
     # Use FWL_DATA paths (not ZALMOXIS_ROOT) for EOS file lookup
     mat_dicts = load_zalmoxis_material_dictionaries()
-    eos_entry = mat_dicts.get(mantle_eos)
+    eos_entry = _mantle_entry(mantle_eos, mat_dicts)
 
     # A resumed run stays on the tables it started with; the key only feeds the warning.
     if config.params.resume:

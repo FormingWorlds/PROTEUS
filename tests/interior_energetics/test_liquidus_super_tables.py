@@ -854,7 +854,7 @@ def test_paleos_mixture_ic_is_solved_without_the_anchor_cap(fake_tables, monkeyp
         ('PALEOS-2phase:MgSiO3', 'aragog', True),
         ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'aragog', False),
         ('WolfBower2018:MgSiO3', 'spider', False),
-        ('PALEOS:MgSiO3:1.0', 'aragog', False),
+        ('PALEOS:MgSiO3:1.0', 'aragog', True),
     ],
 )
 def test_anchor_failure_is_deferred_only_where_the_ic_resolves_it(

@@ -816,9 +816,11 @@ def _paleos_registry(tmp_path, missing: str = '') -> dict:
 def _require_config(mantle_eos, *, resume=False, ice=None):
     """Mock config for require_paleos_tables with a PALEOS iron core."""
     config = MagicMock()
+    config.interior_struct.module = 'zalmoxis'
+    config.interior_struct.melting_dir = 'Monteux-600'
     zc = config.interior_struct.zalmoxis
     zc.core_eos, zc.mantle_eos, zc.ice_layer_eos = 'PALEOS:iron', mantle_eos, ice
-    zc.mushy_zone_factor = 0.8
+    zc.mushy_zone_factor, zc.dry_mantle = 0.8, True
     config.interior_energetics.module = 'aragog'
     config.planet.temperature_mode = 'adiabatic'
     config.params.resume = resume
@@ -898,9 +900,11 @@ def test_check_eos_files_stops_when_the_paleos_api_resolver_is_missing(tmp_path,
     monkeypatch.setitem(sys.modules, 'zalmoxis.eos.paleos_api_cache', None)
     with pytest.raises(ZalmoxisMissingEOSFilesError) as excinfo:
         check_zalmoxis_eos_files(layers, registry, paleos_companions=True)
-    assert 'PALEOS-API-2phase:MgSiO3 (PALEOS-API resolver unavailable' in str(excinfo.value)
+    assert 'PALEOS-API-2phase:MgSiO3 (PALEOS-API tables not built: ModuleNotFoundError' in str(
+        excinfo.value
+    )
     # The mantle's own API table is built by the solve, not by the check.
-    assert 'PALEOS-API:MgSiO3 (PALEOS-API resolver unavailable' not in str(excinfo.value)
+    assert 'PALEOS-API:MgSiO3 (PALEOS-API' not in str(excinfo.value)
 
     table = tmp_path / 'api.dat'
     table.write_text('eos table stub')
@@ -963,8 +967,7 @@ def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypat
         ('PALEOS:H2O', True),
         ('PALEOS:iron', True),
         ('PALEOS:MgSiO3', False),
-        # Not registry keys: their energetics use the WB tables, so no warning.
-        ('PALEOS:H2O:1.0', False),
+        ('PALEOS:H2O:1.0', True),
         ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
     ],
 )
@@ -1000,6 +1003,78 @@ def test_require_paleos_tables_warns_once_for_a_water_or_iron_mantle(
             zmod.require_paleos_tables(config, str(tmp_path))
         assert 'MgSiO3 melting curves' not in caplog.text
         assert ('initial adiabat is solved on the MgSiO3' in caplog.text) is adiabat_warned
+
+
+def test_require_paleos_tables_needs_the_volatile_tables_of_a_wet_mantle(tmp_path, monkeypatch):
+    """With dry_mantle = false the water table of the dissolved volatiles is required."""
+    from proteus.interior_struct import zalmoxis as zmod
+
+    monkeypatch.setattr(
+        zmod, 'load_zalmoxis_material_dictionaries', lambda: _paleos_registry(tmp_path, 'h2o')
+    )
+    config = _require_config('PALEOS:MgSiO3')
+    assert zmod.require_paleos_tables(config, str(tmp_path)) is None
+    config.interior_struct.zalmoxis.dry_mantle = False
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='h2o.dat'):
+        zmod.require_paleos_tables(config, str(tmp_path))
+
+
+def test_check_eos_files_strips_spaces_in_a_mixture(tmp_path):
+    """Each component of a spaced mixture is checked."""
+    from proteus.interior_struct.zalmoxis import (
+        ZalmoxisMissingEOSFilesError,
+        check_zalmoxis_eos_files,
+    )
+
+    registry = _paleos_registry(tmp_path, 'h2o')
+    layers = {'core': 'PALEOS:iron', 'mantle': ' PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1 '}
+    with pytest.raises(ZalmoxisMissingEOSFilesError, match='h2o.dat'):
+        check_zalmoxis_eos_files(layers, registry, paleos_companions=True)
+
+
+def test_check_eos_files_stops_when_the_paleos_api_build_fails(monkeypatch):
+    """Any error of the PALEOS-API table build is a missing-table stop with its reason."""
+    import sys
+    import types
+
+    from proteus.interior_struct.zalmoxis import (
+        ZalmoxisMissingEOSFilesError,
+        check_zalmoxis_eos_files,
+    )
+
+    def _resolve(entry):
+        raise RuntimeError('grid build failed')
+
+    fake = types.ModuleType('zalmoxis.eos.paleos_api_cache')
+    fake.resolve_registry_entry = _resolve
+    monkeypatch.setitem(sys.modules, 'zalmoxis.eos.paleos_api_cache', fake)
+    pair = {r: {'format': 'paleos_api_2phase'} for r in ('solid_mantle', 'melted_mantle')}
+    registry = {'PALEOS-API-2phase:MgSiO3': pair}
+    with pytest.raises(ZalmoxisMissingEOSFilesError, match='RuntimeError: grid build failed'):
+        check_zalmoxis_eos_files(
+            {'mantle': 'PALEOS-API:MgSiO3'}, registry, paleos_companions=True
+        )
+
+
+@pytest.mark.parametrize('module', ['aragog', 'spider'])
+def test_require_paleos_tables_warns_for_a_mixture_without_mgsio3(
+    tmp_path, monkeypatch, caplog, module
+):
+    """A PALEOS mixture with no MgSiO3 component gets one WARNING that its energetics
+    use the Wolf and Bower tables and the melting_dir curves."""
+    from proteus.interior_struct import zalmoxis as zmod
+
+    monkeypatch.setattr(
+        zmod, 'load_zalmoxis_material_dictionaries', lambda: _paleos_registry(tmp_path)
+    )
+    config = _require_config('PALEOS:H2O:0.5+PALEOS:iron:0.5')
+    config.interior_energetics.module = module
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        zmod.require_paleos_tables(config, str(tmp_path))
+    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1
+    assert 'Wolf and Bower (2018) MgSiO3 tables' in warnings[0]
+    assert 'melting_dir curves (Monteux-600)' in warnings[0]
 
 
 def test_generate_spider_tables_stops_on_a_missing_pair_table(tmp_path, monkeypatch):

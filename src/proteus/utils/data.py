@@ -18,7 +18,13 @@ from scipy.interpolate import interp1d
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.utils.helper import paleos_companion_keys, resolve_fwl_data_dir, safe_rm
+from proteus.utils.constants import VOLATILE_EOS_MAP
+from proteus.utils.helper import (
+    eos_components,
+    paleos_companion_keys,
+    resolve_fwl_data_dir,
+    safe_rm,
+)
 from proteus.utils.phoenix_helper import phoenix_param
 
 log = logging.getLogger('fwl.' + __name__)
@@ -1767,9 +1773,9 @@ def download_zalmoxis_eos_for_config(config) -> None:
     Single extraction point for the per-layer EOS identifiers, shared by
     the start-of-run data check and ``proteus get interiordata``. No-op
     when the config does not select the zalmoxis structure module. The
-    ``'none'`` ice-layer sentinel maps to ``''`` (no ice EOS). Covers
-    the statically configured EOS components; volatile-extended mantle
-    components are resolved at runtime and fetched by the run itself.
+    ``'none'`` ice-layer sentinel maps to ``''`` (no ice EOS). With
+    ``dry_mantle = false`` it also fetches the tables of the dissolved
+    volatiles that the structure solve adds to the mantle EOS.
     """
     struct_cfg = getattr(config, 'interior_struct', None)
     if getattr(struct_cfg, 'module', None) != 'zalmoxis':
@@ -1780,6 +1786,7 @@ def download_zalmoxis_eos_for_config(config) -> None:
         mantle_eos=getattr(zconf, 'mantle_eos', ''),
         core_eos=getattr(zconf, 'core_eos', ''),
         ice_layer_eos='' if ice in (None, 'none') else ice,
+        volatile_eos='' if zconf.dry_mantle else '+'.join(VOLATILE_EOS_MAP.values()),
     )
 
 
@@ -2017,7 +2024,9 @@ _PALEOS_2PHASE_HIGHRES_FILES = (
 )
 
 
-def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: str = ''):
+def download_zalmoxis_eos(
+    mantle_eos: str, core_eos: str = '', ice_layer_eos: str = '', volatile_eos: str = ''
+):
     """Download Zalmoxis EOS data required for the given EOS configuration.
 
     Inspects the mantle, core, and ice layer EOS identifiers and downloads
@@ -2033,6 +2042,8 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
         Core EOS identifier (e.g. ``'Seager2007:iron'``, ``'PALEOS:iron'``).
     ice_layer_eos : str
         Ice layer EOS identifier (e.g. ``'Seager2007:H2O'``, ``'PALEOS:H2O'``, or empty).
+    volatile_eos : str
+        ``+``-joined EOS components of dissolved volatiles, or empty.
     """
     from proteus.data import (
         EOS_CHABRIER_2021,
@@ -2060,16 +2071,10 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
         for name in names:
             attempt(f'{name} from {key}', fetch_dataset_file, key, name, data_root=FWL_DATA_DIR)
 
-    all_eos = [e for e in (mantle_eos, core_eos, ice_layer_eos) if e]
+    all_eos = [e for e in (mantle_eos, core_eos, ice_layer_eos, volatile_eos) if e]
 
     # Multi-component EOS strings: "PALEOS:MgSiO3:0.98+Chabrier:H:0.01"
-    components = set()
-    for eos_str in all_eos:
-        for part in eos_str.split('+'):
-            # Strip fraction suffix: "PALEOS:MgSiO3:0.98" -> "PALEOS:MgSiO3"
-            tokens = part.split(':')
-            if len(tokens) >= 2:
-                components.add(f'{tokens[0]}:{tokens[1]}')
+    components = {c for eos_str in all_eos for c in eos_components(eos_str)}
 
     # Seager2007 static EOS. Needed when a Seager component is selected
     # directly, when no core EOS is given (Seager iron is the default

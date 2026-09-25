@@ -829,16 +829,18 @@ def test_parse_subyear_time_rejects_multiple_p():
         ('PALEOS:MgSiO3', True),
         ('PALEOS-2phase:MgSiO3-highres', True),
         ('PALEOS-API:MgSiO3', True),
-        ('PALEOS:MgSiO3:1.0', False),
-        ('PALEOS:MgSiO3 ', False),
+        # One component with a fraction token or spaces is the same registry key.
+        ('PALEOS:MgSiO3:1.0', True),
+        ('PALEOS:MgSiO3 ', True),
         ('PALEOS:Olivine', False),
         ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
         ('WolfBower2018:MgSiO3', False),
         (None, False),
     ],
 )
-def test_generates_paleos_tables_needs_an_exact_registry_key(mantle_eos, expected):
-    """Only an exact PALEOS registry key under the Zalmoxis structure counts."""
+def test_generates_paleos_tables_needs_a_single_registry_key(mantle_eos, expected):
+    """Only one component whose key is a PALEOS registry key, under the Zalmoxis
+    structure, counts; a mixture or an unknown material does not."""
     from types import SimpleNamespace
 
     from proteus.utils.helper import generates_paleos_tables
@@ -879,3 +881,32 @@ def test_paleos_companion_keys_follow_the_mantle_family():
     assert paleos_companion_keys('WolfBower2018:MgSiO3') == []
     assert paleos_companion_keys('Seager2007:H2O') == []
     assert paleos_companion_keys('') == []
+
+
+@pytest.mark.parametrize(
+    'mantle_eos, key',
+    [
+        ('PALEOS-2phase:MgSiO3-highres:1.0', 'PALEOS-2phase:MgSiO3-highres'),
+        ('PALEOS-2phase:MgSiO3-highres:0.9+PALEOS:H2O:0.1', 'PALEOS-2phase:MgSiO3-highres'),
+        ('Chabrier:H:0.03+PALEOS-API:MgSiO3:0.97', 'PALEOS-API-2phase:MgSiO3'),
+        (' PALEOS:H2O:0.1 + PALEOS-API:MgSiO3:0.9 ', 'PALEOS-API-2phase:MgSiO3'),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'PALEOS-2phase:MgSiO3'),
+    ],
+)
+def test_twophase_registry_key_uses_every_component(mantle_eos, key):
+    """The pair family comes from any component, with fraction tokens and spaces stripped."""
+    from proteus.utils.helper import paleos_companion_keys, twophase_registry_key
+
+    assert twophase_registry_key(mantle_eos) == key
+    assert paleos_companion_keys(mantle_eos) == [key]
+
+
+def test_eos_components_strip_spaces_and_fractions():
+    """Each component becomes its registry key."""
+    from proteus.utils.helper import eos_components
+
+    assert eos_components(' PALEOS:MgSiO3:0.9 + Chabrier:H:0.1 ') == [
+        'PALEOS:MgSiO3',
+        'Chabrier:H',
+    ]
+    assert eos_components('') == []

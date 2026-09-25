@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import glob
 import logging
+import math
 import os
 import re
 import shutil
@@ -21,14 +22,51 @@ from proteus.utils.constants import (
 log = logging.getLogger('fwl.' + __name__)
 
 
+def _strip_fraction_tokens(component: str) -> str:
+    """Strip trailing mass-fraction tokens from an EOS component string.
+
+    Extended mantle EOS strings carry per-component fractions, e.g.
+    ``'PALEOS:MgSiO3:0.9800'``; the registry key is the prefix without
+    the numeric token. Only finite numbers count as fraction tokens:
+    ``'nan'`` and ``'inf'`` parse as floats but are never written by
+    the EOS extension, so they stay part of the identifier.
+    """
+    tokens = component.split(':')
+    while tokens:
+        try:
+            value = float(tokens[-1])
+        except ValueError:
+            break
+        if not math.isfinite(value):
+            break
+        tokens.pop()
+    return ':'.join(tokens)
+
+
+def eos_components(eos: str) -> list[str]:
+    """Registry keys of the components of a ``+``-joined EOS string.
+
+    Parameters
+    ----------
+    eos : str
+        EOS identifier, e.g. ``'PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1'``.
+
+    Returns
+    -------
+    list[str]
+        One key per component, with spaces and fraction tokens stripped.
+    """
+    return [_strip_fraction_tokens(c.strip()) for c in str(eos).split('+') if c.strip()]
+
+
 def generates_paleos_tables(interior_struct) -> bool:
     """Return whether Zalmoxis generates a PALEOS table set for this structure.
 
-    Only a mantle EOS that is a PALEOS key of the Zalmoxis material registry,
-    under the Zalmoxis structure, gets one: generate_spider_tables looks up the
-    exact key. SPIDER, Aragog and the table fetch then use the PALEOS-derived
-    curves instead of interior_struct.melting_dir. A mixture is not a registry
-    key. The table files are not checked.
+    Only a single-component mantle EOS whose key (spaces and fraction tokens
+    stripped) is a PALEOS key of the Zalmoxis material registry, under the
+    Zalmoxis structure, gets one. SPIDER, Aragog and the table fetch then use the
+    PALEOS-derived curves instead of interior_struct.melting_dir. A mixture gets
+    none. The table files are not checked.
 
     Parameters
     ----------
@@ -43,7 +81,8 @@ def generates_paleos_tables(interior_struct) -> bool:
     if getattr(interior_struct, 'module', None) != 'zalmoxis':
         return False
     mantle = getattr(getattr(interior_struct, 'zalmoxis', None), 'mantle_eos', None)
-    return mantle in PALEOS_REGISTRY_KEYS
+    components = eos_components(mantle or '')
+    return len(components) == 1 and components[0] in PALEOS_REGISTRY_KEYS
 
 
 def twophase_registry_key(mantle_eos: str) -> str:
@@ -57,13 +96,14 @@ def twophase_registry_key(mantle_eos: str) -> str:
     Returns
     -------
     str
-        ``'PALEOS-API-2phase:MgSiO3'`` for the PALEOS-API family,
-        ``'PALEOS-2phase:MgSiO3-highres'`` for the high-resolution shipped
-        tables, and ``'PALEOS-2phase:MgSiO3'`` otherwise.
+        ``'PALEOS-API-2phase:MgSiO3'`` when any component is of the PALEOS-API
+        family, ``'PALEOS-2phase:MgSiO3-highres'`` when any component is the
+        high-resolution shipped key, and ``'PALEOS-2phase:MgSiO3'`` otherwise.
     """
-    if mantle_eos.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')):
+    components = eos_components(mantle_eos)
+    if any(c.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')) for c in components):
         return 'PALEOS-API-2phase:MgSiO3'
-    if mantle_eos == 'PALEOS-2phase:MgSiO3-highres':
+    if 'PALEOS-2phase:MgSiO3-highres' in components:
         return 'PALEOS-2phase:MgSiO3-highres'
     return 'PALEOS-2phase:MgSiO3'
 
@@ -84,7 +124,7 @@ def paleos_companion_keys(mantle_eos: str) -> list[str]:
     list[str]
         The 2-phase pair key, or an empty list for a mantle without a PALEOS component.
     """
-    if not any(p.startswith(PALEOS_EOS_PREFIXES) for p in str(mantle_eos).split('+')):
+    if not any(c.startswith(PALEOS_EOS_PREFIXES) for c in eos_components(mantle_eos)):
         return []
     return [twophase_registry_key(mantle_eos)]
 

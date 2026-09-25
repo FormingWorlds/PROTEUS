@@ -3001,6 +3001,7 @@ def test_get_sufficient_zalmoxis_wolf_bower(
         mantle_eos='WolfBower2018:MgSiO3',
         core_eos='Seager2007:iron',
         ice_layer_eos='',
+        volatile_eos='',
     )
     # SPIDER dynamic EOS still downloaded separately
     mock_dyn.assert_called_once()
@@ -3057,7 +3058,7 @@ def test_get_sufficient_dummy_structure_fetches_ps_tables_without_eos_dir(
         ('aragog', 'zalmoxis', None, 'PALEOS-2phase:MgSiO3', False),
         ('aragog', 'zalmoxis', None, 'WolfBower2018:MgSiO3', True),
         ('spider', 'zalmoxis', None, 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', True),
-        ('aragog', 'zalmoxis', None, 'PALEOS:MgSiO3:1.0', True),
+        ('aragog', 'zalmoxis', None, 'PALEOS:MgSiO3:1.0', False),
         ('aragog', 'zalmoxis', 'WolfBower2018_MgSiO3', 'PALEOS:MgSiO3', True),
         ('dummy', 'dummy', None, 'PALEOS:MgSiO3', False),
     ],
@@ -3122,6 +3123,7 @@ def test_get_sufficient_zalmoxis_seager_only(
         mantle_eos='Seager2007:MgSiO3',
         core_eos='Seager2007:iron',
         ice_layer_eos='',
+        volatile_eos='',
     )
     mock_dyn.assert_not_called()
 
@@ -3167,6 +3169,7 @@ def test_get_sufficient_zalmoxis_paleos(
         mantle_eos='PALEOS:MgSiO3',
         core_eos='PALEOS:iron',
         ice_layer_eos='PALEOS:H2O',
+        volatile_eos='',
     )
     mock_dyn.assert_not_called()
 
@@ -3432,6 +3435,65 @@ def test_download_zalmoxis_eos_water_mantle_fetches_the_mgsio3_pair(
     )
     names = {name for _, name in _fetched_files(mock_file)}
     assert _UNIFIED_IRON not in names and _UNIFIED_MGSIO3 not in names
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_fetches_the_volatile_tables(mock_static, mock_fetch, mock_file):
+    """The dissolved-volatile components add the water table and the Chabrier record."""
+    from proteus.data import EOS_CHABRIER_2021, EOS_PALEOS_H2O
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos(
+        'PALEOS:MgSiO3', core_eos='PALEOS:iron', volatile_eos='PALEOS:H2O+Chabrier:H'
+    )
+    assert (EOS_PALEOS_H2O, _UNIFIED_WATER) in _fetched_files(mock_file)
+    assert [c.args[0] for c in mock_fetch.call_args_list] == [EOS_CHABRIER_2021]
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_strips_spaces_in_a_mixture(mock_static, mock_fetch, mock_file):
+    """A spaced mixture fetches the table of every component."""
+    from proteus.data import EOS_PALEOS_H2O, EOS_PALEOS_MGSIO3_UNIFIED
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos(' PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1 ', core_eos='PALEOS:iron')
+    fetched = _fetched_files(mock_file)
+    assert (EOS_PALEOS_H2O, _UNIFIED_WATER) in fetched
+    assert (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3) in fetched
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('dry, volatiles', [(True, ''), (False, 'PALEOS:H2O+Chabrier:H')])
+def test_download_zalmoxis_eos_for_config_adds_the_volatiles_of_a_wet_mantle(
+    monkeypatch, dry, volatiles
+):
+    """With dry_mantle = false the fetch includes the dissolved-volatile EOS."""
+    from types import SimpleNamespace
+
+    from proteus.utils import data as dmod
+
+    calls = []
+    monkeypatch.setattr(dmod, 'download_zalmoxis_eos', lambda **kw: calls.append(kw))
+    zconf = SimpleNamespace(
+        mantle_eos='PALEOS:MgSiO3', core_eos='PALEOS:iron', ice_layer_eos=None, dry_mantle=dry
+    )
+    dmod.download_zalmoxis_eos_for_config(
+        SimpleNamespace(interior_struct=SimpleNamespace(module='zalmoxis', zalmoxis=zconf))
+    )
+    assert calls == [
+        dict(
+            mantle_eos='PALEOS:MgSiO3',
+            core_eos='PALEOS:iron',
+            ice_layer_eos='',
+            volatile_eos=volatiles,
+        )
+    ]
 
 
 @pytest.mark.unit
