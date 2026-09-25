@@ -402,6 +402,50 @@ def test_extract_output_t_cmb_node_uses_basic_node_entropy(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(('rfront_loc', 'node'), [(0.3, 3), (0.7, 1)])
+def test_extract_output_rheological_front_follows_rfront_loc(tmp_path, rfront_loc, node):
+    """``RF_depth`` sits at the basic node whose melt fraction is closest to rfront_loc.
+
+    The basic-node melt fraction is ``[0.9, 0.7, 0.5, 0.3, 0.1, 0]``; 0.3 and 0.7 pick
+    nodes 3 and 1, while a fixed 0.4 or 0.5 would pick node 2.
+    """
+    config = _make_config()
+    config.interior_energetics.rfront_loc = rfront_loc
+    interior_o = _make_interior_o(spider_eos_dir=str(tmp_path), prepopulate_jax=True)
+    n_stag = 5
+
+    mesh = MagicMock()
+    mesh.P_stag = np.linspace(1.0e9, 1.5e11, n_stag)
+    mesh.P_basic = np.linspace(0.0, 1.6e11, n_stag + 1)
+    mesh.volume = np.full(n_stag, 1.0e19)
+    mesh.radii_basic = np.linspace(3.0e6, 6.4e6, n_stag + 1)
+    mesh.quantity_matrix = np.eye(n_stag + 1, n_stag)
+
+    eos = interior_o._jax_eos
+    eos.temperature = lambda P, S: np.full(np.shape(S), 3000.0)
+    eos.melt_fraction = lambda P, S: np.array([0.9, 0.7, 0.5, 0.3, 0.1])
+    eos.density = lambda P, S: np.full(n_stag, 4500.0)
+
+    fake_props = MagicMock()
+    fake_props.viscosity = np.full(n_stag, 1.0e2)
+    fake_props.heat_capacity = np.full(n_stag, 1200.0)
+
+    with patch.object(AragogJAXRunner, '_build_mesh_arrays', return_value=mesh):
+        runner = AragogJAXRunner(
+            config, {'output': str(tmp_path)}, {'F_atm': 1e5}, None, interior_o
+        )
+
+    result = SimpleNamespace(
+        success=True, t_final=1.0e3, n_steps=1, S_final=np.linspace(2500.0, 3500.0, n_stag)
+    )
+    with patch('aragog.jax.phase.evaluate_phase', return_value=fake_props):
+        out = runner._extract_output(result, {'F_atm': 1e5}, interior_o)
+
+    r = mesh.radii_basic
+    assert out['RF_depth'] == pytest.approx(1.0 - r[node] / r[-1], rel=1e-12)
+
+
+@pytest.mark.unit
 def test_run_solver_includes_heating_when_radiogenic_enabled(tmp_path):
     """``run_solver`` adds radiogenic heating to the JAX solver's input
     when ``config.interior_energetics.heat_radiogenic`` is True.
