@@ -1161,7 +1161,8 @@ def test_full_config_with_no_structure_module_is_rejected(energetics):
     root = pathlib.Path(__file__).resolve().parents[2]
     cfg = read_config_object(root / 'input' / 'dummy.toml')
     planet = attrs.evolve(cfg.planet, temperature_mode='liquidus_super')
-    struct = attrs.evolve(cfg.interior_struct, module=None)
+    curves = attrs.evolve(cfg.interior_struct, melting_dir='Monteux-600')
+    struct = attrs.evolve(curves, module=None)
     energ = attrs.evolve(cfg.interior_energetics, module=energetics)
 
     with pytest.raises(ValueError) as exc:
@@ -1169,7 +1170,7 @@ def test_full_config_with_no_structure_module_is_rejected(energetics):
     assert 'temperature_mode' in str(exc.value)
     assert 'interior_struct.module' in str(exc.value)
     # Discrimination: the same Config builds once a structure module is set.
-    ok = attrs.evolve(cfg, planet=planet, interior_energetics=energ)
+    ok = attrs.evolve(cfg, planet=planet, interior_struct=curves, interior_energetics=energ)
     assert ok.interior_struct.module == cfg.interior_struct.module
 
 

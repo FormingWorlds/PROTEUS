@@ -10115,6 +10115,17 @@
       "doc": "Reject enabling this option when the dummy atmos_clim module is selected."
     },
     {
+      "validator": "aragog_needs_melting_curves",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct.melting_dir"
+      ],
+      "doc": "Require ``interior_struct.melting_dir`` for Aragog without a PALEOS table set."
+    },
+    {
       "validator": "boreas_requires_atmosphere",
       "module": "_config.py",
       "attached_to": [
