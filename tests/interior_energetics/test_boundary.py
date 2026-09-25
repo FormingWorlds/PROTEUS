@@ -327,7 +327,7 @@ def test_viscosity_aggregate_parametrized(boundary_runner, phi, expected_eta_ran
     Test aggregate viscosity model across melt fraction range via parametrization.
 
     **Physical Scenario**: Parametrized test for magma ocean cooling through
-    critical melt fraction (φ_crit = 0.5).
+    the critical melt fraction (φ_crit = 0.4 in the fixture).
 
     **Expected Behavior**: Viscosity monotonically decreases with melt fraction.
     """
