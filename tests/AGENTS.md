@@ -38,7 +38,7 @@ A module-level constant read from an environment variable at import time does no
 
 Structure: `src/proteus/<module>/<file>.py` is tested in `tests/<module>/test_<file>.py`. `bash tools/validate_test_structure.sh` fails when a source directory has no test directory or a test directory has no `__init__.py`; it does not check the one-to-one file rule, which is yours to keep. `tests/tools/test_ci_tier_coverage.py` fails when a test has no tier or more than one. `tests/conftest.py` holds the parameter classes `EarthLikeParams`, `UltraHotSuperEarthParams`, `IntermediateSuperEarthParams` (as session fixtures `earth_params`, `ultra_hot_params`, `intermediate_params`) and the config fixtures `config_minimal`, `config_dummy`; read it before you write a test.
 
-Integration and slow tests live in `tests/integration/`: the nightly runs `pytest tests/integration` for the integration tier, and a slow file runs only when it is in the slow-tier file list of `.github/workflows/ci-nightly.yml`.
+Integration tests live in `tests/integration/`, because the nightly runs `pytest tests/integration -m "integration and not slow"`. A slow test file can sit in any test directory, but it runs only when a shard of the slow-tier matrix in `.github/workflows/ci-nightly.yml` lists it.
 
 CI: pull requests run the unit tier only (`pytest -m "unit and not skip and not slow and not integration"`); smoke, integration and slow run nightly. `tools/check_test_quality.py --check` runs in the PR job with `continue-on-error` and compares against `tools/test_quality_baseline.json`; a new violation shows in the log. Regenerate the baseline (`--baseline`) only after a sweep that removed violations.
 

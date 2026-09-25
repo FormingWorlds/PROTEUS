@@ -15,7 +15,7 @@ partitioning, the desiccation gate, or anything that sets or consumes
   `O_kg_total` to `O_budget`; `"ppmw"` sets it to `O_budget * 1e-6` times the volatile
   reservoir mass (`M_mantle` or `M_int`, per `planet.volatile_reservoir`).
 - `"FeO_mantle_wt_pct"`: alternative unit for petrologists. The number is
-  interpreted as `O_kg = M_mantle * (wt% / 100) * (M_O / M_FeO)`. The mantle EOS
+  interpreted as `O_kg_total = M_mantle * (wt% / 100) * (M_O / M_FeO)`. The mantle EOS
   density is NOT modified; PALEOS still assumes its built-in FeO content. The
   mode is a unit-of-convenience for setting the volatile-O budget in familiar
   terms.

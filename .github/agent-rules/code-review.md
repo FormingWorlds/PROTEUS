@@ -8,7 +8,7 @@ The detail behind the Review section of `AGENTS.md`. Apply these domain checks i
 - Temperature must be positive everywhere (Kelvin). Flag any code path where T could reach zero or go negative.
 - Pressure must be positive and monotonically increasing with depth in interior profiles.
 - Mass fractions must sum to 1.0. Flag any volatile partitioning code that doesn't enforce or verify normalization.
-- The mass escaped in one step must stay within its reservoir; `limit_escape_step` in `escape/wrapper.py` caps it at `ESCAPE_STEP_MAX_FRAC` of the escapable reservoir. Flag escape calculations that bypass the cap.
+- The mass escaped in one step must stay within its reservoir; `limit_escape_step` in `src/proteus/escape/wrapper.py` caps it at `ESCAPE_STEP_MAX_FRAC` of the escapable reservoir. Flag escape calculations that bypass the cap.
 - Outgassing rates must be non-negative.
 - Energy fluxes at module boundaries (atmosphere-interior, interior-core) must be consistent. If two modules independently compute the same flux, verify they agree.
 - Stefan-Boltzmann: F = sigma * T^4. When reviewing radiative flux code, check the exponent is 4, not 3 or 5.
@@ -32,7 +32,7 @@ When module A computes a quantity self-consistently (e.g., Zalmoxis computes cor
 
 ## Whole-element aggregation symmetry
 
-When reviewing code that aggregates element masses, every site of the cycle must include oxygen. Sites 1 and 2 sum `vol_element_list + noble_gases` and leave the rock-vapour elements of `vap_element_list` out on purpose, because rock vapour enters the atmosphere without being debited from the interior; sites 3, 4 and 6 sum `element_list`; site 5 tests the volatile elements against the threshold and sums `element_list` for the escape balance, to match the site-6 baseline. The sites:
+When reviewing code that aggregates element masses, every site of the cycle must include oxygen. Sites 1 and 2 sum `vol_element_list + noble_gases` and leave the rock-vapour elements of `vap_element_list` out on purpose, because rock vapour enters the atmosphere without being debited from the interior; sites 3, 4 and 6 sum `element_list`; site 5 tests `vol_element_list + noble_gases` against the threshold and sums `element_list` for the escape balance, to match the site-6 baseline. The sites:
 
 1. Initial-budget population (`calc_target_elemental_inventories`, `_resolve_oxygen_budget`)
 2. M_planet bookkeeping (`update_planet_mass`)
@@ -56,7 +56,7 @@ When a user supplies a value via config that gets re-derived by a downstream sol
 3. Hard-fail if relative divergence exceeds a threshold (50% for O; threshold can be tuned per case).
 4. Flip the sentinel so subsequent init-stage calls don't re-fire the check.
 
-Applies to any future user-specified quantity that has a solver-derived equivalent. Examples worth retro-fitting: `fO2_shift_IW` against the atmospheric chemistry it implies, surface gravity against the Zalmoxis structure output.
+Applies to any future user-specified quantity that has a solver-derived equivalent. Example worth retro-fitting: `fO2_shift_IW` against the atmospheric chemistry it implies.
 
 ## hf_row temporary overrides
 

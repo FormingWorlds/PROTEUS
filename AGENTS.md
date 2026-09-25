@@ -6,13 +6,13 @@ PROTEUS couples interior, atmosphere, star, orbit and escape modules into one pl
 - Whole-planet element mass is conserved with oxygen included: after the outgassing step of every iteration, `assert_mass_conservation` checks `M_atm <= M_planet` and that `M_vol_atm` equals the summed mass of the volatile and noble-gas species (rock vapour excluded). The only relaxation is `outgas.vapourise = true` (see Oxygen and mass accounting).
 - Every site that sums element masses includes oxygen; a new `if e == 'O': continue` in one of them breaks the mass budget. The sites differ on purpose in the rock-vapour elements: `M_ele` and `M_planet` sum `vol_element_list + noble_gases`, escape and structure sum `element_list`, and `check_desiccation` uses both (see `.github/agent-rules/code-review.md`).
 - Energy fluxes at the interior-atmosphere boundary agree between the two modules that compute them.
-- These commands decide whether a change is ready (CI runs the same; its test-quality step reports without blocking):
+- These commands decide whether a change is ready (CI runs the same; its test-quality step reports without blocking, and a change must add no finding over `origin/main`):
 
 ```bash
 pytest -m "unit and not skip and not slow and not integration" --ignore=tests/examples
 ruff check src/ tests/ tools/ && ruff format --check src/ tests/ tools/
 bash tools/validate_test_structure.sh
-python tools/check_test_quality.py --check
+python tools/check_test_quality.py --check  # no rule's Current count may exceed the same run on origin/main
 python tools/agents/check_agents_md.py && python tools/agents/sync_core.py --check .
 ```
 
