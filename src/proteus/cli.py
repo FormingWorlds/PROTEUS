@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import logging
 import os
 import sys
 from difflib import get_close_matches
@@ -233,13 +234,19 @@ cli.add_command(start)
 @click.group()
 def get():
     """Get data and modules"""
-    # Use cross-platform temporary directory instead of hardcoded /tmp
-    log_path = Path(tempfile.gettempdir()) / 'proteus_get.log'
-    setup_logger(
-        logpath=str(log_path),
-        logterm=True,
-        level='INFO',
-    )
+    # Scope the name to the calling user: a shared sticky temp directory
+    # refuses removal of another user's logfile.
+    log_path = Path(tempfile.gettempdir()) / f'proteus_get_{os.getuid()}.log'
+    try:
+        setup_logger(
+            logpath=str(log_path),
+            logterm=True,
+            level='INFO',
+        )
+    except OSError as exc:
+        # A logfile that cannot be written must not stop a download.
+        logging.getLogger('fwl').handlers.clear()
+        bootstrap_logger(level='INFO').warning(f'Cannot write {log_path}: {exc}')
 
 
 @click.command()
