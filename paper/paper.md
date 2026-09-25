@@ -51,10 +51,13 @@ authors:
     orcid: 0009-0000-6847-4331
     affiliation: 1
   - name: Marijn R. van Dijk
+    orcid: 0009-0005-6677-1929
     affiliation: 1
   - name: Lorenzo Cesario
+    orcid: 0009-0009-7228-7809
     affiliation: 1
   - name: Ioannis Panagiotou
+    orcid: 0009-0005-9147-0431
     affiliation: 1
   - name: Imre Kisvárdai
     orcid: 0009-0009-7323-6755
