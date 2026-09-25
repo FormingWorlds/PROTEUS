@@ -1354,7 +1354,9 @@ def test_try_spider_missing_eos_dir(tmp_path):
             return_value=3000.0,
         ),
     ):
-        with pytest.raises(FileNotFoundError, match='SPIDER EOS directory not found'):
+        with pytest.raises(
+            FileNotFoundError, match='SPIDER EOS directory not found.*`fwl-io relocate`'
+        ):
             _try_spider(
                 dirs,
                 config,

@@ -1118,7 +1118,7 @@ class AragogRunner:
                         f'PALEOS P-S tables not found. Aragog entropy solver '
                         f'requires P-S tables. Checked: {spider_eos_dir}, {fallback_dir}. '
                         "Fetch them with 'proteus get interiordata --config-path "
-                        "<your config>'."
+                        f"<your config>'. {RELOCATE_HINT}"
                     )
             # Only a structure P_cmb (Zalmoxis) is checked; the tolerance absorbs rounding.
             P_cmb = hf_row.get('P_cmb')

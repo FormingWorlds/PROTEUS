@@ -1730,7 +1730,12 @@ def _get_sufficient(config: Config, clean: bool = False):
             from proteus.atmos_clim.common import get_spfile_name_and_bands
 
             group, bands = get_spfile_name_and_bands(config)
-            _attempt(f'spectral file {group}/{bands}', download_spectral_file, group, bands)
+            if f'{group}/{bands}' in SPECTRAL_FILE_FOLDERS:
+                _attempt(f'spectral file {group}/{bands}', download_spectral_file, group, bands)
+            else:
+                log.info(
+                    'Spectral file %s/%s is in no manifest; it is read locally', group, bands
+                )
 
     # Surface single-scattering data
     if config.atmos_clim.module == 'agni':
@@ -2200,7 +2205,8 @@ def get_zalmoxis_melting_curves(config: Config):
         if not melting_file.is_file():
             raise FileNotFoundError(
                 f'Melting curve file not found: {melting_file}. '
-                f"Check struct.melting_dir='{config.interior_struct.melting_dir}'."
+                f"Check struct.melting_dir='{config.interior_struct.melting_dir}', or fetch "
+                f'it with `proteus get interiordata --config-path <config.toml>`. {RELOCATE_HINT}'
             )
     solidus_func = load_melting_curve(solidus_file)
     liquidus_func = load_melting_curve(liquidus_file)

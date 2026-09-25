@@ -14,6 +14,7 @@ See also:
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -637,18 +638,40 @@ def test_spfile_helpers(tmp_path):
 @pytest.mark.unit
 def test_get_spfile_path_reads_an_undeclared_group_from_the_local_tree(tmp_path, caplog):
     """A group that no manifest declares is read from spectral_files/<group>/<bands>,
-    with an INFO line; an absent local file raises the spectral-file error."""
+    with an INFO line, also before the file exists."""
     conf = MagicMock()
     conf.atmos_clim.spectral_group = 'MyGroup'
     conf.atmos_clim.spectral_bands = '48'
     local = tmp_path / 'spectral_files' / 'MyGroup' / '48' / 'MyGroup.sf'
-    with pytest.raises(FileNotFoundError, match='Spectral file does not exist at'):
-        get_spfile_path(str(tmp_path), conf)
-    local.parent.mkdir(parents=True)
-    local.write_text('sf')
     with caplog.at_level('INFO', logger='fwl.proteus.atmos_clim.common'):
         assert get_spfile_path(str(tmp_path), conf) == str(local)
     assert 'is in no manifest' in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('group, bands', [('MyGroup', '48'), ('Dayspring', '48')])
+def test_require_spfile_path_stops_with_status_20_and_the_fetch_command(tmp_path, group, bands):
+    """A missing spectral file, declared or not, writes status 20 and names
+    `proteus get spectral` and `fwl-io relocate`; a present one is returned."""
+    from proteus.atmos_clim.common import require_spfile_path
+
+    conf = MagicMock()
+    conf.atmos_clim.spectral_group = group
+    conf.atmos_clim.spectral_bands = bands
+    dirs = {'fwl': str(tmp_path), 'output': str(tmp_path / 'out')}
+    with (
+        patch('proteus.atmos_clim.common.UpdateStatusfile') as status,
+        pytest.raises(FileNotFoundError, match='`proteus get spectral`') as exc,
+    ):
+        require_spfile_path(dirs, conf)
+    status.assert_called_once_with(dirs, 20)
+    assert '`fwl-io relocate`' in str(exc.value)
+    path = Path(get_spfile_path(str(tmp_path), conf))
+    path.parent.mkdir(parents=True)
+    path.write_text('sf')
+    with patch('proteus.atmos_clim.common.UpdateStatusfile') as status:
+        assert require_spfile_path(dirs, conf) == str(path)
+    status.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

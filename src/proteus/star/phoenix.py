@@ -9,7 +9,7 @@ import numpy as np
 
 from proteus.data import STELLAR_SPECTRA_PHOENIX, dataset_dir
 from proteus.utils.constants import AU, M_sun, R_sun, const_G
-from proteus.utils.data import GetFWLData, download_phoenix
+from proteus.utils.data import RELOCATE_HINT, GetFWLData, download_phoenix
 from proteus.utils.helper import UpdateStatusfile
 from proteus.utils.phoenix_helper import phoenix_filename, phoenix_param, phoenix_to_grid
 
@@ -201,7 +201,10 @@ def get_phoenix_modern_spectrum(
                 raise RuntimeError(f'PHOENIX file still missing after download: {raw_path}')
         else:
             log.error('Running in offline mode, but appropriate phoenix file is not available.')
-            raise FileNotFoundError(f'PHOENIX file not found: {raw_path} (offline mode)')
+            raise FileNotFoundError(
+                f'PHOENIX file not found: {raw_path} (offline mode). Fetch it with '
+                f'`proteus get phoenix`. {RELOCATE_HINT}'
+            )
 
     # scale from stellar surface to 1 AU and save to PHOENIX/1AU
     if (not au_path.exists()) or (au_path.stat().st_mtime < raw_path.stat().st_mtime):

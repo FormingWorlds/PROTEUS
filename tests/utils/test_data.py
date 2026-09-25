@@ -3902,7 +3902,7 @@ def test_get_sufficient_agni_downloads_group_and_bands_when_no_spectral_file(mon
     monkeypatch.setattr(
         atmos_common,
         'get_spfile_name_and_bands',
-        lambda *_args: ('Frostflow', '128'),
+        lambda *_args: ('Frostflow', '256'),
     )
 
     config = SimpleNamespace(
@@ -3919,12 +3919,12 @@ def test_get_sufficient_agni_downloads_group_and_bands_when_no_spectral_file(mon
     data_mod._get_sufficient(config, clean=False)
 
     # Honeyside post-processing file + the resolved group/bands file.
-    assert spectral_calls == [('Honeyside', '4096'), ('Frostflow', '128')]
+    assert spectral_calls == [('Honeyside', '4096'), ('Frostflow', '256')]
     # Discrimination: confirm the resolved group/bands entry came second
     # (the Honeyside post-processing download always runs first); a
     # regression that swapped the call order or replayed Honeyside twice
     # would still produce a 2-element list but break this pin.
-    assert spectral_calls[-1] == ('Frostflow', '128')
+    assert spectral_calls[-1] == ('Frostflow', '256')
 
 
 @pytest.mark.unit
@@ -3974,6 +3974,13 @@ def test_get_sufficient_janus_always_downloads_group_and_bands(monkeypatch):
 
     assert ('Frostflow', '256') in spectral_calls
     assert lookup_calls == [1]
+
+    # A group no manifest declares is read from the local tree, not downloaded,
+    # since download_spectral_file refuses it with a ValueError.
+    monkeypatch.setattr(atmos_common, 'get_spfile_name_and_bands', lambda *_: ('MyGroup', '48'))
+    spectral_calls.clear()
+    data_mod._get_sufficient(config, clean=False)
+    assert spectral_calls == [('Honeyside', '4096')]
 
 
 # ============================================================================
@@ -5813,8 +5820,11 @@ def test_get_zalmoxis_melting_curves_missing_dir_raises(monkeypatch, tmp_path):
     config = MagicMock()
     config.interior_struct.melting_dir = 'NonexistentCurve'
 
-    with pytest.raises(FileNotFoundError, match='Melting curve file not found'):
+    with pytest.raises(
+        FileNotFoundError, match='Melting curve file not found.*proteus get interiordata'
+    ) as exc:
         get_zalmoxis_melting_curves(config)
+    assert '`fwl-io relocate`' in str(exc.value)
     missing = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'NonexistentCurve'
     assert not missing.exists()
 

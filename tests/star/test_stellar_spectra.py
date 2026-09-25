@@ -267,7 +267,7 @@ def test_get_phoenix_modern_spectrum_offline_missing_raw_raises(tmp_path, monkey
     monkeypatch.setattr(phoenix_mod, 'GetFWLData', lambda: tmp_path)
     handler = _make_handler(tmp_path=tmp_path, offline=True, Teff=5800.0, logg=4.5, radius=1.0)
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(FileNotFoundError, match='`proteus get phoenix`.*`fwl-io relocate`'):
         get_phoenix_modern_spectrum(handler, stellar_track=None)
 
     # Discrimination: the offline branch must NOT silently emit a 1 AU file
@@ -437,17 +437,25 @@ def test_init_star_source_muscles_falls_back_to_solar_with_warning(
 
 
 @pytest.mark.unit
-def test_init_star_source_none_missing_both_raises(tmp_path, monkeypatch):
-    """With ``spectrum_source=None`` and neither solar nor MUSCLES on
-    disk, ``init_star`` raises FileNotFoundError rather than producing
-    a silent zero-flux spectrum.
+@pytest.mark.parametrize(
+    'source, command',
+    [
+        (None, 'proteus get solar'),
+        ('solar', 'proteus get solar'),
+        ('muscles', 'proteus get muscles'),
+    ],
+)
+def test_init_star_source_none_missing_both_raises(tmp_path, monkeypatch, source, command):
+    """With neither solar nor MUSCLES on disk, ``init_star`` raises FileNotFoundError
+    naming the download command and ``fwl-io relocate``, rather than producing a silent
+    zero-flux spectrum.
     """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
-    handler = _make_handler_for_init_star(tmp_path, spectrum_source=None)
+    handler = _make_handler_for_init_star(tmp_path, spectrum_source=source)
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(FileNotFoundError, match=f'`{command}.*`fwl-io relocate`'):
         init_star(handler)
 
     # Discrimination: the raise must fire BEFORE any backup spectrum is

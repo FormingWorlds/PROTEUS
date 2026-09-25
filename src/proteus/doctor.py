@@ -342,18 +342,25 @@ def check_env_var(
 
 
 def check_fwl_data() -> list[CheckResult]:
-    """Check FWL_DATA contents for required data sets."""
+    """Check FWL_DATA contents for required data sets.
+
+    A data set found only in the older layout is fixed with ``fwl-io relocate``,
+    which moves it in place, rather than with a new download.
+    """
     results = []
     fwl = os.environ.get('FWL_DATA')
     if not fwl or not os.path.isdir(fwl):
         return results
 
     expected = {
-        'atmos_clim/spectral_files': 'proteus get spectral',
-        'star/spectra': 'proteus get stellar',
+        'atmos_clim/spectral_files': ('proteus get spectral', 'spectral_files'),
+        'star/spectra': ('proteus get stellar', 'stellar_spectra'),
     }
-    for subdir, fix in expected.items():
+    for subdir, (fix, legacy) in expected.items():
         path = os.path.join(fwl, subdir)
+        old = os.path.join(fwl, legacy)
+        if os.path.isdir(old) and os.listdir(old):
+            fix = 'fwl-io relocate'
         if os.path.isdir(path) and os.listdir(path):
             results.append(
                 CheckResult(

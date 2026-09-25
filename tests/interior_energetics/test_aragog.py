@@ -1854,7 +1854,8 @@ def test_setup_solver_missing_ps_tables_names_the_fetch_command(tmp_path):
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
         pytest.raises(
-            FileNotFoundError, match='P-S tables not found.*proteus get interiordata'
+            FileNotFoundError,
+            match='P-S tables not found.*proteus get interiordata.*fwl-io relocate',
         ),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))

@@ -10,6 +10,7 @@ import numpy as np
 
 from proteus.star.phoenix import get_phoenix_modern_spectrum
 from proteus.utils.constants import AU, M_sun, R_sun, const_sigma, ergcm2stoWm2
+from proteus.utils.data import RELOCATE_HINT
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger('fwl.' + __name__)
@@ -116,7 +117,8 @@ def init_star(handler: Proteus):
                     )
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
-                        f"No solar or MUSCLES spectrum found in reference data for '{mors_cfg.star_name}'."
+                        f"No solar or MUSCLES spectrum found in reference data for '{mors_cfg.star_name}'. "
+                        f'Fetch them with `proteus get solar` and `proteus get muscles`. {RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'solar'
@@ -141,7 +143,8 @@ def init_star(handler: Proteus):
                     )
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
-                        f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'."
+                        f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'. Fetch them with "
+                        f'`proteus get solar` and `proteus get muscles`. {RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'muscles'
@@ -174,7 +177,10 @@ def init_star(handler: Proteus):
                         "If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'."
                     )
                     UpdateStatusfile(handler.directories, 23)
-                    raise FileNotFoundError(f"No MUSCLES spectrum for '{mors_cfg.star_name}'.")
+                    raise FileNotFoundError(
+                        f"No MUSCLES spectrum for '{mors_cfg.star_name}'. Fetch it with "
+                        f'`proteus get muscles --star {mors_cfg.star_name}`. {RELOCATE_HINT}'
+                    )
 
             # spectrum_source = 'phoenix'
             elif src == 'phoenix':

@@ -258,6 +258,15 @@ class TestCheckFwlData:
             assert r.status == WARN
             assert r.fix_cmd is not None
 
+    def test_an_older_layout_is_fixed_by_relocate(self, tmp_path):
+        """A data set found only in the older layout is fixed by moving it, not a download."""
+        (tmp_path / 'spectral_files' / 'Dayspring' / '48').mkdir(parents=True)
+        (tmp_path / 'spectral_files' / 'Dayspring' / '48' / 'Dayspring.sf').touch()
+        with patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}):
+            fixes = {r.name: r.fix_cmd for r in check_fwl_data()}
+        assert fixes['FWL_DATA/atmos_clim/spectral_files'] == 'fwl-io relocate'
+        assert fixes['FWL_DATA/star/spectra'] == 'proteus get stellar'
+
     def test_skips_when_fwl_data_unset(self):
         """No checks when FWL_DATA is not set."""
         env = os.environ.copy()

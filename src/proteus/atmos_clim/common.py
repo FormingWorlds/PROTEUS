@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.helper import find_nearest, parse_subyear_time, snapshot_path_for_time
+from proteus.utils.helper import (
+    UpdateStatusfile,
+    find_nearest,
+    parse_subyear_time,
+    snapshot_path_for_time,
+)
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -343,11 +348,6 @@ def get_spfile_path(fwl_dir: str, config: Config):
     configured group and band count; the path may not exist before the dataset
     is fetched. A group and band count that no manifest declares is read from
     ``<fwl_dir>/spectral_files/<group>/<bands>/<group>.sf``.
-
-    Raises
-    ------
-    FileNotFoundError
-        If the group is undeclared and its local file does not exist.
     """
     from proteus.data import dataset_dir, spectral_file_key
 
@@ -359,10 +359,28 @@ def get_spfile_path(fwl_dir: str, config: Config):
     except KeyError:
         path = os.path.join(fwl_dir, 'spectral_files', group, str(bands), group) + '.sf'
         log.info('Spectral file %s/%s is in no manifest; using %s', group, bands, path)
-        if not os.path.isfile(path):
-            raise FileNotFoundError("Spectral file does not exist at '%s'" % path) from None
         return path
     return os.path.join(version_dir, group) + '.sf'
+
+
+def require_spfile_path(dirs: dict, config: Config) -> str:
+    """Return the configured spectral file, stopping the run when it is missing.
+
+    Raises
+    ------
+    FileNotFoundError
+        After writing the error status, naming the download command.
+    """
+    from proteus.utils.data import RELOCATE_HINT
+
+    path = get_spfile_path(dirs['fwl'], config)
+    if not os.path.isfile(path):
+        UpdateStatusfile(dirs, 20)
+        raise FileNotFoundError(
+            f"Spectral file does not exist at '{path}'. Fetch it with "
+            f'`proteus get spectral`. {RELOCATE_HINT}'
+        )
+    return path
 
 
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:

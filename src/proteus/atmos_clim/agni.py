@@ -12,7 +12,11 @@ from juliacall import Main as jl
 from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
-from proteus.atmos_clim.common import clip_radius_to_hill, get_oarr_from_parr, get_spfile_path
+from proteus.atmos_clim.common import (
+    clip_radius_to_hill,
+    get_oarr_from_parr,
+    require_spfile_path,
+)
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
@@ -555,7 +559,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         sflux_path = os.path.join(
             dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1])
         )
-        input_sf = get_spfile_path(dirs['fwl'], config)
+        input_sf = require_spfile_path(dirs, config)
         input_star = sflux_path
 
     # Fast I/O folder
@@ -588,8 +592,13 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         log.debug(f"Using '{surface_material}' single-scattering surface properties")
         surface_material = _resolve_surface_material(surface_material, dirs['fwl'])
         if not os.path.isfile(surface_material):
+            from proteus.utils.data import RELOCATE_HINT
+
             UpdateStatusfile(dirs, 20)
-            raise FileNotFoundError(surface_material)
+            raise FileNotFoundError(
+                f'Surface albedo file not found: {surface_material}. Fetch it with '
+                f'`proteus get surfaces`. {RELOCATE_HINT}'
+            )
 
     # Boundary pressures.
     p_surf = hf_row['P_surf']
