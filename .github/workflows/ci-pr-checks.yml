@@ -655,7 +655,9 @@ jobs:
         run: ruff format --check src/ tests/ tools/
 
       - name: Check agent instruction files
-        run: python tools/agents/check_agents_md.py
+        run: |
+          python tools/agents/check_agents_md.py
+          python tools/agents/sync_core.py --check .
 
   # --------------------------------------------------------------------
   # Documentation links and anchors.

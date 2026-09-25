@@ -6,9 +6,13 @@ The same file is used in every ecosystem repository; the canonical copy is
 
 * every shared block (``<!-- fwl-<name>:begin sha256=<hash> -->`` to
   ``<!-- fwl-<name>:end -->``) still matches the hash written by
-  ``sync_core.py``, so the shared text is edited only in PROTEUS;
-* the byte caps: 16,000 B for the root ``AGENTS.md``, 12,000 B for a nested one;
-* ``CLAUDE.md`` is a regular file that imports ``AGENTS.md`` and nothing else;
+  ``sync_core.py``, which catches a local edit of the shared text (whether the
+  text matches PROTEUS is checked there, by ``sync_core.py --check``);
+* a root ``AGENTS.md`` exists, and the byte caps: 16,000 B for the root file,
+  12,000 B for a nested one;
+* next to every ``AGENTS.md`` a ``CLAUDE.md`` is a regular file that imports
+  ``AGENTS.md`` and nothing else; with a root ``CLAUDE.md`` present, Claude Code
+  reads a nested ``AGENTS.md`` only through its own ``CLAUDE.md``;
 * ``.github/copilot-instructions.md`` has at most 60 lines.
 
 Usage: ``python tools/agents/check_agents_md.py [repo_root]``. Exit status 1
@@ -34,6 +38,7 @@ BLOCK_RE = re.compile(
     r'^<!-- fwl-(?P=name):end -->$',
     re.MULTILINE | re.DOTALL,
 )
+MARKER_RE = re.compile(r'^<!-- fwl-', re.MULTILINE)
 
 
 def block_hash(body: str) -> str:
@@ -58,27 +63,42 @@ def find_blocks(text: str) -> list[re.Match]:
 
 
 def agents_files(root: Path) -> list[Path]:
-    """Return the tracked ``AGENTS.md`` files under ``root``.
+    """Return the ``AGENTS.md`` files under ``root`` that git tracks or would add.
 
-    Falls back to a directory walk outside a git checkout. Files not yet
-    staged are invisible to ``git ls-files``; pre-commit stages them first.
+    Untracked files count unless git ignores them; files deleted from the
+    working tree are skipped. Falls back to a directory walk outside a git
+    checkout.
     """
     try:
         out = subprocess.run(
-            ['git', 'ls-files', '--', 'AGENTS.md', '*/AGENTS.md'],
+            [
+                'git',
+                'ls-files',
+                '--cached',
+                '--others',
+                '--exclude-standard',
+                '--',
+                'AGENTS.md',
+                '*/AGENTS.md',
+            ],
             cwd=root,
             capture_output=True,
             text=True,
             check=True,
         ).stdout
-        return [root / p for p in out.split()]
+        paths = sorted({root / p for p in out.splitlines()})
     except (OSError, subprocess.CalledProcessError):
-        return sorted(p for p in root.rglob('AGENTS.md') if '.git' not in p.parts)
+        paths = sorted(p for p in root.rglob('AGENTS.md') if '.git' not in p.parts)
+    return [p for p in paths if p.is_file()]
 
 
 def check(root: Path) -> list[str]:
     """Return one message per failed check for the repository at ``root``."""
+    if not root.is_dir():
+        return [f'{root}: not a directory']
     errors = []
+    if not (root / 'AGENTS.md').is_file():
+        errors.append('AGENTS.md: missing at the repository root')
     for path in agents_files(root):
         rel = path.relative_to(root)
         data = path.read_bytes()
@@ -86,23 +106,27 @@ def check(root: Path) -> list[str]:
         if len(data) > cap:
             errors.append(f'{rel}: {len(data)} B exceeds the {cap} B cap')
         text = data.decode()
-        for m in find_blocks(text):
+        blocks = find_blocks(text)
+        for m in blocks:
             if block_hash(m['body']) != m['hash']:
                 errors.append(
                     f'{rel}: shared block fwl-{m["name"]} differs from its hash; '
                     'edit tools/agents/ in PROTEUS and run sync_core.py'
                 )
-        if text.count('<!-- fwl-') != 2 * len(find_blocks(text)):
+        if len(MARKER_RE.findall(text)) != 2 * len(blocks):
             errors.append(f'{rel}: unmatched or malformed fwl- block marker')
-
-    claude = root / 'CLAUDE.md'
-    if claude.is_symlink() or (
-        claude.exists() and claude.read_text().strip() != CLAUDE_MD_TEXT
-    ):
-        errors.append(f'CLAUDE.md must be a regular file containing only {CLAUDE_MD_TEXT}')
+        claude = path.with_name('CLAUDE.md')
+        if (
+            claude.is_symlink()
+            or not claude.is_file()
+            or claude.read_text().strip() != CLAUDE_MD_TEXT
+        ):
+            errors.append(
+                f'{claude.relative_to(root)}: must be a regular file containing only {CLAUDE_MD_TEXT}'
+            )
 
     copilot = root / '.github' / 'copilot-instructions.md'
-    if copilot.exists():
+    if copilot.is_file():
         n = len(copilot.read_text().splitlines())
         if n > COPILOT_MAX_LINES:
             errors.append(f'{copilot.relative_to(root)}: {n} lines exceeds {COPILOT_MAX_LINES}')

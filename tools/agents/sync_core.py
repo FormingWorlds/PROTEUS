@@ -75,16 +75,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument('--check', action='store_true', help='report only, exit 1 on lag')
     args = ap.parse_args(argv)
 
-    lagging = False
+    lagging = missing = False
     for repo in args.repos:
         root = repo.resolve()
+        if not root.is_dir():
+            print(f'{repo}: not a directory')
+            missing = True
+            continue
         for path in agents_files(root):
             stale = sync_file(path, args.voice, write=not args.check)
             if stale:
                 lagging = True
                 verb = 'differs' if args.check else 'updated'
                 print(f'{path.relative_to(root.parent)}: {", ".join(stale)} {verb}')
-    return 1 if (args.check and lagging) else 0
+    return 1 if missing or (args.check and lagging) else 0
 
 
 if __name__ == '__main__':

@@ -10,6 +10,7 @@ lag in ``--check`` mode without writing.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -49,6 +50,7 @@ def _repo(tmp_path: Path, agents: str, nested: str | None = None) -> Path:
     if nested is not None:
         (tmp_path / 'tests').mkdir()
         (tmp_path / 'tests' / 'AGENTS.md').write_text(nested)
+        (tmp_path / 'tests' / 'CLAUDE.md').write_text('@AGENTS.md\n')
     return tmp_path
 
 
@@ -102,7 +104,52 @@ def test_claude_md_symlink_or_extra_text_fails(tmp_path):
     (repo / 'CLAUDE.md').symlink_to('import.md')
     assert any('CLAUDE.md' in e for e in chk.check(repo))
     (repo / 'CLAUDE.md').unlink()
+    assert chk.check(repo) == ['CLAUDE.md: must be a regular file containing only @AGENTS.md']
+    (repo / 'CLAUDE.md').write_text('@AGENTS.md\n')
     assert chk.check(repo) == []
+
+
+def test_nested_agents_md_needs_its_own_claude_md(tmp_path):
+    """A nested AGENTS.md without a sibling CLAUDE.md import is reported by path."""
+    repo = _repo(tmp_path, 'root', 'nested rules')
+    assert chk.check(repo) == []
+    (repo / 'tests' / 'CLAUDE.md').unlink()
+    assert chk.check(repo) == [
+        'tests/CLAUDE.md: must be a regular file containing only @AGENTS.md'
+    ]
+
+
+def test_missing_root_file_and_missing_directory_fail(tmp_path):
+    """A repository without a root AGENTS.md, or a path that is not a directory, fails."""
+    (tmp_path / 'CLAUDE.md').write_text('@AGENTS.md\n')
+    assert chk.check(tmp_path) == ['AGENTS.md: missing at the repository root']
+    assert chk.check(tmp_path / 'nope') == [f'{tmp_path / "nope"}: not a directory']
+    assert chk.main(['check', str(tmp_path / 'nope')]) == 1
+
+
+def test_marker_named_inside_a_line_is_not_counted(tmp_path):
+    """Prose that quotes the marker syntax mid-line is not taken for a broken block."""
+    text = 'Blocks start with `<!-- fwl-<name>:begin sha256=<hash> -->`.\n' + _block(
+        'core', 'x'
+    )
+    assert chk.check(_repo(tmp_path, text)) == []
+    assert len(chk.MARKER_RE.findall(text)) == 2
+
+
+def test_git_checkout_sees_untracked_and_skips_deleted_files(tmp_path):
+    """In a git checkout an untracked AGENTS.md is checked and a deleted tracked one is skipped."""
+    repo = _repo(tmp_path, 'root', 'nested rules')
+    git = ['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@t']
+    subprocess.run([*git, 'init', '-q'], check=True)
+    subprocess.run([*git, 'add', '-A'], check=True)
+    subprocess.run([*git, 'commit', '-qm', 'init'], check=True)
+    (repo / 'tests' / 'AGENTS.md').unlink()
+    (repo / 'src dir').mkdir()
+    (repo / 'src dir' / 'AGENTS.md').write_text('x' * 12_001)
+    errors = chk.check(repo)
+    assert 'src dir/AGENTS.md: 12001 B exceeds the 12000 B cap' in errors
+    assert 'src dir/CLAUDE.md: must be a regular file containing only @AGENTS.md' in errors
+    assert len(errors) == 2
 
 
 def test_copilot_instructions_line_cap(tmp_path):
@@ -164,3 +211,10 @@ def test_voice_variant_selects_the_canonical_file(tmp_path, canon):
     assert sync.sync_file(repo / 'AGENTS.md', 'neutral', write=False) == ['voice']
     with pytest.raises(FileNotFoundError):
         sync.canonical('no-such-block', 'neutral')
+
+
+def test_sync_fails_on_a_path_that_is_not_a_directory(tmp_path, canon, capsys):
+    """A mistyped repository path fails in both modes instead of passing silently."""
+    assert sync.main([str(tmp_path / 'nope')]) == 1
+    assert sync.main(['--check', str(tmp_path / 'nope')]) == 1
+    assert 'not a directory' in capsys.readouterr().out
