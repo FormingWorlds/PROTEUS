@@ -222,7 +222,7 @@ controlled parity tests.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `rfront_loc` | float | `0.5` | Centre of rheological transition in terms of melt fraction. Must be > 0 and < 1. |
+| `rfront_loc` | float | `0.4` | Centre of rheological transition in terms of melt fraction. SPIDER receives it as ``-phi_critical``. Aragog centres its viscosity blend, its reported rheological front and the melt-fraction ramp of ``kappah_floor`` on it; the boundary module uses it as the transition point of its viscosity models. The solvers use melt mass fraction, while measurements of the rheological transition are quoted as volume fraction: 0.4 by volume is about 0.375 by mass at a 10 percent melt-solid density contrast. Must be > 0 and < 1. |
 | `rfront_wid` | float | `0.2` | Width of rheological transition in terms of melt fraction. Must be > 0 and < 1. |
 | `grain_size` | float | `0.001` | Crystal settling grain size \[m\]. Must be > 0. |
 | `mixing_length` | str | `"nearest"` | Mixing-length scale: 'nearest' (distance to nearest boundary) or 'constant' (a quarter of the mantle depth). Choices: `"nearest"`, `"constant"`. |

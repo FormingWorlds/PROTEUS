@@ -34,9 +34,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import attrs
 import numpy as np
 import pytest
 
+from proteus.config import read_config_object
 from proteus.interior_energetics.boundary import BoundaryRunner
 from proteus.utils.constants import (
     M_earth,
@@ -278,6 +280,37 @@ def test_viscosity_aggregate_model_limits(boundary_runner):
     # Test intermediate: should be between melt and solid
     eta_mid = boundary_runner.viscosity_aggregate_model(0.5)
     assert 1e2 < eta_mid < 1e21
+
+
+@pytest.mark.physics_invariant
+def test_default_rfront_loc_centres_the_aggregate_viscosity(
+    config_minimal, mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+):
+    """The rfront_loc default reaches the boundary module as its critical melt fraction.
+
+    input/minimal.toml sets no rfront_loc, so the parsed value is the Interior default.
+    At that melt fraction the aggregate viscosity is the geometric mean of the solid
+    (1e22 Pa s) and melt (1e2 Pa s) viscosities, and values 0 and 1 are rejected.
+    """
+    ie = read_config_object(config_minimal).interior_energetics
+    mock_config.interior_energetics.rfront_loc = ie.rfront_loc
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        runner = BoundaryRunner(
+            config=mock_config,
+            dirs=mock_dirs,
+            hf_row=mock_hf_row,
+            hf_all=mock_hf_all,
+            interior_o=mock_interior,
+            atmos_o=mock_atmos,
+        )
+    assert runner.critical_melt_fraction == pytest.approx(0.4, abs=1e-12)
+    eta = runner.viscosity_aggregate_model(0.4)
+    assert eta == pytest.approx(1e12, rel=1e-9)
+    # Centred at 0.5, phi = 0.4 would give 10**16.62 = 4.2e16 Pa s.
+    assert eta < 1e-4 * runner.viscosity_aggregate_model(0.3)
+    for bad in (0.0, 1.0):
+        with pytest.raises(ValueError, match='rfront_loc'):
+            attrs.evolve(ie, rfront_loc=bad)
 
 
 @pytest.mark.parametrize(

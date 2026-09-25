@@ -458,7 +458,14 @@ class Interior:
     heat_tidal: bool
         Include tidal heating?
     rfront_loc: float
-        Centre of rheological transition in terms of melt fraction
+        Centre of rheological transition in terms of melt fraction. SPIDER
+        receives it as ``-phi_critical``. Aragog centres its viscosity blend,
+        its reported rheological front and the melt-fraction ramp of
+        ``kappah_floor`` on it; the boundary module uses it as the transition
+        point of its viscosity models.
+        The solvers use melt mass fraction, while measurements of the
+        rheological transition are quoted as volume fraction: 0.4 by volume is
+        about 0.375 by mass at a 10 percent melt-solid density contrast.
     rfront_wid: float
         Width of rheological transition in terms of melt fraction
     num_levels: int
@@ -572,7 +579,7 @@ class Interior:
     radio_U: float = field(default=0.031, validator=ge(0))
     radio_Th: float = field(default=0.124, validator=ge(0))
 
-    rfront_loc: float = field(default=0.5, validator=(gt(0), lt(1)))
+    rfront_loc: float = field(default=0.4, validator=(gt(0), lt(1)))
     rfront_wid: float = field(default=0.2, validator=(gt(0), lt(1)))
     tmagma_tides_step: float = field(default=10.0, validator=ge(0))
 
