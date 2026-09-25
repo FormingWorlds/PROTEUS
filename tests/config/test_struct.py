@@ -309,3 +309,8 @@ def test_two_mgsio3_sources_are_rejected_at_load(mantle, rejected):
             assert key in str(exc.value)
     else:
         Struct(**kwargs)
+
+
+def test_zalmoxis_structure_without_its_section_loads():
+    """The MgSiO3-source check needs the Zalmoxis section and skips when it is absent."""
+    assert Struct(module='zalmoxis', zalmoxis=None).zalmoxis is None

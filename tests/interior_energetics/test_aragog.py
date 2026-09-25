@@ -1785,9 +1785,10 @@ def test_setup_solver_offline_wolf_bower_mixture_names_the_fetch_command(tmp_pat
     with (
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
-        pytest.raises(FileNotFoundError, match='proteus get interiordata --config-path'),
+        pytest.raises(FileNotFoundError, match='proteus get interiordata --config-path') as exc,
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
+    assert '`fwl-io relocate`' in str(exc.value)
     assert not mock_solver.called
     assert not (tmp_path / 'out' / 'data' / 'aragog_pt').exists()
 

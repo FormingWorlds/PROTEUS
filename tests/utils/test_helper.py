@@ -894,10 +894,13 @@ def test_paleos_companion_keys_follow_the_mantle_family():
         ('Chabrier:H:0.03+PALEOS-API:MgSiO3:0.97', 'PALEOS-API-2phase:MgSiO3'),
         (' PALEOS:H2O:0.1 + PALEOS-API:MgSiO3:0.9 ', 'PALEOS-API-2phase:MgSiO3'),
         ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:MgSiO3:0.9+PALEOS-API:H2O:0.1', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:H2O:0.5+PALEOS-API:iron:0.5', 'PALEOS-API-2phase:MgSiO3'),
     ],
 )
 def test_twophase_registry_key_uses_every_component(mantle_eos, key):
-    """The pair family comes from any component, with fraction tokens and spaces stripped."""
+    """The pair family comes from the PALEOS MgSiO3 component when there is one, else from
+    any component, with fraction tokens and spaces stripped."""
     from proteus.utils.helper import paleos_companion_keys, twophase_registry_key
 
     assert twophase_registry_key(mantle_eos) == key
@@ -912,4 +915,14 @@ def test_eos_components_strip_spaces_and_fractions():
         'PALEOS:MgSiO3',
         'Chabrier:H',
     ]
-    assert eos_components('') == []
+    assert eos_components('PALEOS:MgSiO3:0.9 + 0.1') == ['PALEOS:MgSiO3']
+    assert eos_components('') == eos_components(None) == []
+
+
+def test_energetics_eos_key_treats_a_repeated_key_as_one_material():
+    """One key written as several components is that key, not a mixture."""
+    from proteus.utils.helper import energetics_eos_key
+
+    assert energetics_eos_key('PALEOS:iron:0.5+PALEOS:iron:0.5') == 'PALEOS:iron'
+    assert energetics_eos_key('PALEOS:iron:0.5+PALEOS:H2O:0.5') == 'PALEOS-2phase:MgSiO3'
+    assert energetics_eos_key(None) is None

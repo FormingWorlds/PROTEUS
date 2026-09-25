@@ -1155,7 +1155,7 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         zcfg = config.interior_struct.zalmoxis
         mat_dicts = load_zalmoxis_material_dictionaries()
         solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zcfg.mantle_eos, mat_dicts)
-        eos_entry = mat_dicts.get(zcfg.mantle_eos, {})
+        eos_entry = mat_dicts.get(energetics_eos_key(zcfg.mantle_eos) or '', {})
         eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
         if not eos_file or not os.path.isfile(eos_file):
             log.warning(

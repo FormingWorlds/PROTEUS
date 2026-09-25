@@ -1005,17 +1005,24 @@ def test_require_paleos_tables_warns_once_for_a_water_or_iron_mantle(
         assert ('initial adiabat is solved on the MgSiO3' in caplog.text) is adiabat_warned
 
 
-def test_require_paleos_tables_needs_the_volatile_tables_of_a_wet_mantle(tmp_path, monkeypatch):
-    """With dry_mantle = false the water table of the dissolved volatiles is required."""
+@pytest.mark.parametrize('missing', ['h2o', 'chabrier'])
+def test_require_paleos_tables_needs_the_volatile_tables_of_a_wet_mantle(
+    tmp_path, monkeypatch, missing
+):
+    """With dry_mantle = false the water and hydrogen tables of the dissolved volatiles
+    are required."""
     from proteus.interior_struct import zalmoxis as zmod
 
-    monkeypatch.setattr(
-        zmod, 'load_zalmoxis_material_dictionaries', lambda: _paleos_registry(tmp_path, 'h2o')
-    )
+    registry = _paleos_registry(tmp_path, missing)
+    chabrier = tmp_path / 'chabrier.dat'
+    if missing != 'chabrier':
+        chabrier.write_text('eos table stub')
+    registry['Chabrier:H'] = {'eos_file': str(chabrier), 'format': 'paleos_unified'}
+    monkeypatch.setattr(zmod, 'load_zalmoxis_material_dictionaries', lambda: registry)
     config = _require_config('PALEOS:MgSiO3')
     assert zmod.require_paleos_tables(config, str(tmp_path)) is None
     config.interior_struct.zalmoxis.dry_mantle = False
-    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='h2o.dat'):
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match=f'{missing}.dat'):
         zmod.require_paleos_tables(config, str(tmp_path))
 
 
@@ -1118,6 +1125,34 @@ def test_a_paleos_mixture_gets_the_ps_key_of_its_mgsio3_set(tmp_path, mixture, s
         keys.append((key, zmod._ps_table_inputs(config, key, entry, registry)[-1]))
     assert keys[0] == keys[1]
     assert keys[0][0] == single
+
+
+@pytest.mark.parametrize(
+    'mantle', ['WolfBower2018:MgSiO3', 'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1']
+)
+def test_generate_spider_tables_builds_no_set_for_a_wolf_bower_mantle(
+    tmp_path, monkeypatch, mantle
+):
+    """A mantle whose energetics key is not PALEOS gets no generated set and no table
+    check, also when its registry entry has solid and melt tables on disk."""
+    from proteus.interior_struct import zalmoxis as zmod
+
+    solid, melt = tmp_path / 'wb_solid.dat', tmp_path / 'wb_melt.dat'
+    solid.write_text('stub')
+    melt.write_text('stub')
+    registry = {
+        'WolfBower2018:MgSiO3': {
+            'melted_mantle': {'eos_file': str(melt)},
+            'solid_mantle': {'eos_file': str(solid)},
+        }
+    }
+    monkeypatch.setattr(zmod, 'load_zalmoxis_material_dictionaries', lambda: registry)
+    monkeypatch.setattr(
+        zmod, 'check_zalmoxis_eos_files', lambda *a, **k: pytest.fail('checked tables')
+    )
+    config = _require_config(mantle)
+    config.params.resume = False
+    assert zmod.generate_spider_tables(config, str(tmp_path)) is None
 
 
 def test_generate_spider_tables_stops_on_a_missing_pair_table(tmp_path, monkeypatch):

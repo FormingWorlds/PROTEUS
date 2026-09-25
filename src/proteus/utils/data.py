@@ -1779,7 +1779,9 @@ def download_zalmoxis_eos_for_config(config) -> None:
         mantle_eos=getattr(zconf, 'mantle_eos', ''),
         core_eos=getattr(zconf, 'core_eos', ''),
         ice_layer_eos='' if ice in (None, 'none') else ice,
-        volatile_eos='' if zconf.dry_mantle else '+'.join(VOLATILE_EOS_MAP.values()),
+        volatile_eos=''
+        if getattr(zconf, 'dry_mantle', True)
+        else '+'.join(VOLATILE_EOS_MAP.values()),
     )
 
 
@@ -2002,17 +2004,12 @@ SEAGER_FALLBACK_FAMILIES = (
 
 # Files Zalmoxis reads from each dataset whose record holds more than it needs.
 _WOLF_BOWER_SOLID_FILES = ('density_solid.dat', 'heat_capacity_solid.dat')
-_WOLF_BOWER_EOS_FILES = (
-    'density_melt.dat',
-    'adiabat_temp_grad_melt.dat',
-    'heat_capacity_melt.dat',
-    *_WOLF_BOWER_SOLID_FILES,
-)
 _RTPRESS_EOS_FILES = (
     'density_melt.dat',
     'adiabat_temp_grad_melt.dat',
     'heat_capacity_melt.dat',
 )
+_WOLF_BOWER_EOS_FILES = (*_RTPRESS_EOS_FILES, *_WOLF_BOWER_SOLID_FILES)
 _PALEOS_2PHASE_FILES = (
     'paleos_mgsio3_tables_pt_proteus_liquid.dat',
     'paleos_mgsio3_tables_pt_proteus_solid.dat',

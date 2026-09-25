@@ -256,8 +256,8 @@ def aragog_needs_melting_curves(instance, attribute, value):
         return
     raise ValueError(
         "interior_energetics.module = 'aragog' needs interior_struct.melting_dir without a "
-        'generated PALEOS table set (a single PALEOS mantle EOS with the Zalmoxis '
-        'structure). Set melting_dir to a melting curve name (e.g. "Monteux-600").'
+        'generated PALEOS table set (a PALEOS mantle EOS under the Zalmoxis structure; '
+        'a mixture follows its MgSiO3 component). Set melting_dir to a melting curve name (e.g. "Monteux-600").'
     )
 
 

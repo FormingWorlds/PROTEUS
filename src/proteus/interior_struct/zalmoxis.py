@@ -32,6 +32,7 @@ from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
+    PALEOS_REGISTRY_KEYS,
     VOLATILE_EOS_MAP,
     M_earth,
     R_earth,
@@ -215,9 +216,6 @@ def _structure_cache_key(config):
         config.interior_struct.core_frac,
         config.interior_struct.zalmoxis.mantle_mass_fraction,
     )
-
-
-_VOLATILE_EOS_MAP = VOLATILE_EOS_MAP
 
 
 def get_zalmoxis_output_filepath(outdir: str):
@@ -434,7 +432,7 @@ def build_volatile_profile(hf_row: dict, mantle_eos: str):
     w_solid = {}
     has_nonzero = False
 
-    for species, eos_name in _VOLATILE_EOS_MAP.items():
+    for species, eos_name in VOLATILE_EOS_MAP.items():
         kg_liq = float(hf_row.get(f'{species}_kg_liquid', 0.0))
         kg_sol = float(hf_row.get(f'{species}_kg_solid', 0.0))
 
@@ -886,7 +884,8 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
 
     mat_dicts = load_zalmoxis_material_dictionaries()
     solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
-    eos_file = mat_dicts.get(mantle_eos, {}).get('eos_file', '') or solid_eos or ''
+    eos_file = mat_dicts.get(energetics_eos_key(mantle_eos) or '', {}).get('eos_file', '')
+    eos_file = eos_file or solid_eos or ''
     melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
     if melt_funcs is not None:
         sol_func, liq_func = melt_funcs
@@ -1286,7 +1285,7 @@ def load_zalmoxis_configuration(
     # be excluded: the dissolved mass is already part of the wet-mantle
     # EOS, and subtracting it again would remove it twice. Note this
     # keeps ALL dissolved species inside the target, while the EOS blend
-    # only represents those in _VOLATILE_EOS_MAP (H2O in practice); the
+    # only represents those in VOLATILE_EOS_MAP (H2O in practice); the
     # dissolved mass of unmapped species (CO2, CH4, N2, S2) lands in the
     # silicate remainder fraction and is packed at silicate density.
     # Mass stays exact, compressibility is misrepresented; the radius
@@ -1940,7 +1939,7 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
     )
     check_zalmoxis_eos_files(layers, mat_dicts, paleos_companions=not kept)
     components = eos_components(zc.mantle_eos)
-    mixture = len(components) > 1
+    mixture = len(set(components)) > 1
     if not any(c.startswith(PALEOS_EOS_PREFIXES) for c in components) or (
         not mixture and components[0].partition(':')[2].startswith('MgSiO3')
     ):
@@ -2701,9 +2700,9 @@ def generate_spider_tables(config: Config, outdir: str):
         if resumed is not None:
             return resumed
 
-    if eos_entry is None:
+    if eos_entry is None or key not in PALEOS_REGISTRY_KEYS:
         log.info(
-            'Mantle EOS %s not found in material dictionary; using pre-existing SPIDER tables.',
+            'Mantle EOS %s has no PALEOS table set; using pre-existing SPIDER tables.',
             mantle_eos,
         )
         return None

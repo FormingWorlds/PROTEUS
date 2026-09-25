@@ -37,7 +37,11 @@ from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
-from proteus.utils.data import resolve_lookup_table_dir, resolve_melting_curve_files
+from proteus.utils.data import (
+    RELOCATE_HINT,
+    resolve_lookup_table_dir,
+    resolve_melting_curve_files,
+)
 from proteus.utils.helper import energetics_eos_key, generates_paleos_tables
 from proteus.utils.helper import format_subyear_time, parse_subyear_time, snapshot_path_for_time
 
@@ -93,7 +97,7 @@ def _melting_curve_files(config, outdir):
     if config.interior_struct.melting_dir is None:
         raise ValueError(
             'interior_struct.melting_dir must be set without a generated PALEOS '
-            'table set (a single PALEOS mantle EOS with the Zalmoxis structure). '
+            'table set (a PALEOS mantle EOS under the Zalmoxis structure). '
             'Provide a melting curve folder name (e.g. "Monteux-600").'
         )
     return resolve_melting_curve_files(
@@ -985,7 +989,8 @@ class AragogRunner:
                 ]
                 raise ZalmoxisMissingEOSFilesError(
                     f'PALEOS 2-phase MgSiO3 tables {_twophase_key} not found: {", ".join(missing)}. '
-                    'Download them with `proteus get interiordata --config-path <config.toml>`.'
+                    'Download them with `proteus get interiordata --config-path <config.toml>`. '
+                    f'{RELOCATE_HINT}'
                 )
         else:
             # Fetched Wolf and Bower 2018 tables, used when eos_dir is None or its
@@ -1010,7 +1015,7 @@ class AragogRunner:
         if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
             raise FileNotFoundError(
                 f'Aragog lookup data not found at {LOOK_UP_DIR}. Fetch it with '
-                "'proteus get interiordata --config-path <your config>'."
+                f"'proteus get interiordata --config-path <your config>'. {RELOCATE_HINT}"
             )
 
         # Entropy tables (optional): enable entropy-conserving adiabatic IC.
@@ -1466,7 +1471,7 @@ class AragogRunner:
             # `eos_file` arg for compute_entropy_adiabat is a sentinel: any
             # valid PALEOS table works. Prefer unified eos_file when present
             # (paleos_unified mantle), else fall back to solid 2-phase path.
-            eos_entry = mat_dicts.get(mantle_eos, {})
+            eos_entry = mat_dicts.get(energetics_eos_key(mantle_eos) or '', {})
             paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
             if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
                 log.debug(

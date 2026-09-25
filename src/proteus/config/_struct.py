@@ -368,7 +368,7 @@ class Struct:
         # curves from PALEOS; energetics_eos_key rejects two MgSiO3 sources.
         from proteus.utils.helper import energetics_eos_key, generates_paleos_tables
 
-        if self.module == 'zalmoxis':
+        if self.module == 'zalmoxis' and self.zalmoxis is not None:
             energetics_eos_key(self.zalmoxis.mantle_eos)
         if self.melting_dir is not None and generates_paleos_tables(self):
             import logging as _logging

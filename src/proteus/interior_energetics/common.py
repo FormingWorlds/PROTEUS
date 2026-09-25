@@ -11,7 +11,7 @@ from scipy.special import erf
 
 from proteus.utils.constants import B_ein
 from proteus.utils.data import find_lookup_table_dir
-from proteus.utils.helper import generates_paleos_tables
+from proteus.utils.helper import energetics_eos_key, generates_paleos_tables
 
 if TYPE_CHECKING:
     from aragog.eos.entropy import EntropyEOS
@@ -980,7 +980,7 @@ def compute_initial_entropy(
 
         mat_dicts = load_zalmoxis_material_dictionaries()
         solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zalmoxis_cfg.mantle_eos, mat_dicts)
-        eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
+        eos_entry = mat_dicts.get(energetics_eos_key(zalmoxis_cfg.mantle_eos) or '', {})
         paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
 
         melt_funcs = load_zalmoxis_solidus_liquidus_functions(zalmoxis_cfg.mantle_eos, config)
@@ -1079,7 +1079,7 @@ def compute_initial_entropy(
         # eos_file) can use the solid sub-table as the sentinel.
         solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zalmoxis_cfg.mantle_eos, mat_dicts)
 
-        eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
+        eos_entry = mat_dicts.get(energetics_eos_key(zalmoxis_cfg.mantle_eos) or '', {})
         paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
         if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
             raise FileNotFoundError(f'PALEOS table not found: {paleos_eos_file}')

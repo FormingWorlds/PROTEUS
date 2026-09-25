@@ -56,7 +56,7 @@ def eos_components(eos: str) -> list[str]:
     list[str]
         One key per component, with spaces and fraction tokens stripped.
     """
-    return [_strip_fraction_tokens(c.strip()) for c in str(eos).split('+') if c.strip()]
+    return [k for c in str(eos or '').split('+') if (k := _strip_fraction_tokens(c.strip()))]
 
 
 def energetics_eos_key(mantle_eos: str) -> str | None:
@@ -82,10 +82,10 @@ def energetics_eos_key(mantle_eos: str) -> str | None:
     ValueError
         If a mixture has MgSiO3 components with different registry keys.
     """
-    components = eos_components(mantle_eos)
+    components = sorted(set(eos_components(mantle_eos)))
     if len(components) == 1:
         return components[0]
-    mgsio3 = sorted({c for c in components if c.partition(':')[2].startswith('MgSiO3')})
+    mgsio3 = [c for c in components if c.partition(':')[2].startswith('MgSiO3')]
     if len(mgsio3) > 1:
         raise ValueError(
             f'mantle_eos={mantle_eos!r} has MgSiO3 components from different sources '
@@ -134,11 +134,14 @@ def twophase_registry_key(mantle_eos: str) -> str:
     Returns
     -------
     str
-        ``'PALEOS-API-2phase:MgSiO3'`` when any component is of the PALEOS-API
-        family, ``'PALEOS-2phase:MgSiO3-highres'`` when any component is the
+        ``'PALEOS-API-2phase:MgSiO3'`` when a component is of the PALEOS-API
+        family, ``'PALEOS-2phase:MgSiO3-highres'`` when a component is the
         high-resolution shipped key, and ``'PALEOS-2phase:MgSiO3'`` otherwise.
+        A PALEOS MgSiO3 component, when present, alone sets the family.
     """
     components = eos_components(mantle_eos)
+    mgsio3 = [c for c in components if c.startswith(PALEOS_EOS_PREFIXES) and ':MgSiO3' in c]
+    components = mgsio3 or components
     if any(c.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')) for c in components):
         return 'PALEOS-API-2phase:MgSiO3'
     if 'PALEOS-2phase:MgSiO3-highres' in components:
