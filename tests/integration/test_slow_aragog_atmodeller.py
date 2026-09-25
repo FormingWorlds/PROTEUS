@@ -48,12 +48,9 @@ from tests.integration.conftest import (  # noqa: E402
     validate_stability,
 )
 
-# Slow tier: this test sits in the nightly slow-tier file list in
-# ``.github/workflows/ci-nightly.yml`` and is excluded from the PR-CI
-# integration step (``pytest -m "integration and not slow"``). The 2400 s
-# timeout sits above the macOS GHA wall time (~440 s) and the projected
-# Linux GHA wall time (~1800-2200 s) with a margin; well under the
-# slow-tier 3600 s budget cap from tests/AGENTS.md.
+# Slow tier: runs from the nightly slow-tier file list, not in PR CI. GHA wall
+# time is about 440 s on macOS and 1800-2200 s projected on Linux, inside the
+# 3600 s slow-tier budget (tests/AGENTS.md).
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 

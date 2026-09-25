@@ -61,10 +61,9 @@ BASELINE_PATH = REPO_ROOT / 'tools' / 'test_quality_baseline.json'
 
 TIER_MARKERS = {'unit', 'smoke', 'integration', 'slow'}
 
-# Optional dependencies. Any test module that imports one of these MUST
-# precede the import with ``pytest.importorskip('<name>')`` at module
-# scope, otherwise CI's `pip install --no-deps` build fails collection.
-# Source rule: tests/AGENTS.md, "Mocks, fixtures, seeds".
+# Optional dependencies: a test module that imports one needs a module-scope
+# ``pytest.importorskip('<name>')`` first, or collection fails where the extra
+# is not installed (tests/AGENTS.md, "Mocks, fixtures, seeds").
 OPTIONAL_DEPS = {
     'hypothesis',
     'boreas',
@@ -104,15 +103,9 @@ PHYSICS_SOURCES_BY_DIR = {
     'inference': {'BO.py', 'async_BO.py', 'objective.py'},
 }
 
-# Audit limitations:
-# - PHYSICS_MODULES-based audit is directory-coarse: a single
-#   reference_pinned test in tests/<dir>/ satisfies the rule for the
-#   entire directory, even when the rule (tests/AGENTS.md, "Physics modules")
-#   requires per-source-file granularity. Per-file tracking is delegated
-#   to docs/Validation/<module>/<file>.md for now.
-# - The physics_invariant_audit keyword heuristic is substring-based and
-#   may over- or under-flag. The marker decorator is the source of truth;
-#   the keyword check is a guide for sweeping legacy untagged tests.
+# The reference_pinned audit works per directory, while the rule is per source
+# file (tests/AGENTS.md, "Physics modules"; pages in docs/Validation/). The
+# physics_invariant keyword heuristic is a sweep guide; the marker is the truth.
 
 # Weak-assertion shapes flagged as standalone violations.
 # Each entry is a callable on an ast.Assert node returning True if it matches.

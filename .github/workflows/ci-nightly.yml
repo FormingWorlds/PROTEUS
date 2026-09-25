@@ -693,11 +693,9 @@ jobs:
           overwrite: true
           retention-days: 30
 
-  # ============================================================
-  # Shared AGENTS.md blocks: report module repositories whose
-  # blocks differ from tools/agents/. Kept out of nightly-status
-  # so a lagging module does not mark the science nightly red.
-  # ============================================================
+  # Shared AGENTS.md blocks: fail when a module repository lags behind
+  # tools/agents/. Not in nightly-status, so a lagging module does not
+  # mark the science nightly red.
   agents-md-sync:
     name: AGENTS.md shared blocks in module repositories
     runs-on: ubuntu-latest
