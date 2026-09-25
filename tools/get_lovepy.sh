@@ -7,12 +7,14 @@ if ! [ -x "$(command -v julia)" ]; then
   exit 1
 fi
 
-# Resolve the pinned LovePy URL + ref from pyproject.toml. Julia's
-# Pkg.add accepts a `rev=` kwarg for a specific commit / tag / branch;
-# `main` is the default if no ref is configured.
-script_root="$(cd "$(dirname "$0")/.." && pwd)"
-lp_url=$(python "$script_root/tools/_module_pins.py" lovepy url)
-lp_ref=$(python "$script_root/tools/_module_pins.py" lovepy ref)
+# Shared helpers: see tools/_get_common.sh.
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
+
+# Resolve the pinned LovePy URL + ref from pyproject.toml. Julia's Pkg.add
+# accepts a `rev=` kwarg for a specific commit / tag / branch.
+resolve_module_pin lovepy
+lp_url="$module_url"
+lp_ref="$module_ref"
 
 echo "Installing LovePy into Julia environment ($lp_url @ $lp_ref)..."
 LD_LIBRARY_PATH="" julia -e "using Pkg; Pkg.add(url=\"$lp_url\", rev=\"$lp_ref\")"
