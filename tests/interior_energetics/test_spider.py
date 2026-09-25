@@ -1337,38 +1337,45 @@ def test_try_spider_init_aw(tmp_path):
 
 
 @pytest.mark.unit
-def test_try_spider_passes_the_default_rfront_loc_as_phi_critical(tmp_path, config_minimal):
-    """The rfront_loc default reaches SPIDER as its -phi_critical argument.
+def test_try_spider_passes_rfront_loc_as_phi_critical(tmp_path, config_minimal):
+    """The rfront_loc default and a non-default value reach SPIDER as -phi_critical.
 
     input/minimal.toml sets no rfront_loc, so the parsed value is the Interior default
-    (0.4). The call sequence carries it once, and a value of 0 is rejected by the config
-    before it can reach SPIDER.
+    (0.4). The call sequence carries the configured value once, and a value of 0 is
+    rejected by the config before it can reach SPIDER.
     """
     from proteus.interior_energetics.spider import _try_spider
 
     ie = read_config_object(config_minimal).interior_energetics
     dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
-    config.interior_energetics.rfront_loc = ie.rfront_loc
 
-    with (
-        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
-        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
-        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
-        patch(
-            'proteus.interior_energetics.common.compute_initial_entropy',
-            return_value=3000.0,
-        ),
-    ):
-        mock_run.return_value = MagicMock(returncode=0)
-        result = _try_spider(
-            dirs, config, IC_INTERIOR=1, hf_all=None, hf_row=hf_row, step_sf=1.0, atol_sf=1.0
-        )
+    for value, expected in ((ie.rfront_loc, 0.4), (0.3, 0.3)):
+        config.interior_energetics.rfront_loc = value
+        with (
+            patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+            patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+            patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+            patch(
+                'proteus.interior_energetics.common.compute_initial_entropy',
+                return_value=3000.0,
+            ),
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            result = _try_spider(
+                dirs,
+                config,
+                IC_INTERIOR=1,
+                hf_all=None,
+                hf_row=hf_row,
+                step_sf=1.0,
+                atol_sf=1.0,
+            )
 
-    assert result is True
-    call_args = mock_run.call_args[0][0]
-    assert call_args.count('-phi_critical') == 1
-    phi_critical = float(call_args[call_args.index('-phi_critical') + 1])
-    assert phi_critical == pytest.approx(0.4, abs=1e-12)
+        assert result is True
+        call_args = mock_run.call_args[0][0]
+        assert call_args.count('-phi_critical') == 1
+        phi_critical = float(call_args[call_args.index('-phi_critical') + 1])
+        assert phi_critical == pytest.approx(expected, abs=1e-12)
     with pytest.raises(ValueError, match='rfront_loc'):
         ie.rfront_loc = 0.0
 

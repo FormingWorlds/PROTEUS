@@ -283,14 +283,14 @@ def test_viscosity_aggregate_model_limits(boundary_runner):
 
 
 @pytest.mark.physics_invariant
-def test_default_rfront_loc_centres_the_aggregate_viscosity(
+def test_rfront_loc_centres_the_aggregate_viscosity(
     config_minimal, mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
 ):
-    """The rfront_loc default reaches the boundary module as its critical melt fraction.
+    """The rfront_loc default and a non-default value set the boundary critical melt fraction.
 
     input/minimal.toml sets no rfront_loc, so the parsed value is the Interior default.
-    At that melt fraction the aggregate viscosity is the geometric mean of the solid
-    (1e22 Pa s) and melt (1e2 Pa s) viscosities, and values 0 and 1 are rejected.
+    At the configured melt fraction the aggregate viscosity is the geometric mean of the
+    solid (1e22 Pa s) and melt (1e2 Pa s) viscosities, and values 0 and 1 are rejected.
     """
     ie = read_config_object(config_minimal).interior_energetics
     mock_config.interior_energetics.rfront_loc = ie.rfront_loc
@@ -308,6 +308,18 @@ def test_default_rfront_loc_centres_the_aggregate_viscosity(
     assert eta == pytest.approx(1e12, rel=1e-9)
     # Centred at 0.5, phi = 0.4 would give 10**16.62 = 4.2e16 Pa s.
     assert eta < 1e-4 * runner.viscosity_aggregate_model(0.3)
+    mock_config.interior_energetics.rfront_loc = 0.3
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        runner = BoundaryRunner(
+            config=mock_config,
+            dirs=mock_dirs,
+            hf_row=mock_hf_row,
+            hf_all=mock_hf_all,
+            interior_o=mock_interior,
+            atmos_o=mock_atmos,
+        )
+    assert runner.critical_melt_fraction == pytest.approx(0.3, abs=1e-12)
+    assert runner.viscosity_aggregate_model(0.3) == pytest.approx(1e12, rel=1e-9)
     for bad in (0.0, 1.0):
         with pytest.raises(ValueError, match='rfront_loc'):
             attrs.evolve(ie, rfront_loc=bad)
