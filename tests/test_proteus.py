@@ -283,13 +283,38 @@ def test_require_paleos_tables_runs_only_for_the_zalmoxis_structure(
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'error, site', [('missing', 'solve'), ('other', 'solve'), ('missing', 'start check')]
+    'error, site',
+    [
+        ('missing', 'solve'),
+        ('other', 'solve'),
+        ('missing', 'start check'),
+        ('melting curve', 'solve'),
+        ('P-S table', 'solve'),
+    ],
 )
-def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(tmp_path, error, site):
-    """A missing Zalmoxis EOS table raised at the start check or mid-run, here from the
-    structure solve, leaves status 20, so the run does not read as still running; other
-    errors leave it as is."""
+def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
+    tmp_path, monkeypatch, error, site
+):
+    """Missing reference data raised at the start check or mid-run, here from the
+    structure solve, leaves status 20, so the run does not read as still running: a
+    Zalmoxis EOS table, a melting curve or a SPIDER P-S table, each from its real raise
+    site. Other errors leave the status as is."""
+    from types import SimpleNamespace as NS
+
+    import proteus.interior_energetics.spider as spider
+    import proteus.utils.data as data
     from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    monkeypatch.setattr(data, 'FWL_DATA_DIR', tmp_path / 'fwl')
+    monkeypatch.setattr(spider, 'find_lookup_table_dir', lambda: None)
+    real_site = {
+        'melting curve': lambda *a, **k: data.get_zalmoxis_melting_curves(
+            NS(interior_struct=NS(melting_dir='Monteux-600'))
+        ),
+        'P-S table': lambda *a, **k: spider._resolve_spider_eos_dir(
+            {'spider': str(tmp_path / 'nospider')}, NS(interior_struct=NS(eos_dir='none'))
+        ),
+    }
 
     p = _make_proteus_instance(tmp_path)
     p.directories.update(
@@ -297,7 +322,9 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(tmp_path, erro
     )
     p.config.interior_energetics.flux_guess = 100.0
     p.config.star.age_ini = 0.1
-    exc = ZalmoxisMissingEOSFilesError('pair') if error == 'missing' else RuntimeError('x')
+    exc = real_site.get(error) or (
+        ZalmoxisMissingEOSFilesError('pair') if error == 'missing' else RuntimeError('x')
+    )
     with ExitStack() as stack:
         for target in _START_PATCHES:
             stack.enter_context(patch(target))
@@ -312,10 +339,10 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(tmp_path, erro
             stack.enter_context(
                 patch('proteus.interior_energetics.wrapper.solve_structure', side_effect=exc)
             )
-        with pytest.raises(RuntimeError):
+        with pytest.raises(Exception, match='pair|x|not found'):
             p.start(resume=False, offline=True)
     status = (tmp_path / 'status').read_text().splitlines()[0]
-    assert status == ('20' if error == 'missing' else '0')
+    assert status == ('0' if error == 'other' else '20')
 
 
 @pytest.mark.unit

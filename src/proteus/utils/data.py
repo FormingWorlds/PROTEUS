@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 from proteus.utils.constants import VOLATILE_EOS_MAP
 from proteus.utils.helper import (
+    MissingDataError,
     eos_components,
     paleos_companion_keys,
     resolve_fwl_data_dir,
@@ -2216,7 +2217,7 @@ def get_zalmoxis_melting_curves(config: Config):
     )
     for melting_file in (solidus_file, liquidus_file):
         if not melting_file.is_file():
-            raise FileNotFoundError(
+            raise MissingDataError(
                 f'Melting curve file not found: {melting_file}. '
                 f"Check interior_struct.melting_dir='{config.interior_struct.melting_dir}', or fetch "
                 f'it with `proteus get interiordata --config-path <config.toml>`. {RELOCATE_HINT}'

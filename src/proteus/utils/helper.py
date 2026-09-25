@@ -22,6 +22,17 @@ from proteus.utils.constants import (
 log = logging.getLogger('fwl.' + __name__)
 
 
+class MissingReferenceData(Exception):
+    """Marks an error raised because reference data the run needs is missing.
+
+    ``Proteus.start`` writes status 20 when such an error stops the run.
+    """
+
+
+class MissingDataError(FileNotFoundError, MissingReferenceData):
+    """A reference data file or table the run needs is not on disk."""
+
+
 def _strip_fraction_tokens(component: str) -> str:
     """Strip trailing mass-fraction tokens from an EOS component string.
 

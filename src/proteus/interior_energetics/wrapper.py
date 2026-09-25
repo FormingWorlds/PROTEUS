@@ -30,7 +30,7 @@ from proteus.utils.constants import (
     noble_gases,
     vol_element_list,
 )
-from proteus.utils.helper import UpdateStatusfile, energetics_eos_key
+from proteus.utils.helper import MissingDataError, UpdateStatusfile, energetics_eos_key
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -887,7 +887,7 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     # Case 4: neither source yielded a complete set.
     from proteus.utils.data import RELOCATE_HINT
 
-    raise FileNotFoundError(
+    raise MissingDataError(
         'Could not provide SPIDER/Aragog P-S EOS tables at '
         f'{target_dir}. FWL_DATA source '
         f'{zenodo_root} is missing {len(zenodo_missing)} of '

@@ -23,7 +23,7 @@ from proteus.interior_energetics.timestep import next_step
 from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import radnuc_data
 from proteus.utils.data import RELOCATE_HINT, find_lookup_table_dir
-from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
+from proteus.utils.helper import MissingDataError, UpdateStatusfile, natural_sort, recursive_get
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -651,7 +651,7 @@ def _resolve_spider_eos_dir(dirs: dict, config: Config) -> str:
             else os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
         )
     if not os.path.isdir(eos_dir):
-        raise FileNotFoundError(
+        raise MissingDataError(
             f'SPIDER EOS directory not found: {eos_dir}. '
             f"Check interior_struct.eos_dir='{config.interior_struct.eos_dir}', or fetch the "
             f'tables with `proteus get interiordata --config-path <config.toml>`. {RELOCATE_HINT}'

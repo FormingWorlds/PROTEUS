@@ -11,7 +11,7 @@ from scipy.special import erf
 
 from proteus.utils.constants import B_ein
 from proteus.utils.data import find_lookup_table_dir
-from proteus.utils.helper import generates_paleos_tables
+from proteus.utils.helper import MissingDataError, generates_paleos_tables
 
 if TYPE_CHECKING:
     from aragog.eos.entropy import EntropyEOS
@@ -207,7 +207,7 @@ _TABLE_SUPERLIQ_N_POINTS = 200
 _TABLE_SUPERLIQ_N_BISECT = 60
 
 
-class MissingMeltingCurveError(FileNotFoundError):
+class MissingMeltingCurveError(MissingDataError):
     """The melting curves the run must read are not configured or not on disk.
 
     Raised when ``interior_struct.melting_dir`` names curves whose files are

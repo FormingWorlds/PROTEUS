@@ -29,6 +29,7 @@ from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
+    MissingReferenceData,
     PrintHalfSeparator,
     PrintSeparator,
     UpdateStatusfile,
@@ -62,16 +63,14 @@ AGNI_DEADLOCK_MAX = 3
 
 
 def _status_on_missing_eos(start):
-    """Write status 20 when a missing Zalmoxis EOS table stops ``start``, wherever it is raised."""
+    """Write status 20 when missing reference data stops ``start``, wherever it is raised."""
 
     @functools.wraps(start)
     def wrapper(self, *args, **kwargs):
         try:
             return start(self, *args, **kwargs)
-        except RuntimeError as exc:
-            zalmoxis = sys.modules.get('proteus.interior_struct.zalmoxis')
-            if zalmoxis and isinstance(exc, zalmoxis.ZalmoxisMissingEOSFilesError):
-                UpdateStatusfile(self.directories, 20)
+        except MissingReferenceData:
+            UpdateStatusfile(self.directories, 20)
             raise
 
     return wrapper

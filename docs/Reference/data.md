@@ -60,10 +60,10 @@ The stop writes a [status code](output.md) as follows:
 
 | Missing data | Status |
 | ---------------------------------------------------------------- | ------------------ |
-| Zalmoxis EOS tables, including the MgSiO$_3$ two-phase pair | 20, wherever the run stops |
+| Zalmoxis EOS tables, including the MgSiO$_3$ two-phase pair | 20 |
 | spectral file, surface albedo file | 20 |
 | solar, MUSCLES or PHOENIX spectrum | 23 |
-| melting curve, SPIDER or Aragog P-S or lookup table | none of its own |
+| melting curve, SPIDER or Aragog P-S or lookup table | 20 |
 
 ---
 

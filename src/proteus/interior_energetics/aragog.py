@@ -42,7 +42,7 @@ from proteus.utils.data import (
     resolve_lookup_table_dir,
     resolve_melting_curve_files,
 )
-from proteus.utils.helper import energetics_eos_key, generates_paleos_tables
+from proteus.utils.helper import MissingDataError, energetics_eos_key, generates_paleos_tables
 from proteus.utils.helper import format_subyear_time, parse_subyear_time, snapshot_path_for_time
 
 log = logging.getLogger('fwl.' + __name__)
@@ -1010,7 +1010,7 @@ class AragogRunner:
 
         # check data exist
         if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
-            raise FileNotFoundError(
+            raise MissingDataError(
                 f'Aragog lookup data not found at {LOOK_UP_DIR}. Fetch it with '
                 f"'proteus get interiordata --config-path <your config>'. {RELOCATE_HINT}"
             )
@@ -1111,7 +1111,7 @@ class AragogRunner:
                 if fallback_dir.is_dir():
                     entropy_eos = _cached_entropy_eos(str(fallback_dir))
                 else:
-                    raise FileNotFoundError(
+                    raise MissingDataError(
                         f'PALEOS P-S tables not found. Aragog entropy solver '
                         f'requires P-S tables. Checked: {spider_eos_dir}, {fallback_dir}. '
                         "Fetch them with 'proteus get interiordata --config-path "

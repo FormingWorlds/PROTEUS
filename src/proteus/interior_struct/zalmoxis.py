@@ -43,6 +43,7 @@ from proteus.utils.constants import (
 )
 from proteus.utils.data import RELOCATE_HINT, GetFWLData, get_zalmoxis_melting_curves
 from proteus.utils.helper import (
+    MissingReferenceData,
     _strip_fraction_tokens,
     energetics_eos_key,
     eos_components,
@@ -1799,7 +1800,7 @@ def _build_mushy_zone_factors(layer_eos_config: dict, mzf: float) -> dict:
     }
 
 
-class ZalmoxisMissingEOSFilesError(RuntimeError):
+class ZalmoxisMissingEOSFilesError(RuntimeError, MissingReferenceData):
     """A layer's configured EOS identifier names a table file absent on disk."""
 
 
