@@ -292,6 +292,33 @@ def test_aragog_verify_skips_for_dummy_module(tmp_path):
 
 
 @pytest.mark.unit
+def test_aragog_verify_stops_on_a_missing_pair(tmp_path):
+    """The entropy cross-check needs the MgSiO3 2-phase pair: without it the run stops
+    with the missing-table error, even when the unified table is present."""
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    config = MagicMock()
+    config.interior_struct.module = 'zalmoxis'
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    interior_o = MagicMock()
+    interior_o.aragog_solver = _make_mock_entropy_solver(
+        P_stag=np.array([1e5, 5e10, 1.35e11]), S_stag=np.array([6437.0, 6437.0, 6437.0])
+    )
+    registry = {'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'}, 'PALEOS-2phase:MgSiO3': {}}
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value=registry,
+        ),
+        patch('os.path.isfile', return_value=True),
+        pytest.raises(ZalmoxisMissingEOSFilesError, match='PALEOS-2phase:MgSiO3'),
+    ):
+        AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
+    interior_o.aragog_solver.set_initial_entropy.assert_not_called()
+
+
+@pytest.mark.unit
 def test_aragog_verify_raises_on_api_drift(tmp_path):
     """
     Stale API: solver missing ``_S0`` must propagate as AttributeError.

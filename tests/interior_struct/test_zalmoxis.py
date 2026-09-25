@@ -970,6 +970,7 @@ def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypat
         ('PALEOS:iron', True),
         ('PALEOS:MgSiO3', False),
         ('PALEOS:H2O:1.0', True),
+        ('PALEOS:H2O:0.5+PALEOS:H2O:0.5', True),
     ],
 )
 def test_require_paleos_tables_warns_once_for_a_water_or_iron_mantle(

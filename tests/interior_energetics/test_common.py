@@ -1119,9 +1119,10 @@ def test_compute_initial_entropy_paleos_failure_logs_warning_and_falls_back(
 
 
 @pytest.mark.unit
-def test_compute_initial_entropy_stops_on_a_missing_pair_with_a_paleos_set():
-    """With a generated PALEOS set a missing MgSiO3 pair stops the initial entropy
-    instead of falling back to the default entropy."""
+@pytest.mark.parametrize('mode', ['adiabatic', 'adiabatic_from_cmb'])
+def test_compute_initial_entropy_stops_on_a_missing_pair_with_a_paleos_set(mode):
+    """With a generated PALEOS set a missing MgSiO3 pair stops the initial entropy, from
+    the surface and from the CMB anchor, instead of falling back to the default entropy."""
     pytest.importorskip('zalmoxis')
     from types import SimpleNamespace
     from unittest.mock import patch as _patch
@@ -1130,7 +1131,9 @@ def test_compute_initial_entropy_stops_on_a_missing_pair_with_a_paleos_set():
     from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
 
     config = SimpleNamespace(
-        planet=SimpleNamespace(temperature_mode='adiabatic', tsurf_init=2400.0),
+        planet=SimpleNamespace(
+            temperature_mode=mode, tsurf_init=2400.0, tcmb_init=4000.0, mass_tot=1.0
+        ),
         interior_struct=SimpleNamespace(
             module='zalmoxis', zalmoxis=SimpleNamespace(mantle_eos='PALEOS:MgSiO3')
         ),
@@ -1142,7 +1145,7 @@ def test_compute_initial_entropy_stops_on_a_missing_pair_with_a_paleos_set():
         ),
         pytest.raises(ZalmoxisMissingEOSFilesError, match='PALEOS-2phase:MgSiO3'),
     ):
-        compute_initial_entropy(config, fallback=3175.0)
+        compute_initial_entropy(config, {'P_cmb': 1.2e11}, fallback=3175.0)
 
 
 # ============================================================================
