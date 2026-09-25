@@ -142,7 +142,7 @@ Modules are grouped by role, following \autoref{fig:schematic}:
 - Interior: [Zalmoxis](https://github.com/FormingWorlds/Zalmoxis) computes the interior structure and gravity profile; Aragog [@sastre26] and SPIDER [@bower18] solve the thermal evolution of the partially molten mantle in a temperature and an entropy formalism, respectively, and a boundary-layer model offers a fast alternative.
 - Atmosphere: AGNI [@nicholls25a; @nicholls25b] and JANUS [@graham21; @graham22] solve the atmospheric energy balance, with radiative transfer from SOCRATES [@manners2024fast] and measured surface reflection properties [@hammond25]; VULCAN [@tsai17; @tsai21] provides disequilibrium chemistry, and FastChem [@kitzmann24] provides equilibrium chemistry within AGNI.
 - Outgassing: CALLIOPE [@bower22; @shorttle24; @nicholls25a] and atmodeller [@bower25] compute the redox-, temperature-, and pressure-dependent in- and outgassing of C-H-N-O-S volatiles; LavAtmos [@vanbuchem23] optionally adds rock vapour.
-- Escape: ZEPHYRUS [@postolec26a] and [BOREAS](https://github.com/FormingWorlds/BOREAS) compute energy-limited and hydrodynamic atmospheric escape.
+- Escape: ZEPHYRUS [@postolec26a] computes energy-limited atmospheric escape.
 - Star: MORS [@johnstone21] evolves the stellar luminosity and spectrum.
 - Tides: LovePy [@hay19; @nicholls25c] and [Obliqua](https://github.com/FormingWorlds/Obliqua) compute tidal heating and orbital evolution.
 - Accretion: [Morrigan](https://github.com/FormingWorlds/Morrigan) [@kimura25] grows the planet by giant impacts.
