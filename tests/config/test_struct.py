@@ -328,6 +328,9 @@ def test_two_mgsio3_sources_are_rejected_at_load(mantle, rejected):
         ('PALEOS:MgSiO3:0.5:0.5', True),
         ('PALEOS:MgSiO3: 0.9', True),
         ('PALEOS:nan', True),
+        ('0.5:MgSiO3', True),
+        ('PALEOS:MgSiO3:0.9+', True),
+        ('PALEOS:MgSiO3:0.9++PALEOS:H2O:0.1', True),
         ('PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1', False),
         ('PALEOS:MgSiO3', False),
     ],
@@ -344,6 +347,13 @@ def test_an_eos_component_with_a_space_or_a_non_finite_fraction_is_rejected(mant
             Struct(**kwargs)
     else:
         assert Struct(**kwargs).zalmoxis.mantle_eos == mantle
+
+
+@pytest.mark.parametrize('layer', ['core_eos', 'ice_layer_eos'])
+def test_a_core_or_ice_component_is_checked_like_a_mantle_component(layer):
+    """The core and ice layer EOS components follow the same format rule as the mantle."""
+    with pytest.raises(ValueError, match=f'`interior_struct.zalmoxis.{layer}` component'):
+        Struct(module='zalmoxis', zalmoxis=Zalmoxis(**{layer: 'PALEOS:H2O:foo'}))
 
 
 def test_zalmoxis_structure_without_its_section_loads():

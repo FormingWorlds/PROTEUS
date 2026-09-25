@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from typing import Optional
 
 from attrs import define, field
@@ -52,21 +51,22 @@ def valid_zalmoxis(instance, attribute, value):
         except ValueError:
             return None
 
-    for name, eos_val in [
+    layers = [
         ('core_eos', core_eos),
         ('mantle_eos', mantle_eos),
-        ('ice_layer_eos', ice_layer_eos or ''),
-    ]:
-        for comp in filter(None, (c.strip() for c in eos_val.split('+'))):
+        ('ice_layer_eos', ice_layer_eos),
+    ]
+    for name, eos_val in (layer for layer in layers if layer[1]):
+        for comp in (c.strip() for c in eos_val.split('+')):
             tokens = comp.split(':')
             fraction = _number(tokens[2]) if len(tokens) == 3 else 1.0
             if (
                 len(tokens) not in (2, 3)
                 or not all(tokens[:2])
-                or _number(tokens[1]) is not None
+                or any(_number(t) is not None for t in tokens[:2])
                 or any(ch.isspace() for ch in comp)
                 or fraction is None
-                or not 0 <= fraction < math.inf
+                or not 0 <= fraction < float('inf')
             ):
                 raise ValueError(
                     f"`interior_struct.zalmoxis.{name}` component '{comp}' is not "

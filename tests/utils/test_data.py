@@ -3566,8 +3566,8 @@ def test_download_zalmoxis_eos_for_config_adds_the_volatiles_of_a_wet_mantle(
 def test_download_zalmoxis_eos_fetches_the_anchor_pair_for_a_wolf_bower_mantle(
     mock_static, mock_fetch, mock_file, caplog
 ):
-    """A Wolf and Bower mantle fetches the MgSiO3 2-phase pair only for the liquidus_super
-    anchor, and its component raises no unknown-family warning."""
+    """A Wolf and Bower mantle fetches the MgSiO3 2-phase pair only for an anchored
+    temperature mode, and its component raises no unknown-family warning."""
     from proteus.data import EOS_PALEOS_MGSIO3
     from proteus.utils.data import download_zalmoxis_eos
 

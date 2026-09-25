@@ -175,9 +175,6 @@ def init_star(handler: Proteus):
                     log.error(
                         'Check the available MUSCLES spectra at https://proteus-framework.org/proteus/data.html#stellar-spectra'
                     )
-                    log.error(
-                        f'If available, MUSCLES spectra can be downloaded via the command line: proteus get muscles --star {star_id}'
-                    )
                     log.error('To download all MUSCLES spectra: proteus get muscles --all')
                     log.error(
                         "If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'."

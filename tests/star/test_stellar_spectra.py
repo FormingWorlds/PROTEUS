@@ -452,7 +452,7 @@ def test_init_star_source_muscles_falls_back_to_solar_with_warning(
     ],
 )
 def test_init_star_source_none_missing_both_raises(
-    tmp_path, monkeypatch, source, star, command
+    tmp_path, monkeypatch, caplog, source, star, command
 ):
     """With neither solar nor MUSCLES on disk, ``init_star`` raises FileNotFoundError
     naming the one catalogue that holds the star, with its id, and ``fwl-io relocate``,
@@ -465,6 +465,7 @@ def test_init_star_source_none_missing_both_raises(
 
     with pytest.raises(FileNotFoundError, match=f'with `{command}`. .*`fwl-io relocate`'):
         init_star(handler)
+    assert all(command in s for s in caplog.messages if 'muscles --star' in s)
 
     # Discrimination: the raise must fire BEFORE any backup spectrum is
     # written. A regression that silently produced a zero-flux fallback

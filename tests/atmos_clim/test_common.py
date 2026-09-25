@@ -653,8 +653,8 @@ def test_get_spfile_path_reads_an_undeclared_group_from_the_local_tree(tmp_path,
     'group, bands', [('MyGroup', '48'), ('Dayspring', '64'), ('Dayspring', '48')]
 )
 def test_require_spfile_path_stops_with_status_20_and_the_fetch_command(tmp_path, group, bands):
-    """A missing spectral file writes status 20 and names `fwl-io relocate` and, for a
-    declared group and band count, `proteus get spectral`; a present one is returned."""
+    """A missing spectral file writes status 20 and, for a declared group and band count,
+    names `proteus get spectral` and `fwl-io relocate`; a present one is returned."""
     from proteus.atmos_clim.common import require_spfile_path
 
     conf = MagicMock()
@@ -672,7 +672,7 @@ def test_require_spfile_path_stops_with_status_20_and_the_fetch_command(tmp_path
     ):
         require_spfile_path(dirs, conf)
     status.assert_called_once_with(dirs, 20)
-    assert '`fwl-io relocate`' in str(exc.value)
+    assert ('`fwl-io relocate`' in str(exc.value)) == (fix == '`proteus get spectral`')
     path = Path(get_spfile_path(str(tmp_path), conf))
     path.parent.mkdir(parents=True)
     path.write_text('sf')
