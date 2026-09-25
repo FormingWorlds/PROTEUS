@@ -463,9 +463,11 @@ class Interior:
         its reported rheological front and the melt-fraction ramp of
         ``kappah_floor`` on it; the boundary module uses it as the transition
         point of its viscosity models.
-        The solvers use melt mass fraction, while measurements of the
-        rheological transition are quoted as volume fraction: 0.4 by volume is
-        about 0.375 by mass at a 10 percent melt-solid density contrast.
+        SPIDER and Aragog use melt mass fraction (0.4 by volume is about 0.375 by
+        mass at a 10 percent melt-solid density contrast); the boundary module
+        takes its melt fraction linearly in temperature between solidus and
+        liquidus and its rheological transition width from
+        ``phase_transition_width``, not ``rfront_wid``.
     rfront_wid: float
         Width of rheological transition in terms of melt fraction
     num_levels: int
