@@ -1,5 +1,5 @@
 ---
-title: 'PROTEUS: A modular framework for simulating planetary evolution'
+title: 'PROTEUS: simulating the coupled interior-atmosphere evolution of rocky planets through deep time'
 tags:
   - astronomy
   - exoplanets
