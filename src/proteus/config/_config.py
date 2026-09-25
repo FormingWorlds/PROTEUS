@@ -240,6 +240,27 @@ def planet_liquidus_super_needs_tables(instance, attribute, value):
         )
 
 
+def aragog_needs_melting_curves(instance, attribute, value):
+    """Require ``interior_struct.melting_dir`` for Aragog without a PALEOS table set.
+
+    Aragog reads a solidus and a liquidus in every mode, from the generated
+    PALEOS set or from ``melting_dir``. SPIDER is checked when the run starts
+    instead: a resumed run continues on its kept P-S tables, and a
+    ``const_properties`` run reads no curves.
+    """
+    from proteus.utils.helper import generates_paleos_tables
+
+    if value.module != 'aragog' or instance.interior_struct.melting_dir is not None:
+        return
+    if generates_paleos_tables(instance.interior_struct):
+        return
+    raise ValueError(
+        "interior_energetics.module = 'aragog' needs interior_struct.melting_dir without a "
+        'generated PALEOS table set (a single PALEOS mantle EOS with the Zalmoxis '
+        'structure). Set melting_dir to a melting curve name (e.g. "Monteux-600").'
+    )
+
+
 def planet_fO2_source_compat(instance, attribute, value):
     """Validate planet.fO2_source against O_mode, volatile_mode, and
     against availability.
@@ -417,6 +438,7 @@ class Config:
         validator=(
             tides_enabled_orbit,
             boundary_requires_fixed_surface_state,
+            aragog_needs_melting_curves,
         ),
     )
     outgas: Outgas = field(factory=Outgas)

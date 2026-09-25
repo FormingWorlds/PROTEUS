@@ -988,12 +988,8 @@ class AragogRunner:
                     'Download them with `proteus get interiordata --config-path <config.toml>`.'
                 )
         else:
-            # Fetched Wolf and Bower 2018 tables; used when
-            # interior_struct.eos_dir is None (no dynamic EOS selected) or
-            # when the dynamic path does not resolve to a populated
-            # directory. The "EOS/dynamic" tree is only materialised when
-            # zalmoxis pre-generates PALEOS tables; outside that pathway
-            # it is empty.
+            # Fetched Wolf and Bower 2018 tables, used when eos_dir is None or its
+            # dynamic path holds no tables (it is filled only for generated PALEOS tables).
             default_lookup = resolve_lookup_table_dir(data_root=FWL_DATA_DIR)
             if config.interior_struct.eos_dir is None:
                 LOOK_UP_DIR = default_lookup

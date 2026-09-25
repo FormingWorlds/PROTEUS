@@ -2914,3 +2914,31 @@ def test_no_input_toml_uses_bare_interior_section():
     # wrong reason and silently pass the assertion above.
     toml_files = list((repo_root / 'input').rglob('*.toml'))
     assert len(toml_files) > 0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'energetics, mantle, melting_dir, stops',
+    [
+        ('aragog', 'WolfBower2018:MgSiO3', None, True),
+        ('aragog', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', None, True),
+        ('aragog', 'PALEOS:MgSiO3', None, False),
+        ('aragog', 'WolfBower2018:MgSiO3', 'Monteux-600', False),
+        ('spider', 'WolfBower2018:MgSiO3', None, False),
+    ],
+)
+def test_aragog_needs_melting_curves(energetics, mantle, melting_dir, stops):
+    """Aragog without a generated PALEOS table set needs melting_dir at config load;
+    SPIDER is left to the run-time check."""
+    from proteus.config._config import aragog_needs_melting_curves
+
+    struct = SimpleNamespace(
+        module='zalmoxis', melting_dir=melting_dir, zalmoxis=SimpleNamespace(mantle_eos=mantle)
+    )
+    value = SimpleNamespace(module=energetics)
+    instance = SimpleNamespace(interior_struct=struct, interior_energetics=value)
+    if stops:
+        with pytest.raises(ValueError, match='needs interior_struct.melting_dir'):
+            aragog_needs_melting_curves(instance, None, value)
+    else:
+        assert aragog_needs_melting_curves(instance, None, value) is None

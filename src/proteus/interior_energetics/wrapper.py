@@ -902,11 +902,8 @@ def determine_interior_radius(
 
     log.info('Using %s interior module to solve structure' % config.interior_energetics.module)
 
-    # Provide P-S lookup tables for Aragog's entropy solver (and SPIDER
-    # when it runs under this structure path). Mirrors the
-    # table provision at the top of the zalmoxis and dummy structure
-    # paths. The helper resolves from FWL_DATA/Zenodo first,
-    # then the SPIDER submodule as a fallback.
+    # P-S lookup tables for the SPIDER or Aragog energetics, as in the
+    # zalmoxis and dummy structure paths.
     if config.interior_energetics.module in ('spider', 'aragog'):
         _provide_spider_eos_tables(config, outdir, dirs)
 

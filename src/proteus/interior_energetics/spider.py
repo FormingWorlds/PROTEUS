@@ -935,10 +935,9 @@ def _try_spider(
         call_sequence.extend(['-HTIDAL', '2'])
         call_sequence.extend(['-htidal_filename', get_file_tides(dirs['output'])])
 
-    # Resolve melting curve S(P) files: the paths derived for this run, else P-S
-    # files in the local Melting_curves/<melting_dir> folder. A missing curve
-    # stops the run rather than switching to other curves. Constant-property
-    # runs pass no phase boundaries to SPIDER, so they need none.
+    # Melting curve S(P) files: those derived for this run, else the local
+    # Melting_curves/<melting_dir> P-S files; a missing curve stops the run.
+    # Constant-property runs pass no phase boundaries to SPIDER.
     liquidus_ps = solidus_ps = None
     if not _use_const:
         if dirs.get('spider_liquidus_ps') and os.path.isfile(dirs['spider_liquidus_ps']):

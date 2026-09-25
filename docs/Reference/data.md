@@ -279,10 +279,10 @@ run with an error naming the missing files instead of switching to other curves.
 With `interior_struct.module = "zalmoxis"` and a single PALEOS mantle equation
 of state, the curves are derived from the PALEOS liquidus and `melting_dir` is
 not read; a configured `melting_dir` then gives a warning when the configuration
-is loaded. Without a PALEOS table set, `melting_dir` must be set: SPIDER and
-Aragog stop with an error when it is unset, rather than use whichever curves are
-on disk. A SPIDER run with `const_properties = true` reads no melting curves and
-is exempt.
+is loaded. Without a PALEOS table set, `melting_dir` must be set, rather than
+use whichever curves are on disk: an Aragog configuration without it is rejected
+when it is loaded, and a SPIDER run stops with an error when it starts. A SPIDER
+run with `const_properties = true` reads no melting curves and is exempt.
 
 The Wolf and Bower (2018) pressure-entropy lookup table that SPIDER and
 Aragog read for `eos_dir = "WolfBower2018_MgSiO3"` is fetched the same way,

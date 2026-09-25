@@ -72,12 +72,9 @@ def test_get(monkeypatch, tmp_path):
     a stub file at the expected path. FWL_DATA itself is monkeypatched to
     a tmp_path so the test never touches the user's real data tree.
 
-    Anti-happy-path: each subcommand assertion is its own line and asserts
-    the specific exit code; a regression in any one of them surfaces the
-    name of the failing subcommand in the assertion output. The previous
-    failure (test_get fails on `solar` in CI but not locally because the
-    user's FWL_DATA happened to have the solar dataset already
-    populated) is now eliminated by controlling FWL_DATA explicitly.
+    Each subcommand has its own assertion on its exit code, so a failure
+    names the subcommand. FWL_DATA points at an empty tmp_path, so the
+    result does not depend on the data tree of the machine.
     """
     # Monkeypatch FWL_DATA to a writable tmp_path so post-condition file
     # checks have a controlled environment. The module-level FWL_DATA_DIR
@@ -89,11 +86,8 @@ def test_get(monkeypatch, tmp_path):
     monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', _Path(tmp_path), raising=False)
 
     def stub_download_stellar_spectra(folders=('solar',), **kwargs):
-        # The CLI `solar` subcommand checks for files under
-        # the solar dataset directory after the downloader returns,
-        # raising ClickException if none are present. The no-op honours
-        # that contract by writing a stub file so the post-condition
-        # passes without touching the network.
+        # `proteus get solar` requires files in the solar dataset directory,
+        # so the stub writes one.
         for folder in folders:
             target = _solar_dir(tmp_path)
             target.mkdir(parents=True, exist_ok=True)

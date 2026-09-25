@@ -448,13 +448,8 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
 # Unified mapping of folder names to both Zenodo and OSF identifiers
 # Structure: folder_name -> {'zenodo_id': str, 'osf_id': str, 'osf_project': str}
 DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
-    # The surface albedos, the Seager EOS tables, the exoplanet catalogue, the
-    # mass-radius relations, the solar, Named, MUSCLES and PHOENIX stellar spectra, the
-    # Zalmoxis equations of state, the interior lookup tables and the melting
-    # curves are declared in
-    # src/proteus/data/proteus_manifest.toml and fetched through fwl-io, so their
-    # record pins live there and are absent here.
-    # Aerosol scattering data (no OSF project)
+    # Every other dataset is declared in src/proteus/data/proteus_manifest.toml or
+    # in the fwl-io shared_manifest.toml and fetched through fwl-io.
     'scattering': {'zenodo_id': '19294180', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
 }
 
@@ -1539,11 +1534,8 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
     # Try MORS download first
     try:
         mors_data.DownloadEvolutionTracks(track)
-        # Verify the download landed. A migrated MORS fetches a track set
-        # through fwl-io into its versioned directory and exposes a
-        # <track>_data_dir accessor to resolve it; an older MORS wrote the
-        # tracks to the legacy path. Verify wherever this MORS version
-        # actually placed them.
+        # Check where this MORS placed the tracks: its <track>_data_dir accessor
+        # when it has one, else the fixed path.
         if track == 'Baraffe' and hasattr(mors_data, 'baraffe_data_dir'):
             tracks_path = mors_data.baraffe_data_dir()
         elif track == 'Spada' and hasattr(mors_data, 'spada_data_dir'):
@@ -1984,12 +1976,8 @@ def download_Seager_EOS():
     fetch_dataset(EOS_SEAGER_2007, data_root=FWL_DATA_DIR)
 
 
-# ── Zalmoxis EOS download helpers ────────────────────────────────────
-#
-# ``download_zalmoxis_eos()`` is called from ``_get_sufficient()``; it
-# inspects the mantle/core EOS config and fetches only the manifest files
-# the current run reads.
-# ─────────────────────────────────────────────────────────────────────
+# Zalmoxis EOS download helpers: download_zalmoxis_eos fetches only the
+# manifest files that the configured layer EOS read.
 
 # Mantle EOS family prefixes whose registry entry carries the Seager iron
 # table as its core fallback (see
