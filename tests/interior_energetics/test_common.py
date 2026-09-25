@@ -1118,6 +1118,34 @@ def test_compute_initial_entropy_paleos_failure_logs_warning_and_falls_back(
     assert any('Could not compute entropy from PALEOS' in r.message for r in caplog.records)
 
 
+@pytest.mark.unit
+def test_compute_initial_entropy_stops_on_a_missing_pair_with_a_paleos_set(tmp_path):
+    """With a generated PALEOS set a missing MgSiO3 pair stops the initial entropy
+    instead of falling back to the default entropy."""
+    pytest.importorskip('zalmoxis')
+    from types import SimpleNamespace
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.common import compute_initial_entropy
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    unified = tmp_path / 'unified.dat'
+    unified.write_text('stub')
+    config = SimpleNamespace(
+        planet=SimpleNamespace(temperature_mode='adiabatic', tsurf_init=2400.0),
+        interior_struct=SimpleNamespace(
+            module='zalmoxis', zalmoxis=SimpleNamespace(mantle_eos='PALEOS:MgSiO3')
+        ),
+    )
+    registry = {'PALEOS:MgSiO3': {'eos_file': str(unified)}, 'PALEOS-2phase:MgSiO3': {}}
+    with _patch(
+        'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+        return_value=registry,
+    ):
+        with pytest.raises(ZalmoxisMissingEOSFilesError, match='PALEOS-2phase:MgSiO3'):
+            compute_initial_entropy(config, fallback=3175.0)
+
+
 # ============================================================================
 # compute_initial_entropy success paths via spider_eos_dir + Zalmoxis adiabat
 # ============================================================================

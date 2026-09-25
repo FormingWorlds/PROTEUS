@@ -883,7 +883,9 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         return cached
 
     mat_dicts = load_zalmoxis_material_dictionaries()
-    solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
+    solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
+        mantle_eos, mat_dicts, required=generates_paleos_tables(config.interior_struct)
+    )
     eos_file = mat_dicts.get(energetics_eos_key(mantle_eos) or '', {}).get('eos_file', '')
     eos_file = eos_file or solid_eos or ''
     melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
@@ -1952,7 +1954,41 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
         log.warning('mantle_eos=%s: %s%s', zc.mantle_eos, head, '; '.join(uses))
 
 
-def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
+def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict, required: bool = False):
+    """Return the 2-phase MgSiO3 table paths, stopping on a missing one when required.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Configured mantle EOS.
+    mat_dicts : dict
+        Zalmoxis material dictionaries.
+    required : bool
+        Raise instead of returning None for a missing table; callers set it for a
+        run with a generated PALEOS table set, which requires the pair.
+
+    Returns
+    -------
+    tuple[str | None, str | None]
+        See :func:`_twophase_mgsio3_paths`.
+
+    Raises
+    ------
+    ZalmoxisMissingEOSFilesError
+        If ``required`` and a table of the pair is not available.
+    """
+    paths = _twophase_mgsio3_paths(mantle_eos, mat_dicts)
+    if required and None in paths:
+        missing = [p for p, ok in zip(('solid', 'liquid'), paths) if ok is None]
+        raise ZalmoxisMissingEOSFilesError(
+            f'PALEOS 2-phase MgSiO3 tables {twophase_registry_key(mantle_eos)} not '
+            f'available: {", ".join(missing)}. Download them with '
+            f'`proteus get interiordata --config-path <config.toml>`. {RELOCATE_HINT}'
+        )
+    return paths
+
+
+def _twophase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
     """Return (solid_eos_path, liquid_eos_path) for the 2-phase MgSiO3 tables.
 
     Selects the API key (``PALEOS-API-2phase:MgSiO3``) when ``mantle_eos``

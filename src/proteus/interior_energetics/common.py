@@ -979,7 +979,11 @@ def compute_initial_entropy(
             return fallback
 
         mat_dicts = load_zalmoxis_material_dictionaries()
-        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zalmoxis_cfg.mantle_eos, mat_dicts)
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
+            zalmoxis_cfg.mantle_eos,
+            mat_dicts,
+            required=generates_paleos_tables(config.interior_struct),
+        )
         eos_entry = mat_dicts.get(energetics_eos_key(zalmoxis_cfg.mantle_eos) or '', {})
         paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
 
@@ -1077,7 +1081,11 @@ def compute_initial_entropy(
         # API-aware 2-phase table lookup. Required before the eos_file
         # sentinel selection so 2-phase mantle EoS configs (no top-level
         # eos_file) can use the solid sub-table as the sentinel.
-        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zalmoxis_cfg.mantle_eos, mat_dicts)
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
+            zalmoxis_cfg.mantle_eos,
+            mat_dicts,
+            required=generates_paleos_tables(config.interior_struct),
+        )
 
         eos_entry = mat_dicts.get(energetics_eos_key(zalmoxis_cfg.mantle_eos) or '', {})
         paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
@@ -1111,6 +1119,10 @@ def compute_initial_entropy(
         return S_target
 
     except (RuntimeError, FileNotFoundError, KeyError, ValueError) as e:
+        from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+        if isinstance(e, ZalmoxisMissingEOSFilesError):
+            raise
         log.warning(
             'Could not compute entropy from PALEOS (%s). '
             'Using fallback S=%.1f J/kg/K for tsurf=%.0f K.',

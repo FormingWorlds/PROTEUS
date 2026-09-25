@@ -1466,7 +1466,9 @@ class AragogRunner:
 
             # Prefer 2-phase tables (clean phase-specific entropy at melting curve).
             # API-aware so PALEOS-API runs use API 2-phase tables, not shipped.
-            solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
+            solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
+                mantle_eos, mat_dicts, required=True
+            )
 
             # `eos_file` arg for compute_entropy_adiabat is a sentinel: any
             # valid PALEOS table works. Prefer unified eos_file when present

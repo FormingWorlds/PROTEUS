@@ -1157,6 +1157,20 @@ def test_generate_spider_tables_builds_no_set_for_a_wolf_bower_mantle(
     assert zmod.generate_spider_tables(config, str(tmp_path)) is None
 
 
+def test_resolve_2phase_paths_stops_on_a_missing_table_when_required(tmp_path):
+    """A required pair with a missing table raises and names the table; otherwise the
+    missing table is None."""
+    from proteus.interior_struct import zalmoxis as zmod
+
+    registry = _paleos_registry(tmp_path, 'liquid')
+    assert zmod.resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', registry) == (
+        str(tmp_path / 'solid.dat'),
+        None,
+    )
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='not available: liquid'):
+        zmod.resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', registry, required=True)
+
+
 def test_generate_spider_tables_stops_on_a_missing_pair_table(tmp_path, monkeypatch):
     """A PALEOS unified mantle whose 2-phase liquid table is absent stops before any
     table is built, instead of building the P-S set from the unified table alone."""

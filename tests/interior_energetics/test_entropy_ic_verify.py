@@ -49,6 +49,12 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 # ======================================================================
 
 
+_FAKE_PAIR = {
+    'solid_mantle': {'eos_file': '/fake/solid.dat'},
+    'melted_mantle': {'eos_file': '/fake/liquid.dat'},
+}
+
+
 def _make_mock_eos(T_recovered, P_min=0.0, P_max=1.0e12):
     """Mock EntropyEOS whose ``temperature`` returns a controlled value.
 
@@ -316,7 +322,7 @@ def test_aragog_verify_raises_on_api_drift(tmp_path):
             'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
             return_value={
                 'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
-                'PALEOS-2phase:MgSiO3': {},
+                'PALEOS-2phase:MgSiO3': _FAKE_PAIR,
             },
         ),
         patch(
@@ -362,7 +368,7 @@ def test_aragog_verify_raises_on_api_drift(tmp_path):
             'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
             return_value={
                 'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
-                'PALEOS-2phase:MgSiO3': {},
+                'PALEOS-2phase:MgSiO3': _FAKE_PAIR,
             },
         ),
         patch(
@@ -419,7 +425,7 @@ def test_aragog_verify_runs_and_overrides_on_warn(tmp_path):
             'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
             return_value={
                 'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
-                'PALEOS-2phase:MgSiO3': {},
+                'PALEOS-2phase:MgSiO3': _FAKE_PAIR,
             },
         ),
         patch(
@@ -485,7 +491,7 @@ def test_aragog_verify_logs_on_large_mismatch_but_does_not_raise(tmp_path, caplo
                 'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
                 return_value={
                     'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
-                    'PALEOS-2phase:MgSiO3': {},
+                    'PALEOS-2phase:MgSiO3': _FAKE_PAIR,
                 },
             ),
             patch(

@@ -23,7 +23,7 @@ from proteus.interior_energetics.common import (
 from proteus.interior_struct.common import solvus_radius
 from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
-from proteus.utils.helper import UpdateStatusfile, energetics_eos_key
+from proteus.utils.helper import UpdateStatusfile, energetics_eos_key, generates_paleos_tables
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -1154,7 +1154,9 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
 
         zcfg = config.interior_struct.zalmoxis
         mat_dicts = load_zalmoxis_material_dictionaries()
-        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zcfg.mantle_eos, mat_dicts)
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
+            zcfg.mantle_eos, mat_dicts, required=generates_paleos_tables(config.interior_struct)
+        )
         eos_entry = mat_dicts.get(energetics_eos_key(zcfg.mantle_eos) or '', {})
         eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
         if not eos_file or not os.path.isfile(eos_file):
@@ -1207,6 +1209,10 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         ValueError,
         KeyError,
     ) as exc:
+        from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+        if isinstance(exc, ZalmoxisMissingEOSFilesError):
+            raise
         log.warning(
             'liquidus_super IC adiabat construction failed (%s); falling back '
             'to the linear-guess structure.',
