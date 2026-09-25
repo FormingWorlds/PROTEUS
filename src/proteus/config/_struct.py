@@ -57,7 +57,9 @@ def valid_zalmoxis(instance, attribute, value):
         ('ice_layer_eos', ice_layer_eos),
     ]
     for name, eos_val in (layer for layer in layers if layer[1]):
-        for comp in (c.strip() for c in eos_val.split('+')):
+        comps = [c.strip() for c in eos_val.split('+')]
+        total = 0.0
+        for comp in comps:
             tokens = comp.split(':')
             fraction = _number(tokens[2]) if len(tokens) == 3 else 1.0
             if (
@@ -73,6 +75,10 @@ def valid_zalmoxis(instance, attribute, value):
                     "'<source>:<material>[:<fraction>]' with a non-negative finite fraction "
                     'and no spaces'
                 )
+            total += fraction
+        # Zalmoxis divides a mixture's fractions by their sum.
+        if len(comps) > 1 and total == 0:
+            raise ValueError(f'`interior_struct.zalmoxis.{name}` fractions sum to zero')
 
     # WolfBower2018 EOS is limited to 1 TPa. For planets > 2 M_earth,
     # CMB pressure exceeds this and Zalmoxis will fail to converge.

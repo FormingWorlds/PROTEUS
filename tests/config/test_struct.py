@@ -332,6 +332,8 @@ def test_two_mgsio3_sources_are_rejected_at_load(mantle, rejected):
         ('PALEOS:MgSiO3:0.9+', True),
         ('PALEOS:MgSiO3:0.9++PALEOS:H2O:0.1', True),
         ('PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1', False),
+        ('PALEOS:MgSiO3:0', False),
+        ('PALEOS:MgSiO3:0+PALEOS:H2O:0.1', False),
         ('PALEOS:MgSiO3', False),
     ],
 )
@@ -347,6 +349,13 @@ def test_an_eos_component_with_a_space_or_a_non_finite_fraction_is_rejected(mant
             Struct(**kwargs)
     else:
         assert Struct(**kwargs).zalmoxis.mantle_eos == mantle
+
+
+def test_a_mixture_whose_fractions_sum_to_zero_is_rejected():
+    """Zalmoxis divides a mixture's fractions by their sum, so a zero sum is rejected; a
+    single component takes the fraction 1 whatever its token says."""
+    with pytest.raises(ValueError, match='mantle_eos` fractions sum to zero'):
+        Struct(module='zalmoxis', zalmoxis=Zalmoxis(mantle_eos='PALEOS:MgSiO3:0+PALEOS:H2O:0'))
 
 
 @pytest.mark.parametrize('layer', ['core_eos', 'ice_layer_eos'])
