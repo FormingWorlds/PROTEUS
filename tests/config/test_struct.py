@@ -333,30 +333,22 @@ def test_two_mgsio3_sources_are_rejected_at_load(mantle, rejected):
         ('PALEOS:MgSiO3:0.9+', True),
         ('PALEOS:MgSiO3:0.9++PALEOS:H2O:0.1', True),
         ('PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1', False),
-        ('PALEOS:MgSiO3:0', False),
-        ('PALEOS:MgSiO3:0+PALEOS:H2O:0.1', False),
+        ('PALEOS:MgSiO3:0', True),
+        ('PALEOS:MgSiO3:0+PALEOS:H2O:0.1', True),
         ('PALEOS:MgSiO3', False),
     ],
 )
 def test_an_eos_component_with_a_space_or_a_non_finite_fraction_is_rejected(mantle, rejected):
-    """A component that is not '<source>:<material>' with at most one non-negative finite
+    """A component that is not '<source>:<material>' with at most one positive finite
     fraction, or that has an inner space, names no registry key or no valid mass fraction for
-    Zalmoxis, so it is rejected at load. Spaces around '+' are fine."""
+    Zalmoxis, so it is rejected at load; a zero fraction would leave a mixture member out of
+    the structure while the energetics still follow it. Spaces around '+' are fine."""
     kwargs = dict(module='zalmoxis', zalmoxis=Zalmoxis(mantle_eos=mantle))
     if rejected:
-        with pytest.raises(
-            ValueError, match='with a non-negative finite fraction and no spaces'
-        ):
+        with pytest.raises(ValueError, match='with a positive finite fraction and no spaces'):
             Struct(**kwargs)
     else:
         assert Struct(**kwargs).zalmoxis.mantle_eos == mantle
-
-
-def test_a_mixture_whose_fractions_sum_to_zero_is_rejected():
-    """Zalmoxis divides a mixture's fractions by their sum, so a zero sum is rejected; a
-    single component takes the fraction 1 whatever its token says."""
-    with pytest.raises(ValueError, match='mantle_eos` fractions sum to zero'):
-        Struct(module='zalmoxis', zalmoxis=Zalmoxis(mantle_eos='PALEOS:MgSiO3:0+PALEOS:H2O:0'))
 
 
 @pytest.mark.parametrize('layer', ['core_eos', 'ice_layer_eos'])

@@ -265,8 +265,6 @@ class TestCheckFwlData:
         from types import SimpleNamespace
 
         legacy = tmp_path / 'spectral_files' / 'Dayspring' / '48'
-        legacy.mkdir(parents=True)
-        (legacy / 'Dayspring.sf').touch()
         plan = SimpleNamespace(ready=[SimpleNamespace(legacy_dir=legacy)] if movable else [])
         with (
             patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}),
@@ -277,6 +275,24 @@ class TestCheckFwlData:
         want = 'fwl-io relocate' if movable else 'proteus get spectral'
         assert fixes['FWL_DATA/atmos_clim/spectral_files'] == want
         assert fixes['FWL_DATA/star/spectra'] == 'proteus get stellar'
+
+    def test_relocate_is_proposed_through_a_symlinked_data_root(self, tmp_path):
+        """FWL_DATA reached through a symlink still matches the resolved legacy folders a
+        relocate dry run reports."""
+        from types import SimpleNamespace
+
+        real = tmp_path / 'real'
+        (real / 'spectral_files' / 'Dayspring' / '48').mkdir(parents=True)
+        (tmp_path / 'link').symlink_to(real)
+        plan = SimpleNamespace(
+            ready=[SimpleNamespace(legacy_dir=real / 'spectral_files' / 'Dayspring' / '48')]
+        )
+        with (
+            patch.dict(os.environ, {'FWL_DATA': str(tmp_path / 'link')}),
+            patch('fwl_io.relocate.plan_relocations', return_value=plan),
+        ):
+            fixes = {r.name: r.fix_cmd for r in check_fwl_data()}
+        assert fixes['FWL_DATA/atmos_clim/spectral_files'] == 'fwl-io relocate'
 
     def test_skips_when_fwl_data_unset(self):
         """No checks when FWL_DATA is not set."""

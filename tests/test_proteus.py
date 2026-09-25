@@ -282,10 +282,13 @@ def test_require_paleos_tables_runs_only_for_the_zalmoxis_structure(
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('error', ['missing', 'other'])
-def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(tmp_path, error):
-    """A missing Zalmoxis EOS table raised mid-run, here from the structure solve, leaves
-    status 20, so the run does not read as still running; other errors leave it as is."""
+@pytest.mark.parametrize(
+    'error, site', [('missing', 'solve'), ('other', 'solve'), ('missing', 'start check')]
+)
+def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(tmp_path, error, site):
+    """A missing Zalmoxis EOS table raised at the start check or mid-run, here from the
+    structure solve, leaves status 20, so the run does not read as still running; other
+    errors leave it as is."""
     from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
 
     p = _make_proteus_instance(tmp_path)
@@ -294,15 +297,21 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(tmp_path, erro
     )
     p.config.interior_energetics.flux_guess = 100.0
     p.config.star.age_ini = 0.1
-    p._require_paleos_tables = MagicMock()
     exc = ZalmoxisMissingEOSFilesError('pair') if error == 'missing' else RuntimeError('x')
     with ExitStack() as stack:
         for target in _START_PATCHES:
             stack.enter_context(patch(target))
         stack.enter_context(patch('proteus.proteus.CleanDir'))
         stack.enter_context(
-            patch('proteus.interior_energetics.wrapper.solve_structure', side_effect=exc)
+            patch(
+                'proteus.interior_struct.zalmoxis.require_paleos_tables',
+                side_effect=exc if site == 'start check' else None,
+            )
         )
+        if site == 'solve':
+            stack.enter_context(
+                patch('proteus.interior_energetics.wrapper.solve_structure', side_effect=exc)
+            )
         with pytest.raises(RuntimeError):
             p.start(resume=False, offline=True)
     status = (tmp_path / 'status').read_text().splitlines()[0]
