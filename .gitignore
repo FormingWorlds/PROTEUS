@@ -342,3 +342,10 @@ src/proteus/_version.py
 # Local scratch directories (not part of the project)
 /.playwright-mcp/
 /platon/
+
+# output logs
+*.out
+
+# test inference tomls
+input/test_infer_proteus/
+input/inference/test_infer

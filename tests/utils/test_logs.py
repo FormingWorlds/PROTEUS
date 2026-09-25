@@ -21,6 +21,7 @@ from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
     StreamToLogger,
+    attach_worker_logfile,
     bootstrap_logger,
     setup_logger,
 )
@@ -894,3 +895,108 @@ class TestGetLogfilePath:
         path = GetLogfilePath(dirpath, 42)
         assert path.startswith(dirpath)
         assert 'proteus_42.log' in path
+
+
+@pytest.fixture
+def clean_fwl_logger():
+    """Give a test the 'fwl' logger with no handlers, and restore it after.
+
+    The logger is process-global, so a test that attaches a handler to it
+    would otherwise leak that handler into every test that runs later.
+    """
+    logger = logging.getLogger('fwl')
+    saved_handlers, saved_level = list(logger.handlers), logger.level
+    logger.handlers.clear()
+    try:
+        yield logger
+    finally:
+        logger.handlers.clear()
+        logger.handlers.extend(saved_handlers)
+        logger.setLevel(saved_level)
+
+
+@pytest.mark.unit
+def test_attach_worker_logfile_appends_to_an_existing_study_logfile(clean_fwl_logger, tmp_path):
+    """A worker process with no logging configuration of its own reopens the
+    study logfile and adds to it. Appending rather than recreating is the
+    whole contract: `setup_logger` deletes the logfile it opens, so a worker
+    calling that instead would erase everything the study had logged before
+    the worker started.
+    """
+    logpath = tmp_path / 'infer.log'
+    logpath.write_text('[ INFO  ] parent wrote this first\n', encoding='utf-8')
+
+    attach_worker_logfile(str(logpath), logging.INFO)
+    logging.getLogger('fwl.worker').error('worker stopped early')
+
+    for handler in clean_fwl_logger.handlers:
+        handler.flush()
+    text = logpath.read_text(encoding='utf-8')
+
+    # The pre-existing content survives: this is the assertion that fails if
+    # the handler is ever opened in 'w' mode.
+    assert 'parent wrote this first' in text
+    assert 'worker stopped early' in text
+    # Written through the study's file format, so worker lines are not visibly
+    # different from the parent's.
+    assert '[ ERROR ] worker stopped early' in text
+
+
+@pytest.mark.unit
+def test_attach_worker_logfile_carries_a_traceback_and_respects_the_level(
+    clean_fwl_logger, tmp_path
+):
+    """The message this exists for is a dying worker's traceback, so the
+    exception text must reach the file, and a level set above INFO must still
+    suppress the ordinary INFO chatter that would otherwise bloat the logfile.
+    """
+    logpath = tmp_path / 'infer.log'
+    attach_worker_logfile(str(logpath), logging.WARNING)
+
+    worker_log = logging.getLogger('fwl.worker')
+    worker_log.info('routine iteration finished')
+    try:
+        raise ValueError('objective evaluation failed')
+    except ValueError:
+        worker_log.exception('Worker 3 stopped early')
+
+    for handler in clean_fwl_logger.handlers:
+        handler.flush()
+    text = logpath.read_text(encoding='utf-8')
+
+    assert 'Worker 3 stopped early' in text
+    # The traceback body, not just the message: a handler without exc_info
+    # support would log the first line and drop the cause.
+    assert 'ValueError: objective evaluation failed' in text
+    assert 'Traceback (most recent call last)' in text
+    # Boundary of the configured level: INFO sits one step below WARNING and
+    # must be dropped, which also rules out a handler left at level NOTSET.
+    assert 'routine iteration finished' not in text
+
+
+@pytest.mark.unit
+def test_attach_worker_logfile_leaves_an_already_configured_logger_alone(
+    clean_fwl_logger, tmp_path
+):
+    """Under the 'fork' start method a worker inherits the parent's handlers.
+    Adding a second one there would write every worker line to the logfile
+    twice, so the call must be a no-op whenever handlers already exist.
+    """
+    inherited = tmp_path / 'inherited.log'
+    handler = logging.FileHandler(inherited)
+    handler.setFormatter(logging.Formatter('[ %(levelname)-5s ] %(message)s'))
+    clean_fwl_logger.addHandler(handler)
+    clean_fwl_logger.setLevel(logging.INFO)
+
+    untouched = tmp_path / 'should_not_be_written.log'
+    attach_worker_logfile(str(untouched), logging.INFO)
+
+    assert len(clean_fwl_logger.handlers) == 1
+    # The second path is never opened, so no stray logfile appears beside the
+    # study's own.
+    assert not untouched.exists()
+
+    logging.getLogger('fwl.worker').warning('one line only')
+    handler.flush()
+    # Exactly one copy: a duplicate handler would give two.
+    assert inherited.read_text(encoding='utf-8').count('one line only') == 1

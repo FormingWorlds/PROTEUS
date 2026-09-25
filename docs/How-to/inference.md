@@ -32,6 +32,7 @@ The system performs Bayesian optimization to infer planetary formation parameter
     | `async_BO.py`      | Parallel BO implementation                |
     | `BO.py`            | Single BO step implementation             |
     | `objective.py`     | PROTEUS interface and objective function  |
+    | `failures.py`      | Functions for handling failing simulations |
     | `plot.py`          | Visualization utilities                   |
     | `utils.py`         | Helper functions for inference scheme     |
     | `gen_D_init.py`    | Generate initial data                     |
@@ -122,6 +123,7 @@ The system generates several outputs in:
 - `logs.csv`: Detailed logs of each BO step
 - `Ts.csv`: Timestamps for performance analysis
 - `init.csv`: Data used as an initial guess for starting the optimisation
+- `failures.csv`: One row per simulation that failed or was excluded, written only when there is at least one (see [Failed and excluded simulations](#failed-and-excluded-simulations))
 
 ### Plots
 The BO scheme will generate many plots upon completion.
@@ -144,9 +146,14 @@ Plots prefixed with `result_` show the results of the optimisation.
 
 ### Results Summary
 The system prints the final results including:
+
 - Best found parameters
 - Corresponding simulated observables
 - Comparison with target observables
+
+### Failed and excluded simulations
+
+During the inference run, some PROTEUS simulations might crash or fail, or stop on a status that is excluded in the inference configuration (e.g. maximum runtime reached). The run carries on when there are failures unless `abort_on_failure` is set to `true` in the inference config. At the end of the study all failures are written to `failures.csv` in the output folder, and summarised. 
 
 ## Customization
 

@@ -8674,6 +8674,22 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_clim.spectral_cache",
+      "toml_section": "atmos_clim",
+      "class": "AtmosClim",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Folder in which to reuse prepared spectral files across runs that share a stellar spectrum. None disables the cache and every run builds its own.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 3,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_clim.num_levels",
       "toml_section": "atmos_clim",
       "class": "AtmosClim",
@@ -8690,7 +8706,7 @@
       "description": "Number of vertical atmosphere levels.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 3,
+      "group_position": 4,
       "group": null,
       "group_qualifier": null
     },
@@ -8711,7 +8727,7 @@
       "description": "Top-of-atmosphere pressure [bar].",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 4,
+      "group_position": 5,
       "group": null,
       "group_qualifier": null
     },
@@ -8732,7 +8748,7 @@
       "description": "Observation pressure level [bar] (transit radius).",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 5,
+      "group_position": 6,
       "group": null,
       "group_qualifier": null
     },
@@ -8748,7 +8764,7 @@
       "description": "Gas overlap method. Choices: 'ro', 'rorr', 'ee'.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 6,
+      "group_position": 7,
       "group": null,
       "group_qualifier": null
     },

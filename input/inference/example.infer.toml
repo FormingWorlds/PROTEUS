@@ -10,15 +10,18 @@ logging = "INFO"
 output = "bayesopt_infer_se_mat12_lei_5_100/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-# ref_config = "output/bayesopt_se/init_coupler.toml"
 ref_config = "input/inference/example.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = 3        # Number of random samples if starting from scratch.
 init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
-# Excluded exit codes (in addition to errors)
+# Completion codes to exclude from the fit.
 failure_codes = [11, ] # solidified (10), escaped (15), max_runtime (11)
+
+# Stop the whole inference run at the first simulation that fails, instead of scoring
+# it as a poor sample and carrying on. Off by default.
+abort_on_failure = false
 
 # Parameters for Bayesian optimisation
 n_workers  = 5        # Number of parallel workers

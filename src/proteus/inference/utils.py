@@ -32,7 +32,7 @@ from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.kernels import MaternKernel, RBFKernel
 from gpytorch.priors.torch_priors import LogNormalPrior
 
-from proteus.inference.objective import EPS_CLIP, eval_obj
+from proteus.inference.objective import BAD_OBJ_VALUE, EPS_CLIP, eval_obj
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import gas_list
 
@@ -172,8 +172,33 @@ def print_results(D, logs, config, output, n_init):
     X = D['X']
     Y = D['Y']
 
+    # Count the evaluations that were never scored on fit quality, so a study
+    # built mostly on those is not read as a converged result. Such a run
+    # scores BAD_OBJ_VALUE, whether it failed outright or completed on a
+    # status the study excludes; the objective value alone cannot tell the two
+    # apart, so the wording here covers both and the tally above splits them.
+    optim_Y = Y[n_init:]
+    n_optim = len(optim_Y)
+    n_unscored = int((optim_Y == BAD_OBJ_VALUE).sum().item())
+    if n_unscored:
+        log.warning(
+            f'{n_unscored} of {n_optim} optimisation evaluations carry the failure '
+            'score rather than a fit quality, because they failed or completed on an '
+            'excluded status; the per-run reports above name each one.'
+        )
+
+    # No evaluation was scored, so the best of them is still a run with no fit
+    # to report. Say so rather than failing later on its missing helpfile.
+    if n_optim and n_unscored == n_optim:
+        raise RuntimeError(
+            f'None of the {n_optim} optimisation evaluations produced a fit quality, '
+            'so there is no best fit to report. The per-run reports above name the '
+            'cause of each; the most common causes are a parameter range that leaves the model unphysical, '
+            'and a `failure_codes` list that excludes the outcome most runs reach.'
+        )
+
     # Find best index, ignoring the initial points
-    i_opt: int = Y[n_init:].argmax() + n_init
+    i_opt: int = optim_Y.argmax() + n_init
     log_opt = logs[i_opt]
     J_opt: float = Y[i_opt].item()
 

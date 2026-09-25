@@ -294,3 +294,70 @@ def test_get_kernel_raises_for_unknown_kernel_name():
     # Edge: case-sensitive — 'rbf' is not 'RBF'.
     with pytest.raises(ValueError, match='Unknown kernel'):
         get_kernel('rbf', d=2)
+
+
+# ---------------------------------------------------------------------------
+# Accounting for the evaluations that failed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_print_results_counts_unscored_runs_and_refuses_a_study_with_no_fit(tmp_path, caplog):
+    """Evaluations that failed, and those that completed on an excluded status,
+    both carry the failure score rather than a fit quality, so the summary says
+    how many of them there were. The objective value alone cannot tell the two
+    apart, so the wording covers both. When no optimisation evaluation produced
+    a fit quality there is no best fit at all, and the summary stops rather than
+    reporting the least-bad run as an inference result.
+    """
+    from proteus.inference.objective import BAD_OBJ_VALUE
+    from proteus.inference.utils import print_results
+
+    _make_worker_dir(tmp_path, worker=0, iteration=0, obs_value=0.1, param_value=0.5)
+    _make_worker_dir(tmp_path, worker=0, iteration=1, obs_value=0.9, param_value=1.0)
+    best_dir = _make_worker_dir(tmp_path, worker=0, iteration=2, obs_value=0.5, param_value=1.5)
+
+    logs = [
+        {'worker': 0, 'task_id': 0},
+        {'worker': 0, 'task_id': 1},
+        {'worker': 0, 'task_id': 2},
+    ]
+    config = {
+        'observables': {'H2O_vmr': 0.9},
+        'parameters': {'planet.mass_tot': [0.5, 1.5]},
+    }
+
+    # One of the two optimisation evaluations failed; the other is still the
+    # best fit and must be reported normally.
+    D = {
+        'X': torch.tensor([[0.0], [1.0], [0.5]]),
+        'Y': torch.tensor([[-1.0], [BAD_OBJ_VALUE], [2.0]]),
+    }
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.inference.utils'):
+        result = print_results(D, logs, config, str(tmp_path), n_init=1)
+    assert str(best_dir / 'init_coupler.toml') == str(result)
+    assert any(
+        '1 of 2 optimisation evaluations carry the failure score' in r.message
+        for r in caplog.records
+    )
+
+    # Discrimination: the same study with no failure score present reports no
+    # count, so the message above tracks the data and is not emitted always.
+    caplog.clear()
+    D_clean = {
+        'X': torch.tensor([[0.0], [1.0], [0.5]]),
+        'Y': torch.tensor([[-1.0], [1.0], [2.0]]),
+    }
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.inference.utils'):
+        print_results(D_clean, logs, config, str(tmp_path), n_init=1)
+    assert not [r for r in caplog.records if 'carry the failure score' in r.message]
+
+    # No optimisation evaluation produced a fit quality: nothing to report.
+    D_dead = {
+        'X': torch.tensor([[0.0], [1.0], [0.5]]),
+        'Y': torch.tensor([[-1.0], [BAD_OBJ_VALUE], [BAD_OBJ_VALUE]]),
+    }
+    with pytest.raises(
+        RuntimeError, match='None of the 2 optimisation evaluations produced a fit quality'
+    ):
+        print_results(D_dead, logs, config, str(tmp_path), n_init=1)

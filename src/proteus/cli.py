@@ -56,6 +56,7 @@ if _should_apply_deterministic(sys.argv, os.environ):
     else:
         os.execvp(sys.argv[0], sys.argv)
 
+import logging  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
@@ -69,6 +70,8 @@ from proteus.config import UnknownConfigKeyError, read_config_object  # noqa: E4
 from proteus.utils.data import download_sufficient_data  # noqa: E402
 from proteus.utils.helper import get_proteus_dir, resolve_fwl_data_dir  # noqa: E402
 from proteus.utils.logs import bootstrap_logger, setup_logger  # noqa: E402
+
+log = logging.getLogger('fwl.' + __name__)
 
 config_option = click.option(
     '-c',
@@ -89,6 +92,20 @@ output_option = click.option(
 )
 
 
+class ConfigRejectedError(click.ClickException):
+    """A refused configuration, reported at error level on the 'fwl' logger.
+
+    click prints a ClickException as a bare ``Error: ...`` line that carries no
+    level, so a refusal arrived untagged among the level-tagged lines around
+    it. Overriding how it is shown keeps everything click gives the caller (no
+    traceback, exit code 1) while routing the text through the same logger and
+    formatter as the rest of the run, where it is marked ERROR.
+    """
+
+    def show(self, file=None) -> None:
+        log.error(self.format_message())
+
+
 class ConfigAwareGroup(click.Group):
     """Command group that presents a refused configuration as a CLI error.
 
@@ -103,7 +120,7 @@ class ConfigAwareGroup(click.Group):
         try:
             return super().invoke(ctx)
         except UnknownConfigKeyError as exc:
-            raise click.ClickException(str(exc)) from exc
+            raise ConfigRejectedError(str(exc)) from exc
 
 
 @click.group(cls=ConfigAwareGroup)
