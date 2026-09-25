@@ -1,4 +1,4 @@
-# Installs PROTEUS into the pixi environment from pixi.toml and runs the unit tier.
+# Runs install.sh in the pixi environment from pixi.toml, then the unit tier.
 name: Pixi environment
 
 on:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   pixi-unit:
-    name: Unit tests in the pixi environment
+    name: Install and test in the pixi environment
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -20,10 +20,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install system packages for SOCRATES
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gfortran libnetcdff-dev netcdf-bin
+
       - name: Set up Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: '1.12.6'
+          version: '1.13.0'
 
       - name: Set up pixi
         uses: prefix-dev/setup-pixi@v0.10.2
@@ -31,15 +34,13 @@ jobs:
           pixi-version: v0.79.0
           cache: false
 
+      - name: Run the installer
+        run: pixi run bash install.sh --no-data
+
       - name: Check the prebuilt CVODE wrapper imports
-        run: pixi run python -c "import scikits_odes_sundials.cvode"
+        run: pixi run python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum"
 
-      - name: Install PROTEUS into the pixi environment
-        run: pixi run pip install -e ".[develop]"
-
-      # test_janus.py needs a SOCRATES build and the netcdf pre-flight test needs nc-config on the host; this job provides neither.
       - name: Run unit tests
-        run: >-
-          pixi run pytest -m "unit and not skip and not slow and not integration"
-          --ignore=tests/examples --ignore=tests/atmos_clim/test_janus.py
-          --deselect tests/test_installer.py::TestPreflightChecks::test_netcdf_fortran_required_even_when_c_interface_present
+        env:
+          RAD_DIR: ${{ github.workspace }}/socrates
+        run: pixi run pytest -m "unit and not skip and not slow and not integration" --ignore=tests/examples
