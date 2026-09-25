@@ -62,9 +62,6 @@ authors:
   - name: Emeline Decocq
     orcid: 0009-0008-3326-9715
     affiliation: 1
-  - name: Martin Schlecker
-    orcid: 0000-0001-8355-2107
-    affiliation: 10
   - name: Mark Hammond
     orcid: 0000-0002-6893-522X
     affiliation: 2
@@ -82,7 +79,7 @@ authors:
     affiliation: 2
   - name: Sara Seager
     orcid: 0000-0002-6892-6948
-    affiliation: 11
+    affiliation: 10
 
 affiliations:
  - name: Kapteyn Astronomical Institute, University of Groningen, Groningen, The Netherlands
@@ -103,10 +100,8 @@ affiliations:
    index: 8
  - name: IMEC, Leuven, Belgium
    index: 9
- - name: Affiliation to be confirmed
-   index: 10
  - name: University of Toronto, Toronto, Canada
-   index: 11
+   index: 10
 
 date: 25 September 2026
 bibliography: paper.bib
