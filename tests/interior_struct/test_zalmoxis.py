@@ -924,11 +924,18 @@ def test_check_eos_files_stops_when_the_paleos_api_resolver_is_missing(tmp_path,
                 sub['eos_file'] = str(table)
 
     fake = types.ModuleType('zalmoxis.eos.paleos_api_cache')
-    fake.resolve_registry_entry = _resolve
+    fake.resolve_registry_entry = MagicMock(side_effect=_resolve)
     monkeypatch.setitem(sys.modules, 'zalmoxis.eos.paleos_api_cache', fake)
     assert check_zalmoxis_eos_files(layers, registry, paleos_companions=True) is None
     assert pair['solid_mantle']['eos_file'] == str(table)
     assert api['eos_file'] == str(table)
+    # A later check on a fresh registry, as before each structure solve, reuses the result.
+    api2 = {'format': 'paleos_api', 'material': 'mgsio3'}
+    pair2 = {r: {'format': 'paleos_api_2phase'} for r in ('solid_mantle', 'melted_mantle')}
+    fresh = {'PALEOS-API:MgSiO3': api2, 'PALEOS-API-2phase:MgSiO3': pair2}
+    assert check_zalmoxis_eos_files(layers, fresh, paleos_companions=True) is None
+    assert fake.resolve_registry_entry.call_count == 2
+    assert api2['eos_file'] == pair2['melted_mantle']['eos_file'] == str(table)
 
 
 @pytest.mark.parametrize('missing', ['iron', 'solid', 'h2o'])

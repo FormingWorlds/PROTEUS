@@ -1,6 +1,7 @@
 # Zalmoxis interior module
 from __future__ import annotations
 
+import copy
 import functools
 import hashlib
 import importlib.util
@@ -119,6 +120,9 @@ _SUPERLIQ_CACHE: _LRUDict = _LRUDict()
 # Traceback-free copies of anchor failures that depend only on the key
 # (InitialConditionError and wrapped numerical errors), keyed like _SUPERLIQ_CACHE.
 _SUPERLIQ_FAILED: _LRUDict = _LRUDict()
+# PALEOS-API registry entries once resolved, by key: a resolve runs git, and the
+# EOS check runs before every structure solve on a fresh registry.
+_PALEOS_API_RESOLVED: dict[str, dict] = {}
 
 # CMB temperature [K] of the most recently solved super-liquidus adiabat. A
 # structure solve driven by an external temperature source discards this anchor
@@ -1848,7 +1852,9 @@ def check_zalmoxis_eos_files(
         if entry is None:
             # Unknown identifiers fail later with a registry error.
             continue
-        if _is_paleos_api(entry):
+        if key in _PALEOS_API_RESOLVED:
+            entry.update(copy.deepcopy(_PALEOS_API_RESOLVED[key]))
+        elif _is_paleos_api(entry):
             # Without paleos the resolver's worker pool restarts forever instead of failing.
             if not _paleos_installed():
                 unbuilt.add(f'{key} (the paleos package is not installed)')
@@ -1860,6 +1866,7 @@ def check_zalmoxis_eos_files(
             except Exception as exc:
                 unbuilt.add(f'{key} ({type(exc).__name__}: {exc})')
                 continue
+            _PALEOS_API_RESOLVED[key] = copy.deepcopy(entry)
         # Nested entries map layer roles to flat entries; their 'core' sub-entry
         # counts only for the core role or when it is the only sub-entry.
         if 'eos_file' in entry:

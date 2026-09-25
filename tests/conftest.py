@@ -63,6 +63,19 @@ from proteus.utils.constants import (
 
 
 @pytest.fixture(autouse=True)
+def _clear_paleos_api_resolutions():
+    """Drop the per-process PALEOS-API resolutions around each test, so a fake resolver
+    in one test does not hand its paths to another."""
+    zal = sys.modules.get('proteus.interior_struct.zalmoxis')
+    if zal is not None:
+        zal._PALEOS_API_RESOLVED.clear()
+    yield
+    zal = sys.modules.get('proteus.interior_struct.zalmoxis')
+    if zal is not None:
+        zal._PALEOS_API_RESOLVED.clear()
+
+
+@pytest.fixture(autouse=True)
 def _clear_atmodeller_model_cache():
     """Reset the atmodeller equilibrium-model cache around every test.
 
