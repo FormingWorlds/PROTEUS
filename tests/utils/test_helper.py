@@ -923,6 +923,25 @@ def test_energetics_eos_key_treats_a_repeated_key_as_one_material():
     """One key written as several components is that key, not a mixture."""
     from proteus.utils.helper import energetics_eos_key
 
-    assert energetics_eos_key('PALEOS:iron:0.5+PALEOS:iron:0.5') == 'PALEOS:iron'
-    assert energetics_eos_key('PALEOS:iron:0.5+PALEOS:H2O:0.5') == 'PALEOS-2phase:MgSiO3'
+    assert energetics_eos_key('PALEOS:MgSiO3:0.5+PALEOS:MgSiO3:0.5') == 'PALEOS:MgSiO3'
+    assert energetics_eos_key('Seager2007:iron:0.5+Seager2007:iron:0.5') == 'Seager2007:iron'
     assert energetics_eos_key(None) is None
+
+
+@pytest.mark.parametrize(
+    'mantle, key',
+    [
+        ('PALEOS:H2O', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:iron:1.0', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS-API:H2O', 'PALEOS-API-2phase:MgSiO3'),
+        ('PALEOS:Olivine', 'PALEOS:Olivine'),
+        ('WolfBower2018:MgSiO3', 'WolfBower2018:MgSiO3'),
+    ],
+)
+def test_energetics_eos_key_gives_a_non_mgsio3_paleos_mantle_the_mgsio3_pair(mantle, key):
+    """A PALEOS H2O or iron mantle, single or mixed, uses the MgSiO3 pair of its family;
+    a key that is not a PALEOS registry key is kept."""
+    from proteus.utils.helper import energetics_eos_key
+
+    assert energetics_eos_key(mantle) == key

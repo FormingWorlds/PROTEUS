@@ -1107,6 +1107,8 @@ def test_require_paleos_tables_warns_once_for_a_paleos_mixture(
         ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'PALEOS:MgSiO3'),
         ('PALEOS:H2O:0.3+PALEOS:MgSiO3:0.7', 'PALEOS:MgSiO3'),
         ('PALEOS:H2O:0.5+PALEOS:iron:0.5', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:H2O', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:iron', 'PALEOS-2phase:MgSiO3'),
     ],
 )
 def test_a_paleos_mixture_gets_the_ps_key_of_its_mgsio3_set(tmp_path, mixture, single):

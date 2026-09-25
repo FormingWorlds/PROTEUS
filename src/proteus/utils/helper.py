@@ -73,9 +73,10 @@ def energetics_eos_key(mantle_eos: str) -> str | None:
     Returns
     -------
     str or None
-        The key of a single component. For a mixture, its MgSiO3 component;
-        without one, the MgSiO3 2-phase pair of its PALEOS family when a component
-        is PALEOS; else None.
+        The MgSiO3 component. Without one, the MgSiO3 2-phase pair of the PALEOS
+        family when a component is a PALEOS registry key (so PALEOS H2O and iron
+        mantles use MgSiO3 curves and tables); else the key of a single component,
+        or None for a mixture.
 
     Raises
     ------
@@ -83,8 +84,6 @@ def energetics_eos_key(mantle_eos: str) -> str | None:
         If a mixture has MgSiO3 components with different registry keys.
     """
     components = sorted(set(eos_components(mantle_eos)))
-    if len(components) == 1:
-        return components[0]
     mgsio3 = [c for c in components if c.partition(':')[2].startswith('MgSiO3')]
     if len(mgsio3) > 1:
         raise ValueError(
@@ -94,9 +93,9 @@ def energetics_eos_key(mantle_eos: str) -> str | None:
         )
     if mgsio3:
         return mgsio3[0]
-    if any(c.startswith(PALEOS_EOS_PREFIXES) for c in components):
+    if any(c in PALEOS_REGISTRY_KEYS for c in components):
         return twophase_registry_key(mantle_eos)
-    return None
+    return components[0] if len(components) == 1 else None
 
 
 def generates_paleos_tables(interior_struct) -> bool:
