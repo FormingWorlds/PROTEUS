@@ -878,11 +878,14 @@ def test_check_eos_files_needs_the_mgsio3_unified_table_only_for_an_mgsio3_layer
 
 
 def test_check_eos_files_stops_when_the_paleos_api_resolver_is_missing(tmp_path, monkeypatch):
-    """A PALEOS-API layer table or companion that cannot be materialised stops the
-    run; a resolver that writes the tables lets it pass."""
+    """A PALEOS-API layer table or companion that cannot be materialised stops the run
+    with its own line, since `proteus get` does not fetch it: without the paleos package
+    the resolver is not called, whose worker pool would restart forever. A resolver that
+    writes the tables lets it pass."""
     import sys
     import types
 
+    from proteus.interior_struct import zalmoxis as zmod
     from proteus.interior_struct.zalmoxis import (
         ZalmoxisMissingEOSFilesError,
         check_zalmoxis_eos_files,
@@ -892,15 +895,25 @@ def test_check_eos_files_stops_when_the_paleos_api_resolver_is_missing(tmp_path,
     pair = {r: {'format': 'paleos_api_2phase'} for r in ('solid_mantle', 'melted_mantle')}
     registry = {'PALEOS-API:MgSiO3': api, 'PALEOS-API-2phase:MgSiO3': pair}
     layers = {'mantle': 'PALEOS-API:MgSiO3'}
+    hang = types.ModuleType('zalmoxis.eos.paleos_api_cache')
+    hang.resolve_registry_entry = MagicMock(side_effect=AssertionError('resolver called'))
+    monkeypatch.setitem(sys.modules, 'zalmoxis.eos.paleos_api_cache', hang)
+    monkeypatch.setattr(zmod, '_paleos_installed', lambda: False)
+    with pytest.raises(ZalmoxisMissingEOSFilesError) as excinfo:
+        check_zalmoxis_eos_files(layers, registry, paleos_companions=True)
+    msg = str(excinfo.value)
+    assert msg.startswith('PALEOS-API tables not built:')
+    for key in ('PALEOS-API:MgSiO3', 'PALEOS-API-2phase:MgSiO3'):
+        assert f'{key} (the paleos package is not installed)' in msg
+    assert 'proteus get' not in msg
+    hang.resolve_registry_entry.assert_not_called()
+
+    monkeypatch.setattr(zmod, '_paleos_installed', lambda: True)
     monkeypatch.setitem(sys.modules, 'zalmoxis.eos.paleos_api_cache', None)
     with pytest.raises(ZalmoxisMissingEOSFilesError) as excinfo:
         check_zalmoxis_eos_files(layers, registry, paleos_companions=True)
-    assert 'PALEOS-API-2phase:MgSiO3 (PALEOS-API tables not built: ModuleNotFoundError' in str(
-        excinfo.value
-    )
-    assert 'PALEOS-API:MgSiO3 (PALEOS-API tables not built: ModuleNotFoundError' in str(
-        excinfo.value
-    )
+    assert 'PALEOS-API-2phase:MgSiO3 (ModuleNotFoundError' in str(excinfo.value)
+    assert 'PALEOS-API:MgSiO3 (ModuleNotFoundError' in str(excinfo.value)
 
     table = tmp_path / 'api.dat'
     table.write_text('eos table stub')
@@ -1046,6 +1059,7 @@ def test_check_eos_files_stops_when_the_paleos_api_build_fails(monkeypatch):
     import sys
     import types
 
+    from proteus.interior_struct import zalmoxis as zmod
     from proteus.interior_struct.zalmoxis import (
         ZalmoxisMissingEOSFilesError,
         check_zalmoxis_eos_files,
@@ -1054,6 +1068,7 @@ def test_check_eos_files_stops_when_the_paleos_api_build_fails(monkeypatch):
     def _resolve(entry):
         raise RuntimeError('grid build failed')
 
+    monkeypatch.setattr(zmod, '_paleos_installed', lambda: True)
     fake = types.ModuleType('zalmoxis.eos.paleos_api_cache')
     fake.resolve_registry_entry = _resolve
     monkeypatch.setitem(sys.modules, 'zalmoxis.eos.paleos_api_cache', fake)
@@ -1332,6 +1347,9 @@ def test_check_eos_files_walks_nested_and_lazy_siblings(tmp_path, monkeypatch):
     fake = types.ModuleType('zalmoxis.eos.paleos_api_cache')
     fake.resolve_registry_entry = lambda entry: None
     monkeypatch.setitem(sys.modules, 'zalmoxis.eos.paleos_api_cache', fake)
+    monkeypatch.setattr(
+        'proteus.interior_struct.zalmoxis._paleos_installed', lambda: True, raising=True
+    )
 
     # The missing file-backed sibling is flagged; the lazy sibling is not.
     with pytest.raises(RuntimeError) as excinfo:
@@ -3733,6 +3751,7 @@ def test_resume_keeps_tables_without_resolving_a_paleos_api_eos(tmp_path, monkey
     _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
     _seed_tables(tmp_path / 'run' / 'data' / 'spider_eos', key)
     monkeypatch.setattr(zalmoxis.eos.dispatch, '_is_paleos_api', lambda entry: True)
+    monkeypatch.setattr(zmod, '_paleos_installed', lambda: True)
     resolve = MagicMock(side_effect=OSError('offline'))
     monkeypatch.setattr(zalmoxis.eos.paleos_api_cache, 'resolve_registry_entry', resolve)
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import importlib.util
 import logging
 import os
 import re
@@ -1798,6 +1799,11 @@ class ZalmoxisMissingEOSFilesError(RuntimeError):
     """A layer's configured EOS identifier names a table file absent on disk."""
 
 
+def _paleos_installed() -> bool:
+    """Whether the paleos package, which builds the PALEOS-API tables, is importable."""
+    return importlib.util.find_spec('paleos') is not None
+
+
 def check_zalmoxis_eos_files(
     layer_eos_config: dict, mat_dicts: dict, paleos_companions: bool = False
 ) -> None:
@@ -1836,18 +1842,23 @@ def check_zalmoxis_eos_files(
         companions = paleos_companion_keys(layer_eos_config.get('mantle', ''))
         selected += [('mantle', key) for key in companions]
     missing: set[str] = set()
+    unbuilt: set[str] = set()
     for layer_role, key in selected:
         entry = mat_dicts.get(key)
         if entry is None:
             # Unknown identifiers fail later with a registry error.
             continue
         if _is_paleos_api(entry):
+            # Without paleos the resolver's worker pool restarts forever instead of failing.
+            if not _paleos_installed():
+                unbuilt.add(f'{key} (the paleos package is not installed)')
+                continue
             try:
                 from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
 
                 resolve_registry_entry(entry)
             except Exception as exc:
-                missing.add(f'{key} (PALEOS-API tables not built: {type(exc).__name__}: {exc})')
+                unbuilt.add(f'{key} ({type(exc).__name__}: {exc})')
                 continue
         # Nested entries map layer roles to flat entries; their 'core' sub-entry
         # counts only for the core role or when it is the only sub-entry.
@@ -1867,14 +1878,25 @@ def check_zalmoxis_eos_files(
                 path = sub.get(field)
                 if path and not os.path.isfile(path):
                     missing.add(path)
+    parts = []
     if missing:
         listing = '\n  '.join(sorted(missing))
-        raise ZalmoxisMissingEOSFilesError(
+        parts.append(
             f'Interior EOS table file(s) not found:\n  {listing}\n'
             'Download them with '
             '`proteus get interiordata --config-path <config.toml>`, '
             f'or run `proteus start` once without --offline. {RELOCATE_HINT}'
         )
+    if unbuilt:
+        listing = '\n  '.join(sorted(unbuilt))
+        parts.append(
+            f'PALEOS-API tables not built:\n  {listing}\n'
+            'They are generated at start from the paleos package '
+            '(https://github.com/maraattia/PALEOS), not downloaded: install it in this '
+            'environment or choose a PALEOS or PALEOS-2phase EOS.'
+        )
+    if parts:
+        raise ZalmoxisMissingEOSFilesError('\n'.join(parts))
 
 
 def energetics_entry(mantle_eos: str, mat_dicts: dict) -> tuple[str | None, dict]:
