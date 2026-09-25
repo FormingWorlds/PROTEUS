@@ -16,7 +16,7 @@ python tools/check_test_quality.py --check  # no rule's Current count may exceed
 python tools/agents/check_agents_md.py && python tools/agents/sync_core.py --check .
 ```
 
-<!-- fwl-core:begin sha256=a03a2d49f7eaeaa1 -->
+<!-- fwl-core:begin sha256=3633992f48ce112c -->
 ## PROTEUS ecosystem rules
 
 PROTEUS couples separate module repositories into one model of the evolution of rocky planets and their atmospheres. Its config selects one module per process; the config values are the lowercase names:
@@ -35,6 +35,10 @@ A module change to anything PROTEUS calls or reads (a function signature, a conf
 - A physics test must fail for the most plausible wrong formula: check a conservation law, a bound, a monotonicity, or a published or analytical value, and assert that the wrong result falls outside the tolerance.
 - Take each physical constant from one source per repository (in Python `scipy.constants` or the module's constants file). Two retyped values of one constant differ at round-off and hide real differences between code paths.
 - Do not loosen a solver tolerance, a conservation check or a clamp to make a run or a test pass. Find the cause; a loosened check also hides the next defect.
+
+### Code
+
+- Keep an inline comment block to 2 lines or fewer, and never more than 4, because a long block drifts from the code it describes. An explanation that needs more goes in the docstring, the commit message or the pull-request description.
 
 ### Branches and pull requests
 

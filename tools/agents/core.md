@@ -17,6 +17,10 @@ A module change to anything PROTEUS calls or reads (a function signature, a conf
 - Take each physical constant from one source per repository (in Python `scipy.constants` or the module's constants file). Two retyped values of one constant differ at round-off and hide real differences between code paths.
 - Do not loosen a solver tolerance, a conservation check or a clamp to make a run or a test pass. Find the cause; a loosened check also hides the next defect.
 
+### Code
+
+- Keep an inline comment block to 2 lines or fewer, and never more than 4, because a long block drifts from the code it describes. An explanation that needs more goes in the docstring, the commit message or the pull-request description.
+
 ### Branches and pull requests
 
 - Work on a feature branch `<initials>/<short-description>`; `main` changes only through a reviewed pull request.
