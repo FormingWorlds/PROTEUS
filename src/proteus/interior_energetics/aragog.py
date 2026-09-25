@@ -947,9 +947,9 @@ class AragogRunner:
             # cached .dat paths now so the `eos_file` lookups below find concrete
             # files. No-op for shipped PALEOS-2phase entries.
             if twophase_entry and _twophase_key.startswith('PALEOS-API'):
-                from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
+                from proteus.interior_struct.zalmoxis import resolve_paleos_api
 
-                resolve_registry_entry(twophase_entry)
+                resolve_paleos_api(_twophase_key, twophase_entry)
             solid_eos = twophase_entry.get('solid_mantle', {}).get('eos_file', '')
             liquid_eos = twophase_entry.get('melted_mantle', {}).get('eos_file', '')
             has_2phase = (

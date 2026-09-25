@@ -935,7 +935,63 @@ def test_check_eos_files_stops_when_the_paleos_api_resolver_is_missing(tmp_path,
     fresh = {'PALEOS-API:MgSiO3': api2, 'PALEOS-API-2phase:MgSiO3': pair2}
     assert check_zalmoxis_eos_files(layers, fresh, paleos_companions=True) is None
     assert fake.resolve_registry_entry.call_count == 2
-    assert api2['eos_file'] == pair2['melted_mantle']['eos_file'] == str(table)
+    for resolved in (api2, pair2['solid_mantle'], pair2['melted_mantle']):
+        assert resolved['eos_file'] == str(table)
+
+
+def test_the_paleos_api_pair_lookup_needs_paleos_and_never_names_a_download(monkeypatch):
+    """Without paleos the 2-phase lookup does not start the resolver, whose worker pool
+    would restart forever, and a required PALEOS-API pair names the paleos package, since
+    `proteus get` does not fetch these tables."""
+    import sys
+    import types
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    hang = types.ModuleType('zalmoxis.eos.paleos_api_cache')
+    hang.resolve_registry_entry = MagicMock(side_effect=AssertionError('resolver called'))
+    monkeypatch.setitem(sys.modules, 'zalmoxis.eos.paleos_api_cache', hang)
+    monkeypatch.setattr(zmod, '_paleos_installed', lambda: False)
+    pair = {r: {'format': 'paleos_api_2phase'} for r in ('solid_mantle', 'melted_mantle')}
+    registry = {'PALEOS-API-2phase:MgSiO3': pair}
+    assert zmod.resolve_2phase_mgsio3_paths('PALEOS-API:MgSiO3', registry) == (None, None)
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError) as excinfo:
+        zmod.resolve_2phase_mgsio3_paths('PALEOS-API:MgSiO3', registry, required=True)
+    assert 'paleos package' in str(excinfo.value)
+    assert 'proteus get' not in str(excinfo.value)
+    hang.resolve_registry_entry.assert_not_called()
+
+
+def test_a_removed_paleos_api_table_is_built_again(tmp_path, monkeypatch):
+    """A PALEOS-API table removed after its entry was resolved is reported as not built,
+    never as a download, and the next check resolves the entry again."""
+    import sys
+    import types
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    table = tmp_path / 'api.dat'
+    table.write_text('eos table stub')
+    fake = types.ModuleType('zalmoxis.eos.paleos_api_cache')
+    fake.resolve_registry_entry = MagicMock(
+        side_effect=lambda entry: entry.update(eos_file=str(table), format='paleos_unified')
+    )
+    monkeypatch.setitem(sys.modules, 'zalmoxis.eos.paleos_api_cache', fake)
+    monkeypatch.setattr(zmod, '_paleos_installed', lambda: True)
+
+    def fresh():
+        return {'PALEOS-API:MgSiO3': {'format': 'paleos_api', 'material': 'mgsio3'}}
+
+    layers = {'mantle': 'PALEOS-API:MgSiO3'}
+    assert zmod.check_zalmoxis_eos_files(layers, fresh()) is None
+    table.unlink()
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError) as excinfo:
+        zmod.check_zalmoxis_eos_files(layers, fresh())
+    assert str(excinfo.value).startswith('PALEOS-API tables not built:')
+    assert 'proteus get' not in str(excinfo.value)
+    table.write_text('eos table stub')
+    assert zmod.check_zalmoxis_eos_files(layers, fresh()) is None
+    assert fake.resolve_registry_entry.call_count == 2
 
 
 @pytest.mark.parametrize('missing', ['iron', 'solid', 'h2o'])

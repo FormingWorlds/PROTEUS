@@ -66,13 +66,14 @@ from proteus.utils.constants import (
 def _clear_paleos_api_resolutions():
     """Drop the per-process PALEOS-API resolutions around each test, so a fake resolver
     in one test does not hand its paths to another."""
-    zal = sys.modules.get('proteus.interior_struct.zalmoxis')
-    if zal is not None:
-        zal._PALEOS_API_RESOLVED.clear()
+
+    def _clear():
+        if zal := sys.modules.get('proteus.interior_struct.zalmoxis'):
+            zal._PALEOS_API_RESOLVED.clear()
+
+    _clear()
     yield
-    zal = sys.modules.get('proteus.interior_struct.zalmoxis')
-    if zal is not None:
-        zal._PALEOS_API_RESOLVED.clear()
+    _clear()
 
 
 @pytest.fixture(autouse=True)

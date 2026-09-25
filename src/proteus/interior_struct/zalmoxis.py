@@ -1808,6 +1808,46 @@ def _paleos_installed() -> bool:
     return importlib.util.find_spec('paleos') is not None
 
 
+_PALEOS_API_FIX = (
+    'They are generated at start from the paleos package '
+    '(https://github.com/maraattia/PALEOS), not downloaded: install it in this '
+    'environment or choose a PALEOS or PALEOS-2phase EOS.'
+)
+
+
+def resolve_paleos_api(key: str, entry: dict) -> None:
+    """Materialise a PALEOS-API registry entry in place, once per process.
+
+    A resolve runs git to read the paleos version, and the EOS check runs before
+    every structure solve on a fresh registry, so resolved entries are kept by key.
+
+    Parameters
+    ----------
+    key : str
+        Registry key of the entry, e.g. ``'PALEOS-API-2phase:MgSiO3'``.
+    entry : dict
+        Its registry entry, updated in place with the table paths.
+
+    Raises
+    ------
+    ZalmoxisMissingEOSFilesError
+        When the paleos package is not installed, since the resolver's worker pool
+        would then restart forever instead of failing.
+    """
+    if key in _PALEOS_API_RESOLVED:
+        entry.update(copy.deepcopy(_PALEOS_API_RESOLVED[key]))
+        return
+    if not _paleos_installed():
+        raise ZalmoxisMissingEOSFilesError(
+            f'PALEOS-API tables not built:\n  {key} (the paleos package is not installed)\n'
+            f'{_PALEOS_API_FIX}'
+        )
+    from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
+
+    resolve_registry_entry(entry)
+    _PALEOS_API_RESOLVED[key] = copy.deepcopy(entry)
+
+
 def check_zalmoxis_eos_files(
     layer_eos_config: dict, mat_dicts: dict, paleos_companions: bool = False
 ) -> None:
@@ -1852,21 +1892,16 @@ def check_zalmoxis_eos_files(
         if entry is None:
             # Unknown identifiers fail later with a registry error.
             continue
-        if key in _PALEOS_API_RESOLVED:
-            entry.update(copy.deepcopy(_PALEOS_API_RESOLVED[key]))
-        elif _is_paleos_api(entry):
-            # Without paleos the resolver's worker pool restarts forever instead of failing.
-            if not _paleos_installed():
+        api = key in _PALEOS_API_RESOLVED or _is_paleos_api(entry)
+        if api:
+            try:
+                resolve_paleos_api(key, entry)
+            except ZalmoxisMissingEOSFilesError:
                 unbuilt.add(f'{key} (the paleos package is not installed)')
                 continue
-            try:
-                from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
-
-                resolve_registry_entry(entry)
             except Exception as exc:
                 unbuilt.add(f'{key} ({type(exc).__name__}: {exc})')
                 continue
-            _PALEOS_API_RESOLVED[key] = copy.deepcopy(entry)
         # Nested entries map layer roles to flat entries; their 'core' sub-entry
         # counts only for the core role or when it is the only sub-entry.
         if 'eos_file' in entry:
@@ -1883,24 +1918,23 @@ def check_zalmoxis_eos_files(
                 continue
             for field in ('eos_file', 'adiabat_grad_file'):
                 path = sub.get(field)
-                if path and not os.path.isfile(path):
+                if path and not os.path.isfile(path) and api:
+                    # A generated table removed since it was built is built again.
+                    _PALEOS_API_RESOLVED.pop(key, None)
+                    unbuilt.add(f'{key} ({path} not found)')
+                elif path and not os.path.isfile(path):
                     missing.add(path)
     parts = []
     if missing:
-        listing = '\n  '.join(sorted(missing))
         parts.append(
-            f'Interior EOS table file(s) not found:\n  {listing}\n'
+            f'Interior EOS table file(s) not found:\n  {"\n  ".join(sorted(missing))}\n'
             'Download them with '
             '`proteus get interiordata --config-path <config.toml>`, '
             f'or run `proteus start` once without --offline. {RELOCATE_HINT}'
         )
     if unbuilt:
-        listing = '\n  '.join(sorted(unbuilt))
         parts.append(
-            f'PALEOS-API tables not built:\n  {listing}\n'
-            'They are generated at start from the paleos package '
-            '(https://github.com/maraattia/PALEOS), not downloaded: install it in this '
-            'environment or choose a PALEOS or PALEOS-2phase EOS.'
+            f'PALEOS-API tables not built:\n  {"\n  ".join(sorted(unbuilt))}\n{_PALEOS_API_FIX}'
         )
     if parts:
         raise ZalmoxisMissingEOSFilesError('\n'.join(parts))
@@ -2011,10 +2045,15 @@ def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict, required: bool
     paths = _twophase_mgsio3_paths(mantle_eos, mat_dicts)
     if required and None in paths:
         missing = [p for p, ok in zip(('solid', 'liquid'), paths) if ok is None]
+        key = twophase_registry_key(mantle_eos)
+        fix = (
+            _PALEOS_API_FIX
+            if key.startswith('PALEOS-API')
+            else 'Download them with `proteus get interiordata --config-path <config.toml>`. '
+            + RELOCATE_HINT
+        )
         raise ZalmoxisMissingEOSFilesError(
-            f'PALEOS 2-phase MgSiO3 tables {twophase_registry_key(mantle_eos)} not '
-            f'available: {", ".join(missing)}. Download them with '
-            f'`proteus get interiordata --config-path <config.toml>`. {RELOCATE_HINT}'
+            f'PALEOS 2-phase MgSiO3 tables {key} not available: {", ".join(missing)}. {fix}'
         )
     return paths
 
@@ -2055,15 +2094,12 @@ def _twophase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
         return None, None
     if use_api:
         try:
-            from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
-
-            resolve_registry_entry(twophase)
-        except (ImportError, ModuleNotFoundError) as e:
+            resolve_paleos_api(twophase_key, twophase)
+        except (ImportError, ZalmoxisMissingEOSFilesError) as e:
             log.warning(
-                'resolve_2phase_mgsio3_paths: PALEOS-API resolver unavailable '
-                '(%s); cannot materialise %s tables.',
-                e,
+                'resolve_2phase_mgsio3_paths: cannot materialise %s tables (%s).',
                 twophase_key,
+                e,
             )
             return None, None
     solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
@@ -2572,14 +2608,12 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
     from zalmoxis.eos.dispatch import _is_paleos_api
 
     if _is_paleos_api(eos_entry):
-        from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
-
         log.info(
             'PALEOS-API live tabulation: resolving cached tables for %s '
             '(cold-cache build may take up to ~1 h at 600 pts/decade)',
             mantle_eos,
         )
-        resolve_registry_entry(eos_entry)
+        resolve_paleos_api(mantle_eos, eos_entry)
 
     # Detect format: paleos_unified vs PALEOS-2phase (nested dict).
     is_unified = eos_entry.get('format') == 'paleos_unified'
