@@ -66,7 +66,7 @@ Commit messages, pull-request text, code comments, docstrings, test names, test 
 - `FWL_DATA` and `RAD_DIR` must point at populated directories before a run. Reference data downloads on first use unless `--offline` is given.
 - Use one conda env per git worktree. `conda create --clone` hardlinks the editable-install pointers, so a `pip install -e .` in one env can repoint `import proteus` in another. Before an A/B comparison run `python -c "import proteus; print(proteus.__file__)"`.
 - The pre-commit hook runs `ruff check --fix` but not the formatter; run `ruff format` on the files you change, because CI checks `ruff format --check`.
-- A PROTEUS change that needs a new module version bumps that module's pin in the same pull request: `[project] dependencies` in `pyproject.toml` for the `fwl-*` packages, `[tool.proteus.modules]` for the modules cloned outside pip (AGNI, SOCRATES, SPIDER and others), which CI and `tools/get_*.sh` read.
+- A PROTEUS change that needs a new module version bumps that module's pin in the same pull request: in `pyproject.toml`, `[project] dependencies` for the required `fwl-*` packages, `[project.optional-dependencies]` for the optional modules (`fwl-vulcan`, `atmodeller`), `[tool.proteus.modules]` for the modules cloned outside pip (AGNI, SOCRATES, SPIDER and others), which CI and `tools/get_*.sh` read.
 - SOCRATES builds with `-Ofast -march=native`, so a built tree is tied to its CPU and not bit-reproducible; `SOCRATES_PORTABLE_FLAGS=1` switches to `-O2 -fno-fast-math`. Read `.github/agent-rules/socrates-build.md` before you change `tools/get_socrates.sh` or need bit-reproducible numbers.
 
 ## Running PROTEUS
@@ -76,7 +76,7 @@ Commit messages, pull-request text, code comments, docstrings, test names, test 
 
 ## Physics and coupling contract
 
-- Do not change `Config` during a run. `Proteus.start()` sets `config.params.resume` and `config.params.offline` once at the start; a module call that needs a different setting changes it inside `try` and restores it in `finally`, as the Zalmoxis structure call does with `config.orbit.module`.
+- Do not change `Config` during a run. `Proteus.start()` sets `config.params.resume` and `config.params.offline` once at the start; a module call that needs a different setting changes it for that call and restores it in a `finally` block, as the Zalmoxis structure call does with `config.orbit.module`.
 - A temporary override of `hf_row` values for a module call is restored in a `finally` block; without it the helpfile records the override instead of the planet state.
 - An `hf_row` key that two modules both write keeps one source: with a Zalmoxis mesh, SPIDER derives `rho_core` from the Zalmoxis `M_core` (`spider.py`), so the `M_core` it returns matches. A new module that returns a key another module sets derives it the same way or does not write it.
 - The main loop advances `Time` before the atmosphere step, so a comparison of `hf_row` with `hf_all.iloc[-1]` compares the new step with the previous one.

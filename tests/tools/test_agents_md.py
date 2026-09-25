@@ -237,6 +237,29 @@ def test_sync_restores_a_body_edited_under_the_current_hash(tmp_path, canon):
     assert chk.check(repo) == []
 
 
+def _flip_tail(digest: str) -> str:
+    """Return ``digest`` with its last 8 hex digits changed and its first 8 kept."""
+    tail = ''.join('0' if c != '0' else '1' for c in digest[8:])
+    return digest[:8] + tail
+
+
+def test_hash_mismatch_after_the_eighth_digit_is_detected(tmp_path, canon):
+    """A marker hash equal to the body hash in its first 8 digits only fails the check and the sync."""
+    (tmp_path / 'a').mkdir()
+    (tmp_path / 'b').mkdir()
+    marker = _flip_tail(chk.block_hash('shared rule'))
+    assert marker[:8] == chk.block_hash('shared rule')[:8] and marker != chk.block_hash(
+        'shared rule'
+    )
+    errors = chk.check(_repo(tmp_path / 'a', _block('core', 'shared rule', digest=marker)))
+    assert len(errors) == 1 and 'fwl-core differs from its hash' in errors[0]
+    lagging = _block(
+        'core', 'new shared rule', digest=_flip_tail(chk.block_hash('new shared rule'))
+    )
+    repo = _repo(tmp_path / 'b', lagging)
+    assert sync.sync_file(repo / 'AGENTS.md', 'neutral', write=False) == ['core']
+
+
 def test_voice_variant_selects_the_canonical_file(tmp_path, canon):
     """``--voice list`` writes the list variant; checking against neutral then reports lag."""
     (tmp_path / 'r').mkdir()

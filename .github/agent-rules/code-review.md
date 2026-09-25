@@ -4,13 +4,10 @@ The detail behind the Review section of `AGENTS.md`: the whole-planet oxygen and
 
 ## Oxygen in the config
 
-`planet.elements.O_mode` defaults to `"ic_chemistry"`. The four modes:
+The `planet.elements.O_mode` details that `AGENTS.md` leaves out:
 
-- `"ic_chemistry"`: the initial O budget comes from the fO2-buffered equilibrium of the chemistry module (CALLIOPE or atmodeller).
-- `"kg"` sets the initial `O_kg_total` to `O_budget`; `"ppmw"` sets it to `O_budget * 1e-6` times the volatile reservoir mass (`M_mantle` or `M_int`, per `planet.volatile_reservoir`).
+- `"ppmw"`: `O_kg_total = O_budget * 1e-6` times the volatile reservoir mass (`M_mantle` or `M_int`, per `planet.volatile_reservoir`).
 - `"FeO_mantle_wt_pct"`: `O_kg_total = M_mantle * (wt% / 100) * (M_O / M_FeO)`. The mantle EOS density does not change; PALEOS keeps its built-in FeO content, so the mode only sets the volatile O budget in familiar units.
-
-With the default `planet.fO2_source = 'user_constant'`, oxygen is buffered at the fO2 set by `outgas.fO2_shift_IW` in the chemistry step and tracked in the PROTEUS mass accounting; with `'from_O_budget'` the O budget is authoritative and the chemistry derives fO2 from it.
 
 ## Element aggregation sites
 
@@ -27,9 +24,7 @@ Sites 1 and 2 sum `vol_element_list + noble_gases` and leave the rock-vapour ele
 
 ## Mass-conservation check
 
-`assert_mass_conservation(hf_row)` runs after the outgassing step of every iteration and fails the run on a regression; flag any change that weakens or removes it. It checks two halves: `M_atm <= M_planet`, and `M_vol_atm` equal to the summed mass of the volatile and noble-gas species (`vol_gas_list`, rock vapour excluded), within `atol_frac`.
-
-The one sanctioned relaxation is `require_atm_le_planet=False`, which the main loop passes when `outgas.vapourise = true`: rock vapourisation moves rock mass into `M_atm` without subtracting it from the interior, and rock-vapour elements dilute the escape outflow without being debited from a tracked reservoir. It turns the `M_atm <= M_planet` half into a logged warning when the excess over `M_planet` is larger than `M_vaps`, and only while `M_vaps > 0`; with no vapour column the half is enforced regardless of the keyword. The species-sum half and `atol_frac` stay unchanged in both modes. Treat that non-conservation as intended (`docs/Explanations/model.md`, "Whole-planet mass is not conserved when vapourisation is enabled"); flag any change that widens `atol_frac`, disables the species-sum half or silences the warning.
+Flag any change that weakens or removes `assert_mass_conservation(hf_row)`; both of its halves use the tolerance `atol_frac`. The main loop passes `require_atm_le_planet=False` when `outgas.vapourise = true`, and the `M_atm <= M_planet` half turns into a warning only while `M_vaps > 0`; with no vapour column it is enforced whatever the keyword. The intended non-conservation is described in `docs/Explanations/model.md` ("Whole-planet mass is not conserved when vapourisation is enabled"). Flag any change that widens `atol_frac`, disables the species-sum half or silences the warning.
 
 ## Initial-condition checks
 
