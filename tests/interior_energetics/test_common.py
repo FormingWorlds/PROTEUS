@@ -12,6 +12,9 @@ Testing standards and documentation:
 Functions tested:
 - Interior_t._load_ps_table(): Load arbitrary P-S table with path fallback
 - Interior_t.__init__(): Wires lookup_rho_melt + lookup_cp_solid + lookup_cp_melt
+- get_C_planet(): Planet's principal moment of inertia from the interior
+  density/radius profile, pinned against the uniform-density-sphere analytic
+  value and the SPIDER surface-first array-reversal contract.
 """
 
 from __future__ import annotations
@@ -821,59 +824,6 @@ def test_compute_initial_entropy_uses_t_surface_initial_override(monkeypatch, ca
     assert not any('Overriding tsurf_init' in r.message for r in caplog.records)
 
 
-# ============================================================================
-# _verify_initial_entropy: zalmoxis-unavailable skip + no-config skip
-# ============================================================================
-
-
-def test_verify_initial_entropy_skipped_when_zalmoxis_unavailable(monkeypatch, caplog):
-    """The cross-check is a no-op when Zalmoxis is not installed.
-
-    Guard: the helper must not raise; it must log a DEBUG line and return
-    None. A regression that propagated the ImportError would crash any
-    PROTEUS run on a machine without Zalmoxis.
-    """
-    import sys
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    # Force the lazy import to fail.
-    monkeypatch.setitem(sys.modules, 'zalmoxis.eos_export', None)
-    monkeypatch.setitem(sys.modules, 'proteus.interior_struct.zalmoxis', None)
-
-    config = SimpleNamespace(interior_struct=SimpleNamespace(zalmoxis=None))
-
-    with caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.common'):
-        out = _verify_initial_entropy(config, S_target=2800.0, tsurf=2400.0, source='test')
-    # Returns None silently (no exception, no value).
-    assert out is None
-    # The skip is logged so the silent no-op is auditable.
-    debug_msgs = [r.message for r in caplog.records if 'zalmoxis unavailable' in r.message]
-    assert len(debug_msgs) >= 1
-
-
-def test_verify_initial_entropy_skipped_when_no_zalmoxis_cfg(monkeypatch, caplog):
-    """The cross-check is also skipped when zalmoxis is installed but the
-    config does not provide a zalmoxis sub-block (e.g. SPIDER with a dummy
-    structure).
-    """
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    # Sanity: skip if zalmoxis package not installed in this env.
-    pytest.importorskip('zalmoxis')
-
-    config = SimpleNamespace(interior_struct=SimpleNamespace(zalmoxis=None))
-    with caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.common'):
-        out = _verify_initial_entropy(config, S_target=2800.0, tsurf=2400.0, source='dummy')
-    assert out is None
-    # Discrimination: no AttributeError is raised even though
-    # config.interior_struct.zalmoxis is None.
-    assert any('no Zalmoxis config' in r.message for r in caplog.records)
-
-
 def test_compute_initial_entropy_adiabatic_from_cmb_uses_pcmb_fallback(monkeypatch, caplog):
     """When P_cmb is missing from hf_row, adiabatic_from_cmb mode falls back
     to a Noack & Lasbleis (2020) mass-aware estimate and logs a warning.
@@ -920,16 +870,17 @@ def test_compute_initial_entropy_adiabatic_from_cmb_uses_pcmb_fallback(monkeypat
     assert 'adiabatic_from_cmb' in nl20_msgs[0]
 
 
-def test_compute_initial_entropy_liquidus_super_without_zalmoxis_raises_runtime_error(
+def test_solve_superliquidus_adiabat_missing_melting_curves_import_raises_runtime_error(
     monkeypatch,
 ):
-    """liquidus_super mode requires Zalmoxis for paleos_liquidus; a missing
-    import must raise RuntimeError with a clear message.
+    """The Zalmoxis-structure liquidus_super adiabat (the structure solve's
+    CMB temperature anchor) needs the zalmoxis melting_curves import for
+    paleos_liquidus; a missing import raises RuntimeError with a clear message.
     """
     import sys
     from types import SimpleNamespace
 
-    from proteus.interior_energetics.common import compute_initial_entropy
+    from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
     # Force the paleos_liquidus import to fail.
     monkeypatch.setitem(sys.modules, 'zalmoxis.melting_curves', None)
@@ -941,7 +892,7 @@ def test_compute_initial_entropy_liquidus_super_without_zalmoxis_raises_runtime_
             delta_T_super=200.0,
         ),
         interior_struct=SimpleNamespace(
-            module='dummy',
+            module='zalmoxis',
             core_frac=0.3,
             core_frac_mode='mass',
             zalmoxis=None,
@@ -950,7 +901,7 @@ def test_compute_initial_entropy_liquidus_super_without_zalmoxis_raises_runtime_
     hf_row = {'P_cmb': 1.35e11}  # valid CMB pressure, ~135 GPa
 
     with pytest.raises(RuntimeError, match='liquidus_super mode requires Zalmoxis') as exc:
-        compute_initial_entropy(config, hf_row=hf_row, fallback=3300.0)
+        solve_superliquidus_adiabat(config, hf_row)
     # Discrimination: the message names BOTH the mode and the module that
     # would have provided the curve. A regression that swallowed the import
     # error and silently fell back to the user fallback would not raise at all.
@@ -962,8 +913,8 @@ def test_compute_initial_entropy_adiabatic_from_cmb_uses_provided_pcmb_no_fallba
     monkeypatch, caplog
 ):
     """When P_cmb IS supplied in hf_row, the NL20 fallback warning must NOT
-    fire. Anti-happy-path: this pins the gate ``not P_cmb or P_cmb <= 0``,
-    catching a regression that always fell to the NL20 path regardless of
+    fire. Anti-happy-path: this pins ``resolve_P_cmb``'s use of a populated
+    P_cmb, catching a regression that always fell to the NL20 path regardless of
     user input.
     """
     import sys
@@ -1003,7 +954,7 @@ def test_compute_initial_entropy_adiabatic_from_cmb_negative_pcmb_falls_back(
     monkeypatch, caplog
 ):
     """A non-positive P_cmb in hf_row also triggers the NL20 fallback. This
-    pins the second clause of the ``not P_cmb or P_cmb <= 0`` gate.
+    pins the ``float(P_cmb) > 0`` check in ``resolve_P_cmb``.
     """
     import sys
     from types import SimpleNamespace
@@ -1038,6 +989,45 @@ def test_compute_initial_entropy_adiabatic_from_cmb_negative_pcmb_falls_back(
     # Zalmoxis-unavailable + adiabatic_from_cmb returns the fallback entropy,
     # not the function default; discriminates against a regression that
     # ignored the kwarg.
+    assert S == pytest.approx(3300.0, rel=1e-12)
+
+
+def test_compute_initial_entropy_adiabatic_from_cmb_nan_pcmb_falls_back(monkeypatch, caplog):
+    """A NaN P_cmb in hf_row also triggers the NL20 fallback. This pins the
+    ``np.isfinite`` check in ``resolve_P_cmb``: a NaN is truthy and passes
+    no comparison, so only the finite check catches it.
+    """
+    import math
+    import sys
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.common import compute_initial_entropy
+
+    monkeypatch.setitem(sys.modules, 'zalmoxis.eos_export', None)
+    monkeypatch.setitem(sys.modules, 'proteus.interior_struct.zalmoxis', None)
+
+    config = SimpleNamespace(
+        planet=SimpleNamespace(
+            temperature_mode='adiabatic_from_cmb',
+            tcmb_init=4500.0,
+            mass_tot=1.0,
+        ),
+        interior_struct=SimpleNamespace(
+            module='dummy',
+            core_frac=0.3,
+            core_frac_mode='mass',
+            zalmoxis=None,
+        ),
+    )
+    hf_row = {'P_cmb': math.nan}  # invalid: NaN
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'):
+        S = compute_initial_entropy(config, hf_row=hf_row, fallback=3300.0)
+
+    # NaN P_cmb routes through the NL20 fallback just like missing or negative P_cmb.
+    assert any('Noack & Lasbleis (2020)' in r.message for r in caplog.records), (
+        'NL20 fallback did not fire on NaN P_cmb; gate accepts NaN'
+    )
     assert S == pytest.approx(3300.0, rel=1e-12)
 
 
@@ -1128,279 +1118,6 @@ def test_compute_initial_entropy_paleos_failure_logs_warning_and_falls_back(
     assert S != pytest.approx(3200.0, rel=1e-4)
     # Warning fired with a PALEOS-failure phrasing.
     assert any('Could not compute entropy from PALEOS' in r.message for r in caplog.records)
-
-
-def test_verify_initial_entropy_zero_s_target_skipped(monkeypatch, caplog):
-    """S_target == 0 short-circuits with a WARNING; verdicts cannot be
-    computed when the denominator is zero.
-
-    The path-through is gated on a previous successful PALEOS lookup, so
-    we patch the dependencies to reach the S_target == 0 check.
-    """
-    pytest.importorskip('zalmoxis')
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    # Build a config with a zalmoxis sub-block.
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
-        )
-    )
-
-    # Stub the upstream PALEOS lookup to return a non-empty path and a
-    # zero S_target.
-    from unittest.mock import patch as _patch
-
-    with (
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value={'WolfBower2018:MgSiO3': {'eos_file': '/tmp/dummy_eos'}},
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.resolve_2phase_mgsio3_paths',
-            return_value=('/tmp/solid_eos', '/tmp/liquid_eos'),
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-            return_value=None,
-        ),
-        _patch('os.path.isfile', return_value=True),
-        _patch(
-            'zalmoxis.eos_export.compute_surface_entropy',
-            return_value={'S_target': 0.0},
-        ),
-        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'),
-    ):
-        out = _verify_initial_entropy(config, S_target=0.0, tsurf=2400.0, source='zero')
-    assert out is None
-    assert any('S_target is zero' in r.message for r in caplog.records)
-
-
-# ============================================================================
-# _verify_initial_entropy: PASS / WARN / FAIL verdict branches
-# ============================================================================
-
-
-def _patch_verify_inputs(s_adiabat: float):
-    """Build the upstream patches needed to reach the verdict block.
-
-    Returns a list of unittest.mock.patch context managers wired to a
-    deterministic compute_surface_entropy return that yields the given
-    adiabat S value.
-    """
-    from unittest.mock import patch as _patch
-
-    return [
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value={'WolfBower2018:MgSiO3': {'eos_file': '/tmp/dummy_eos'}},
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.resolve_2phase_mgsio3_paths',
-            return_value=('/tmp/solid_eos', '/tmp/liquid_eos'),
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-            return_value=None,
-        ),
-        _patch('os.path.isfile', return_value=True),
-        _patch(
-            'zalmoxis.eos_export.compute_surface_entropy',
-            return_value={'S_target': s_adiabat},
-        ),
-    ]
-
-
-@pytest.mark.physics_invariant
-def test_verify_initial_entropy_pass_branch_within_one_percent(caplog):
-    """A 0.5 % discrepancy (under the 1 % PASS threshold) logs the verdict
-    as PASS and returns None.
-
-    Physics invariant: the cross-check must accept agreement at the 1 %
-    level, which is the empirical noise floor between the two algorithms
-    (P-S inversion vs PALEOS adiabat) on the same EOS table.
-    """
-    pytest.importorskip('zalmoxis')
-    from contextlib import ExitStack
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
-        )
-    )
-
-    S_target = 2800.0
-    # 0.5 % offset, comfortably under the 1 % PASS bar.
-    S_adiabat = S_target * 1.005
-    with ExitStack() as stack:
-        for cm in _patch_verify_inputs(S_adiabat):
-            stack.enter_context(cm)
-        with caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.common'):
-            out = _verify_initial_entropy(
-                config, S_target=S_target, tsurf=2400.0, source='pass'
-            )
-    assert out is None
-    # Verdict in the log is PASS, not WARN or FAIL.
-    pass_msgs = [r.message for r in caplog.records if 'verdict=PASS' in r.message]
-    assert len(pass_msgs) == 1, (
-        f'expected exactly one PASS verdict line; got {len(pass_msgs)} ({pass_msgs!r})'
-    )
-    # Anti-happy-path: a regression that flipped the comparison sense
-    # would have logged WARN or FAIL on the same 0.5 % offset.
-    assert not any('verdict=WARN' in r.message for r in caplog.records)
-    assert not any('verdict=FAIL' in r.message for r in caplog.records)
-
-
-def test_verify_initial_entropy_warn_branch_between_one_and_five_percent(caplog):
-    """A 3 % discrepancy (between 1 % and 5 %) logs WARN and returns None.
-
-    The WARN branch is a soft signal, distinct from FAIL which raises.
-    """
-    pytest.importorskip('zalmoxis')
-    from contextlib import ExitStack
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
-        )
-    )
-
-    S_target = 2800.0
-    S_adiabat = S_target * 1.03  # 3 % offset
-    with ExitStack() as stack:
-        for cm in _patch_verify_inputs(S_adiabat):
-            stack.enter_context(cm)
-        with caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.common'):
-            out = _verify_initial_entropy(
-                config, S_target=S_target, tsurf=2400.0, source='warn'
-            )
-    assert out is None
-    warn_msgs = [r.message for r in caplog.records if 'verdict=WARN' in r.message]
-    assert len(warn_msgs) == 1
-    # WARN must NOT raise (only FAIL does).
-    assert not any('verdict=FAIL' in r.message for r in caplog.records)
-
-
-def test_verify_initial_entropy_fail_branch_raises_runtime_error_above_five_percent():
-    """A 7 % discrepancy (above the 5 % FAIL bar) raises RuntimeError.
-
-    Sign + scale discrimination: the assertion message must name BOTH
-    the actual diff and the threshold so a future regression that
-    silently relaxed the threshold is visible.
-    """
-    pytest.importorskip('zalmoxis')
-    from contextlib import ExitStack
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
-        )
-    )
-
-    S_target = 2800.0
-    S_adiabat = S_target * 1.07  # 7 % offset, > 5 % FAIL bar
-    with ExitStack() as stack:
-        for cm in _patch_verify_inputs(S_adiabat):
-            stack.enter_context(cm)
-        with pytest.raises(RuntimeError, match='Entropy IC cross-check FAIL') as exc:
-            _verify_initial_entropy(config, S_target=S_target, tsurf=2400.0, source='fail')
-    # The error message names BOTH the actual percentage and the threshold,
-    # so a relaxation of the 5 % cap would land a different percentage in
-    # the string. The 7 % offset must show up to within ~0.05 absolute.
-    msg = str(exc.value)
-    assert '7.0' in msg or '7.00' in msg, (
-        f'FAIL message must report the actual % discrepancy; got {msg!r}'
-    )
-
-
-def test_verify_initial_entropy_skipped_when_paleos_file_missing(monkeypatch, caplog):
-    """When the zalmoxis material dict has no eos_file AND solid_eos is
-    empty, the cross-check skips with a DEBUG log line.
-    """
-    pytest.importorskip('zalmoxis')
-    from types import SimpleNamespace
-    from unittest.mock import patch as _patch
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
-        )
-    )
-    with (
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value={'WolfBower2018:MgSiO3': {}},  # no eos_file
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.resolve_2phase_mgsio3_paths',
-            return_value=(None, None),  # no solid_eos fallback
-        ),
-        _patch('os.path.isfile', return_value=False),
-        caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.common'),
-    ):
-        out = _verify_initial_entropy(config, S_target=2800.0, tsurf=2400.0, source='nofile')
-    assert out is None
-    # DEBUG message names PALEOS-file-not-found so the skip path is auditable.
-    msgs = [r.message for r in caplog.records if 'PALEOS file not found' in r.message]
-    assert len(msgs) >= 1
-
-
-def test_verify_initial_entropy_expected_error_swallowed(monkeypatch, caplog):
-    """KeyError / ValueError from the PALEOS lookup is swallowed with a
-    WARNING (not raised). Pins the expected-error tuple at the try/except
-    around the compute_surface_entropy call.
-    """
-    pytest.importorskip('zalmoxis')
-    from types import SimpleNamespace
-    from unittest.mock import patch as _patch
-
-    from proteus.interior_energetics.common import _verify_initial_entropy
-
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(mantle_eos='WolfBower2018:MgSiO3'),
-        )
-    )
-
-    with (
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value={'WolfBower2018:MgSiO3': {'eos_file': '/tmp/dummy_eos'}},
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.resolve_2phase_mgsio3_paths',
-            return_value=('/tmp/solid_eos', '/tmp/liquid_eos'),
-        ),
-        _patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-            return_value=None,
-        ),
-        _patch('os.path.isfile', return_value=True),
-        _patch(
-            'zalmoxis.eos_export.compute_surface_entropy',
-            side_effect=KeyError('S_target'),
-        ),
-        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.common'),
-    ):
-        out = _verify_initial_entropy(
-            config, S_target=2800.0, tsurf=2400.0, source='expected_err'
-        )
-    # Expected error path returns None cleanly.
-    assert out is None
-    assert any('cross-check skipped (expected error' in r.message for r in caplog.records)
 
 
 # ============================================================================
@@ -1501,3 +1218,192 @@ def test_compute_initial_entropy_ps_inversion_value_error_falls_through_to_paleo
     assert any('P-S inversion failed' in r.message for r in caplog.records)
     # Discrimination: the fallback wins over the function default (3200).
     assert S != pytest.approx(3200.0, rel=1e-4)
+
+
+# ============================================================================
+# get_C_planet: planet's principal moment of inertia from the interior
+# density/radius profile. Moved here from proteus.orbit.common, whose
+# adaptive-substep controller (run_adaptive_orbit_substeps) is still the
+# only caller; see tests/orbit/test_common.py for that controller's own
+# (mocked) coverage of the refresh call.
+# ============================================================================
+
+
+def _uniform_sphere_interior(R: float, rho0: float, nlev_b: int):
+    interior = Interior_t(nlev_b=nlev_b)
+    interior.radius = np.linspace(0.0, R, nlev_b)
+    interior.density = np.full(nlev_b - 1, rho0)
+    M = (4.0 / 3.0) * np.pi * R**3 * rho0
+    return interior, M
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_get_c_planet_matches_uniform_density_sphere_analytic_value():
+    """For a spatially uniform density, the shell-sum in ``get_C_planet``
+    reduces to the exact textbook moment of inertia of a solid sphere,
+    ``C = (2/5) M R^2`` -- exactly, not just approximately, because the
+    per-shell integral ``rho * (r1^5 - r0^5) / 5`` is exact for constant
+    rho regardless of how finely the shells are spaced.
+    """
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.common import get_C_planet
+
+    R, rho0 = 6.371e6, 5500.0
+    interior, M = _uniform_sphere_interior(R, rho0, nlev_b=8)
+    # interior.radius already starts at r=0 (a whole uniform sphere, no
+    # separate core), so the [0.0, radius[0]=0.0] segment get_C_planet
+    # injects for the core is zero-width and core_density's value is
+    # inert here -- set regardless so the core_density fallback path
+    # (which needs config.interior_struct, absent from this minimal cfg)
+    # is never reached.
+    hf_row: dict = {'M_int': M, 'R_int': R, 'core_density': 0.0}
+    cfg = SimpleNamespace(interior_energetics=SimpleNamespace(module='aragog'))
+
+    get_C_planet(hf_row, cfg, interior)
+
+    expected = (2.0 / 5.0) * M * R**2
+    assert hf_row['C_int'] == pytest.approx(expected, rel=1e-12)
+    # Discrimination guard: the classic wrong-prefactor bugs for a solid
+    # sphere are 1/3 (thin shell) and 1/2 (disk); both are far outside a
+    # 1e-6 relative window around 2/5.
+    assert abs(hf_row['C_int'] / (M * R**2) - 1.0 / 3.0) > 0.05
+    assert abs(hf_row['C_int'] / (M * R**2) - 1.0 / 2.0) > 0.1
+    # Sanity/scale guard: C_factor for a uniform sphere is exactly 0.4,
+    # comfortably inside the physically reasonable [0.2, 0.4] range for
+    # real (centrally condensed) planets quoted in the source's own log
+    # message.
+    assert 0.2 < hf_row['C_int'] / (M * R**2) <= 0.4
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_get_c_planet_spider_reversal_recovers_cmb_first_ordering():
+    """SPIDER emits interior arrays surface-first; ``get_C_planet``
+    reverses them when ``config.interior_energetics.module == 'spider'``
+    so that index 0 lines up with the CMB, matching the ordering every
+    other caller uses. This test pins that the reversal branch produces
+    the SAME value as directly supplying CMB-first arrays, using a
+    non-uniform (core-mantle-crust) density profile so that reversal
+    order actually matters (a uniform profile would pass even with a
+    silently broken reversal).
+    """
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.common import get_C_planet
+
+    R = 6.371e6
+    r_edges_cmb_first = np.array([0.0, 0.5 * R, 0.8 * R, R])
+    rho_cmb_first = np.array([9000.0, 5000.0, 3000.0])  # core -> mantle -> crust
+
+    r0, r1 = r_edges_cmb_first[:-1], r_edges_cmb_first[1:]
+    expected_C = (8 * np.pi / 3.0) * np.sum(rho_cmb_first * (r1**5 - r0**5) / 5.0)
+    M = np.sum(rho_cmb_first * (4.0 / 3.0 * np.pi * (r1**3 - r0**3)))
+
+    def run(radius, density, module):
+        interior = Interior_t(nlev_b=4)
+        interior.radius = radius.copy()
+        interior.density = density.copy()
+        # r_edges_cmb_first starts at r=0, so the core segment
+        # get_C_planet injects is zero-width; core_density's value is
+        # inert here, just needs to be set to avoid the config.interior_struct
+        # fallback (absent from this minimal cfg).
+        hf_row: dict = {'M_int': M, 'R_int': R, 'core_density': 0.0}
+        cfg = SimpleNamespace(interior_energetics=SimpleNamespace(module=module))
+        get_C_planet(hf_row, cfg, interior)
+        return hf_row['C_int']
+
+    # Non-SPIDER caller supplying already CMB-first arrays: no reversal
+    # needed, must match the independently hand-summed expected value.
+    c_direct = run(r_edges_cmb_first, rho_cmb_first, module='aragog')
+    assert c_direct == pytest.approx(expected_C, rel=1e-12)
+
+    # SPIDER caller supplying surface-first arrays: the reversal branch
+    # must recover the identical physical answer.
+    c_spider = run(r_edges_cmb_first[::-1], rho_cmb_first[::-1], module='spider')
+    assert c_spider == pytest.approx(expected_C, rel=1e-12)
+
+    # Sign guard: a positive density profile must give a positive moment
+    # of inertia under the correct (CMB-first) pairing.
+    assert expected_C > 0.0
+
+
+@pytest.mark.physics_invariant
+def test_get_c_planet_without_reversal_flag_flips_sign_on_surface_first_input():
+    """Discriminating negative case for the reversal branch above: if
+    surface-first arrays are supplied WITHOUT setting
+    ``module == 'spider'``, the shell pairing ``(r0, r1) = (r_edges[:-1],
+    r_edges[1:])`` sees a descending radius array, so ``r1 < r0`` for
+    every shell and ``(r1**5 - r0**5)`` is negative throughout. The
+    result is not a small numerical drift -- it is the exact negative of
+    the physically correct value, which is what makes this bug loud
+    rather than silent, and is the reason a caller mismatching the
+    module flag would be caught immediately rather than producing a
+    plausible-looking wrong answer.
+    """
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.common import get_C_planet
+
+    R = 6.371e6
+    r_edges_cmb_first = np.array([0.0, 0.5 * R, 0.8 * R, R])
+    rho_cmb_first = np.array([9000.0, 5000.0, 3000.0])
+    r0, r1 = r_edges_cmb_first[:-1], r_edges_cmb_first[1:]
+    expected_C = (8 * np.pi / 3.0) * np.sum(rho_cmb_first * (r1**5 - r0**5) / 5.0)
+    M = np.sum(rho_cmb_first * (4.0 / 3.0 * np.pi * (r1**3 - r0**3)))
+
+    interior = Interior_t(nlev_b=4)
+    interior.radius = r_edges_cmb_first[::-1].copy()
+    interior.density = rho_cmb_first[::-1].copy()
+    # Zero-width injected core segment (see the two tests above); set so
+    # the config.interior_struct fallback is never reached.
+    hf_row: dict = {'M_int': M, 'R_int': R, 'core_density': 0.0}
+    cfg = SimpleNamespace(interior_energetics=SimpleNamespace(module='dummy'))
+
+    get_C_planet(hf_row, cfg, interior)
+
+    assert hf_row['C_int'] == pytest.approx(-expected_C, rel=1e-12)
+    assert hf_row['C_int'] < 0.0
+
+
+@pytest.mark.physics_invariant
+def test_get_c_planet_falls_back_to_config_core_density_when_hf_row_lacks_it(caplog):
+    """When hf_row carries no ``'core_density'`` key at all (e.g. no
+    interior_struct backend has written one yet), ``get_C_planet`` falls
+    back to ``config.interior_struct.core_density`` and logs a warning
+    naming the substitution, rather than raising a ``KeyError`` or silently
+    treating the core as massless.
+
+    Here the injected core segment has real width (``interior.radius``
+    starts above 0), so the fallback density actually enters the integral
+    and is not the inert edge case the other ``get_C_planet`` tests pin to.
+    """
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.common import get_C_planet
+
+    R_core, R = 3.0e6, 6.371e6
+    rho_core, rho_mantle = 9000.0, 4500.0
+    interior = Interior_t(nlev_b=2)
+    interior.radius = np.array([R_core, R])
+    interior.density = np.array([rho_mantle])
+
+    M_core = (4.0 / 3.0) * np.pi * R_core**3 * rho_core
+    M_mantle = (4.0 / 3.0) * np.pi * (R**3 - R_core**3) * rho_mantle
+    hf_row: dict = {'M_int': M_core + M_mantle, 'R_int': R}  # no 'core_density' key
+    cfg = SimpleNamespace(
+        interior_energetics=SimpleNamespace(module='aragog'),
+        interior_struct=SimpleNamespace(core_density=rho_core),
+    )
+
+    with caplog.at_level('WARNING'):
+        get_C_planet(hf_row, cfg, interior)
+
+    expected = (8.0 * np.pi / 15.0) * (rho_core * R_core**5 + rho_mantle * (R**5 - R_core**5))
+    assert hf_row['C_int'] == pytest.approx(expected, rel=1e-12)
+    assert any('core_density not found' in rec.message for rec in caplog.records)
+    # Discrimination: treating the core as massless (rho_core = 0) instead
+    # of using the config fallback moves C_int well outside tolerance.
+    massless_core = (8.0 * np.pi / 15.0) * (0.0 + rho_mantle * (R**5 - R_core**5))
+    assert abs(hf_row['C_int'] - massless_core) > 1e-6 * expected

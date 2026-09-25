@@ -38,6 +38,8 @@ class PetitRADTRANS:
 class Observe:
     """Synthetic observations.
 
+    Attributes
+    ----------
     module: str
         Module to use for calculating synthetic spectra.
     clip_vmr: float

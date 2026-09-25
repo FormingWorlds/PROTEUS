@@ -123,11 +123,11 @@
 
 .md-nav__item .md-nav__link--active {
   color: var(--pt-azure);
-  border-left: 2px solid var(--pt-magma);
+  box-shadow: inset 2px 0 0 var(--pt-magma);
   padding-left: 0.5rem;
-  margin-left: -0.6rem;
   background: linear-gradient(90deg, rgba(226,61,40,0.06), transparent);
 }
+
 [data-md-color-scheme="default"] .md-nav__item .md-nav__link--active {
   color: var(--pt-ocean);
   border-left-color: var(--pt-crimson);

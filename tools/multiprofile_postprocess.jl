@@ -273,7 +273,7 @@ function postprocess_multiple_angles(output_dir::String, spfile::String, angles:
 
     # Find the latest atmosphere file in the data directory by looking for larger number in filenames
     files = Glob.glob("*_atm.nc", data_dir)
-    nums = [parse(Int, match(r"(\d+)_atm\.nc", basename(f)).captures[1]) for f in files]
+    nums = [parse(Float64, replace(match(r"([0-9p.]+)_atm\.nc", basename(f)).captures[1], 'p' => '.')) for f in files]
     atmfile = files[argmax(nums)]
 
     # Extra information for logging in case something goes wrong

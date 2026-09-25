@@ -10,7 +10,7 @@ from ._atmos_chem import AtmosChem
 from ._atmos_clim import AtmosClim
 from ._converters import dict_replace_none
 from ._escape import Escape
-from ._interior import Interior
+from ._interior import _STEP_CAP_FIELDS, Interior
 from ._observe import Observe
 from ._orbit import Orbit
 from ._outgas import Outgas
@@ -23,8 +23,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def spada_zephyrus(instance, attribute, value):
-    # using zephyrus
-    #     zephyrus requires MORS + Spada
+    """ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."""
     if (instance.escape.module == 'zephyrus') and not (
         (instance.star.module == 'mors') and (instance.star.mors.tracks == 'spada')
     ):
@@ -32,31 +31,84 @@ def spada_zephyrus(instance, attribute, value):
 
 
 def instmethod_dummy(instance, attribute, value):
-    # Instellation method 'inst' only support for dummy star module
+    """Instellation method 'inst' is only available with the dummy star module."""
     if (instance.orbit.instellation_method == 'inst') and not (instance.star.module == 'dummy'):
         raise ValueError("Instellation method can only be 'inst' when star.module=dummy ")
 
 
 def instmethod_evolve(instance, attribute, value):
-    # Orbital evolution not supported when installation_method is 'inst'
-    if (instance.orbit.instellation_method == 'inst') and instance.orbit.evolve:
+    """Orbital evolution cannot be combined with instellation method 'inst'."""
+    if (instance.orbit.instellation_method == 'inst') and (
+        instance.orbit.star_planet_model is not None
+    ):
         raise ValueError(
             "Planet orbital evolution not supported for `instellation_method='inst'`"
         )
 
 
 def satellite_evolve(instance, attribute, value):
-    # Planetary orbital evolution not supported when also modelling satellite
-    if instance.orbit.satellite and instance.orbit.evolve:
+    """Star-planet orbital evolution and the planet-satellite model are mutually exclusive."""
+    if (
+        instance.orbit.star_planet_model is not None
+        and instance.orbit.planet_satellite_model is not None
+    ):
         raise ValueError(
             'Planet orbital evolution cannot be used simultaneously with a satellite'
         )
 
 
 def tides_enabled_orbit(instance, attribute, value):
-    # Tides in interior requires orbit module to not be None
+    """Interior tidal heating requires an tides module to be enabled."""
     if (instance.interior_energetics.heat_tidal) and (instance.orbit.module is None):
-        raise ValueError('Interior tidal heating requires an orbit module to be enabled')
+        raise ValueError('Interior tidal heating requires a tides module to be enabled')
+
+
+def obliqua_requires_perturber(instance, attribute, value):
+    """The Obliqua tidal-response module requires an explicit perturber."""
+    if instance.orbit.module == 'obliqua' and instance.orbit.perturber is None:
+        raise ValueError(
+            "orbit.module = 'obliqua' requires orbit.perturber to be explicitly set to "
+            "'star' or 'satellite' (it has no default tidal-forcing body to fall back on)"
+        )
+
+
+def sp0d_obliqua_degree_mismatch(instance, attribute, value):
+    """sp0d's closed-form is by definition the n=2 Love number. Obliqua can compute
+    arbitrary tidal degree(s), block the mismatch.
+    """
+    if instance.orbit.module == 'obliqua' and instance.orbit.star_planet_model == 'sp0d':
+        if instance.orbit.obliqua.n != [2]:
+            raise ValueError(
+                "orbit.star_planet_model = 'sp0d' requires orbit.obliqua.n == [2]: "
+                'set orbit.obliqua.n = [2] to use sp0d with Obliqua, or use'
+                "orbit.star_planet_model = 'sp1d' instead."
+            )
+        log.warning(
+            "orbit.star_planet_model = 'sp0d' with orbit.module = 'obliqua': Imk2 is "
+            "the mean of Obliqua's per-mode Im(k2) spectrum collapsed to a single "
+            'scalar, which discards the eccentricity-dependent mode weighting sp1d '
+            'uses directly. This is an approximation, least accurate at high or '
+            "rapidly-changing eccentricity. Prefer orbit.star_planet_model = 'sp1d'"
+            ' when using Obliqua.'
+        )
+
+
+def orbit_requires_tides(instance, attribute, value):
+    """sp1d, ps1d, and ps1d_evec require at least Lovepy, but ideally the Obliqua
+    tidal-response module: all three read the full per-mode spectrum in
+    ``tides_o``, which ``dummy`` never populates. ``sp0d``/``ps0d`` read the
+    scalar ``Imk2`` instead (which ``dummy`` does provide), so they are
+    unrestricted here; see "Compatibility between orbit models and tidal
+    modules" in docs/Explanations/orbit.md.
+    """
+    needs_full_spectrum = instance.orbit.star_planet_model == 'sp1d' or (
+        instance.orbit.planet_satellite_model in ('ps1d', 'ps1d_evec')
+    )
+    if needs_full_spectrum and instance.orbit.module not in ('obliqua', 'lovepy'):
+        raise ValueError(
+            "orbit.star_planet_model = 'sp1d' or orbit.planet_satellite_model = "
+            "'ps1d'/'ps1d_evec' requires orbit.module = 'obliqua' or 'lovepy'"
+        )
 
 
 CURRENT_CONFIG_VERSION = '3.0'
@@ -126,13 +178,13 @@ def boreas_requires_atmosphere(instance, attribute, value):
 
 
 def observe_resolved_atmosphere(instance, attribute, value):
-    # Synthetic observations require a spatially resolved atmosphere profile
+    """Synthetic observations require a spatially resolved atmosphere (not dummy)."""
     if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
         raise ValueError('Observational synthesis requires that atmos_clim != dummy')
 
 
 def janus_escape_atmosphere(instance, attribute, value):
-    # Using escape.zephyrus with JANUS requires params.stop.escape to be True
+    """ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled."""
     if (
         (instance.escape.module == 'zephyrus')
         and (instance.atmos_clim.module == 'janus')
@@ -163,6 +215,29 @@ def planet_oxygen_mode_explicit(instance, attribute, value):
     # itself. This function remains as a hook for cross-field checks
     # (e.g. fO2_source compatibility) that reference O_mode.
     pass
+
+
+def planet_liquidus_super_needs_tables(instance, attribute, value):
+    """Require a P-S table route for ``temperature_mode = "liquidus_super"``.
+
+    The spider and aragog interior modules build the ``liquidus_super``
+    initial condition on interior P-S tables, which the interior wrapper
+    supplies for the ``"zalmoxis"``, ``"spider"`` and ``"dummy"`` structure
+    modules. With no structure module, no table set is provided
+    and the initial condition has nothing to solve on.
+    """
+    if value.temperature_mode != 'liquidus_super':
+        return
+    if instance.interior_energetics.module not in ('spider', 'aragog'):
+        return
+    if instance.interior_struct.module is None:
+        raise ValueError(
+            "planet.temperature_mode = 'liquidus_super' has no valid route with "
+            'interior_struct.module = None under interior_energetics.module = '
+            f"'{instance.interior_energetics.module}': no P-S table set is provided. "
+            "Set interior_struct.module to 'spider', 'dummy' or 'zalmoxis', or "
+            'choose another planet.temperature_mode.'
+        )
 
 
 def planet_fO2_source_compat(instance, attribute, value):
@@ -317,7 +392,15 @@ class Config:
     params: Params = field(factory=Params)
     star: Star = field(factory=Star)
     orbit: Orbit = field(
-        factory=Orbit, validator=(instmethod_dummy, instmethod_evolve, satellite_evolve)
+        factory=Orbit,
+        validator=(
+            instmethod_dummy,
+            instmethod_evolve,
+            satellite_evolve,
+            obliqua_requires_perturber,
+            sp0d_obliqua_degree_mismatch,
+            orbit_requires_tides,
+        ),
     )
     planet: Planet = field(
         factory=Planet,
@@ -325,6 +408,7 @@ class Config:
             planet_mass_valid,
             planet_oxygen_mode_explicit,
             planet_fO2_source_compat,
+            planet_liquidus_super_needs_tables,
         ),
     )
     interior_struct: Struct = field(factory=Struct)
@@ -350,9 +434,19 @@ class Config:
         validator=(valid_config_version, check_module_dependencies),
     )
 
-    def write(self, out: str):
+    def write(self, out: str, overrides: dict | None = None):
         """
         Write configuration to a new TOML file.
+
+        Parameters
+        ----------
+        out
+            Output path for the TOML file.
+        overrides
+            Dotted-path values to substitute in the written file, e.g.
+            ``{'interior_energetics.aragog.phi_step_cap': 0.1}``. Lets a
+            caller record a resolved value (one a module derives from a
+            config default at runtime) without mutating this Config object.
         """
 
         # Convert to dictionary
@@ -360,6 +454,53 @@ class Config:
 
         # Replace None with "none"
         cfg = dict_replace_none(cfg)
+
+        # Apply any resolved-value overrides
+        if overrides:
+            # Imported here to avoid a module-level import cycle: orphans
+            # imports Config from this module.
+            from .orphans import UnknownConfigKeyError
+
+            for dotted_key, value in overrides.items():
+                segments = dotted_key.split('.')
+                *parents, leaf = segments
+                node = cfg
+                for depth, key in enumerate(parents):
+                    if not isinstance(node, dict) or key not in node:
+                        failing = '.'.join(segments[: depth + 1])
+                        raise UnknownConfigKeyError(
+                            f"Override key '{dotted_key}' does not match the schema: "
+                            f"no config section '{failing}'."
+                        )
+                    node = node[key]
+                if not isinstance(node, dict) or leaf not in node:
+                    raise UnknownConfigKeyError(
+                        f"Override key '{dotted_key}' does not match the schema: "
+                        f"no config field '{dotted_key}'."
+                    )
+                if isinstance(node[leaf], dict):
+                    raise UnknownConfigKeyError(
+                        f"Override key '{dotted_key}' targets a config section, "
+                        f'not a field; refusing to replace the whole section.'
+                    )
+                # Route None through the same None -> "none" handling used above,
+                # so a None override does not reach tomlkit as a bare None.
+                node[leaf] = 'none' if value is None else value
+
+        # An Aragog step cap still at its 0.0 schema default (no override
+        # replaced it above) is ambiguous with an explicit, disabling 0.0
+        # once written to TOML, so omit the key and let a reload fall back
+        # to the same schema default it already carries here.
+        interior_energetics = cfg.get('interior_energetics')
+        if (
+            isinstance(interior_energetics, dict)
+            and interior_energetics.get('module') == 'aragog'
+        ):
+            aragog = interior_energetics.get('aragog')
+            if isinstance(aragog, dict):
+                for field_name in _STEP_CAP_FIELDS:
+                    if aragog.get(field_name) == 0.0:
+                        del aragog[field_name]
 
         # Write to TOML file
         with open(out, 'w') as hdl:

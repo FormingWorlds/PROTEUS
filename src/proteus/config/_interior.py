@@ -14,11 +14,15 @@ _DEFAULT_RTOL = 1e-10
 _TOL_UNSET = -1.0
 
 # Single canonical "disabled" value for the three per-call Aragog step caps.
-# 0.0 is the schema default that the wrapper promotes to a built-in on the
-# zalmoxis stack, a positive value is used verbatim, and this sentinel forces
-# the cap off even on zalmoxis. Any other negative, NaN, or infinity is a
-# malformed cap.
+# The schema default 0.0 resolves to off (no cap), a positive value is used
+# verbatim, and this sentinel is the explicit off spelling written back into a
+# config snapshot. Any other negative, NaN, or infinity is a malformed cap.
 _STEP_CAP_OFF = -1.0
+
+# The three per-call Aragog step-cap field names, named once here so the
+# config-load validator and the config writer stay in step with each other
+# and with the fields defined below.
+_STEP_CAP_FIELDS = ('phi_step_cap', 'temperature_step_cap', 'entropy_step_cap')
 
 
 def _gt0_or_unset(instance, attribute, value):
@@ -32,12 +36,11 @@ def _gt0_or_unset(instance, attribute, value):
 def _step_cap_valid(instance, attribute, value):
     """Accept the -1.0 off sentinel or any finite value >= 0; reject the rest.
 
-    The three per-call step caps use -1.0 as the only "disabled" value so the
-    off switch is a single canonical choice. 0.0 is the schema default (the
-    wrapper promotes it to the zalmoxis built-in) and a positive value is a
-    real cap. Any other negative, along with NaN and the infinities, is a
-    malformed value and raises rather than silently disabling the
-    crystallisation-onset guard.
+    The three per-call step caps use -1.0 as the canonical explicit "disabled"
+    value. The schema default 0.0 also resolves to off (no cap) and a positive
+    value is a real cap. Any other negative, along with NaN and the infinities,
+    is a malformed value and raises rather than silently disabling a cap the
+    user asked for.
     """
     if value == _STEP_CAP_OFF:
         return
@@ -48,6 +51,7 @@ def _step_cap_valid(instance, attribute, value):
 
 
 def valid_spider(instance, attribute, value):
+    """SPIDER requires at least one energy transport term to be enabled."""
     if instance.module != 'spider':
         return
 
@@ -99,6 +103,10 @@ class Spider:
         across the solidus/liquidus. Passed to SPIDER as
         ``-matprop_smooth_width`` and to Aragog via
         ``_PhaseMixedParameters``.
+    tolerance_struct: float
+        Absolute mass tolerance [kg] for the interior-radius secant solver.
+    log_output: bool
+        Write SPIDER solver log output.
     """
 
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
@@ -129,6 +137,7 @@ class Spider:
 
 
 def valid_aragog(instance, attribute, value):
+    """Aragog requires at least one energy transport term to be enabled."""
     if instance.module != 'aragog':
         return
 
@@ -200,11 +209,26 @@ class Aragog:
         validator=in_(('tanh', 'cubic_hermite')),
     )
     """Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'."""
+    separation_viscosity: str = field(
+        default='mixture',
+        validator=in_(('melt', 'mixture')),
+    )
+    """Drag viscosity for the gravitational-separation velocity
+    v_rel = |dRho| g F(phi) / eta. 'melt' (fixed single-phase liquid
+    viscosity, SPIDER parity) keeps separation active below the
+    rheological transition in coupled caps-off runs, which collapses
+    the CMB temperature; 'mixture' (rheological-transition-blended bulk
+    viscosity) ties the drag viscosity to the same solid-fraction rise
+    that stiffens the bulk rheology, so separation locks up at the same
+    melt fraction instead, which is why the default here is 'mixture'
+    while Aragog's own default stays 'melt' for SPIDER parity. The
+    regime boundaries are the porosities where adjacent permeability
+    laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c)."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),
     )
-    """ODE solver: 'cvode' (SUNDIALS, SPIDER parity), 'radau' (scipy), 'bdf' (scipy)."""
+    """ODE solver: 'cvode' (SUNDIALS, SPIDER parity; needs scikits-odes-sundials and stops the run at setup without it), 'radau' (scipy), 'bdf' (scipy)."""
     scalar_gravity_override: bool = field(default=False)
     """Scalar-gravity comparison knob. When True, the external mesh file that
     Zalmoxis writes has its gravity column overwritten with a uniform scalar
@@ -217,32 +241,41 @@ class Aragog:
     or near the two-phase window at solve() entry, a CVODE root function (and
     the equivalent scipy event) returns control at the exact time the larger
     of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches
-    this cap. The per-cell term bounds how far one deep cell may cross the
-    mushy window in a single call, which removes the discontinuous
-    core-temperature drop at crystallisation onset. Schema default 0.0, which
-    the Aragog wrapper promotes to a non-zero default for the coupled zalmoxis
-    interior stack; a positive value here overrides that. -1.0 is the single
-    off sentinel that keeps the cap disabled even on zalmoxis; any other
-    negative, NaN, or infinity is rejected at load."""
+    this cap. Off by default: the schema default 0.0 resolves to no cap,
+    because on a benign freezing-front crossing the root function slices the
+    coupled step into many small ones and drives the reported CMB heat flux
+    briefly negative where the uncapped run stays positive, so the cap is a
+    debugging control, not a production setting. Set a positive value
+    to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is
+    rejected at load, since it cannot be told apart from the unset default;
+    any other negative, NaN, or infinity is rejected too."""
 
     temperature_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell temperature step cap [K]. Shares the same root
     function as phi_step_cap and fires on the maximum single-cell |ΔT| since
-    solve() entry. It bounds the core-temperature drop on the solid adiabat
-    just below the solidus, where the melt-fraction cap goes blind because a
-    fully solid cell's melt fraction can no longer move. Schema default 0.0,
-    which the Aragog wrapper promotes to a non-zero default for the coupled
-    zalmoxis stack; a positive value overrides that. -1.0 is the single off
-    sentinel that keeps the cap disabled even on zalmoxis; any other negative,
-    NaN, or infinity is rejected at load."""
+    solve() entry. When enabled it bounds the per-cell temperature change on
+    the solid adiabat just below the solidus, where the melt-fraction cap
+    cannot act because a fully solid cell's melt fraction no longer moves. Off
+    by default (schema default 0.0 resolves to no cap); on a benign
+    freezing-front crossing the caps slice the coupled step into many small
+    ones and drive the reported CMB heat flux briefly negative, so they are a
+    debugging control, not a production setting. Set a positive value to enable
+    it; -1.0 is the explicit
+    off spelling. An explicit 0.0 is rejected at load, since it cannot be told
+    apart from the unset default; any other negative, NaN, or infinity is
+    rejected too."""
 
     entropy_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell entropy step cap [J/kg/K], in the native solver
     variable; same role as temperature_step_cap without an EOS lookup in the
-    root function. Schema default 0.0, which the Aragog wrapper promotes to a
-    non-zero default for the coupled zalmoxis stack; a positive value overrides
-    that. -1.0 is the single off sentinel that keeps the cap disabled even on
-    zalmoxis; any other negative, NaN, or infinity is rejected at load."""
+    root function. Off by default (schema default 0.0 resolves to no cap); on
+    a benign freezing-front crossing the caps slice the coupled step into many
+    small ones and drive the reported CMB heat flux briefly negative, so they
+    are a debugging control, not a production setting. Set a positive value to
+    enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected
+    at load, since it
+    cannot be told apart from the unset default; any other negative, NaN, or
+    infinity is rejected too."""
 
     phase_boundary_entropy_margin: float = field(default=200.0, validator=gt(0))
     """Phase-boundary proximity band [J/kg/K] within which a staggered cell
@@ -271,6 +304,7 @@ class Aragog:
 
 
 def valid_interiordummy(instance, attribute, value):
+    """Dummy interior requires the liquidus to sit above the solidus."""
     if instance.module != 'dummy':
         return
 
@@ -306,6 +340,10 @@ class InteriorBoundary:
         Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).
     core_density: float
         Core density [kg/m^3].
+    core_shear: float
+        Core shear modulus [Pa].
+    core_bulk: float
+        Core bulk modulus [Pa].
     thermal_conductivity: float
         Thermal conductivity [W/m/K].
     thermal_diffusivity: float
@@ -335,6 +373,8 @@ class InteriorBoundary:
     nusselt_exponent: float = field(default=0.33, validator=gt(0))  # -
     silicate_heat_capacity: float = field(default=1.2e3, validator=gt(0))  # J/kg/K
     core_density: float = field(default=10738.0, validator=gt(0))  # kg/m^3
+    core_shear: float = field(default=1.0e-1, validator=gt(0))  # Pa
+    core_bulk: float = field(default=5e11, validator=gt(0))  # Pa
     atm_heat_capacity_const: bool = field(default=True)
     atm_heat_capacity: float = field(default=1.7e4, validator=gt(0))  # J/kg/K
     silicate_density: float = field(default=4103.0, validator=gt(0))  # kg/m^3
@@ -408,14 +448,64 @@ class Interior:
         Concentration (ppmw) of uranium at reference age t=radio_tref.
     radio_Th: float
         Concentration (ppmw) of thorium-232 at reference age t=radio_tref.
+    radio_Al: float
+        Concentration (ppmw) of aluminium-26 at reference age t=radio_tref;
+        1.23 is the canonical early solar system value.
+    radio_Fe: float
+        Concentration (ppmw) of iron-60 at reference age t=radio_tref.
     heat_radiogenic: bool
         Include radiogenic heat production?
     heat_tidal: bool
         Include tidal heating?
     rfront_loc: float
-        Centre of rheological transition in terms of melt fraction
+        Centre of rheological transition in terms of melt fraction. SPIDER
+        receives it as ``-phi_critical``. Aragog centres its viscosity blend,
+        its reported rheological front and the melt-fraction ramp of
+        ``kappah_floor`` on it; the boundary module uses it as the transition
+        point of its viscosity models.
+        SPIDER and Aragog use melt mass fraction (0.4 by volume is about 0.375 by
+        mass at a 10 percent melt-solid density contrast); the boundary module
+        takes its melt fraction linearly in temperature between solidus and
+        liquidus and its rheological transition width from
+        ``phase_transition_width``, not ``rfront_wid``.
     rfront_wid: float
         Width of rheological transition in terms of melt fraction
+    num_levels: int
+        Number of radial grid levels for the energetics domain.
+    num_tolerance: float
+        Deprecated alias for rtol; emits a DeprecationWarning when set.
+    trans_conduction: bool
+        Include conductive heat transfer.
+    trans_convection: bool
+        Include convective heat transfer (mixing length theory).
+    trans_grav_sep: bool
+        Include gravitational separation (Stokes settling).
+    trans_mixing: bool
+        Include the chemical mixing flux.
+    mixing_length: str
+        Mixing-length scale: 'nearest' (distance to nearest boundary) or
+        'constant' (a quarter of the mantle depth).
+    kappah_floor: float
+        Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport
+        from freezing out.
+    tmagma_atol: float
+        Maximum absolute change in T_magma per PROTEUS step [K].
+    tmagma_rtol: float
+        Maximum relative change in T_magma per PROTEUS step.
+    tmagma_tides_step: float
+        Maximum change in T_magma allowed when tides are active [K].
+    param_utbl: bool
+        Enable the ultra-thin boundary layer parameterisation.
+    param_utbl_const: float
+        Ultra-thin boundary layer scaling constant [K-1].
+    surface_bc_mode: str
+        Surface boundary condition for SPIDER/Aragog: 'flux' (prescribed
+        F_atm from the atmosphere module) or 'grey_body' (native grey-body
+        boundary condition computed inside the interior solver).
+    const_properties: bool
+        Enable constant-properties mode: bypass the EOS tables and use the
+        analytical T(S) = T_ref * exp((S - S_ref) / Cp) relationship, for
+        controlled parity tests.
 
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
@@ -479,7 +569,7 @@ class Interior:
     )
 
     mixing_length: str = field(default='nearest', validator=in_(('nearest', 'constant')))
-    grain_size: float = field(default=0.1, validator=gt(0))
+    grain_size: float = field(default=1e-3, validator=gt(0))
     flux_guess: float = field(default=-1)
     tmagma_atol: float = field(default=20.0, validator=ge(0))
     tmagma_rtol: float = field(default=0.02, validator=ge(0))
@@ -491,8 +581,9 @@ class Interior:
     radio_U: float = field(default=0.031, validator=ge(0))
     radio_Th: float = field(default=0.124, validator=ge(0))
 
-    rfront_loc: float = field(default=0.5, validator=(gt(0), lt(1)))
+    rfront_loc: float = field(default=0.4, validator=(gt(0), lt(1)))
     rfront_wid: float = field(default=0.2, validator=(gt(0), lt(1)))
+    tmagma_tides_step: float = field(default=10.0, validator=ge(0))
 
     # Phase-dependent eddy diffusivity floor [m^2/s]. Default 0 = standard MLT.
     # When > 0, applies max(kh_MLT, floor * f(phi)) where f transitions from
@@ -718,3 +809,125 @@ class Interior:
         # Resolve the sentinel to the real default if nothing set rtol.
         if not rtol_set:
             object.__setattr__(self, 'rtol', _DEFAULT_RTOL)
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and is independent of the order the fields are declared in.
+DOC_GROUPS = {
+    'Interior': (
+        (
+            None,
+            None,
+            (
+                'module',
+                'num_levels',
+                'rtol',
+                'num_tolerance',
+                'atol',
+                'flux_guess',
+                'surface_bc_mode',
+            ),
+        ),
+        (
+            'Transport physics',
+            None,
+            (
+                'trans_conduction',
+                'trans_convection',
+                'trans_grav_sep',
+                'trans_mixing',
+            ),
+        ),
+        (
+            'Heating',
+            None,
+            (
+                'heat_tidal',
+                'heat_radiogenic',
+                'radio_tref',
+                'radio_Al',
+                'radio_Fe',
+                'radio_K',
+                'radio_U',
+                'radio_Th',
+            ),
+        ),
+        (
+            'Rheology and convection',
+            None,
+            (
+                'rfront_loc',
+                'rfront_wid',
+                'grain_size',
+                'mixing_length',
+                'kappah_floor',
+            ),
+        ),
+        (
+            'Coupling limits',
+            None,
+            (
+                'tmagma_atol',
+                'tmagma_rtol',
+                'tmagma_tides_step',
+            ),
+        ),
+        (
+            'Ultra-thin boundary layer',
+            None,
+            (
+                'param_utbl',
+                'param_utbl_const',
+            ),
+        ),
+        (
+            'Hydrostatic EOS (Adams-Williamson)',
+            None,
+            (
+                'adams_williamson_rhos',
+                'adams_williamson_beta',
+                'adiabatic_bulk_modulus',
+            ),
+        ),
+        (
+            'Phase material properties',
+            None,
+            (
+                'melt_log10visc',
+                'solid_log10visc',
+                'melt_cond',
+                'solid_cond',
+                'eddy_diffusivity_thermal',
+                'eddy_diffusivity_chemical',
+                'latent_heat_of_fusion',
+                'phase_transition_width',
+            ),
+        ),
+        (
+            'Core thermal model',
+            None,
+            ('core_tfac_avg',),
+        ),
+        (
+            'Diagnostics',
+            None,
+            ('write_flux_diagnostics',),
+        ),
+        (
+            'Constant-properties mode',
+            None,
+            (
+                'const_properties',
+                'const_rho',
+                'const_Cp',
+                'const_alpha',
+                'const_cond',
+                'const_log10visc',
+                'const_T_ref',
+                'const_S_ref',
+            ),
+        ),
+    ),
+}

@@ -81,9 +81,21 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.aerosols_enabled',
         'atmos_clim.agni.grey_opacity_lw',
         'atmos_clim.agni.grey_opacity_sw',
+        'atmos_clim.agni.hydrograv_constg',
+        'atmos_clim.agni.hydrograv_maxdr',
+        'atmos_clim.agni.hydrograv_mindr',
+        'atmos_clim.agni.hydrograv_ming',
+        'atmos_clim.agni.hydrograv_selfg',
+        'atmos_clim.agni.hydrograv_steps',
         'atmos_clim.agni.spectral_file',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
+        # Inert while escape.hill_clamp is pinned off for migrated configs.
+        'escape.hill_clamp_frac',
+        # The per-step escape cap and its step floor apply at their measured
+        # defaults, so a migrated config needs no explicit value for either.
+        'escape.step_dt_floor_frac',
+        'escape.step_max_frac',
         'interior_energetics.adams_williamson_beta',
         'interior_energetics.adams_williamson_rhos',
         'interior_energetics.adiabatic_bulk_modulus',
@@ -95,6 +107,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.phase_smoothing',
         'interior_energetics.aragog.phi_step_cap',
         'interior_energetics.aragog.scalar_gravity_override',
+        'interior_energetics.aragog.separation_viscosity',
         'interior_energetics.aragog.solver_method',
         'interior_energetics.aragog.temperature_step_cap',
         'interior_energetics.aragog.tolerance_struct',
@@ -109,7 +122,9 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.boundary.logging',
         'interior_energetics.boundary.nusselt_exponent',
         'interior_energetics.boundary.silicate_density',
+        'interior_energetics.boundary.core_bulk',
         'interior_energetics.boundary.core_density',
+        'interior_energetics.boundary.core_shear',
         'interior_energetics.boundary.silicate_heat_capacity',
         'interior_energetics.boundary.thermal_conductivity',
         'interior_energetics.boundary.thermal_diffusivity',
@@ -173,6 +188,87 @@ _REVIEWED_NEUTRAL = frozenset(
         'observe.reference_pressure',
         'observe.source',
         'observe.spectrum_type',
+        # orbit.evolve/orbit.satellite (2.0 bools) are handled dynamically by
+        # _handle_orbit_dispatch, not a static OVERRIDES pin, so their 3.0
+        # destinations land here rather than in mig.OVERRIDES.
+        'orbit.star_planet_model',
+        'orbit.planet_satellite_model',
+        'orbit.perturber',
+        'orbit.satellite.include_satellite',
+        'orbit.satellite.mass_sat',
+        'orbit.satellite.radius_sat',
+        'orbit.satellite.semimajoraxis_sat',
+        'orbit.satellite.eccentricity_sat',
+        'orbit.satellite.evection_angle',
+        'orbit.satellite.c_factor_sat',
+        'orbit.satellite.axial_period_sat',
+        'orbit.satellite.love_number_sat',
+        # Obliqua (orbit.obliqua.*) has no 2.0 analogue at all; every field
+        # is new and stays at its 3.0 default for a migrated config.
+        'orbit.obliqua.store_3D',
+        'orbit.obliqua.enforce_ec',
+        'orbit.obliqua.optimize_scales',
+        'orbit.obliqua.solid_shell',
+        'orbit.obliqua.cap_LN',
+        'orbit.obliqua.min_frac',
+        'orbit.obliqua.visc_lus',
+        'orbit.obliqua.visc_sus',
+        'orbit.obliqua.n',
+        'orbit.obliqua.m',
+        'orbit.obliqua.k_min',
+        'orbit.obliqua.k_max',
+        'orbit.obliqua.evection_padding_factor',
+        'orbit.obliqua.material_mu',
+        'orbit.obliqua.material_k',
+        'orbit.obliqua.alpha',
+        'orbit.obliqua.verbosity',
+        'orbit.obliqua.module_solid',
+        'orbit.obliqua.module_mushy',
+        'orbit.obliqua.module_fluid',
+        'orbit.obliqua.solid.ncalc',
+        'orbit.obliqua.solid.dr_min',
+        'orbit.obliqua.solid.dr_max',
+        'orbit.obliqua.solid.core',
+        'orbit.obliqua.solid.core_props',
+        'orbit.obliqua.solid.inertial_terms',
+        'orbit.obliqua.solid.bulk_l',
+        'orbit.obliqua.solid.porosity_thresh',
+        'orbit.obliqua.solid.dbulk_power',
+        'orbit.obliqua.mushy.b_width',
+        'orbit.obliqua.mushy.t_width',
+        'orbit.obliqua.fluid.sigma_R',
+        'orbit.obliqua.fluid.sigma_R_factor',
+        'orbit.obliqua.fluid.sigma_R_prf',
+        'orbit.obliqua.fluid.H_R',
+        'orbit.obliqua.fluid.efficiency',
+        # orbit.solver.* has no 2.0 analogue: the adaptive-substep
+        # controller and its shared solve_ivp tolerances did not exist as
+        # config in 2.0 at all.
+        'orbit.solver.method',
+        'orbit.solver.rtol',
+        'orbit.solver.atol',
+        'orbit.solver.dt0_yr',
+        'orbit.solver.dt_max_yr',
+        'orbit.solver.growth',
+        'orbit.solver.shrink',
+        'orbit.solver.max_rel_da',
+        'orbit.solver.max_rel_de',
+        'orbit.solver.max_rel_dOmega',
+        'orbit.solver.de_floor',
+        'orbit.solver.max_substeps',
+        'orbit.solver.resonance_margin_enter',
+        'orbit.solver.resonance_margin_exit',
+        'orbit.solver.resonance_margin_approach',
+        'orbit.solver.fine_csv_target_rel_dt',
+        # params.stop.satellite has no 2.0 analogue; stays at its 3.0
+        # default (disabled) for a migrated config.
+        'params.stop.satellite.enabled',
+        'params.stop.satellite.sma_max',
+        'params.stop.disint_sat.enabled',
+        'params.stop.disint_sat.roche_enabled',
+        'params.stop.disint_sat.offset_roche',
+        'params.stop.disint_sat.spin_enabled',
+        'params.stop.disint_sat.offset_spin',
         'outgas.atmodeller.eos_CH4',
         'outgas.atmodeller.eos_CO',
         'outgas.atmodeller.eos_CO2',
@@ -198,12 +294,28 @@ _REVIEWED_NEUTRAL = frozenset(
         'outgas.calliope.nsolve',
         'outgas.calliope.p_guess_max',
         'outgas.h2_binodal',
+        'outgas.lavatmos.P_melt',
+        'outgas.lavatmos.T_min',
+        'outgas.lavatmos.fO2_buffer_model',
+        'outgas.lavatmos.melt_comp_name',
+        'outgas.lavatmos.xatol',
+        'outgas.vapourise',
         'params.dt.hysteresis_iters',
         'params.dt.hysteresis_sfinc',
         'params.dt.max_growth_factor',
         'params.dt.mushy_maximum',
         'params.dt.mushy_upper',
+        'params.dt.evection_maximum',
+        'params.dt.evection_target_rel_de',
+        'params.dt.evection_de_floor',
+        'params.dt.evection_rate_window',
+        'params.dt.evection_growth_factor',
+        'params.dt.evection_cooldown_iters',
         'params.dt.scale_decr',
+        # The unconverged-atmosphere criterion applies at its measured
+        # default, so a migrated config needs no explicit value for it.
+        'params.stop.stall.enabled',
+        'params.stop.stall.maximum',
         'params.dt.scale_incr',
         'params.dt.window',
         'params.out.dt_write_rel',
@@ -236,7 +348,7 @@ def _unhandled_v2_fields(paths):
             continue
         if path in mig.RENAMES or path in interior_targets:
             continue
-        if path in mig._ELEMENT_FIELDS or path in mig._IC_FIELDS:
+        if path in mig._ELEMENT_FIELDS or path in mig._IC_FIELDS or path in mig._ORBIT_FIELDS:
             continue
         if path in atmos_shared_src:
             continue
@@ -324,15 +436,71 @@ def test_new_field_classified():
         f'new (unclassified): {sorted((pm - overridden) - _REVIEWED_NEUTRAL)}; '
         f'stale allowlist entries: {sorted(_REVIEWED_NEUTRAL - (pm - overridden))}'
     )
-    # The two known behaviour-changing new fields are pinned, not neutral.
+    # The known behaviour-changing new fields are pinned, not neutral.
     assert 'interior_energetics.kappah_floor' in overridden
     assert 'params.dt.maximum_rel' in overridden
+    assert 'interior_energetics.tmagma_tides_step' in overridden
 
 
 def test_kappah_floor_and_maximum_rel_overrides():
     """kappah_floor pins 0.0 (no floor) and maximum_rel pins 0.0 (strict dt cap)."""
     assert mig.OVERRIDES['interior_energetics.kappah_floor'] == 0.0
     assert mig.OVERRIDES['params.dt.maximum_rel'] == 0.0
+
+
+def test_hill_clamp_override_reproduces_unclipped_2_0_escape():
+    """2.0 sized escape from the unmodified XUV radius; the 3.0 default clips
+    it to the Hill radius. The override pins the clip off, so a migrated
+    config keeps its 2.0 escape rates rather than silently gaining the bound.
+    """
+    assert mig.OVERRIDES['escape.hill_clamp'] is False
+    # The live 3.0 default is the opposite; that difference is what the pin
+    # exists to bridge, so it is asserted here too.
+    from proteus.config._escape import Escape
+
+    assert Escape(module='zephyrus').hill_clamp is True
+
+
+def test_bol_scale_window_override_reproduces_unwindowed_2_0_scaling():
+    """2.0 had no time-gating on bol_scale: a non-unity factor applied for
+    the whole run. The live 3.0 default (bol_scale_start=None) disables
+    scaling outright regardless of bol_scale, so a naive migration would
+    silently turn off any bol_scale a 2.0 config had set. The override
+    must pin an always-open window: start at t=0 and a duration far
+    longer than any plausible run.
+    """
+    assert mig.OVERRIDES['star.bol_scale_start'] == pytest.approx(0.0)
+    # Discrimination: the duration must be large enough that no
+    # realistic stellar age (even the ~13.8 Gyr age of the universe)
+    # falls outside the window; a duration comparable to a typical run
+    # length (e.g. 1-10 Gyr) would silently reintroduce a cutoff 2.0
+    # never had.
+    assert mig.OVERRIDES['star.bol_scale_duration'] > 20.0
+
+    v3_defaults, _ = _v3()
+    # The pin is doing the work: the live 3.0 schema default disables
+    # scaling entirely, so letting the field default (rather than pinning
+    # it) would silently change a migrated run's stellar flux.
+    assert v3_defaults['star.bol_scale_start'] is None
+
+
+def test_tmagma_tides_step_override_reproduces_hardcoded_2_0_cap():
+    """2.0 hardcoded a 4.0 K poststep-change cap whenever tidal heating was
+    active (not user-configurable). The live 3.0 default of 10.0 K would
+    relax that cap for a migrated tidal-heating run, so the override must
+    pin the field to the stricter 2.0 value rather than let it default.
+    """
+    assert mig.OVERRIDES['interior_energetics.tmagma_tides_step'] == pytest.approx(4.0)
+    # Discrimination: the pin must be strictly tighter than the live 3.0
+    # default; a regression that pinned the 3.0 default value itself (a
+    # no-op override) would still satisfy an unconstrained equality check
+    # but relax the tidal-heating dT cap for migrated 2.0 runs.
+    v3_defaults, _ = _v3()
+    assert v3_defaults['interior_energetics.tmagma_tides_step'] == pytest.approx(10.0)
+    assert (
+        mig.OVERRIDES['interior_energetics.tmagma_tides_step']
+        < v3_defaults['interior_energetics.tmagma_tides_step']
+    )
 
 
 def _translate(v2_dict):
@@ -604,6 +772,72 @@ def test_radius_int_converts_earth_radii_to_metres():
     assert flat['planet.R_int_override'] > 1e6
     # planet.mass_tot is left at the 3.0 default with a warning.
     assert any('radius-specified' in w for w in report.warnings)
+
+
+def test_orbit_satellite_sma_converts_metres_to_earth_radii():
+    """A 2.0 orbit.semimajoraxis_sat (metres) converts to 3.0's R_earth-valued
+    orbit.satellite.semimajoraxis_sat, not AU.
+
+    2.0 consumes semimajoraxis_sat as a metre quantity; 3.0's
+    orbit.satellite.semimajoraxis_sat is in R_earth (see the Satellite class
+    docstring in src/proteus/config/_orbit.py and its use as
+    ``semimajoraxis_sat * R_earth`` in src/proteus/orbit/wrapper.py). Dividing
+    by AU instead of R_earth would be off by a factor of AU/R_earth (~23600x).
+    """
+    v2 = _minimal_spider_v2()
+    v2['orbit']['satellite'] = True
+    v2['orbit']['mass_sat'] = 7.347e22  # kg
+    v2['orbit']['semimajoraxis_sat'] = 3.0e8  # m
+    flat, report = _translate(v2)
+
+    assert flat['orbit.satellite.semimajoraxis_sat'] == pytest.approx(47.35268, rel=1e-5)
+    # Discrimination guard: the stale AU-divisor result (3e8 / 1.495978707e11)
+    # differs from the correct R_earth-divisor result by more than four orders
+    # of magnitude, so a regression to the old divisor cannot pass silently.
+    au_divisor_result = 3.0e8 / 1.495978707e11
+    assert abs(flat['orbit.satellite.semimajoraxis_sat'] - au_divisor_result) > 1.0
+
+    # mass_sat's M_earth conversion is unaffected by this fix and stays pinned.
+    assert flat['orbit.satellite.mass_sat'] == pytest.approx(0.01230241, rel=1e-5)
+    assert flat['orbit.satellite.include_satellite'] is True
+
+
+def test_albedo_lookup_table_is_dropped_with_a_warning():
+    """A 2.0 config whose ``albedo_pl`` names a CSV lookup table migrates to a
+    valid 3.0 config, leaving the field at its default and saying so.
+
+    2.0 accepted either a constant or a path; 3.0 narrowed the field to a float
+    and removed the lookup. Copying the path through would emit a 3.0 config
+    that fails validation, and quietly substituting a number would change the
+    physics without telling the user. Edge case: a numeric ``albedo_pl`` is
+    unaffected and must still be copied verbatim.
+    """
+    v2 = _minimal_spider_v2()
+    v2['atmos_clim']['albedo_pl'] = 'surface_albedos/lookup.csv'
+    flat, report = _translate(v2)
+
+    # The emitted config is valid: the field is absent, so 3.0 supplies its own
+    # default rather than inheriting a string.
+    assert 'atmos_clim.albedo_pl' not in flat
+    # The user is told, by name, what was dropped and what to do about it.
+    albedo_warnings = [w for w in report.warnings if 'albedo_pl' in w]
+    assert len(albedo_warnings) == 1
+    assert 'surface_albedos/lookup.csv' in albedo_warnings[0]
+    assert 'constant' in albedo_warnings[0]
+
+    # Discrimination: a numeric albedo is a different case and must survive
+    # unchanged, so the branch keys on the value type and not on the field name.
+    numeric = _minimal_spider_v2()
+    numeric['atmos_clim']['albedo_pl'] = 0.3
+    flat_numeric, report_numeric = _translate(numeric)
+    assert flat_numeric['atmos_clim.albedo_pl'] == pytest.approx(0.3, rel=1e-12)
+    assert [w for w in report_numeric.warnings if 'albedo_pl' in w] == []
+    # Limit input: zero is a legitimate albedo and must not be confused with
+    # "unset" by the keep filter.
+    zero = _minimal_spider_v2()
+    zero['atmos_clim']['albedo_pl'] = 0.0
+    flat_zero, _ = _translate(zero)
+    assert flat_zero['atmos_clim.albedo_pl'] == pytest.approx(0.0, abs=1e-15)
 
 
 def test_clean_spider_config_warns_only_about_legacy_observe_synthesis():

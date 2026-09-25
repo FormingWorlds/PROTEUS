@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import gas_list
-from proteus.utils.plot import get_colour, latexify
+from proteus.utils.plot import get_colour, get_linestyle, latexify
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -20,7 +20,12 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def plot_global(
-    hf_all: pd.DataFrame, output_dir: str, config: Config, logt: bool = True, tmin: float = 1e3
+    hf_all: pd.DataFrame,
+    output_dir: str,
+    config: Config,
+    logt: bool = True,
+    tmin: float = 1e3,
+    pressure_floor: float = 1e-5,
 ):
     if np.amax(hf_all['Time']) < 3:
         log.debug('Insufficient data to make plot_global')
@@ -61,19 +66,26 @@ def plot_global(
 
     for vol in gas_list:
         # Check vmr for presence
-        this_vmr = np.array(hf[vol + '_vmr'])
+        this_bar = np.array(hf[vol + '_bar'])
         vol_present[vol] = True
 
-        if np.amax(this_vmr) < 1.0e-10:
+        if np.amax(this_bar) < 1.0e-10:
             vol_present[vol] = False
             continue
-        vol_vmr[vol] = this_vmr
 
         # Do other variables
         vol_bars[vol] = np.array(hf[vol + '_bar'])
         vol_mol_atm[vol] = np.array(hf[vol + '_mol_atm'])
         vol_mol_tot[vol] = np.array(hf[vol + '_mol_total'])
         vol_mol_int[vol] = vol_mol_tot[vol] - vol_mol_atm[vol]
+
+        Psurf = np.array(hf['P_surf'])
+
+        vol_vmr[vol] = np.zeros_like(this_bar, dtype=float)
+        mask = (
+            Psurf > 1e-30
+        )  # only divide by Psurf if it is larger than 1e-30 -> avoids by zero division
+        vol_vmr[vol][mask] = this_bar[mask] / Psurf[mask]
 
         # Volatile partitioning into the interior
         # Requires special treatment for when moles=0, which occurs when atmosphere escapes.
@@ -104,7 +116,8 @@ def plot_global(
 
     # Set x-labels
     for ax in (ax_bl, ax_br):
-        ax.set_xlabel('Time [yr]')
+        t_ini = config.star.age_ini * 1e3
+        ax.set_xlabel(r'Planet age [yr], after $t_0^\text{star}=$' + f'{t_ini:g} Myr')
 
     # Set titles
     ax_titles = [
@@ -143,7 +156,6 @@ def plot_global(
         for ax in axs:
             ax.set_xscale('log')
     ax_tl.set_yscale('symlog', linthresh=0.1)
-    ax_tr.set_yscale('log')
 
     # Set xlim
     xmin = max(tmin, 1.0)
@@ -244,19 +256,25 @@ def plot_global(
     bar_min, bar_max = 0.1, 1.0
     bar_max = max(bar_max, np.amax(hf['P_surf']))
     for vol in gas_list:
+        # skip species with no presence
         if not vol_present[vol]:
+            continue
+        # skip species with partial pressure less than floor
+        if np.amax(vol_bars[vol]) < pressure_floor:
             continue
         ax_tr.plot(
             hf['Time'],
             vol_bars[vol],
             color=get_colour(vol),
+            ls=get_linestyle(vol),
             lw=lw,
             alpha=al,
             label=latexify(vol),
         )
         bar_min = min(bar_min, np.amin(vol_bars[vol]))
-    ax_tr.set_ylim(max(1.0e-5, min(bar_min, 1.0e-1)), bar_max * 2.0)
-    ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5))
+    ax_tr.set_yscale('symlog', linthresh=max(pressure_floor, min(bar_min, 1.0e-1)))
+    ax_tr.set_ylim(0, bar_max * 2.0)
+    # ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5))
 
     # PLOT ax_cr
     for vol in gas_list:
@@ -266,6 +284,7 @@ def plot_global(
             hf['Time'],
             vol_vmr[vol] * 100.0,
             color=get_colour(vol),
+            ls=get_linestyle(vol),
             lw=lw,
             alpha=al,
             label=latexify(vol),
@@ -280,12 +299,28 @@ def plot_global(
             hf['Time'],
             vol_intpart[vol] * 100.0,
             color=get_colour(vol),
+            ls=get_linestyle(vol),
             lw=lw,
             alpha=al,
             label=latexify(vol),
         )
     ax_br.set_ylim(0, 101)
-    ax_br.legend(loc='center left', ncol=2, **leg_kwargs).set_zorder(20)
+
+    # legend with gas names
+    leg_length = np.sum([vol_present[vol] for vol in gas_list])
+    if leg_length > 12:
+        # big legend -> place below plot
+        ncol = leg_length // 4
+        leg = ax_br.legend(
+            loc='upper right', ncol=ncol, bbox_to_anchor=(1.0, -0.3), fontsize=10, **leg_kwargs
+        )
+    else:
+        # small legend -> keep inside axis
+        ncol = 1 if leg_length <= 6 else 2
+        leg = ax_br.legend(
+            loc='center left', ncol=ncol, bbox_to_anchor=(0.02, 0.5), fontsize=10, **leg_kwargs
+        )
+    leg.set_zorder(999)
 
     # Save plot
     fig.subplots_adjust(wspace=0.05, hspace=0.1)

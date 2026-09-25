@@ -4,7 +4,6 @@ configuration invariants they depend on.
 
 Reusable shell logic replicated inline from ``tools/get_petsc.sh`` and
 ``tools/get_spider.sh``:
-- ``portable_realpath()``: cross-platform path resolution
 - ERR trap: exit-code and step-name capture
 - Platform detection: PETSC_ARCH assignment
 - Homebrew prefix fallback: architecture-aware default
@@ -13,9 +12,13 @@ Reusable shell logic replicated inline from ``tools/get_petsc.sh`` and
 
 Blocks lifted out of the shipped scripts at run time, so that rewording a
 script re-runs its cases against the new text:
+- ``portable_realpath()``: cross-platform path resolution, including a
+  destination that does not exist yet, plus the invariant that every
+  ``get_*.sh`` copy of the helper carries the same text
 - ``tools/get_aragog.sh``: the dirty-checkout guard shared across ``get_*.sh``
 - ``tools/get_socrates.sh``: the portable-flag rewrite, its post-build flag
-  check, and the conditional AGNI-wrapper rebuild note
+  check, the install-path resolution, and the conditional AGNI-wrapper
+  rebuild note
 
 Also pins invariants that live in checked-in configuration and documentation
 rather than in shell, each of which fails silently when its counterpart moves:
@@ -48,17 +51,30 @@ import pytest
 # ---------------------------------------------------------------------------
 # Helper: extract portable_realpath function from a script
 # ---------------------------------------------------------------------------
+def _extract_shell_function(script: str, name: str) -> str:
+    """Return the shipped bash source of ``name`` in ``tools/<script>``.
+
+    Lifting the definition out of the script under test, rather than copying
+    it here, keeps the cases below running against the shipped text.
+    """
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    lines = (tools_dir / script).read_text().splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.startswith(f'{name}() {{'))
+    end = next(i for i, ln in enumerate(lines) if ln == '}' and i > start)
+    return '\n'.join(lines[start : end + 1]) + '\n'
+
+
 def _portable_realpath_fn() -> str:
-    """Return the bash source for ``portable_realpath()``."""
-    return """\
-portable_realpath() {
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$1"
-    else
-        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
-    fi
-}
-"""
+    """Return the bash source for the shipped ``portable_realpath()``.
+
+    Nine ``get_*.sh`` scripts carry the helper, so which one is read is
+    arbitrary; ``get_socrates.sh`` is the one whose install-path handling is
+    exercised further down this file. Reading a single copy is sound only
+    because ``test_portable_realpath_identical_across_get_scripts`` pins the
+    copies as the same text: drop that test and these cases stop covering
+    the other eight.
+    """
+    return _extract_shell_function('get_socrates.sh', 'portable_realpath')
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +172,53 @@ def test_portable_realpath_python_fallback(tmp_path):
     resolved = result.stdout.strip()
     assert os.path.isabs(resolved)
     assert resolved == str(target)
+
+
+@pytest.mark.unit
+def test_portable_realpath_resolves_missing_path(tmp_path):
+    """Resolves a destination that does not exist yet, as an install path.
+
+    BSD realpath (macOS) rejects a missing leaf and GNU realpath a missing
+    parent, so both a missing leaf and a missing nested path are covered.
+    An empty result here is the regression: the caller feeds the value
+    straight to ``git clone``, which then fails on an empty work-tree name.
+    """
+    leaf = tmp_path / 'not-created-yet'
+    nested = tmp_path / 'no' / 'such' / 'tree'
+    snippet = (
+        _portable_realpath_fn() + f'\nportable_realpath "{leaf}"\nportable_realpath "{nested}"'
+    )
+    result = subprocess.run(['bash', '-c', snippet], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    resolved = result.stdout.split()
+    assert len(resolved) == 2, result.stdout
+    # tmp_path is under a symlinked /var on macOS, so compare against the
+    # resolved parent rather than against the literal input path.
+    real_root = os.path.realpath(tmp_path)
+    assert resolved[0] == os.path.join(real_root, 'not-created-yet')
+    assert resolved[1] == os.path.join(real_root, 'no', 'such', 'tree')
+
+
+@pytest.mark.unit
+def test_portable_realpath_identical_across_get_scripts():
+    """Every ``tools/get_*.sh`` copy of the helper is the same text.
+
+    The helper is duplicated because the scripts are standalone; a fix
+    applied to one copy and not the others reintroduces the missing-path
+    failure in whichever script was missed.
+    """
+    tools_dir = Path(__file__).resolve().parents[2] / 'tools'
+    copies = {
+        script.name: _extract_shell_function(script.name, 'portable_realpath')
+        for script in sorted(tools_dir.glob('get_*.sh'))
+        if 'portable_realpath() {' in script.read_text()
+    }
+
+    # Guard the guard: a mis-rooted glob would make the comparison vacuous.
+    assert len(copies) >= 5, sorted(copies)
+    assert 'get_socrates.sh' in copies
+    assert len(set(copies.values())) == 1, sorted(copies)
 
 
 # ---------------------------------------------------------------------------
@@ -1020,6 +1083,81 @@ def test_post_build_guard_rejects_cpu_specific_template_flags(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Install-path resolution (tools/get_socrates.sh)
+# ---------------------------------------------------------------------------
+
+
+def _run_install_path_block(root, argv, stub_resolver: str = '') -> subprocess.CompletedProcess:
+    """Run the shipped argument split and install-path resolution.
+
+    ``stub_resolver`` replaces ``portable_realpath`` with a fixture, so the
+    empty-resolution branch can be reached without an unusable host.
+    """
+    block = _extract_socrates_block(
+        '# Separate the --force flag', '# Refuse to delete a checkout'
+    )
+    resolver = stub_resolver or _portable_realpath_fn()
+    snippet = f'set -u\nroot="{root}"\n' + resolver + block + '\necho "SOCPATH=$socpath"\n'
+    return subprocess.run(
+        ['bash', '-c', snippet, 'get_socrates.sh', *argv],
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.mark.unit
+def test_install_path_resolves_before_the_checkout_exists(tmp_path):
+    """A custom destination that does not exist yet resolves to a real path.
+
+    git clone creates the destination, including its parents, so the script
+    must not require the directory up front. An empty resolution is the
+    failure this pins: git clone then reports an empty work-tree name.
+    """
+    dest = tmp_path / 'no' / 'socrates-here'
+    res = _run_install_path_block(tmp_path / 'root', [str(dest)])
+
+    assert res.returncode == 0, res.stderr
+    socpath = res.stdout.strip().removeprefix('SOCPATH=')
+    assert socpath, res.stderr
+    assert socpath == os.path.join(os.path.realpath(tmp_path), 'no', 'socrates-here')
+
+
+@pytest.mark.unit
+def test_install_path_default_and_force_flag(tmp_path):
+    """--force alone keeps the default destination; a path with it is honoured.
+
+    The flag and the optional positional share one argument list, so the
+    ordering of the two must not shift which value lands in socpath.
+    """
+    root = tmp_path / 'root'
+    dest = tmp_path / 'elsewhere'
+
+    default = _run_install_path_block(root, ['--force'])
+    assert default.returncode == 0, default.stderr
+    assert default.stdout.strip() == f'SOCPATH={root}/socrates'
+
+    override = _run_install_path_block(root, ['--force', str(dest)])
+    assert override.returncode == 0, override.stderr
+    assert override.stdout.strip() == f'SOCPATH={os.path.realpath(tmp_path)}/elsewhere'
+
+
+@pytest.mark.unit
+def test_install_path_rejects_unresolvable_path(tmp_path):
+    """An empty resolution stops the script instead of reaching git clone.
+
+    set -euo pipefail is enabled further down the script, so a resolver that
+    fails here would otherwise leave socpath empty and continue.
+    """
+    stub = 'portable_realpath() {\n    return 1\n}\n'
+    res = _run_install_path_block(tmp_path / 'root', ['some/path'], stub_resolver=stub)
+
+    assert res.returncode == 1, res.stdout
+    assert 'could not resolve install path' in res.stderr
+    assert 'some/path' in res.stderr
+    assert 'SOCPATH=' not in res.stdout
+
+
+# ---------------------------------------------------------------------------
 # Post-rebuild AGNI-wrapper note (tools/get_socrates.sh)
 # ---------------------------------------------------------------------------
 
@@ -1150,3 +1288,158 @@ def test_ci_config_never_pins_user():
         'several jobs, and pinning a real account name breaks on the next '
         f'runner rename. Remove these: {offenders}'
     )
+
+
+# CVODE install: tools/get_cvode.sh run against stub python, pip and conda, and
+# the two install.sh blocks that turn a CVODE failure into an abort.
+_CVODE_INSTALL = 'pip install scikits-odes-sundials>=3.0,<4'
+_CVODE_REBUILD = (
+    'pip install --force-reinstall --no-deps --no-cache-dir --no-binary '
+    'scikits-odes-sundials scikits-odes-sundials>=3.0,<4'
+)
+
+
+def _run_get_cvode(tmp_path, *, importable: str, present: bool, after: str):
+    """Run the shipped ``tools/get_cvode.sh`` with stubs; return (result, pip/conda log).
+
+    ``importable`` is whether the CVODE import works before the script runs,
+    ``present`` whether pip lists the package, ``after`` whether the import
+    works once a ``pip install`` has run. No network and no build happen.
+    """
+    stubs = tmp_path / 'bin'
+    state = tmp_path / 'state'
+    stubs.mkdir()
+    state.mkdir()
+    (state / 'importable').write_text(importable)
+    if present:
+        (state / 'pkg').write_text('')
+    scripts = {
+        'python': '[ "$(cat "$STATE/importable")" = yes ]\n',
+        'pip': (
+            'echo "pip $*" >> "$STATE/log"\n'
+            'case "$1" in\n'
+            '  show) [ -e "$STATE/pkg" ] ;;\n'
+            '  install) : > "$STATE/pkg"; echo "$AFTER" > "$STATE/importable" ;;\n'
+            'esac\n'
+        ),
+        'conda': 'echo "conda $*" >> "$STATE/log"\n',
+    }
+    for name, body in scripts.items():
+        path = stubs / name
+        path.write_text('#!/usr/bin/env bash\n' + body)
+        path.chmod(0o755)
+    script = Path(__file__).resolve().parents[2] / 'tools' / 'get_cvode.sh'
+    env = {
+        **os.environ,
+        'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}',
+        'CONDA_PREFIX': str(tmp_path / 'env'),
+        'CONDA_EXE': str(stubs / 'conda'),
+        'STATE': str(state),
+        'AFTER': after,
+    }
+    res = subprocess.run(['bash', str(script)], capture_output=True, text=True, env=env)
+    log = (state / 'log').read_text() if (state / 'log').exists() else ''
+    return res, log
+
+
+@pytest.mark.unit
+def test_get_cvode_does_nothing_when_the_three_names_import(tmp_path):
+    """A working CVODE is left alone: no conda call, no pip call."""
+    res, log = _run_get_cvode(tmp_path, importable='yes', present=True, after='yes')
+
+    assert res.returncode == 0, res.stderr
+    assert 'nothing to do' in res.stdout
+    assert log == ''
+
+
+@pytest.mark.unit
+def test_get_cvode_installs_a_missing_package_without_forcing(tmp_path):
+    """No wrapper installed: a plain pip install, not a forced rebuild."""
+    res, log = _run_get_cvode(tmp_path, importable='no', present=False, after='yes')
+
+    assert res.returncode == 0, res.stderr
+    assert _CVODE_INSTALL in log
+    assert '--force-reinstall' not in log
+
+
+@pytest.mark.unit
+def test_get_cvode_rebuilds_an_installed_wrapper_that_does_not_import(tmp_path):
+    """pip calls an installed wrapper satisfied, so a broken one needs a forced source rebuild."""
+    res, log = _run_get_cvode(tmp_path, importable='no', present=True, after='yes')
+
+    assert res.returncode == 0, res.stderr
+    assert _CVODE_REBUILD in log
+    assert 'rebuilding' in res.stdout
+
+
+@pytest.mark.unit
+def test_get_cvode_fails_when_the_wrapper_still_does_not_import(tmp_path):
+    """The hard gate after the install exits 1 instead of reporting success."""
+    res, _ = _run_get_cvode(tmp_path, importable='no', present=True, after='no')
+
+    assert res.returncode == 1
+    assert 'does not import' in res.stderr
+    assert 'importable' not in res.stdout
+
+
+def _install_sh_block(marker: str) -> str:
+    """The shipped lines of ``install.sh`` from the one holding ``marker`` to the next blank line."""
+    lines = (Path(__file__).resolve().parents[2] / 'install.sh').read_text().splitlines()
+    start = next(i for i, ln in enumerate(lines) if marker in ln)
+    end = next(i for i, ln in enumerate(lines) if not ln.strip() and i > start)
+    return '\n'.join(lines[start:end]) + '\n'
+
+
+def _run_install_block(tmp_path, marker: str, *, exit_code: int):
+    """Run one ``install.sh`` block with ``warn`` and ``die`` printing WARN and DIE, and stubs."""
+    (tmp_path / 'tools').mkdir()
+    (tmp_path / 'tools' / 'get_cvode.sh').write_text(f'exit {exit_code}\n')
+    stubs = tmp_path / 'bin'
+    stubs.mkdir()
+    (stubs / 'python').write_text(f'#!/usr/bin/env bash\nexit {exit_code}\n')
+    (stubs / 'python').chmod(0o755)
+    snippet = (
+        'info() { :; }\nwarn() { echo "WARN: $1" >&2; }\ndie() { echo "DIE: $1" >&2; exit 1; }\n'
+        + _install_sh_block(marker)
+        + 'echo REACHED\n'
+    )
+    env = {**os.environ, 'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}'}
+    return subprocess.run(
+        ['bash', '-c', snippet], capture_output=True, text=True, cwd=tmp_path, env=env
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'marker',
+    ['Setting up the SUNDIALS CVODE solver', 'python -c "from scikits_odes_sundials.cvode'],
+    ids=['install-step', 'after-proteus-install'],
+)
+def test_install_sh_warns_and_goes_on_when_cvode_fails(tmp_path, marker):
+    """A failed CVODE install, or a CVODE that stops importing, warns and the installer goes on.
+
+    Only Aragog on ``solver_method = "cvode"`` needs it, and that run stops at
+    setup, so SPIDER, radau and bdf users can finish the installation.
+    """
+    res = _run_install_block(tmp_path, marker, exit_code=1)
+
+    assert res.returncode == 0, res.stderr
+    assert 'WARN: CVODE' in res.stderr
+    assert 'DIE' not in res.stderr
+    assert 'bash tools/get_cvode.sh' in res.stderr
+    assert 'REACHED' in res.stdout
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'marker',
+    ['Setting up the SUNDIALS CVODE solver', 'python -c "from scikits_odes_sundials.cvode'],
+    ids=['install-step', 'after-proteus-install'],
+)
+def test_install_sh_goes_on_when_cvode_works(tmp_path, marker):
+    """The same blocks stay silent when CVODE installs and imports."""
+    res = _run_install_block(tmp_path, marker, exit_code=0)
+
+    assert res.returncode == 0, res.stderr
+    assert 'WARN' not in res.stderr
+    assert 'REACHED' in res.stdout

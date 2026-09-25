@@ -129,6 +129,51 @@ def _estimate_escape(hf_all: pd.DataFrame, i1: int, i2: int) -> float:
     return dt_escape
 
 
+def _estimate_bolscale(hf_all: pd.DataFrame, config: Config) -> float:
+    """
+    Estimate the time remaining until the bolometric scaling begins or ends.
+
+    This ensures that the timestep does not skip over the bolometric scaling
+    period, if the period is small and the timestep is large.
+
+    Arguments
+    ----------
+    hf_all : pd.DataFrame
+        Dataframe containing simulation variables
+    config : Config
+        Configuration object
+
+    Returns
+    ----------
+    dt_bolscale : float
+        Time remaining until bolometric scaling begins or ends [years].
+    """
+
+    dt_bolscale = np.inf
+
+    # Trivial case: bolometric scaling is not enabled
+    if config.star.bol_scale == 1.0 or config.star.bol_scale_start is None:
+        log.debug('Bolometric scaling is disabled')
+        return dt_bolscale
+
+    # Stellar age now, and the start/end of bolometric scaling
+    age_now = hf_all.iloc[-1].get('age_star', 0.0)
+    age_ini = config.star.bol_scale_start * 1e9
+    age_end = age_ini + config.star.bol_scale_duration * 1e9
+
+    # Before bolometric scaling begins
+    if age_now < age_ini:
+        dt_bolscale = abs(age_ini - age_now)
+        log.debug('Bolometric scaling starts in %.3e yrs' % dt_bolscale)
+
+    # During bolometric scaling
+    elif age_now < age_end:
+        dt_bolscale = abs(age_end - age_now)
+        log.debug('Bolometric scaling ends in %.3e yrs' % dt_bolscale)
+
+    return dt_bolscale
+
+
 def next_step(
     config: Config,
     dirs: dict,
@@ -154,9 +199,10 @@ def next_step(
             Scale factor to apply to step size
         interior_o : Interior_t, optional
             Interior object used to persist stiffness-aware adaptive
-            state (hysteresis counter) across calls. When ``None``,
-            the hysteresis and stiffness logging features are
-            disabled and the controller runs without hysteresis. Pass
+            state (hysteresis counter, evection growth-limiter cooldown
+            counter) across calls. When ``None``, the hysteresis,
+            stiffness logging, and evection growth-limiter features are
+            disabled and the controller runs without them. Pass
             ``interior_o`` when available.
 
     Returns
@@ -282,6 +328,48 @@ def next_step(
         dtminimum += config.params.dt.minimum_rel * hf_row['Time']  # allow small steps
         dtswitch = max(dtswitch, dtminimum)
 
+    # Do not let the step repeat an escape overshoot at the same size. The limit
+    # is the step that would have put the previous escape rate at the cap, so it
+    # shrinks in proportion to how far over the request went. Applied to every
+    # branch, because escape can be running during the static and initial ones.
+    esc_dt_limit = (
+        getattr(interior_o, 'escape_dt_limit', float('inf'))
+        if interior_o is not None
+        else float('inf')
+    )
+    if np.isfinite(esc_dt_limit) and esc_dt_limit < dtswitch:
+        # The escape limit may go below dt.minimum, but only by a bounded
+        # factor: the floor otherwise overrides it on almost every step the cap
+        # binds on, while an unbounded shrink produces a step no run finishes.
+        esc_floor = config.params.dt.minimum * float(config.escape.step_dt_floor_frac)
+        allowed = max(esc_dt_limit, esc_floor)
+        if allowed < dtswitch:
+            log.info(
+                'Time-stepping: escape hit the per-step cap, limiting dt to %.2e yr '
+                'instead of %.2e yr',
+                allowed,
+                dtswitch,
+            )
+            dtswitch = allowed
+        if esc_dt_limit < esc_floor:
+            log.warning(
+                'Escape asked for a step of %.2e yr, below the escape floor of '
+                '%.2e yr; the loss stays capped and the run-down is spread over '
+                'more steps than the rate implies.',
+                esc_dt_limit,
+                esc_floor,
+            )
+
+    # Do not allow step size to skip bolometric scaling start/stop
+    if hf_all is not None:
+        # Clamp dtswitch
+        dt_bolscale = _estimate_bolscale(hf_all, config)
+        dtswitch = min(dtswitch, dt_bolscale)
+
+        # Record the timestep as having been clamped
+        if interior_o is not None:
+            interior_o.timestep_clamped = bool(dt_bolscale <= dtswitch)
+
     # Apply the SPIDER-retry step scale factor uniformly to all branches.
     # In the "static" (Time < 2 yr) and "initial" branches, step_sf is
     # applied so each retry actually shrinks dt rather than reusing the
@@ -330,6 +418,36 @@ def next_step(
                     dtswitch,
                 )
                 dtswitch = mushy_max
+
+    # Evection-resonance dt cap: mirrors the mushy-regime cap above, for a
+    # different stiffness source. Computed and exported by
+    # proteus.orbit.satellite.evolve_orbit_satellite -- see
+    # _estimate_evection_dt_cap_yr's own docstring there for the physical
+    # reasoning (tidal-mode-window coverage, not just orbital-state
+    # smoothness) and why the whole mechanism (rate cap AND the evection-
+    # scoped growth limiter that used to sit here, with its own cooldown
+    # counter) is computed in orbit now: this is the ONLY evection-related
+    # read left in next_step, a single precomputed value folded into
+    # dtswitch like any other cap.
+    #
+    # `evection_dt_cap_yr` is a registered helpfile column, so
+    # ZeroHelpfileRow() has already initialised it to 0.0 in hf_row before
+    # orbit ever runs (e.g. no planet_satellite_model configured, or the
+    # very first iteration) -- NOT np.inf, unlike the in-memory default
+    # `_estimate_evection_dt_cap_yr` itself returns. A genuine computed
+    # cap can never be <= 0.0 (every bound it folds together is strictly
+    # positive whenever finite), so <= 0.0 unambiguously means "not yet
+    # computed", treated as no cap.
+    evection_cap = float(hf_row.get('evection_dt_cap_yr', np.inf))
+    if evection_cap <= 0.0:
+        evection_cap = np.inf
+    if np.isfinite(evection_cap) and dtswitch > evection_cap:
+        log.info(
+            'Time-stepping: evection cap active, capping dt at %.2e yr (was %.2e yr)',
+            evection_cap,
+            dtswitch,
+        )
+        dtswitch = evection_cap
 
     # On retries (step_sf < 1) in the static/initial branches we
     # deliberately allow dt to fall below dt.minimum; the whole point of

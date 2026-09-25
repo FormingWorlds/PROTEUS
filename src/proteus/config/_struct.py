@@ -3,12 +3,26 @@ from __future__ import annotations
 from typing import Optional
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, le, lt
+from attrs.validators import ge, gt, in_, le, lt, optional
+
+from proteus.utils.constants import PALEOS_EOS_PREFIXES
 
 from ._converters import none_if_none
 
 
 def valid_zalmoxis(instance, attribute, value):
+    """Validate Zalmoxis EOS format strings and reject unsupported miscibility options."""
+    # `global_miscibility` needs the H2-silicate binodal handoff (Zalmoxis tracker #64),
+    # not yet implemented. Reject it for every structure module: only the zalmoxis
+    # structure writes the solvus that the main loop and SPIDER read.
+    if getattr(instance.zalmoxis, 'global_miscibility', False):
+        raise ValueError(
+            '`interior_struct.zalmoxis.global_miscibility = true` is not yet usable: '
+            'it requires the H2-silicate binodal handoff on the Zalmoxis side '
+            '(Zalmoxis tracker #64), which the pinned release does not implement. '
+            'Use `dry_mantle = false` for phase-aware H2O mixing without miscibility.'
+        )
+
     if instance.module == 'spider':
         return
 
@@ -30,35 +44,24 @@ def valid_zalmoxis(instance, attribute, value):
             f"got '{ice_layer_eos}'"
         )
 
-    # Phase-aware volatile mixing (`dry_mantle = false`) is supported: the
-    # pinned Zalmoxis release evaluates a per-shell volatile profile in the
-    # mantle density. Binodal-aware miscibility (`global_miscibility`)
-    # additionally requires the H2-silicate binodal handoff on the Zalmoxis
-    # side (Zalmoxis tracker #64), which is not yet implemented, so it stays
-    # gated on its own merits rather than on the pin.
-    if getattr(instance.zalmoxis, 'global_miscibility', False):
-        raise ValueError(
-            '`interior_struct.zalmoxis.global_miscibility = true` is not yet usable: '
-            'it requires the H2-silicate binodal handoff on the Zalmoxis side '
-            '(Zalmoxis tracker #64), which the pinned release does not implement. '
-            'Use `dry_mantle = false` for phase-aware H2O mixing without miscibility.'
-        )
-
     # WolfBower2018 EOS is limited to 1 TPa. For planets > 2 M_earth,
     # CMB pressure exceeds this and Zalmoxis will fail to converge.
     import logging as _logging
 
     _log = _logging.getLogger('fwl.' + __name__)
-    # mushy_zone_factor only applies to PALEOS unified tables
+    # mushy_zone_factor scales the derived solidus only for the PALEOS EOS family
     mzf = getattr(instance.zalmoxis, 'mushy_zone_factor', 0.8)
-    if mzf < 1.0 and not mantle_eos.startswith('PALEOS:'):
+    layer_eos = [core_eos, mantle_eos, ice_layer_eos]
+    if mzf < 1.0 and not any(e and e.startswith(PALEOS_EOS_PREFIXES) for e in layer_eos):
         _log.warning(
-            'mushy_zone_factor=%.2f has no effect with mantle EOS %s. '
-            'The mushy zone factor only applies to PALEOS unified tables. '
-            'For WolfBower2018/RTPress100TPa, the mushy zone is defined by '
-            'the solidus/liquidus melting curve files.',
+            'mushy_zone_factor=%.2f has no effect with core EOS %s, mantle EOS %s '
+            'and ice layer EOS %s. The mushy zone factor applies only to the PALEOS '
+            'EOS family. For WolfBower2018/RTPress100TPa, the mushy zone is defined '
+            'by the solidus/liquidus melting curve files.',
             mzf,
+            core_eos,
             mantle_eos,
+            ice_layer_eos,
         )
 
     # 2-layer model (no ice layer, non-T-dep mantle): mantle_mass_fraction must be 0
@@ -101,16 +104,16 @@ class Zalmoxis:
         Tabulated: "PALEOS:H2O", "Seager2007:H2O". Analytic: "Analytic:H2O".
     mushy_zone_factor: float
         Cryoscopic depression factor controlling the width of the mushy
-        zone (partially molten region) in the PALEOS unified EOS.
+        zone (partially molten region) in the PALEOS EOS family.
         Defines the solidus as T_sol = T_liq * mushy_zone_factor.
         1.0 = sharp phase boundary (no mushy zone).
-        0.8 = solidus at 80% of the liquidus temperature, roughly
-        matching the Stixrude+2014 cryoscopic depression for MgSiO3.
-        Must be in [0.7, 1.0]. Only applies to PALEOS unified EOS;
-        ignored for WolfBower2018 and RTPress100TPa (which use explicit
-        melting curve files). This factor is applied consistently across
-        Zalmoxis (density interpolation), SPIDER (phase boundaries),
-        and the VolatileProfile phi-blending.
+        0.8 = solidus at 80% of the liquidus temperature, the constant
+        solidus-to-liquidus ratio of Stixrude+2014 for MgSiO3, applied here
+        to the PALEOS liquidus.
+        Must be in [0.7, 1.0]. Applies to the PALEOS EOS family (PALEOS,
+        PALEOS-2phase, PALEOS-API, PALEOS-API-2phase); ignored for
+        WolfBower2018 and RTPress100TPa (which use explicit melting curve
+        files) and for Seager2007/Analytic (no derived solidus).
     mantle_mass_fraction: float
         Fraction of the planet's interior mass corresponding to the mantle.
         Required for 3-layer models (with ice layer) and for T-dependent
@@ -130,6 +133,59 @@ class Zalmoxis:
         Number of pressure points in SPIDER P-S tables generated from PALEOS.
     lookup_nS: int
         Number of entropy points in SPIDER P-S tables generated from PALEOS.
+    outer_solver: str
+        Outer mass-radius solver: 'newton' (recommended) or 'picard'.
+    use_jax: bool
+        Use the JAX backend for the structure solver.
+    use_anderson: bool
+        Anderson Type-II Picard acceleration on the density loop.
+    newton_max_iter: int
+        Maximum Newton iterations (outer_solver = 'newton').
+    newton_tol: float
+        Newton convergence tolerance (outer_solver = 'newton').
+    newton_relative_tolerance: float
+        Integrator relative tolerance for the Newton path.
+    newton_absolute_tolerance: float
+        Integrator absolute tolerance for the Newton path.
+    update_dphi_abs: float
+        Re-solve the structure when the global melt fraction changes by
+        this absolute amount since the last solve.
+    update_dtmagma_frac: float
+        Re-solve the structure when T_magma changes by this fraction.
+    update_dw_comp_abs: float
+        Re-solve when the relative dissolved-volatile (H2O or H2) mantle
+        mass fraction changes by this amount.
+    update_interval: float
+        Maximum time between structure updates [yr]; effectively disabled
+        at the default.
+    update_min_interval: float
+        Minimum time between structure updates [yr]; prevents thrashing.
+    update_stale_ceiling: float
+        Time since the last successful re-solve after which a trigger
+        refires [yr]; 0 disables.
+    mesh_max_shift: float
+        Maximum fractional radius shift per structure update.
+    mesh_convergence_interval: float
+        Convergence relaxation time after a mesh update [yr].
+    equilibrate_init: bool
+        Equilibrate structure and composition before the main loop.
+    equilibrate_max_iter: int
+        Maximum equilibration iterations.
+    equilibrate_tol: float
+        Equilibration convergence tolerance.
+    dry_mantle: bool
+        Structure EOS assumes a dry mantle. Set False for
+        melt-fraction-aware dissolved-volatile mixing in the mantle
+        density (per-shell volatile profile); the dissolved mass then
+        stays inside the interior mass target.
+    global_miscibility: bool
+        Enable the H2-silicate binodal-aware radial structure. True is
+        rejected at config load: it requires the binodal handoff on the
+        Zalmoxis side, which is not yet implemented.
+    miscibility_max_iter: int
+        Maximum miscibility iterations.
+    miscibility_tol: float
+        Miscibility convergence tolerance.
     """
 
     core_eos: str = field(default='PALEOS:iron')
@@ -260,6 +316,11 @@ class Struct:
     core_heatcap: float or str
         Specific heat capacity of the planet's core [J kg-1 K-1]. Set to 'self'
         for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis').
+    melting_dir: str
+        Melting curve folder name in FWL_DATA, for the SPIDER structure
+        module.
+    eos_dir: str
+        EOS folder name in FWL_DATA, for the SPIDER structure module.
     """
 
     core_frac: float = field(default=0.325, validator=(gt(0), lt(1)))
@@ -267,11 +328,11 @@ class Struct:
 
     module: Optional[str] = field(
         default='zalmoxis',
-        validator=lambda inst, attr, val: val is None or val in ('dummy', 'spider', 'zalmoxis'),
+        validator=in_((None, 'dummy', 'spider', 'zalmoxis')),
     )
     zalmoxis: Optional[Zalmoxis] = field(
         factory=Zalmoxis,
-        validator=lambda inst, attr, val: val is None or valid_zalmoxis(inst, attr, val),
+        validator=optional(valid_zalmoxis),
     )
 
     core_density = field(default='self')
@@ -317,3 +378,89 @@ class Struct:
                     'Provide an EOS folder name (e.g. "WolfBower2018_MgSiO3") from '
                     'FWL_DATA/interior_lookup_tables/EOS/dynamic/.'
                 )
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and is independent of the order the fields are declared in.
+DOC_GROUPS = {
+    'Zalmoxis': (
+        (
+            'Equation of state',
+            None,
+            (
+                'core_eos',
+                'mantle_eos',
+                'ice_layer_eos',
+                'mushy_zone_factor',
+                'mantle_mass_fraction',
+                'dry_mantle',
+            ),
+        ),
+        (
+            'Grid and solver',
+            None,
+            (
+                'num_levels',
+                'outer_solver',
+                'use_jax',
+                'use_anderson',
+                'solver_tol_outer',
+                'solver_tol_inner',
+                'solver_max_iter_outer',
+                'solver_max_iter_inner',
+            ),
+        ),
+        (
+            'Newton solver tuning',
+            'used when `outer_solver = "newton"`',
+            (
+                'newton_max_iter',
+                'newton_tol',
+                'newton_relative_tolerance',
+                'newton_absolute_tolerance',
+            ),
+        ),
+        (
+            'Structure update triggers',
+            None,
+            (
+                'update_dphi_abs',
+                'update_dtmagma_frac',
+                'update_dw_comp_abs',
+                'update_interval',
+                'update_min_interval',
+                'update_stale_ceiling',
+                'mesh_max_shift',
+                'mesh_convergence_interval',
+            ),
+        ),
+        (
+            'Initialisation',
+            None,
+            (
+                'equilibrate_init',
+                'equilibrate_max_iter',
+                'equilibrate_tol',
+            ),
+        ),
+        (
+            'P-S entropy lookup tables',
+            None,
+            (
+                'lookup_nP',
+                'lookup_nS',
+            ),
+        ),
+        (
+            'Miscibility',
+            'experimental, not production-ready',
+            (
+                'global_miscibility',
+                'miscibility_max_iter',
+                'miscibility_tol',
+            ),
+        ),
+    ),
+}

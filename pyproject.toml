@@ -8,7 +8,7 @@ name = "fwl-proteus"
 dynamic = ["version"]
 description = "Coupled atmosphere-interior framework to simulate the temporal evolution of rocky planets"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.12,<3.13"
 authors = [
     {name="Tim Lichtenberg",         email="tim.lichtenberg@rug.nl"},
     {name="Harrison Nicholls",       email="contact@h-nicholls.space"},
@@ -38,9 +38,7 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
@@ -50,12 +48,12 @@ dependencies = [
     "fwl-mors>=26.01.02",
     "fwl-calliope>=26.06.01",
     "fwl-zephyrus>=25.03.11",
-    "fwl-aragog>=26.07.04",
+    "fwl-aragog>=26.09.18",
     # 26.07.17 reads the liquid EOS table for fully molten entropy
     # lookups, which the super-liquidus interior initial condition
     # requires (Zalmoxis #79), on top of the JAX structure path for
     # unified PALEOS and wet mantles (Zalmoxis #78).
-    "fwl-zalmoxis>=26.07.17",
+    "fwl-zalmoxis>=26.09.21",
     # The default Aragog interior solver runs on JAX: its eos/phase/solver
     # modules are equinox Modules, so jax, jaxlib, and equinox are needed by
     # a standard run, not only by the optional atmodeller backend. The three
@@ -70,7 +68,7 @@ dependencies = [
     # Pinned >=0.9.35: 0.9.33-0.9.34 mis-resolve the PythonCall.jl dev-path on
     # conda envs, and 0.9.35 restores resolution by registered version.
     # Separately, juliacall matches the Julia OpenSSL_jll to the Python
-    # interpreter's OpenSSL; Julia 1.12 ships OpenSSL_jll 3.5+, so the conda
+    # interpreter's OpenSSL; Julia 1.12 and newer ship OpenSSL_jll 3.5+, so the conda
     # environment must provide OpenSSL >= 3.5 (install.sh aligns it).
     "juliacall>=0.9.35",
     "matplotlib",
@@ -84,11 +82,11 @@ dependencies = [
     "sympy",
     "astropy",
     "toml",
-    # 26.7.25 bounds the time a fetch can take: every request carries an
+    # This floor bounds the time a fetch can take: every request carries an
     # explicit connect and read timeout, and a transient failure is retried
     # with backoff instead of ending the fetch. Below that floor a stalled
     # mirror hangs the start of a run with no diagnostic.
-    "fwl-io>=26.7.25",
+    "fwl-io>=26.8.31",
     "zenodo-get",
     "zenodo-client>=0.4.1",
     "osfclient",
@@ -107,10 +105,7 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 # `pip install fwl-proteus`; a standard run uses CALLIOPE (outgassing)
 # and needs neither. Install on demand, e.g. `pip install
 # "fwl-proteus[atmodeller]"`. Both are licensed GPL-3.0; review their
-# terms before installing. (PROTEUS's own code is Apache-2.0, but the
-# default install already includes other GPL dependencies such as
-# fwl-aragog, so opting out of these two does not yield a GPL-free
-# environment.)
+# terms before installing.
 #
 # atmodeller: alternative outgassing backend (Bower+2025, ApJ 995:59),
 # selected via outgas.module = "atmodeller". Pulls JAX + equinox.
@@ -169,7 +164,6 @@ package-dir = {"" = "src"}
 include-package-data = true
 
 [tool.setuptools.package-data]
-proteus = ["juliapkg.json"]
 # The manifest and its registries are read from the installed package, so they
 # have to travel in the wheel; without this they resolve only in a source tree.
 "proteus.data" = ["*.toml", "*.registry.txt"]
@@ -279,14 +273,14 @@ directory = "htmlcov"
 # Tracks nichollsh/AGNI main. Bump after every AGNI release that
 # PROTEUS depends on.
 url = "https://github.com/nichollsh/AGNI.git"
-ref = "59ce1d4cda84f2043a8055682fa49c2f9c27c3c4"
+ref = "9f6a49a59fb8d84a4985aa6587f4753d518caac7"
 
 [tool.proteus.modules.socrates]
 # Spectral radiative transfer library (Fortran). Compiled in-place
 # under socrates/ by tools/get_socrates.sh; the build output is what
 # the AGNI / JANUS atmosphere modules link against at runtime.
 url = "https://github.com/FormingWorlds/SOCRATES.git"
-ref = "f42ddec0356b3811b260cfe21a7f2c06033b39bd"
+ref = "c32965865c2c6bb1ba27b94e958a36982d74b0bf"
 
 [tool.proteus.modules.spider]
 # Interior thermal evolution module (C, requires PETSc). Cloned and
@@ -309,10 +303,28 @@ url = "https://github.com/ExoInteriors/BOREAS.git"
 ref = "0174edb04558a92a8f0b47cbd994964787f495aa"
 
 [tool.proteus.modules.lovepy]
-# Multi-phase tidal heating module (Julia). Installed via Julia
+# Solid-phase tidal heating module (Julia). Installed via Julia
 # Pkg.add(url=..., rev=...) by tools/get_lovepy.sh. Optional.
 url = "https://github.com/nichollsh/LovePy"
 ref = "main"
+
+[tool.proteus.modules.obliqua]
+# Multi-phase tides module (Julia, with juliacall bridge).
+# Cloned in-place and instantiated by tools/get_obliqua.sh, mirroring
+# the AGNI pattern. Pinned to a commit on md/phys_tests (pre-main-merge);
+# bump once the branch lands on main.
+url = "https://github.com/FormingWorlds/Obliqua.git"
+ref = "ee1ef40deaac47e1ba9e6d344a8541f500bb9e94"
+
+[tool.proteus.modules.thermoenginelite]
+# Multi-phase thermodynamics engine (c++ and Python)
+url = "https://github.com/FormingWorlds/ThermoEngineLite"
+ref = "19711ec1a69f66f2d46efd9331da323161bafc4d"
+
+[tool.proteus.modules.lavatmos]
+# Rock vapourisation code (python)
+url = "https://github.com/FormingWorlds/LavAtmos"
+ref = "c963dd2acf6c8a4c33d246d653342121666ae612"
 
 [tool.proteus.modules.petsc]
 # Pre-built PETSc archive on OSF. Required by SPIDER. tools/get_petsc.sh
@@ -332,6 +344,12 @@ sha256 = ""
 fail_under = 80
 
 [tool.ruff]
+# Directories searched for the names that count as first party. The default
+# also searches the repository root, where the ecosystem modules are installed
+# as clones, so a module whose clone directory carries its own name is read as
+# part of this project and its imports sort into the group holding proteus.
+# Names pinned under [tool.ruff.lint.isort] are honoured either way.
+src = ["src"]
 line-length = 96
 target-version = "py312"
 extend-exclude = ["*ipynb"]

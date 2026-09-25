@@ -17,6 +17,7 @@ Functions tested:
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -251,6 +252,96 @@ def test_zalmoxis_config_no_ice_layer():
     assert 'mantle' in result['layer_eos_config']
 
 
+def _liquidus_super_config():
+    """MagicMock config selecting the 'liquidus_super' CMB-anchor path."""
+    config = MagicMock()
+    config.planet.mass_tot = 1.0
+    config.interior_struct.zalmoxis.core_eos = 'Seager2007:iron'
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS-2phase:MgSiO3'
+    config.interior_struct.zalmoxis.ice_layer_eos = None
+    config.interior_struct.core_frac = 0.325
+    config.interior_struct.zalmoxis.mantle_mass_fraction = 0.0
+    config.planet.temperature_mode = 'liquidus_super'
+    config.planet.tsurf_init = 300
+    config.planet.tcenter_init = 5000
+    config.interior_struct.zalmoxis.num_levels = 200
+    return config
+
+
+@pytest.mark.unit
+def test_load_zalmoxis_configuration_converts_missing_table_error(monkeypatch):
+    """A FileNotFoundError from the CMB-anchor resolve becomes the dedicated error.
+
+    Forces the ``except FileNotFoundError`` branch in
+    ``load_zalmoxis_configuration`` directly: the recheck finds a missing
+    table, so its own ``ZalmoxisMissingEOSFilesError`` propagates.
+    """
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+    from proteus.interior_struct.zalmoxis import (
+        ZalmoxisMissingEOSFilesError,
+        load_zalmoxis_configuration,
+    )
+
+    recheck_calls = []
+
+    def _raise_file_not_found(*args, **kwargs):
+        raise FileNotFoundError('missing mantle EOS table')
+
+    def _raise_missing_eos(*args, **kwargs):
+        recheck_calls.append(args)
+        raise ZalmoxisMissingEOSFilesError('missing table')
+
+    monkeypatch.setattr(
+        zalmoxis_wrapper, '_resolve_zalmoxis_cmb_temperature', _raise_file_not_found
+    )
+    monkeypatch.setattr(zalmoxis_wrapper, 'check_zalmoxis_eos_files', _raise_missing_eos)
+    monkeypatch.setattr(
+        zalmoxis_wrapper, 'load_zalmoxis_material_dictionaries', lambda: {'sentinel': True}
+    )
+
+    hf_row = {
+        f'{e}_kg_total': 0 for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'He')
+    }
+
+    with pytest.raises(ZalmoxisMissingEOSFilesError, match='missing table'):
+        load_zalmoxis_configuration(_liquidus_super_config(), hf_row)
+
+    assert len(recheck_calls) == 1
+    layer_eos_config, mat_dicts = recheck_calls[0]
+    assert layer_eos_config['core'] == 'Seager2007:iron'
+    assert layer_eos_config['mantle'] == 'PALEOS-2phase:MgSiO3'
+    assert mat_dicts == {'sentinel': True}
+
+
+@pytest.mark.unit
+def test_load_zalmoxis_configuration_reraises_unconverted_file_error(monkeypatch):
+    """A FileNotFoundError the recheck cannot classify re-raises unchanged.
+
+    ``check_zalmoxis_eos_files`` only inspects registered EOS tables; a
+    ``FileNotFoundError`` from a different data class (e.g. a missing
+    melting-curve directory) finds nothing missing on recheck, so the
+    original bare exception must propagate rather than a false skip.
+    """
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
+    def _raise_file_not_found(*args, **kwargs):
+        raise FileNotFoundError('melting curves directory not found')
+
+    monkeypatch.setattr(
+        zalmoxis_wrapper, '_resolve_zalmoxis_cmb_temperature', _raise_file_not_found
+    )
+    monkeypatch.setattr(zalmoxis_wrapper, 'check_zalmoxis_eos_files', lambda *a, **k: None)
+    monkeypatch.setattr(zalmoxis_wrapper, 'load_zalmoxis_material_dictionaries', lambda: {})
+
+    hf_row = {
+        f'{e}_kg_total': 0 for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'He')
+    }
+
+    with pytest.raises(FileNotFoundError, match='melting curves directory not found'):
+        load_zalmoxis_configuration(_liquidus_super_config(), hf_row)
+
+
 # ============================================================================
 # test load_zalmoxis_solidus_liquidus_functions
 # ============================================================================
@@ -283,6 +374,63 @@ def test_solidus_liquidus_rtpress():
 
     assert result == ('solidus_fn', 'liquidus_fn')
     mock_mc.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'eos_name',
+    [
+        'PALEOS:MgSiO3',
+        'PALEOS-2phase:MgSiO3',
+        'PALEOS-API:MgSiO3',
+        'PALEOS-API-2phase:MgSiO3',
+    ],
+)
+def test_solidus_liquidus_paleos_family_derives_solidus_from_mzf(eos_name):
+    """Every PALEOS-family mantle gets a solidus equal to mzf times the liquidus."""
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_solidus_liquidus_functions
+
+    config = MagicMock()
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.8
+    result = load_zalmoxis_solidus_liquidus_functions(eos_name, config)
+
+    assert result is not None
+    solidus_func, liquidus_func = result
+    pressure = 50e9
+    t_liq = float(liquidus_func(pressure))
+    assert np.isfinite(t_liq)
+    assert float(solidus_func(pressure)) == pytest.approx(0.8 * t_liq)
+    # Discrimination: a different factor moves the solidus with the liquidus fixed.
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.9
+    solidus_func_90, liquidus_func_90 = load_zalmoxis_solidus_liquidus_functions(
+        eos_name, config
+    )
+    assert float(solidus_func_90(pressure)) == pytest.approx(
+        0.9 * float(liquidus_func_90(pressure))
+    )
+    # Range boundaries: 1.0 gives T_sol == T_liq exactly, 0.7 the widest band.
+    config.interior_struct.zalmoxis.mushy_zone_factor = 1.0
+    solidus_func_1, liquidus_func_1 = load_zalmoxis_solidus_liquidus_functions(eos_name, config)
+    assert float(solidus_func_1(pressure)) == float(liquidus_func_1(pressure))
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.7
+    solidus_func_70, liquidus_func_70 = load_zalmoxis_solidus_liquidus_functions(
+        eos_name, config
+    )
+    assert float(solidus_func_70(pressure)) == pytest.approx(
+        0.7 * float(liquidus_func_70(pressure))
+    )
+
+
+@pytest.mark.unit
+def test_build_mushy_zone_factors_ignores_spaces_around_plus():
+    """Zalmoxis strips each '+' segment, so a spaced string must map the same way."""
+    from proteus.interior_struct.zalmoxis import _build_mushy_zone_factors
+
+    result = _build_mushy_zone_factors(
+        {'core': 'PALEOS:iron', 'mantle': 'PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1'}, mzf=0.8
+    )
+    assert result['PALEOS:H2O'] == pytest.approx(0.8)
+    assert result['PALEOS:MgSiO3'] == pytest.approx(0.8)
 
 
 # ============================================================================
@@ -495,6 +643,50 @@ def test_validate_zalmoxis_output_schema_corrupt_file(tmp_path):
 
 
 @pytest.mark.unit
+def test_stale_mesh_regression_discriminates_real_drift(tmp_path):
+    """A resumed row's own mesh passes; the run's stale end-of-run mesh fails.
+
+    Pins a real incident: resuming a run at an earlier row while
+    ``data/zalmoxis_output.dat`` on disk still holds a later row's mesh
+    (left over from before the interior structure module regenerates it)
+    crashes Aragog's own EOS-radius-range guard downstream, because the
+    file's top radius no longer matches the resumed row's R_int. The
+    two R_int values here are a real archived run's resumed row and its
+    final row: 5,667 m (~0.097%) apart, about three orders of magnitude
+    below the planet's own radius and about three orders of magnitude
+    above the schema check's 1e-6 relative tolerance, so the check must
+    still catch it.
+    """
+    from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
+
+    resumed_r_int = 5.8518474239e6  # real archived run, row resumed into
+    stale_r_int = 5.8575141291e6  # same run's later, final-row mesh
+    r_core = 2.8670124963e6
+    m_core = 9.8365400909e23
+
+    # A mesh regenerated at the resumed row's own R_int passes.
+    fresh_path = str(tmp_path / 'fresh.dat')
+    r_top, m_mantle = _write_synthetic_zalmoxis_output(
+        fresh_path, r_cmb=r_core, r_surf=resumed_r_int
+    )
+    hf_row = {'R_int': resumed_r_int, 'M_int': m_mantle + m_core, 'M_core': m_core}
+    validate_zalmoxis_output_schema(fresh_path, hf_row)
+
+    # The same run's stale, later-row mesh -- unregenerated -- fails against
+    # the identical resumed-row hf_row.
+    stale_path = str(tmp_path / 'stale.dat')
+    _write_synthetic_zalmoxis_output(stale_path, r_cmb=r_core, r_surf=stale_r_int)
+    with pytest.raises(RuntimeError, match='top-of-mantle'):
+        validate_zalmoxis_output_schema(stale_path, hf_row)
+
+    # Discrimination guard: the real drift is well above the check's
+    # tolerance, so the raise above is not an artifact of a loose default.
+    real_drift = abs(stale_r_int - resumed_r_int) / resumed_r_int
+    assert real_drift == pytest.approx(9.684e-4, rel=1e-2)
+    assert real_drift > 1e-6
+
+
+@pytest.mark.unit
 def test_validate_zalmoxis_output_schema_skips_when_hf_row_unset(tmp_path):
     """Degenerate hf_row inputs (zero scalars) must skip silently.
 
@@ -672,6 +864,60 @@ def test_check_eos_files_walks_nested_and_lazy_siblings(tmp_path):
     msg = str(excinfo.value)
     assert 'mgsio3_solid.dat' in msg
     assert 'seager_iron.txt' not in msg  # present file must not be flagged
+
+
+def test_check_eos_files_nested_core_scoped_to_core_role(tmp_path):
+    """A nested ``'core'`` sub-entry is only checked for a core-role request.
+
+    Uses a registry where the nested ``'core'`` path is missing and distinct
+    from every other path in the same entry, so a call that walks it
+    regardless of role would flag it under both roles below; only the
+    core-role call should.
+    """
+    from proteus.interior_struct.zalmoxis import check_zalmoxis_eos_files
+
+    missing_core = tmp_path / 'iron_core_only.dat'  # never written
+    present_liquid = tmp_path / 'mgsio3_liquid.dat'
+    present_solid = tmp_path / 'mgsio3_solid.dat'
+    for f in (present_liquid, present_solid):
+        f.write_text('stub')
+
+    registry = {
+        'PALEOS-2phase:MgSiO3-with-core': {
+            'core': {'eos_file': str(missing_core)},
+            'melted_mantle': {'eos_file': str(present_liquid)},
+            'solid_mantle': {'eos_file': str(present_solid)},
+        },
+    }
+
+    with pytest.raises(RuntimeError, match='iron_core_only.dat'):
+        check_zalmoxis_eos_files({'core': 'PALEOS-2phase:MgSiO3-with-core'}, registry)
+
+    assert (
+        check_zalmoxis_eos_files({'mantle': 'PALEOS-2phase:MgSiO3-with-core'}, registry) is None
+    )
+
+
+def test_check_eos_files_single_key_core_checked_for_non_core_role(tmp_path):
+    """A single-key nested ``'core'`` entry is checked from any role.
+
+    Unlike ``PALEOS-2phase:MgSiO3-with-core`` above, an entry whose only
+    sub-entry is ``'core'`` (e.g. ``Seager2007:iron``) has no other
+    role-specific data for a non-core requester to use instead; the real
+    dispatch reads that sole sub-entry regardless of which layer role
+    points at the identifier, so the check must not exempt it here.
+    """
+    from proteus.interior_struct.zalmoxis import check_zalmoxis_eos_files
+
+    missing = tmp_path / 'seager_iron.txt'  # never written
+    registry = {
+        'Seager2007:iron': {'core': {'eos_file': str(missing)}},
+    }
+
+    with pytest.raises(RuntimeError, match='seager_iron.txt'):
+        check_zalmoxis_eos_files({'mantle': 'Seager2007:iron'}, registry)
+    with pytest.raises(RuntimeError, match='seager_iron.txt'):
+        check_zalmoxis_eos_files({'ice_layer': 'Seager2007:iron'}, registry)
 
 
 def _volatile_config(dry_mantle: bool):
@@ -1198,6 +1444,8 @@ def _run_gate_solver(
     dry_mantle=True,
     hf_extra=None,
     mixed_side_effect=None,
+    real_melting_curves=False,
+    mzf=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -1228,6 +1476,13 @@ def _run_gate_solver(
         Replacement side effect for the blended evaluator, e.g. to make
         selected nodes return non-finite densities. Defaults to the
         offset fake.
+    real_melting_curves : bool, optional
+        With True, the real ``load_zalmoxis_solidus_liquidus_functions``
+        runs (analytic, cheap) instead of the constant-pair stub, so the
+        curves handed to the solve are the ones PROTEUS builds.
+    mzf : float, optional
+        Value for ``config.interior_struct.zalmoxis.mushy_zone_factor``;
+        the default keeps the config helper's 0.8.
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -1246,6 +1501,13 @@ def _run_gate_solver(
         hf_row.update(hf_extra)
     config = _gate_config(mantle_eos)
     config.interior_struct.zalmoxis.dry_mantle = dry_mantle
+    if mzf is not None:
+        config.interior_struct.zalmoxis.mushy_zone_factor = mzf
+    melting_patch_kwargs = (
+        {'side_effect': zalmoxis_wrapper.load_zalmoxis_solidus_liquidus_functions}
+        if real_melting_curves
+        else {'return_value': (lambda P: 4000.0, lambda P: 5000.0)}
+    )
 
     monkeypatch.setattr(
         zalmoxis_wrapper,
@@ -1271,7 +1533,7 @@ def _run_gate_solver(
         patch.object(
             zalmoxis_wrapper,
             'load_zalmoxis_solidus_liquidus_functions',
-            return_value=(lambda P: 4000.0, lambda P: 5000.0),
+            **melting_patch_kwargs,
         ),
         patch.object(zalmoxis_wrapper, 'main', **main_patch_kwargs) as main_mock,
         patch('zalmoxis.eos.dispatch.calculate_density', side_effect=_fake_density) as rho_mock,
@@ -2161,6 +2423,70 @@ def test_ps_cache_key_sanitises_names_and_tolerates_missing_paths():
     assert key != key_other
 
 
+def test_ps_cache_key_separates_table_generators():
+    """Tables built by a different Zalmoxis generator land on a different key.
+
+    A shared PROTEUS_PS_CACHE_DIR would otherwise keep serving tables written by
+    an older Zalmoxis after the generator changed (for example a corrected
+    liquidus curve). Identical inputs and generator still give one key, so a
+    genuine cache hit is kept.
+    """
+    from proteus.interior_struct.zalmoxis import _ps_cache_key, _ps_generator_identity
+
+    common = dict(
+        P_max=3.5e11,
+        nP=1350,
+        nS=280,
+        mzf=0.8,
+        layout='2phase',
+        mantle_eos='PALEOS-2phase:MgSiO3',
+        eos_file='/data/unified.dat',
+        solid_eos='/data/solid.dat',
+        liquid_eos='/data/liquid.dat',
+    )
+    key_old = _ps_cache_key(**common, generator='26.9.21-aaaaaaaaaaaa')
+    key_new = _ps_cache_key(**common, generator='26.9.21-bbbbbbbbbbbb')
+    assert key_old != key_new
+    # Only the generator token differs; the EOS identity part is unchanged.
+    assert key_old.partition('_gen=')[0] == key_new.partition('_gen=')[0]
+    assert key_old == _ps_cache_key(**common, generator='26.9.21-aaaaaaaaaaaa')
+    # The default is the installed generator identity, filesystem safe.
+    key_default = _ps_cache_key(**common)
+    assert key_default == _ps_cache_key(**common, generator=_ps_generator_identity())
+    assert '/' not in key_default and ':' not in key_default
+
+
+def test_ps_generator_identity_follows_the_generator_source(tmp_path, monkeypatch):
+    """The generator identity changes when the table generator source changes,
+    even at a fixed version string (an editable install keeps the version from
+    install time), and falls back to the version when a source file is missing.
+    """
+    import zalmoxis.eos_export
+    import zalmoxis.melting_curves
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    src = tmp_path / 'eos_export.py'
+    src.write_text('# generator A\n')
+    monkeypatch.setattr(zalmoxis.eos_export, '__file__', str(src))
+    zmod._ps_generator_identity.cache_clear()
+    try:
+        ident_a = zmod._ps_generator_identity()
+        src.write_text('# generator B\n')
+        zmod._ps_generator_identity.cache_clear()
+        ident_b = zmod._ps_generator_identity()
+        version = str(zalmoxis.__version__)
+        assert ident_a != ident_b
+        assert ident_a.startswith(version + '-') and ident_b.startswith(version + '-')
+        # Edge case: an unreadable source leaves the version alone.
+        monkeypatch.setattr(zalmoxis.melting_curves, '__file__', str(tmp_path / 'missing.py'))
+        zmod._ps_generator_identity.cache_clear()
+        assert zmod._ps_generator_identity() == version
+    finally:
+        monkeypatch.undo()
+        zmod._ps_generator_identity.cache_clear()
+
+
 def test_jax_nonviable_fallback_logs_once_per_run(caplog):
     """The JAX to numpy structure fallback is announced once, not per re-solve.
 
@@ -2364,3 +2690,577 @@ def test_build_volatile_profile_uses_structural_mantle_mass():
     prof = build_volatile_profile(hf_mixed, 'PALEOS:MgSiO3')
     assert prof.w_liquid['PALEOS:H2O'] == pytest.approx(3.32e23 / 2.0e24, rel=1e-12)
     assert prof.w_solid['PALEOS:H2O'] == pytest.approx(1.0e22 / 2.0e24, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_build_mushy_zone_factors_covers_unified_and_paleos_api():
+    """Every configured unified material gets the real mzf, others get 1.0.
+
+    Covers the bare PALEOS and PALEOS-API unified names in one layer config,
+    including a material absent from any layer (must stay at 1.0).
+    """
+    from proteus.interior_struct.zalmoxis import _build_mushy_zone_factors
+
+    layer_eos_config = {
+        'core': 'PALEOS-API:iron',
+        'mantle': 'PALEOS:MgSiO3',
+    }
+    result = _build_mushy_zone_factors(layer_eos_config, mzf=0.8)
+    assert result['PALEOS-API:iron'] == pytest.approx(0.8)
+    assert result['PALEOS:MgSiO3'] == pytest.approx(0.8)
+    assert result['PALEOS:iron'] == pytest.approx(1.0)
+    assert result['PALEOS-API:MgSiO3'] == pytest.approx(1.0)
+    assert result['Chabrier:H'] == pytest.approx(1.0)
+
+
+@pytest.mark.unit
+def test_build_mushy_zone_factors_wet_mantle_after_volatile_extension():
+    """A dissolved-volatile component in an extended mantle string gets the
+    real mzf, not the 1.0 default (regression: mushy_zone_factors was built
+    from the dry mantle_eos string before the volatile tokens were appended,
+    silently disabling mzf for PALEOS:H2O and Chabrier:H in wet runs).
+    """
+    from zalmoxis.mixing import VolatileProfile
+
+    from proteus.interior_struct.zalmoxis import (
+        _build_mushy_zone_factors,
+        extend_mantle_eos_with_volatiles,
+    )
+
+    profile = VolatileProfile(
+        w_liquid={'PALEOS:H2O': 0.02, 'Chabrier:H': 0.01},
+        w_solid={'PALEOS:H2O': 0.0, 'Chabrier:H': 0.0},
+        primary_component='PALEOS:MgSiO3',
+    )
+    extended_mantle = extend_mantle_eos_with_volatiles('PALEOS:MgSiO3', profile)
+    layer_eos_config = {'core': 'PALEOS:iron', 'mantle': extended_mantle}
+
+    result = _build_mushy_zone_factors(layer_eos_config, mzf=0.8)
+    assert result['PALEOS:MgSiO3'] == pytest.approx(0.8)
+    assert result['PALEOS:H2O'] == pytest.approx(0.8)
+    assert result['Chabrier:H'] == pytest.approx(0.8)
+    assert result['PALEOS:iron'] == pytest.approx(0.8)
+
+
+@pytest.mark.unit
+def test_zalmoxis_solver_rebuilds_mushy_zone_factors_for_wet_mantle(tmp_path, monkeypatch):
+    """A wet solve carries the real mzf for the dissolved species into the solve call.
+
+    Exercises the fix at its actual call site inside ``zalmoxis_solver``
+    (the rebuild after ``extend_mantle_eos_with_volatiles``), not just the
+    ``_build_mushy_zone_factors`` helper in isolation. Reverting that
+    rebuild would leave ``PALEOS:H2O`` at the 1.0 default instead of the
+    configured mzf, and this test discriminates between the two.
+    """
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    hf_extra = {
+        'M_mantle_liquid': 4.0e24,
+        'M_mantle_solid': 1.0e24,
+        'H2O_kg_liquid': 8.0e22,
+    }
+    main_mock, _, _, _, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        tf,
+        dry_mantle=False,
+        hf_extra=hf_extra,
+    )
+
+    solver_params = main_mock.call_args.args[0]
+    mzf = solver_params['mushy_zone_factors']
+    assert mzf['PALEOS:MgSiO3'] == pytest.approx(0.8)
+    assert mzf['PALEOS:H2O'] == pytest.approx(0.8)
+    # Discrimination: a build from the pre-extension dry mantle string
+    # would leave the dissolved species at the 1.0 default instead.
+    assert mzf['PALEOS:H2O'] != pytest.approx(1.0)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('mzf', [0.7, 0.8, 1.0])
+def test_zalmoxis_solver_passes_mzf_derived_solidus_to_solve(tmp_path, monkeypatch, mzf):
+    """The solve receives the mzf-derived solidus built from the PALEOS liquidus.
+
+    Runs the real ``load_zalmoxis_solidus_liquidus_functions`` (the
+    other solver tests stub it with a constant pair) and checks the
+    ``melting_curves_functions`` handed to the structure solve:
+    ``solidus(P) == mzf * liquidus(P)`` at several pressures, and exact
+    equality at ``mzf = 1.0``. Passing ``None`` or a stale curve pair to
+    the solve fails these assertions.
+    """
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        if r <= r_arr[0]:
+            return float(t_arr[0])
+        return float(np.interp(r, r_arr, t_arr))
+
+    main_mock, _, _, _, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        tf,
+        real_melting_curves=True,
+        mzf=mzf,
+    )
+
+    melt_funcs = main_mock.call_args.kwargs['melting_curves_functions']
+    assert melt_funcs is not None
+    solidus_func, liquidus_func = melt_funcs
+    for pressure in (5e9, 50e9, 200e9):
+        t_liq = float(liquidus_func(pressure))
+        assert np.isfinite(t_liq)
+        if mzf == 1.0:
+            assert float(solidus_func(pressure)) == t_liq
+        else:
+            assert float(solidus_func(pressure)) == pytest.approx(mzf * t_liq)
+            assert float(solidus_func(pressure)) < t_liq
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_derive_solidus_from_liquidus_scales_liquidus_by_mzf():
+    """The derived solidus is the liquidus scaled pointwise by mushy_zone_factor.
+
+    Discrimination: mzf < 1 must strictly lower the solidus below the
+    liquidus (rules out an implementation that ignores mzf), and a
+    different mzf must give a different solidus (rules out a hardcoded
+    or memoized return value).
+    """
+    from zalmoxis.melting_curves import derive_solidus_from_liquidus
+
+    def liquidus(pressure):
+        return 3000.0 + 10.0 * pressure
+
+    solidus = derive_solidus_from_liquidus(liquidus, mushy_zone_factor=0.8)
+    for pressure in (0.0, 20e9, 80e9):
+        assert solidus(pressure) == pytest.approx(0.8 * liquidus(pressure))
+        assert solidus(pressure) < liquidus(pressure)
+
+    other_solidus = derive_solidus_from_liquidus(liquidus, mushy_zone_factor=0.95)
+    assert other_solidus(20e9) != pytest.approx(solidus(20e9))
+
+    # Boundaries of the allowed range: 1.0 collapses the mushy zone exactly
+    # (no clamp below 1), 0.7 is the widest band.
+    sharp = derive_solidus_from_liquidus(liquidus, mushy_zone_factor=1.0)
+    widest = derive_solidus_from_liquidus(liquidus, mushy_zone_factor=0.7)
+    for pressure in (0.0, 20e9, 80e9):
+        assert sharp(pressure) == liquidus(pressure)
+        assert widest(pressure) == pytest.approx(0.7 * liquidus(pressure))
+
+
+@pytest.mark.unit
+def test_generate_spider_tables_twophase_solidus_tracks_mzf(tmp_path, monkeypatch):
+    """generate_spider_tables hands the writers a solidus = mushy_zone_factor * liquidus.
+
+    Drives the real ``generate_spider_tables`` down the PALEOS-2phase branch
+    with synthetic solid + liquid tables, stubbing only the heavy Zalmoxis
+    table writers and the analytic liquidus. Captures the ``solidus_func``
+    passed to the phase-boundary writer and checks that it equals the
+    liquidus scaled by ``mushy_zone_factor``, and that a different factor
+    (0.8 vs 0.95) moves the written solidus. Dropping the mzf scaling, or
+    hardcoding a factor, breaks one of the two assertions.
+    """
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+
+    mantle_eos = 'PALEOS-2phase:MgSiO3'
+
+    # Synthetic 2-phase tables. Content is irrelevant: the writers are stubbed;
+    # only os.path.isfile must succeed on the resolved paths.
+    solid_file = tmp_path / 'solid.dat'
+    liquid_file = tmp_path / 'liquid.dat'
+    solid_file.write_text('# synthetic solid table\n')
+    liquid_file.write_text('# synthetic liquid table\n')
+
+    eos_entry = {
+        'solid_mantle': {'eos_file': str(solid_file)},
+        'melted_mantle': {'eos_file': str(liquid_file)},
+    }
+
+    def liquidus(pressure):
+        return 3000.0 + 1.0e-8 * pressure
+
+    def run_with_mzf(mzf):
+        config = MagicMock()
+        config.interior_struct.zalmoxis.mantle_eos = mantle_eos
+        config.interior_struct.zalmoxis.mushy_zone_factor = mzf
+        config.interior_struct.zalmoxis.lookup_nP = 8
+        config.interior_struct.zalmoxis.lookup_nS = 8
+        config.planet.mass_tot = 1.0
+
+        outdir = tmp_path / f'out_{mzf}'
+        outdir.mkdir()
+
+        monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+        monkeypatch.setattr(
+            zalmoxis_wrapper,
+            'load_zalmoxis_material_dictionaries',
+            lambda: {mantle_eos: eos_entry},
+        )
+        monkeypatch.setattr('zalmoxis.eos.dispatch._is_paleos_api', lambda entry: False)
+        monkeypatch.setattr(
+            'zalmoxis.melting_curves.get_solidus_liquidus_functions',
+            lambda solidus_id, liquidus_id: (None, liquidus),
+        )
+        phase_writer = MagicMock()
+        monkeypatch.setattr(
+            'zalmoxis.eos_export.generate_spider_phase_boundaries', phase_writer
+        )
+        monkeypatch.setattr('zalmoxis.eos_export.generate_spider_eos_tables', MagicMock())
+
+        result = zalmoxis_wrapper.generate_spider_tables(config, str(outdir))
+        assert result is not None
+        return phase_writer.call_args.kwargs['solidus_func']
+
+    solidus_08 = run_with_mzf(0.8)
+    solidus_095 = run_with_mzf(0.95)
+
+    for pressure in (1e9, 3e10, 1.2e11):
+        assert solidus_08(pressure) == pytest.approx(0.8 * liquidus(pressure))
+        assert solidus_08(pressure) < liquidus(pressure)
+        # Discrimination: a different mushy_zone_factor moves the written solidus.
+        assert solidus_095(pressure) == pytest.approx(0.95 * liquidus(pressure))
+        assert solidus_095(pressure) != pytest.approx(solidus_08(pressure))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('mantle_eos', 'expected'),
+    [
+        ('PALEOS-API:MgSiO3', 'PALEOS-API-2phase:MgSiO3'),
+        ('PALEOS-API-2phase:MgSiO3', 'PALEOS-API-2phase:MgSiO3'),
+        ('PALEOS-2phase:MgSiO3-highres', 'PALEOS-2phase:MgSiO3-highres'),
+        ('PALEOS-2phase:MgSiO3', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:MgSiO3', 'PALEOS-2phase:MgSiO3'),
+    ],
+)
+def test_twophase_registry_key_selects_table_family(mantle_eos, expected):
+    """The 2-phase registry key follows the EOS family of the mantle."""
+    from proteus.interior_struct.zalmoxis import twophase_registry_key
+
+    assert twophase_registry_key(mantle_eos) == expected
+
+
+_UNIFIED = object()
+
+
+def _generate_tables_stubbed(
+    tmp_path, monkeypatch, *, resume, run=True, entry=_UNIFIED, melt_calls=None, on_build=None
+):
+    """Run generate_spider_tables for a unified PALEOS entry with stubbed
+    generators; return the result, the two generator mocks and the key the
+    current code builds (the result is None when ``run`` is False).
+
+    ``entry`` replaces the registry entry at run time (None removes it),
+    ``melt_calls`` records melting-curve setup calls, and ``on_build`` is
+    called when the phase-boundary build starts."""
+    from pathlib import Path
+
+    import zalmoxis.eos_export
+    import zalmoxis.melting_curves
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    eos = tmp_path / 'eos.dat'
+    eos.write_text('table')
+    unified = {'format': 'paleos_unified', 'eos_file': str(eos)}
+    current = unified if entry is _UNIFIED else entry
+    monkeypatch.setattr(
+        zmod,
+        'load_zalmoxis_material_dictionaries',
+        lambda: {} if current is None else {'PALEOS:MgSiO3': current},
+    )
+    monkeypatch.setattr(zmod, 'resolve_2phase_mgsio3_paths', lambda *a: (None, None))
+    calls = [] if melt_calls is None else melt_calls
+
+    def _curves(**kw):
+        calls.append('curves')
+        return None, lambda P: 3000.0
+
+    def _derive(f, m):
+        calls.append('derive')
+        return f
+
+    monkeypatch.setattr(zalmoxis.melting_curves, 'get_solidus_liquidus_functions', _curves)
+    monkeypatch.setattr(zalmoxis.melting_curves, 'derive_solidus_from_liquidus', _derive)
+
+    def _write_bounds(**kw):
+        if on_build is not None:
+            on_build()
+        for name in ('solidus_P-S.dat', 'liquidus_P-S.dat'):
+            (Path(kw['output_dir']) / name).write_text('NEW')
+
+    bounds = MagicMock(side_effect=_write_bounds)
+    tables = MagicMock()
+    monkeypatch.setattr(zalmoxis.eos_export, 'generate_spider_phase_boundaries', bounds)
+    monkeypatch.setattr(zalmoxis.eos_export, 'generate_spider_eos_tables', tables)
+
+    config = MagicMock()
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.8
+    config.interior_struct.zalmoxis.lookup_nP = 8
+    config.interior_struct.zalmoxis.lookup_nS = 8
+    config.planet.mass_tot = 1.0
+    config.params.resume = resume
+    key = zmod._ps_cache_key(
+        P_max=3.5e11,
+        nP=8,
+        nS=8,
+        mzf=0.8,
+        layout='unified',
+        mantle_eos='PALEOS:MgSiO3',
+        eos_file=str(eos),
+        solid_eos=None,
+        liquid_eos=None,
+    )
+    out = zmod.generate_spider_tables(config, str(tmp_path / 'run')) if run else None
+    return out, bounds, tables, key
+
+
+def _seed_tables(eos_dir, marker):
+    eos_dir.mkdir(parents=True, exist_ok=True)
+    (eos_dir / '.cache_info.txt').write_text(marker)
+    for name in ('solidus_P-S.dat', 'liquidus_P-S.dat'):
+        (eos_dir / name).write_text('OLD')
+
+
+def test_resume_keeps_run_tables_with_an_old_format_marker(tmp_path, monkeypatch, caplog):
+    """A resumed run whose marker has no generator identity keeps its own
+    tables and warns; a fresh run in the same directory rebuilds them under
+    the current key."""
+    from pathlib import Path as _Path
+
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    # A marker without a generator suffix (base key only).
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    old_marker = key.partition('_gen=')[0]
+    _seed_tables(run_eos, old_marker)
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, tables, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+    assert _Path(out['eos_dir']) == run_eos
+    bounds.assert_not_called()
+    tables.assert_not_called()
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
+    assert (run_eos / '.cache_info.txt').read_text() == old_marker
+    assert 'keeps its original energetics P-S entropy tables' in caplog.text
+    assert 'structure solve uses the current melting curves' in caplog.text
+    assert 'generator unknown' in caplog.text and key in caplog.text
+
+    out, bounds, tables, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=False)
+    bounds.assert_called_once()
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'NEW'
+    assert (run_eos / '.cache_info.txt').read_text() == key
+
+
+def test_resume_follows_the_pointer_to_shared_cache_tables(tmp_path, monkeypatch, caplog):
+    """With a shared cache, a resumed run keeps the tables its pointer names
+    even when they come from another generator, and leaves the pointer alone;
+    an exact key match keeps them without a warning."""
+    from pathlib import Path as _Path
+
+    from proteus.interior_struct import zalmoxis as zmod
+    from proteus.interior_struct.zalmoxis import PS_CACHE_POINTER_NAME
+
+    monkeypatch.setenv('PROTEUS_PS_CACHE_DIR', str(tmp_path / 'cache'))
+    old_dir = tmp_path / 'cache' / 'old-key-dir'
+    pointer = tmp_path / 'run' / 'data' / PS_CACHE_POINTER_NAME
+    pointer.parent.mkdir(parents=True)
+    pointer.write_text(str(old_dir))
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    base = key.partition('_gen=')[0]
+    _seed_tables(old_dir, base + '_gen=0-0-1-aaaaaaaaaaaa')
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+    assert _Path(out['eos_dir']) == old_dir
+    bounds.assert_not_called()
+    assert pointer.read_text() == str(old_dir)
+    assert 'generator 0-0-1-aaaaaaaaaaaa' in caplog.text
+
+    # Edge case: the stored key equals the current key, so nothing is logged
+    # (a new process, since each kept directory is reported once per process).
+    (old_dir / '.cache_info.txt').write_text(key)
+    monkeypatch.setattr(zmod, '_PS_RESUME_REPORTED', set())
+    caplog.clear()
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+    assert _Path(out['eos_dir']) == old_dir and caplog.text == ''
+    bounds.assert_not_called()
+
+
+def test_resume_keeps_run_tables_after_a_settings_change(tmp_path, monkeypatch, caplog):
+    """A resumed run whose stored key differs in a physical setting (here the
+    pressure ceiling) keeps its tables and warns with both keys that the
+    changed settings are ignored."""
+    from pathlib import Path as _Path
+
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    stored = key.replace('P_max=3.500000e+11', 'P_max=4.000000e+11')
+    assert stored != key
+    _seed_tables(run_eos, stored)
+
+    melt_calls = []
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, tables, key = _generate_tables_stubbed(
+            tmp_path, monkeypatch, resume=True, melt_calls=melt_calls
+        )
+    assert _Path(out['eos_dir']) == run_eos
+    bounds.assert_not_called()
+    tables.assert_not_called()
+    # Kept tables need no melting curves; a build would set them up.
+    assert melt_calls == []
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
+    assert 'ignores the changed settings' in caplog.text
+    assert stored in caplog.text and key in caplog.text
+
+
+def test_resume_reports_kept_tables_once_per_process(tmp_path, monkeypatch, caplog):
+    """The kept-table WARNING is logged the first time a resumed run asks for
+    its tables, not at every later call in the same process."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    _seed_tables(tmp_path / 'run' / 'data' / 'spider_eos', key.partition('_gen=')[0])
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        for _ in range(3):
+            out, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+            bounds.assert_not_called()
+    assert caplog.text.count('keeps its original energetics P-S entropy tables') == 1
+
+
+def test_resume_keeps_tables_without_resolving_a_paleos_api_eos(tmp_path, monkeypatch, caplog):
+    """A resumed PALEOS-API run keeps its tables without resolving the API
+    cache, which can build for an hour or fail offline; the key is then not
+    checked, and the WARNING says why."""
+    import zalmoxis.eos.dispatch
+    import zalmoxis.eos.paleos_api_cache
+
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    _seed_tables(tmp_path / 'run' / 'data' / 'spider_eos', key)
+    monkeypatch.setattr(zalmoxis.eos.dispatch, '_is_paleos_api', lambda entry: True)
+    resolve = MagicMock(side_effect=OSError('offline'))
+    monkeypatch.setattr(zalmoxis.eos.paleos_api_cache, 'resolve_registry_entry', resolve)
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, tables, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+    resolve.assert_not_called()
+    bounds.assert_not_called()
+    tables.assert_not_called()
+    assert out['eos_dir'] == str(tmp_path / 'run' / 'data' / 'spider_eos')
+    assert 'current key is not checked: a PALEOS-API mantle EOS is not resolved' in caplog.text
+    # Discrimination: a fresh PALEOS-API run resolves its tables.
+    with pytest.raises(OSError, match='offline'):
+        _generate_tables_stubbed(tmp_path, monkeypatch, resume=False)
+    resolve.assert_called_once()
+
+
+def test_resume_without_kept_tables_warns_before_the_build(tmp_path, monkeypatch, caplog):
+    """A resumed run with tables but no marker (the marker is the completion
+    sentinel) keeps nothing, says at WARNING that it continues on newly built
+    tables, and builds them under the current key."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    _seed_tables(run_eos, 'unused')
+    (run_eos / '.cache_info.txt').unlink()
+    warned_at_build = []
+    melt_calls = []
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, _, key = _generate_tables_stubbed(
+            tmp_path,
+            monkeypatch,
+            resume=True,
+            melt_calls=melt_calls,
+            on_build=lambda: warned_at_build.append('has no kept' in caplog.text),
+        )
+    bounds.assert_called_once()
+    # The warning is already recorded when the build starts.
+    assert warned_at_build == [True]
+    assert melt_calls == ['curves', 'derive']
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'NEW'
+    assert (run_eos / '.cache_info.txt').read_text() == key
+    assert 'has no kept P-S entropy tables' in caplog.text and key in caplog.text
+    # Discrimination: a fresh run builds the same tables without the warning.
+    caplog.clear()
+    (run_eos / '.cache_info.txt').unlink()
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        _generate_tables_stubbed(tmp_path, monkeypatch, resume=False)
+    assert 'has no kept' not in caplog.text
+
+
+@pytest.mark.parametrize(
+    'case, reason',
+    [
+        ('not-paleos', 'is neither PALEOS unified nor PALEOS-2phase'),
+        ('file-missing', 'no PALEOS EOS file is available'),
+        ('unregistered', 'is not in the material dictionary'),
+    ],
+)
+def test_resume_keeps_tables_when_the_current_eos_gives_none(
+    tmp_path, monkeypatch, caplog, case, reason
+):
+    """A resumed run keeps its tables when its current mantle EOS is no longer
+    PALEOS, has lost its file, or is not registered, and logs exactly one
+    WARNING naming that reason, with no record that it falls back to other
+    tables or skips table generation."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    _seed_tables(run_eos, key)
+    entry = {
+        'not-paleos': {'format': 'WolfBower2018', 'eos_file': 'unused'},
+        'file-missing': {'format': 'paleos_unified', 'eos_file': str(tmp_path / 'gone.dat')},
+        'unregistered': None,
+    }[case]
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, _, _ = _generate_tables_stubbed(
+            tmp_path, monkeypatch, resume=True, entry=entry
+        )
+    assert out['eos_dir'] == str(run_eos)
+    bounds.assert_not_called()
+    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1
+    assert 'keeps its original energetics P-S entropy tables' in warnings[0]
+    assert reason in warnings[0]
+    assert 'pre-existing SPIDER tables' not in caplog.text
+    assert 'skipping' not in caplog.text
+    # Discrimination: a fresh run with the same EOS falls back to other tables.
+    caplog.clear()
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, _, _, _ = _generate_tables_stubbed(
+            tmp_path, monkeypatch, resume=False, entry=entry
+        )
+    assert out is None and 'pre-existing SPIDER tables' in caplog.text
+
+
+def test_resume_keeps_tables_when_the_key_builder_fails(tmp_path, monkeypatch, caplog):
+    """Any failure while building the current key for the warning, not only a
+    ValueError, leaves the resumed run on its kept tables with the reason."""
+    from proteus.interior_struct import zalmoxis as zmod
+
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    _seed_tables(run_eos, key)
+
+    def _fail(*args):
+        raise OSError('registry unreadable')
+
+    monkeypatch.setattr(zmod, '_ps_table_inputs', _fail)
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+    assert out['eos_dir'] == str(run_eos)
+    bounds.assert_not_called()
+    assert 'current key is not checked: registry unreadable' in caplog.text

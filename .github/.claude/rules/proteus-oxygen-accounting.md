@@ -44,7 +44,19 @@ Escape includes O in the unfractionated partitioning so
 
 - `assert_mass_conservation` in the main loop enforces `M_atm <= M_planet` every
   iteration. If a change weakens or removes it, push back: it is the safety net
-  that catches O-skip reintroductions.
+  that catches O-skip reintroductions. The exception is `outgas.vapourise =
+  true`: rock vapourisation deliberately moves rock mass into `M_atm` without
+  subtracting it from the interior, and rock-vapour elements dilute the escape
+  outflow without being debited from a tracked reservoir. In that mode the main
+  loop passes `require_atm_le_planet=False`, which disables that one half and
+  replaces it with a warning raised whenever the excess over `M_planet` is
+  larger than `M_vaps`, i.e. larger than vapourisation explains. The relaxation
+  applies only while `M_vaps > 0`; with no vapour column present the invariant
+  is enforced regardless of the keyword. The other half of the check
+  (`M_vol_atm` equals the summed per-species atmospheric masses) stays enforced
+  in both modes, and `atol_frac` is never loosened. Treat that non-conservation
+  as intentional, not a bug to repair; see `docs/Explanations/model.md`,
+  "Whole-planet mass is not conserved when vapourisation is enabled".
 - `check_ic_oxygen_budget`, called once after the first outgas call, hard-fails
   on >50% divergence between the user-supplied O_budget and CALLIOPE's
   equilibrium value.

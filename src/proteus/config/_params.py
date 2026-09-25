@@ -4,7 +4,7 @@ It also defines stopping criteria."""
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, lt
+from attrs.validators import ge, gt, in_, lt, optional
 
 from ._converters import none_if_none
 
@@ -15,6 +15,7 @@ def valid_path(instance, attribute, value):
 
 
 def max_bigger_than_min(instance, attribute, value):
+    """The maximum must exceed the minimum on the same section."""
     if value <= instance.minimum:
         raise ValueError("'maximum' has to be bigger than 'minimum'.")
 
@@ -28,7 +29,11 @@ def valid_mod(instance, attribute, value):
 
 @define
 class OutputParams:
-    """Parameters for output files and logging
+    """Parameters for output files and logging.
+
+    Note that `write_mod` and `dt_write_rel` are independent triggers for
+    writing output files. The model will write output if either trigger
+    is individually satisfied.
 
     Attributes
     ----------
@@ -41,14 +46,9 @@ class OutputParams:
     plot_fmt: str
         Plotting output file format. Choices: "png", "pdf".
     write_mod: int
-        Write CSV frequency. 0: wait until completion. n: every n iterations.
+        Write data iteration-interval trigger. 0: wait until completion. n: every n iterations.
     dt_write_rel: float
-        Minimum elapsed simulation time between data writes, expressed as a
-        fraction of the current simulation time. The effective minimum write
-        interval is ``dt_write_rel * Time``. This gives logarithmic spacing:
-        at Time=1e3 yr with dt_write_rel=1e-3 the guard is 1 yr; at
-        Time=1e9 yr it is 1e6 yr. Set to 0 to write every time write_mod
-        triggers (default, preserving existing behaviour).
+        Write data time-interval trigger. Expressed as a fraction of the current simulation time. Set to 0 to disable.
     plot_mod: int | None
         Plotting frequency. 0: wait until completion. n: every n iterations. None: never plot.
     archive_mod: int | None
@@ -108,6 +108,10 @@ class TimeStepParams:
     window: int
         Number of previous steps to consider for adaptive-method comparison
         [dimensionless].
+    max_growth_factor: float
+        Cap on the dt growth ratio between consecutive steps [dimensionless].
+        Bounds dtswitch / dtprev, preventing large jumps that can wedge the
+        interior solver; 0 (default) disables the cap.
     maximum_rel: float
         Time-fraction allowance added to ``dt.maximum`` on every step
         [dimensionless]. The effective per-step cap is the sum
@@ -132,6 +136,44 @@ class TimeStepParams:
         ``Phi_global > stop.solid.phi_crit``, ``mushy_maximum``
         takes over from ``maximum``. Default 0.99 so the cap kicks
         in as soon as the first cell crystallises.
+    evection_maximum: float | str
+        Ceiling on the time-step size [yr] while the planet-satellite
+        system is inside, or approaching, the evection resonance band.
+        Must be > 0 when set. Default ``'none'`` (disables the whole
+        mechanism).
+    evection_target_rel_de: float
+        Target maximum fractional change in ``eccentricity_sat`` per
+        macro-step while inside/approaching the evection band. Obliqua's
+        own adaptive mode-window selection is keyed on the eccentricity
+        it is given at call time, and that window is then held fixed for
+        the whole of the following macro-step, so a large fractional swing
+        in ``e`` within one step risks needing modes outside that window.
+        Default 0.05 (5%).
+    evection_de_floor: float
+        Floor on the eccentricity value used in the
+        ``evection_target_rel_de`` ratio's denominator, so a tiny
+        eccentricity right at capture onset does not make the allowed
+        step blow up. Default 0.02.
+    evection_rate_window: int
+        Number of trailing accepted macro-steps used to estimate the
+        SECULAR ``|de/dt|`` this cap bounds against (a least-squares
+        linear fit for windows > 2, the plain two-point difference at
+        the default of 2). Default 2, preserves the two-point behaviour.
+    evection_growth_factor: float | str
+        Cap on the dt growth ratio between consecutive steps while the
+        system is inside/approaching the evection band, or within
+        ``evection_cooldown_iters`` steps of having left it. Separate
+        from the global ``max_growth_factor`` (which most evection runs
+        leave disabled, since it would also throttle ordinary bulk
+        evolution for the rest of the run). Must be > 0 when set. Default
+        ``'none'`` (disabled).
+    evection_cooldown_iters: int | str
+        Number of PROTEUS iterations, after the system is no longer judged
+        in/near the evection band, during which ``evection_growth_factor``
+        remains active. Refreshed to this value on every iteration the
+        zone is active, so a long stay in the band does not exhaust it
+        before exit. Must be > 0 when set. Default ``'none'`` (no cooldown
+        tail; growth limiting turns off the instant the zone is left).
     hysteresis_iters: int
         Number of PROTEUS iterations after an adaptive "slow down"
         decision during which the speed-up factor is suppressed.
@@ -166,9 +208,26 @@ class TimeStepParams:
 
     # Stiffness-aware adaptive time-stepping extensions.
     # Defaults OFF (mushy_maximum=0, hysteresis_iters=0); enable via
-    # positive config values.
+    # positive config values. The evection_* trio below use 'none' rather
+    # than 0 as their opt-out sentinel (see each field's own docstring
+    # above): 0 is not a meaningful value for any of the three (a zero
+    # ceiling/growth-factor/cooldown is behaviourally identical to
+    # disabled, so collapsing that ambiguity into an explicit 'none'
+    # avoids a silently-degenerate positive-looking config value).
     mushy_maximum: float = field(default=0.0, validator=ge(0))
     mushy_upper: float = field(default=0.99, validator=(gt(0), lt(1)))
+    evection_maximum: float | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
+    evection_target_rel_de: float = field(default=0.05, validator=gt(0))
+    evection_de_floor: float = field(default=0.02, validator=gt(0))
+    evection_rate_window: int = field(default=2, validator=ge(2))
+    evection_growth_factor: float | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
+    evection_cooldown_iters: int | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
     hysteresis_iters: int = field(default=0, validator=ge(0))
     hysteresis_sfinc: float = field(default=1.1, validator=ge(1.0))
 
@@ -306,6 +365,49 @@ class StopDisint:
 
 
 @define
+class StopDisintSat:
+    """Parameters for satellite disintegration stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable all planet disintegration criteria if True
+    roche_enabled: bool
+        Disable Roche limit criterion
+    offset_roche: float
+        Absolute correction (+/-) to (increase/decrease) calculated Roche limit [m].
+    spin_enabled: bool
+        Disable Breakup period criterion
+    offset_spin: float
+        Absolute correction (+/-) to (increase/decrease) calculated Breakup period [s].
+    """
+
+    enabled: bool = field(default=False)
+
+    roche_enabled: bool = field(default=True)
+    offset_roche: float = field(default=0)
+
+    spin_enabled: bool = field(default=True)
+    offset_spin: float = field(default=0)
+
+
+@define
+class StopSatellite:
+    """Parameters for satellite escape stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable criteria if True
+    sma_max: float
+        Maximum semi-major axis for the satellite [R_Earth].
+    """
+
+    enabled: bool = field(default=False)
+    sma_max: float = field(default=60)
+
+
+@define
 class StopClock:
     """Parameters for maximum clock runtime stopping criteria.
 
@@ -319,6 +421,27 @@ class StopClock:
 
     enabled: bool = field(default=True)
     maximum: float = field(default=60 * 60 * 24 * 7, validator=gt(0))
+
+
+@define
+class StopStall:
+    """Parameters for the unconverged-atmosphere stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable criteria if True
+    maximum: int
+        Model will terminate after this many consecutive iterations without a
+        converged atmosphere solve, whatever the interior is doing. Sized on 27
+        stalled GJ 9827 d cases as they stood on 2026-08-08: the deepest streak
+        a run recovered from is 126 and the deepest open one, which never
+        converged, is 233. Raising it past the open streak defeats the
+        criterion; lowering it below the recovered one ends runs that come back.
+    """
+
+    enabled: bool = field(default=True)
+    maximum: int = field(default=150, validator=gt(0))
 
 
 @define
@@ -341,8 +464,12 @@ class StopParams:
         Parameters for escape criteria.
     disint: StopDisint
         Parameters for planet disintegration criteria.
+    disint_sat: StopDisintSat
+        Parameters for satellite disintegration criteria.
     clock: StopClock
         Parameters for maximum clock runtime criteria.
+    stall: StopStall
+        Parameters for the unconverged-atmosphere criteria.
     """
 
     iters: StopIters = field(factory=StopIters)
@@ -351,7 +478,10 @@ class StopParams:
     radeqm: StopRadeqm = field(factory=StopRadeqm)
     escape: StopEscape = field(factory=StopEscape)
     disint: StopDisint = field(factory=StopDisint)
+    disint_sat: StopDisintSat = field(factory=StopDisintSat)
+    satellite: StopSatellite = field(factory=StopSatellite)
     clock: StopClock = field(factory=StopClock)
+    stall: StopStall = field(factory=StopStall)
 
     strict: bool = field(default=False)
 
@@ -368,6 +498,12 @@ class Params:
         Parameters for time-stepping.
     stop: StopParams
         Parameters for stopping criteria.
+    resume: bool
+        Resume the simulation from the last archived state in the output
+        folder, instead of starting from scratch.
+    offline: bool
+        Run without network access; never download reference data, and fail
+        if a required file is missing locally.
     """
 
     out: OutputParams = field(factory=OutputParams)

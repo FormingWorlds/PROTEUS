@@ -66,7 +66,7 @@ decreasing atmospheric partial pressures.
 A grey-body model for the atmospheric radiative properties. The upward
 longwave flux is:
 
-$$F_\mathrm{OLR} = \sigma \bigl[T_\mathrm{surf} (1 - \gamma)\bigr]^4$$
+$$F_\mathrm{OLR} = \sigma \bigl\lbrack T_\mathrm{surf} (1 - \gamma)\bigr\rbrack^4$$
 
 where $\gamma$ reduces the effective radiating temperature
 (0 = transparent atmosphere, 1 = perfectly opaque). The transit radius
@@ -139,7 +139,7 @@ from Kepler's third law. A configurable tidal heating amplitude
 (`H_tide`) is applied to mantle layers where the melt fraction exceeds
 a threshold (`Phi_tide`), providing a simple parameterised heat source
 for testing the interior module's response to tidal power without
-running the full LovePy viscoelastic solver.
+running the full LovePy or Obliqua viscoelastic solvers.
 
 ---
 

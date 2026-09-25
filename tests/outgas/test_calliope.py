@@ -442,3 +442,126 @@ def test_construct_guess_defers_to_cold_start_when_noble_active():
     result = construct_guess(hf_row, target, mass_thresh=1.0)
     assert isinstance(result, dict)
     assert result['CO2'] == pytest.approx(10.0, rel=1e-12)
+
+
+# -----------------------------------------------------------------------
+# calc_surface_pressures :: element target passed to CALLIOPE
+# -----------------------------------------------------------------------
+
+
+def _surface_pressure_hf_row():
+    """Helpfile row with a whole-planet inventory for every tracked element.
+
+    Each element carries a distinct mass so a target built from the wrong
+    element set is visible in the values, not only in the key set. The noble
+    inventories are trace relative to the volatiles, which is the realistic
+    regime.
+
+    Every total is deliberately DIFFERENT from the matching config budget in
+    `_element_mode_config`, so a target populated from the static config instead
+    of the running whole-planet totals is visible in the values. Reading the
+    config would silently discard every escape debit accumulated so far.
+    """
+    hf_row = dict(_HF_ROW)
+    hf_row['Time'] = 0.0
+    for e in element_list:
+        hf_row[f'{e}_kg_total'] = 1.0e16 if e in noble_gases else 1.0e20
+    # H budget in the config is 1.5e20; He budget is 3.0e16.
+    hf_row['H_kg_total'] = 1.2e20
+    hf_row['He_kg_total'] = 2.0e16
+    return hf_row
+
+
+def _captured_target(config, hf_row):
+    """Run calc_surface_pressures with CALLIOPE mocked and return the target."""
+    from unittest.mock import patch
+
+    from proteus.outgas.calliope import calc_surface_pressures
+
+    # A minimal output dict: the wrapper only copies keys it recognises, so an
+    # empty result leaves hf_row untouched and keeps the test on the target.
+    with patch('proteus.outgas.calliope.equilibrium_atmosphere', return_value={}) as mock_solve:
+        calc_surface_pressures({'output': '/tmp/test'}, config, hf_row)
+    return mock_solve.call_args.args[0]
+
+
+@pytest.mark.physics_invariant
+def test_calliope_target_carries_every_element_calliope_can_solve():
+    """The target handed to CALLIOPE holds the volatile elements and the noble
+    gases, and excludes the rock-forming elements.
+
+    CALLIOPE decides which noble gases are active from the inclusion flags
+    construct_options sets, then indexes the target by name, so a noble gas
+    that is switched on but absent from the target raises KeyError inside the
+    solver. The rock-forming elements of vap_element_list have no CALLIOPE
+    analogue and must stay out.
+    """
+    config = _element_mode_config({'He': True}, He_mode='kg', He_budget=3.0e16)
+    config.outgas.T_floor = 1200.0
+    config.outgas.mass_thresh = 1.0e16
+    config.outgas.solver_atol = 1e-8
+    config.outgas.solver_rtol = 1e-5
+    config.outgas.calliope.nguess = 100
+    config.outgas.calliope.nsolve = 500
+    config.outgas.calliope.p_guess_max = 5.0e6
+    config.planet.fO2_source = 'user_constant'
+    hf_row = _surface_pressure_hf_row()
+
+    target = _captured_target(config, hf_row)
+
+    # Every element CALLIOPE can partition is present, keyed by symbol.
+    for e in ('H', 'O', 'C', 'N', 'S', 'He', 'Ne', 'Ar', 'Kr', 'Xe'):
+        assert e in target, f'target missing {e!r}, which CALLIOPE indexes by name'
+    # The rock-forming elements are outgassed by LavAtmos, not CALLIOPE.
+    for e in ('Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K'):
+        assert e not in target, f'rock-forming {e!r} has no CALLIOPE analogue'
+    # Values come from the running whole-planet totals, not from the config
+    # budgets. The fixture sets both a volatile and a noble total away from their
+    # configured budget, so a target populated from the config, which would
+    # discard every escape debit, fails here.
+    assert target['H'] == pytest.approx(1.2e20, rel=1e-12)
+    assert target['He'] == pytest.approx(2.0e16, rel=1e-12)
+    assert target['H'] != pytest.approx(config.planet.elements.H_budget, rel=1e-3)
+    assert target['He'] != pytest.approx(config.planet.elements.He_budget, rel=1e-3)
+    # Scale guard: the noble entry is trace against hydrogen by four orders of
+    # magnitude, so a target that had swapped the two would fail here.
+    assert target['He'] < 1e-3 * target['H']
+
+
+@pytest.mark.physics_invariant
+def test_calliope_target_reaches_the_solver_for_an_active_noble_gas():
+    """With helium switched on, the inclusion flag and the target agree, so the
+    solver is handed a self-consistent problem.
+
+    The failure this guards against is asymmetric rather than absent data: the
+    options say helium is a primary unknown while the target does not name it.
+    Also covers the limit case of a noble gas that is configured off, where the
+    target still carries a zero entry rather than dropping the key.
+    """
+    config = _element_mode_config({'He': True}, He_mode='kg', He_budget=3.0e16)
+    config.outgas.T_floor = 1200.0
+    config.outgas.mass_thresh = 1.0e16
+    config.outgas.solver_atol = 1e-8
+    config.outgas.solver_rtol = 1e-5
+    config.outgas.calliope.nguess = 100
+    config.outgas.calliope.nsolve = 500
+    config.outgas.calliope.p_guess_max = 5.0e6
+    config.planet.fO2_source = 'user_constant'
+    hf_row = _surface_pressure_hf_row()
+
+    opts = construct_options({}, config, dict(hf_row))
+    target = _captured_target(config, hf_row)
+
+    # Every noble gas the options mark active must be a target key.
+    active = [g for g in noble_gases if opts[f'{g}_included'] == 1]
+    assert active == ['He']
+    for gas in active:
+        assert gas in target
+        assert target[gas] > 0.0
+
+    # Limit input: the nobles that are switched off still hold a target entry,
+    # so a later config change that switches one on cannot desynchronise the
+    # two. Their inventories are the trace values from the helpfile row.
+    for gas in ('Ne', 'Ar', 'Kr', 'Xe'):
+        assert opts[f'{gas}_included'] == 0
+        assert target[gas] == pytest.approx(1.0e16, rel=1e-12)

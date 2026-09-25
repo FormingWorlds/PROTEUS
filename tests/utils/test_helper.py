@@ -24,6 +24,7 @@ from proteus.utils.helper import (
     UpdateStatusfile,
     create_tmp_folder,
     find_nearest,
+    is_write_snapshot,
     mol_to_ele,
     multiple,
     natural_sort,
@@ -350,6 +351,24 @@ class TestCommentFromStatus:
         # Discrimination: differentiate from 16 (planet disintegrated) by
         # pinning the volatiles-escaped qualifier substring.
         assert 'volatiles' in CommentFromStatus(15)
+
+    @pytest.mark.unit
+    def test_status_satellite_escaped(self):
+        """Status 17: Completed (satellite escaped)."""
+        assert CommentFromStatus(17) == 'Completed (satellite escaped)'
+        # Discrimination: differentiate from 18 (satellite disintegrated)
+        # by pinning the escaped-specific qualifier substring.
+        assert 'escaped' in CommentFromStatus(17)
+        assert 'disintegrated' not in CommentFromStatus(17)
+
+    @pytest.mark.unit
+    def test_status_satellite_disintegrated(self):
+        """Status 18: Completed (satellite disintegrated)."""
+        assert CommentFromStatus(18) == 'Completed (satellite disintegrated)'
+        # Discrimination: differentiate from 16 (planet disintegrated) by
+        # pinning that the qualifier names the satellite, not the planet.
+        assert 'satellite disintegrated' in CommentFromStatus(18)
+        assert CommentFromStatus(18) != CommentFromStatus(16)
 
     @pytest.mark.unit
     def test_status_generic_error(self):
@@ -700,3 +719,104 @@ class TestCreateTmpFolder:
             for tmpdir in [tmpdir1, tmpdir2]:
                 if os.path.exists(tmpdir):
                     shutil.rmtree(tmpdir)
+
+
+# ---------------------------------------------------------------------------
+# is_write_snapshot: OR-combined write cadence (write_mod OR dt_write_rel)
+# ---------------------------------------------------------------------------
+
+
+def test_is_write_snapshot_default_writes_on_write_mod_cadence():
+    """With dt_write_rel disabled (0), the decision reduces to the write_mod
+    iteration cadence, preserving the pre-OR default behaviour.
+
+    Discrimination: a write_mod-boundary iteration writes; an off-boundary
+    iteration does not. Both asserted so an always-True/always-False
+    regression is caught.
+    """
+    # On a write_mod=5 boundary -> write.
+    assert is_write_snapshot(10, 5, 0.0, 1.0e6, 0.0) is True
+    # Off the boundary, and time trigger disabled -> no write.
+    assert is_write_snapshot(11, 5, 0.0, 1.0e6, 0.0) is False
+
+
+def test_is_write_snapshot_time_trigger_is_individually_sufficient():
+    """A large elapsed time triggers a write even off the write_mod cadence,
+    and an insufficient elapsed time does not (when off-cadence).
+
+    This is the OR behaviour: either criterion alone suffices. Inputs chosen
+    so cur_time=1e6, last_write=0, dt_write_rel=1e-3 gives an interval of
+    1e3 yr, which 1e6 far exceeds (write); with last_write=1e6-1 the elapsed
+    1 yr is well below 1e3 (no write).
+    """
+    # Off-cadence (11 not a multiple of 5) but time elapsed >> interval.
+    assert is_write_snapshot(11, 5, 1.0e-3, 1.0e6, 0.0) is True
+    # Off-cadence and elapsed time (1 yr) below the interval (1e3 yr).
+    assert is_write_snapshot(11, 5, 1.0e-3, 1.0e6, 1.0e6 - 1.0) is False
+
+
+def test_is_write_snapshot_initial_iteration_and_disabled_time_guard():
+    """The initial iteration (loop 0 with the default write_mod=1) writes, and
+    the time criterion never fires on its own when dt_write_rel <= 0.
+
+    Edge/limit cases: loop 0 with last_write_time = -inf (initial condition),
+    and dt_write_rel = 0 with a huge elapsed time (must NOT force a write off
+    the write_mod cadence, guarding against the OR-with-always-true bug).
+    """
+    import math
+
+    # Initial iteration: loop 0 is a multiple of write_mod=1 -> write.
+    assert is_write_snapshot(0, 1, 0.0, 0.0, -math.inf) is True
+    # dt_write_rel = 0 must not let the time term fire even with huge elapsed
+    # time on an off-cadence iteration.
+    assert is_write_snapshot(3, 100, 0.0, 1.0e12, -math.inf) is False
+    # write_mod = 0 ("wait until completion") with time trigger off -> no write.
+    assert is_write_snapshot(50, 0, 0.0, 1.0e6, 0.0) is False
+
+
+@pytest.mark.unit
+def test_format_subyear_time_replaces_dot_with_p():
+    """format_subyear_time uses ``p`` as the decimal separator."""
+    from proteus.utils.helper import format_subyear_time
+
+    assert format_subyear_time(884.7) == '884p700'
+    assert format_subyear_time(0.0) == '0p000'
+    assert format_subyear_time(30.0) == '30p000'
+    assert format_subyear_time(1000.6) == '1000p600'
+    # Three decimal places
+    assert format_subyear_time(0.1234) == '0p123'
+
+
+@pytest.mark.unit
+def test_parse_subyear_time_handles_both_conventions():
+    """parse_subyear_time accepts ``p`` and ``.`` as decimal separators."""
+    from proteus.utils.helper import parse_subyear_time
+
+    assert parse_subyear_time('884p700') == pytest.approx(884.7)
+    assert parse_subyear_time('0p000') == pytest.approx(0.0)
+    # Plain-dot format (legacy)
+    assert parse_subyear_time('884.700') == pytest.approx(884.7)
+    # Whole-year token (no separator)
+    assert parse_subyear_time('1000') == pytest.approx(1000.0)
+
+
+@pytest.mark.unit
+def test_format_parse_subyear_roundtrip():
+    """format_subyear_time and parse_subyear_time are inverses."""
+    from proteus.utils.helper import format_subyear_time, parse_subyear_time
+
+    for t in [0.0, 0.5, 1.0, 30.2, 884.7, 1e6]:
+        assert parse_subyear_time(format_subyear_time(t)) == pytest.approx(t)
+
+
+@pytest.mark.unit
+def test_parse_subyear_time_rejects_multiple_p():
+    """A token with more than one ``p`` raises ValueError."""
+    from proteus.utils.helper import parse_subyear_time
+
+    with pytest.raises(ValueError, match="multiple 'p' characters"):
+        parse_subyear_time('884p700p')
+    with pytest.raises(ValueError, match="multiple 'p' characters"):
+        parse_subyear_time('1p2p3')
+    with pytest.raises(ValueError, match="multiple 'p' characters"):
+        parse_subyear_time('884pp700')

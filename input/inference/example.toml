@@ -41,7 +41,7 @@ config_version = "3.0"
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
         write_mod             = 1            # 0: at end | n: every n iters
-        dt_write_rel          = 0.0         # min write interval as fraction of elapsed simulation time (0: off)
+        dt_write_rel          = 0.0         # extra time-based write trigger as fraction of sim time, OR-ed with write_mod (0: off)
         archive_mod           = "none"       # 0: at end | n: every n iters | none: never
         remove_sf             = false        # remove spectral file when done
 
@@ -126,7 +126,7 @@ config_version = "3.0"
     tcenter_init              = 6000         # center temperature [K] (linear only)
     delta_T_super             = 500.0        # superliquidus offset at CMB [K] (liquidus_super)
     ini_entropy               = 3900.0       # initial specific entropy [J/kg/K] (isentropic only)
-    ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
+    ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (<= 0 with liquidus_super)
     f_accretion               = 0.04         # accretion heat retention [0-1] (accretion only)
     f_differentiation         = 0.50         # differentiation heat retention [0-1] (accretion only)
 
@@ -225,13 +225,13 @@ config_version = "3.0"
     s0_factor                 = 0.25        # instellation geometric scale factor
 
     # Tidal evolution and rotation
-    evolve                    = false        # evolve semi-major axis and eccentricity
     axial_period              = "none"       # day length [hours]; none = tidally locked
 
     # Satellite (moon)
-    satellite                 = false        # include satellite
-    mass_sat                  = 7.347e+22    # satellite mass [kg]
-    semimajoraxis_sat         = 3e8          # satellite orbit semi-major axis [m]
+    [orbit.satellite]
+        include_satellite     = false        # include satellite
+        mass_sat              = 0.0123024    # satellite mass [M_earth]
+        semimajoraxis_sat     = 47.3527      # satellite orbit semi-major axis [R_earth]
 
     [orbit.dummy]
         H_tide                = 1e-7         # fixed tidal power density [W kg-1]
@@ -360,7 +360,7 @@ config_version = "3.0"
     # Rheology and convection
     rfront_loc                = 0.30         # rheological front centre [melt fraction]
     rfront_wid                = 0.15         # rheological front width [melt fraction]
-    grain_size                = 0.1          # crystal grain size [m]
+    grain_size                = 1e-3          # crystal grain size [m]
     mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
     kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
 
@@ -508,7 +508,7 @@ config_version = "3.0"
     cloud_enabled             = false        # water cloud radiative effects
     cloud_alpha               = 0.0          # condensate retention fraction (0 to 1)
     aerosols_enabled          = false        # enable aerosol radiative effects (agni only)
-    albedo_pl                 = 0.0          # planetary bond albedo; float or path to CSV lookup
+    albedo_pl                 = 0.0          # planetary bond albedo (0 to 1)
     surf_greyalbedo           = 0.1          # grey surface albedo (used when agni.surf_material = "greybody")
 
     # Surface boundary condition

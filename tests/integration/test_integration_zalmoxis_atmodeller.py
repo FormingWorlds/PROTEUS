@@ -278,20 +278,32 @@ def test_atmodeller_whole_element_totals_in_hf_row_schema_under_zalmoxis():
     GetHelpfileKeys is caught regardless of which outgas backend is
     in play.
 
-    Discrimination: per-element check so a regression that dropped
-    one element's total fails the specific assertion. The volatile
-    species (H, O, C, N, S) and the rock-forming species (Si, Mg,
-    Fe, Na) are pinned together because the dry-mass subtraction
-    treats them uniformly.
+    Discrimination: the elements that must carry a column are named
+    literally, so dropping any one of them from its source list fails
+    here. Comparing against the source lists instead would not: both
+    sides of that comparison are built from the same lists and move
+    together, so a dropped element would pass. The volatile species
+    (H, O, C, N, S) and the rock-forming species are pinned together
+    because the dry-mass subtraction treats them uniformly.
     """
-    from proteus.utils.constants import element_list, noble_gases
+    from proteus.utils.constants import (
+        element_list,
+        noble_gases,
+        vap_element_list,
+        vol_element_list,
+    )
     from proteus.utils.coupler import GetHelpfileKeys, ZeroHelpfileRow
 
-    # The reactive and rock-forming elements plus the opt-in noble gases, which
-    # are tracked as elements in the whole-planet mass balance.
-    assert set(element_list) == {'H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'} | set(
-        noble_gases
-    )
+    # The volatile and rock-forming elements plus the opt-in noble gases, which
+    # are tracked as elements in the whole-planet mass balance. A floor, not an
+    # equality, so a new element is an addition rather than a failure.
+    required = {'H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'} | set(noble_gases)
+    missing = required - set(element_list)
+    assert not missing, f'{sorted(missing)} dropped from element_list; mass balance breaks'
+
+    # Every element the sources declare reaches the list, exactly once.
+    assert set(element_list) == set(vol_element_list) | set(vap_element_list) | set(noble_gases)
+    assert len(element_list) == len(set(element_list))
     keys = GetHelpfileKeys()
     for e in element_list:
         col = f'{e}_kg_total'

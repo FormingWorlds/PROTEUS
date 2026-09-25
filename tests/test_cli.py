@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import builtins
 import importlib.util
+import logging
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -10,6 +13,7 @@ from click.testing import CliRunner
 
 from proteus import __version__ as proteus_version
 from proteus import cli
+from proteus.config import UnknownConfigKeyError
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -558,6 +562,59 @@ def test_get_interiordata_calls_clean_downloads(monkeypatch, tmp_path):
     # No structure module in the fake config: the Zalmoxis EOS download
     # must not be attempted.
     assert not any(c[0] == 'zalmoxis_eos' for c in calls)
+
+
+@pytest.mark.unit
+def test_get_interiordata_reports_an_unknown_config_key_cleanly(monkeypatch, tmp_path):
+    """A misspelled key stops the download and is reported as a CLI error.
+
+    The download commands act on the configuration, so acting on one whose keys
+    were silently discarded would fetch data for a setup the user did not ask
+    for. The failure has to arrive in the CLI's own error style with the key
+    named, not as a traceback.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    runner = CliRunner()
+    downloads = []
+    monkeypatch.setattr(
+        'proteus.utils.data.download_interior_lookuptables',
+        lambda clean=False: downloads.append('interior'),
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_melting_curves',
+        lambda configuration, clean=False: downloads.append('melt'),
+    )
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    raw['planet']['mass_total'] = 2.5  # deliberate misspelling of mass_tot
+    cfg = tmp_path / 'typo.toml'
+    with open(cfg, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    res = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(cfg)])
+    assert res.exit_code != 0
+    assert 'planet.mass_total' in res.output
+    # A ClickException prints "Error: ..." and does not surface a traceback.
+    assert 'Traceback' not in res.output
+    # The config-dependent download is not reached; the config-independent one
+    # ahead of it may already have run, which is why only the former is pinned.
+    assert 'melt' not in downloads
+
+    # Discrimination: with the key spelled correctly the same command completes
+    # and the melting-curve download does run, so the refusal is caused by the
+    # misspelling rather than by this config being unusable.
+    raw['planet']['mass_tot'] = raw['planet'].pop('mass_total')
+    good = tmp_path / 'good.toml'
+    with open(good, 'w') as f:
+        tomlkit.dump(raw, f)
+    res_ok = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(good)])
+    assert res_ok.exit_code == 0
+    assert 'melt' in downloads
 
 
 @pytest.mark.unit
@@ -1139,6 +1196,144 @@ def test_grid_calls_grid_from_config(monkeypatch, tmp_path):
     assert received[0][0].name == 'cfg.toml'
     # Without --dry-run the dispatch must request a real run, not a stubbed one.
     assert received[0][1] is False
+
+
+def test_start_reports_an_unknown_config_key_cleanly(tmp_path):
+    """``proteus start`` refuses a misspelled key in the CLI's own error style.
+
+    This is the command most runs go through, so a refusal that arrives as a
+    bare traceback leaves the name of the offending key buried in it.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    raw['params']['out']['path'] = str(tmp_path / 'run_output')
+    raw['planet']['mass_total'] = 2.5  # deliberate misspelling of mass_tot
+    cfg = tmp_path / 'typo.toml'
+    with open(cfg, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    res = runner.invoke(cli.cli, ['start', '-c', str(cfg), '--offline'])
+    assert res.exit_code != 0
+    assert 'planet.mass_total' in res.output
+    assert 'Traceback' not in res.output
+
+
+def test_cli_does_not_convert_unrelated_value_errors(tmp_path, monkeypatch):
+    """A failure that is not about configuration keys keeps its traceback.
+
+    Presenting every ValueError as a tidy CLI message would hide real bugs, so
+    the group converts only the configuration-key error.
+    """
+
+    def boom(*_args, **_kwargs):
+        raise ValueError('something else went wrong entirely')
+
+    monkeypatch.setattr(cli, 'Proteus', boom)
+
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('config_version = "3.0"\n')
+
+    res = runner.invoke(cli.cli, ['start', '-c', str(cfg), '--offline'])
+    assert res.exit_code != 0
+    # Not laundered into "Error: ...": the exception escapes for the traceback.
+    assert isinstance(res.exception, ValueError)
+    assert 'something else went wrong entirely' in str(res.exception)
+
+
+def test_grid_reports_an_unknown_key_in_the_base_config_cleanly(tmp_path, monkeypatch):
+    """``proteus grid`` refuses a base config with a misspelled key, in CLI style.
+
+    Case config files are written out from the parsed base config, so an
+    unrecognised key in the base never reaches them and the grid would
+    otherwise run every case on a default nobody chose. The refusal has to name
+    the key and arrive as a CLI error, since the whole ensemble depends on it.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    import proteus.grid.manage as gmanage
+
+    monkeypatch.setattr(gmanage, 'PROTEUS_DIR', str(tmp_path))
+    monkeypatch.setattr(gmanage.time, 'sleep', lambda *_a, **_k: None)
+
+    with open(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml', 'rb') as f:
+        base = tomllib.load(f)
+    base['params']['dt']['maxium'] = base['params']['dt'].pop('maximum')
+    base_path = tmp_path / 'base.toml'
+    with open(base_path, 'w') as f:
+        tomlkit.dump(base, f)
+
+    grid_toml = tmp_path / 'run.grid.toml'
+    grid_toml.write_text(
+        'config_version = "3.0"\n'
+        'output = "cli_typo_grid"\n'
+        'symlink = ""\n'
+        f'ref_config = "{base_path}"\n'
+        'use_slurm = false\n'
+        'max_jobs = 1\n'
+        'max_days = 1\n'
+        'max_mem = 1\n'
+        '["planet.mass_tot"]\n'
+        '    method = "direct"\n'
+        '    values = [0.7]\n'
+    )
+
+    res = runner.invoke(cli.cli, ['grid', '-c', str(grid_toml), '--dry-run'])
+    assert res.exit_code != 0
+    assert 'params.dt.maxium' in res.output
+    # A ClickException prints "Error: ..."; an unwrapped raise prints a traceback.
+    assert 'Traceback' not in res.output
+
+
+def test_update_input_data_refuses_an_unknown_config_key_before_downloading(
+    tmp_path, monkeypatch
+):
+    """A misspelled key stops the data refresh before anything is fetched.
+
+    This helper runs at the tail of installing and of updating, after every
+    other step has reported success, so refusing here has to happen before the
+    download rather than after it. The helper is called directly because the
+    commands that reach it, ``install-all`` and ``update-all``, perform a full
+    installation; that the error it raises is presented in the CLI's own style
+    rather than as a traceback is pinned by the group-level tests above.
+    """
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    downloads = []
+    monkeypatch.setattr(
+        cli, 'download_sufficient_data', lambda configuration, clean: downloads.append(clean)
+    )
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    raw['planet']['mass_total'] = 2.5  # deliberate misspelling of mass_tot
+    cfg = tmp_path / 'typo.toml'
+    with open(cfg, 'w') as f:
+        tomlkit.dump(raw, f)
+
+    with pytest.raises(UnknownConfigKeyError) as excinfo:
+        cli._update_input_data(cfg)
+    assert 'planet.mass_total' in str(excinfo.value)
+    assert not downloads
+
+    # Discrimination: spelled correctly the same config completes the refresh,
+    # so the refusal is caused by the misspelling and not by this config.
+    raw['planet']['mass_tot'] = raw['planet'].pop('mass_total')
+    good = tmp_path / 'good.toml'
+    with open(good, 'w') as f:
+        tomlkit.dump(raw, f)
+    assert cli._update_input_data(good) is True
+    assert downloads == [True]
 
 
 def test_grid_dry_run_passes_test_run_flag(monkeypatch, tmp_path):
@@ -2487,3 +2682,193 @@ def test_start_defaults_to_no_resume_no_offline(monkeypatch, tmp_path):
     inst = _FakeProteusStart.instances[0]
     assert inst.resume is False
     assert inst.offline is False
+
+
+def _cvode_recorder(fail: bool, import_fails: bool = False):
+    """Return a subprocess.run stand-in that records commands and can fail the install.
+
+    ``fail`` makes tools/get_cvode.sh fail; ``import_fails`` makes the follow-up
+    import check in the interpreter running PROTEUS fail.
+    """
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        if fail and str(cmd[1]).endswith('get_cvode.sh'):
+            raise cli.subprocess.CalledProcessError(1, cmd)
+        if import_fails and cmd[1:] == ['-c', cli._CVODE_IMPORT]:
+            raise cli.subprocess.CalledProcessError(1, cmd)
+        return type('R', (), {'returncode': 0})()
+
+    return fake_run, calls
+
+
+def _cvode_command_env(monkeypatch, tmp_path):
+    """Pin the tree, disk, Julia and data directories so install-all and update-all run offline."""
+    _pin_proteus_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    (tmp_path / 'fwl_data').mkdir()
+    (tmp_path / 'socrates').mkdir()
+    (tmp_path / 'AGNI').mkdir()
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('command', ['install-all', 'update-all'])
+@pytest.mark.parametrize('import_fails', [False, True], ids=['script-fails', 'import-fails'])
+def test_a_failed_cvode_install_warns_and_the_command_goes_on(
+    monkeypatch, tmp_path, command, import_fails
+):
+    """A CVODE failure is a warning: exit 0, the message says who needs it, later steps run.
+
+    Only Aragog on ``solver_method = "cvode"`` needs CVODE, and that run stops
+    at setup, so SPIDER, radau and bdf users can finish the installation.
+    """
+    _cvode_command_env(monkeypatch, tmp_path)
+    fake_run, calls = _cvode_recorder(fail=not import_fails, import_fails=import_fails)
+    monkeypatch.setattr(cli.subprocess, 'run', fake_run)
+
+    res = runner.invoke(cli.cli, [command])
+
+    out = res.output.replace('\n', ' ')
+    assert res.exit_code == 0, res.output
+    assert '[!] CVODE (scikits-odes-sundials)' in out
+    assert 'stops at setup until it does' in out
+    assert 'bash tools/get_cvode.sh' in out
+    assert 'radau' in out and 'bdf' in out
+    assert 'CVODE available' not in out
+    assert 'completed' in out
+    # The command went on past the CVODE step to its end.
+    assert out.index('[!] CVODE') < out.index('completed')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('command', ['install-all', 'update-all'])
+def test_a_successful_cvode_install_runs_the_script_from_the_source_tree(
+    monkeypatch, tmp_path, command
+):
+    """Both commands run tools/get_cvode.sh from the PROTEUS root and go on to finish."""
+    _cvode_command_env(monkeypatch, tmp_path)
+    fake_run, calls = _cvode_recorder(fail=False)
+    monkeypatch.setattr(cli.subprocess, 'run', fake_run)
+
+    res = runner.invoke(cli.cli, [command])
+
+    assert res.exit_code == 0, res.output
+    cvode_calls = [c for c in calls if str(c[1]).endswith('get_cvode.sh')]
+    assert cvode_calls == [['bash', str(tmp_path / 'tools' / 'get_cvode.sh')]]
+    assert [sys.executable, '-c', cli._CVODE_IMPORT] in calls
+    assert 'CVODE available' in res.output
+    assert 'completed' in res.output
+
+
+# ---------------------------
+# Extended tests: `proteus get` logfile location
+# ---------------------------
+
+LEGACY_GET_LOG = 'proteus_get.log'
+
+
+def _stub_reference_downloaders(monkeypatch, calls=None):
+    """Replace the two downloaders behind ``get reference`` with recording no-ops."""
+    if calls is None:
+        calls = []
+
+    monkeypatch.setattr(
+        'proteus.utils.data.download_exoplanet_data', lambda: calls.append('exo')
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_massradius_data', lambda: calls.append('mr')
+    )
+    return calls
+
+
+@pytest.mark.unit
+def test_get_logfile_is_scoped_to_the_calling_user(monkeypatch, tmp_path):
+    """Two users running ``proteus get`` on one machine target two different logfiles.
+
+    A shared temporary directory is normally sticky, so a fixed logfile name
+    puts every user of the machine on one path that only its owner can
+    recreate. The path must therefore vary with the caller, and must no longer
+    be the shared name that collided.
+    """
+    runner = CliRunner()
+    _stub_reference_downloaders(monkeypatch)
+    monkeypatch.setattr('proteus.cli.tempfile.gettempdir', lambda: str(tmp_path))
+
+    seen = []
+    monkeypatch.setattr(cli, 'setup_logger', lambda logpath, **kw: seen.append(Path(logpath)))
+
+    for uid in (1001, 2002):
+        monkeypatch.setattr('proteus.cli.os.getuid', lambda uid=uid: uid)
+        res = runner.invoke(cli.cli, ['get', 'reference'])
+        assert res.exit_code == 0, res.output
+
+    assert seen[0] != seen[1]
+    assert {path.parent for path in seen} == {tmp_path}
+    assert LEGACY_GET_LOG not in {path.name for path in seen}
+
+
+@pytest.mark.unit
+def test_get_leaves_an_unremovable_foreign_logfile_alone(monkeypatch, tmp_path):
+    """``proteus get`` runs although another user's logfile sits in the temp directory.
+
+    Reproduces the shared-cluster failure: a logfile written by a different
+    user in a sticky temporary directory, where the kernel refuses removal by
+    a non-owner. Removal of that path is made to raise the same
+    ``PermissionError``, so a command that still targeted it would abort.
+    """
+    runner = CliRunner()
+    calls = _stub_reference_downloaders(monkeypatch)
+    monkeypatch.setattr('proteus.cli.tempfile.gettempdir', lambda: str(tmp_path))
+    monkeypatch.setattr('proteus.cli.os.getuid', lambda: 4242)
+
+    foreign = tmp_path / LEGACY_GET_LOG
+    foreign.write_text('owned by another user\n')
+
+    real_remove = os.remove
+
+    def guarded_remove(path, *args, **kwargs):
+        if Path(path) == foreign:
+            raise PermissionError(1, 'Operation not permitted', str(path))
+        return real_remove(path, *args, **kwargs)
+
+    monkeypatch.setattr('proteus.utils.logs.os.remove', guarded_remove)
+
+    res = runner.invoke(cli.cli, ['get', 'reference'])
+    assert res.exit_code == 0, res.output
+    assert calls == ['exo', 'mr']
+    # The other user's file is untouched, and this user gets a logfile of their own.
+    assert foreign.read_text() == 'owned by another user\n'
+    assert (tmp_path / 'proteus_get_4242.log').exists()
+
+
+@pytest.mark.unit
+def test_get_continues_when_the_logfile_cannot_be_opened(monkeypatch, tmp_path):
+    """A logfile that cannot be opened at all warns but does not stop the download.
+
+    Covers what a per-user name cannot: a read-only or full temporary
+    directory. The download proceeds on terminal-only logging.
+    """
+    runner = CliRunner()
+    calls = _stub_reference_downloaders(monkeypatch)
+    monkeypatch.setattr('proteus.cli.tempfile.gettempdir', lambda: str(tmp_path))
+
+    def refuse(*args, **kwargs):
+        raise PermissionError(1, 'Operation not permitted')
+
+    monkeypatch.setattr(cli, 'setup_logger', refuse)
+
+    try:
+        res = runner.invoke(cli.cli, ['get', 'reference'])
+        assert res.exit_code == 0, res.output
+        assert calls == ['exo', 'mr']
+        assert 'Cannot write' in res.output
+        # Exactly one terminal handler remains; no half-configured logger survives.
+        assert len(logging.getLogger('fwl').handlers) == 1
+    finally:
+        logging.getLogger('fwl').handlers.clear()

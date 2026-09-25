@@ -1,8 +1,11 @@
 """
-Unit tests for proteus.proteus module: Zalmoxis mesh restoration on resume.
+Unit tests for proteus.proteus module: Zalmoxis mesh restoration on resume,
+atmosphere-interior deadlock detection, main-loop plot cadence, and the
+T_magma handed to the atmosphere after a resume.
 
 Tests the resume code path in Proteus.start() that restores the Zalmoxis
-mesh file path when resuming a SPIDER interior simulation.
+mesh file path when resuming a SPIDER interior simulation, and the main
+loop's `params.out.plot_mod`-gated plot generation.
 
 Testing standards and documentation:
 - docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
@@ -10,21 +13,42 @@ Testing standards and documentation:
 
 Functions tested:
 - Proteus.start(): Resume path restoring spider_mesh and spider_mesh_prev
+- Proteus.start(): main-loop plot generation cadence (plot_mod)
+- Proteus.__init__(): stall criterion read from params.stop.stall
+- Proteus._check_atmosphere_deadlock()
+- Proteus.start(): resumed main loop hands the atmosphere the interior T_magma
+  (or the solvus boundary with global miscibility)
 """
 
 from __future__ import annotations
 
+import sys
 from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+# Stall cap the fixture config carries. Deliberately not ATMOS_STALL_MAX, and
+# well above AGNI_DEADLOCK_MAX: the constructor may read the config or fall
+# back on the constant, and only a distinct number tells the two apart.
+STALL_MAX_CONFIGURED = 41
 
-def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_module='spider'):
+
+def _make_proteus_instance(
+    tmp_path,
+    *,
+    struct_module='zalmoxis',
+    interior_module='spider',
+    stall_enabled=True,
+    stall_maximum=STALL_MAX_CONFIGURED,
+):
     """Build a Proteus object with mocked config and directories."""
+    from proteus.config._params import StopStall
     from proteus.proteus import Proteus
 
     config = MagicMock()
@@ -37,12 +61,15 @@ def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_modul
     config.params.out.logging = 'WARNING'
     config.params.stop.iters.minimum = 10
     config.params.stop.iters.maximum = 1000
-    config.atmos_clim.albedo_from_file = False
     # Real values, not mock attributes: the resume branch compares the melt
     # fraction against phi_crit, which a bare MagicMock cannot be ordered
     # against. Defaults mirror the schema.
     config.params.stop.solid.freeze_volatiles = False
     config.params.stop.solid.phi_crit = 0.01
+    # A real schema node rather than mock attributes: the constructor reads
+    # this branch, so it has to carry the types and validators a run gives it,
+    # and an unset mock integer would read as a stall cap of one iteration.
+    config.params.stop.stall = StopStall(enabled=stall_enabled, maximum=stall_maximum)
 
     directories = {
         'output': str(tmp_path),
@@ -63,7 +90,6 @@ def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_modul
 _START_PATCHES = [
     'proteus.atmos_chem.wrapper.run_chemistry',
     'proteus.atmos_clim.run_atmosphere',
-    'proteus.atmos_clim.common.Albedo_t',
     'proteus.atmos_clim.common.Atmos_t',
     'proteus.escape.wrapper.run_escape',
     'proteus.interior_energetics.wrapper.run_interior',
@@ -226,27 +252,233 @@ def test_proteus_resume_mesh_no_prev(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Proteus.start(): refusing a helpfile that predates schema columns.
+# ---------------------------------------------------------------------------
+
+
+class _StopAfterHelpfileLoad(Exception):
+    """Sentinel exception to stop start() once the helpfile has been read."""
+
+
+def _resume_at_helpfile_load(p, *, read_effect=None):
+    """Drive start() as far as the helpfile load and stop there.
+
+    Returns the ReadHelpfileFromCSV and UpdateStatusfile mocks, which keep
+    their call history after the patches are lifted, plus the exception the
+    run ended on.
+    """
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        mock_read = stack.enter_context(patch('proteus.utils.coupler.ReadHelpfileFromCSV'))
+        if read_effect is None:
+            mock_read.return_value = _make_hf_df()
+        else:
+            mock_read.side_effect = read_effect
+        # start() reads the helpfile, then hands it to snapshot selection.
+        # Stopping there keeps the test on the load and off the solver setup.
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                side_effect=_StopAfterHelpfileLoad,
+            )
+        )
+        mock_status = stack.enter_context(patch('proteus.proteus.UpdateStatusfile'))
+
+        with pytest.raises(Exception) as excinfo:
+            p.start(resume=True, offline=True)
+
+    return mock_read, mock_status, excinfo.value
+
+
+@pytest.mark.unit
+def test_resume_records_an_error_status_on_helpfile_schema_drift(tmp_path):
+    """A refused resume writes the error status before it stops.
+
+    A run that died without updating its status file reads as still running
+    to every downstream tool that polls the output directory.
+    """
+    from proteus.utils.coupler import HelpfileSchemaDriftError
+
+    p = _make_proteus_instance(tmp_path)
+    drift = HelpfileSchemaDriftError('predates 2 column(s): M_atm, eccentricity')
+    mock_read, mock_status, ended_on = _resume_at_helpfile_load(p, read_effect=drift)
+
+    # The failure propagates rather than being swallowed into a partial run.
+    assert isinstance(ended_on, HelpfileSchemaDriftError)
+    assert 'M_atm' in str(ended_on)
+
+    statuses = [call.args[1] for call in mock_status.call_args_list]
+    assert 20 in statuses
+    # Discrimination: 0 is the start-of-run status written earlier, so the
+    # error status must be the last word and not merely present.
+    assert statuses[-1] == 20
+
+    # The resume asks for the shortfall to be reported and passes nothing
+    # that could soften it. A keyword here would mean an opt-out had been
+    # reintroduced, which is what makes a fabricated value reachable.
+    assert mock_read.call_args.kwargs == {}
+    assert mock_read.call_args.args == (p.directories['output'],)
+
+
+@pytest.mark.unit
+def test_resume_records_an_error_status_on_any_helpfile_load_failure(tmp_path):
+    """A resume that cannot read its helpfile at all records the same status.
+
+    Schema drift is one of several ways the load fails: the file may be
+    absent because the run died before its first write, or unparseable
+    because it was truncated. Each leaves the run just as dead, so each has
+    to leave the same mark on the status file.
+    """
+    p = _make_proteus_instance(tmp_path)
+
+    for label, effect in (
+        ('missing file', Exception("Cannot find helpfile at '/nowhere/runtime_helpfile.csv'")),
+        ('unparseable file', pd.errors.EmptyDataError('No columns to parse from file')),
+    ):
+        _, mock_status, ended_on = _resume_at_helpfile_load(p, read_effect=effect)
+
+        assert type(ended_on) is type(effect), label
+        statuses = [call.args[1] for call in mock_status.call_args_list]
+        assert statuses[-1] == 20, label
+        # Discrimination: 0 is written at the start of every run, so a status
+        # list of [0] alone is the untreated case this guards against.
+        assert statuses != [0], label
+
+
+@pytest.mark.unit
+def test_postprocessing_hands_the_physics_module_a_reporting_row(tmp_path):
+    """The row reaching the synthesis code reports a column it does not carry.
+
+    The required set is written by hand and can fall behind the code, so the
+    row itself has to say what is wrong for anything the set does not cover.
+    An ordinary dict would reach the same read as a bare KeyError.
+    """
+    from proteus.utils.coupler import (
+        GetPostprocessingKeys,
+        HelpfileRow,
+        HelpfileSchemaDriftError,
+    )
+
+    p = _make_proteus_instance(tmp_path)
+    p.config.atmos_chem.module = 'vulcan'
+
+    for method, wrapper in (
+        ('observe', 'proteus.observe.wrapper.run_observe'),
+        ('offline_chemistry', 'proteus.atmos_chem.wrapper.run_chemistry'),
+    ):
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(type(p), 'extract_archives'))
+            stack.enter_context(
+                patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=_make_hf_df())
+            )
+            mock_wrapper = stack.enter_context(patch(wrapper))
+            getattr(p, method)()
+
+        # The two wrappers take the row in different positions, so select it
+        # by type. An unwrapped row yields no match, which is the regression
+        # this guards: it would reach the synthesis code as a bare dict.
+        handed = [a for a in mock_wrapper.call_args.args if isinstance(a, HelpfileRow)]
+        assert len(handed) == 1, method
+        row = handed[0]
+
+        # A column outside the required set reports itself on being read.
+        absent = 'struct_mass_desync_frac'
+        assert absent not in GetPostprocessingKeys()
+        with pytest.raises(HelpfileSchemaDriftError, match=absent):
+            row[absent]
+
+        # Discrimination: the columns the run does carry still read normally,
+        # so the wrapper reports a shortfall rather than blocking every read.
+        assert row['T_magma'] == pytest.approx(2200.0), method
+
+
+@pytest.mark.unit
+def test_postprocessing_refuses_a_helpfile_that_predates_schema_columns(tmp_path):
+    """observe() and offline_chemistry() stop on the same shortfall.
+
+    Both seed a working row from the last line of the same table and hand it
+    to a physics module, so neither may proceed on columns the run never
+    wrote.
+    """
+    from proteus.utils.coupler import HelpfileSchemaDriftError
+
+    p = _make_proteus_instance(tmp_path)
+    p.config.atmos_chem.module = 'vulcan'
+    drift = HelpfileSchemaDriftError('predates 1 column(s): R_xuv')
+
+    for method, wrapper in (
+        ('observe', 'proteus.observe.wrapper.run_observe'),
+        ('offline_chemistry', 'proteus.atmos_chem.wrapper.run_chemistry'),
+    ):
+        with ExitStack() as stack:
+            mock_extract = stack.enter_context(patch.object(type(p), 'extract_archives'))
+            mock_read = stack.enter_context(
+                patch('proteus.utils.coupler.ReadHelpfileFromCSV', side_effect=drift)
+            )
+            mock_wrapper = stack.enter_context(patch(wrapper))
+            with pytest.raises(HelpfileSchemaDriftError):
+                getattr(p, method)()
+
+        # Postprocessing is held to the columns it actually reads, not to the
+        # whole schema, so a run short of an unrelated diagnostic stays
+        # readable. Passing nothing here would restore the blanket check.
+        from proteus.utils.coupler import GetHelpfileKeys, GetPostprocessingKeys
+
+        required = mock_read.call_args.kwargs['required_columns']
+        assert set(required) == set(GetPostprocessingKeys()), method
+        assert set(required) < set(GetHelpfileKeys()), method
+
+        # Discrimination: the physics module is never reached, so no
+        # incomplete row can be handed to it.
+        assert mock_wrapper.call_count == 0, method
+        # The run is left archived as it was found. Unpacking first would
+        # delete the tar on the way to a refusal that was already certain.
+        assert mock_extract.call_count == 0, method
+
+
+# ---------------------------------------------------------------------------
 # Proteus._check_atmosphere_deadlock: AGNI-vs-interior deadlock detector.
 # Targets the previously-untested block at proteus.py:802-853 (now extracted
 # to a method on Proteus so it can be exercised in isolation).
 # ---------------------------------------------------------------------------
 
 
-def _make_deadlock_proteus(tmp_path, *, converged=False, hf_all=None, hf_row=None):
+def _make_deadlock_proteus(
+    tmp_path,
+    *,
+    converged=False,
+    hf_all=None,
+    hf_row=None,
+    stale_iters=0,
+    stall_enabled=True,
+    stall_maximum=STALL_MAX_CONFIGURED,
+):
     """Build a Proteus instance pre-positioned for the deadlock check.
 
-    All the fields the check reads (atmos_o.converged, hf_all, hf_row,
-    agni_deadlock_count, agni_deadlock_max, directories) are set
-    explicitly; everything else is left at its post-__init__ default.
+    The fields the check reads off the run state (atmos_o.converged,
+    atmos_o.levels_stale_iters, hf_all, hf_row, agni_deadlock_count,
+    agni_deadlock_max, directories) are set explicitly; everything else is
+    left at its post-__init__ default. The stall cap and switch are among
+    those defaults on purpose: they reach the check from the config the
+    instance was built with, so a test can see what the constructor made of
+    it rather than what the test assigned afterwards.
     """
     from types import SimpleNamespace
 
-    p = _make_proteus_instance(tmp_path)
-    p.atmos_o = SimpleNamespace(converged=bool(converged))
+    from proteus.proteus import AGNI_DEADLOCK_MAX
+
+    p = _make_proteus_instance(
+        tmp_path, stall_enabled=stall_enabled, stall_maximum=stall_maximum
+    )
+    p.atmos_o = SimpleNamespace(converged=bool(converged), levels_stale_iters=int(stale_iters))
     p.hf_all = hf_all
     p.hf_row = hf_row if hf_row is not None else {}
     p.agni_deadlock_count = 0
-    p.agni_deadlock_max = 3
+    p.agni_deadlock_max = AGNI_DEADLOCK_MAX
     return p
 
 
@@ -382,6 +614,276 @@ def test_check_atmosphere_deadlock_f_atm_tolerance_boundary(tmp_path):
     assert p.agni_deadlock_count == 0
 
 
+def test_check_atmosphere_deadlock_aborts_a_stalled_atmosphere(tmp_path):
+    """An atmosphere that never converges ends the run even while the
+    interior is still moving.
+
+    Physical scenario: the interior keeps cooling on levels carried from an
+    older solve, so the frozen-state test never fires and the run would
+    otherwise spend its whole budget on a structure it never resolved.
+
+    Discriminating: the interior moves by 50 K between the rows, which is the
+    same input that resets the deadlock counter above, so an abort here is
+    attributable to the stall count alone. The streak is measured against the
+    cap the config carries, which is not the module constant, so a run that
+    read the constant instead would sit far below its cap and not abort.
+    """
+    from proteus.proteus import ATMOS_STALL_MAX
+
+    assert STALL_MAX_CONFIGURED != ATMOS_STALL_MAX
+
+    moving = {
+        'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
+        'hf_row': {'F_atm': 140.0, 'T_magma': 3000.0, 'Phi_global': 0.9},
+    }
+    p = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=STALL_MAX_CONFIGURED, **moving
+    )
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        with pytest.raises(RuntimeError, match=f'{STALL_MAX_CONFIGURED} consecutive solves'):
+            p._check_atmosphere_deadlock()
+    mock_update.assert_called_once()
+    args, _ = mock_update.call_args
+    assert args[1] == 22
+
+    # The frozen-interior counter is not what fired: it never left zero.
+    assert p.agni_deadlock_count == 0
+
+    # One short of the cap the run continues, so the abort is on the
+    # threshold rather than on any non-converged solve.
+    q = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=STALL_MAX_CONFIGURED - 1, **moving
+    )
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        q._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
+    assert q.agni_deadlock_count == 0
+
+
+def test_check_atmosphere_deadlock_stall_yields_to_a_converged_solve(tmp_path):
+    """The convergence flag short-circuits the check before the count is read.
+
+    Contract clause only: the wrapper zeroes the count on a converged solve
+    before this method ever runs, so the pairing below cannot arise in a
+    coupled run. What is pinned here is the order of the two tests, so a
+    count left on the struct can never kill a run whose atmosphere converged.
+    """
+    from proteus.proteus import ATMOS_STALL_MAX
+
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=True,
+        stale_iters=ATMOS_STALL_MAX + 1,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        hf_row={'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0},
+    )
+    p.agni_deadlock_count = 2
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        p._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
+    assert p.agni_deadlock_count == 0
+
+    # The same count with a failed solve does abort, so the convergence flag
+    # is what spared it.
+    q = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        stale_iters=ATMOS_STALL_MAX + 1,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        hf_row={'F_atm': 180.0, 'T_magma': 2900.0, 'Phi_global': 0.8},
+    )
+    with patch('proteus.proteus.UpdateStatusfile'):
+        with pytest.raises(RuntimeError, match=f'{ATMOS_STALL_MAX + 1} consecutive solves'):
+            q._check_atmosphere_deadlock()
+
+
+def test_check_atmosphere_deadlock_frozen_interior_still_aborts_first(tmp_path):
+    """A frozen interior keeps its own, much earlier abort.
+
+    Contract clause: the stall cap is a backstop for the case the frozen test
+    cannot see, so it must not delay the three-iteration abort that fires
+    when the interior has stopped moving as well.
+    """
+    frozen = {
+        'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        'hf_row': {'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0},
+    }
+    p = _make_deadlock_proteus(tmp_path, converged=False, stale_iters=3, **frozen)
+    p.agni_deadlock_count = 2
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        with pytest.raises(RuntimeError, match='consecutive AGNI failures'):
+            p._check_atmosphere_deadlock()
+    args, _ = mock_update.call_args
+    assert args[1] == 22
+
+    # Three frozen iterations is well inside the stall cap, so the two paths
+    # are not being confused for one another.
+    assert p.agni_deadlock_count == 3
+    assert p.agni_deadlock_count < p.atmos_stall_max
+
+
+def test_check_atmosphere_deadlock_reads_the_count_the_wrapper_produces(tmp_path):
+    """The count the abort reads is the one the atmosphere wrapper writes.
+
+    Contract clause: the two halves live in different modules, so this drives
+    the real producer, `carry_converged_levels`, rather than setting the
+    field by hand, and feeds the struct it leaves behind to the check.
+    """
+    from proteus.atmos_clim.common import Atmos_t
+    from proteus.atmos_clim.wrapper import carry_converged_levels
+    from proteus.proteus import ATMOS_STALL_MAX
+
+    atmos_o = Atmos_t()
+    converged_row = {'R_xuv': 7.0e6, 'p_xuv': 1.0e2, 'T_xuv': 900.0, 'g_xuv': 9.5}
+
+    # One accepted solve gives the run something to fall back on.
+    atmos_o.converged = True
+    carry_converged_levels(atmos_o, dict(converged_row))
+    assert atmos_o.levels_stale_iters == 0
+
+    # Then the atmosphere stops resolving, once per iteration.
+    atmos_o.converged = False
+    for expected in range(1, ATMOS_STALL_MAX + 1):
+        carry_converged_levels(atmos_o, dict(converged_row))
+        assert atmos_o.levels_stale_iters == expected
+
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
+        hf_row={'F_atm': 140.0, 'T_magma': 3000.0, 'Phi_global': 0.9},
+    )
+    p.atmos_o = atmos_o
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        with pytest.raises(RuntimeError, match=f'{ATMOS_STALL_MAX} consecutive solves'):
+            p._check_atmosphere_deadlock()
+    args, _ = mock_update.call_args
+    assert args[1] == 22
+
+    # A single accepted solve clears the count the wrapper keeps, so the run
+    # that recovers on its next iteration is not carrying a near-fatal state.
+    atmos_o.converged = True
+    carry_converged_levels(atmos_o, dict(converged_row))
+    assert atmos_o.levels_stale_iters == 0
+    p._check_atmosphere_deadlock()
+
+
+@pytest.mark.parametrize(
+    ('stored', 'expected'),
+    [(24.0, 24), (7.0, 7), (0.0, 0), (float('nan'), 0)],
+    ids=['one_short_of_the_cap', 'mid_streak', 'not_stalling', 'unreadable'],
+)
+def test_proteus_resume_restores_the_unresolved_atmosphere_count(tmp_path, stored, expected):
+    """A resume does not hand a stalling run a fresh allowance.
+
+    Contract clause: the count lives on a struct rebuilt at every start, and
+    the helpfile carries it, so a run killed part-way through a stall comes
+    back where it left off. Without this, any resume cadence shorter than the
+    cap defeats the abort entirely, which is the case a chronically stalling
+    run is most likely to be in.
+    """
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    df = _make_hf_df()
+    df['atm_levels_stale'] = [0.0, 0.0, 0.0, 0.0, stored]
+
+    _resume_with_patches(p, df)
+
+    assert p.atmos_o.levels_stale_iters == expected
+
+
+@pytest.mark.unit
+def test_atmos_stall_max_is_the_value_the_run_actually_uses(tmp_path):
+    """The stall cap is pinned, and the abort reads it rather than a literal.
+
+    Contract clause: the number decides when a run is given up on, so it must
+    not be changeable without a test noticing, and the check must not carry a
+    second copy of it. The ordering against the two neighbouring thresholds is
+    what has to hold whatever the number becomes: the wrapper reports a long
+    streak before anything aborts on it, and the frozen-interior abort stays
+    the earlier of the two.
+    """
+    from proteus.atmos_clim.wrapper import CARRIED_LEVELS_ALERT
+    from proteus.config._params import StopStall
+    from proteus.proteus import AGNI_DEADLOCK_MAX, ATMOS_STALL_MAX
+
+    assert ATMOS_STALL_MAX == 150
+    assert ATMOS_STALL_MAX > CARRIED_LEVELS_ALERT
+    assert ATMOS_STALL_MAX > AGNI_DEADLOCK_MAX
+
+    # The cap the fixture config carries sits between the two. Tests that size
+    # a streak on one constant and expect the other to decide the abort rest on
+    # that ordering, so it fails here rather than in one of them.
+    assert AGNI_DEADLOCK_MAX < STALL_MAX_CONFIGURED < ATMOS_STALL_MAX
+
+    # A run whose config carries the schema default lands on the constant, so
+    # a literal reintroduced on the instance would diverge from the pin above.
+    default = _make_proteus_instance(tmp_path, stall_maximum=StopStall().maximum)
+    assert default.atmos_stall_max == ATMOS_STALL_MAX
+    assert default.agni_deadlock_max == AGNI_DEADLOCK_MAX
+
+    # The schema default equals the constant, so the pin above cannot tell a
+    # config read from a literal. A configured value that differs from it can.
+    configured = _make_proteus_instance(tmp_path, stall_maximum=STALL_MAX_CONFIGURED)
+    assert configured.atmos_stall_max == STALL_MAX_CONFIGURED
+    assert configured.atmos_stall_max != ATMOS_STALL_MAX
+
+    moving = {
+        'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
+        'hf_row': {'F_atm': 140.0, 'T_magma': 3000.0, 'Phi_global': 0.9},
+    }
+
+    # The cap the check enforces is the one the config delivered, so moving
+    # the number moves the abort with it.
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        stale_iters=ATMOS_STALL_MAX,
+        stall_maximum=ATMOS_STALL_MAX,
+        **moving,
+    )
+    with patch('proteus.proteus.UpdateStatusfile'):
+        with pytest.raises(RuntimeError, match=f'{ATMOS_STALL_MAX} consecutive solves'):
+            p._check_atmosphere_deadlock()
+
+    q = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        stale_iters=ATMOS_STALL_MAX - 1,
+        stall_maximum=ATMOS_STALL_MAX,
+        **moving,
+    )
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        q._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
+
+
+@pytest.mark.unit
+def test_proteus_resume_without_the_stale_column_starts_at_zero(tmp_path):
+    """A helpfile written before the column existed resumes as unstalled.
+
+    Contract clause: the restoration reads a column that older runs do not
+    carry, so its absence has to read as a run that has not stalled rather
+    than end the resume.
+    """
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    df = _make_hf_df()
+    assert 'atm_levels_stale' not in df.columns
+
+    _resume_with_patches(p, df)
+
+    assert p.atmos_o.levels_stale_iters == 0
+
+    # The same frame with the column present restores the stored value, so
+    # the zero above is the absent-column path and not a dropped read.
+    q = _make_proteus_instance(tmp_path)
+    df_with = _make_hf_df()
+    df_with['atm_levels_stale'] = [0.0, 0.0, 0.0, 0.0, 19.0]
+    _resume_with_patches(q, df_with)
+    assert q.atmos_o.levels_stale_iters == 19
+
+
 # ---------------------------------------------------------------------------
 # Proteus.observe() and Proteus.offline_chemistry(): postprocessing methods.
 # Target lines 1055-1098 of proteus.py.
@@ -467,7 +969,7 @@ def test_observe_raises_on_empty_helpfile(tmp_path):
     p = _make_proteus_instance(tmp_path)
     empty_df = pd.DataFrame()
     with (
-        patch.object(p, 'extract_archives'),
+        patch.object(p, 'extract_archives') as mock_extract,
         patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=empty_df),
         patch('proteus.observe.wrapper.run_observe') as mock_run,
     ):
@@ -477,6 +979,9 @@ def test_observe_raises_on_empty_helpfile(tmp_path):
     # that swallowed the empty case and still dispatched would call
     # run_observe with an out-of-range index.
     assert mock_run.call_count == 0
+    # The run is left archived. Unpacking on the way to a refusal that was
+    # already certain deletes the tar for nothing.
+    assert mock_extract.call_count == 0
 
 
 def test_offline_chemistry_dispatches_to_run_chemistry_and_returns_result(tmp_path):
@@ -494,11 +999,15 @@ def test_offline_chemistry_dispatches_to_run_chemistry_and_returns_result(tmp_pa
         patch.object(p, 'extract_archives'),
         patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=df),
         patch('proteus.atmos_chem.wrapper.run_chemistry', return_value=expected) as mock_chem,
+        patch('proteus.plot.cpl_chem_atmosphere.plot_chem_atmosphere_entry') as mock_plot,
     ):
         result = p.offline_chemistry()
     mock_chem.assert_called_once()
     # The result must be the run_chemistry return, unchanged.
     assert result is expected
+    # A successful (non-None) result must refresh the chemistry plot once,
+    # with the Proteus handler passed through.
+    mock_plot.assert_called_once_with(p)
     # Discrimination: verify the last-row dict was passed (not the
     # full DataFrame). A regression that passed df would land args[2]
     # as a pandas object, not a dict.
@@ -511,6 +1020,27 @@ def test_offline_chemistry_dispatches_to_run_chemistry_and_returns_result(tmp_pa
     assert args[2]['Phi_global'] != pytest.approx(0.85)
 
 
+def test_offline_chemistry_skips_plot_when_chemistry_returns_none(tmp_path):
+    """A failed/skipped chemistry run (run_chemistry returns None) must NOT
+    trigger the chemistry plot refresh.
+
+    Discriminating counterpart to the success test: the same code path with a
+    None return must leave the plot entry uncalled and propagate None.
+    """
+    p = _make_proteus_instance(tmp_path)
+    df = _helpfile_df_multi_row()
+    with (
+        patch.object(p, 'extract_archives'),
+        patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=df),
+        patch('proteus.atmos_chem.wrapper.run_chemistry', return_value=None) as mock_chem,
+        patch('proteus.plot.cpl_chem_atmosphere.plot_chem_atmosphere_entry') as mock_plot,
+    ):
+        result = p.offline_chemistry()
+    mock_chem.assert_called_once()
+    assert result is None
+    mock_plot.assert_not_called()
+
+
 def test_offline_chemistry_raises_on_empty_helpfile(tmp_path):
     """offline_chemistry must also raise on an empty helpfile, with
     the same contract as observe().
@@ -520,7 +1050,7 @@ def test_offline_chemistry_raises_on_empty_helpfile(tmp_path):
     p = _make_proteus_instance(tmp_path)
     empty_df = pd.DataFrame()
     with (
-        patch.object(p, 'extract_archives'),
+        patch.object(p, 'extract_archives') as mock_extract,
         patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=empty_df),
         patch('proteus.atmos_chem.wrapper.run_chemistry') as mock_chem,
     ):
@@ -528,10 +1058,13 @@ def test_offline_chemistry_raises_on_empty_helpfile(tmp_path):
             p.offline_chemistry()
     assert mock_chem.call_count == 0
 
-
-# ---------------------------------------------------------------------------
-# Checkpoint restoration: spider_eos_dir + solidus/liquidus paths
-# ---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # Checkpoint restoration: spider_eos_dir + solidus/liquidus paths
+    # ---------------------------------------------------------------------------
+    # The run is left archived. offline_chemistry() takes the same order
+    # as observe(), so it needs the same guard against unpacking on the
+    # way to a refusal that was already certain.
+    assert mock_extract.call_count == 0
 
 
 def test_proteus_resume_restores_spider_eos_dir(tmp_path):
@@ -574,38 +1107,6 @@ def test_proteus_resume_restores_spider_eos_dir(tmp_path):
     assert p.directories['spider_liquidus_ps'] == str(eos_dir / 'liquidus_P-S.dat')
     # Discrimination: without the restore, the keys would not exist
     assert 'spider_eos_dir' in p.directories
-
-
-def test_proteus_albedo_from_file_raises_on_invalid_data():
-    """When the Albedo_t constructor sets ``ok=False`` (bad CSV,
-    missing file), the albedo validation block at proteus.py L346-348
-    must raise RuntimeError rather than silently proceeding with a
-    broken interpolator.
-
-    This test directly exercises the conditional logic without
-    booting the full Proteus constructor; the guard is a three-line
-    block that checks albedo_o.ok and raises if False.
-    """
-    from proteus.atmos_clim.common import Albedo_t, Atmos_t
-
-    mock_albedo = MagicMock(spec=Albedo_t)
-    mock_albedo.ok = False
-
-    atmos_o = Atmos_t()
-    atmos_o.albedo_o = mock_albedo
-
-    # Exercise the guard directly: this is the logic at L346-348
-    with pytest.raises(RuntimeError, match='Problem when loading albedo'):
-        if not atmos_o.albedo_o.ok:
-            raise RuntimeError('Problem when loading albedo data file')
-
-    # Discrimination: when ok=True, no error fires
-    mock_albedo.ok = True
-    try:
-        if not atmos_o.albedo_o.ok:
-            raise RuntimeError('Problem when loading albedo data file')
-    except RuntimeError:
-        pytest.fail('RuntimeError should not fire when albedo_o.ok is True')
 
 
 # ---------------------------------------------------------------------------
@@ -652,108 +1153,6 @@ def test_proteus_resume_too_short_raises(tmp_path):
             p.start(resume=True, offline=True)
         # The short helpfile itself is still valid (1 row); the error is about length
         assert len(short_df) == 1
-
-
-# ---------------------------------------------------------------------------
-# Global miscibility solvus override (proteus.py L816-831)
-# ---------------------------------------------------------------------------
-
-
-def test_solvus_override_saves_and_restores_boundary_conditions(tmp_path):
-    """When global_miscibility is enabled and R_solvus < R_int, the
-    atmosphere BC values (T_surf, P_surf, R_int, T_magma) are
-    temporarily overridden to the solvus values, then restored.
-
-    Discrimination: after restoration, hf_row must hold the original
-    values, not the solvus-overridden ones. A regression that skipped
-    the restore block would leave the solvus values in place.
-    """
-    from types import SimpleNamespace
-
-    original = {
-        'T_surf': 2000.0,
-        'P_surf': 100.0,
-        'R_int': 6.4e6,
-        'T_magma': 2500.0,
-        'R_solvus': 6.0e6,
-        'T_solvus': 1800.0,
-        'P_solvus': 5e9,
-    }
-    hf_row = dict(original)
-
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(global_miscibility=True),
-        ),
-    )
-
-    # The production override logic from proteus.py L816-831
-    _saved_atm_bc = {}
-    if config.interior_struct.zalmoxis.global_miscibility and 'R_solvus' in hf_row:
-        R_sol = hf_row.get('R_solvus')
-        if R_sol is not None and R_sol < hf_row['R_int']:
-            _saved_atm_bc = {
-                'T_surf': hf_row['T_surf'],
-                'P_surf': hf_row['P_surf'],
-                'R_int': hf_row['R_int'],
-                'T_magma': hf_row['T_magma'],
-            }
-            hf_row['T_surf'] = hf_row['T_solvus']
-            hf_row['T_magma'] = hf_row['T_solvus']
-            hf_row['P_surf'] = hf_row['P_solvus'] * 1e-5
-            hf_row['R_int'] = R_sol
-
-    # Verify override happened
-    assert hf_row['T_surf'] == pytest.approx(1800.0, rel=1e-12)
-    assert hf_row['P_surf'] == pytest.approx(5e4, rel=1e-6)
-    assert hf_row['R_int'] == pytest.approx(6.0e6, rel=1e-12)
-
-    # Restore
-    if _saved_atm_bc:
-        for key, val in _saved_atm_bc.items():
-            hf_row[key] = val
-
-    # After restoration, original values must be back
-    assert hf_row['T_surf'] == pytest.approx(2000.0, rel=1e-12)
-    assert hf_row['P_surf'] == pytest.approx(100.0, rel=1e-12)
-    assert hf_row['R_int'] == pytest.approx(6.4e6, rel=1e-12)
-    assert hf_row['T_magma'] == pytest.approx(2500.0, rel=1e-12)
-    # Discrimination: the solvus values are NOT the restored values
-    assert hf_row['T_surf'] != pytest.approx(1800.0)
-
-
-def test_solvus_override_no_op_when_r_solvus_exceeds_r_int():
-    """When R_solvus >= R_int, the override block must not fire.
-
-    Edge: the solvus is deeper than the interior radius, so the
-    atmosphere BC stays at the magma ocean surface.
-    """
-    from types import SimpleNamespace
-
-    hf_row = {
-        'T_surf': 2000.0,
-        'P_surf': 100.0,
-        'R_int': 6.4e6,
-        'T_magma': 2500.0,
-        'R_solvus': 6.5e6,
-        'T_solvus': 1800.0,
-        'P_solvus': 5e9,
-    }
-    config = SimpleNamespace(
-        interior_struct=SimpleNamespace(
-            zalmoxis=SimpleNamespace(global_miscibility=True),
-        ),
-    )
-
-    _saved_atm_bc = {}
-    if config.interior_struct.zalmoxis.global_miscibility and 'R_solvus' in hf_row:
-        R_sol = hf_row.get('R_solvus')
-        if R_sol is not None and R_sol < hf_row['R_int']:
-            _saved_atm_bc = {'T_surf': hf_row['T_surf']}
-
-    # Override must NOT have fired
-    assert _saved_atm_bc == {}
-    assert hf_row['T_surf'] == pytest.approx(2000.0, rel=1e-12)
 
 
 # ============================================================================
@@ -1016,3 +1415,1068 @@ def test_proteus_resume_keeps_crystallized_after_remelting(tmp_path):
         'a run whose melt fraction never reached the threshold resumed as '
         'crystallized; the history search is matching too eagerly'
     )
+
+
+# ---------------------------------------------------------------------------
+# Proteus.start() main loop: plot-cadence gating (proteus.py ~1200-1207).
+#
+# Plot generation is driven by `plot_mod` alone. It must NOT depend on
+# `is_snapshot` (the write_mod / dt_write_rel gate that governs helpfile
+# and archive writes) -- a plot cadence independent of the write cadence
+# is the documented contract for `params.out.plot_mod`.
+# ---------------------------------------------------------------------------
+
+
+class _FakeHelpfile:
+    """Stand-in for the helpfile DataFrame that only supports the one
+    access pattern the main loop uses: `hf_all.iloc[-1].to_dict()`.
+
+    Keeps `hf_row` a real, plain dict across loop iterations instead of
+    a MagicMock, so the loop's own dict/arithmetic operations on hf_row
+    behave exactly as they do in a real run.
+    """
+
+    def __init__(self, row):
+        self._row = dict(row)
+        self.iloc = _FakeHelpfile._ILoc(self._row)
+
+    class _ILoc:
+        def __init__(self, row):
+            self._row = row
+
+        def __getitem__(self, _index):
+            from types import SimpleNamespace
+
+            return SimpleNamespace(to_dict=lambda: dict(self._row))
+
+    def __len__(self):
+        return 1
+
+
+def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel, vapourise=True):
+    """Build a Proteus instance configured for a fresh (non-resume) run
+    that can be driven through several main-loop iterations.
+
+    `interior_energetics.module` / `interior_struct.module` are set to
+    'dummy' so the Zalmoxis structure-update and SPIDER-specific branches
+    are no-ops; `observe.module=None` and a non-'online'/'offline'
+    atmos_chem.when skip the postprocessing branches. None of these
+    short-circuits touch the plot-gating condition under test.
+
+    `vapourise` selects which half of the mass-conservation invariant the loop
+    enforces: with it True the M_atm <= M_planet half is replaced by a warning,
+    and with it False that half is enforced at the strict tolerance. Callers
+    that leave `update_planet_mass` mocked keep M_planet at zero, which
+    short-circuits the invariant before either half runs.
+    """
+    from proteus.config._params import StopStall
+    from proteus.proteus import Proteus
+
+    config = MagicMock()
+    config.interior_struct.module = 'dummy'
+    config.interior_struct.zalmoxis.update_interval = 0
+    config.interior_struct.eos_dir = None
+    config.interior_energetics.module = 'dummy'
+    config.interior_energetics.flux_guess = 100.0  # >=0: skips sigma*T^4 branch
+    config.orbit.module = None
+    config.observe.module = None
+    config.atmos_chem.when = 'never'
+    config.outgas.vapourise = vapourise
+    config.planet.temperature_mode = 'isothermal'
+    config.planet.volatile_mode = 'elements'
+    config.planet.gas_prs.get_pressure = lambda _s: 0.0
+    config.outgas.calliope.is_included = lambda _s: False
+    config.params.resume = False
+    config.params.out.logging = 'WARNING'
+    config.params.out.plot_mod = plot_mod
+    config.params.out.write_mod = write_mod
+    config.params.out.dt_write_rel = dt_write_rel
+    config.params.out.archive_mod = None
+    config.params.stop.iters.minimum = 10
+    config.params.stop.iters.maximum = 1000
+    config.params.stop.solid.freeze_volatiles = False
+    config.params.stop.solid.phi_crit = 0.01
+    # Left as a mock attribute this reads as a cap of one iteration, which
+    # would end a loop test on the first unconverged solve.
+    config.params.stop.stall = StopStall(enabled=True, maximum=STALL_MAX_CONFIGURED)
+    config.params.dt.starinst = 1e8
+    config.params.dt.starspec = 1e8
+
+    directories = {
+        'output': str(tmp_path),
+        'output/data': str(tmp_path / 'data'),
+        'output/observe': str(tmp_path / 'observe'),
+        'output/offchem': str(tmp_path / 'offchem'),
+        'output/plots': str(tmp_path / 'plots'),
+        'spider': str(tmp_path / 'spider'),
+        'fwl': str(tmp_path / 'fwl'),
+    }
+    for path in directories.values():
+        Path(path).mkdir(parents=True, exist_ok=True)
+
+    with (
+        patch('proteus.proteus.read_config_object', return_value=config),
+        patch('proteus.utils.coupler.set_directories', return_value=directories),
+    ):
+        p = Proteus(config_path='dummy.toml')
+
+    return p
+
+
+# Every dependency the main loop calls that is irrelevant to the
+# plot-gating condition itself: mocked as a no-op so the loop can run
+# several iterations without touching real physics, I/O, or Julia/AGNI.
+_MAIN_LOOP_NOOP_PATCHES = [
+    'proteus.utils.coupler.CreateLockFile',
+    'proteus.utils.data.download_sufficient_data',
+    'proteus.interior_energetics.wrapper.solve_structure',
+    'proteus.utils.coupler.print_citation',
+    'proteus.utils.coupler.print_header',
+    'proteus.utils.coupler.print_module_configuration',
+    'proteus.utils.coupler.print_system_configuration',
+    'proteus.utils.coupler.validate_module_versions',
+    'proteus.utils.terminate.print_termination_criteria',
+    'proteus.interior_energetics.wrapper.run_interior',
+    'proteus.interior_energetics.wrapper.update_planet_mass',
+    'proteus.orbit.wrapper.run_orbit',
+    'proteus.star.wrapper.scale_spectrum_to_toa',
+    'proteus.star.wrapper.update_stellar_mass',
+    'proteus.star.wrapper.update_stellar_quantities',
+    'proteus.star.wrapper.write_spectrum',
+    'proteus.outgas.wrapper.calc_target_elemental_inventories',
+    'proteus.outgas.wrapper.run_outgassing_and_vapourisation',
+    'proteus.outgas.wrapper.check_ic_oxygen_budget',
+    'proteus.outgas.wrapper.run_desiccated',
+    'proteus.outgas.wrapper.run_crystallized',
+    'proteus.outgas.wrapper.check_desiccation',
+    'proteus.escape.wrapper.run_escape',
+    'proteus.utils.coupler.assert_surface_pressure_consistency',
+    'proteus.atmos_clim.run_atmosphere',
+    'proteus.utils.coupler.PrintCurrentState',
+    'proteus.utils.coupler.WriteHelpfileToCSV',
+    'proteus.utils.coupler.remove_excess_files',
+    'proteus.utils.coupler.print_stoptime',
+    'proteus.observe.wrapper.run_observe',
+    'proteus.atmos_chem.wrapper.run_chemistry',
+]
+
+
+def _run_main_loop_capturing_plots(p, *, stop_at_loop):
+    """Run p.start(resume=False) with the main loop's physics mocked out,
+    capturing every main-loop UpdatePlots call as (loops_total, is_end).
+
+    `stop_at_loop` sets when check_termination first fires: it is only
+    ever invoked once `init_stage` has cleared (loops['total'] >
+    init_loops == 3), i.e. from the 5th iteration (loops['total'] == 4)
+    onward in an unmodified loop -- so `stop_at_loop` must be >= 4 for the
+    stop condition to actually engage before the loop's own init-stage
+    bookkeeping does.
+    """
+    from types import SimpleNamespace
+
+    plot_calls = []
+
+    def _record_plot(*args, **kwargs):
+        plot_calls.append((p.loops['total'], bool(kwargs.get('end', False))))
+
+    def _fake_check_termination(handler):
+        if handler.loops['total'] >= stop_at_loop:
+            handler.finished_both = True
+        return handler.finished_both
+
+    def _fake_create_helpfile(row):
+        return _FakeHelpfile(row)
+
+    def _fake_extend_helpfile(_hf_all, row):
+        return _FakeHelpfile(row)
+
+    with ExitStack() as stack:
+        for target in _MAIN_LOOP_NOOP_PATCHES:
+            stack.enter_context(patch(target))
+
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_interior_t.return_value = SimpleNamespace(dt=100.0, ic=1)
+
+        mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
+        mock_atmos_t.return_value = SimpleNamespace(converged=True)
+
+        mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
+        mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
+
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.CreateHelpfileFromDict',
+                side_effect=_fake_create_helpfile,
+            )
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.ExtendHelpfile', side_effect=_fake_extend_helpfile)
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.UpdatePlots', side_effect=_record_plot)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.terminate.check_termination', side_effect=_fake_check_termination
+            )
+        )
+
+        p.start(resume=False, offline=True)
+
+    return plot_calls
+
+
+def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
+    """Plots must be generated on every `plot_mod`-multiple iteration,
+    even on iterations that are NOT a write/archive snapshot.
+
+    Regression target: the main loop used to gate `UpdatePlots` on
+    `is_snapshot AND multiple(loops_total, plot_mod)`, tying the plot
+    cadence to `write_mod`/`dt_write_rel` instead of `plot_mod` alone.
+    `plot_mod=5` (or any value) then silently produced far fewer plots
+    than the config requested whenever `write_mod`/`dt_write_rel`
+    suppressed the snapshot on a plot-due iteration.
+
+    Discriminating setup: `plot_mod=1` (plot every iteration) is paired
+    with `write_mod=2` (`dt_write_rel=0`), so `is_snapshot` alternates
+    True/False/True across loop iterations 0/1/2 while the plot cadence
+    must fire on all three regardless. Note `is_snapshot`'s `write_mod`
+    check reads `loops['total']` *before* the per-iteration increment,
+    while the plot/archive checks read it *after*; the iteration with
+    pre-increment total 1 (post-increment total 2) is the one where
+    `is_snapshot` is False (1 is not a multiple of write_mod=2) but the
+    plot must still fire (2 is a multiple of plot_mod=1). Under the old
+    gated condition that iteration's plot would be silently skipped, so
+    the recorded plot sequence would be [1, 3] instead of [1, 2, 3].
+    """
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=2, dt_write_rel=0.0)
+
+    # check_termination is only consulted once init_stage clears
+    # (post-increment loops['total'] > init_loops == 3), which happens
+    # while processing pre-increment total 3 (post-increment 4). Stopping
+    # there gives exactly 4 executed iterations (pre-increment 0-3), of
+    # which the last one's plot is suppressed by the loop's own
+    # `and not self.finished_both` clause (unrelated to the fix under
+    # test) -- so 3 plot-eligible iterations remain for this assertion.
+    plot_calls = _run_main_loop_capturing_plots(p, stop_at_loop=4)
+
+    # Main-loop plot calls only (exclude the unconditional end-of-run
+    # "final plots" call, which always passes end=True).
+    main_loop_plots = [loop for loop, is_end in plot_calls if not is_end]
+
+    assert main_loop_plots == [1, 2, 3], (
+        f'expected plots at post-increment loop counts [1, 2, 3] (every '
+        f'plot_mod=1 iteration, independent of write_mod=2), got {main_loop_plots}'
+    )
+    # Discrimination guard: post-increment total 2 corresponds to the
+    # iteration where is_snapshot was False (write_mod=2 did not divide
+    # the pre-increment total of 1). A regression reintroducing the
+    # is_snapshot gate would drop it, leaving [1, 3] here.
+    assert 2 in main_loop_plots, (
+        'plot at a plot_mod-multiple iteration was skipped because it was '
+        'not also a write_mod snapshot -- the plot cadence must not depend '
+        'on the write/archive snapshot gate'
+    )
+
+
+def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog):
+    """With the opt-in ``PROTEUS_TIMING`` instrumentation enabled (here
+    patched directly on the frozen module constant, since it is normally
+    read from the environment once at import time), the main loop must
+    record the orbit stage's wall-time in ``_t_mod`` and surface it in
+    the per-iteration ``[IT_TIMING]`` log line -- not just the other
+    instrumented stages.
+    """
+    import logging
+
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'):
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+
+    timing_records = [rec.message for rec in caplog.records if '[IT_TIMING]' in rec.message]
+    assert len(timing_records) > 0, 'no [IT_TIMING] log line was emitted'
+    assert any('orbit=' in msg for msg in timing_records)
+
+
+# =======================================================================================
+# SECTION: mass conservation across a multi-iteration run
+# =======================================================================================
+
+
+_MASS_PLANET_KG = 5.97e24  # 1 M_earth
+
+
+def _write_post_outgas_row(hf_row, step, *, vapour):
+    """Fill a helpfile row the way the outgas step leaves it.
+
+    The volatile inventory is split asymmetrically across ``vol_gas_list`` (one
+    dominant species plus traces) so a regression in the species sum moves
+    ``M_vol_atm`` instead of cancelling out. With ``vapour`` set, a rock-vapour
+    column grows with ``step`` and is the only mass in ``M_atm`` that is not in
+    ``M_vol_atm``, which is the whole content of the relaxed invariant.
+    """
+    from proteus.utils.constants import vol_gas_list
+
+    m_vol_atm = 1.0e-4 * _MASS_PLANET_KG  # ~6e20 kg, a few hundred bar of volatiles
+    weights = [1.0] + [0.01] * (len(vol_gas_list) - 1)
+    norm = sum(weights)
+    for s, w in zip(vol_gas_list, weights):
+        hf_row[s + '_kg_atm'] = m_vol_atm * w / norm
+    hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+    hf_row['M_vaps'] = (2.0e-5 * _MASS_PLANET_KG * (1 + step)) if vapour else 0.0
+    hf_row['M_atm'] = hf_row['M_vol_atm'] + hf_row['M_vaps']
+    hf_row['M_planet'] = _MASS_PLANET_KG
+    hf_row['P_vol'] = 260.0
+    hf_row['P_vap'] = (40.0 * (1 + step)) if vapour else 0.0
+    hf_row['P_surf'] = hf_row['P_vol'] + hf_row['P_vap']
+    return hf_row
+
+
+def _run_main_loop_recording_mass(p, *, stop_at_loop, rows, row_writer, guard_calls=None):
+    """Run p.start with the physics mocked, recording the row each outgas step
+    wrote. ``row_writer(hf_row, step)`` fills the mass columns.
+
+    Mirrors `_run_main_loop_capturing_plots` but replaces the no-op outgas patch
+    with a side effect, and forces `check_desiccation` to False: the blanket
+    MagicMock patch returns a truthy value, which would divert every iteration
+    after the first into the desiccated branch and stop the outgas rows.
+
+    ``guard_calls``, when given, collects one ``(row, kwargs)`` pair per
+    mass-conservation call: the helpfile row as the check saw it, and the keyword
+    arguments the main loop chose. The real check still runs, so the recorded
+    keywords are the loop's own dispatch decision rather than a restatement of
+    the test's setup.
+    """
+    from types import SimpleNamespace
+
+    from proteus.utils import coupler as coupler_mod
+
+    real_guard = coupler_mod.assert_mass_conservation
+
+    def _spy_guard(hf_row, *args, **kwargs):
+        if guard_calls is not None:
+            guard_calls.append((dict(hf_row), dict(kwargs)))
+        return real_guard(hf_row, *args, **kwargs)
+
+    def _fake_check_termination(handler):
+        if handler.loops['total'] >= stop_at_loop:
+            handler.finished_both = True
+        return handler.finished_both
+
+    def _fake_create_helpfile(row):
+        return _FakeHelpfile(row)
+
+    def _fake_extend_helpfile(_hf_all, row):
+        return _FakeHelpfile(row)
+
+    def _fake_outgas(_dirs, _config, hf_row, _first_iter):
+        rows.append(dict(row_writer(hf_row, len(rows))))
+
+    with ExitStack() as stack:
+        for target in _MAIN_LOOP_NOOP_PATCHES:
+            stack.enter_context(patch(target))
+
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_interior_t.return_value = SimpleNamespace(dt=100.0, ic=1)
+
+        mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
+        mock_atmos_t.return_value = SimpleNamespace(converged=True)
+
+        mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
+        mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
+
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.CreateHelpfileFromDict',
+                side_effect=_fake_create_helpfile,
+            )
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.ExtendHelpfile', side_effect=_fake_extend_helpfile)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.UpdatePlots'))
+        stack.enter_context(
+            patch('proteus.utils.coupler.assert_mass_conservation', side_effect=_spy_guard)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.terminate.check_termination', side_effect=_fake_check_termination
+            )
+        )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.outgas.wrapper.run_outgassing_and_vapourisation',
+                side_effect=_fake_outgas,
+            )
+        )
+
+        p.start(resume=False, offline=True)
+
+
+def _escalation_records(caplog):
+    """Records reporting an excess larger than the rock vapour explains."""
+    return [r for r in caplog.records if 'larger than vapourisation' in r.getMessage()]
+
+
+@pytest.mark.physics_invariant
+def test_vapourising_run_bounds_the_imbalance_across_steps(tmp_path, caplog):
+    """Across a multi-step vapourising run the loop relaxes only the
+    atmosphere-versus-planet half, and warns exactly on the step whose excess the
+    rock vapour cannot explain.
+
+    The atmosphere carries a fixed volatile inventory plus a rock-vapour column
+    that grows step by step. Four steps sit well inside the planet mass; one is
+    placed at the boundary where the excess over M_planet is exactly M_vaps, the
+    tightest state the relaxation must still accept; the last pushes the excess
+    past M_vaps, which is the signal that the imbalance is not vapourisation.
+
+    What this test covers is the loop's dispatch and the warning decision made
+    across iterations. The closure M_atm = M_vol_atm + M_vaps is a property of the
+    real outgassing step, which is mocked out here, so it is asserted in
+    tests/outgas, not here.
+    """
+    import logging
+
+    rows = []
+    guard_calls = []
+
+    def _writer(hf_row, step):
+        row = _write_post_outgas_row(hf_row, step, vapour=True)
+        if step == 4:
+            # Excess over the planet mass is exactly the rock vapour: accepted,
+            # and the escalation must not fire at the boundary.
+            row['M_planet'] = row['M_vol_atm']
+        elif step == 5:
+            # Excess now exceeds the rock vapour by half the volatile inventory.
+            row['M_planet'] = 0.5 * row['M_vol_atm']
+        return row
+
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=True
+    )
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.utils.coupler'):
+        _run_main_loop_recording_mass(
+            p, stop_at_loop=6, rows=rows, row_writer=_writer, guard_calls=guard_calls
+        )
+
+    # The run really did drive several outgas steps rather than stopping early,
+    # and it survived the two steps where the atmosphere exceeded the planet mass.
+    assert len(rows) == 6
+    assert len(guard_calls) == 6
+    # The loop asked for the relaxation on every iteration. This is the
+    # production decision under test: the keyword comes from proteus.py reading
+    # config.outgas.vapourise, not from this test.
+    assert all(kwargs.get('require_atm_le_planet') is False for _row, kwargs in guard_calls)
+    # The bound: the warning fires only on the step whose excess outruns M_vaps,
+    # and not on the boundary step where the excess equals it exactly. The four
+    # conserving steps and the boundary step pass silently.
+    escalated = _escalation_records(caplog)
+    assert len(escalated) == 1
+    assert escalated[0].levelno == logging.WARNING
+    # Both logged values are that step's own, read from the log arguments rather
+    # than the formatted string so a wrong value in the right slot cannot slip
+    # through.
+    assert escalated[0].args[0] == pytest.approx(
+        rows[5]['M_atm'] - rows[5]['M_planet'], rel=1e-12
+    )
+    assert escalated[0].args[1] == pytest.approx(rows[5]['M_vaps'], rel=1e-12)
+    # Discrimination: the boundary step really did breach M_planet, so a run with
+    # the strict half live would have aborted there, and the vapour column really
+    # grew, so none of the above is satisfied by a constant.
+    assert rows[4]['M_atm'] > rows[4]['M_planet'] > 0.0
+    assert rows[-1]['M_vaps'] > 4.0 * rows[0]['M_vaps']
+
+
+@pytest.mark.physics_invariant
+def test_non_vapourising_run_keeps_strict_mass_conservation(tmp_path, caplog):
+    """With rock vapourisation off, the loop demands the strict invariant and a
+    breach of it aborts the run.
+
+    Several conserving steps pass silently with the atmosphere entirely volatile,
+    then a step whose volatiles alone exceed the planet mass raises. That is the
+    issue #677 symptom. No relaxation report may appear on any step of a run that
+    never enables vapourisation.
+    """
+    import logging
+
+    rows = []
+    guard_calls = []
+
+    def _writer(hf_row, step):
+        row = _write_post_outgas_row(hf_row, step, vapour=False)
+        if step == 4:
+            # Volatiles alone breach the planet budget.
+            row['M_planet'] = 0.5 * row['M_atm']
+        return row
+
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.utils.coupler'):
+        with pytest.raises(RuntimeError, match='Mass conservation violation'):
+            _run_main_loop_recording_mass(
+                p, stop_at_loop=6, rows=rows, row_writer=_writer, guard_calls=guard_calls
+            )
+
+    # The run survived the conserving steps and died on the breaching one.
+    assert len(rows) == 5
+    assert len(guard_calls) == 5
+    # The loop demanded the strict invariant on every iteration. This is the
+    # other half of the production dispatch decision.
+    assert all(kwargs.get('require_atm_le_planet') is True for _row, kwargs in guard_calls)
+    for row in rows[:-1]:
+        assert 0.0 < row['M_atm'] < row['M_planet']
+    # Nothing was relaxed, so the vapour-imbalance warning is not admissible on
+    # this path: a breach here raises rather than being reported.
+    assert _escalation_records(caplog) == []
+    # Discrimination: the breach is a factor of two, far outside the 1e-6
+    # tolerance, so this is not passing on a rounding edge.
+    assert rows[-1]['M_atm'] / rows[-1]['M_planet'] == pytest.approx(2.0, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_stall_criterion_is_configurable_and_matches_its_constant(tmp_path):
+    """The stall abort reads its cap and its on/off state from the config, and
+    the schema default is the same number the module constant carries.
+
+    Contract clause: the cap is a termination criterion like the seven beside
+    it, so a run that stalls legitimately can raise it or switch it off without
+    editing source. Both settings reach the run through the config the instance
+    is built from, never by assignment afterwards, so a constructor that
+    stopped reading either one fails here. The default is duplicated between
+    the schema and the constant, so it is pinned too: two records of one number
+    are only safe while something fails when they disagree.
+    """
+    from proteus.config._params import StopParams, StopStall
+    from proteus.proteus import ATMOS_STALL_MAX
+
+    assert StopStall().maximum == ATMOS_STALL_MAX
+    assert StopStall().enabled is True
+    assert StopParams().stall.maximum == ATMOS_STALL_MAX
+
+    # A non-positive cap is refused: it would abort before a run had a chance.
+    for bad in (0, -1):
+        with pytest.raises(ValueError):
+            StopStall(maximum=bad)
+
+    moving = {
+        'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
+        'hf_row': {'F_atm': 140.0, 'T_magma': 3000.0, 'Phi_global': 0.9},
+    }
+
+    # A raised cap moves the abort with it: the streak that ends the run at the
+    # cap beside it is now allowed to continue.
+    raised = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        stale_iters=STALL_MAX_CONFIGURED,
+        stall_maximum=STALL_MAX_CONFIGURED * 2,
+        **moving,
+    )
+    assert raised.atmos_stall_max == STALL_MAX_CONFIGURED * 2
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        raised._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
+
+    # Switching the criterion off in the config spares a streak far past any
+    # cap, which is the recourse a legitimately long-stalling run has.
+    off = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        stale_iters=STALL_MAX_CONFIGURED * 10,
+        stall_enabled=False,
+        **moving,
+    )
+    assert off.atmos_stall_enabled is False
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        off._check_atmosphere_deadlock()
+    mock_update.assert_not_called()
+
+    # Discrimination: the same streak with the criterion left on does abort, so
+    # the two results above are attributable to the switch and the cap.
+    on = _make_deadlock_proteus(
+        tmp_path, converged=False, stale_iters=STALL_MAX_CONFIGURED * 10, **moving
+    )
+    assert on.atmos_stall_enabled is True
+    with patch('proteus.proteus.UpdateStatusfile'):
+        with pytest.raises(RuntimeError, match='consecutive solves'):
+            on._check_atmosphere_deadlock()
+
+    # Switching the criterion off leaves the frozen-interior abort where it is.
+    # That path has its own, much shorter count, and a run that has stopped
+    # moving on both sides still has to end.
+    frozen = {
+        'hf_all': pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        'hf_row': {'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0},
+    }
+    stuck = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        stale_iters=STALL_MAX_CONFIGURED * 10,
+        stall_enabled=False,
+        **frozen,
+    )
+    stuck.agni_deadlock_count = stuck.agni_deadlock_max - 1
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        with pytest.raises(RuntimeError, match='consecutive AGNI failures'):
+            stuck._check_atmosphere_deadlock()
+    args, _ = mock_update.call_args
+    assert args[1] == 22
+
+
+# =======================================================================================
+# SECTION: resumed run drives the atmosphere from the interior's own T_magma
+# =======================================================================================
+
+
+def _make_resume_checkpoint_df():
+    """5-row checkpoint helpfile for a resumed run.
+
+    5 rows clears the `len(hf_all) > init_loops+1 == 4` resume-eligibility
+    check and keeps `loops['total']=5` below the `>init_loops+2` threshold
+    that gates the escape block's active branch, so escape takes its
+    inactive branch on the first post-resume iteration. The crystallization
+    check is skipped for a separate reason: the test config sets
+    `freeze_volatiles` to False. Every row starts from `ZeroHelpfileRow()`
+    so every real helpfile column the main loop reads is present.
+    """
+    from proteus.utils.coupler import ZeroHelpfileRow
+
+    times = [0.0, 100.0, 200.0, 300.0, 400.0]
+    ages = [1.0e6 + t for t in times]
+    magmas = [3000.0, 2900.0, 2800.0, 2700.0, 2600.0]
+    rows = []
+    for time, age, magma in zip(times, ages, magmas):
+        row = ZeroHelpfileRow()
+        row.update(
+            {
+                'Time': time,
+                'age_star': age,
+                'R_int': 6.371e6,
+                'gravity': 9.81,
+                'separation': 1.0,
+                'T_magma': magma,
+                'T_surf': magma - 50.0,
+                'T_eqm': 255.0,
+                'F_atm': 100.0,
+            }
+        )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=False):
+    """Build a Proteus instance for a resumed run driven into the main loop.
+
+    Mirrors `_make_main_loop_proteus`'s dummy-module, full-loop-capable
+    config, since a resumed run reaches the same main-loop code once
+    resume setup completes. ``interior_module`` selects the energetics
+    module and ``miscibility`` the Zalmoxis global_miscibility switch.
+    """
+    from proteus.config._params import StopStall
+    from proteus.proteus import Proteus
+
+    config = MagicMock()
+    config.interior_struct.module = 'dummy'
+    config.interior_struct.zalmoxis.update_interval = 0
+    config.interior_struct.zalmoxis.global_miscibility = miscibility
+    config.interior_struct.eos_dir = None
+    config.interior_energetics.module = interior_module
+    config.interior_energetics.flux_guess = 100.0
+    config.orbit.module = None
+    config.observe.module = None
+    config.atmos_chem.when = 'never'
+    config.outgas.vapourise = True
+    config.planet.temperature_mode = 'isothermal'
+    config.planet.volatile_mode = 'elements'
+    config.planet.gas_prs.get_pressure = lambda _s: 0.0
+    config.outgas.calliope.is_included = lambda _s: False
+    config.params.out.logging = 'WARNING'
+    config.params.out.plot_mod = 100
+    config.params.out.write_mod = 100
+    config.params.out.dt_write_rel = 0.0
+    config.params.out.archive_mod = None
+    config.params.stop.iters.minimum = 10
+    config.params.stop.iters.maximum = 1000
+    config.params.stop.solid.freeze_volatiles = False
+    config.params.stop.solid.phi_crit = 0.01
+    config.params.stop.stall = StopStall(enabled=True, maximum=STALL_MAX_CONFIGURED)
+    config.params.dt.starinst = 1e8
+    config.params.dt.starspec = 1e8
+
+    directories = {
+        'output': str(tmp_path),
+        'output/data': str(tmp_path / 'data'),
+        'output/observe': str(tmp_path / 'observe'),
+        'output/offchem': str(tmp_path / 'offchem'),
+        'output/plots': str(tmp_path / 'plots'),
+        'spider': str(tmp_path / 'spider'),
+        'fwl': str(tmp_path / 'fwl'),
+    }
+    for path in directories.values():
+        Path(path).mkdir(parents=True, exist_ok=True)
+
+    with (
+        patch('proteus.proteus.read_config_object', return_value=config),
+        patch('proteus.utils.coupler.set_directories', return_value=directories),
+    ):
+        p = Proteus(config_path='dummy.toml')
+
+    return p
+
+
+class _StopAfterAtmosphereCall(Exception):
+    """Sentinel exception to stop start() once the atmosphere call captures T_magma."""
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('interior_module', ['aragog', 'spider'])
+def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path, interior_module):
+    """The first post-resume atmosphere call receives the interior's own
+    T_magma output, not a value anchored to the checkpoint's T_surf. Both
+    energetics modules are covered so that a resume override gated on the
+    module name cannot return for one of them.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module=interior_module)
+    hf_df = _make_resume_checkpoint_df()
+    checkpoint_t_surf = hf_df['T_surf'].iloc[-1]
+    interior_t_magma = 3456.0
+    captured = {}
+
+    def _fake_run_interior(*args, **kwargs):
+        args[3]['T_magma'] = interior_t_magma
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        captured['T_magma'] = args[8]['T_magma']
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    # Discrimination: the checkpoint T_surf a surface anchor would use is far
+    # from the interior value.
+    assert abs(interior_t_magma - checkpoint_t_surf) > 100.0
+    assert captured['T_magma'] == pytest.approx(interior_t_magma, rel=1e-12)
+
+
+def _run_resumed_loop_until_stop(p, hf_df, fake_interior, fake_atmosphere):
+    """Resume ``p`` from ``hf_df`` with the given interior and atmosphere fakes
+    until the atmosphere fake raises ``_StopAfterAtmosphereCall``."""
+    from types import SimpleNamespace
+
+    with ExitStack() as stack:
+        for target in _MAIN_LOOP_NOOP_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                return_value=(hf_df, []),
+            )
+        )
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.assert_mass_conservation'))
+        stack.enter_context(
+            patch('proteus.utils.terminate.check_termination', return_value=False)
+        )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.interior_energetics.wrapper.run_interior',
+                side_effect=fake_interior,
+            )
+        )
+        stack.enter_context(
+            patch('proteus.atmos_clim.run_atmosphere', side_effect=fake_atmosphere)
+        )
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_interior_t.return_value = MagicMock(dt=100.0, ic=1)
+        mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
+        mock_atmos_t.return_value = SimpleNamespace(converged=True)
+        mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
+        mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
+
+        with pytest.raises(_StopAfterAtmosphereCall):
+            p.start(resume=True, offline=True)
+
+
+@pytest.mark.unit
+def test_solvus_override_restores_the_magma_ocean_state(tmp_path):
+    """With global miscibility the loop hands the atmosphere the solvus as its
+    lower boundary (T_solvus, P_solvus in bar, R_solvus) and afterwards
+    restores T_magma, T_surf, P_surf and R_int for the interior and the
+    committed row. Config validation rejects global_miscibility with the
+    zalmoxis structure module, the one that writes the solvus, so this pins
+    the loop code for when it is enabled; SPIDER is the energetics module
+    that cuts its domain at the solvus.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['P_surf'] = 250.0
+    checkpoint = hf_df.iloc[-1]
+    interior_t_magma = [3456.0, 3441.0]
+    t_solvus, p_solvus = 3700.0, 2.0e10
+    step = {'interior': 0}
+    seen_by_interior = []
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        hf_row = args[3]
+        seen_by_interior.append(hf_row['T_magma'])
+        hf_row['T_magma'] = interior_t_magma[min(step['interior'], 1)]
+        hf_row['R_solvus'] = 0.9 * hf_row['R_int']
+        hf_row['T_solvus'] = t_solvus
+        hf_row['P_solvus'] = p_solvus
+        step['interior'] += 1
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        hf_row = args[8]
+        captured.append(
+            (hf_row['T_magma'], hf_row['T_surf'], hf_row['P_surf'], hf_row['R_int'])
+        )
+        if len(captured) == 2:
+            raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    solvus_frame = [t_solvus, t_solvus, p_solvus * 1e-5, 0.9 * checkpoint['R_int']]
+    np.testing.assert_allclose(np.array(captured), [solvus_frame, solvus_frame], rtol=1e-12)
+    assert seen_by_interior[1] == pytest.approx(interior_t_magma[0], rel=1e-12)
+    committed = p.hf_all.iloc[-1]
+    assert committed['T_magma'] == pytest.approx(interior_t_magma[0], rel=1e-12)
+    # Pins the current restore of T_surf in solvus mode; a change that keeps
+    # the atmosphere T_surf updates this.
+    assert committed['T_surf'] == pytest.approx(checkpoint['T_surf'], rel=1e-12)
+    assert committed['P_surf'] == pytest.approx(checkpoint['P_surf'], rel=1e-12)
+    assert committed['R_int'] == pytest.approx(checkpoint['R_int'], rel=1e-12)
+
+
+@pytest.mark.unit
+def test_solvus_override_is_restored_when_the_atmosphere_raises(tmp_path):
+    """The solvus override is undone in a finally block, so an atmosphere step
+    that raises leaves T_magma, T_surf, P_surf and R_int in the magma-ocean
+    frame rather than in the solvus frame.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['P_surf'] = 250.0
+    checkpoint = hf_df.iloc[-1]
+    interior_t_magma, t_solvus = 3456.0, 3700.0
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        hf_row = args[3]
+        hf_row['T_magma'] = interior_t_magma
+        hf_row['R_solvus'] = 0.9 * hf_row['R_int']
+        hf_row['T_solvus'] = t_solvus
+        hf_row['P_solvus'] = 2.0e10
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        captured.append(args[8]['T_magma'])
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    assert captured == [pytest.approx(t_solvus, rel=1e-12)]  # the override was active
+    assert p.hf_row['T_magma'] == pytest.approx(interior_t_magma, rel=1e-12)
+    assert p.hf_row['T_surf'] == pytest.approx(checkpoint['T_surf'], rel=1e-12)
+    assert p.hf_row['P_surf'] == pytest.approx(checkpoint['P_surf'], rel=1e-12)
+    assert p.hf_row['R_int'] == pytest.approx(checkpoint['R_int'], rel=1e-12)
+
+
+@pytest.mark.unit
+def test_solvus_at_the_surface_leaves_the_atmosphere_boundary_unchanged(tmp_path):
+    """A solvus at R_int itself (R_solvus == R_int) is not below the surface,
+    so the atmosphere keeps the magma-ocean boundary.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['P_surf'] = 250.0
+    checkpoint = hf_df.iloc[-1]
+    interior_t_magma = 3456.0
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        hf_row = args[3]
+        hf_row['T_magma'] = interior_t_magma
+        hf_row['R_solvus'] = hf_row['R_int']
+        hf_row['T_solvus'] = 3700.0
+        hf_row['P_solvus'] = 2.0e10
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        hf_row = args[8]
+        captured.append((hf_row['T_magma'], hf_row['P_surf'], hf_row['R_int']))
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    # A stray extra call with the same values would still broadcast-match the
+    # single-row check below, so the call count is its own assertion.
+    assert len(captured) == 1
+    np.testing.assert_allclose(
+        np.array(captured),
+        [[interior_t_magma, checkpoint['P_surf'], checkpoint['R_int']]],
+        rtol=1e-12,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('interior_module', ['aragog', 'spider'])
+def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(
+    tmp_path, interior_module
+):
+    """Over 3 post-resume iterations the atmosphere returns T_surf 400 K
+    below the T_magma it was given, as AGNI's conductive skin does in a magma
+    ocean. Every atmosphere call still receives that iteration's interior
+    T_magma, so a surface temperature below the magma temperature never
+    replaces T_magma in the coupling across those 3 iterations. The
+    atmosphere stub only sets T_surf; its fluxes are not consistent with the
+    skin drop.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module=interior_module)
+    hf_df = _make_resume_checkpoint_df()
+    # Slow interior cooling (15 K per step) against a 400 K skin drop, so a
+    # surface-anchored value would fall far below the interior sequence.
+    interior_t_magma = [3456.0, 3441.0, 3426.0]
+    skin_drop = 400.0
+    n_calls = len(interior_t_magma)
+    step = {'interior': 0}
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        args[3]['T_magma'] = interior_t_magma[min(step['interior'], n_calls - 1)]
+        step['interior'] += 1
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        hf_row = args[8]
+        captured.append(hf_row['T_magma'])
+        hf_row['T_surf'] = hf_row['T_magma'] - skin_drop
+        if len(captured) == n_calls:
+            raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    assert len(captured) == n_calls
+    np.testing.assert_allclose(captured, interior_t_magma, rtol=1e-12)
+    # Commit order: each completed row holds the interior T_magma and the
+    # T_surf the atmosphere returned in that iteration.
+    committed = p.hf_all.iloc[-(n_calls - 1) :]
+    np.testing.assert_allclose(committed['T_magma'], interior_t_magma[:-1], rtol=1e-12)
+    np.testing.assert_allclose(
+        committed['T_surf'], np.array(interior_t_magma[:-1]) - skin_drop, rtol=1e-12
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'r_solvus_frac',
+    [None, -0.1, 1.0, 1.2],
+    ids=['never-written', 'negative', 'at-the-surface', 'outside-the-planet'],
+)
+def test_solvus_override_skips_an_unphysical_solvus(tmp_path, r_solvus_frac):
+    """With global miscibility on but no physical solvus in the row, the loop
+    hands the atmosphere the magma-ocean state, not the solvus frame. The
+    helpfile row starts with R_solvus = T_solvus = P_solvus = 0, and an
+    interior that never writes them must not drive the atmosphere with
+    T_magma = T_surf = P_surf = R_int = 0.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['P_surf'] = 250.0
+    checkpoint = hf_df.iloc[-1]
+    interior_t_magma = 3456.0
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        hf_row = args[3]
+        hf_row['T_magma'] = interior_t_magma
+        if r_solvus_frac is not None:
+            hf_row['R_solvus'] = r_solvus_frac * hf_row['R_int']
+            hf_row['T_solvus'] = 3700.0
+            hf_row['P_solvus'] = 2.0e10
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        hf_row = args[8]
+        captured.append(
+            (hf_row['T_magma'], hf_row['T_surf'], hf_row['P_surf'], hf_row['R_int'])
+        )
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    expected = [interior_t_magma, checkpoint['T_surf'], 250.0, checkpoint['R_int']]
+    np.testing.assert_allclose(np.array(captured), [expected], rtol=1e-12)
+    # The magma-ocean frame is physical: positive temperatures, pressure, radius.
+    assert min(captured[0]) > 0.0
+
+
+@pytest.fixture
+def cvode_missing(monkeypatch):
+    """Make ``import scikits_odes_sundials.cvode`` fail as on a machine without CVODE."""
+    # aragog reads its CVODE flag once, at first import: load it before hiding the module.
+    pytest.importorskip('aragog.solver.entropy_solver')
+    monkeypatch.setitem(sys.modules, 'scikits_odes_sundials.cvode', None)
+
+
+def test_start_stops_before_touching_output_when_aragog_lacks_cvode(
+    monkeypatch, tmp_path, cvode_missing
+):
+    """A fresh Aragog run without CVODE stops before the status file and the output are touched.
+
+    ``start`` writes the status file and wipes the output directories of a
+    fresh run, so the CVODE check has to come first: a broken environment must
+    not cost the user the files of an earlier run. The error carries the
+    install command.
+    """
+    p = _make_proteus_instance(tmp_path, interior_module='aragog')
+    p.config.interior_energetics.aragog.solver_method = 'cvode'
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        status = stack.enter_context(patch('proteus.proteus.UpdateStatusfile'))
+        clean = stack.enter_context(patch('proteus.proteus.CleanDir'))
+        with pytest.raises(ImportError, match='bash tools/get_cvode.sh'):
+            p.start(resume=False, offline=True)
+
+    status.assert_not_called()
+    clean.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ('interior_module', 'solver_method'),
+    [('aragog', 'radau'), ('aragog', 'bdf'), ('spider', 'cvode')],
+)
+def test_start_goes_ahead_without_cvode_when_it_is_not_needed(
+    monkeypatch, tmp_path, interior_module, solver_method, cvode_missing
+):
+    """An explicit scipy solver, or SPIDER, reaches the output cleaning with CVODE missing."""
+    p = _make_proteus_instance(tmp_path, interior_module=interior_module)
+    p.config.interior_energetics.aragog.solver_method = solver_method
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        clean = stack.enter_context(
+            patch('proteus.proteus.CleanDir', side_effect=_StopAfterMeshRestore)
+        )
+        with pytest.raises(_StopAfterMeshRestore):
+            p.start(resume=False, offline=True)
+
+    clean.assert_called_once()

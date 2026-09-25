@@ -483,6 +483,12 @@ def update_stellar_quantities(hf_row: dict, config: Config, stellar_track=None):
     log.info('    F_xuv      = %.3e   W m-2' % hf_row['F_xuv'])
     log.info('    T_star     = %.3f    K' % hf_row['T_star'])
 
+    # Inform if applying bolometric scaling
+    if hf_row['bol_scale'] != 1.0:
+        log.info(
+            f'    Scaling factor is currently active on stellar fluxes: {hf_row["bol_scale"]}'
+        )
+
     # Calculate new eqm temperature
     log.debug('Update equilibrium temperature')
     update_equilibrium_temperature(hf_row, config)
@@ -585,9 +591,21 @@ def update_instellation(hf_row: dict, config: Config, stellar_track=None):
                 # XUV flux not provided by Baraffe tracks
                 Fxuv_SI = 0.0
 
+    # Determine if bolometric scaling is enabled
+    bol_scale_apply = 1.0
+    if config.star.bol_scale != 1.0 and config.star.bol_scale_start is not None:
+        # Determine when bolometric is currently active
+        bol_scale_ini = config.star.bol_scale_start * 1e9
+        bol_scale_end = bol_scale_ini + config.star.bol_scale_duration * 1e9
+
+        # Apply it if age is within the range
+        if bol_scale_ini <= hf_row['age_star'] < bol_scale_end:
+            bol_scale_apply = config.star.bol_scale
+
     # Update hf_row dictionary
-    hf_row['F_ins'] = S_0 * config.star.bol_scale
-    hf_row['F_xuv'] = Fxuv_SI * config.star.bol_scale
+    hf_row['F_ins'] = S_0 * bol_scale_apply
+    hf_row['F_xuv'] = Fxuv_SI * bol_scale_apply
+    hf_row['bol_scale'] = bol_scale_apply
 
 
 def update_equilibrium_temperature(hf_row: dict, config: Config):

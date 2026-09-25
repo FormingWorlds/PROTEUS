@@ -1009,6 +1009,64 @@ def test_update_with_entropy_remap(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'r_solvus_frac, expected_frac',
+    [(0.0, 1.0), (-0.1, 1.0), (0.9, 0.9)],
+    ids=['zero-initialised-solvus', 'negative-solvus', 'valid-solvus'],
+)
+def test_entropy_remap_radius_with_miscibility(tmp_path, r_solvus_frac, expected_frac):
+    """With global miscibility on, the SPIDER entropy remap uses the solvus as
+    the domain radius only when it lies strictly inside the planet; the
+    zero-initialised or a negative R_solvus keeps the surface radius R_int."""
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    config.interior_struct.zalmoxis.global_miscibility = True
+    mesh_file = str(tmp_path / 'spider_mesh.dat')
+    dirs = {
+        'output': str(tmp_path),
+        'spider': '/tmp/spider',
+        'spider_mesh': mesh_file,
+        'spider_mesh_prev': str(tmp_path / 'spider_mesh.dat.prev'),
+        'mesh_shift_active': False,
+        'mesh_convergence_steps': 0,
+    }
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    R_int = 6.371e6
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': R_int,
+        'gravity': 9.81,
+        'R_solvus': r_solvus_frac * R_int,
+    }
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, mesh_file),
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.02),
+        patch(
+            'proteus.interior_energetics.spider.get_all_output_times',
+            return_value=[0.0, 500.0],
+        ),
+        patch('proteus.interior_energetics.spider.remap_entropy_for_new_mesh') as mock_remap,
+        patch('proteus.interior_energetics.wrapper.gc.collect'),
+    ):
+        update_structure_from_interior(
+            dirs, config, hf_row, _mock_interior_o(), 0.0, 3000.0, 0.8
+        )
+
+    radius = mock_remap.call_args.kwargs['radius_phys']
+    assert radius == pytest.approx(expected_frac * R_int, rel=1e-12)
+    # Boundedness: the remap domain is a physical radius inside the planet.
+    assert 0.0 < radius <= R_int
+
+
+@pytest.mark.unit
 def test_entropy_remap_exception(tmp_path):
     """Exception in get_all_output_times should not crash update."""
     config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
@@ -2252,6 +2310,44 @@ def test_run_interior_non_boundary_module_shares_dT_delta_between_caps():
     assert hf_row['T_surf'] == pytest.approx(2820.0)
 
 
+@pytest.mark.unit
+def test_run_interior_evolve_message_is_debug_not_info(caplog):
+    """The per-step 'Evolve interior...' announcement stays off the default
+    INFO output: it fires on every timestep, so it belongs at debug (#839)."""
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='dummy')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    hf_row['RF_depth'] = 0.5
+    out = {
+        'T_magma': 3005.0,
+        'T_surf': 2805.0,
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 2
+    atmos_o = MagicMock()
+
+    with (
+        patch(
+            'proteus.interior_energetics.dummy.run_dummy_int',
+            return_value=(110.0, out),
+        ),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+        caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, atmos_o, verbose=True)
+
+    evolve_records = [r for r in caplog.records if 'Evolve interior' in r.getMessage()]
+    assert len(evolve_records) == 1
+    assert evolve_records[0].levelname == 'DEBUG'
+
+
 # ============================================================================
 # determine_interior_radius: tolerance_struct + maxiter + initial bracket
 # ============================================================================
@@ -2550,7 +2646,8 @@ def test_update_gravity_matches_newton_inverse_square():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
-    """calculate_core_mass writes hf_row['M_core'] = rho_core * (4/3) * pi * (R_int * core_frac)^3.
+    """calculate_core_mass writes hf_row['M_core'] = rho_core * (4/3) * pi * (R_int * core_frac)^3,
+    and persists the resolved core density to hf_row['core_density'].
 
     Physics invariant: mass is strictly positive given positive density
     and radius, and the closed-form pin is matched to 12 digits.
@@ -2565,11 +2662,15 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
     config = SimpleNamespace(
         interior_struct=SimpleNamespace(
             core_density=rho_core,
+            core_heatcap=700.0,
             core_frac=core_frac,
             core_frac_mode='radius',
         )
     )
-    hf_row = {'R_int': R_int}
+    # hf_row starts with core_density absent from an implicit stale
+    # ZeroHelpfileRow() default of 0.0, matching a live run before this
+    # function has ever been called for it.
+    hf_row = {'R_int': R_int, 'core_density': 0.0}
     calculate_core_mass(hf_row, config)
     expected = rho_core * (4.0 / 3.0) * np.pi * (R_int * core_frac) ** 3
     assert hf_row['M_core'] == pytest.approx(expected, rel=1e-12)
@@ -2579,19 +2680,69 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
     # instead of R**3 would give a number ~6 orders of magnitude smaller.
     wrong_square = rho_core * (4.0 / 3.0) * np.pi * (R_int * core_frac) ** 2
     assert abs(hf_row['M_core'] - wrong_square) > 1e15
+    # core_density must be overwritten with the resolved value, not left at
+    # its stale zero default.
+    assert hf_row['core_density'] == pytest.approx(rho_core, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_calculate_core_mass_writes_radius_density_and_heatcap():
+    """calculate_core_mass also writes R_core, core_density, and core_heatcap
+    to hf_row, not just M_core.
+
+    These three feed the helpfile columns directly; a regression that
+    reverted to computing M_core without storing the intermediates would
+    leave them missing from hf_row entirely, caught here by a direct key
+    check rather than only checking M_core's value.
+    """
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.wrapper import calculate_core_mass
+
+    rho_core = 10738.0
+    heatcap = 700.0
+    R_int = 6.371e6
+    core_frac = 0.3
+    config = SimpleNamespace(
+        interior_struct=SimpleNamespace(
+            core_density=rho_core,
+            core_heatcap=heatcap,
+            core_frac=core_frac,
+            core_frac_mode='radius',
+        )
+    )
+    hf_row = {'R_int': R_int}
+    calculate_core_mass(hf_row, config)
+
+    assert hf_row['R_core'] == pytest.approx(R_int * core_frac, rel=1e-12)
+    assert hf_row['core_density'] == pytest.approx(rho_core, rel=1e-12)
+    assert hf_row['core_heatcap'] == pytest.approx(heatcap, rel=1e-12)
+    # Discrimination: R_core must not equal R_int itself (a regression that
+    # wrote the uncombined radius instead of the core radius).
+    assert hf_row['R_core'] != pytest.approx(R_int, rel=1e-3)
 
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_update_planet_mass_sums_internal_and_volatile_elements():
-    """update_planet_mass writes M_ele as the sum over element_list of
-    each element's _kg_total mass, and writes M_planet = M_int + M_ele.
+    """update_planet_mass writes M_ele as the sum of the volatile and noble
+    element _kg_total masses, and writes M_planet = M_int + M_ele.
 
-    Conservation: the resulting M_planet must equal the dry mass plus
-    the total volatile-bearing element mass exactly.
+    Conservation: the resulting M_planet must equal the dry mass plus the
+    total volatile-bearing element mass exactly. The rock-forming elements
+    are excluded because rock vapour is not debited from the interior, so
+    counting it would inflate M_planet as vapour accumulates.
     """
     from proteus.interior_energetics.wrapper import update_planet_mass
-    from proteus.utils.constants import element_list
+    from proteus.utils.constants import (
+        element_list,
+        noble_gases,
+        vap_element_list,
+        vol_element_list,
+    )
+
+    counted = vol_element_list + noble_gases
 
     hf_row = {'M_int': 5.972e24}
     # Asymmetric element budget so an off-by-one indexing bug shows.
@@ -2600,19 +2751,31 @@ def test_update_planet_mass_sums_internal_and_volatile_elements():
 
     update_planet_mass(hf_row)
 
-    expected_ele = sum(float(hf_row[e + '_kg_total']) for e in element_list)
+    expected_ele = sum(float(hf_row[e + '_kg_total']) for e in counted)
     assert hf_row['M_ele'] == pytest.approx(expected_ele, rel=1e-12)
     assert hf_row['M_planet'] == pytest.approx(hf_row['M_int'] + expected_ele, rel=1e-12)
-    # Anti-happy-path: skipping ANY single element (e.g. the old O-skip)
-    # produces a strictly smaller M_planet. The largest element in the
-    # asymmetric budget dominates, so dropping it would change the result
-    # by orders of magnitude.
-    largest_elem = max(element_list, key=lambda e: hf_row[e + '_kg_total'])
+    # Anti-happy-path: skipping ANY single counted element (e.g. the old
+    # O-skip) produces a strictly smaller M_planet. The largest element in
+    # the asymmetric budget dominates, so dropping it would change the
+    # result by orders of magnitude.
+    largest_elem = max(counted, key=lambda e: hf_row[e + '_kg_total'])
     expected_without_largest = expected_ele - hf_row[largest_elem + '_kg_total']
     assert (
         abs(hf_row['M_ele'] - expected_without_largest)
         > 0.5 * hf_row[largest_elem + '_kg_total']
     )
+
+    # Discrimination guard on the exclusion itself: the plausible regression
+    # is summing the full element_list, which would fold the rock-vapour
+    # mass in. M_ele must NOT match that sum.
+    full_sum = sum(float(hf_row[e + '_kg_total']) for e in element_list)
+    vapour_mass = sum(float(hf_row[e + '_kg_total']) for e in vap_element_list)
+    assert abs(full_sum - hf_row['M_ele']) == pytest.approx(vapour_mass, rel=1e-9)
+
+    # The rock-vapour mass is ~1e-5 of the total here, far above the rel=1e-12
+    # pin above, so that pin genuinely distinguishes the two element sets
+    # rather than passing either way.
+    assert vapour_mass / expected_ele > 1e-9
 
 
 @pytest.mark.unit
@@ -3345,6 +3508,84 @@ def test_determine_interior_radius_with_dummy_sets_mesh_paths_for_spider(tmp_pat
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ('temperature_mode', 'expect_call'),
+    [('liquidus_super', True), ('adiabatic', False)],
+)
+def test_dummy_structure_provides_tables_for_liquidus_super_without_generated_set(
+    tmp_path, temperature_mode, expect_call
+):
+    """With no generated P-S set, only liquidus_super requests the FWL_DATA tables."""
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_energetics.num_levels = 50
+    config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
+    config.planet.temperature_mode = temperature_mode
+    hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
+
+    with (
+        _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        _patch('proteus.interior_energetics.wrapper._provide_spider_eos_tables') as provide,
+        _patch('proteus.interior_energetics.wrapper.Interior_t'),
+        _patch('proteus.interior_energetics.wrapper.run_interior'),
+        _patch('proteus.interior_energetics.wrapper.update_gravity'),
+        _patch('proteus.interior_energetics.wrapper.calc_target_elemental_inventories'),
+        _patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
+
+    assert provide.called is expect_call
+    if expect_call:
+        assert provide.call_args.args[1] == str(tmp_path)
+
+
+@pytest.mark.unit
+def test_dummy_structure_liquidus_super_without_tables_raises_named_error(tmp_path):
+    """No generated set and no FWL_DATA or SPIDER table source gives a named
+    RuntimeError that names mantle_eos, the field that selects the tables.
+    """
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_energetics.num_levels = 50
+    config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
+    config.interior_struct.zalmoxis.mantle_eos = 'Stixrude14:MgSiO3'
+    config.planet.temperature_mode = 'liquidus_super'
+    hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
+
+    with (
+        _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        _patch(
+            'proteus.interior_energetics.wrapper._provide_spider_eos_tables',
+            side_effect=FileNotFoundError('no P-S tables'),
+        ),
+        _patch('proteus.interior_energetics.wrapper.Interior_t') as interior_t,
+        pytest.raises(RuntimeError) as excinfo,
+    ):
+        determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
+
+    msg = str(excinfo.value)
+    assert 'temperature_mode' in msg
+    assert 'liquidus_super' in msg
+    assert 'interior_struct.module' in msg
+    assert "interior_struct.zalmoxis.mantle_eos='Stixrude14:MgSiO3'" in msg
+    assert 'WolfBower2018_MgSiO3' not in msg
+    assert 'no P-S tables' in msg
+    assert not isinstance(excinfo.value, FileNotFoundError)
+    # The failure happens before the first interior step is built.
+    interior_t.assert_not_called()
+
+
+@pytest.mark.unit
 def test_determine_interior_radius_with_dummy_no_mesh_for_non_spider(tmp_path):
     """For Aragog (no separate mesh file), solve_dummy_structure returns
     None and the helper skips the spider_mesh path entirely.
@@ -3591,6 +3832,125 @@ def test_run_interior_spider_fallback_aborts_after_max_consecutive():
     assert interior_o.spider_fail_count == _w._SPIDER_MAX_CONSECUTIVE_FAILS
 
     interior_o.spider_fail_count = 0  # cleanup
+
+
+@pytest.mark.unit
+def test_run_interior_spider_initial_condition_error_is_not_retried(caplog):
+    """A liquidus_super initial condition that does not exist raises on the
+    first SPIDER call: it is not counted as a CVode failure and not retried,
+    matching Aragog, where the same error escapes at once.
+    """
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.common import InitialConditionError
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='spider')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 1
+    interior_o._spider_cumulative_time = 0.0
+    interior_o.spider_fail_count = 0
+
+    with (
+        _patch(
+            'proteus.interior_energetics.spider.RunSPIDER',
+            side_effect=InitialConditionError('no fully-molten initial condition'),
+        ) as mock_run,
+        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        with pytest.raises(InitialConditionError, match='no fully-molten'):
+            run_interior(
+                {'spider': '/tmp/spider'}, config, hf_all, hf_row, interior_o, verbose=False
+            )
+
+    mock_run.assert_called_once()
+    assert interior_o.spider_fail_count == 0
+    assert not [r for r in caplog.records if 'CVode failure' in r.getMessage()]
+    # The subclass still satisfies callers that catch RuntimeError.
+    assert issubclass(InitialConditionError, RuntimeError)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'error',
+    [
+        NotImplementedError('method not available'),
+        RecursionError('maximum recursion depth exceeded'),
+        UnicodeDecodeError('utf-8', b'\\xff', 0, 1, 'invalid start byte'),
+    ],
+    ids=lambda e: type(e).__name__,
+)
+def test_run_interior_spider_passthrough_errors_are_not_retried(caplog, error):
+    """Programming and decoding errors from the SPIDER call, two of which
+    subclass RuntimeError, propagate on the first call and are not counted as
+    CVode failures.
+    """
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='spider')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 1
+    interior_o._spider_cumulative_time = 0.0
+    interior_o.spider_fail_count = 0
+
+    with (
+        _patch('proteus.interior_energetics.spider.RunSPIDER', side_effect=error) as mock_run,
+        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        with pytest.raises(type(error)) as exc:
+            run_interior(
+                {'spider': '/tmp/spider'}, config, hf_all, hf_row, interior_o, verbose=False
+            )
+
+    assert exc.value is error
+    mock_run.assert_called_once()
+    assert interior_o.spider_fail_count == 0
+    assert not [r for r in caplog.records if 'CVode failure' in r.getMessage()]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('kind', ['InitialConditionError', 'NotImplementedError'])
+def test_run_interior_aragog_ic_errors_are_not_retried(kind, tmp_path):
+    """The Aragog IC is solved when the runner is built, outside the retry
+    ladder, so an IC error or a programming error from it propagates at once
+    and is not counted as a retry-ladder failure.
+    """
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.common import InitialConditionError
+    from proteus.interior_energetics.wrapper import run_interior
+
+    error = (
+        InitialConditionError('no fully-molten initial condition')
+        if kind == 'InitialConditionError'
+        else NotImplementedError('method not available')
+    )
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    config.params.out.logging = 'INFO'
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 1
+    interior_o.aragog_fail_count = 0
+
+    with _patch(
+        'proteus.interior_energetics.aragog.AragogRunner.setup_or_update_solver',
+        side_effect=error,
+    ) as mock_setup:
+        with pytest.raises(type(error)) as exc:
+            run_interior(
+                {'output': str(tmp_path)}, config, hf_all, hf_row, interior_o, verbose=False
+            )
+
+    assert exc.value is error
+    mock_setup.assert_called_once()
+    assert interior_o.aragog_fail_count == 0
 
 
 # ============================================================================

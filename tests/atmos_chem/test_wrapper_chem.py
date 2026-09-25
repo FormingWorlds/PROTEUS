@@ -41,12 +41,14 @@ def _make_config(module: str | None = 'none', when: str = 'offline') -> MagicMoc
 
 
 def test_run_chemistry_none_module_returns_none():
-    """When atmos_chem.module is 'none', run_chemistry returns None
+    """When atmos_chem.module is None, run_chemistry returns None
     without calling any backend.
 
-    Edge case: chemistry is disabled in the config.
+    Edge case: chemistry is disabled in the config. The config converter
+    maps the TOML string 'none' to Python None before dispatch, so None is
+    the value the wrapper actually receives.
     """
-    config = _make_config(module='none')
+    config = _make_config(module=None)
     hf_row = {'Time': 100}
     result = run_chemistry(dirs={}, config=config, hf_row=hf_row)
     assert result is None

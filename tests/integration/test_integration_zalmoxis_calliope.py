@@ -397,26 +397,38 @@ def test_element_list_includes_oxygen_under_calliope_pair():
     that removed O from the list would let M_atm exceed M_planet at
     high H budgets.
 
-    The list also includes the rock-forming elements (Si, Mg, Fe,
-    Na) so the same dry-mass subtraction works for sub-Neptune and
-    super-Earth compositions where the dissolved rocky inventory is
-    non-negligible. Pin the full documented set.
+    The list also includes the rock-forming elements so the same
+    dry-mass subtraction works for sub-Neptune and super-Earth
+    compositions where the dissolved rocky inventory is
+    non-negligible.
 
-    Discrimination: set equality fails on both addition and removal
-    of any element.
+    Discrimination: the elements that must be present are named
+    literally, so dropping any one of them from its source list fails
+    here. Comparing against the source lists instead would not: both
+    sides of that comparison are built from the same lists and move
+    together, so it would hold however many elements were removed.
+    The membership pin is a floor rather than an equality, so adding
+    an element is not itself a failure, and a separate check requires
+    the construction to reach every element its sources declare.
     """
-    from proteus.utils.constants import element_list, noble_gases
-
-    # The reactive and rock-forming elements plus the opt-in noble gases, which
-    # are tracked as elements in the whole-planet mass balance.
-    assert set(element_list) == {'H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'} | set(
-        noble_gases
+    from proteus.utils.constants import (
+        element_list,
+        noble_gases,
+        vap_element_list,
+        vol_element_list,
     )
-    # The volatile species CALLIOPE partitions must all be present.
-    for vol in ('H', 'O', 'C', 'N', 'S'):
-        assert vol in element_list, (
-            f'{vol} missing from element_list; whole-planet bookkeeping breaks'
-        )
+
+    # The volatile and rock-forming elements plus the opt-in noble gases, which
+    # are tracked as elements in the whole-planet mass balance. Losing any of
+    # these silently drops its mass from M_ele and from the dry-mass target.
+    required = {'H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'} | set(noble_gases)
+    missing = required - set(element_list)
+    assert not missing, f'{sorted(missing)} dropped from element_list; mass balance breaks'
+
+    # Every element the sources declare reaches the list, and none appears
+    # twice, so a sum over element_list counts each element exactly once.
+    assert set(element_list) == set(vol_element_list) | set(vap_element_list) | set(noble_gases)
+    assert len(element_list) == len(set(element_list))
 
 
 def test_whole_element_helpfile_keys_register_per_element_total_columns():

@@ -35,11 +35,13 @@ set -e
 # in PROTEUS's conda environment.
 # -----------------------------------------------------------------------------
 portable_realpath() {
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$1"
-    else
-        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
+    # Keep this helper in sync across the get_* scripts. A path that does not
+    # exist yet is rejected by realpath (BSD refuses a missing leaf, GNU a
+    # missing parent), so fall through to python3 there too.
+    if command -v realpath >/dev/null 2>&1 && realpath "$1" 2>/dev/null; then
+        return 0
     fi
+    python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
 }
 
 # -----------------------------------------------------------------------------

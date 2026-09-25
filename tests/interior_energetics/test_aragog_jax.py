@@ -59,7 +59,8 @@ def _make_config(*, heat_radiogenic: bool = False, heat_tidal: bool = False):
     config.interior_energetics.eddy_diffusivity_chemical = 0.1
     config.interior_energetics.kappah_floor = 1e-6
     config.interior_energetics.spider.matprop_smooth_width = 0.02
-    config.interior_energetics.aragog.phase_smoothing = True
+    config.interior_energetics.aragog.phase_smoothing = 'tanh'
+    config.interior_energetics.aragog.separation_viscosity = 'mixture'
     config.interior_energetics.aragog.atol_temperature_equivalent = 1.0
     config.interior_energetics.rtol = 1e-4
     config.interior_energetics.heat_radiogenic = heat_radiogenic
@@ -133,6 +134,49 @@ def test_build_jax_components_raises_when_spider_eos_dir_missing(tmp_path):
         interior_o = _make_interior_o(spider_eos_dir=bad_eos_dir)
         with pytest.raises(FileNotFoundError, match=r'(?i)PALEOS|tables not found'):
             AragogJAXRunner(config, {'output': str(tmp_path)}, {}, None, interior_o)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('separation_viscosity', 'expected_mixture_flag'),
+    [('mixture', 1.0), ('melt', 0.0)],
+)
+def test_build_jax_components_forwards_separation_viscosity(
+    tmp_path, separation_viscosity, expected_mixture_flag
+):
+    """``_build_jax_components`` forwards ``separation_viscosity`` from the
+    PROTEUS config to the JAX ``PhaseParams``.
+
+    Contract from ``aragog_jax.py`` (``_build_jax_components``): the
+    ``PhaseParams`` construction must pass ``separation_viscosity`` through
+    from ``config.interior_energetics.aragog.separation_viscosity``, so the
+    JAX solver honours the same setting as the numpy solver instead of
+    silently falling back to the aragog library default (``'melt'``, which
+    differs from the PROTEUS schema default ``'mixture'``).
+
+    Discrimination: a regression that drops the kwarg falls back to the
+    library default ``'melt'`` regardless of the config value, so the
+    ``'mixture'`` case (``expected_mixture_flag=1.0``) fails while the
+    ``'melt'`` case passes by coincidence. Parametrizing over both values
+    catches a dropped kwarg either way.
+    """
+    config = _make_config()
+    config.interior_energetics.aragog.separation_viscosity = separation_viscosity
+    interior_o = _make_interior_o(spider_eos_dir=str(tmp_path))
+
+    with (
+        patch('aragog.jax.eos.EntropyEOS_JAX', return_value=MagicMock()),
+        patch.object(AragogJAXRunner, '_build_mesh_arrays', return_value=MagicMock()),
+    ):
+        AragogJAXRunner(config, {'output': str(tmp_path)}, {}, None, interior_o)
+
+    assert interior_o._jax_params.separation_viscosity_mixture == pytest.approx(
+        expected_mixture_flag
+    ), (
+        f'separation_viscosity={separation_viscosity!r} produced '
+        f'separation_viscosity_mixture={interior_o._jax_params.separation_viscosity_mixture}, '
+        f'expected {expected_mixture_flag}'
+    )
 
 
 @pytest.mark.unit
@@ -306,6 +350,99 @@ def test_extract_output_mass_closure(tmp_path):
     assert out2['M_mantle_liquid'] + out2['M_mantle_solid'] == pytest.approx(
         out2['M_mantle'], rel=1e-12
     )
+
+
+@pytest.mark.unit
+def test_extract_output_t_cmb_node_uses_basic_node_entropy(tmp_path):
+    """``_extract_output`` evaluates ``T_cmb_node`` at the CMB basic node.
+
+    The basic-node entropy is ``quantity_matrix @ S``; row 0 averages the
+    two lowest cells here, so ``T_cmb_node`` differs from the bottom-cell
+    ``T_cmb``. With ``T = 1000 + 0.1 S`` the expected values are exact.
+    """
+    config = _make_config()
+    interior_o = _make_interior_o(spider_eos_dir=str(tmp_path), prepopulate_jax=True)
+    n_stag = 5
+
+    mesh = MagicMock()
+    mesh.P_stag = np.linspace(1.0e9, 1.5e11, n_stag)
+    mesh.P_basic = np.linspace(0.0, 1.6e11, n_stag + 1)
+    mesh.volume = np.full(n_stag, 1.0e19)
+    mesh.radii_basic = np.linspace(3.0e6, 6.4e6, n_stag + 1)
+    mesh.radii_stag = np.linspace(3.1e6, 6.3e6, n_stag)
+    qm = np.eye(n_stag + 1, n_stag)
+    qm[0, 0] = 0.25
+    qm[0, 1] = 0.75
+    mesh.quantity_matrix = qm
+
+    eos = interior_o._jax_eos
+    eos.temperature = lambda P, S: 1000.0 + 0.1 * np.asarray(S)
+    eos.melt_fraction = lambda P, S: np.full(n_stag, 0.5)
+    eos.density = lambda P, S: np.full(n_stag, 4500.0)
+
+    fake_props = MagicMock()
+    fake_props.viscosity = np.full(n_stag, 1.0e2)
+    fake_props.heat_capacity = np.full(n_stag, 1200.0)
+
+    with patch.object(AragogJAXRunner, '_build_mesh_arrays', return_value=mesh):
+        runner = AragogJAXRunner(
+            config, {'output': str(tmp_path)}, {'F_atm': 1e5}, None, interior_o
+        )
+    runner._last_heating = np.zeros(n_stag)
+
+    S_final = np.linspace(2500.0, 3500.0, n_stag)
+    result = SimpleNamespace(success=True, t_final=1.0e3, n_steps=1, S_final=S_final)
+    with patch('aragog.jax.phase.evaluate_phase', return_value=fake_props):
+        out = runner._extract_output(result, {'F_atm': 1e5}, interior_o)
+
+    S_node = 0.25 * S_final[0] + 0.75 * S_final[1]
+    assert out['T_cmb'] == pytest.approx(1000.0 + 0.1 * S_final[0])
+    assert out['T_cmb_node'] == pytest.approx(1000.0 + 0.1 * S_node)
+    assert out['T_cmb_node'] != pytest.approx(out['T_cmb'])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(('rfront_loc', 'node'), [(0.3, 3), (0.7, 1)])
+def test_extract_output_rheological_front_follows_rfront_loc(tmp_path, rfront_loc, node):
+    """``RF_depth`` sits at the basic node whose melt fraction is closest to rfront_loc.
+
+    The basic-node melt fraction is ``[0.9, 0.7, 0.5, 0.3, 0.1, 0]``; 0.3 and 0.7 pick
+    nodes 3 and 1, while a fixed 0.4 or 0.5 would pick node 2.
+    """
+    config = _make_config()
+    config.interior_energetics.rfront_loc = rfront_loc
+    interior_o = _make_interior_o(spider_eos_dir=str(tmp_path), prepopulate_jax=True)
+    n_stag = 5
+
+    mesh = MagicMock()
+    mesh.P_stag = np.linspace(1.0e9, 1.5e11, n_stag)
+    mesh.P_basic = np.linspace(0.0, 1.6e11, n_stag + 1)
+    mesh.volume = np.full(n_stag, 1.0e19)
+    mesh.radii_basic = np.linspace(3.0e6, 6.4e6, n_stag + 1)
+    mesh.quantity_matrix = np.eye(n_stag + 1, n_stag)
+
+    eos = interior_o._jax_eos
+    eos.temperature = lambda P, S: np.full(np.shape(S), 3000.0)
+    eos.melt_fraction = lambda P, S: np.array([0.9, 0.7, 0.5, 0.3, 0.1])
+    eos.density = lambda P, S: np.full(n_stag, 4500.0)
+
+    fake_props = MagicMock()
+    fake_props.viscosity = np.full(n_stag, 1.0e2)
+    fake_props.heat_capacity = np.full(n_stag, 1200.0)
+
+    with patch.object(AragogJAXRunner, '_build_mesh_arrays', return_value=mesh):
+        runner = AragogJAXRunner(
+            config, {'output': str(tmp_path)}, {'F_atm': 1e5}, None, interior_o
+        )
+
+    result = SimpleNamespace(
+        success=True, t_final=1.0e3, n_steps=1, S_final=np.linspace(2500.0, 3500.0, n_stag)
+    )
+    with patch('aragog.jax.phase.evaluate_phase', return_value=fake_props):
+        out = runner._extract_output(result, {'F_atm': 1e5}, interior_o)
+
+    r = mesh.radii_basic
+    assert out['RF_depth'] == pytest.approx(1.0 - r[node] / r[-1], rel=1e-12)
 
 
 @pytest.mark.unit

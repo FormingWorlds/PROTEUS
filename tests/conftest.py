@@ -434,6 +434,24 @@ def intermediate_params():
 # =============================================================================
 
 
+def pytest_addoption(parser):
+    """Register the suite's own command-line options.
+
+    Declared here rather than in a subdirectory conftest because pytest only
+    reads this hook from conftest files it loads at startup, which for this
+    suite are the repository root and this directory.
+    """
+    parser.addoption(
+        '--record-golden',
+        action='store_true',
+        default=False,
+        help=(
+            'record the reference trajectory the golden-run check compares against, '
+            'instead of comparing against it'
+        ),
+    )
+
+
 def pytest_configure(config):
     """Register custom pytest markers for test categorization."""
     config.addinivalue_line(

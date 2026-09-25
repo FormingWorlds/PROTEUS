@@ -14,7 +14,7 @@ import numpy as np
 import vulcan
 
 # Import PROTEUS
-from proteus.atmos_clim.common import read_atmosphere_data
+from proteus.atmos_clim.common import find_latest_atmosphere_time, read_atmosphere_data
 from proteus.star.wrapper import scale_spectrum_to_stellar_surface
 from proteus.utils.constants import AU, R_sun, element_list, vol_list
 from proteus.utils.helper import find_nearest
@@ -100,10 +100,33 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
         vulcan_pkl = VULCAN_NAME
         vulcan_csv = OUTPUT_NAME
 
-    # Read atmosphere data
-    atmos = read_atmosphere_data(
-        dirs['output'], [year], extra_keys=['pl', 'tmpl', 'x_gas', 'Kzz']
-    )[0]
+    # Read atmosphere data. Prefer the exact hf_row['Time'] snapshot.
+    extra_keys = ['pl', 'tmpl', 'x_gas', 'Kzz']
+    atmos = read_atmosphere_data(dirs['output'], [year], extra_keys=extra_keys)
+
+    # Fall back to the final available snapshot on disk.
+    if atmos is None:
+        # Try to find the best one
+        # This is ideally the latest time available
+        latest = find_latest_atmosphere_time(dirs['output'])
+
+        # Could not find NetCDF file for reading
+        if latest is None:
+            log.warning('No atmosphere NetCDFs available; skipping chemistry')
+            return False
+
+        # Try to fall back to the latest available snapshot
+        log.warning(
+            'Atmosphere NetCDF t=%.0f yr missing; using available (t=%.0f yr)' % (year, latest)
+        )
+        year = latest
+        atmos = read_atmosphere_data(dirs['output'], [year], extra_keys=extra_keys)
+
+        # Just fail if we still can't find anything
+        if atmos is None:
+            log.warning('Atmosphere NetCDF could not be read; skipping chemistry')
+            return False
+    atmos = atmos[0]  # Get the single snapshot from the list
 
     # ------------------------------------------------------------
     # WRITE VULCAN INPUT FILES

@@ -15,12 +15,12 @@ Anti-happy-path discipline (per .github/.claude/rules/proteus-tests.md):
   match the schema; if a new module is added without updating this list,
   the assert in test_module_field_inventory_matches_schema fires.
 
-- The slow-tier hypothesis test fuzzes the cross-product of module enum
-  values for the eight backend fields, asserting every combination either
-  validates and yields a usable Config OR raises with a specific message.
-  Catastrophic exceptions (TypeError, AttributeError, KeyError) fail the
-  test. The cross-product covers ~5000 combinations; hypothesis samples
-  200 by default; derandomize=True so CI is reproducible.
+- The cross-product test sweeps the module enum values for the eight
+  backend fields, asserting every combination either validates and yields
+  a usable Config OR raises with a specific message. Catastrophic
+  exceptions (TypeError, AttributeError, KeyError) fail the test. The
+  sweep is exhaustive over all 5184 combinations and needs no seed to be
+  reproducible.
 
 The original failure that motivated this file: outgas.module defaulted to
 "atmodeller" while atmodeller is not in pyproject hard deps; CI runners
@@ -43,20 +43,21 @@ from proteus.config._config import (
     boundary_requires_fixed_surface_state,
     check_module_dependencies,
     instmethod_evolve,
+    orbit_requires_tides,
     planet_fO2_source_compat,
     planet_mass_valid,
     planet_oxygen_mode_explicit,
     satellite_evolve,
+    sp0d_obliqua_degree_mismatch,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Every test here is unit tier, including the 5184-combo cross-product, which
-# sweeps in ~2.5 s. Keep it that way: a second tier marker on any function in
-# this file would combine with the module mark above, and the tier filters are
-# mutually exclusive (`unit and not slow` against `slow and not unit`), so a
-# doubly-marked test is selected by neither and silently stops running. A test
-# that outgrows the 30 s ceiling belongs in its own single-tier file.
+# Every test here is unit tier, including the 5184-combo cross-product. Keep it
+# that way: a second tier marker on any function combines with the module mark
+# above, and the unit and slow filters exclude each other (`unit and not slow`
+# against `slow and not unit`), so a test carrying both runs in neither. The
+# cross-product runs far longer than its neighbours, so it sets its own budget.
 
 # ---------------------------------------------------------------------------
 # Schema enum inventory: kept here so a schema change that adds a backend
@@ -69,7 +70,7 @@ ATMOS_CLIM_BACKENDS = ('dummy', 'agni', 'janus')
 ATMOS_CHEM_BACKENDS = (None, 'vulcan', 'dummy')
 ESCAPE_BACKENDS = (None, 'dummy', 'zephyrus', 'boreas')
 STAR_BACKENDS = (None, 'mors', 'dummy')
-ORBIT_BACKENDS = (None, 'dummy', 'lovepy')
+ORBIT_BACKENDS = (None, 'dummy', 'lovepy', 'obliqua')
 INTERIOR_STRUCT_BACKENDS = (None, 'dummy', 'spider', 'zalmoxis')
 
 # Backends whose Python package is in the PROTEUS hard dependency set
@@ -229,8 +230,8 @@ def _make_config_instance(**overrides):
         orbit=SimpleNamespace(
             module='dummy',
             instellation_method='separation',
-            evolve=False,
-            satellite=False,
+            star_planet_model=None,
+            planet_satellite_model=None,
         ),
         params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=True))),
         planet=SimpleNamespace(
@@ -707,11 +708,12 @@ def test_boundary_requires_fixed_surface_state_passes_with_fixed():
 # ---------------------------------------------------------------------------
 @pytest.mark.unit
 def test_instmethod_evolve_rejects_inst_with_orbit_evolve():
-    """instellation_method='inst' is incompatible with orbit.evolve=True."""
+    """instellation_method='inst' is incompatible with a star-planet
+    evolution model being enabled."""
     instance = _make_config_instance(
         **{
             'orbit.instellation_method': 'inst',
-            'orbit.evolve': True,
+            'orbit.star_planet_model': 'sp0d',
         }
     )
     with pytest.raises(ValueError, match=r"instellation_method='inst'") as excinfo:
@@ -719,100 +721,260 @@ def test_instmethod_evolve_rejects_inst_with_orbit_evolve():
     # Discrimination: the message must mention orbital evolution as the
     # incompatible-with feature, so the user knows which of the two settings
     # to change. A regression with just "instellation_method='inst' is bad"
-    # that did not name the conflicting evolve flag would fail.
+    # that did not name the conflicting evolution model would fail.
     msg = str(excinfo.value).lower()
     assert 'evolution' in msg or 'evolve' in msg
 
 
 @pytest.mark.unit
 def test_instmethod_evolve_passes_with_inst_and_no_evolve():
-    """instellation_method='inst' is OK when orbit.evolve is False."""
+    """instellation_method='inst' is OK when star_planet_model is None."""
     instance = _make_config_instance(
         **{
             'orbit.instellation_method': 'inst',
-            'orbit.evolve': False,
+            'orbit.star_planet_model': None,
         }
     )
     result = instmethod_evolve(instance, None, None)
-    assert result is None  # contract: inst + evolve=False is the canonical compatible combo
-    # Discriminating check: evolve=True with inst would have raised; only the
-    # evolve=False branch can produce a silent pass under inst.
+    assert (
+        result is None
+    )  # contract: inst + star_planet_model=None is the canonical compatible combo
+    # Discriminating check: star_planet_model='sp0d' with inst would have
+    # raised; only the None branch can produce a silent pass under inst.
     assert instance.orbit.instellation_method == 'inst'
-    assert instance.orbit.evolve is False
+    assert instance.orbit.star_planet_model is None
 
 
 @pytest.mark.unit
 def test_instmethod_evolve_passes_with_separation_and_evolve():
-    """orbit.evolve is fine when instellation_method != 'inst'."""
+    """A star-planet evolution model is fine when instellation_method != 'inst'."""
     instance = _make_config_instance(
         **{
             'orbit.instellation_method': 'separation',
-            'orbit.evolve': True,
+            'orbit.star_planet_model': 'sp0d',
         }
     )
     result = instmethod_evolve(instance, None, None)
     assert result is None  # contract: non-inst method permits orbital evolution
-    # Discriminating check: evolve=True with inst would have raised; only the
-    # non-inst branch can produce a silent pass with evolve=True.
+    # Discriminating check: star_planet_model set with inst would have
+    # raised; only the non-inst branch can produce a silent pass with it set.
     assert instance.orbit.instellation_method != 'inst'
-    assert instance.orbit.evolve is True
+    assert instance.orbit.star_planet_model == 'sp0d'
 
 
 @pytest.mark.unit
 def test_satellite_evolve_rejects_satellite_with_evolve():
-    """orbit.satellite=True with orbit.evolve=True must raise."""
+    """A planet-satellite model with a star-planet evolution model
+    simultaneously enabled must raise."""
     instance = _make_config_instance(
         **{
-            'orbit.satellite': True,
-            'orbit.evolve': True,
+            'orbit.planet_satellite_model': 'ps0d',
+            'orbit.star_planet_model': 'sp0d',
         }
     )
     with pytest.raises(ValueError, match=r'satellite') as excinfo:
         satellite_evolve(instance, None, None)
     # Discrimination: the message must also mention orbital evolution; the
-    # incompatibility is between satellite=True AND evolve=True. A regression
-    # that only named 'satellite' without naming the conflicting evolve flag
-    # would leave users guessing which side to flip.
+    # incompatibility is between planet_satellite_model AND star_planet_model
+    # both being set. A regression that only named 'satellite' without naming
+    # the conflicting evolution model would leave users guessing which side
+    # to flip.
     msg = str(excinfo.value).lower()
     assert 'evolution' in msg or 'evolve' in msg
 
 
 @pytest.mark.unit
 def test_satellite_evolve_passes_with_satellite_and_no_evolve():
-    """A satellite with a fixed orbit is allowed."""
+    """A satellite with a fixed star-planet orbit is allowed."""
     instance = _make_config_instance(
         **{
-            'orbit.satellite': True,
-            'orbit.evolve': False,
+            'orbit.planet_satellite_model': 'ps0d',
+            'orbit.star_planet_model': None,
         }
     )
     result = satellite_evolve(instance, None, None)
-    assert result is None  # contract: satellite=True + evolve=False is the accepted combo
-    # Discriminating check: satellite=True + evolve=True would have raised; only
-    # the evolve=False branch can produce a silent pass under satellite=True.
-    assert instance.orbit.satellite is True
-    assert instance.orbit.evolve is False
+    assert result is None  # contract: satellite set + star_planet_model=None is accepted
+    # Discriminating check: both set would have raised; only star_planet_model=None
+    # can produce a silent pass with planet_satellite_model set.
+    assert instance.orbit.planet_satellite_model == 'ps0d'
+    assert instance.orbit.star_planet_model is None
 
 
 @pytest.mark.unit
 def test_satellite_evolve_passes_without_satellite():
-    """orbit.evolve alone (no satellite) is allowed."""
+    """A star-planet evolution model alone (no satellite) is allowed."""
     instance = _make_config_instance(
         **{
-            'orbit.satellite': False,
-            'orbit.evolve': True,
+            'orbit.planet_satellite_model': None,
+            'orbit.star_planet_model': 'sp0d',
         }
     )
     result = satellite_evolve(instance, None, None)
     assert result is None  # contract: no-satellite path accepts orbital evolution
-    # Discriminating check: satellite=False is the path that allows evolve=True;
-    # the validator's other branch (satellite=True + evolve=True) would have raised.
-    assert instance.orbit.satellite is False
-    assert instance.orbit.evolve is True
+    # Discriminating check: planet_satellite_model=None is the path that
+    # allows star_planet_model to be set; the validator's other branch (both
+    # set) would have raised.
+    assert instance.orbit.planet_satellite_model is None
+    assert instance.orbit.star_planet_model == 'sp0d'
 
 
 # ---------------------------------------------------------------------------
-# Slow-tier hypothesis cross-product over module enums
+# orbit_requires_tides: sp1d/ps1d/ps1d_evec consume a per-mode Love-number
+# spectrum, which only lovepy or Obliqua can supply.
+# ---------------------------------------------------------------------------
+# model -> the orbit.* field it is actually assigned to: sp1d lives on
+# star_planet_model, while ps1d/ps1d_evec live on planet_satellite_model --
+# the two are never set at the same time (see satellite_evolve above).
+_TIDES_REQUIRED_MODELS = [
+    ('sp1d', 'star_planet_model'),
+    ('ps1d', 'planet_satellite_model'),
+    ('ps1d_evec', 'planet_satellite_model'),
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('model,model_field', _TIDES_REQUIRED_MODELS)
+@pytest.mark.parametrize('module', ['dummy', 'none'])
+def test_orbit_requires_tides_rejects_non_tidal_module(model, model_field, module):
+    """sp1d/ps1d/ps1d_evec need a real tidal-response spectrum, so pairing
+    any of them with a non-tides module (dummy tides or tides disabled
+    entirely) must raise rather than silently running with no Love numbers.
+
+    Regression guard: ps1d/ps1d_evec are ``orbit.planet_satellite_model``
+    values, not ``orbit.star_planet_model`` values -- a validator that only
+    ever inspected ``star_planet_model`` (as this one once did) would never
+    fire for either, silently letting ``dummy`` + ps1d/ps1d_evec through.
+    """
+    instance = _make_config_instance(
+        **{
+            'orbit.module': module,
+            f'orbit.{model_field}': model,
+        }
+    )
+    with pytest.raises(ValueError, match=model) as excinfo:
+        orbit_requires_tides(instance, None, None)
+    msg = str(excinfo.value)
+    # Discrimination: the message must name both accepted modules, not just
+    # reject blindly, so the user knows what to switch to.
+    assert 'obliqua' in msg
+    assert 'lovepy' in msg
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('model,model_field', _TIDES_REQUIRED_MODELS)
+@pytest.mark.parametrize('module', ['obliqua', 'lovepy'])
+def test_orbit_requires_tides_passes_for_either_tidal_module(model, model_field, module):
+    """Either Obliqua or lovepy supplies a real per-mode spectrum, so both
+    are accepted for every model that requires one."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': module,
+            f'orbit.{model_field}': model,
+        }
+    )
+    orbit_requires_tides(instance, None, None)
+    assert instance.orbit.module == module  # unmodified by the validator
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'model,model_field', [('sp0d', 'star_planet_model'), ('ps0d', 'planet_satellite_model')]
+)
+def test_orbit_requires_tides_passes_for_0d_models_regardless_of_module(model, model_field):
+    """sp0d/ps0d read the scalar Imk2 rather than the per-mode tides_o
+    spectrum (dummy provides Imk2 too), so the restriction is specific to
+    the *1d models and must not fire for either 0d model even on dummy."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'dummy',
+            f'orbit.{model_field}': model,
+        }
+    )
+    orbit_requires_tides(instance, None, None)
+
+
+# ---------------------------------------------------------------------------
+# sp0d_obliqua_degree_mismatch: sp0d's scalar Imk2 is only ever meaningful
+# for Obliqua's degree-2 output; run_orbit zeroes it for any other degree.
+# ---------------------------------------------------------------------------
+@pytest.mark.unit
+def test_sp0d_obliqua_degree_mismatch_rejects_higher_degree():
+    """sp0d + Obliqua configured for a non-degree-2 spectrum must raise:
+    run_orbit would silently zero hf_row['Imk2'] every iteration, freezing
+    sp0d's eccentricity evolution rather than reflecting the requested
+    degree(s)."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'obliqua',
+            'orbit.star_planet_model': 'sp0d',
+        }
+    )
+    instance.orbit.obliqua = SimpleNamespace(n=[2, 3])
+    with pytest.raises(ValueError, match=r'sp0d') as excinfo:
+        sp0d_obliqua_degree_mismatch(instance, None, None)
+    # Discrimination: the message must name obliqua.n == [2] as the reason,
+    # not just "sp0d is bad", so the user knows what to change (n, or the
+    # model), and must name sp1d as the alternative to switch to.
+    msg = str(excinfo.value).lower()
+    assert 'n == [2]' in msg
+    assert 'sp1d' in msg  # names the model to switch to
+
+
+@pytest.mark.unit
+def test_sp0d_obliqua_degree_mismatch_warns_but_passes_for_degree_two(caplog):
+    """sp0d + Obliqua configured for exactly n=[2] is accepted (Imk2 is a
+    real, non-zeroed value in this case), but still logs a warning: even at
+    n=[2], sp0d collapses Obliqua's per-mode spectrum to a single mean
+    scalar, an approximation sp1d avoids by consuming the per-mode data
+    directly."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'obliqua',
+            'orbit.star_planet_model': 'sp0d',
+        }
+    )
+    instance.orbit.obliqua = SimpleNamespace(n=[2])
+    with caplog.at_level('WARNING'):
+        sp0d_obliqua_degree_mismatch(instance, None, None)
+    assert any('sp1d' in rec.message.lower() for rec in caplog.records)
+
+
+@pytest.mark.unit
+def test_sp0d_obliqua_degree_mismatch_passes_for_sp1d_regardless_of_degree():
+    """The restriction is sp0d-specific: sp1d consumes Obliqua's per-mode
+    Love-number spectrum directly (not a collapsed scalar Imk2), so a
+    non-degree-2 configuration is fine there. Discriminates that the
+    validator keys on star_planet_model=='sp0d', not merely on
+    module=='obliqua'."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'obliqua',
+            'orbit.star_planet_model': 'sp1d',
+        }
+    )
+    instance.orbit.obliqua = SimpleNamespace(n=[2, 3])
+    sp0d_obliqua_degree_mismatch(instance, None, None)
+    assert instance.orbit.star_planet_model == 'sp1d'
+
+
+@pytest.mark.unit
+def test_sp0d_obliqua_degree_mismatch_passes_when_module_is_not_obliqua():
+    """sp0d with a non-Obliqua tides module (e.g. lovepy) never reads
+    orbit.obliqua.n at all -- must not raise regardless of its value,
+    confirming the check is gated on module=='obliqua' first."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': 'lovepy',
+            'orbit.star_planet_model': 'sp0d',
+        }
+    )
+    instance.orbit.obliqua = SimpleNamespace(n=[2, 3])  # would fail if module were obliqua
+    sp0d_obliqua_degree_mismatch(instance, None, None)
+    assert instance.orbit.module == 'lovepy'
+
+
+# ---------------------------------------------------------------------------
+# Exhaustive cross-product over module enums
 # ---------------------------------------------------------------------------
 # Every importable module backend × every importable module backend × ...
 # Either the Config validates and is usable, or a validator raises with a
@@ -824,7 +986,7 @@ HYPOTHESIS_ATMOS_CLIM = ('agni', 'janus', 'dummy')
 HYPOTHESIS_ATMOS_CHEM = (None, 'dummy')  # vulcan excluded (optional)
 HYPOTHESIS_ESCAPE = (None, 'dummy', 'zephyrus')  # boreas excluded (optional)
 HYPOTHESIS_STAR = (None, 'mors', 'dummy')
-HYPOTHESIS_ORBIT = (None, 'dummy', 'lovepy')
+HYPOTHESIS_ORBIT = (None, 'dummy', 'lovepy', 'obliqua')
 HYPOTHESIS_INTERIOR_STRUCT = (None, 'dummy', 'spider', 'zalmoxis')
 
 
@@ -866,6 +1028,7 @@ def _make_combo_toml(combo, tmp_path):
     return p
 
 
+@pytest.mark.timeout(120)
 def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
     """Exhaustive cross-product over the importable backend combinations.
 
@@ -887,17 +1050,17 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
 
     Notes on tooling choice:
     - hypothesis would be the natural tool but adds strategy-driven
-      sampling overhead per example. Cattrs+IO for one combo is ~0.4 ms,
-      so an exhaustive sweep finishes in well under 5 s. Deterministic
-      itertools.product is reproducible without a seed and exercises every
-      combo every time.
+      sampling overhead per example. Deterministic itertools.product is
+      reproducible without a seed and exercises every combo every time.
     - We only enumerate combos with backends in the hard-dep set; the
       check_module_dependencies positive/negative logic (atmodeller, boreas
       missing) is covered by the explicit tests above.
-    - The sweep runs in ~2.5 s, so it sits at unit tier with the rest of this
-      file rather than waiting for the nightly. It is over the 100 ms unit
-      target but far inside the 30 s ceiling, and an exhaustive validator
-      sweep is worth that on every pull request.
+    - One combo costs about 0.5 ms, so the sweep takes around 2.5 s here and
+      roughly twice that under coverage. The test carries its own 120 s
+      timeout in place of the file-level 30 s unit ceiling, which keeps a
+      runner several times slower than this one from failing it on elapsed
+      time rather than on a schema fault. It stays at unit tier because an
+      exhaustive validator sweep is worth those seconds on every pull request.
     """
     import itertools
 

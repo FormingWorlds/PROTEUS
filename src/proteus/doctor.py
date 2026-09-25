@@ -33,6 +33,7 @@ from packaging.version import Version
 
 from proteus.utils.coupler import (
     _get_agni_version,
+    _get_obliqua_version,
     _get_socrates_version,
     get_proteus_directories,
 )
@@ -387,19 +388,31 @@ def check_julia() -> CheckResult:
             fix_cmd='curl -fsSL https://install.julialang.org | sh',
         )
     parts = ver.split('.')
-    if len(parts) >= 2 and parts[0] == '1' and parts[1] in ('11', '12'):
+    if len(parts) >= 2 and parts[0] == '1' and parts[1] in ('12', '13'):
         return CheckResult(
             name='julia',
             category='environment',
             status=PASS,
             message=f'{ver}',
         )
+    if len(parts) >= 2 and parts[0] == '1' and parts[1] == '11':
+        # Still supported, but deprecated. Not auto-fixable: a Python linking
+        # OpenSSL < 3.5 needs 1.11, so switching the global default is the
+        # user's call.
+        return CheckResult(
+            name='julia',
+            category='environment',
+            status=WARN,
+            message=f'{ver} (1.11 is deprecated and will be dropped; use 1.13)',
+            fix_cmd='juliaup add 1.13 && juliaup default 1.13',
+            auto_fixable=False,
+        )
     return CheckResult(
         name='julia',
         category='environment',
         status=WARN,
-        message=f'{ver} (1.11.x or 1.12.x required)',
-        fix_cmd='juliaup add 1.12 && juliaup default 1.12',
+        message=f'{ver} (1.11.x, 1.12.x or 1.13.x required)',
+        fix_cmd='juliaup add 1.13 && juliaup default 1.13',
     )
 
 
@@ -483,8 +496,21 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     )
 
 
-def check_git_module(name: str, dirs: dict) -> CheckResult:
-    """Check a git-pinned module (AGNI, SOCRATES) against pyproject.toml ref."""
+def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResult | None:
+    """Check a git-pinned module (AGNI, SOCRATES, Obliqua) against pyproject.toml ref.
+
+    Parameters
+    ----------
+    name : str
+        Module name, matching a `[tool.proteus.modules.<name.lower()>]`
+        pyproject.toml table and a `dirs[name.lower()]` entry.
+    dirs : dict
+        Directory mapping from `get_proteus_directories()`.
+    required : bool
+        AGNI/SOCRATES are mandatory for a standard install, so a missing
+        checkout is a FAIL. Optional tidal-heating backends (Obliqua) are
+        not needed unless the user opts into them.
+    """
     pins = _module_pins()
     pin = pins.get(name.lower(), {})
     pinned_ref = pin.get('ref')
@@ -497,6 +523,8 @@ def check_git_module(name: str, dirs: dict) -> CheckResult:
         path = dirs.get(dir_key, '')
 
     if not path or not os.path.isdir(path):
+        if not required:
+            return None
         # Unlike the off-pin case below, this fix is not chained to an AGNI
         # rebuild: a not-installed SOCRATES means RAD_DIR is unset, so the AGNI
         # step would have nowhere to find SOCRATES. The install script prints
@@ -516,6 +544,8 @@ def check_git_module(name: str, dirs: dict) -> CheckResult:
             ver = _get_agni_version(dirs)
         elif name == 'SOCRATES':
             ver = _get_socrates_version()
+        elif name == 'Obliqua':
+            ver = _get_obliqua_version(dirs)
         else:
             ver = '?'
     except Exception:
@@ -591,6 +621,7 @@ PYTHON_PACKAGES = [
 ]
 
 GIT_MODULES = ['AGNI', 'SOCRATES']
+OPTIONAL_GIT_MODULES = ['Obliqua']
 
 
 def run_all_checks() -> list[CheckResult]:
@@ -674,6 +705,22 @@ def run_all_checks() -> list[CheckResult]:
     for mod in GIT_MODULES:
         try:
             results.append(check_git_module(mod, dirs))
+        except Exception as exc:
+            results.append(
+                CheckResult(
+                    name=mod,
+                    category='versions',
+                    status=FAIL,
+                    message=f'check error: {exc}',
+                )
+            )
+
+    # Optional git-pinned modules: only reported when actually installed.
+    for mod in OPTIONAL_GIT_MODULES:
+        try:
+            result = check_git_module(mod, dirs, required=False)
+            if result is not None:
+                results.append(result)
         except Exception as exc:
             results.append(
                 CheckResult(

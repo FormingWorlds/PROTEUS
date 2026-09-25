@@ -52,6 +52,16 @@ class Calliope:
         If True, include CH4.
     include_CO: bool
         If True, include CO.
+    include_He: bool
+        If True, include He (noble gas; budget set in planet.elements).
+    include_Ne: bool
+        If True, include Ne (noble gas; budget set in planet.elements).
+    include_Ar: bool
+        If True, include Ar (noble gas; budget set in planet.elements).
+    include_Kr: bool
+        If True, include Kr (noble gas; budget set in planet.elements).
+    include_Xe: bool
+        If True, include Xe (noble gas; budget set in planet.elements).
     solubility: bool
         Enable solubility of volatiles into melt.
     nguess: int
@@ -171,6 +181,33 @@ class Atmodeller:
 
 
 @define
+class Lavatmos:
+    """Module parameters for LavAtmos rock vapourisation.
+
+    Attributes
+    ----------
+    T_min: float
+        Minimum surface temperature [K] used by LavAtmos.
+    melt_comp_name: str
+        Name of the melt composition file (without extension).
+    P_melt: float
+        Pressure used for melt activities [bar].
+    xatol: float
+        Absolute tolerance for LavAtmos fO2 solve.
+    fO2_buffer_model: str
+        IW buffer model used for LavAtmos fO2 solve. One of 'oneill', 'fischer'.
+    """
+
+    T_min: float = field(default=1500.0, validator=validators.gt(0.0))
+    melt_comp_name: str = field(default='BSE_palm')
+    P_melt: float = field(default=0.01, validator=validators.gt(0.0))
+    xatol: float = field(default=1e-5, validator=validators.gt(0.0))
+    fO2_buffer_model: str = field(
+        default='oneill', validator=validators.in_(('oneill', 'fischer'))
+    )
+
+
+@define
 class Outgas:
     """Outgassing parameters (fO2) and included volatiles.
 
@@ -196,6 +233,12 @@ class Outgas:
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
         Parameters for atmodeller module.
+    vapourise: bool
+        Enable rock vapourisation via LavAtmos/ThermoEngineLite. Requires
+        `LAVA_DIR` and `FC_DIR` to be set; see the optional modules
+        installation guide. LavAtmos parameters are set in `outgas.lavatmos`.
+    lavatmos: Lavatmos
+        Parameters for the LavAtmos rock-vapour module.
     """
 
     module: str = field(
@@ -222,3 +265,70 @@ class Outgas:
 
     calliope: Calliope = field(factory=Calliope)
     atmodeller: Atmodeller = field(factory=Atmodeller)
+    lavatmos: Lavatmos = field(factory=Lavatmos)
+
+    # LavAtmos / silicate coupling is opt-in: default to disabled.
+    vapourise: bool = field(default=False)
+
+
+# Thematic grouping for the generated configuration reference. Each entry is
+# ``(heading, qualifier, option names)``; a heading of ``None`` renders the
+# section's opening table with no heading of its own. Order here is the order
+# on the page, and is independent of the order the fields are declared in.
+DOC_GROUPS = {
+    'Calliope': (
+        (
+            'Species switches',
+            'set to `false` to exclude a species from the equilibrium',
+            (
+                'include_H2O',
+                'include_CO2',
+                'include_N2',
+                'include_S2',
+                'include_SO2',
+                'include_H2S',
+                'include_NH3',
+                'include_H2',
+                'include_CH4',
+                'include_CO',
+                'include_He',
+                'include_Ne',
+                'include_Ar',
+                'include_Kr',
+                'include_Xe',
+                'solubility',
+            ),
+        ),
+        ('Solver', None, ('nguess', 'nsolve', 'p_guess_max')),
+    ),
+    'Atmodeller': (
+        (
+            None,
+            None,
+            (
+                'solver_mode',
+                'solver_max_steps',
+                'solver_multistart',
+                'include_condensates',
+            ),
+        ),
+        (
+            'Solubility laws',
+            'set to `"none"` to disable dissolution for a species',
+            (
+                'solubility_H2O',
+                'solubility_CO2',
+                'solubility_H2',
+                'solubility_N2',
+                'solubility_S2',
+                'solubility_CO',
+                'solubility_CH4',
+            ),
+        ),
+        (
+            'Real gas EOS',
+            'set to `"none"` for ideal gas',
+            ('eos_H2O', 'eos_CO2', 'eos_H2', 'eos_CH4', 'eos_CO'),
+        ),
+    ),
+}

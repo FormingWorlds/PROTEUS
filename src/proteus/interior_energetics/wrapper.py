@@ -11,9 +11,16 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
-from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.common import (
+    _SPIDER_EOS_MELTING_CURVES,
+    _SPIDER_EOS_PHASE_FILES,
+    ANCHOR_PASSTHROUGH_ERRORS,
+    InitialConditionError,
+    Interior_t,
+)
+from proteus.interior_struct.common import solvus_radius
 from proteus.outgas.wrapper import calc_target_elemental_inventories
-from proteus.utils.constants import M_earth, R_earth, const_G, element_list
+from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -196,25 +203,27 @@ def calculate_core_mass(hf_row: dict, config: Config):
             % config.interior_struct.core_frac_mode
         )
     rho_core = get_core_density(config, hf_row)
-    hf_row['M_core'] = (
-        rho_core
-        * 4.0
-        / 3.0
-        * np.pi
-        * (hf_row['R_int'] * config.interior_struct.core_frac) ** 3.0
-    )
+    hf_row['R_core'] = hf_row['R_int'] * config.interior_struct.core_frac
+    hf_row['core_density'] = rho_core
+    hf_row['core_heatcap'] = get_core_heatcap(config, hf_row)
+    hf_row['M_core'] = rho_core * 4.0 / 3.0 * np.pi * hf_row['R_core'] ** 3.0
 
 
 def update_planet_mass(hf_row: dict):
     """
     Calculate total planet mass, as sum of dry+wet parts.
 
-    Whole-planet oxygen accounting (issue #677): M_ele sums over ALL
-    elements in ``element_list``, including O. The atmospheric and
-    dissolved O mass produced by CALLIOPE (under the fO2 buffer) is
+    Whole-planet volatile element accounting (issue #677): M_ele sums over
+    ``vol_element_list + noble_gases``, so oxygen is included.
+
+    The atmospheric and dissolved O mass produced by CALLIOPE (from fO2) is
     therefore counted in M_planet = M_int + M_ele, keeping the
     bookkeeping symmetric so M_atm cannot exceed M_planet at
     high H budgets.
+
+    The rock-forming elements of ``vap_element_list`` are deliberately NOT
+    summed here. Rock vapour is added to the atmosphere without being
+    debited from the interior.
 
     Mantle FeO-bound oxygen remains implicit in the PALEOS density
     tables that drive ``M_int``; we don't double-count it here.
@@ -227,12 +236,9 @@ def update_planet_mass(hf_row: dict):
     a wet-mantle ``M_int`` already contains that mass.
     """
 
-    # Update total element mass. O is included alongside H/C/N/S
-    # (issue #677). .get() default of 0.0
-    # makes the sum safe for pre-IC hf_row states where some element
-    # columns may not have been initialised yet.
+    # Update total element mass.
     hf_row['M_ele'] = 0.0
-    for e in element_list:
+    for e in vol_element_list + noble_gases:
         hf_row['M_ele'] += float(hf_row.get(e + '_kg_total', 0.0))
 
     # Add to total planet mass
@@ -253,28 +259,6 @@ def get_nlevb(config: Config):
         case 'dummy':
             return 2
     raise ValueError(f"Invalid interior module selected '{config.interior_energetics.module}'")
-
-
-# The 10 phase-property files Aragog's EntropyEOS and SPIDER's lookup
-# loader both expect, in SPIDER's canonical P-S header format.
-_SPIDER_EOS_PHASE_FILES = (
-    'temperature_melt.dat',
-    'temperature_solid.dat',
-    'density_melt.dat',
-    'density_solid.dat',
-    'heat_capacity_melt.dat',
-    'heat_capacity_solid.dat',
-    'adiabat_temp_grad_melt.dat',
-    'adiabat_temp_grad_solid.dat',
-    'thermal_exp_melt.dat',
-    'thermal_exp_solid.dat',
-)
-
-# P-S melting curves. Aragog's `_load_spider_phase_boundary` hardcodes
-# these filenames. SPIDER's bundled lookup_data ships them under the
-# `{solidus,liquidus}_A11_H13.dat` names; we rename on copy so a
-# single canonical layout satisfies both solvers.
-_SPIDER_EOS_MELTING_CURVES = ('solidus_P-S.dat', 'liquidus_P-S.dat')
 
 
 def _rectangularize_spider_ps_file(src: str, dst: str) -> None:
@@ -1063,6 +1047,22 @@ def determine_interior_radius_with_dummy(
             dirs['spider_eos_dir'] = spider_tables['eos_dir']
             dirs['spider_solidus_ps'] = spider_tables['solidus_path']
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
+        elif config.planet.temperature_mode == 'liquidus_super':
+            # The liquidus_super initial entropy solves on these tables.
+            try:
+                _provide_spider_eos_tables(config, outdir, dirs)
+            except FileNotFoundError as exc:
+                raise RuntimeError(
+                    "planet.temperature_mode='liquidus_super' with "
+                    f"interior_struct.module='dummy' needs SPIDER/Aragog P-S EOS "
+                    'tables, but interior_struct.zalmoxis.mantle_eos='
+                    f'{config.interior_struct.zalmoxis.mantle_eos!r} gave no generated '
+                    'PALEOS table set and no FWL_DATA or SPIDER lookup_data set is '
+                    'available. '
+                    'Provide the tables, or set planet.temperature_mode to '
+                    "'adiabatic' or another mode. "
+                    f'Cause: {exc}'
+                ) from exc
 
     # Derived quantities
     hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']
@@ -1098,8 +1098,8 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
     to a radius too small for its own mass.
 
     The adiabat is anchored at the surface temperature returned by the memoised
-    :func:`solve_superliquidus_adiabat`, so the structure CMB anchor, the Aragog
-    entropy IC, and this ``T(P)`` profile all derive from one adiabat. The
+    :func:`solve_superliquidus_adiabat`, so the structure CMB anchor and this
+    ``T(P)`` profile derive from one P-T adiabat. The
     profile is tabulated from the 1 bar surface to ``P_cmb_target`` so the
     structure integral never extrapolates beyond the adiabat grid.
 
@@ -1120,8 +1120,15 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         ``(temperature_function, P_arr, T_arr)`` where ``temperature_function``
         is the closure ``f(r, P) -> T`` consumed by the Zalmoxis numpy path
         (``r`` is ignored; ``P`` is clipped into the adiabat grid). Returns
-        ``None`` when the adiabat cannot be built or contains NaNs, so the
-        caller can fall back to the linear-guess result.
+        ``None`` when the adiabat cannot be built or contains NaNs, or when
+        the P-T anchor raises ``InitialConditionError`` at this P_cmb and the
+        initial entropy re-solves it later (``_anchor_failure_deferred``), so
+        the caller can fall back to the linear-guess result.
+
+    Raises
+    ------
+    InitialConditionError
+        If the anchor fails and no later step re-solves it.
     """
     try:
         from zalmoxis.eos_export import compute_entropy_adiabat
@@ -1153,9 +1160,8 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         if melt_funcs is not None:
             sol_func, liq_func = melt_funcs
 
-        # Match the 1 bar surface anchor used by the energetics entropy IC
-        # (common.compute_initial_entropy) and the aragog.py cross-check, so all
-        # three derive S_target from the same surface pressure.
+        # Match the 1 bar surface anchor of solve_superliquidus_adiabat and the
+        # aragog.py cross-check, so all three derive S_target at one pressure.
         result = compute_entropy_adiabat(
             eos_file=eos_file,
             T_surface=surface_T,
@@ -1167,6 +1173,22 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
             solid_eos_file=solid_eos,
             liquid_eos_file=liquid_eos,
         )
+    except InitialConditionError as exc:
+        # Fall back only where the initial entropy re-solves the anchor at the
+        # converged P_cmb; elsewhere nothing would check it again.
+        from proteus.interior_struct.zalmoxis import _anchor_failure_deferred
+        from proteus.utils.structure_estimate import resolve_P_cmb
+
+        if not _anchor_failure_deferred(config):
+            raise
+
+        log.warning(
+            'liquidus_super IC adiabat: no P-T anchor at P_cmb=%.0f GPa (%s); falling '
+            'back to the linear-guess structure.',
+            resolve_P_cmb(hf_row, config)[0] / 1e9,
+            exc,
+        )
+        return None
     except (
         ImportError,
         ModuleNotFoundError,
@@ -1881,7 +1903,7 @@ def run_interior(
 
     # Use the appropriate interior model
     if verbose:
-        log.info('Evolve interior...')
+        log.debug('Evolve interior...')
     log.debug('Using %s module to evolve interior' % config.interior_energetics.module)
 
     # Write tidal heating file
@@ -1899,6 +1921,10 @@ def run_interior(
         try:
             RunSPIDER(dirs, config, hf_all, hf_row, interior_o, mesh_file=mesh_file)
             interior_o.spider_fail_count = 0
+        except (InitialConditionError, *ANCHOR_PASSTHROUGH_ERRORS):
+            # No valid initial condition exists, or a programming error; a retry
+            # cannot fix either.
+            raise
         except RuntimeError as e:
             interior_o.spider_fail_count += 1
             log.warning(
@@ -3021,9 +3047,13 @@ def update_structure_from_interior(
                 # When global_miscibility is enabled, SPIDER's domain
                 # extends to R_solvus, not R_int. Use the appropriate
                 # radius for entropy remapping.
-                if config.interior_struct.zalmoxis.global_miscibility and 'R_solvus' in hf_row:
-                    remap_radius = hf_row['R_solvus']
-                else:
+                remap_radius = solvus_radius(
+                    config,
+                    hf_row.get('R_solvus'),
+                    hf_row['R_int'],
+                    R_inner=hf_row.get('R_core') or 0.0,
+                )
+                if remap_radius is None:
                     remap_radius = hf_row['R_int']
                 remap_entropy_for_new_mesh(
                     json_path=latest_json,
