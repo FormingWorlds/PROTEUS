@@ -18,9 +18,15 @@ authors:
   - name: Harrison Nicholls
     orcid: 0000-0002-8368-4641
     affiliation: 5
+  - name: Mara Attia
+    orcid: 0000-0002-7971-7439
+    affiliation: 1
   - name: Laurent Soucasse
     orcid: 0000-0002-5422-8794
     affiliation: 9
+  - name: Patrick Bos
+    orcid: 0000-0002-6033-960X
+    affiliation: 1
   - name: Mariana Sastre
     orcid: 0009-0008-7799-7976
     affiliation: 1
@@ -41,14 +47,8 @@ authors:
   - name: Hanno Spreeuw
     orcid: 0000-0002-5057-0322
     affiliation: 3
-  - name: Mara Attia
-    orcid: 0000-0002-7971-7439
-    affiliation: 1
   - name: Karen Stuitje
     orcid: 0009-0000-6847-4331
-    affiliation: 1
-  - name: Patrick Bos
-    orcid: 0000-0002-6033-960X
     affiliation: 1
   - name: Marijn R. van Dijk
     affiliation: 1
@@ -83,6 +83,7 @@ authors:
   - name: Sara Seager
     orcid: 0000-0002-6892-6948
     affiliation: 11
+
 affiliations:
  - name: Kapteyn Astronomical Institute, University of Groningen, Groningen, The Netherlands
    index: 1
