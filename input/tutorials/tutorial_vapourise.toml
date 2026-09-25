@@ -275,7 +275,7 @@ config_version = "3.0"
     radio_Th                  = 0.124        # Th [ppmw of element]; BSE value
 
     # Rheology and convection
-    rfront_loc                = 0.50         # rheological front centre [melt fraction]
+    rfront_loc                = 0.40         # rheological front centre [melt fraction]
     rfront_wid                = 0.20         # rheological front width [melt fraction]
     grain_size                = 1e-3          # crystal grain size [m]
     mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
