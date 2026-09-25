@@ -267,10 +267,13 @@ The `Monteux+600`, `Monteux-600` and `Wolf_Bower+2018` solidus/liquidus
 curves used by `interior_struct.melting_dir` and by Zalmoxis are fetched
 through fwl-io into `$FWL_DATA/interior/melting_curves/<dataset>/r<record-id>/`
 (datasets `monteux_plus_600`, `monteux_minus_600` and `wolf_bower_2018`).
-A curve generated locally by `tools/solidus_func.py` into
-`$FWL_DATA/interior_lookup_tables/Melting_curves/<melting_dir>/` takes
-precedence over the fetched copy; see [Melting curves](melting_curves.md) for
-the full list of parametrizations and how to generate them. When SPIDER or
+For these three names the checksum-verified fetched copy is read; a local
+directory `$FWL_DATA/interior_lookup_tables/Melting_curves/<melting_dir>/` of the
+same name is read only while the fetched copy is not on disk. Any other name is
+read from that local directory, which holds `solidus_P-T.dat` and
+`liquidus_P-T.dat` (as written by `tools/solidus_func.py`) or `solidus.dat` and
+`liquidus.dat`; see [Melting curves](melting_curves.md) for the full list of
+parametrizations and how to generate them. When SPIDER or
 Aragog read `melting_dir`, a configured curve whose files are missing stops the
 run with an error naming the missing files instead of switching to other curves.
 With `interior_struct.module = "zalmoxis"` and a single PALEOS mantle equation

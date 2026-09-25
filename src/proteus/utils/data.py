@@ -1241,13 +1241,14 @@ def resolve_melting_curve_files(
 ) -> tuple[Path, Path]:
     """Locate the P-T solidus and liquidus files of one melting curve.
 
-    A local directory ``interior_lookup_tables/Melting_curves/<melting_dir>``
-    that holds both ``solidus_P-T.dat`` and ``liquidus_P-T.dat`` is used first,
-    so a directory the user supplies or generates takes precedence. Otherwise a
-    name served through the manifest (``Monteux+600``, ``Monteux-600``,
+    A name served through the manifest (``Monteux+600``, ``Monteux-600``,
     ``Wolf_Bower+2018``) resolves to ``solidus.dat`` and ``liquidus.dat`` in its
-    versioned dataset directory. Any other name resolves to the local paths,
-    which the caller reports as missing.
+    checksum-verified dataset directory; a local directory
+    ``interior_lookup_tables/Melting_curves/<melting_dir>`` with
+    ``solidus_P-T.dat`` and ``liquidus_P-T.dat`` is used only when that dataset
+    is not on disk. Any other name resolves to the local directory, which may
+    hold ``solidus_P-T.dat`` and ``liquidus_P-T.dat`` or ``solidus.dat`` and
+    ``liquidus.dat``.
 
     Parameters
     ----------
@@ -1259,22 +1260,24 @@ def resolve_melting_curve_files(
     Returns
     -------
     tuple of Path
-        Solidus and liquidus file paths. The files are not checked to exist
-        when the name is served through the manifest.
+        Solidus and liquidus file paths; when no pair is on disk, the paths the
+        caller reports as missing.
     """
     from proteus.data import dataset_dir
 
     root = GetFWLData() if data_root is None else Path(data_root)
     local = root / 'interior_lookup_tables' / 'Melting_curves' / melting_dir
-    solidus, liquidus = local / 'solidus_P-T.dat', local / 'liquidus_P-T.dat'
-    if solidus.is_file() and liquidus.is_file():
-        return solidus, liquidus
-
+    candidates = [(local / 'solidus_P-T.dat', local / 'liquidus_P-T.dat')]
     key = _melting_curve_keys().get(melting_dir)
     if key is None:
-        return solidus, liquidus
-    folder = dataset_dir(key, data_root=root)
-    return folder / 'solidus.dat', folder / 'liquidus.dat'
+        candidates.append((local / 'solidus.dat', local / 'liquidus.dat'))
+    else:
+        folder = dataset_dir(key, data_root=root)
+        candidates.insert(0, (folder / 'solidus.dat', folder / 'liquidus.dat'))
+    for solidus, liquidus in candidates:
+        if solidus.is_file() and liquidus.is_file():
+            return solidus, liquidus
+    return candidates[0]
 
 
 def resolve_lookup_table_dir(data_root: Path | str | None = None) -> Path:
@@ -1351,19 +1354,21 @@ def download_interior_lookuptables(clean=False):
 def download_melting_curves(config: Config, clean: bool = False):
     """Ensure the melting curve named in the configuration is available.
 
-    A local directory ``interior_lookup_tables/Melting_curves/<melting_dir>``
-    with ``solidus_P-T.dat`` and ``liquidus_P-T.dat`` is used as it is and
-    nothing is fetched. Otherwise ``Monteux+600``, ``Monteux-600`` and
-    ``Wolf_Bower+2018`` are fetched through fwl-io into
-    ``FWL_DATA/interior/melting_curves/<key>/r<record-id>/``.
+    ``Monteux+600``, ``Monteux-600`` and ``Wolf_Bower+2018`` are fetched through
+    fwl-io into ``FWL_DATA/interior/melting_curves/<key>/r<record-id>/``. Any
+    other name must be a local directory
+    ``interior_lookup_tables/Melting_curves/<melting_dir>`` that holds
+    ``solidus_P-T.dat`` and ``liquidus_P-T.dat`` or ``solidus.dat`` and
+    ``liquidus.dat``; nothing is fetched for it.
 
     Parameters
     ----------
     config : Config
         Configuration object; ``interior_struct.melting_dir`` names the curve.
     clean : bool
-        Remove the fetched dataset first, so it is fetched again. A local
-        directory is never removed.
+        For a served name, remove the fetched dataset and the local directory of
+        that name first, so the curve is fetched again. A local directory of a
+        name that is not served is never removed.
 
     Raises
     ------
@@ -1381,20 +1386,21 @@ def download_melting_curves(config: Config, clean: bool = False):
 
     root = GetFWLData()
     key = _melting_curve_keys().get(melting_dir)
-    if clean and key is not None:
-        safe_rm(str(dataset_dir(key, data_root=root)))
-
     local = root / 'interior_lookup_tables' / 'Melting_curves' / melting_dir
-    if (local / 'solidus_P-T.dat').is_file() and (local / 'liquidus_P-T.dat').is_file():
-        log.debug('Melting curve data already present locally: %s', local)
+    if key is not None:
+        if clean:
+            safe_rm(str(dataset_dir(key, data_root=root)))
+            safe_rm(str(local))
+        fetch_dataset(key, data_root=root)
         return
 
-    if key is None:
+    solidus, liquidus = resolve_melting_curve_files(melting_dir, data_root=root)
+    if not (solidus.is_file() and liquidus.is_file()):
         raise ValueError(
             f"No dataset serves melting_dir='{melting_dir}' and no local melting "
             f'curve files were found in: {local}'
         )
-    fetch_dataset(key, data_root=root)
+    log.debug('Melting curve data already present locally: %s', local)
 
 
 def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
@@ -1410,9 +1416,8 @@ def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
     Parameters
     ----------
     folders:
-        Specific collections to download (``'Named'``, ``'solar'``,
-        ``'MUSCLES'``, or a collection that is still in ``DATA_SOURCE_MAP``).
-        If None, downloads a minimal set that covers common configurations.
+        Collections to download: ``'Named'``, ``'solar'`` or ``'MUSCLES'``.
+        If None, downloads all three.
 
     Raises
     ------
@@ -1434,22 +1439,13 @@ def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
     if folders is None:
         folders = tuple(keys)
 
-    for folder in folders:
-        if folder not in keys and not get_data_source_info(folder):
-            raise ValueError(f'No data source mapping found for folder: {folder}')
-
-    for folder in folders:
-        if folder in keys:
-            fetch_dataset(keys[folder])
-            continue
-        source_info = get_data_source_info(folder)
-        download(
-            folder=folder,
-            target='stellar_spectra',
-            osf_id=source_info['osf_project'],
-            zenodo_id=source_info['zenodo_id'],
-            desc=f'stellar spectra ({folder})',
+    unknown = [folder for folder in folders if folder not in keys]
+    if unknown:
+        raise ValueError(
+            f'Unknown stellar spectra collection(s) {unknown}; choose from {list(keys)}'
         )
+    for folder in folders:
+        fetch_dataset(keys[folder])
 
 
 def _fetch_optional_dataset(key: str, desc: str) -> bool:
@@ -2012,8 +2008,18 @@ SEAGER_FALLBACK_FAMILIES = (
 
 
 # Files Zalmoxis reads from each dataset whose record holds more than it needs.
-_WOLF_BOWER_EOS_FILES = ('density_melt.dat', 'adiabat_temp_grad_melt.dat', 'density_solid.dat')
-_RTPRESS_EOS_FILES = ('density_melt.dat', 'adiabat_temp_grad_melt.dat')
+_WOLF_BOWER_SOLID_FILES = ('density_solid.dat', 'heat_capacity_solid.dat')
+_WOLF_BOWER_EOS_FILES = (
+    'density_melt.dat',
+    'adiabat_temp_grad_melt.dat',
+    'heat_capacity_melt.dat',
+    *_WOLF_BOWER_SOLID_FILES,
+)
+_RTPRESS_EOS_FILES = (
+    'density_melt.dat',
+    'adiabat_temp_grad_melt.dat',
+    'heat_capacity_melt.dat',
+)
 _PALEOS_2PHASE_FILES = (
     'paleos_mgsio3_tables_pt_proteus_liquid.dat',
     'paleos_mgsio3_tables_pt_proteus_solid.dat',
@@ -2090,14 +2096,14 @@ def download_zalmoxis_eos(
     # A PALEOS mantle also reads the MgSiO3 2-phase pair.
     components.update(paleos_companion_keys(mantle_eos))
 
-    # WolfBower2018 T-dependent MgSiO3. The RTPress mantle pairs its melt table
-    # with the Wolf & Bower solid table, so that file is needed for both.
+    # WolfBower2018 T-dependent MgSiO3. The RTPress mantle pairs its melt tables
+    # with the Wolf & Bower solid tables, so those files are needed for both.
     needs_wb = any(c.startswith('WolfBower2018') for c in components)
     needs_rtpress = any(c.startswith('RTPress100TPa') for c in components)
     if needs_wb:
         fetch_files(EOS_WOLF_BOWER_2018, _WOLF_BOWER_EOS_FILES)
     elif needs_rtpress:
-        fetch_files(EOS_WOLF_BOWER_2018, ('density_solid.dat',))
+        fetch_files(EOS_WOLF_BOWER_2018, _WOLF_BOWER_SOLID_FILES)
 
     # RTPress 100 TPa extended melt
     if needs_rtpress:

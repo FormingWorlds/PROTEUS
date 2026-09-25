@@ -634,6 +634,23 @@ def test_spfile_helpers(tmp_path):
     )
 
 
+@pytest.mark.unit
+def test_get_spfile_path_reads_an_undeclared_group_from_the_local_tree(tmp_path, caplog):
+    """A group that no manifest declares is read from spectral_files/<group>/<bands>,
+    with an INFO line; an absent local file raises the spectral-file error."""
+    conf = MagicMock()
+    conf.atmos_clim.spectral_group = 'MyGroup'
+    conf.atmos_clim.spectral_bands = '48'
+    local = tmp_path / 'spectral_files' / 'MyGroup' / '48' / 'MyGroup.sf'
+    with pytest.raises(FileNotFoundError, match='Spectral file does not exist at'):
+        get_spfile_path(str(tmp_path), conf)
+    local.parent.mkdir(parents=True)
+    local.write_text('sf')
+    with caplog.at_level('INFO', logger='fwl.proteus.atmos_clim.common'):
+        assert get_spfile_path(str(tmp_path), conf) == str(local)
+    assert 'is in no manifest' in caplog.text
+
+
 # ---------------------------------------------------------------------------
 # Coverage for previously-untested error branches: missing NetCDF file,
 # archived-data warning.

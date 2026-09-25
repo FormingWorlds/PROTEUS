@@ -341,17 +341,28 @@ def get_spfile_path(fwl_dir: str, config: Config):
 
     The file lies in the version directory of the spectral-file dataset for the
     configured group and band count; the path may not exist before the dataset
-    is fetched.
+    is fetched. A group and band count that no manifest declares is read from
+    ``<fwl_dir>/spectral_files/<group>/<bands>/<group>.sf``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the group is undeclared and its local file does not exist.
     """
     from proteus.data import dataset_dir, spectral_file_key
 
     # Get group and bands (strings) from config
     group, bands = get_spfile_name_and_bands(config)
 
-    return (
-        os.path.join(dataset_dir(spectral_file_key(group, bands), data_root=fwl_dir), group)
-        + '.sf'
-    )
+    try:
+        version_dir = dataset_dir(spectral_file_key(group, bands), data_root=fwl_dir)
+    except KeyError:
+        path = os.path.join(fwl_dir, 'spectral_files', group, str(bands), group) + '.sf'
+        log.info('Spectral file %s/%s is in no manifest; using %s', group, bands, path)
+        if not os.path.isfile(path):
+            raise FileNotFoundError("Spectral file does not exist at '%s'" % path) from None
+        return path
+    return os.path.join(version_dir, group) + '.sf'
 
 
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:

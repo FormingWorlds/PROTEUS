@@ -1726,6 +1726,9 @@ def test_download_interior_lookuptables_clean(mock_fetch, tmp_path, monkeypatch)
     mock_fetch.assert_called_once_with(MELTING_WOLF_BOWER_2018, data_root=tmp_path)
 
 
+_LEGACY_CURVES = ('solidus.dat', 'liquidus.dat')
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize(
     'name, attr',
@@ -1755,8 +1758,11 @@ def test_download_melting_curves_fetches_known_name(
 
 @pytest.mark.unit
 @patch('proteus.data.fetch_dataset')
-def test_download_melting_curves_local_dir_wins(mock_fetch, tmp_path, monkeypatch):
-    """A local directory with both P-T files is used and nothing is fetched."""
+def test_download_melting_curves_served_name_fetches_despite_a_local_dir(
+    mock_fetch, tmp_path, monkeypatch
+):
+    """A served name is fetched although a local directory holds both P-T files."""
+    from proteus.data import MELTING_WOLF_BOWER_2018
     from proteus.utils.data import download_melting_curves
 
     monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
@@ -1767,9 +1773,9 @@ def test_download_melting_curves_local_dir_wins(mock_fetch, tmp_path, monkeypatc
     config = MagicMock()
     config.interior_struct.melting_dir = 'Wolf_Bower+2018'
 
-    download_melting_curves(config, clean=True)
+    download_melting_curves(config, clean=False)
 
-    mock_fetch.assert_not_called()
+    mock_fetch.assert_called_once_with(MELTING_WOLF_BOWER_2018, data_root=tmp_path)
     assert (local / 'solidus_P-T.dat').read_text() == 'dummy\n'
 
 
@@ -1812,14 +1818,18 @@ def test_download_melting_curves_unknown_name_raises(mock_fetch, tmp_path, monke
 
 @pytest.mark.unit
 @patch('proteus.data.fetch_dataset')
-def test_download_melting_curves_unknown_name_local_dir_ok(mock_fetch, tmp_path, monkeypatch):
-    """A free-form local directory with both P-T files is accepted without a fetch."""
+@pytest.mark.parametrize('names', [('solidus_P-T.dat', 'liquidus_P-T.dat'), _LEGACY_CURVES])
+def test_download_melting_curves_unknown_name_local_dir_ok(
+    mock_fetch, tmp_path, monkeypatch, names
+):
+    """A free-form local directory with either pair of names is accepted without a
+    fetch, and clean=True keeps it."""
     from proteus.utils.data import download_melting_curves
 
     monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
     local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'MyCurve'
     local.mkdir(parents=True)
-    for name in ('solidus_P-T.dat', 'liquidus_P-T.dat'):
+    for name in names:
         (local / name).write_text('dummy\n')
     config = MagicMock()
     config.interior_struct.melting_dir = 'MyCurve'
@@ -1827,15 +1837,15 @@ def test_download_melting_curves_unknown_name_local_dir_ok(mock_fetch, tmp_path,
     download_melting_curves(config, clean=True)
 
     mock_fetch.assert_not_called()
-    assert (local / 'liquidus_P-T.dat').read_text() == 'dummy\n'
+    assert (local / names[1]).read_text() == 'dummy\n'
 
 
 @pytest.mark.unit
 @patch('proteus.data.fetch_dataset')
-def test_download_melting_curves_clean_removes_only_fetched_dataset(
+def test_download_melting_curves_clean_removes_the_served_dataset_and_local_dir(
     mock_fetch, tmp_path, monkeypatch
 ):
-    """``clean=True`` removes the fetched dataset and leaves a local directory alone."""
+    """``clean=True`` on a served name removes the fetched dataset and the local directory."""
     from proteus.data import MELTING_WOLF_BOWER_2018, dataset_dir
     from proteus.utils.data import download_melting_curves
 
@@ -1854,7 +1864,7 @@ def test_download_melting_curves_clean_removes_only_fetched_dataset(
     download_melting_curves(config, clean=True)
 
     assert not stale.exists()
-    assert keep.read_text() == 'mine'
+    assert not local.exists()
     mock_fetch.assert_called_once_with(MELTING_WOLF_BOWER_2018, data_root=tmp_path)
 
 
@@ -1876,19 +1886,29 @@ def test_resolve_melting_curve_files_manifest_layout(tmp_path):
 
 
 @pytest.mark.unit
-def test_resolve_melting_curve_files_local_first(tmp_path):
-    """A complete local directory takes precedence over the manifest dataset."""
+def test_resolve_melting_curve_files_prefers_the_served_dataset(tmp_path):
+    """For a served name the fetched dataset wins over a local directory, which is
+    used only while the dataset is not on disk."""
+    from proteus.data import MELTING_WOLF_BOWER_2018, dataset_dir
     from proteus.utils.data import resolve_melting_curve_files
 
     local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
     local.mkdir(parents=True)
     (local / 'solidus_P-T.dat').write_text('s')
     (local / 'liquidus_P-T.dat').write_text('l')
+    assert resolve_melting_curve_files('Wolf_Bower+2018', data_root=tmp_path) == (
+        local / 'solidus_P-T.dat',
+        local / 'liquidus_P-T.dat',
+    )
 
-    solidus, liquidus = resolve_melting_curve_files('Wolf_Bower+2018', data_root=tmp_path)
-
-    assert solidus == local / 'solidus_P-T.dat'
-    assert liquidus == local / 'liquidus_P-T.dat'
+    folder = dataset_dir(MELTING_WOLF_BOWER_2018, data_root=tmp_path)
+    folder.mkdir(parents=True)
+    for name in _LEGACY_CURVES:
+        (folder / name).write_text('x')
+    assert resolve_melting_curve_files('Wolf_Bower+2018', data_root=tmp_path) == (
+        folder / 'solidus.dat',
+        folder / 'liquidus.dat',
+    )
 
 
 @pytest.mark.unit
@@ -1916,6 +1936,26 @@ def test_resolve_melting_curve_files_unknown_name_gives_local_paths(tmp_path):
     local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Free_Form'
     assert (solidus, liquidus) == (local / 'solidus_P-T.dat', local / 'liquidus_P-T.dat')
     assert not tmp_path.joinpath('interior_struct').exists()
+
+
+@pytest.mark.unit
+def test_resolve_melting_curve_files_legacy_names_only_for_an_unserved_name(tmp_path):
+    """solidus.dat and liquidus.dat in a local directory count for a name the manifest
+    does not serve, and not for a served name."""
+    from proteus.utils.data import resolve_melting_curve_files
+
+    for name in ('Free_Form', 'Monteux+600'):
+        local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / name
+        local.mkdir(parents=True)
+        for curve in _LEGACY_CURVES:
+            (local / curve).write_text('x')
+    free = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Free_Form'
+    assert resolve_melting_curve_files('Free_Form', data_root=tmp_path) == (
+        free / 'solidus.dat',
+        free / 'liquidus.dat',
+    )
+    solidus, _ = resolve_melting_curve_files('Monteux+600', data_root=tmp_path)
+    assert solidus.parent.parent.name == 'monteux_plus_600'
 
 
 @pytest.mark.unit
@@ -2004,7 +2044,7 @@ def test_download_stellar_spectra_phoenix_is_not_a_bulk_collection(mock_fetch):
     """
     from proteus.utils.data import download_stellar_spectra
 
-    with pytest.raises(ValueError, match='No data source mapping found'):
+    with pytest.raises(ValueError, match="choose from \\['Named', 'solar', 'MUSCLES'\\]"):
         download_stellar_spectra(folders=('PHOENIX',))
     mock_fetch.assert_not_called()
 
@@ -2670,19 +2710,18 @@ def test_download_osf_file_removes_partial_on_exception(tmp_path):
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.get_data_source_info')
-def test_download_stellar_spectra_no_mapping(mock_get_info):
-    """Test stellar spectra download raises error when no mapping found."""
+@pytest.mark.parametrize('folder', ['UnknownFolder', 'scattering'])
+@patch('proteus.utils.data.download')
+@patch('proteus.data.fetch_dataset')
+def test_download_stellar_spectra_rejects_other_collections(mock_fetch, mock_download, folder):
+    """A name other than Named, solar or MUSCLES is rejected before any fetch, also
+    when DATA_SOURCE_MAP knows it."""
     from proteus.utils.data import download_stellar_spectra
 
-    mock_get_info.return_value = None
-
-    with pytest.raises(ValueError, match='No data source mapping found'):
-        download_stellar_spectra(folders=('UnknownFolder',))
-    # Discrimination: confirm the registry lookup happened (otherwise the
-    # ValueError could be raised by an earlier guard that never reached
-    # the source-info layer).
-    mock_get_info.assert_called()
+    with pytest.raises(ValueError, match=f"Unknown stellar spectra collection.*'{folder}'"):
+        download_stellar_spectra(folders=('solar', folder))
+    mock_fetch.assert_not_called()
+    mock_download.assert_not_called()
 
 
 @pytest.mark.unit
@@ -3218,7 +3257,8 @@ def test_download_zalmoxis_eos_seager(mock_static, mock_fetch, mock_file):
 @patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_wolfbower(mock_static, mock_fetch, mock_file):
-    """WolfBower2018 fetches the Seager set and the three Wolf and Bower tables it reads."""
+    """WolfBower2018 fetches the Seager set and the five Wolf and Bower tables it reads,
+    heat capacities included."""
     from proteus.data import EOS_WOLF_BOWER_2018
     from proteus.utils.data import download_zalmoxis_eos
 
@@ -3230,7 +3270,9 @@ def test_download_zalmoxis_eos_wolfbower(mock_static, mock_fetch, mock_file):
     assert _fetched_files(mock_file) == [
         (EOS_WOLF_BOWER_2018, 'density_melt.dat'),
         (EOS_WOLF_BOWER_2018, 'adiabat_temp_grad_melt.dat'),
+        (EOS_WOLF_BOWER_2018, 'heat_capacity_melt.dat'),
         (EOS_WOLF_BOWER_2018, 'density_solid.dat'),
+        (EOS_WOLF_BOWER_2018, 'heat_capacity_solid.dat'),
     ]
 
 
@@ -3239,7 +3281,8 @@ def test_download_zalmoxis_eos_wolfbower(mock_static, mock_fetch, mock_file):
 @patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_rtpress(mock_static, mock_fetch, mock_file):
-    """RTPress100TPa fetches its two melt tables plus the Wolf and Bower solid density only."""
+    """RTPress100TPa fetches its three melt tables plus the Wolf and Bower solid density and
+    heat capacity only."""
     from proteus.data import EOS_RTPRESS_100TPA, EOS_WOLF_BOWER_2018
     from proteus.utils.data import download_zalmoxis_eos
 
@@ -3247,12 +3290,14 @@ def test_download_zalmoxis_eos_rtpress(mock_static, mock_fetch, mock_file):
 
     mock_static.assert_called_once()
     mock_fetch.assert_not_called()
-    # The RTPress registry entry reads its solid density from the Wolf and
-    # Bower dataset; the rest of that dataset must not be pulled for that one file.
+    # The RTPress registry entry reads its solid tables from the Wolf and
+    # Bower dataset; the rest of that dataset must not be pulled for those files.
     assert _fetched_files(mock_file) == [
         (EOS_WOLF_BOWER_2018, 'density_solid.dat'),
+        (EOS_WOLF_BOWER_2018, 'heat_capacity_solid.dat'),
         (EOS_RTPRESS_100TPA, 'density_melt.dat'),
         (EOS_RTPRESS_100TPA, 'adiabat_temp_grad_melt.dat'),
+        (EOS_RTPRESS_100TPA, 'heat_capacity_melt.dat'),
     ]
 
 
@@ -3276,6 +3321,7 @@ def test_download_zalmoxis_eos_rtpress_with_wolfbower_fetches_solid_once(
     assert {name for key, name in fetched if key == EOS_RTPRESS_100TPA} == {
         'density_melt.dat',
         'adiabat_temp_grad_melt.dat',
+        'heat_capacity_melt.dat',
     }
     mock_fetch.assert_not_called()
 
@@ -5795,8 +5841,8 @@ def test_get_zalmoxis_melting_curves_reads_manifest_dataset(monkeypatch, tmp_pat
 
 
 @pytest.mark.unit
-def test_get_zalmoxis_melting_curves_local_dir_beats_manifest(monkeypatch, tmp_path):
-    """When both exist, the local P-T files are read, not the dataset files."""
+def test_get_zalmoxis_melting_curves_manifest_beats_local_dir(monkeypatch, tmp_path):
+    """When both exist for a served name, the dataset files are read, not the local ones."""
     import proteus.utils.data as data_mod
     from proteus.data import MELTING_MONTEUX_PLUS600, dataset_dir
     from proteus.utils.data import get_zalmoxis_melting_curves
@@ -5804,12 +5850,12 @@ def test_get_zalmoxis_melting_curves_local_dir_beats_manifest(monkeypatch, tmp_p
     monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
     folder = dataset_dir(MELTING_MONTEUX_PLUS600, data_root=tmp_path)
     folder.mkdir(parents=True)
-    (folder / 'solidus.dat').write_text('1e9 1000\n2e9 1000\n')
-    (folder / 'liquidus.dat').write_text('1e9 1000\n2e9 1000\n')
+    (folder / 'solidus.dat').write_text('1e9 2000\n2e9 3000\n')
+    (folder / 'liquidus.dat').write_text('1e9 2500\n2e9 3500\n')
     local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Monteux+600'
     local.mkdir(parents=True)
-    (local / 'solidus_P-T.dat').write_text('1e9 2000\n2e9 3000\n')
-    (local / 'liquidus_P-T.dat').write_text('1e9 2500\n2e9 3500\n')
+    (local / 'solidus_P-T.dat').write_text('1e9 1000\n2e9 1000\n')
+    (local / 'liquidus_P-T.dat').write_text('1e9 1000\n2e9 1000\n')
 
     config = MagicMock()
     config.interior_struct.melting_dir = 'Monteux+600'
