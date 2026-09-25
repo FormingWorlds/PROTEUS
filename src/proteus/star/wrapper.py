@@ -102,6 +102,11 @@ def init_star(handler: Proteus):
                 solar_path = os.path.join(solar_dir, star_file)
 
             src = mors_cfg.spectrum_source
+            fetch = (
+                '`proteus get solar`'
+                if solar_key in solar_map
+                else f'`proteus get muscles --star {star_id or "<name>"}`'
+            )
 
             # spectrum_source = None -> try MUSCLES, then solar
             if src is None:
@@ -119,7 +124,7 @@ def init_star(handler: Proteus):
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
                         f"No solar or MUSCLES spectrum found in reference data for '{mors_cfg.star_name}'. "
-                        f'Fetch them with `proteus get solar` and `proteus get muscles --star {star_id}`. {RELOCATE_HINT}'
+                        f'Fetch it with {fetch}. {RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'solar'
@@ -144,8 +149,8 @@ def init_star(handler: Proteus):
                     )
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
-                        f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'. Fetch them with "
-                        f'`proteus get solar` and `proteus get muscles --star {star_id}`. {RELOCATE_HINT}'
+                        f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'. "
+                        f'Fetch it with {fetch}. {RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'muscles'
@@ -171,7 +176,7 @@ def init_star(handler: Proteus):
                         'Check the available MUSCLES spectra at https://proteus-framework.org/proteus/data.html#stellar-spectra'
                     )
                     log.error(
-                        f'If available, MUSCLES spectra can be downloaded via the command line: proteus get muscles --star {mors_cfg.star_name}'
+                        f'If available, MUSCLES spectra can be downloaded via the command line: proteus get muscles --star {star_id}'
                     )
                     log.error('To download all MUSCLES spectra: proteus get muscles --all')
                     log.error(
@@ -179,8 +184,8 @@ def init_star(handler: Proteus):
                     )
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
-                        f"No MUSCLES spectrum for '{mors_cfg.star_name}'. Fetch it with "
-                        f'`proteus get muscles --star {star_id}`. {RELOCATE_HINT}'
+                        f"No MUSCLES spectrum for '{mors_cfg.star_name}'. "
+                        f'Fetch it with {fetch}. {RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'phoenix'

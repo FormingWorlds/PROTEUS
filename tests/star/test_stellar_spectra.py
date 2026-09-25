@@ -442,24 +442,28 @@ def test_init_star_source_muscles_falls_back_to_solar_with_warning(
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'source, command',
+    'source, star, command',
     [
-        (None, 'proteus get solar` and `proteus get muscles --star gj876'),
-        ('solar', 'proteus get solar` and `proteus get muscles --star gj876'),
-        ('muscles', 'proteus get muscles --star gj876'),
+        (None, 'gj 876', 'proteus get muscles --star gj876'),
+        ('solar', 'gj 876', 'proteus get muscles --star gj876'),
+        ('muscles', 'gj 876', 'proteus get muscles --star gj876'),
+        ('solar', 'Sun', 'proteus get solar'),
+        ('muscles', '', 'proteus get muscles --star <name>'),
     ],
 )
-def test_init_star_source_none_missing_both_raises(tmp_path, monkeypatch, source, command):
+def test_init_star_source_none_missing_both_raises(
+    tmp_path, monkeypatch, source, star, command
+):
     """With neither solar nor MUSCLES on disk, ``init_star`` raises FileNotFoundError
-    naming the download command with the catalogue star id and ``fwl-io relocate``, rather
-    than producing a silent zero-flux spectrum.
+    naming the one catalogue that holds the star, with its id, and ``fwl-io relocate``,
+    rather than producing a silent zero-flux spectrum.
     """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
-    handler = _make_handler_for_init_star(tmp_path, spectrum_source=source)
+    handler = _make_handler_for_init_star(tmp_path, spectrum_source=source, star_name=star)
 
-    with pytest.raises(FileNotFoundError, match=f'`{command}.*`fwl-io relocate`'):
+    with pytest.raises(FileNotFoundError, match=f'with `{command}`. .*`fwl-io relocate`'):
         init_star(handler)
 
     # Discrimination: the raise must fire BEFORE any backup spectrum is

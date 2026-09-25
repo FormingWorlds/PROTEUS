@@ -321,17 +321,25 @@ def test_two_mgsio3_sources_are_rejected_at_load(mantle, rejected):
         ('PALEOS:MgSiO3:0.9+:H2O:0.1', True),
         ('PALEOS:MgSiO3:0.9+PALEOS::0.1', True),
         ('PALEOS:MgSiO3:1.1+PALEOS:H2O:-0.1', True),
+        ('PALEOS:MgSiO3:', True),
+        ('PALEOS::MgSiO3', True),
+        ('PALEOS:MgSiO3:foo', True),
+        ('PALEOS:MgSiO3:bar:0.5', True),
+        ('PALEOS:MgSiO3:0.5:0.5', True),
+        ('PALEOS:MgSiO3: 0.9', True),
+        ('PALEOS:nan', True),
         ('PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1', False),
+        ('PALEOS:MgSiO3', False),
     ],
 )
 def test_an_eos_component_with_a_space_or_a_non_finite_fraction_is_rejected(mantle, rejected):
-    """A component without a source or material, with an inner space, or with a negative,
-    nan or inf fraction names no registry key or no valid mass fraction, so it is rejected
-    at load. Spaces around '+' are fine."""
+    """A component that is not '<source>:<material>' with at most one non-negative finite
+    fraction, or that has an inner space, names no registry key or no valid mass fraction for
+    Zalmoxis, so it is rejected at load. Spaces around '+' are fine."""
     kwargs = dict(module='zalmoxis', zalmoxis=Zalmoxis(mantle_eos=mantle))
     if rejected:
         with pytest.raises(
-            ValueError, match='with non-negative finite fractions and no spaces'
+            ValueError, match='with a non-negative finite fraction and no spaces'
         ):
             Struct(**kwargs)
     else:

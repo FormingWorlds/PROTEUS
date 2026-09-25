@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 from attrs import define, field
@@ -43,10 +44,8 @@ def valid_zalmoxis(instance, attribute, value):
             f"`interior_struct.zalmoxis.ice_layer_eos` must be 'none' or '<source>:<material>' format, "
             f"got '{ice_layer_eos}'"
         )
-    # A component is '<source>:<material>' plus non-negative finite fractions, with no inner
-    # space; a last token that still parses as a number after stripping is nan or inf.
-    from proteus.utils.helper import _strip_fraction_tokens
 
+    # A component is '<source>:<material>' with at most one fraction, as Zalmoxis parses it.
     def _number(token):
         try:
             return float(token)
@@ -59,19 +58,20 @@ def valid_zalmoxis(instance, attribute, value):
         ('ice_layer_eos', ice_layer_eos or ''),
     ]:
         for comp in filter(None, (c.strip() for c in eos_val.split('+'))):
-            key = _strip_fraction_tokens(comp)
-            source, _, material = key.partition(':')
-            fractions = [_number(t) for t in comp[len(key) :].split(':')[1:]]
+            tokens = comp.split(':')
+            fraction = _number(tokens[2]) if len(tokens) == 3 else 1.0
             if (
-                not source
-                or not material
-                or any(ch.isspace() for ch in key)
-                or _number(key.rsplit(':', 1)[-1]) is not None
-                or any(f < 0 for f in fractions)
+                len(tokens) not in (2, 3)
+                or not all(tokens[:2])
+                or _number(tokens[1]) is not None
+                or any(ch.isspace() for ch in comp)
+                or fraction is None
+                or not 0 <= fraction < math.inf
             ):
                 raise ValueError(
                     f"`interior_struct.zalmoxis.{name}` component '{comp}' is not "
-                    "'<source>:<material>' with non-negative finite fractions and no spaces"
+                    "'<source>:<material>[:<fraction>]' with a non-negative finite fraction "
+                    'and no spaces'
                 )
 
     # WolfBower2018 EOS is limited to 1 TPa. For planets > 2 M_earth,

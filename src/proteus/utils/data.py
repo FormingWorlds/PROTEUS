@@ -1789,7 +1789,7 @@ def download_zalmoxis_eos_for_config(config) -> None:
         if getattr(zconf, 'dry_mantle', True)
         else '+'.join(VOLATILE_EOS_MAP.values()),
         anchor_pair=getattr(getattr(config, 'planet', None), 'temperature_mode', None)
-        == 'liquidus_super',
+        in ('liquidus_super', 'adiabatic_from_cmb'),
     )
 
 
@@ -2054,7 +2054,7 @@ def download_zalmoxis_eos(
         ``+``-joined EOS components of dissolved volatiles, or empty.
     anchor_pair : bool
         Also fetch the MgSiO3 2-phase pair for any mantle, which the
-        liquidus_super initial adiabat reads.
+        liquidus_super initial adiabat and the adiabatic_from_cmb entropy fallback read.
     """
     from proteus.data import (
         EOS_CHABRIER_2021,
@@ -2098,7 +2098,7 @@ def download_zalmoxis_eos(
     ):
         attempt('the Seager 2007 tables', download_eos_static)
 
-    # A PALEOS mantle, and any mantle with the liquidus_super anchor, reads the 2-phase pair.
+    # A PALEOS mantle, and any mantle with a CMB or liquidus anchor, reads the 2-phase pair.
     components.update(paleos_companion_keys(mantle_eos))
     if anchor_pair:
         components.add(twophase_registry_key(mantle_eos))

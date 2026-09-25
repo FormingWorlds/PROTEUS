@@ -380,7 +380,7 @@ def require_spfile_path(dirs: dict, config: Config) -> str:
         fix = (
             'Fetch it with `proteus get spectral`.'
             if f'{group}/{bands}' in SPECTRAL_FILE_FOLDERS
-            else 'No manifest declares this group, so place the file there.'
+            else 'No manifest declares this group and band count, so place the file there.'
         )
         raise FileNotFoundError(
             f"Spectral file does not exist at '{path}'. {fix} {RELOCATE_HINT}"

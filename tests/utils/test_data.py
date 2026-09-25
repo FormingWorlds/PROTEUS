@@ -3525,13 +3525,14 @@ def test_download_zalmoxis_eos_strips_spaces_in_a_mixture(mock_static, mock_fetc
         (True, '', 'adiabatic', False),
         (False, 'PALEOS:H2O+Chabrier:H', 'adiabatic', False),
         (True, '', 'liquidus_super', True),
+        (True, '', 'adiabatic_from_cmb', True),
     ],
 )
 def test_download_zalmoxis_eos_for_config_adds_the_volatiles_of_a_wet_mantle(
     monkeypatch, dry, volatiles, mode, pair
 ):
-    """With dry_mantle = false the fetch includes the dissolved-volatile EOS, and with
-    liquidus_super the 2-phase pair the anchor reads."""
+    """With dry_mantle = false the fetch includes the dissolved-volatile EOS, and with a
+    CMB or liquidus anchor the 2-phase pair it reads."""
     from types import SimpleNamespace
 
     from proteus.utils import data as dmod

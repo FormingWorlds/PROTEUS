@@ -2945,7 +2945,7 @@ def test_energetics_need_a_mantle_eos_with_energetics_tables(energetics, mantle,
             energetics_needs_a_thermal_mantle_eos(instance, None, value)
     else:
         assert energetics_needs_a_thermal_mantle_eos(instance, None, value) is None
-    # A Zalmoxis structure without its section is checked by the structure itself.
+    # A structure without a Zalmoxis section has no mantle EOS to check.
     struct.zalmoxis = None
     assert energetics_needs_a_thermal_mantle_eos(instance, None, value) is None
 
