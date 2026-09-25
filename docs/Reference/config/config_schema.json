@@ -5395,7 +5395,7 @@
         "bdf"
       ],
       "bounds": null,
-      "description": "ODE solver: 'cvode' (SUNDIALS, SPIDER parity), 'radau' (scipy), 'bdf' (scipy).",
+      "description": "ODE solver: 'cvode' (SUNDIALS, SPIDER parity; needs scikits-odes-sundials and stops the run at setup without it), 'radau' (scipy), 'bdf' (scipy).",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,

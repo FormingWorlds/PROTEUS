@@ -286,6 +286,46 @@ def _is_plausible_core_density(rho_core: float) -> bool:
 _DIAG_ENV_LOGGED = False
 
 
+def require_cvode(config: Config) -> None:
+    """Stop when Aragog is asked for CVODE and CVODE cannot be imported.
+
+    The default Aragog integrator is SUNDIALS CVODE, imported by Aragog from
+    ``scikits_odes_sundials``. Aragog itself falls back to scipy Radau when
+    that import fails, which is a different integrator and not a like-for-like
+    substitute. Only an explicit ``solver_method`` of ``radau`` or ``bdf``
+    selects scipy, so this refuses to continue without CVODE otherwise.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration. Nothing is checked unless the interior module is
+        Aragog and ``interior_energetics.aragog.solver_method`` is ``'cvode'``.
+
+    Raises
+    ------
+    ImportError
+        When ``scikits_odes_sundials.cvode`` or one of the three names Aragog
+        imports from it (``CVODE``, ``CV_RootFunction``, ``StatusEnum``) cannot be
+        imported. The message names the package, the install command and the
+        explicit scipy options.
+    """
+    if config.interior_energetics.module != 'aragog':
+        return
+    if config.interior_energetics.aragog.solver_method != 'cvode':
+        return
+    try:
+        from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum  # noqa: F401
+    except ImportError as exc:
+        raise ImportError(
+            'Aragog needs the SUNDIALS CVODE solver (solver_method = "cvode"), but '
+            f'scikits_odes_sundials.cvode cannot be imported ({exc}). Install it with '
+            '"bash tools/get_cvode.sh" from the PROTEUS root (needs an active conda '
+            'environment), or choose scipy explicitly with '
+            '[interior_energetics.aragog] solver_method = "radau" or "bdf".'
+        ) from exc
+    log.info('CVODE (scikits_odes_sundials) is available for Aragog')
+
+
 def _maybe_log_solver_environment(config: Config) -> None:
     """One-shot diagnostic log of the host + JAX + solver configuration.
 
@@ -505,6 +545,7 @@ class AragogRunner:
         config: Config, hf_row: dict, interior_o: Interior_t, dt: float, dirs: dict
     ):
         if interior_o.aragog_solver is None:
+            require_cvode(config)
             _maybe_log_solver_environment(config)
             _t_setup = time.perf_counter()
             AragogRunner.setup_solver(config, hf_row, interior_o, dirs['output'])
@@ -543,10 +584,21 @@ class AragogRunner:
                     )
                     AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
                 else:
-                    # Clear stale dSdr_cmb so set_initial_entropy recomputes
-                    # it from the restored profile via finite differences.
-                    if hasattr(solver, '_dSdr_cmb_init'):
-                        solver._dSdr_cmb_init = None
+                    # Restore the snapshot's energy_balance CMB entropy gradient. Else
+                    # set_initial_entropy restarts it from a bottom-cell finite
+                    # difference, which spikes the CMB flux on the first resumed step.
+                    if config.interior_energetics.aragog.core_bc == 'energy_balance':
+                        dSdr_cmb = getattr(interior_o, '_last_dSdr_cmb', None)
+                        if dSdr_cmb is None:
+                            log.warning(
+                                'Snapshot CMB entropy gradient is %s; it restarts from '
+                                'the finite difference of the restored profile.',
+                                getattr(interior_o, '_last_dSdr_cmb_status', 'absent'),
+                            )
+                        if hasattr(solver, 'set_initial_dSdr_cmb'):
+                            solver.set_initial_dSdr_cmb(dSdr_cmb)
+                        else:
+                            solver._dSdr_cmb_init = dSdr_cmb
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
@@ -700,9 +752,9 @@ class AragogRunner:
             adiabatic_bulk_modulus=config.interior_energetics.adiabatic_bulk_modulus,
             adams_williamson_beta=config.interior_energetics.adams_williamson_beta,
             mass_coordinates=config.interior_energetics.aragog.mass_coordinates,
-            # Atmospheric overburden as the upper BC for the Adams-Williamson
-            # P(r) integration. hf_row['P_surf'] is in bar; Aragog wants Pa.
-            # Defaults to 0 at init when no atmosphere step has run yet.
+            # Upper BC of the Adams-Williamson P(r) integration, set once here
+            # and not updated later: 0 in a fresh run (no atmosphere step yet);
+            # a resume restores the run's value in update_solver. bar -> Pa.
             surface_pressure=float(hf_row.get('P_surf', 0.0)) * 1e5,
         )
 
@@ -1697,6 +1749,34 @@ class AragogRunner:
         # accessor to handle variable state vector sizes.
         if output_dir is not None:
             S_field = read_last_Sfield(output_dir, hf_row['Time'])
+            dSdr, status = _snapshot_scalar(output_dir, hf_row['Time'], 'dSdr_cmb_state')
+            interior_o._last_dSdr_cmb = dSdr
+            interior_o._last_dSdr_cmb_status = status
+            # The run built its mesh with the surface pressure of its own setup.
+            P_mesh, status = _snapshot_scalar(
+                output_dir, hf_row['Time'], 'mesh_surface_pressure'
+            )
+            if P_mesh is None and solver.parameters.mesh.eos_method == 1:
+                P_mesh = infer_mesh_surface_pressure(
+                    output_dir, hf_row['Time'], solver.parameters.mesh
+                )
+                if P_mesh is None:
+                    log.warning(
+                        'Snapshot mesh surface pressure is %s and its profile gives '
+                        'none; the Adams-Williamson mesh keeps %.4e Pa from the '
+                        'restored row, so the run may not follow the original.',
+                        status,
+                        solver.parameters.mesh.surface_pressure,
+                    )
+                else:
+                    log.warning(
+                        'Snapshot mesh surface pressure is %s; the Adams-Williamson '
+                        'mesh uses %.4e Pa inferred from its profile.',
+                        status,
+                        P_mesh,
+                    )
+            if P_mesh is not None:
+                solver.parameters.mesh.surface_pressure = P_mesh
         else:
             sol = solver.solution
             if sol is not None and sol.y.size > 0:
@@ -1902,59 +1982,29 @@ class AragogRunner:
                     self._config.interior_energetics, 'write_flux_diagnostics', False
                 ),
                 T_surf_coupled=hf_row.get('T_surf'),
+                dSdr_cmb=cmb_gradient_state(
+                    interior_o.aragog_solver, self._config.interior_energetics.aragog.core_bc
+                ),
+                mesh_surface_pressure=mesh_surface_pressure_state(interior_o.aragog_solver),
             )
 
         return sim_time, output
 
-    @staticmethod
-    def _aragog_cvode_available() -> bool | None:
-        """Report whether aragog has CVODE built, or ``None`` if it cannot tell.
-
-        aragog exposes no public capability check as of fwl-aragog 26.07.04,
-        so this reads the private ``_CVODE_AVAILABLE`` flag. A ``None`` return
-        means that private name is absent, because aragog renamed or removed
-        it. The caller must treat ``None`` as 'cannot determine', never as
-        'unavailable', or a real CVODE run mislabels as Radau.
-
-        Returns
-        -------
-        bool or None
-            The aragog flag, or ``None`` when the probe symbol is missing.
-        """
-        try:
-            from aragog.solver.entropy_solver import _CVODE_AVAILABLE
-        except ImportError:
-            return None
-        return bool(_CVODE_AVAILABLE)
-
     def _active_solver_name(self) -> str:
-        """Name the integrator that is actually running, not the one configured.
+        """Name the integrator that is running, for the retry-ladder failure message.
 
-        ``solver_method`` can ask for CVODE and still run scipy: the wrapper
-        is compiled against SUNDIALS and falls back silently on a build or
-        ABI mismatch, so trusting the config name mislabels every failure
-        the fallback produces. Mirrors aragog's own Radau/BDF choice
-        (entropy_solver.py) so a scipy fallback names the integrator that
-        ran instead of a generic 'scipy'.
+        ``require_cvode`` has already stopped the run when ``solver_method`` is
+        ``'cvode'`` and CVODE cannot be imported, so the configured name is the
+        one that runs.
 
         Returns
         -------
         str
-            'CVODE' when the configured and available integrator is CVODE,
-            'BDF' when ``solver_method='bdf'``, 'Radau' for an explicit scipy
-            request or a CVODE fallback. When the aragog capability probe
-            fails (the private flag is gone), returns an explicit
-            'unknown (aragog CVODE probe failed)' rather than a wrong name.
+            'CVODE', 'BDF' or 'Radau' for ``solver_method`` ``'cvode'``,
+            ``'bdf'`` or ``'radau'``.
         """
         method = str(self._config.interior_energetics.aragog.solver_method or '')
-        if method == 'bdf':
-            return 'BDF'
-        if method != 'cvode':
-            return 'Radau'
-        available = self._aragog_cvode_available()
-        if available is None:
-            return 'unknown (aragog CVODE probe failed)'
-        return 'CVODE' if available else 'Radau'
+        return {'cvode': 'CVODE', 'bdf': 'BDF'}.get(method, 'Radau')
 
     def _solve_with_retry(self, hf_row, interior_o) -> SolverOutput:
         """Run aragog_solver.solve() with a failure-mode-branched retry ladder.
@@ -2481,6 +2531,8 @@ class AragogRunner:
         out: SolverOutput,
         write_diagnostics: bool = False,
         T_surf_coupled: float | None = None,
+        dSdr_cmb: float | None = None,
+        mesh_surface_pressure: float | None = None,
     ):
         """Write entropy solver output to NetCDF using SolverOutput.
 
@@ -2496,59 +2548,79 @@ class AragogRunner:
             alongside Aragog's adiabatic temp_s as a diagnostic (an in-loop
             snapshot holds the value from the previous coupling step); a
             resume reads T_surf from the helpfile.
+        dSdr_cmb : float or None
+            CMB entropy gradient state of the ``energy_balance`` core boundary
+            condition at ``time`` [J kg-1 K-1 m-1], written as
+            ``dSdr_cmb_state`` so a resume restarts the boundary state where
+            it was. None (other core_bc modes) writes nothing.
+        mesh_surface_pressure : float or None
+            Surface pressure of the solver's Adams-Williamson mesh [Pa], the
+            value fixed at solver setup; a resume rebuilds the same mesh from
+            it. None writes nothing.
         """
         fpath = os.path.join(output_dir, 'data', format_subyear_time(time) + '_int.nc')
-        ds = nc.Dataset(fpath, mode='w')
-        ds.description = 'Aragog entropy solver output'
+        with nc.Dataset(fpath, mode='w') as ds:
+            ds.description = 'Aragog entropy solver output'
 
-        n_stag = len(out.S_final)
-        n_basic = len(out.r_basic)
-        ds.createDimension('staggered', n_stag)
-        ds.createDimension('basic', n_basic)
+            n_stag = len(out.S_final)
+            n_basic = len(out.r_basic)
+            ds.createDimension('staggered', n_stag)
+            ds.createDimension('basic', n_basic)
 
-        def _add(name, data, dim, units=''):
-            v = ds.createVariable(name, np.float64, (dim,))
-            v[:] = data
-            v.units = units
+            def _add(name, data, dim, units=''):
+                v = ds.createVariable(name, np.float64, (dim,))
+                v[:] = data
+                v.units = units
 
-        _add('entropy_s', out.S_final, 'staggered', 'J/kg/K')
-        _add('temp_s', out.T_stag, 'staggered', 'K')
-        _add('phi_s', out.phi_stag, 'staggered', '')
-        _add('radius_s', out.r_stag / 1e3, 'staggered', 'km')
-        _add('pres_s', out.P_stag / 1e9, 'staggered', 'GPa')
-        _add('radius_b', out.r_basic / 1e3, 'basic', 'km')
-        _add('log10visc_s', np.log10(np.maximum(out.visc_stag, 1e-10)), 'staggered', 'Pa s')
-        _add('density_s', out.rho_stag, 'staggered', 'kg m-3')
-        _add('Ftotal_b', out.heat_flux, 'basic', 'W m-2')
-        _add('Htotal_s', out.heating, 'staggered', 'W kg-1')
-        _add('mass_s', out.mass_stag, 'staggered', 'kg')
-        # Diagnostic: per-component fluxes and basic-node state.
-        # Gated by config.interior_energetics.write_flux_diagnostics.
-        if write_diagnostics:
-            _add('Jcond_b', out.jcond_b, 'basic', 'W m-2')
-            _add('Jconv_b', out.jconv_b, 'basic', 'W m-2')
-            _add('Jgrav_b', out.jgrav_b, 'basic', 'W m-2')
-            _add('Jmix_b', out.jmix_b, 'basic', 'W m-2')
-            _add('dSdr_b', out.dSdr_b, 'basic', 'J kg-1 K-1 m-1')
-            _add('eddy_diff_b', out.eddy_diff, 'basic', 'm2 s-1')
-            _add('phi_basic_b', out.phi_basic, 'basic', '')
-            _add('T_basic_b', out.T_basic, 'basic', 'K')
-            _add('cp_basic_b', out.cp_basic, 'basic', 'J kg-1 K-1')
-            _add('rho_basic_b', out.rho_basic, 'basic', 'kg m-3')
+            _add('entropy_s', out.S_final, 'staggered', 'J/kg/K')
+            _add('temp_s', out.T_stag, 'staggered', 'K')
+            _add('phi_s', out.phi_stag, 'staggered', '')
+            _add('radius_s', out.r_stag / 1e3, 'staggered', 'km')
+            _add('pres_s', out.P_stag / 1e9, 'staggered', 'GPa')
+            _add('radius_b', out.r_basic / 1e3, 'basic', 'km')
+            _add('log10visc_s', np.log10(np.maximum(out.visc_stag, 1e-10)), 'staggered', 'Pa s')
+            _add('density_s', out.rho_stag, 'staggered', 'kg m-3')
+            _add('Ftotal_b', out.heat_flux, 'basic', 'W m-2')
+            _add('Htotal_s', out.heating, 'staggered', 'W kg-1')
+            _add('mass_s', out.mass_stag, 'staggered', 'kg')
+            # Diagnostic: per-component fluxes and basic-node state.
+            # Gated by config.interior_energetics.write_flux_diagnostics.
+            if write_diagnostics:
+                _add('Jcond_b', out.jcond_b, 'basic', 'W m-2')
+                _add('Jconv_b', out.jconv_b, 'basic', 'W m-2')
+                _add('Jgrav_b', out.jgrav_b, 'basic', 'W m-2')
+                _add('Jmix_b', out.jmix_b, 'basic', 'W m-2')
+                _add('dSdr_b', out.dSdr_b, 'basic', 'J kg-1 K-1 m-1')
+                _add('eddy_diff_b', out.eddy_diff, 'basic', 'm2 s-1')
+                _add('phi_basic_b', out.phi_basic, 'basic', '')
+                _add('T_basic_b', out.T_basic, 'basic', 'K')
+                _add('cp_basic_b', out.cp_basic, 'basic', 'J kg-1 K-1')
+                _add('rho_basic_b', out.rho_basic, 'basic', 'kg m-3')
 
-        ds.createVariable('time', np.float64)
-        ds['time'][0] = float(time)
-        ds['time'].units = 'yr'
+            ds.createVariable('time', np.float64)
+            ds['time'][0] = float(time)
+            ds['time'].units = 'yr'
 
-        ds.createVariable('phi_global', np.float64)
-        ds['phi_global'][0] = out.Phi_global
+            ds.createVariable('phi_global', np.float64)
+            ds['phi_global'][0] = out.Phi_global
 
-        if T_surf_coupled is not None:
-            ds.createVariable('T_surf_coupled', np.float64)
-            ds['T_surf_coupled'][0] = float(T_surf_coupled)
-            ds['T_surf_coupled'].units = 'K'
-
-        ds.close()
+            for name, value, units in (
+                ('T_surf_coupled', T_surf_coupled, 'K'),
+                ('dSdr_cmb_state', dSdr_cmb, 'J kg-1 K-1 m-1'),
+                ('mesh_surface_pressure', mesh_surface_pressure, 'Pa'),
+            ):
+                if value is None:
+                    continue
+                value = float(value)
+                if not np.isfinite(value) and name != 'T_surf_coupled':
+                    # A resume would restore it; leave it out so the reader falls back.
+                    log.warning(
+                        'Not writing non-finite %s (%s) at t=%.6g yr', name, value, time
+                    )
+                    continue
+                ds.createVariable(name, np.float64)
+                ds[name][0] = value
+                ds[name].units = units
 
 
 def read_last_Sfield(output_dir: str, time: float):
@@ -2563,6 +2635,160 @@ def read_last_Sfield(output_dir: str, time: float):
         S_stag = np.array(ds.get('temp_s', ds.get('temp_b', [3200.0]))[:])
     ds.close()
     return S_stag
+
+
+def cmb_gradient_state(solver, core_bc: str) -> float | None:
+    """CMB entropy gradient state of an ``energy_balance`` Aragog solve.
+
+    ``get_current_dSdr_cmb`` identifies the slot by the state-vector length
+    alone, which ``bower2018`` shares (its extra slot holds T_core), so the
+    boundary condition is checked here.
+
+    Parameters
+    ----------
+    solver : EntropySolver
+        Aragog solver after at least one solve.
+    core_bc : str
+        ``interior_energetics.aragog.core_bc``.
+
+    Returns
+    -------
+    float or None
+        dSdr_cmb [J kg-1 K-1 m-1] for ``energy_balance``, else None.
+    """
+    if core_bc != 'energy_balance' or not hasattr(solver, 'get_current_dSdr_cmb'):
+        return None
+    return solver.get_current_dSdr_cmb()
+
+
+def mesh_surface_pressure_state(solver) -> float | None:
+    """Surface pressure of the solver's Adams-Williamson mesh [Pa].
+
+    The value is set once at solver setup from the helpfile ``P_surf`` and is
+    not updated by later coupling steps, so a resume must rebuild the mesh
+    from the stored value, not from the ``P_surf`` of the restored row.
+
+    Parameters
+    ----------
+    solver : EntropySolver
+        Aragog solver.
+
+    Returns
+    -------
+    float or None
+        ``parameters.mesh.surface_pressure`` [Pa], or None when the solver
+        does not expose it.
+    """
+    try:
+        return float(solver.parameters.mesh.surface_pressure)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_row: dict):
+    """Write the Aragog state at the end of a run so a resume can find it.
+
+    The file name comes from ``hf_row['Time']``, so this rewrites the last
+    in-loop snapshot and must carry the same CMB gradient state. Nothing is
+    written on the research-only diffrax path: this solver is not advanced
+    there, and that runner writes snapshots only on its written steps, so a
+    final time that is not a written step has no snapshot to resume from.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration.
+    interior_o : Interior_t
+        Interior object holding the Aragog solver.
+    dirs : dict
+        Run directories; ``dirs['output']`` is the run output directory.
+    hf_row : dict
+        Final helpfile row.
+    """
+    if _DIFFRAX_RESEARCH_ONLY:
+        # The diffrax runner writes its own snapshots; the numpy solver is stale.
+        return
+    solver = interior_o.aragog_solver
+    AragogRunner._write_output_ncdf(
+        dirs['output'],
+        hf_row['Time'],
+        solver.get_state(),
+        write_diagnostics=getattr(config.interior_energetics, 'write_flux_diagnostics', False),
+        T_surf_coupled=hf_row.get('T_surf'),
+        dSdr_cmb=cmb_gradient_state(solver, config.interior_energetics.aragog.core_bc),
+        mesh_surface_pressure=mesh_surface_pressure_state(solver),
+    )
+
+
+def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | None:
+    """Adams-Williamson mesh surface pressure implied by a snapshot [Pa].
+
+    For a snapshot without ``mesh_surface_pressure``: each staggered cell
+    stores P = rho_s g / beta (exp(beta (R - r)) - 1) + P_surface, so
+    P_surface follows from its pressure, its radius and the mesh parameters.
+    It is taken from the top cell and accepted only if every cell gives the
+    same value within 1e-9 of the largest pressure plus 1 Pa, which covers the
+    float round trip of the stored profile and the helpfile rounding of g and
+    R. A value within that tolerance of 0 is returned as exactly 0.
+
+    Parameters
+    ----------
+    output_dir : str
+        Run output directory.
+    time : float
+        Snapshot time [yr].
+    mesh : object
+        Aragog mesh parameters (``surface_density``,
+        ``gravitational_acceleration``, ``adams_williamson_beta``,
+        ``outer_radius``).
+
+    Returns
+    -------
+    float or None
+        Surface pressure [Pa], or None when the snapshot lacks the profile, holds
+        unwritten (masked) or mismatched pressure and radius arrays, the result
+        is not finite, or the profile does not follow this mesh.
+    """
+    fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_int.nc')
+    with nc.Dataset(fpath) as ds:
+        if 'pres_s' not in ds.variables or 'radius_s' not in ds.variables:
+            return None
+        P_raw, r_raw = ds['pres_s'][:], ds['radius_s'][:]
+        if np.ma.is_masked(P_raw) or np.ma.is_masked(r_raw):
+            return None
+        P = np.asarray(P_raw, dtype=float).ravel() * 1e9
+        r = np.asarray(r_raw, dtype=float).ravel() * 1e3
+    if P.size == 0 or P.size != r.size:
+        return None
+    rho_s = float(mesh.surface_density)
+    g = float(mesh.gravitational_acceleration)
+    beta = float(mesh.adams_williamson_beta)
+    P_surf_cells = P - rho_s * g / beta * np.expm1(beta * (float(mesh.outer_radius) - r))
+    if not np.all(np.isfinite(P_surf_cells)):
+        return None
+    value = float(P_surf_cells[-1])
+    tol = 1e-9 * float(np.max(np.abs(P))) + 1.0
+    if np.max(np.abs(P_surf_cells - value)) > tol or value < -tol:
+        return None
+    return 0.0 if abs(value) <= tol else value
+
+
+def _snapshot_scalar(output_dir: str, time: float, name: str) -> tuple[float | None, str]:
+    """Scalar ``name`` from the snapshot at ``time`` and its status.
+
+    Returns ``(value, 'ok')`` for a finite value, else ``(None, status)`` with
+    status ``'absent'`` (not in the file, never assigned, or not one value) or
+    ``'not finite'``.
+    """
+    fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_int.nc')
+    with nc.Dataset(fpath) as ds:
+        if name not in ds.variables:
+            return None, 'absent'
+        raw = ds[name][:]
+        if np.size(raw) != 1 or np.ma.is_masked(raw):
+            return None, 'absent'
+        value = float(np.asarray(raw).item())
+    return (value, 'ok') if np.isfinite(value) else (None, 'not finite')
 
 
 def get_all_output_times(output_dir: str):
