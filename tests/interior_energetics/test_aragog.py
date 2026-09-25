@@ -1695,6 +1695,7 @@ def test_setup_solver_stops_without_the_paleos_pair(tmp_path, kept):
         assert dirs == {pt_dir}
     else:
         assert str(liquid) in str(excinfo.value)
+        assert str(solid) not in str(excinfo.value)
         assert 'proteus get interiordata' in str(excinfo.value)
         assert not mock_phase.called
 

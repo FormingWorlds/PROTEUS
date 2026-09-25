@@ -882,19 +882,20 @@ def test_check_eos_files_stops_when_the_paleos_api_resolver_is_missing(tmp_path,
     assert pair['solid_mantle']['eos_file'] == str(table)
 
 
-@pytest.mark.parametrize('missing', ['iron', 'solid'])
+@pytest.mark.parametrize('missing', ['iron', 'solid', 'h2o'])
 def test_require_paleos_tables_stops_an_offline_run(tmp_path, monkeypatch, missing):
-    """An offline fresh run stops before any solve on an absent core table or pair
+    """An offline fresh run stops before any solve on an absent core, ice-layer or pair
     table and names it; with every table present it passes."""
     from proteus.interior_struct import zalmoxis as zmod
 
     monkeypatch.setattr(
         zmod, 'load_zalmoxis_material_dictionaries', lambda: _paleos_registry(tmp_path, missing)
     )
+    config = _require_config('PALEOS:MgSiO3', ice='PALEOS:H2O')
     with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match=f'{missing}.dat'):
-        zmod.require_paleos_tables(_require_config('PALEOS:MgSiO3'), str(tmp_path))
+        zmod.require_paleos_tables(config, str(tmp_path))
     (tmp_path / f'{missing}.dat').write_text('eos table stub')
-    assert zmod.require_paleos_tables(_require_config('PALEOS:MgSiO3'), str(tmp_path)) is None
+    assert zmod.require_paleos_tables(config, str(tmp_path)) is None
 
 
 def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypatch, caplog):
@@ -922,14 +923,21 @@ def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypat
 
 @pytest.mark.parametrize(
     'mantle, warned',
-    [('PALEOS:H2O', True), ('PALEOS:iron', True), ('PALEOS:MgSiO3', False)],
+    [
+        ('PALEOS:H2O', True),
+        ('PALEOS:iron', True),
+        ('PALEOS:MgSiO3', False),
+        # Not registry keys: their energetics use the WB tables, so no warning.
+        ('PALEOS:H2O:1.0', False),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+    ],
 )
 def test_require_paleos_tables_warns_once_for_a_water_or_iron_mantle(
     tmp_path, monkeypatch, caplog, mantle, warned
 ):
     """A PALEOS H2O or iron mantle gets one WARNING at the start of the run that its
     energetics use the MgSiO3 curves and tables; the per-solve check adds none, and an
-    MgSiO3 mantle gets none."""
+    MgSiO3 mantle or a string that is not a registry key gets none."""
     from proteus.interior_struct import zalmoxis as zmod
 
     registry = _paleos_registry(tmp_path)

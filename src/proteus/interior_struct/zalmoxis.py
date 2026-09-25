@@ -33,6 +33,7 @@ from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
+    PALEOS_REGISTRY_KEYS,
     M_earth,
     R_earth,
     element_list,
@@ -1946,12 +1947,7 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
         outdir, lambda: _ps_resume_key(config, mat_dicts.get(zc.mantle_eos), mat_dicts)
     )
     check_zalmoxis_eos_files(layers, mat_dicts, paleos_companions=not kept)
-    mantle = _strip_fraction_tokens(zc.mantle_eos)
-    if (
-        '+' not in mantle
-        and mantle.startswith(PALEOS_EOS_PREFIXES)
-        and mantle.endswith((':H2O', ':iron'))
-    ):
+    if zc.mantle_eos in PALEOS_REGISTRY_KEYS and zc.mantle_eos.endswith((':H2O', ':iron')):
         log.warning(
             'mantle_eos=%s: the structure uses its density, while the energetics use the '
             'MgSiO3 melting curves (PALEOS liquidus, solidus = %.2f x liquidus) and '
@@ -2629,8 +2625,7 @@ def generate_spider_tables(config: Config, outdir: str):
     1. ``paleos_unified`` (e.g. ``PALEOS:MgSiO3``): the structural backbone is
        the single unified P-T table covering both phases plus mushy zone, while
        the per-phase property surfaces are built from the sibling two-phase
-       solid + liquid tables when those are present (see the unified branch
-       below), so the densities stay resolved across the melting-curve
+       solid + liquid tables, so the densities stay resolved across the melting-curve
        discontinuity. The solidus is derived from ``mushy_zone_factor *
        liquidus`` (default 0.8, the constant Stixrude 2014 solidus/liquidus
        ratio applied to the PALEOS liquidus); the liquidus is the analytic
@@ -2644,6 +2639,7 @@ def generate_spider_tables(config: Config, outdir: str):
 
     For non-PALEOS EOS types (WolfBower2018, RTPress100TPa), returns None
     and the caller is expected to fall back on pre-existing SPIDER tables.
+    A PALEOS mantle with a missing table raises instead.
 
     Parameters
     ----------
@@ -2660,6 +2656,11 @@ def generate_spider_tables(config: Config, outdir: str):
     dict or None
         Keys ``'eos_dir'``, ``'solidus_path'``, ``'liquidus_path'`` with
         absolute paths. Returns None if the mantle EOS is not PALEOS.
+
+    Raises
+    ------
+    ZalmoxisMissingEOSFilesError
+        When a table of a PALEOS mantle or its MgSiO3 companions is missing.
     """
     from zalmoxis.eos_export import generate_spider_eos_tables, generate_spider_phase_boundaries
     from zalmoxis.melting_curves import (

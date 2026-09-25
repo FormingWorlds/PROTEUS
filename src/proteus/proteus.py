@@ -548,10 +548,6 @@ class Proteus:
 
         # Download basic data
         download_sufficient_data(self.config)
-        if self.config.interior_struct.module == 'zalmoxis':
-            from proteus.interior_struct.zalmoxis import require_paleos_tables
-
-            require_paleos_tables(self.config, self.directories['output'])
 
         # Initialise interior object
         if self.config.interior_energetics.module == 'spider':
@@ -573,6 +569,7 @@ class Proteus:
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
             # New simulation
+            self._require_paleos_tables()
 
             # SPIDER initial condition
             self.interior_o.ic = 1
@@ -730,6 +727,7 @@ class Proteus:
             # the loose per-iteration snapshots are present on disk.
             log.debug('Extracting archived data files')
             self.extract_archives()
+            self._require_paleos_tables()
 
             # Resume from the latest snapshot pair that is complete and belongs
             # to its helpfile row. This drops rows whose _int.nc or _atm.nc a
@@ -1451,6 +1449,13 @@ class Proteus:
 
         # Print citation
         print_citation(self.config)
+
+    def _require_paleos_tables(self):
+        """Stop before any solve when a table of the Zalmoxis EOS set is missing."""
+        if self.config.interior_struct.module == 'zalmoxis':
+            from proteus.interior_struct.zalmoxis import require_paleos_tables
+
+            require_paleos_tables(self.config, self.directories['output'])
 
     def extract_archives(self):
         """

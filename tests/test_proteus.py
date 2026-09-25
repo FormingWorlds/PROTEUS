@@ -221,6 +221,37 @@ def test_proteus_resume_restores_zalmoxis_mesh(tmp_path):
 
 
 @pytest.mark.unit
+def test_proteus_resume_checks_the_eos_tables_after_unpacking(tmp_path):
+    """A resume checks its EOS tables once, after it unpacks the archived data, so
+    kept tables inside data.tar count."""
+    p = _make_proteus_instance(tmp_path)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    order = []
+    p.extract_archives = MagicMock(side_effect=lambda: order.append('extract'))
+    p._require_paleos_tables = MagicMock(side_effect=lambda: order.append('require'))
+
+    _resume_with_patches(p, _make_hf_df())
+
+    assert order == ['extract', 'require']
+    p._require_paleos_tables.assert_called_once_with()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('struct_module, calls', [('zalmoxis', 1), ('spider', 0)])
+def test_require_paleos_tables_runs_only_for_the_zalmoxis_structure(
+    tmp_path, struct_module, calls
+):
+    """Only a Zalmoxis structure reads the Zalmoxis EOS tables, so only it is checked,
+    with the run's output directory."""
+    p = _make_proteus_instance(tmp_path, struct_module=struct_module)
+    with patch('proteus.interior_struct.zalmoxis.require_paleos_tables') as require:
+        p._require_paleos_tables()
+    assert require.call_count == calls
+    if calls:
+        require.assert_called_once_with(p.config, str(tmp_path))
+
+
+@pytest.mark.unit
 def test_proteus_resume_no_mesh_file(tmp_path):
     """start(resume=True) skips mesh restoration when mesh file absent."""
     p = _make_proteus_instance(tmp_path)

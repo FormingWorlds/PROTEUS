@@ -2139,7 +2139,7 @@ def test_required_dataset_failure_does_not_stop_later_fetches(monkeypatch, tmp_p
     assert attempted[:3] == ['star.spectra.named', 'star.spectra.solar', 'star.spectra.muscles']
     assert 'atmos_clim.spectral_files.honeyside.48' in attempted
     assert 'interior.melting_curves.wolf_bower_2018' in attempted
-    assert 'interior.eos.paleos_mgsio3' in attempted
+    assert 'interior.eos.paleos_iron' in attempted
 
 
 @pytest.mark.unit
@@ -3286,9 +3286,9 @@ def test_download_zalmoxis_eos_paleos_2phase(mock_static, mock_fetch, mock_file)
     # The shared record also holds the ~1.3 GB highres pair; it must stay unfetched.
     mock_fetch.assert_not_called()
     assert _fetched_files(mock_file) == [
+        (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3),
         (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_liquid.dat'),
         (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_solid.dat'),
-        (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3),
     ]
 
 
@@ -3306,9 +3306,9 @@ def test_download_zalmoxis_eos_paleos_2phase_highres(mock_static, mock_fetch, mo
 
     mock_fetch.assert_not_called()
     assert _fetched_files(mock_file) == [
+        (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3),
         (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_liquid_highres.dat'),
         (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_solid_highres.dat'),
-        (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3),
     ]
 
 
@@ -3419,10 +3419,10 @@ def test_download_zalmoxis_eos_paleos_2phase_fetches_seager_fallback(
     mock_static.assert_called_once()
     # The standard-resolution selection must not pull the ~1.3 GB highres pair.
     assert _fetched_files(mock_file) == [
-        (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_liquid.dat'),
-        (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_solid.dat'),
         (EOS_PALEOS_IRON, _UNIFIED_IRON),
         (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3),
+        (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_liquid.dat'),
+        (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_solid.dat'),
     ]
     mock_fetch.assert_not_called()
 

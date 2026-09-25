@@ -2088,14 +2088,6 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
     if needs_rtpress:
         fetch_files(EOS_RTPRESS_100TPA, _RTPRESS_EOS_FILES)
 
-    # PALEOS 2-phase MgSiO3 (separate solid/liquid), one record holding the
-    # 150 pts/decade pair and the 600 pts/decade (-highres) pair; fetch only the
-    # selected pair, since the highres pair alone is about 1.3 GB.
-    if 'PALEOS-2phase:MgSiO3' in components:
-        fetch_files(EOS_PALEOS_MGSIO3, _PALEOS_2PHASE_FILES)
-    if 'PALEOS-2phase:MgSiO3-highres' in components:
-        fetch_files(EOS_PALEOS_MGSIO3, _PALEOS_2PHASE_HIGHRES_FILES)
-
     # PALEOS unified tables: one dataset per material.
     unified = {
         'PALEOS:iron': (EOS_PALEOS_IRON, 'paleos_iron_eos_table_pt.dat'),
@@ -2105,6 +2097,14 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
     for component, (key, table) in unified.items():
         if component in components:
             fetch_files(key, (table,))
+
+    # PALEOS 2-phase MgSiO3 (separate solid/liquid), one record holding the
+    # 150 pts/decade pair and the 600 pts/decade (-highres) pair; fetch only the
+    # selected pair, since the highres pair alone is about 1.3 GB.
+    if 'PALEOS-2phase:MgSiO3' in components:
+        fetch_files(EOS_PALEOS_MGSIO3, _PALEOS_2PHASE_FILES)
+    if 'PALEOS-2phase:MgSiO3-highres' in components:
+        fetch_files(EOS_PALEOS_MGSIO3, _PALEOS_2PHASE_HIGHRES_FILES)
 
     # Chabrier H/He
     if any(c.startswith('Chabrier') for c in components):

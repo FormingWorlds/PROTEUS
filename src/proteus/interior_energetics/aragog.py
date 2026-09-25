@@ -978,9 +978,13 @@ class AragogRunner:
             else:
                 from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
 
+                missing = [
+                    p or 'unset'
+                    for p in (solid_eos, liquid_eos)
+                    if not (p and os.path.isfile(p))
+                ]
                 raise ZalmoxisMissingEOSFilesError(
-                    f'PALEOS 2-phase MgSiO3 tables {_twophase_key} not found '
-                    f'(solid: {solid_eos or "unset"}, liquid: {liquid_eos or "unset"}). '
+                    f'PALEOS 2-phase MgSiO3 tables {_twophase_key} not found: {", ".join(missing)}. '
                     'Download them with `proteus get interiordata --config-path <config.toml>`.'
                 )
         else:
