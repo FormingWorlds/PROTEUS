@@ -11,8 +11,8 @@ partitioning, the desiccation gate, or anything that sets or consumes
 
 - `"ic_chemistry"`: defer the IC O budget to CALLIOPE's fO2-buffered
   equilibrium.
-- `"ppmw"`, `"kg"`: parallel to the H/C/N/S modes. `"kg"` sets O_kg to
-  `O_budget`; `"ppmw"` sets it to `O_budget * 1e-6` times the volatile
+- `"ppmw"`, `"kg"`: parallel to the H/C/N/S modes. `"kg"` sets the initial
+  `O_kg_total` to `O_budget`; `"ppmw"` sets it to `O_budget * 1e-6` times the volatile
   reservoir mass (`M_mantle` or `M_int`, per `planet.volatile_reservoir`).
 - `"FeO_mantle_wt_pct"`: alternative unit for petrologists. The number is
   interpreted as `O_kg = M_mantle * (wt% / 100) * (M_O / M_FeO)`. The mantle EOS
@@ -45,7 +45,7 @@ Escape includes O in the unfractionated partitioning so
   subtracting it from the interior, and rock-vapour elements dilute the escape
   outflow without being debited from a tracked reservoir. In that mode the main
   loop passes `require_atm_le_planet=False`, which disables that one half and
-  replaces it with a warning raised whenever the excess over `M_planet` is
+  replaces it with a logged warning whenever the excess over `M_planet` is
   larger than `M_vaps`, i.e. larger than vapourisation explains. The relaxation
   applies only while `M_vaps > 0`; with no vapour column present the invariant
   is enforced regardless of the keyword. The other half of the check
@@ -55,10 +55,11 @@ Escape includes O in the unfractionated partitioning so
   as intentional, not a bug to repair; see `docs/Explanations/model.md`,
   "Whole-planet mass is not conserved when vapourisation is enabled".
 - `check_ic_oxygen_budget` compares the user oxygen mass (`O_kg_user_ic`, the
-  resolved `O_budget` in kg) with the chemistry result (`O_kg_total`) and
+  resolved `O_budget` in kg) with the chemistry result of CALLIOPE or
+  atmodeller (`O_kg_total`) and
   hard-fails above 50 % divergence. It runs only with
   `planet.fO2_source = 'user_constant'` and an `O_mode` other than
-  `'ic_chemistry'`; it is called every iteration and fires once, because it
+  `'ic_chemistry'`; it is called in the outgassing step of each iteration and fires once, because it
   resets `O_kg_user_ic` to the -1.0 sentinel.
 
 ## Aggregation symmetry

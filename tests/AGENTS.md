@@ -1,6 +1,6 @@
 # PROTEUS test instructions
 
-<!-- fwl-tests-core:begin sha256=6f307f998a9a47b8 -->
+<!-- fwl-tests-core:begin sha256=362e46b63952deda -->
 ## Test rules shared by the PROTEUS ecosystem
 
 Each test file starts with a module-level tier marker and a timeout. CI selects tests by marker, so a file without one runs in no CI job; the timeout stops a hang, it is not a target.
@@ -16,11 +16,11 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 | `integration` | several modules coupled | 300 s |
 | `slow` | full physics validation | 3600 s |
 
-Each test carries exactly one tier marker, so that the tier filters select it in the one CI job meant for it; a function marker for a second tier breaks that. Split a file whose tests need different tiers. `skip` marks a placeholder that no CI job runs.
+Each test carries exactly one tier marker, so that the tier filters select it in the one CI job meant for it; a function marker for a second tier breaks that. Split a file whose tests need different tiers. `skip` excludes a test from every CI job.
 
 Every new test covers an edge case (a boundary value, an empty input, an extreme physical parameter), exercises the error contract (a documented exception, a guard, a clamp, or the limit input of the formula), and asserts values that do not follow trivially from the implementation. A pinned value of 1 that every exponent reproduces checks nothing.
 
-`python tools/check_test_quality.py --check` fails when the count of any rule rises above `tools/test_quality_baseline.json`; the offenders it prints are the first few of that rule in the tree, not necessarily yours. The rules: a file without a tier marker, a test without a docstring, a test with one assertion or none, a weak assertion as the only one (`is None`, `is not None`, `> 0`, `len(...) > 0`, `isinstance`), `==` next to a float literal, and an optional dependency imported without `pytest.importorskip`. `bash tools/validate_test_structure.sh` runs the repository's own structure check; `tests/AGENTS.md` below says what it checks here.
+`python tools/check_test_quality.py --check` fails when the count of any rule rises above `tools/test_quality_baseline.json`; the offenders it prints are the first few of that rule in the tree, not necessarily yours. The rules: a file without a tier marker, a test without a docstring, a test with one assertion or none, a weak assertion as the only one (`is None`, `is not None`, `> 0`, `len(...) > 0`, `isinstance`), `==` next to a non-zero float literal, and an optional dependency imported without `pytest.importorskip`. `bash tools/validate_test_structure.sh` runs the repository's own structure check; `tests/AGENTS.md` below says what it checks here.
 
 Physics tests carry markers so their coverage is tracked apart from line coverage:
 - `@pytest.mark.physics_invariant` on each test function that asserts a conservation law, a bound (T > 0, fractions in [0, 1]), a monotonicity or symmetry, or a pinned value with a discrimination guard. The marker goes on the function, not the module: structural tests in the same file do not carry it.
@@ -38,13 +38,15 @@ A module-level constant read from an environment variable at import time does no
 
 Structure: `src/proteus/<module>/<file>.py` is tested in `tests/<module>/test_<file>.py`. `bash tools/validate_test_structure.sh` fails when a source directory has no test directory or a test directory has no `__init__.py`; it does not check the one-to-one file rule, which is yours to keep. `tests/tools/test_ci_tier_coverage.py` fails when a test has no tier or more than one. `tests/conftest.py` holds the parameter classes `EarthLikeParams`, `UltraHotSuperEarthParams`, `IntermediateSuperEarthParams` (as session fixtures `earth_params`, `ultra_hot_params`, `intermediate_params`) and the config fixtures `config_minimal`, `config_dummy`; read it before you write a test.
 
+Integration and slow tests live in `tests/integration/`: the nightly runs `pytest tests/integration` for the integration tier, and a slow file runs only when it is in the slow-tier file list of `.github/workflows/ci-nightly.yml`.
+
 CI: pull requests run the unit tier only (`pytest -m "unit and not skip and not slow and not integration"`); smoke, integration and slow run nightly. `tools/check_test_quality.py --check` runs in the PR job with `continue-on-error` and compares against `tools/test_quality_baseline.json`; a new violation shows in the log. Regenerate the baseline (`--baseline`) only after a sweep that removed violations.
 
 ### Physics modules
 
 A unit test of these sources asserts at least one invariant and carries `physics_invariant`: `interior_struct`, `interior_energetics`, `atmos_clim`, `atmos_chem`, `escape`, `outgas`, `orbit`, `star`, `observe`, and `inference/objective.py`, `inference/BO.py`, `inference/async_BO.py` (the Bayesian optimisation drives the simulator). A helper in a physics directory counts as physics when its output feeds physics; only pure plumbing (logging, paths, type coercion) is exempt. `utils`, `config`, `plot`, `grid`, `cli.py` and the other `inference` files are exempt from the invariant rule, not from the rest.
 
-Each physics source file whose public API returns a physical quantity has its own `reference_pinned` test (`aragog.py` and `spider.py` each need one), listed in `docs/Validation/<module>/<file>.md` with the reference, the test ids and the date of the last comparison. `python tools/check_test_quality.py --reference-pinned-audit` reports per directory only, so check the per-file pages by hand.
+Each physics source file whose public API returns a physical quantity needs its own `reference_pinned` test (`aragog.py` and `spider.py` each need one), listed in `docs/Validation/<module>/<file>.md` with the reference, the test ids and the date of the last comparison. `python tools/check_test_quality.py --reference-pinned-audit` reports per directory only, so check the per-file pages by hand.
 
 Invariants used here: `M_atm + M_mantle + M_core <= M_planet` and per-species `kg_atm + kg_liquid + kg_solid` equal to the species total; the energy ODE right-hand side balance; angular momentum without external torque; T > 0 K and P > 0 Pa; melt fraction in [0, 1]; P increasing with depth; density increasing with pressure at fixed entropy. Prefer a property over a point value: it holds across the input space.
 
@@ -67,8 +69,8 @@ When the primary assertion is a closure (`sum(parts) == pytest.approx(total)`), 
 ### Mocks, fixtures, seeds
 
 - Unit tests mock SOCRATES, AGNI, SPIDER, the Aragog and Zalmoxis solvers, file I/O, HTTP and subprocesses, at the narrowest scope (`patch('proteus.foo.calc_X')`), with physically plausible return values; never mock the function under test. Smoke tests use the real binaries and integration tests the real modules.
-- `pytest.importorskip` at module top for `hypothesis`, `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, `zalmoxis`, `torch`, `botorch`, `gpytorch`: an install with `[develop]` alone lacks some of them (CI installs `.[develop,vulcan,atmodeller,inference]`).
-- `proteus.utils.data.FWL_DATA_DIR` is read from `FWL_DATA` at import; patch it with `monkeypatch.setattr(..., raising=False)` as well as `setenv`.
+- `pytest.importorskip` at module top for every package in `OPTIONAL_DEPS` of `tools/check_test_quality.py`; some come only with an extra or a separate install (CI installs `.[develop,vulcan,atmodeller,inference]`).
+- `FWL_DATA_DIR` is read from `FWL_DATA` at import in `proteus.utils.data`, `interior_energetics.aragog`, `interior_energetics.spider` (with paths derived from it) and `interior_struct.zalmoxis`; patch the constant the code under test reads with `monkeypatch.setattr(..., raising=False)` as well as `setenv`.
 - Test parameters are SI unless the function takes config units (M_sun, bar, Gyr, K). Parametrize ids name the physical scenario.
 - Seed every generator in use (`np.random.seed`, `torch.manual_seed`, `random.seed`); seeding only torch leaves the Bayesian optimisation tests non-deterministic.
 - A slow test with `interior_struct.module = 'zalmoxis'` and dummy outgassing loops in the initial equilibration (surface pressure stays near 0, so it never converges); use `**minimal_zalmoxis_overrides()` from `tests/integration/conftest.py`.
