@@ -1076,6 +1076,7 @@ def test_check_eos_files_stops_when_the_paleos_api_build_fails(monkeypatch):
             'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1',
             'follow WolfBower2018:MgSiO3 and melting_dir',
         ),
+        ('PALEOS-2phase:H2O:0.5+Seager2007:iron:0.5', 'follow melting_dir'),
     ],
 )
 def test_require_paleos_tables_warns_once_for_a_paleos_mixture(
@@ -1088,6 +1089,8 @@ def test_require_paleos_tables_warns_once_for_a_paleos_mixture(
     monkeypatch.setattr(
         zmod, 'load_zalmoxis_material_dictionaries', lambda: _paleos_registry(tmp_path)
     )
+    # The last case has no energetics key; its tables are not in the registry.
+    monkeypatch.setattr(zmod, 'check_zalmoxis_eos_files', lambda *a, **k: None)
     config = _require_config(mantle)
     config.interior_energetics.module = module
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
@@ -1099,6 +1102,7 @@ def test_require_paleos_tables_warns_once_for_a_paleos_mixture(
         in (warnings[0])
     )
     assert f'the energetics and melting curves {energetics}' in warnings[0]
+    assert 'Seager2007' not in warnings[0].partition(': ')[2]
 
 
 @pytest.mark.parametrize(
@@ -1133,6 +1137,7 @@ def test_a_paleos_mixture_gets_the_ps_key_of_its_mgsio3_set(tmp_path, mixture, s
     'mantle',
     [
         'WolfBower2018:MgSiO3',
+        'RTPress100TPa:MgSiO3',
         'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1',
         'RTPress100TPa:MgSiO3:0.9+PALEOS:H2O:0.1',
     ],
@@ -1173,6 +1178,21 @@ def test_resolve_2phase_paths_stops_on_a_missing_table_when_required(tmp_path, m
         zmod.resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', registry, required=True)
 
 
+def test_resolve_2phase_paths_required_returns_a_full_pair_and_names_two_missing(tmp_path):
+    """A required pair on disk returns both paths; with both tables absent both are named."""
+    from proteus.interior_struct import zalmoxis as zmod
+
+    registry = _paleos_registry(tmp_path)
+    full = zmod.resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', registry, required=True)
+    assert full == (str(tmp_path / 'solid.dat'), str(tmp_path / 'liquid.dat'))
+    for name in ('solid', 'liquid'):
+        (tmp_path / f'{name}.dat').unlink()
+    with pytest.raises(
+        zmod.ZalmoxisMissingEOSFilesError, match=r'not available: solid, liquid\.'
+    ):
+        zmod.resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', registry, required=True)
+
+
 def test_superliquidus_anchor_passes_a_missing_table_stop_through(monkeypatch):
     """A missing-table stop inside the anchor reaches the caller as that error, not as a
     numerical anchor failure."""
@@ -1181,11 +1201,14 @@ def test_superliquidus_anchor_passes_a_missing_table_stop_through(monkeypatch):
     def _missing(config, hf_row):
         raise zmod.ZalmoxisMissingEOSFilesError('pair not available')
 
+    failed = {}
     monkeypatch.setattr(zmod, '_solve_superliquidus_adiabat', _missing)
-    monkeypatch.setattr(zmod, '_SUPERLIQ_FAILED', {})
+    monkeypatch.setattr(zmod, '_SUPERLIQ_FAILED', failed)
     config = _require_config('PALEOS:MgSiO3')
     with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='pair not available'):
         zmod.solve_superliquidus_adiabat(config, {'P_cmb': 1.2e11})
+    # Not cached as an anchor failure, so a run with the tables fetched retries.
+    assert failed == {}
 
 
 def test_generate_spider_tables_stops_on_a_missing_pair_table(tmp_path, monkeypatch):

@@ -1135,11 +1135,10 @@ def test_compute_initial_entropy_stops_on_a_missing_pair_with_a_paleos_set():
             module='zalmoxis', zalmoxis=SimpleNamespace(mantle_eos='PALEOS:MgSiO3')
         ),
     )
-    registry = {'PALEOS-2phase:MgSiO3': {}}
     with (
         _patch(
             'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value=registry,
+            return_value={'PALEOS-2phase:MgSiO3': {}},
         ),
         pytest.raises(ZalmoxisMissingEOSFilesError, match='PALEOS-2phase:MgSiO3'),
     ):
