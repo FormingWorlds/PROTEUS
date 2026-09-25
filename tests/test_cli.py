@@ -29,14 +29,18 @@ def _solar_dir(root):
 
 
 @pytest.mark.unit
-def test_doctor():
+def test_doctor(monkeypatch, tmp_path):
     """``proteus doctor`` renders its report and returns a health-coded exit.
 
     The exit code is 0 when the install is healthy and 1 when a check fails, so
     both are valid here depending on the environment; the report itself, with
     the package section and the AGNI and fwl-mors checks, is rendered either
-    way. A usage error or crash would exit 2 and skip the report.
+    way. A usage error or crash would exit 2 and skip the report. A failing check
+    writes a failure log, whose environment summary runs slow commands such as
+    ``conda list``, so the summary is stubbed and the log goes to ``tmp_path``.
     """
+    monkeypatch.setattr('proteus.doctor._collect_environment_info', lambda: 'stub')
+    monkeypatch.chdir(tmp_path)
     # run PROTEUS doctor command
     response = runner.invoke(cli.doctor, [])
 
