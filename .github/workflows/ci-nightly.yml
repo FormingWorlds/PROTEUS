@@ -694,6 +694,32 @@ jobs:
           retention-days: 30
 
   # ============================================================
+  # Shared AGENTS.md blocks: report module repositories whose
+  # blocks differ from tools/agents/. Kept out of nightly-status
+  # so a lagging module does not mark the science nightly red.
+  # ============================================================
+  agents-md-sync:
+    name: AGENTS.md shared blocks in module repositories
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Clone module repositories
+        run: |
+          for repo in CALLIOPE JANUS MORS SPIDER ZEPHYRUS aragog Zalmoxis SOCRATES VULCAN fwl-io atmodeller; do
+            git clone --depth 1 --quiet "https://github.com/FormingWorlds/${repo}.git" "../modules/${repo}"
+          done
+
+      - name: Compare shared blocks
+        run: python tools/agents/sync_core.py --check ../modules/*
+
+  # ============================================================
   # Status job: enforces "any tier failure = nightly fails".
   # Reads the conclusion of each prior job from the ``needs``
   # context and fails if any is not ``success``. Even though the
