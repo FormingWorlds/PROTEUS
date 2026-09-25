@@ -8,7 +8,7 @@ The detail behind the Review section of `AGENTS.md`. Apply these domain checks i
 - Temperature must be positive everywhere (Kelvin). Flag any code path where T could reach zero or go negative.
 - Pressure must be positive and monotonically increasing with depth in interior profiles.
 - Mass fractions must sum to 1.0. Flag any volatile partitioning code that doesn't enforce or verify normalization.
-- Escape rates must not exceed total atmospheric mass. Flag unbounded escape calculations.
+- The mass escaped in one step (escape rate times dt) must not exceed the atmospheric mass. Flag unbounded escape calculations.
 - Outgassing rates must be non-negative.
 - Energy fluxes at module boundaries (atmosphere-interior, interior-core) must be consistent. If two modules independently compute the same flux, verify they agree.
 - Stefan-Boltzmann: F = sigma * T^4. When reviewing radiative flux code, check the exponent is 4, not 3 or 5.
@@ -16,8 +16,8 @@ The detail behind the Review section of `AGENTS.md`. Apply these domain checks i
 ## Unit convention boundaries
 
 PROTEUS has a split unit convention:
-- **Config values**: "human" units (M_sun, bar, Gyr, K)
-- **Internal hf_row values**: SI-ish (kg, Pa, yr, K)
+- **Config values**: the unit each key states in `docs/Reference/config/` (for example stellar mass in M_sun, planet mass in M_earth, stellar age in Gyr)
+- **Internal hf_row values**: SI, except pressure in bar and time in years (`GetHelpfileKeys` in `utils/coupler.py`)
 - **Submodule APIs**: may expect either convention
 
 When reviewing code that passes values between config, hf_row, and submodule calls, verify the unit is correct at each boundary. A stellar mass passed to ZEPHYRUS in the wrong unit is an example of this class of error.
@@ -32,7 +32,7 @@ When module A computes a quantity self-consistently (e.g., Zalmoxis computes cor
 
 ## Whole-element aggregation symmetry
 
-When reviewing code that aggregates element masses, all four sites of the cycle must use the same element set:
+When reviewing code that aggregates element masses, every site of the cycle must include oxygen. The mass sites (1, 2, 5) sum `vol_element_list + noble_gases` and leave the rock-vapour elements of `vap_element_list` out on purpose, because rock vapour enters the atmosphere without being debited from the interior; the escape and structure sites (3, 4, 6) sum `element_list`. The sites:
 
 1. Initial-budget population (`calc_target_elemental_inventories`, `_resolve_oxygen_budget`)
 2. M_planet bookkeeping (`update_planet_mass`)
@@ -41,9 +41,9 @@ When reviewing code that aggregates element masses, all four sites of the cycle 
 5. Desiccation gate (`check_desiccation`)
 6. First-call baseline (`M_vol_initial` in `run_escape`)
 
-If one site sums over `gas_list` (oxygen included) while another sums over `element_list` with `if e == 'O': continue`, `M_atm` can exceed `M_planet` (issue #677). The element set is explicit and the same at every site; a new `if e == 'O': continue` in any of them is a red flag.
+If one site sums over `gas_list` (oxygen included) while another sums over `element_list` with `if e == 'O': continue`, `M_atm` can exceed `M_planet` (issue #677). Each site names its element list explicitly and includes oxygen; a new `if e == 'O': continue` in any of them is a red flag.
 
-The runtime invariant `assert_mass_conservation(hf_row)` is called at the end of every iteration to hard-fail on a regression. If a review finds someone has weakened or removed that assertion, push back: it's the safety net that catches future O-skip reintroductions.
+The runtime invariant `assert_mass_conservation(hf_row)` runs after the outgassing step of every iteration to hard-fail on a regression. If a review finds someone has weakened or removed that assertion, push back: it's the safety net that catches future O-skip reintroductions.
 
 The one sanctioned relaxation is `require_atm_le_planet=False`, which the main loop passes when `outgas.vapourise = true`. It disables the `M_atm <= M_planet` half only, replaces it with a warning raised when the excess over `M_planet` exceeds `M_vaps`, and leaves the `M_vol_atm` species-sum half and the `atol_frac` tolerance untouched. It applies only while `M_vaps > 0`. Flag any change that widens `atol_frac`, that disables the species-sum half, or that silences the warning.
 
@@ -56,15 +56,15 @@ When a user supplies a value via config that gets re-derived by a downstream sol
 3. Hard-fail if relative divergence exceeds a threshold (50% for O; threshold can be tuned per case).
 4. Flip the sentinel so subsequent init-stage calls don't re-fire the check.
 
-Applies to any future user-specified quantity that has a solver-derived equivalent. Examples worth retro-fitting: T_magma_init vs SPIDER's IC entropy, fO2_shift_IW vs the atmospheric chemistry it implies, surface gravity vs Zalmoxis's structure output.
+Applies to any future user-specified quantity that has a solver-derived equivalent. Examples worth retro-fitting: `fO2_shift_IW` against the atmospheric chemistry it implies, surface gravity against the Zalmoxis structure output.
 
 ## hf_row temporary overrides
 
 When overriding hf_row values to pass different boundary conditions to a submodule, require a save/restore pattern:
 ```python
-saved = {k: hf_row[k] for k in keys_to_override}
+saved = {k: hf_row[k] for k in overrides}
 try:
-    hf_row[k] = override_value
+    hf_row.update(overrides)
     result = call_submodule(hf_row)
 finally:
     hf_row.update(saved)
@@ -77,9 +77,9 @@ Physical constants (G, year length, solar mass, Stefan-Boltzmann) are defined in
 
 ## PALEOS / EOS tables
 
-- SPIDER needs P-S tables (phase-specific S ranges, complete rectangles, uniform P spacing).
-- Aragog needs P-T tables (full rectangular grid, identical for solid and melt).
-- Phase-filtering P-T tables for Aragog creates irregular grids that cause scipy to use slow unstructured interpolation. Flag any table generation that filters by phase before writing Aragog tables.
+- SPIDER and the Aragog entropy solver read P-S tables (phase-specific S ranges, complete rectangles, uniform P spacing).
+- Aragog also reads P-T tables: phase-specific ones generated from the PALEOS-2phase tables when they exist, one shared table otherwise. Each must be a full rectangular grid.
+- Removing the points of the other phase from a P-T table leaves an irregular grid, on which scipy falls back to slow unstructured interpolation. Flag any table generation that filters points by phase before writing Aragog tables.
 
 ## Interior-atmosphere coupling timing
 

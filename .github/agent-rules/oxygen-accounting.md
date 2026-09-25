@@ -11,7 +11,9 @@ partitioning, the desiccation gate, or anything that sets or consumes
 
 - `"ic_chemistry"`: defer the IC O budget to CALLIOPE's fO2-buffered
   equilibrium.
-- `"ppmw"`, `"kg"`: parallel to the H/C/N/S modes; sets O_kg directly.
+- `"ppmw"`, `"kg"`: parallel to the H/C/N/S modes. `"kg"` sets O_kg to
+  `O_budget`; `"ppmw"` sets it to `O_budget * 1e-6` times the volatile
+  reservoir mass (`M_mantle` or `M_int`, per `planet.volatile_reservoir`).
 - `"FeO_mantle_wt_pct"`: alternative unit for petrologists. The number is
   interpreted as `O_kg = M_mantle * (wt% / 100) * (M_O / M_FeO)`. The mantle EOS
   density is NOT modified; PALEOS still assumes its built-in FeO content. The
@@ -47,17 +49,22 @@ Escape includes O in the unfractionated partitioning so
   larger than `M_vaps`, i.e. larger than vapourisation explains. The relaxation
   applies only while `M_vaps > 0`; with no vapour column present the invariant
   is enforced regardless of the keyword. The other half of the check
-  (`M_vol_atm` equals the summed per-species atmospheric masses) stays enforced
+  (`M_vol_atm` equals the summed masses of the volatile species, rock vapour
+  excluded) stays enforced
   in both modes, and `atol_frac` is never loosened. Treat that non-conservation
   as intentional, not a bug to repair; see `docs/Explanations/model.md`,
   "Whole-planet mass is not conserved when vapourisation is enabled".
-- `check_ic_oxygen_budget`, called once after the first outgas call, hard-fails
-  on >50% divergence between the user-supplied O_budget and CALLIOPE's
-  equilibrium value.
+- `check_ic_oxygen_budget` compares the user oxygen mass (`O_kg_user_ic`, the
+  resolved `O_budget` in kg) with the chemistry result (`O_kg_total`) and
+  hard-fails above 50 % divergence. It runs only with
+  `planet.fO2_source = 'user_constant'` and an `O_mode` other than
+  `'ic_chemistry'`; it is called every iteration and fires once, because it
+  resets `O_kg_user_ic` to the -1.0 sentinel.
 
 ## Aggregation symmetry
 
-All aggregation sites must use the same element set. A new `if e == 'O':
-continue` skip in any of them is a red flag: it lets `M_atm` exceed `M_planet`
-again. The sites are listed under "Whole-element aggregation symmetry" in
+Every aggregation site includes oxygen. A new `if e == 'O': continue` skip in
+any of them is a red flag: it lets `M_atm` exceed `M_planet` again. The mass
+sites leave rock-vapour elements out on purpose; that is not an asymmetry to
+repair. The sites are listed under "Whole-element aggregation symmetry" in
 [`code-review.md`](code-review.md).

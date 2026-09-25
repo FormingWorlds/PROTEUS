@@ -1,6 +1,6 @@
 # PROTEUS test instructions
 
-<!-- fwl-tests-core:begin sha256=dc5361ba219c6b60 -->
+<!-- fwl-tests-core:begin sha256=6f307f998a9a47b8 -->
 ## Test rules shared by the PROTEUS ecosystem
 
 Each test file starts with a module-level tier marker and a timeout. CI selects tests by marker, so a file without one runs in no CI job; the timeout stops a hang, it is not a target.
@@ -16,11 +16,11 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 | `integration` | several modules coupled | 300 s |
 | `slow` | full physics validation | 3600 s |
 
-Per-function markers add to the module marker; they do not replace it. `skip` marks a placeholder that no CI job runs.
+Each test carries exactly one tier marker, so that the tier filters select it in the one CI job meant for it; a function marker for a second tier breaks that. Split a file whose tests need different tiers. `skip` marks a placeholder that no CI job runs.
 
 Every new test covers an edge case (a boundary value, an empty input, an extreme physical parameter), exercises the error contract (a documented exception, a guard, a clamp, or the limit input of the formula), and asserts values that do not follow trivially from the implementation. A pinned value of 1 that every exponent reproduces checks nothing.
 
-`python tools/check_test_quality.py --check` reports violations that are new against `tools/test_quality_baseline.json`: a file without a tier marker, a test without a docstring, a test with one assertion or none, a weak assertion as the only one (`is None`, `is not None`, `> 0`, `len(...) > 0`, `isinstance`), `==` next to a float literal, and an optional dependency imported without `pytest.importorskip`. `bash tools/validate_test_structure.sh` runs the repository's own structure check; `tests/AGENTS.md` below says what it checks here.
+`python tools/check_test_quality.py --check` fails when the count of any rule rises above `tools/test_quality_baseline.json`; the offenders it prints are the first few of that rule in the tree, not necessarily yours. The rules: a file without a tier marker, a test without a docstring, a test with one assertion or none, a weak assertion as the only one (`is None`, `is not None`, `> 0`, `len(...) > 0`, `isinstance`), `==` next to a float literal, and an optional dependency imported without `pytest.importorskip`. `bash tools/validate_test_structure.sh` runs the repository's own structure check; `tests/AGENTS.md` below says what it checks here.
 
 Physics tests carry markers so their coverage is tracked apart from line coverage:
 - `@pytest.mark.physics_invariant` on each test function that asserts a conservation law, a bound (T > 0, fractions in [0, 1]), a monotonicity or symmetry, or a pinned value with a discrimination guard. The marker goes on the function, not the module: structural tests in the same file do not carry it.
@@ -36,7 +36,7 @@ A module-level constant read from an environment variable at import time does no
 
 ## PROTEUS specifics
 
-Structure: `src/proteus/<module>/<file>.py` is tested in `tests/<module>/test_<file>.py`. `bash tools/validate_test_structure.sh` checks only that every source directory has a test directory with at least one test file, so the one-to-one file rule is yours to keep. Shared fixtures are in `tests/conftest.py` (`EarthLikeParams`, `UltraHotSuperEarthParams`, `IntermediateSuperEarthParams`, `config_minimal`, `config_dummy`); read it before you write a test.
+Structure: `src/proteus/<module>/<file>.py` is tested in `tests/<module>/test_<file>.py`. `bash tools/validate_test_structure.sh` fails when a source directory has no test directory or a test directory has no `__init__.py`; it does not check the one-to-one file rule, which is yours to keep. `tests/tools/test_ci_tier_coverage.py` fails when a test has no tier or more than one. `tests/conftest.py` holds the parameter classes `EarthLikeParams`, `UltraHotSuperEarthParams`, `IntermediateSuperEarthParams` (as session fixtures `earth_params`, `ultra_hot_params`, `intermediate_params`) and the config fixtures `config_minimal`, `config_dummy`; read it before you write a test.
 
 CI: pull requests run the unit tier only (`pytest -m "unit and not skip and not slow and not integration"`); smoke, integration and slow run nightly. `tools/check_test_quality.py --check` runs in the PR job with `continue-on-error` and compares against `tools/test_quality_baseline.json`; a new violation shows in the log. Regenerate the baseline (`--baseline`) only after a sweep that removed violations.
 
@@ -50,7 +50,7 @@ Invariants used here: `M_atm + M_mantle + M_core <= M_planet` and per-species `k
 
 ### Discriminating values
 
-Choose inputs where the wrong formula gives a different answer: `sigma * T**4` at T = 300 K and 1500 K, not T = 1; interpolation off the grid nodes; an asymmetric composition, not equal fractions; a Kepler period at a = 2 AU, where `a**1.5` differs from `a` and `a**2`. A test that pins a hand-calculated value with `pytest.approx` adds three guards:
+Choose inputs where the wrong formula gives a different answer: `sigma * T**4` at T = 300 K and 1500 K, not T = 1; interpolation off the grid nodes; an asymmetric composition, not equal fractions; a Kepler period at a = 2 AU, where `a**1.5` differs from `a` and `a**2`. A test that pins a hand-calculated value with `pytest.approx` adds three guards (schematic, for a closed form in `a**-6.5` evaluated with unit parameters):
 
 ```python
 def test_de_dt_matches_closed_form_value_for_unit_params():
@@ -62,12 +62,12 @@ def test_de_dt_matches_closed_form_value_for_unit_params():
     assert 1e-3 < val < 1.0  # scale error (kg against g, a missing division)
 ```
 
-When the primary assertion is a closure (`sum(parts) == pytest.approx(total)`), it already catches a factor error; the sign and scale guards stay. The single-assert exception: one assertion of a hard closure (mass within 1e-12) is enough when it is the only test of that invariant in the file.
+When the primary assertion is a closure (`sum(parts) == pytest.approx(total)`), it already catches a factor error; the sign and scale guards stay.
 
 ### Mocks, fixtures, seeds
 
 - Unit tests mock SOCRATES, AGNI, SPIDER, the Aragog and Zalmoxis solvers, file I/O, HTTP and subprocesses, at the narrowest scope (`patch('proteus.foo.calc_X')`), with physically plausible return values; never mock the function under test. Smoke tests use the real binaries and integration tests the real modules.
-- `pytest.importorskip` at module top for `hypothesis`, `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, `zalmoxis`, `torch`, `botorch`, `gpytorch`: the PR image installs PROTEUS without them.
+- `pytest.importorskip` at module top for `hypothesis`, `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, `zalmoxis`, `torch`, `botorch`, `gpytorch`: an install with `[develop]` alone lacks some of them (CI installs `.[develop,vulcan,atmodeller,inference]`).
 - `proteus.utils.data.FWL_DATA_DIR` is read from `FWL_DATA` at import; patch it with `monkeypatch.setattr(..., raising=False)` as well as `setenv`.
 - Test parameters are SI unless the function takes config units (M_sun, bar, Gyr, K). Parametrize ids name the physical scenario.
 - Seed every generator in use (`np.random.seed`, `torch.manual_seed`, `random.seed`); seeding only torch leaves the Bayesian optimisation tests non-deterministic.

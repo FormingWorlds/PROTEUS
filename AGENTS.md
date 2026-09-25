@@ -3,8 +3,8 @@
 PROTEUS couples interior, atmosphere, star, orbit and escape modules into one planet evolution model. Before a first edit:
 
 - Tests for `src/proteus/<module>/<file>.py` go in `tests/<module>/test_<file>.py`; the test rules are in `tests/AGENTS.md`.
-- Whole-planet element mass is conserved with oxygen included: `assert_mass_conservation` checks `M_atm <= M_planet` and the species sum every iteration. The only relaxation is `outgas.vapourise = true` (see Oxygen and mass accounting).
-- Every site that sums element masses uses the same element set. A new `if e == 'O': continue` in one of them breaks the mass budget.
+- Whole-planet element mass is conserved with oxygen included: after the outgassing step of every iteration, `assert_mass_conservation` checks `M_atm <= M_planet` and that `M_vol_atm` equals the sum of the volatile species. The only relaxation is `outgas.vapourise = true` (see Oxygen and mass accounting).
+- Every site that sums element masses includes oxygen; a new `if e == 'O': continue` in one of them breaks the mass budget. The mass sites (`M_ele`, `M_planet`, desiccation) sum `vol_element_list + noble_gases` and leave the rock-vapour elements out on purpose; escape and structure sum `element_list`.
 - Energy fluxes at the interior-atmosphere boundary agree between the two modules that compute them.
 - These commands decide whether a change is ready (CI runs the same):
 
@@ -16,22 +16,22 @@ python tools/check_test_quality.py --check
 python tools/agents/check_agents_md.py
 ```
 
-<!-- fwl-core:begin sha256=63b17e6b5598d839 -->
+<!-- fwl-core:begin sha256=c232bac058cc749d -->
 ## PROTEUS ecosystem rules
 
-This repository is one module of PROTEUS, a coupled model of the evolution of rocky planets and their atmospheres. PROTEUS selects one module per process in its config:
+PROTEUS couples separate module repositories into one model of the evolution of rocky planets and their atmospheres. Its config selects one module per process; the config values are the lowercase names:
 
-- interior energetics: aragog, SPIDER; interior structure: Zalmoxis, SPIDER
-- atmosphere energy balance: AGNI, JANUS, both with SOCRATES spectral radiative transfer
-- volatile outgassing: CALLIOPE, atmodeller; atmospheric chemistry: VULCAN
-- stellar evolution: MORS; atmospheric escape: ZEPHYRUS, BOREAS; tides: Obliqua, lovepy
+- `interior_energetics.module`: `aragog`, `spider` (or the built-in `boundary`); `interior_struct.module`: `zalmoxis`, `spider`
+- `atmos_clim.module`: `agni`, `janus`, both with SOCRATES spectral radiative transfer
+- `outgas.module`: `calliope`, `atmodeller`; `atmos_chem.module`: `vulcan`
+- `star.module`: `mors`; `escape.module`: `zephyrus`, `boreas`; `orbit.module` (tides): `obliqua`, `lovepy`
 - fwl-io downloads the reference data the modules use
 
-A change to anything PROTEUS calls or reads (a function signature, a config key, an output column, a unit) can break the coupled model while this module's own tests pass. Search `src/proteus/` in PROTEUS for the name before you change it, and name the affected PROTEUS call sites in the pull request.
+A module change to anything PROTEUS calls or reads (a function signature, a config key, an output column, a unit) can break the coupled model while the module's own tests pass. Search `src/proteus/` in PROTEUS for the name before you change it, and name the affected PROTEUS call sites in the pull request.
 
 ### Physics and numerics
 
-- Units differ between modules: MORS and VULCAN use cgs, CALLIOPE, atmodeller and AGNI take pressures in bar, and the PROTEUS config reference pages state the unit of each key (for example stellar mass in M_sun, initial partial surface pressures in bar, stellar age in Gyr). State the unit of every physical quantity in its docstring and convert explicitly at the boundary: a unit mismatch between two modules passes the tests of both and shows only in the coupled run.
+- Units differ between modules: MORS and VULCAN use cgs; CALLIOPE and atmodeller work with pressures in bar; AGNI takes surface pressure in bar at setup and holds Pa inside; PROTEUS keeps pressure in bar and time in years in `hf_row` and SI otherwise, and its config reference pages state each key's unit (for example stellar mass in M_sun, initial partial surface pressures in bar, stellar age in Gyr). State the unit of every physical quantity in its docstring and convert explicitly at the boundary: a unit mismatch between two modules passes the tests of both and shows only in the coupled run.
 - A physics test must fail for the most plausible wrong formula: check a conservation law, a bound, a monotonicity, or a published or analytical value, and assert that the wrong result falls outside the tolerance.
 - Take each physical constant from one source per repository (in Python `scipy.constants` or the module's constants file). Two retyped values of one constant differ at round-off and hide real differences between code paths.
 - Do not loosen a solver tolerance, a conservation check or a clamp to make a run or a test pass. Find the cause; a loosened check also hides the next defect.
@@ -40,7 +40,7 @@ A change to anything PROTEUS calls or reads (a function signature, a config key,
 
 - Work on a feature branch `<initials>/<short-description>`; `main` changes only through a reviewed pull request.
 - Fill every section of the repository's pull-request template, where it has one.
-- Before you push, run the checks this file and `tests/AGENTS.md` name.
+- Before you push, run the checks listed at the top of this `AGENTS.md` and in `tests/AGENTS.md`.
 
 ### Where knowledge goes
 
@@ -70,28 +70,28 @@ Commit messages, pull-request text, code comments, docstrings and test names des
 
 ## Physics and coupling contract
 
-- Units: config values are in "human" units (M_sun, bar, Gyr, K); `hf_row` holds SI values with time in years; module APIs expect either. Check the unit at each of these boundaries.
+- Units: `hf_row` is SI except pressure in bar and time in years (`GetHelpfileKeys` in `utils/coupler.py`); config keys state their unit in `docs/Reference/config/` (stellar mass in M_sun, planet mass in M_earth, stellar age in Gyr); module APIs expect their own. Check the unit at each of these boundaries.
 - `Config` is not mutated at run time; use local variables. (Zalmoxis sets `config.orbit.module = 'dummy'` in `interior_energetics/wrapper.py`; do not copy it.)
 - A temporary override of `hf_row` values for a module call is restored in a `finally` block; without it the helpfile records the override instead of the planet state.
 - When two modules compute the same quantity (Zalmoxis core mass from the EOS, SPIDER's own `rho_core`), the second must not overwrite the first in `hf_row`.
 - The main loop advances `Time` before the atmosphere step, so a comparison of `hf_row` with `hf_all.iloc[-1]` compares the new step with the previous one.
-- A user value that a solver derives again (the oxygen budget against CALLIOPE's equilibrium) gets a one-time check at the initial condition that fails loudly on a large difference (`check_ic_oxygen_budget`, 50 %).
+- A user value that a solver derives again gets a one-time check at the initial condition that fails loudly on a large difference. The example: `check_ic_oxygen_budget` compares the user oxygen mass with the chemistry result and fails above 50 %; it runs only with `planet.fO2_source = 'user_constant'` and an `O_mode` other than `'ic_chemistry'`.
 
 ### Oxygen and mass accounting
 
-`planet.elements.O_mode` defaults to `'ic_chemistry'` (the initial O budget comes from CALLIOPE's fO2-buffered equilibrium); `'ppmw'`, `'kg'` and `'FeO_mantle_wt_pct'` set it directly. Oxygen is buffered in the chemistry step and tracked in the PROTEUS mass accounting. The sites that sum element masses are listed in `.github/agent-rules/oxygen-accounting.md`, together with the `outgas.vapourise` relaxation: in that mode rock vapour enters `M_atm` without leaving the interior, the `M_atm <= M_planet` half of the check becomes a warning when the excess is larger than `M_vaps`, and the species-sum half and `atol_frac` stay unchanged. That non-conservation is intended.
+`planet.elements.O_mode` defaults to `'ic_chemistry'` (the initial O budget comes from the fO2-buffered chemistry); `'kg'` sets it from `O_budget` in kg, `'ppmw'` as a fraction of the volatile reservoir mass, `'FeO_mantle_wt_pct'` from the mantle FeO content. Oxygen is buffered in the chemistry step and tracked in the PROTEUS mass accounting. With `outgas.vapourise = true`, rock vapour enters `M_atm` without leaving the interior: the `M_atm <= M_planet` half of the check becomes a warning when the excess is larger than `M_vaps`, and the species-sum half and `atol_frac` stay unchanged. That non-conservation is intended. Detail: `.github/agent-rules/oxygen-accounting.md`; the aggregation sites: `.github/agent-rules/code-review.md`.
 
 ## Review
 
 Check each change against these points; `.github/agent-rules/code-review.md` has the detail and the reasons.
 
-- Physics: T > 0 K; P > 0 and increasing with depth; mass fractions sum to 1; escape never exceeds the atmosphere; outgassing >= 0; radiative flux uses `sigma * T**4`.
+- Physics: T > 0 K; P > 0 and increasing with depth; mass fractions sum to 1; the mass escaped in one step (rate times dt) never exceeds the atmosphere; outgassing >= 0; radiative flux uses `sigma * T**4`.
 - Units at the config, `hf_row` and module boundaries.
 - No run-time mutation of `Config`; `hf_row` overrides restored; no echo-back overwrite between modules.
-- The same element set at every aggregation site; `assert_mass_conservation` not weakened; `atol_frac` not widened.
+- Oxygen included at every aggregation site; rock-vapour elements kept out of the mass sites; `assert_mass_conservation` not weakened; `atol_frac` not widened.
 - One-time initial-condition checks for user values that a solver derives again.
 - Physical constants from one definition; PROTEUS, CALLIOPE and ZEPHYRUS each define their own.
-- EOS tables: SPIDER needs complete P-S rectangles with uniform P spacing; Aragog needs full P-T grids, identical for solid and melt, never filtered by phase.
+- EOS tables: SPIDER and the Aragog entropy solver read P-S tables (complete rectangles, uniform P spacing); each Aragog P-T table is a full rectangular grid, because a grid filtered by phase makes scipy fall back to slow unstructured interpolation.
 - `hf_row` against `hf_all.iloc[-1]` in the right order.
 - Every attrs validator has a test with a valid and an invalid input; a validator that compares an instance with a primitive never fires.
 - Tests follow `tests/AGENTS.md`.

@@ -19,27 +19,22 @@ generations.
 
 Dropping fast-math also removes compiler value reordering, the build-to-build
 component of the ULP-level non-determinism that AGNI's Newton solver amplifies
-into 1-2 % F_atm variance; run-to-run scatter from OpenMP threading remains
-while OMPARG is set.
+into 1-2 % F_atm variance.
 
 In portable mode the build fails loudly if a future SOCRATES release changes the
 flag string, so no manual edit is needed.
 
-## Full bit-reproducibility
+## Reproducible builds
 
 For paper plots, CHILI, and SPIDER-parity work, install with
 
 ```bash
 SOCRATES_PORTABLE_FLAGS=1 bash tools/get_socrates.sh
+RAD_DIR="$PWD/socrates" bash tools/get_agni.sh 0
 ```
 
-and also clear `OMPARG = -fopenmp` in `socrates/make/Mk_cmd`, then force a
-recompile:
-
-```bash
-cd socrates/bin && make clean && cd .. && ./build_code
-```
-
-The clean is required: no make rule depends on `Mk_cmd`, so rebuilding without
-it reuses the OpenMP objects unchanged. The install path keeps OpenMP enabled
-and does not clear it automatically.
+`get_socrates.sh` deletes and re-clones the SOCRATES tree, which removes the
+wrappers AGNI builds into `socrates/julia`; the second line rebuilds them
+(`proteus install-all` and `update-all` do this step themselves). `OMPARG` in
+`Mk_cmd` does not matter here: SOCRATES uses it only for the `corr_k` tool, and
+`radlib.a` and `libSOCRATES_C.so`, which AGNI calls, are built without OpenMP.
