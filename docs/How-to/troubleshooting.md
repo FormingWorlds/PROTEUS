@@ -15,6 +15,7 @@ step-by-step guide or the advice below,
 | `Aragog needs the SUNDIALS CVODE solver` / `scikits_odes_sundials.cvode cannot be imported` | [Aragog stops at setup](#aragog-stops-at-setup-cvode-cannot-be-imported) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
 | `Out-of-date modules detected` | [Module updates](#out-of-date-modules-detected) |
+| `Refusing to delete it` during an install | [Module checkout kept](#an-install-refuses-to-replace-a-module-checkout) |
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
 | `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
@@ -120,6 +121,41 @@ git checkout main
 git pull
 python -m pip install -U -e .
 ```
+
+### An install refuses to replace a module checkout {#an-install-refuses-to-replace-a-module-checkout}
+
+An install script stops rather than delete a module checkout that holds work
+you would not get back:
+
+```console
+ERROR: /path/to/aragog has uncommitted changes or commits not on a remote.
+       Refusing to delete it. Commit and push your work, or run
+       bash tools/get_aragog.sh --force  to discard the checkout.
+```
+
+Commit and push the work, and the next run replaces the checkout normally.
+
+`install.sh` and `proteus install-all` never pass `--force`, so they cannot
+step over this for you. To discard the checkout deliberately, run the script
+the message names by hand, from the PROTEUS folder:
+
+```console
+bash tools/get_aragog.sh --force
+```
+
+A second message reports a checkout git cannot read at all, from a truncated
+copy or a clone interrupted after it started writing refs:
+
+```console
+ERROR: git could not report the state of /path/to/aragog, so whether
+       it holds local work is unknown. Refusing to delete it.
+       Inspect the checkout, or run
+       bash tools/get_aragog.sh --force  to discard it.
+```
+
+The same `--force` discards it. A clone killed before it committed anything
+is not affected: there is nothing to lose, so the next install refreshes it
+without asking.
 
 ### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 

@@ -91,8 +91,8 @@ get_parse_args() {
 # Neither probe is piped: `git ... | head -1` reports the pipeline's
 # status, which is git's exit code under `set -o pipefail` and head's
 # otherwise, so the same unreadable checkout stopped some scripts and was
-# deleted by others. git's own -1 bounds the log instead, and a probe that
-# cannot run is reported rather than read as a clean result.
+# deleted by others. git's own -1 bounds the log instead, and a status
+# probe that cannot run is reported rather than read as a clean result.
 guard_dirty_checkout() {
     local workpath="$1"
     local script="$2"
@@ -107,16 +107,22 @@ guard_dirty_checkout() {
 
     local dirty unpushed rc=0
     dirty=$(git -C "$workpath" status --porcelain --untracked-files=no "$@" 2>/dev/null) || rc=$?
-    unpushed=$(git -C "$workpath" log HEAD --not --remotes --oneline -1 2>/dev/null) || rc=$?
     if [ "$rc" -ne 0 ]; then
-        # An unborn HEAD, an incomplete .git, or no git at all. Whether the
-        # checkout holds local work is then unknown, so keep it.
+        # An incomplete .git, or no git at all. Whether the checkout holds
+        # local work is then unknown, so keep it.
         echo "ERROR: git could not report the state of $workpath, so whether" >&2
         echo "       it holds local work is unknown. Refusing to delete it." >&2
         echo "       Inspect the checkout, or run" >&2
         echo "       bash tools/$script --force  to discard it." >&2
         exit 1
     fi
+
+    # A HEAD that does not resolve means no commits yet, so nothing can be
+    # unpushed. A clone killed before its first commit lands here and is
+    # refreshed on the next run; anything staged in it still reads as dirty
+    # above, so work is not lost. install.sh and proteus install-all pass no
+    # --force, and this is the state they would otherwise stall on.
+    unpushed=$(git -C "$workpath" log HEAD --not --remotes --oneline -1 2>/dev/null) || unpushed=''
     if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
         echo "ERROR: $workpath has uncommitted changes or commits not on a remote." >&2
         echo "       Refusing to delete it. Commit and push your work, or run" >&2
