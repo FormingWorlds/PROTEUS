@@ -224,8 +224,8 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
     "smoke: marks tests as smoke tests (quick validation with real binaries, 1 timestep, low res)",
-    "physics_invariant: marks tests that assert a physical invariant (conservation, positivity, boundedness, monotonicity, symmetry). See .github/.claude/rules/proteus-tests.md section 3.",
-    "reference_pinned: marks tests that pin behavior against a published benchmark, analytical limit, or cross-implementation cross-check. Cite the source in the test docstring. Each physics module must contain at least one. See .github/.claude/rules/proteus-tests.md section 3.",
+    "physics_invariant: marks tests that assert a physical invariant (conservation, positivity, boundedness, monotonicity, symmetry). See tests/AGENTS.md, 'Physics modules'.",
+    "reference_pinned: marks tests that pin behavior against a published benchmark, analytical limit, or cross-implementation cross-check. Cite the source in the test docstring. Each physics source file needs at least one. See tests/AGENTS.md, 'Physics modules'.",
 ]
 
 [tool.coverage.report]
@@ -236,7 +236,7 @@ markers = [
 # nightly artifact) is also compared against this gate; that is the 90% KPI
 # operators read. The fixed value is enforced by
 # tools/update_coverage_threshold.py and the PR threshold guard.
-# See .github/.claude/rules/proteus-tests.md section 15 for the contract.
+# See tests/AGENTS.md, "Coverage gates" for the contract.
 fail_under = 90
 show_missing = true
 precision = 2

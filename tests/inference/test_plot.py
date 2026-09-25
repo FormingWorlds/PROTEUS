@@ -2,7 +2,7 @@
 Unit tests for inference plotting utilities.
 
 The module under test (``src/proteus/inference/plot.py``) is a utility module
-(see ``.github/.claude/rules/proteus-tests.md`` Section 3): it is exempt from
+(see ``tests/AGENTS.md``, "Physics modules"): it is exempt from
 the physics-invariant requirement but every test must still exercise an edge
 or error path and pin assertions that discriminate against a plausible
 regression. Tests here cover the five public functions:

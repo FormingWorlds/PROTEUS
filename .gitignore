@@ -328,10 +328,7 @@ src/proteus/_version.py
 .julia
 .juliaup
 
-# Note: the repo-root CLAUDE.md is a tracked symlink to .github/copilot-instructions.md;
-# the .github/.claude/rules/ directory is tracked and shared across collaborators.
-# Personal session state (anything under the top-level .claude/ that is not the tracked
-# rules tree) stays out of git.
+# Personal agent session state under a top-level .claude/ stays out of git.
 /.claude/
 .mcp.json
 

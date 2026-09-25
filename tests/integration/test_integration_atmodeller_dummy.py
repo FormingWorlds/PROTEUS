@@ -20,7 +20,7 @@ chemistry:
   volatile budget; exercises the upper-oxidation branch and a higher P_surf
   regime than the nominal Earth anchor.
 
-Per ``proteus-tests.md`` §1, the file also includes a sibling
+Per ``tests/AGENTS.md``, the file also includes a sibling
 error-contract test that exercises the atmodeller solver_mode validator.
 
 Invariants asserted per scenario:
@@ -180,7 +180,7 @@ def test_atmodeller_dummy_two_timesteps(proteus_multi_timestep_run, scenario):
 
 
 # ---------------------------------------------------------------------------
-# Error-contract path per proteus-tests.md §1 clause 2.
+# Error-contract path per tests/AGENTS.md.
 # ---------------------------------------------------------------------------
 
 

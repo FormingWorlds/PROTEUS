@@ -53,7 +53,7 @@ from tests.integration.conftest import (  # noqa: E402
 # integration step (``pytest -m "integration and not slow"``). The 2400 s
 # timeout sits above the macOS GHA wall time (~440 s) and the projected
 # Linux GHA wall time (~1800-2200 s) with a margin; well under the
-# slow-tier 3600 s budget cap from proteus-tests.md section 7.
+# slow-tier 3600 s budget cap from tests/AGENTS.md.
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
