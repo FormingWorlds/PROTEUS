@@ -44,6 +44,39 @@ authors:
   family-names: "Spreeuw"
   orcid: "https://orcid.org/0000-0002-5057-0322"
 
+- given-names: "Mara"
+  family-names: "Attia"
+  orcid: "https://orcid.org/0000-0002-7971-7439"
+
+- given-names: "Karen"
+  family-names: "Stuitje"
+  orcid: "https://orcid.org/0009-0000-6847-4331"
+
+- given-names: "Patrick"
+  family-names: "Bos"
+  orcid: "https://orcid.org/0000-0002-6033-960X"
+
+- given-names: "Marijn R."
+  family-names: "van Dijk"
+
+- given-names: "Lorenzo"
+  family-names: "Cesario"
+
+- given-names: "Ioannis"
+  family-names: "Panagiotou"
+
+- given-names: "Imre"
+  family-names: "Kisvárdai"
+  orcid: "https://orcid.org/0009-0009-7323-6755"
+
+- given-names: "Emeline"
+  family-names: "Decocq"
+  orcid: "https://orcid.org/0009-0008-3326-9715"
+
+- given-names: "Martin"
+  family-names: "Schlecker"
+  orcid: "https://orcid.org/0000-0001-8355-2107"
+
 - given-names: "Mark"
   family-names: "Hammond"
   orcid: "https://orcid.org/0000-0002-6893-522X"
@@ -63,3 +96,7 @@ authors:
 - given-names: "Raymond T."
   family-names: "Pierrehumbert"
   orcid: "https://orcid.org/0000-0002-5887-1197"
+
+- given-names: "Sara"
+  family-names: "Seager"
+  orcid: "https://orcid.org/0000-0002-6892-6948"
