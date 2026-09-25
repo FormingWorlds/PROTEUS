@@ -58,9 +58,11 @@ See also:
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -953,15 +955,6 @@ def test_spider_lib_check_fails_on_empty_dir(tmp_path):
 # ============================================================================
 
 
-import re  # noqa: E402
-import tomllib  # noqa: E402
-from pathlib import Path  # noqa: E402
-
-import pytest  # noqa: E402
-
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
-
 @pytest.mark.unit
 def test_installation_md_does_not_clone_aragog_or_zalmoxis():
     """Regression for PR #673 follow-up: installation.md must not tell
@@ -1285,17 +1278,35 @@ def test_guard_passes_clean_remote_backed_checkout(tmp_path, strict):
 
 
 @pytest.mark.parametrize('strict', [False, True], ids=['plain shell', 'errexit shell'])
-def test_guard_keeps_a_checkout_git_cannot_report_on(tmp_path, strict):
-    """A checkout whose state git cannot report is kept, in either shell.
+def test_guard_refreshes_a_checkout_killed_before_its_first_commit(tmp_path, strict):
+    """A clone killed before any commit is refreshed rather than kept.
 
-    An unborn HEAD, from a ``git init`` with nothing committed or an
-    interrupted clone, makes ``git log HEAD`` exit 128. Reading that
-    through a pipe made the outcome depend on the shell: under
-    ``set -o pipefail`` the script stopped with no message at all, and
-    without it the guard read an empty result and the checkout was
-    deleted, staged work included. Whether such a checkout holds local
-    work is unknown, so it is kept and the reason named, identically in
-    both shells.
+    ``git log HEAD`` exits 128 while HEAD is unborn, which is the state a
+    ctrl-C during the first clone leaves behind. HEAD not resolving means
+    there are no commits, so nothing can be unpushed and there is nothing
+    to protect. install.sh and ``proteus install-all`` pass no ``--force``,
+    so a guard that stopped here would leave the install wedged with no way
+    through it short of running the script by hand.
+    """
+    workdir = tmp_path / 'aragog'
+    workdir.mkdir()
+    _git(workdir, 'init', '-q')
+
+    res = _run_guard(tmp_path, strict=strict)
+
+    assert res.returncode == 0, res.stderr
+    assert 'GUARD_PASSED' in res.stdout
+    assert 'Refusing to delete' not in res.stderr
+
+
+@pytest.mark.parametrize('strict', [False, True], ids=['plain shell', 'errexit shell'])
+def test_guard_keeps_staged_work_on_an_unborn_head(tmp_path, strict):
+    """Staged work blocks the refresh even with no commit to hang it on.
+
+    This is the same unborn HEAD as the case above, so the two together fix
+    which half of the guard decides: the status probe, not the log probe. A
+    regression that read an unresolvable HEAD as "nothing here" would delete
+    these files.
     """
     workdir = tmp_path / 'aragog'
     workdir.mkdir()
@@ -1306,8 +1317,35 @@ def test_guard_keeps_a_checkout_git_cannot_report_on(tmp_path, strict):
 
     res = _run_guard(tmp_path, strict=strict)
     assert res.returncode == 1, res.stdout
-    assert 'could not report the state' in res.stderr
+    assert 'uncommitted changes' in res.stderr
     assert '--force' in res.stderr  # the recovery command is named
+    assert 'GUARD_PASSED' not in res.stdout
+
+    # --force still discards deliberately, in either shell.
+    forced = _run_guard(tmp_path, '--force', strict=strict)
+    assert forced.returncode == 0, forced.stderr
+    assert 'GUARD_PASSED' in forced.stdout
+
+
+@pytest.mark.parametrize('strict', [False, True], ids=['plain shell', 'errexit shell'])
+def test_guard_keeps_a_checkout_git_cannot_report_on(tmp_path, strict):
+    """A checkout git cannot inspect at all is kept, in either shell.
+
+    An incomplete ``.git`` (a clone killed once it had started writing
+    refs, or a truncated copy) makes even ``git status`` exit 128. Reading
+    that through a pipe made the outcome depend on the shell: under
+    ``set -o pipefail`` the script stopped with no message at all, and
+    without it the guard read an empty result and deleted the checkout.
+    Whether it holds local work is unknown, so it is kept and the reason
+    named, identically in both shells.
+    """
+    workdir = tmp_path / 'aragog'
+    (workdir / '.git').mkdir(parents=True)  # present but not a repository
+
+    res = _run_guard(tmp_path, strict=strict)
+    assert res.returncode == 1, res.stdout
+    assert 'could not report the state' in res.stderr
+    assert '--force' in res.stderr
     assert 'GUARD_PASSED' not in res.stdout
 
     # --force still discards deliberately, in either shell.
