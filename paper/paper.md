@@ -82,7 +82,7 @@ authors:
     affiliation: 2
   - name: Sara Seager
     orcid: 0000-0002-6892-6948
-    affiliation: 11, 12, 13
+    affiliation: 11
 affiliations:
  - name: Kapteyn Astronomical Institute, University of Groningen, Groningen, The Netherlands
    index: 1
@@ -104,12 +104,8 @@ affiliations:
    index: 9
  - name: Affiliation to be confirmed
    index: 10
- - name: Department of Earth, Atmospheric and Planetary Sciences, Massachusetts Institute of Technology, Cambridge, MA, USA
+ - name: University of Toronto, Toronto, Canada
    index: 11
- - name: Department of Physics, Massachusetts Institute of Technology, Cambridge, MA, USA
-   index: 12
- - name: Department of Aeronautics and Astronautics, Massachusetts Institute of Technology, Cambridge, MA, USA
-   index: 13
 
 date: 25 September 2026
 bibliography: paper.bib
