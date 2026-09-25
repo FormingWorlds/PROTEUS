@@ -8,7 +8,8 @@ The same file is used in every ecosystem repository; the canonical copy is
   ``<!-- fwl-<name>:end -->``) still matches the hash written by
   ``sync_core.py``, which catches a local edit of the shared text (whether the
   text matches PROTEUS is checked there, by ``sync_core.py --check``);
-* a root ``AGENTS.md`` exists, and the byte caps: 16,000 B for the root file,
+* a root ``AGENTS.md`` exists with an ``fwl-core`` block, a ``tests/AGENTS.md`` has an
+  ``fwl-tests-core`` block, and the byte caps: 16,000 B for the root file,
   12,000 B for a nested one;
 * next to every ``AGENTS.md`` a ``CLAUDE.md`` is a regular file that imports
   ``AGENTS.md`` and nothing else; with a root ``CLAUDE.md`` present, Claude Code
@@ -31,6 +32,7 @@ ROOT_MAX_BYTES = 16_000
 NESTED_MAX_BYTES = 12_000
 COPILOT_MAX_LINES = 60
 CLAUDE_MD_TEXT = '@AGENTS.md'
+REQUIRED_BLOCKS = {Path('AGENTS.md'): 'core', Path('tests/AGENTS.md'): 'tests-core'}
 
 BLOCK_RE = re.compile(
     r'^<!-- fwl-(?P<name>[a-z-]+):begin sha256=(?P<hash>[0-9a-f]+) -->\n'
@@ -107,6 +109,9 @@ def check(root: Path) -> list[str]:
             errors.append(f'{rel}: {len(data)} B exceeds the {cap} B cap')
         text = data.decode()
         blocks = find_blocks(text)
+        required = REQUIRED_BLOCKS.get(rel)
+        if required and required not in {m['name'] for m in blocks}:
+            errors.append(f'{rel}: missing the shared fwl-{required} block')
         for m in blocks:
             if block_hash(m['body']) != m['hash']:
                 errors.append(

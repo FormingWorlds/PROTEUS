@@ -43,6 +43,10 @@ def _block(name: str, body: str, digest: str | None = None) -> str:
     return f'<!-- fwl-{name}:begin sha256={digest} -->\n{body}\n<!-- fwl-{name}:end -->\n'
 
 
+ROOT = _block('core', 'shared rule')
+NESTED = _block('tests-core', 'tier rule')
+
+
 def _repo(tmp_path: Path, agents: str, nested: str | None = None) -> Path:
     """Create a minimal non-git repository with the given AGENTS.md text."""
     (tmp_path / 'AGENTS.md').write_text(agents)
@@ -76,7 +80,7 @@ def test_local_edit_of_a_shared_block_fails(tmp_path):
 
 def test_malformed_marker_is_reported(tmp_path):
     """A begin marker without its end marker is not silently skipped."""
-    errors = chk.check(_repo(tmp_path, '<!-- fwl-core:begin sha256=0123 -->\ntext\n'))
+    errors = chk.check(_repo(tmp_path, ROOT + '<!-- fwl-voice:begin sha256=0123 -->\ntext\n'))
     assert len(errors) == 1
     assert 'malformed' in errors[0]
 
@@ -87,8 +91,9 @@ def test_malformed_marker_is_reported(tmp_path):
 )
 def test_byte_caps_at_the_boundary(tmp_path, where, size, n_errors):
     """The cap is inclusive: 16,000 B root and 12,000 B nested pass, one byte more fails."""
-    text = 'x' * size
-    repo = _repo(tmp_path, text) if where == 'root' else _repo(tmp_path, 'root', text)
+    block = ROOT if where == 'root' else NESTED
+    text = block + 'x' * (size - len(block))
+    repo = _repo(tmp_path, text) if where == 'root' else _repo(tmp_path, ROOT, text)
     errors = chk.check(repo)
     assert len(errors) == n_errors
     assert all(str(size) in e for e in errors)
@@ -96,7 +101,7 @@ def test_byte_caps_at_the_boundary(tmp_path, where, size, n_errors):
 
 def test_claude_md_symlink_or_extra_text_fails(tmp_path):
     """CLAUDE.md must be a regular file with the import only; a symlink or extra text fails."""
-    repo = _repo(tmp_path, 'root')
+    repo = _repo(tmp_path, ROOT)
     (repo / 'CLAUDE.md').write_text('@AGENTS.md\nextra rule\n')
     assert len(chk.check(repo)) == 1
     (repo / 'CLAUDE.md').unlink()
@@ -111,7 +116,7 @@ def test_claude_md_symlink_or_extra_text_fails(tmp_path):
 
 def test_nested_agents_md_needs_its_own_claude_md(tmp_path):
     """A nested AGENTS.md without a sibling CLAUDE.md import is reported by path."""
-    repo = _repo(tmp_path, 'root', 'nested rules')
+    repo = _repo(tmp_path, ROOT, NESTED)
     assert chk.check(repo) == []
     (repo / 'tests' / 'CLAUDE.md').unlink()
     assert chk.check(repo) == [
@@ -138,7 +143,7 @@ def test_marker_named_inside_a_line_is_not_counted(tmp_path):
 
 def test_git_checkout_sees_untracked_and_skips_deleted_files(tmp_path):
     """In a git checkout an untracked AGENTS.md is checked and a deleted tracked one is skipped."""
-    repo = _repo(tmp_path, 'root', 'nested rules')
+    repo = _repo(tmp_path, ROOT, NESTED)
     git = ['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@t']
     subprocess.run([*git, 'init', '-q'], check=True)
     subprocess.run([*git, 'add', '-A'], check=True)
@@ -152,9 +157,28 @@ def test_git_checkout_sees_untracked_and_skips_deleted_files(tmp_path):
     assert len(errors) == 2
 
 
+def test_missing_shared_block_fails_in_root_and_tests(tmp_path):
+    """A root AGENTS.md without fwl-core, or a tests/AGENTS.md without fwl-tests-core, fails."""
+    repo = _repo(tmp_path, '# Repo\n' + _block('voice', 'v'), 'tests only\n')
+    assert chk.check(repo) == [
+        'AGENTS.md: missing the shared fwl-core block',
+        'tests/AGENTS.md: missing the shared fwl-tests-core block',
+    ]
+    (repo / 'src').mkdir()
+    (repo / 'src' / 'AGENTS.md').write_text('no block needed here\n')
+    (repo / 'src' / 'CLAUDE.md').write_text('@AGENTS.md\n')
+    assert len(chk.check(repo)) == 2
+
+
+def test_block_hash_is_the_full_16_digit_prefix():
+    """The marker hash is pinned: a shorter prefix or another digest would not match it."""
+    assert chk.block_hash('shared rule') == 'f27e484383878999'
+    assert len(chk.block_hash('')) == 16
+
+
 def test_copilot_instructions_line_cap(tmp_path):
     """The Copilot file passes at 60 lines and fails at 61."""
-    repo = _repo(tmp_path, 'root')
+    repo = _repo(tmp_path, ROOT)
     (repo / '.github').mkdir()
     (repo / '.github' / 'copilot-instructions.md').write_text('line\n' * 60)
     assert chk.check(repo) == []
@@ -200,6 +224,17 @@ def test_check_mode_reports_lag_without_writing(tmp_path, canon, capsys):
     assert 'core differs' in capsys.readouterr().out
     sync.main([str(repo), '--voice', 'list'])
     assert sync.main(['--check', str(repo)]) == 0
+
+
+def test_sync_restores_a_body_edited_under_the_current_hash(tmp_path, canon):
+    """A block whose marker carries the canonical hash but whose body was edited is rewritten."""
+    (tmp_path / 'r').mkdir()
+    canonical_hash = chk.block_hash('new shared rule')
+    edited = _block('core', 'edited rule', digest=canonical_hash)
+    repo = _repo(tmp_path / 'r', edited)
+    assert sync.sync_file(repo / 'AGENTS.md', 'neutral', write=True) == ['core']
+    assert 'new shared rule' in (repo / 'AGENTS.md').read_text()
+    assert chk.check(repo) == []
 
 
 def test_voice_variant_selects_the_canonical_file(tmp_path, canon):
