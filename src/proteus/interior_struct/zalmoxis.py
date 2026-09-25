@@ -1273,27 +1273,9 @@ def load_zalmoxis_configuration(
         config.interior_struct.zalmoxis.ice_layer_eos or 'none',
     )
 
-    # Calculate the volatile mass excluded from the structure target.
-    # Whole-planet oxygen accounting (issue #677): atmospheric+dissolved O
-    # is summed alongside H/C/N/S so the dry-mass target passed to
-    # Zalmoxis correctly reserves space for the O that CALLIOPE places in
-    # atmospheric H2O, CO2, SO2, etc. Mantle FeO-bound O remains in M_int
-    # implicitly via the PALEOS density tables; we do not double-count it.
-    # With dry_mantle the full inventory is excluded (the mantle EOS
-    # represents bare silicate). When the mantle EOS carries dissolved
-    # volatiles (dry_mantle = false), only the atmospheric inventory may
-    # be excluded: the dissolved mass is already part of the wet-mantle
-    # EOS, and subtracting it again would remove it twice. Note this
-    # keeps ALL dissolved species inside the target, while the EOS blend
-    # only represents those in VOLATILE_EOS_MAP (H2O in practice); the
-    # dissolved mass of unmapped species (CO2, CH4, N2, S2) lands in the
-    # silicate remainder fraction and is packed at silicate density.
-    # Mass stays exact, compressibility is misrepresented; the radius
-    # error scales as (dissolved mass fraction) x (density contrast) and
-    # is negligible at typical inventories. Escaped mass is already
-    # debited from the *_kg_* inventories and needs no separate term.
-    # Defensive .get(): some pre-IC paths invoke Zalmoxis before
-    # calc_target_elemental_inventories has populated all element columns.
+    # Volatile mass (O included) excluded from the structure target: the full inventory
+    # with dry_mantle, else only the atmosphere, since the wet-mantle EOS holds the dissolved
+    # mass. Element columns absent before the first inventory count as zero (.get below).
     dry_mantle = config.interior_struct.zalmoxis.dry_mantle
     M_volatiles = 0.0
     for e in element_list:
