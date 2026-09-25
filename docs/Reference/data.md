@@ -22,10 +22,8 @@ unreachable Zenodo means the fetch fails rather than falling back elsewhere.
 Data several models read (spectral files, stellar spectra, equations of state,
 melting curves, lookup tables) is declared in the shared manifest that fwl-io
 ships; data only PROTEUS reads is declared in `src/proteus/data/proteus_manifest.toml`.
-`fwl-io relocate` moves a folder left by an older PROTEUS into this layout
-when the folder holds every file its dataset lists. A folder that holds only
-part of a dataset, the Chabrier archive, the surface albedos and the Seager
-tables stay where they are and are downloaded again.
+A data folder in the older layout is brought into this one as described in
+[Upgrading an older data folder](#upgrading-an-older-data-folder).
 
 **The PROTEUS downloader.** `proteus.utils.data` fetches a whole Zenodo record,
 retrying a few times, and falls back to the corresponding project on the
@@ -48,6 +46,15 @@ used with lower rate limits.
 
 To configure a Zenodo API token, see the
 [Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
+
+### Upgrading an older data folder
+
+A `$FWL_DATA` folder written by an older PROTEUS keeps its files at paths that are no longer read. Two steps bring it into the current layout:
+
+1. Run `fwl-io relocate`. It moves every dataset whose files all match their pinned checksums into its version directory. `fwl-io relocate --dry-run` lists what would move, what is incomplete and what does not match, without moving anything.
+2. Start the run once without `--offline`, or run `proteus get interiordata --config-path <config.toml>` for the interior tables alone. This downloads what the first step left: incomplete and mismatched datasets, and those it cannot move (the Chabrier archive, the surface albedos, the Seager tables and the Spada tracks).
+
+A run with `--offline` that finds an interior EOS table, a melting curve, a P-S lookup table or a spectral file missing stops with an error that names its download command and ends with: "Data kept in the older FWL_DATA layout can be moved into place with `fwl-io relocate`."
 
 ---
 
