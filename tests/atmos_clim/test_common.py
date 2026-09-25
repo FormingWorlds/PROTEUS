@@ -651,17 +651,20 @@ def test_get_spfile_path_reads_an_undeclared_group_from_the_local_tree(tmp_path,
 @pytest.mark.unit
 @pytest.mark.parametrize('group, bands', [('MyGroup', '48'), ('Dayspring', '48')])
 def test_require_spfile_path_stops_with_status_20_and_the_fetch_command(tmp_path, group, bands):
-    """A missing spectral file, declared or not, writes status 20 and names
-    `proteus get spectral` and `fwl-io relocate`; a present one is returned."""
+    """A missing spectral file writes status 20 and names `fwl-io relocate` and, for a
+    declared group, `proteus get spectral`; a present one is returned."""
     from proteus.atmos_clim.common import require_spfile_path
 
     conf = MagicMock()
     conf.atmos_clim.spectral_group = group
     conf.atmos_clim.spectral_bands = bands
     dirs = {'fwl': str(tmp_path), 'output': str(tmp_path / 'out')}
+    fix = (
+        '`proteus get spectral`' if group == 'Dayspring' else 'No manifest declares this group'
+    )
     with (
         patch('proteus.atmos_clim.common.UpdateStatusfile') as status,
-        pytest.raises(FileNotFoundError, match='`proteus get spectral`') as exc,
+        pytest.raises(FileNotFoundError, match=fix) as exc,
     ):
         require_spfile_path(dirs, conf)
     status.assert_called_once_with(dirs, 20)

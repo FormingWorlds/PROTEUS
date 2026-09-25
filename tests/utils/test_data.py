@@ -3041,6 +3041,7 @@ def test_get_sufficient_zalmoxis_wolf_bower(
         core_eos='Seager2007:iron',
         ice_layer_eos='',
         volatile_eos='',
+        anchor_pair=False,
     )
     # SPIDER dynamic EOS still downloaded separately
     mock_dyn.assert_called_once()
@@ -3164,6 +3165,7 @@ def test_get_sufficient_zalmoxis_seager_only(
         core_eos='Seager2007:iron',
         ice_layer_eos='',
         volatile_eos='',
+        anchor_pair=False,
     )
     mock_dyn.assert_not_called()
 
@@ -3210,6 +3212,7 @@ def test_get_sufficient_zalmoxis_paleos(
         core_eos='PALEOS:iron',
         ice_layer_eos='PALEOS:H2O',
         volatile_eos='',
+        anchor_pair=False,
     )
     mock_dyn.assert_not_called()
 
@@ -3516,11 +3519,19 @@ def test_download_zalmoxis_eos_strips_spaces_in_a_mixture(mock_static, mock_fetc
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('dry, volatiles', [(True, ''), (False, 'PALEOS:H2O+Chabrier:H')])
+@pytest.mark.parametrize(
+    'dry, volatiles, mode, pair',
+    [
+        (True, '', 'adiabatic', False),
+        (False, 'PALEOS:H2O+Chabrier:H', 'adiabatic', False),
+        (True, '', 'liquidus_super', True),
+    ],
+)
 def test_download_zalmoxis_eos_for_config_adds_the_volatiles_of_a_wet_mantle(
-    monkeypatch, dry, volatiles
+    monkeypatch, dry, volatiles, mode, pair
 ):
-    """With dry_mantle = false the fetch includes the dissolved-volatile EOS."""
+    """With dry_mantle = false the fetch includes the dissolved-volatile EOS, and with
+    liquidus_super the 2-phase pair the anchor reads."""
     from types import SimpleNamespace
 
     from proteus.utils import data as dmod
@@ -3531,7 +3542,10 @@ def test_download_zalmoxis_eos_for_config_adds_the_volatiles_of_a_wet_mantle(
         mantle_eos='PALEOS:MgSiO3', core_eos='PALEOS:iron', ice_layer_eos=None, dry_mantle=dry
     )
     dmod.download_zalmoxis_eos_for_config(
-        SimpleNamespace(interior_struct=SimpleNamespace(module='zalmoxis', zalmoxis=zconf))
+        SimpleNamespace(
+            interior_struct=SimpleNamespace(module='zalmoxis', zalmoxis=zconf),
+            planet=SimpleNamespace(temperature_mode=mode),
+        )
     )
     assert calls == [
         dict(
@@ -3539,8 +3553,29 @@ def test_download_zalmoxis_eos_for_config_adds_the_volatiles_of_a_wet_mantle(
             core_eos='PALEOS:iron',
             ice_layer_eos='',
             volatile_eos=volatiles,
+            anchor_pair=pair,
         )
     ]
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_fetches_the_anchor_pair_for_a_wolf_bower_mantle(
+    mock_static, mock_fetch, mock_file, caplog
+):
+    """A Wolf and Bower mantle fetches the MgSiO3 2-phase pair only for the liquidus_super
+    anchor, and its component raises no unknown-family warning."""
+    from proteus.data import EOS_PALEOS_MGSIO3
+    from proteus.utils.data import download_zalmoxis_eos
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.utils.data'):
+        download_zalmoxis_eos('WolfBower2018:MgSiO3', core_eos='PALEOS:iron')
+    assert EOS_PALEOS_MGSIO3 not in {d for d, _ in _fetched_files(mock_file)}
+    assert 'no handler for component' not in caplog.text
+    download_zalmoxis_eos('WolfBower2018:MgSiO3', core_eos='PALEOS:iron', anchor_pair=True)
+    assert EOS_PALEOS_MGSIO3 in {d for d, _ in _fetched_files(mock_file)}
 
 
 @pytest.mark.unit

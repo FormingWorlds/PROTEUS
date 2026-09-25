@@ -43,9 +43,15 @@ def valid_zalmoxis(instance, attribute, value):
             f"`interior_struct.zalmoxis.ice_layer_eos` must be 'none' or '<source>:<material>' format, "
             f"got '{ice_layer_eos}'"
         )
-    # A component is '<source>:<material>' plus finite fraction tokens, with no inner space;
-    # a token that still parses as a number after stripping is nan or inf.
+    # A component is '<source>:<material>' plus non-negative finite fractions, with no inner
+    # space; a last token that still parses as a number after stripping is nan or inf.
     from proteus.utils.helper import _strip_fraction_tokens
+
+    def _number(token):
+        try:
+            return float(token)
+        except ValueError:
+            return None
 
     for name, eos_val in [
         ('core_eos', core_eos),
@@ -54,15 +60,18 @@ def valid_zalmoxis(instance, attribute, value):
     ]:
         for comp in filter(None, (c.strip() for c in eos_val.split('+'))):
             key = _strip_fraction_tokens(comp)
-            try:
-                float(key.rsplit(':', 1)[-1])
-                bad = True
-            except ValueError:
-                bad = any(ch.isspace() for ch in key)
-            if bad:
+            source, _, material = key.partition(':')
+            fractions = [_number(t) for t in comp[len(key) :].split(':')[1:]]
+            if (
+                not source
+                or not material
+                or any(ch.isspace() for ch in key)
+                or _number(key.rsplit(':', 1)[-1]) is not None
+                or any(f < 0 for f in fractions)
+            ):
                 raise ValueError(
                     f"`interior_struct.zalmoxis.{name}` component '{comp}' is not "
-                    "'<source>:<material>' with finite fractions and no spaces"
+                    "'<source>:<material>' with non-negative finite fractions and no spaces"
                 )
 
     # WolfBower2018 EOS is limited to 1 TPa. For planets > 2 M_earth,

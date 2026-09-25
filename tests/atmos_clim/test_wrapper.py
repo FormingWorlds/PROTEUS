@@ -452,6 +452,43 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
     assert atmos_o._atm_janus_last is solved
 
 
+@pytest.mark.unit
+def test_run_atmosphere_janus_stops_with_status_20_on_a_missing_spectral_file(tmp_path):
+    """The JANUS branch stops on a missing spectral file with status 20 written to the
+    run's status file and an error naming `proteus get spectral` and `fwl-io relocate`."""
+    from proteus.atmos_clim.common import Atmos_t
+
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='janus',
+            surf_state='fixed',
+            albedo_pl=0.0,
+            spectral_group='Dayspring',
+            spectral_bands='48',
+        ),
+        params=SimpleNamespace(resume=False),
+        interior_energetics=SimpleNamespace(module='aragog'),
+    )
+    dirs = {'output': str(tmp_path / 'out'), 'fwl': str(tmp_path / 'fwl')}
+    with (
+        patch('proteus.atmos_clim.janus.RunJANUS') as run_janus,
+        pytest.raises(FileNotFoundError, match='`proteus get spectral`.*`fwl-io relocate`'),
+    ):
+        atmos_wrapper.run_atmosphere(
+            Atmos_t(),
+            config,
+            dirs,
+            {'total': 0},
+            [1.0],
+            [1.0],
+            False,
+            None,
+            {'T_magma': 1800.0},
+        )
+    run_janus.assert_not_called()
+    assert (tmp_path / 'out' / 'status').read_text().splitlines()[0] == '20'
+
+
 # ---------------------------------------------------------------------------
 # carry_converged_levels: levels of a rejected structure are not used
 # ---------------------------------------------------------------------------

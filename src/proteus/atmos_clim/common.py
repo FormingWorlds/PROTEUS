@@ -371,14 +371,19 @@ def require_spfile_path(dirs: dict, config: Config) -> str:
     FileNotFoundError
         After writing the error status, naming the download command.
     """
-    from proteus.utils.data import RELOCATE_HINT
+    from proteus.utils.data import RELOCATE_HINT, SPECTRAL_FILE_FOLDERS
 
     path = get_spfile_path(dirs['fwl'], config)
     if not os.path.isfile(path):
         UpdateStatusfile(dirs, 20)
+        group, bands = get_spfile_name_and_bands(config)
+        fix = (
+            'Fetch it with `proteus get spectral`.'
+            if f'{group}/{bands}' in SPECTRAL_FILE_FOLDERS
+            else 'No manifest declares this group, so place the file there.'
+        )
         raise FileNotFoundError(
-            f"Spectral file does not exist at '{path}'. Fetch it with "
-            f'`proteus get spectral`. {RELOCATE_HINT}'
+            f"Spectral file does not exist at '{path}'. {fix} {RELOCATE_HINT}"
         )
     return path
 

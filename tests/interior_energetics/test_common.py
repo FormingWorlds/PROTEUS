@@ -1119,10 +1119,17 @@ def test_compute_initial_entropy_paleos_failure_logs_warning_and_falls_back(
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('mode', ['adiabatic', 'adiabatic_from_cmb'])
-def test_compute_initial_entropy_stops_on_a_missing_pair_with_a_paleos_set(mode):
-    """With a generated PALEOS set a missing MgSiO3 pair stops the initial entropy, from
-    the surface and from the CMB anchor, instead of falling back to the default entropy."""
+@pytest.mark.parametrize(
+    'mode, mantle',
+    [
+        ('adiabatic', 'PALEOS:MgSiO3'),
+        ('adiabatic_from_cmb', 'PALEOS:MgSiO3'),
+        ('adiabatic_from_cmb', 'WolfBower2018:MgSiO3'),
+    ],
+)
+def test_compute_initial_entropy_stops_on_a_missing_pair_with_a_paleos_set(mode, mantle):
+    """A missing MgSiO3 pair stops the initial entropy, from the surface with a generated
+    PALEOS set and from the CMB anchor for any mantle, instead of a fallback entropy."""
     pytest.importorskip('zalmoxis')
     from types import SimpleNamespace
     from unittest.mock import patch as _patch
@@ -1135,7 +1142,7 @@ def test_compute_initial_entropy_stops_on_a_missing_pair_with_a_paleos_set(mode)
             temperature_mode=mode, tsurf_init=2400.0, tcmb_init=4000.0, mass_tot=1.0
         ),
         interior_struct=SimpleNamespace(
-            module='zalmoxis', zalmoxis=SimpleNamespace(mantle_eos='PALEOS:MgSiO3')
+            module='zalmoxis', zalmoxis=SimpleNamespace(mantle_eos=mantle)
         ),
     )
     with (

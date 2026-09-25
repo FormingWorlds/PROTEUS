@@ -66,7 +66,8 @@ def init_star(handler: Proteus):
             # may be None there; for the file-based sources an empty name falls
             # through to the not-found handling below.
             starname_input = (mors_cfg.star_name or '').strip()
-            star_file = starname_input.lower().replace(' ', '-').replace('gj-', 'gj') + '.txt'
+            star_id = starname_input.lower().replace(' ', '-').replace('gj-', 'gj')
+            star_file = star_id + '.txt'
 
             # Solar special cases
             solar_key = starname_input.lower().replace(' ', '')
@@ -118,7 +119,7 @@ def init_star(handler: Proteus):
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
                         f"No solar or MUSCLES spectrum found in reference data for '{mors_cfg.star_name}'. "
-                        f'Fetch them with `proteus get solar` and `proteus get muscles`. {RELOCATE_HINT}'
+                        f'Fetch them with `proteus get solar` and `proteus get muscles --star {star_id}`. {RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'solar'
@@ -144,7 +145,7 @@ def init_star(handler: Proteus):
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
                         f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'. Fetch them with "
-                        f'`proteus get solar` and `proteus get muscles`. {RELOCATE_HINT}'
+                        f'`proteus get solar` and `proteus get muscles --star {star_id}`. {RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'muscles'
@@ -179,7 +180,7 @@ def init_star(handler: Proteus):
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
                         f"No MUSCLES spectrum for '{mors_cfg.star_name}'. Fetch it with "
-                        f'`proteus get muscles --star {mors_cfg.star_name}`. {RELOCATE_HINT}'
+                        f'`proteus get muscles --star {star_id}`. {RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'phoenix'

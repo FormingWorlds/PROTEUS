@@ -886,8 +886,7 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
 
     mat_dicts = load_zalmoxis_material_dictionaries()
     solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts, required=True)
-    eos_file = energetics_entry(mantle_eos, mat_dicts)[1].get('eos_file', '')
-    eos_file = eos_file or solid_eos or ''
+    eos_file = energetics_entry(mantle_eos, mat_dicts)[1].get('eos_file') or solid_eos or ''
     melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
     if melt_funcs is not None:
         sol_func, liq_func = melt_funcs

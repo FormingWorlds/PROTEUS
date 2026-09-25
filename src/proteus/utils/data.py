@@ -24,6 +24,7 @@ from proteus.utils.helper import (
     paleos_companion_keys,
     resolve_fwl_data_dir,
     safe_rm,
+    twophase_registry_key,
 )
 from proteus.utils.phoenix_helper import phoenix_param
 
@@ -1787,6 +1788,8 @@ def download_zalmoxis_eos_for_config(config) -> None:
         volatile_eos=''
         if getattr(zconf, 'dry_mantle', True)
         else '+'.join(VOLATILE_EOS_MAP.values()),
+        anchor_pair=getattr(getattr(config, 'planet', None), 'temperature_mode', None)
+        == 'liquidus_super',
     )
 
 
@@ -2026,7 +2029,11 @@ _PALEOS_2PHASE_HIGHRES_FILES = (
 
 
 def download_zalmoxis_eos(
-    mantle_eos: str, core_eos: str = '', ice_layer_eos: str = '', volatile_eos: str = ''
+    mantle_eos: str,
+    core_eos: str = '',
+    ice_layer_eos: str = '',
+    volatile_eos: str = '',
+    anchor_pair: bool = False,
 ):
     """Download Zalmoxis EOS data required for the given EOS configuration.
 
@@ -2045,6 +2052,9 @@ def download_zalmoxis_eos(
         Ice layer EOS identifier (e.g. ``'Seager2007:H2O'``, ``'PALEOS:H2O'``, or empty).
     volatile_eos : str
         ``+``-joined EOS components of dissolved volatiles, or empty.
+    anchor_pair : bool
+        Also fetch the MgSiO3 2-phase pair for any mantle, which the
+        liquidus_super initial adiabat reads.
     """
     from proteus.data import (
         EOS_CHABRIER_2021,
@@ -2088,8 +2098,10 @@ def download_zalmoxis_eos(
     ):
         attempt('the Seager 2007 tables', download_eos_static)
 
-    # A PALEOS mantle also reads the MgSiO3 2-phase pair.
+    # A PALEOS mantle, and any mantle with the liquidus_super anchor, reads the 2-phase pair.
     components.update(paleos_companion_keys(mantle_eos))
+    if anchor_pair:
+        components.add(twophase_registry_key(mantle_eos))
 
     # WolfBower2018 T-dependent MgSiO3. The RTPress mantle pairs its melt tables
     # with the Wolf & Bower solid tables, so those files are needed for both.
@@ -2133,6 +2145,7 @@ def download_zalmoxis_eos(
     # (generated locally from upstream paleos at runtime) but are valid.
     known_prefixes = (
         'Seager2007:',
+        'WolfBower2018:',
         'RTPress100TPa:',
         'Chabrier:',
         'PALEOS-API:',
@@ -2205,7 +2218,7 @@ def get_zalmoxis_melting_curves(config: Config):
         if not melting_file.is_file():
             raise FileNotFoundError(
                 f'Melting curve file not found: {melting_file}. '
-                f"Check struct.melting_dir='{config.interior_struct.melting_dir}', or fetch "
+                f"Check interior_struct.melting_dir='{config.interior_struct.melting_dir}', or fetch "
                 f'it with `proteus get interiordata --config-path <config.toml>`. {RELOCATE_HINT}'
             )
     solidus_func = load_melting_curve(solidus_file)

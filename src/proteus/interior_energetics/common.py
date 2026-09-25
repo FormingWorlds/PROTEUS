@@ -980,10 +980,9 @@ def compute_initial_entropy(
             return fallback
 
         mat_dicts = load_zalmoxis_material_dictionaries()
+        # The CMB lookup reads the MgSiO3 2-phase pair for any mantle.
         solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
-            zalmoxis_cfg.mantle_eos,
-            mat_dicts,
-            required=generates_paleos_tables(config.interior_struct),
+            zalmoxis_cfg.mantle_eos, mat_dicts, required=True
         )
         eos_entry = energetics_entry(zalmoxis_cfg.mantle_eos, mat_dicts)[1]
         paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''

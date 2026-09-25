@@ -653,7 +653,7 @@ def _resolve_spider_eos_dir(dirs: dict, config: Config) -> str:
     if not os.path.isdir(eos_dir):
         raise FileNotFoundError(
             f'SPIDER EOS directory not found: {eos_dir}. '
-            f"Check interior.eos_dir='{config.interior_struct.eos_dir}', or fetch the "
+            f"Check interior_struct.eos_dir='{config.interior_struct.eos_dir}', or fetch the "
             f'tables with `proteus get interiordata --config-path <config.toml>`. {RELOCATE_HINT}'
         )
     return eos_dir

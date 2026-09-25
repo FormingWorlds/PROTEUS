@@ -253,6 +253,8 @@ def energetics_needs_a_thermal_mantle_eos(instance, attribute, value):
     struct = instance.interior_struct
     if value.module not in ('spider', 'aragog') or struct.module != 'zalmoxis':
         return
+    if struct.zalmoxis is None:
+        return
     key = energetics_eos_key(struct.zalmoxis.mantle_eos)
     if not (key or '').startswith(PALEOS_EOS_PREFIXES + TDEP_EOS_PREFIXES):
         raise ValueError(
