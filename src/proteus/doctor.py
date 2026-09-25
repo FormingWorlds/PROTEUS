@@ -345,12 +345,19 @@ def check_fwl_data() -> list[CheckResult]:
     """Check FWL_DATA contents for required data sets.
 
     A data set found only in the older layout is fixed with ``fwl-io relocate``,
-    which moves it in place, rather than with a new download.
+    which moves it in place, rather than with a new download, but only when a
+    relocate dry run would move something there.
     """
     results = []
     fwl = os.environ.get('FWL_DATA')
     if not fwl or not os.path.isdir(fwl):
         return results
+    try:
+        from fwl_io.relocate import plan_relocations
+
+        movable = [Path(e.legacy_dir) for e in plan_relocations(fwl).ready]
+    except Exception:
+        movable = []
 
     expected = {
         'atmos_clim/spectral_files': ('proteus get spectral', 'spectral_files'),
@@ -359,7 +366,7 @@ def check_fwl_data() -> list[CheckResult]:
     for subdir, (fix, legacy) in expected.items():
         path = os.path.join(fwl, subdir)
         old = os.path.join(fwl, legacy)
-        if os.path.isdir(old) and os.listdir(old):
+        if any(p.is_relative_to(old) for p in movable):
             fix = 'fwl-io relocate'
         if os.path.isdir(path) and os.listdir(path):
             results.append(

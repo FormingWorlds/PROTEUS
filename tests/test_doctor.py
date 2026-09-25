@@ -258,13 +258,24 @@ class TestCheckFwlData:
             assert r.status == WARN
             assert r.fix_cmd is not None
 
-    def test_an_older_layout_is_fixed_by_relocate(self, tmp_path):
-        """A data set found only in the older layout is fixed by moving it, not a download."""
-        (tmp_path / 'spectral_files' / 'Dayspring' / '48').mkdir(parents=True)
-        (tmp_path / 'spectral_files' / 'Dayspring' / '48' / 'Dayspring.sf').touch()
-        with patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}):
+    @pytest.mark.parametrize('movable', [True, False])
+    def test_an_older_layout_is_fixed_by_relocate(self, tmp_path, movable):
+        """A data set in the older layout is fixed by moving it only when a relocate dry
+        run would move it; otherwise, e.g. with wrong checksums, by its download."""
+        from types import SimpleNamespace
+
+        legacy = tmp_path / 'spectral_files' / 'Dayspring' / '48'
+        legacy.mkdir(parents=True)
+        (legacy / 'Dayspring.sf').touch()
+        plan = SimpleNamespace(ready=[SimpleNamespace(legacy_dir=legacy)] if movable else [])
+        with (
+            patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}),
+            patch('fwl_io.relocate.plan_relocations', return_value=plan) as planned,
+        ):
             fixes = {r.name: r.fix_cmd for r in check_fwl_data()}
-        assert fixes['FWL_DATA/atmos_clim/spectral_files'] == 'fwl-io relocate'
+        planned.assert_called_once_with(str(tmp_path))
+        want = 'fwl-io relocate' if movable else 'proteus get spectral'
+        assert fixes['FWL_DATA/atmos_clim/spectral_files'] == want
         assert fixes['FWL_DATA/star/spectra'] == 'proteus get stellar'
 
     def test_skips_when_fwl_data_unset(self):
