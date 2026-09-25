@@ -2079,7 +2079,7 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
     ):
         download_eos_static()
 
-    # A PALEOS mantle also reads the MgSiO3 2-phase pair and unified table.
+    # A PALEOS mantle also reads the MgSiO3 2-phase pair.
     components.update(paleos_companion_keys(mantle_eos))
 
     # WolfBower2018 T-dependent MgSiO3. The RTPress mantle pairs its melt table

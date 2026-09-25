@@ -825,11 +825,11 @@ def _require_config(mantle_eos, *, resume=False, ice=None):
     return config
 
 
-@pytest.mark.parametrize('missing', ['mgsio3', 'solid', 'liquid'])
+@pytest.mark.parametrize('missing', ['solid', 'liquid'])
 def test_check_eos_files_requires_the_paleos_companions(tmp_path, missing):
-    """With the companions required, a PALEOS mantle stops on any absent table of the
-    MgSiO3 set, naming that file and the fetch command; without them only its own
-    table counts."""
+    """With the companions required, a PALEOS mantle stops on an absent table of the
+    MgSiO3 2-phase pair, naming that file and the fetch command; without them only its
+    own table counts."""
     from proteus.interior_struct.zalmoxis import (
         ZalmoxisMissingEOSFilesError,
         check_zalmoxis_eos_files,
@@ -845,6 +845,38 @@ def test_check_eos_files_requires_the_paleos_companions(tmp_path, missing):
     # The Seager core of the 2-phase entry is not read for a mantle role.
     assert 'seager_iron_absent' not in msg
     assert check_zalmoxis_eos_files(layers, registry) is None
+
+
+@pytest.mark.parametrize(
+    'mantle, stops',
+    [
+        ('PALEOS-2phase:MgSiO3', False),
+        ('PALEOS:H2O', False),
+        ('PALEOS:MgSiO3', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', True),
+    ],
+)
+def test_check_eos_files_needs_the_mgsio3_unified_table_only_for_an_mgsio3_layer(
+    tmp_path, mantle, stops
+):
+    """Without the MgSiO3 unified table a mantle that never reads it passes, while a
+    mantle with a PALEOS:MgSiO3 component stops and names the file."""
+    from proteus.interior_struct.zalmoxis import (
+        ZalmoxisMissingEOSFilesError,
+        check_zalmoxis_eos_files,
+    )
+
+    registry = _paleos_registry(tmp_path, 'mgsio3')
+    layers = {'core': 'PALEOS:iron', 'mantle': mantle}
+    if stops:
+        with pytest.raises(ZalmoxisMissingEOSFilesError, match='mgsio3.dat'):
+            check_zalmoxis_eos_files(layers, registry, paleos_companions=True)
+    else:
+        assert check_zalmoxis_eos_files(layers, registry, paleos_companions=True) is None
+    # The pair is still required in every case.
+    (tmp_path / 'solid.dat').unlink()
+    with pytest.raises(ZalmoxisMissingEOSFilesError, match='solid.dat'):
+        check_zalmoxis_eos_files(layers, registry, paleos_companions=True)
 
 
 def test_check_eos_files_stops_when_the_paleos_api_resolver_is_missing(tmp_path, monkeypatch):
@@ -866,7 +898,8 @@ def test_check_eos_files_stops_when_the_paleos_api_resolver_is_missing(tmp_path,
     with pytest.raises(ZalmoxisMissingEOSFilesError) as excinfo:
         check_zalmoxis_eos_files(layers, registry, paleos_companions=True)
     assert 'PALEOS-API-2phase:MgSiO3 (PALEOS-API resolver unavailable' in str(excinfo.value)
-    assert 'PALEOS-API:MgSiO3 (PALEOS-API resolver unavailable' in str(excinfo.value)
+    # The mantle's own API table is built by the solve, not by the check.
+    assert 'PALEOS-API:MgSiO3 (PALEOS-API resolver unavailable' not in str(excinfo.value)
 
     table = tmp_path / 'api.dat'
     table.write_text('eos table stub')
@@ -881,6 +914,7 @@ def test_check_eos_files_stops_when_the_paleos_api_resolver_is_missing(tmp_path,
     monkeypatch.setitem(sys.modules, 'zalmoxis.eos.paleos_api_cache', fake)
     assert check_zalmoxis_eos_files(layers, registry, paleos_companions=True) is None
     assert pair['solid_mantle']['eos_file'] == str(table)
+    assert 'eos_file' not in api
 
 
 @pytest.mark.parametrize('missing', ['iron', 'solid', 'h2o'])

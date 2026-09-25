@@ -3282,8 +3282,8 @@ def test_download_zalmoxis_eos_rtpress_with_wolfbower_fetches_solid_once(
 @patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_paleos_2phase(mock_static, mock_fetch, mock_file):
-    """PALEOS-2phase:MgSiO3 fetches the standard-resolution pair and the MgSiO3 unified table."""
-    from proteus.data import EOS_PALEOS_MGSIO3, EOS_PALEOS_MGSIO3_UNIFIED
+    """PALEOS-2phase:MgSiO3 fetches the standard-resolution pair only, not the unified table."""
+    from proteus.data import EOS_PALEOS_MGSIO3
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='Seager2007:iron')
@@ -3291,7 +3291,6 @@ def test_download_zalmoxis_eos_paleos_2phase(mock_static, mock_fetch, mock_file)
     # The shared record also holds the ~1.3 GB highres pair; it must stay unfetched.
     mock_fetch.assert_not_called()
     assert _fetched_files(mock_file) == [
-        (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3),
         (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_liquid.dat'),
         (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_solid.dat'),
     ]
@@ -3302,16 +3301,14 @@ def test_download_zalmoxis_eos_paleos_2phase(mock_static, mock_fetch, mock_file)
 @patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_paleos_2phase_highres(mock_static, mock_fetch, mock_file):
-    """PALEOS-2phase:MgSiO3-highres fetches the high-resolution pair and the unified
-    table, not the standard-resolution pair."""
-    from proteus.data import EOS_PALEOS_MGSIO3, EOS_PALEOS_MGSIO3_UNIFIED
+    """PALEOS-2phase:MgSiO3-highres fetches the high-resolution pair only."""
+    from proteus.data import EOS_PALEOS_MGSIO3
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('PALEOS-2phase:MgSiO3-highres', core_eos='Seager2007:iron')
 
     mock_fetch.assert_not_called()
     assert _fetched_files(mock_file) == [
-        (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3),
         (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_liquid_highres.dat'),
         (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_solid_highres.dat'),
     ]
@@ -3386,12 +3383,12 @@ def test_download_zalmoxis_eos_one_failed_file_does_not_stop_the_rest(
 @patch('proteus.data.fetch_dataset_file')
 @patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_water_mantle_fetches_the_mgsio3_set(
+def test_download_zalmoxis_eos_water_mantle_fetches_the_mgsio3_pair(
     mock_static, mock_fetch, mock_file
 ):
-    """A PALEOS water mantle also fetches the MgSiO3 unified table and 2-phase pair its
-    energetics read, but no Seager set and no iron table."""
-    from proteus.data import EOS_PALEOS_H2O, EOS_PALEOS_MGSIO3, EOS_PALEOS_MGSIO3_UNIFIED
+    """A PALEOS water mantle also fetches the MgSiO3 2-phase pair its energetics read,
+    but not the MgSiO3 unified table and not the iron table, which it never reads."""
+    from proteus.data import EOS_PALEOS_H2O, EOS_PALEOS_MGSIO3
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('PALEOS:H2O', core_eos='Seager2007:iron')
@@ -3401,11 +3398,11 @@ def test_download_zalmoxis_eos_water_mantle_fetches_the_mgsio3_set(
     assert sorted(_fetched_files(mock_file)) == sorted(
         [
             (EOS_PALEOS_H2O, _UNIFIED_WATER),
-            (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3),
             *((EOS_PALEOS_MGSIO3, name) for name in _PAIR),
         ]
     )
-    assert _UNIFIED_IRON not in {name for _, name in _fetched_files(mock_file)}
+    names = {name for _, name in _fetched_files(mock_file)}
+    assert _UNIFIED_IRON not in names and _UNIFIED_MGSIO3 not in names
 
 
 @pytest.mark.unit
@@ -3450,7 +3447,7 @@ def test_download_zalmoxis_eos_paleos_2phase_fetches_seager_fallback(
     mantle, PALEOS:iron core). The 2-phase tables and the unified iron
     table must download alongside.
     """
-    from proteus.data import EOS_PALEOS_IRON, EOS_PALEOS_MGSIO3, EOS_PALEOS_MGSIO3_UNIFIED
+    from proteus.data import EOS_PALEOS_IRON, EOS_PALEOS_MGSIO3
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='PALEOS:iron')
@@ -3459,7 +3456,6 @@ def test_download_zalmoxis_eos_paleos_2phase_fetches_seager_fallback(
     # The standard-resolution selection must not pull the ~1.3 GB highres pair.
     assert _fetched_files(mock_file) == [
         (EOS_PALEOS_IRON, _UNIFIED_IRON),
-        (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3),
         (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_liquid.dat'),
         (EOS_PALEOS_MGSIO3, 'paleos_mgsio3_tables_pt_proteus_solid.dat'),
     ]

@@ -69,11 +69,10 @@ def twophase_registry_key(mantle_eos: str) -> str:
 
 
 def paleos_companion_keys(mantle_eos: str) -> list[str]:
-    """Registry keys a PALEOS mantle reads besides its own tables.
+    """Registry key of the table pair a PALEOS mantle reads besides its own tables.
 
     A mantle EOS with any PALEOS component also reads the MgSiO3 2-phase
-    pair (P-S tables, Aragog tables, the liquidus_super anchor) and the
-    MgSiO3 unified table of the same family.
+    pair of its family (P-S tables, Aragog tables, the liquidus_super anchor).
 
     Parameters
     ----------
@@ -83,13 +82,11 @@ def paleos_companion_keys(mantle_eos: str) -> list[str]:
     Returns
     -------
     list[str]
-        The 2-phase pair key and the MgSiO3 unified key, or an empty list
-        for a mantle without a PALEOS component.
+        The 2-phase pair key, or an empty list for a mantle without a PALEOS component.
     """
     if not any(p.startswith(PALEOS_EOS_PREFIXES) for p in str(mantle_eos).split('+')):
         return []
-    pair = twophase_registry_key(mantle_eos)
-    return [pair, 'PALEOS-API:MgSiO3' if pair.startswith('PALEOS-API') else 'PALEOS:MgSiO3']
+    return [twophase_registry_key(mantle_eos)]
 
 
 def resolve_fwl_data_dir() -> Path:

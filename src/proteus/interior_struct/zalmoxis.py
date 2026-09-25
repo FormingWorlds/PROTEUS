@@ -1921,10 +1921,10 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
     """Stop the run before any solve when a table of its EOS set is missing.
 
     Requires every table file of the core, mantle and ice-layer EOS and,
-    for a mantle with a PALEOS component, the MgSiO3 2-phase pair and
-    unified table. A resumed run that keeps its P-S tables is held only to
-    its layer tables. A PALEOS H2O or iron mantle gets one WARNING: its
-    energetics use the MgSiO3 melting curves and P-S tables.
+    for a mantle with a PALEOS component, the MgSiO3 2-phase pair. A resumed
+    run that keeps its P-S tables is held only to its layer tables. A PALEOS
+    H2O or iron mantle gets one WARNING: its energetics use the MgSiO3
+    melting curves and P-S tables.
 
     Parameters
     ----------
@@ -2664,7 +2664,7 @@ def generate_spider_tables(config: Config, outdir: str):
     Raises
     ------
     ZalmoxisMissingEOSFilesError
-        When a table of a PALEOS mantle or its MgSiO3 companions is missing.
+        When a table of a PALEOS mantle or its MgSiO3 2-phase pair is missing.
     """
     from zalmoxis.eos_export import generate_spider_eos_tables, generate_spider_phase_boundaries
     from zalmoxis.melting_curves import (
