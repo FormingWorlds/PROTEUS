@@ -565,6 +565,36 @@ def _spider_fallback_scaffold(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    'missing, message',
+    [('lookup', 'Aragog lookup data not found'), ('P-S', 'PALEOS P-S tables not found')],
+)
+def test_setup_solver_stops_with_a_missing_data_error(tmp_path, missing, message):
+    """A missing Aragog lookup or P-S table stops setup_solver with a missing-data error,
+    which start() turns into status 20."""
+    from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.utils.helper import MissingReferenceData
+
+    config = _make_aragog_config(struct_module='spider')
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    if missing == 'lookup':
+        (
+            dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=tmp_path)
+            / 'heat_capacity_melt.dat'
+        ).unlink()
+    else:
+        interior_o._spider_eos_dir = None
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        pytest.raises(MissingReferenceData, match=message),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path / 'out'))
+
+
+@pytest.mark.unit
 def test_setup_solver_threads_phase_boundary_margin(tmp_path):
     """setup_solver passes phase_boundary_entropy_margin into _EnergyParameters
     verbatim when the installed Aragog accepts it.

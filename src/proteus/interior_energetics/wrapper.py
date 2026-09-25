@@ -1072,7 +1072,7 @@ def determine_interior_radius_with_dummy(
         except MissingMeltingCurveError:
             raise
         except FileNotFoundError as exc:
-            raise RuntimeError(
+            raise MissingDataError(
                 "interior_struct.module='dummy' with interior_energetics.module="
                 f'{config.interior_energetics.module!r} needs the SPIDER/Aragog P-S EOS '
                 'tables from FWL_DATA or the SPIDER lookup_data, and neither is '

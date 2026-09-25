@@ -290,6 +290,7 @@ def test_require_paleos_tables_runs_only_for_the_zalmoxis_structure(
         ('missing', 'start check'),
         ('melting curve', 'solve'),
         ('P-S table', 'solve'),
+        ('melting curve class', 'solve'),
     ],
 )
 def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
@@ -307,7 +308,10 @@ def test_a_missing_eos_table_anywhere_in_the_run_writes_status_20(
 
     monkeypatch.setattr(data, 'FWL_DATA_DIR', tmp_path / 'fwl')
     monkeypatch.setattr(spider, 'find_lookup_table_dir', lambda: None)
+    from proteus.interior_energetics.common import MissingMeltingCurveError
+
     real_site = {
+        'melting curve class': MissingMeltingCurveError('melting curves not found'),
         'melting curve': lambda *a, **k: data.get_zalmoxis_melting_curves(
             NS(interior_struct=NS(melting_dir='Monteux-600'))
         ),

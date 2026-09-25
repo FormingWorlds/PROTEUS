@@ -1816,11 +1816,18 @@ _PALEOS_API_FIX = (
 )
 
 
+def _table_paths(entry: dict) -> list[str]:
+    """Table paths of a resolved registry entry and of its phase sub-entries."""
+    subs = [entry, *(v for v in entry.values() if isinstance(v, dict))]
+    return [s['eos_file'] for s in subs if s.get('eos_file')]
+
+
 def resolve_paleos_api(key: str, entry: dict) -> None:
     """Materialise a PALEOS-API registry entry in place, once per process.
 
     A resolve runs git to read the paleos version, and the EOS check runs before
     every structure solve on a fresh registry, so resolved entries are kept by key.
+    A kept entry whose tables were removed is resolved again, which rebuilds them.
 
     Parameters
     ----------
@@ -1835,8 +1842,10 @@ def resolve_paleos_api(key: str, entry: dict) -> None:
         When the paleos package is not installed, since the resolver's worker pool
         would then restart forever instead of failing.
     """
-    if key in _PALEOS_API_RESOLVED:
-        entry.update(copy.deepcopy(_PALEOS_API_RESOLVED[key]))
+    cached = _PALEOS_API_RESOLVED.pop(key, None)
+    if cached and all(os.path.isfile(p) for p in _table_paths(cached)):
+        _PALEOS_API_RESOLVED[key] = cached
+        entry.update(copy.deepcopy(cached))
         return
     if not _paleos_installed():
         raise ZalmoxisMissingEOSFilesError(
