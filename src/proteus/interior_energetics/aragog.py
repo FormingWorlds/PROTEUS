@@ -916,10 +916,6 @@ class AragogRunner:
 
             mat_dicts = load_zalmoxis_material_dictionaries()
 
-            # Get unified table path (needed for melting curves and fallback)
-            eos_entry = mat_dicts.get(config.interior_struct.zalmoxis.mantle_eos, {})
-            paleos_eos_file = eos_entry.get('eos_file', '')
-
             mass_tot = config.planet.mass_tot or 1.0
             # P_max for the Aragog phase-boundary + lookup table grid.
             # The grid must reach the planet's CMB pressure so the mantle
@@ -962,75 +958,31 @@ class AragogRunner:
                 and os.path.isfile(liquid_eos)
             )
 
-            # Aragog's per-phase P-T property tables are built from the
-            # two-phase solid/liquid tables whenever they are available, for
-            # BOTH mantle_eos = "PALEOS:MgSiO3" (unified structure) and
-            # "PALEOS-2phase:MgSiO3". So for the default unified config the
-            # structure solve uses the unified table while Aragog's densities
-            # come from these two-phase tables. The "already exist" path below
-            # reuses the cached per-run aragog_pt tables (generated once from
-            # the two-phase source). Only when no two-phase tables are present
-            # does Aragog fall back to building its tables from the unified
-            # table, where solid and melt share one source surface.
-            if has_2phase:
-                if not (LOOK_UP_DIR / 'density_melt.dat').is_file():
-                    from zalmoxis.eos_export import generate_aragog_pt_tables_2phase
+            # Aragog's per-phase P-T property tables come from the two-phase
+            # solid/liquid tables for every PALEOS mantle, also for the unified
+            # "PALEOS:MgSiO3" structure; a run reuses its own aragog_pt tables.
+            if (LOOK_UP_DIR / 'density_melt.dat').is_file():
+                log.info('PALEOS-2phase tables already exist, skipping generation')
+            elif has_2phase:
+                from zalmoxis.eos_export import generate_aragog_pt_tables_2phase
 
-                    log.info('Generating phase-specific Aragog P-T tables from PALEOS-2phase')
-                    generate_aragog_pt_tables_2phase(
-                        solid_eos_file=solid_eos,
-                        liquid_eos_file=liquid_eos,
-                        P_range=(1e5, P_max),
-                        n_P=200,
-                        n_T=200,
-                        output_dir=LOOK_UP_DIR,
-                    )
-                else:
-                    log.info('PALEOS-2phase tables already exist, skipping generation')
-            elif not has_2phase:
-                # Fall back to unified table (identical solid/melt files)
-                from zalmoxis.eos_export import generate_aragog_pt_tables
-
-                if paleos_eos_file and os.path.isfile(paleos_eos_file):
-                    from proteus.interior_struct.zalmoxis import (
-                        load_zalmoxis_solidus_liquidus_functions,
-                    )
-
-                    melt_funcs = load_zalmoxis_solidus_liquidus_functions(
-                        config.interior_struct.zalmoxis.mantle_eos, config
-                    )
-                    if melt_funcs is not None:
-                        sol_func, liq_func = melt_funcs
-                    else:
-                        from zalmoxis.melting_curves import (
-                            get_solidus_liquidus_functions,
-                        )
-
-                        sol_func, liq_func = get_solidus_liquidus_functions(
-                            'Stixrude14-solidus', 'PALEOS-liquidus'
-                        )
-
-                    if not (LOOK_UP_DIR / 'density_melt.dat').is_file():
-                        log.warning(
-                            'PALEOS-2phase tables not found, falling back to '
-                            'unified table (entropy near melting curve may be '
-                            'unreliable)'
-                        )
-                        generate_aragog_pt_tables(
-                            eos_file=paleos_eos_file,
-                            solidus_func=sol_func,
-                            liquidus_func=liq_func,
-                            P_range=(1e5, P_max),
-                            n_P=200,
-                            n_T=200,
-                            output_dir=LOOK_UP_DIR,
-                        )
-            else:
-                log.warning(
-                    'PALEOS EOS file not found (%s), falling back to the shipped EOS tables',
-                    paleos_eos_file,
+                log.info('Generating phase-specific Aragog P-T tables from PALEOS-2phase')
+                generate_aragog_pt_tables_2phase(
+                    solid_eos_file=solid_eos,
+                    liquid_eos_file=liquid_eos,
+                    P_range=(1e5, P_max),
+                    n_P=200,
+                    n_T=200,
+                    output_dir=LOOK_UP_DIR,
                 )
-                LOOK_UP_DIR = resolve_lookup_table_dir(data_root=FWL_DATA_DIR)
+            else:
+                from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+                raise ZalmoxisMissingEOSFilesError(
+                    f'PALEOS 2-phase MgSiO3 tables {_twophase_key} not found '
+                    f'(solid: {solid_eos or "unset"}, liquid: {liquid_eos or "unset"}). '
+                    'Download them with `proteus get interiordata --config-path <config.toml>`.'
+                )
         else:
             # Fetched Wolf and Bower 2018 tables; used when
             # interior_struct.eos_dir is None (no dynamic EOS selected) or

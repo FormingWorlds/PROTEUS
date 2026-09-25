@@ -548,6 +548,10 @@ class Proteus:
 
         # Download basic data
         download_sufficient_data(self.config)
+        if self.config.interior_struct.module == 'zalmoxis':
+            from proteus.interior_struct.zalmoxis import require_paleos_tables
+
+            require_paleos_tables(self.config, self.directories['output'])
 
         # Initialise interior object
         if self.config.interior_energetics.module == 'spider':

@@ -860,3 +860,26 @@ def test_paleos_registry_keys_match_the_zalmoxis_registry():
     paleos = {k for k in registry if k.startswith(PALEOS_EOS_PREFIXES)}
     assert paleos == PALEOS_REGISTRY_KEYS
     assert all(k.startswith(PALEOS_EOS_PREFIXES) for k in PALEOS_REGISTRY_KEYS)
+
+
+@pytest.mark.unit
+def test_paleos_companion_keys_follow_the_mantle_family():
+    """A mantle with any PALEOS component reads the MgSiO3 pair and unified table of
+    its family; a mantle without one reads neither."""
+    from proteus.utils.helper import paleos_companion_keys
+
+    shipped = ['PALEOS-2phase:MgSiO3', 'PALEOS:MgSiO3']
+    assert paleos_companion_keys('PALEOS:MgSiO3') == shipped
+    assert paleos_companion_keys('PALEOS:H2O:1.0') == shipped
+    assert paleos_companion_keys('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1') == shipped
+    assert paleos_companion_keys('PALEOS-2phase:MgSiO3-highres') == [
+        'PALEOS-2phase:MgSiO3-highres',
+        'PALEOS:MgSiO3',
+    ]
+    assert paleos_companion_keys('PALEOS-API:iron') == [
+        'PALEOS-API-2phase:MgSiO3',
+        'PALEOS-API:MgSiO3',
+    ]
+    assert paleos_companion_keys('WolfBower2018:MgSiO3') == []
+    assert paleos_companion_keys('Seager2007:H2O') == []
+    assert paleos_companion_keys('') == []

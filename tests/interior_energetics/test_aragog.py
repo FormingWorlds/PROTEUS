@@ -1629,6 +1629,77 @@ def test_setup_solver_property_tables_follow_the_generated_set(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('kept', [False, True])
+def test_setup_solver_stops_without_the_paleos_pair(tmp_path, kept):
+    """A PALEOS mantle whose 2-phase liquid table is absent stops at setup and names
+    it, instead of building its property tables from the unified table; a run that
+    already has its own Aragog tables keeps them."""
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    outdir = tmp_path / 'out'
+    pt_dir = outdir / 'data' / 'aragog_pt'
+    pt_dir.mkdir(parents=True)
+    if kept:
+        for name in ('density_melt.dat', 'heat_capacity_melt.dat'):
+            (pt_dir / name).write_text('dummy')
+    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos='PALEOS:MgSiO3')
+    config.interior_struct.eos_dir = None
+    config.planet.mass_tot = 1.0
+    unified, solid = tmp_path / 'unified.dat', tmp_path / 'solid.dat'
+    unified.write_text('dummy')
+    solid.write_text('dummy')
+    liquid = tmp_path / 'liquid_absent.dat'
+    registry = {
+        'PALEOS:MgSiO3': {'format': 'paleos_unified', 'eos_file': str(unified)},
+        'PALEOS-2phase:MgSiO3': {
+            'solid_mantle': {'eos_file': str(solid)},
+            'melted_mantle': {'eos_file': str(liquid)},
+        },
+    }
+    hf_row = {
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+    }
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    interior_o._spider_eos_dir = str(tmp_path)
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value=registry,
+        ),
+        patch(
+            'proteus.interior_energetics.aragog._melting_curve_files',
+            return_value=(solid, solid),
+        ),
+        patch('zalmoxis.eos_export.generate_aragog_pt_tables') as unified_build,
+        patch('proteus.interior_energetics.aragog._PhaseParameters') as mock_phase,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
+    ):
+        if kept:
+            AragogRunner.setup_solver(config, hf_row, interior_o, str(outdir))
+        else:
+            with pytest.raises(ZalmoxisMissingEOSFilesError) as excinfo:
+                AragogRunner.setup_solver(config, hf_row, interior_o, str(outdir))
+    unified_build.assert_not_called()
+    if kept:
+        dirs = {Path(c.kwargs['density']).parent for c in mock_phase.call_args_list}
+        assert dirs == {pt_dir}
+    else:
+        assert str(liquid) in str(excinfo.value)
+        assert 'proteus get interiordata' in str(excinfo.value)
+        assert not mock_phase.called
+
+
+@pytest.mark.unit
 def test_setup_solver_offline_mixture_names_the_fetch_command(tmp_path):
     """A PALEOS mixture without the fetched WB set stops with the fetch command."""
     from proteus.interior_energetics.aragog import AragogRunner

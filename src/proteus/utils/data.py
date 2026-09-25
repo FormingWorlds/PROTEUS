@@ -18,7 +18,7 @@ from scipy.interpolate import interp1d
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.utils.helper import resolve_fwl_data_dir, safe_rm
+from proteus.utils.helper import paleos_companion_keys, resolve_fwl_data_dir, safe_rm
 from proteus.utils.phoenix_helper import phoenix_param
 
 log = logging.getLogger('fwl.' + __name__)
@@ -2071,6 +2071,9 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
         or not core_eos
     ):
         download_eos_static()
+
+    # A PALEOS mantle also reads the MgSiO3 2-phase pair and unified table.
+    components.update(paleos_companion_keys(mantle_eos))
 
     # WolfBower2018 T-dependent MgSiO3. The RTPress mantle pairs its melt table
     # with the Wolf & Bower solid table, so that file is needed for both.

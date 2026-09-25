@@ -120,6 +120,7 @@ _START_PATCHES = [
     'proteus.utils.coupler.validate_module_versions',
     'proteus.utils.coupler.UpdateStatusfile',
     'proteus.utils.data.download_sufficient_data',
+    'proteus.interior_struct.zalmoxis.require_paleos_tables',
     'proteus.utils.terminate.print_termination_criteria',
 ]
 
@@ -1529,6 +1530,7 @@ def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel, vapo
 _MAIN_LOOP_NOOP_PATCHES = [
     'proteus.utils.coupler.CreateLockFile',
     'proteus.utils.data.download_sufficient_data',
+    'proteus.interior_struct.zalmoxis.require_paleos_tables',
     'proteus.interior_energetics.wrapper.solve_structure',
     'proteus.utils.coupler.print_citation',
     'proteus.utils.coupler.print_header',

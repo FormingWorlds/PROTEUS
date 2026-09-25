@@ -11,7 +11,12 @@ from pathlib import Path
 
 import numpy as np
 
-from proteus.utils.constants import PALEOS_REGISTRY_KEYS, element_list, element_mmw
+from proteus.utils.constants import (
+    PALEOS_EOS_PREFIXES,
+    PALEOS_REGISTRY_KEYS,
+    element_list,
+    element_mmw,
+)
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -39,6 +44,52 @@ def generates_paleos_tables(interior_struct) -> bool:
         return False
     mantle = getattr(getattr(interior_struct, 'zalmoxis', None), 'mantle_eos', None)
     return mantle in PALEOS_REGISTRY_KEYS
+
+
+def twophase_registry_key(mantle_eos: str) -> str:
+    """Return the 2-phase MgSiO3 registry key matching a mantle EOS name.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Configured mantle EOS name.
+
+    Returns
+    -------
+    str
+        ``'PALEOS-API-2phase:MgSiO3'`` for the PALEOS-API family,
+        ``'PALEOS-2phase:MgSiO3-highres'`` for the high-resolution shipped
+        tables, and ``'PALEOS-2phase:MgSiO3'`` otherwise.
+    """
+    if mantle_eos.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')):
+        return 'PALEOS-API-2phase:MgSiO3'
+    if mantle_eos == 'PALEOS-2phase:MgSiO3-highres':
+        return 'PALEOS-2phase:MgSiO3-highres'
+    return 'PALEOS-2phase:MgSiO3'
+
+
+def paleos_companion_keys(mantle_eos: str) -> list[str]:
+    """Registry keys a PALEOS mantle reads besides its own tables.
+
+    A mantle EOS with any PALEOS component also reads the MgSiO3 2-phase
+    pair (P-S tables, Aragog tables, the liquidus_super anchor) and the
+    MgSiO3 unified table of the same family.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Configured mantle EOS, possibly a ``+``-joined mixture.
+
+    Returns
+    -------
+    list[str]
+        The 2-phase pair key and the MgSiO3 unified key, or an empty list
+        for a mantle without a PALEOS component.
+    """
+    if not any(p.startswith(PALEOS_EOS_PREFIXES) for p in str(mantle_eos).split('+')):
+        return []
+    pair = twophase_registry_key(mantle_eos)
+    return [pair, 'PALEOS-API:MgSiO3' if pair.startswith('PALEOS-API') else 'PALEOS:MgSiO3']
 
 
 def resolve_fwl_data_dir() -> Path:
