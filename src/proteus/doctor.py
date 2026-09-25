@@ -9,6 +9,7 @@ commands and offers to run them.
 from __future__ import annotations
 
 import datetime
+import functools
 import importlib.metadata
 import importlib.util
 import io
@@ -346,18 +347,22 @@ def check_fwl_data() -> list[CheckResult]:
 
     A data set found only in the older layout is fixed with ``fwl-io relocate``,
     which moves it in place, rather than with a new download, but only when a
-    relocate dry run would move something there.
+    relocate dry run would move something there. The dry run hashes the whole
+    tree, so it runs only for a missing data set with an older-layout folder.
     """
     results = []
     fwl = os.environ.get('FWL_DATA')
     if not fwl or not os.path.isdir(fwl := os.path.expanduser(fwl)):
         return results
-    try:
-        from fwl_io.relocate import plan_relocations
 
-        movable = [Path(e.legacy_dir).resolve() for e in plan_relocations(fwl).ready]
-    except Exception:
-        movable = []
+    @functools.cache
+    def movable():
+        try:
+            from fwl_io.relocate import plan_relocations
+
+            return [Path(e.legacy_dir).resolve() for e in plan_relocations(fwl).ready]
+        except Exception:
+            return []
 
     expected = {
         'atmos_clim/spectral_files': ('proteus get spectral', 'spectral_files'),
@@ -366,9 +371,11 @@ def check_fwl_data() -> list[CheckResult]:
     for subdir, (fix, legacy) in expected.items():
         path = os.path.join(fwl, subdir)
         old = os.path.join(fwl, legacy)
-        if any(p.is_relative_to(Path(old).resolve()) for p in movable):
-            fix = 'fwl-io relocate'
-        if os.path.isdir(path) and os.listdir(path):
+        present = os.path.isdir(path) and os.listdir(path)
+        if not present and os.path.isdir(old) and os.listdir(old):
+            if any(p.is_relative_to(Path(old).resolve()) for p in movable()):
+                fix = 'fwl-io relocate'
+        if present:
             results.append(
                 CheckResult(
                     name=f'FWL_DATA/{subdir}',

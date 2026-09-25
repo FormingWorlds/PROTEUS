@@ -265,6 +265,8 @@ class TestCheckFwlData:
         from types import SimpleNamespace
 
         legacy = tmp_path / 'spectral_files' / 'Dayspring' / '48'
+        legacy.mkdir(parents=True)
+        (legacy / 'Dayspring.sf').touch()
         plan = SimpleNamespace(ready=[SimpleNamespace(legacy_dir=legacy)] if movable else [])
         with (
             patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}),
@@ -275,6 +277,19 @@ class TestCheckFwlData:
         want = 'fwl-io relocate' if movable else 'proteus get spectral'
         assert fixes['FWL_DATA/atmos_clim/spectral_files'] == want
         assert fixes['FWL_DATA/star/spectra'] == 'proteus get stellar'
+
+    def test_the_relocate_dry_run_runs_only_for_a_missing_set_with_older_data(self, tmp_path):
+        """The dry run hashes the whole tree, so it runs only when a data set is missing
+        and its older-layout folder holds files."""
+        (tmp_path / 'atmos_clim' / 'spectral_files' / 'Dayspring').mkdir(parents=True)
+        (tmp_path / 'spectral_files' / 'Dayspring').mkdir(parents=True)
+        (tmp_path / 'spectral_files' / 'Dayspring' / 'old.sf').touch()
+        with (
+            patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}),
+            patch('fwl_io.relocate.plan_relocations') as planned,
+        ):
+            check_fwl_data()
+        planned.assert_not_called()
 
     def test_relocate_is_proposed_through_a_symlinked_data_root(self, tmp_path):
         """FWL_DATA reached through a symlink still matches the resolved legacy folders a
