@@ -1171,6 +1171,22 @@ def test_resolve_2phase_paths_stops_on_a_missing_table_when_required(tmp_path):
         zmod.resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', registry, required=True)
 
 
+def test_superliquidus_anchor_passes_a_missing_table_stop_through(monkeypatch):
+    """A missing-table stop inside the anchor reaches the caller as that error, not as a
+    numerical anchor failure."""
+    from proteus.interior_struct import zalmoxis as zmod
+
+    def _missing(config, hf_row):
+        raise zmod.ZalmoxisMissingEOSFilesError('pair not available')
+
+    monkeypatch.setattr(zmod, '_solve_superliquidus_adiabat', _missing)
+    monkeypatch.setattr(zmod, '_SUPERLIQ_FAILED', {})
+    config = _require_config('PALEOS:MgSiO3')
+    config.planet.mass_tot = 1.0
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='pair not available'):
+        zmod.solve_superliquidus_adiabat(config, {'P_cmb': 1.2e11})
+
+
 def test_generate_spider_tables_stops_on_a_missing_pair_table(tmp_path, monkeypatch):
     """A PALEOS unified mantle whose 2-phase liquid table is absent stops before any
     table is built, instead of building the P-S set from the unified table alone."""

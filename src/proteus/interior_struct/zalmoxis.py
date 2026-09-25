@@ -776,7 +776,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     except InitialConditionError as exc:
         _SUPERLIQ_FAILED[key] = InitialConditionError(str(exc))
         raise
-    except ANCHOR_PASSTHROUGH_ERRORS:
+    except (ZalmoxisMissingEOSFilesError, *ANCHOR_PASSTHROUGH_ERRORS):
         raise
     except ANCHOR_NUMERICAL_ERRORS as exc:
         msg = (
