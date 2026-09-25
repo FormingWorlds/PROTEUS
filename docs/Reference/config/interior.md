@@ -147,9 +147,24 @@ Aragog and SPIDER. By default each run derives its own copy of these tables
 under its output `data/` directory. Set the `PROTEUS_PS_CACHE_DIR`
 environment variable to an absolute path to instead share one derived copy
 across runs: tables are stored in a subdirectory keyed by pressure ceiling,
-resolution, mantle-mass fraction, table layout, and the resolved mantle-EOS
-identity, so a run reuses the cache only when every one of those matches and
-different equations of state never collide. This is the mitigation for the
+resolution, mushy zone factor, table layout, the resolved mantle-EOS identity,
+and the Zalmoxis table generator, so a run reuses the cache only when every one
+of those matches and different equations of state never collide. The generator
+identity is the Zalmoxis version plus a digest of two source files,
+`zalmoxis/eos_export.py` and `zalmoxis/melting_curves.py`; a new version or an
+edit to either file starts a new subdirectory. The digest does not cover other
+Zalmoxis modules (for example the PALEOS-API cache modules) or the contents of
+the EOS data files, which enter the key only through their resolved paths. A
+resumed run (`proteus start -r`) keeps the energetics P-S tables it already
+uses, in its own `data/` directory or in the shared cache, whatever differs from
+the current settings, including a changed mantle EOS or a new table generator.
+The first time a process reads them, it logs one warning that names the
+difference, or the reason the current key is not checked (for example a
+PALEOS-API mantle EOS, which is not resolved on resume, or a mantle EOS that is
+no longer PALEOS). The structure solve uses the current melting curves. A
+resumed run with no kept tables (no completion marker with both phase-boundary
+files) logs a warning and continues on the tables of the current key, which it
+builds if they are absent. Sharing tables is the mitigation for the
 per-run disk duplication that a grid or batch of same-EOS runs would
 otherwise incur, since all such runs then read one shared copy. The cache
 directory is not size-limited or auto-pruned; it grows with the number of

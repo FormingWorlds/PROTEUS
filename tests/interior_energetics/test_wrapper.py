@@ -1009,6 +1009,64 @@ def test_update_with_entropy_remap(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'r_solvus_frac, expected_frac',
+    [(0.0, 1.0), (-0.1, 1.0), (0.9, 0.9)],
+    ids=['zero-initialised-solvus', 'negative-solvus', 'valid-solvus'],
+)
+def test_entropy_remap_radius_with_miscibility(tmp_path, r_solvus_frac, expected_frac):
+    """With global miscibility on, the SPIDER entropy remap uses the solvus as
+    the domain radius only when it lies strictly inside the planet; the
+    zero-initialised or a negative R_solvus keeps the surface radius R_int."""
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    config.interior_struct.zalmoxis.global_miscibility = True
+    mesh_file = str(tmp_path / 'spider_mesh.dat')
+    dirs = {
+        'output': str(tmp_path),
+        'spider': '/tmp/spider',
+        'spider_mesh': mesh_file,
+        'spider_mesh_prev': str(tmp_path / 'spider_mesh.dat.prev'),
+        'mesh_shift_active': False,
+        'mesh_convergence_steps': 0,
+    }
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    R_int = 6.371e6
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': R_int,
+        'gravity': 9.81,
+        'R_solvus': r_solvus_frac * R_int,
+    }
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, mesh_file),
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.spider.blend_mesh_files', return_value=0.02),
+        patch(
+            'proteus.interior_energetics.spider.get_all_output_times',
+            return_value=[0.0, 500.0],
+        ),
+        patch('proteus.interior_energetics.spider.remap_entropy_for_new_mesh') as mock_remap,
+        patch('proteus.interior_energetics.wrapper.gc.collect'),
+    ):
+        update_structure_from_interior(
+            dirs, config, hf_row, _mock_interior_o(), 0.0, 3000.0, 0.8
+        )
+
+    radius = mock_remap.call_args.kwargs['radius_phys']
+    assert radius == pytest.approx(expected_frac * R_int, rel=1e-12)
+    # Boundedness: the remap domain is a physical radius inside the planet.
+    assert 0.0 < radius <= R_int
+
+
+@pytest.mark.unit
 def test_entropy_remap_exception(tmp_path):
     """Exception in get_all_output_times should not crash update."""
     config = _mock_config(update_interval=1000.0, update_min_interval=100.0)

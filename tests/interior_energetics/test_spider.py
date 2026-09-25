@@ -1091,6 +1091,65 @@ def test_try_spider_init_with_mesh(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'r_solvus_frac, expected_frac',
+    [(0.0, 1.0), (-0.1, 1.0), (0.3, 1.0), (0.9, 0.9)],
+    ids=[
+        'zero-initialised-solvus',
+        'negative-solvus',
+        'solvus-inside-the-core',
+        'valid-solvus',
+    ],
+)
+def test_try_spider_domain_radius_with_miscibility(tmp_path, r_solvus_frac, expected_frac):
+    """With global miscibility on, SPIDER's domain moves to the solvus only
+    when R_solvus lies between the CMB and the surface. The zero-initialised,
+    a negative, or a below-CMB R_solvus keeps the surface radius and gravity,
+    instead of a zero-radius domain or one with coresize > 1."""
+    from proteus.interior_energetics.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, mesh_path = _setup_spider_env(
+        tmp_path, with_mesh=True
+    )
+    config.interior_struct.zalmoxis.global_miscibility = True
+    hf_row['R_solvus'] = r_solvus_frac * hf_row['R_int']
+
+    with (
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            mesh_file=mesh_path,
+        )
+
+    args = mock_run.call_args[0][0]
+    radius = float(args[args.index('-radius') + 1])
+    gravity = -float(args[args.index('-gravity') + 1])
+    coresize = float(args[args.index('-coresize') + 1])
+    assert radius == pytest.approx(expected_frac * hf_row['R_int'], rel=1e-6)
+    # The CMB stays inside the domain: coresize in (0, 1).
+    assert 0.0 < coresize < 1.0
+    assert radius > 0.0 and gravity > 0.0
+    if not expected_frac < 1.0:
+        # No solvus frame: the surface gravity is passed unchanged.
+        assert gravity == pytest.approx(hf_row['gravity'], rel=1e-6)
+
+
+@pytest.mark.unit
 def test_try_spider_rho_core_from_zalmoxis(tmp_path):
     """When hf_row contains M_core (set by Zalmoxis), SPIDER receives
     the effective average core density derived from M_core and R_cmb,
@@ -1151,9 +1210,9 @@ def test_try_spider_zalmoxis_eos_dir_logs_at_debug(tmp_path, caplog):
     """_try_spider logs the Zalmoxis-generated EOS table path at debug level.
 
     This line fires on every timestep when Zalmoxis provides a per-run EOS
-    directory, so it must stay off the default INFO output (#839). It fires
-    twice per call: once for the initial-entropy computation and once for
-    the solver's own EOS args, both resolving the same directory.
+    directory, so it must stay off the default INFO output (#839). The
+    directory is resolved once per call and serves both the initial-entropy
+    computation and the solver's own EOS args, so the line fires once.
     """
     from proteus.interior_energetics.spider import _try_spider
 
@@ -1187,7 +1246,7 @@ def test_try_spider_zalmoxis_eos_dir_logs_at_debug(tmp_path, caplog):
     zalmoxis_records = [
         r for r in caplog.records if 'Zalmoxis-generated SPIDER EOS tables' in r.message
     ]
-    assert len(zalmoxis_records) == 2
+    assert len(zalmoxis_records) == 1
     assert all(r.levelname == 'DEBUG' for r in zalmoxis_records)
     resolved_dirs = {r.getMessage().rsplit(' ', 1)[-1] for r in zalmoxis_records}
     assert resolved_dirs == {dirs['spider_eos_dir']}

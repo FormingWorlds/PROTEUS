@@ -2383,6 +2383,49 @@ def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(
     )
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'r_solvus_frac',
+    [None, -0.1, 1.0, 1.2],
+    ids=['never-written', 'negative', 'at-the-surface', 'outside-the-planet'],
+)
+def test_solvus_override_skips_an_unphysical_solvus(tmp_path, r_solvus_frac):
+    """With global miscibility on but no physical solvus in the row, the loop
+    hands the atmosphere the magma-ocean state, not the solvus frame. The
+    helpfile row starts with R_solvus = T_solvus = P_solvus = 0, and an
+    interior that never writes them must not drive the atmosphere with
+    T_magma = T_surf = P_surf = R_int = 0.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['P_surf'] = 250.0
+    checkpoint = hf_df.iloc[-1]
+    interior_t_magma = 3456.0
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        hf_row = args[3]
+        hf_row['T_magma'] = interior_t_magma
+        if r_solvus_frac is not None:
+            hf_row['R_solvus'] = r_solvus_frac * hf_row['R_int']
+            hf_row['T_solvus'] = 3700.0
+            hf_row['P_solvus'] = 2.0e10
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        hf_row = args[8]
+        captured.append(
+            (hf_row['T_magma'], hf_row['T_surf'], hf_row['P_surf'], hf_row['R_int'])
+        )
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    expected = [interior_t_magma, checkpoint['T_surf'], 250.0, checkpoint['R_int']]
+    np.testing.assert_allclose(np.array(captured), [expected], rtol=1e-12)
+    # The magma-ocean frame is physical: positive temperatures, pressure, radius.
+    assert min(captured[0]) > 0.0
+
+
 @pytest.fixture
 def cvode_missing(monkeypatch):
     """Make ``import scikits_odes_sundials.cvode`` fail as on a machine without CVODE."""
