@@ -2139,7 +2139,12 @@ def test_required_dataset_failure_does_not_stop_later_fetches(monkeypatch, tmp_p
     assert attempted[:3] == ['star.spectra.named', 'star.spectra.solar', 'star.spectra.muscles']
     assert 'atmos_clim.spectral_files.honeyside.48' in attempted
     assert 'interior.melting_curves.wolf_bower_2018' in attempted
-    assert 'interior.eos.paleos_iron' in attempted
+    # A failed file inside the EOS step does not stop the next one.
+    assert {
+        'interior.eos.paleos_iron',
+        'interior.eos.paleos_mgsio3_unified',
+        'interior.eos.paleos_mgsio3',
+    } <= set(attempted)
 
 
 @pytest.mark.unit
@@ -3341,6 +3346,40 @@ def test_download_zalmoxis_eos_paleos_unified(mock_static, mock_fetch, mock_file
             *((EOS_PALEOS_MGSIO3, name) for name in _PAIR),
         ]
     )
+
+
+@pytest.mark.unit
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_one_failed_file_does_not_stop_the_rest(
+    mock_static, mock_fetch, caplog
+):
+    """An unreachable core table is logged and raised after every other table of the
+    set was still attempted, so one fetch attempt gets all the reachable files."""
+    from fwl_io import DownloadError
+
+    from proteus.data import EOS_PALEOS_IRON, EOS_PALEOS_MGSIO3, EOS_PALEOS_MGSIO3_UNIFIED
+    from proteus.utils.data import download_zalmoxis_eos
+
+    attempted = []
+
+    def _fetch(key, name, data_root=None):
+        attempted.append((key, name))
+        if key == EOS_PALEOS_IRON:
+            raise DownloadError('could not obtain from any mirror')
+
+    with patch('proteus.data.fetch_dataset_file', side_effect=_fetch):
+        with caplog.at_level('WARNING'), pytest.raises(DownloadError):
+            download_zalmoxis_eos('PALEOS:MgSiO3', core_eos='PALEOS:iron')
+
+    assert attempted[0] == (EOS_PALEOS_IRON, _UNIFIED_IRON)
+    assert sorted(attempted[1:]) == sorted(
+        [
+            (EOS_PALEOS_MGSIO3_UNIFIED, _UNIFIED_MGSIO3),
+            *((EOS_PALEOS_MGSIO3, name) for name in _PAIR),
+        ]
+    )
+    assert f'Could not fetch {_UNIFIED_IRON}' in caplog.text
 
 
 @pytest.mark.unit

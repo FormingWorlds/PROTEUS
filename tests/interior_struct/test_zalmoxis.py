@@ -819,6 +819,7 @@ def _require_config(mantle_eos, *, resume=False, ice=None):
     zc = config.interior_struct.zalmoxis
     zc.core_eos, zc.mantle_eos, zc.ice_layer_eos = 'PALEOS:iron', mantle_eos, ice
     zc.mushy_zone_factor = 0.8
+    config.interior_energetics.module = 'aragog'
     config.params.resume = resume
     config.params.offline = True
     return config
@@ -953,6 +954,13 @@ def test_require_paleos_tables_warns_once_for_a_water_or_iron_mantle(
     if warned:
         assert f'mantle_eos={mantle}' in messages[0]
         assert 'solidus = 0.80 x liquidus' in messages[0]
+    # Energetics without P-S tables build none, so no warning.
+    caplog.clear()
+    config = _require_config(mantle)
+    config.interior_energetics.module = 'dummy'
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        zmod.require_paleos_tables(config, str(tmp_path))
+    assert 'MgSiO3 melting curves' not in caplog.text
 
 
 def test_generate_spider_tables_stops_on_a_missing_pair_table(tmp_path, monkeypatch):

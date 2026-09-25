@@ -979,8 +979,8 @@ class AragogRunner:
                 from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
 
                 missing = [
-                    p or 'unset'
-                    for p in (solid_eos, liquid_eos)
+                    p or f'{phase} table (no registry path)'
+                    for phase, p in (('solid', solid_eos), ('liquid', liquid_eos))
                     if not (p and os.path.isfile(p))
                 ]
                 raise ZalmoxisMissingEOSFilesError(

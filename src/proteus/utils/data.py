@@ -2046,9 +2046,16 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
         fetch_dataset_file,
     )
 
+    failed = []
+
     def fetch_files(key, names):
+        # One unreachable file does not stop the others; the first failure is raised at the end.
         for name in names:
-            fetch_dataset_file(key, name, data_root=FWL_DATA_DIR)
+            try:
+                fetch_dataset_file(key, name, data_root=FWL_DATA_DIR)
+            except _fetch_errors() as exc:
+                log.warning('Could not fetch %s from %s: %s', name, key, exc)
+                failed.append(exc)
 
     all_eos = [e for e in (mantle_eos, core_eos, ice_layer_eos) if e]
 
@@ -2137,6 +2144,8 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
             '(typo or unsupported EOS family?); no data downloaded for it',
             c,
         )
+    if failed:
+        raise failed[0]
 
 
 def load_melting_curve(melt_file):

@@ -1453,9 +1453,16 @@ class Proteus:
     def _require_paleos_tables(self):
         """Stop before any solve when a table of the Zalmoxis EOS set is missing."""
         if self.config.interior_struct.module == 'zalmoxis':
-            from proteus.interior_struct.zalmoxis import require_paleos_tables
+            from proteus.interior_struct.zalmoxis import (
+                ZalmoxisMissingEOSFilesError,
+                require_paleos_tables,
+            )
 
-            require_paleos_tables(self.config, self.directories['output'])
+            try:
+                require_paleos_tables(self.config, self.directories['output'])
+            except ZalmoxisMissingEOSFilesError:
+                UpdateStatusfile(self.directories, 20)
+                raise
 
     def extract_archives(self):
         """

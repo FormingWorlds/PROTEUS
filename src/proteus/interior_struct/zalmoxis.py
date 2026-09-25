@@ -1947,7 +1947,11 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
         outdir, lambda: _ps_resume_key(config, mat_dicts.get(zc.mantle_eos), mat_dicts)
     )
     check_zalmoxis_eos_files(layers, mat_dicts, paleos_companions=not kept)
-    if zc.mantle_eos in PALEOS_REGISTRY_KEYS and zc.mantle_eos.endswith((':H2O', ':iron')):
+    if (
+        config.interior_energetics.module in ('spider', 'aragog')
+        and zc.mantle_eos in PALEOS_REGISTRY_KEYS
+        and zc.mantle_eos.endswith((':H2O', ':iron'))
+    ):
         log.warning(
             'mantle_eos=%s: the structure uses its density, while the energetics use the '
             'MgSiO3 melting curves (PALEOS liquidus, solidus = %.2f x liquidus) and '

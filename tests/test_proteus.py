@@ -237,18 +237,61 @@ def test_proteus_resume_checks_the_eos_tables_after_unpacking(tmp_path):
 
 
 @pytest.mark.unit
+def test_proteus_fresh_run_checks_the_eos_tables_before_the_structure_solve(tmp_path):
+    """A fresh run checks its EOS tables once, before the first structure solve."""
+    p = _make_proteus_instance(tmp_path)
+    p.directories.update(
+        {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
+    )
+    p.config.interior_energetics.flux_guess = 100.0
+    p.config.star.age_ini = 0.1
+    order = []
+    p._require_paleos_tables = MagicMock(side_effect=lambda: order.append('require'))
+
+    def _solve(*args, **kwargs):
+        order.append('solve')
+        raise _StopAfterMeshRestore
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(patch('proteus.proteus.CleanDir'))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.solve_structure', _solve)
+        )
+        with pytest.raises(_StopAfterMeshRestore):
+            p.start(resume=False, offline=True)
+
+    assert order == ['require', 'solve']
+    p._require_paleos_tables.assert_called_once_with()
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize('struct_module, calls', [('zalmoxis', 1), ('spider', 0)])
 def test_require_paleos_tables_runs_only_for_the_zalmoxis_structure(
     tmp_path, struct_module, calls
 ):
     """Only a Zalmoxis structure reads the Zalmoxis EOS tables, so only it is checked,
     with the run's output directory."""
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
     p = _make_proteus_instance(tmp_path, struct_module=struct_module)
     with patch('proteus.interior_struct.zalmoxis.require_paleos_tables') as require:
         p._require_paleos_tables()
     assert require.call_count == calls
     if calls:
         require.assert_called_once_with(p.config, str(tmp_path))
+        # A stop records the error status, so the run does not read as still running.
+        with (
+            patch(
+                'proteus.interior_struct.zalmoxis.require_paleos_tables',
+                side_effect=ZalmoxisMissingEOSFilesError('missing'),
+            ),
+            patch('proteus.proteus.UpdateStatusfile') as status,
+            pytest.raises(ZalmoxisMissingEOSFilesError),
+        ):
+            p._require_paleos_tables()
+        status.assert_called_once_with(p.directories, 20)
 
 
 @pytest.mark.unit
