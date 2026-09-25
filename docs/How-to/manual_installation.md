@@ -87,11 +87,11 @@ the official installer:
 ```console
 curl -fsSL https://install.julialang.org | sh
 ```
-After installing, pin to Julia 1.12, which is the version exercised by CI:
+After installing, pin to Julia 1.13, which is the version exercised by CI:
 
 ```console
-juliaup add 1.12
-juliaup default 1.12
+juliaup add 1.13
+juliaup default 1.13
 ```
 
 !!! warning "Do **not** use your package manager"

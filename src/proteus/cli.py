@@ -963,6 +963,40 @@ def _resolve_proteus_root() -> Path:
     return root
 
 
+_CVODE_IMPORT = 'from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum'
+
+
+def _install_cvode(root: Path) -> None:
+    """Install the SUNDIALS CVODE solver, or warn and let the command go on.
+
+    CVODE lives outside the pip dependency tree because it needs the SUNDIALS C
+    library. Only a run with Aragog on ``solver_method = "cvode"`` needs it, and
+    that run stops at setup without it, so a failed install is a warning here:
+    SPIDER, ``radau`` and ``bdf`` users can finish the installation. The helper
+    script is idempotent and returns early when CVODE already imports. Its own
+    Python may not be the one running PROTEUS, so the import is checked again here.
+
+    Parameters
+    ----------
+    root : Path
+        PROTEUS source tree that holds ``tools/get_cvode.sh``.
+    """
+    click.secho('[+] Installing the SUNDIALS CVODE solver...', fg='blue')
+    try:
+        subprocess.run(['bash', str(root / 'tools' / 'get_cvode.sh')], cwd=root, check=True)
+        subprocess.run([sys.executable, '-c', _CVODE_IMPORT], check=True, capture_output=True)
+    except subprocess.CalledProcessError:
+        click.secho(
+            '[!] CVODE (scikits-odes-sundials) is not installed or does not import in '
+            f'{sys.executable}. Aragog with solver_method = "cvode" stops at setup until it '
+            'does: fix the error above and run "bash tools/get_cvode.sh". Other interior '
+            'modules, and Aragog with solver_method = "radau" or "bdf", do not need it.',
+            fg='yellow',
+        )
+        return
+    click.secho('[+] CVODE available', fg='green')
+
+
 @cli.command()
 @click.option('--export-env', is_flag=True, help='Add FWL_DATA and RAD_DIR to shell rc.')
 @click.option(
@@ -1002,6 +1036,9 @@ def install_all(export_env: bool, config_path: Path | None):
     fwl_data = resolve_fwl_data_dir()
     fwl_data.mkdir(parents=True, exist_ok=True)
     click.secho(f'[+] FWL_DATA directory: {fwl_data}', fg='green')
+
+    # --- Step 1b: Install CVODE (Aragog's default solver) ---
+    _install_cvode(root)
 
     # --- Step 2: Install SOCRATES ---
     socrates_dir = root / 'socrates'
@@ -1123,17 +1160,8 @@ def update_all(export_env: bool, config_path: Path | None):
     # --- Step 1: update all Python packages ---
     subprocess.run([sys.executable, '-m', 'pip', 'install', '-U', '-e', str(root)], check=True)
 
-    # --- Step 1b: ensure the SUNDIALS CVODE solver (Aragog production path) ---
-    # CVODE lives outside the pip dependency tree because it needs the SUNDIALS
-    # C library; without it Aragog falls back to scipy Radau. The helper is
-    # idempotent and returns early when CVODE already imports.
-    try:
-        subprocess.run(['bash', str(root / 'tools' / 'get_cvode.sh')], cwd=root, check=True)
-    except subprocess.CalledProcessError:
-        click.secho(
-            '[!] CVODE install failed; Aragog will fall back to scipy Radau.',
-            fg='yellow',
-        )
+    # --- Step 1b: ensure the SUNDIALS CVODE solver (Aragog's default solver) ---
+    _install_cvode(root)
 
     # --- Step 2: FWL_DATA check ---
     # resolve_fwl_data_dir always returns a path; an update only makes sense

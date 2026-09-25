@@ -1,6 +1,7 @@
 # Zalmoxis interior module
 from __future__ import annotations
 
+import functools
 import hashlib
 import logging
 import math
@@ -8,6 +9,7 @@ import os
 import re
 import shutil
 import tempfile
+from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +19,7 @@ from zalmoxis.mixing import _PALEOS_UNIFIED_NAMES
 from zalmoxis.solver import main
 
 from proteus.config import Config
+from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
@@ -46,14 +49,56 @@ _SUPERLIQ_N_CEILING_BISECT = 12  # last-valid/first-invalid bisection iterations
 _SUPERLIQ_MAX_S_DRIFT = 1.0e-3  # max fractional entropy drift for an in-table adiabat
 _SUPERLIQ_DEFAULT_MUSHY = 0.8  # fallback solidus = factor * liquidus
 
+# Entries kept in each super-liquidus memo before the least recently used goes.
+_SUPERLIQ_CACHE_MAXSIZE = 64
+
+
+class _LRUDict(OrderedDict):
+    """Mapping that keeps at most ``maxsize`` entries.
+
+    Reads and writes mark an entry as most recently used; an insert beyond
+    ``maxsize`` drops the least recently used entry, so a long-lived process
+    (grid driver, notebook) holds a bounded number of solves.
+
+    Parameters
+    ----------
+    maxsize : int
+        Maximum number of entries, at least 1.
+    """
+
+    def __init__(self, maxsize: int = _SUPERLIQ_CACHE_MAXSIZE):
+        if maxsize < 1:
+            raise ValueError(f'maxsize must be >= 1, got {maxsize}')
+        super().__init__()
+        self.maxsize = maxsize
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        self.move_to_end(key)
+        return value
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        while len(self) > self.maxsize:
+            self.popitem(last=False)
+
+    def copy(self):
+        """Return a shallow copy with the same entries, order and ``maxsize``."""
+        new = type(self)(maxsize=self.maxsize)
+        for key, value in self.items():
+            OrderedDict.__setitem__(new, key, value)
+        return new
+
+
 # Per-process memo so the three IC call sites (structure solve, energetics
 # entropy IC, Aragog cross-check) share one solve for a given input instead of
 # repeating the ~30-probe search. Keyed on the physical inputs only, so it is
 # deterministic; tests clear it between cases (see _clear_superliquidus_cache).
-_SUPERLIQ_CACHE: dict = {}
+_SUPERLIQ_CACHE: _LRUDict = _LRUDict()
 # Traceback-free copies of anchor failures that depend only on the key
 # (InitialConditionError and wrapped numerical errors), keyed like _SUPERLIQ_CACHE.
-_SUPERLIQ_FAILED: dict = {}
+_SUPERLIQ_FAILED: _LRUDict = _LRUDict()
 
 # CMB temperature [K] of the most recently solved super-liquidus adiabat. A
 # structure solve driven by an external temperature source discards this anchor
@@ -550,7 +595,8 @@ def _resolve_zalmoxis_cmb_temperature(
     super-liquidus CMB anchor is not the temperature source for this call and
     the solved value is discarded. Those calls reuse the anchor the
     internal-dispatch IC solve already produced and skip the scan-and-bisection;
-    before any solve has run they fall back to ``config.planet.tcmb_init``. This
+    when no anchor was solved for the same ``delta_T_super`` and mantle EOS they
+    fall back to ``config.planet.tcmb_init``. This
     avoids re-solving (and possibly raising the unreachable-superheat error) on
     every evolution re-solve over a value nothing consumes.
 
@@ -574,7 +620,8 @@ def _resolve_zalmoxis_cmb_temperature(
 
     if external_temperature_source:
         anchor = _SUPERLIQ_LAST_ANCHOR
-        if anchor is not None:
+        # Reuse the anchor only for the superheat and mantle EOS it was solved for.
+        if anchor is not None and _SUPERLIQ_LAST_ANCHOR_FOR == _superliq_anchor_for(config):
             log.debug(
                 'liquidus_super: structure solve uses an external temperature '
                 'source; reusing the last solved CMB anchor T_cmb=%.0f K and '
@@ -584,8 +631,8 @@ def _resolve_zalmoxis_cmb_temperature(
             return float(anchor)
         log.debug(
             'liquidus_super: structure solve uses an external temperature '
-            'source before any super-liquidus solve; using tcmb_init=%.0f K as '
-            'the unconsumed CMB anchor.',
+            'source with no super-liquidus solve for this superheat and mantle '
+            'EOS; using tcmb_init=%.0f K as the unconsumed CMB anchor.',
             float(config.planet.tcmb_init),
         )
         return float(config.planet.tcmb_init)
@@ -2140,6 +2187,99 @@ def read_ps_cache_pointer(outdir: str) -> str | None:
     return cache_dir or None
 
 
+# Kept-table directories already reported in this process.
+_PS_RESUME_REPORTED: set[str] = set()
+
+
+def _resumed_ps_tables(outdir: str, current_key) -> dict | None:
+    """Return the P-S tables a resumed run already uses, whatever their key.
+
+    Looks in the per-run ``data/spider_eos`` directory, then in the shared
+    cache directory recorded by :func:`_write_ps_cache_pointer`, for a marker
+    with both phase-boundary files. A resumed run continues on these tables
+    even when the current key differs, so it does not switch tables part way
+    through its evolution. The first time a directory is kept in a process,
+    ``current_key()`` is called and a differing key is logged at WARNING with
+    both keys, naming the generator identity when only that differs or the
+    marker predates it. When ``current_key()`` raises, the tables are still
+    kept and a WARNING gives the reason the key was not checked.
+
+    Parameters
+    ----------
+    outdir : str
+        The run output directory.
+    current_key : callable
+        No-argument callable returning the key the current code would build
+        (from :func:`_ps_cache_key`); it raises when that key cannot be built.
+
+    Returns
+    -------
+    dict or None
+        The same keys as :func:`generate_spider_tables`, or None when neither
+        location holds a marker with both phase-boundary files.
+    """
+
+    candidates = [os.path.join(outdir, 'data', 'spider_eos')]
+    pointed = read_ps_cache_pointer(outdir)
+    if pointed:
+        candidates.append(pointed)
+    for eos_dir in candidates:
+        marker = os.path.join(eos_dir, '.cache_info.txt')
+        solidus_path = os.path.join(eos_dir, 'solidus_P-S.dat')
+        liquidus_path = os.path.join(eos_dir, 'liquidus_P-S.dat')
+        if not all(os.path.isfile(f) for f in (marker, solidus_path, liquidus_path)):
+            continue
+        try:
+            with open(marker) as f:
+                stored = f.read().strip()
+        except OSError:
+            continue
+        if eos_dir not in _PS_RESUME_REPORTED:
+            _PS_RESUME_REPORTED.add(eos_dir)
+            _report_kept_ps_tables(eos_dir, stored, current_key)
+        return {
+            'eos_dir': eos_dir,
+            'solidus_path': solidus_path,
+            'liquidus_path': liquidus_path,
+        }
+    return None
+
+
+def _report_kept_ps_tables(eos_dir: str, stored: str, current_key) -> None:
+    """Log at WARNING how kept P-S tables differ from the current key, if they do."""
+    try:
+        cache_key = current_key()
+    except Exception as exc:
+        log.warning(
+            'Resumed run keeps its original energetics P-S entropy tables in %s '
+            '(stored key %s); the current key is not checked: %s',
+            eos_dir,
+            stored,
+            exc,
+        )
+        return
+    if stored == cache_key:
+        return
+    want_base, _, want_gen = cache_key.partition('_gen=')
+    base, has_gen, gen = stored.partition('_gen=')
+    if base == want_base:
+        change = 'the new table generator (generator %s, current %s)' % (
+            gen if has_gen else 'unknown',
+            want_gen,
+        )
+    else:
+        change = 'the changed settings'
+    log.warning(
+        'Resumed run keeps its original energetics P-S entropy tables in %s and '
+        'ignores %s: stored key %s, current key %s. The structure solve uses the '
+        'current melting curves.',
+        eos_dir,
+        change,
+        stored,
+        cache_key,
+    )
+
+
 def _publish_ps_tables(src_dir: str, dest_dir: str) -> None:
     """Move every file from a staging dir into the shared cache dir atomically.
 
@@ -2201,6 +2341,7 @@ def _ps_cache_key(
     eos_file: str | None,
     solid_eos: str | None,
     liquid_eos: str | None,
+    generator: str | None = None,
 ) -> str:
     """Build the identity string for a generated P-S EOS table set.
 
@@ -2228,6 +2369,10 @@ def _ps_cache_key(
         Resolved paths of the tables that seed the generation. These
         distinguish EOS that share a registry name but resolve to different
         files (e.g. distinct PALEOS-API table versions).
+    generator : str or None
+        Identity of the Zalmoxis table generator; defaults to
+        :func:`_ps_generator_identity`, so tables built by a different
+        Zalmoxis release or source land on a distinct key.
 
     Returns
     -------
@@ -2237,10 +2382,190 @@ def _ps_cache_key(
     eos_identity = '|'.join(str(p) for p in (mantle_eos, eos_file, solid_eos, liquid_eos))
     eos_digest = hashlib.sha1(eos_identity.encode()).hexdigest()[:12]
     eos_name = re.sub(r'[^A-Za-z0-9]+', '-', str(mantle_eos)).strip('-')
+    if generator is None:
+        generator = _ps_generator_identity()
+    gen_name = re.sub(r'[^A-Za-z0-9]+', '-', str(generator)).strip('-')
     return (
         f'P_max={P_max:.6e}_nP={nP}_nS={nS}_mzf={mzf}'
-        f'_layout={layout}_eos={eos_name}-{eos_digest}'
+        f'_layout={layout}_eos={eos_name}-{eos_digest}_gen={gen_name}'
     )
+
+
+@functools.lru_cache(maxsize=1)
+def _ps_generator_identity() -> str:
+    """Identity of the Zalmoxis code that generates the P-S tables.
+
+    The installed Zalmoxis version plus a digest of the table generator
+    (``zalmoxis.eos_export``) and the melting curves it reads
+    (``zalmoxis.melting_curves``). The digest covers editable installs, whose
+    version metadata is fixed at install time while the source moves on.
+
+    Returns
+    -------
+    str
+        ``'<version>-<digest>'``, or ``'<version>'`` when a module source file
+        cannot be read.
+    """
+    import zalmoxis
+    import zalmoxis.eos_export
+    import zalmoxis.melting_curves
+
+    version = str(getattr(zalmoxis, '__version__', 'unknown'))
+    h = hashlib.sha1()
+    try:
+        for mod in (zalmoxis.eos_export, zalmoxis.melting_curves):
+            h.update(Path(mod.__file__).read_bytes())
+    except (OSError, TypeError):
+        return version
+    return f'{version}-{h.hexdigest()[:12]}'
+
+
+class _NoPSTables(ValueError):
+    """The mantle EOS gives no PALEOS P-S tables; ``level`` is the log level of the reason."""
+
+    def __init__(self, reason: str, level: int = logging.WARNING):
+        super().__init__(reason)
+        self.level = level
+
+
+def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
+    """Resolve the PALEOS files and the cache key of the P-S tables.
+
+    Materialises PALEOS-API entries, which can build their tables on a cold
+    cache. Logs nothing about a missing or non-PALEOS EOS; it raises instead.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object with struct.zalmoxis settings.
+    eos_entry : dict
+        Registry entry of the mantle EOS.
+    mat_dicts : dict
+        Zalmoxis material dictionaries.
+
+    Returns
+    -------
+    tuple
+        ``(eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key)``.
+
+    Raises
+    ------
+    _NoPSTables
+        When the mantle EOS is not PALEOS or its files are missing.
+    """
+    mantle_eos = config.interior_struct.zalmoxis.mantle_eos
+    # PALEOS-API live tabulation: materialise cached .dat paths in place so the
+    # downstream format / eos_file lookups see concrete paths. No-op for
+    # non-PALEOS-API entries. First call on a cold cache triggers generation.
+    from zalmoxis.eos.dispatch import _is_paleos_api
+
+    if _is_paleos_api(eos_entry):
+        from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
+
+        log.info(
+            'PALEOS-API live tabulation: resolving cached tables for %s '
+            '(cold-cache build may take up to ~1 h at 600 pts/decade)',
+            mantle_eos,
+        )
+        resolve_registry_entry(eos_entry)
+
+    # Detect format: paleos_unified vs PALEOS-2phase (nested dict).
+    is_unified = eos_entry.get('format') == 'paleos_unified'
+    is_twophase = (
+        'melted_mantle' in eos_entry
+        and 'solid_mantle' in eos_entry
+        and isinstance(eos_entry.get('melted_mantle'), dict)
+        and isinstance(eos_entry.get('solid_mantle'), dict)
+    )
+
+    if not (is_unified or is_twophase):
+        raise _NoPSTables(
+            f'mantle EOS {mantle_eos} is neither PALEOS unified nor PALEOS-2phase',
+            logging.INFO,
+        )
+
+    # Resolve unified file (if present) and 2-phase files (if present).
+    eos_file = eos_entry.get('eos_file', '')
+    eos_file = eos_file if eos_file and os.path.isfile(eos_file) else None
+
+    if is_twophase:
+        solid_eos = eos_entry['solid_mantle'].get('eos_file', '')
+        liquid_eos = eos_entry['melted_mantle'].get('eos_file', '')
+    else:
+        # Unified mantle: also look for sibling 2-phase tables to harden
+        # the property surfaces (avoids interpolation across the melting
+        # curve discontinuity in the unified table). Use the API-aware
+        # helper so PALEOS-API unified runs pull API 2-phase tables
+        # rather than silently pulling shipped Zenodo ones.
+        # Net effect for PALEOS:MgSiO3: the structure solve uses the unified
+        # table, but the per-phase property/density surfaces are taken from
+        # these two-phase tables when present. If they are absent the code
+        # below falls back to the unified table alone (entropy near the
+        # melting curve is then less reliable). The solidus stays synthetic
+        # (mushy_zone_factor * liquidus) in both cases.
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
+
+    solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
+    liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
+
+    # For the 2-phase path, the downstream Zalmoxis functions still require
+    # an `eos_file` positional (used only to seed default property
+    # interpolators that are immediately overridden by the 2-phase ones).
+    # Pass the solid table as a sentinel: any valid PALEOS table works.
+    if eos_file is None:
+        if solid_eos is not None:
+            eos_file = solid_eos
+        else:
+            raise _NoPSTables(
+                f'no PALEOS EOS file is available for {mantle_eos} '
+                '(unified missing and 2-phase incomplete)'
+            )
+
+    if is_twophase and not (solid_eos and liquid_eos):
+        raise _NoPSTables(
+            f'PALEOS-2phase entry {mantle_eos} is missing its solid or liquid file'
+        )
+
+    # Determine pressure range from planet mass (higher mass needs wider range)
+    mass_tot = config.planet.mass_tot or 1.0
+    # P_max for the SPIDER P-S lookup grid. Must cover the actual P_cmb
+    # of the planet; the 10 TPa cap covers very massive rocky planets
+    # (mass_tot well above 2) without hitting the table edge. See
+    # interior_energetics/aragog.py for the matching cap and the
+    # comment on EOS / melting-curve calibration ranges.
+    P_max = min(1.0e13, 150e9 * mass_tot + 200e9)
+
+    # Table resolution from config
+    nP = config.interior_struct.zalmoxis.lookup_nP
+    nS = config.interior_struct.zalmoxis.lookup_nS
+
+    mzf = config.interior_struct.zalmoxis.mushy_zone_factor
+    layout = '2phase' if is_twophase else 'unified'
+    cache_key = _ps_cache_key(
+        P_max=P_max,
+        nP=nP,
+        nS=nS,
+        mzf=mzf,
+        layout=layout,
+        mantle_eos=mantle_eos,
+        eos_file=eos_file,
+        solid_eos=solid_eos,
+        liquid_eos=liquid_eos,
+    )
+
+    return eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key
+
+
+def _ps_resume_key(config: Config, eos_entry: dict | None, mat_dicts: dict) -> str:
+    """Current P-S cache key for the resume warning, without building PALEOS-API tables."""
+    from zalmoxis.eos.dispatch import _is_paleos_api
+
+    if eos_entry is None:
+        mantle_eos = config.interior_struct.zalmoxis.mantle_eos
+        raise _NoPSTables(f'mantle EOS {mantle_eos} is not in the material dictionary')
+    if _is_paleos_api(eos_entry):
+        raise ValueError('a PALEOS-API mantle EOS is not resolved on resume')
+    return _ps_table_inputs(config, eos_entry, mat_dicts)[-1]
 
 
 def generate_spider_tables(config: Config, outdir: str):
@@ -2277,7 +2602,10 @@ def generate_spider_tables(config: Config, outdir: str):
     config : Config
         Configuration object with struct.zalmoxis settings.
     outdir : str
-        Output directory. Tables are written to ``outdir/data/spider_eos/``.
+        Output directory. Tables are written to ``outdir/data/spider_eos/``, or,
+        when the ``PROTEUS_PS_CACHE_DIR`` environment variable is set, to a
+        subdirectory of it named after the sanitised :func:`_ps_cache_key` string, which
+        independent runs with the same key share.
 
     Returns
     -------
@@ -2297,91 +2625,39 @@ def generate_spider_tables(config: Config, outdir: str):
     mat_dicts = load_zalmoxis_material_dictionaries()
     eos_entry = mat_dicts.get(mantle_eos)
 
+    # A resumed run stays on the tables it started with; the key only feeds the warning.
+    if config.params.resume:
+        resumed = _resumed_ps_tables(
+            outdir, lambda: _ps_resume_key(config, eos_entry, mat_dicts)
+        )
+        if resumed is not None:
+            return resumed
+
     if eos_entry is None:
         log.info(
             'Mantle EOS %s not found in material dictionary; using pre-existing SPIDER tables.',
             mantle_eos,
         )
         return None
-
-    # PALEOS-API live tabulation: materialise cached .dat paths in place so the
-    # downstream format / eos_file lookups see concrete paths. No-op for
-    # non-PALEOS-API entries. First call on a cold cache triggers generation.
-    from zalmoxis.eos.dispatch import _is_paleos_api
-
-    if _is_paleos_api(eos_entry):
-        from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
-
-        log.info(
-            'PALEOS-API live tabulation: resolving cached tables for %s '
-            '(cold-cache build may take up to ~1 h at 600 pts/decade)',
-            mantle_eos,
-        )
-        resolve_registry_entry(eos_entry)
-
-    # Detect format: paleos_unified vs PALEOS-2phase (nested dict).
-    is_unified = eos_entry.get('format') == 'paleos_unified'
-    is_twophase = (
-        'melted_mantle' in eos_entry
-        and 'solid_mantle' in eos_entry
-        and isinstance(eos_entry.get('melted_mantle'), dict)
-        and isinstance(eos_entry.get('solid_mantle'), dict)
-    )
-
-    if not (is_unified or is_twophase):
-        log.info(
-            'Mantle EOS %s is neither PALEOS unified nor PALEOS-2phase; '
-            'using pre-existing SPIDER tables.',
-            mantle_eos,
-        )
+    try:
+        inputs = _ps_table_inputs(config, eos_entry, mat_dicts)
+    except _NoPSTables as exc:
+        log.log(exc.level, 'No PALEOS P-S tables: %s; using pre-existing SPIDER tables.', exc)
         return None
-
-    # Resolve unified file (if present) and 2-phase files (if present).
-    eos_file = eos_entry.get('eos_file', '')
-    eos_file = eos_file if eos_file and os.path.isfile(eos_file) else None
-
-    if is_twophase:
-        solid_eos = eos_entry['solid_mantle'].get('eos_file', '')
-        liquid_eos = eos_entry['melted_mantle'].get('eos_file', '')
-    else:
-        # Unified mantle: also look for sibling 2-phase tables to harden
-        # the property surfaces (avoids interpolation across the melting
-        # curve discontinuity in the unified table). Use the API-aware
-        # helper so PALEOS-API unified runs pull API 2-phase tables
-        # rather than silently pulling shipped Zenodo ones.
-        # Net effect for PALEOS:MgSiO3: the structure solve uses the unified
-        # table, but the per-phase property/density surfaces are taken from
-        # these two-phase tables when present. If they are absent the code
-        # below falls back to the unified table alone (entropy near the
-        # melting curve is then less reliable). The solidus stays synthetic
-        # (mushy_zone_factor * liquidus) in both cases.
-        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
-
-    solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
-    liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
-
-    # For the 2-phase path, the downstream Zalmoxis functions still require
-    # an `eos_file` positional (used only to seed default property
-    # interpolators that are immediately overridden by the 2-phase ones).
-    # Pass the solid table as a sentinel: any valid PALEOS table works.
-    if eos_file is None:
-        if solid_eos is not None:
-            eos_file = solid_eos
-        else:
-            log.warning(
-                'No PALEOS EOS file available for %s '
-                '(unified missing and 2-phase incomplete); skipping table gen.',
-                mantle_eos,
-            )
-            return None
-
-    if is_twophase and not (solid_eos and liquid_eos):
+    eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key = inputs
+    if solid_eos and liquid_eos:
+        log.info('Using PALEOS-2phase tables for entropy-IC table generation')
+    nP = config.interior_struct.zalmoxis.lookup_nP
+    nS = config.interior_struct.zalmoxis.lookup_nS
+    if config.params.resume:
         log.warning(
-            'PALEOS-2phase entry %s missing solid or liquid file; skipping.',
-            mantle_eos,
+            'Resumed run has no kept P-S entropy tables in %s or at its shared-cache '
+            'pointer; it continues on the tables of the current key %s, built now if absent',
+            os.path.join(outdir, 'data', 'spider_eos'),
+            cache_key,
         )
-        return None
 
+    mzf = config.interior_struct.zalmoxis.mushy_zone_factor
     # Phase boundaries: PALEOS-liquidus is the analytic Belonoshko+2005 /
     # Fei+2021 Simon-Glatzel curve. The derived solidus is
     # T_solidus = T_liquidus * mushy_zone_factor for both layouts. A two-phase
@@ -2391,7 +2667,6 @@ def generate_spider_tables(config: Config, outdir: str):
         solidus_id='Stixrude14-solidus',  # unused, but API requires it
         liquidus_id='PALEOS-liquidus',
     )
-    mzf = config.interior_struct.zalmoxis.mushy_zone_factor
     solidus_func = derive_solidus_from_liquidus(liquidus_func, mzf)
     if is_twophase:
         # This solidus_func also reaches Zalmoxis's own 2-phase structure
@@ -2408,42 +2683,9 @@ def generate_spider_tables(config: Config, outdir: str):
             mzf,
         )
 
-    # Determine pressure range from planet mass (higher mass needs wider range)
-    mass_tot = config.planet.mass_tot or 1.0
-    # P_max for the SPIDER P-S lookup grid. Must cover the actual P_cmb
-    # of the planet; the 10 TPa cap covers very massive rocky planets
-    # (mass_tot well above 2) without hitting the table edge. See
-    # interior_energetics/aragog.py for the matching cap and the
-    # comment on EOS / melting-curve calibration ranges.
-    P_max = min(1.0e13, 150e9 * mass_tot + 200e9)
-
-    if solid_eos and liquid_eos:
-        log.info('Using PALEOS-2phase tables for entropy-IC table generation')
-
-    # Table resolution from config
-    nP = config.interior_struct.zalmoxis.lookup_nP
-    nS = config.interior_struct.zalmoxis.lookup_nS
-
-    layout = '2phase' if is_twophase else 'unified'
-    cache_key = _ps_cache_key(
-        P_max=P_max,
-        nP=nP,
-        nS=nS,
-        mzf=mzf,
-        layout=layout,
-        mantle_eos=mantle_eos,
-        eos_file=eos_file,
-        solid_eos=solid_eos,
-        liquid_eos=liquid_eos,
-    )
-
-    # Table location. Default: per-run output/<run>/data/spider_eos. When
-    # PROTEUS_PS_CACHE_DIR is set, the directory is keyed by cache_key so that
-    # independent runs with the same planet mass, table resolution, and mantle
-    # EOS reuse one generated table instead of each rebuilding the slow
-    # full-resolution PALEOS P-S table. The cache_key encodes everything that
-    # changes the table (P_max, nP, nS, mushy_zone_factor, layout, and the
-    # resolved EOS identity), so reuse is exact.
+    # Table location: output/<run>/data/spider_eos, or with PROTEUS_PS_CACHE_DIR a
+    # shared directory keyed by cache_key (fields in _ps_cache_key), so runs with
+    # the same key reuse one slow full-resolution PALEOS P-S table.
     _ps_cache_root = os.environ.get('PROTEUS_PS_CACHE_DIR')
     if _ps_cache_root:
         _safe_key = cache_key.replace('.', 'p').replace('=', '-').replace('+', '')
@@ -2480,6 +2722,13 @@ def generate_spider_tables(config: Config, outdir: str):
                     'solidus_path': solidus_path,
                     'liquidus_path': liquidus_path,
                 }
+        else:
+            log.info(
+                'Regenerating P-S entropy tables in %s: cache key %s does not match %s',
+                spider_eos_dir,
+                existing_key,
+                cache_key,
+            )
 
     # Choose where to generate. For a shared PROTEUS_PS_CACHE_DIR the tables are
     # written into a private staging directory on the same filesystem and then
@@ -3488,25 +3737,24 @@ def zalmoxis_solver(
     spider_density = mantle_density
     spider_gravity = mantle_gravity
 
-    if config.interior_struct.zalmoxis.global_miscibility:
-        R_solvus = hf_row.get('R_solvus')
-        if R_solvus is not None and R_solvus < planet_radius:
-            # Truncate arrays at the solvus: SPIDER only evolves the
-            # miscible interior below the binodal surface
-            solvus_mask = mantle_radii <= R_solvus * 1.001  # small tolerance
-            if np.any(solvus_mask):
-                spider_radii = mantle_radii[solvus_mask]
-                spider_pressure = mantle_pressure[solvus_mask]
-                spider_density = mantle_density[solvus_mask]
-                spider_gravity = mantle_gravity[solvus_mask]
-                log.info(
-                    'SPIDER domain truncated at solvus: R_solvus=%.3e m '
-                    '(%.2f R_earth), %d of %d shells',
-                    R_solvus,
-                    R_solvus / R_earth,
-                    len(spider_radii),
-                    len(mantle_radii),
-                )
+    R_solvus = solvus_radius(config, hf_row.get('R_solvus'), planet_radius, R_inner=cmb_radius)
+    if R_solvus is not None:
+        # Truncate arrays at the solvus: SPIDER only evolves the
+        # miscible interior below the binodal surface
+        solvus_mask = mantle_radii <= R_solvus * 1.001  # small tolerance
+        if np.any(solvus_mask):
+            spider_radii = mantle_radii[solvus_mask]
+            spider_pressure = mantle_pressure[solvus_mask]
+            spider_density = mantle_density[solvus_mask]
+            spider_gravity = mantle_gravity[solvus_mask]
+            log.info(
+                'SPIDER domain truncated at solvus: R_solvus=%.3e m '
+                '(%.2f R_earth), %d of %d shells',
+                R_solvus,
+                R_solvus / R_earth,
+                len(spider_radii),
+                len(mantle_radii),
+            )
 
     # Write SPIDER mesh file if requested. Re-uses the possibly-collapsed
     # gravity array so the SPIDER path gets the same scalar-g override
