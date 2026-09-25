@@ -1670,8 +1670,8 @@ def _attempt(desc: str, func, *args, **kwargs) -> bool:
 def needs_spider_ps_tables(config) -> bool:
     """Return whether a run reads the Wolf and Bower P-S lookup set.
 
-    SPIDER and Aragog read it unless Zalmoxis generates a PALEOS table set,
-    which happens for a mantle EOS that is a PALEOS registry key. A set
+    SPIDER and Aragog read it unless Zalmoxis generates a PALEOS table set
+    (:func:`proteus.utils.helper.generates_paleos_tables`). A set
     interior_struct.eos_dir asks for it whenever SPIDER or Aragog run.
 
     Parameters

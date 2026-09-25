@@ -23,7 +23,7 @@ from proteus.interior_energetics.common import (
 from proteus.interior_struct.common import solvus_radius
 from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
-from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.helper import UpdateStatusfile, energetics_eos_key
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -1566,12 +1566,13 @@ def determine_interior_radius_with_zalmoxis(
     # are selected inside Zalmoxis, and (b) standalone Zalmoxis can use the
     # adiabat if the gate is ever fixed.  SPIDER provides its own T(r)
     # through entropy evolution, so the linear T initial guess is fine.
-    _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
     _temp_mode_override: str | None = None
     if (
         config.interior_energetics.module == 'spider'
         and config.planet.temperature_mode == 'isothermal'
-        and config.interior_struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES)
+        and (energetics_eos_key(config.interior_struct.zalmoxis.mantle_eos) or '').startswith(
+            ('WolfBower2018', 'RTPress100TPa')
+        )
     ):
         log.info(
             'Overriding Zalmoxis temperature_mode from isothermal to adiabatic '

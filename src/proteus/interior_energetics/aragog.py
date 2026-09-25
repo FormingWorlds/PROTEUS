@@ -38,7 +38,7 @@ from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
 from proteus.utils.data import resolve_lookup_table_dir, resolve_melting_curve_files
-from proteus.utils.helper import generates_paleos_tables
+from proteus.utils.helper import energetics_eos_key, generates_paleos_tables
 from proteus.utils.helper import format_subyear_time, parse_subyear_time, snapshot_path_for_time
 
 log = logging.getLogger('fwl.' + __name__)
@@ -844,14 +844,14 @@ class AragogRunner:
             initial_condition_temperature_profile = 3
             init_file_temperature_profile = os.path.join(FWL_DATA_DIR, '')
         elif config.interior_struct.module == 'zalmoxis':
-            _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
-            if config.interior_struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES):
+            _key = energetics_eos_key(config.interior_struct.zalmoxis.mantle_eos) or ''
+            if _key.startswith(('WolfBower2018', 'RTPress100TPa')):
                 # When using Zalmoxis with temperature-dependent silicate EOS, set initial condition to user-defined temperature field (from file) in Aragog
                 initial_condition_temperature_profile = 2
                 init_file_temperature_profile = os.path.join(
                     outdir, 'data', 'zalmoxis_output_temp.txt'
                 )
-            elif config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:'):
+            elif _key.startswith('PALEOS:'):
                 # For PALEOS EOS with adiabatic IC: Aragog uses IC=3 with
                 # entropy tables for its entropy-conserving adiabat. After
                 # initialization, _verify_entropy_ic compares against an

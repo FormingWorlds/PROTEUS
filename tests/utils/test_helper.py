@@ -833,14 +833,17 @@ def test_parse_subyear_time_rejects_multiple_p():
         ('PALEOS:MgSiO3:1.0', True),
         ('PALEOS:MgSiO3 ', True),
         ('PALEOS:Olivine', False),
-        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', True),
+        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', True),
+        ('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', False),
         ('WolfBower2018:MgSiO3', False),
         (None, False),
     ],
 )
-def test_generates_paleos_tables_needs_a_single_registry_key(mantle_eos, expected):
-    """Only one component whose key is a PALEOS registry key, under the Zalmoxis
-    structure, counts; a mixture or an unknown material does not."""
+def test_generates_paleos_tables_follows_the_energetics_key(mantle_eos, expected):
+    """Under the Zalmoxis structure, a PALEOS energetics key counts: a single PALEOS
+    key, or a mixture whose MgSiO3 component is PALEOS or that has no MgSiO3
+    component but a PALEOS one; an unknown material does not."""
     from types import SimpleNamespace
 
     from proteus.utils.helper import generates_paleos_tables

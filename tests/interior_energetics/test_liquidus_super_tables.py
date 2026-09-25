@@ -820,9 +820,10 @@ def test_zalmoxis_anchor_clamp_caps_the_ic_entropy(
 
 
 @pytest.mark.physics_invariant
-def test_paleos_mixture_ic_is_solved_without_the_anchor_cap(fake_tables, monkeypatch):
-    """A PALEOS mixture gets no generated table set, so the IC is solved on the
-    melting_dir tables without the pure-MgSiO3 P-T anchor or its entropy cap.
+def test_wolf_bower_mixture_ic_is_solved_without_the_anchor_cap(fake_tables, monkeypatch):
+    """A mixture whose MgSiO3 component is Wolf and Bower gets no generated table set,
+    so the IC is solved on the melting_dir tables without the PALEOS P-T anchor or its
+    entropy cap; a PALEOS mixture keeps both, like a single PALEOS mantle.
     """
     zal = pytest.importorskip('proteus.interior_struct.zalmoxis')
     calls = []
@@ -834,25 +835,27 @@ def test_paleos_mixture_ic_is_solved_without_the_anchor_cap(fake_tables, monkeyp
     monkeypatch.setattr(common, '_ANCHOR_CAP_WARNED', set())
     monkeypatch.setattr(zal, 'solve_superliquidus_adiabat', _anchor)
     cfg = _config(500.0, module='zalmoxis')
-    cfg.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1'
+    cfg.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1'
     assert _S_expected(500.0) > 2300.0  # the cap would bind
 
     S_mix = compute_initial_entropy(cfg, {'P_cmb': P_CMB}, 3300.0, fake_tables)
     assert S_mix == pytest.approx(_S_expected(500.0), rel=1e-6)
     assert calls == []
 
-    # Discrimination: a single PALEOS mantle keeps the anchor and its cap.
-    cfg.interior_struct.zalmoxis.mantle_eos = 'PALEOS-2phase:MgSiO3'
-    S_single = compute_initial_entropy(cfg, {'P_cmb': P_CMB}, 3300.0, fake_tables)
-    assert S_single == pytest.approx(2300.0, rel=1e-12)
-    assert calls == ['PALEOS-2phase:MgSiO3']
+    # Discrimination: a single PALEOS mantle and a PALEOS mixture keep the anchor and its cap.
+    for mantle in ('PALEOS-2phase:MgSiO3', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1'):
+        cfg.interior_struct.zalmoxis.mantle_eos = mantle
+        S_paleos = compute_initial_entropy(cfg, {'P_cmb': P_CMB}, 3300.0, fake_tables)
+        assert S_paleos == pytest.approx(2300.0, rel=1e-12)
+    assert calls == ['PALEOS-2phase:MgSiO3', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1']
 
 
 @pytest.mark.parametrize(
     ('mantle_eos', 'energetics', 'deferred'),
     [
         ('PALEOS-2phase:MgSiO3', 'aragog', True),
-        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'aragog', False),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'aragog', True),
+        ('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', 'aragog', False),
         ('WolfBower2018:MgSiO3', 'spider', False),
         ('PALEOS:MgSiO3:1.0', 'aragog', True),
     ],

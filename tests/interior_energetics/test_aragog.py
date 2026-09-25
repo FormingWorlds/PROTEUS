@@ -1472,7 +1472,8 @@ def test_solve_with_retry_first_solve_rejects_non_finite_tcore(monkeypatch):
     [
         ('zalmoxis', 'PALEOS:MgSiO3', True),
         ('zalmoxis', 'PALEOS-2phase:MgSiO3', True),
-        ('zalmoxis', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+        ('zalmoxis', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', True),
+        ('zalmoxis', 'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', False),
         ('zalmoxis', 'WolfBower2018:MgSiO3', False),
         ('dummy', 'PALEOS:MgSiO3', False),
     ],
@@ -1482,8 +1483,8 @@ def test_melting_curve_files_follow_the_generated_table_set(
 ):
     """Aragog reads PALEOS curves only with a generated PALEOS set, else melting_dir.
 
-    A PALEOS mixture gets no generated set, so SPIDER and the P-S tables use
-    melting_dir; Aragog must read the same curves.
+    A mixture follows its MgSiO3 component, so SPIDER, the P-S tables and Aragog
+    read the same curves.
     """
     from proteus.interior_energetics import aragog as aragog_mod
 
@@ -1502,6 +1503,56 @@ def test_melting_curve_files_follow_the_generated_table_set(
     assert rmc.called is (not expect_paleos)
     if not expect_paleos:
         assert rmc.call_args.args[0] == 'Monteux-600'
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('mantle_eos', 'key', 'paleos'),
+    [
+        ('PALEOS:MgSiO3', 'PALEOS:MgSiO3', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'PALEOS:MgSiO3', True),
+        ('Chabrier:H:0.03+PALEOS:MgSiO3:0.97', 'PALEOS:MgSiO3', True),
+        (
+            'PALEOS-API:H2O:0.2+PALEOS-2phase:MgSiO3-highres:0.8',
+            'PALEOS-2phase:MgSiO3-highres',
+            True,
+        ),
+        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', 'PALEOS-2phase:MgSiO3', True),
+        ('PALEOS:H2O:0.1+PALEOS-API:iron:0.9', 'PALEOS-API-2phase:MgSiO3', True),
+        ('PALEOS:H2O:0.1+WolfBower2018:MgSiO3:0.9', 'WolfBower2018:MgSiO3', False),
+        ('RTPress100TPa:MgSiO3:0.9+PALEOS:H2O:0.1', 'RTPress100TPa:MgSiO3', False),
+    ],
+)
+def test_structure_and_energetics_read_one_melting_curve(
+    tmp_path, monkeypatch, mantle_eos, key, paleos
+):
+    """The structure melting curve and the Aragog curve of a mantle EOS are the same,
+    for single keys and every kind of mixture."""
+    from proteus.interior_energetics import aragog as aragog_mod
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_solidus_liquidus_functions
+    from proteus.utils import data as data_mod
+    from proteus.utils.helper import energetics_eos_key, generates_paleos_tables
+
+    local = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'TestCurve'
+    local.mkdir(parents=True)
+    P = np.array([1e5, 1e11, 1e12])
+    np.savetxt(local / 'solidus_P-T.dat', np.column_stack([P, [1000.0, 2000.0, 3000.0]]))
+    np.savetxt(local / 'liquidus_P-T.dat', np.column_stack([P, [1500.0, 2600.0, 3700.0]]))
+    monkeypatch.setattr(aragog_mod, 'FWL_DATA_DIR', tmp_path)
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos=mantle_eos)
+    config.interior_struct.melting_dir = 'TestCurve'
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.8
+
+    assert energetics_eos_key(mantle_eos) == key
+    assert generates_paleos_tables(config.interior_struct) is paleos
+    sol_fn, liq_fn = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
+    sol_file, liq_file = aragog_mod._melting_curve_files(config, str(tmp_path / 'out'))
+    for fn, path in ((sol_fn, sol_file), (liq_fn, liq_file)):
+        table = np.loadtxt(path)
+        assert float(fn(50e9)) == pytest.approx(np.interp(50e9, *table.T), rel=1e-3)
+    assert (float(liq_fn(50e9)) == pytest.approx(2050.0)) is not paleos
 
 
 @pytest.mark.unit
@@ -1562,15 +1613,18 @@ def test_helpfile_output_t_cmb_node_is_cmb_basic_node():
     ('mantle_eos', 'eos_dir', 'tables'),
     [
         ('PALEOS-2phase:MgSiO3', None, 'paleos'),
-        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', None, 'wb'),
-        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'Custom', 'custom'),
-        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'Missing', 'wb'),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', None, 'paleos'),
+        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', None, 'paleos'),
+        ('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', None, 'wb'),
+        ('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', 'Custom', 'custom'),
+        ('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', 'Missing', 'wb'),
     ],
 )
 def test_setup_solver_property_tables_follow_the_generated_set(
     tmp_path, mantle_eos, eos_dir, tables
 ):
-    """Only a generated PALEOS set gives PALEOS property tables; a mixture reads the WB set."""
+    """A generated PALEOS set, also for a PALEOS mixture, gives PALEOS property tables;
+    a mixture whose MgSiO3 component is Wolf and Bower reads the WB set."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = tmp_path / 'out'
@@ -1704,12 +1758,12 @@ def test_setup_solver_stops_without_the_paleos_pair(tmp_path, kept, liquid_path)
 
 
 @pytest.mark.unit
-def test_setup_solver_offline_mixture_names_the_fetch_command(tmp_path):
-    """A PALEOS mixture without the fetched WB set stops with the fetch command."""
+def test_setup_solver_offline_wolf_bower_mixture_names_the_fetch_command(tmp_path):
+    """A Wolf and Bower mixture without the fetched WB set stops with the fetch command."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     config = _make_aragog_config(
-        struct_module='zalmoxis', mantle_eos='PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1'
+        struct_module='zalmoxis', mantle_eos='WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1'
     )
     config.interior_struct.eos_dir = None
     interior_o = MagicMock()

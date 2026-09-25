@@ -3080,8 +3080,8 @@ def test_get_sufficient_dummy_structure_fetches_ps_tables_without_eos_dir(
     _get_sufficient(config, clean=False)
     assert mock_dyn.call_count == 0
 
-    # A PALEOS mixture gets no generated set, so Aragog reads the fetched set.
-    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1'
+    # A mixture with a Wolf and Bower MgSiO3 component reads the fetched set.
+    config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1'
     _get_sufficient(config, clean=False)
     assert mock_dyn.call_count == 1
 
@@ -3096,7 +3096,8 @@ def test_get_sufficient_dummy_structure_fetches_ps_tables_without_eos_dir(
         ('aragog', 'zalmoxis', None, 'PALEOS:MgSiO3', False),
         ('aragog', 'zalmoxis', None, 'PALEOS-2phase:MgSiO3', False),
         ('aragog', 'zalmoxis', None, 'WolfBower2018:MgSiO3', True),
-        ('spider', 'zalmoxis', None, 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', True),
+        ('spider', 'zalmoxis', None, 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+        ('spider', 'zalmoxis', None, 'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', True),
         ('aragog', 'zalmoxis', None, 'PALEOS:MgSiO3:1.0', False),
         ('aragog', 'zalmoxis', 'WolfBower2018_MgSiO3', 'PALEOS:MgSiO3', True),
         ('dummy', 'dummy', None, 'PALEOS:MgSiO3', False),

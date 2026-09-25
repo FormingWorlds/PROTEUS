@@ -276,8 +276,9 @@ read from that local directory, which holds `solidus_P-T.dat` and
 parametrizations and how to generate them. When SPIDER or
 Aragog read `melting_dir`, a configured curve whose files are missing stops the
 run with an error naming the missing files instead of switching to other curves.
-With `interior_struct.module = "zalmoxis"` and a single PALEOS mantle equation
-of state, the curves are derived from the PALEOS liquidus and `melting_dir` is
+With `interior_struct.module = "zalmoxis"` and a PALEOS mantle equation of
+state (for a mixture: a PALEOS MgSiO$_3$ component, or no MgSiO$_3$ component and
+a PALEOS one), the curves are derived from the PALEOS liquidus and `melting_dir` is
 not read; a configured `melting_dir` then gives a warning when the configuration
 is loaded. Without a PALEOS table set, `melting_dir` must be set, rather than
 use whichever curves are on disk: an Aragog configuration without it is rejected

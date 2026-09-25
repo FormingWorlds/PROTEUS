@@ -2921,7 +2921,8 @@ def test_no_input_toml_uses_bare_interior_section():
     'energetics, mantle, melting_dir, stops',
     [
         ('aragog', 'WolfBower2018:MgSiO3', None, True),
-        ('aragog', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', None, True),
+        ('aragog', 'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', None, True),
+        ('aragog', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', None, False),
         ('aragog', 'PALEOS:MgSiO3', None, False),
         ('aragog', 'WolfBower2018:MgSiO3', 'Monteux-600', False),
         ('spider', 'WolfBower2018:MgSiO3', None, False),

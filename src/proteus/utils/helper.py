@@ -59,14 +59,42 @@ def eos_components(eos: str) -> list[str]:
     return [_strip_fraction_tokens(c.strip()) for c in str(eos).split('+') if c.strip()]
 
 
+def energetics_eos_key(mantle_eos: str) -> str | None:
+    """Registry key of the EOS whose melting curves and P-S tables a mantle uses.
+
+    The structure melting curves and the energetics both follow this key, so a
+    run has one melting curve.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Mantle EOS, possibly a ``+``-joined mixture.
+
+    Returns
+    -------
+    str or None
+        The key of a single component. For a mixture, its first MgSiO3 component;
+        without one, the MgSiO3 2-phase pair of its PALEOS family when a component
+        is PALEOS; else None.
+    """
+    components = eos_components(mantle_eos)
+    if len(components) == 1:
+        return components[0]
+    mgsio3 = [c for c in components if c.partition(':')[2].startswith('MgSiO3')]
+    if mgsio3:
+        return mgsio3[0]
+    if any(c.startswith(PALEOS_EOS_PREFIXES) for c in components):
+        return twophase_registry_key(mantle_eos)
+    return None
+
+
 def generates_paleos_tables(interior_struct) -> bool:
     """Return whether Zalmoxis generates a PALEOS table set for this structure.
 
-    Only a single-component mantle EOS whose key (spaces and fraction tokens
-    stripped) is a PALEOS key of the Zalmoxis material registry, under the
-    Zalmoxis structure, gets one. SPIDER, Aragog and the table fetch then use the
-    PALEOS-derived curves instead of interior_struct.melting_dir. A mixture gets
-    none. The table files are not checked.
+    Under the Zalmoxis structure, a mantle EOS gets one when its energetics key
+    (:func:`energetics_eos_key`) is a PALEOS key of the Zalmoxis material
+    registry. SPIDER, Aragog and the table fetch then use the PALEOS-derived
+    curves instead of interior_struct.melting_dir. The table files are not checked.
 
     Parameters
     ----------
@@ -76,13 +104,12 @@ def generates_paleos_tables(interior_struct) -> bool:
     Returns
     -------
     bool
-        True for module 'zalmoxis' with a mantle EOS that is a PALEOS registry key.
+        True for module 'zalmoxis' with a PALEOS energetics key.
     """
     if getattr(interior_struct, 'module', None) != 'zalmoxis':
         return False
     mantle = getattr(getattr(interior_struct, 'zalmoxis', None), 'mantle_eos', None)
-    components = eos_components(mantle or '')
-    return len(components) == 1 and components[0] in PALEOS_REGISTRY_KEYS
+    return energetics_eos_key(mantle or '') in PALEOS_REGISTRY_KEYS
 
 
 def twophase_registry_key(mantle_eos: str) -> str:

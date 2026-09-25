@@ -968,7 +968,6 @@ def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypat
         ('PALEOS:iron', True),
         ('PALEOS:MgSiO3', False),
         ('PALEOS:H2O:1.0', True),
-        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
     ],
 )
 def test_require_paleos_tables_warns_once_for_a_water_or_iron_mantle(
@@ -976,7 +975,7 @@ def test_require_paleos_tables_warns_once_for_a_water_or_iron_mantle(
 ):
     """A PALEOS H2O or iron mantle gets one WARNING at the start of the run that its
     energetics use the MgSiO3 curves and tables; the per-solve check adds none, and an
-    MgSiO3 mantle or a string that is not a registry key gets none."""
+    MgSiO3 mantle gets none."""
     from proteus.interior_struct import zalmoxis as zmod
 
     registry = _paleos_registry(tmp_path)
@@ -1057,24 +1056,67 @@ def test_check_eos_files_stops_when_the_paleos_api_build_fails(monkeypatch):
 
 
 @pytest.mark.parametrize('module', ['aragog', 'spider'])
-def test_require_paleos_tables_warns_for_a_mixture_without_mgsio3(
-    tmp_path, monkeypatch, caplog, module
+@pytest.mark.parametrize(
+    'mantle, energetics',
+    [
+        (
+            'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1',
+            'are PALEOS MgSiO3 (PALEOS:MgSiO3, solidus = 0.80',
+        ),
+        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', 'are PALEOS MgSiO3 (PALEOS-2phase:MgSiO3, solidus'),
+        (
+            'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1',
+            'follow WolfBower2018:MgSiO3 and melting_dir',
+        ),
+    ],
+)
+def test_require_paleos_tables_warns_once_for_a_paleos_mixture(
+    tmp_path, monkeypatch, caplog, module, mantle, energetics
 ):
-    """A PALEOS mixture with no MgSiO3 component gets one WARNING that its energetics
-    use the Wolf and Bower tables and the melting_dir curves."""
+    """A mixture with a PALEOS component gets one WARNING that its other components
+    enter only the structure density, naming the set its energetics follow."""
     from proteus.interior_struct import zalmoxis as zmod
 
     monkeypatch.setattr(
         zmod, 'load_zalmoxis_material_dictionaries', lambda: _paleos_registry(tmp_path)
     )
-    config = _require_config('PALEOS:H2O:0.5+PALEOS:iron:0.5')
+    config = _require_config(mantle)
     config.interior_energetics.module = module
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
         zmod.require_paleos_tables(config, str(tmp_path))
     warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     assert len(warnings) == 1
-    assert 'Wolf and Bower (2018) MgSiO3 tables' in warnings[0]
-    assert 'melting_dir curves (Monteux-600)' in warnings[0]
+    assert (
+        f'mantle_eos={mantle}: the non-MgSiO3 components enter only the structure density'
+        in (warnings[0])
+    )
+    assert f'the energetics and melting curves {energetics}' in warnings[0]
+
+
+@pytest.mark.parametrize(
+    'mixture, single',
+    [
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'PALEOS:MgSiO3'),
+        ('PALEOS:H2O:0.3+PALEOS:MgSiO3:0.7', 'PALEOS:MgSiO3'),
+        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', 'PALEOS-2phase:MgSiO3'),
+    ],
+)
+def test_a_paleos_mixture_gets_the_ps_key_of_its_mgsio3_set(tmp_path, mixture, single):
+    """The P-S tables of a PALEOS mixture carry the key of its MgSiO3 set, the same key
+    and cache as that single mantle, whatever the fractions."""
+    from proteus.interior_struct import zalmoxis as zmod
+
+    registry = _paleos_registry(tmp_path)
+    keys = []
+    for mantle in (mixture, single):
+        config = _require_config(mantle)
+        config.planet.mass_tot = 1.0
+        config.interior_struct.zalmoxis.lookup_nP = 20
+        config.interior_struct.zalmoxis.lookup_nS = 30
+        key, entry = zmod._energetics_entry(mantle, registry)
+        keys.append((key, zmod._ps_table_inputs(config, key, entry, registry)[-1]))
+    assert keys[0] == keys[1]
+    assert keys[0][0] == single
 
 
 def test_generate_spider_tables_stops_on_a_missing_pair_table(tmp_path, monkeypatch):

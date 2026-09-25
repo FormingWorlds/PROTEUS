@@ -117,13 +117,18 @@ liquidus at the binding depth.
     the interior solver uses for its melt fraction. Where those tables come
     from depends on the structure module:
 
-    - `"zalmoxis"` with a mantle EOS (`interior_struct.zalmoxis.mantle_eos`,
-      default `"PALEOS:MgSiO3"`) that is a single PALEOS table name: Zalmoxis
-      generates the tables from that EOS, with a liquidus derived from the
-      PALEOS (Fei et al. 2021) curve, and Aragog builds its phase-property
-      tables from PALEOS too. `interior_struct.melting_dir` is not used.
+    - `"zalmoxis"` with a PALEOS mantle EOS (`interior_struct.zalmoxis.mantle_eos`,
+      default `"PALEOS:MgSiO3"`): Zalmoxis generates the tables from that EOS,
+      with a liquidus derived from the PALEOS (Fei et al. 2021) curve, and
+      Aragog builds its phase-property tables from PALEOS too.
+      `interior_struct.melting_dir` is not used. A mixture (a `+` in
+      `mantle_eos`) follows its MgSiO$_3$ component, so a mixture with
+      `PALEOS:MgSiO3` gets the tables of a `PALEOS:MgSiO3` mantle; a PALEOS
+      mixture without an MgSiO$_3$ component gets the MgSiO$_3$ two-phase
+      tables of its PALEOS family.
     - `"spider"` and `"dummy"`, or `"zalmoxis"` when no PALEOS table set is
-      generated, which includes a PALEOS mixture (a `+` in `mantle_eos`): the
+      generated, which includes a mixture whose MgSiO$_3$ component is not
+      PALEOS (for example `"WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1"`): the
       tables come from FWL_DATA (SPIDER also falls back to its own lookup
       data), Aragog also takes its phase-property files from that Wolf & Bower
       (2018) set or `interior_struct.eos_dir`, `interior_struct.melting_dir`
