@@ -23,10 +23,10 @@ authors:
     affiliation: 1
   - name: Laurent Soucasse
     orcid: 0000-0002-5422-8794
-    affiliation: 9
+    affiliation: 9, 3
   - name: Patrick Bos
     orcid: 0000-0002-6033-960X
-    affiliation: 1
+    affiliation: 1, 14
   - name: Mariana Sastre
     orcid: 0009-0008-7799-7976
     affiliation: 1
@@ -38,7 +38,7 @@ authors:
     affiliation: 4
   - name: Flavia C. Pascal
     orcid: 0009-0007-4663-1456
-    affiliation: 1
+    affiliation: 1, 5
   - name: Robb Calder
     orcid: 0009-0002-9247-2437
     affiliation: 5
@@ -74,7 +74,7 @@ authors:
     affiliation: 12
   - name: Tadahiro Kimura
     orcid: 0000-0001-8477-2523
-    affiliation: 13
+    affiliation: 13, 1
   - name: Mark Hammond
     orcid: 0000-0002-6893-522X
     affiliation: 2
@@ -113,7 +113,7 @@ affiliations:
    index: 8
  - name: IMEC, Leuven, Belgium
    index: 9
- - name: University of Toronto, Toronto, Canada
+ - name: Department of Earth, Atmospheric and Planetary Sciences, Massachusetts Institute of Technology, Cambridge, MA, USA
    index: 10
  - name: Leiden Observatory, Leiden University, Leiden, The Netherlands
    index: 11
@@ -121,6 +121,8 @@ affiliations:
    index: 12
  - name: UTokyo Organization for Planetary and Space Science, University of Tokyo, Tokyo, Japan
    index: 13
+ - name: Center for Information Technology, University of Groningen, Groningen, The Netherlands
+   index: 14
 
 date: 25 September 2026
 bibliography: paper.bib
