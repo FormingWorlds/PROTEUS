@@ -1026,7 +1026,7 @@ def test_thermal_rhs_continuity_across_time(boundary_runner):
     rhs_perturbed = boundary_runner.thermal_rhs(t, [y[0] + epsilon, y[1]])
 
     # Changes should be small (continuous derivatives)
-    for rhs_nom, rhs_pert in zip(rhs_nominal, rhs_perturbed):
+    for rhs_nom, rhs_pert in zip(rhs_nominal, rhs_perturbed, strict=False):
         assert abs(rhs_pert - rhs_nom) < 1e-5
     # Finiteness invariant: continuous derivatives are useless if the
     # base evaluation diverged. Pin that both components are finite

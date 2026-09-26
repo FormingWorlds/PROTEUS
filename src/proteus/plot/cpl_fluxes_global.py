@@ -77,7 +77,7 @@ def plot_fluxes_global(
     plt.ioff()
 
     fpath = os.path.join(
-        output_dir, 'plots', 'plot_fluxes_global.%s' % config.params.out.plot_fmt
+        output_dir, 'plots', f'plot_fluxes_global.{config.params.out.plot_fmt}'
     )
     fig.savefig(fpath, bbox_inches='tight', dpi=200)
 

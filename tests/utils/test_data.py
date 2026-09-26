@@ -2912,7 +2912,7 @@ def test_seager_fallback_families_match_registry():
     for node in ast.walk(ast.parse(src)):
         if not isinstance(node, ast.Dict):
             continue
-        for key, value in zip(node.keys, node.values):
+        for key, value in zip(node.keys, node.values, strict=False):
             if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
                 continue
             if ':' not in key.value or not isinstance(value, ast.Dict):

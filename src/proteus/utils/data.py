@@ -1735,7 +1735,7 @@ def get_socrates(dirs=None):
     log.debug('Running get_socrates.sh')
     cmd = [os.path.join(dirs['tools'], 'get_socrates.sh'), workpath]
     out = os.path.join(dirs['proteus'], 'nogit_setup_socrates.log')
-    log.debug('    logging to %s' % out)
+    log.debug(f'    logging to {out}')
     with open(out, 'w') as hdl:
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 
@@ -1766,7 +1766,7 @@ def get_petsc(dirs=None):
     log.debug('Running get_petsc.sh')
     cmd = [os.path.join(dirs['tools'], 'get_petsc.sh'), workpath]
     out = os.path.join(dirs['proteus'], 'nogit_setup_petsc.log')
-    log.debug('    logging to %s' % out)
+    log.debug(f'    logging to {out}')
     with open(out, 'w') as hdl:
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 
@@ -1798,7 +1798,7 @@ def get_spider(dirs=None):
     log.debug('Running get_spider.sh')
     cmd = [os.path.join(dirs['tools'], 'get_spider.sh'), workpath]
     out = os.path.join(dirs['proteus'], 'nogit_setup_spider.log')
-    log.debug('    logging to %s' % out)
+    log.debug(f'    logging to {out}')
     with open(out, 'w') as hdl:
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 

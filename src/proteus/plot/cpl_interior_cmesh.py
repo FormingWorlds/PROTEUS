@@ -122,7 +122,7 @@ def plot_interior_cmesh(
             verticalalignment='top',
             horizontalalignment='left',
             fontsize=12,
-            bbox=dict(boxstyle='square,pad=0.1', fc='white', alpha=0.4, linewidth=0),
+            bbox={'boxstyle': 'square,pad=0.1', 'fc': 'white', 'alpha': 0.4, 'linewidth': 0},
         )
 
     # Plot temperature
@@ -193,7 +193,7 @@ def plot_interior_cmesh(
     fig.subplots_adjust(top=0.98, bottom=0.07, right=0.85, left=0.13, hspace=0.11)
 
     # Save plot
-    fname = os.path.join(output_dir, 'plots', 'plot_interior_cmesh.%s' % plot_format)
+    fname = os.path.join(output_dir, 'plots', f'plot_interior_cmesh.{plot_format}')
     fig.savefig(fname, dpi=200)
 
 

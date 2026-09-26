@@ -138,7 +138,7 @@ def plot_global(
             verticalalignment='bottom',
             fontsize=11,
             zorder=20,
-            bbox=dict(fc='white', ec='white', alpha=0.5, pad=0.1, boxstyle='round'),
+            bbox={'fc': 'white', 'ec': 'white', 'alpha': 0.5, 'pad': 0.1, 'boxstyle': 'round'},
         )
 
     # Move right subplots y-axes to right side
@@ -330,7 +330,7 @@ def plot_global(
     else:
         plt_name += '_lin'
 
-    fname = os.path.join(output_dir, 'plots', '%s.%s' % (plt_name, config.params.out.plot_fmt))
+    fname = os.path.join(output_dir, 'plots', f'{plt_name}.{config.params.out.plot_fmt}')
     fig.savefig(fname, bbox_inches='tight', dpi=200)
 
 

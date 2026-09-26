@@ -440,12 +440,14 @@ def write_spectrum(wl_arr, fl_arr, hf_row: dict, output_dir: str):
     header = (
         '# WL(nm)\t Flux(ergs/cm**2/s/nm)   '
         'Stellar flux at the top of the planet atmosphere '
-        '(scaled from 1 AU by the orbital separation), t_star = %.2e yr' % hf_row['age_star']
+        '(scaled from 1 AU by the orbital separation), t_star = {:.2e} yr'.format(
+            hf_row['age_star']
+        )
     )
 
     # Write to TSV file
     np.savetxt(
-        os.path.join(output_dir, 'data', '%d.sflux' % hf_row['Time']),
+        os.path.join(output_dir, 'data', f'{int(hf_row["Time"])}.sflux'),
         np.array([wl_arr, fl_arr]).T,
         header=header,
         comments='',
@@ -479,9 +481,9 @@ def update_stellar_quantities(hf_row: dict, config: Config, stellar_track=None):
     log.debug('Update stellar fluxes and temperature')
     update_instellation(hf_row, config, stellar_track)
     update_stellar_temperature(hf_row, config, stellar_track)
-    log.info('    F_ins      = %.3e   W m-2' % hf_row['F_ins'])
-    log.info('    F_xuv      = %.3e   W m-2' % hf_row['F_xuv'])
-    log.info('    T_star     = %.3f    K' % hf_row['T_star'])
+    log.info('    F_ins      = {:.3e}   W m-2'.format(hf_row['F_ins']))
+    log.info('    F_xuv      = {:.3e}   W m-2'.format(hf_row['F_xuv']))
+    log.info('    T_star     = {:.3f}    K'.format(hf_row['T_star']))
 
     # Inform if applying bolometric scaling
     if hf_row['bol_scale'] != 1.0:

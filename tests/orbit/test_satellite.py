@@ -1058,17 +1058,17 @@ def test_evolve_orbit_satellite_ps0d_engages_substep_controller_near_its_pole():
     (``run_adaptive_orbit_substeps``), not by silently applying the
     entire outer window as a single ``solve_ivp`` call.
     """
-    state = dict(
-        R_int=6.533829e6,
-        M_int=5.971455e24,
-        M_sat=7.1664e22,
-        semimajorax_sat=2.972962e7,
-        axial_period=14899.0,
-        plan_sat_am=3.874459e34,
-        F_tidal=9.581937e5,
-        core_density=5500.0,
-        C_int=7.326364e37,
-    )
+    state = {
+        'R_int': 6.533829e6,
+        'M_int': 5.971455e24,
+        'M_sat': 7.1664e22,
+        'semimajorax_sat': 2.972962e7,
+        'axial_period': 14899.0,
+        'plan_sat_am': 3.874459e34,
+        'F_tidal': 9.581937e5,
+        'core_density': 5500.0,
+        'C_int': 7.326364e37,
+    }
 
     # Discrimination baseline: the raw, unguarded ps0d entry point (what
     # the pre-fix dispatch called directly) over the same outer dt.
@@ -1113,17 +1113,17 @@ def test_evolve_orbit_satellite_ps0d_caps_cumulative_drift_per_call():
     this guards against: a single call previously reached ~7.25e8 m
     (~114 R_earth, a ~24x jump) from this state before this fix.
     """
-    state = dict(
-        R_int=6.533829e6,
-        M_int=5.971455e24,
-        M_sat=7.1664e22,
-        semimajorax_sat=2.972962e7,
-        axial_period=14899.0,
-        plan_sat_am=3.874459e34,
-        F_tidal=9.581937e5,
-        core_density=5500.0,
-        C_int=7.326364e37,
-    )
+    state = {
+        'R_int': 6.533829e6,
+        'M_int': 5.971455e24,
+        'M_sat': 7.1664e22,
+        'semimajorax_sat': 2.972962e7,
+        'axial_period': 14899.0,
+        'plan_sat_am': 3.874459e34,
+        'F_tidal': 9.581937e5,
+        'core_density': 5500.0,
+        'C_int': 7.326364e37,
+    }
     hf_row = dict(state, Time=21.0, eccentricity_sat=0.05, axial_period_sat=32661.0)
     config = _make_satellite_config('ps0d')
     interior_o = SimpleNamespace(

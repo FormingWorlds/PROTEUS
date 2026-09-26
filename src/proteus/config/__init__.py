@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import tomllib
 from pathlib import Path
-from typing import Literal, Union
+from typing import Literal
 
 import cattrs
 
@@ -22,8 +22,8 @@ def structure_k_val(val, _cls):
     return int(val)
 
 
-# Register this for the specific Union type
-cattrs.register_structure_hook(Union[int, Literal['none']], structure_k_val)
+# Register this for the specific union type
+cattrs.register_structure_hook(int | Literal['none'], structure_k_val)
 
 
 def _is_explicit_zero(value: object) -> bool:

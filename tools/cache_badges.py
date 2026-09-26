@@ -207,7 +207,7 @@ def _looks_like_svg(body: bytes) -> bool:
     # Require the document to OPEN as SVG/XML. A substring match on '<svg'
     # anywhere in the head would accept an HTML error page that embeds an
     # inline SVG logo, which is exactly the broken-badge case to reject.
-    return head.startswith(b'<?xml') or head.startswith(b'<svg')
+    return head.startswith((b'<?xml', b'<svg'))
 
 
 def _fetch_svg(

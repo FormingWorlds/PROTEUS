@@ -92,7 +92,7 @@ def _dt_cap_config(
 
 
 def _tides_with_ecc_history(times, eccs) -> Tides_t:
-    return Tides_t(evection_ecc_history=list(zip(times, eccs)))
+    return Tides_t(evection_ecc_history=list(zip(times, eccs, strict=False)))
 
 
 def _oscillating_ecc_history(

@@ -226,7 +226,7 @@ def plot_population_mass_radius(
     ax.grid(alpha=0.2, zorder=-2)
 
     ax.legend(loc='lower right', ncol=2, **LEG_KWARGS)
-    fpath = os.path.join(output_dir, 'plots', 'plot_population_mass_radius.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_population_mass_radius.{plot_format}')
     fig.savefig(fpath, bbox_inches='tight', dpi=200)
 
 
@@ -314,7 +314,7 @@ def plot_population_time_density(
     ax.grid(alpha=0.2, zorder=-2)
 
     ax.legend(**LEG_KWARGS)
-    fpath = os.path.join(output_dir, 'plots', 'plot_population_time_density.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_population_time_density.{plot_format}')
     fig.savefig(fpath, bbox_inches='tight', dpi=200)
 
 

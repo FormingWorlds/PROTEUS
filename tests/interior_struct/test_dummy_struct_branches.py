@@ -31,13 +31,13 @@ def _pressure(n=8, p_cmb=1.4e11):
 
 def _planet(temperature_mode, **overrides):
     """Minimal planet namespace for the temperature-profile helper."""
-    base = dict(
-        temperature_mode=temperature_mode,
-        tsurf_init=1800.0,
-        tcenter_init=4500.0,
-        tcmb_init=4000.0,
-        delta_T_super=100.0,
-    )
+    base = {
+        'temperature_mode': temperature_mode,
+        'tsurf_init': 1800.0,
+        'tcenter_init': 4500.0,
+        'tcmb_init': 4000.0,
+        'delta_T_super': 100.0,
+    }
     base.update(overrides)
     return SimpleNamespace(planet=SimpleNamespace(**base))
 

@@ -438,8 +438,7 @@ def test_run_vapourisation_preserves_noble_gases(tmp_path, monkeypatch):
             # Includes an He column but deliberately NO Ar column.
             f.write('Pbar mu C1O2 Fe He O2\n')
             f.write(
-                '2.0 %r %r %r %r %r\n'
-                % (
+                '2.0 {!r} {!r} {!r} {!r} {!r}\n'.format(
                     mu,
                     species_vmr['CO2'],
                     species_vmr['Fe'],

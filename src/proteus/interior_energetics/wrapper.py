@@ -199,8 +199,7 @@ def calculate_core_mass(hf_row: dict, config: Config):
     if config.interior_struct.core_frac_mode != 'radius':
         raise RuntimeError(
             'calculate_core_mass cubes core_frac as a radius fraction, but '
-            'core_frac_mode=%r; this path requires radius mode.'
-            % config.interior_struct.core_frac_mode
+            f'core_frac_mode={config.interior_struct.core_frac_mode!r}; this path requires radius mode.'
         )
     rho_core = get_core_density(config, hf_row)
     hf_row['R_core'] = hf_row['R_int'] * config.interior_struct.core_frac
@@ -524,7 +523,7 @@ def _derive_ps_melting_curve(
         out.write('# column * scaling factor = SI units: Pressure [Pa], Entropy [J/kg/K]\n')
         out.write('# scaling factors (constant) for each column given on line below\n')
         out.write(f'# {P_scale} {S_scale}\n')
-        for p, s in zip(P_nondim, S_nondim):
+        for p, s in zip(P_nondim, S_nondim, strict=False):
             out.write(f'{p:.18e} {s:.18e}\n')
 
     summary = {
@@ -882,7 +881,7 @@ def determine_interior_radius(
     achieves the target mass provided by the user in the config file.
     """
 
-    log.info('Using %s interior module to solve structure' % config.interior_energetics.module)
+    log.info(f'Using {config.interior_energetics.module} interior module to solve structure')
 
     # Provide P-S lookup tables for Aragog's entropy solver (and SPIDER
     # when it runs under this structure path). Mirrors the
@@ -950,7 +949,7 @@ def determine_interior_radius(
     def _resid(x):
         hf_row['R_int'] = x
 
-        log.debug('Try R = %.2e m = %.3f R_earth' % (x, x / R_earth))
+        log.debug(f'Try R = {x:.2e} m = {x / R_earth:.3f} R_earth')
 
         # Use interior model to get dry mass from radius
         calculate_core_mass(hf_row, config)
@@ -965,7 +964,9 @@ def determine_interior_radius(
 
         # Calculate residual
         res = hf_row['M_planet'] - M_target
-        log.debug('    yields M = %.5e kg , resid = %.3e kg' % (hf_row['M_planet'], res))
+        log.debug(
+            '    yields M = {:.5e} kg , resid = {:.3e} kg'.format(hf_row['M_planet'], res)
+        )
 
         return res
 
@@ -997,8 +998,9 @@ def determine_interior_radius(
     # on a mass-anchor violation.
     if not r.converged or not np.isfinite(r.root) or r.root <= 0.0:
         raise RuntimeError(
-            'Interior radius secant solve failed: converged=%s, root=%r, flag=%r'
-            % (r.converged, r.root, getattr(r, 'flag', None))
+            'Interior radius secant solve failed: converged={}, root={!r}, flag={!r}'.format(
+                r.converged, r.root, getattr(r, 'flag', None)
+            )
         )
     hf_row['R_int'] = float(r.root)
     calculate_core_mass(hf_row, config)
@@ -1008,9 +1010,13 @@ def determine_interior_radius(
     # Result
     log.info('Found solution for interior structure')
     log.info(
-        'M_planet: %.1e kg = %.3f M_earth' % (hf_row['M_planet'], hf_row['M_planet'] / M_earth)
+        'M_planet: {:.1e} kg = {:.3f} M_earth'.format(
+            hf_row['M_planet'], hf_row['M_planet'] / M_earth
+        )
     )
-    log.info('R_int: %.1e m  = %.3f R_earth' % (hf_row['R_int'], hf_row['R_int'] / R_earth))
+    log.info(
+        'R_int: {:.1e} m  = {:.3f} R_earth'.format(hf_row['R_int'], hf_row['R_int'] / R_earth)
+    )
     log.info(' ')
 
 
@@ -1323,7 +1329,10 @@ def _sample_adiabat_temperature_arrays(outdir: str, temperature_function):
         return None
     try:
         t_arr = np.array(
-            [float(temperature_function(float(r), float(P))) for r, P in zip(r_arr, p_arr)],
+            [
+                float(temperature_function(float(r), float(P)))
+                for r, P in zip(r_arr, p_arr, strict=False)
+            ],
             dtype=float,
         )
     except (TypeError, ValueError):
@@ -1904,7 +1913,7 @@ def run_interior(
     # Use the appropriate interior model
     if verbose:
         log.debug('Evolve interior...')
-    log.debug('Using %s module to evolve interior' % config.interior_energetics.module)
+    log.debug(f'Using {config.interior_energetics.module} module to evolve interior')
 
     # Write tidal heating file
     if config.interior_energetics.heat_tidal:
@@ -2063,7 +2072,7 @@ def run_interior(
     # Check that the new temperature is remotely reasonable
     if not (0 < hf_row['T_magma'] < 1e6):
         UpdateStatusfile(dirs, 21)
-        raise ValueError('T_magma is out of range: %g K' % float(hf_row['T_magma']))
+        raise ValueError('T_magma is out of range: {:g} K'.format(float(hf_row['T_magma'])))
 
     # Update dry interior mass
     hf_row['M_int'] = hf_row['M_mantle'] + hf_row['M_core']
@@ -2108,25 +2117,25 @@ def run_interior(
 
         if hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
             log.warning('Prevented large increase to T_magma!')
-            log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
+            log.warning('   Clipped from {:.2f} K'.format(hf_row['T_magma']))
             hf_row['T_magma'] = T_magma_prev + dT_delta_magma
             hf_row['Phi_global'] = Phi_global_prev
 
         if hf_row['T_surf'] > T_surf_prev + dT_delta_surf:
             log.warning('Prevented large increase to T_surf!')
-            log.warning('   Clipped from %.2f K' % hf_row['T_surf'])
+            log.warning('   Clipped from {:.2f} K'.format(hf_row['T_surf']))
             hf_row['T_surf'] = T_surf_prev + dT_delta_surf
 
     # Print result of interior module
     if verbose:
-        log.info('    T_magma    = %.3f K' % float(hf_row['T_magma']))
-        log.info('    Phi_global = %.3f  ' % float(hf_row['Phi_global']))
-        log.info('    RF_depth   = %.3f  ' % float(hf_row['RF_depth']))
-        log.info('    F_int      = %.2e W m-2' % float(hf_row['F_int']))
+        log.info('    T_magma    = {:.3f} K'.format(float(hf_row['T_magma'])))
+        log.info('    Phi_global = {:.3f}  '.format(float(hf_row['Phi_global'])))
+        log.info('    RF_depth   = {:.3f}  '.format(float(hf_row['RF_depth'])))
+        log.info('    F_int      = {:.2e} W m-2'.format(float(hf_row['F_int'])))
         if config.interior_energetics.heat_tidal:
-            log.info('    F_tidal    = %.2e W m-2' % float(hf_row['F_tidal']))
+            log.info('    F_tidal    = {:.2e} W m-2'.format(float(hf_row['F_tidal'])))
         if config.interior_energetics.heat_radiogenic:
-            log.info('    F_radio    = %.2e W m-2' % float(hf_row['F_radio']))
+            log.info('    F_radio    = {:.2e} W m-2'.format(float(hf_row['F_radio'])))
 
     # Actual time step size.
     # Use SPIDER's actual sim_time (read from 'time_years' inside the JSON,
@@ -2487,7 +2496,7 @@ def update_structure_from_interior(
             'Resume settling: dT/T re-solve proceeds (%s; last |dR_int/R_int|=%s, '
             'converged=%s, dPhi=%.4f vs backstop %.3f, window %d loops left).',
             reason,
-            'n/a' if _dR_rel is None else '%.2e' % _dR_rel,
+            'n/a' if _dR_rel is None else f'{_dR_rel:.2e}',
             _converged,
             _dPhi_since,
             _backstop,
@@ -2646,15 +2655,9 @@ def update_structure_from_interior(
             if _mass_rel_err > _ZALMOXIS_MASS_ANCHOR_TOL:
                 raise RuntimeError(
                     'Zalmoxis mass-anchor violation: '
-                    '|M_int / M_int_target - 1| = %.3e > tol=%.3e '
-                    '(M_int=%.4e kg, M_target=%.4e kg). '
+                    f'|M_int / M_int_target - 1| = {_mass_rel_err:.3e} > tol={_ZALMOXIS_MASS_ANCHOR_TOL:.3e} '
+                    f'(M_int={_M_int:.4e} kg, M_target={_M_target:.4e} kg). '
                     'Treating as non-converged.'
-                    % (
-                        _mass_rel_err,
-                        _ZALMOXIS_MASS_ANCHOR_TOL,
-                        _M_int,
-                        _M_target,
-                    )
                 )
 
         # Monotonic-radius guard for the super-liquidus adiabat IC. A fully
@@ -3043,7 +3046,7 @@ def update_structure_from_interior(
                 )
                 sim_times = []
             if len(sim_times) > 0:
-                latest_json = os.path.join(dirs['output'], 'data', '%.0f.json' % sim_times[-1])
+                latest_json = os.path.join(dirs['output'], 'data', f'{sim_times[-1]:.0f}.json')
                 # When global_miscibility is enabled, SPIDER's domain
                 # extends to R_solvus, not R_int. Use the appropriate
                 # radius for entropy remapping.

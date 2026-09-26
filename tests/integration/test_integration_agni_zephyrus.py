@@ -196,11 +196,11 @@ def test_spada_zephyrus_rejects_zephyrus_with_dummy_star():
     from proteus.config._planet import Elements, Planet
     from proteus.config._star import Star, StarDummy
 
-    base = dict(
-        atmos_clim=AtmosClim(module='agni'),
-        star=Star(module='dummy', dummy=StarDummy(calculate_radius=True)),
-        planet=Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
-    )
+    base = {
+        'atmos_clim': AtmosClim(module='agni'),
+        'star': Star(module='dummy', dummy=StarDummy(calculate_radius=True)),
+        'planet': Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
+    }
     # Zephyrus with dummy star: spada_zephyrus must raise.
     with pytest.raises(ValueError, match=r'(?i)(MORS|spada)'):
         Config(escape=Escape(module='zephyrus'), **base)
@@ -223,10 +223,10 @@ def test_spada_zephyrus_rejects_zephyrus_with_baraffe_tracks():
     from proteus.config._planet import Elements, Planet
     from proteus.config._star import Mors, Star
 
-    base = dict(
-        atmos_clim=AtmosClim(module='agni'),
-        planet=Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
-    )
+    base = {
+        'atmos_clim': AtmosClim(module='agni'),
+        'planet': Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
+    }
     star_baraffe = Star(module='mors', mors=Mors(tracks='baraffe'))
     with pytest.raises(ValueError, match=r'(?i)(MORS|spada)'):
         Config(escape=Escape(module='zephyrus'), star=star_baraffe, **base)
@@ -251,10 +251,10 @@ def test_spada_zephyrus_accepts_mors_plus_spada():
     from proteus.config._planet import Elements, Planet
     from proteus.config._star import Mors, Star
 
-    base = dict(
-        atmos_clim=AtmosClim(module='agni'),
-        planet=Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
-    )
+    base = {
+        'atmos_clim': AtmosClim(module='agni'),
+        'planet': Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
+    }
     cfg = Config(
         escape=Escape(module='zephyrus'),
         star=Star(module='mors', mors=Mors(tracks='spada')),

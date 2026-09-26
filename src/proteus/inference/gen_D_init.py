@@ -247,13 +247,13 @@ def sample_from_bounds(
     dims = len(params)
 
     # prepare parallel proteus runs
-    builder_args = dict(
-        parameters=params,
-        observables=observables,
-        ref_config=ref_config,
-        output=output,
-        failure_codes=failure_codes,
-    )
+    builder_args = {
+        'parameters': params,
+        'observables': observables,
+        'ref_config': ref_config,
+        'output': output,
+        'failure_codes': failure_codes,
+    }
 
     # Generate n random points in [0,1]^d and evaluate the objective
     #     Each of the parameters are evaluated in space 0-1, normalised to the bounds

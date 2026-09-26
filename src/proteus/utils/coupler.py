@@ -360,7 +360,7 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(' ')
 
     # Interior module
-    write = 'Interior module   %s' % config.interior_energetics.module
+    write = f'Interior module   {config.interior_energetics.module}'
     match config.interior_energetics.module:
         case 'spider':
             write += ' version ' + _get_spider_version()
@@ -373,7 +373,7 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
         log.info('  - PETSc         version ' + _get_petsc_version())
 
     # Atmosphere module
-    write = 'Atmos_clim module %s' % config.atmos_clim.module
+    write = f'Atmos_clim module {config.atmos_clim.module}'
     match config.atmos_clim.module:
         case 'janus':
             from janus import __version__ as janus_version
@@ -383,10 +383,12 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
             write += ' version ' + _get_agni_version(dirs)
     log.info(write)
     if config.atmos_clim.module in ['janus', 'agni']:
-        log.info('  - SOCRATES      version %s at %s' % (_get_socrates_version(), dirs['rad']))
+        log.info(
+            '  - SOCRATES      version {} at {}'.format(_get_socrates_version(), dirs['rad'])
+        )
 
     # Outgassing module
-    write = 'Outgas module     %s' % config.outgas.module
+    write = f'Outgas module     {config.outgas.module}'
     match config.outgas.module:
         case 'calliope':
             from calliope import __version__ as calliope_version
@@ -403,7 +405,7 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
         log.info('  - ThermoEngine  version ' + _get_thermoengine_version())
 
     # Escape module
-    write = 'Escape module     %s' % config.escape.module
+    write = f'Escape module     {config.escape.module}'
     match config.escape.module:
         case 'zephyrus':
             from zephyrus import __version__ as zephyrus_version
@@ -416,7 +418,7 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(write)
 
     # Star module
-    write = 'Star module       %s' % config.star.module
+    write = f'Star module       {config.star.module}'
     if config.star.module == 'mors':
         from mors import __version__ as mors_version
 
@@ -424,7 +426,7 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(write)
 
     # Orbit module
-    write = 'Orbit module      %s' % config.orbit.module
+    write = f'Orbit module      {config.orbit.module}'
     if config.orbit.module == 'obliqua':
         write += ' version ' + _get_obliqua_version(dirs)
     log.info(write)
@@ -432,10 +434,10 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
         log.info('  - Julia         version ' + _get_julia_version())
 
     # Accretion module
-    log.info('Accretion module  %s' % config.accretion.module)
+    log.info(f'Accretion module  {config.accretion.module}')
 
     # Atmospheric chemistry module
-    write = 'Atmos_chem module %s' % config.atmos_chem.module
+    write = f'Atmos_chem module {config.atmos_chem.module}'
     match config.atmos_chem.module:
         case 'vulcan':
             from vulcan import __version__ as vulcan_version
@@ -444,7 +446,7 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(write)
 
     # Observations synthesis module
-    write = 'Observe module    %s' % config.observe.module
+    write = f'Observe module    {config.observe.module}'
     if config.observe.module == 'petitRADTRANS':
         from petitRADTRANS import __version__ as obs_version
 
@@ -546,7 +548,7 @@ def print_citation(config: Config):
 def print_header():
     log.info(':::::::::::::::::::::::::::::::::::::::::::::::::::::::')
     log.info('                   PROTEUS framework                   ')
-    log.info('            Copyright (C) %4d Forming Worlds          ' % (datetime.now().year))
+    log.info(f'            Copyright (C) {datetime.now().year:4d} Forming Worlds          ')
     log.info(':::::::::::::::::::::::::::::::::::::::::::::::::::::::')
     log.info(' ')
 
@@ -562,7 +564,7 @@ def print_stoptime(start_time):
     elif run_time > secs_per_minute:
         log.info('Total runtime: %.2f minutes' % (run_time / secs_per_minute))
     else:
-        log.info('Total runtime: %.2f seconds' % run_time)
+        log.info(f'Total runtime: {run_time:.2f} seconds')
 
     log.info(' ')
 
@@ -748,11 +750,11 @@ def PrintCurrentState(hf_row: dict):
     Print the current state of the model to the logger
     """
     log.info('Runtime info...')
-    log.info('    Wall time  = %s  ' % _get_current_time())
-    log.info('    Model time = %.2e   yr' % float(hf_row['Time']))
-    log.info('    T_surf     = %8.3f   K' % float(hf_row['T_surf']))
-    log.info('    T_magma    = %8.3f   K' % float(hf_row['T_magma']))
-    log.info('    P_surf     = %.2e   bar' % float(hf_row['P_surf']))
+    log.info(f'    Wall time  = {_get_current_time()}  ')
+    log.info('    Model time = {:.2e}   yr'.format(float(hf_row['Time'])))
+    log.info('    T_surf     = {:8.3f}   K'.format(float(hf_row['T_surf'])))
+    log.info('    T_magma    = {:8.3f}   K'.format(float(hf_row['T_magma'])))
+    log.info('    P_surf     = {:.2e}   bar'.format(float(hf_row['P_surf'])))
 
     # Rock vapour breaks the whole-planet mass balance by design, so a run
     # carrying a vapour column reports its budget alongside the totals every
@@ -760,14 +762,14 @@ def PrintCurrentState(hf_row: dict):
     # at post-processing. Runs without rock vapour keep the shorter output.
     M_vaps = float(hf_row.get('M_vaps', 0.0))
     if M_vaps > 0.0:
-        log.info('    P_vol      = %.2e   bar' % float(hf_row.get('P_vol', 0.0)))
-        log.info('    P_vap      = %.2e   bar' % float(hf_row.get('P_vap', 0.0)))
-        log.info('    M_atm      = %.2e   kg' % float(hf_row.get('M_atm', 0.0)))
-        log.info('    M_vaps     = %.2e   kg' % M_vaps)
+        log.info('    P_vol      = {:.2e}   bar'.format(float(hf_row.get('P_vol', 0.0))))
+        log.info('    P_vap      = {:.2e}   bar'.format(float(hf_row.get('P_vap', 0.0))))
+        log.info('    M_atm      = {:.2e}   kg'.format(float(hf_row.get('M_atm', 0.0))))
+        log.info(f'    M_vaps     = {M_vaps:.2e}   kg')
 
-    log.info('    Phi_global = %.2e   ' % float(hf_row['Phi_global']))
-    log.info('    F_atm      = %.2e   W m-2' % float(hf_row['F_atm']))
-    log.info('    F_int      = %.2e   W m-2' % float(hf_row['F_int']))
+    log.info('    Phi_global = {:.2e}   '.format(float(hf_row['Phi_global'])))
+    log.info('    F_atm      = {:.2e}   W m-2'.format(float(hf_row['F_atm'])))
+    log.info('    F_int      = {:.2e}   W m-2'.format(float(hf_row['F_int'])))
 
 
 def CreateLockFile(output_dir: str):
@@ -1289,7 +1291,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     missing_keys = schema - row_keys
     unknown_keys = row_keys - schema - _ALLOWED_NON_SCHEMA_KEYS
     if missing_keys:
-        raise Exception('Helpfile row is missing expected keys: %s' % missing_keys)
+        raise Exception(f'Helpfile row is missing expected keys: {missing_keys}')
     if unknown_keys:
         log.warning(
             'Helpfile row contains keys not declared in GetHelpfileKeys() '
@@ -1386,10 +1388,10 @@ class HelpfileRow(dict):
 
     def __missing__(self, key):
         raise HelpfileSchemaDriftError(
-            "Helpfile '%s' has no column '%s', which postprocessing this run "
+            f"Helpfile '{self.source}' has no column '{key}', which postprocessing this run "
             'reads. It was written before that column existed. Run this '
             'configuration again from t=0, or read this run with the PROTEUS '
-            'version that wrote it.' % (self.source, key)
+            'version that wrote it.'
         )
 
 
@@ -1402,7 +1404,7 @@ def _describe_missing_columns(missing: list[str]) -> str:
     """Render missing column names for an error message."""
     shown = ', '.join(missing[:_DRIFT_REPORT_LIMIT])
     if len(missing) > _DRIFT_REPORT_LIMIT:
-        shown += ' (+%d more)' % (len(missing) - _DRIFT_REPORT_LIMIT)
+        shown += f' (+{len(missing) - _DRIFT_REPORT_LIMIT} more)'
     return shown
 
 
@@ -1534,16 +1536,16 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
 
     fpath = helpfile_path(output_dir)
     if not os.path.exists(fpath):
-        raise Exception("Cannot find helpfile at '%s'" % fpath)
+        raise Exception(f"Cannot find helpfile at '{fpath}'")
     hf_all = pd.read_csv(fpath, sep=r'\s+')
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
     if missing:
         raise HelpfileSchemaDriftError(
-            "Helpfile '%s' was written before %d column(s) of the current output "
-            'schema existed: %s. Run this configuration again from t=0, or read '
-            'this run with the PROTEUS version that wrote it.'
-            % (fpath, len(missing), _describe_missing_columns(missing))
+            f"Helpfile '{fpath}' was written before {len(missing)} column(s) of the current "
+            f'output schema existed: {_describe_missing_columns(missing)}. Run this '
+            'configuration again from t=0, or read this run with the PROTEUS version that '
+            'wrote it.'
         )
 
     backfill = [k for k in GetHelpfileDiagnosticKeys() if k not in hf_all.columns]
@@ -1705,12 +1707,12 @@ def _interior_snapshot_names(time: float, interior_module: str) -> list[str]:
         case 'dummy' | 'boundary':
             return []
         case 'spider':
-            return ['%.0f.json' % time]
+            return [f'{time:.0f}.json']
         case _:
             return [
                 format_subyear_time(time) + '_int.nc',
-                '%.3f_int.nc' % time,
-                '%.0f_int.nc' % time,
+                f'{time:.3f}_int.nc',
+                f'{time:.0f}_int.nc',
             ]
 
 
@@ -1726,8 +1728,8 @@ def _atm_snapshot_names(time: float) -> list[str]:
         raise ValueError(f'Negative time {time} cannot be formatted as filename')
     return [
         format_subyear_time(time) + '_atm.nc',
-        '%.3f_atm.nc' % time,
-        '%.0f_atm.nc' % time,
+        f'{time:.3f}_atm.nc',
+        f'{time:.0f}_atm.nc',
     ]
 
 

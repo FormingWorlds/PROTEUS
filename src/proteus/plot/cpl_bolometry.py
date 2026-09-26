@@ -57,7 +57,7 @@ def plot_bolometry(
     plt.close()
     plt.ioff()
 
-    fpath = os.path.join(output_dir, 'plots', 'plot_bolometry.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_bolometry.{plot_format}')
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 

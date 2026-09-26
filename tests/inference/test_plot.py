@@ -220,7 +220,7 @@ def test_plots_perf_timeline_stretches_xaxis_when_bars_narrower_than_min(tmp_pat
     # ax.set_xlim should be called with left=0 and right >= 1.0 (xlim_max
     # of 1.0 plus 5% padding). A regression that forgot the stretch would
     # land at right ~= 0.105 (bar end + padding only).
-    xlim_calls = [c for c in ax.set_xlim.call_args_list]
+    xlim_calls = list(ax.set_xlim.call_args_list)
     assert len(xlim_calls) >= 1
     last = xlim_calls[0]
     right = last.kwargs.get('right', None)

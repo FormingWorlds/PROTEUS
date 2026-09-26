@@ -641,7 +641,7 @@ def test_desiccation_leaves_the_mass_bookkeeping_self_consistent():
     # regression moves the aggregate instead of cancelling out.
     hf_row = {}
     weights = [1.0] + [0.02] * (len(vol_gas_list) - 1)
-    for s, w in zip(vol_gas_list, weights):
+    for s, w in zip(vol_gas_list, weights, strict=False):
         hf_row[s + '_kg_atm'] = 1.0e18 * w
     hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
     hf_row['M_atm'] = hf_row['M_vol_atm']

@@ -149,7 +149,7 @@ def plot_chem_atmosphere(
     lw = 0.9
     al = 0.8
     vmr_surf = []
-    for i, gas in enumerate(plot_gases):
+    for gas in plot_gases:
         col = get_colour(gas)
         lbl = latexify(gas)
         vmr = 0.0
@@ -303,7 +303,7 @@ def plot_chem_atmosphere(
     )
 
     # Save file
-    fpath = os.path.join(output_dir, 'plots', 'plot_chem_atmosphere.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_chem_atmosphere.{plot_format}')
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 

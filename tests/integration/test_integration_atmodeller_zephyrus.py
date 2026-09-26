@@ -85,12 +85,12 @@ def _base_config_kwargs():
     from proteus.config._planet import Elements, Planet
     from proteus.config._star import Star
 
-    return dict(
-        atmos_clim=AtmosClim(module='dummy', rayleigh=False),
-        outgas=Outgas(module='atmodeller'),
-        star=Star(module='mors'),  # default Mors uses spada + phoenix
-        planet=Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
-    )
+    return {
+        'atmos_clim': AtmosClim(module='dummy', rayleigh=False),
+        'outgas': Outgas(module='atmodeller'),
+        'star': Star(module='mors'),  # default Mors uses spada + phoenix
+        'planet': Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -137,12 +137,12 @@ def test_atmodeller_zephyrus_rejects_dummy_star_at_spada_zephyrus_layer():
     from proteus.config._planet import Elements, Planet
     from proteus.config._star import Star, StarDummy
 
-    kwargs = dict(
-        atmos_clim=AtmosClim(module='dummy', rayleigh=False),
-        outgas=Outgas(module='atmodeller'),
-        star=Star(module='dummy', dummy=StarDummy(calculate_radius=True)),
-        planet=Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
-    )
+    kwargs = {
+        'atmos_clim': AtmosClim(module='dummy', rayleigh=False),
+        'outgas': Outgas(module='atmodeller'),
+        'star': Star(module='dummy', dummy=StarDummy(calculate_radius=True)),
+        'planet': Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
+    }
     with pytest.raises(ValueError, match=r'(?i)(MORS|spada)'):
         Config(escape=Escape(module='zephyrus'), **kwargs)
     # Selectivity: escape=dummy with same star must construct cleanly.
@@ -167,12 +167,12 @@ def test_atmodeller_zephyrus_rejects_baraffe_tracks_at_spada_zephyrus_layer():
     from proteus.config._planet import Elements, Planet
     from proteus.config._star import Mors, Star
 
-    kwargs = dict(
-        atmos_clim=AtmosClim(module='dummy', rayleigh=False),
-        outgas=Outgas(module='atmodeller'),
-        star=Star(module='mors', mors=Mors(tracks='baraffe')),
-        planet=Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
-    )
+    kwargs = {
+        'atmos_clim': AtmosClim(module='dummy', rayleigh=False),
+        'outgas': Outgas(module='atmodeller'),
+        'star': Star(module='mors', mors=Mors(tracks='baraffe')),
+        'planet': Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
+    }
     with pytest.raises(ValueError, match=r'(?i)(MORS|spada)'):
         Config(escape=Escape(module='zephyrus'), **kwargs)
     # Adjacent-valid: mors+spada with zephyrus must construct cleanly.

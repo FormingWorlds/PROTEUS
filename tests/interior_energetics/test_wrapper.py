@@ -1567,7 +1567,7 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
     # Flag must be False after a successful call, and the flag must never
     # leak into the floats-only helpfile row.
     assert interior_o.structure_stale is False, (
-        'flag must be cleared (False) on Zalmoxis success, was %r' % interior_o.structure_stale
+        f'flag must be cleared (False) on Zalmoxis success, was {interior_o.structure_stale!r}'
     )
     assert '_structure_stale' not in hf_row_A, 'flag must not be written to hf_row'
     interior_o.write_structure_stale.assert_called_with(dirs['output'])
@@ -1716,8 +1716,8 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
         'mass-anchor violation must trigger fall-back (-> structure_stale=True)'
     )
     assert interior_o.zalmoxis_fail_count == 1, (
-        'mass-anchor violation must increment _zalmoxis_fail_count (got %d)'
-        % interior_o.zalmoxis_fail_count
+        'mass-anchor violation must increment _zalmoxis_fail_count '
+        f'(got {int(interior_o.zalmoxis_fail_count)})'
     )
 
     # Case 2: 2e-3 drift (under 3e-3 threshold) -> success path.
@@ -1743,7 +1743,7 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
         )
     assert interior_o.structure_stale is False, (
         'sub-tolerance drift must NOT trigger fall-back '
-        '(structure_stale=%r)' % interior_o.structure_stale
+        f'(structure_stale={interior_o.structure_stale!r})'
     )
     assert interior_o.zalmoxis_fail_count == 0
 
@@ -1861,7 +1861,7 @@ def test_zalmoxis_output_restored_from_prev_on_wrapper_raise(tmp_path):
         content_after = f.read()
     assert content_after == 'PREV_KNOWN_CONTENT\n', (
         'wrapper-level fall-back must restore zalmoxis_output.dat from '
-        '.prev (got %r)' % content_after
+        f'.prev (got {content_after!r})'
     )
 
     interior_o.zalmoxis_fail_count = 0  # cleanup
@@ -1971,7 +1971,7 @@ def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
         )
     # Trigger fired and updated last_struct_time to current_time.
     assert out[0] == current_time, (
-        'stale-aware ceiling must trigger; got last_struct_time=%r' % out[0]
+        f'stale-aware ceiling must trigger; got last_struct_time={out[0]!r}'
     )
     # Successful tracker advanced.
     assert interior_o.last_successful_struct_time == current_time, (
@@ -2026,7 +2026,7 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
         )
     assert interior_o.last_successful_struct_time == pytest.approx(5e4, rel=1e-12), (
         'fall-back must NOT advance last_successful_struct_time '
-        '(got %r, expected 5e4)' % interior_o.last_successful_struct_time
+        f'(got {interior_o.last_successful_struct_time!r}, expected 5e4)'
     )
     # Fall-back discrimination: the solver was actually invoked (the test
     # exercises the failure branch, not the no-trigger branch). A

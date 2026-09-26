@@ -206,7 +206,7 @@ def write_phase_boundary(
         f.write('# column * scaling factor = SI units: Pressure [Pa], Entropy [J/kg/K]\n')
         f.write('# scaling factors (constant) for each column given on line below\n')
         f.write(f'# {P_scale} {S_scale}\n')
-        for p, s in zip(P_nd, S_nd):
+        for p, s in zip(P_nd, S_nd, strict=False):
             f.write(f'{p:.18e} {s:.18e}\n')
 
     print(f'  Wrote {N} points to {filepath}')

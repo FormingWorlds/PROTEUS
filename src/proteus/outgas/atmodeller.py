@@ -444,7 +444,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # same semantics as the calliope entry point.
     if T_magma < config.outgas.T_floor:
         T_magma = float(config.outgas.T_floor)
-        log.warning('Outgassing temperature clipped to %.1f K' % T_magma)
+        log.warning(f'Outgassing temperature clipped to {T_magma:.1f} K')
 
     # Core mass fraction from config
     cmf = config.interior_struct.core_frac

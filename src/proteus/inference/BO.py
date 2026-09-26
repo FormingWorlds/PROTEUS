@@ -293,7 +293,7 @@ def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
         ha='right',
         transform=ax[0].transAxes,
         fontsize=10,
-        bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'),
+        bbox={'facecolor': 'white', 'alpha': 0.7, 'edgecolor': 'none'},
     )
 
     ax[1].text(
@@ -304,7 +304,7 @@ def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
         ha='right',
         transform=ax[1].transAxes,
         fontsize=10,
-        bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'),
+        bbox={'facecolor': 'white', 'alpha': 0.7, 'edgecolor': 'none'},
     )
 
     out_dir = Path(dir)

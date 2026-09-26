@@ -61,7 +61,7 @@ def _write_sflux(path, wavelengths, fluxes, skiprows_header: int = 1, delimiter:
     np.loadtxt.
     """
     lines = ['header'] * skiprows_header
-    for w, f in zip(wavelengths, fluxes):
+    for w, f in zip(wavelengths, fluxes, strict=False):
         lines.append(f'{w}{delimiter}{f}')
     path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 

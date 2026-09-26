@@ -341,7 +341,7 @@ def activate_julia(dirs: dict, verbosity: int):
     logpath = os.path.join(dirs['output'], AGNI_LOGFILE_NAME)
     jl.AGNI.setup_logging(logpath, verbosity)
 
-    log.debug("AGNI will log to '%s'" % logpath)
+    log.debug(f"AGNI will log to '{logpath}'")
 
 
 def _construct_voldict(config: Config, hf_row: dict, dirs: dict):
@@ -522,7 +522,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             )
         sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
         sflux_path = os.path.join(
-            dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1])
+            dirs['output'], 'data', f'{int(sorted(sflux_times)[-1])}.sflux'
         )
         input_sf = get_spfile_path(dirs['fwl'], config)
         input_star = sflux_path
@@ -576,56 +576,56 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     # only present on newer AGNI installs; if the installed AGNI predates
     # that addition, sending the kwarg raises a Julia MethodError. Detect
     # the kwarg at module load and only pass it when AGNI accepts it.
-    setup_kwargs = dict(
-        IO_DIR=io_dir,
+    setup_kwargs = {
+        'IO_DIR': io_dir,
         # radtrans
-        flag_rayleigh=config.atmos_clim.rayleigh,
-        flag_cloud=config.atmos_clim.cloud_enabled,
-        flag_aerosol=config.atmos_clim.aerosols_enabled,
-        overlap_method=config.atmos_clim.overlap_method,
+        'flag_rayleigh': config.atmos_clim.rayleigh,
+        'flag_cloud': config.atmos_clim.cloud_enabled,
+        'flag_aerosol': config.atmos_clim.aerosols_enabled,
+        'overlap_method': config.atmos_clim.overlap_method,
         # surface reflectance
-        albedo_s=config.atmos_clim.surf_greyalbedo,
-        surface_material=surface_material,
-        surf_roughness=config.atmos_clim.agni.surf_roughness,
-        surf_windspeed=config.atmos_clim.agni.surf_windspeed,
+        'albedo_s': config.atmos_clim.surf_greyalbedo,
+        'surface_material': surface_material,
+        'surf_roughness': config.atmos_clim.agni.surf_roughness,
+        'surf_windspeed': config.atmos_clim.agni.surf_windspeed,
         # phase change
-        condensates=condensates,
-        phs_timescale=config.atmos_clim.agni.phs_timescale,
-        evap_efficiency=config.atmos_clim.agni.evap_efficiency,
+        'condensates': condensates,
+        'phs_timescale': config.atmos_clim.agni.phs_timescale,
+        'evap_efficiency': config.atmos_clim.agni.evap_efficiency,
         # eqm chemistry
-        use_all_gases=include_all,
-        fastchem_floor=config.atmos_clim.agni.fastchem_floor,
-        fastchem_maxiter_chem=config.atmos_clim.agni.fastchem_maxiter_chem,
-        fastchem_maxiter_solv=config.atmos_clim.agni.fastchem_maxiter_solv,
-        fastchem_xtol_chem=config.atmos_clim.agni.fastchem_xtol_chem,
-        fastchem_xtol_elem=config.atmos_clim.agni.fastchem_xtol_elem,
+        'use_all_gases': include_all,
+        'fastchem_floor': config.atmos_clim.agni.fastchem_floor,
+        'fastchem_maxiter_chem': config.atmos_clim.agni.fastchem_maxiter_chem,
+        'fastchem_maxiter_solv': config.atmos_clim.agni.fastchem_maxiter_solv,
+        'fastchem_xtol_chem': config.atmos_clim.agni.fastchem_xtol_chem,
+        'fastchem_xtol_elem': config.atmos_clim.agni.fastchem_xtol_elem,
         # thermodynamics
-        real_gas=config.atmos_clim.agni.real_gas,
-        thermo_functions=config.atmos_clim.agni.thermo_functions,
-        check_integrity=False,  # don't check thermo files every time
+        'real_gas': config.atmos_clim.agni.real_gas,
+        'thermo_functions': config.atmos_clim.agni.thermo_functions,
+        'check_integrity': False,  # don't check thermo files every time
         # convection
-        mlt_criterion=convert(jl.Char, config.atmos_clim.agni.mlt_criterion),
+        'mlt_criterion': convert(jl.Char, config.atmos_clim.agni.mlt_criterion),
         # surface CBL
-        skin_d=config.atmos_clim.surface_d,
-        skin_k=config.atmos_clim.surface_k,
+        'skin_d': config.atmos_clim.surface_d,
+        'skin_k': config.atmos_clim.surface_k,
         # temperatures
-        tmp_magma=hf_row['T_surf'],
-        tmp_floor=config.atmos_clim.tmp_minimum,
+        'tmp_magma': hf_row['T_surf'],
+        'tmp_floor': config.atmos_clim.tmp_minimum,
         # grey gas opacities
-        κ_grey_lw=config.atmos_clim.agni.grey_opacity_lw,
-        κ_grey_sw=config.atmos_clim.agni.grey_opacity_sw,
+        'κ_grey_lw': config.atmos_clim.agni.grey_opacity_lw,
+        'κ_grey_sw': config.atmos_clim.agni.grey_opacity_sw,
         # spin rate
-        axial_period=hf_row['axial_period'],
-        longitude=hf_row['longitude'],
-        latitude=hf_row['latitude'],
+        'axial_period': hf_row['axial_period'],
+        'longitude': hf_row['longitude'],
+        'latitude': hf_row['latitude'],
         # hydrostatic integration parameters
-        hydrograv_steps=config.atmos_clim.agni.hydrograv_steps,
-        hydrograv_maxdr=config.atmos_clim.agni.hydrograv_maxdr,
-        hydrograv_mindr=config.atmos_clim.agni.hydrograv_mindr,
-        hydrograv_ming=config.atmos_clim.agni.hydrograv_ming,
-        hydrograv_constg=config.atmos_clim.agni.hydrograv_constg,
-        hydrograv_selfg=config.atmos_clim.agni.hydrograv_selfg,
-    )
+        'hydrograv_steps': config.atmos_clim.agni.hydrograv_steps,
+        'hydrograv_maxdr': config.atmos_clim.agni.hydrograv_maxdr,
+        'hydrograv_mindr': config.atmos_clim.agni.hydrograv_mindr,
+        'hydrograv_ming': config.atmos_clim.agni.hydrograv_ming,
+        'hydrograv_constg': config.atmos_clim.agni.hydrograv_constg,
+        'hydrograv_selfg': config.atmos_clim.agni.hydrograv_selfg,
+    }
     setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
 
     succ = jl.AGNI.atmosphere.setup_b(
@@ -1046,7 +1046,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
     # make attempts
     while not agni_success:
         attempts += 1
-        log.info('Attempt %d' % attempts)
+        log.info(f'Attempt {attempts}')
 
         # default parameters
         linesearch = int(config.atmos_clim.agni.ls_default)
@@ -1096,8 +1096,8 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
 
         log.debug('Solver parameters:')
         log.debug(
-            '    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f'
-            % (linesearch, str(easy_start), dx_max, ls_increase)
+            f'    ls_method={int(linesearch)}, easy_start={easy_start}, '
+            f'dx_max={dx_max:.1f}, ls_increase={ls_increase:.2f}'
         )
 
         # Try solving temperature profile.
@@ -1167,7 +1167,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
         # Model status check
         if agni_success:
             # success
-            log.info('Attempt %d succeeded' % attempts)
+            log.info(f'Attempt {attempts} succeeded')
             break
         else:
             # failure, loop again...
@@ -1381,10 +1381,10 @@ def run_agni(
 
     # Print info to user
     if config.atmos_clim.agni.oceans:
-        log.info('    oceans area frac   = %6.3f %%' % float(atmos.ocean_areacov * 100))
-        log.info('    oceans max depth   = %6.3f km' % float(atmos.ocean_maxdepth / 1e3))
-    log.info('    R_obs photosphere  = %6.1f km' % float(R_obs / 1e3))
-    log.info('    Planet Bond albedo = %6.3f %%' % float(albedo * 100))
+        log.info(f'    oceans area frac   = {float(atmos.ocean_areacov * 100):6.3f} %')
+        log.info(f'    oceans max depth   = {float(atmos.ocean_maxdepth / 1e3):6.3f} km')
+    log.info(f'    R_obs photosphere  = {float(R_obs / 1e3):6.1f} km')
+    log.info(f'    Planet Bond albedo = {float(albedo * 100):6.3f} %')
 
     # New flux from SOCRATES
     F_atm_new = tot_flux[0]
@@ -1396,7 +1396,7 @@ def run_agni(
         F_atm_lim = F_atm_new
     if not np.isclose(F_atm_lim, F_atm_new):
         log.warning('Change in F_atm [W m-2] limited in this step!')
-        log.warning('    %g  ->  %g' % (F_atm_new, F_atm_lim))
+        log.warning(f'    {F_atm_new:g}  ->  {F_atm_lim:g}')
 
     # p_xuv from R_xuv, clipping the radius before the pressure lookup
     if config.escape.xuv_defined_by_radius:

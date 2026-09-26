@@ -800,7 +800,7 @@ def test_plot_orbit_entry_loads_fine_evection_data_when_present(monkeypatch, tmp
     phi_vals = np.array([0.1, 0.5, 1.0])
     with open(fine_path, 'w') as f:
         f.write('t_abs_yr,phi\n')
-        for t, phi in zip(t_vals, phi_vals):
+        for t, phi in zip(t_vals, phi_vals, strict=False):
             f.write(f'{t},{phi}\n')
 
     monkeypatch.setattr(orbit_mod.pd, 'read_csv', lambda *a, **kw: fake_hf)

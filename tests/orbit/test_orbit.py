@@ -145,7 +145,7 @@ def _sp0d_instantaneous_rates(sma, ecc, Imk2, Mst, Rpl, Mpl, dt_yr=_FD_DT_YR):
 # algebra is easy to verify by hand. G is always the real physical
 # const_G (sp0d has no way to receive a substitute), so every
 # "expected" value below uses const_G explicitly rather than 1.0.
-_UNIT_SYS = dict(Imk2=1.0, Mst=1.0, Rpl=1.0, Mpl=1.0)
+_UNIT_SYS = {'Imk2': 1.0, 'Mst': 1.0, 'Rpl': 1.0, 'Mpl': 1.0}
 
 
 # ---------------------------------------------------------------------------

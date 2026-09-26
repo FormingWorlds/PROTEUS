@@ -226,7 +226,7 @@ def plot_interior(
     plt.close()
     plt.ioff()
 
-    fpath = os.path.join(output_dir, 'plots', 'plot_interior.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_interior.{plot_format}')
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 

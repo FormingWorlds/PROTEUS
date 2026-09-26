@@ -87,7 +87,7 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
 
     # Get all times for which we have data
     year = hf_row['Time']
-    log.debug('Reading data for t=%.2e yr' % year)
+    log.debug(f'Reading data for t={year:.2e} yr')
 
     # Determine output filenames
     if online:
@@ -117,7 +117,7 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
 
         # Try to fall back to the latest available snapshot
         log.warning(
-            'Atmosphere NetCDF t=%.0f yr missing; using available (t=%.0f yr)' % (year, latest)
+            f'Atmosphere NetCDF t={year:.0f} yr missing; using available (t={latest:.0f} yr)'
         )
         year = latest
         atmos = read_atmosphere_data(dirs['output'], [year], extra_keys=extra_keys)
@@ -140,7 +140,7 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     # Find a reasonable file for the stellar flux
     ls = glob.glob(dirs['output'] + '/data/*.sflux')
     years = [int(f.split('/')[-1].split('.')[0]) for f in ls]
-    sflux_fpath = dirs['output'] + '/data/%d.sflux' % find_nearest(years, year)[0]
+    sflux_fpath = dirs['output'] + f'/data/{int(find_nearest(years, year)[0])}.sflux'
 
     # Read spectrum and scale to surface of the star
     sflux_data = np.loadtxt(sflux_fpath, skiprows=1).T

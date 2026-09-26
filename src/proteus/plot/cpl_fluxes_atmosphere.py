@@ -122,7 +122,7 @@ def plot_fluxes_atmosphere(output_dir: str, plot_format='pdf'):
     ax.set_xlim(left=-max_fl, right=max_fl)
 
     # Titles
-    for tit in zip([1 / 3, 2 / 3], ['Downward', 'Upward']):
+    for tit in zip([1 / 3, 2 / 3], ['Downward', 'Upward'], strict=False):
         ax.text(
             tit[0],
             0.99,
@@ -146,7 +146,7 @@ def plot_fluxes_atmosphere(output_dir: str, plot_format='pdf'):
     plt.close()
     plt.ioff()
 
-    fpath = os.path.join(output_dir, 'plots', 'plot_fluxes_atmosphere.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_fluxes_atmosphere.{plot_format}')
     fig.savefig(fpath, bbox_inches='tight', dpi=200)
 
 

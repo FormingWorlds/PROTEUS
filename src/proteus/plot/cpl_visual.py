@@ -176,7 +176,7 @@ def plot_visual(
     # level opacities
     gamma = 0.08
     a_arr = []
-    for i, p in enumerate(p_arr):
+    for p in p_arr:
         alp = p / p_max
         a_arr.append(alp**gamma)
     a_arr /= sum(a_arr)
@@ -201,7 +201,7 @@ def plot_visual(
     ax.text(
         0,
         0.2 * R_int / obs,
-        r'T$_\text{s}=$%.0f K' % ds['tmpl'][-1],
+        r'T$_\text{{s}}=${:.0f} K'.format(ds['tmpl'][-1]),
         color='white',
         fontsize=11,
         ha='center',
@@ -255,7 +255,7 @@ def plot_visual(
             ax.text(
                 x,
                 -x,
-                r'  %.0f R$_\oplus$' % r,
+                rf'  {r:.0f} R$_\oplus$',
                 ha='left',
                 va='center',
                 fontsize=8,
@@ -301,7 +301,7 @@ def plot_visual(
     plt.close()
     plt.ioff()
 
-    fpath = os.path.join(output_dir, 'plots', 'plot_visual.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_visual.{plot_format}')
     fig.savefig(fpath, dpi=250, bbox_inches='tight')
 
     return fpath

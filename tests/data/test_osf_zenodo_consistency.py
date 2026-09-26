@@ -69,47 +69,7 @@ except ImportError:
             try:
                 helper_module = importlib.util.module_from_spec(helper_spec)
                 sys.modules['proteus.utils.helper'] = helper_module
-                # Patch match statement for Python < 3.10
-                if sys.version_info < (3, 10):
-                    # Read and convert match statement to if/elif
-                    with open(helper_path) as f:
-                        helper_code = f.read()
-
-                    # Convert match/case to if/elif
-                    lines = helper_code.split('\n')
-                    new_lines = []
-                    in_match = False
-                    first_case = True
-
-                    for line in lines:
-                        if 'match status:' in line:
-                            in_match = True
-                            new_lines.append('    if True:  # match status:')
-                            first_case = True
-                        elif in_match and line.strip().startswith('case '):
-                            case_value = line.strip().replace('case ', '').replace(':', '')
-                            if case_value == '_':
-                                new_lines.append('        else:')
-                            else:
-                                if first_case:
-                                    new_lines.append(f'        if status == {case_value}:')
-                                    first_case = False
-                                else:
-                                    new_lines.append(f'        elif status == {case_value}:')
-                        elif in_match and line.strip() and not line.strip().startswith('#'):
-                            # Check if we're out of the match block (next function/class)
-                            if line and not line[0].isspace() and 'def ' in line:
-                                in_match = False
-                                new_lines.append(line)
-                            else:
-                                new_lines.append(line)
-                        else:
-                            new_lines.append(line)
-
-                    helper_code = '\n'.join(new_lines)
-                    exec(compile(helper_code, str(helper_path), 'exec'), helper_module.__dict__)
-                else:
-                    helper_spec.loader.exec_module(helper_module)
+                helper_spec.loader.exec_module(helper_module)
             except Exception as e:
                 print(f'Warning: Could not load helper module: {e}')
 

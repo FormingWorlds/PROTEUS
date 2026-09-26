@@ -277,7 +277,9 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     for e in vol_element_list + noble_gases:
         if float(hf_row.get(e + '_kg_total', 0.0)) > config.outgas.mass_thresh:
             log.info(
-                'Not desiccated, %s = %.2e kg' % (e, float(hf_row.get(e + '_kg_total', 0.0)))
+                'Not desiccated, {} = {:.2e} kg'.format(
+                    e, float(hf_row.get(e + '_kg_total', 0.0))
+                )
             )
             return False  # return, and allow run_outgassing to proceed
 
@@ -435,7 +437,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
         s = species[i]
         _p = hf_row[s + '_bar']
         _x = hf_row[s + '_vmr']
-        _s = '    %-6s     = %-9.2f bar (%.2e VMR)' % (s, _p, _x)
+        _s = f'    {s:<6}     = {_p:<9.2f} bar ({_x:.2e} VMR)'
         if _p > 0.01:
             log.info(_s)
         else:
@@ -443,7 +445,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
             log.debug(_s)
 
     # print total pressure and mmw
-    log.info('    total      = %-9.2f bar' % hf_row['P_surf'])
+    log.info('    total      = {:<9.2f} bar'.format(hf_row['P_surf']))
     log.info('    mmw        = %-9.5f g mol-1' % (hf_row['atm_kg_per_mol'] * 1e3))
 
 

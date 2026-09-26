@@ -22,7 +22,7 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
     * `tgt_status`  optional; print case numbers of all runs which have this status.
     """
     if (not os.path.exists(pgrid_dir)) or (not os.path.isdir(pgrid_dir)):
-        raise FileNotFoundError("Invalid path '%s'" % pgrid_dir)
+        raise FileNotFoundError(f"Invalid path '{pgrid_dir}'")
 
     # Find folders
     pgrid_dir = os.path.abspath(pgrid_dir)
@@ -45,11 +45,11 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
             continue
         status_path = os.path.join(case_dir, 'status')
         if not os.path.exists(status_path):
-            raise FileNotFoundError("Cannot find status file at '%s'" % status_path)
+            raise FileNotFoundError(f"Cannot find status file at '{status_path}'")
         with open(status_path) as hdl:
             lines = hdl.readlines()
         if not lines:
-            raise ValueError("Status file is empty: '%s'" % status_path)
+            raise ValueError(f"Status file is empty: '{status_path}'")
         case_status[idx] = int(lines[0].strip())
 
     # Sorted indices and the matching array of status codes

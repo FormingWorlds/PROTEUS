@@ -198,7 +198,7 @@ def run_lovepy(
 
         # Verify result against bulk calculation
         power_blk /= np.sum(lov['mass'])
-        log.debug('    power from bulk calc: %.3e W kg-1' % power_blk)
+        log.debug(f'    power from bulk calc: {power_blk:.3e} W kg-1')
 
     # Store tidal mode information
     store_lovepy_tides(omega, float(Imk2), config, tides_o)

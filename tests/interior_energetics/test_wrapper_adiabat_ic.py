@@ -473,7 +473,7 @@ def test_sample_adiabat_arrays_matches_closure_on_previous_grid(tmp_path):
     assert r_arr[0] == pytest.approx(6.0e6, rel=1e-12)
     assert r_arr[-1] == pytest.approx(1.2007e7, rel=1e-12)
     # T pins to the closure row by row, and stays positive and finite.
-    expected = np.array([tf(r, P) for r, P in zip(r_file, p_file)])
+    expected = np.array([tf(r, P) for r, P in zip(r_file, p_file, strict=False)])
     np.testing.assert_allclose(t_arr, expected, rtol=1e-12)
     assert np.all(np.isfinite(t_arr)) and np.all(t_arr > 0.0)
     assert np.all(np.diff(t_arr) <= 0.0)
@@ -580,7 +580,7 @@ def test_adiabat_solve_hands_sampled_arrays_alongside_callable(tmp_path):
     # The arrays ride alongside: previous r grid, closure-sampled T.
     r_arr, t_arr = received['arrays']
     np.testing.assert_allclose(r_arr, r_file, rtol=0, atol=0)
-    expected = np.array([tf(r, P) for r, P in zip(r_file, p_file)])
+    expected = np.array([tf(r, P) for r, P in zip(r_file, p_file, strict=False)])
     np.testing.assert_allclose(t_arr, expected, rtol=1e-12)
 
 
@@ -1306,7 +1306,7 @@ def _run_monotonic_resolve(config, dirs, hf_row, interior_o, R_int_returned, M_t
         # writes gravity / P_cmb derived from the new (here: up-step) radius.
         out_path = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
         with open(out_path, 'w') as f:
-            f.write('RESOLVE GEOMETRY: R_int=%.6e m\n' % R_int_returned)
+            f.write(f'RESOLVE GEOMETRY: R_int={R_int_returned:.6e} m\n')
         row['R_int'] = R_int_returned
         row['M_int'] = M_target  # mass-anchored so the anchor check passes
         row['M_int_target'] = M_target
@@ -1369,7 +1369,7 @@ def test_monotonic_radius_guard_rejects_representation_up_step(tmp_path):
     M_target = 5.972e24
     config = _monotonic_config(module='aragog', temperature_mode='liquidus_super')
     interior_o = _monotonic_interior_o()
-    prev_content = 'PREV GEOMETRY: R_int=%.6e m\n' % R_int_prev
+    prev_content = f'PREV GEOMETRY: R_int={R_int_prev:.6e} m\n'
     dirs, out_path = _monotonic_dirs(tmp_path, prev_content)
     hf_row = _monotonic_hf_row(R_int_prev, M_target=M_target)
 

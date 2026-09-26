@@ -60,7 +60,7 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
     ymax = 1e-20  # updated below
     ymin = 1e20  # updated below
 
-    for i, t in enumerate(times):
+    for t in times:
         label = latex_float(t) + ' yr'
         color = sm.to_rgba(t)
 
@@ -146,7 +146,7 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
     plt.close()
     plt.ioff()
 
-    fpath = os.path.join(output_dir, 'plots', 'plot_emission.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_emission.{plot_format}')
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 

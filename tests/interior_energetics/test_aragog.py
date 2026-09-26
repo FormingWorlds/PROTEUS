@@ -1908,8 +1908,8 @@ def test_update_solver_infers_the_mesh_pressure_of_an_older_snapshot(tmp_path, c
     elif case == 'fresh-run-rounded-helpfile':
         # A resumed run rebuilds R and g from the helpfile, written with %.10e;
         # R rounds down here, which leaves a positive residue of about 2 Pa.
-        mesh.outer_radius = float('%.10e' % mesh.outer_radius)
-        mesh.gravitational_acceleration = float('%.10e' % mesh.gravitational_acceleration)
+        mesh.outer_radius = float(f'{mesh.outer_radius:.10e}')
+        mesh.gravitational_acceleration = float(f'{mesh.gravitational_acceleration:.10e}')
     interior_o = MagicMock()
     mesh.surface_pressure = 8.12e8  # setup_solver took the restored row's P_surf
     mesh.eos_method = 2 if case == 'mesh-file' else 1

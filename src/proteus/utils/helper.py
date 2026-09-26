@@ -86,10 +86,10 @@ def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
     subyear = os.path.join(data_dir, format_subyear_time(time) + suffix)
     if os.path.exists(subyear):
         return subyear
-    dotform = os.path.join(data_dir, '%.3f%s' % (time, suffix))
+    dotform = os.path.join(data_dir, f'{time:.3f}{suffix}')
     if os.path.exists(dotform):
         return dotform
-    wholeyear = os.path.join(data_dir, '%.0f%s' % (time, suffix))
+    wholeyear = os.path.join(data_dir, f'{time:.0f}{suffix}')
     if os.path.exists(wholeyear):
         return wholeyear
     return subyear
@@ -112,7 +112,7 @@ def format_subyear_time(time: float) -> str:
     str
         Formatted time token, e.g. ``'884p700'``.
     """
-    return ('%.3f' % time).replace('.', 'p')
+    return (f'{time:.3f}').replace('.', 'p')
 
 
 def parse_subyear_time(token: str) -> float:
@@ -237,7 +237,7 @@ def create_tmp_folder():
         tmp_dir = '/tmp'
 
     # Append random name to /tmp
-    tmp_dir = tmp_dir + '/proteus_%d/' % np.random.randint(int(1e12), int(1e13 - 1))
+    tmp_dir = tmp_dir + f'/proteus_{np.random.randint(int(1e12), int(1e13 - 1))}/'
 
     # Make empty
     safe_rm(tmp_dir)
@@ -262,14 +262,12 @@ def safe_rm(fpath: str):
         elif os.path.isdir(fpath):
             subfolders = [f.path.split('/')[-1] for f in os.scandir(fpath) if f.is_dir()]
             if '.git' in subfolders:
-                log.warning(
-                    "Not emptying directory '%s' as it contains a Git repository" % fpath
-                )
+                log.warning(f"Not emptying directory '{fpath}' as it contains a Git repository")
                 return
             shutil.rmtree(fpath)
 
         else:
-            log.warning("Cannot remove unhandled path '%s'" % fpath)
+            log.warning(f"Cannot remove unhandled path '{fpath}'")
 
 
 def CommentFromStatus(status: int):
@@ -325,8 +323,8 @@ def CommentFromStatus(status: int):
             desc = 'Completed (planet evaporated)'
         # Default case
         case _:
-            desc = 'UNHANDLED STATUS (%d)' % status
-            log.warning('Unhandled model status (%d) selected' % status)
+            desc = f'UNHANDLED STATUS ({int(status)})'
+            log.warning(f'Unhandled model status ({int(status)}) selected')
     return desc
 
 
@@ -348,9 +346,9 @@ def UpdateStatusfile(dirs: dict, status: int):
 
     # Write status file
     with open(stsfile, 'x') as hdl:
-        hdl.write('%d\n' % status)
+        hdl.write(f'{int(status)}\n')
         desc = CommentFromStatus(status)
-        hdl.write('%s\n' % desc)
+        hdl.write(f'{desc}\n')
 
 
 def CleanDir(directory, keep_stdlog=False):

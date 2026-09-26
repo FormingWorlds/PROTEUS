@@ -82,13 +82,13 @@ def _base_config_kwargs():
     from proteus.config._planet import Elements, Planet
     from proteus.config._star import Star, StarDummy
 
-    return dict(
-        atmos_clim=AtmosClim(module='dummy', rayleigh=False),
-        escape=Escape(module='dummy'),
-        outgas=Outgas(module='dummy'),
-        star=Star(module='dummy', dummy=StarDummy(calculate_radius=True)),
-        planet=Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
-    )
+    return {
+        'atmos_clim': AtmosClim(module='dummy', rayleigh=False),
+        'escape': Escape(module='dummy'),
+        'outgas': Outgas(module='dummy'),
+        'star': Star(module='dummy', dummy=StarDummy(calculate_radius=True)),
+        'planet': Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
+    }
 
 
 def _spider_struct_kwargs():
@@ -98,13 +98,13 @@ def _spider_struct_kwargs():
     (Spider rejects 'self'), and the FWL_DATA-relative lookup
     folders.
     """
-    return dict(
-        core_frac_mode='radius',
-        core_density=5500.0,
-        core_heatcap=880.0,
-        melting_dir='Monteux-600',
-        eos_dir='WolfBower2018_MgSiO3',
-    )
+    return {
+        'core_frac_mode': 'radius',
+        'core_density': 5500.0,
+        'core_heatcap': 880.0,
+        'melting_dir': 'Monteux-600',
+        'eos_dir': 'WolfBower2018_MgSiO3',
+    }
 
 
 # ---------------------------------------------------------------------------

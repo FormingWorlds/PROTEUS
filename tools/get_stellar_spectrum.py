@@ -132,7 +132,7 @@ def DownloadModernSpectrum(name, distance=None):
     elif (len(name_split) == 2) and (name_split[1] == 'lowres'):
         lowres = True
     else:
-        raise Exception("Invalid unable to parse star name '%s'!" % name)
+        raise Exception(f"Invalid unable to parse star name '{name}'!")
     name = name_split[0]
 
     # Get database and name of star
@@ -144,9 +144,9 @@ def DownloadModernSpectrum(name, distance=None):
             database = k
             break
     if database == '':
-        raise Exception("Could not find star '%s' in stellar databases!" % name)
+        raise Exception(f"Could not find star '{name}' in stellar databases!")
     else:
-        print("\tFound star in '%s' database" % database)
+        print(f"\tFound star in '{database}' database")
 
     # Determine distance to star in parsec
     if distance is None:
@@ -154,8 +154,8 @@ def DownloadModernSpectrum(name, distance=None):
             distance = star_distance_pc[star]
         except KeyError:
             raise Exception(
-                "Distance to star '%s' not found in star_distance_pc; "
-                'please provide an explicit distance override (in pc).' % star
+                f"Distance to star '{star}' not found in star_distance_pc; "
+                'please provide an explicit distance override (in pc).'
             )
     else:
         distance = float(distance)
@@ -164,25 +164,19 @@ def DownloadModernSpectrum(name, distance=None):
     pc_in_cm = 3.0856775814914e18
     distance_cm = distance * pc_in_cm
 
-    print(
-        '\tParameters: [star = %s, distance = %1.2e cm, lowres = %s]'
-        % (star, distance_cm, lowres)
-    )
+    print(f'\tParameters: [star = {star}, distance = {distance_cm:1.2e} cm, lowres = {lowres}]')
 
     r_scale = 1.496e13  # 1 AU in cm
 
     # Convert data from database source format to plain text file
     plaintext_spectrum = f'{star}.txt'
     database_spectrum = f'{star}.{database}'
-    print("\tDownloading spectrum and writing file '%s'" % plaintext_spectrum)
+    print(f"\tDownloading spectrum and writing file '{plaintext_spectrum}'")
 
     if os.path.isfile(plaintext_spectrum):
         print('\t(Overwriting existing file)')
 
-    new_str = '# Spectrum of %s (%s) at 1 AU\n# WL(nm)\tFlux(ergs/cm**2/s/nm)\n' % (
-        star,
-        database,
-    )
+    new_str = f'# Spectrum of {star} ({database}) at 1 AU\n# WL(nm)\tFlux(ergs/cm**2/s/nm)\n'
     match database:
         case 'muscles':
             cert = certifi.where()
@@ -202,8 +196,7 @@ def DownloadModernSpectrum(name, distance=None):
                     )
                 if resp.status_code != 200:
                     print(
-                        "\t WARNING: Request returned with status code '%d' (should be 200/OK)"
-                        % resp.status_code
+                        f"\t WARNING: Request returned with status code '{int(resp.status_code)}' (should be 200/OK)"
                     )
 
                 # Save tarball
@@ -274,8 +267,7 @@ def DownloadModernSpectrum(name, distance=None):
 
                 if resp.status_code != 200:
                     print(
-                        "\t WARNING: Request returned with status code '%d' (should be 200/OK)"
-                        % resp.status_code
+                        f"\t WARNING: Request returned with status code '{int(resp.status_code)}' (should be 200/OK)"
                     )
 
                 with open(database_spectrum, 'wb') as f:
@@ -345,7 +337,7 @@ def DownloadModernSpectrum(name, distance=None):
 
             # convert to ascii
             for i in mask:
-                new_str += '%1.7e\t%1.7e \n' % (wl_arr[i], fl_arr[i])
+                new_str += f'{wl_arr[i]:1.7e}\t{fl_arr[i]:1.7e} \n'
 
             # write the file
             with open(plaintext_spectrum, 'w') as f:
@@ -358,13 +350,12 @@ def DownloadModernSpectrum(name, distance=None):
 
         case 'vpl':
             cert = False  # This is not good, but it will stay for now.
-            source = 'https://vpl.astro.washington.edu/spectra/stellar/%sum.txt' % star
+            source = f'https://vpl.astro.washington.edu/spectra/stellar/{star}um.txt'
             resp = requests.get(source, verify=cert)  # Download file
 
             if resp.status_code != 200:
                 print(
-                    "\t WARNING: Request returned with status code '%d' (should be 200/OK)"
-                    % resp.status_code
+                    f"\t WARNING: Request returned with status code '{int(resp.status_code)}' (should be 200/OK)"
                 )
 
             with open(database_spectrum, 'wb') as f:
@@ -380,7 +371,7 @@ def DownloadModernSpectrum(name, distance=None):
                             float(li[1]) * 1.0e4 * (distance_cm / r_scale) ** 2
                         )  # Convert units: W/cm^2/micron -> erg/cm^2/s/nm and scale flux
 
-                        new_str += '%1.7e\t%1.7e \n' % (wl, fl)
+                        new_str += f'{wl:1.7e}\t{fl:1.7e} \n'
 
             with open(plaintext_spectrum, 'w') as f:
                 f.write(new_str)
@@ -392,8 +383,7 @@ def DownloadModernSpectrum(name, distance=None):
 
             if resp.status_code != 200:
                 print(
-                    "\t WARNING: Request returned with status code '%d' (should be 200/OK)"
-                    % resp.status_code
+                    f"\t WARNING: Request returned with status code '{int(resp.status_code)}' (should be 200/OK)"
                 )
 
             with open(database_spectrum, 'wb') as f:
@@ -413,7 +403,7 @@ def DownloadModernSpectrum(name, distance=None):
                         float(li[1]) * 1.0e3
                     )  # Convert [W m-2 nm-1] -> [erg s-1 cm-2 nm-1], already at 1 AU
 
-                    new_str += '%1.7e\t%1.7e \n' % (wl, fl)
+                    new_str += f'{wl:1.7e}\t{fl:1.7e} \n'
 
             with open(plaintext_spectrum, 'w') as f:
                 f.write(new_str)
@@ -459,7 +449,7 @@ if __name__ == '__main__':
             print('Available stars:')
             for k in stars_online.keys():
                 for s in stars_online[k]:
-                    print('%12s    (%7s)' % (s, k))
+                    print(f'{s:>12}    ({k:>7})')
 
         case 'get':
             target = str(sys.argv[2]).lower()

@@ -115,7 +115,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         fluxes = _calc_fluxes(T_surf_atm)
 
         if r.converged:
-            log.debug('    Found solution after %d iterations' % int(r.iterations))
+            log.debug(f'    Found solution after {int(r.iterations)} iterations')
         else:
             UpdateStatusfile(dirs, 22)
             raise RuntimeError('Could not find solution for T_surf with dummy_atmosphere')
@@ -132,7 +132,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     # Print if a limit was applied
     if not np.isclose(F_atm_lim, fluxes['fl_N']):
         log.warning('Change in F_atm [W m-2] limited in this step!')
-        log.warning('    %g  ->  %g' % (fluxes['fl_N'], F_atm_lim))
+        log.warning('    {:g}  ->  {:g}'.format(fluxes['fl_N'], F_atm_lim))
 
     # Scale height used to calculate observed radius
     atm_H = const_R * T_surf_atm / (hf_row['atm_kg_per_mol'] * hf_row['gravity'])
@@ -145,10 +145,10 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         bond_albedo = fluxes['fl_U_SW'] / fluxes['fl_D_SW']
 
     # Return result
-    log.info('    T_surf     =  %.3e  K' % T_surf_atm)
-    log.info('    F_atm      =  %.3e  W m-2' % F_atm_lim)
-    log.info('    F_olr      =  %.3e  W m-2' % fluxes['fl_U_LW'])
-    log.info('    F_sct      =  %.3e  W m-2' % fluxes['fl_U_SW'])
+    log.info(f'    T_surf     =  {T_surf_atm:.3e}  K')
+    log.info(f'    F_atm      =  {F_atm_lim:.3e}  W m-2')
+    log.info('    F_olr      =  {:.3e}  W m-2'.format(fluxes['fl_U_LW']))
+    log.info('    F_sct      =  {:.3e}  W m-2'.format(fluxes['fl_U_SW']))
 
     # Pack output
     output = {}

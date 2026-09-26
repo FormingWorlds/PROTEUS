@@ -976,7 +976,7 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         found = False
         for _ in range(_SUPERLIQ_REFINE_LEVELS):
             refined: list[tuple[float, dict]] = [scan[0]]
-            for (T_a, _d_a), (T_b, d_b) in zip(scan, scan[1:]):
+            for (T_a, _d_a), (T_b, d_b) in zip(scan, scan[1:], strict=False):
                 T_mid = 0.5 * (T_a + T_b)
                 if not found:
                     d_mid = _probe(T_mid)
@@ -1025,7 +1025,7 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
             f'intervals, or above it up to T={scan[-1][0]:.0f} K. The EOS table '
             'may not support a molten mantle at this pressure.'
         )
-    for (T_a, d_a), (T_b, d_b) in zip(points, points[1:]):
+    for (T_a, d_a), (T_b, d_b) in zip(points, points[1:], strict=False):
         if d_b['superheat'] < d_a['superheat'] - 1.0:
             raise InitialConditionError(
                 'liquidus_super: superheat decreases with increasing surface '
@@ -2263,7 +2263,7 @@ def _report_kept_ps_tables(eos_dir: str, stored: str, current_key) -> None:
     want_base, _, want_gen = cache_key.partition('_gen=')
     base, has_gen, gen = stored.partition('_gen=')
     if base == want_base:
-        change = 'the new table generator (generator %s, current %s)' % (
+        change = 'the new table generator (generator {}, current {})'.format(
             gen if has_gen else 'unknown',
             want_gen,
         )
@@ -3531,7 +3531,9 @@ def zalmoxis_solver(
                         return None
                     _lp = np.log10(_P[_valid])
                     _lt = np.log10(_T[_valid])
-                    _interp = LinearNDInterpolator(list(zip(_lp, _lt)), _cp[_valid])
+                    _interp = LinearNDInterpolator(
+                        list(zip(_lp, _lt, strict=False)), _cp[_valid]
+                    )
 
                     def _cp_func(P_Pa, T_K, _i=_interp, _fb=fallback_cp):
                         if P_Pa <= 0 or T_K <= 0:

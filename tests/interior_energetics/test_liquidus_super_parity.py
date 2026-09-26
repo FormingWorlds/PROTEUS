@@ -481,7 +481,7 @@ def test_zalmoxis_path_raise_names_search_window_when_it_is_the_limit(monkeypatc
 # Case A: every molten state lies between two coarse scan points. Invalid
 # below surface T 2020 K (S < 1900), table ceiling at surface T 2100 K
 # (S_ceiling = 2000); the scan points 2010.5 K and 2221 K are both invalid.
-_CASE_A = dict(s_ceiling=2000.0, invalid_bands=((0.0, 1900.0),))
+_CASE_A = {'s_ceiling': 2000.0, 'invalid_bands': ((0.0, 1900.0),)}
 
 
 @pytest.mark.parametrize(
@@ -530,7 +530,7 @@ def test_zalmoxis_path_raises_when_no_refined_or_extended_point_is_valid(monkeyp
 # Case D: invalid up to surface T 5900 K (S < 6750), no ceiling; every
 # coarse point up to 5800 K is invalid and the first extension point
 # (6010.5 K) is valid.
-_CASE_D = dict(s_ceiling=None, invalid_bands=((0.0, 6750.0),))
+_CASE_D = {'s_ceiling': None, 'invalid_bands': ((0.0, 6750.0),)}
 
 
 @pytest.mark.parametrize(

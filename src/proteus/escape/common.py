@@ -56,5 +56,5 @@ def calc_unfract_fluxes(hf_row: dict, reservoir: str, min_thresh: float):
     #     if escape is unfractionating, this should be conserved
     for e in res.keys():
         emr = res[e] / M_vols
-        log.debug('    %2s (%s) mass ratio = %.2e ' % (e, reservoir, emr))
+        log.debug(f'    {e:>2} ({reservoir}) mass ratio = {emr:.2e} ')
         hf_row['esc_rate_' + e] = hf_row['esc_rate_total'] * emr

@@ -56,7 +56,7 @@ class Grid:
         self.outdir = PROTEUS_DIR + '/output/' + self.name + '/'
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
-            raise Exception("Base config file '%s' does not exist!" % self.conf)
+            raise Exception(f"Base config file '{self.conf}' does not exist!")
 
         self.symlink_dir = symlink_dir
         if self.symlink_dir in ['', '.']:
@@ -72,7 +72,7 @@ class Grid:
             if os.path.islink(self.outdir):
                 os.unlink(self.outdir)
             if os.path.isdir(self.outdir):
-                print("Removing old files at '%s'" % self.outdir)
+                print(f"Removing old files at '{self.outdir}'")
                 subfolders = [
                     f.path.split('/')[-1].lower() for f in os.scandir(self.outdir) if f.is_dir()
                 ]
@@ -91,7 +91,7 @@ class Grid:
             self.using_symlink = True
             self.symlink_dir = os.path.abspath(self.symlink_dir)
             if os.path.exists(self.symlink_dir):
-                print("Removing old files at '%s'" % self.symlink_dir)
+                print(f"Removing old files at '{self.symlink_dir}'")
                 subfolders = [
                     f.path.split('/')[-1].lower()
                     for f in os.scandir(self.symlink_dir)
@@ -127,7 +127,7 @@ class Grid:
             datefmt='%Y-%m-%d %H:%M:%S',
         )
 
-        log.info("Grid '%s' initialised empty" % self.name)
+        log.info(f"Grid '{self.name}' initialised empty")
 
         # List of dimension names and parameter names
         self.dim_names = []  # String
@@ -143,9 +143,9 @@ class Grid:
     # Add a new empty dimension to the Grid
     def add_dimension(self, name: str, var: str):
         if name in self.dim_names:
-            raise Exception("Dimension '%s' cannot be added twice" % name)
+            raise Exception(f"Dimension '{name}' cannot be added twice")
 
-        log.info("Added new dimension '%s' " % name)
+        log.info(f"Added new dimension '{name}' ")
         log.debug(
             "Dimension '%s' maps to parameter '%s' (total dims: %d)",
             name,
@@ -158,7 +158,7 @@ class Grid:
 
     def _get_idx(self, name: str):
         if name not in self.dim_names:
-            raise Exception("Dimension '%s' is not initialised" % name)
+            raise Exception(f"Dimension '{name}' is not initialised")
         return int(self.dim_names.index(name))
 
     # Set a dimension by linspace
@@ -208,22 +208,22 @@ class Grid:
     # Print current setup
     def print_setup(self):
         log.info('Grid configuration')
-        log.info(' -- name     : %s' % self.name)
+        log.info(f' -- name     : {self.name}')
         log.info(' ')
         for name in self.dim_names:
             idx = self._get_idx(name)
 
-            log.info(' -- dimension: %s' % name)
-            log.info('    parameter: %s' % self.dim_param[idx])
-            log.info('    values   : %s' % self.dim_avars[name])
-            log.info('    length   : %d' % len(self.dim_avars[name]))
+            log.info(f' -- dimension: {name}')
+            log.info(f'    parameter: {self.dim_param[idx]}')
+            log.info(f'    values   : {self.dim_avars[name]}')
+            log.info(f'    length   : {len(self.dim_avars[name])}')
             log.info(' ')
 
     # Print generated grid
     def print_grid(self):
         log.info('Flattened grid points')
         for i, gp in enumerate(self.flat):
-            log.info('    %d: %s' % (i, gp))
+            log.info(f'    {i}: {gp}')
         log.info(' ')
 
     def _get_tmpcfg(self, idx: int):
@@ -238,22 +238,22 @@ class Grid:
             raise Exception('Grid is empty')
 
         # Dimension count
-        log.info('    %d dimensions' % len(self.dim_names))
+        log.info(f'    {len(self.dim_names)} dimensions')
 
         # Calculate total Grid size
         values = list(self.dim_avars.values())
         self.size = 1
         for v in values:
             self.size *= len(v)
-        log.info('    %d points expected' % self.size)
+        log.info(f'    {self.size} points expected')
         log.debug(
             'Grid size breakdown: %s',
-            ' x '.join('%s(%d)' % (n, len(self.dim_avars[n])) for n in self.dim_names),
+            ' x '.join(f'{n}({len(self.dim_avars[n])})' for n in self.dim_names),
         )
 
         # Create flattened parameter grid
         flat_values = list(itertools.product(*values))
-        log.info('    created %d grid points' % len(flat_values))
+        log.info(f'    created {len(flat_values)} grid points')
 
         # Re-assign keys to values
         log.info('    mapping keys')
@@ -311,12 +311,12 @@ class Grid:
         - `print_interval:int`      step interval at which to print (8*15 seconds = 2 minutes)
         """
 
-        log.info("Running PROTEUS across parameter grid '%s'" % self.name)
+        log.info(f"Running PROTEUS across parameter grid '{self.name}'")
 
         time_start = datetime.now()
-        log.info("Output path: '%s'" % self.outdir)
+        log.info(f"Output path: '{self.outdir}'")
         if self.using_symlink:
-            log.info("Symlink target: '%s'" % self.symlink_dir)
+            log.info(f"Symlink target: '{self.symlink_dir}'")
         # do not need more threads than there are points
         num_threads = min(num_threads, self.size)
 
@@ -334,7 +334,7 @@ class Grid:
             log.info(' ')
             log.info('Confirm that the grid above is what you had intended.')
             log.info(
-                'There are %d grid points. There will be %d threads.' % (self.size, num_threads)
+                f'There are {int(self.size)} grid points. There will be {int(num_threads)} threads.'
             )
             log.info(
                 'Do not close this program! It must stay alive to manage each of the subproceses.'
@@ -343,7 +343,7 @@ class Grid:
 
             log.info('Sleeping...')
             for i in range(7, 0, -1):
-                log.info('    %d ' % i)
+                log.info(f'    {i} ')
                 time.sleep(1.0)
             log.info(' ')
 
@@ -371,7 +371,7 @@ class Grid:
                     cfgexists = True
                     break
             if not cfgexists:
-                raise Exception('Config file could not be found for case %d!' % i)
+                raise Exception(f'Config file could not be found for case {i}!')
 
             # Add process
             threads.append(
@@ -387,7 +387,7 @@ class Grid:
         status = np.zeros(self.size)
         done = False  # All done?
         log.info(
-            'Starting process manager (%d grid points, %d threads)' % (self.size, num_threads)
+            f'Starting process manager ({int(self.size)} grid points, {int(num_threads)} threads)'
         )
         step = 0
         while not done:
@@ -417,15 +417,9 @@ class Grid:
             count_end = np.count_nonzero(status == 2)
             if step % print_interval == 0:
                 log.info(
-                    '%3d queued (%5.1f%%), %3d running (%5.1f%%), %3d exited (%5.1f%%)'
-                    % (
-                        count_que,
-                        100.0 * count_que / self.size,
-                        count_run,
-                        100.0 * count_run / self.size,
-                        count_end,
-                        100.0 * count_end / self.size,
-                    )
+                    f'{count_que:3d} queued ({100.0 * count_que / self.size:5.1f}%), '
+                    f'{count_run:3d} running ({100.0 * count_run / self.size:5.1f}%), '
+                    f'{count_end:3d} exited ({100.0 * count_end / self.size:5.1f}%)'
                 )
 
             # Done?
@@ -459,7 +453,7 @@ class Grid:
                 # find file
                 status_path = os.path.join(self.outdir, self.CONFIG_BASENAME % i, 'status')
                 if not os.path.exists(status_path):
-                    raise Exception("Cannot find status file at '%s'" % status_path)
+                    raise Exception(f"Cannot find status file at '{status_path}'")
 
                 # read file
                 with open(status_path) as hdl:
@@ -469,8 +463,8 @@ class Grid:
                 # if still marked as running, it must have died at some point
                 if 0 <= this_stat <= 9:
                     log.warning(
-                        'Case %06d has status=running but it is not alive. Setting status=died.'
-                        % i
+                        f'Case {i:06d} has status=running but it is not alive. '
+                        'Setting status=died.'
                     )
                     with open(status_path, 'w') as hdl:
                         hdl.write('25\n')
@@ -517,14 +511,14 @@ class Grid:
         max_days = int(max_days)  # ensure integer
         max_jobs = min(max_jobs, self.size)  # do not request more jobs than we need
 
-        log.info("Generating PROTEUS slurm config for parameter grid '%s'" % self.name)
-        log.info('Will run for up to %d days per job' % max_days)
-        log.info('Will use up to %d GB of memory per job' % max_mem)
+        log.info(f"Generating PROTEUS slurm config for parameter grid '{self.name}'")
+        log.info(f'Will run for up to {max_days} days per job')
+        log.info(f'Will use up to {int(max_mem)} GB of memory per job')
         log.info(' ')
 
-        log.info("Output path: '%s'" % self.outdir)
+        log.info(f"Output path: '{self.outdir}'")
         if self.using_symlink:
-            log.info("Symlink target: '%s'" % self.symlink_dir)
+            log.info(f"Symlink target: '{self.symlink_dir}'")
 
         log.info(' ')
         self.write_config_files()
@@ -645,7 +639,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
 
         # Add dimension
         dim += 1
-        name = 'param_%03d' % dim
+        name = f'param_{dim:03d}'
         pg.add_dimension(name, key)
 
         # Handle each possible method for setting this dimension

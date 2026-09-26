@@ -18,7 +18,7 @@ def valid_mors(instance, attribute, value):
 
     # star_name required for solar and muscles spectra (not for phoenix)
     if instance.mors.star_name is None and src in ('solar', 'muscles'):
-        raise ValueError('Must provide mors.star_name for spectrum_source=%s' % src)
+        raise ValueError(f'Must provide mors.star_name for spectrum_source={src}')
     if src == 'phoenix':
         if instance.mors.phoenix_alpha is None or instance.mors.phoenix_FeH is None:
             raise ValueError(

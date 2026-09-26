@@ -14,7 +14,7 @@ log = logging.getLogger('fwl.' + __name__)
 def pack(grid: str, plots: bool = True, zip: bool = True, rmdir_pack: bool = True):
     """Pack most-important data for all cases into a single folder; optionally zip it."""
     if (not os.path.exists(grid)) or (not os.path.isdir(grid)):
-        raise FileNotFoundError("Invalid path '%s'" % grid)
+        raise FileNotFoundError(f"Invalid path '{grid}'")
 
     grid = os.path.abspath(grid)
     log.info('Grid dir: %s', grid)
@@ -69,7 +69,7 @@ def pack(grid: str, plots: bool = True, zip: bool = True, rmdir_pack: bool = Tru
         if os.path.isfile(zip_path):
             os.remove(zip_path)
         with ZipFile(zip_path, 'w', compression=ZIP_DEFLATED) as zf:
-            for root, dirs, files in os.walk(pack):
+            for root, _dirs, files in os.walk(pack):
                 root_path = Path(root)
                 for name in files:
                     file_path = root_path / name

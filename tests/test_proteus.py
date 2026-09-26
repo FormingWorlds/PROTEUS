@@ -1724,7 +1724,7 @@ def _write_post_outgas_row(hf_row, step, *, vapour):
     m_vol_atm = 1.0e-4 * _MASS_PLANET_KG  # ~6e20 kg, a few hundred bar of volatiles
     weights = [1.0] + [0.01] * (len(vol_gas_list) - 1)
     norm = sum(weights)
-    for s, w in zip(vol_gas_list, weights):
+    for s, w in zip(vol_gas_list, weights, strict=False):
         hf_row[s + '_kg_atm'] = m_vol_atm * w / norm
     hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
     hf_row['M_vaps'] = (2.0e-5 * _MASS_PLANET_KG * (1 + step)) if vapour else 0.0
@@ -2055,7 +2055,7 @@ def _make_resume_checkpoint_df():
     ages = [1.0e6 + t for t in times]
     magmas = [3000.0, 2900.0, 2800.0, 2700.0, 2600.0]
     rows = []
-    for time, age, magma in zip(times, ages, magmas):
+    for time, age, magma in zip(times, ages, magmas, strict=False):
         row = ZeroHelpfileRow()
         row.update(
             {

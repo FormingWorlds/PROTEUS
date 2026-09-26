@@ -33,7 +33,7 @@ def calculate_simple_mantle_mass(radius: float, core_frac: float, density: float
     # Get mass [in SI units]
     mantle_mass = mantle_volume * density
 
-    log.debug('Total mantle mass = %.2e kg' % mantle_mass)
+    log.debug(f'Total mantle mass = {mantle_mass:.2e} kg')
     if mantle_mass <= 0.0:
         raise Exception('Something has gone wrong (mantle mass is negative)')
 

@@ -755,29 +755,31 @@ class AragogRunner:
             )
             _effective_caps_logged = True
 
-        energy_kwargs = dict(
-            conduction=config.interior_energetics.trans_conduction,
-            convection=config.interior_energetics.trans_convection,
-            gravitational_separation=(config.interior_energetics.trans_grav_sep),
-            mixing=config.interior_energetics.trans_mixing,
-            radionuclides=config.interior_energetics.heat_radiogenic,
-            tidal=config.interior_energetics.heat_tidal,
-            tidal_array=interior_o.tides,
-            kappah_floor=config.interior_energetics.kappah_floor,
+        energy_kwargs = {
+            'conduction': config.interior_energetics.trans_conduction,
+            'convection': config.interior_energetics.trans_convection,
+            'gravitational_separation': (config.interior_energetics.trans_grav_sep),
+            'mixing': config.interior_energetics.trans_mixing,
+            'radionuclides': config.interior_energetics.heat_radiogenic,
+            'tidal': config.interior_energetics.heat_tidal,
+            'tidal_array': interior_o.tides,
+            'kappah_floor': config.interior_energetics.kappah_floor,
             # Bridge the PROTEUS schema knob onto the numpy/scipy RHS
             # path. The JAX path consumes the same value via PhaseParams
             # (see `aragog_jax.py`); without this passthrough, a non-
             # default user value would apply on JAX and silently default
             # to 1.0 on the numpy/scipy fallback, breaking bit-parity.
-            eddy_diffusivity_thermal=float(config.interior_energetics.eddy_diffusivity_thermal),
-            phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
-            solver_method=config.interior_energetics.aragog.solver_method,
-            use_jax_jacobian=(config.interior_energetics.aragog.backend == 'jax'),
-            phi_step_cap=phi_step_cap,
-            temperature_step_cap=temperature_step_cap,
-            entropy_step_cap=entropy_step_cap,
-            phase_boundary_entropy_margin=float(ar.phase_boundary_entropy_margin),
-        )
+            'eddy_diffusivity_thermal': float(
+                config.interior_energetics.eddy_diffusivity_thermal
+            ),
+            'phase_smoothing': config.interior_energetics.aragog.phase_smoothing,
+            'solver_method': config.interior_energetics.aragog.solver_method,
+            'use_jax_jacobian': (config.interior_energetics.aragog.backend == 'jax'),
+            'phi_step_cap': phi_step_cap,
+            'temperature_step_cap': temperature_step_cap,
+            'entropy_step_cap': entropy_step_cap,
+            'phase_boundary_entropy_margin': float(ar.phase_boundary_entropy_margin),
+        }
         # The temperature/entropy step caps and the phase-boundary entropy
         # margin require a paired Aragog. Pass them only when the installed
         # Aragog accepts them, so an older Aragog degrades gracefully (no caps,
@@ -1541,7 +1543,7 @@ class AragogRunner:
             T_stag_aragog = np.array(
                 [
                     float(solver.entropy_eos.temperature_scalar(float(p), float(s)))
-                    for p, s in zip(P_stag, S_stag)
+                    for p, s in zip(P_stag, S_stag, strict=False)
                 ]
             )
 

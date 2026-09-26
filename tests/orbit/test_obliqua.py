@@ -440,7 +440,7 @@ def test_run_obliqua_returns_a_genuine_scalar_when_omega_is_julia_boxed(monkeypa
     # Discrimination: a shape-(2,) array would pass a bare truthiness/
     # non-None check but fail exactly like the production crash here.
     assert np.ndim(result) == 0
-    assert '%.1e' % result  # must not raise TypeError, as it did in production
+    assert f'{result:.1e}'  # must not raise TypeError, as it did in production
 
     # Value check: orbital_period > 0 => omega > 0 => sign is -1.
     expected = -1.0 * np.mean(np.abs(np.imag([0.01 - 0.02j, 0.03 - 0.04j])))
@@ -1716,6 +1716,22 @@ def test_read_ncdfs_orders_output_by_requested_times_not_filesystem_order(tmp_pa
     assert len(out) == 2
     np.testing.assert_allclose(out[0]['LNk_real'], [0.01], rtol=1e-12)  # t=2
     np.testing.assert_allclose(out[1]['LNk_real'], [0.09], rtol=1e-12)  # t=10
+
+
+def test_read_ncdfs_truncates_a_fractional_time_in_the_file_name(tmp_path):
+    """``read_ncdfs`` opens ``<integer>_obliqua.nc`` for a fractional time, so
+    t=2.9 reads ``2_obliqua.nc``. Rounding (``3_obliqua.nc``) or keeping the
+    fraction (``2.9_obliqua.nc``) would look for a file that does not exist.
+    """
+    from proteus.orbit import obliqua as obliqua_mod
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    _write_lookup_netcdf(data_dir / '2_obliqua.nc', [(2, 0, 1)], [1e-6], [0.01 - 0.02j])
+
+    out = obliqua_mod.read_ncdfs(str(tmp_path), times=[2.9])
+
+    np.testing.assert_allclose(out[0]['LNk_real'], [0.01], rtol=1e-12)
 
 
 # ---------------------------------------------------------------------------

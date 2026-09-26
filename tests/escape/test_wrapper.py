@@ -1459,7 +1459,7 @@ def test_shortened_steps_run_a_reservoir_down_rather_than_emptying_it():
     # on the cap itself, and 1/3 differs from 1/4 by a third of the cap.
     assert abs(fixed_point - cap) > 0.3 * cap
     # The step shortens monotonically rather than recovering and overshooting.
-    assert all(b < a for a, b in zip(steps, steps[1:]))
+    assert all(b < a for a, b in zip(steps, steps[1:], strict=False))
     assert 0.0 < applied <= escapable
 
 

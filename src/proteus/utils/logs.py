@@ -214,7 +214,7 @@ def GetCurrentLogfileIndex(output_dir: str):
     i = 0
     j = -1
     while i < 99:
-        fname = 'proteus_%02d.log' % i
+        fname = f'proteus_{i:02d}.log'
         fpath = os.path.join(output_dir, fname)
 
         if os.path.exists(fpath):
@@ -234,4 +234,4 @@ def GetLogfilePath(output_dir: str, j: int):
     if j > 99:
         raise Exception('Cannot create logfile - too many in output folder already')
 
-    return os.path.join(output_dir, 'proteus_%02d.log' % j)
+    return os.path.join(output_dir, f'proteus_{j:02d}.log')

@@ -491,15 +491,9 @@ def solve_superliquidus_entropy_from_tables(
     # no clip; the tolerance only absorbs rounding of the table's end pressure.
     if P_cmb > float(eos.P_max) * (1.0 + 1e-9):
         raise InitialConditionError(
-            'liquidus_super: the core-mantle boundary pressure %.3g GPa is above '
-            'the EOS table maximum %.3g GPa (table covers %.3g to %.3g GPa); the '
+            f'liquidus_super: the core-mantle boundary pressure {P_cmb / 1e9:.3g} GPa is above '
+            f'the EOS table maximum {float(eos.P_max) / 1e9:.3g} GPa (table covers {float(eos.P_min) / 1e9:.3g} to {float(eos.P_max) / 1e9:.3g} GPa); the '
             'deepest mantle cannot be checked for melt.'
-            % (
-                P_cmb / 1e9,
-                float(eos.P_max) / 1e9,
-                float(eos.P_min) / 1e9,
-                float(eos.P_max) / 1e9,
-            )
         )
     P_cmb = min(P_cmb, float(eos.P_max))
     # T(P, S_liq) and every molten adiabat read the melt table, whose entropy
@@ -508,10 +502,9 @@ def solve_superliquidus_entropy_from_tables(
     P_surf = max(1e5, float(eos.P_min))
     if P_cmb <= P_surf:
         raise InitialConditionError(
-            'liquidus_super: the core-mantle boundary pressure %.3g GPa is not above '
-            'the evaluated surface pressure %.3g GPa (the larger of 1 bar and the '
+            f'liquidus_super: the core-mantle boundary pressure {P_cmb / 1e9:.3g} GPa is not above '
+            f'the evaluated surface pressure {P_surf / 1e9:.3g} GPa (the larger of 1 bar and the '
             'table minimum); there is no mantle to check for melt.'
-            % (P_cmb / 1e9, P_surf / 1e9)
         )
     P = np.geomspace(P_surf, P_cmb, _TABLE_SUPERLIQ_N_POINTS)
     # Evaluate at every kink of the margin as well: a step in the melt table
@@ -542,19 +535,11 @@ def solve_superliquidus_entropy_from_tables(
     if not covered.all():
         missing = P[~covered]
         raise InitialConditionError(
-            'liquidus_super: the P-S table liquidus is undefined at %d of %d '
-            'pressures between %.3g and %.3g GPa (liquidus file covers %.3g to '
-            '%.3g GPa, table entropy from %.0f J/kg/K); the superheat target '
-            'cannot be evaluated there.'
-            % (
-                missing.size,
-                P.size,
-                float(missing.min()) / 1e9,
-                float(missing.max()) / 1e9,
-                P_liq_lo / 1e9,
-                P_liq_hi / 1e9,
-                S_tab_lo,
-            )
+            f'liquidus_super: the P-S table liquidus is undefined at {missing.size} of '
+            f'{P.size} pressures between {float(missing.min()) / 1e9:.3g} and '
+            f'{float(missing.max()) / 1e9:.3g} GPa (liquidus file covers '
+            f'{P_liq_lo / 1e9:.3g} to {P_liq_hi / 1e9:.3g} GPa, table entropy from '
+            f'{S_tab_lo:.0f} J/kg/K); the superheat target cannot be evaluated there.'
         )
     above = S_liq > S_tab_hi
     if above.any():
@@ -1330,12 +1315,12 @@ class Interior_t:
         # Write tidal heating array to file.
         with open(get_file_tides(outdir), 'w') as hdl:
             # header information
-            hdl.write('# 3 %d \n' % self.nlev_s)
+            hdl.write(f'# 3 {int(self.nlev_s)} \n')
             hdl.write('# Melt fraction, Tidal heating [W/kg] \n')
             hdl.write('# 1.0 1.0 \n')
             # for each level...
             for i in range(self.nlev_s):
-                hdl.write('%.7e %.7e \n' % (self.phi[i], self.tides[i]))
+                hdl.write(f'{self.phi[i]:.7e} {self.tides[i]:.7e} \n')
 
     def write_structure_stale(self, outdir: str):
         # Persist the stale-structure flag so a resumed run recovers it. Written
@@ -1347,7 +1332,7 @@ class Interior_t:
         # log and continue rather than propagate.
         try:
             with open(get_file_structure_stale(outdir), 'w') as hdl:
-                hdl.write('%d\n' % (1 if self.structure_stale else 0))
+                hdl.write(f'{1 if self.structure_stale else 0}\n')
         except OSError as exc:
             log.warning('Could not persist stale-structure flag file: %s', exc)
 

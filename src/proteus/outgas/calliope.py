@@ -285,7 +285,7 @@ def construct_guess(hf_row: dict, target: dict, mass_thresh: float) -> dict | No
         # if any of the elements are zero, set guess to zero
         if is_zero:
             p_guess[s] = 0.0
-            log.debug('    %s: guess set to zero' % s)
+            log.debug(f'    {s}: guess set to zero')
 
     return p_guess
 
@@ -372,7 +372,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # Do not allow low temperatures
     if opts['T_magma'] < config.outgas.T_floor:
         opts['T_magma'] = config.outgas.T_floor
-        log.warning('Outgassing temperature clipped to %.1f K' % opts['T_magma'])
+        log.warning('Outgassing temperature clipped to {:.1f} K'.format(opts['T_magma']))
 
     # Dispatch on planet.fO2_source. The two entry points share the
     # output-dict schema (volatile partial pressures, per-species reservoir

@@ -165,8 +165,8 @@ def carry_converged_levels(atmos_o: Atmos_t, hf_row: dict, previous_row: dict | 
     for key in LEVEL_KEYS:
         if key in atmos_o.levels_converged and key in hf_row:
             log.debug(
-                '    %-5s %.5e  ->  %.5e'
-                % (key, float(hf_row[key]), atmos_o.levels_converged[key])
+                f'    {key:<5} {float(hf_row[key]):.5e}  ->  '
+                f'{atmos_o.levels_converged[key]:.5e}'
             )
     for key in keys:
         if key in atmos_o.levels_converged and key in hf_row:
@@ -317,7 +317,7 @@ def run_atmosphere(
             if not os.path.exists(spectral_file_nostar):
                 UpdateStatusfile(dirs, 20)
                 raise FileNotFoundError(
-                    "Spectral file does not exist at '%s'" % spectral_file_nostar
+                    f"Spectral file does not exist at '{spectral_file_nostar}'"
                 )
 
             wl = np.array(wl)

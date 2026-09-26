@@ -192,7 +192,7 @@ def test_entropy_is_monotonic_in_requested_superheat(fake_tables):
         for d in deltas
     ]
 
-    assert all(b > a for a, b in zip(S, S[1:]))
+    assert all(b > a for a, b in zip(S, S[1:], strict=False))
     # Each step of 100 K raises the entropy by 100/A, the analytic slope.
     assert S[1] - S[0] == pytest.approx(100.0 / A, rel=1e-6)
 

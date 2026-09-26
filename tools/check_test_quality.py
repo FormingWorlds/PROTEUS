@@ -193,7 +193,7 @@ def _has_float_eq(node: ast.AST) -> bool:
     """
     for child in ast.walk(node):
         if isinstance(child, ast.Compare):
-            for op, right in zip(child.ops, child.comparators):
+            for op, right in zip(child.ops, child.comparators, strict=False):
                 if isinstance(op, ast.Eq):
                     if isinstance(right, ast.Constant) and isinstance(right.value, float):
                         if not _is_exact_zero(right.value):

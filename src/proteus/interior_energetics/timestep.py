@@ -23,7 +23,7 @@ def _hf_from_iters(hf_all: pd.DataFrame, i1: int, i2: int):
 
     # i2 must be larger than i1
     if i1 >= i2:
-        log.error('Cannot compare helpfile rows (i1=%d  >=  i2=%d)' % (i1, i2))
+        log.error(f'Cannot compare helpfile rows (i1={int(i1)}  >=  i2={int(i2)})')
 
     # Return HF rows at the requested iterations
     return dict(hf_all.iloc[i1]), dict(hf_all.iloc[i2])
@@ -57,7 +57,7 @@ def _estimate_solid(hf_all: pd.DataFrame, i1: int, i2: int) -> float:
             #  dp/dt * Δt + p2 = 0    ->   Δt = -p2/(dp/dt)
             dt_solid = abs(-1.0 * p2 / (dp / dt))
 
-    log.debug('Solidification expected in %.3e yrs' % dt_solid)
+    log.debug(f'Solidification expected in {dt_solid:.3e} yrs')
 
     return dt_solid
 
@@ -89,7 +89,7 @@ def _estimate_radeq(hf_all: pd.DataFrame, i1: int, i2: int) -> float:
         else:
             dt_radeq = abs(-1.0 * f2 / (df / dt))
 
-    log.debug('Energy balance expected in %.3e yrs' % dt_radeq)
+    log.debug(f'Energy balance expected in {dt_radeq:.3e} yrs')
 
     return dt_radeq
 
@@ -124,7 +124,7 @@ def _estimate_escape(hf_all: pd.DataFrame, i1: int, i2: int) -> float:
             #  dp/dt * Δt + p2 = 0    ->   Δt = -p2/(dp/dt)
             dt_escape = abs(-1.0 * p2 / (dp / dt))
 
-    log.debug('Escape expected in %.3e yrs' % dt_escape)
+    log.debug(f'Escape expected in {dt_escape:.3e} yrs')
 
     return dt_escape
 
@@ -164,12 +164,12 @@ def _estimate_bolscale(hf_all: pd.DataFrame, config: Config) -> float:
     # Before bolometric scaling begins
     if age_now < age_ini:
         dt_bolscale = abs(age_ini - age_now)
-        log.debug('Bolometric scaling starts in %.3e yrs' % dt_bolscale)
+        log.debug(f'Bolometric scaling starts in {dt_bolscale:.3e} yrs')
 
     # During bolometric scaling
     elif age_now < age_end:
         dt_bolscale = abs(age_end - age_now)
-        log.debug('Bolometric scaling ends in %.3e yrs' % dt_bolscale)
+        log.debug(f'Bolometric scaling ends in {dt_bolscale:.3e} yrs')
 
     return dt_bolscale
 
@@ -243,7 +243,7 @@ def next_step(
                 dtprev = float(hf_all.iloc[-1]['Time'] - hf_all.iloc[-2]['Time'])
             else:
                 dtprev = config.params.dt.initial
-            log.debug('Previous step size: %.2e yr' % dtprev)
+            log.debug(f'Previous step size: {dtprev:.2e} yr')
 
             # Change in F_atm
             F_atm_2 = hf_all['F_atm'].iloc[i2]
@@ -476,5 +476,5 @@ def next_step(
                 )
                 dtswitch = dt_capped
 
-    log.info('New time-step target is %.2e years' % dtswitch)
+    log.info(f'New time-step target is {dtswitch:.2e} years')
     return dtswitch

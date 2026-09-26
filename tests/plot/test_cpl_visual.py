@@ -187,7 +187,7 @@ def test_plot_visual_returns_false_missing_nc_file(tmp_path):
     # (== 0.0). The off-target file must still exist (no cleanup), and
     # the target file must NOT have been auto-created.
     assert os.path.isfile(os.path.join(data_dir, '999999_atm.nc'))
-    expected_target = '%.0f_atm.nc' % hf['Time'].iloc[0]
+    expected_target = '{:.0f}_atm.nc'.format(hf['Time'].iloc[0])
     assert not os.path.exists(os.path.join(data_dir, expected_target))
 
 
@@ -199,7 +199,7 @@ def test_plot_visual_returns_false_missing_key(tmp_path):
     os.makedirs(data_dir, exist_ok=True)
     hf = _make_hf_all()
     time = hf['Time'].iloc[-1]
-    nc_name = '%.0f_atm.nc' % time
+    nc_name = f'{time:.0f}_atm.nc'
     open(os.path.join(data_dir, nc_name), 'w').close()
 
     incomplete_ds = {'ba_U_LW': np.ones((4, 7))}  # missing most keys
@@ -231,7 +231,7 @@ def test_plot_visual_renders_frame(tmp_path):
 
     hf = _make_hf_all()
     time = hf['Time'].iloc[-1]
-    nc_name = '%.0f_atm.nc' % time
+    nc_name = f'{time:.0f}_atm.nc'
     open(os.path.join(data_dir, nc_name), 'w').close()
 
     ds = _make_ncdf_dict()
@@ -275,7 +275,7 @@ def test_plot_visual_renders_greygas_dataset(tmp_path):
 
     hf = _make_hf_all()
     time = hf['Time'].iloc[-1]
-    nc_name = '%.0f_atm.nc' % time
+    nc_name = f'{time:.0f}_atm.nc'
     open(os.path.join(data_dir, nc_name), 'w').close()
 
     ds = {
@@ -319,7 +319,7 @@ def test_plot_visual_renders_reversed_bands(tmp_path):
 
     hf = _make_hf_all()
     time = hf['Time'].iloc[-1]
-    nc_name = '%.0f_atm.nc' % time
+    nc_name = f'{time:.0f}_atm.nc'
     open(os.path.join(data_dir, nc_name), 'w').close()
 
     ds = _make_ncdf_dict()

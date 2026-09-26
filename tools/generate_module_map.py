@@ -288,7 +288,7 @@ def scan_compared_options(path: Path, dotted: tuple[str, str]) -> set:
     found: set = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Compare) and is_target(node.left):
-            for op, comp in zip(node.ops, node.comparators):
+            for op, comp in zip(node.ops, node.comparators, strict=False):
                 if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(comp, ast.Constant):
                     found.add(comp.value)
                 elif isinstance(op, (ast.In, ast.NotIn)) and isinstance(

@@ -36,7 +36,7 @@ def plot_structure(
         return
 
     if module not in ('spider', 'aragog'):
-        log.debug("Cannot make structure plot with interior module '%s'" % module)
+        log.debug(f"Cannot make structure plot with interior module '{module}'")
         return
 
     log.info('Plot structure')
@@ -135,7 +135,7 @@ def plot_structure(
     ax.xaxis.set_major_locator(MultipleLocator(0.20))
     ax.xaxis.set_minor_locator(MultipleLocator(0.10))
     ticks = [t for t in ax.get_xticks() if t >= 0]
-    ax.set_xticks(ticks, ['%.2f' % t for t in ticks], rotation=-45, ha='center')
+    ax.set_xticks(ticks, [f'{t:.2f}' for t in ticks], rotation=-45, ha='center')
     ax.set_xlim(left=0.0, right=r_max)
 
     ax.yaxis.set_minor_locator(MultipleLocator(500))
@@ -155,7 +155,7 @@ def plot_structure(
     plt.close()
     plt.ioff()
 
-    fpath = os.path.join(output_dir, 'plots', 'plot_structure.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_structure.{plot_format}')
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 

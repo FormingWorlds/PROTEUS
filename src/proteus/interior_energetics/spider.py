@@ -548,7 +548,7 @@ def read_jsons(output_dir: str, times: list) -> list[MyJSON]:
     """
     jsons = []
     for t in times:
-        _f = os.path.join(output_dir, 'data', '%.0f.json' % t)  # path to file
+        _f = os.path.join(output_dir, 'data', f'{t:.0f}.json')  # path to file
         _j = MyJSON(_f)  # load json file
         if _j.data_d is None:
             _j = None  # set to None if data could not be read
@@ -569,7 +569,7 @@ def get_all_output_times(odir: str):
     if not file_l:
         raise Exception('Output data directory contains no files')
 
-    time_l = [fname for fname in file_l]
+    time_l = list(file_l)
     time_l = list(filter(lambda a: a.endswith('json'), time_l))
     time_l = [int(time.split('.json')[0]) for time in time_l]
 
@@ -682,7 +682,7 @@ def _try_spider(
     spider_exec = os.path.join(dirs['spider'], 'spider')
     if not os.path.isfile(spider_exec):
         UpdateStatusfile(dirs, 21)
-        raise FileNotFoundError("SPIDER executable could not be found at '%s'" % spider_exec)
+        raise FileNotFoundError(f"SPIDER executable could not be found at '{spider_exec}'")
 
     # Scale factors for when SPIDER is failing to converge
     step_sf = max(1.0e-10, step_sf)
@@ -707,11 +707,11 @@ def _try_spider(
         # by dtswitch via Option D).
         all_times = get_all_output_times(dirs['output'])
         latest_spider_time = all_times[-1] if len(all_times) > 0 else 0
-        json_path = os.path.join(dirs['output/data'], '%.0f.json' % latest_spider_time)
+        json_path = os.path.join(dirs['output/data'], f'{latest_spider_time:.0f}.json')
         json_file = MyJSON(json_path)
         if json_file.data_d is None:
             UpdateStatusfile(dirs, 21)
-            raise ValueError("JSON file '%s' could not be loaded" % json_path)
+            raise ValueError(f"JSON file '{json_path}' could not be loaded")
         step = json_file.get_dict(['step'])
 
         # Get new time-step (pass interior_o for stiffness hysteresis parity
@@ -724,8 +724,7 @@ def _try_spider(
         dtmacro = dtswitch
 
         log.debug(
-            'SPIDER iteration: dt=%.2e yrs in %d steps (at i=%d)'
-            % (dtmacro, nsteps, nstepsmacro)
+            f'SPIDER iteration: dt={dtmacro:.2e} yrs in {nsteps} steps (at i={nstepsmacro})'
         )
 
     # For init loop
@@ -790,27 +789,27 @@ def _try_spider(
         '-outputDirectory',
         dirs['output/data'],
         '-IC_INTERIOR',
-        '%d' % (IC_INTERIOR),
+        f'{int(IC_INTERIOR)}',
         '-OXYGEN_FUGACITY_offset',
-        '%.6e' % (config.outgas.fO2_shift_IW),  # Relative to the specified buffer
+        f'{config.outgas.fO2_shift_IW:.6e}',  # Relative to the specified buffer
         '-surface_bc_value',
-        '%.6e' % (hf_row['F_atm']),
+        '{:.6e}'.format(hf_row['F_atm']),
         '-teqm',
-        '%.6e' % (hf_row['T_eqm']),
+        '{:.6e}'.format(hf_row['T_eqm']),
         '-n',
-        '%d' % (config.interior_energetics.num_levels),
+        f'{int(config.interior_energetics.num_levels)}',
         '-nstepsmacro',
-        '%d' % (nstepsmacro),
+        f'{int(nstepsmacro)}',
         '-dtmacro',
-        '%.6e' % (dtmacro),
+        f'{dtmacro:.6e}',
         '-radius',
-        '%.6e' % spider_radius,
+        f'{spider_radius:.6e}',
         '-gravity',
         '%.6e' % (-1.0 * spider_gravity),
         '-coresize',
-        '%.6e' % spider_coresize,
+        f'{spider_coresize:.6e}',
         '-grain',
-        '%.6e' % (config.interior_energetics.grain_size),
+        f'{config.interior_energetics.grain_size:.6e}',
     ]
 
     # Tolerance on the change in T_magma during a single SPIDER call
@@ -828,7 +827,7 @@ def _try_spider(
         and (np.amax(interior_o.tides) > 1e-10)
     ):
         dT_poststep = min(dT_poststep, config.interior_energetics.tmagma_tides_step)
-        log.info('Tidal heating active; limiting dT_magma to %.2f K' % dT_poststep)
+        log.info(f'Tidal heating active; limiting dT_magma to {dT_poststep:.2f} K')
     call_sequence.extend(['-tsurf_poststep_change', str(dT_poststep)])
 
     # set surface and core entropy (-1 is a flag to ignore)
@@ -992,10 +991,10 @@ def _try_spider(
         )
         call_sequence.extend(['-melt_phase_boundary_filename', liquidus_ps])
         call_sequence.extend(
-            ['-melt_log10visc', '%.6e' % float(config.interior_energetics.melt_log10visc)]
+            ['-melt_log10visc', f'{float(config.interior_energetics.melt_log10visc):.6e}']
         )
         call_sequence.extend(
-            ['-melt_cond', '%.6e' % float(config.interior_energetics.melt_cond)]
+            ['-melt_cond', f'{float(config.interior_energetics.melt_cond):.6e}']
         )
 
         call_sequence.extend(['-solid_TYPE', '1'])
@@ -1016,10 +1015,10 @@ def _try_spider(
         )
         call_sequence.extend(['-solid_phase_boundary_filename', solidus_ps])
         call_sequence.extend(
-            ['-solid_log10visc', '%.6e' % float(config.interior_energetics.solid_log10visc)]
+            ['-solid_log10visc', f'{float(config.interior_energetics.solid_log10visc):.6e}']
         )
         call_sequence.extend(
-            ['-solid_cond', '%.6e' % float(config.interior_energetics.solid_cond)]
+            ['-solid_cond', f'{float(config.interior_energetics.solid_cond):.6e}']
         )
 
     # Static pressure profile: external mesh from Zalmoxis, or Adams-Williamson
@@ -1045,13 +1044,13 @@ def _try_spider(
         call_sequence.extend(
             [
                 '-adams_williamson_rhos',
-                '%.12e' % float(config.interior_energetics.adams_williamson_rhos),
+                f'{float(config.interior_energetics.adams_williamson_rhos):.12e}',
             ]
         )
         call_sequence.extend(
             [
                 '-adams_williamson_beta',
-                '%.12e' % float(config.interior_energetics.adams_williamson_beta),
+                f'{float(config.interior_energetics.adams_williamson_beta):.12e}',
             ]
         )
 
@@ -1061,13 +1060,13 @@ def _try_spider(
     call_sequence.extend(
         [
             '-eddy_diffusivity_thermal',
-            '%.6e' % float(config.interior_energetics.eddy_diffusivity_thermal),
+            f'{float(config.interior_energetics.eddy_diffusivity_thermal):.6e}',
         ]
     )
     call_sequence.extend(
         [
             '-eddy_diffusivity_chemical',
-            '%.6e' % float(config.interior_energetics.eddy_diffusivity_chemical),
+            f'{float(config.interior_energetics.eddy_diffusivity_chemical):.6e}',
         ]
     )
 
@@ -1081,21 +1080,21 @@ def _try_spider(
     call_sequence.extend(
         [
             '-matprop_smooth_width',
-            '%.6e' % float(config.interior_energetics.spider.matprop_smooth_width),
+            f'{float(config.interior_energetics.spider.matprop_smooth_width):.6e}',
         ]
     )
 
     # Viscosity behaviour (rheological transition location and width, melt fractions)
-    call_sequence.extend(['-phi_critical', '%.6e' % (config.interior_energetics.rfront_loc)])
-    call_sequence.extend(['-phi_width', '%.6e' % (config.interior_energetics.rfront_wid)])
+    call_sequence.extend(['-phi_critical', f'{config.interior_energetics.rfront_loc:.6e}'])
+    call_sequence.extend(['-phi_width', f'{config.interior_energetics.rfront_wid:.6e}'])
 
     # Relating to the planet's metallic core
     call_sequence.extend(['-CORE_BC', '1'])  # CMB boundary condition
-    call_sequence.extend(['-rho_core', '%.6e' % rho_core])  # density
+    call_sequence.extend(['-rho_core', f'{rho_core:.6e}'])  # density
     from proteus.interior_energetics.wrapper import get_core_heatcap
 
     call_sequence.extend(
-        ['-cp_core', '%.6e' % get_core_heatcap(config, hf_row)]
+        ['-cp_core', f'{get_core_heatcap(config, hf_row):.6e}']
     )  # heat capacity
 
     # Surface boundary condition
@@ -1133,15 +1132,17 @@ def _try_spider(
 
         def _append_radnuc(_iso, _cnc):
             radnuc_names.append(_iso)
-            call_sequence.extend([f'-{_iso}_t0', '%.5e' % radio_t0])
-            call_sequence.extend([f'-{_iso}_concentration', '%.5f' % _cnc])
+            call_sequence.extend([f'-{_iso}_t0', f'{radio_t0:.5e}'])
+            call_sequence.extend([f'-{_iso}_concentration', f'{_cnc:.5f}'])
             call_sequence.extend(
-                [f'-{_iso}_abundance', '%.5e' % radnuc_data[_iso]['abundance']]
+                [f'-{_iso}_abundance', '{:.5e}'.format(radnuc_data[_iso]['abundance'])]
             )
             call_sequence.extend(
-                [f'-{_iso}_heat_production', '%.5e' % radnuc_data[_iso]['heatprod']]
+                [f'-{_iso}_heat_production', '{:.5e}'.format(radnuc_data[_iso]['heatprod'])]
             )
-            call_sequence.extend([f'-{_iso}_half_life', '%.5e' % radnuc_data[_iso]['halflife']])
+            call_sequence.extend(
+                [f'-{_iso}_half_life', '{:.5e}'.format(radnuc_data[_iso]['halflife'])]
+            )
 
         if config.interior_energetics.radio_Al > 0.0:
             _append_radnuc('al26', config.interior_energetics.radio_Al)
@@ -1231,7 +1232,7 @@ def RunSPIDER(
     # make attempts
     while not spider_success:
         attempts += 1
-        log.debug('Attempt %d' % attempts)
+        log.debug(f'Attempt {attempts}')
 
         # run SPIDER
         spider_success = _try_spider(
@@ -1248,13 +1249,13 @@ def RunSPIDER(
 
         if spider_success:
             # success
-            log.debug('Attempt %d succeeded' % attempts)
+            log.debug(f'Attempt {attempts} succeeded')
         else:
             # failure
-            log.warning('Attempt %d failed' % attempts)
+            log.warning(f'Attempt {attempts} failed')
             if attempts >= max_attempts:
                 # give up
-                log.error('Giving up after %d attempts' % attempts)
+                log.error(f'Giving up after {attempts} attempts')
                 break
             else:
                 # try again with smaller timestep and looser tolerance.
@@ -1277,7 +1278,7 @@ def RunSPIDER(
         # failure of all attempts
         UpdateStatusfile(dirs, 21)
         raise RuntimeError(
-            'An error occurred when executing SPIDER (made %d attempts)' % attempts
+            f'An error occurred when executing SPIDER (made {attempts} attempts)'
         )
 
 
@@ -1293,11 +1294,11 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     sim_time = get_all_output_times(dirs['output'])[-1]  # yr, as an integer value
 
     # load data file
-    json_path = os.path.join(dirs['output/data'], '%.0f.json' % sim_time)
+    json_path = os.path.join(dirs['output/data'], f'{sim_time:.0f}.json')
     json_file = MyJSON(json_path)
     if json_file.data_d is None:
         UpdateStatusfile(dirs, 21)
-        raise ValueError("JSON file '%s' could not be loaded" % json_path)
+        raise ValueError(f"JSON file '{json_path}' could not be loaded")
 
     # Use the precise time from inside the JSON (not the llround'd filename).
     # SPIDER stores full-precision time as 'time_years'. The filename is

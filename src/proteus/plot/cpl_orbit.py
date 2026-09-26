@@ -151,7 +151,7 @@ def plot_orbit(
     fig.tight_layout()
 
     # Save the figure
-    fpath = os.path.join(output_dir, 'plots', 'plot_orbit.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_orbit.{plot_format}')
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
     plt.close(fig)
@@ -274,7 +274,7 @@ def plot_orbit_system(
 
     fig.tight_layout()
 
-    fpath = os.path.join(output_dir, 'plots', 'plot_orbit_system.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_orbit_system.{plot_format}')
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 
@@ -432,7 +432,7 @@ def plot_evection(
 
     # Save figure
     os.makedirs(os.path.join(output_dir, 'plots'), exist_ok=True)
-    fpath = os.path.join(output_dir, 'plots', 'plot_evection.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_evection.{plot_format}')
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
     plt.close(fig)
@@ -521,7 +521,7 @@ def plot_lovenumber(
     cmap_imag = cm.imola
 
     # Plot connecting lines and mode markers
-    for mode_key, mode_data in modes.items():
+    for mode_data in modes.values():
         # Sort trajectories chronologically by time
         sort_idx = np.argsort(mode_data['time'])
         t_sorted = np.array(mode_data['time'])[sort_idx]

@@ -402,7 +402,7 @@ def test_get_ptr_with_vmrs():
 
     assert len(vmrs_out) == len(vmr_input), 'Number of VMR arrays mismatch'
     # Check that values match (may be in different order depending on pressure reversal)
-    for vmr_in, vmr_out in zip(vmr_input, vmrs_out):
+    for vmr_in, vmr_out in zip(vmr_input, vmrs_out, strict=False):
         assert len(vmr_in) == len(vmr_out), 'VMR length mismatch'
         assert set(vmr_in) == set(vmr_out), 'VMR values mismatch'
 

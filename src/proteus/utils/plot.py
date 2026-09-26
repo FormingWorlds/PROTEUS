@@ -190,7 +190,7 @@ def latexify(gas: str):
     for c in gas:
         c = str(c)
         if c.isnumeric():
-            out += r'$_%s$' % c
+            out += rf'$_{c}$'
         else:
             out += c
     return out

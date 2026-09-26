@@ -135,7 +135,7 @@ def UpdateStateAtm(atm, config: Config, hf_row: dict, tropopause):
         atm.trppT = hf_row['T_skin']
     else:
         atm.trppT = 0.5
-    log.debug('Setting stratosphere to %.2f K' % atm.trppT)
+    log.debug(f'Setting stratosphere to {atm.trppT:.2f} K')
 
     return
 
@@ -222,7 +222,7 @@ def RunJANUS(
     tmp_dir = dirs['output']
     if write_in_tmp_dir:
         tmp_dir = create_tmp_folder()
-    log.debug("Will run socrates inside '%s'" % tmp_dir)
+    log.debug(f"Will run socrates inside '{tmp_dir}'")
     os.chdir(tmp_dir)
 
     # Prepare to calculate temperature structure w/ General Adiabat
@@ -283,10 +283,9 @@ def RunJANUS(
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     any_cloud = np.any(np.array(atm.clfr) > 1.0e-20)
-    log.info('Water clouds have formed = %s' % (str(any_cloud)))
+    log.info(f'Water clouds have formed = {str(any_cloud)}')
     log.info(
-        'SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2'
-        % (atm.net_flux[-1], atm.net_flux[0], atm.LW_flux_up[0])
+        f'SOCRATES fluxes (net@surf, net@TOA, OLR): {atm.net_flux[-1]:.5e}, {atm.net_flux[0]:.5e}, {atm.LW_flux_up[0]:.5e} W m-2'
     )
 
     # Save atm data to disk, as NetCDF, if requested
@@ -312,7 +311,7 @@ def RunJANUS(
     # Print if a limit was applied
     if not np.isclose(F_atm_lim, F_atm_new):
         log.warning('Change in F_atm [W m-2] limited in this step!')
-        log.warning('    %g  ->  %g' % (F_atm_new, F_atm_lim))
+        log.warning(f'    {F_atm_new:g}  ->  {F_atm_lim:g}')
 
     # Calculated surface pressure (might be different to input)
     P_surf_clim = atm.ps / 1e5  # bar

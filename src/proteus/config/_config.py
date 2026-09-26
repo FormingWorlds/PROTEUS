@@ -160,7 +160,7 @@ def check_module_dependencies(instance, attribute, value):
         ),
     }
 
-    for name, (needed, pkg, msg) in checks.items():
+    for needed, pkg, msg in checks.values():
         if needed:
             try:
                 importlib.import_module(pkg)
@@ -334,11 +334,11 @@ def planet_fO2_source_compat(instance, attribute, value):
         fO2_shift_IW = getattr(instance.outgas, 'fO2_shift_IW', None)
         if fO2_shift_IW is not None and fO2_shift_IW != 0.0:
             warnings.warn(
-                'outgas.fO2_shift_IW = %.3f is set but '
+                f'outgas.fO2_shift_IW = {fO2_shift_IW:.3f} is set but '
                 'planet.fO2_source = "from_O_budget" derives the buffer '
                 'offset from the O budget. The configured value is used '
                 'only as the solver initial fO2 guess, not as the buffered '
-                'offset.' % fO2_shift_IW,
+                'offset.',
                 UserWarning,
                 stacklevel=2,
             )

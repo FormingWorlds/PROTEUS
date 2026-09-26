@@ -315,7 +315,7 @@ def run_obliqua(
 
         # Verify result against bulk calculation
         power_blk /= np.sum(lov['mass'])
-        log.debug('    power from bulk calc: %.3e W kg-1' % power_blk)
+        log.debug(f'    power from bulk calc: {power_blk:.3e} W kg-1')
 
     # Store results in tides_o structure
     storage = tides_o.add(primary='planet', perturber=config.orbit.perturber)
@@ -609,7 +609,7 @@ def read_ncdf(fpath: str):
 
 
 def read_ncdfs(output_dir: str, times: list):
-    return [read_ncdf(os.path.join(output_dir, 'data', '%d_obliqua.nc' % t)) for t in times]
+    return [read_ncdf(os.path.join(output_dir, 'data', f'{int(t)}_obliqua.nc')) for t in times]
 
 
 def setup_logging(dirs: dict, verbosity: int):
@@ -619,7 +619,7 @@ def setup_logging(dirs: dict, verbosity: int):
     logpath = os.path.join(dirs['output'], Obliqua_LOGFILE_NAME)
     jl.Obliqua.setup_logging(logpath, verbosity)
 
-    log.debug("Obliqua will log to '%s'" % logpath)
+    log.debug(f"Obliqua will log to '{logpath}'")
 
 
 # Bound to Obliqua's own recent-run logfile name -- see make_log_syncer's

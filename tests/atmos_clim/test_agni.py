@@ -1986,7 +1986,7 @@ class _ProfileAtmosphere:
         # Level edges bracket the cell centres, so there is one more of them
         self.pl = (
             [self.p[0] / 2.0]
-            + [0.5 * (a + b) for a, b in zip(self.p[:-1], self.p[1:])]
+            + [0.5 * (a + b) for a, b in zip(self.p[:-1], self.p[1:], strict=False)]
             + [self.p[-1] * 2.0]
         )
         self.tmpl = [self.tmp[0]] * (len(self.tmp) + 1)
@@ -2045,7 +2045,7 @@ class _ProfileAGNI:
         nlev_c = len(atmos.p)
         edges = np.logspace(np.log10(self.P_TOP), np.log10(atmos.p_boa), nlev_c + 1)
         atmos.pl = [float(x) for x in edges]
-        atmos.p = [float(np.sqrt(a * b)) for a, b in zip(edges[:-1], edges[1:])]
+        atmos.p = [float(np.sqrt(a * b)) for a, b in zip(edges[:-1], edges[1:], strict=False)]
 
     def _isothermal_b(self, atmos, value):
         self.calls.append('isothermal')

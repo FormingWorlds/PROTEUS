@@ -704,7 +704,7 @@ def test_describe_missing_columns_truncates_beyond_the_limit():
     The summary stays readable while still reporting how many are absent, so
     truncation never hides the scale of the drift.
     """
-    names = ['col_%02d' % i for i in range(_DRIFT_REPORT_LIMIT + 8)]
+    names = [f'col_{i:02d}' for i in range(_DRIFT_REPORT_LIMIT + 8)]
     rendered = _describe_missing_columns(names)
 
     for col in names[:_DRIFT_REPORT_LIMIT]:
@@ -733,7 +733,7 @@ def test_helpfile_drift_message_states_the_full_column_count():
             ReadHelpfileFromCSV(tmpdir)
 
         message = str(excinfo.value)
-        assert 'before %d column(s)' % len(dropped) in message
+        assert f'before {len(dropped)} column(s)' in message
         assert '(+8 more)' in message
         # Discrimination: the count is the true shortfall, so a message that
         # counted only the listed names would fail here.
@@ -960,7 +960,7 @@ def test_postprocessing_set_does_not_lose_a_key():
         'T_star',
         'separation',
     }
-    assert named <= required, 'dropped from the requirement: %s' % sorted(named - required)
+    assert named <= required, f'dropped from the requirement: {sorted(named - required)}'
 
     # The two computed reads expand over fixed lists, so every member counts.
     assert {e + '_kg_atm' for e in element_list} <= required
@@ -2365,7 +2365,7 @@ def test_assert_mass_conservation_passes_when_invariants_hold():
     # species. Rock vapours are absent: this is the vapourise = false path.
     weights = [1.0] + [0.01] * (len(vol_gas_list) - 1)
     norm = sum(weights)
-    for s, w in zip(vol_gas_list, weights):
+    for s, w in zip(vol_gas_list, weights, strict=False):
         hf_row[s + '_kg_atm'] = 4.6e24 * w / norm
     hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
     hf_row['M_atm'] = hf_row['M_vol_atm']
@@ -2518,7 +2518,7 @@ def _vapourising_row(m_vaps=4.0e20, perturb_species=None):
     hf_row = {'M_planet': 5.97e24, 'P_vol': 260.0, 'P_vap': 40.0}
     weights = [1.0] + [0.01] * (len(vol_gas_list) - 1)
     norm = sum(weights)
-    for s, w in zip(vol_gas_list, weights):
+    for s, w in zip(vol_gas_list, weights, strict=False):
         hf_row[s + '_kg_atm'] = 6.0e20 * w / norm
     hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
     hf_row['M_vaps'] = m_vaps
@@ -4244,7 +4244,7 @@ def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
 
     # The helpfile round-trips Time through '%.10e', so a restored row differs
     # from the written value in about the eleventh digit; that must still match.
-    assert _snapshot_belongs_to(own, float('%.10e' % 70.2)) is True
+    assert _snapshot_belongs_to(own, float(f'{70.2:.10e}')) is True
     # A step a thousandth of a year away is a different step, not a round trip.
     assert _snapshot_belongs_to(own, 70.201) is False
 
@@ -4256,7 +4256,7 @@ def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
     # doing nothing exactly where runs spend most of their time.
     gyr = 1.0e9
     far = _write_timed_nc(str(tmp_path / 'gyr_int.nc'), gyr)
-    assert _snapshot_belongs_to(far, float('%.10e' % gyr)) is True
+    assert _snapshot_belongs_to(far, float(f'{gyr:.10e}')) is True
     assert _snapshot_belongs_to(far, gyr + 0.7) is False
     assert _snapshot_belongs_to(far, gyr + 0.2) is False
 

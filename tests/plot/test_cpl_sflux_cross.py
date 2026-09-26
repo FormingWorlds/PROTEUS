@@ -117,7 +117,7 @@ def test_plot_sflux_cross_returns_early_when_few_files(monkeypatch, tmp_path):
 def _write_sflux(path, wavelengths, fluxes):
     """Write a tab-separated .sflux file with the first row as a header."""
     lines = ['wave\tflux']
-    for w, f in zip(wavelengths, fluxes):
+    for w, f in zip(wavelengths, fluxes, strict=False):
         lines.append(f'{w}\t{f}')
     path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
@@ -165,7 +165,7 @@ def test_plot_sflux_cross_overlays_modern_spectrum_when_age_positive(monkeypatch
     # Modern spectrum (-1.sflux) needs 2 header rows (skiprows=2)
     modern_path = tmp_path / 'data' / '-1.sflux'
     modern_lines = ['# modern header line 1', '# modern header line 2']
-    for w, f in zip(wavelengths, np.full_like(wavelengths, 1e-3)):
+    for w, f in zip(wavelengths, np.full_like(wavelengths, 1e-3), strict=False):
         modern_lines.append(f'{w}\t{f}')
     modern_path.write_text('\n'.join(modern_lines) + '\n', encoding='utf-8')
 

@@ -657,7 +657,7 @@ class Proteus:
                 self.hf_row[s + '_bar'] = 0.0
 
             # Inform user
-            log.info("Initial inventory set by '%s'" % self.config.planet.volatile_mode)
+            log.info(f"Initial inventory set by '{self.config.planet.volatile_mode}'")
             log.info('Included gases:')
             for s in inc_gases:
                 write = '    '
@@ -667,9 +667,9 @@ class Proteus:
                     write += 'noble   '
                 else:
                     write += 'volatile'
-                write += '  %-8s' % s
+                write += f'  {s:<8}'
                 if self.config.planet.volatile_mode == 'gas_prs':
-                    write += ' : %6.2f bar' % self.hf_row[s + '_bar']
+                    write += ' : {:6.2f} bar'.format(self.hf_row[s + '_bar'])
                 log.info(write)
 
             # Equilibrate structure + composition before main loop.
@@ -937,12 +937,8 @@ class Proteus:
             log.info('Loop counters')
             log.info('current    init    maximum')
             log.info(
-                ' %6d    %4d     %6d '
-                % (
-                    self.loops['total'],
-                    self.loops['init_loops'],
-                    self.loops['total_loops'],
-                )
+                f' {int(self.loops["total"]):6d}    {int(self.loops["init_loops"]):4d}'
+                f'     {int(self.loops["total_loops"]):6d} '
             )
 
             # Per-iter module wall-time breakdown (opt-in, see _IT_TIMING_ENABLED

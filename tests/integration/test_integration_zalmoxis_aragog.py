@@ -110,13 +110,13 @@ def _base_config_kwargs():
     from proteus.config._planet import Elements, Planet
     from proteus.config._star import Star, StarDummy
 
-    return dict(
-        atmos_clim=AtmosClim(module='dummy', rayleigh=False),
-        escape=Escape(module='dummy'),
-        outgas=Outgas(module='dummy'),
-        star=Star(module='dummy', dummy=StarDummy(calculate_radius=True)),
-        planet=Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
-    )
+    return {
+        'atmos_clim': AtmosClim(module='dummy', rayleigh=False),
+        'escape': Escape(module='dummy'),
+        'outgas': Outgas(module='dummy'),
+        'star': Star(module='dummy', dummy=StarDummy(calculate_radius=True)),
+        'planet': Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
+    }
 
 
 # ---------------------------------------------------------------------------

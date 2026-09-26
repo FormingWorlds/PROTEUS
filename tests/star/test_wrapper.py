@@ -509,3 +509,22 @@ def test_write_spectrum_emits_a_single_header_line(tmp_path):
     recovered = np.loadtxt(path, skiprows=1).T
     np.testing.assert_allclose(recovered[0], wl, rtol=1e-12)
     np.testing.assert_allclose(recovered[1], fl, rtol=1e-12)
+
+
+def test_write_spectrum_truncates_a_fractional_time_in_the_file_name(tmp_path):
+    """write_spectrum names the file after the integer part of the time, so a
+    fractional helpfile time of 1234.9 yr gives 1234.sflux.
+
+    Discrimination: rounding (1235.sflux) or keeping the fraction (1234.9.sflux)
+    gives a different name, and the readers that glob the data folder for
+    <integer>.sflux would miss or misparse it.
+    """
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    hf_row = {'age_star': 4.567e9, 'Time': 1234.9}
+
+    star_wrapper.write_spectrum(
+        np.array([100.0, 200.0]), np.array([1.0, 2.0]), hf_row, str(tmp_path)
+    )
+
+    assert sorted(p.name for p in data_dir.iterdir()) == ['1234.sflux']

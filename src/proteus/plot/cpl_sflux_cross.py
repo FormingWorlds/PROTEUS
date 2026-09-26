@@ -127,7 +127,7 @@ def plot_sflux_cross(
     for i in range(N):
         fl = flux_t.T[wl_iarr[i]]
         c = cm.oleron(1.0 * i / N)
-        lbl = '%d' % max(1, round(wl_varr[i]))
+        lbl = f'{int(max(1, round(wl_varr[i])))}'
 
         ax.plot(time_t, fl, color=c, lw=2.8, label=lbl)
 
@@ -149,7 +149,7 @@ def plot_sflux_cross(
 
     plt.close()
     plt.ioff()
-    fpath = os.path.join(output_dir, 'plots', 'plot_sflux_cross.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_sflux_cross.{plot_format}')
     fig.savefig(fpath, bbox_inches='tight', dpi=200)
 
 

@@ -139,7 +139,7 @@ def plot_sflux(
     for i in range(N):
         if justone:
             c = 'tab:blue'
-            label = '%.2e yr' % (time_t[i])
+            label = f'{time_t[i]:.2e} yr'
         else:
             c = sm.to_rgba(time_t[i])
             label = None
@@ -159,7 +159,7 @@ def plot_sflux(
 
     plt.close()
     plt.ioff()
-    fpath = os.path.join(output_dir, 'plots', 'plot_sflux.%s' % plot_format)
+    fpath = os.path.join(output_dir, 'plots', f'plot_sflux.{plot_format}')
     fig.savefig(fpath, bbox_inches='tight', dpi=200)
 
 

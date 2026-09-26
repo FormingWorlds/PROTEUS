@@ -96,7 +96,7 @@ def parse_source_docs() -> tuple[dict, dict]:
         tree = ast.parse(path.read_text())
         for node in tree.body:
             if isinstance(node, ast.ClassDef):
-                for stmt, nxt in zip(node.body, node.body[1:]):
+                for stmt, nxt in zip(node.body, node.body[1:], strict=False):
                     name = _assigned_name(stmt)
                     if (
                         name

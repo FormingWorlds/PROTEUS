@@ -1685,7 +1685,7 @@ def test_zalmoxis_solver_init_adiabat_arrays_take_jax_dispatch(tmp_path, monkeyp
     # Arrays sampled from the closure on the previous structure's mantle
     # grid, the _sample_adiabat_temperature_arrays convention.
     r_arr = radii[cmb_index:]
-    t_arr = np.array([tf(r, P) for r, P in zip(r_arr, pressure[cmb_index:])])
+    t_arr = np.array([tf(r, P) for r, P in zip(r_arr, pressure[cmb_index:], strict=False)])
 
     main_mock, rho_mock, mixed_mock, hf_row, model_results, cmb_radius, _ = _run_gate_solver(
         tmp_path, monkeypatch, 'PALEOS:MgSiO3', (r_arr, t_arr), tf
@@ -2328,7 +2328,7 @@ def test_ps_cache_key_distinguishes_mantle_eos_and_resolved_paths():
 
     from proteus.interior_struct.zalmoxis import _ps_cache_key
 
-    common = dict(P_max=1.4e12, nP=200, nS=200, mzf=0.8, layout='unified')
+    common = {'P_max': 1.4e12, 'nP': 200, 'nS': 200, 'mzf': 0.8, 'layout': 'unified'}
 
     key_a = _ps_cache_key(
         **common,
@@ -2397,7 +2397,7 @@ def test_ps_cache_key_sanitises_names_and_tolerates_missing_paths():
     """
     from proteus.interior_struct.zalmoxis import _ps_cache_key
 
-    common = dict(P_max=1.4e12, nP=128, nS=128, mzf=1.0, layout='2phase')
+    common = {'P_max': 1.4e12, 'nP': 128, 'nS': 128, 'mzf': 1.0, 'layout': '2phase'}
 
     key = _ps_cache_key(
         **common,
@@ -2433,17 +2433,17 @@ def test_ps_cache_key_separates_table_generators():
     """
     from proteus.interior_struct.zalmoxis import _ps_cache_key, _ps_generator_identity
 
-    common = dict(
-        P_max=3.5e11,
-        nP=1350,
-        nS=280,
-        mzf=0.8,
-        layout='2phase',
-        mantle_eos='PALEOS-2phase:MgSiO3',
-        eos_file='/data/unified.dat',
-        solid_eos='/data/solid.dat',
-        liquid_eos='/data/liquid.dat',
-    )
+    common = {
+        'P_max': 3.5e11,
+        'nP': 1350,
+        'nS': 280,
+        'mzf': 0.8,
+        'layout': '2phase',
+        'mantle_eos': 'PALEOS-2phase:MgSiO3',
+        'eos_file': '/data/unified.dat',
+        'solid_eos': '/data/solid.dat',
+        'liquid_eos': '/data/liquid.dat',
+    }
     key_old = _ps_cache_key(**common, generator='26.9.21-aaaaaaaaaaaa')
     key_new = _ps_cache_key(**common, generator='26.9.21-bbbbbbbbbbbb')
     assert key_old != key_new

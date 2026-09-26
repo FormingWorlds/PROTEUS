@@ -61,10 +61,10 @@ class paths_importer:
 
         self.lavatmos_dir = os.path.normpath(lava_dir) + '/'
 
-        log.debug('LavAtmos Work directory set as: %s' % self.lavatmos_dir)
+        log.debug(f'LavAtmos Work directory set as: {self.lavatmos_dir}')
         self.input_dir = os.path.join(self.lavatmos_dir, 'input') + '/'
         self.lava_comps = os.path.join(self.input_dir, 'lava_compositions') + '/'
-        log.debug('Lavatmos compositions at: %s' % self.lava_comps)
+        log.debug(f'Lavatmos compositions at: {self.lava_comps}')
 
         # Sanity check - does lava_comps exist?
         if not os.path.exists(self.lava_comps):
@@ -103,7 +103,7 @@ class paths_importer:
         self.output_dir = os.path.join(dirs['output'], 'fastchem', '')
 
         self.janafdata = os.path.join(self.lavatmos_dir, 'data')
-        log.debug('LavAtmos output directory set as: %s' % self.output_dir)
+        log.debug(f'LavAtmos output directory set as: {self.output_dir}')
 
 
 class set_magmaproperties:
@@ -313,7 +313,7 @@ def read_in_element_fracs_normalized(input_path):
     )
 
     # make first column the headers and second column the data row
-    abundance_dict = dict(zip(df[0], df[1]))
+    abundance_dict = dict(zip(df[0], df[1], strict=False))
     for key in abundance_dict.keys():
         if abundance_dict[key] != 0.0:
             # lavatmos abundances are scaled by 1e20
@@ -455,7 +455,7 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
 
     # convert the element abundances from lavatmos file to element fractions, normalized to unity
     element_fracs = read_in_element_fracs_normalized(paths.element_abundance_output)
-    log.debug('element fraction after running lavatmos: %s' % element_fracs)
+    log.debug(f'element fraction after running lavatmos: {element_fracs}')
 
     # read in boa chemistry from last iteration of fastchem and lavatmos
     output_fc = paths.fastchem3_output
@@ -478,7 +478,7 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
 
     # Mean particle mass of the combined (volatile + rock-vapour) atmosphere.
     kg_pp_new = mu_combined / const_Nav * 1e-3  # kg per particle
-    log.debug('new kg per particle: %.4e' % kg_pp_new)
+    log.debug(f'new kg per particle: {kg_pp_new:.4e}')
 
     # New atmospheric mass from the hydrostatic relation
     area = 4.0 * np.pi * hf_row['R_int'] ** 2
@@ -495,8 +495,8 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
             'rock-vapour pressure computed negative (%.3e bar); clamping to zero', P_vap_new
         )
         P_vap_new = 0.0
-    log.debug('pressure of vapourised rock species: %.4f bar' % P_vap_new)
-    log.debug('pressure of volatiles before vapourisation: %.4f bar' % hf_row['P_surf'])
+    log.debug(f'pressure of vapourised rock species: {P_vap_new:.4f} bar')
+    log.debug('pressure of volatiles before vapourisation: {:.4f} bar'.format(hf_row['P_surf']))
 
     hf_row['P_vap'] = P_vap_new
     hf_row['P_vol'] = P_surf_new - P_vap_new  # == old P_surf when P_vap_new >= 0
@@ -631,7 +631,9 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
     hf_row['M_vol_atm'] = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
 
     log.debug(
-        'log10 fO2 shift compared to IW buffer: %.6f' % hf_row['fO2_vapourise_shift_IW_derived']
+        'log10 fO2 shift compared to IW buffer: {:.6f}'.format(
+            hf_row['fO2_vapourise_shift_IW_derived']
+        )
     )
 
     mask = [hf_row[s + '_vmr'] for s in vap_list]
@@ -639,7 +641,7 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
         s = vap_list[i]
         _p = hf_row[s + '_bar']
         _x = hf_row[s + '_vmr']
-        _s = '    %-6s     = %-9.2f bar (%.2e VMR)' % (s, _p, _x)
+        _s = f'    {s:<6}     = {_p:<9.2f} bar ({_x:.2e} VMR)'
         if _p > 0.01:
             log.info(_s)
         else:
@@ -647,5 +649,5 @@ def run_vapourisation(dirs: dict, config: Config, hf_row: dict, first_iter: bool
             log.debug(_s)
 
     # print total pressure and mmw
-    log.info('    total      = %-9.2f bar' % hf_row['P_surf'])
+    log.info('    total      = {:<9.2f} bar'.format(hf_row['P_surf']))
     log.info('    mmw        = %-9.5f g mol-1' % (hf_row['atm_kg_per_mol'] * 1e3))

@@ -769,7 +769,7 @@ def invert_to_entropy_along_profile(
     """
     S_out = np.full_like(T_k, np.nan, dtype=float)
 
-    for i, (P_i_gpa, T_i) in enumerate(zip(P_gpa, T_k)):
+    for i, (P_i_gpa, T_i) in enumerate(zip(P_gpa, T_k, strict=False)):
         P_col = np.full_like(S_axis, P_i_gpa)
         T_vals = T_of_SP(np.column_stack([S_axis, P_col]))
 

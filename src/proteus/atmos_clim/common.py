@@ -208,7 +208,7 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
         if key == 'gases':
             gas_l = ds.variables['gases'][:]  # names (bytes matrix)
             gases = []
-            for igas, gas in enumerate(gas_l):
+            for gas in gas_l:
                 gas_lbl = ''.join([c.decode(encoding='utf-8') for c in gas]).strip()
                 gases.append(gas_lbl)
             out['gases'] = gases
@@ -226,7 +226,7 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
             if 'aerosols' in ds.variables.keys():
                 aer_l = ds.variables['aerosols'][:]  # names (bytes matrix)
                 aerosols = []
-                for iaer, aer in enumerate(aer_l):
+                for aer in aer_l:
                     aer_lbl = ''.join([c.decode(encoding='utf-8') for c in aer]).strip()
                     if len(aer_lbl) > 0:
                         aerosols.append(aer_lbl)

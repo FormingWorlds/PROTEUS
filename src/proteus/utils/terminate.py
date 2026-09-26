@@ -79,7 +79,7 @@ def _check_radeqm(handler: Proteus) -> bool:
         abs(handler.hf_row['F_atm']) * handler.config.params.stop.radeqm.rtol
         + handler.config.params.stop.radeqm.atol
     )
-    log.debug('    val, req = %.3e, %.3e  W m-2' % (F_eps, F_ref))
+    log.debug(f'    val, req = {F_eps:.3e}, {F_ref:.3e}  W m-2')
 
     if abs(F_eps) <= F_ref:
         UpdateStatusfile(handler.directories, 14)
@@ -101,7 +101,7 @@ def _check_escape(handler: Proteus) -> bool:
 
     P_surf = handler.hf_row['P_surf']
     P_stop = handler.config.params.stop.escape.p_stop
-    log.debug('    val, req = %.3e, %.3e  bar' % (P_surf, P_stop))
+    log.debug(f'    val, req = {P_surf:.3e}, {P_stop:.3e}  bar')
 
     if P_surf <= P_stop:
         UpdateStatusfile(handler.directories, 15)
@@ -118,7 +118,7 @@ def _check_separation(handler: Proteus) -> bool:
     separation = handler.hf_row['separation']
     roche_limit = handler.hf_row['roche_limit']
     offset = handler.config.params.stop.disint.offset_roche
-    log.debug('    sep, roc = %.3e, %.3e  m' % (separation, roche_limit - offset))
+    log.debug(f'    sep, roc = {separation:.3e}, {roche_limit - offset:.3e}  m')
 
     if separation <= roche_limit + offset:
         UpdateStatusfile(handler.directories, 16)
@@ -134,7 +134,7 @@ def _check_spinrate(handler: Proteus) -> bool:
     axial_period = handler.hf_row['axial_period']
     breakup_period = handler.hf_row['breakup_period']
     offset = handler.config.params.stop.disint.offset_spin
-    log.debug('    axr, bur = %.3e, %.3e  s' % (axial_period, breakup_period))
+    log.debug(f'    axr, bur = {axial_period:.3e}, {breakup_period:.3e}  s')
 
     if axial_period <= breakup_period + offset:
         UpdateStatusfile(handler.directories, 16)
@@ -149,7 +149,7 @@ def _check_satellite(handler: Proteus) -> bool:
 
     sma = handler.hf_row['semimajorax_sat']
     sma_max = handler.config.params.stop.satellite.sma_max * R_earth
-    log.debug('    sma, sma_max = %.3e, %.3e  m' % (sma, sma_max))
+    log.debug(f'    sma, sma_max = {sma:.3e}, {sma_max:.3e}  m')
 
     if sma >= sma_max:
         UpdateStatusfile(handler.directories, 17)
@@ -165,7 +165,7 @@ def _check_satellite_separation(handler: Proteus) -> bool:
     separation_sat = handler.hf_row['separation_sat']
     roche_limit_sat = handler.hf_row['roche_limit_sat']
     offset = handler.config.params.stop.disint_sat.offset_roche
-    log.debug('    sep, roc = %.3e, %.3e  m' % (separation_sat, roche_limit_sat - offset))
+    log.debug(f'    sep, roc = {separation_sat:.3e}, {roche_limit_sat - offset:.3e}  m')
 
     if separation_sat <= roche_limit_sat + offset:
         UpdateStatusfile(handler.directories, 18)
@@ -181,7 +181,7 @@ def _check_satellite_spinrate(handler: Proteus) -> bool:
     axial_period_sat = handler.hf_row['axial_period_sat']
     breakup_period_sat = handler.hf_row['breakup_period_sat']
     offset = handler.config.params.stop.disint_sat.offset_spin
-    log.debug('    axr, bur = %.3e, %.3e  s' % (axial_period_sat, breakup_period_sat))
+    log.debug(f'    axr, bur = {axial_period_sat:.3e}, {breakup_period_sat:.3e}  s')
 
     if axial_period_sat <= breakup_period_sat + offset:
         UpdateStatusfile(handler.directories, 18)

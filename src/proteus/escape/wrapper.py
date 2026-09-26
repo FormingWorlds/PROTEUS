@@ -314,7 +314,7 @@ def run_escape(
     for e in element_list:
         esc_e = float(hf_row.get(f'esc_rate_{e}', 0.0))
         if esc_e > 0:
-            log.info('    %2s = %.2e kg s-1' % (e, esc_e))
+            log.info(f'    {e:>2} = {esc_e:.2e} kg s-1')
 
     # Reservoir the per-element loss is drawn from. With a solidified mantle
     # the atmosphere is the only escapable reservoir, so the loss is sized from

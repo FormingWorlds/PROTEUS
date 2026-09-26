@@ -211,7 +211,7 @@ def test_override_melting_curves_writes_files(tmp_path):
     P_scale, S_scale = 1.0e9, 4824266.84604467
     P_sol = sol_arr[:, 0] * P_scale
     S_sol = sol_arr[:, 1] * S_scale
-    for P_i, S_i in zip(P_sol, S_sol):
+    for P_i, S_i in zip(P_sol, S_sol, strict=False):
         np.testing.assert_allclose(T_sol_func(P_i, S_i), 3000.0, atol=1.0)
 
 

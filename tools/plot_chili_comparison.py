@@ -408,7 +408,7 @@ def plot_fig2(intercomp, pe, NS, out, grid_dir=None):
     ]
     fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True)
 
-    for ax, phi_tgt, title in zip(axes, milestones, titles):
+    for ax, phi_tgt, title in zip(axes, milestones, titles, strict=False):
         for mk, st in MODELS.items():
             # Nominal Earth (x marker at y=Nmnl)
             df_nom = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
@@ -659,7 +659,9 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
     x = np.arange(n_slots)
     bar_width = 0.6
 
-    for ax, (gas, tsv, isp, present), title, plabel in zip(axes, panels, titles, panel_labels):
+    for ax, (gas, tsv, isp, present), title, plabel in zip(
+        axes, panels, titles, panel_labels, strict=False
+    ):
         bottom = np.zeros(n_slots)
         for g in present:
             vals = np.array(gas[g], dtype=float).clip(min=0)
@@ -679,13 +681,13 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
 
         ax.set_xticks(x)
         tick_labels = []
-        for n, ip in zip(all_names, is_proteus_global):
+        for n, ip in zip(all_names, is_proteus_global, strict=False):
             if ip:
                 tick_labels.append(rf'$\bf{{{n}}}$')
             else:
                 tick_labels.append(n)
         ax.set_xticklabels(tick_labels, fontsize=9, rotation=45, ha='right')
-        for tl, ip in zip(ax.get_xticklabels(), is_proteus_global):
+        for tl, ip in zip(ax.get_xticklabels(), is_proteus_global, strict=False):
             if ip:
                 tl.set_color(NS['color'])
         ax.set_ylabel('Partial pressure [bar]')
@@ -695,7 +697,7 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
         ax.text(0.02, 0.93, plabel, transform=ax.transAxes, fontsize=14, va='top')
 
         ax2 = ax.twinx()
-        for i, (t, ip) in enumerate(zip(tsv, isp)):
+        for i, (t, ip) in enumerate(zip(tsv, isp, strict=False)):
             if not np.isnan(t):
                 ax2.plot(
                     i,
@@ -713,7 +715,11 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
 
     handles, labels = axes[0].get_legend_handles_labels()
     seen = set()
-    unique = [(h, la) for h, la in zip(handles, labels) if la not in seen and not seen.add(la)]
+    unique = [
+        (h, la)
+        for h, la in zip(handles, labels, strict=False)
+        if la not in seen and not seen.add(la)
+    ]
     axes[0].legend(
         [u[0] for u in unique],
         [u[1] for u in unique],
@@ -741,7 +747,7 @@ def plot_fig5(intercomp, pv, NS, out):
     present = [g for g in GAS_SPECIES if np.array(gas[g]).sum() > 0]
     n = len(names)
     x = np.arange(n)
-    is_proteus_global = [ip for ip in isp]
+    is_proteus_global = list(isp)
 
     fig, ax = plt.subplots(figsize=(8, 6))
     bottom = np.zeros(n)
@@ -764,9 +770,11 @@ def plot_fig5(intercomp, pv, NS, out):
         bottom += vals
 
     ax.set_xticks(x)
-    tick_labels = [rf'$\bf{{{n}}}$' if ip else n for n, ip in zip(names, is_proteus_global)]
+    tick_labels = [
+        rf'$\bf{{{n}}}$' if ip else n for n, ip in zip(names, is_proteus_global, strict=False)
+    ]
     ax.set_xticklabels(tick_labels, fontsize=9, rotation=45, ha='right')
-    for tl, ip in zip(ax.get_xticklabels(), is_proteus_global):
+    for tl, ip in zip(ax.get_xticklabels(), is_proteus_global, strict=False):
         if ip:
             tl.set_color(NS['color'])
     ax.set_ylabel('Partial pressure [bar]')
@@ -775,7 +783,7 @@ def plot_fig5(intercomp, pv, NS, out):
     ax.set_ylim(0, 650)
 
     ax2 = ax.twinx()
-    for i, (t, ip) in enumerate(zip(tsv, isp)):
+    for i, (t, ip) in enumerate(zip(tsv, isp, strict=False)):
         if not np.isnan(t):
             ax2.plot(
                 i,
@@ -793,7 +801,11 @@ def plot_fig5(intercomp, pv, NS, out):
 
     handles, labels = ax.get_legend_handles_labels()
     seen = set()
-    unique = [(h, la) for h, la in zip(handles, labels) if la not in seen and not seen.add(la)]
+    unique = [
+        (h, la)
+        for h, la in zip(handles, labels, strict=False)
+        if la not in seen and not seen.add(la)
+    ]
     ax.legend(
         [u[0] for u in unique],
         [u[1] for u in unique],
@@ -886,7 +898,7 @@ def plot_fig4(intercomp, pe, NS, out):
     fig, axes = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
     ylim_top = max_val * 1.15 / 1e20
 
-    for ax, r, plabel in zip(axes, reservoirs, panel_labels):
+    for ax, r, plabel in zip(axes, reservoirs, panel_labels, strict=False):
         h_vals = np.array(data.get(f'H_{r}', [0] * n), dtype=float).clip(min=0) / 1e20
         c_vals = np.array(data.get(f'C_{r}', [0] * n), dtype=float).clip(min=0) / 1e20
 
@@ -950,13 +962,13 @@ def plot_fig4(intercomp, pe, NS, out):
 
     axes[-1].set_xticks(x)
     tick_labels = []
-    for nm, ip in zip(model_names, is_proteus):
+    for nm, ip in zip(model_names, is_proteus, strict=False):
         if ip:
             tick_labels.append(rf'$\bf{{{nm}}}$')
         else:
             tick_labels.append(nm)
     axes[-1].set_xticklabels(tick_labels, fontsize=9, rotation=45, ha='right')
-    for tl, ip in zip(axes[-1].get_xticklabels(), is_proteus):
+    for tl, ip in zip(axes[-1].get_xticklabels(), is_proteus, strict=False):
         if ip:
             tl.set_color(NS['color'])
 
@@ -1007,7 +1019,12 @@ def plot_fig6(intercomp, pv, NS, out):
             continue
         log_fO2 = np.log10(fO2[valid])
         T_v = ts[valid].values
-        kw = dict(color=st['color'], linewidth=st.get('lw', 1.2), alpha=0.8, label=st['label'])
+        kw = {
+            'color': st['color'],
+            'linewidth': st.get('lw', 1.2),
+            'alpha': 0.8,
+            'label': st['label'],
+        }
         ax_abs.plot(T_v, log_fO2, linestyle=st.get('ls', '-'), **kw)
         delta_iw = log_fO2.values - _iw_oneill02(T_v)
         ax_rel.plot(T_v, delta_iw, linestyle=st.get('ls', '-'), **kw)
@@ -1038,9 +1055,12 @@ def plot_fig6(intercomp, pv, NS, out):
             pv['fO2_shift_IW_derived'].values if 'fO2_shift_IW_derived' in pv.columns else 4.0
         )
         log10_fO2 = log10_fO2_IW + iw_shift
-        kw = dict(
-            color=NS['color'], linewidth=NS['linewidth'], label=NS['label'], zorder=NS['zorder']
-        )
+        kw = {
+            'color': NS['color'],
+            'linewidth': NS['linewidth'],
+            'label': NS['label'],
+            'zorder': NS['zorder'],
+        }
         ax_abs.plot(T, log10_fO2, '-', **kw)
         delta_iw = log10_fO2 - _iw_oneill02(T)
         ax_rel.plot(T, delta_iw, '-', **kw)
@@ -1122,13 +1142,13 @@ def plot_fig7(intercomp, pv, NS, out):
         if t is None or phi is None:
             continue
         t_myr = t / 1e6
-        for ax, element in zip(axes, ['H', 'C']):
-            kw = dict(
-                color=st['color'],
-                linewidth=st.get('lw', 1.2),
-                alpha=0.8,
-                label=st['label'] if element == 'H' else None,
-            )
+        for ax, element in zip(axes, ['H', 'C'], strict=False):
+            kw = {
+                'color': st['color'],
+                'linewidth': st.get('lw', 1.2),
+                'alpha': 0.8,
+                'label': st['label'] if element == 'H' else None,
+            }
             total_cols = [f'mass{element}_atm', f'mass{element}_melt', f'mass{element}_solid']
             total = np.zeros(len(df))
             for tc in total_cols:
@@ -1163,13 +1183,13 @@ def plot_fig7(intercomp, pv, NS, out):
 
     if pv is not None:
         t_myr = pv['Time'].values / 1e6
-        for ax, element in zip(axes, ['H', 'C']):
-            kw = dict(
-                color=NS['color'],
-                linewidth=NS['linewidth'],
-                zorder=NS['zorder'],
-                label=NS['label'] if element == 'H' else None,
-            )
+        for ax, element in zip(axes, ['H', 'C'], strict=False):
+            kw = {
+                'color': NS['color'],
+                'linewidth': NS['linewidth'],
+                'zorder': NS['zorder'],
+                'label': NS['label'] if element == 'H' else None,
+            }
             total_col = f'{element}_kg_total'
             if total_col not in pv.columns:
                 continue
@@ -1196,7 +1216,7 @@ def plot_fig7(intercomp, pv, NS, out):
                         linestyle='none',
                     )
 
-    for ax, ylabel, plabel in zip(axes, ['Hydrogen', 'Carbon'], panel_labels):
+    for ax, ylabel, plabel in zip(axes, ['Hydrogen', 'Carbon'], panel_labels, strict=False):
         ax.set_ylabel(ylabel)
         ax.set_ylim(-2, 105)
         ax.set_xscale('log')
@@ -1269,15 +1289,23 @@ def plot_fig8(intercomp, pe, NS, out):
         ts = _get_col(df, 'T_surf', 'Tsurf')
         if phi is None or olr is None:
             continue
-        kw = dict(color=st['color'], linewidth=st.get('lw', 1.2), alpha=0.8, label=st['label'])
+        kw = {
+            'color': st['color'],
+            'linewidth': st.get('lw', 1.2),
+            'alpha': 0.8,
+            'label': st['label'],
+        }
         axes[0].plot(phi * 100, olr, linestyle=st.get('ls', '-'), **kw)
         if ts is not None:
             axes[1].plot(ts, olr, linestyle=st.get('ls', '-'), **kw)
 
     if pe is not None:
-        kw = dict(
-            color=NS['color'], linewidth=NS['linewidth'], label=NS['label'], zorder=NS['zorder']
-        )
+        kw = {
+            'color': NS['color'],
+            'linewidth': NS['linewidth'],
+            'label': NS['label'],
+            'zorder': NS['zorder'],
+        }
         olr_smooth = _smooth(pe['F_olr'].values, log=True)
         phi_smooth = _smooth(pe['Phi_global'].values * 100)
         tsurf_smooth = _smooth(pe['T_surf'].values)
@@ -1358,7 +1386,12 @@ def plot_fig9(intercomp, pe, NS, out):
         if phi is None:
             continue
         phi_pct = phi * 100
-        kw = dict(color=st['color'], linewidth=st.get('lw', 1.2), alpha=0.8, label=st['label'])
+        kw = {
+            'color': st['color'],
+            'linewidth': st.get('lw', 1.2),
+            'alpha': 0.8,
+            'label': st['label'],
+        }
 
         ts = _get_col(df, 'T_surf', 'Tsurf')
         if ts is not None:
@@ -1378,9 +1411,12 @@ def plot_fig9(intercomp, pe, NS, out):
 
     if pe is not None:
         profs = pe.attrs.get('_profiles', {})
-        kw = dict(
-            color=NS['color'], linewidth=NS['linewidth'], label=NS['label'], zorder=NS['zorder']
-        )
+        kw = {
+            'color': NS['color'],
+            'linewidth': NS['linewidth'],
+            'label': NS['label'],
+            'zorder': NS['zorder'],
+        }
         if 'T_surf' in pe.columns:
             ax_t.plot(
                 _smooth(pe['Phi_global'].values * 100),
@@ -1403,7 +1439,7 @@ def plot_fig9(intercomp, pe, NS, out):
                 **kw,
             )
 
-    _anno_box = dict(boxstyle='round,pad=0.2', fc='white', ec='none', alpha=0.85)
+    _anno_box = {'boxstyle': 'round,pad=0.2', 'fc': 'white', 'ec': 'none', 'alpha': 0.85}
     ax_r.axhline(R_cmb_Mm, color='black', linestyle='--', linewidth=1.0)
     ax_r.text(
         0.98,
@@ -1445,7 +1481,7 @@ def plot_fig9(intercomp, pe, NS, out):
     ax_v.set_yscale('log')
     ax_v.set_xlabel('Melt fraction [vol%]')
 
-    for ax, plabel in zip(axes, panel_labels):
+    for ax, plabel in zip(axes, panel_labels, strict=False):
         ax.set_xlim(100, 0)
         ax.grid(alpha=0.15)
         ax.text(0.02, 0.93, plabel, transform=ax.transAxes, fontsize=14, va='top')
