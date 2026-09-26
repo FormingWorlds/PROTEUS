@@ -295,7 +295,7 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
                 '(zalmoxis.melting_curves.paleos_liquidus); import failed: '
                 f"{e}. Use temperature_mode='adiabatic_from_cmb' for a "
                 'structure-solver-free initial condition.'
-            )
+            ) from e
 
         P_cmb = float(P_stag[0])
         if P_cmb > FEI2021_LIQUIDUS_P_CALIB_PA:

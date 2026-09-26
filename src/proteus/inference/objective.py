@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
@@ -275,7 +276,7 @@ def J(
     iter: int,
     output: str,
     ref_config: str,
-    failure_codes: list[int] = [],
+    failure_codes: Sequence[int] = (),
 ) -> torch.Tensor:
     """Run PROTEUS, and then compute the objective value for a given normalized input.
 
@@ -293,7 +294,7 @@ def J(
     - iter (int): Iteration number.
     - output (str): Path to output folder relative to PROTEUS output folder.
     - ref_config (str): Reference TOML config path.
-    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
+    - failure_codes (Sequence[int]): Additional PROTEUS exit codes to treat as failures.
 
     Returns
     ----------
@@ -326,7 +327,7 @@ def prot_builder(
     iter: int,
     output: str,
     ref_config: str,
-    failure_codes: list[int] = [],
+    failure_codes: Sequence[int] = (),
 ) -> callable:
     """Factory returning a BO-compatible objective function for PROTEUS inference.
 
@@ -340,7 +341,7 @@ def prot_builder(
     - iter (int): Iteration number (seed) for reproducibility.
     - output (str): Path to output folder relative to PROTEUS output folder.
     - ref_config (str): Reference TOML config path.
-    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
+    - failure_codes (Sequence[int]): Additional PROTEUS exit codes to treat as failures.
 
     Returns
     ----------

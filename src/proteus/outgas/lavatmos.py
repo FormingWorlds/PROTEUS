@@ -354,7 +354,7 @@ def run_lavatmos(
         paths = paths_importer(dirs)
     except ValueError as e:
         UpdateStatusfile(dirs, 27)
-        raise RuntimeError(str(e))
+        raise RuntimeError(str(e)) from e
 
     # Import lavatmos
     lavatmos_dir = str(paths.lavatmos_dir)

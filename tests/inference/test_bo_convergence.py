@@ -69,7 +69,7 @@ def _run_bo_loop(
     # in the acquisition optimiser would otherwise leave residual non-
     # determinism that flakes the seed-determinism tests across hosts.
     torch.manual_seed(seed)
-    np.random.seed(seed)
+    np.random.seed(seed)  # noqa: NPY002
     random.seed(seed)
 
     # Initial sample of n_init random points in [0, 1]^d

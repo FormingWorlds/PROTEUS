@@ -301,7 +301,7 @@ def run_obliqua(
     except juliacall.JuliaError as e:
         UpdateStatusfile(dirs, 26)
         log.error(e)
-        raise RuntimeError('Encountered problem when running Obliqua module')
+        raise RuntimeError('Encountered problem when running Obliqua module') from e
 
     if config.interior_energetics.module == 'dummy':
         interior_o.tides[0] = power_prf[1]
@@ -448,7 +448,7 @@ def lookup_from_interior(dirs: dict, config: Config):
     except juliacall.JuliaError as e:
         UpdateStatusfile(dirs, 26)
         log.error(e)
-        raise RuntimeError('Encountered problem when running Obliqua module')
+        raise RuntimeError('Encountered problem when running Obliqua module') from e
 
     # Store lookup table in netcdf file
     nc_path = os.path.join(dirs['output/data'], 'sat_tides.nc')
@@ -511,7 +511,7 @@ def LN_from_lookup(hf_row: dict, dirs: dict, tides_o: Tides_t, config: Config):
     # Retrieve or load satellite lookup data
     try:
         lookup = tides_o.get(primary='satellite_dict', perturber='planet')
-    except KeyError:
+    except KeyError as e:
         file_path = config.orbit.satellite.love_number_sat
 
         # Check if the file path is specified
@@ -519,7 +519,7 @@ def LN_from_lookup(hf_row: dict, dirs: dict, tides_o: Tides_t, config: Config):
             UpdateStatusfile(dirs, 26)
             raise ValueError(
                 'Satellite tidal data file path (`config.orbit.satellite.love_number_sat`) is not specified.'
-            )
+            ) from e
 
         # check the file extension to determine how to read the lookup data or generate it if it doesn't exist
         if file_path.endswith('.nc'):

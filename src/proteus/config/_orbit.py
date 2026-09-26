@@ -16,8 +16,8 @@ def phi_tide_validator(instance, attribute, value):
     # value of inequality
     try:
         number = float(value[1:])
-    except ValueError:
-        raise ValueError(f'Phi_tide must contain a number (e.g. "<0.3"), got {value}')
+    except ValueError as e:
+        raise ValueError(f'Phi_tide must contain a number (e.g. "<0.3"), got {value}') from e
     if (number < 0.0) or (number > 1.0):
         raise ValueError(f'Phi_tide value must be between 0 and 1, got {number}')
 

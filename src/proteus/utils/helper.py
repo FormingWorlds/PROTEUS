@@ -237,7 +237,9 @@ def create_tmp_folder():
         tmp_dir = '/tmp'
 
     # Append random name to /tmp
-    tmp_dir = tmp_dir + f'/proteus_{np.random.randint(int(1e12), int(1e13 - 1))}/'
+    tmp_dir = (
+        tmp_dir + f'/proteus_{np.random.default_rng().integers(int(1e12), int(1e13 - 1))}/'
+    )
 
     # Make empty
     safe_rm(tmp_dir)

@@ -419,9 +419,8 @@ def test_plot_result_objective_normal_path_two_parameters(tmp_path, monkeypatch)
     monkeypatch.setattr(plot_mod, 'variable_is_logarithmic', lambda k: False)
     (tmp_path / 'plots').mkdir()
 
-    np.random.seed(42)
     D = {
-        'X': np.random.rand(8, 2),
+        'X': np.random.default_rng(42).random((8, 2)),
         'Y': np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]),
     }
     parameters = {'a': [0.0, 1.0], 'b': [0.0, 1.0]}

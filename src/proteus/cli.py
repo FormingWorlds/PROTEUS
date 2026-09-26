@@ -1039,7 +1039,7 @@ def install_all(export_env: bool, config_path: Path | None):
         except subprocess.CalledProcessError as e:
             click.secho('[x] Failed to install SOCRATES', fg='red')
             click.echo(e)
-            raise SystemExit(1)
+            raise SystemExit(1) from e
     else:
         click.secho('[+] SOCRATES already present', fg='green')
 
@@ -1080,7 +1080,7 @@ def install_all(export_env: bool, config_path: Path | None):
         except subprocess.CalledProcessError as e:
             click.secho('[x] Failed to install AGNI', fg='red')
             click.echo(e)
-            raise SystemExit(1)
+            raise SystemExit(1) from e
     else:
         click.secho('[+] AGNI already present', fg='green')
 

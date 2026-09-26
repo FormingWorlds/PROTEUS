@@ -152,11 +152,11 @@ def DownloadModernSpectrum(name, distance=None):
     if distance is None:
         try:
             distance = star_distance_pc[star]
-        except KeyError:
+        except KeyError as e:
             raise Exception(
                 f"Distance to star '{star}' not found in star_distance_pc; "
                 'please provide an explicit distance override (in pc).'
-            )
+            ) from e
     else:
         distance = float(distance)
 

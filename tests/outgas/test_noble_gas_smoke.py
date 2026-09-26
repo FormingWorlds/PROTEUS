@@ -78,7 +78,7 @@ def test_ppmw_budget_becomes_target_and_closes_mass_through_solver():
     # larger than the whole mantle, which is unphysical.
     assert target['He'] < ddict['M_mantle']
 
-    np.random.seed(0)
+    np.random.seed(0)  # noqa: NPY002
     out = equilibrium_atmosphere(
         target, ddict, print_result=False, opt_solver=False, nguess=3000
     )

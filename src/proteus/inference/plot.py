@@ -70,7 +70,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
         if i < 10:
             color_map[w] = plt.cm.tab10(i)
         else:
-            color_map[w] = np.clip(np.random.random_sample(3), a_min=0.05, a_max=0.95)
+            color_map[w] = np.clip(np.random.default_rng().random(3), a_min=0.05, a_max=0.95)
 
     # Find bar widths and the rightmost endpoint
     bar_widths = df['end'] - df['start']

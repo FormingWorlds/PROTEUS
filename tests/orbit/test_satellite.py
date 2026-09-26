@@ -1548,8 +1548,11 @@ def test_evolve_orbit_satellite_threads_in_band_result_as_filter_value(monkeypat
     monkeypatch.setattr(sat_mod, 'ps1d_evec', fake_ps1d_evec)
 
     for forced_band, expected_filter in [(True, 1.0), (False, 0.0)]:
+        # the patched function runs inside this iteration, so forced_band is current
         monkeypatch.setattr(
-            sat_mod, '_in_evection_band', lambda hf_row, state, **kw: forced_band
+            sat_mod,
+            '_in_evection_band',
+            lambda hf_row, state, **kw: forced_band,  # noqa: B023
         )
         captured_filter_values.clear()
 

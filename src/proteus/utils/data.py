@@ -1590,7 +1590,7 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
             log.error(f'OSF fallback also failed for {track} tracks: {osf_fallback_error}')
             raise RuntimeError(
                 f'Failed to download {track} tracks: MORS error ({e}), OSF fallback error ({osf_fallback_error})'
-            )
+            ) from osf_fallback_error
 
 
 def _get_sufficient(config: Config, clean: bool = False):

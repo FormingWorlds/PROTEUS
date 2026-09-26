@@ -297,7 +297,7 @@ def validate_zalmoxis_output_schema(
         raise RuntimeError(
             'zalmoxis_output.dat schema violation: could not reload '
             f'the just-written file ({output_path}): {exc}'
-        )
+        ) from exc
     if data.size == 0 or data.ndim != 2 or data.shape[1] != 5:
         raise RuntimeError(
             'zalmoxis_output.dat schema violation: unexpected shape '
@@ -845,7 +845,7 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
             '(zalmoxis.eos_export.compute_entropy_adiabat and '
             'zalmoxis.melting_curves.paleos_liquidus); import failed: '
             f'{e}'
-        )
+        ) from e
 
     delta = float(config.planet.delta_T_super)
 

@@ -178,7 +178,7 @@ def run_lovepy(
     except juliacall.JuliaError as e:
         UpdateStatusfile(dirs, 26)
         log.error(e)
-        raise RuntimeError('Encountered problem when running lovepy module')
+        raise RuntimeError('Encountered problem when running lovepy module') from e
 
     # Extract result and store
     if config.interior_energetics.module in ('dummy', 'boundary'):

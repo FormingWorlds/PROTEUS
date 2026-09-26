@@ -141,11 +141,12 @@ def invert_T_to_S(
         if np.isnan(T_target):
             continue
 
+        # residual only runs inside this iteration, so the loop variables are current
         def residual(S):
-            T_eval = interp((S, P_Pa))
+            T_eval = interp((S, P_Pa))  # noqa: B023
             if np.isnan(T_eval):
                 return np.nan
-            return float(T_eval) - T_target
+            return float(T_eval) - T_target  # noqa: B023
 
         try:
             f_lo = residual(S_min)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+from collections.abc import Sequence
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
@@ -92,7 +93,9 @@ def ncdf_flag_to_bool(var) -> bool | None:
         return None
 
 
-def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool = True) -> dict:
+def read_ncdf_profile(
+    nc_fpath: str, extra_keys: Sequence[str] = (), combine_edges: bool = True
+) -> dict:
     """Read data from atmosphere NetCDF output file.
 
     All variables in SI units, same as NetCDF file content.
@@ -108,7 +111,7 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     ----------
         nc_fpath : str
             Path to NetCDF file.
-        extra_keys : list
+        extra_keys : sequence of str
             List of extra keys (strings) to read from the file.
         combine_edges : bool
             Whether to combine cell-centre and cell-edge values into a single array.
@@ -259,7 +262,7 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
     return out
 
 
-def read_atmosphere_data(output_dir: str, times: list, extra_keys=[]):
+def read_atmosphere_data(output_dir: str, times: list, extra_keys: Sequence[str] = ()):
     """Return atmosphere profiles from NetCDF in PROTEUS output folder, at the given times.
 
     Arguments
@@ -268,7 +271,7 @@ def read_atmosphere_data(output_dir: str, times: list, extra_keys=[]):
             Path to PROTEUS output folder.
         times : list
             List of times (floats) to read in [yr].
-        extra_keys : list (optional)
+        extra_keys : sequence of str (optional)
             List of extra keys to read from the NetCDF files.
 
     Returns
