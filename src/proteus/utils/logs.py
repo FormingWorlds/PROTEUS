@@ -7,7 +7,7 @@ import sys
 
 
 # Fake file-like stream object that redirects writes to a logger instance.
-class StreamToLogger(object):
+class StreamToLogger:
     # https://stackoverflow.com/a/36296215
     def __init__(self, logger: logging.Logger, log_level=logging.INFO):
         self.logger = logger

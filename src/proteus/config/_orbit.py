@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, Union
+from typing import Literal
 
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le, lt
@@ -213,8 +213,8 @@ class Obliqua:
     n: list = field(default=[2])
     m: list = field(default=[0, 2])
 
-    k_min: Union[int, Literal['none']] = field(default='none')
-    k_max: Union[int, Literal['none']] = field(default='none')
+    k_min: int | Literal['none'] = field(default='none')
+    k_max: int | Literal['none'] = field(default='none')
     evection_padding_factor: float = field(default=2.0, validator=ge(0))
 
     material_mu: str = field(

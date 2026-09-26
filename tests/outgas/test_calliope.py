@@ -208,7 +208,7 @@ def test_flag_included_volatiles_zero_pressure_excludes():
         if s != 'O2':
             setattr(config.outgas.calliope, f'include_{s}', True)
 
-    guess = {s: 10.0 for s in vol_list}
+    guess = dict.fromkeys(vol_list, 10.0)
     guess['H2O'] = 0.0  # depleted
 
     result = flag_included_volatiles(guess=guess, config=config)

@@ -104,7 +104,7 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
                 # Read error from log file for better diagnostics
                 error_msg = 'Unknown error'
                 try:
-                    with open(out, 'r') as f:
+                    with open(out) as f:
                         error_lines = f.readlines()[-10:]  # Last 10 lines
                         error_msg = ''.join(error_lines).strip()
                 except Exception:
@@ -230,7 +230,7 @@ def download_zenodo_file(zenodo_id: str, folder_dir: Path, record_path: str) -> 
                 # Read error from log file for better diagnostics
                 error_msg = 'Unknown error'
                 try:
-                    with open(out, 'r') as f:
+                    with open(out) as f:
                         error_lines = f.readlines()[-10:]  # Last 10 lines
                         error_msg = ''.join(error_lines).strip()
                 except Exception:
@@ -395,7 +395,7 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
 
     # Read hashes file
     try:
-        with open(md5sums_path, 'r') as hdl:
+        with open(md5sums_path) as hdl:
             md5sums = hdl.readlines()
     except Exception as e:
         log.warning(f'Could not read md5sums file: {e}')

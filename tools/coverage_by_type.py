@@ -40,7 +40,7 @@ import pathlib
 import sys
 import tomllib
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def _parse_xml(xml_path: str) -> dict | None:
@@ -205,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     threshold = _read_threshold(pathlib.Path(args.pyproject))
 
     summary = {
-        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'timestamp': datetime.now(UTC).isoformat(),
         'threshold': threshold,
         'total': total,
         'per_tier': {},

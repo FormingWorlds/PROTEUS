@@ -79,7 +79,7 @@ def update_toml(config_file: str, updates: dict, output_file: str) -> None:
     output_path = Path(output_file)
 
     # Load existing config
-    with open(config_path, 'r') as f:
+    with open(config_path) as f:
         config = toml.load(f)
 
     # Apply nested updates
@@ -184,7 +184,7 @@ def run_proteus(
     # Read status file
     status = 20  # default to Generic Error
     try:
-        with open(out_abs / 'status', 'r') as f:
+        with open(out_abs / 'status') as f:
             status = int(f.readlines()[0].strip())
     except Exception as e:
         log.warning(f'Failed to read status file for worker={worker} iter={iter}: {e}')

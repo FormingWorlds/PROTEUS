@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le, lt, optional
 
@@ -326,11 +324,11 @@ class Struct:
     core_frac: float = field(default=0.325, validator=(gt(0), lt(1)))
     core_frac_mode: str = field(default='mass', validator=in_(('radius', 'mass')))
 
-    module: Optional[str] = field(
+    module: str | None = field(
         default='zalmoxis',
         validator=in_((None, 'dummy', 'spider', 'zalmoxis')),
     )
-    zalmoxis: Optional[Zalmoxis] = field(
+    zalmoxis: Zalmoxis | None = field(
         factory=Zalmoxis,
         validator=optional(valid_zalmoxis),
     )

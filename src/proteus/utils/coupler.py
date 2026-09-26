@@ -102,10 +102,10 @@ def _get_socrates_version():
     """
     RAD_DIR = os.environ.get('RAD_DIR')
     if RAD_DIR is None:
-        raise EnvironmentError('RAD_DIR environment variable is not set.')
+        raise OSError('RAD_DIR environment variable is not set.')
 
     verpath = os.path.join(RAD_DIR, 'version')
-    with open(verpath, 'r') as hdl:
+    with open(verpath) as hdl:
         ver = hdl.read().replace('\n', '')
     return str(ver)
 
@@ -313,7 +313,7 @@ def validate_module_versions(dirs: dict, config: Config):
     # Exit
     if not valid:
         UpdateStatusfile(dirs, 20)
-        raise EnvironmentError(
+        raise OSError(
             'Out-of-date modules detected. Refer to the Troubleshooting guide:\n'
             'https://proteus-framework.org/proteus/troubleshooting.html'
         )
@@ -2294,7 +2294,7 @@ def set_directories(config: Config) -> dict[str, str]:
     # FWL data folder
     if os.environ.get('FWL_DATA') is None:
         UpdateStatusfile(dirs, 20)
-        raise EnvironmentError(
+        raise OSError(
             'The FWL_DATA environment variable has not been set. '
             'See https://proteus-framework.org/PROTEUS/How-to/installation.html'
         )
@@ -2307,7 +2307,7 @@ def set_directories(config: Config) -> dict[str, str]:
 
         if os.environ.get('RAD_DIR') is None:
             UpdateStatusfile(dirs, 20)
-            raise EnvironmentError(
+            raise OSError(
                 'The RAD_DIR environment variable has not been set (required by AGNI/JANUS). '
                 'See https://proteus-framework.org/PROTEUS/How-to/installation.html'
             )

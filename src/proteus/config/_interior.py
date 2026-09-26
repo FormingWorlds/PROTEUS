@@ -308,7 +308,7 @@ def valid_interiordummy(instance, attribute, value):
     if instance.module != 'dummy':
         return
 
-    pass  # dummy uses planet.tsurf_init for initial temperature
+    # dummy uses planet.tsurf_init for initial temperature
 
     tliq = instance.dummy.mantle_tliq
     tsol = instance.dummy.mantle_tsol

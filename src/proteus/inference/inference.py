@@ -170,7 +170,7 @@ def infer_from_config(config_fpath: str):
 
     # Load configuration from TOML file
     log.info(f'Inference config: {config_fpath}')
-    with open(config_fpath, 'r') as file:
+    with open(config_fpath) as file:
         config = toml.load(file)
 
     # run inference scheme

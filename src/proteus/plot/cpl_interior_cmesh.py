@@ -37,9 +37,9 @@ def plot_interior_cmesh(
 
     # Downsample data?
     if len(data) < 1000:
-        stride = int(1)
+        stride = 1
     else:
-        stride = int(15)
+        stride = 15
     data = data[::stride]
     times = times[::stride]
     nfiles = len(data)

@@ -425,7 +425,7 @@ def test_run_vapourisation_preserves_noble_gases(tmp_path, monkeypatch):
         for e, n in atoms_per_species[s].items():
             n_atoms[e] = n_atoms.get(e, 0.0) + n * x
     n_tot = sum(n_atoms.values())
-    element_fracs = {e: 0.0 for e in ('H', 'C', 'N', 'S', 'O', 'Fe', 'He', 'Ar')}
+    element_fracs = dict.fromkeys(('H', 'C', 'N', 'S', 'O', 'Fe', 'He', 'Ar'), 0.0)
     element_fracs.update({e: n / n_tot for e, n in n_atoms.items()})
 
     monkeypatch.setattr(

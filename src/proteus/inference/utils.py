@@ -194,7 +194,7 @@ def print_results(D, logs, config, output, n_init):
 
     # Load and flatten the input TOML for this run
     in_path = Path(output) / 'workers' / f'w_{w}' / f'i_{id}' / 'init_coupler.toml'
-    with open(in_path, 'r') as f:
+    with open(in_path) as f:
         input = toml.load(f)
     input = flatten(input)  # flatten nested config
 

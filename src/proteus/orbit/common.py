@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from collections import ChainMap
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any
 
 import netCDF4 as nc
 import numpy as np
@@ -28,9 +28,9 @@ class TidalInteraction:
     primary: Any
     perturber: Any
 
-    nmk: Optional[NDArray[np.int_]] = None
-    sigma: Optional[NDArray[np.floating]] = None
-    LNk: Optional[NDArray[np.complexfloating]] = None
+    nmk: NDArray[np.int_] | None = None
+    sigma: NDArray[np.floating] | None = None
+    LNk: NDArray[np.complexfloating] | None = None
 
 
 @dataclass
@@ -43,12 +43,12 @@ class Tides_t:
     each of these fields feeds into.
     """
 
-    interactions: List[TidalInteraction] = field(default_factory=list)
-    dt_yr: Optional[float] = None
-    fine_csv_last_t_yr: Optional[float] = None
-    fine_csv_next_target_yr: Optional[float] = None
+    interactions: list[TidalInteraction] = field(default_factory=list)
+    dt_yr: float | None = None
+    fine_csv_last_t_yr: float | None = None
+    fine_csv_next_target_yr: float | None = None
     resonance_state: dict = field(default_factory=dict)
-    evection_ecc_history: List[tuple] = field(default_factory=list)
+    evection_ecc_history: list[tuple] = field(default_factory=list)
     evection_zone_active: bool = False
     evection_cooldown_remaining: int = 0
 

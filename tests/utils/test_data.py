@@ -4101,7 +4101,7 @@ def test_download_OSF_file_partial_write_cleanup(tmp_path):
 
     def failing_write(fp):
         fp.write(b'half')
-        raise IOError('partial')
+        raise OSError('partial')
 
     storage = _make_osf_storage([('/req/file.dat', failing_write, 4)])
 

@@ -44,7 +44,7 @@ class _Unresolvable:
     compare, rather than aborting and letting every key through unchecked.
     """
 
-    field: 'NoSuchClassAnywhere' = None  # noqa: F821
+    field: NoSuchClassAnywhere = None  # noqa: F821
 
 
 @attrs.define

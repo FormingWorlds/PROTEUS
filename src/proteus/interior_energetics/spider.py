@@ -106,7 +106,7 @@ def _check_eos_table_range(eos_dir: str, mesh_file: str | None, P_cmb: float):
     try:
         s_min_solid, s_max_solid = _read_entropy_range(solid_file)
         s_min_melt, s_max_melt = _read_entropy_range(melt_file)
-    except (ValueError, IndexError, IOError):
+    except (OSError, ValueError, IndexError):
         return  # cannot parse, skip check
 
     # The critical scenario: if the initial adiabat entropy exceeds the
@@ -437,7 +437,7 @@ def remap_entropy_for_new_mesh(
     return True
 
 
-class MyJSON(object):
+class MyJSON:
     """load and access json data"""
 
     def __init__(self, filename):
@@ -1038,7 +1038,7 @@ def _try_spider(
                         line = mf.readline()
                     P_cmb = float(line.split()[1])
                 _check_eos_table_range(eos_dir, mesh_file, P_cmb)
-            except (ValueError, IndexError, IOError):
+            except (OSError, ValueError, IndexError):
                 pass  # non-critical check
     else:
         # Adams-Williamson EOS parameters from fitting PREM lower mantle (Earth)

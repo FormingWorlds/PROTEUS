@@ -224,7 +224,7 @@ def minimal_zalmoxis_overrides() -> dict:
 
 
 def validate_energy_conservation(
-    hf_all: 'DataFrame',
+    hf_all: DataFrame,
     tolerance: float = 0.1,
     flux_keys: tuple[str, ...] = ('F_atm', 'F_int', 'F_ins'),
 ) -> dict[str, float]:
@@ -306,7 +306,7 @@ def validate_energy_conservation(
 
 
 def validate_mass_conservation(
-    hf_all: 'DataFrame',
+    hf_all: DataFrame,
     tolerance: float = 0.05,
     element_keys: tuple[str, ...] = ('H_kg_total', 'C_kg_total', 'N_kg_total', 'O_kg_total'),
 ) -> dict[str, float]:
@@ -377,7 +377,7 @@ def validate_mass_conservation(
 
 
 def validate_stability(
-    hf_all: 'DataFrame',
+    hf_all: DataFrame,
     temp_keys: tuple[str, ...] = ('T_surf', 'T_magma'),
     pressure_keys: tuple[str, ...] = ('P_surf',),
     max_temp: float = 1e6,

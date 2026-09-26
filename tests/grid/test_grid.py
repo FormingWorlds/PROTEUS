@@ -56,7 +56,7 @@ def test_grid_log(grid_run):
     the case-completion summary line, and the explored sweep values
     (1000, 2000 in the test grid).
     """
-    with open(OUT_DIR / 'manager.log', 'r') as hdl:
+    with open(OUT_DIR / 'manager.log') as hdl:
         lines = hdl.read()
     assert 'Flattened grid points' in lines
     assert 'values   : [1000.0, 2000.0]' in lines

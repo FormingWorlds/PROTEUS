@@ -882,7 +882,7 @@ def test_equilibrate_passes_adiabat_to_every_iteration(module):
 
     config = _equilibrate_config(module=module, max_iter=3, tol=1e-9)
     hf_row = _linear_hf_row()
-    dirs = {'output': str('/tmp/out')}
+    dirs = {'output': '/tmp/out'}
 
     received = []
 

@@ -429,7 +429,7 @@ class TestUpdateStatusfile:
             assert os.path.exists(statusfile)
 
             # Check content
-            with open(statusfile, 'r') as f:
+            with open(statusfile) as f:
                 lines = f.readlines()
             assert len(lines) == 2
             assert lines[0].strip() == '0'
@@ -444,12 +444,12 @@ class TestUpdateStatusfile:
             # First update
             UpdateStatusfile(dirs, 1)
             statusfile = os.path.join(tmpdir, 'status')
-            with open(statusfile, 'r') as f:
+            with open(statusfile) as f:
                 content1 = f.read()
 
             # Second update
             UpdateStatusfile(dirs, 10)
-            with open(statusfile, 'r') as f:
+            with open(statusfile) as f:
                 content2 = f.read()
 
             assert '1' in content1
@@ -697,7 +697,7 @@ class TestCreateTmpFolder:
             # we wrote (a regression returning a read-only folder whose
             # writes silently failed could still leave the dirent in place
             # on some filesystems; pin the round-tripped content).
-            with open(testfile, 'r') as f:
+            with open(testfile) as f:
                 assert f.read() == 'test'
         finally:
             # Cleanup

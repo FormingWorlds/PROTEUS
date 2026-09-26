@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 import numpy as np
 from numpy.typing import NDArray
@@ -139,7 +138,7 @@ class _HansenTable:
     kmin: int
     kmax: int
     n_deg: int
-    values: Dict[int, NDArray[np.floating]]  # m -> array[len(e_grid), kmax-kmin+1]
+    values: dict[int, NDArray[np.floating]]  # m -> array[len(e_grid), kmax-kmin+1]
 
 
 @dataclass
@@ -152,8 +151,8 @@ class _KRangeTable:
     kmax: NDArray[np.integer]
 
 
-_hansen_table: Optional[_HansenTable] = None
-_k_range_table: Optional[_KRangeTable] = None
+_hansen_table: _HansenTable | None = None
+_k_range_table: _KRangeTable | None = None
 
 # Default eccentricity grid shared by both tables: fine near e=0 (where
 # Hansen coefficients vary fastest in relative terms) and coarser at high e.
@@ -187,9 +186,7 @@ def _select_k_range(
     return int(kmin), int(kmax)
 
 
-def init_k_range_table(
-    e_grid: Optional[NDArray[np.floating]] = None, force: bool = False
-) -> None:
+def init_k_range_table(e_grid: NDArray[np.floating] | None = None, force: bool = False) -> None:
     """Build the eccentricity -> [kmin, kmax] lookup table once.
 
     Safe to call more than once: a no-op unless `force=True`, so callers
@@ -245,9 +242,9 @@ def padded_k_range_for_evection(
 
 
 def init_hansen_table(
-    e_grid: Optional[NDArray[np.floating]] = None,
-    kmin: Optional[int] = None,
-    kmax: Optional[int] = None,
+    e_grid: NDArray[np.floating] | None = None,
+    kmin: int | None = None,
+    kmax: int | None = None,
     n_deg: int = 2,
     force: bool = False,
 ) -> None:

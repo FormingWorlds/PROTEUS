@@ -105,9 +105,7 @@ def valid_agni(instance, attribute, value):
             if not os.path.isdir(FC_DIR):
                 raise FileNotFoundError(f'Fastchem not found at FC_DIR={FC_DIR}')
         else:
-            raise EnvironmentError(
-                'Chemistry is enabled but environment variable `FC_DIR` is not set'
-            )
+            raise OSError('Chemistry is enabled but environment variable `FC_DIR` is not set')
 
 
 @define

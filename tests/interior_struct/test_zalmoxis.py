@@ -332,7 +332,7 @@ def test_load_zalmoxis_configuration_reraises_unconverted_file_error(monkeypatch
         zalmoxis_wrapper, '_resolve_zalmoxis_cmb_temperature', _raise_file_not_found
     )
     monkeypatch.setattr(zalmoxis_wrapper, 'check_zalmoxis_eos_files', lambda *a, **k: None)
-    monkeypatch.setattr(zalmoxis_wrapper, 'load_zalmoxis_material_dictionaries', lambda: {})
+    monkeypatch.setattr(zalmoxis_wrapper, 'load_zalmoxis_material_dictionaries', dict)
 
     hf_row = {
         f'{e}_kg_total': 0 for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'He')

@@ -214,7 +214,6 @@ def planet_oxygen_mode_explicit(instance, attribute, value):
     # O_mode is now validated by the attrs in_() validator on the field
     # itself. This function remains as a hook for cross-field checks
     # (e.g. fO2_source compatibility) that reference O_mode.
-    pass
 
 
 def planet_liquidus_super_needs_tables(instance, attribute, value):

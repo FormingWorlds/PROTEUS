@@ -26,7 +26,6 @@ import sys
 import tempfile
 import urllib.request
 from pathlib import Path
-from typing import Optional
 
 import pytest
 
@@ -73,7 +72,7 @@ except ImportError:
                 # Patch match statement for Python < 3.10
                 if sys.version_info < (3, 10):
                     # Read and convert match statement to if/elif
-                    with open(helper_path, 'r') as f:
+                    with open(helper_path) as f:
                         helper_code = f.read()
 
                     # Convert match/case to if/elif
@@ -229,8 +228,8 @@ def get_osf_file_list(osf_id: str, folder: str) -> list[dict]:
 
 
 def find_common_file(
-    zenodo_files: list[dict], osf_files: list[dict], preferred_names: Optional[list[str]] = None
-) -> Optional[str]:
+    zenodo_files: list[dict], osf_files: list[dict], preferred_names: list[str] | None = None
+) -> str | None:
     """
     Find a file that exists in both Zenodo and OSF file lists.
 
@@ -507,7 +506,7 @@ def run_consistency_tests():
     DATA_SOURCE_MAP = (
         data_module.DATA_SOURCE_MAP
         if hasattr(data_module, 'DATA_SOURCE_MAP')
-        else getattr(data_module, 'DATA_SOURCE_MAP')
+        else data_module.DATA_SOURCE_MAP
     )
 
     # Test all categories in DATA_SOURCE_MAP

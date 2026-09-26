@@ -127,7 +127,7 @@ class set_magmaproperties:
         self.volatile_comp = volatile_comp
 
 
-class Species_db(object):
+class Species_db:
     def __init__(self, name, fc_name, weight):
         self.name = name
         self.fc_name = fc_name  # designation in Fastchem
@@ -331,7 +331,7 @@ def read_in_element_fracs_normalized(input_path):
     if abs(total) > 1e-30:
         norm_dict = {k: v / total for k, v in abundance_dict.items()}
     else:
-        norm_dict = {k: 0 for k in abundance_dict}
+        norm_dict = dict.fromkeys(abundance_dict, 0)
 
     return norm_dict
 

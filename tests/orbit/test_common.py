@@ -129,9 +129,7 @@ def test_kmin_kmax_for_m0_mirror_widens_kmin_for_real_obliqua_shaped_data():
     """
     # m=0: k=0..8: m=2: k=1..13 (mirrors the real 17890_obliqua.nc shape
     # inspected directly against a real tutorial_earth_star run).
-    nmk = np.array(
-        [(2, 0, k) for k in range(0, 9)] + [(2, 2, k) for k in range(1, 14)], dtype=int
-    )
+    nmk = np.array([(2, 0, k) for k in range(9)] + [(2, 2, k) for k in range(1, 14)], dtype=int)
     kmin, kmax = kmin_kmax_for_m0_mirror(nmk)
 
     assert kmin == -8

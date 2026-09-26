@@ -117,7 +117,7 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
         helps.append(pd.read_csv(c / 'runtime_helpfile.csv', delimiter=r'\s+'))
 
         # Config
-        with open(c / 'init_coupler.toml', 'r') as f:
+        with open(c / 'init_coupler.toml') as f:
             confs.append(toml.load(f))
 
     # List of parameter keys for ordering

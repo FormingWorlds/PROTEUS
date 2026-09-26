@@ -53,7 +53,7 @@ def get_proteus_dir():
 
     # Check that this path is reasonable
     if 'pyproject.toml' not in os.listdir(root):
-        raise EnvironmentError(f"Cannot locate PROTEUS directory. Tried '{root}' ")
+        raise OSError(f"Cannot locate PROTEUS directory. Tried '{root}' ")
 
     return root
 
@@ -143,12 +143,10 @@ def parse_subyear_time(token: str) -> float:
 
 def PrintSeparator():
     log.info('===================================================')
-    pass
 
 
 def PrintHalfSeparator():
     log.info('---------------------------------------------------')
-    pass
 
 
 def multiple(a: int, b: int) -> bool:
@@ -496,7 +494,7 @@ def gas_vmr_to_emr(gases: dict):
     """
 
     # Numbers and masses of each element
-    M_e = {e: 0.0 for e in element_list}
+    M_e = dict.fromkeys(element_list, 0.0)
 
     # Loop over gases
     for g in gases.keys():

@@ -1042,7 +1042,7 @@ def test_lock_file_contains_message():
     with tempfile.TemporaryDirectory() as tmpdir:
         lockfile_path = CreateLockFile(tmpdir)
 
-        with open(lockfile_path, 'r') as f:
+        with open(lockfile_path) as f:
             content = f.read()
 
         assert 'stop' in content.lower() or 'remove' in content.lower()

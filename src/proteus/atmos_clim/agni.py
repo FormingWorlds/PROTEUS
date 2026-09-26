@@ -568,7 +568,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     # Aerosol species dictionary (set MMR to zero initially)
     aerosol_species = {}
     if config.atmos_clim.aerosols_enabled:
-        aerosol_species = {a: 0.0 for a in _determine_aerosols(dirs)}
+        aerosol_species = dict.fromkeys(_determine_aerosols(dirs), 0.0)
         if len(aerosol_species) == 0:
             log.warning('No data found for aerosol species')
 
@@ -1105,7 +1105,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
             agni_success = jl.AGNI.solver.solve_energy_b(
                 atmos,
                 sol_type=int(config.atmos_clim.surf_state_int),
-                method=int(1),
+                method=1,
                 chem=chemistry,
                 conduct=config.atmos_clim.agni.conduction,
                 convect=config.atmos_clim.agni.convection,
@@ -1347,7 +1347,7 @@ def run_agni(
     atmos.transspec_p = atmos.transspec_ref_p
 
     # Calculate planet transit radius and other photospheric properties
-    jl.AGNI.atmosphere.estimate_photosphere_b(atmos, setby=str('prs'))
+    jl.AGNI.atmosphere.estimate_photosphere_b(atmos, setby='prs')
 
     # Write output data
     if write_data:

@@ -46,7 +46,7 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
         status_path = os.path.join(case_dir, 'status')
         if not os.path.exists(status_path):
             raise FileNotFoundError("Cannot find status file at '%s'" % status_path)
-        with open(status_path, 'r') as hdl:
+        with open(status_path) as hdl:
             lines = hdl.readlines()
         if not lines:
             raise ValueError("Status file is empty: '%s'" % status_path)

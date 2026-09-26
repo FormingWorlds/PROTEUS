@@ -720,7 +720,7 @@ def test_run_atmosphere_carries_levels_into_the_row_escape_reads():
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
-        **{key: 0.0 for key in _levels(1.0, 1.0)},
+        **dict.fromkeys(_levels(1.0, 1.0), 0.0),
     }
 
     def _call(levels, converged):
@@ -822,7 +822,7 @@ def test_run_atmosphere_takes_the_resume_fallback_from_the_last_committed_row():
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
-        **{key: 0.0 for key in _levels(1.0, 1.0)},
+        **dict.fromkeys(_levels(1.0, 1.0), 0.0),
     }
 
     # Two committed rows: an older one and the one resume must actually use.
@@ -1013,7 +1013,7 @@ def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
         'F_ins': 1361.0,
         'separation': 1.5e11,
         'hill_radius': 1.0e8,
-        **{key: 0.0 for key in _levels(1.0, 1.0)},
+        **dict.fromkeys(_levels(1.0, 1.0), 0.0),
     }
 
     # One committed row whose radii predate the clip: five Hill radii.
@@ -1113,7 +1113,7 @@ def test_run_atmosphere_does_not_place_gravity_from_a_radius_that_is_not_a_numbe
         'F_ins': 1361.0,
         'separation': 1.5e11,
         'hill_radius': 1.0e8,
-        **{key: 0.0 for key in _levels(1.0, 1.0)},
+        **dict.fromkeys(_levels(1.0, 1.0), 0.0),
     }
 
     # No committed row, so a rejected first solve has nothing to fall back on
@@ -1211,7 +1211,7 @@ def test_run_atmosphere_keeps_a_level_the_bound_does_not_move():
         'F_ins': 1361.0,
         'separation': 1.5e11,
         'hill_radius': 1.0e8,
-        **{key: 0.0 for key in _levels(1.0, 1.0)},
+        **dict.fromkeys(_levels(1.0, 1.0), 0.0),
     }
 
     # A converged solve whose XUV level sits well inside the Hill radius.

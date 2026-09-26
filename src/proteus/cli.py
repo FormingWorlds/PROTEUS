@@ -929,7 +929,7 @@ def _resolve_proteus_root() -> Path:
     root = None
     try:
         candidate = Path(get_proteus_dir())
-    except EnvironmentError:
+    except OSError:
         candidate = None
     if candidate is not None and _is_proteus_root(candidate):
         root = candidate

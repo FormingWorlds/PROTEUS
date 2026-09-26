@@ -2361,7 +2361,7 @@ def test_update_all_errors_cleanly_when_source_tree_missing(monkeypatch, tmp_pat
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
 
     def raise_env_error():
-        raise EnvironmentError('Cannot locate PROTEUS directory.')
+        raise OSError('Cannot locate PROTEUS directory.')
 
     monkeypatch.setattr(cli, 'get_proteus_dir', raise_env_error)
 
@@ -2390,7 +2390,7 @@ def test_install_all_errors_cleanly_when_source_tree_missing(monkeypatch, tmp_pa
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
 
     def raise_env_error():
-        raise EnvironmentError('Cannot locate PROTEUS directory.')
+        raise OSError('Cannot locate PROTEUS directory.')
 
     monkeypatch.setattr(cli, 'get_proteus_dir', raise_env_error)
 
@@ -2468,7 +2468,7 @@ def test_resolve_proteus_root_exits_when_source_tree_unlocatable(monkeypatch, tm
     monkeypatch.chdir(tmp_path)
 
     def raise_env_error():
-        raise EnvironmentError('Cannot locate PROTEUS directory.')
+        raise OSError('Cannot locate PROTEUS directory.')
 
     monkeypatch.setattr(cli, 'get_proteus_dir', raise_env_error)
 
@@ -2491,7 +2491,7 @@ def test_resolve_proteus_root_falls_back_to_checkout_cwd(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
     def raise_env_error():
-        raise EnvironmentError('Cannot locate PROTEUS directory.')
+        raise OSError('Cannot locate PROTEUS directory.')
 
     monkeypatch.setattr(cli, 'get_proteus_dir', raise_env_error)
 

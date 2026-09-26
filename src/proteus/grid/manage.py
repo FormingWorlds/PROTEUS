@@ -462,7 +462,7 @@ class Grid:
                     raise Exception("Cannot find status file at '%s'" % status_path)
 
                 # read file
-                with open(status_path, 'r') as hdl:
+                with open(status_path) as hdl:
                     lines = hdl.readlines()
                 this_stat = int(lines[0])
 
@@ -594,7 +594,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     """Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)"""
 
     # Load configuration from TOML file
-    with open(config_fpath, 'r') as file:
+    with open(config_fpath) as file:
         config = toml.load(file)
 
     # Output folder name, created inside `PROTEUS/output/`

@@ -45,7 +45,7 @@ class AragogJAXRunner:
 
     def __init__(
         self,
-        config: 'Config',
+        config: Config,
         dirs: dict,
         hf_row: dict,
         hf_all,

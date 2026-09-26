@@ -277,10 +277,10 @@ observer_bands = {
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
 def latex_float(f):
-    float_str = '{0:.2g}'.format(f)
+    float_str = f'{f:.2g}'
     if 'e' in float_str:
         base, exponent = float_str.split('e')
-        return r'${0} \times 10^{{{1}}}$'.format(base, int(exponent))
+        return rf'${base} \times 10^{{{int(exponent)}}}$'
     else:
         return float_str
 
