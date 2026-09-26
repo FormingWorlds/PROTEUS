@@ -155,6 +155,26 @@ def test_method_edit_does_not_flag_legacy_class(repo, monkeypatch, capsys):
     assert (code, out) == (1, ['mod.py:13: D101 Missing docstring in public class'])
 
 
+def test_changed_method_without_docstring_fails(repo, monkeypatch, capsys):
+    """A changed method without docstring fails inside a documented class."""
+    base = LEGACY + '\n\nclass Doc:\n    """Doc."""\n\n    def get(self):\n        return 1\n'
+    _base(repo, {'mod.py': base})
+    code, out = _check(
+        repo, monkeypatch, capsys, {'mod.py': base.replace('return 1\n', 'return 2\n')}
+    )
+    assert code == 1
+    assert out == ['mod.py:16: D102 Missing docstring in public method']
+
+
+def test_trailing_comments_do_not_form_a_block(repo, monkeypatch, capsys):
+    """Comments after code on consecutive lines are not a comment block."""
+    body = ''.join(f'    x{i} = {i}  # note {i}\n' for i in range(6))
+    text = LEGACY.replace('    return 2 * x\n', body + '    return 2 * x\n')
+    code, out = _check(repo, monkeypatch, capsys, {'mod.py': text})
+    assert code == 0
+    assert out == []
+
+
 def test_numpy_convention_and_deleted_neighbour(repo, monkeypatch, capsys):
     """NumPy convention skips ``__init__`` (D107); deleting a function flags no neighbour."""
     gone = '\n\ndef gone():\n    pass\n'

@@ -26,6 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
+      with:
+        # The changed-lines style hook diffs against the merge base with origin/main.
+        fetch-depth: 0
 
     - name: Get changed files
       id: changed-files

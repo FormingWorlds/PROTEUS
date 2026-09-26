@@ -17,7 +17,7 @@ repos:
       - id: check-added-large-files
         args: ['--maxkb=500']
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.12
+    rev: v0.15.16
     hooks:
       - id: ruff
         args: [--fix]
@@ -35,6 +35,13 @@ repos:
         entry: bash tools/check_file_sizes.sh
         language: system
         files: \.github/copilot-instructions\.md$
+        pass_filenames: false
+      - id: check-changed-style
+        name: Check docstrings and comment blocks of changed lines
+        entry: python tools/check_changed_style.py
+        language: python
+        additional_dependencies: [ruff==0.15.16]
+        types: [python]
         pass_filenames: false
 
 exclude: 'examples/.*'
