@@ -717,6 +717,12 @@ class AragogRunner:
             # and not updated later: 0 in a fresh run (no atmosphere step yet);
             # a resume restores the run's value in update_solver. bar -> Pa.
             surface_pressure=float(hf_row.get('P_surf', 0.0)) * 1e5,
+            # Refinement towards the boundaries, passed only when on (0 = uniform mesh).
+            **{
+                k: float(getattr(config.interior_energetics.aragog, k))
+                for k in ('surface_cell_thickness', 'cmb_cell_thickness')
+                if getattr(config.interior_energetics.aragog, k)
+            },
         )
 
         # Use the external mesh file when available (dummy or Zalmoxis).

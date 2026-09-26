@@ -36,6 +36,8 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_struct.core_heatcap = 880.0
     config.interior_energetics.num_levels = 20
     config.interior_energetics.aragog.mass_coordinates = False
+    config.interior_energetics.aragog.surface_cell_thickness = 0.0
+    config.interior_energetics.aragog.cmb_cell_thickness = 0.0
     config.interior_energetics.trans_conduction = True
     config.interior_energetics.trans_convection = True
     config.interior_energetics.trans_grav_sep = False
@@ -2077,3 +2079,47 @@ def test_update_solver_reads_the_cmb_gradient_on_resume(tmp_path):
     interior_o.aragog_solver.solution = None
     AragogRunner.update_solver(80.0, hf_row, interior_o)
     assert interior_o._last_dSdr_cmb == 'unchanged'
+
+
+@pytest.mark.unit
+def test_setup_solver_passes_mesh_refinement_only_when_on(tmp_path):
+    """The two refinement fields reach Aragog's mesh parameters unchanged when set,
+    each on its own, and are left out when 0, so the default mesh is the uniform one
+    of an Aragog with or without the fields."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    sent = {}
+    for top, cmb in ((0.0, 0.0), (1000.0, 0.0), (0.0, 2500.0), (1000.0, 2500.0)):
+        config = _make_aragog_config(struct_module='spider')
+        config.interior_energetics.aragog.surface_cell_thickness = top
+        config.interior_energetics.aragog.cmb_cell_thickness = cmb
+        run = tmp_path / f'run_{top}_{cmb}'
+        hf_row, interior_o = _spider_fallback_scaffold(run)
+        with (
+            patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', run),
+            patch('proteus.interior_energetics.aragog.Parameters'),
+            patch('proteus.interior_energetics.aragog.EntropySolver'),
+            patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+            patch('proteus.interior_energetics.aragog._MeshParameters') as mock_mesh,
+        ):
+            AragogRunner.setup_solver(config, hf_row, interior_o, str(run))
+        kw = mock_mesh.call_args.kwargs
+        sent[(top, cmb)] = (kw.get('surface_cell_thickness'), kw.get('cmb_cell_thickness'))
+    assert sent[(0.0, 0.0)] == (None, None)
+    assert sent[(1000.0, 0.0)] == (1000.0, None)
+    assert sent[(0.0, 2500.0)] == (None, 2500.0)
+    assert sent[(1000.0, 2500.0)] == (1000.0, 2500.0)
+
+
+@pytest.mark.unit
+def test_mesh_refinement_fields_reject_negative_thickness():
+    """Schema: 0 (off) and positive thicknesses are accepted, negative ones rejected."""
+    from proteus.config._interior import Aragog
+
+    assert Aragog().surface_cell_thickness == 0.0 and Aragog().cmb_cell_thickness == 0.0
+    assert (
+        Aragog(surface_cell_thickness=500.0, cmb_cell_thickness=2e3).cmb_cell_thickness == 2e3
+    )
+    for name in ('surface_cell_thickness', 'cmb_cell_thickness'):
+        with pytest.raises(ValueError, match=name):
+            Aragog(**{name: -1.0})

@@ -5284,6 +5284,48 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.surface_cell_thickness",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Radial thickness [m] of the outermost Aragog cell. 0 keeps the uniform mesh at the surface; a positive value (below the uniform cell) refines the mesh towards the surface, so a conductive lid thinner than the uniform cell is resolved. Independent of ``cmb_cell_thickness``.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.cmb_cell_thickness",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Radial thickness [m] of the innermost Aragog cell. 0 keeps the uniform mesh at the CMB; a positive value refines the mesh towards the CMB.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.backend",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",

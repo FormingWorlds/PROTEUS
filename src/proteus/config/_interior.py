@@ -194,6 +194,14 @@ class Aragog:
     """
 
     mass_coordinates: bool = field(default=True)
+    surface_cell_thickness: float = field(default=0.0, validator=ge(0))
+    """Radial thickness [m] of the outermost Aragog cell. 0 keeps the uniform mesh
+    at the surface; a positive value (below the uniform cell) refines the mesh
+    towards the surface, so a conductive lid thinner than the uniform cell is
+    resolved. Independent of ``cmb_cell_thickness``."""
+    cmb_cell_thickness: float = field(default=0.0, validator=ge(0))
+    """Radial thickness [m] of the innermost Aragog cell. 0 keeps the uniform mesh
+    at the CMB; a positive value refines the mesh towards the CMB."""
     backend: str = field(default='jax', validator=in_(('numpy', 'jax')))
     atol_temperature_equivalent: float = field(default=1.0e-8, validator=gt(0))
     """Effective temperature-scale absolute tolerance [K] for Aragog's ODE integrator.
