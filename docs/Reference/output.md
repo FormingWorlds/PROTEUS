@@ -186,6 +186,9 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `M_mantle_liquid` | `kg` | dry mass of liquid-phase mantle | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py`<br>`interior_energetics/wrapper.py` | always; interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider" | interior_energetics, interior_struct |
 | `T_pot` | `K` | characteristic mantle potential temperature | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider" |   |
 | `boundary_layer_thickness` | `m` | thermal boundary layer thickness | `interior_energetics/aragog.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider" |   |
+| `T_top_cell` | `K` | temperature of the top interior cell | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" | atmos_clim |
+| `G_top_half` | `W m-2 K-1` | conductance k/dr of the top interior half cell | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" | atmos_clim |
+| `w_solid_top` | `1` | solid weight of the top interior cell | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" | atmos_clim |
 
 ### Energy-conservation columns
 

@@ -87,7 +87,8 @@ def _build_overlap_config(overlap_method: str) -> SimpleNamespace:
 def _build_update_config() -> SimpleNamespace:
     """Build a Config object for ``UpdateStateAtm``."""
     return SimpleNamespace(
-        atmos_clim=SimpleNamespace(p_top=1e-5),
+        atmos_clim=SimpleNamespace(p_top=1e-5, surface_d=0.01, surface_k=2.0),
+        interior_energetics=SimpleNamespace(module='spider'),
     )
 
 

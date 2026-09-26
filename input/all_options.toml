@@ -521,6 +521,9 @@ config_version = "3.0"
         # the integrator to 1 yr steps (max_step = 1 yr vs 100 yr) every step and can stall
         # the run; keep it of order a few hundred.
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
+        # Top half cell in series with the atmosphere skin (flux mode needs surf_state = "skin");
+        # grey-body mode uses Aragog outer BC 6. Off keeps the surface as it is.
+        surface_half_cell = false
 
     # SPIDER-only parameters
     [interior_energetics.spider]

@@ -2063,7 +2063,10 @@ def _build_profile_config(ini_profile='isothermal'):
     return SimpleNamespace(
         atmos_clim=SimpleNamespace(
             agni=SimpleNamespace(psurf_thresh=1.0e-3, ini_profile=ini_profile),
+            surface_d=0.01,
+            surface_k=2.0,
         ),
+        interior_energetics=SimpleNamespace(module='spider'),
     )
 
 

@@ -11,7 +11,12 @@ from juliacall import Main as jl
 from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
-from proteus.atmos_clim.common import clip_radius_to_hill, get_oarr_from_parr, get_spfile_path
+from proteus.atmos_clim.common import (
+    clip_radius_to_hill,
+    get_oarr_from_parr,
+    get_spfile_path,
+    surface_skin_inputs,
+)
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
@@ -957,7 +962,9 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     # Update surface temperature(s)
     _validate_surface_state(hf_row, dirs)
     atmos.tmp_surf = float(hf_row['T_surf'])
-    atmos.tmp_magma = float(hf_row['T_magma'])
+    T_skin_base, skin_d = surface_skin_inputs(config, hf_row)
+    atmos.tmp_magma = float(T_skin_base)
+    atmos.skin_d = float(skin_d)
 
     # ---------------------
     # Transparent mode?

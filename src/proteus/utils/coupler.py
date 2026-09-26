@@ -895,6 +895,9 @@ def GetHelpfileKeys():
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
+        'T_top_cell',       # temperature of the top interior cell [K]
+        'G_top_half',       # conductance k/dr of the top interior half cell [W m-2 K-1]
+        'w_solid_top',      # solid weight of the top interior cell [1]
 
         # Energy-conservation columns: per-call integrals plus their
         # cumulative residual. The residual pairs the entropy-transported

@@ -355,6 +355,21 @@ def boundary_requires_fixed_surface_state(instance, attribute, value):
         )
 
 
+def surface_half_cell_needs_skin(instance, attribute, value):
+    """The Aragog half-cell skin acts through the atmosphere's conductive skin."""
+    ie = instance.interior_energetics
+    if (
+        ie.module == 'aragog'
+        and ie.aragog.surface_half_cell
+        and ie.surface_bc_mode == 'flux'
+        and instance.atmos_clim.surf_state != 'skin'
+    ):
+        raise ValueError(
+            "interior_energetics.aragog.surface_half_cell needs atmos_clim.surf_state='skin' "
+            "when interior_energetics.surface_bc_mode='flux'"
+        )
+
+
 @define
 class Config:
     """Root config parameters.
@@ -417,6 +432,7 @@ class Config:
         validator=(
             tides_enabled_orbit,
             boundary_requires_fixed_surface_state,
+            surface_half_cell_needs_skin,
         ),
     )
     outgas: Outgas = field(factory=Outgas)

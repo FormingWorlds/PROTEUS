@@ -36,7 +36,7 @@ from proteus.interior_energetics.common import Interior_t
 from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, PALEOS_EOS_PREFIXES
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
-from proteus.utils.constants import radnuc_data
+from proteus.utils.constants import radnuc_data, secs_per_year
 from proteus.utils.helper import format_subyear_time, parse_subyear_time, snapshot_path_for_time
 
 log = logging.getLogger('fwl.' + __name__)
@@ -411,6 +411,22 @@ def resolve_core_density(config: Config, hf_row: dict, outdir: str) -> float:
     return rho_core
 
 
+def _surface_flux_int(
+    out, hf_row: dict, area_surf: float, surface_bc_mode: str, half_cell: bool
+):
+    """Interior surface flux for the helpfile [W/m^2], positive outward.
+
+    With the half-cell skin it is the call-mean flux Aragog applied,
+    ``-step_dE_F_int_J / (area dt)``, so a table-edge cutoff shows up as
+    ``F_int < F_atm``. Otherwise flux mode reports ``F_atm`` and grey-body
+    mode the surface node flux.
+    """
+    dt_s = float(out.dt_actual) * secs_per_year
+    if half_cell and dt_s > 0.0:
+        return -float(out.step_dE_F_int_J) / (area_surf * dt_s)
+    return float(out.heat_flux[-1]) if surface_bc_mode == 'grey_body' else hf_row['F_atm']
+
+
 def _estimate_T_pot(out) -> float:
     """Estimate potential temperature from SolverOutput.
 
@@ -633,6 +649,12 @@ class AragogRunner:
         #   setting for parity runs, so both solvers follow the identical
         #   physical law.
         _aragog_outer_bc = 1 if config.interior_energetics.surface_bc_mode == 'grey_body' else 4
+        # surface_half_cell: grey body with the conductive skin across the top half cell
+        # (BC 6); in flux mode the half cell reaches the atmosphere's skin instead.
+        half_cell = config.interior_energetics.aragog.surface_half_cell
+        if half_cell and _aragog_outer_bc == 1:
+            _aragog_outer_bc = 6
+        half_cell_kwargs = {'table_edge_cutoff': True} if half_cell else {}
         # Core BC mode from config. Valid values:
         #   'energy_balance' (default, capacitance-weighted core cooling)
         #   'quasi_steady'   (alpha-factor approximation)
@@ -670,6 +692,7 @@ class AragogRunner:
             param_utbl_const=config.interior_energetics.param_utbl_const,
             # core BC mode (the 'energy_balance' option is available)
             core_bc=core_bc_str,
+            **half_cell_kwargs,
         )
 
         # Define the inner_radius for the mesh.
@@ -1290,6 +1313,15 @@ class AragogRunner:
                     # param_utbl=True is set.
                     param_utbl=bool(getattr(bc_cfg, 'param_utbl', False)),
                     param_utbl_const=float(getattr(bc_cfg, 'param_utbl_const', 0.0)),
+                    **(
+                        dict(
+                            table_edge_cutoff=True,
+                            S_table_edge=solver.entropy_eos.S_min_solid,
+                            phi_rheo=solver._phi_rheo,
+                        )
+                        if getattr(bc_cfg, 'table_edge_cutoff', False)
+                        else {}
+                    ),
                 )
                 # ── A2: per-step radio + frozen tidal ──
                 # The static heating array carries only the time-
@@ -1937,6 +1969,7 @@ class AragogRunner:
             interior_o=interior_o,
             surface_d=self._config.atmos_clim.surface_d,
             surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
+            surface_half_cell=self._config.interior_energetics.aragog.surface_half_cell,
         )
 
         # Store arrays on interior object for inter-module access.
@@ -2355,6 +2388,7 @@ class AragogRunner:
         interior_o=None,
         surface_d: float = 0.0,
         surface_bc_mode: str = 'flux',
+        surface_half_cell: bool = False,
     ) -> dict:
         """Build the PROTEUS helpfile dict from SolverOutput.
 
@@ -2376,6 +2410,12 @@ class AragogRunner:
             ``F_atm``. In ``'grey_body'`` mode Aragog computes its own
             surface flux, so ``F_int`` is taken from the surface heat-flux
             node instead.
+        surface_half_cell : bool, optional
+            ``interior_energetics.aragog.surface_half_cell``. When True,
+            ``F_int`` is the call-mean surface flux Aragog applied (its
+            per-call surface energy integral), which differs from ``F_atm``
+            when the table-edge cutoff acts, and the top half-cell columns
+            are filled.
         """
         log.info(
             'Aragog entropy: T_surf=%.0f K, T_cmb=%.0f K, Phi=%.3f, status=%d',
@@ -2434,8 +2474,8 @@ class AragogRunner:
             # so this column reflects the interior solver rather than the
             # atmosphere. out.heat_flux is positive-outward (W/m^2), the same
             # sign convention as F_atm.
-            'F_int': (
-                float(out.heat_flux[-1]) if surface_bc_mode == 'grey_body' else hf_row['F_atm']
+            'F_int': _surface_flux_int(
+                out, hf_row, area_surf, surface_bc_mode, surface_half_cell
             ),
             'M_mantle_liquid': out.M_mantle_liquid,
             'M_mantle_solid': out.M_mantle_solid,
@@ -2446,6 +2486,12 @@ class AragogRunner:
             # exceeds a minimal threshold (indicates active convection). Falls
             # back to T_magma when the entire mantle is convective.
             'T_pot': _estimate_T_pot(out),
+            # Top half cell, read by the atmosphere skin (0 when the option is off).
+            'T_top_cell': float(out.T_top_cell) if surface_half_cell else 0.0,
+            'G_top_half': float(out.surface_half_cell_conductance)
+            if surface_half_cell
+            else 0.0,
+            'w_solid_top': float(out.surface_solid_weight) if surface_half_cell else 0.0,
             'T_cmb': out.T_core,
             'T_cmb_node': float(out.T_basic[0]),
             'E_th_mantle': out.E_th,

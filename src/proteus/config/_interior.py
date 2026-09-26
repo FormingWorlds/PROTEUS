@@ -302,6 +302,19 @@ class Aragog:
     matching field so both backends drive the same outer-loop convergence
     criterion."""
 
+    surface_half_cell: bool = field(default=False)
+    """Conduct surface heat across the top half cell of the Aragog mesh.
+    When True, the half cell between the top cell centre and the surface
+    (conductance ``k_top / dr_half``, weighted by the solid fraction of the
+    top cell) sits in series with the atmosphere's conductive skin
+    (``atmos_clim.surface_d``, ``surface_k``), so a solid lid conducts heat to
+    the surface instead of radiating at the top-node temperature. A molten top
+    cell (melt fraction 0.5 or above) keeps the skin unchanged. In grey-body
+    mode the Aragog surface boundary becomes its conductive-skin grey body
+    (outer BC 6). Aragog also scales the outgoing flux down near the lower
+    entropy edge of its solid table. Flux mode needs
+    ``atmos_clim.surf_state = 'skin'``."""
+
 
 def valid_interiordummy(instance, attribute, value):
     """Dummy interior requires the liquidus to sit above the solidus."""

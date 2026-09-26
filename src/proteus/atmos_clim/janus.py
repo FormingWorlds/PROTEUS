@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.common import clip_radius_to_hill, get_oarr_from_parr
+from proteus.atmos_clim.common import (
+    clip_radius_to_hill,
+    get_oarr_from_parr,
+    surface_skin_inputs,
+)
 from proteus.utils.constants import vap_list, vol_list, gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, format_subyear_time
 
@@ -130,7 +134,7 @@ def UpdateStateAtm(atm, config: Config, hf_row: dict, tropopause):
 
     atm.instellation = hf_row['F_ins']
     atm.albedo_pl = hf_row['albedo_pl']
-    atm.tmp_magma = hf_row['T_magma']
+    atm.tmp_magma, atm.skin_d = surface_skin_inputs(config, hf_row)
     if tropopause == 'skin':
         atm.trppT = hf_row['T_skin']
     else:

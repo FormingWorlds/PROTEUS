@@ -1816,6 +1816,54 @@
       "consumers": []
     },
     {
+      "name": "T_top_cell",
+      "unit": "K",
+      "description": "temperature of the top interior cell",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [
+        "atmos_clim"
+      ]
+    },
+    {
+      "name": "G_top_half",
+      "unit": "W m-2 K-1",
+      "description": "conductance k/dr of the top interior half cell",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [
+        "atmos_clim"
+      ]
+    },
+    {
+      "name": "w_solid_top",
+      "unit": "1",
+      "description": "solid weight of the top interior cell",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [
+        "atmos_clim"
+      ]
+    },
+    {
       "name": "E_th_mantle",
       "unit": "J",
       "description": "thermal-energy proxy (do not use for conservation)",

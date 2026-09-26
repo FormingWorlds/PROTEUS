@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.atmos_clim.common import clip_radius_to_hill
+from proteus.atmos_clim.common import clip_radius_to_hill, surface_skin_inputs
 from proteus.utils.constants import const_R, const_sigma, gas_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -64,7 +64,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     albedo_pl = float(hf_row['albedo_pl'])
     inst_sf = config.orbit.s0_factor
     albedo_s = config.atmos_clim.surf_greyalbedo
-    skin_d = config.atmos_clim.surface_d
+    T_skin_base, skin_d = surface_skin_inputs(config, hf_row)
     skin_k = config.atmos_clim.surface_k
 
     # Copy variables
@@ -104,12 +104,17 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         # We need to solve for the state where fl_N = f_skn
         # This function takes T_surf_atm as the input value, and returns fl_N - f_skn
         def _resid(x):
-            F_skn = skin_k / skin_d * (hf_row['T_magma'] - x)
+            F_skn = skin_k / skin_d * (T_skin_base - x)
             _f = _calc_fluxes(x)
             return _f['fl_N'] - F_skn
 
         r = root_scalar(
-            _resid, method='secant', x0=T_magma, x1=T_magma - 10.0, xtol=1.0e-7, maxiter=40
+            _resid,
+            method='secant',
+            x0=T_skin_base,
+            x1=T_skin_base - 10.0,
+            xtol=1.0e-7,
+            maxiter=40,
         )
         T_surf_atm = float(r.root)
         fluxes = _calc_fluxes(T_surf_atm)

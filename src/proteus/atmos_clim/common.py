@@ -347,6 +347,43 @@ def get_spfile_path(fwl_dir: str, config: Config):
     return os.path.join(fwl_dir, 'spectral_files', group, bands, group) + '.sf'
 
 
+def surface_skin_inputs(config: Config, hf_row: dict) -> tuple[float, float]:
+    """Base temperature and thickness of the conductive skin under the atmosphere.
+
+    With ``interior_energetics.aragog.surface_half_cell`` the Aragog top half
+    cell (conductance ``G_top_half``, solid weight ``w_solid_top``) sits in
+    series with the skin: ``1 / G_eff = surface_d / surface_k + w / G_top_half``,
+    returned as the equivalent thickness ``surface_k / G_eff``, and the base
+    temperature blends from ``T_magma`` to ``T_top_cell`` with the same weight.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration.
+    hf_row : dict
+        Current helpfile row.
+
+    Returns
+    -------
+    T_base : float
+        Temperature under the skin [K]; ``T_magma`` without the half cell.
+    skin_d : float
+        Skin thickness for the skin flux ``surface_k / skin_d (T_base - T_surf)``
+        [m]; ``atmos_clim.surface_d`` without the half cell.
+    """
+    T_magma = float(hf_row['T_magma'])
+    skin_d = float(config.atmos_clim.surface_d)
+    ie = config.interior_energetics
+    if not (ie.module == 'aragog' and ie.aragog.surface_half_cell):
+        return T_magma, skin_d
+    w = float(hf_row.get('w_solid_top', 0.0))
+    G = float(hf_row.get('G_top_half', 0.0))
+    if not (w > 0.0 and G > 0.0):
+        return T_magma, skin_d
+    T_base = (1.0 - w) * T_magma + w * float(hf_row['T_top_cell'])
+    return T_base, skin_d + w * float(config.atmos_clim.surface_k) / G
+
+
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:
     """Limit a level radius to the Hill radius, never below the solid body.
 
