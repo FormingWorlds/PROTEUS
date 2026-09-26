@@ -17,25 +17,25 @@ authors:
     affiliation: 1
   - name: Harrison Nicholls
     orcid: 0000-0002-8368-4641
-    affiliation: 5
+    affiliation: 2
   - name: Mara Attia
     orcid: 0000-0002-7971-7439
     affiliation: 1
   - name: Laurent Soucasse
     orcid: 0000-0002-5422-8794
-    affiliation: 9, 3
+    affiliation: 3, 4
   - name: Patrick Bos
     orcid: 0000-0002-6033-960X
-    affiliation: 1, 14
+    affiliation: 1, 5
   - name: Mariana Sastre
     orcid: 0009-0008-7799-7976
     affiliation: 1
   - name: Dan J. Bower
     orcid: 0000-0002-0673-4860
-    affiliation: 4
+    affiliation: 6
   - name: Robb Calder
     orcid: 0009-0002-9247-2437
-    affiliation: 5
+    affiliation: 2
   - name: Lorenzo Cesario
     orcid: 0009-0009-7228-7809
     affiliation: 1
@@ -47,16 +47,16 @@ authors:
     affiliation: 1
   - name: Mohammad Farhat
     orcid: 0000-0001-7864-6627
-    affiliation: 15, 16
+    affiliation: 7, 8
   - name: Mark Hammond
     orcid: 0000-0002-6893-522X
-    affiliation: 2
+    affiliation: 9
   - name: Leoni Janssen
     orcid: 0009-0002-9902-731X
-    affiliation: 11
+    affiliation: 10
   - name: Tadahiro Kimura
     orcid: 0000-0001-8477-2523
-    affiliation: 13, 1
+    affiliation: 11, 1
   - name: Imre Kisvárdai
     orcid: 0009-0009-7323-6755
     affiliation: 1
@@ -65,70 +65,70 @@ authors:
     affiliation: 1
   - name: Flavia C. Pascal
     orcid: 0009-0007-4663-1456
-    affiliation: 1, 5
+    affiliation: 1, 2
   - name: Raymond T. Pierrehumbert
     orcid: 0000-0002-5887-1197
-    affiliation: 2
+    affiliation: 9
   - name: Emma Postolec
     orcid: 0009-0009-5036-3049
     affiliation: 1
   - name: Ben Riegler
     orcid: 0009-0003-9173-9539
-    affiliation: 6
+    affiliation: 12
   - name: Sara Seager
     orcid: 0000-0002-6892-6948
-    affiliation: 10
+    affiliation: 13
   - name: Oliver Shorttle
     orcid: 0000-0002-8713-1446
-    affiliation: 5, 8
+    affiliation: 2, 14
   - name: Stef Smeets
     orcid: 0000-0002-5413-9038
-    affiliation: 3
+    affiliation: 4
   - name: Hanno Spreeuw
     orcid: 0000-0002-5057-0322
-    affiliation: 3
+    affiliation: 4
   - name: Karen Stuitje
     orcid: 0009-0000-6847-4331
     affiliation: 1
   - name: Shang-Min Tsai
     orcid: 0000-0002-8163-4608
-    affiliation: 7
+    affiliation: 15
   - name: Anna Grace Ulses
     orcid: 0000-0002-9031-0824
-    affiliation: 12
+    affiliation: 16
 
 affiliations:
  - name: Kapteyn Astronomical Institute, University of Groningen, Groningen, The Netherlands
    index: 1
- - name: Atmospheric, Oceanic and Planetary Physics, University of Oxford, Oxford, United Kingdom
-   index: 2
- - name: Netherlands eScience Center, Amsterdam, The Netherlands
-   index: 3
- - name: Department of Earth and Planetary Sciences, ETH Zurich, Zurich, Switzerland
-   index: 4
  - name: Institute of Astronomy, University of Cambridge, Cambridge, United Kingdom
-   index: 5
- - name: School of Computation, Information and Technology, Technical University of Munich, Munich, Germany
-   index: 6
- - name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei, Taiwan
-   index: 7
- - name: Department of Earth Sciences, University of Cambridge, Cambridge, United Kingdom
-   index: 8
+   index: 2
  - name: IMEC, Leuven, Belgium
-   index: 9
- - name: Department of Earth, Atmospheric and Planetary Sciences, Massachusetts Institute of Technology, Cambridge, MA, USA
-   index: 10
- - name: Leiden Observatory, Leiden University, Leiden, The Netherlands
-   index: 11
- - name: University of Washington, Seattle, WA, USA
-   index: 12
- - name: UTokyo Organization for Planetary Space Science, University of Tokyo, Tokyo, Japan
-   index: 13
+   index: 3
+ - name: Netherlands eScience Center, Amsterdam, The Netherlands
+   index: 4
  - name: Center for Information Technology, University of Groningen, Groningen, The Netherlands
-   index: 14
+   index: 5
+ - name: Department of Earth and Planetary Sciences, ETH Zurich, Zurich, Switzerland
+   index: 6
  - name: Department of Astronomy, University of California, Berkeley, Berkeley, CA, USA
-   index: 15
+   index: 7
  - name: Department of Earth and Planetary Science, University of California, Berkeley, Berkeley, CA, USA
+   index: 8
+ - name: Atmospheric, Oceanic and Planetary Physics, University of Oxford, Oxford, United Kingdom
+   index: 9
+ - name: Leiden Observatory, Leiden University, Leiden, The Netherlands
+   index: 10
+ - name: UTokyo Organization for Planetary Space Science, University of Tokyo, Tokyo, Japan
+   index: 11
+ - name: School of Computation, Information and Technology, Technical University of Munich, Munich, Germany
+   index: 12
+ - name: Department of Earth, Atmospheric and Planetary Sciences, Massachusetts Institute of Technology, Cambridge, MA, USA
+   index: 13
+ - name: Department of Earth Sciences, University of Cambridge, Cambridge, United Kingdom
+   index: 14
+ - name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei, Taiwan
+   index: 15
+ - name: University of Washington, Seattle, WA, USA
    index: 16
 
 date: 25 September 2026
