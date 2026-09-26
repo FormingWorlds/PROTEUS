@@ -360,6 +360,11 @@ select = [
 	"E",  # pycodestyle (error)
 	"W",  # pycodestyle (warning)
     "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "C4",   # flake8-comprehensions
+    "PIE",  # flake8-pie
+    "NPY",  # NumPy-specific rules
 ]
 ignore = [
     "E501", # Line too long
