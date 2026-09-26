@@ -758,7 +758,7 @@ class AragogRunner:
         energy_kwargs = {
             'conduction': config.interior_energetics.trans_conduction,
             'convection': config.interior_energetics.trans_convection,
-            'gravitational_separation': (config.interior_energetics.trans_grav_sep),
+            'gravitational_separation': config.interior_energetics.trans_grav_sep,
             'mixing': config.interior_energetics.trans_mixing,
             'radionuclides': config.interior_energetics.heat_radiogenic,
             'tidal': config.interior_energetics.heat_tidal,

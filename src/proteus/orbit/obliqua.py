@@ -511,7 +511,7 @@ def LN_from_lookup(hf_row: dict, dirs: dict, tides_o: Tides_t, config: Config):
     # Retrieve or load satellite lookup data
     try:
         lookup = tides_o.get(primary='satellite_dict', perturber='planet')
-    except KeyError as e:
+    except KeyError:
         file_path = config.orbit.satellite.love_number_sat
 
         # Check if the file path is specified
@@ -519,7 +519,7 @@ def LN_from_lookup(hf_row: dict, dirs: dict, tides_o: Tides_t, config: Config):
             UpdateStatusfile(dirs, 26)
             raise ValueError(
                 'Satellite tidal data file path (`config.orbit.satellite.love_number_sat`) is not specified.'
-            ) from e
+            ) from None
 
         # check the file extension to determine how to read the lookup data or generate it if it doesn't exist
         if file_path.endswith('.nc'):

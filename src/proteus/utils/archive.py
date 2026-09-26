@@ -46,7 +46,7 @@ def _snapshot_time(name: str) -> float | None:
         itself.
     """
 
-    if not (name.endswith(('.nc', '.json'))):
+    if not name.endswith(('.nc', '.json')):
         return None
     try:
         return parse_subyear_time(name.rsplit('.', 1)[0].split('_')[0])

@@ -463,11 +463,7 @@ def run_consistency_tests():
     if not MODULE_LOADED:
         print('❌ Cannot load data module - skipping tests')
         return False
-    DATA_SOURCE_MAP = (
-        data_module.DATA_SOURCE_MAP
-        if hasattr(data_module, 'DATA_SOURCE_MAP')
-        else data_module.DATA_SOURCE_MAP
-    )
+    DATA_SOURCE_MAP = data_module.DATA_SOURCE_MAP
 
     # Test all categories in DATA_SOURCE_MAP
     # Focus on stellar data (MORS, Phoenix) first, then test all others

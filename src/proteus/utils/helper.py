@@ -112,7 +112,7 @@ def format_subyear_time(time: float) -> str:
     str
         Formatted time token, e.g. ``'884p700'``.
     """
-    return (f'{time:.3f}').replace('.', 'p')
+    return f'{time:.3f}'.replace('.', 'p')
 
 
 def parse_subyear_time(token: str) -> float:
