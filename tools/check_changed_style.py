@@ -39,6 +39,7 @@ import sys
 import tokenize
 from pathlib import Path
 
+QUOTES = ('"""', "'''", 'r"""', "r'''")
 HUNK = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@')
 
 
@@ -66,7 +67,7 @@ def run(cmd: list[str], cwd: Path) -> str:
     CheckError
         If the command exits with a non-zero status.
     """
-    res = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    res = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding='utf-8')
     if res.returncode != 0:
         raise CheckError(f'{" ".join(cmd[:3])} failed: {res.stderr.strip()}')
     return res.stdout
@@ -176,7 +177,10 @@ def touches(s: tuple, lo: int, hi: int, col: int | None = None) -> bool:
         return (s[2][-1] if s[0] < lo else s[2][0]).lstrip().startswith('#')
     text = [(len(t) - len(t.lstrip()), t.lstrip()) for t in s[2] if t.strip()] or [(0, '')]
     if s[0] < lo:
-        return any(i == col and t.startswith('@') for i, t in text)
+        heads = [t for i, t in text if i == col]
+        return any(t.startswith('@') for t in heads) and not any(
+            t.startswith(('def ', 'async def ', 'class ')) for t in heads
+        )
     return text[0][0] > col
 
 
@@ -234,8 +238,8 @@ def docstring_findings(root: Path, files: dict[str, tuple[bool, list, ast.Module
             doc = tree.body[0] if ast.get_docstring(tree) is not None else None
             top = tree.body[0].lineno if tree.body else 1
             changed = is_new or any(
-                (doc is not None and touches(s, doc.lineno, doc.end_lineno))
-                or (s[0] <= top and any(q in t for t in s[2] for q in ('"""', "'''")))
+                (doc is not None and doc.lineno <= s[0] and s[1] <= doc.end_lineno)
+                or (s[0] <= top and next((t for t in s[2] if t.strip()), '').startswith(QUOTES))
                 for s in spans
             )
         if changed:
@@ -311,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
             files[rel] = (is_new, spans, tree)
             found += comment_findings(rel, source, spans, args.max_comment_lines)
         found += docstring_findings(root, files)
-    except (CheckError, OSError, ValueError) as e:
+    except (CheckError, OSError, ValueError, tokenize.TokenError) as e:
         print(f'check_changed_style: {e}', file=sys.stderr)
         return 2
     for rel, row, msg in sorted(found):

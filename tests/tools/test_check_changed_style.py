@@ -212,7 +212,10 @@ def test_paths_limit_the_check(repo, monkeypatch, capsys):
         'mod.py:4: D103 Missing docstring in public function'
     ]
     assert _ccs.main(['--base', 'main', '..']) == 1
-    assert len(capsys.readouterr().out.splitlines()) == 2
+    assert capsys.readouterr().out.splitlines() == [
+        'mod.py:4: D103 Missing docstring in public function',
+        'other.py:4: D103 Missing docstring in public function',
+    ]
 
 
 def test_error_contract(repo, monkeypatch, capsys):
@@ -253,9 +256,9 @@ def test_decorator_deletion_and_rename(repo, monkeypatch, capsys):
     assert (code, out) == (1, ['mod.py:4: D103 Missing docstring in public function'])
     _git(repo, 'checkout', '-q', '--', 'mod.py')
     _git(repo, 'mv', 'mod.py', 'moved.py')
-    edit = base.replace('return 2 * x', 'return x + x')
+    edit = base.replace('return x\n', 'return +x\n')
     code, out = _check(repo, monkeypatch, capsys, {'moved.py': edit})
-    assert (code, out) == (0, [])
+    assert (code, out) == (1, ['moved.py:7: D103 Missing docstring in public function'])
 
 
 def test_module_docstring_rules(repo, monkeypatch, capsys):
@@ -288,3 +291,15 @@ def test_diff_parsing_is_robust(repo, monkeypatch, capsys):
         'mod.py:4: D103 Missing docstring in public function',
         'mod.py:18: D103 Missing docstring in public function',
     ]
+
+
+def test_deleted_neighbours_do_not_flag_untouched_code(repo, monkeypatch, capsys):
+    """Deleting a decorated function or a documented first function flags nothing else."""
+    base = '"""M."""\n\n\n@dec\ndef prev():\n    """P."""\n\n\ndef nxt(x):\n    return x\n'
+    first = 'def f():\n    """F."""\n    return 1\n\n\nX = 1\n'
+    _base(repo, {'a.py': base, 'b.py': first})
+    after = '"""M."""\n\n\ndef nxt(x):\n    return x\n'
+    code, out = _check(repo, monkeypatch, capsys, {'a.py': after, 'b.py': 'X = 1\n'})
+    assert (code, out) == (0, [])
+    code, out = _check(repo, monkeypatch, capsys, {'b.py': 'X = 2\n'})
+    assert (code, out) == (0, [])
