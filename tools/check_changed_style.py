@@ -39,7 +39,6 @@ import sys
 import tokenize
 from pathlib import Path
 
-QUOTES = ('"""', "'''")
 HUNK = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@')
 
 
@@ -105,7 +104,7 @@ def changed_spans(root: Path, base: str) -> dict[str, tuple[bool, list]]:
             '--no-ext-diff',
             '--dst-prefix=b/',
             '-M',
-            '--diff-filter=AMR',
+            '--diff-filter=ACMR',
             merge_base,
             '--',
             '*.py',
@@ -125,11 +124,8 @@ def changed_spans(root: Path, base: str) -> dict[str, tuple[bool, list]]:
         elif (m := HUNK.match(line)) and path is not None:
             header, deleted = False, []
             start, count = int(m.group(1)), int(m.group(2) or 1)
-            if count == 0:
-                out[path][1].append((start, start + 1, deleted))
-            else:
-                out[path][1].append((start, start, deleted))
-                out[path][1].extend((n, n, []) for n in range(start + 1, start + count))
+            out[path][1].append((start, start + (count == 0), deleted))
+            out[path][1].extend((n, n, []) for n in range(start + 1, start + count))
         elif deleted is not None and line.startswith('-'):
             deleted.append(line[1:])
     return out
@@ -178,12 +174,10 @@ def touches(s: tuple, lo: int, hi: int, col: int | None = None) -> bool:
         return False
     if col is None:
         return (s[2][-1] if s[0] < lo else s[2][0]).lstrip().startswith('#')
-    text = [t for t in s[2] if t.strip()] or ['']
-    edge = text[-1] if s[0] < lo else text[0]
-    indent = len(edge) - len(edge.lstrip())
+    text = [(len(t) - len(t.lstrip()), t.lstrip()) for t in s[2] if t.strip()] or [(0, '')]
     if s[0] < lo:
-        return indent == col and edge.lstrip().startswith('@')
-    return indent > col
+        return any(i == col and t.startswith('@') for i, t in text)
+    return text[0][0] > col
 
 
 def docstring_findings(root: Path, files: dict[str, tuple[bool, list, ast.Module]]) -> list:
@@ -239,13 +233,10 @@ def docstring_findings(root: Path, files: dict[str, tuple[bool, list, ast.Module
         else:
             doc = tree.body[0] if ast.get_docstring(tree) is not None else None
             top = tree.body[0].lineno if tree.body else 1
-            changed = (
-                is_new
-                or (
-                    doc is not None
-                    and any(touches(s, doc.lineno, doc.end_lineno) for s in spans)
-                )
-                or any(s[0] <= top and any(q in t for t in s[2] for q in QUOTES) for s in spans)
+            changed = is_new or any(
+                (doc is not None and touches(s, doc.lineno, doc.end_lineno))
+                or (s[0] <= top and any(q in t for t in s[2] for q in ('"""', "'''")))
+                for s in spans
             )
         if changed:
             found.append((rel, row, f'{d["code"]} {d["message"]}'))
@@ -309,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
         files, found = {}, []
         wanted = {Path(p).resolve().relative_to(root.resolve()).as_posix() for p in args.paths}
         for rel, (is_new, spans) in changed_spans(root, args.base).items():
-            if args.paths and rel not in wanted:
+            if args.paths and not any(Path(rel).is_relative_to(w) for w in wanted):
                 continue
             source = (root / rel).read_text(encoding='utf-8')
             try:
@@ -320,7 +311,7 @@ def main(argv: list[str] | None = None) -> int:
             files[rel] = (is_new, spans, tree)
             found += comment_findings(rel, source, spans, args.max_comment_lines)
         found += docstring_findings(root, files)
-    except (CheckError, OSError, ValueError, tokenize.TokenError) as e:
+    except (CheckError, OSError, ValueError) as e:
         print(f'check_changed_style: {e}', file=sys.stderr)
         return 2
     for rel, row, msg in sorted(found):

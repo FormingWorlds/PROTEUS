@@ -208,7 +208,11 @@ def test_paths_limit_the_check(repo, monkeypatch, capsys):
     (repo / 'sub').mkdir()
     monkeypatch.chdir(repo / 'sub')
     assert _ccs.main(['--base', 'main', '../mod.py']) == 1
-    assert capsys.readouterr().out.startswith('mod.py:4: D103')
+    assert capsys.readouterr().out.splitlines() == [
+        'mod.py:4: D103 Missing docstring in public function'
+    ]
+    assert _ccs.main(['--base', 'main', '..']) == 1
+    assert len(capsys.readouterr().out.splitlines()) == 2
 
 
 def test_error_contract(repo, monkeypatch, capsys):
@@ -220,9 +224,9 @@ def test_error_contract(repo, monkeypatch, capsys):
     assert code == 1
     assert len(out) == 1 and out[0].startswith('mod.py:12: E999 syntax error')
     (repo / 'bad.py').write_bytes(b'"""M."""\nX = "\xe9"\n')
-    code, out = _check(repo, monkeypatch, capsys, {})
-    assert code == 2
-    assert out == []
+    _git(repo, 'add', 'bad.py')
+    assert _ccs.main(['--base', 'main']) == 2
+    assert "can't decode" in capsys.readouterr().err
 
 
 def test_boundary_deletions_touch_their_block_or_node(repo, monkeypatch, capsys):
@@ -241,7 +245,9 @@ def test_boundary_deletions_touch_their_block_or_node(repo, monkeypatch, capsys)
 
 def test_decorator_deletion_and_rename(repo, monkeypatch, capsys):
     """Removing a decorator changes the function; a renamed file keeps its history."""
-    base = LEGACY.replace('def legacy(x):', '@staticmethod\ndef legacy(x):')
+    base = LEGACY.replace(
+        'def legacy(x):', '@pytest.mark.parametrize(\n    "x", [1]\n)\ndef legacy(x):'
+    )
     _base(repo, {'mod.py': base})
     code, out = _check(repo, monkeypatch, capsys, {'mod.py': LEGACY})
     assert (code, out) == (1, ['mod.py:4: D103 Missing docstring in public function'])
