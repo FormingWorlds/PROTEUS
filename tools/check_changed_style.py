@@ -18,7 +18,10 @@ the PROTEUS ecosystem; keep the copies identical.
 
 Usage::
 
-    python tools/check_changed_style.py [--base REF] [--max-comment-lines N]
+    python tools/check_changed_style.py [--base REF] [--max-comment-lines N] [PATH ...]
+
+With paths, only those changed files are checked (pre-commit passes the files
+it selects, so its ``exclude`` patterns apply).
 
 Exit status: 0 when clean, 1 when there are findings, 2 on a git or ruff error.
 Requires ``ruff`` in the running Python environment.
@@ -270,11 +273,15 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--base', default='origin/main', help='base ref (default origin/main)')
     ap.add_argument('--max-comment-lines', type=int, default=4)
+    ap.add_argument('paths', nargs='*', help='limit the check to these files')
     args = ap.parse_args(argv)
     try:
         root = Path(run(['git', 'rev-parse', '--show-toplevel'], Path.cwd()).strip())
         files, found = {}, []
+        wanted = {Path(p).resolve().relative_to(root.resolve()).as_posix() for p in args.paths}
         for rel, (is_new, spans) in changed_spans(root, args.base).items():
+            if args.paths and rel not in wanted:
+                continue
             source = (root / rel).read_text(encoding='utf-8')
             try:
                 tree = ast.parse(source)

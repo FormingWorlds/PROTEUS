@@ -195,6 +195,22 @@ def test_new_file_needs_module_docstring(repo, monkeypatch, capsys):
     assert out == ['new.py:1: D100 Missing docstring in public module']
 
 
+def test_paths_limit_the_check(repo, monkeypatch, capsys):
+    """Given paths, only those changed files are checked, from any directory."""
+    _base(repo, {'other.py': LEGACY})
+    edit = LEGACY.replace('return x\n', 'return +x\n')
+    code, out = _check(repo, monkeypatch, capsys, {'mod.py': edit, 'other.py': edit})
+    assert (code, len(out)) == (1, 2)
+    assert _ccs.main(['--base', 'main', 'other.py']) == 1
+    assert capsys.readouterr().out.splitlines() == [
+        'other.py:4: D103 Missing docstring in public function'
+    ]
+    (repo / 'sub').mkdir()
+    monkeypatch.chdir(repo / 'sub')
+    assert _ccs.main(['--base', 'main', '../mod.py']) == 1
+    assert capsys.readouterr().out.startswith('mod.py:4: D103')
+
+
 def test_error_contract(repo, monkeypatch, capsys):
     """A bad base ref exits 2 and a syntax error in a changed file is a finding."""
     monkeypatch.chdir(repo)

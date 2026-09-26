@@ -42,7 +42,6 @@ repos:
         language: python
         additional_dependencies: [ruff==0.15.16]
         types: [python]
-        pass_filenames: false
 
 exclude: 'examples/.*'
 exclude: |
