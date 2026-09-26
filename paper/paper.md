@@ -119,7 +119,7 @@ affiliations:
    index: 11
  - name: University of Washington, Seattle, WA, USA
    index: 12
- - name: UTokyo Organization for Planetary and Space Science, University of Tokyo, Tokyo, Japan
+ - name: UTokyo Organization for Planetary Space Science, University of Tokyo, Tokyo, Japan
    index: 13
  - name: Center for Information Technology, University of Groningen, Groningen, The Netherlands
    index: 14
