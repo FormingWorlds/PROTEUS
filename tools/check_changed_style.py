@@ -7,7 +7,7 @@ ref (default ``origin/main``) and reports two kinds of finding:
 * ruff ``D`` rules with the NumPy convention, for each function, method or
   class whose own lines the branch adds or changes (lines of a nested function
   or class count for that node only), and for the module docstring of a new
-  file or of a file whose module docstring changes;
+  non-empty file or of a file whose module docstring changes;
 * full-line comment blocks longer than ``--max-comment-lines`` lines that
   contain an added or changed line. A block that starts at line 1 (a file
   header) is exempt.
