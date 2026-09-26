@@ -219,3 +219,66 @@ def test_error_contract(repo, monkeypatch, capsys):
     code, out = _check(repo, monkeypatch, capsys, {'mod.py': LEGACY + '\ndef broken(:\n'})
     assert code == 1
     assert len(out) == 1 and out[0].startswith('mod.py:12: E999 syntax error')
+    (repo / 'bad.py').write_bytes(b'"""M."""\nX = "\xe9"\n')
+    code, out = _check(repo, monkeypatch, capsys, {})
+    assert code == 2
+    assert out == []
+
+
+def test_boundary_deletions_touch_their_block_or_node(repo, monkeypatch, capsys):
+    """Deleting the first or last line of a long block, or a function's last line, counts."""
+    block = ''.join(f'# old {i}\n' for i in range(7))
+    base = LEGACY.replace('    return x\n', '    y = x\n    return y\n') + block
+    _base(repo, {'mod.py': base})
+    for gone in ('# old 0\n', '# old 6\n'):
+        code, out = _check(repo, monkeypatch, capsys, {'mod.py': base.replace(gone, '')})
+        assert (code, out) == (1, ['mod.py:12: CMT comment block of 6 lines (max 4)'])
+    code, out = _check(
+        repo, monkeypatch, capsys, {'mod.py': base.replace('    return y\n', '')}
+    )
+    assert (code, out) == (1, ['mod.py:4: D103 Missing docstring in public function'])
+
+
+def test_decorator_deletion_and_rename(repo, monkeypatch, capsys):
+    """Removing a decorator changes the function; a renamed file keeps its history."""
+    base = LEGACY.replace('def legacy(x):', '@staticmethod\ndef legacy(x):')
+    _base(repo, {'mod.py': base})
+    code, out = _check(repo, monkeypatch, capsys, {'mod.py': LEGACY})
+    assert (code, out) == (1, ['mod.py:4: D103 Missing docstring in public function'])
+    _git(repo, 'checkout', '-q', '--', 'mod.py')
+    _git(repo, 'mv', 'mod.py', 'moved.py')
+    edit = base.replace('return 2 * x', 'return x + x')
+    code, out = _check(repo, monkeypatch, capsys, {'moved.py': edit})
+    assert (code, out) == (0, [])
+
+
+def test_module_docstring_rules(repo, monkeypatch, capsys):
+    """D100 follows the module docstring, not a function on line 1."""
+    _base(repo, {'first.py': 'def f(x):\n    """F."""\n    return x\n'})
+    code, out = _check(
+        repo, monkeypatch, capsys, {'first.py': 'def f(x):\n    """F."""\n    return +x\n'}
+    )
+    assert (code, out) == (0, [])
+    code, out = _check(
+        repo, monkeypatch, capsys, {'mod.py': LEGACY.replace('"""Legacy module."""\n', '')}
+    )
+    assert code == 1
+    assert out[0] == 'mod.py:1: D100 Missing docstring in public module'
+
+
+def test_diff_parsing_is_robust(repo, monkeypatch, capsys):
+    """Content lines like diff headers, git diff.noprefix and line order do not break the check."""
+    _git(repo, 'config', 'diff.noprefix', 'true')
+    text = (
+        LEGACY
+        + '\nT = """\n++ not a header\n-- nor this\n"""\n'
+        + '\n\ndef late():\n    pass\n'
+    )
+    code, out = _check(
+        repo, monkeypatch, capsys, {'mod.py': text.replace('return x\n', 'return +x\n')}
+    )
+    assert code == 1
+    assert out == [
+        'mod.py:4: D103 Missing docstring in public function',
+        'mod.py:18: D103 Missing docstring in public function',
+    ]
