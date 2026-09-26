@@ -11,130 +11,110 @@ authors:
   given-names: "Tim"
   orcid: "https://orcid.org/0000-0002-3286-7683"
 
-
 - family-names: "Nicholls"
   given-names: "Harrison"
   orcid: "https://orcid.org/0000-0002-8368-4641"
 
-
-- given-names: "Mara"
-  family-names: "Attia"
+- family-names: "Attia"
+  given-names: "Mara"
   orcid: "https://orcid.org/0000-0002-7971-7439"
-
 
 - family-names: "Soucasse"
   given-names: "Laurent"
   orcid: "https://orcid.org/0000-0002-5422-8794"
 
-
-- given-names: "Patrick"
-  family-names: "Bos"
+- family-names: "Bos"
+  given-names: "Patrick"
   orcid: "https://orcid.org/0000-0002-6033-960X"
-
 
 - family-names: "Sastre"
   given-names: "Mariana"
   orcid: "https://orcid.org/0009-0008-7799-7976"
 
+- family-names: "Bower"
+  given-names: "Dan J."
+  orcid: "https://orcid.org/0000-0002-0673-4860"
+
+- family-names: "Calder"
+  given-names: "Robb"
+  orcid: "https://orcid.org/0009-0002-9247-2437"
+
+- family-names: "Cesario"
+  given-names: "Lorenzo"
+  orcid: "https://orcid.org/0009-0009-7228-7809"
+
+- family-names: "Decocq"
+  given-names: "Emeline"
+  orcid: "https://orcid.org/0009-0008-3326-9715"
+
+- family-names: "van Dijk"
+  given-names: "Marijn R."
+  orcid: "https://orcid.org/0009-0005-6677-1929"
+
+- family-names: "Farhat"
+  given-names: "Mohammad"
+  orcid: "https://orcid.org/0000-0001-7864-6627"
+
+- family-names: "Hammond"
+  given-names: "Mark"
+  orcid: "https://orcid.org/0000-0002-6893-522X"
+
+- family-names: "Janssen"
+  given-names: "Leoni"
+  orcid: "https://orcid.org/0009-0002-9902-731X"
+
+- family-names: "Kimura"
+  given-names: "Tadahiro"
+  orcid: "https://orcid.org/0000-0001-8477-2523"
+
+- family-names: "Kisvárdai"
+  given-names: "Imre"
+  orcid: "https://orcid.org/0009-0009-7323-6755"
+
+- family-names: "Panagiotou"
+  given-names: "Ioannis"
+  orcid: "https://orcid.org/0009-0005-9147-0431"
+
+- family-names: "Pascal"
+  given-names: "Flavia C."
+  orcid: "https://orcid.org/0009-0007-4663-1456"
+
+- family-names: "Pierrehumbert"
+  given-names: "Raymond T."
+  orcid: "https://orcid.org/0000-0002-5887-1197"
 
 - family-names: "Postolec"
   given-names: "Emma"
   orcid: "https://orcid.org/0009-0009-5036-3049"
 
-
-- family-names: "Bower"
-  given-names: "Dan J."
-  orcid: "https://orcid.org/0000-0002-0673-4860"
-
-
-- given-names: "Flavia C."
-  family-names: "Pascal"
-  orcid: "https://orcid.org/0009-0007-4663-1456"
-
-
-- given-names: "Robb"
-  family-names: "Calder"
-  orcid: "https://orcid.org/0009-0002-9247-2437"
-
-
-- given-names: "Ben"
-  family-names: "Riegler"
+- family-names: "Riegler"
+  given-names: "Ben"
   orcid: "https://orcid.org/0009-0003-9173-9539"
 
+- family-names: "Seager"
+  given-names: "Sara"
+  orcid: "https://orcid.org/0000-0002-6892-6948"
 
-- given-names: "Hanno"
-  family-names: "Spreeuw"
-  orcid: "https://orcid.org/0000-0002-5057-0322"
-
-
-- given-names: "Karen"
-  family-names: "Stuitje"
-  orcid: "https://orcid.org/0009-0000-6847-4331"
-
-
-- given-names: "Marijn R."
-  family-names: "van Dijk"
-  orcid: "https://orcid.org/0009-0005-6677-1929"
-
-
-- given-names: "Lorenzo"
-  family-names: "Cesario"
-  orcid: "https://orcid.org/0009-0009-7228-7809"
-
-
-- given-names: "Ioannis"
-  family-names: "Panagiotou"
-  orcid: "https://orcid.org/0009-0005-9147-0431"
-
-
-- given-names: "Imre"
-  family-names: "Kisvárdai"
-  orcid: "https://orcid.org/0009-0009-7323-6755"
-
-
-- given-names: "Emeline"
-  family-names: "Decocq"
-  orcid: "https://orcid.org/0009-0008-3326-9715"
-
-- given-names: "Leoni"
-  family-names: "Janssen"
-  orcid: "https://orcid.org/0009-0002-9902-731X"
-
-- given-names: "Anna Grace"
-  family-names: "Ulses"
-  orcid: "https://orcid.org/0000-0002-9031-0824"
-
-- given-names: "Tadahiro"
-  family-names: "Kimura"
-  orcid: "https://orcid.org/0000-0001-8477-2523"
-
-
-
-- given-names: "Mark"
-  family-names: "Hammond"
-  orcid: "https://orcid.org/0000-0002-6893-522X"
-
-
-- given-names: "Stef"
-  family-names: "Smeets"
-  orcid: "https://orcid.org/0000-0002-5413-9038"
-
-
-- given-names: "Shang-Min"
-  family-names: "Tsai"
-  orcid: "https://orcid.org/0000-0002-8163-4608"
-
-
-- given-names: "Oliver"
-  family-names: "Shorttle"
+- family-names: "Shorttle"
+  given-names: "Oliver"
   orcid: "https://orcid.org/0000-0002-8713-1446"
 
+- family-names: "Smeets"
+  given-names: "Stef"
+  orcid: "https://orcid.org/0000-0002-5413-9038"
 
-- given-names: "Raymond T."
-  family-names: "Pierrehumbert"
-  orcid: "https://orcid.org/0000-0002-5887-1197"
+- family-names: "Spreeuw"
+  given-names: "Hanno"
+  orcid: "https://orcid.org/0000-0002-5057-0322"
 
+- family-names: "Stuitje"
+  given-names: "Karen"
+  orcid: "https://orcid.org/0009-0000-6847-4331"
 
-- given-names: "Sara"
-  family-names: "Seager"
-  orcid: "https://orcid.org/0000-0002-6892-6948"
+- family-names: "Tsai"
+  given-names: "Shang-Min"
+  orcid: "https://orcid.org/0000-0002-8163-4608"
+
+- family-names: "Ulses"
+  given-names: "Anna Grace"
+  orcid: "https://orcid.org/0000-0002-9031-0824"

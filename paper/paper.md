@@ -30,69 +30,72 @@ authors:
   - name: Mariana Sastre
     orcid: 0009-0008-7799-7976
     affiliation: 1
-  - name: Emma Postolec
-    orcid: 0009-0009-5036-3049
-    affiliation: 1
   - name: Dan J. Bower
     orcid: 0000-0002-0673-4860
     affiliation: 4
-  - name: Flavia C. Pascal
-    orcid: 0009-0007-4663-1456
-    affiliation: 1, 5
   - name: Robb Calder
     orcid: 0009-0002-9247-2437
     affiliation: 5
+  - name: Lorenzo Cesario
+    orcid: 0009-0009-7228-7809
+    affiliation: 1
+  - name: Emeline Decocq
+    orcid: 0009-0008-3326-9715
+    affiliation: 1
+  - name: Marijn R. van Dijk
+    orcid: 0009-0005-6677-1929
+    affiliation: 1
+  - name: Mohammad Farhat
+    orcid: 0000-0001-7864-6627
+    affiliation: 15, 16
+  - name: Mark Hammond
+    orcid: 0000-0002-6893-522X
+    affiliation: 2
+  - name: Leoni Janssen
+    orcid: 0009-0002-9902-731X
+    affiliation: 11
+  - name: Tadahiro Kimura
+    orcid: 0000-0001-8477-2523
+    affiliation: 13, 1
+  - name: Imre Kisvárdai
+    orcid: 0009-0009-7323-6755
+    affiliation: 1
+  - name: Ioannis Panagiotou
+    orcid: 0009-0005-9147-0431
+    affiliation: 1
+  - name: Flavia C. Pascal
+    orcid: 0009-0007-4663-1456
+    affiliation: 1, 5
+  - name: Raymond T. Pierrehumbert
+    orcid: 0000-0002-5887-1197
+    affiliation: 2
+  - name: Emma Postolec
+    orcid: 0009-0009-5036-3049
+    affiliation: 1
   - name: Ben Riegler
     orcid: 0009-0003-9173-9539
     affiliation: 6
+  - name: Sara Seager
+    orcid: 0000-0002-6892-6948
+    affiliation: 10
+  - name: Oliver Shorttle
+    orcid: 0000-0002-8713-1446
+    affiliation: 5, 8
+  - name: Stef Smeets
+    orcid: 0000-0002-5413-9038
+    affiliation: 3
   - name: Hanno Spreeuw
     orcid: 0000-0002-5057-0322
     affiliation: 3
   - name: Karen Stuitje
     orcid: 0009-0000-6847-4331
     affiliation: 1
-  - name: Marijn R. van Dijk
-    orcid: 0009-0005-6677-1929
-    affiliation: 1
-  - name: Lorenzo Cesario
-    orcid: 0009-0009-7228-7809
-    affiliation: 1
-  - name: Ioannis Panagiotou
-    orcid: 0009-0005-9147-0431
-    affiliation: 1
-  - name: Imre Kisvárdai
-    orcid: 0009-0009-7323-6755
-    affiliation: 1
-  - name: Emeline Decocq
-    orcid: 0009-0008-3326-9715
-    affiliation: 1
-  - name: Leoni Janssen
-    orcid: 0009-0002-9902-731X
-    affiliation: 11
-  - name: Anna Grace Ulses
-    orcid: 0000-0002-9031-0824
-    affiliation: 12
-  - name: Tadahiro Kimura
-    orcid: 0000-0001-8477-2523
-    affiliation: 13, 1
-  - name: Mark Hammond
-    orcid: 0000-0002-6893-522X
-    affiliation: 2
-  - name: Stef Smeets
-    orcid: 0000-0002-5413-9038
-    affiliation: 3
   - name: Shang-Min Tsai
     orcid: 0000-0002-8163-4608
     affiliation: 7
-  - name: Oliver Shorttle
-    orcid: 0000-0002-8713-1446
-    affiliation: 5, 8
-  - name: Raymond T. Pierrehumbert
-    orcid: 0000-0002-5887-1197
-    affiliation: 2
-  - name: Sara Seager
-    orcid: 0000-0002-6892-6948
-    affiliation: 10
+  - name: Anna Grace Ulses
+    orcid: 0000-0002-9031-0824
+    affiliation: 12
 
 affiliations:
  - name: Kapteyn Astronomical Institute, University of Groningen, Groningen, The Netherlands
@@ -123,6 +126,10 @@ affiliations:
    index: 13
  - name: Center for Information Technology, University of Groningen, Groningen, The Netherlands
    index: 14
+ - name: Department of Astronomy, University of California, Berkeley, Berkeley, CA, USA
+   index: 15
+ - name: Department of Earth and Planetary Science, University of California, Berkeley, Berkeley, CA, USA
+   index: 16
 
 date: 25 September 2026
 bibliography: paper.bib
