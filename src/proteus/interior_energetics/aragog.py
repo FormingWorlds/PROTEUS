@@ -9,6 +9,7 @@ import platform
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import netCDF4 as nc
 import numpy as np
@@ -1173,6 +1174,23 @@ class AragogRunner:
         _t_post_eos = time.perf_counter()
         interior_o.aragog_solver = EntropySolver(param, entropy_eos)
         _t_post_solver = time.perf_counter()
+        solver_cap = getattr(
+            interior_o.aragog_solver.parameters.energy, 'phase_boundary_cap', None
+        )
+        if (
+            'phase_boundary_cap' not in _unsupported
+            and solver_cap is not None
+            and not isinstance(solver_cap, Mock)
+        ):
+            assert solver_cap == config.interior_energetics.aragog.phase_boundary_cap, (
+                f'Aragog solver holds {solver_cap} but config requested '
+                f'{config.interior_energetics.aragog.phase_boundary_cap}'
+            )
+        log.info(
+            'aragog phase_boundary_cap: requested=%s, solver_holds=%s',
+            config.interior_energetics.aragog.phase_boundary_cap,
+            solver_cap,
+        )
         if nightly_strict:
             log.info(
                 'aragog diag: setup_solver phases entropy_eos=%.2fs entropy_solver=%.2fs',
