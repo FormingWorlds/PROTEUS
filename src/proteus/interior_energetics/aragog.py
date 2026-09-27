@@ -786,7 +786,6 @@ class AragogRunner:
         # its built-in 200 J/kg/K margin) with a clear warning instead of
         # crashing on an unexpected keyword.
         _unsupported = _unsupported_energy_fields()
-        _caps_requested = temperature_step_cap > 0.0 or entropy_step_cap > 0.0
         _nondefault_margin_dropped = (
             'phase_boundary_entropy_margin' in _unsupported
             and float(ar.phase_boundary_entropy_margin) != _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN
@@ -795,11 +794,10 @@ class AragogRunner:
             'phase_boundary_cap' in _unsupported and str(ar.phase_boundary_cap) != 'fixed'
         )
         _dropped_active = set()
-        if _caps_requested:
-            if 'temperature_step_cap' in _unsupported:
-                _dropped_active.add('temperature_step_cap')
-            if 'entropy_step_cap' in _unsupported:
-                _dropped_active.add('entropy_step_cap')
+        if temperature_step_cap > 0.0 and 'temperature_step_cap' in _unsupported:
+            _dropped_active.add('temperature_step_cap')
+        if entropy_step_cap > 0.0 and 'entropy_step_cap' in _unsupported:
+            _dropped_active.add('entropy_step_cap')
         if _nondefault_margin_dropped:
             _dropped_active.add('phase_boundary_entropy_margin')
         if _nondefault_cap_dropped:

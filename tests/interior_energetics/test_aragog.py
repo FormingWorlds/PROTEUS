@@ -831,6 +831,38 @@ def test_setup_solver_drops_phase_boundary_cap_on_old_aragog(tmp_path):
     assert not any('phase_boundary_cap' in str(c) for c in mock_log.warning.call_args_list)
 
 
+@pytest.mark.unit
+def test_setup_solver_drops_only_active_caps_on_old_aragog(tmp_path):
+    """The version-skew guard reports only actively configured caps when dropped.
+
+    Configuring temperature_step_cap while leaving entropy_step_cap at 0.0
+    warns about temperature_step_cap only.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    def _no_caps_stub(**rest):
+        return MagicMock()
+
+    outdir = str(tmp_path)
+    config = _make_aragog_config(struct_module='spider')
+    config.interior_energetics.aragog.temperature_step_cap = 50.0
+    config.interior_energetics.aragog.entropy_step_cap = 0.0
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path / 'single_cap_run')
+    mock_ep = create_autospec(_no_caps_stub)
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / 'single_cap_run'),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
+        patch('proteus.interior_energetics.aragog.log') as mock_log,
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+    assert any('temperature_step_cap' in str(c) for c in mock_log.warning.call_args_list)
+    assert not any('entropy_step_cap' in str(c) for c in mock_log.warning.call_args_list)
+
+
 def test_setup_or_update_solver_tracks_stale_structure_steps():
     """The stale-structure counter increments while stale and resets when fresh.
 
