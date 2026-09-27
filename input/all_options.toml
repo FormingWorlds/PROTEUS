@@ -521,6 +521,7 @@ config_version = "3.0"
         # the integrator to 1 yr steps (max_step = 1 yr vs 100 yr) every step and can stall
         # the run; keep it of order a few hundred.
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
+        phase_boundary_cap            = "fixed"    # phase-boundary max_step policy: "fixed" | "rate"
 
     # SPIDER-only parameters
     [interior_energetics.spider]

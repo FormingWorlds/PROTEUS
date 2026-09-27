@@ -219,6 +219,7 @@ _OPTIONAL_ENERGY_FIELDS = frozenset(
         'temperature_step_cap',
         'entropy_step_cap',
         'phase_boundary_entropy_margin',
+        'phase_boundary_cap',
     }
 )
 
@@ -777,6 +778,7 @@ class AragogRunner:
             temperature_step_cap=temperature_step_cap,
             entropy_step_cap=entropy_step_cap,
             phase_boundary_entropy_margin=float(ar.phase_boundary_entropy_margin),
+            phase_boundary_cap=str(ar.phase_boundary_cap),
         )
         # The temperature/entropy step caps and the phase-boundary entropy
         # margin require a paired Aragog. Pass them only when the installed
@@ -789,12 +791,25 @@ class AragogRunner:
             'phase_boundary_entropy_margin' in _unsupported
             and float(ar.phase_boundary_entropy_margin) != _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN
         )
-        if _unsupported and (_caps_requested or _nondefault_margin_dropped):
+        _nondefault_cap_dropped = (
+            'phase_boundary_cap' in _unsupported and str(ar.phase_boundary_cap) != 'fixed'
+        )
+        _dropped_active = set()
+        if _caps_requested:
+            if 'temperature_step_cap' in _unsupported:
+                _dropped_active.add('temperature_step_cap')
+            if 'entropy_step_cap' in _unsupported:
+                _dropped_active.add('entropy_step_cap')
+        if _nondefault_margin_dropped:
+            _dropped_active.add('phase_boundary_entropy_margin')
+        if _nondefault_cap_dropped:
+            _dropped_active.add('phase_boundary_cap')
+        if _dropped_active:
             log.warning(
                 'Installed Aragog does not support %s; the affected interior '
                 'stepping control(s) fall back to Aragog defaults. Update '
                 'Aragog to enable them.',
-                ', '.join(sorted(_unsupported)),
+                ', '.join(sorted(_dropped_active)),
             )
         for _key in _unsupported:
             energy_kwargs.pop(_key, None)

@@ -296,6 +296,15 @@ class Aragog:
     a positive value is required (0 or negative is not a valid disabled state
     for a proximity band)."""
 
+    phase_boundary_cap: str = field(
+        default='fixed',
+        validator=in_(('fixed', 'rate')),
+    )
+    """Phase-boundary step-size policy: 'fixed' (default) tightens max_step to
+    1 yr whenever any cell is near or inside the two-phase band; 'rate' uses
+    event-driven CVODE segments with max_step scaled by approach time to the
+    nearest phase boundary, clipped to [1, 100] yr."""
+
     tolerance_struct: float = field(default=1e2, validator=gt(0))
     """Absolute mass tolerance [kg] for the secant solver in
     determine_interior_radius. Default 100 kg; pairs with Spider's

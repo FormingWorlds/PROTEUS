@@ -5488,6 +5488,25 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.phase_boundary_cap",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"fixed\"",
+      "choices": [
+        "fixed",
+        "rate"
+      ],
+      "bounds": null,
+      "description": "Phase-boundary step-size policy: 'fixed' (default) tightens max_step to 1 yr whenever any cell is near or inside the two-phase band; 'rate' uses event-driven CVODE segments with max_step scaled by approach time to the nearest phase boundary, clipped to [1, 100] yr.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.tolerance_struct",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",
