@@ -356,11 +356,7 @@ def UpdateStatusfile(dirs: dict, status: int):
 
 
 # Status written by PROTEUS before its output folder is cleaned, and never
-# rewritten until the main loop starts. A child that dies in between leaves no
-# status file at all, so a missing file is reported as such rather than being
-# silently reported as a generic error. The value sits outside the range of
-# every status PROTEUS writes, so "wrote status 0 (Started) then died" stays
-# distinguishable from "never wrote one".
+# rewritten until the main loop starts.
 STATUS_MISSING = -1
 
 
