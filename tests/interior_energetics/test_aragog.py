@@ -644,13 +644,14 @@ def _warned(mock_log, name):
 @pytest.mark.unit
 @pytest.mark.parametrize('requested', ['fixed', 'rate'])
 def test_setup_solver_threads_phase_boundary_cap(tmp_path, requested):
-    """setup_solver passes phase_boundary_cap into _EnergyParameters verbatim when the
-    installed Aragog accepts it, without a version-skew warning."""
+    """setup_solver passes 'fixed' verbatim and 'rate', Aragog's default, as unset (None),
+    without a version-skew warning."""
     config = _make_aragog_config(struct_module='spider')
     config.interior_energetics.aragog.phase_boundary_cap = requested
     mock_ep, mock_log = _run_setup_solver(tmp_path, config, _paired_energy_stub)
 
-    assert mock_ep.call_args.kwargs['phase_boundary_cap'] == requested
+    passed = mock_ep.call_args.kwargs['phase_boundary_cap']
+    assert passed == ('fixed' if requested == 'fixed' else None)
     assert not _warned(mock_log, 'phase_boundary_cap')
 
 
@@ -679,7 +680,7 @@ def test_setup_solver_phase_boundary_cap_reaches_real_energy_parameters(tmp_path
 
     energy = mock_params.call_args.kwargs['energy']
     assert isinstance(energy, _EnergyParameters)
-    assert energy.phase_boundary_cap == requested
+    assert energy.phase_boundary_cap == ('fixed' if requested == 'fixed' else None)
 
 
 @pytest.mark.unit
@@ -731,7 +732,7 @@ def test_setup_solver_threads_resolved_step_caps(tmp_path):
 
 @pytest.mark.unit
 def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
-    """The version-skew guard drops phase_boundary_entropy_margin, and only it,
+    """The version-skew guard drops phase_boundary_entropy_margin (and the cap),
     when the installed Aragog predates the field.
 
     An Aragog that still accepts the step caps but lacks the margin must not
@@ -794,16 +795,16 @@ def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(('requested', 'warns'), [('rate', True), ('fixed', False)])
-def test_setup_solver_drops_phase_boundary_cap_on_old_aragog(tmp_path, requested, warns):
+@pytest.mark.parametrize('requested', ['rate', 'fixed'])
+def test_setup_solver_drops_phase_boundary_cap_on_old_aragog(tmp_path, requested):
     """The version-skew guard drops phase_boundary_cap when the installed Aragog predates
-    the field, and warns only for a non-default 'rate'."""
+    the field; that Aragog runs 'fixed', so the drop needs no warning."""
     config = _make_aragog_config(struct_module='spider')
     config.interior_energetics.aragog.phase_boundary_cap = requested
     mock_ep, mock_log = _run_setup_solver(tmp_path, config, _caps_only_energy_stub)
 
     assert 'phase_boundary_cap' not in mock_ep.call_args.kwargs
-    assert _warned(mock_log, 'phase_boundary_cap') is warns
+    assert not _warned(mock_log, 'phase_boundary_cap')
 
 
 @pytest.mark.unit

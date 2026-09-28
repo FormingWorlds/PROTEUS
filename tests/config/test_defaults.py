@@ -306,16 +306,40 @@ def test_aragog_defaults():
         Aragog(dilatation=True)
 
 
-def test_aragog_phase_boundary_cap_default_matches_aragog():
-    """The schema default 'fixed' is Aragog's own default, so an unset key changes nothing."""
+def test_aragog_phase_boundary_cap_defaults_to_rate_and_rejects_other_values():
+    """The schema default is 'rate'; 'fixed' is kept; anything else is rejected at load."""
     from proteus.config._interior import Aragog
 
+    assert Aragog().phase_boundary_cap == 'rate'
+    assert Aragog(phase_boundary_cap='fixed').phase_boundary_cap == 'fixed'
+    for bad in ('Rate', '', 'adaptive'):
+        with pytest.raises(ValueError, match='phase_boundary_cap'):
+            Aragog(phase_boundary_cap=bad)
+
+
+def test_aragog_unset_phase_boundary_cap_runs_rate():
+    """The paired Aragog stores an unset cap as None and runs it as 'rate', PROTEUS's default."""
     parser = pytest.importorskip('aragog.parser')
     fields = parser._EnergyParameters.__dataclass_fields__
     if 'phase_boundary_cap' not in fields:
         pytest.skip('installed Aragog has no phase_boundary_cap')
-    assert Aragog().phase_boundary_cap == 'fixed' == fields['phase_boundary_cap'].default
-    assert Aragog(phase_boundary_cap='rate').phase_boundary_cap == 'rate'
-    for bad in ('Rate', '', 'adaptive'):
-        with pytest.raises(ValueError, match='phase_boundary_cap'):
-            Aragog(phase_boundary_cap=bad)
+    assert fields['phase_boundary_cap'].default is None
+
+
+@pytest.mark.parametrize(
+    ('module', 'expected'), [('aragog', 1e-8), ('spider', 1e-10), ('dummy', 1e-10)]
+)
+def test_unset_interior_rtol_resolves_per_module(module, expected):
+    """An unset rtol resolves to 1e-8 for Aragog and 1e-10 otherwise; an explicit value is kept."""
+    from proteus.config._interior import Interior
+
+    assert Interior(module=module).rtol == pytest.approx(expected)
+    assert Interior(module=module, rtol=3e-9).rtol == pytest.approx(3e-9)
+
+
+def test_deprecated_rtol_alias_overrides_the_aragog_default():
+    """num_tolerance still copies into rtol for Aragog, with its deprecation warning."""
+    from proteus.config._interior import Interior
+
+    with pytest.warns(DeprecationWarning, match='num_tolerance'):
+        assert Interior(module='aragog', num_tolerance=1e-6).rtol == pytest.approx(1e-6)

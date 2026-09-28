@@ -6,11 +6,10 @@ import warnings
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
-# Default relative tolerance for the interior ODE solver. ``rtol`` and its
-# deprecated alias ``num_tolerance`` default to a sentinel so that "left at
-# the default" can be told apart from "explicitly set to the default value";
-# both resolve to this in Interior.__attrs_post_init__ when unset.
+# Default interior rtol when unset: 1e-8 for Aragog (the loosest tolerance at which
+# its rate phase-boundary cap is verified), 1e-10 otherwise.
 _DEFAULT_RTOL = 1e-10
+_DEFAULT_RTOL_ARAGOG = 1e-8
 _TOL_UNSET = -1.0
 
 # Single canonical "disabled" value for the three per-call Aragog step caps.
@@ -297,14 +296,14 @@ class Aragog:
     for a proximity band)."""
 
     phase_boundary_cap: str = field(
-        default='fixed',
+        default='rate',
         validator=in_(('fixed', 'rate')),
     )
-    """Phase-boundary step-size policy: 'fixed' (default) tightens max_step to
-    1 yr whenever any cell is near or inside the two-phase band; 'rate' uses
+    """Phase-boundary step-size policy: 'fixed' tightens max_step to 1 yr
+    whenever any cell is near or inside the two-phase band; 'rate' (default) uses
     event-driven CVODE segments with max_step scaled by approach time to the
     nearest phase boundary, clipped to [1, 100] yr. 'rate' needs the CVODE solver
-    and a core_bc other than 'gradient'; otherwise Aragog warns and uses 1 yr. Its
+    and a core_bc other than 'gradient'; otherwise Aragog logs it and uses 1 yr. Its
     accuracy is verified for rtol <= 1e-7; Aragog warns once per solver at a looser
     rtol."""
 
@@ -541,19 +540,15 @@ class Interior:
     )
     num_levels: int = field(default=80, validator=ge(40))
 
-    # Unified ODE tolerance: both SPIDER and Aragog read from here.
-    # num_tolerance is a deprecated alias (emits DeprecationWarning).
-    # matprop_smooth_width lives on the Spider subclass but is read by both solvers.
-    #
-    # rtol and num_tolerance default to a sentinel so that an explicit
-    # value equal to the resolved default is not mistaken for "unset".
-    # Both resolve to _DEFAULT_RTOL in __attrs_post_init__.
+    # Unified ODE tolerance for SPIDER and Aragog; num_tolerance is a deprecated alias.
+    # The sentinel default tells "unset" apart from an explicit value equal to the
+    # default; __attrs_post_init__ resolves it per module.
     rtol: float = field(default=_TOL_UNSET, validator=_gt0_or_unset)
     """Relative numerical tolerance for the interior ODE solver.
     SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling).
     Aragog: scipy solve_ivp rtol. The deprecated aliases num_tolerance and
     [interior_energetics.spider].tolerance_rel copy into this field.
-    Resolves to 1e-10 when left unset."""
+    Resolves to 1e-8 for Aragog and 1e-10 for SPIDER when left unset."""
 
     atol: float = field(default=1e-10, validator=gt(0))
     """Absolute numerical tolerance for the interior ODE solver.
@@ -820,7 +815,8 @@ class Interior:
 
         # Resolve the sentinel to the real default if nothing set rtol.
         if not rtol_set:
-            object.__setattr__(self, 'rtol', _DEFAULT_RTOL)
+            default = _DEFAULT_RTOL_ARAGOG if self.module == 'aragog' else _DEFAULT_RTOL
+            object.__setattr__(self, 'rtol', default)
 
 
 # Thematic grouping for the generated configuration reference. Each entry is

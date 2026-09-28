@@ -57,7 +57,6 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 # _DEFAULT_PHASE_BOUNDARY_ENTROPY_MARGIN; keep the three in step so the
 # omitted-key and default paths stay a no-op relative to prior behaviour.
 _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN = 200.0
-_ARAGOG_DEFAULT_PHASE_BOUNDARY_CAP = 'fixed'
 
 
 _entropy_eos_jax_cache: dict = {}
@@ -778,7 +777,10 @@ class AragogRunner:
             temperature_step_cap=temperature_step_cap,
             entropy_step_cap=entropy_step_cap,
             phase_boundary_entropy_margin=float(ar.phase_boundary_entropy_margin),
-            phase_boundary_cap=ar.phase_boundary_cap,
+            # 'rate' is Aragog's default; passing it unset keeps its fallback notes at INFO.
+            phase_boundary_cap=None
+            if ar.phase_boundary_cap == 'rate'
+            else ar.phase_boundary_cap,
         )
         # The optional stepping controls need a paired Aragog. An older Aragog drops them and
         # falls back to its defaults (no caps, 200 J/kg/K margin, fixed cap); a warning names
@@ -789,7 +791,7 @@ class AragogRunner:
             'entropy_step_cap': entropy_step_cap > 0.0,
             'phase_boundary_entropy_margin': float(ar.phase_boundary_entropy_margin)
             != _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN,
-            'phase_boundary_cap': ar.phase_boundary_cap != _ARAGOG_DEFAULT_PHASE_BOUNDARY_CAP,
+            'phase_boundary_cap': False,  # a dropped cap runs 'fixed', the older Aragog's policy
         }
         _dropped_active = {k for k in _unsupported if _active.get(k, True)}
         if _dropped_active:

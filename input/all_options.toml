@@ -425,7 +425,7 @@ config_version = "3.0"
 
     # Grid and solver tolerances (shared by Aragog + SPIDER; ignored for dummy)
     num_levels                = 80           # radial grid levels (energetics domain only)
-    rtol                      = 1.0e-10      # relative ODE solver tolerance
+    rtol                      = 1.0e-8       # relative ODE solver tolerance; unset: 1e-8 Aragog, 1e-10 SPIDER
     atol                      = 1.0e-10      # absolute ODE solver tolerance
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
     num_tolerance             = -1           # deprecated alias for rtol; leave at -1 (unset)
@@ -521,7 +521,7 @@ config_version = "3.0"
         # the integrator to 1 yr steps (max_step = 1 yr vs 100 yr) every step and can stall
         # the run; keep it of order a few hundred.
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
-        phase_boundary_cap            = "fixed"    # phase-boundary max_step policy: "fixed" | "rate"
+        phase_boundary_cap            = "rate"     # phase-boundary max_step policy: "rate" (default) | "fixed"
 
     # SPIDER-only parameters
     [interior_energetics.spider]
