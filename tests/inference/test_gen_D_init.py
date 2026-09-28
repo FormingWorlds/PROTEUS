@@ -8,6 +8,8 @@ References:
 
 from __future__ import annotations
 
+import threading
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -21,6 +23,7 @@ pytest.importorskip('botorch')
 pytest.importorskip('gpytorch')
 
 import proteus.inference.gen_D_init as init_mod  # noqa: E402
+from proteus.inference.failures import ProteusRunFailure  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -224,8 +227,9 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
             return np.array([[0.1], [0.9]])[:n]
 
     class FakePool:
-        def __init__(self, processes):
+        def __init__(self, processes, initializer=None, initargs=()):
             captured['processes'] = processes
+            captured['initializer'] = initializer
 
         def __enter__(self):
             return self
@@ -271,12 +275,57 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     assert n == 2
     assert captured['processes'] == 3
     assert captured['task_count'] == 2
+    # Each pool worker is handed the batch's stop signal.
+    assert captured['initializer'] is init_mod._init_pool_worker
     assert captured['saved_shape'] == ((2, 1), (2, 1))
     assert captured['saved_path'].endswith('init.csv')
     # The batch is bounded so a wedged worker cannot hang it indefinitely:
     # the default per-child timeout (6 h) yields a positive, finite pool cap.
     assert captured['pool_timeout'] is not None
     assert captured['pool_timeout'] > 0
+
+
+@pytest.mark.unit
+def test_a_failed_initial_sample_stops_the_samples_not_yet_started(monkeypatch):
+    """Under `abort_on_failure` the first failed run fails the whole initial
+    batch, so the samples still queued must not each run a simulation first.
+    The failing sample sets the batch's stop signal, and a sample that finds it
+    set returns without building an objective or running anything.
+    """
+    stop = threading.Event()
+    monkeypatch.setattr(init_mod, '_stop', None)
+    init_mod._init_pool_worker(stop)
+    args = {'parameters': {'a': [0.0, 1.0]}, 'observables': {'obs': 1.0}}
+    args |= {'ref_config': 'ref.toml', 'output': 'out', 'failure_codes': []}
+    x = torch.tensor([[0.5]], dtype=torch.double)
+
+    # Discrimination: a sample that succeeds returns its score and leaves the
+    # signal clear, so the stop below is the failure's doing.
+    score = torch.tensor([[1.25]], dtype=torch.double)
+    monkeypatch.setattr(init_mod, 'prot_builder', lambda **_kw: lambda _x: score)
+    assert init_mod.f_aug(x, 0, args).item() == pytest.approx(1.25)
+    assert not stop.is_set()
+
+    def _failing(_x):
+        raise ProteusRunFailure(reason='r', worker=-1, iter=1, out_dir='/o', status=21)
+
+    monkeypatch.setattr(init_mod, 'prot_builder', lambda **_kw: _failing)
+    with pytest.raises(ProteusRunFailure):
+        init_mod.f_aug(x, 1, args)
+    assert stop.is_set()
+
+    # A later sample runs nothing: building its objective would fail the test.
+    monkeypatch.setattr(
+        init_mod, 'prot_builder', lambda **_kw: pytest.fail('a skipped sample ran')
+    )
+    assert init_mod.f_aug(x, 2, args) is None
+
+    # Edge case: called outside a pool, with no signal installed, a failure
+    # propagates as before and nothing is skipped.
+    monkeypatch.setattr(init_mod, '_stop', None)
+    monkeypatch.setattr(init_mod, 'prot_builder', lambda **_kw: _failing)
+    with pytest.raises(ProteusRunFailure):
+        init_mod.f_aug(x, 3, args)
 
 
 @pytest.mark.unit
