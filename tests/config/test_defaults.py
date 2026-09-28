@@ -304,3 +304,18 @@ def test_aragog_defaults():
     # field. ``TypeError`` from attrs' ``__init__``.
     with _pt.raises(TypeError):
         Aragog(dilatation=True)
+
+
+def test_aragog_phase_boundary_cap_default_matches_aragog():
+    """The schema default 'fixed' is Aragog's own default, so an unset key changes nothing."""
+    from proteus.config._interior import Aragog
+
+    parser = pytest.importorskip('aragog.parser')
+    fields = parser._EnergyParameters.__dataclass_fields__
+    if 'phase_boundary_cap' not in fields:
+        pytest.skip('installed Aragog has no phase_boundary_cap')
+    assert Aragog().phase_boundary_cap == 'fixed' == fields['phase_boundary_cap'].default
+    assert Aragog(phase_boundary_cap='rate').phase_boundary_cap == 'rate'
+    for bad in ('Rate', '', 'adaptive'):
+        with pytest.raises(ValueError, match='phase_boundary_cap'):
+            Aragog(phase_boundary_cap=bad)

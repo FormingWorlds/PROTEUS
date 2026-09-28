@@ -303,8 +303,10 @@ class Aragog:
     """Phase-boundary step-size policy: 'fixed' (default) tightens max_step to
     1 yr whenever any cell is near or inside the two-phase band; 'rate' uses
     event-driven CVODE segments with max_step scaled by approach time to the
-    nearest phase boundary, clipped to [1, 100] yr. The accuracy of 'rate' is
-    verified for rtol <= 1e-7; Aragog warns once per solver at a looser rtol."""
+    nearest phase boundary, clipped to [1, 100] yr. 'rate' needs the CVODE solver
+    and a core_bc other than 'gradient'; otherwise Aragog warns and uses 1 yr. Its
+    accuracy is verified for rtol <= 1e-7; Aragog warns once per solver at a looser
+    rtol."""
 
     tolerance_struct: float = field(default=1e2, validator=gt(0))
     """Absolute mass tolerance [kg] for the secant solver in

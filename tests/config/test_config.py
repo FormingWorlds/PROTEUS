@@ -656,6 +656,30 @@ def test_start_records_not_applied_marker_when_aragog_lacks_step_caps(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(('old_aragog', 'expected'), [(True, 'fixed'), (False, 'rate')])
+def test_start_records_the_phase_boundary_cap_the_run_uses(tmp_path, old_aragog, expected):
+    """The snapshot records 'rate' when Aragog accepts it and 'fixed' when an older Aragog drops it."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    assert cfg.interior_energetics.module == 'aragog'
+    cfg.interior_energetics.aragog.phase_boundary_cap = 'rate'
+
+    def _old_energy_parameters(conduction=None, convection=None, phi_step_cap=None):
+        raise NotImplementedError
+
+    with ExitStack() as stack:
+        if old_aragog:
+            stack.enter_context(
+                patch(
+                    'proteus.interior_energetics.aragog._EnergyParameters',
+                    _old_energy_parameters,
+                )
+            )
+        written = _run_start_and_read_written_config(cfg, tmp_path)
+
+    assert written.interior_energetics.aragog.phase_boundary_cap == expected
+
+
+@pytest.mark.unit
 def test_start_leaves_step_caps_raw_when_energetics_module_is_not_aragog(tmp_path):
     """The aragog guard must not fire, and must not rewrite caps, for a non-aragog module."""
     cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')

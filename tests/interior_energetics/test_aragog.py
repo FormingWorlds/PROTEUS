@@ -540,7 +540,7 @@ def _caps_only_energy_stub(
     **rest,
 ):
     """Signature of an Aragog that accepts the step caps but predates
-    phase_boundary_entropy_margin, so the guard must drop only the margin."""
+    phase_boundary_entropy_margin and phase_boundary_cap, so the guard drops both."""
     return MagicMock()
 
 
@@ -619,56 +619,39 @@ def test_setup_solver_threads_phase_boundary_margin(tmp_path):
     assert threaded[350.0] != pytest.approx(threaded[200.0])
 
 
-@pytest.mark.unit
-def test_aragog_phase_boundary_cap_validator():
-    """Aragog validates phase_boundary_cap and rejects invalid options."""
-    from proteus.config._interior import Aragog
-
-    cfg_fixed = Aragog(phase_boundary_cap='fixed')
-    assert cfg_fixed.phase_boundary_cap == 'fixed'
-
-    cfg_rate = Aragog(phase_boundary_cap='rate')
-    assert cfg_rate.phase_boundary_cap == 'rate'
-
-    with pytest.raises(ValueError):
-        Aragog(phase_boundary_cap='invalid_option')
-
-
-@pytest.mark.unit
-def test_setup_solver_threads_phase_boundary_cap(tmp_path):
-    """setup_solver passes phase_boundary_cap into _EnergyParameters verbatim
-    when the installed Aragog accepts it.
-
-    Ensures both 'fixed' and 'rate' reach Aragog unchanged.
-    """
+def _run_setup_solver(tmp_path, config, energy_stub):
+    """Run setup_solver against a stubbed _EnergyParameters; return the stub and the logger."""
     from proteus.interior_energetics.aragog import AragogRunner
 
-    outdir = str(tmp_path)
-    threaded = {}
-    for requested in ('fixed', 'rate'):
-        config = _make_aragog_config(struct_module='spider')
-        config.interior_energetics.aragog.phase_boundary_cap = requested
-        hf_row, interior_o = _spider_fallback_scaffold(tmp_path / f'run_{requested}')
-        mock_ep = create_autospec(_paired_energy_stub)
-        with (
-            patch(
-                'proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / f'run_{requested}'
-            ),
-            patch('proteus.interior_energetics.aragog.Parameters'),
-            patch('proteus.interior_energetics.aragog.EntropySolver'),
-            patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
-            patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
-            patch('proteus.interior_energetics.aragog.log') as mock_log,
-        ):
-            AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    mock_ep = create_autospec(energy_stub)
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
+        patch('proteus.interior_energetics.aragog.log') as mock_log,
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
+    return mock_ep, mock_log
 
-        assert mock_ep.called
-        threaded[requested] = mock_ep.call_args.kwargs['phase_boundary_cap']
-        assert not any('phase_boundary_cap' in str(c) for c in mock_log.warning.call_args_list)
 
-    assert threaded['fixed'] == 'fixed'
-    assert threaded['rate'] == 'rate'
-    assert threaded['fixed'] != threaded['rate']
+def _warned(mock_log, name):
+    return any(name in str(c) for c in mock_log.warning.call_args_list)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('requested', ['fixed', 'rate'])
+def test_setup_solver_threads_phase_boundary_cap(tmp_path, requested):
+    """setup_solver passes phase_boundary_cap into _EnergyParameters verbatim when the
+    installed Aragog accepts it, without a version-skew warning."""
+    config = _make_aragog_config(struct_module='spider')
+    config.interior_energetics.aragog.phase_boundary_cap = requested
+    mock_ep, mock_log = _run_setup_solver(tmp_path, config, _paired_energy_stub)
+
+    assert mock_ep.call_args.kwargs['phase_boundary_cap'] == requested
+    assert not _warned(mock_log, 'phase_boundary_cap')
 
 
 @pytest.mark.unit
@@ -811,84 +794,34 @@ def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
 
 
 @pytest.mark.unit
-def test_setup_solver_drops_phase_boundary_cap_on_old_aragog(tmp_path):
-    """The version-skew guard drops phase_boundary_cap when the installed
-    Aragog predates the field.
-
-    It warns when the user requested 'rate' on an older Aragog, and stays
-    silent when left at the default 'fixed'.
-    """
-    from proteus.interior_energetics.aragog import AragogRunner
-
-    outdir = str(tmp_path)
-
-    # Non-default ('rate') on old Aragog: dropped and warned about.
+@pytest.mark.parametrize(('requested', 'warns'), [('rate', True), ('fixed', False)])
+def test_setup_solver_drops_phase_boundary_cap_on_old_aragog(tmp_path, requested, warns):
+    """The version-skew guard drops phase_boundary_cap when the installed Aragog predates
+    the field, and warns only for a non-default 'rate'."""
     config = _make_aragog_config(struct_module='spider')
-    config.interior_energetics.aragog.phase_boundary_cap = 'rate'
-    hf_row, interior_o = _spider_fallback_scaffold(tmp_path / 'rate_run')
-    mock_ep = create_autospec(_caps_only_energy_stub)
-    with (
-        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / 'rate_run'),
-        patch('proteus.interior_energetics.aragog.Parameters'),
-        patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
-        patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
-        patch('proteus.interior_energetics.aragog.log') as mock_log,
-    ):
-        AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+    config.interior_energetics.aragog.phase_boundary_cap = requested
+    mock_ep, mock_log = _run_setup_solver(tmp_path, config, _caps_only_energy_stub)
 
     assert 'phase_boundary_cap' not in mock_ep.call_args.kwargs
-    assert any('phase_boundary_cap' in str(c) for c in mock_log.warning.call_args_list)
-
-    # Default ('fixed') on old Aragog: dropped silently without warning.
-    config = _make_aragog_config(struct_module='spider')
-    config.interior_energetics.aragog.phase_boundary_cap = 'fixed'
-    hf_row, interior_o = _spider_fallback_scaffold(tmp_path / 'fixed_run')
-    mock_ep = create_autospec(_caps_only_energy_stub)
-    with (
-        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / 'fixed_run'),
-        patch('proteus.interior_energetics.aragog.Parameters'),
-        patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
-        patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
-        patch('proteus.interior_energetics.aragog.log') as mock_log,
-    ):
-        AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
-
-    assert 'phase_boundary_cap' not in mock_ep.call_args.kwargs
-    assert not any('phase_boundary_cap' in str(c) for c in mock_log.warning.call_args_list)
+    assert _warned(mock_log, 'phase_boundary_cap') is warns
 
 
 @pytest.mark.unit
 def test_setup_solver_drops_only_active_caps_on_old_aragog(tmp_path):
-    """The version-skew guard reports only actively configured caps when dropped.
-
-    Configuring temperature_step_cap while leaving entropy_step_cap at 0.0
-    warns about temperature_step_cap only.
-    """
-    from proteus.interior_energetics.aragog import AragogRunner
+    """On an Aragog without any optional field, the warning names only the controls the
+    config sets away from their Aragog default."""
 
     def _no_caps_stub(**rest):
         return MagicMock()
 
-    outdir = str(tmp_path)
     config = _make_aragog_config(struct_module='spider')
     config.interior_energetics.aragog.temperature_step_cap = 50.0
     config.interior_energetics.aragog.entropy_step_cap = 0.0
-    hf_row, interior_o = _spider_fallback_scaffold(tmp_path / 'single_cap_run')
-    mock_ep = create_autospec(_no_caps_stub)
-    with (
-        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path / 'single_cap_run'),
-        patch('proteus.interior_energetics.aragog.Parameters'),
-        patch('proteus.interior_energetics.aragog.EntropySolver'),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
-        patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
-        patch('proteus.interior_energetics.aragog.log') as mock_log,
-    ):
-        AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+    _, mock_log = _run_setup_solver(tmp_path, config, _no_caps_stub)
 
-    assert any('temperature_step_cap' in str(c) for c in mock_log.warning.call_args_list)
-    assert not any('entropy_step_cap' in str(c) for c in mock_log.warning.call_args_list)
+    assert _warned(mock_log, 'temperature_step_cap')
+    for name in ('entropy_step_cap', 'phase_boundary_entropy_margin', 'phase_boundary_cap'):
+        assert not _warned(mock_log, name)
 
 
 def test_setup_or_update_solver_tracks_stale_structure_steps():
