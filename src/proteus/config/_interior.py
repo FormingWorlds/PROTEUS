@@ -6,11 +6,17 @@ import warnings
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
-# Default interior rtol when unset: 1e-8 for Aragog (the loosest tolerance at which
-# its rate phase-boundary cap is verified), 1e-10 otherwise.
+# Default interior rtol when unset: 1e-8 for Aragog (the tolerance at which its rate
+# phase-boundary cap is verified), 1e-10 otherwise.
 _DEFAULT_RTOL = 1e-10
 _DEFAULT_RTOL_ARAGOG = 1e-8
 _TOL_UNSET = -1.0
+
+
+def default_rtol(module: str) -> float:
+    """Interior rtol for ``module`` when no tolerance key is set."""
+    return _DEFAULT_RTOL_ARAGOG if module == 'aragog' else _DEFAULT_RTOL
+
 
 # Single canonical "disabled" value for the three per-call Aragog step caps.
 # The schema default 0.0 resolves to off (no cap), a positive value is used
@@ -304,8 +310,8 @@ class Aragog:
     event-driven CVODE segments with max_step scaled by approach time to the
     nearest phase boundary, clipped to [1, 100] yr. 'rate' needs the CVODE solver
     and a core_bc other than 'gradient'; otherwise Aragog logs it and uses 1 yr. Its
-    accuracy is verified for rtol <= 1e-7; Aragog warns once per solver at a looser
-    rtol."""
+    accuracy is verified at rtol 1e-8; Aragog warns once per solver at an rtol above
+    1e-7."""
 
     tolerance_struct: float = field(default=1e2, validator=gt(0))
     """Absolute mass tolerance [kg] for the secant solver in
@@ -815,8 +821,7 @@ class Interior:
 
         # Resolve the sentinel to the real default if nothing set rtol.
         if not rtol_set:
-            default = _DEFAULT_RTOL_ARAGOG if self.module == 'aragog' else _DEFAULT_RTOL
-            object.__setattr__(self, 'rtol', default)
+            object.__setattr__(self, 'rtol', default_rtol(self.module))
 
 
 # Thematic grouping for the generated configuration reference. Each entry is

@@ -1245,3 +1245,26 @@ class TestGridFromConfig:
         # Post-state: dispatch was blocked before reaching run or slurm.
         assert run_called['n'] == 0
         assert slurm_called['n'] == 0
+
+
+@pytest.mark.parametrize(
+    ('base_rtol', 'expected'), [(None, (1e-8, 1e-10)), (3e-9, (3e-9, 3e-9))]
+)
+def test_write_config_files_gives_each_module_its_default_rtol(
+    fake_proteus_dir, tmp_path, monkeypatch, base_rtol, expected
+):
+    """A grid over the interior module writes each case the rtol default of its own
+    module when the base config sets no rtol; an rtol the base sets is kept."""
+    base = tmp_path / 'base_ie.toml'
+    base.write_text('' if base_rtol is None else f'[interior_energetics]\nrtol = {base_rtol}\n')
+    g = Grid(name='rtol_grid', base_config_path=str(base))
+    g.add_dimension('mod', 'interior_energetics.module')
+    g.set_dimension_direct('mod', ['aragog', 'spider'])
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    g.write_config_files()
+    got = {}
+    for i in range(2):
+        ie = toml.load(g._get_tmpcfg(i))['interior_energetics']
+        got[ie['module']] = ie['rtol']
+    assert (got['aragog'], got['spider']) == pytest.approx(expected, rel=1e-12)

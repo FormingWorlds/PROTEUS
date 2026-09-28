@@ -784,7 +784,7 @@ class AragogRunner:
         )
         # The optional stepping controls need a paired Aragog. An older Aragog drops them and
         # falls back to its defaults (no caps, 200 J/kg/K margin, fixed cap); a warning names
-        # each dropped control the config sets away from that default.
+        # each dropped step cap or margin the config sets away from that default.
         _unsupported = _unsupported_energy_fields()
         _active = {
             'temperature_step_cap': temperature_step_cap > 0.0,
