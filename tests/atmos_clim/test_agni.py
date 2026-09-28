@@ -245,6 +245,8 @@ class _FakeAtmosphere:
         self.tmp_magma = 1500.0
         # Cell-centre gravity, read at the XUV level
         self.g = [9.8]
+        # Hill radius, used by hydrostatic integration to mark unbound layers
+        self.hill_radius = 6.4e8
         # Solver flags
         self.is_converged = True
         # Allocation flag, gating write_atmos_ncdf
@@ -278,6 +280,20 @@ class _FakeAtmosphere:
         # Column geometry relative to substellar point
         self.col_lon = 0.0
         self.col_lat = 0.0
+
+
+class _FakeJlArray:
+    """Stand-in for Julia's `Array` type, supporting the `Array[T, N]`
+    subscript syntax `init_agni_atmos` uses to build a conversion target for
+    `condensates`. `convert` itself is monkeypatched to an identity function
+    in these tests, so the subscript result only needs to not raise.
+    """
+
+    def __getitem__(self, key):
+        return None
+
+
+_FAKE_JL_ARRAY = _FakeJlArray()
 
 
 class _FakeAGNI:
@@ -349,6 +365,7 @@ def _build_greygas_config():
                 check_safe_gas=False,
                 hydrograv_steps=2000,
                 hydrograv_maxdr=1e8,
+                hydrograv_hilldr=1e2,
                 hydrograv_mindr=1e-5,
                 hydrograv_ming=1e-4,
                 hydrograv_constg=False,
@@ -369,7 +386,9 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     the runtime directory.
     """
     fake_agni = _FakeAGNI()
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -388,6 +407,7 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -429,7 +449,9 @@ def test_init_agni_atmos_loads_the_row_matched_profile(monkeypatch, tmp_path):
     fake_agni = _FakeAGNI()
     loaded_paths = []
     fake_agni.setpt.fromncdf_b = lambda _atmos, path, *_a, **_k: loaded_paths.append(path)
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -452,6 +474,7 @@ def test_init_agni_atmos_loads_the_row_matched_profile(monkeypatch, tmp_path):
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -480,7 +503,9 @@ def test_init_agni_atmos_falls_back_to_latest_profile_mid_run(monkeypatch, tmp_p
     fake_agni = _FakeAGNI()
     loaded_paths = []
     fake_agni.setpt.fromncdf_b = lambda _atmos, path, *_a, **_k: loaded_paths.append(path)
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -503,6 +528,7 @@ def test_init_agni_atmos_falls_back_to_latest_profile_mid_run(monkeypatch, tmp_p
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -530,7 +556,9 @@ def test_init_agni_atmos_passes_unscaled_surface_pressure(monkeypatch, tmp_path)
     0.9 * P_surf, differing from the correct value by 10% of the column.
     """
     fake_agni = _FakeAGNI()
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -550,6 +578,7 @@ def test_init_agni_atmos_passes_unscaled_surface_pressure(monkeypatch, tmp_path)
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -579,7 +608,9 @@ def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
     grey-gas dispatch.
     """
     fake_agni = _FakeAGNI()
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -598,6 +629,7 @@ def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -627,7 +659,9 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
     A missing *.sflux in that branch should raise FileNotFoundError
     instead of IndexError, so the caller sees a clear diagnostic."""
     fake_agni = _FakeAGNI()
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -649,6 +683,7 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -674,6 +709,120 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
     assert fake_agni.last_allocate_input_star == ''
 
 
+@pytest.mark.unit
+def test_init_agni_atmos_forwards_hill_radius_and_hydrograv_hilldr(monkeypatch, tmp_path):
+    """setup_b receives the orbit-derived Hill radius and the new
+    hydrograv_hilldr config field, not just the pre-existing hydrograv kwargs.
+
+    Physical scenario: AGNI's hydrostatic integration marks layers beyond the
+    Hill radius as gravitationally unbound; PROTEUS must forward the
+    per-iteration Hill radius it already computes in orbit/wrapper.py rather
+    than leaving AGNI on its own internal default.
+    """
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    config = _build_greygas_config()
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 7.123e8,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+
+    atmos = init_agni_atmos(dirs, config, hf_row)
+    assert atmos is not None
+
+    assert fake_agni.last_setup_kwargs['hill_radius'] == pytest.approx(7.123e8)
+    assert fake_agni.last_setup_kwargs['hydrograv_hilldr'] == pytest.approx(1e2)
+    # Discrimination guard: the Hill radius is not the interior radius, and a
+    # regression that accidentally forwarded R_int instead would pass a
+    # value orders of magnitude smaller.
+    assert fake_agni.last_setup_kwargs['hill_radius'] != pytest.approx(hf_row['R_int'])
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_path):
+    """A discovered aerosol whose name matches a condensate (case-insensitive)
+    tracks that condensate's mixing ratio; a non-matching aerosol stays an
+    inert constant-zero override.
+
+    Physical scenario: AGNI's `set_aerosols!` recomputes an aerosol's mass
+    mixing ratio from its tied condensate's condensation yield every step, so
+    an aerosol species tied to an active condensate has a mixing ratio that
+    tracks condensation instead of always reading zero.
+    """
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    config = _build_greygas_config()
+    config.atmos_clim.aerosols_enabled = True
+    config.atmos_clim.agni.rainout = True
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 6.4e8,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    # Two condensable gases (H2O is excluded from ALWAYS_DRY, SiO2 too), so
+    # _determine_condensates returns both rather than short-circuiting on a
+    # single-gas dry-atmosphere warning.
+    monkeypatch.setattr(
+        agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 0.5, 'SiO2': 0.5}
+    )
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    # Mixed case on purpose: matching must be case-insensitive.
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda *_a, **_k: ['sio2', 'Soot'])
+
+    atmos = init_agni_atmos(dirs, config, hf_row)
+    assert atmos is not None
+
+    aerosol_species = fake_agni.last_setup_kwargs['aerosol_species']
+    assert aerosol_species['sio2'] == {'method': 'mon', 'species': 'SiO2'}
+    assert aerosol_species['Soot'] == {'method': 'mon', 'mmr': 0.0}
+    # Discrimination guard: the tied entry must not also carry the inert
+    # override key, which would mask a regression that always set both.
+    assert 'mmr' not in aerosol_species['sio2']
+    assert 'species' not in aerosol_species['Soot']
+
+
 # ---------------------------------------------------------------------------
 # _check_agni_schema: lightweight Atmos_t field-list check at allocate
 # ---------------------------------------------------------------------------
@@ -695,6 +844,7 @@ def _build_complete_atmos_stub() -> SimpleNamespace:
         tmp_surf=1500.0,
         tmp_magma=1500.0,
         g=[9.8],
+        hill_radius=6.4e8,
         is_converged=True,
         transparent=False,
         flux_d_sw=[100.0],
@@ -904,7 +1054,9 @@ def test_init_agni_spectral_file_path_not_found_raises(monkeypatch, tmp_path):
     a non-greygas path that points to a missing file.
     """
     fake_agni = _FakeAGNI()
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
 
     config = _build_greygas_config()
@@ -2265,6 +2417,7 @@ def test_update_agni_atmos_interpolates_a_usable_profile(monkeypatch):
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     out = agni_mod.update_agni_atmos(
@@ -2292,6 +2445,42 @@ def test_update_agni_atmos_interpolates_a_usable_profile(monkeypatch):
     # Discrimination against a guess-profile regression: an isothermal
     # rebuild would have left a single repeated value.
     assert max(atmos.tmp) - min(atmos.tmp) > 100.0
+
+
+@pytest.mark.unit
+def test_update_agni_atmos_sets_hill_radius_from_hf_row(monkeypatch):
+    """Every iteration re-reads the orbit-derived Hill radius onto the struct.
+
+    Physical scenario: the Hill radius shifts as the orbit and planet mass
+    evolve, so AGNI's hydrostatic integration must see the current value
+    each step, not just the one supplied at setup.
+    """
+    fake_agni = _ProfileAGNI()
+    _install_profile_fakes(monkeypatch, fake_agni)
+
+    atmos = _ProfileAtmosphere([1.0e1, 1.0e3, 1.0e5, 1.0e7], [200.0, 500.0, 1100.0, 1900.0])
+    atmos.hill_radius = 1.0e3  # stale value from a previous, closer orbit
+    hf_row = {
+        'F_ins': 1361.0,
+        'albedo_pl': 0.1,
+        'T_surf': 1900.0,
+        'T_magma': 2000.0,
+        'P_surf': 200.0,  # bar
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'M_int': 6.0e24,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 9.876e8,
+    }
+
+    agni_mod.update_agni_atmos(atmos, hf_row, {'output': '/tmp/run'}, _build_profile_config())
+
+    assert atmos.hill_radius == pytest.approx(9.876e8, rel=1e-12)
+    # Discrimination guard: the stale pre-call value must actually have been
+    # overwritten, not just coincidentally already correct.
+    assert atmos.hill_radius != pytest.approx(1.0e3)
 
 
 @pytest.mark.unit
@@ -2325,6 +2514,7 @@ def test_update_agni_atmos_rebuilds_profile_left_non_finite(monkeypatch, caplog)
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.agni'):
@@ -2386,6 +2576,7 @@ def test_update_agni_atmos_rebuilds_when_only_temperatures_are_poisoned(monkeypa
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.agni'):
@@ -2433,6 +2624,7 @@ def test_update_agni_atmos_honours_the_configured_guess_on_rebuild(monkeypatch):
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     agni_mod.update_agni_atmos(
@@ -2495,6 +2687,7 @@ def test_update_agni_atmos_fails_as_atmosphere_error_without_a_usable_bc(monkeyp
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
     atmos = _ProfileAtmosphere([1.0e2, 1.0e5], [float('nan'), 1200.0])
     with pytest.raises(RuntimeError, match='T_surf'):
@@ -2566,6 +2759,7 @@ def test_update_agni_atmos_rejects_a_bad_surface_state_behind_a_good_profile(mon
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     # The same profile with a usable surface state goes through, so each
@@ -2652,6 +2846,7 @@ def test_a_lost_atmosphere_goes_to_transparent_mode_not_the_pressure_grid(monkey
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     agni_mod.update_agni_atmos(

@@ -137,8 +137,9 @@ interior heat flux. The `fastchem_*` parameters apply when
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `hydrograv_steps` | int | `2000` | Number of steps to use when calculating heights and gravity. Must be > 0. |
-| `hydrograv_maxdr` | float | `100000000.0` | Maximum step size to use when calculating heights \[m\]. Must be > 0. |
+| `hydrograv_steps` | int | `2048` | Number of steps to use when calculating heights and gravity. Must be > 0. |
+| `hydrograv_maxdr` | float | `6335439.0` | Maximum step size to use when calculating heights \[m\]. Must be > 0. |
+| `hydrograv_hilldr` | float | `6335.439` | Maximum step size to use beyond the Hill radius \[m\]. Must be > 0. |
 | `hydrograv_mindr` | float | `1e-05` | Minimum step size to use when calculating heights \[m\]. Must be > 0. |
 | `hydrograv_ming` | float | `0.0001` | Minimum allowed gravity in the atmosphere \[m/s^2\]. Must be > 0. |
 | `hydrograv_constg` | bool | `false` | Constant gravity with height?. |

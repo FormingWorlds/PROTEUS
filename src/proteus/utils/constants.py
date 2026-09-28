@@ -82,6 +82,12 @@ vap_list = [
     'NaOH',
     'Ca',
     'KOH',
+    'V',
+    'Mg2',
+    'VO',
+    'AlO',
+    'Na2',
+    'NaO',
 ]
 
 prt_gases = [
@@ -133,7 +139,7 @@ vol_gas_list = [s for s in gas_list if s not in vap_list]
 
 # Supported elements: volatiles, rock-forming elements, noble gases (above)
 vol_element_list = ['H', 'O', 'C', 'N', 'S']
-vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
+vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K', 'V']
 
 # Construct element list from all three sources (with duplicates removed)
 element_list = list(dict.fromkeys(vol_element_list + vap_element_list + noble_gases))

@@ -5,6 +5,8 @@ import os
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le
 
+from proteus.utils.constants import R_earth
+
 from ._converters import lowercase, none_if_none
 
 
@@ -194,6 +196,8 @@ class Agni:
         Number of steps to use when calculating heights and gravity.
     hydrograv_maxdr: float
         Maximum step size to use when calculating heights [m]
+    hydrograv_hilldr: float
+        Maximum step size to use beyond the Hill radius [m]
     hydrograv_mindr: float
         Minimum step size to use when calculating heights [m]
     hydrograv_ming: float
@@ -270,8 +274,9 @@ class Agni:
     spectral_file: str | None = field(default=None, converter=none_if_none)
     grey_opacity_lw: float = field(default=1e1, validator=gt(0))
     grey_opacity_sw: float = field(default=1e-4, validator=gt(0))
-    hydrograv_steps: int = field(default=2000, validator=gt(0))
-    hydrograv_maxdr: float = field(default=1e8, validator=gt(0))
+    hydrograv_steps: int = field(default=2048, validator=gt(0))
+    hydrograv_maxdr: float = field(default=R_earth, validator=gt(0))
+    hydrograv_hilldr: float = field(default=R_earth * 1e-3, validator=gt(0))
     hydrograv_mindr: float = field(default=1e-5, validator=gt(0))
     hydrograv_ming: float = field(default=1e-4, validator=gt(0))
     hydrograv_constg: bool = field(default=False)
@@ -535,6 +540,7 @@ DOC_GROUPS = {
             (
                 'hydrograv_steps',
                 'hydrograv_maxdr',
+                'hydrograv_hilldr',
                 'hydrograv_mindr',
                 'hydrograv_ming',
                 'hydrograv_constg',

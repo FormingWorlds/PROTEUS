@@ -8384,7 +8384,7 @@
       "class": "Agni",
       "type": "int",
       "accepts_none": false,
-      "default": "2000",
+      "default": "2048",
       "choices": null,
       "bounds": [
         {
@@ -8405,7 +8405,7 @@
       "class": "Agni",
       "type": "float",
       "accepts_none": false,
-      "default": "100000000.0",
+      "default": "6335439.0",
       "choices": null,
       "bounds": [
         {
@@ -8417,6 +8417,27 @@
       "doc_source": "attributes",
       "group_order": 6,
       "group_position": 1,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_hilldr",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "6335.439",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum step size to use beyond the Hill radius [m]",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 2,
       "group": "Hydrostatic integration",
       "group_qualifier": null
     },
@@ -8437,7 +8458,7 @@
       "description": "Minimum step size to use when calculating heights [m]",
       "doc_source": "attributes",
       "group_order": 6,
-      "group_position": 2,
+      "group_position": 3,
       "group": "Hydrostatic integration",
       "group_qualifier": null
     },
@@ -8458,7 +8479,7 @@
       "description": "Minimum allowed gravity in the atmosphere [m/s^2]",
       "doc_source": "attributes",
       "group_order": 6,
-      "group_position": 3,
+      "group_position": 4,
       "group": "Hydrostatic integration",
       "group_qualifier": null
     },
@@ -8474,7 +8495,7 @@
       "description": "Constant gravity with height?",
       "doc_source": "attributes",
       "group_order": 6,
-      "group_position": 4,
+      "group_position": 5,
       "group": "Hydrostatic integration",
       "group_qualifier": null
     },
@@ -8490,7 +8511,7 @@
       "description": "Include self-gravity of the atmosphere?",
       "doc_source": "attributes",
       "group_order": 6,
-      "group_position": 5,
+      "group_position": 6,
       "group": "Hydrostatic integration",
       "group_qualifier": null
     },

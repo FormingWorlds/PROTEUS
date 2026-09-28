@@ -52,6 +52,8 @@ _REQUIRED_ATMOS_FIELDS = (
     'tmp_magma',
     # Cell-centre gravity, read at the XUV level
     'g',
+    # Hill radius, used by the hydrostatic integration to mark unbound layers
+    'hill_radius',
     # Solver flags
     'is_converged',
     'transparent',
@@ -565,17 +567,24 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     p_top = config.atmos_clim.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
-    # Aerosol species dictionary (set MMR to zero initially)
+    # Aerosol species dictionary. Each entry is tied to a condensate by name.
     aerosol_species = {}
     if config.atmos_clim.aerosols_enabled:
-        aerosol_species = {a: 0.0 for a in _determine_aerosols(dirs)}
+        condensate_by_lower = {c.lower(): c for c in condensates}
+        for name in _determine_aerosols(dirs):
+            tied = condensate_by_lower.get(name.lower())
+            if tied is not None:
+                # tied to a species by name
+                aerosol_species[name] = {'method': 'mon', 'species': tied}
+                log.debug(f'Aerosol species {name} tied to condensate {tied}')
+            else:
+                # set to zero abundance otherwise
+                aerosol_species[name] = {'method': 'mon', 'mmr': 0.0}
+                log.debug(f'Aerosol species {name} set to zero abundance')
         if len(aerosol_species) == 0:
             log.warning('No data found for aerosol species')
 
-    # Build the AGNI setup! kwargs. The ``aerosol_species`` parameter is
-    # only present on newer AGNI installs; if the installed AGNI predates
-    # that addition, sending the kwarg raises a Julia MethodError. Detect
-    # the kwarg at module load and only pass it when AGNI accepts it.
+    # Build the AGNI setup! kwargs.
     setup_kwargs = dict(
         IO_DIR=io_dir,
         # radtrans
@@ -589,7 +598,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         surf_roughness=config.atmos_clim.agni.surf_roughness,
         surf_windspeed=config.atmos_clim.agni.surf_windspeed,
         # phase change
-        condensates=condensates,
+        condensates=convert(jl.Array[jl.String, 1], condensates),
         phs_timescale=config.atmos_clim.agni.phs_timescale,
         evap_efficiency=config.atmos_clim.agni.evap_efficiency,
         # eqm chemistry
@@ -621,10 +630,12 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         # hydrostatic integration parameters
         hydrograv_steps=config.atmos_clim.agni.hydrograv_steps,
         hydrograv_maxdr=config.atmos_clim.agni.hydrograv_maxdr,
+        hydrograv_hilldr=config.atmos_clim.agni.hydrograv_hilldr,
         hydrograv_mindr=config.atmos_clim.agni.hydrograv_mindr,
         hydrograv_ming=config.atmos_clim.agni.hydrograv_ming,
         hydrograv_constg=config.atmos_clim.agni.hydrograv_constg,
         hydrograv_selfg=config.atmos_clim.agni.hydrograv_selfg,
+        hill_radius=hf_row['hill_radius'],
     )
     setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
 
@@ -945,10 +956,11 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
         atmos.gas_ovmr[g][:] = vol_dict[g]
 
     # ---------------------
-    # Update interior geometry and spin rate
+    # Update interior geometry, spin rate, and hill radius
     atmos.grav_surf = float(hf_row['gravity'])
     atmos.rp = float(hf_row['R_int'])
     atmos.interior_mass = float(hf_row['M_int'])
+    atmos.hill_radius = float(hf_row['hill_radius'])
     atmos.axial_period = float(hf_row['axial_period'])
     atmos.col_lon = float(hf_row['longitude'])
     atmos.col_lat = float(hf_row['latitude'])
