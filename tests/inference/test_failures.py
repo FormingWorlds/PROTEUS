@@ -12,9 +12,11 @@ References:
 
 from __future__ import annotations
 
+import fcntl
 import logging
 import pickle
 import re
+import threading
 
 import pandas as pd
 import pytest
@@ -220,6 +222,66 @@ def test_failure_records_round_trip_into_one_table(tmp_path):
     # writing its first row leaves exactly that behind.
     table.write_text('')
     assert failures_mod.read_failure_records(tmp_path) == []
+
+
+@pytest.mark.unit
+def test_a_row_cannot_land_ahead_of_the_header_another_writer_is_adding(tmp_path):
+    """Two workers that fail together must both end up in the table. The first
+    to open the file finds it empty and adds the header. A second writer that
+    arrives in between waits for the lock and appends below it, instead of
+    adding its row first, which would put a data row where the header belongs
+    and make the whole table unreadable.
+
+    The test takes the place of the first writer: it holds the lock on an
+    empty table while a second writer is started in a thread, then writes the
+    header and its own row and releases the lock.
+    """
+
+    def _failure(worker):
+        return failures_mod.ProteusRunFailure(
+            reason='the simulator exited with an error',
+            worker=worker,
+            iter=0,
+            out_dir=f'/study/workers/w_{worker}/i_0',
+            exit_code=1,
+            status=21,
+            parameters={'planet.mass_tot': 1.0 + worker},
+        )
+
+    first = _failure(0)
+    first_row = {key: getattr(first, key) for key in failures_mod._FAILURE_COLUMNS}
+    first_row['planet.mass_tot'] = 1.0
+    table = tmp_path / failures_mod.FAILURE_CSV
+
+    with open(table, 'a') as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        second = threading.Thread(
+            target=failures_mod.record_failure, args=(tmp_path, _failure(1))
+        )
+        second.start()
+        second.join(timeout=0.1)
+        # The second writer is waiting on the lock, not writing past it.
+        assert second.is_alive()
+        assert table.read_text() == ''
+        held.write(
+            failures_mod._csv_row(first_row.keys()) + failures_mod._csv_row(first_row.values())
+        )
+        held.flush()
+    second.join(timeout=5)
+    assert not second.is_alive()
+
+    lines = table.read_text().splitlines()
+    assert lines[0].startswith('worker,iter,')
+    # One header, and both rows below it.
+    assert sum(line.startswith('worker,iter,') for line in lines) == 1
+    records = failures_mod.read_failure_records(tmp_path)
+    assert [(r['worker'], r['planet.mass_tot']) for r in records] == [(0, 1.0), (1, 2.0)]
+
+    # Edge case: an empty table left by a writer that was killed before its
+    # first row gets the header from the next writer, so it reads back.
+    table.write_text('')
+    failures_mod.record_failure(tmp_path, _failure(2))
+    assert [r['worker'] for r in failures_mod.read_failure_records(tmp_path)] == [2]
 
 
 @pytest.mark.unit
