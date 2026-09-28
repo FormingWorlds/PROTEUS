@@ -817,16 +817,13 @@ def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp
 @pytest.mark.unit
 def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
     """The failure range covers the error statuses the simulator can record.
-    Code 28 is the highest error the status table defines; 29 is a completion
-    ('planet evaporated') and no current code path writes it, so it must not
-    be scored as a failure by an off-by-one in the range bound.
     """
     monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
     monkeypatch.setattr(
         objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
     )
 
-    def _score(status):
+    def _score(status, worker=0):
         monkeypatch.setattr(
             objective_mod,
             'run_proteus',
@@ -836,18 +833,29 @@ def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
             x=torch.tensor([[0.5]], dtype=torch.double),
             parameters=['planet.mass_tot'],
             true_observables={'R_obs': 9.25e6},
-            worker=0,
+            worker=worker,
             iter=0,
             output='dummy_output',
             ref_config='reference.toml',
+            failure_codes=[],
         ).item()
 
     # Highest defined error code, and the escape-model error below it.
     assert _score(28) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
     assert _score(21) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
-    # Completion codes are scored on their observables.
-    assert _score(29) == pytest.approx(10.0, rel=1e-9)
+    # An evaporated planet is kept out of the fit with no `failure_codes` entry.
+    assert _score(29, worker=1) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    recorded = {r['worker']: r for r in failures_mod.read_failure_records(tmp_path)}
+    assert (recorded[1]['status'], recorded[1]['category']) == (
+        29,
+        objective_mod.CATEGORY_EXCLUDED,
+    )
+    assert recorded[0]['category'] == objective_mod.CATEGORY_FAILURE
+    # Discrimination: other completion codes are still scored on their
+    # observables, -log10(0 + 1e-10) = 10 for an exact match, so status 29 is
+    # not excluded by a range that also catches 13.
     assert _score(13) == pytest.approx(10.0, rel=1e-9)
+    assert _score(18) == pytest.approx(10.0, rel=1e-9)
     # A run that never updated its status past 'Running' died mid-flight.
     assert _score(1) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
     # An unreadable status file is treated as a failure, because the run's own
