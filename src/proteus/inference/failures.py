@@ -4,7 +4,9 @@ excluded through `failure_codes`.
 
 from __future__ import annotations
 
+import fcntl
 import logging
+import os
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -156,11 +158,12 @@ def record_failure(study_abs: Path | str, failure: ProteusRunFailure) -> str | N
     """Append one row to the study's failure table.
 
     Workers are separate processes with no shared state, so each appends its
-    own row rather than handing the failure back to the parent. The first
-    worker to fail creates the file with its header through an exclusive
-    create, which exactly one caller can win, and every later row is a single
-    append. A row is one `write` call of well under a pipe buffer, which the
-    kernel adds whole, so no lock is needed on a local filesystem.
+    own row rather than handing the failure back to the parent. The file is
+    locked from the check for an empty table through the write, so exactly one
+    writer adds the header and no row can land ahead of it, which would leave
+    the table unreadable. The lock is advisory and per open file, so it holds
+    between the pool workers of initial sampling and the optimisation workers
+    alike, which share nothing else.
 
     Parameters
     ----------
@@ -182,12 +185,15 @@ def record_failure(study_abs: Path | str, failure: ProteusRunFailure) -> str | N
     line = _csv_row(ordered.values())
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            with open(target, 'x') as f:
-                f.write(_csv_row(ordered.keys()) + line)
-        except FileExistsError:
-            with open(target, 'a') as f:
-                f.write(line)
+        with open(target, 'a') as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            # Sized after the lock is taken: another writer may have added the
+            # header between this one opening the file and acquiring the lock.
+            if os.fstat(f.fileno()).st_size == 0:
+                line = _csv_row(ordered.keys()) + line
+            f.write(line)
+            # Written out before the lock is released on close.
+            f.flush()
     except OSError as err:
         log.warning(
             f'Could not record the failure of worker={failure.worker} '
