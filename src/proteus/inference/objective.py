@@ -212,29 +212,29 @@ def run_proteus(
     # Ensure output directory exists
     out_abs.mkdir(parents=True, exist_ok=True)
 
+    # Swept parameter values only. Add `updates` as a copy for the failure report
+    # so that the original `parameters` dict is unchanged.
+    swept = {k: v for k, v in parameters.items() if k not in _FIXED_PARAMETER_KEYS}
+    updates = dict(parameters)
+
     # Inject output path into simulation parameters
-    parameters['params.out.path'] = str(out_dir)
+    updates['params.out.path'] = str(out_dir)
 
     # Every evaluation of an inference run that holds the star fixed builds the same
-    # prepared spectral file. Point them all at one folder so only the first
-    # pays for it.
-    parameters['atmos_clim.spectral_cache'] = str(
+    # prepared spectral file.
+    updates['atmos_clim.spectral_cache'] = str(
         Path(get_proteus_directories(output)['output']) / SPECTRAL_CACHE_DIR
     )
 
     # Don't allow workers to make plots or logs
-    parameters.update(WORKER_CONFIG_OVERRIDES)
+    updates.update(WORKER_CONFIG_OVERRIDES)
 
     # Generate config
-    update_toml(ref_config, parameters, str(out_cfg))
+    update_toml(ref_config, updates, str(out_cfg))
 
     # Generate environment
     env = dict(**os.environ)
     env['OMP_NUM_THREADS'] = '1'
-
-    # Swept parameter values only, for the failure report. The output path and
-    # the worker overrides are fixed for every run and add no diagnostic value.
-    swept = {k: v for k, v in parameters.items() if k not in _FIXED_PARAMETER_KEYS}
 
     # A run that dies before its logger is configured leaves no logfile behind, so
     # this stream records it.
@@ -288,7 +288,7 @@ def run_proteus(
         stream.close()
 
     # Re-write config in case simulator mutates or removes it
-    update_toml(ref_config, parameters, str(out_cfg))
+    update_toml(ref_config, updates, str(out_cfg))
 
     # Read status file
     status = ReadStatus(out_abs)
