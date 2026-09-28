@@ -8,6 +8,7 @@ References:
 
 from __future__ import annotations
 
+import csv
 import logging
 import subprocess
 
@@ -112,7 +113,8 @@ def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     """``run_proteus`` handles the escaped-atmosphere case (P_surf=0):
     the observable dictionary is populated with zeros instead of NaN,
     and ``update_toml`` is invoked exactly twice (once per simulator pass)
-    so the inversion harness sees a numeric value.
+    so the inversion harness sees a numeric value. The per-run config entries
+    are added to what is written, never to the parameters passed in.
     """
     out_abs = tmp_path / 'sim'
     out_abs.mkdir(parents=True)
@@ -133,7 +135,7 @@ def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(objective_mod.subprocess, 'run', lambda *args, **kwargs: None)
 
-    parameters = {}
+    parameters = {'planet.mass_tot': 2.0}
     obs, status = objective_mod.run_proteus(
         parameters=parameters,
         worker=1,
@@ -146,6 +148,13 @@ def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     assert obs['P_surf'] == pytest.approx(0.0)
     assert obs['atm_kg_per_mol'] == pytest.approx(0.0)
     assert len(updates) == 2
+    # The fixed entries reach the config that is written, but not the caller's
+    # dict: `J` reuses that dict for the failure report, which formats every
+    # value as a number and names only the swept parameters.
+    assert updates[0][1]['params.out.path'] == 'dummy_output/workers/w_1/i_2'
+    assert updates[0][1]['params.out.plot_mod'] == 'none'
+    assert list(parameters) == ['planet.mass_tot']
+    assert parameters['planet.mass_tot'] == pytest.approx(2.0)
     # No status file was written, which is reported as such rather than as a
     # generic error: a run that dies during start-up and a run that reaches
     # the main loop and fails there call for different investigations.
@@ -948,3 +957,95 @@ def test_run_output_dir_names_the_folder_the_simulator_is_given(monkeypatch, tmp
     rel_init, _ = objective_mod.run_output_dir('study', -1, 7)
     assert rel_init.as_posix() == 'study/workers/w_-1/i_7'
     assert rel_init != rel
+
+
+@pytest.mark.unit
+def test_J_records_clean_exit_failures_through_the_real_simulator_wrapper(
+    monkeypatch, tmp_path
+):
+    """Only the simulator call is replaced, so `J` drives the real `run_proteus`,
+    config writing, status reading and failure table. Four evaluations cover
+    the outcomes a study meets: a crash, a clean exit on an error status (25),
+    a clean exit on a status the study excludes (11), and a completed run (13).
+
+    The two clean-exit outcomes build their report from the swept values held
+    by `J`. Those must stay numeric and limited to the swept keys, or the report
+    cannot be formatted and the table gains columns partway through, after
+    which it no longer reads back and the summary counts every run as usable.
+    """
+    monkeypatch.setenv('PROTEUS_OUTPUT_PATH', str(tmp_path))
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
+    ref_config = tmp_path / 'reference.toml'
+    ref_config.write_text('[planet]\nmass_tot = 1.0\n\n[params.out]\npath = "unset"\n')
+
+    # Status each worker's run records, and whether it then crashes.
+    outcomes = {0: (21, True), 1: (25, False), 2: (11, False), 3: (13, False)}
+    calls = []
+
+    def _fake_run(command, **_kwargs):
+        cfg = toml.load(command[3])
+        calls.append(cfg)
+        out_abs = tmp_path / cfg['params']['out']['path']
+        worker = int(out_abs.parent.name.removeprefix('w_'))
+        status, crashes = outcomes[worker]
+        (out_abs / 'status').write_text(f'{status}\n')
+        pd.DataFrame([{'P_surf': 1e5, 'R_obs': 9.25e6}]).to_csv(
+            out_abs / 'runtime_helpfile.csv', sep=' ', index=False
+        )
+        if crashes:
+            raise subprocess.CalledProcessError(returncode=1, cmd=command)
+
+    monkeypatch.setattr(objective_mod.subprocess, 'run', _fake_run)
+
+    # A distinct swept value per worker, so each row can be matched to its run.
+    scores = {
+        w: objective_mod.J(
+            x=torch.tensor([[1.5 + w]], dtype=torch.double),
+            parameters=['planet.mass_tot'],
+            true_observables={'R_obs': 9.25e6},
+            worker=w,
+            iter=0,
+            output='study',
+            ref_config=str(ref_config),
+            failure_codes=[11],
+        ).item()
+        for w in outcomes
+    }
+
+    assert [scores[w] for w in (0, 1, 2)] == pytest.approx([objective_mod.BAD_OBJ_VALUE] * 3)
+    # Discrimination: the completed run goes through the same wrapper and is
+    # scored on its observables, -log10(0 + 1e-10) = 10 for an exact match.
+    assert scores[3] == pytest.approx(10.0, rel=1e-9)
+
+    # The fixed entries still reach the simulator config; keeping them out of
+    # the report must not keep them out of the run.
+    assert len(calls) == 4
+    assert calls[1]['params']['out']['path'] == 'study/workers/w_1/i_0'
+    assert calls[1]['params']['out']['plot_mod'] == 'none'
+    assert calls[1]['atmos_clim']['spectral_cache'].endswith('spectral_cache')
+    assert calls[1]['planet']['mass_tot'] == pytest.approx(2.5)
+
+    # One header and one row per unscored run, all the same width: the fixed
+    # columns plus the single swept parameter, and none of the fixed entries.
+    # Parsed as CSV rather than split on commas: status descriptions such as
+    # the one for status 25 contain a comma and are written quoted.
+    with open(tmp_path / 'study' / failures_mod.FAILURE_CSV, newline='') as f:
+        table = list(csv.reader(f))
+    header = table[0]
+    assert header == [*failures_mod._FAILURE_COLUMNS, 'planet.mass_tot']
+    assert 'params.out.path' not in header
+    assert len(table) == 4
+    assert {len(row) for row in table} == {len(header)}
+
+    records = failures_mod.read_failure_records(tmp_path / 'study')
+    assert [(r['worker'], r['status'], r['category']) for r in records] == [
+        (0, 21, objective_mod.CATEGORY_FAILURE),
+        (1, 25, objective_mod.CATEGORY_FAILURE),
+        (2, 11, objective_mod.CATEGORY_EXCLUDED),
+    ]
+    assert [r['planet.mass_tot'] for r in records] == pytest.approx([1.5, 2.5, 3.5])
+    assert [r['exit_code'] for r in records] == [1, 0, 0]
+
+    # The study tally counts the three unscored runs. An unreadable table would
+    # report zero here and describe every evaluation as usable.
+    assert failures_mod.summarise_failures(str(tmp_path / 'study'), n_attempted=4) == 3
