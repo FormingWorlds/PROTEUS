@@ -153,7 +153,7 @@ The system prints the final results including:
 
 ### Failed and excluded simulations
 
-During the inference run, some PROTEUS simulations might crash or fail, or stop on a status that is excluded in the inference configuration (e.g. maximum runtime reached). The run carries on when there are failures unless `abort_on_failure` is set to `true` in the inference config. At the end of the study all failures are written to `failures.csv` in the output folder, and summarised. 
+During the inference run, some PROTEUS simulations might crash or fail, or stop on a status that is excluded in the inference configuration (e.g. maximum runtime reached). Status 29 (planet evaporated) is always excluded. The run carries on when there are failures unless `abort_on_failure` is set to `true` in the inference config. At the end of the study all failures are written to `failures.csv` in the output folder, and summarised. 
 
 ## Customization
 
