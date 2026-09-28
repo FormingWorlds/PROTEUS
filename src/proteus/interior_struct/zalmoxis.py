@@ -1961,18 +1961,21 @@ def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
 def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     """Loads the solidus and liquidus functions for Zalmoxis based on the mantle EOS.
 
-    Melting curves are needed for two purposes:
+    In the structure solve the melting curves set:
     1. Temperature-dependent density in the mushy zone (WolfBower2018, RTPress,
-       PALEOS-2phase).
-    2. phi(r) blending in VolatileProfile (any EOS with dissolved volatiles).
+       PALEOS-2phase, PALEOS-API-2phase).
+    2. The nabla_ad blend across the mushy zone (PALEOS-2phase, PALEOS-API-2phase).
+    3. phi(r) blending in VolatileProfile (any EOS with dissolved volatiles).
+    They also set the Aragog phase boundaries and the initial entropy.
 
     For WolfBower2018/RTPress100TPa, loads SPIDER-format P-T files from FWL_DATA.
     For PALEOS unified and PALEOS-2phase, the liquidus is the analytic
     Belonoshko+2005 / Fei+2021 curve (Zalmoxis ``'PALEOS-liquidus'``) and the
     solidus is T_sol = T_liq * mushy_zone_factor. The density of a unified
     PALEOS table does not use them: it takes its mushy zone from the liquidus in
-    the table's phase column, the first temperature node at or above the
-    analytic curve (up to about 1.5% above it for MgSiO3).
+    the table's phase column, the first temperature node at or above its
+    melting curve (for the shipped MgSiO3 table, up to about 1.5% above the
+    analytic curve).
 
     Parameters
     ----------
