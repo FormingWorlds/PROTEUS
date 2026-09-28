@@ -22,6 +22,7 @@ import numpy as np
 import pytest
 import toml
 
+from proteus.config import read_config_object
 from proteus.grid import manage as gm
 from proteus.grid.manage import (
     Grid,
@@ -1247,24 +1248,43 @@ class TestGridFromConfig:
         assert slurm_called['n'] == 0
 
 
+_UNSET = (1e-8, 1e-10)
+
+
 @pytest.mark.parametrize(
-    ('base_rtol', 'expected'), [(None, (1e-8, 1e-10)), (3e-9, (3e-9, 3e-9))]
+    ('base', 'dims', 'expected'),
+    [
+        ('', {}, _UNSET),
+        ('rtol = -1.0', {}, _UNSET),
+        ('num_tolerance = -1.0', {}, _UNSET),
+        ('[interior_energetics.spider]\ntolerance_rel = -1.0', {}, _UNSET),
+        ('rtol = 3e-9', {}, (3e-9, 3e-9)),
+        ('num_tolerance = 3e-9', {}, (3e-9, 3e-9)),
+        ('[interior_energetics.spider]\ntolerance_rel = 3e-9', {}, (3e-9, 3e-9)),
+        ('', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
+    ],
 )
 def test_write_config_files_gives_each_module_its_default_rtol(
-    fake_proteus_dir, tmp_path, monkeypatch, base_rtol, expected
+    fake_proteus_dir, tmp_path, monkeypatch, base, dims, expected
 ):
     """A grid over the interior module writes each case the rtol default of its own
-    module when the base config sets no rtol; an rtol the base sets is kept."""
-    base = tmp_path / 'base_ie.toml'
-    base.write_text('' if base_rtol is None else f'[interior_energetics]\nrtol = {base_rtol}\n')
-    g = Grid(name='rtol_grid', base_config_path=str(base))
-    g.add_dimension('mod', 'interior_energetics.module')
-    g.set_dimension_direct('mod', ['aragog', 'spider'])
+    module unless the base config or the grid sets rtol or an alias; cases reload."""
+    cfg = tmp_path / 'base_ie.toml'
+    cfg.write_text(f'[interior_energetics]\n{base}\n')
+    g = Grid(name='rtol_grid', base_config_path=str(cfg))
+    dims = {'interior_energetics.module': ['aragog', 'spider'], **dims}
+    for i, (key, values) in enumerate(dims.items()):
+        g.add_dimension(f'd{i}', key)
+        g.set_dimension_direct(f'd{i}', values)
     g.generate()
     monkeypatch.setattr(gm.os, 'sync', lambda: None)
     g.write_config_files()
-    got = {}
-    for i in range(2):
-        ie = toml.load(g._get_tmpcfg(i))['interior_energetics']
-        got[ie['module']] = ie['rtol']
-    assert (got['aragog'], got['spider']) == pytest.approx(expected, rel=1e-12)
+    paths = {
+        toml.load(p)['interior_energetics']['module']: p for p in map(g._get_tmpcfg, range(2))
+    }
+    got = [toml.load(paths[m])['interior_energetics']['rtol'] for m in ('aragog', 'spider')]
+    loaded = [
+        read_config_object(paths[m]).interior_energetics.rtol for m in ('aragog', 'spider')
+    ]
+    assert got == pytest.approx(expected, rel=1e-12)
+    assert loaded == pytest.approx(expected, rel=1e-12)

@@ -20,7 +20,7 @@ import numpy as np
 import toml
 
 from proteus.config import Config, read_config, read_config_object
-from proteus.config._interior import default_rtol
+from proteus.config._interior import default_rtol, rtol_is_set
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
 from proteus.utils.logs import setup_logger
 
@@ -274,11 +274,12 @@ class Grid:
         """Write config files."""
         # Read base config file
         base_config = read_config_object(self.conf)
-        # A module set per case takes that module's default rtol when the base sets none.
-        raw = read_config(self.conf).get('interior_energetics', {})
-        rtol_unset = not (
-            {'rtol', 'num_tolerance'} & raw.keys() or 'tolerance_rel' in raw.get('spider', {})
-        )
+        # A module set per case takes that module's default rtol when nothing sets one.
+        rtol_unset = not rtol_is_set(read_config(self.conf).get('interior_energetics', {}))
+        tol_keys = {
+            f'interior_energetics.{k}'
+            for k in ('rtol', 'num_tolerance', 'spider.tolerance_rel')
+        }
 
         # Loop over grid points to write config files
         log.info('Writing config files')
@@ -292,13 +293,10 @@ class Grid:
             # Set other parameters in Config object
             for key in gp.keys():
                 recursive_setattr(thisconf, key, gp[key])
-            if (
-                rtol_unset
-                and 'interior_energetics.module' in gp
-                and 'interior_energetics.rtol' not in gp
-            ):
-                ie = thisconf.interior_energetics
-                object.__setattr__(ie, 'rtol', default_rtol(ie.module))
+            if rtol_unset and 'interior_energetics.module' in gp and not tol_keys & gp.keys():
+                thisconf.interior_energetics.rtol = default_rtol(
+                    thisconf.interior_energetics.module
+                )
 
             # Write this configuration file
             thisconf.write(self._get_tmpcfg(i))

@@ -6,16 +6,22 @@ import warnings
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
-# Default interior rtol when unset: 1e-8 for Aragog (the tolerance at which its rate
-# phase-boundary cap is verified), 1e-10 otherwise.
-_DEFAULT_RTOL = 1e-10
-_DEFAULT_RTOL_ARAGOG = 1e-8
 _TOL_UNSET = -1.0
 
 
 def default_rtol(module: str) -> float:
-    """Interior rtol for ``module`` when no tolerance key is set."""
-    return _DEFAULT_RTOL_ARAGOG if module == 'aragog' else _DEFAULT_RTOL
+    """Interior rtol when unset: 1e-8 for Aragog (the tolerance at which its rate
+    phase-boundary cap is verified), 1e-10 otherwise."""
+    return 1e-8 if module == 'aragog' else 1e-10
+
+
+def rtol_is_set(ie: dict) -> bool:
+    """Whether a raw ``[interior_energetics]`` table sets rtol or one of its aliases."""
+    return (
+        ie.get('rtol', _TOL_UNSET) != _TOL_UNSET
+        or ie.get('num_tolerance', _TOL_UNSET) != _TOL_UNSET
+        or ie.get('spider', {}).get('tolerance_rel', _TOL_UNSET) > 0
+    )
 
 
 # Single canonical "disabled" value for the three per-call Aragog step caps.

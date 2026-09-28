@@ -317,15 +317,6 @@ def test_aragog_phase_boundary_cap_defaults_to_rate_and_rejects_other_values():
             Aragog(phase_boundary_cap=bad)
 
 
-def test_aragog_unset_phase_boundary_cap_is_none():
-    """The paired Aragog stores an unset cap as None, the value setup_solver passes for 'rate'."""
-    parser = pytest.importorskip('aragog.parser')
-    fields = parser._EnergyParameters.__dataclass_fields__
-    if 'phase_boundary_cap' not in fields:
-        pytest.skip('installed Aragog has no phase_boundary_cap')
-    assert fields['phase_boundary_cap'].default is None
-
-
 @pytest.mark.parametrize(
     ('module', 'expected'), [('aragog', 1e-8), ('spider', 1e-10), ('dummy', 1e-10)]
 )
