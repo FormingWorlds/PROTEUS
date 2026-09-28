@@ -1990,15 +1990,9 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     if mantle_eos.startswith(_TDEP_PREFIXES):
         return get_zalmoxis_melting_curves(config)
 
-    # PALEOS unified and PALEOS-2phase: both use the same analytic Belonoshko+2005 /
-    # Fei+2021 melting curve (`PALEOS-liquidus`) as the basis for MgSiO3 phase
-    # separation. The unified path uses it for in-table density interpolation;
-    # the 2-phase path uses it inside `_compute_paleos_dtdp` to weight nabla_ad
-    # across the solid/liquid blend (mixing.py:_compute_paleos_dtdp). The solidus
-    # is derived as `liquidus * mushy_zone_factor` so the mushy band lines up with
-    # the unified PALEOS density interpolation. Without these curves, the
-    # 2-phase nabla_ad call fails and Zalmoxis structure solve diverges; the
-    # unified path falls back to phi=0.5 everywhere in VolatileProfile.
+    # PALEOS unified and 2-phase: the analytic PALEOS liquidus, solidus = liquidus * mzf.
+    # They set the 2-phase nabla_ad blend (_compute_paleos_dtdp) and the VolatileProfile
+    # melt fraction; a unified table's density uses its own extracted liquidus instead.
     if mantle_eos.startswith(PALEOS_EOS_PREFIXES):
         try:
             from zalmoxis.melting_curves import (
