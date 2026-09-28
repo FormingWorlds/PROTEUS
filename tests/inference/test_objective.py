@@ -83,6 +83,69 @@ def test_update_toml_updates_nested_keys(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('enabled', [True, False], ids=['cache-on', 'cache-off'])
+@pytest.mark.parametrize(
+    'ref_cache', [None, 'none', '/my/cache'], ids=['unset', 'none', 'path']
+)
+def test_run_proteus_takes_the_spectral_cache_from_the_inference_switch(
+    monkeypatch, tmp_path, enabled, ref_cache
+):
+    """The inference config's `spectral_cache` switch decides the cache every
+    worker runs with, whatever the reference config sets: a reference config
+    copied from `all_options.toml` carries "none" without the user choosing it.
+    On, workers share the study's cache folder; off, they run with "none".
+    Both config writes, before and after the run, carry the same value.
+    """
+    monkeypatch.setenv('PROTEUS_OUTPUT_PATH', str(tmp_path))
+    monkeypatch.setenv(objective_mod.SPECTRAL_CACHE_ENV, '1' if enabled else '0')
+    ref = {'planet': {'mass_tot': 1.0}}
+    if ref_cache is not None:
+        ref['atmos_clim'] = {'spectral_cache': ref_cache}
+    ref_config = tmp_path / 'reference.toml'
+    ref_config.write_text(toml.dumps(ref), encoding='utf-8')
+    run_dir = tmp_path / 'study' / 'workers' / 'w_0' / 'i_0'
+
+    seen = []
+
+    def _fake_run(command, **_kwargs):
+        seen.append(toml.load(command[3])['atmos_clim']['spectral_cache'])
+        pd.DataFrame([{'P_surf': 1e5}]).to_csv(
+            run_dir / 'runtime_helpfile.csv', sep=' ', index=False
+        )
+
+    monkeypatch.setattr(objective_mod.subprocess, 'run', _fake_run)
+    objective_mod.run_proteus(
+        parameters={'planet.mass_tot': 2.0},
+        worker=0,
+        iter=0,
+        observables=['P_surf'],
+        ref_config=str(ref_config),
+        output='study',
+    )
+    written = toml.load(run_dir / 'input.toml')
+    study_cache = str(tmp_path / 'study' / objective_mod.SPECTRAL_CACHE_DIR)
+    assert seen == [study_cache if enabled else 'none']
+    assert written['atmos_clim']['spectral_cache'] == seen[0]
+    # The swept value is still applied alongside.
+    assert written['planet']['mass_tot'] == pytest.approx(2.0)
+
+
+@pytest.mark.unit
+def test_spectral_cache_switch_defaults_to_on(monkeypatch):
+    """Workers started without the switch recorded share the cache, and only
+    an explicit "0" turns it off.
+    """
+    monkeypatch.delenv(objective_mod.SPECTRAL_CACHE_ENV, raising=False)
+    assert objective_mod.spectral_cache_enabled() is True
+    monkeypatch.setenv(objective_mod.SPECTRAL_CACHE_ENV, '0')
+    assert objective_mod.spectral_cache_enabled() is False
+    monkeypatch.setenv(objective_mod.SPECTRAL_CACHE_ENV, '1')
+    assert objective_mod.spectral_cache_enabled() is True
+    # Off gives the literal the config converter reads as disabled.
+    assert objective_mod.worker_spectral_cache('study', False) == 'none'
+
+
+@pytest.mark.unit
 def test_apply_nested_updates_mutates_in_place_and_rejects_value_paths():
     """``apply_nested_updates`` writes dotted keys into the dict it was given,
     creating the sections a new key needs, and refuses a path that descends
@@ -153,6 +216,7 @@ def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     # value as a number and names only the swept parameters.
     assert updates[0][1]['params.out.path'] == 'dummy_output/workers/w_1/i_2'
     assert updates[0][1]['params.out.plot_mod'] == 'none'
+    assert updates[0][1]['atmos_clim.spectral_cache'].endswith('spectral_cache')
     assert list(parameters) == ['planet.mass_tot']
     assert parameters['planet.mass_tot'] == pytest.approx(2.0)
     # No status file was written, which is reported as such rather than as a

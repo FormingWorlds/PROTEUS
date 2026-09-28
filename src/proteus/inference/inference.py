@@ -33,10 +33,12 @@ from proteus.inference.async_BO import checkpoint, parallel_process
 from proteus.inference.failures import ABORT_ON_FAILURE_ENV, summarise_failures
 from proteus.inference.gen_D_init import create_init
 from proteus.inference.objective import (
+    SPECTRAL_CACHE_ENV,
     WORKER_CONFIG_OVERRIDES,
     apply_nested_updates,
     prot_builder,
     set_child_timeout,
+    worker_spectral_cache,
 )
 from proteus.inference.utils import print_results, str_time
 from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
@@ -123,7 +125,9 @@ def parameter_bounds(parameters: dict) -> dict[str, tuple[float, float]]:
     return bounds
 
 
-def validate_reference_config(ref_config: str, parameters: dict) -> None:
+def validate_reference_config(
+    ref_config: str, parameters: dict, spectral_cache: bool = True
+) -> None:
     """Reject a reference config the workers could not run, before any run starts.
 
     The file is checked exactly as PROTEUS checks its own input, and then again
@@ -144,6 +148,7 @@ def validate_reference_config(ref_config: str, parameters: dict) -> None:
     ----------
     - ref_config (str): Path to the reference PROTEUS config file.
     - parameters (dict): Mapping of dot-separated config keys to [min, max].
+    - spectral_cache (bool): The inference config's `spectral_cache` switch.
 
     Returns
     ----------
@@ -165,6 +170,9 @@ def validate_reference_config(ref_config: str, parameters: dict) -> None:
         updates = {key: pair[index] for key, pair in bounds.items()}
         updates.update(WORKER_CONFIG_OVERRIDES)
         updates['params.out.path'] = _VALIDATION_OUT_PATH
+        updates['atmos_clim.spectral_cache'] = worker_spectral_cache(
+            _VALIDATION_OUT_PATH, spectral_cache
+        )
         candidate = apply_nested_updates(copy.deepcopy(raw), updates)
         _reject_bad_config(candidate, f'{ref_config} (parameters at their {label} bounds)')
 
@@ -199,7 +207,13 @@ def run_inference(config):
     if not os.path.isfile(config['ref_config']):
         raise FileNotFoundError('Cannot find reference config: ' + config['ref_config'])
 
-    validate_reference_config(config['ref_config'], config['parameters'])
+    # Whether workers share prepared spectral files, which replaces the
+    # reference config's own atmos_clim.spectral_cache setting.
+    spectral_cache = config.get('spectral_cache', True)
+    if not isinstance(spectral_cache, bool):
+        raise ValueError(f'spectral_cache must be true or false, got {spectral_cache!r}')
+
+    validate_reference_config(config['ref_config'], config['parameters'], spectral_cache)
 
     # Create output directory
     safe_rm(dirs['output'])
@@ -231,6 +245,12 @@ def run_inference(config):
     # sample. Defaults to scoring, because a sweep over a wide parameter box
     # is expected to reach combinations the simulator cannot integrate.
     os.environ[ABORT_ON_FAILURE_ENV] = '1' if config.get('abort_on_failure', False) else '0'
+
+    os.environ[SPECTRAL_CACHE_ENV] = '1' if spectral_cache else '0'
+    if spectral_cache:
+        log.info(f'Spectral cache: {worker_spectral_cache(config["output"], True)}')
+    else:
+        log.info('Spectral cache: off (spectral_cache = false in the inference config)')
 
     # Default for configs that pre-date this field
     config.setdefault('failure_codes', [])

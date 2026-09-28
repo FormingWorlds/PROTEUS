@@ -171,3 +171,4 @@ During the inference run, some PROTEUS simulations might crash or fail, or stop 
 - Set `n_workers` to be less than your CPU core count minus 1
 - The system automatically limits thread usage to prevent oversubscription
 - PROTEUS evaluation time typically dominates total runtime
+- Workers share prepared spectral files through a cache in the inference run's output folder. Set `spectral_cache = false` in the inference config to turn it off. The study log names the cache in use.

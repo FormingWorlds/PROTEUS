@@ -10,6 +10,7 @@ References:
 from __future__ import annotations
 
 import multiprocessing as mp
+import os
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,14 @@ pytest.importorskip('gpytorch')
 
 import proteus.inference.inference as inference_mod  # noqa: E402
 from proteus.config import UnknownConfigKeyError  # noqa: E402
+from proteus.inference.failures import ABORT_ON_FAILURE_ENV  # noqa: E402
+from proteus.inference.objective import (  # noqa: E402
+    _CHILD_TIMEOUT_ENV as CHILD_TIMEOUT_ENV,
+)
+from proteus.inference.objective import (  # noqa: E402
+    SPECTRAL_CACHE_DIR,
+    SPECTRAL_CACHE_ENV,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -216,6 +225,38 @@ def test_parameter_bounds_rejects_a_log_scaled_range_that_reaches_zero():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('enabled', [True, False], ids=['cache-on', 'cache-off'])
+def test_validate_reference_config_checks_the_spectral_cache_the_workers_use(
+    monkeypatch, tmp_path, enabled
+):
+    """The configs checked at startup carry the spectral cache the workers will
+    run with, which the inference switch sets whatever the reference config
+    holds. The reference config here sets a path of its own to show that.
+    """
+    ref = toml.load(BASE_CONFIG)
+    ref.setdefault('atmos_clim', {})['spectral_cache'] = '/my/cache'
+    ref_config = tmp_path / 'ref.toml'
+    ref_config.write_text(toml.dumps(ref), encoding='utf-8')
+
+    checked = []
+    monkeypatch.setattr(
+        inference_mod, '_reject_bad_config', lambda raw, label: checked.append((label, raw))
+    )
+    inference_mod.validate_reference_config(
+        str(ref_config), {'planet.mass_tot': [0.7, 3.0]}, spectral_cache=enabled
+    )
+
+    # The file as written, then both bound variants.
+    assert len(checked) == 3
+    assert checked[0][1]['atmos_clim']['spectral_cache'] == '/my/cache'
+    variants = [raw['atmos_clim']['spectral_cache'] for _label, raw in checked[1:]]
+    if enabled:
+        assert all(v.endswith(SPECTRAL_CACHE_DIR) for v in variants)
+    else:
+        assert variants == ['none', 'none']
+
+
+@pytest.mark.unit
 def test_validate_reference_config_accepts_a_runnable_sweep():
     """A reference config that PROTEUS accepts, swept over parameters that stay
     inside the schema at both ends, passes validation. Each accepted sweep is
@@ -305,17 +346,19 @@ def test_validate_reference_config_rejects_a_faulty_reference_file(tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ('parameters', 'error', 'match'),
+    ('parameters', 'extra', 'error', 'match'),
     [
-        ({'planet.mass_tott': [0.7, 3.0]}, UnknownConfigKeyError, 'planet.mass_tott'),
+        ({'planet.mass_tott': [0.7, 3.0]}, {}, UnknownConfigKeyError, 'planet.mass_tott'),
         # Accepted by the schema, and rejected by the optimiser only once the
         # workers start sampling it in log10 space.
-        ({'planet.elements.H_budget': [0.0, 2e4]}, ValueError, 'log scale'),
+        ({'planet.elements.H_budget': [0.0, 2e4]}, {}, ValueError, 'log scale'),
+        # A quoted "false" is truthy, so it would silently leave the cache on.
+        ({'planet.mass_tot': [0.7, 3.0]}, {'spectral_cache': 'false'}, ValueError, 'true or'),
     ],
-    ids=['misspelt_parameter', 'log_scaled_range_reaching_zero'],
+    ids=['misspelt_parameter', 'log_scaled_range_reaching_zero', 'spectral_cache_not_bool'],
 )
 def test_run_inference_validates_reference_config_before_emptying_output(
-    monkeypatch, tmp_path, parameters, error, match
+    monkeypatch, tmp_path, parameters, extra, error, match
 ):
     """``run_inference`` validates the reference config before it empties the
     study output folder and before it generates any initial design. Re-running
@@ -334,6 +377,7 @@ def test_run_inference_validates_reference_config_before_emptying_output(
         'seed': 1,
         'observables': {'P_surf': 1.0},
         'parameters': parameters,
+        **extra,
     }
     # Stand in for a completed earlier study occupying the same output folder.
     output_root = tmp_path / 'output'
@@ -366,6 +410,65 @@ def test_run_inference_validates_reference_config_before_emptying_output(
     assert previous.read_text(encoding='utf-8') == 'x_0,y\n0.5,1.0\n'
     # Nothing downstream of the guard may have run at all.
     assert not (output_root / 'ref_config.toml').exists()
+
+
+class _StopAfterSetup(Exception):
+    """Raised in place of the initial design, once startup has finished."""
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('switch', [None, True, False], ids=['default', 'on', 'off'])
+def test_run_inference_reports_the_spectral_cache_the_study_uses(
+    monkeypatch, tmp_path, caplog, switch
+):
+    """The study log names the spectral cache the workers will use, so a study
+    running without one is visible. The cache is on unless the inference config
+    turns it off, and the setting reaches the workers through the environment.
+    """
+    config = {
+        'output': 'unit_inference',
+        'logging': 'INFO',
+        'n_workers': 1,
+        'ref_config': BASE_CONFIG,
+        'n_steps': 1,
+        'kernel': 'MAT3/2',
+        'acqf': 'LogEI',
+        'seed': 1,
+        'observables': {'P_surf': 1.0},
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
+    }
+    if switch is not None:
+        config['spectral_cache'] = switch
+    output_root = tmp_path / 'output'
+    monkeypatch.setattr(
+        inference_mod,
+        'get_proteus_directories',
+        lambda _output: {'output': str(output_root), 'proteus': ''},
+    )
+    monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
+    monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
+
+    def _stop(*_a, **_kw):
+        raise _StopAfterSetup
+
+    monkeypatch.setattr(inference_mod, 'create_init', _stop)
+    # Registered so the values run_inference writes are undone afterwards.
+    for env in (SPECTRAL_CACHE_ENV, ABORT_ON_FAILURE_ENV, CHILD_TIMEOUT_ENV):
+        monkeypatch.setenv(env, 'unset')
+
+    with caplog.at_level('INFO'), pytest.raises(_StopAfterSetup):
+        inference_mod.run_inference(config)
+
+    lines = [r.getMessage() for r in caplog.records if 'Spectral cache' in r.getMessage()]
+    assert len(lines) == 1
+    if switch is False:
+        assert (
+            lines[0] == 'Spectral cache: off (spectral_cache = false in the inference config)'
+        )
+        assert os.environ[SPECTRAL_CACHE_ENV] == '0'
+    else:
+        assert lines[0].endswith(f'unit_inference/{SPECTRAL_CACHE_DIR}')
+        assert os.environ[SPECTRAL_CACHE_ENV] == '1'
 
 
 # ============================================================================

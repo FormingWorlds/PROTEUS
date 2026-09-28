@@ -48,8 +48,10 @@ WORKER_CONFIG_OVERRIDES = {
     'params.out.archive_mod': 0,
 }
 
-# Folder inside the study output where workers reuse prepared spectral files.
+# Folder inside the study output where workers reuse prepared spectral files,
+# and the switch for it, passed to the workers through the environment.
 SPECTRAL_CACHE_DIR = 'spectral_cache'
+SPECTRAL_CACHE_ENV = 'PROTEUS_INFERENCE_SPECTRAL_CACHE'
 
 # Config entries every run sets to the same thing, or to a value derived from
 # the run index. Excluded from failure reports, which name the swept values.
@@ -167,6 +169,33 @@ def update_toml(config_file: str, updates: dict, output_file: str) -> None:
         toml.dump(config, f)
 
 
+def spectral_cache_enabled() -> bool:
+    """Whether workers share a spectral cache, as recorded by the parent process."""
+    return os.environ.get(SPECTRAL_CACHE_ENV, '1') == '1'
+
+
+def worker_spectral_cache(output: str, enabled: bool) -> str:
+    """The `atmos_clim.spectral_cache` value every worker runs with.
+
+    Set by the inference config's `spectral_cache` switch, whatever the
+    reference config holds: a reference config copied from `all_options.toml`
+    sets "none" without meaning to. Every evaluation that holds the star fixed
+    builds the same prepared file, so enabled workers share one folder.
+
+    Parameters
+    ----------
+    - output (str): Study output folder, relative to the PROTEUS output root.
+    - enabled (bool): The inference config's `spectral_cache` switch.
+
+    Returns
+    ----------
+    - str: The study's cache folder, or "none" when the cache is off.
+    """
+    if not enabled:
+        return 'none'
+    return str(Path(get_proteus_directories(output)['output']) / SPECTRAL_CACHE_DIR)
+
+
 def run_proteus(
     parameters: dict,
     worker: int,
@@ -216,13 +245,10 @@ def run_proteus(
     swept = {k: v for k, v in parameters.items() if k not in _FIXED_PARAMETER_KEYS}
     updates = dict(parameters)
 
-    # Inject output path into simulation parameters
+    # Inject output path and spectral cache into simulation parameters
     updates['params.out.path'] = str(out_dir)
-
-    # Every evaluation of an inference run that holds the star fixed builds the same
-    # prepared spectral file.
-    updates['atmos_clim.spectral_cache'] = str(
-        Path(get_proteus_directories(output)['output']) / SPECTRAL_CACHE_DIR
+    updates['atmos_clim.spectral_cache'] = worker_spectral_cache(
+        output, spectral_cache_enabled()
     )
 
     # Don't allow workers to make plots or logs

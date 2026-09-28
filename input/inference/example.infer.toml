@@ -24,6 +24,10 @@ failure_codes = [11, ] # solidified (10), escaped (15), max_runtime (11)
 # Off by default.
 abort_on_failure = false
 
+# Share prepared spectral files between workers through a cache in the output folder.
+# Replaces atmos_clim.spectral_cache from the reference config.
+spectral_cache = true
+
 # Parameters for Bayesian optimisation
 n_workers  = 5        # Number of parallel workers
 kernel     = "MAT1/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
