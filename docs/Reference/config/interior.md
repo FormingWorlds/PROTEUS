@@ -123,6 +123,7 @@ The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa
 The default is the constant solidus-to-liquidus ratio ($\approx 0.809$) of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization, applied to the PALEOS liquidus instead of the Stixrude liquidus.
 The derived solidus is therefore a constant depression of the PALEOS liquidus, not the Stixrude solidus curve: its absolute value lies well above the Stixrude solidus at low to moderate pressure (about 2900 K against 1700 K at 20 GPa, and about 10% higher at 140 GPa) and below it above roughly 200 GPa.
 The melt fraction then follows from the lever rule between this solidus and liquidus.
+In the structure solve, the density of a unified PALEOS table takes its mushy zone from the liquidus extracted from that table, with the solidus at `mushy_zone_factor` times it; outside the pressure range of that liquidus the table is read directly.
 
 With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the SPIDER/Aragog entropy tables use the separate solid and liquid PALEOS tables, which supply the latent-heat entropy gap across the melting curve directly rather than through a single interpolated unified table.
 Their phase boundaries follow the same construction as the unified case: the liquidus is the analytic PALEOS curve, and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor`.
