@@ -88,11 +88,9 @@ get_parse_args() {
 # to exclude its regenerable build config from the dirty test. Exits 1
 # when the checkout is guarded, so call it as a plain command.
 #
-# Neither probe is piped: `git ... | head -1` reports the pipeline's
-# status, which is git's exit code under `set -o pipefail` and head's
-# otherwise, so the same unreadable checkout stopped some scripts and was
-# deleted by others. git's own -1 bounds the log instead, and a status
-# probe that cannot run is reported rather than read as a clean result.
+# Neither probe is piped: `git ... | head -1` reports the pipeline's status,
+# which is git's under `set -o pipefail` and head's otherwise, so the same
+# unreadable checkout stopped some scripts and was deleted by others.
 guard_dirty_checkout() {
     local workpath="$1"
     local script="$2"
@@ -105,8 +103,14 @@ guard_dirty_checkout() {
         return 0
     fi
 
+    # --all rather than HEAD: commits can sit on a branch that is not checked
+    # out, and HEAD does not resolve at all in a clone killed before its first
+    # commit. --all reports the first and exits 0 on the second, so such a
+    # clone is refreshed rather than stalling an install that cannot pass
+    # --force.
     local dirty unpushed rc=0
     dirty=$(git -C "$workpath" status --porcelain --untracked-files=no "$@" 2>/dev/null) || rc=$?
+    unpushed=$(git -C "$workpath" log --all --not --remotes --oneline -1 2>/dev/null) || rc=$?
     if [ "$rc" -ne 0 ]; then
         # An incomplete .git, or no git at all. Whether the checkout holds
         # local work is then unknown, so keep it.
@@ -116,13 +120,6 @@ guard_dirty_checkout() {
         echo "       bash tools/$script --force  to discard it." >&2
         exit 1
     fi
-
-    # A HEAD that does not resolve means no commits yet, so nothing can be
-    # unpushed. A clone killed before its first commit lands here and is
-    # refreshed on the next run; anything staged in it still reads as dirty
-    # above, so work is not lost. install.sh and proteus install-all pass no
-    # --force, and this is the state they would otherwise stall on.
-    unpushed=$(git -C "$workpath" log HEAD --not --remotes --oneline -1 2>/dev/null) || unpushed=''
     if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
         echo "ERROR: $workpath has uncommitted changes or commits not on a remote." >&2
         echo "       Refusing to delete it. Commit and push your work, or run" >&2
