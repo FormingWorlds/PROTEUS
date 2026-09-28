@@ -8566,6 +8566,56 @@
       "group_qualifier": "used for auto-discovered Mie-theory aerosols"
     },
     {
+      "path": "atmos_clim.agni.tau_obs",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.02",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 1e-10
+        },
+        {
+          "op": "<=",
+          "value": 10000000000.0
+        }
+      ],
+      "description": "Reference vertical optical depth defining the photosphere, used when `atmos_clim.p_obs='none'`.",
+      "doc_source": "attributes",
+      "group_order": 8,
+      "group_position": 0,
+      "group": "Photosphere from optical depth",
+      "group_qualifier": "used when `atmos_clim.p_obs='none'`"
+    },
+    {
+      "path": "atmos_clim.agni.wl_obs",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.125e-06",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 1e-10
+        },
+        {
+          "op": "<=",
+          "value": 1.0
+        }
+      ],
+      "description": "Reference wavelength [m] at which `tau_obs` is evaluated, used when `atmos_clim.p_obs='none'`.",
+      "doc_source": "attributes",
+      "group_order": 8,
+      "group_position": 1,
+      "group": "Photosphere from optical depth",
+      "group_qualifier": "used when `atmos_clim.p_obs='none'`"
+    },
+    {
       "path": "atmos_clim.janus.F_atm_bc",
       "toml_section": "atmos_clim.janus",
       "class": "Janus",
@@ -8790,17 +8840,12 @@
       "path": "atmos_clim.p_obs",
       "toml_section": "atmos_clim",
       "class": "AtmosClim",
-      "type": "float",
-      "accepts_none": false,
+      "type": "float | Literal or none",
+      "accepts_none": true,
       "default": "0.02",
       "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Observation pressure level [bar] (transit radius).",
+      "bounds": null,
+      "description": "Observation pressure level [bar] (transit radius). Set to 'none' (-> None) to instead let AGNI determine this pressure level self-consistently from the optical depth (see `agni.tau_obs`, `agni.wl_obs`); AGNI only.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 5,
@@ -10161,6 +10206,17 @@
         "tmp_minimum"
       ],
       "doc": "Validate JANUS settings: spectral file selection and temperature-bound ordering."
+    },
+    {
+      "validator": "valid_p_obs",
+      "module": "_atmos_clim.py",
+      "attached_to": [
+        "atmos_clim.p_obs"
+      ],
+      "touches": [
+        "module"
+      ],
+      "doc": "p_obs is either a positive pressure [bar], or None ('none' in the config file), which lets AGNI determine the photosphere self-consistently from optical depth instead. The latter is only meaningful for AGNI."
     },
     {
       "validator": "valid_rayleigh",

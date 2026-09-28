@@ -69,9 +69,9 @@ def test_determine_aerosols_success(mock_isdir, mock_listdir, monkeypatch):
     dirs = {'fwl': '/fake/fwl/path'}
     aerosols = _determine_aerosols(dirs)
 
-    # Verify correct aerosols found, each via the 'mon' method. Names are
-    # lowercased so that matching against condensates is case-insensitive.
-    assert aerosols == {'haze': 'mon', 'silicate': 'mon', 'sulfate': 'mon'}
+    # Verify correct aerosols found, each via the 'mon' method, keeping the
+    # on-disk casing (condensate matching lowercases separately downstream).
+    assert aerosols == {'Haze': 'mon', 'Silicate': 'mon', 'Sulfate': 'mon'}
 
     # Verify correct directory was checked
     mock_isdir.assert_called_once_with('/fake/fwl/path/scattering/scattering')
@@ -145,11 +145,11 @@ def test_determine_aerosols_single_species(mock_isdir, mock_listdir, monkeypatch
     dirs = {'fwl': '/path/to/fwl'}
     aerosols = _determine_aerosols(dirs)
 
-    assert aerosols == {'sulfate': 'mon'}
-    # Type guard: a bare string return (e.g. 'sulfate') would also satisfy a
+    assert aerosols == {'Sulfate': 'mon'}
+    # Type guard: a bare string return (e.g. 'Sulfate') would also satisfy a
     # naive membership check, so pin the mapping type and its method value.
     assert isinstance(aerosols, dict)
-    assert aerosols['sulfate'] == 'mon'
+    assert aerosols['Sulfate'] == 'mon'
 
 
 @pytest.mark.unit
@@ -170,10 +170,7 @@ def test_determine_aerosols_mie_only_species(mock_isdir, monkeypatch):
     dirs = {'fwl': '/nonexistent/path'}
     aerosols = _determine_aerosols(dirs)
 
-    # Names come back lowercased even though AGNI reports the on-disk
-    # (mixed-case) material name, so matching against condensates and
-    # against 'mon' names stays case-insensitive.
-    assert aerosols == {'sio2_amorph': 'mie', 'vo': 'mie'}
+    assert aerosols == {'SiO2_amorph': 'mie', 'VO': 'mie'}
     # Discrimination guard: a regression that only merged Mie names in when
     # the scattering directory also existed would return {} here instead.
     mock_isdir.assert_called_once_with('/nonexistent/path/scattering/scattering')
@@ -194,20 +191,18 @@ def test_determine_aerosols_prefers_mie_over_mon(mock_isdir, mock_listdir, monke
     Discrimination: a regression that iterated 'mon' after 'mie' (or built a
     set union without an override order) would leave this species at 'mon'.
     """
-    # Different case between the two sources on purpose: the override must
-    # match case-insensitively, not just on an exact string match.
-    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials('SULFATE'))
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials('Sulfate'))
     mock_isdir.return_value = True
     mock_listdir.return_value = ['Sulfate.mon', 'Haze.mon']
 
     dirs = {'fwl': '/path/to/fwl'}
     aerosols = _determine_aerosols(dirs)
 
-    assert aerosols == {'sulfate': 'mie', 'haze': 'mon'}
+    assert aerosols == {'Sulfate': 'mie', 'Haze': 'mon'}
     # Explicit per-key checks, matching the discrimination case in the
     # docstring: the overlapping species must resolve to 'mie', not 'mon'.
-    assert aerosols['sulfate'] == 'mie'
-    assert aerosols['sulfate'] != 'mon'
+    assert aerosols['Sulfate'] == 'mie'
+    assert aerosols['Sulfate'] != 'mon'
 
 
 @pytest.mark.unit
@@ -449,6 +444,8 @@ def _build_greygas_config():
                 hydrograv_selfg=True,
                 aerosol_r_eff=1.0e-6,
                 aerosol_sigma_g=1.65,
+                tau_obs=0.02,
+                wl_obs=1.125e-6,
             ),
         ),
         orbit=SimpleNamespace(s0_factor=1.0, zenith_angle=48.0),
@@ -843,13 +840,15 @@ def test_init_agni_atmos_forwards_hill_radius_and_hydrograv_hilldr(monkeypatch, 
 @pytest.mark.physics_invariant
 def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_path):
     """A discovered aerosol whose name matches a condensate (case-insensitive)
-    tracks that condensate's mixing ratio; a non-matching aerosol stays an
-    inert constant-zero override.
+    tracks that condensate's mixing ratio; a non-matching aerosol is skipped
+    entirely (never sent to AGNI), since it would always read zero anyway.
 
     Physical scenario: AGNI's `set_aerosols!` recomputes an aerosol's mass
     mixing ratio from its tied condensate's condensation yield every step, so
     an aerosol species tied to an active condensate has a mixing ratio that
-    tracks condensation instead of always reading zero.
+    tracks condensation; one with no matching condensate can never have a
+    non-zero mixing ratio, so configuring it would only cost extra Mie/optics
+    computation for no effect.
     """
     fake_agni = _FakeAGNI()
     fake_jl = SimpleNamespace(
@@ -887,23 +886,20 @@ def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_pa
         agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 0.5, 'SiO2': 0.5}
     )
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
-    # _determine_aerosols always returns lowercased names; the condensate it
-    # should match ('SiO2', from _construct_voldict above) is mixed case, so
-    # this exercises the case-insensitive match on the condensate side.
+    # 'sio2' (lower case) must still match the condensate 'SiO2' from
+    # _construct_voldict above; 'Soot' matches nothing and must be dropped.
     monkeypatch.setattr(
-        agni_mod, '_determine_aerosols', lambda *_a, **_k: {'sio2': 'mon', 'soot': 'mon'}
+        agni_mod, '_determine_aerosols', lambda *_a, **_k: {'sio2': 'mon', 'Soot': 'mon'}
     )
 
     atmos = init_agni_atmos(dirs, config, hf_row)
     assert atmos is not None
 
     aerosol_species = fake_agni.last_setup_kwargs['aerosol_species']
-    assert aerosol_species['sio2'] == {'method': 'mon', 'species': 'SiO2'}
-    assert aerosol_species['soot'] == {'method': 'mon', 'mmr': 0.0}
-    # Discrimination guard: the tied entry must not also carry the inert
-    # override key, which would mask a regression that always set both.
-    assert 'mmr' not in aerosol_species['sio2']
-    assert 'species' not in aerosol_species['soot']
+    assert aerosol_species == {'sio2': {'method': 'mon', 'species': 'SiO2'}}
+    # Discrimination guard: the untied aerosol must be absent entirely, not
+    # merely stripped of its species/mmr key.
+    assert 'Soot' not in aerosol_species
 
 
 @pytest.mark.unit
@@ -956,8 +952,9 @@ def test_init_agni_atmos_mie_aerosol_carries_size_distribution(monkeypatch, tmp_
         agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 0.5, 'SiO2': 0.5}
     )
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
-    # _determine_aerosols always lowercases; the file on disk (as reported by
-    # AGNI's own list_materials(), mocked above as 'SiO2') is mixed case.
+    # Discovery key deliberately lower case, while the on-disk material name
+    # (as reported by AGNI's own list_materials(), mocked above as 'SiO2')
+    # is mixed case -- nk_file must resolve to the latter.
     monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda *_a, **_k: {'sio2': 'mie'})
 
     atmos = init_agni_atmos(dirs, config, hf_row)
@@ -1397,6 +1394,7 @@ def _make_run_agni_atmos(*, transparent=False):
     atmos.tmp_magma = 1500.0
     atmos.p_boa = 1.0e5
     atmos.transspec_p = 1.0e4
+    atmos.transspec_ref_p = 1.0e4  # always present on the real struct post-setup
     atmos.transspec_r = 6.4e6
     atmos.transspec_tmp = 280.0
     atmos.flux_tot = [150.0, 200.0, 100.0]
@@ -1431,11 +1429,12 @@ def _make_run_agni_config(
     oceans=False,
     xuv_defined_by_radius=False,
     hill_clamp=False,
+    p_obs=1e-3,
 ):
     """Build the config namespace run_agni reads."""
     return SimpleNamespace(
         atmos_clim=SimpleNamespace(
-            p_obs=1e-3,
+            p_obs=p_obs,
             p_top=1e-5,
             agni=SimpleNamespace(
                 solve_energy=solve_energy,
@@ -1559,6 +1558,67 @@ def test_run_agni_prevent_warming_clamps_negative_flux(monkeypatch):
     assert output['F_atm'] == pytest.approx(1e-8, rel=1e-6)
     # Without prevent_warming, F_atm would be -50.0
     assert output['F_atm'] > 0
+
+
+@pytest.mark.physics_invariant
+def test_run_agni_p_obs_none_determines_photosphere_from_tau(monkeypatch):
+    """p_obs=None ('none' in the config file) lets AGNI find the photosphere
+    from optical depth instead of a fixed pressure level (issue #694).
+
+    Physical scenario: AGNI can locate the pressure level where the vertical
+    optical depth reaches a reference value at a reference wavelength, which
+    is self-consistent with the atmosphere's actual composition and opacity,
+    rather than an arbitrary fixed pressure the user must otherwise guess.
+
+    Discrimination: a regression that always passes setby='prs' (the fixed-
+    pressure legacy contract) would still return successfully here (opaque,
+    non-transparent atmosphere), so the test pins the `setby` value itself
+    rather than only checking that the call did not raise.
+    """
+    photosphere_calls = []
+    atmos = _make_run_agni_atmos(transparent=False)
+    config = _make_run_agni_config(solve_energy=False, p_obs=None)
+    hf_row = {
+        'P_surf': 100.0,
+        'p_xuv': 1e-3,
+        'R_xuv': 6.5e6,
+        'gravity': 9.8,
+        'Time': 100.0,
+    }
+    for g in ['H2O', 'CO2']:
+        hf_row[g + '_vmr'] = 0.5
+
+    dirs = {'output': '/tmp/fake', 'output/plots': '/tmp/fake_plots'}
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(
+            atmosphere=SimpleNamespace(
+                estimate_photosphere_b=lambda *a, **kw: photosphere_calls.append(kw)
+            ),
+            save=SimpleNamespace(write_ncdf=lambda a, p: None),
+            plotting=SimpleNamespace(plot_contfunc1=lambda a, p: None),
+            chemistry=SimpleNamespace(calc_composition_b=lambda *a: False),
+            setpt=SimpleNamespace(
+                dry_adiabat_b=lambda a: None,
+                saturation_b=lambda a, g: None,
+                stratosphere_b=lambda a, v: None,
+            ),
+            energy=SimpleNamespace(
+                calc_fluxes_b=lambda a, **kw: None,
+                fill_Kzz_b=lambda a: None,
+            ),
+        ),
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *a: [])
+    monkeypatch.setattr(agni_mod, 'get_oarr_from_parr', lambda p_arr, r_arr, val: (0, val))
+
+    agni_mod.run_agni(atmos, 1, dirs, config, hf_row)
+
+    assert len(photosphere_calls) == 1
+    assert photosphere_calls[0]['setby'] == 'tau'
+    # Discrimination guard: the legacy fixed-pressure contract uses 'prs',
+    # not 'tau'; a regression that ignored p_obs=None would report this.
+    assert photosphere_calls[0]['setby'] != 'prs'
 
 
 def test_run_agni_ocean_output_keys_populated(monkeypatch):

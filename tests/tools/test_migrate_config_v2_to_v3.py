@@ -91,6 +91,8 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.agni.hydrograv_selfg',
         'atmos_clim.agni.hydrograv_steps',
         'atmos_clim.agni.spectral_file',
+        'atmos_clim.agni.tau_obs',
+        'atmos_clim.agni.wl_obs',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
         # Inert while escape.hill_clamp is pinned off for migrated configs.

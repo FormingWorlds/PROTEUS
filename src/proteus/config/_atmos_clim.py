@@ -50,6 +50,20 @@ def valid_aerosols_enabled(instance, attribute, value):
         )
 
 
+def valid_p_obs(instance, attribute, value):
+    """p_obs is either a positive pressure [bar], or None ('none' in the
+    config file), which lets AGNI determine the photosphere self-consistently
+    from optical depth instead. The latter is only meaningful for AGNI.
+    """
+    if value is None:
+        if instance.module != 'agni':
+            raise ValueError("`p_obs='none'` requires atmos_clim.module='agni'")
+        return
+
+    if value <= 0:
+        raise ValueError('`p_obs` must be > 0')
+
+
 def check_overlap(instance, attribute, value):
     _overlaps = ('ro', 'ee', 'rorr')
     if value not in _overlaps:
@@ -66,7 +80,7 @@ def valid_agni(instance, attribute, value):
         raise ValueError('Must set `p_top` to be less than `agni.psurf_thresh`')
 
     # ensure p_obs is greater than p_top
-    if instance.p_top > instance.p_obs:
+    if instance.p_obs is not None and instance.p_top > instance.p_obs:
         raise ValueError('Must set `p_top` to be less than `p_obs`')
 
     # agni does not support mixed_layer surface state
@@ -210,6 +224,12 @@ class Agni:
         Effective radius of log-normal size distribution for Mie aerosols [m].
     aerosol_sigma_g: float
         Standard deviation of log-normal particle-size distribution for Mie aerosols.
+    tau_obs: float
+        Reference vertical optical depth defining the photosphere, used when
+        `atmos_clim.p_obs='none'`.
+    wl_obs: float
+        Reference wavelength [m] at which `tau_obs` is evaluated, used when
+        `atmos_clim.p_obs='none'`.
     """
 
     verbosity: int = field(
@@ -287,6 +307,8 @@ class Agni:
     hydrograv_selfg: bool = field(default=True)
     aerosol_r_eff: float = field(default=1.0e-6, validator=(gt(1e-10), le(1.0)))
     aerosol_sigma_g: float = field(default=1.65, validator=(ge(1.0), le(100.0)))
+    tau_obs: float = field(default=0.02, validator=(gt(1e-10), le(1e10)))
+    wl_obs: float = field(default=1.125e-6, validator=(gt(1e-10), le(1.0)))
 
 
 def valid_janus(instance, attribute, value):
@@ -378,8 +400,8 @@ class AtmosClim:
         Number of vertical atmosphere levels.
     p_top: float
         Top-of-atmosphere pressure [bar].
-    p_obs: float
-        Observation pressure level [bar] (transit radius).
+    p_obs: float | None
+        Observation pressure level [bar]. Set to 'none' to use tau_obs and wl_obs.
     overlap_method: str
         Gas overlap method. Choices: 'ro', 'rorr', 'ee'.
     surface_d: float
@@ -421,7 +443,7 @@ class AtmosClim:
     spectral_bands: str = field(default='48')
     num_levels: int = field(default=50, validator=ge(15))
     p_top: float = field(default=1e-6, validator=gt(0))
-    p_obs: float = field(default=20e-3, validator=gt(0))
+    p_obs = field(default='none', validator=valid_p_obs, converter=none_if_none)
     overlap_method: str = field(default='ee', validator=check_overlap)
 
     # Radiative and surface properties
@@ -557,6 +579,11 @@ DOC_GROUPS = {
             'Aerosol optics',
             'used for auto-discovered Mie-theory aerosols',
             ('aerosol_r_eff', 'aerosol_sigma_g'),
+        ),
+        (
+            'Photosphere from optical depth',
+            "used when `atmos_clim.p_obs='none'`",
+            ('tau_obs', 'wl_obs'),
         ),
     ),
 }

@@ -603,10 +603,10 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             # tied to a species by name
             entry['species'] = tied
             aerosol_species[name] = entry
-            log.info(f'    {name} ({method}) tied to condensate {tied}')
+            log.info(f'    {name:10s} ({method}) tied to condensate {tied}')
         else:
             # skip otherwise
-            log.debug(f'    {name} ({method}) not tied to any condensate; skipping')
+            log.debug(f'    {name:10s} ({method}) not tied to any condensate; skipping')
 
     # Warn if no aerosol species were found
     if len(aerosol_species) == 0:
@@ -664,6 +664,9 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         hydrograv_constg=config.atmos_clim.agni.hydrograv_constg,
         hydrograv_selfg=config.atmos_clim.agni.hydrograv_selfg,
         hill_radius=hf_row['hill_radius'],
+        # photosphere from optical depth, used when atmos_clim.p_obs='none'
+        transspec_ref_tau=config.atmos_clim.agni.tau_obs,
+        transspec_ref_wl=config.atmos_clim.agni.wl_obs,
     )
     setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
 
@@ -1363,15 +1366,19 @@ def run_agni(
 
     # Transparent case
     if bool(atmos.transparent):
-        # no opacity
         log.info('Using transparent solver')
         atmos.transspec_ref_p = float(atmos.p_boa)
+        photosphere_setby = 'prs'  # set photosphere as surface pressure
         atmos = _solve_transparent(atmos, config)
 
     # Opaque case
     else:
-        # Set observed pressure
-        atmos.transspec_ref_p = float(config.atmos_clim.p_obs * 1e5)  # converted to Pa
+        # p_obs=None means photosphere set from optical depth
+        if config.atmos_clim.p_obs is None:
+            photosphere_setby = 'tau'
+        else:
+            atmos.transspec_ref_p = float(config.atmos_clim.p_obs * 1e5)  # converted to Pa
+            photosphere_setby = 'prs'
 
         # full solver
         if config.atmos_clim.agni.solve_energy:
@@ -1387,7 +1394,7 @@ def run_agni(
     atmos.transspec_p = atmos.transspec_ref_p
 
     # Calculate planet transit radius and other photospheric properties
-    jl.AGNI.atmosphere.estimate_photosphere_b(atmos, setby=str('prs'))
+    jl.AGNI.atmosphere.estimate_photosphere_b(atmos, setby=str(photosphere_setby))
 
     # Write output data
     if write_data:

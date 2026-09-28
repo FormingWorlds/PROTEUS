@@ -639,7 +639,7 @@ config_version = "3.0"
     spectral_bands            = "48"         # wavenumber bands in k-table
     num_levels                = 50           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-6       # top-of-atmosphere pressure [bar]
-    p_obs                     = 0.02         # observation pressure level [bar] (transit radius)
+    p_obs                     = "none"       # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
     # Radiative properties (agni, janus only)
@@ -717,6 +717,10 @@ config_version = "3.0"
         # Aerosol optics (used for auto-discovered Mie-theory aerosols)
         aerosol_r_eff       = 1.0e-6         # Effective radius of the log-normal size distribution [m]
         aerosol_sigma_g     = 1.65           # Geometric standard deviation of the log-normal size distribution
+
+        # Photosphere from optical depth (used when atmos_clim.p_obs='none')
+        tau_obs             = 0.02           # Reference vertical optical depth defining the photosphere
+        wl_obs              = 1.125e-6       # Reference wavelength at which tau_obs is evaluated [m]
 
     [atmos_clim.janus]
         F_atm_bc              = 0            # outgoing flux boundary: 0 (TOA) | 1 (surface)
