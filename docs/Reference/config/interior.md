@@ -124,7 +124,7 @@ The default is the constant solidus-to-liquidus ratio ($\approx 0.809$) of the S
 The derived solidus is therefore a constant depression of the PALEOS liquidus, not the Stixrude solidus curve: its absolute value lies well above the Stixrude solidus at low to moderate pressure (about 2900 K against 1700 K at 20 GPa, and about 10% higher at 140 GPa) and below it above roughly 200 GPa.
 The melt fraction then follows from the lever rule between this solidus and liquidus.
 In the structure solve, the density of a unified PALEOS table takes its mushy zone from the liquidus read off that table's phase column, with the solidus at `mushy_zone_factor` times it, not from the curve pair above.
-For `PALEOS:MgSiO3` this is the analytic curve sampled at the table's temperature nodes, up to about 1.5% above it; for a `PALEOS:iron` core it is the iron melting curve of that table.
+That liquidus is the first temperature node of the table at or above a melting curve, up to about 1.5% above it: the analytic PALEOS curve for `PALEOS:MgSiO3`, and the Anzellini et al. (2013) iron curve for a `PALEOS:iron` core.
 
 With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the SPIDER/Aragog entropy tables use the separate solid and liquid PALEOS tables, which supply the latent-heat entropy gap across the melting curve directly rather than through a single interpolated unified table.
 Their phase boundaries follow the same construction as the unified-case property tables: the liquidus is the analytic PALEOS curve, and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor`.

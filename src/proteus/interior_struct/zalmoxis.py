@@ -1962,16 +1962,17 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     """Loads the solidus and liquidus functions for Zalmoxis based on the mantle EOS.
 
     Melting curves are needed for two purposes:
-    1. Temperature-dependent density in the mushy zone (WolfBower2018, RTPress).
+    1. Temperature-dependent density in the mushy zone (WolfBower2018, RTPress,
+       PALEOS-2phase).
     2. phi(r) blending in VolatileProfile (any EOS with dissolved volatiles).
 
     For WolfBower2018/RTPress100TPa, loads SPIDER-format P-T files from FWL_DATA.
-    For PALEOS unified and PALEOS-2phase, the liquidus comes from the analytic
-    Belonoshko+2005 / Fei+2021 curve (Zalmoxis ``'PALEOS-liquidus'``) which is
-    the basis Zalmoxis uses for MgSiO3 phase separation, and the solidus is
-    derived as T_sol = T_liq * mushy_zone_factor. This keeps the curves used
-    for phi-blending and 2-phase nabla_ad consistent with the unified PALEOS
-    density-interpolation phase boundaries.
+    For PALEOS unified and PALEOS-2phase, the liquidus is the analytic
+    Belonoshko+2005 / Fei+2021 curve (Zalmoxis ``'PALEOS-liquidus'``) and the
+    solidus is T_sol = T_liq * mushy_zone_factor. The density of a unified
+    PALEOS table does not use them: it takes its mushy zone from the liquidus in
+    the table's phase column, the first temperature node at or above the
+    analytic curve (up to about 1.5% above it for MgSiO3).
 
     Parameters
     ----------
@@ -1991,8 +1992,8 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
         return get_zalmoxis_melting_curves(config)
 
     # PALEOS unified and 2-phase: the analytic PALEOS liquidus, solidus = liquidus * mzf.
-    # They set the 2-phase nabla_ad blend (_compute_paleos_dtdp) and the VolatileProfile
-    # melt fraction; a unified table's density uses its own extracted liquidus instead.
+    # In the structure solve they set the 2-phase density and nabla_ad blend and the
+    # VolatileProfile melt fraction; a unified table's density uses its own liquidus.
     if mantle_eos.startswith(PALEOS_EOS_PREFIXES):
         try:
             from zalmoxis.melting_curves import (
