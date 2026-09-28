@@ -639,7 +639,8 @@
         }
       ],
       "consumers": [
-        "interior_energetics"
+        "interior_energetics",
+        "main loop"
       ]
     },
     {

@@ -55,6 +55,11 @@ Install the required system libraries for your platform. See the
 
 ## 2. Clone PROTEUS and set up Python environment
 
+!!! tip "Using pixi instead of conda"
+    PROTEUS can also be installed into a [pixi](https://pixi.sh) environment,
+    which replaces the conda steps below. See [Install with pixi](pixi.md)
+    (experimental).
+
 Python **3.12** is required, and is installed via
 [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
 or [miniforge](https://github.com/conda-forge/miniforge). If you do not have [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
@@ -110,17 +115,27 @@ bash install.sh
 The installer runs through the following phases automatically:
 
 1. Pre-flight checks (OS, disk space, Python version, system dependencies)
-2. Julia installation and version pinning (1.12)
+2. Julia installation and version pinning (1.13)
 3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`)
 4. SOCRATES compilation and `RAD_DIR` setup
 5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry)
-6. Python packages (editable installs of all submodules + PROTEUS itself)
+6. Python packages (editable installs of all submodules, the SUNDIALS CVODE solver, and PROTEUS itself)
 7. Reference data downloads
 8. Verification via `proteus doctor`
 
 Each phase is idempotent: if the installer fails partway through, fix the
 reported issue and re-run `bash install.sh`. It will skip already-completed
 phases.
+
+!!! note "CVODE is required for Aragog"
+    Aragog integrates with SUNDIALS CVODE by default (`solver_method = "cvode"`).
+    The installer builds it (`scikits-odes-sundials` on the SUNDIALS C library,
+    through `tools/get_cvode.sh`, which needs an active conda environment) and
+    warns when that fails, since only Aragog on the default solver needs it.
+    A run with Aragog on the default `solver_method = "cvode"` stops at setup,
+    with the same install command in the message, when CVODE cannot be imported.
+    Choosing `solver_method = "radau"` or `"bdf"` selects scipy on purpose and
+    does not need CVODE. See [Aragog stops at setup](troubleshooting.md#aragog-stops-at-setup-cvode-cannot-be-imported).
 
 **Installer options:**
 
@@ -132,7 +147,7 @@ phases.
 
 !!! tip "CLI alternative: `proteus install-all`"
     If PROTEUS is already importable in your environment, `proteus install-all`
-    performs the same setup from the CLI: it installs PROTEUS and the required
+    performs the same setup from the CLI: it installs the SUNDIALS CVODE solver and the required
     submodules (SOCRATES, AGNI), downloads reference data, checks for sufficient
     disk space, creates `FWL_DATA` if needed, and sets the environment variables. 
 

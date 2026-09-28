@@ -1,0 +1,46 @@
+# Runs install.sh in the pixi environment from pixi.toml, then the unit tier.
+name: Pixi environment
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pixi-unit:
+    name: Install and test in the pixi environment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install system packages for SOCRATES
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gfortran libnetcdff-dev netcdf-bin
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.13.0'
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          pixi-version: v0.79.0
+          cache: false
+
+      - name: Run the installer
+        run: pixi run bash install.sh --no-data
+
+      - name: Check the prebuilt CVODE wrapper imports
+        run: pixi run python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum"
+
+      - name: Run unit tests
+        env:
+          RAD_DIR: ${{ github.workspace }}/socrates
+        run: pixi run pytest -m "unit and not skip and not slow and not integration" --ignore=tests/examples

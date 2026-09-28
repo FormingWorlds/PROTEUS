@@ -242,8 +242,9 @@ class TestExternalTemperatureSourceSkipsResolve:
         calls = {'n': 0}
         monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', self._counting_solve(calls))
         # Simulate the internal-dispatch IC solve having recorded the anchor.
-        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
         cfg = _make_minimal_config(tcmb_init=6000.0)
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(cfg))
 
         # P_cmb has drifted from the 6.7e11 the anchor was solved at; the
         # external path must not re-solve regardless of the drift.
@@ -282,6 +283,45 @@ class TestExternalTemperatureSourceSkipsResolve:
         # would have produced had it run.
         assert abs(T - 8765.0) > 100.0
 
+    @pytest.mark.physics_invariant
+    def test_external_source_ignores_anchor_solved_for_another_superheat(self, monkeypatch):
+        """An anchor solved for a different superheat or mantle EOS is not
+        reused on the external path: the call falls back to ``tcmb_init``, the
+        same rule the anchor-failure path applies, and still skips the solve.
+        """
+        import proteus.interior_struct.zalmoxis as zmod
+
+        calls = {'n': 0}
+        monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', self._counting_solve(calls))
+        cfg_old = _make_minimal_config(delta_T_super=200.0, tcmb_init=6000.0)
+        cfg = _make_minimal_config(delta_T_super=500.0, tcmb_init=6000.0)
+        cfg.interior_struct.zalmoxis.mantle_eos = cfg_old.interior_struct.zalmoxis.mantle_eos
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+        monkeypatch.setattr(
+            zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(cfg_old)
+        )
+
+        T = zmod._resolve_zalmoxis_cmb_temperature(
+            cfg, {'P_cmb': 6.7e11}, 'liquidus_super', external_temperature_source=True
+        )
+        assert calls['n'] == 0, 'the external path must not solve the anchor'
+        assert T == pytest.approx(6000.0)
+        # Discrimination: the 200 K-superheat anchor (8765 K) is far from the fallback.
+        assert abs(T - 8765.0) > 100.0
+
+        # A different mantle EOS at the same superheat is also a mismatch.
+        cfg_eos = _make_minimal_config(delta_T_super=200.0, tcmb_init=6000.0)
+        cfg_eos.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+        cfg_old.interior_struct.zalmoxis.mantle_eos = 'PALEOS-2phase:MgSiO3'
+        monkeypatch.setattr(
+            zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(cfg_old)
+        )
+        T_eos = zmod._resolve_zalmoxis_cmb_temperature(
+            cfg_eos, {'P_cmb': 6.7e11}, 'liquidus_super', external_temperature_source=True
+        )
+        assert T_eos == pytest.approx(6000.0)
+        assert calls['n'] == 0, 'the external path must not solve the anchor'
+
     def test_internal_dispatch_solves_despite_cached_anchor(self, monkeypatch):
         """The skip is gated on the external-source flag, not on a cached
         anchor: an internal-dispatch call re-solves even when an anchor exists,
@@ -307,6 +347,65 @@ class TestExternalTemperatureSourceSkipsResolve:
         assert T == pytest.approx(8765.0)
         # Discrimination: the freshly solved value, not the stale cached anchor.
         assert abs(T - 9999.0) > 100.0
+
+
+class TestSuperliquidusMemoBound:
+    """The super-liquidus memos keep a bounded number of entries."""
+
+    def test_lru_dict_drops_least_recently_used(self):
+        """At capacity an insert drops the least recently used entry; a read
+        counts as a use, so a read entry outlives an older unread one."""
+        from proteus.interior_struct.zalmoxis import _LRUDict
+
+        d = _LRUDict(maxsize=3)
+        for k in 'abc':
+            d[k] = k.upper()
+        assert d['a'] == 'A'  # 'a' is now the most recently used
+        d['d'] = 'D'
+        # Without the read, 'a' (the oldest insert) would be the one dropped.
+        assert list(d) == ['c', 'a', 'd']
+        assert 'b' not in d
+        # Re-inserting an existing key refreshes it without growing the map.
+        d['c'] = 'C2'
+        assert len(d) == 3 and list(d)[-1] == 'c' and d['c'] == 'C2'
+        # Edge case: a capacity below 1 is refused.
+        with pytest.raises(ValueError, match='maxsize'):
+            _LRUDict(maxsize=0)
+
+    def test_module_memos_are_bounded(self):
+        """Both module memos hold at most ``_SUPERLIQ_CACHE_MAXSIZE`` entries,
+        so a long-lived process that solves many distinct anchors does not
+        keep every one; the oldest key goes first and clearing empties both."""
+        import proteus.interior_struct.zalmoxis as zmod
+
+        n = zmod._SUPERLIQ_CACHE_MAXSIZE
+        try:
+            for memo in (zmod._SUPERLIQ_CACHE, zmod._SUPERLIQ_FAILED):
+                for i in range(n + 5):
+                    memo[(i, 500.0, 'PALEOS:MgSiO3')] = {'cmb_T': 6000.0 + i}
+                assert len(memo) == n
+                assert (0, 500.0, 'PALEOS:MgSiO3') not in memo
+                assert (n + 4, 500.0, 'PALEOS:MgSiO3') in memo
+            zmod._clear_superliquidus_cache()
+            assert len(zmod._SUPERLIQ_CACHE) == 0 and len(zmod._SUPERLIQ_FAILED) == 0
+        finally:
+            # The synthetic entries must not reach later tests in this process.
+            zmod._clear_superliquidus_cache()
+
+    def test_lru_dict_copy_keeps_entries_and_bound(self):
+        """A copy holds every entry in the same order with the same
+        ``maxsize``, and reading from it leaves the original order alone."""
+        from proteus.interior_struct.zalmoxis import _LRUDict
+
+        d = _LRUDict(maxsize=3)
+        for k in 'abc':
+            d[k] = k.upper()
+        c = d.copy()
+        assert isinstance(c, _LRUDict) and c.maxsize == 3
+        assert list(c.items()) == [('a', 'A'), ('b', 'B'), ('c', 'C')]
+        assert c['a'] == 'A' and list(d) == ['a', 'b', 'c']
+        c['d'] = 'D'
+        assert list(c) == ['c', 'a', 'd'] and len(d) == 3
 
 
 # ----------------------------------------------------------------------
@@ -697,6 +796,9 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', counting_solve)
         # The internal-dispatch IC solve has already recorded the anchor.
         monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+        monkeypatch.setattr(
+            zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(config)
+        )
 
         cp = load_zalmoxis_configuration(
             config,

@@ -32,6 +32,25 @@ def _cfg(name: str):
     return read_config_object(os.path.join(_GRID, name))
 
 
+@pytest.fixture(scope='module', autouse=True)
+def _two_phase_tables():
+    """Fetch the 2-phase MgSiO3 pair the pinned solves read, and require it on disk.
+
+    The solves build the adiabat from that pair when both files exist and from
+    the unified table the configs name otherwise; the zero-superheat pin is for the pair.
+    """
+    from proteus.interior_struct.zalmoxis import (
+        load_zalmoxis_material_dictionaries,
+        resolve_2phase_mgsio3_paths,
+    )
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='PALEOS:iron')
+    tables = resolve_2phase_mgsio3_paths('PALEOS:MgSiO3', load_zalmoxis_material_dictionaries())
+    solid, liquid = tables
+    assert solid and liquid, f'2-phase MgSiO3 tables missing from FWL_DATA: {solid=}, {liquid=}'
+
+
 @pytest.fixture(autouse=True)
 def _clear_solver_cache():
     from proteus.interior_struct.zalmoxis import _clear_superliquidus_cache
@@ -186,7 +205,7 @@ class TestSolveSuperliquidusReal:
         assert any('not reachable' in m and 'within the EOS table' in m for m in msgs), msgs
 
     @pytest.mark.physics_invariant
-    @pytest.mark.timeout(5400)  # 90 min ceiling; one table generation plus four table solves
+    @pytest.mark.timeout(9000)  # 150 min; ~82 min on the runner, 8-9 min locally
     def test_zalmoxis_structure_ic_on_own_p_s_tables(self, tmp_path):
         """With the Zalmoxis structure, the initial entropy is solved on the
         run's own P-S tables (generated from PALEOS for S1_m1_dyn_IW4): at

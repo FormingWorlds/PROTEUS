@@ -25,11 +25,11 @@ set -euo pipefail
 # requires-python ceiling once the repo root is known (see below).
 REQUIRED_PYTHON_MAJOR=3
 REQUIRED_PYTHON_MINOR=12
-# Julia: 1.11.x and 1.12.x are both supported; fresh installs pin the
+# Julia: 1.11.x, 1.12.x and 1.13.x are supported; fresh installs pin the
 # version below (matches what CI tests).
 REQUIRED_JULIA_MAJOR=1
-REQUIRED_JULIA_MINOR=12
-ACCEPTED_JULIA_MINORS="11 12"
+REQUIRED_JULIA_MINOR=13
+ACCEPTED_JULIA_MINORS="11 12 13"
 MIN_DISK_GB=10
 
 # ---------------------------------------------------------------------------
@@ -165,9 +165,9 @@ reset_julia_env() {
 }
 
 # juliacall builds a Julia environment whose OpenSSL_jll is matched to the
-# OpenSSL the Python interpreter links against. Julia 1.12 provides OpenSSL_jll
-# 3.5 and newer only, so a Python interpreter linking OpenSSL < 3.5 pins
-# OpenSSL_jll to the 3.0 series and leaves the Julia 1.12 resolve unsatisfiable.
+# OpenSSL the Python interpreter links against. Julia 1.12 and newer provide
+# OpenSSL_jll 3.5 and newer only, so a Python interpreter linking OpenSSL < 3.5
+# pins OpenSSL_jll to the 3.0 series and leaves the resolve unsatisfiable.
 python_openssl_below_35() {
     python3 - <<'PY' 2>/dev/null
 import ssl, sys
@@ -184,6 +184,13 @@ julia_minor_at_least_12() {
     [ "$maj" -eq 1 ] && [ "$min" -ge 12 ]
 }
 
+# Julia 1.11 still works but is deprecated. It aborts at run time on some
+# hosts (#885), and only the OpenSSL < 3.5 fallback below still needs it.
+warn_julia_111_deprecated() {
+    warn "Julia 1.11 is deprecated and support will be dropped in a future release."
+    warn "  Switch with: juliaup add $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR && juliaup default $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
+}
+
 conda_openssl_too_old_for_julia() {
     command_exists conda || return 1
     julia_minor_at_least_12 || return 1
@@ -193,7 +200,7 @@ conda_openssl_too_old_for_julia() {
 
 fix_conda_openssl() {
     command_exists conda || { warn "conda not on PATH; cannot upgrade OpenSSL."; return 1; }
-    info "Upgrading OpenSSL to >= 3.5 (required by the Julia 1.12 environment)..."
+    info "Upgrading OpenSSL to >= 3.5 (required by Julia 1.12 and newer)..."
     # Redirect stdin so an unexpected channel Terms-of-Service prompt fails fast
     # instead of hanging a non-interactive install.
     conda install -y -c conda-forge "openssl>=3.5" </dev/null 2>&1 || return 1
@@ -263,7 +270,7 @@ verify_proteus_import() {
         fi
     fi
     # Self-heal the Julia / OpenSSL mismatch in the juliacall environment. Julia
-    # 1.12 ships OpenSSL_jll 3.5+, so a Python linking OpenSSL < 3.5 cannot
+    # 1.12 and newer ship OpenSSL_jll 3.5+, so a Python linking OpenSSL < 3.5 cannot
     # resolve it. Two routes: move the bridge to Julia 1.11 (which ships
     # OpenSSL_jll for the 3.0 series), or raise the Python OpenSSL to >= 3.5.
     if printf '%s' "$import_log" | grep -qi 'OpenSSL_jll'; then
@@ -273,13 +280,16 @@ verify_proteus_import() {
                 warn "Moved the juliacall environment to Julia 1.11. Retrying import..."
                 if import_log=$(python3 -c "import proteus" 2>&1); then
                     info "PROTEUS import OK on Julia 1.11"
+                    warn "Julia 1.11 is deprecated and support will be dropped in a future release."
+                    warn "  OpenSSL >= 3.5 in this environment removes the need for it:"
+                    warn "  conda install -c conda-forge 'openssl>=3.5'"
                     return 0
                 fi
                 fail "Still failing after switching to Julia 1.11. Error output:"
                 printf '%s\n' "$import_log"
             fi
         fi
-        # Otherwise raise the Python OpenSSL so Julia 1.12 can resolve.
+        # Otherwise raise the Python OpenSSL so Julia 1.12 or newer can resolve.
         if conda_openssl_too_old_for_julia && fix_conda_openssl; then
             warn "Upgraded OpenSSL to match the Julia environment. Retrying import..."
             if import_log=$(python3 -c "import proteus" 2>&1); then
@@ -289,10 +299,10 @@ verify_proteus_import() {
             fail "Still failing after the OpenSSL upgrade. Error output:"
             printf '%s\n' "$import_log"
         fi
-        warn "The Julia environment cannot resolve OpenSSL_jll: Julia 1.12 needs OpenSSL >= 3.5"
+        warn "The Julia environment cannot resolve OpenSSL_jll: Julia >= 1.12 needs OpenSSL >= 3.5"
         warn "in this Python environment. Fix it with either:"
-        warn "  juliaup add 1.11 && juliaup default 1.11      (use Julia 1.11 instead)"
-        warn "  conda install -c conda-forge 'openssl>=3.5'   (keep Julia 1.12, then re-run)"
+        warn "  conda install -c conda-forge 'openssl>=3.5'   (keep your Julia, then re-run)"
+        warn "  juliaup add 1.11 && juliaup default 1.11      (use Julia 1.11, deprecated)"
     fi
     die "PROTEUS Python package failed to import. The full error is above and in $LOGFILE."
 }
@@ -595,6 +605,8 @@ if command_exists julia; then
             echo "        juliaup default $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
             die "Julia version mismatch."
         fi
+    elif [ "$julia_minor" -eq 11 ]; then
+        warn_julia_111_deprecated
     fi
 else
     info "Julia not found."
@@ -841,16 +853,19 @@ bash tools/get_aragog.sh 2>&1
 info "Setting up Zalmoxis..."
 bash tools/get_zalmoxis.sh 2>&1
 
-# Install the SUNDIALS CVODE solver (Aragog's production integration path).
-# Without it Aragog falls back to scipy Radau, which is slower and step-size-
-# fragile on coupled cooling runs.
+# Install the SUNDIALS CVODE solver, Aragog's default integrator. A run with
+# Aragog stops at setup without it.
 info "Setting up the SUNDIALS CVODE solver..."
 bash tools/get_cvode.sh 2>&1 \
-    || warn "CVODE install failed; Aragog will fall back to scipy Radau"
+    || warn "CVODE install failed. Aragog with solver_method = \"cvode\" stops at setup until it imports; fix the error above and re-run bash tools/get_cvode.sh. Other interior modules, radau and bdf do not need it."
 
 # Install PROTEUS itself
 info "Installing PROTEUS and remaining dependencies..."
 pip install -e ".[develop]"
+
+# The PROTEUS install can replace packages; Aragog on "cvode" needs CVODE to still import.
+python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum" >/dev/null 2>&1 \
+    || warn "CVODE does not import after the PROTEUS install. Aragog with solver_method = \"cvode\" stops at setup until it does; re-run bash tools/get_cvode.sh."
 
 info "Setting up pre-commit hooks..."
 pre-commit install -f 2>&1 || warn "pre-commit install failed (non-critical)"

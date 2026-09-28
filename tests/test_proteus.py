@@ -22,6 +22,7 @@ Functions tested:
 
 from __future__ import annotations
 
+import sys
 from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -2380,3 +2381,102 @@ def test_resume_atmosphere_follows_interior_while_surface_stays_below_magma(
     np.testing.assert_allclose(
         committed['T_surf'], np.array(interior_t_magma[:-1]) - skin_drop, rtol=1e-12
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'r_solvus_frac',
+    [None, -0.1, 1.0, 1.2],
+    ids=['never-written', 'negative', 'at-the-surface', 'outside-the-planet'],
+)
+def test_solvus_override_skips_an_unphysical_solvus(tmp_path, r_solvus_frac):
+    """With global miscibility on but no physical solvus in the row, the loop
+    hands the atmosphere the magma-ocean state, not the solvus frame. The
+    helpfile row starts with R_solvus = T_solvus = P_solvus = 0, and an
+    interior that never writes them must not drive the atmosphere with
+    T_magma = T_surf = P_surf = R_int = 0.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibility=True)
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['P_surf'] = 250.0
+    checkpoint = hf_df.iloc[-1]
+    interior_t_magma = 3456.0
+    captured = []
+
+    def _fake_run_interior(*args, **kwargs):
+        hf_row = args[3]
+        hf_row['T_magma'] = interior_t_magma
+        if r_solvus_frac is not None:
+            hf_row['R_solvus'] = r_solvus_frac * hf_row['R_int']
+            hf_row['T_solvus'] = 3700.0
+            hf_row['P_solvus'] = 2.0e10
+
+    def _fake_run_atmosphere(*args, **kwargs):
+        hf_row = args[8]
+        captured.append(
+            (hf_row['T_magma'], hf_row['T_surf'], hf_row['P_surf'], hf_row['R_int'])
+        )
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(p, hf_df, _fake_run_interior, _fake_run_atmosphere)
+
+    expected = [interior_t_magma, checkpoint['T_surf'], 250.0, checkpoint['R_int']]
+    np.testing.assert_allclose(np.array(captured), [expected], rtol=1e-12)
+    # The magma-ocean frame is physical: positive temperatures, pressure, radius.
+    assert min(captured[0]) > 0.0
+
+
+@pytest.fixture
+def cvode_missing(monkeypatch):
+    """Make ``import scikits_odes_sundials.cvode`` fail as on a machine without CVODE."""
+    # aragog reads its CVODE flag once, at first import: load it before hiding the module.
+    pytest.importorskip('aragog.solver.entropy_solver')
+    monkeypatch.setitem(sys.modules, 'scikits_odes_sundials.cvode', None)
+
+
+def test_start_stops_before_touching_output_when_aragog_lacks_cvode(
+    monkeypatch, tmp_path, cvode_missing
+):
+    """A fresh Aragog run without CVODE stops before the status file and the output are touched.
+
+    ``start`` writes the status file and wipes the output directories of a
+    fresh run, so the CVODE check has to come first: a broken environment must
+    not cost the user the files of an earlier run. The error carries the
+    install command.
+    """
+    p = _make_proteus_instance(tmp_path, interior_module='aragog')
+    p.config.interior_energetics.aragog.solver_method = 'cvode'
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        status = stack.enter_context(patch('proteus.proteus.UpdateStatusfile'))
+        clean = stack.enter_context(patch('proteus.proteus.CleanDir'))
+        with pytest.raises(ImportError, match='bash tools/get_cvode.sh'):
+            p.start(resume=False, offline=True)
+
+    status.assert_not_called()
+    clean.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ('interior_module', 'solver_method'),
+    [('aragog', 'radau'), ('aragog', 'bdf'), ('spider', 'cvode')],
+)
+def test_start_goes_ahead_without_cvode_when_it_is_not_needed(
+    monkeypatch, tmp_path, interior_module, solver_method, cvode_missing
+):
+    """An explicit scipy solver, or SPIDER, reaches the output cleaning with CVODE missing."""
+    p = _make_proteus_instance(tmp_path, interior_module=interior_module)
+    p.config.interior_energetics.aragog.solver_method = solver_method
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        clean = stack.enter_context(
+            patch('proteus.proteus.CleanDir', side_effect=_StopAfterMeshRestore)
+        )
+        with pytest.raises(_StopAfterMeshRestore):
+            p.start(resume=False, offline=True)
+
+    clean.assert_called_once()
