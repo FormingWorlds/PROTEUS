@@ -80,6 +80,7 @@ config_version = "3.0"
     module     = "dummy"
     surf_state = "fixed"
     rayleigh   = false
+    p_obs      = 20e-3
     albedo_pl  = 0.1
     [atmos_clim.dummy]
         gamma = 0.5              # T_rad = T_surf * (1 - gamma); 0 = transparent, 1 = zero OLR
