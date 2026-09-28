@@ -57,7 +57,6 @@ if _should_apply_deterministic(sys.argv, os.environ):
     else:
         os.execvp(sys.argv[0], sys.argv)
 
-import logging  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
