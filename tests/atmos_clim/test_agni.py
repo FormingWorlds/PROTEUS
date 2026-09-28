@@ -581,6 +581,36 @@ def test_a_cached_spectral_file_is_reused_without_reinserting_the_spectrum(
 
 
 @pytest.mark.unit
+def test_a_rebuild_after_a_spectrum_update_bypasses_the_spectral_cache(monkeypatch, tmp_path):
+    """A rebuild after a stellar-spectrum update neither reads nor fills the
+    cache: its spectrum depends on the run's own timestep, so an entry stored
+    for it would never be reused, and a study would accumulate one per update.
+    The first build of the same run, with the same entry present, does use it.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
+    (cache / f'{key}.sf').write_text('cached prepared file', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('cached ktable', encoding='utf-8')
+    before = sorted(p.name for p in cache.iterdir())
+
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, use_cache=False) is not None
+    # Built from the spectrum, not seeded, and nothing added to the cache.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (ctx.scratch / 'runtime.sf').read_text() != 'cached prepared file'
+    assert sorted(p.name for p in cache.iterdir()) == before
+
+    # Discrimination: the first build reads the same entry, so the bypass above
+    # comes from the flag and not from a cache that could not be read.
+    for suffix in ('', '_k'):
+        (ctx.scratch / f'runtime.sf{suffix}').unlink()
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert ctx.fake_agni.last_allocate_input_star == ''
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'cached prepared file'
+
+
+@pytest.mark.unit
 def test_a_cached_spectral_file_is_not_reused_across_rayleigh_settings(monkeypatch, tmp_path):
     """A cache folder shared by runs that differ only in `atmos_clim.rayleigh`
     must not hand one the other's file, because AGNI writes the Rayleigh block

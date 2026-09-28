@@ -452,6 +452,71 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
     assert atmos_o._atm_janus_last is solved
 
 
+class _StopAfterInit(Exception):
+    """Raised by the stand-in for `init_agni_atmos`, once its arguments are known."""
+
+
+@pytest.mark.parametrize(
+    ('first_build', 'use_cache'),
+    [(True, True), (False, False)],
+    ids=['first-build-uses-cache', 'spectrum-update-bypasses-it'],
+)
+def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
+    tmp_path, first_build, use_cache
+):
+    """The first AGNI build of a run may use the spectral-file cache, because
+    its stellar spectrum can match another run's. A rebuild after a spectrum
+    update may not: its spectrum depends on when this run's adaptive timestep
+    reached the update, so a cache entry for it would never be read.
+    """
+    atmos_o = Atmos_t()
+    atmos_o._atm = None if first_build else object()
+    config = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            albedo_pl=0.0,
+            rayleigh=False,
+            cloud_enabled=False,
+            surf_state='fixed',
+            agni=SimpleNamespace(verbosity=0),
+        ),
+        interior_energetics=SimpleNamespace(module='aragog'),
+        params=SimpleNamespace(resume=False),
+    )
+    hf_row = {'T_magma': 1800.0, 'T_surf': 0.0}
+    # A rebuild removes the previous prepared file first.
+    (tmp_path / 'runtime.sf').write_text('from the previous spectrum', encoding='utf-8')
+
+    seen = {}
+
+    def _init(_dirs, _config, _hf_row, use_cache=True):
+        seen['use_cache'] = use_cache
+        raise _StopAfterInit
+
+    with (
+        patch('proteus.atmos_clim.agni.activate_julia'),
+        patch('proteus.atmos_clim.agni.deallocate_atmos'),
+        patch('proteus.atmos_clim.agni.init_agni_atmos', side_effect=_init),
+        pytest.raises(_StopAfterInit),
+    ):
+        atmos_wrapper.run_atmosphere(
+            atmos_o,
+            config,
+            {'output': str(tmp_path), 'fwl': str(tmp_path)},
+            {'total': 0 if first_build else 7},
+            [1.0],
+            [1.0],
+            not first_build,
+            None,
+            hf_row,
+        )
+
+    assert seen == {'use_cache': use_cache}
+    # Edge case: the first build keeps a prepared file already on disk, which a
+    # resume relies on; a rebuild removes it so the new spectrum is inserted.
+    assert (tmp_path / 'runtime.sf').exists() == first_build
+
+
 # ---------------------------------------------------------------------------
 # carry_converged_levels: levels of a rejected structure are not used
 # ---------------------------------------------------------------------------

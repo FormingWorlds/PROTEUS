@@ -454,7 +454,7 @@ def _determine_aerosols(dirs: dict) -> list:
     return aerosols
 
 
-def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
+def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = True):
     """Initialise atmosphere struct for use by AGNI.
 
     Does not set the temperature profile.
@@ -467,6 +467,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
+        use_cache : bool
+            Whether to read from and store into `atmos_clim.spectral_cache`.
 
     Returns
     ----------
@@ -550,7 +552,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
 
         # Reuse a cached file built earlier from this base file and this stellar
         # spectrum, and skip the insertion.
-        if config.atmos_clim.spectral_cache:
+        if config.atmos_clim.spectral_cache and use_cache:
             key = cache_key(
                 input_sf,
                 sflux_path,
