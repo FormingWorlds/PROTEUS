@@ -663,7 +663,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         hydrograv_ming=config.atmos_clim.agni.hydrograv_ming,
         hydrograv_constg=config.atmos_clim.agni.hydrograv_constg,
         hydrograv_selfg=config.atmos_clim.agni.hydrograv_selfg,
-        hill_radius=hf_row['hill_radius'],
+        hill_radius=max(float(hf_row['hill_radius']), float(hf_row['R_int'])),
         # photosphere from optical depth, used when atmos_clim.p_obs='none'
         transspec_ref_tau=config.atmos_clim.agni.tau_obs,
         transspec_ref_wl=config.atmos_clim.agni.wl_obs,
@@ -991,7 +991,7 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     atmos.grav_surf = float(hf_row['gravity'])
     atmos.rp = float(hf_row['R_int'])
     atmos.interior_mass = float(hf_row['M_int'])
-    atmos.hill_radius = float(hf_row['hill_radius'])
+    atmos.hill_radius = max(float(hf_row['hill_radius']), float(hf_row['R_int']))
     atmos.axial_period = float(hf_row['axial_period'])
     atmos.col_lon = float(hf_row['longitude'])
     atmos.col_lat = float(hf_row['latitude'])
