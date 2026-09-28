@@ -281,9 +281,7 @@ def run_inference(config):
     log.info(f'This took: {t_1 - t_0:.2f} seconds')
     log.info('-----------------------------------')
 
-    # Account for the simulations that did not produce a usable result. Runs
-    # before the best-fit summary, so the reader sees how much of the study was
-    # real before reading what it concluded, and so the breakdown is still
+    # Before the best-fit summary, so the breakdown is read first, and is still
     # reported when every evaluation failed and the summary refuses to print.
     summarise_failures(dirs['output'], len(D_final['X']))
 

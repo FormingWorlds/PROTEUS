@@ -1,9 +1,5 @@
-"""Generate and save initial dataset for Bayesian optimization.
-
-This script sets up parameter bounds and true observables for the PROTEUS simulator,
-builds the objective function via `prot_builder`, generates a small random sample
-of points in the normalized input space, evaluates the objective to obtain outputs,
-and saves the resulting dataset to disk for use as the initial data in the BO pipeline.
+"""Initial dataset for Bayesian optimisation, from Halton samples of the parameter
+box or from a precomputed grid, saved as `init.csv` in the study output.
 """
 
 from __future__ import annotations
@@ -241,9 +237,6 @@ def sample_from_bounds(
         n_workers = os.cpu_count() - 1
         log.warning(f'Number of workers reduced to {n_workers}')
 
-    # Build the PROTEUS-based objective function with fixed context
-    #    This will be used to evaluate the objective function to provide initial samples
-
     # Determine problem dimension (number of parameters)
     dims = len(params)
 
@@ -256,20 +249,11 @@ def sample_from_bounds(
         failure_codes=failure_codes,
     )
 
-    # Generate n random points in [0,1]^d and evaluate the objective
-    #     Each of the parameters are evaluated in space 0-1, normalised to the bounds
-    #     This variable is 2D, with shape [nsamp, dims]
-
+    # Halton points in [0, 1]^d, shape [nsamp, dims], each axis normalised to its bounds
     sampler = Halton(d=dims, rng=np.random.default_rng(seed), scramble=True)
-    X = sampler.random(n=nsamp)
-    X = torch.tensor(X, dtype=dtype)
+    X = torch.tensor(sampler.random(n=nsamp), dtype=dtype)
 
-    # X = torch.rand(nsamp, dims,
-    #                generator=torch.manual_seed(seed), dtype=dtype)
-
-    # Evaluate the objective function for each of the samples
-    #     This variable is 1D, with shape [nsamp]
-
+    # Evaluate the objective at each sample, in parallel
     aug_args = [(x[None, :], i, builder_args) for i, x in enumerate(X)]
 
     t0 = time.perf_counter()
@@ -284,8 +268,6 @@ def sample_from_bounds(
     log.info(f'Initial sampling took {t1 - t0:.2f}s')
 
     Y = torch.vstack(results)
-
-    # Y = torch.stack([f(x[None, :]) for x in X]).reshape(nsamp, 1)
 
     log.info(f'Generated initial dataset with {nsamp} points in {dims}-dim space')
 

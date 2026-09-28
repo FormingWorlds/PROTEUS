@@ -1,13 +1,5 @@
-"""Bayesian optimization core functions.
-
-This module provides utility functions and the core BO_step function
-for fitting Gaussian processes, optimizing acquisition functions,
-and plotting results during Bayesian optimization.
-
-Functions:
-    unit_bounds: Generate unit hypercube bounds for acquisition optimization.
-    plot_iter: Visualize GP posterior and acquisition function at each iteration.
-    BO_step: Execute a single Bayesian optimization step with timing and logging.
+"""Bayesian optimisation steps: fit a GP, optimise the acquisition function, and
+evaluate the objective at the chosen point.
 """
 
 from __future__ import annotations
@@ -42,9 +34,7 @@ def unit_bounds(d):
     ----------
     - torch.Tensor: Tensor of shape (2, d) where row 0 is zeros and row 1 is ones.
     """
-    # Build bounds [[0,...,0], [1,...,1]]
-    bounds = torch.tensor([[0] * d, [1] * d], dtype=dtype)
-    return bounds
+    return torch.tensor([[0] * d, [1] * d], dtype=dtype)
 
 
 def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
@@ -272,8 +262,6 @@ def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
     ax[0].plot(xs.detach().flatten(), mu, color='black', linewidth=0.5, label='post mean')
     ax[0].fill_between(xs.detach().flatten(), mu - 2 * sig, mu + 2 * sig, alpha=0.25)
     ax[0].scatter(X.flatten(), Y.flatten(), s=5, label='data', color='blue')
-    # fs = objective(xs).flatten()
-    # ax[0].plot(xs.detach().flatten(), fs, color = "grey", label = "f", linewidth = 0.5)
 
     ax[1].plot(xs.detach().flatten(), ac, color='cornflowerblue', label='acqf')
     a = acqf(next_x).detach().flatten()

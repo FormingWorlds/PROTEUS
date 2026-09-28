@@ -1,16 +1,5 @@
-"""Utilities for configuration access and optimization result reporting.
-
-This module provides helper functions to:
-
-    * Extract values from nested dictionaries using dot-separated keys.
-    * Flatten nested dictionaries into a single-level dict with compound keys.
-    * Identify the best Bayesian optimization run and display true vs.
-      simulated observables and inferred parameter values.
-
-Functions:
-    get_nested: Retrieve a nested value by a dot-separated key path.
-    flatten: Flatten a nested dict into a single-level dict with dot-separated keys.
-    print_results: Select the best run and print its observables and parameters.
+"""Helpers for inference: nested-config access, dataset files, GP kernels and
+acquisition functions, and the end-of-study results report.
 """
 
 from __future__ import annotations
@@ -42,6 +31,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def str_time():
+    """Current local time, with its timezone, for log and file headers."""
     return datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')
 
 
@@ -172,11 +162,9 @@ def print_results(D, logs, config, output, n_init):
     X = D['X']
     Y = D['Y']
 
-    # Count the evaluations that were never scored on fit quality, so a study
-    # built mostly on those is not read as a converged result. Such a run
-    # scores BAD_OBJ_VALUE, whether it failed outright or completed on a
-    # status the study excludes; the objective value alone cannot tell the two
-    # apart, so the wording here covers both and the tally above splits them.
+    # Evaluations with no fit quality, so a study built mostly on them is not
+    # read as converged. The score cannot tell a failure from an excluded
+    # outcome, so the wording covers both; the tally above splits them.
     optim_Y = Y[n_init:]
     n_optim = len(optim_Y)
     n_unscored = int((optim_Y == BAD_OBJ_VALUE).sum().item())
@@ -246,10 +234,7 @@ def print_results(D, logs, config, output, n_init):
     log.info(' ')
 
     # Log parameter statistics
-    d = len(param_keys)
-    bounds = torch.tensor(
-        [[list(config['parameters'].values())[i][j] for i in range(d)] for j in range(2)]
-    )
+    bounds = torch.tensor(list(config['parameters'].values())).T
     # remove intial data
     X_samp = np.array(unnormalize_parameters(X, bounds, param_keys), copy=None, dtype=float)[
         n_init:, :
@@ -348,17 +333,13 @@ def get_kernel(kernel: str, d: int) -> MaternKernel | RBFKernel:
     ----------
     - MaternKernel | RBFKernel: Configured kernel instance.
     """
-    if kernel == 'RBF':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=True)
-    elif kernel == 'MAT1/2':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=0.5)
-    elif kernel == 'MAT3/2':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=1.5)
-    elif kernel == 'MAT5/2':
-        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=2.5)
-    else:
+    # Matern smoothness per kernel name; None selects the RBF kernel
+    nus = {'RBF': None, 'MAT1/2': 0.5, 'MAT3/2': 1.5, 'MAT5/2': 2.5}
+    if kernel not in nus:
         raise ValueError('Unknown kernel, choices are RBF or MAT{1/2, 3/2, 5/2}')
-    return kernel
+    return get_kernel_w_prior(
+        ard_num_dims=d, use_rbf_kernel=nus[kernel] is None, nu=nus[kernel]
+    )
 
 
 def get_obs(out_csv, observables: list[str]):

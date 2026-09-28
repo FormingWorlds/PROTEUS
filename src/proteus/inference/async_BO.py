@@ -1,17 +1,5 @@
-"""Asynchronous Bayesian optimization pipeline utilities.
-
-This module implements functions to:
-
-    * Save and checkpoint optimization state to disk.
-    * Generate initial sample locations via a Halton low-discrepancy sequence.
-    * Run a worker process that performs BO steps, logs metrics, and checkpoints.
-    * Coordinate multiple worker processes for asynchronous Bayesian optimization.
-
-Functions:
-    checkpoint: Persist shared data, logs, and timestamps to files.
-    init_locs: Create initial candidate points in the unit hypercube.
-    worker: Execute BO iterations in a subprocess, updating shared state.
-    parallel_process: Set up shared resources, spawn workers, and collect results.
+"""Asynchronous Bayesian optimisation: worker processes that each run BO steps
+against shared data, checkpointing as they go, and the orchestration around them.
 """
 
 from __future__ import annotations

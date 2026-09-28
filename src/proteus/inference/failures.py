@@ -8,7 +8,7 @@ import fcntl
 import logging
 import os
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 import pandas as pd
@@ -24,24 +24,17 @@ ABORT_ON_FAILURE_ENV = 'PROTEUS_INFERENCE_ABORT_ON_FAILURE'
 # Suffix for the file holding whatever a child wrote to its console.
 CHILD_CONSOLE_SUFFIX = '_console.log'
 
-# How an evaluation that failed is classified. A run that
-# crashed, or stopped in an error state, did not produce a result at all. A run
-# that completed normally but ended on a status listed in the study's
-# `failure_codes` did produce a result, but the study does not fit against
-# that outcome. Only the first is a fault.
+# A failure produced no result and is a fault. An excluded run completed on a
+# status the study does not fit against (`failure_codes`, or status 29).
 CATEGORY_FAILURE = 'failure'
 CATEGORY_EXCLUDED = 'excluded'
 
-# Table inside the study output holding one row per unscored evaluation.
-# Appended by the workers as they fail and read back once at the end, so that
-# the summary covers initial sampling and optimisation alike without the two
-# paths having to share any state while they run.
+# One row per unscored evaluation, appended by each worker as it fails and read
+# back once at the end, so initial sampling and optimisation share no state.
 FAILURE_CSV = 'failures.csv'
 
-# Fixed columns of that table, in order. The swept parameter values follow, one
-# column each. The two paths are what the user opens after:
-# the logfile for a run that got far enough to configure its logger,
-# the console capture for one that did not.
+# Fixed columns of that table; one column per swept parameter follows. The
+# console capture is the only record of a run that died before its logger started.
 _FAILURE_COLUMNS = (
     'worker',
     'iter',
@@ -122,25 +115,9 @@ class ProteusRunFailure(RuntimeError):
         return self.report()
 
     def __reduce__(self):
-        # A failure raised inside a pool worker is pickled to be re-raised in
-        # the parent. BaseException.__reduce__ rebuilds from `self.args`,
-        # which a dataclass __init__ leaves empty, so the default would fail
-        # to reconstruct this class. Rebuild from the fields instead.
-        return (
-            self.__class__,
-            (
-                self.reason,
-                self.worker,
-                self.iter,
-                self.out_dir,
-                self.exit_code,
-                self.status,
-                self.log_path,
-                self.console_path,
-                self.parameters,
-                self.category,
-            ),
-        )
+        # Pickled to cross from a pool worker to the parent. The default rebuilds
+        # from `self.args`, which the dataclass __init__ leaves empty.
+        return (self.__class__, tuple(getattr(self, f.name) for f in fields(self)))
 
 
 def find_run_logfile(out_abs: Path | str) -> str | None:
@@ -176,13 +153,10 @@ def record_failure(study_abs: Path | str, failure: ProteusRunFailure) -> str | N
       Recording is best-effort: a study must not be brought down by a fault in
       its own bookkeeping, so the failure being reported still reaches the log.
     """
-    row = {key: getattr(failure, key) for key in _FAILURE_COLUMNS if key != 'status_desc'}
-    row['status_desc'] = failure.status_desc
-    row.update(failure.parameters)
-    ordered = {key: row[key] for key in (*_FAILURE_COLUMNS, *failure.parameters)}
+    row = {key: getattr(failure, key) for key in _FAILURE_COLUMNS} | failure.parameters
 
     target = Path(study_abs) / FAILURE_CSV
-    line = _csv_row(ordered.values())
+    line = _csv_row(row.values())
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         with open(target, 'a') as f:
@@ -190,7 +164,7 @@ def record_failure(study_abs: Path | str, failure: ProteusRunFailure) -> str | N
             # Sized after the lock is taken: another writer may have added the
             # header between this one opening the file and acquiring the lock.
             if os.fstat(f.fileno()).st_size == 0:
-                line = _csv_row(ordered.keys()) + line
+                line = _csv_row(row.keys()) + line
             f.write(line)
             # Written out before the lock is released on close.
             f.flush()

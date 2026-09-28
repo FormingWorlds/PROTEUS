@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
-from functools import partial
 from pathlib import Path
 
 import pandas as pd
@@ -34,11 +33,9 @@ BAD_OBJ_VALUE = -20.0
 ALWAYS_EXCLUDED_STATUSES = frozenset({29})
 log = logging.getLogger('fwl.' + __name__)
 
-# Per-child PROTEUS run timeout for inference workers. A single wedged child
-# run would otherwise hang the whole batch with no diagnostic. Tunable per
-# study via the inference config field `child_timeout_s`. The value is plumbed
-# to the worker processes (which may be spawned, and so do not inherit module
-# state) through the environment. A value of 0 or below disables the timeout.
+# Per-child run timeout, so one wedged run cannot hang the batch. Set per study
+# by `child_timeout_s` (0 or below disables it) and passed to the workers,
+# which may be spawned, through the environment.
 DEFAULT_CHILD_TIMEOUT_S = 6 * 3600.0
 _CHILD_TIMEOUT_ENV = 'PROTEUS_INFERENCE_CHILD_TIMEOUT_S'
 
@@ -214,8 +211,8 @@ def run_proteus(
     # Ensure output directory exists
     out_abs.mkdir(parents=True, exist_ok=True)
 
-    # Swept parameter values only. Add `updates` as a copy for the failure report
-    # so that the original `parameters` dict is unchanged.
+    # Swept values for the failure report. The fixed entries go into a copy, so
+    # the caller's dict is left unchanged.
     swept = {k: v for k, v in parameters.items() if k not in _FIXED_PARAMETER_KEYS}
     updates = dict(parameters)
 
@@ -300,13 +297,7 @@ def run_proteus(
     # sample, not a crash of the study.
     try:
         df_row = dict(pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1])
-    except (
-        FileNotFoundError,
-        OSError,
-        pd.errors.EmptyDataError,
-        pd.errors.ParserError,
-        IndexError,
-    ) as err:
+    except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError, IndexError) as err:
         # A truncated whitespace-delimited file usually presents as a ragged
         # row (ParserError) rather than an empty one, so both are caught.
         raise _failure(
@@ -435,23 +426,11 @@ def J(
             output=output,
         )
     except ProteusRunFailure as failure:
-        # A parameter combination the simulator cannot integrate is an
-        # expected outcome of sweeping a wide box, so it is scored as a poor
-        # sample and the study continues. Every such run is reported once,
-        # and the full report goes to the failure record.
-        # Recorded before the abort check, so an aborted study still leaves
-        # the record of what stopped it.
-        record_failure(get_proteus_directories(output)['output'], failure)
-        if os.environ.get(ABORT_ON_FAILURE_ENV, '0') == '1':
-            raise
-        log.warning(failure.summary())
-        log.debug(failure.report())
-        return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
+        # Parameters the simulator cannot integrate are expected in a wide box.
+        return _handle_unscored(failure, output)
 
-    # Runs that exit cleanly but stop in an error state, such as a run halted
-    # through its keepalive file (status 25), or that never reach the main loop
-    # (status 0 and 1). An unreadable status counts here too: the run's own
-    # account of itself is missing, so its output cannot be trusted.
+    # A clean exit on an error status (e.g. 25, stopped via the keepalive file),
+    # one that never reached the main loop (0, 1), or with no readable status.
     failed = (20 <= sim_status <= 28) or (sim_status in (0, 1, STATUS_MISSING))
 
     # Runs that completed normally on an outcome this study does not fit
@@ -460,12 +439,8 @@ def J(
         sim_status in failure_codes or sim_status in ALWAYS_EXCLUDED_STATUSES
     )
 
-    # Either way the evaluation carries the failure score instead of a fit
-    # quality, and is recorded so that the end-of-study tally covers it.
     if failed or excluded:
         _, out_abs = run_output_dir(output, worker, iter)
-        # Built once, so the entry left on disk and the exception raised under
-        # `abort_on_failure` describe the same run.
         failure = ProteusRunFailure(
             reason=(
                 'exited cleanly but stopped in a failure state'
@@ -481,26 +456,41 @@ def J(
             parameters=raw,
             category=CATEGORY_FAILURE if failed else CATEGORY_EXCLUDED,
         )
-        # Recorded before the abort check, so an aborted study still leaves
-        # the record of what stopped it.
-        record_failure(get_proteus_directories(output)['output'], failure)
-        if failed:
-            # A clean exit on an error status is as much a fault as a crash,
-            # so it honours `abort_on_failure` the same way. An excluded
-            # outcome never does: nothing went wrong in such a run.
-            if os.environ.get(ABORT_ON_FAILURE_ENV, '0') == '1':
-                raise failure
-            log.warning(failure.summary())
-        else:
-            # Nothing went wrong in such a run, so it is reported at info
-            # level and, like a fault, on one line.
-            log.info(failure.summary())
-        # The rest of the report is kept out of the study log
-        log.debug(failure.report())
-        return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
+        return _handle_unscored(failure, output)
 
     # Compute value of objective function given these results
     return eval_obj(sim_vals, true_observables)
+
+
+def _handle_unscored(failure: ProteusRunFailure, output: str) -> torch.Tensor:
+    """Record an evaluation that has no fit quality, report it, and score it.
+
+    The record is written before the abort check, so an aborted study still
+    leaves the record of what stopped it. Only a failure honours
+    `abort_on_failure`; an excluded outcome is reported at info level, since
+    nothing went wrong in that run. The full report goes to the debug log only.
+
+    Parameters
+    ----------
+    - failure (ProteusRunFailure): The failed or excluded evaluation.
+    - output (str): Study output folder, relative to the PROTEUS output root.
+
+    Returns
+    ----------
+    - torch.Tensor: The failure score, shape (1, 1).
+
+    Raises:
+        ProteusRunFailure: The failure itself, when `abort_on_failure` is set.
+    """
+    record_failure(get_proteus_directories(output)['output'], failure)
+    if failure.category == CATEGORY_FAILURE:
+        if os.environ.get(ABORT_ON_FAILURE_ENV, '0') == '1':
+            raise failure
+        log.warning(failure.summary())
+    else:
+        log.info(failure.summary())
+    log.debug(failure.report())
+    return BAD_OBJ_VALUE * torch.ones((1, 1), dtype=dtype)
 
 
 def prot_builder(
@@ -521,7 +511,7 @@ def prot_builder(
     - parameters (dict): Mapping of parameter keys to [low, high] bounds.
     - observables (dict): Target observable values.
     - worker (int): Worker identifier.
-    - iter (int): Iteration number (seed) for reproducibility.
+    - iter (int): Iteration identifier within that worker.
     - output (str): Path to output folder relative to PROTEUS output folder.
     - ref_config (str): Reference TOML config path.
     - failure_codes (list[int]): PROTEUS status codes that complete normally but
@@ -531,12 +521,10 @@ def prot_builder(
     ----------
     - callable: Function f(x_norm) -> y_objective.
     """
-    # Build bounds tensor for unnormalization
+    # Bounds as (2, d): lower bounds in row 0, upper in row 1
     param_keys = list(parameters.keys())
     d = len(param_keys)
-    bounds = torch.tensor(
-        [[list(parameters.values())[i][j] for i in range(d)] for j in range(2)], dtype=dtype
-    )
+    bounds = torch.tensor(list(parameters.values()), dtype=dtype).T
 
     def f(x_norm: torch.Tensor) -> torch.Tensor:
         """Inference objective function accepting normalized inputs.
@@ -552,9 +540,8 @@ def prot_builder(
         # Convert normalized to raw inputs
         x_raw = unnormalize_parameters(x_norm, bounds, param_keys)
 
-        # Partially apply J with fixed context
-        J_context = partial(
-            J,
+        J_eval = J(
+            x_raw,
             parameters=param_keys,
             true_observables=observables,
             worker=worker,
@@ -563,8 +550,6 @@ def prot_builder(
             output=output,
             failure_codes=failure_codes,
         )
-
-        J_eval = J_context(x_raw)
 
         # Check J is finite
         if not torch.isfinite(J_eval).all():
