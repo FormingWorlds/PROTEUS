@@ -875,7 +875,7 @@ def test_parallel_process_stops_the_study_when_a_run_fails_under_abort(
             try:
                 self.target(*self.args)
                 self.exitcode = 0
-            except BaseException:
+            except Exception:
                 self.exitcode = 1
 
         def join(self):
