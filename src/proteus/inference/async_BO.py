@@ -26,6 +26,7 @@ import pandas as pd
 import torch
 
 from proteus.inference.BO import BO_step, init_locs
+from proteus.inference.failures import ProteusRunFailure
 from proteus.inference.utils import get_kernel, load_dataset_csv, save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.logs import attach_worker_logfile
@@ -95,6 +96,8 @@ def worker(
     output_dir: str,
     logpath: str | None = None,
     log_level: int = logging.INFO,
+    stop=None,
+    aborts=None,
 ) -> None:
     """Worker subprocess that performs asynchronous BO steps.
 
@@ -103,7 +106,8 @@ def worker(
       2. Calls BO_step to propose and evaluate a new point.
       3. Logs timing and performance metrics.
       4. Updates shared data, busy points, and checkpoints.
-    Runs until the total number of observations reaches max_len.
+    Runs until the total number of observations reaches max_len, or until
+    `stop` is set because a worker's run failed under `abort_on_failure`.
 
     Parameters
     ----------
@@ -122,6 +126,11 @@ def worker(
     - logpath (str | None): Inference run logfile to reopen when this process has no
       logging configuration of its own.
     - log_level (int): Numeric level to log at, read from the parent.
+    - stop (Manager.Event | None): Set by the worker whose run failed under
+      `abort_on_failure`, and checked by every worker before it starts
+      another evaluation.
+    - aborts (Manager.list | None): Receives the failure that set `stop`, so
+      the parent can raise it once every worker has exited.
 
     Returns
     ----------
@@ -148,7 +157,16 @@ def worker(
             worker_id,
             log_list,
             output_dir,
+            stop,
         )
+    except ProteusRunFailure as failure:
+        # Only raised out of the objective under `abort_on_failure`.
+        if aborts is not None:
+            aborts.append(failure)
+        if stop is not None:
+            stop.set()
+        log.exception(f'Worker {worker_id} stopped the study after a failed run')
+        raise
     except BaseException:
         # A worker that dies takes its traceback with it: multiprocessing
         # prints it to the parent's stderr without consulting the logging
@@ -178,6 +196,7 @@ def _worker_loop(
     worker_id: int,
     log_list,
     output_dir: str,
+    stop=None,
 ) -> None:
     """Run BO iterations until the evaluation budget is reached.
 
@@ -200,6 +219,12 @@ def _worker_loop(
         current_X = D_shared['X']
         if len(current_X) >= max_len:
             log.info(f'Worker {worker_id} exiting')
+            break
+
+        # Another worker's run failed under `abort_on_failure`. Checked
+        # between evaluations only.
+        if stop is not None and stop.is_set():
+            log.info(f'Worker {worker_id} exiting: the study is stopping on a failed run')
             break
 
         # For the first iteration, use provided initial point
@@ -336,6 +361,10 @@ def parallel_process(
     n_init = len(D_shared['X'])
 
     lock = mgr.Lock()
+    # Set by the first worker whose run fails under `abort_on_failure`,
+    # which also leaves that failure in `aborts` for the parent to re-raise.
+    stop = mgr.Event()
+    aborts = mgr.list()
     log_list = mgr.list([None] * n_init)  # no logs from init data
 
     # Generate initial candidate locations and busy-map
@@ -377,6 +406,8 @@ def parallel_process(
                 output_abspath,
                 worker_logpath,
                 worker_log_level,
+                stop,
+                aborts,
             ),
         )
         p.start()
@@ -385,6 +416,17 @@ def parallel_process(
     # Wait for all workers to finish
     for p in procs:
         p.join()
+
+    # A failed run under `abort_on_failure` ends the study here.
+    if len(aborts):
+        failure = aborts[0]
+        n_done = len(D_shared['X'])
+        log.error(
+            'Study stopped: a run failed and abort_on_failure is set. '
+            f'{n_done} evaluation{"" if n_done == 1 else "s"}, initial samples '
+            'included, completed before it stopped.'
+        )
+        raise failure
 
     # Collect final results
     D_final = dict(D_shared)
