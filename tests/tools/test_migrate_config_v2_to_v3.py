@@ -79,6 +79,8 @@ _DROP_PREFIXES = (
 _REVIEWED_NEUTRAL = frozenset(
     {
         'atmos_clim.aerosols_enabled',
+        'atmos_clim.agni.aerosol_r_eff',
+        'atmos_clim.agni.aerosol_sigma_g',
         'atmos_clim.agni.grey_opacity_lw',
         'atmos_clim.agni.grey_opacity_sw',
         'atmos_clim.agni.hydrograv_constg',

@@ -206,6 +206,10 @@ class Agni:
         Constant gravity with height?
     hydrograv_selfg: bool
         Include self-gravity of the atmosphere?
+    aerosol_r_eff: float
+        Effective radius of log-normal size distribution for Mie aerosols [m].
+    aerosol_sigma_g: float
+        Standard deviation of log-normal particle-size distribution for Mie aerosols.
     """
 
     verbosity: int = field(
@@ -281,6 +285,8 @@ class Agni:
     hydrograv_ming: float = field(default=1e-4, validator=gt(0))
     hydrograv_constg: bool = field(default=False)
     hydrograv_selfg: bool = field(default=True)
+    aerosol_r_eff: float = field(default=1.0e-6, validator=(gt(1e-10), le(1.0)))
+    aerosol_sigma_g: float = field(default=1.65, validator=(ge(1.0), le(100.0)))
 
 
 def valid_janus(instance, attribute, value):
@@ -546,6 +552,11 @@ DOC_GROUPS = {
                 'hydrograv_constg',
                 'hydrograv_selfg',
             ),
+        ),
+        (
+            'Aerosol optics',
+            'used for auto-discovered Mie-theory aerosols',
+            ('aerosol_r_eff', 'aerosol_sigma_g'),
         ),
     ),
 }

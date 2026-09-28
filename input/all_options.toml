@@ -714,6 +714,10 @@ config_version = "3.0"
         hydrograv_constg    = false         # Constant gravity with height?
         hydrograv_selfg     = true          # Include self-gravity of the atmosphere?
 
+        # Aerosol optics (used for auto-discovered Mie-theory aerosols)
+        aerosol_r_eff       = 1.0e-6         # Effective radius of the log-normal size distribution [m]
+        aerosol_sigma_g     = 1.65           # Geometric standard deviation of the log-normal size distribution
+
     [atmos_clim.janus]
         F_atm_bc              = 0            # outgoing flux boundary: 0 (TOA) | 1 (surface)
         tropopause            = "none"       # tropopause scheme: none | skin | dynamic

@@ -144,6 +144,13 @@ interior heat flux. The `fastchem_*` parameters apply when
 | `hydrograv_ming` | float | `0.0001` | Minimum allowed gravity in the atmosphere \[m/s^2\]. Must be > 0. |
 | `hydrograv_constg` | bool | `false` | Constant gravity with height?. |
 | `hydrograv_selfg` | bool | `true` | Include self-gravity of the atmosphere?. |
+
+**Aerosol optics** (used for auto-discovered Mie-theory aerosols)
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `aerosol_r_eff` | float | `1e-06` | Effective radius of log-normal size distribution for Mie aerosols \[m\]. Must be > 1e-10 and <= 1.0. |
+| `aerosol_sigma_g` | float | `1.65` | Standard deviation of log-normal particle-size distribution for Mie aerosols. Must be >= 1.0 and <= 100.0. |
 <!-- END GENERATED: config-table [atmos_clim.agni] -->
 
 ### JANUS `[atmos_clim.janus]`

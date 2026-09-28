@@ -38,16 +38,25 @@ from proteus.utils.constants import noble_gases
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
+def _fake_jl_with_mie_materials(*names):
+    """A stand-in for `agni_mod.jl` exposing only `aerosol_optics.list_materials`."""
+    return SimpleNamespace(
+        AGNI=SimpleNamespace(aerosol_optics=SimpleNamespace(list_materials=lambda: list(names)))
+    )
+
+
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_success(mock_isdir, mock_listdir):
+def test_determine_aerosols_success(mock_isdir, mock_listdir, monkeypatch):
     """
     Test aerosol discovery when scattering data directory exists.
 
     Physical scenario: Scattering data for aerosols (e.g., sulfate, silicate)
-    is available in FWL_DATA/scattering/scattering/*.mon files.
+    is available in FWL_DATA/scattering/scattering/*.mon files, and AGNI has
+    no Mie-capable materials for any of them.
     """
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
     mock_isdir.return_value = True
     mock_listdir.return_value = [
         'Sulfate.mon',
@@ -60,9 +69,9 @@ def test_determine_aerosols_success(mock_isdir, mock_listdir):
     dirs = {'fwl': '/fake/fwl/path'}
     aerosols = _determine_aerosols(dirs)
 
-    # Verify correct aerosols found and sorted
-    assert len(aerosols) == 3
-    assert aerosols == ['Haze', 'Silicate', 'Sulfate']  # alphabetically sorted
+    # Verify correct aerosols found, each via the 'mon' method. Names are
+    # lowercased so that matching against condensates is case-insensitive.
+    assert aerosols == {'haze': 'mon', 'silicate': 'mon', 'sulfate': 'mon'}
 
     # Verify correct directory was checked
     mock_isdir.assert_called_once_with('/fake/fwl/path/scattering/scattering')
@@ -70,70 +79,135 @@ def test_determine_aerosols_success(mock_isdir, mock_listdir):
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_missing_directory(mock_isdir):
+def test_determine_aerosols_missing_directory(mock_isdir, monkeypatch):
     """
     Test aerosol discovery when scattering directory doesn't exist.
 
     Physical scenario: FWL_DATA not properly downloaded or scattering
-    data not installed. Should return empty list and warn.
+    data not installed, and AGNI has no Mie-capable materials either.
+    Should return an empty mapping and warn.
     """
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
     mock_isdir.return_value = False
 
     dirs = {'fwl': '/nonexistent/path'}
     aerosols = _determine_aerosols(dirs)
 
-    # Should return empty list without crashing
-    assert aerosols == []
+    # Should return an empty mapping without crashing
+    assert aerosols == {}
     mock_isdir.assert_called_once()
 
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir):
+def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir, monkeypatch):
     """
     Test aerosol discovery when directory exists but has no .mon files.
 
     Physical scenario: Scattering directory present but empty or only
-    contains non-aerosol files.
+    contains non-aerosol files, and no Mie-capable materials are available.
     """
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
     mock_isdir.return_value = True
     mock_listdir.return_value = ['readme.txt', 'config.yaml']
 
     dirs = {'fwl': '/path/to/fwl'}
     aerosols = _determine_aerosols(dirs)
 
-    # Should return empty list
-    assert aerosols == []
+    # Should return an empty mapping
+    assert aerosols == {}
     # Discrimination guard: the directory existed, so isdir must have
     # been queried AND listdir must have been called to inspect the
-    # contents. A regression that returned [] without inspecting (e.g.
+    # contents. A regression that returned {} without inspecting (e.g.
     # always short-circuited) would still pass the assertion above.
     mock_isdir.assert_called_once_with('/path/to/fwl/scattering/scattering')
     mock_listdir.assert_called_once()
-    # Type guard: returning None or a non-list would also satisfy
-    # `== []` against another empty container, so pin the type.
-    assert isinstance(aerosols, list)
+    # Type guard: returning None or a non-dict would also satisfy
+    # `== {}` against another empty container, so pin the type.
+    assert isinstance(aerosols, dict)
 
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_single_species(mock_isdir, mock_listdir):
+def test_determine_aerosols_single_species(mock_isdir, mock_listdir, monkeypatch):
     """
     Test aerosol discovery with only one aerosol type.
 
     Physical scenario: Limited scattering data with only one aerosol species
-    available (e.g., only sulfate aerosols).
+    available (e.g., only sulfate aerosols), and no Mie support for it.
     """
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
     mock_isdir.return_value = True
     mock_listdir.return_value = ['Sulfate.mon']
 
     dirs = {'fwl': '/path/to/fwl'}
     aerosols = _determine_aerosols(dirs)
 
-    assert len(aerosols) == 1
-    assert aerosols == ['Sulfate']
+    assert aerosols == {'sulfate': 'mon'}
+    # Type guard: a bare string return (e.g. 'sulfate') would also satisfy a
+    # naive membership check, so pin the mapping type and its method value.
+    assert isinstance(aerosols, dict)
+    assert aerosols['sulfate'] == 'mon'
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.agni.os.path.isdir')
+def test_determine_aerosols_mie_only_species(mock_isdir, monkeypatch):
+    """
+    Test aerosol discovery when AGNI has Mie-capable materials but there is
+    no FWL_DATA scattering directory at all.
+
+    Physical scenario: a fresh install that has only run
+    `./src/get_data.sh refractive` (bundled with the AGNI checkout itself,
+    not FWL_DATA), so 'mie' aerosols are discoverable even without any
+    'mon' scattering data on disk.
+    """
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials('SiO2_amorph', 'VO'))
+    mock_isdir.return_value = False
+
+    dirs = {'fwl': '/nonexistent/path'}
+    aerosols = _determine_aerosols(dirs)
+
+    # Names come back lowercased even though AGNI reports the on-disk
+    # (mixed-case) material name, so matching against condensates and
+    # against 'mon' names stays case-insensitive.
+    assert aerosols == {'sio2_amorph': 'mie', 'vo': 'mie'}
+    # Discrimination guard: a regression that only merged Mie names in when
+    # the scattering directory also existed would return {} here instead.
+    mock_isdir.assert_called_once_with('/nonexistent/path/scattering/scattering')
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.agni.os.listdir')
+@patch('proteus.atmos_clim.agni.os.path.isdir')
+def test_determine_aerosols_prefers_mie_over_mon(mock_isdir, mock_listdir, monkeypatch):
+    """
+    A species with both a 'mon' file and Mie support uses 'mie'.
+
+    Physical scenario: AGNI can compute a species' optical properties from
+    refractive-index data at runtime (more accurate, tied to the actual
+    particle size) instead of the pre-tabulated monochromatic data; the two
+    are not combined; the run-time method wins.
+
+    Discrimination: a regression that iterated 'mon' after 'mie' (or built a
+    set union without an override order) would leave this species at 'mon'.
+    """
+    # Different case between the two sources on purpose: the override must
+    # match case-insensitively, not just on an exact string match.
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials('SULFATE'))
+    mock_isdir.return_value = True
+    mock_listdir.return_value = ['Sulfate.mon', 'Haze.mon']
+
+    dirs = {'fwl': '/path/to/fwl'}
+    aerosols = _determine_aerosols(dirs)
+
+    assert aerosols == {'sulfate': 'mie', 'haze': 'mon'}
+    # Explicit per-key checks, matching the discrimination case in the
+    # docstring: the overlapping species must resolve to 'mie', not 'mon'.
+    assert aerosols['sulfate'] == 'mie'
+    assert aerosols['sulfate'] != 'mon'
 
 
 @pytest.mark.unit
@@ -306,6 +380,9 @@ class _FakeAGNI:
             setup_b=self._setup_b,
             allocate_b=self._allocate_b,
         )
+        # No Mie-capable materials by default; tests that need some
+        # override this attribute directly.
+        self.aerosol_optics = SimpleNamespace(list_materials=lambda: [])
         # setpt routines: record-only stubs
         self.setpt = SimpleNamespace(
             fromncdf_b=lambda *_a, **_k: None,
@@ -370,6 +447,8 @@ def _build_greygas_config():
                 hydrograv_ming=1e-4,
                 hydrograv_constg=False,
                 hydrograv_selfg=True,
+                aerosol_r_eff=1.0e-6,
+                aerosol_sigma_g=1.65,
             ),
         ),
         orbit=SimpleNamespace(s0_factor=1.0, zenith_angle=48.0),
@@ -808,19 +887,98 @@ def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_pa
         agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 0.5, 'SiO2': 0.5}
     )
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
-    # Mixed case on purpose: matching must be case-insensitive.
-    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda *_a, **_k: ['sio2', 'Soot'])
+    # _determine_aerosols always returns lowercased names; the condensate it
+    # should match ('SiO2', from _construct_voldict above) is mixed case, so
+    # this exercises the case-insensitive match on the condensate side.
+    monkeypatch.setattr(
+        agni_mod, '_determine_aerosols', lambda *_a, **_k: {'sio2': 'mon', 'soot': 'mon'}
+    )
 
     atmos = init_agni_atmos(dirs, config, hf_row)
     assert atmos is not None
 
     aerosol_species = fake_agni.last_setup_kwargs['aerosol_species']
     assert aerosol_species['sio2'] == {'method': 'mon', 'species': 'SiO2'}
-    assert aerosol_species['Soot'] == {'method': 'mon', 'mmr': 0.0}
+    assert aerosol_species['soot'] == {'method': 'mon', 'mmr': 0.0}
     # Discrimination guard: the tied entry must not also carry the inert
     # override key, which would mask a regression that always set both.
     assert 'mmr' not in aerosol_species['sio2']
-    assert 'species' not in aerosol_species['Soot']
+    assert 'species' not in aerosol_species['soot']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_init_agni_atmos_mie_aerosol_carries_size_distribution(monkeypatch, tmp_path):
+    """A Mie-method aerosol carries the nk_file/r_eff/sigma_g keys AGNI's
+    parser requires for that method, in addition to the tie/override key.
+
+    Physical scenario: AGNI computes Mie-theory optical properties from a
+    log-normal particle-size distribution at runtime, so a Mie aerosol
+    without a size (r_eff, sigma_g) or refractive-index reference (nk_file)
+    is not a valid AGNI configuration and would be rejected by
+    `parse_aerosol_entry`.
+    """
+    fake_agni = _FakeAGNI()
+    fake_agni.aerosol_optics = SimpleNamespace(list_materials=lambda: ['SiO2'])
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    config = _build_greygas_config()
+    config.atmos_clim.aerosols_enabled = True
+    config.atmos_clim.agni.rainout = True
+    # Non-default values, so the test also proves these come from config
+    # rather than happening to match a hardcoded default.
+    config.atmos_clim.agni.aerosol_r_eff = 2.0e-6
+    config.atmos_clim.agni.aerosol_sigma_g = 1.4
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 6.4e8,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(
+        agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 0.5, 'SiO2': 0.5}
+    )
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    # _determine_aerosols always lowercases; the file on disk (as reported by
+    # AGNI's own list_materials(), mocked above as 'SiO2') is mixed case.
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda *_a, **_k: {'sio2': 'mie'})
+
+    atmos = init_agni_atmos(dirs, config, hf_row)
+    assert atmos is not None
+
+    entry = fake_agni.last_setup_kwargs['aerosol_species']['sio2']
+    assert entry == {
+        'method': 'mie',
+        'nk_file': 'SiO2',
+        'r_eff': 2.0e-6,
+        'sigma_g': 1.4,
+        'species': 'SiO2',
+    }
+    # Discrimination guard: nk_file must be the on-disk (mixed-case) name,
+    # not the lowercased discovery key -- 'sio2.txt' does not exist on disk.
+    assert entry['nk_file'] != 'sio2'
+    # Discrimination guard: r_eff and sigma_g must be within AGNI's accepted
+    # ranges (1e-10 <= r_eff <= 1.0 m; 1.0 <= sigma_g <= 100.0), not just any
+    # positive numbers that happen to satisfy the dict-equality check above.
+    assert 1e-10 < entry['r_eff'] < 1.0
+    assert 1.0 <= entry['sigma_g'] < 100.0
 
 
 # ---------------------------------------------------------------------------

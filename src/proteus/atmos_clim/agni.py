@@ -425,9 +425,14 @@ def _determine_condensates(vol_list: list):
     return [v for v in vol_list if v not in ALWAYS_DRY]
 
 
-def _determine_aerosols(dirs: dict) -> list:
+def _determine_aerosols(dirs: dict) -> dict:
     """
-    Determine which aerosols are available.
+    Determine which aerosols are available, and which method to use for each.
+
+    AGNI can compute aerosol optical properties two ways:
+     - Pre-computed monochromatic scattering data
+     - Mie theory at runtime from refractive-index data bundled with AGNI
+    Mie is preferred when both are available for the same species.
 
     Parameters
     ----------
@@ -436,22 +441,27 @@ def _determine_aerosols(dirs: dict) -> list:
 
     Returns
     ----------
-        aerosols : list
-            List of available aerosols
+        aerosols : dict
+            Mapping of aerosol species name to the optical properties method.
     """
 
+    aerosols = {}
+
+    # Pre-computed monochromatic scattering data (FWL_DATA)
     scattering_dir = os.path.join(dirs['fwl'], 'scattering', 'scattering')
-    if not os.path.isdir(scattering_dir):
+    if os.path.isdir(scattering_dir):
+        for f in os.listdir(scattering_dir):
+            if f.endswith('.mon'):
+                aerosols[f.replace('.mon', '')] = 'mon'
+    else:
         log.warning(f'Scattering data directory not found: {scattering_dir}')
-        return []
 
-    aerosols = []
-    for f in os.listdir(scattering_dir):
-        if f.endswith('.mon'):
-            aerosols.append(f.replace('.mon', ''))
-    aerosols = sorted(aerosols)
+    # Materials AGNI can compute via Mie theory at runtime.
+    # Overrides 'mon' when a species has both.
+    for name in jl.AGNI.aerosol_optics.list_materials():
+        aerosols[name] = 'mie'
 
-    log.debug(f'Available aerosols: {aerosols}')
+    log.debug(f'Available aerosols: {sorted(aerosols)}')
     return aerosols
 
 
@@ -567,22 +577,40 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     p_top = config.atmos_clim.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
-    # Aerosol species dictionary. Each entry is tied to a condensate by name.
+    # Aerosol species dictionary which maps names to properties files
+    mie_materials_by_lower = {
+        str(m).lower(): str(m) for m in jl.AGNI.aerosol_optics.list_materials()
+    }
+    condensate_by_lower = {c.lower(): c for c in condensates}
+
+    # Dictionary of aerosol species and properties
     aerosol_species = {}
-    if config.atmos_clim.aerosols_enabled:
-        condensate_by_lower = {c.lower(): c for c in condensates}
-        for name in _determine_aerosols(dirs):
-            tied = condensate_by_lower.get(name.lower())
-            if tied is not None:
-                # tied to a species by name
-                aerosol_species[name] = {'method': 'mon', 'species': tied}
-                log.debug(f'Aerosol species {name} tied to condensate {tied}')
-            else:
-                # set to zero abundance otherwise
-                aerosol_species[name] = {'method': 'mon', 'mmr': 0.0}
-                log.debug(f'Aerosol species {name} set to zero abundance')
-        if len(aerosol_species) == 0:
-            log.warning('No data found for aerosol species')
+
+    # Loop through each potential aerosol and determine which method to use
+    log.info('Aerosol species:')
+    for name, method in _determine_aerosols(dirs).items():
+        entry = {'method': method}
+
+        # Try mie
+        if method == 'mie':
+            entry['nk_file'] = mie_materials_by_lower.get(name, name)
+            entry['r_eff'] = config.atmos_clim.agni.aerosol_r_eff
+            entry['sigma_g'] = config.atmos_clim.agni.aerosol_sigma_g
+
+        # Associate this with a condensate
+        tied = condensate_by_lower.get(name.lower())
+        if tied is not None:
+            # tied to a species by name
+            entry['species'] = tied
+            aerosol_species[name] = entry
+            log.info(f'    {name} ({method}) tied to condensate {tied}')
+        else:
+            # skip otherwise
+            log.debug(f'    {name} ({method}) not tied to any condensate; skipping')
+
+    # Warn if no aerosol species were found
+    if len(aerosol_species) == 0:
+        log.warning('    No aerosols mapped or data unavailable')
 
     # Build the AGNI setup! kwargs.
     setup_kwargs = dict(

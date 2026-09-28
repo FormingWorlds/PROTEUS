@@ -8516,6 +8516,56 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_clim.agni.aerosol_r_eff",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-06",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 1e-10
+        },
+        {
+          "op": "<=",
+          "value": 1.0
+        }
+      ],
+      "description": "Effective radius of log-normal size distribution for Mie aerosols [m].",
+      "doc_source": "attributes",
+      "group_order": 7,
+      "group_position": 0,
+      "group": "Aerosol optics",
+      "group_qualifier": "used for auto-discovered Mie-theory aerosols"
+    },
+    {
+      "path": "atmos_clim.agni.aerosol_sigma_g",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.65",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 1.0
+        },
+        {
+          "op": "<=",
+          "value": 100.0
+        }
+      ],
+      "description": "Standard deviation of log-normal particle-size distribution for Mie aerosols.",
+      "doc_source": "attributes",
+      "group_order": 7,
+      "group_position": 1,
+      "group": "Aerosol optics",
+      "group_qualifier": "used for auto-discovered Mie-theory aerosols"
+    },
+    {
       "path": "atmos_clim.janus.F_atm_bc",
       "toml_section": "atmos_clim.janus",
       "class": "Janus",
