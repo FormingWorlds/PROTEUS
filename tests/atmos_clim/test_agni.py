@@ -535,7 +535,7 @@ def test_spectral_cache_is_filled_from_the_folder_agni_wrote_in(
     built_in = ctx.scratch if work_dir == 'scratch' else ctx.output_dir
     assert (built_in / 'runtime.sf').is_file()
 
-    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16')
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
     assert sorted(p.name for p in cache.iterdir()) == [f'{key}.sf', f'{key}.sf_k']
     assert (cache / f'{key}.sf').read_text() == (built_in / 'runtime.sf').read_text()
     assert (cache / f'{key}.sf_k').read_text() == (built_in / 'runtime.sf_k').read_text()
@@ -560,7 +560,7 @@ def test_a_cached_spectral_file_is_reused_without_reinserting_the_spectrum(
     cache.mkdir()
     ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
 
-    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16')
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
     (cache / f'{key}.sf').write_text('cached prepared file', encoding='utf-8')
     (cache / f'{key}.sf_k').write_text('cached ktable', encoding='utf-8')
 
@@ -578,6 +578,37 @@ def test_a_cached_spectral_file_is_reused_without_reinserting_the_spectrum(
     # Guard: the companion must travel with its file. A seeded pair that AGNI
     # cannot find is the failure mode the path-choice above exists to avoid.
     assert not (ctx.output_dir / 'runtime.sf').exists()
+
+
+@pytest.mark.unit
+def test_a_cached_spectral_file_is_not_reused_across_rayleigh_settings(monkeypatch, tmp_path):
+    """A cache folder shared by runs that differ only in `atmos_clim.rayleigh`
+    must not hand one the other's file, because AGNI writes the Rayleigh block
+    into it. The entry built without Rayleigh scattering is left alone, and the
+    run with it builds and stores its own.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    without = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None
+    )
+    (cache / f'{without}.sf').write_text('built without rayleigh', encoding='utf-8')
+    (cache / f'{without}.sf_k').write_text('ktable without rayleigh', encoding='utf-8')
+    ctx.config.atmos_clim.rayleigh = True
+
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+
+    # A miss: the spectrum was handed to AGNI for insertion, not a seeded file.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (ctx.scratch / 'runtime.sf').read_text() != 'built without rayleigh'
+    with_rayleigh = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=True, aerosols=None
+    )
+    assert sorted(p.name for p in cache.iterdir()) == sorted(
+        [f'{without}.sf', f'{without}.sf_k', f'{with_rayleigh}.sf', f'{with_rayleigh}.sf_k']
+    )
+    assert (cache / f'{without}.sf').read_text() == 'built without rayleigh'
 
 
 @pytest.mark.unit

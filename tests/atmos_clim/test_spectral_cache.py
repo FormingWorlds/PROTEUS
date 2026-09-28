@@ -23,6 +23,10 @@ from proteus.atmos_clim.spectral_cache import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+# Scattering settings for tests about the other key inputs: Rayleigh on, the
+# config default, and aerosols disabled.
+_PLAIN = {'rayleigh': True, 'aerosols': None}
+
 
 def _make_inputs(tmp_path, star_bytes=b'1.0 2.0\n3.0 4.0\n'):
     """Write a base spectral file and a stellar spectrum, and return both."""
@@ -48,21 +52,58 @@ def test_key_tracks_the_stellar_spectrum_and_the_spectral_resolution(tmp_path):
     which config fields those are.
     """
     base, star = _make_inputs(tmp_path)
-    key = cache_key(base, star, 'Honeyside', '48')
+    key = cache_key(base, star, 'Honeyside', '48', **_PLAIN)
 
     # Same inputs, same entry: this is what lets a study reuse one build.
-    assert cache_key(base, star, 'Honeyside', '48') == key
+    assert cache_key(base, star, 'Honeyside', '48', **_PLAIN) == key
 
     # A different stellar spectrum is a different file, even byte-for-byte the
     # same length, so a content hash rather than a size check is required.
     other_star = tmp_path / 'other.sflux'
     other_star.write_bytes(b'9.0 2.0\n3.0 4.0\n')
     assert other_star.stat().st_size == star.stat().st_size
-    assert cache_key(base, other_star, 'Honeyside', '48') != key
+    assert cache_key(base, other_star, 'Honeyside', '48', **_PLAIN) != key
 
     # Resolution and group select a different base file, so neither may collide.
-    assert cache_key(base, star, 'Honeyside', '256') != key
-    assert cache_key(base, star, 'Frostflow', '48') != key
+    assert cache_key(base, star, 'Honeyside', '256', **_PLAIN) != key
+    assert cache_key(base, star, 'Frostflow', '48', **_PLAIN) != key
+
+
+@pytest.mark.unit
+def test_key_tracks_the_scattering_blocks_agni_writes_into_the_file(tmp_path):
+    """AGNI writes Rayleigh and aerosol blocks into the prepared file, so runs
+    that differ in either setting must not share an entry. Aerosols disabled
+    and enabled with no species are different files, and the species list is
+    compared as a set, so the order the data folder lists them in is irrelevant.
+    """
+    base, star = _make_inputs(tmp_path)
+    key = cache_key(base, star, 'Honeyside', '48', rayleigh=True, aerosols=None)
+
+    assert cache_key(base, star, 'Honeyside', '48', rayleigh=False, aerosols=None) != key
+    with_aerosols = cache_key(
+        base, star, 'Honeyside', '48', rayleigh=True, aerosols=['H2SO4', 'SiO2']
+    )
+    assert with_aerosols != key
+    # Edge case: enabled with no species still sets the aerosol flag in AGNI.
+    no_species = cache_key(base, star, 'Honeyside', '48', rayleigh=True, aerosols=[])
+    assert no_species not in (key, with_aerosols)
+    # A different species set is a different file; the same set in another
+    # order is the same file.
+    assert (
+        cache_key(base, star, 'Honeyside', '48', rayleigh=True, aerosols=['H2SO4'])
+        != with_aerosols
+    )
+    assert (
+        cache_key(base, star, 'Honeyside', '48', rayleigh=True, aerosols=['SiO2', 'H2SO4'])
+        == with_aerosols
+    )
+
+    # Error contract: the settings have no default, so a caller cannot build a
+    # key that silently ignores them.
+    with pytest.raises(TypeError):
+        cache_key(base, star, 'Honeyside', '48')
+    with pytest.raises(TypeError):
+        cache_key(base, star, 'Honeyside', '48', True, None)
 
 
 @pytest.mark.unit
@@ -72,7 +113,7 @@ def test_key_changes_when_the_base_spectral_file_is_updated(tmp_path):
     is large and read-only, so both are exercised here.
     """
     base, star = _make_inputs(tmp_path)
-    key = cache_key(base, star, 'Honeyside', '48')
+    key = cache_key(base, star, 'Honeyside', '48', **_PLAIN)
 
     # Same size, newer file: the mtime component has to carry this one.
     stat = base.stat()
@@ -81,13 +122,13 @@ def test_key_changes_when_the_base_spectral_file_is_updated(tmp_path):
 
     os.utime(base, (stat.st_atime, stat.st_mtime + 120))
     assert base.stat().st_size == 4096
-    key_touched = cache_key(base, star, 'Honeyside', '48')
+    key_touched = cache_key(base, star, 'Honeyside', '48', **_PLAIN)
     assert key_touched != key
 
     # Same mtime, different size: the size component has to carry this one.
     base.write_bytes(b'y' * 8192)
     os.utime(base, (stat.st_atime, stat.st_mtime + 120))
-    assert cache_key(base, star, 'Honeyside', '48') != key_touched
+    assert cache_key(base, star, 'Honeyside', '48', **_PLAIN) != key_touched
 
 
 @pytest.mark.unit
