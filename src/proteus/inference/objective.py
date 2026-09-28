@@ -293,11 +293,18 @@ def run_proteus(
     status = ReadStatus(out_abs)
 
     # Read simulator output. A run that exits cleanly but writes no usable
-    # helpfile (killed mid-write, or stopped before the first row) is a failed
-    # sample, not a crash of the study.
+    # helpfile (killed mid-write, stopped before the first row, or corrupted
+    # on disk) is a failed sample, not a crash of the study.
+    unreadable = (
+        OSError,
+        UnicodeDecodeError,
+        pd.errors.EmptyDataError,
+        pd.errors.ParserError,
+        IndexError,
+    )
     try:
         df_row = dict(pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1])
-    except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError, IndexError) as err:
+    except unreadable as err:
         # A truncated whitespace-delimited file usually presents as a ragged
         # row (ParserError) rather than an empty one, so both are caught.
         raise _failure(

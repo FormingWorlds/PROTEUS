@@ -539,8 +539,9 @@ def test_run_proteus_failure_points_at_the_simulator_logfile(monkeypatch, tmp_pa
 @pytest.mark.unit
 def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, tmp_path):
     """A run that exits zero but writes no readable helpfile is reported as a
-    failed sample rather than crashing the study with a bare parser error. The
-    exit code is recorded as zero so the report does not suggest a crash.
+    failed sample rather than crashing the study with a bare parser error. That
+    covers a missing file, an empty one, and one corrupted into invalid UTF-8.
+    The exit code is recorded as zero so the report does not suggest a crash.
     """
     out_abs = tmp_path / 'sim'
     out_abs.mkdir(parents=True)
@@ -575,9 +576,24 @@ def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, t
             output='dummy_output',
         )
 
+    # Edge case: bytes that are not valid UTF-8 raise UnicodeDecodeError, a
+    # ValueError rather than a parser error, from pandas.
+    (out_abs / 'runtime_helpfile.csv').write_bytes(b'Time P_surf\n1.0 2.0\n3.0 \xff\xfe\n')
+    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
+        objective_mod.run_proteus(
+            parameters={},
+            worker=0,
+            iter=0,
+            observables=['P_surf'],
+            ref_config='reference.toml',
+            output='dummy_output',
+        )
+    assert isinstance(excinfo.value.__cause__, UnicodeDecodeError)
+    assert 'no readable output' in excinfo.value.reason
+
     # Discrimination: a helpfile with a usable row completes normally, so the
-    # two failures above come from the output and not from an unconditional
-    # raise on this code path.
+    # failures above come from the output and not from an unconditional raise
+    # on this code path.
     pd.DataFrame([{'P_surf': 2.5}]).to_csv(
         out_abs / 'runtime_helpfile.csv', sep=' ', index=False
     )
