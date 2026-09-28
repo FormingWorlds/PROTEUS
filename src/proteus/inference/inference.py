@@ -39,7 +39,7 @@ from proteus.inference.objective import (
     set_child_timeout,
 )
 from proteus.inference.utils import print_results, str_time
-from proteus.utils.coupler import get_proteus_directories
+from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
 from proteus.utils.helper import safe_rm
 from proteus.utils.logs import setup_logger
 
@@ -87,7 +87,8 @@ def parameter_bounds(parameters: dict) -> dict[str, tuple[float, float]]:
     - dict[str, tuple[float, float]]: Same keys, bounds as (min, max) floats.
 
     Raises:
-        ValueError: If a range is not a pair of numbers, or does not increase.
+        ValueError: If a range is not a pair of numbers, does not increase, or
+            includes zero or a negative value for a log-scaled parameter.
     """
     bounds: dict[str, tuple[float, float]] = {}
     for key, value in parameters.items():
@@ -111,6 +112,12 @@ def parameter_bounds(parameters: dict) -> dict[str, tuple[float, float]]:
         if low >= high:
             raise ValueError(
                 f"Bounds for inference parameter '{key}' must increase, got [{low:g}, {high:g}]"
+            )
+        # Reject a log-scale parameter bound that includes zero or a negative value.
+        if variable_is_logarithmic(key) and low <= 0:
+            raise ValueError(
+                f"Inference parameter '{key}' is swept on a log scale, so both bounds "
+                f'must be > 0, got [{low:g}, {high:g}]'
             )
         bounds[key] = (low, high)
     return bounds
