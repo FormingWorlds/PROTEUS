@@ -26,6 +26,28 @@ def _reject_enabled_binodal(instance, attribute, value):
         )
 
 
+def _layers_need_resolved_interior(instance, attribute, value):
+    """Reject the layer drainage unless the drainage is computed from the interior.
+
+    ``trap_drainage`` only chooses between the two ways of draining the mush
+    the interior solver resolves, so it acts only with ``trap_mode = 'dynamic'``
+    and ``trap_tau_source = 'aragog'``. Any other active mode would ignore a
+    ``'layers'`` choice without notice and report a different law. With
+    ``trap_mode = 'none'`` trapping is off and every trapping field is inert,
+    so a control run can switch it off without editing the rest.
+    """
+    if value != 'layers' or instance.trap_mode == 'none':
+        return
+    if instance.trap_mode != 'dynamic' or instance.trap_tau_source != 'aragog':
+        raise ValueError(
+            "outgas.trap_drainage = 'layers' drains the mush the interior solver "
+            "resolves and needs outgas.trap_mode = 'dynamic' with "
+            "outgas.trap_tau_source = 'aragog'; with trap_mode = "
+            f'{instance.trap_mode!r} and trap_tau_source = '
+            f'{instance.trap_tau_source!r} it would never run.'
+        )
+
+
 @define
 class Calliope:
     """Module parameters for Calliope.
@@ -247,6 +269,16 @@ class Outgas:
         by the drainage integral over the freezing front the interior
         solver resolves, which needs neither parameter; it falls back to
         'fixed' when the interior state is unavailable.
+    trap_drainage: str
+        How `trap_tau_source = 'aragog'` drains the mush. 'front' integrates
+        the drainage of one parcel across a single freezing front and applies
+        the fraction it retains to the mass crystallised in the step. 'layers'
+        keeps the pore melt of every mush node of the interior mesh as state,
+        locks its volatiles when the node enters the mush, drains it node by
+        node into the node above, returns what reaches the magma ocean, and
+        keeps what a node still holds when it reaches `trap_phi_min`, so the
+        trapped volatiles keep their depth distribution. 'layers' needs `trap_mode =
+        'dynamic'` and `trap_tau_source = 'aragog'`, unless trapping is off.
     trap_phi_min: float
         Porosity below which a node counts as solid [1]. Needed because
         the density-derived porosity never reaches exactly zero.
@@ -340,6 +372,10 @@ class Outgas:
     # which computes the compaction time from the front the interior solver
     # resolves instead of taking it as an input.
     trap_tau_source: str = field(default='fixed', validator=validators.in_(('fixed', 'aragog')))
+    trap_drainage: str = field(
+        default='front',
+        validator=[validators.in_(('front', 'layers')), _layers_need_resolved_interior],
+    )
     trap_phi_min: float = field(
         default=0.01, validator=[validators.gt(0.0), validators.lt(1.0)]
     )

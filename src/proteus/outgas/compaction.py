@@ -88,6 +88,8 @@ MOBILITY_BLEND_HIGH = 0.05
 # mush near the solidus; this is the middle of that range.
 DEFAULT_MUSH_LOG10VISC = 20.0
 
+SECS_PER_YEAR = 3.15576e7  # Julian year, matching the interior solver's step length
+
 # Branch codes reported on every step, so a trajectory shows which regime it
 # was in and how often the guards fired.
 BRANCH_NONE = 0  # no trapping: mode off, warming, or no front

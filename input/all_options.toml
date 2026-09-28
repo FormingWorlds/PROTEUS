@@ -585,6 +585,7 @@ config_version = "3.0"
 
     # Drainage integral: compaction time from the front the solver resolves
     trap_tau_source           = "fixed"      # fixed (published law) | aragog (drainage integral)
+    trap_drainage             = "front"      # front (one freezing front) | layers (per-node drainage); needs dynamic + aragog
     trap_phi_min              = 0.01         # porosity below which a node counts as solid [1]
     trap_mush_log10visc       = -1.0         # log10 mush viscosity [Pa s]; negative selects 20
     trap_n_front_min          = 3            # fewest nodes a front must span to be integrated

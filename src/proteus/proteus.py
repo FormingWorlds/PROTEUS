@@ -1022,10 +1022,19 @@ class Proteus:
             # final; escape and outgassing have not yet read the inventories.
             # That makes this the one point where trapping can bury volatiles
             # and have every downstream consumer see one consistent state.
-            # Inactive unless outgas.trap_mode is set, and on the first step,
-            # which has no previous row to difference.
+            # Inactive unless outgas.trap_mode is set, during the initialisation
+            # stage, and on the first step, which has no previous row to
+            # difference. The layer drainage writes its per-node state into
+            # this step's interior snapshot, when there is one.
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-            run_trapping(self.config, self.hf_row, self.hf_all, self.interior_o)
+            run_trapping(
+                self.config,
+                self.hf_row,
+                self.hf_all,
+                self.interior_o,
+                dirs=self.directories,
+                init_stage=self.init_stage,
+            )
             if _IT_TIMING_ENABLED:
                 _t_mod['trapping'] = time.perf_counter() - _t0
 
@@ -1419,6 +1428,11 @@ class Proteus:
             from proteus.interior_energetics.aragog import write_final_snapshot
 
             write_final_snapshot(self.config, self.interior_o, self.directories, self.hf_row)
+            # The rewrite drops the per-node trapping state the last step had
+            # added to the same snapshot; put it back so a resume finds it.
+            from proteus.outgas.trapping import persist_layer_state
+
+            persist_layer_state(self.directories, self.hf_row, self.interior_o)
 
         # Ensure the final atmosphere state is on disk, since it won't always happen to
         # be written on the last iteration of the model.

@@ -23,7 +23,13 @@ stays put. These tests exercise:
   that rests on the core-mantle boundary, and the warning every step on the
   no-drainage upper bound emits with its cause and the mass it buried,
 * the front draining under the interior solver's per-node gravity, with the
-  structure profile and then the surface value as fallbacks.
+  structure profile and then the surface value as fallbacks,
+* the per-node layer drainage: the crystals and the pore melt of the nodes
+  reaching the floor buried in one conserved step, the per-node record equal
+  to the solid reservoir, the no-drainage bound reported with its cause, the
+  state carried through a resume by the interior snapshot, the fallback to the
+  published law without an aragog interior, and no trapping during the
+  initialisation stage.
 
 See ``docs/How-to/testing.md`` and ``docs/Explanations/test_framework.md``
 for the test framework.
@@ -41,7 +47,15 @@ import pytest
 
 from proteus.config._outgas import Outgas
 from proteus.escape.wrapper import calc_new_elements, escapable_mass, reservoir_mass
-from proteus.outgas.compaction import BRANCH_DARCY, BRANCH_GUARD, volume_to_mass_fraction
+from proteus.outgas.common import element_masses_from_species
+from proteus.outgas.compaction import (
+    BRANCH_DARCY,
+    BRANCH_FALLBACK,
+    BRANCH_GUARD,
+    BRANCH_MATRIX,
+    volume_to_mass_fraction,
+)
+from proteus.outgas.layer_drainage import read_state, shell_geometry
 from proteus.outgas.trapping import (
     critical_melt_fraction,
     crystallised_mass_from_phi,
@@ -993,3 +1007,310 @@ def test_the_front_drains_under_the_interior_solvers_per_node_gravity(caplog):
         bare = matrix_time(_aragog_interior(phi_stag, gravity=None))
     assert bare.tau_s == pytest.approx(expected_tau_s(8.0), rel=1e-9)
     assert any('no usable per-node gravity' in r.getMessage() for r in caplog.records)
+
+
+def _layer_config():
+    """Dynamic trapping with the per-node layer drainage of the resolved interior."""
+    config = _drainage_config()
+    config.outgas.trap_drainage = 'layers'
+    return config
+
+
+def _shell_masses(phi_stag: np.ndarray) -> np.ndarray:
+    """Node masses of the interior double: shell volume times its lever-rule density."""
+    volume, _, _ = shell_geometry(np.linspace(_R_CMB, _R_SURF, _N_STAG + 1))
+    return volume * (_RHO_SOLID - phi_stag * (_RHO_SOLID - _RHO_MELT))
+
+
+# A front rising from the core-mantle boundary: melt fraction 0.30 at the
+# lowest node rising to 1 at the surface, so nodes 0 to 11 are mush; one step
+# later the lowest three have frozen through.
+_PHI_FRONT = np.linspace(0.30, 1.0, _N_STAG)
+_PHI_FROZEN = np.where(np.arange(_N_STAG) < 3, 0.0, _PHI_FRONT)
+
+
+@pytest.mark.physics_invariant
+def test_layer_drainage_locks_pore_melt_on_entry_and_returns_what_drains():
+    """Pore melt locks when its node is first seen in the mush; drained melt returns.
+
+    The first step finds nodes 0 to 11 in the mush and locks their pore melt,
+    their melt fraction of their mass, at the melt concentration, beside the
+    crystals of the step. On the second, the mush drains through its open top,
+    returning part of the locked mass to the melt, and the three lowest nodes
+    freeze with what they hold, which moves nothing between reservoirs. Every
+    element only moves between reservoirs, and the per-node record holds
+    exactly what the solid reservoir holds.
+    """
+    config = _layer_config()
+    interior = _aragog_interior(_PHI_FRONT)
+    row1 = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
+    first = run_trapping(config, row1, _hf_all(M_mantle_solid=2.2e24), interior)
+    assert first.layers
+    assert first.n_exited == 0
+    assert np.isnan(first.f_tl)
+    # 1e-3 and 2e-3 on the melt the previous solve dissolved into, 1.8e24 kg.
+    pore = float(np.sum(_PHI_FRONT[:12] * _shell_masses(_PHI_FRONT)[:12]))
+    h2o = 0.0017 * 1.0e-3 * 2.0e23 + (1.0 - 0.0017) * 1.0e-3 * pore
+    assert row1['H2O_kg_solid'] == pytest.approx(h2o, rel=1e-12)
+    assert row1['CO2_kg_solid'] == pytest.approx(2.0e-3 * pore, rel=1e-12)
+    # Discrimination guard: the crystals alone would lock three orders less.
+    assert row1['H2O_kg_solid'] > 100.0 * 0.0017 * 1.0e-3 * 2.0e23
+
+    row2 = dict(row1, Time=3.0e4, Phi_global=0.35, M_mantle_solid=2.6e24)
+    before = _reservoir_sums(row2)
+    frozen = _aragog_interior(_PHI_FROZEN)
+    frozen.trap_state = interior.trap_state
+    second = run_trapping(config, row2, pd.DataFrame([row1]), frozen)
+    assert second.n_exited == 3
+    assert second.branch in (BRANCH_DARCY, BRANCH_MATRIX)
+    assert second.frac_bound == pytest.approx(0.0, abs=0.0)
+    # First seen at 2e4 yr and frozen at 3e4 yr, below their first-seen fraction.
+    assert second.t_res == pytest.approx(1.0e4, rel=1e-12)
+    assert 0.0 < second.f_tl < 0.30
+    # Carbon has no crystal term, so its solid mass only falls by what drained.
+    assert row2['CO2_kg_solid'] < row1['CO2_kg_solid']
+    assert second.trapped_kg['CO2'] == pytest.approx(
+        row2['CO2_kg_solid'] - row1['CO2_kg_solid'], rel=1e-12
+    )
+
+    after = _reservoir_sums(row2)
+    for element, total in before.items():
+        assert after[element] == pytest.approx(total, rel=1e-12)
+    record = frozen.trap_state
+    for element in ('H', 'O', 'C'):
+        assert record.locked(element) == pytest.approx(row2[f'{element}_kg_solid'], rel=1e-12)
+    # The frozen nodes' carbon is now buried; the rest stays in pore melt.
+    assert np.all(record.kg['C'][:3] > 0.0)
+    assert np.all(record.retained['CO2'][:3] == 0.0)
+    assert np.all(record.retained['CO2'][3:12] > 0.0)
+
+
+@pytest.mark.physics_invariant
+def test_a_node_freezing_through_within_one_step_is_bounded_and_reported(caplog):
+    """A node that goes from liquid to solid in one step keeps its transition melt.
+
+    It has spent no resolved time in the mush, so it traps the no-drainage
+    bound, exactly ``rfront_loc`` by mass, and the step warns with the cause.
+    """
+    config = _layer_config()
+    interior = _aragog_interior(np.ones(_N_STAG))
+    row1 = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
+    run_trapping(config, row1, _hf_all(M_mantle_solid=2.2e24), interior)
+    phi = np.ones(_N_STAG)
+    phi[5] = 0.0
+    skipped = _aragog_interior(phi)
+    skipped.trap_state = interior.trap_state
+    row2 = dict(row1, Time=3.0e4, Phi_global=0.35, M_mantle_solid=2.6e24)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.trapping'):
+        step = run_trapping(config, row2, pd.DataFrame([row1]), skipped)
+    assert step.n_exited == 1
+    assert step.f_tl == pytest.approx(0.5, rel=1e-12)
+    assert step.branch == BRANCH_GUARD
+    assert step.frac_bound == pytest.approx(1.0, rel=1e-12)
+    assert np.isnan(step.t_res)
+    messages = [r.getMessage() for r in caplog.records]
+    assert any('within one step' in m and 'no-drainage upper bound' in m for m in messages)
+    c_co2 = row1['CO2_kg_liquid'] / 1.6e24
+    expected = c_co2 * 0.5 * float(_shell_masses(phi)[5])
+    assert row2['CO2_kg_solid'] == pytest.approx(expected, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_layer_state_survives_a_resume_through_the_interior_snapshot(tmp_path, caplog):
+    """The per-node state rides in the interior snapshot and comes back on resume.
+
+    The step writes its state into the snapshot the interior wrote for the same
+    time. A resumed run, whose interior struct starts empty, reads it back and
+    freezes the three lowest nodes exactly as an uninterrupted run does; without
+    the snapshot it restarts the record, says so, and traps nothing that step.
+    """
+    import netCDF4
+
+    data = tmp_path / 'data'
+    data.mkdir()
+    snapshot = data / '20000p000_int.nc'
+    with netCDF4.Dataset(snapshot, 'w') as ds:
+        ds.createDimension('staggered', _N_STAG)
+        ds.createVariable('time', np.float64)
+        ds['time'][0] = 2.0e4
+    dirs = {'output': str(tmp_path)}
+    config = _layer_config()
+    config.params = SimpleNamespace(resume=False)
+    interior = _aragog_interior(_PHI_FRONT)
+    row1 = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
+    run_trapping(config, row1, _hf_all(M_mantle_solid=2.2e24), interior, dirs=dirs)
+    stored = read_state(str(snapshot), _N_STAG)
+    assert stored.status.tolist() == interior.trap_state.status.tolist()
+    assert stored.locked('H') == pytest.approx(row1['H_kg_solid'], rel=1e-12)
+
+    row2 = dict(row1, Time=3.0e4, Phi_global=0.35, M_mantle_solid=2.6e24)
+    straight = _aragog_interior(_PHI_FROZEN)
+    straight.trap_state = interior.trap_state
+    uninterrupted = run_trapping(config, dict(row2), pd.DataFrame([row1]), straight)
+
+    config.params.resume = True
+    resumed = run_trapping(
+        config, dict(row2), pd.DataFrame([row1]), _aragog_interior(_PHI_FROZEN), dirs=dirs
+    )
+    assert resumed.n_exited == uninterrupted.n_exited == 3
+    assert resumed.f_tl == pytest.approx(uninterrupted.f_tl, rel=1e-12)
+    assert resumed.total_trapped == pytest.approx(uninterrupted.total_trapped, rel=1e-12)
+
+    snapshot.unlink()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.trapping'):
+        restarted = run_trapping(
+            config, dict(row2), pd.DataFrame([row1]), _aragog_interior(_PHI_FROZEN), dirs=dirs
+        )
+    assert restarted.n_exited == 0
+    assert any('no per-node state' in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.physics_invariant
+def test_layer_drainage_falls_back_to_the_published_law_without_the_interior(caplog):
+    """Without the aragog profiles the step takes the published law, flagged.
+
+    The fallback is branch 6, distinct from a deliberate published-law step,
+    and it applies the published fraction, here 0.5 * 1e6 / 100 * 1e-6 = 0.005
+    from the fixture's cooling rate. The initialisation stage traps nothing.
+    """
+    config = _layer_config()
+    bare = SimpleNamespace(phi=_PHI_FRONT, pres=np.linspace(1.3e11, 1.0e5, _N_STAG))
+    row = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.trapping'):
+        step = run_trapping(config, row, _hf_all(M_mantle_solid=2.2e24), bare)
+    assert step.branch == BRANCH_FALLBACK
+    assert not step.layers
+    assert step.f_tl == pytest.approx(0.005, rel=1e-9)
+    # Sign and factor guards: the cooling step gives a positive fraction, and
+    # dropping DeltaT from the law would give 5e5 times too much.
+    assert 0.0 < step.f_tl < 0.5
+    assert any('layer drainage needs' in r.getMessage() for r in caplog.records)
+    untouched = _hf_row()
+    assert run_trapping(config, untouched, _hf_all(), bare, init_stage=True) is None
+    assert 'trap_branch' not in untouched
+    assert untouched['H2O_kg_solid'] == pytest.approx(0.0, abs=0.0)
+
+
+def _freeze_two_steps(config, row1_overrides=None, row2_overrides=None):
+    """First step on the rising front, second with the three lowest nodes frozen."""
+    interior = _aragog_interior(_PHI_FRONT)
+    row1 = _hf_row(M_mantle_solid=2.4e24, gravity=9.8, **(row1_overrides or {}))
+    run_trapping(config, row1, _hf_all(M_mantle_solid=2.2e24), interior)
+    row2 = dict(row1, Time=3.0e4, Phi_global=0.35, M_mantle_solid=2.6e24)
+    row2.update(row2_overrides or {})
+    frozen = _aragog_interior(_PHI_FROZEN)
+    frozen.trap_state = interior.trap_state
+    step = run_trapping(config, row2, pd.DataFrame([row1]), frozen)
+    return row1, row2, step, frozen
+
+
+@pytest.mark.physics_invariant
+def test_layer_locks_are_capped_at_the_melt_inventory_and_still_close():
+    """Pore melt locking on entry cannot take more than the melt holds.
+
+    With the previous solve's melt at 1 percent of the mantle, the mush the
+    first step finds would lock more than that melt dissolved. Every species is
+    capped at its melt inventory, the cap is reported, every element still
+    closes, and the per-node record matches the solid reservoir.
+    """
+    config = _layer_config()
+    interior = _aragog_interior(_PHI_FRONT)
+    row = _hf_row(M_mantle_solid=2.4e24, gravity=9.8, Phi_global=0.009)
+    # Element masses split exactly from the species, as the chemistry writes
+    # them, so moving the whole melt inventory leaves no rounding behind.
+    split = element_masses_from_species({'H2O': 1.8e21, 'CO2': 3.6e21})
+    for element in ('H', 'O', 'C'):
+        row[f'{element}_kg_liquid'] = split[element]
+    before = _reservoir_sums(row)
+    step = run_trapping(config, row, _hf_all(M_mantle_solid=2.2e24, Phi_global=0.01), interior)
+    assert 'CO2' in step.supply_capped
+    assert 'H2O' in step.supply_capped
+    assert row['CO2_kg_solid'] == pytest.approx(3.6e21, rel=1e-12)
+    assert row['CO2_kg_liquid'] == pytest.approx(0.0, abs=1.0e6)
+    after = _reservoir_sums(row)
+    for element, total in before.items():
+        assert after[element] == pytest.approx(total, rel=1e-12)
+    for element in ('H', 'O', 'C'):
+        assert interior.trap_state.locked(element) == pytest.approx(
+            row[f'{element}_kg_solid'], rel=1e-12
+        )
+
+
+@pytest.mark.physics_invariant
+def test_a_warming_step_keeps_the_melt_its_frozen_nodes_hold():
+    """A step whose global melt fraction rises crystallises nothing overall.
+
+    The frozen nodes keep the melt they locked on entry, so the only move is
+    the drained melt returning: the water in the solid falls by exactly what
+    the step reports as returned, with no crystal term.
+    """
+    config = _layer_config()
+    row1, row2, step, frozen = _freeze_two_steps(config, row2_overrides={'Phi_global': 0.45})
+    assert step.dm_rm == pytest.approx(0.0, abs=0.0)
+    assert step.n_exited == 3
+    change = row2['H2O_kg_solid'] - row1['H2O_kg_solid']
+    assert change < 0.0
+    assert change == pytest.approx(step.trapped_kg['H2O'], rel=1e-12)
+    # The three frozen nodes' water is all buried now; the mush keeps its own.
+    record = frozen.trap_state
+    assert np.all(record.retained['H2O'][:3] == 0.0)
+    assert np.all(record.kg['H'][:3] > 0.0)
+    assert np.all(record.retained['H2O'][3:12] > 0.0)
+    for element in ('H', 'O', 'C'):
+        assert record.locked(element) == pytest.approx(row2[f'{element}_kg_solid'], rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_a_compatible_species_never_gets_a_negative_floor_term():
+    """For D_Z >= 1 the crystals already carry the melt value, so the floor adds nothing.
+
+    With a partition coefficient of 3 for CO2, every node's carbon record stays
+    non-negative and the carbon buried is the crystal term alone.
+    """
+    config = _layer_config()
+    config.outgas.D_const_CO2 = 3.0
+    row1, row2, _, frozen = _freeze_two_steps(config)
+    c_co2 = row1['CO2_kg_liquid'] / 1.6e24
+    assert row2['CO2_kg_solid'] - row1['CO2_kg_solid'] == pytest.approx(
+        3.0 * c_co2 * 2.0e23, rel=1e-12
+    )
+    assert np.all(frozen.trap_state.kg['C'] >= 0.0)
+    assert frozen.trap_state.locked('C') > 0.0
+
+
+def test_the_state_survives_the_end_of_run_rewrite_of_the_last_snapshot(tmp_path):
+    """The final interior write recreates the last snapshot; the state is put back.
+
+    Recreating the file drops the per-node variables the step had added, and
+    ``persist_layer_state`` restores them, so a resume from the last step finds
+    the same state. Without a state it writes nothing.
+    """
+    import netCDF4
+
+    from proteus.outgas.trapping import persist_layer_state
+
+    data = tmp_path / 'data'
+    data.mkdir()
+    snapshot = data / '20000p000_int.nc'
+
+    def write_bare():
+        with netCDF4.Dataset(snapshot, 'w') as ds:
+            ds.createDimension('staggered', _N_STAG)
+            ds.createVariable('time', np.float64)
+            ds['time'][0] = 2.0e4
+
+    write_bare()
+    dirs = {'output': str(tmp_path)}
+    interior = _aragog_interior(_PHI_FRONT)
+    row = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
+    run_trapping(_layer_config(), row, _hf_all(M_mantle_solid=2.2e24), interior, dirs=dirs)
+    assert read_state(str(snapshot), _N_STAG) is not None
+    write_bare()
+    assert read_state(str(snapshot), _N_STAG) is None
+    persist_layer_state(dirs, row, interior)
+    back = read_state(str(snapshot), _N_STAG)
+    assert back.status.tolist() == interior.trap_state.status.tolist()
+    assert back.locked('H') == pytest.approx(row['H_kg_solid'], rel=1e-12)
+    write_bare()
+    persist_layer_state(dirs, row, SimpleNamespace())
+    assert read_state(str(snapshot), _N_STAG) is None

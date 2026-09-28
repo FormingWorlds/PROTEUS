@@ -134,3 +134,28 @@ def test_h2_binodal_enabled_is_rejected():
         Outgas(h2_binodal=True)
     o = Outgas()
     assert o.h2_binodal is False
+
+
+def test_layer_drainage_needs_the_resolved_interior():
+    """`trap_drainage = 'layers'` needs dynamic trapping on the resolved interior.
+
+    The layer drainage drains the mush the interior solver resolves, so under
+    the published law or a constant fraction it would never run; those
+    combinations fail at load instead of reporting another law as the
+    requested scheme. With trapping off every trapping field is inert, so a
+    control run keeps the rest of the section. The default keeps the front
+    scheme, and an unknown scheme is rejected.
+    """
+    from proteus.config._outgas import Outgas
+
+    assert Outgas().trap_drainage == 'front'
+    with pytest.raises(ValueError, match="trap_tau_source = 'aragog'"):
+        Outgas(trap_mode='dynamic', trap_drainage='layers')
+    with pytest.raises(ValueError, match="trap_mode = 'constant'"):
+        Outgas(trap_mode='constant', trap_tau_source='aragog', trap_drainage='layers')
+    layers = Outgas(trap_mode='dynamic', trap_tau_source='aragog', trap_drainage='layers')
+    assert layers.trap_drainage == 'layers'
+    control = Outgas(trap_mode='none', trap_drainage='layers')
+    assert control.trap_mode == 'none'
+    with pytest.raises(ValueError, match='trap_drainage'):
+        Outgas(trap_tau_source='aragog', trap_drainage='nodes')

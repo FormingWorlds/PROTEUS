@@ -1192,6 +1192,13 @@ class Interior_t:
 
         self.aragog_solver = None
 
+        # Per-node state of the layer drainage of volatile trapping
+        # (outgas/layer_drainage.py): the retained pore melt of every mush node
+        # and the volatile mass buried at every node. Carried between steps
+        # here, written into the interior snapshots and read back on resume;
+        # None until the first trapping step that uses it.
+        self.trap_state = None
+
         # Counter for consecutive Aragog steps integrated on a stale
         # Zalmoxis structure (i.e. with self.structure_stale=True
         # set by a Zalmoxis fall-back). Resets to 0 on every successful

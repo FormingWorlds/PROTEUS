@@ -2840,7 +2840,7 @@
     {
       "name": "trap_kg_step",
       "unit": "kg",
-      "description": "volatile mass buried this step",
+      "description": "net volatile mass moved into the solid this step; negative when drained melt returns more",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -2854,7 +2854,7 @@
     {
       "name": "trap_kg_cumulative",
       "unit": "kg",
-      "description": "volatile mass buried since the run began",
+      "description": "net volatile mass moved into the solid since the run began",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -2983,6 +2983,48 @@
       "name": "trap_w_matrix_over_vf",
       "unit": "1",
       "description": "matrix speed over front speed",
+      "group": "Solid-phase volatile trapping",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "trap_n_exited",
+      "unit": "1",
+      "description": "mush nodes that reached the porosity floor this step",
+      "group": "Solid-phase volatile trapping",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "trap_frac_bound",
+      "unit": "1",
+      "description": "share of their mass trapped at the no-drainage bound",
+      "group": "Solid-phase volatile trapping",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "trap_n_substeps",
+      "unit": "1",
+      "description": "drainage sub-steps of the per-node layer scheme",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [

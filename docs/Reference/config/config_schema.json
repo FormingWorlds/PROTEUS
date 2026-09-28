@@ -7067,6 +7067,25 @@
       "group_qualifier": null
     },
     {
+      "path": "outgas.trap_drainage",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"front\"",
+      "choices": [
+        "front",
+        "layers"
+      ],
+      "bounds": null,
+      "description": "How `trap_tau_source = 'aragog'` drains the mush. 'front' integrates the drainage of one parcel across a single freezing front and applies the fraction it retains to the mass crystallised in the step. 'layers' keeps the pore melt of every mush node of the interior mesh as state, locks its volatiles when the node enters the mush, drains it node by node into the node above, returns what reaches the magma ocean, and keeps what a node still holds when it reaches `trap_phi_min`, so the trapped volatiles keep their depth distribution. 'layers' needs `trap_mode = 'dynamic'` and `trap_tau_source = 'aragog'`, unless trapping is off.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "outgas.trap_phi_min",
       "toml_section": "outgas",
       "class": "Outgas",
@@ -10822,6 +10841,18 @@
         "trans_mixing"
       ],
       "doc": "SPIDER requires at least one energy transport term to be enabled."
+    },
+    {
+      "validator": "_layers_need_resolved_interior",
+      "module": "_outgas.py",
+      "attached_to": [
+        "outgas.trap_drainage"
+      ],
+      "touches": [
+        "trap_mode",
+        "trap_tau_source"
+      ],
+      "doc": "Reject the layer drainage unless the drainage is computed from the interior."
     },
     {
       "validator": "max_bigger_than_min",

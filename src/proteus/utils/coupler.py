@@ -1087,8 +1087,8 @@ def GetHelpfileKeys():
         'trap_F_tl',        # trapped melt fraction applied this step [1]
         'trap_dT_dt',       # secular cooling rate this step [K yr-1]
         'trap_delta_T',     # solidus to freezing-front difference [K]
-        'trap_kg_step',     # volatile mass buried this step [kg]
-        'trap_kg_cumulative',  # volatile mass buried since the run began [kg]
+        'trap_kg_step',     # net volatile mass moved into the solid this step; negative when drained melt returns more [kg]
+        'trap_kg_cumulative',  # net volatile mass moved into the solid since the run began [kg]
         'trap_branch',      # drainage regime code: 0 none, 1 Darcy, 2 matrix, 3 guard, 5 published, 6 fallback [1]
         'trap_tau_D',       # percolation time at the top of the front [yr]
         'trap_tau_s',       # matrix deformation time [yr]
@@ -1098,6 +1098,9 @@ def GetHelpfileKeys():
         'trap_v_front',     # freezing-front speed [m s-1]
         'trap_front_courant',  # front advance over one step, in front thicknesses [1]
         'trap_w_matrix_over_vf',  # matrix speed over front speed [1]
+        'trap_n_exited',    # mush nodes that reached the porosity floor this step [1]
+        'trap_frac_bound',  # share of their mass trapped at the no-drainage bound [1]
+        'trap_n_substeps',  # drainage sub-steps of the per-node layer scheme [1]
         ]
 
     # gases from outgassing

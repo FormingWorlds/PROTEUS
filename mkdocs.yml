@@ -91,6 +91,7 @@ nav:
               - Tidal Love-number lookup (obliqua.py): Validation/orbit/obliqua.md
           - Outgas:
               - H2-MgSiO3 binodal (binodal.py): Validation/outgas/binodal.md
+              - Per-node layer drainage (layer_drainage.py): Validation/outgas/layer_drainage.md
               - Rock-vapour molar masses (lavatmos.py): Validation/outgas/lavatmos.md
           - Star:
               - Stellar luminosity and instellation (star.py): Validation/star/star.md

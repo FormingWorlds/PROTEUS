@@ -82,6 +82,7 @@ _REVIEWED_NEUTRAL = frozenset(
         # trap_mode defaults to 'none', so the partition coefficients and
         # the F_tl parameters are never read and behaviour is unchanged.
         'outgas.trap_tau_source',
+        'outgas.trap_drainage',
         'outgas.trap_phi_min',
         'outgas.trap_mush_log10visc',
         'outgas.trap_n_front_min',

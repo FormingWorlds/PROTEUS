@@ -269,8 +269,8 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `trap_F_tl` | `1` | trapped melt fraction applied this step | `outgas/trapping.py` | always |   |
 | `trap_dT_dt` | `K yr-1` | secular cooling rate this step | `outgas/trapping.py` | always |   |
 | `trap_delta_T` | `K` | solidus to freezing-front difference | `outgas/trapping.py` | always |   |
-| `trap_kg_step` | `kg` | volatile mass buried this step | `outgas/trapping.py` | always |   |
-| `trap_kg_cumulative` | `kg` | volatile mass buried since the run began | `outgas/trapping.py` | always | outgas |
+| `trap_kg_step` | `kg` | net volatile mass moved into the solid this step; negative when drained melt returns more | `outgas/trapping.py` | always |   |
+| `trap_kg_cumulative` | `kg` | net volatile mass moved into the solid since the run began | `outgas/trapping.py` | always | outgas |
 | `trap_branch` | `1` | drainage regime code: 0 none, 1 Darcy, 2 matrix, 3 guard, 5 published, 6 fallback | `outgas/trapping.py` | always |   |
 | `trap_tau_D` | `yr` | percolation time at the top of the front | `outgas/trapping.py` | always |   |
 | `trap_tau_s` | `yr` | matrix deformation time | `outgas/trapping.py` | always |   |
@@ -280,6 +280,9 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `trap_v_front` | `m s-1` | freezing-front speed | `outgas/trapping.py` | always |   |
 | `trap_front_courant` | `1` | front advance over one step, in front thicknesses | `outgas/trapping.py` | always |   |
 | `trap_w_matrix_over_vf` | `1` | matrix speed over front speed | `outgas/trapping.py` | always |   |
+| `trap_n_exited` | `1` | mush nodes that reached the porosity floor this step | `outgas/trapping.py` | always |   |
+| `trap_frac_bound` | `1` | share of their mass trapped at the no-drainage bound | `outgas/trapping.py` | always |   |
+| `trap_n_substeps` | `1` | drainage sub-steps of the per-node layer scheme | `outgas/trapping.py` | always |   |
 
 ### Gases from outgassing
 
