@@ -9,6 +9,7 @@ References:
 from __future__ import annotations
 
 import logging
+import threading
 
 import pandas as pd
 import pytest
@@ -21,6 +22,7 @@ pytest.importorskip('botorch')
 pytest.importorskip('gpytorch')
 
 import proteus.inference.async_BO as async_mod  # noqa: E402
+from proteus.inference.failures import ProteusRunFailure  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -219,6 +221,9 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
         def Lock(self):
             return _DummyLock()
 
+        def Event(self):
+            return threading.Event()
+
     created_processes = []
 
     class FakeProcess:
@@ -309,6 +314,9 @@ def _mocked_parallel_process_env(monkeypatch, tmp_path, fake_process_cls, n_init
 
         def Lock(self):
             return _DummyLock()
+
+        def Event(self):
+            return threading.Event()
 
     (tmp_path / 'init.csv').write_text('x_0,y\n0.1,0.2\n', encoding='utf-8')
     monkeypatch.setattr(
@@ -732,3 +740,185 @@ def test_worker_without_a_logfile_path_leaves_logging_untouched(tmp_path, caplog
     assert not (tmp_path / 'infer.log').exists()
     reported = '\n'.join(record.getMessage() for record in caplog.records)
     assert 'Worker 0 stopped early' in reported
+
+
+# ============================================================================
+# Stopping the study on a failed run under abort_on_failure
+# ============================================================================
+
+
+def _run_failure(worker_id):
+    """The failure the objective raises under `abort_on_failure`."""
+    return ProteusRunFailure(
+        reason='the simulator exited with an error',
+        worker=worker_id,
+        iter=0,
+        out_dir=f'/study/workers/w_{worker_id}/i_0',
+        exit_code=1,
+        status=21,
+        parameters={'a': 0.25},
+    )
+
+
+@pytest.mark.unit
+def test_worker_signals_the_study_to_stop_on_a_failed_run(tmp_path):
+    """A failed run that reaches the worker, which happens only under
+    `abort_on_failure`, sets the shared stop signal and hands the failure to
+    the parent before the worker exits. Any other error ends only the worker
+    that raised it, as before, so the rest of the study carries on.
+    """
+    B = {0: torch.tensor([[0.3]], dtype=torch.double)}
+    stop = threading.Event()
+    aborts = []
+
+    def failing_process_fun(**_kwargs):
+        raise _run_failure(0)
+
+    def _call(process_fun):
+        async_mod.worker(
+            process_fun=process_fun,
+            build_obj=lambda **kwargs: lambda x: x,
+            D_shared={
+                'X': torch.tensor([[0.1]], dtype=torch.double),
+                'Y': torch.tensor([[0.2]], dtype=torch.double),
+            },
+            B=B,
+            T=[],
+            T0=0.0,
+            x_init=torch.tensor([[0.3]], dtype=torch.double),
+            n_init=1,
+            lock=_DummyLock(),
+            max_len=4,
+            worker_id=0,
+            log_list=[],
+            output_dir=str(tmp_path),
+            stop=stop,
+            aborts=aborts,
+        )
+
+    with pytest.raises(ProteusRunFailure):
+        _call(failing_process_fun)
+    assert stop.is_set()
+    assert [(f.worker, f.status) for f in aborts] == [(0, 21)]
+    # The claimed point is still released on this path.
+    assert 0 not in B
+
+    # Discrimination: a worker that dies of anything else does not stop the
+    # study. Without this the test would pass against a worker that set the
+    # signal on every exception.
+    stop.clear()
+    aborts.clear()
+
+    def exploding_process_fun(**_kwargs):
+        raise RuntimeError('objective evaluation failed')
+
+    with pytest.raises(RuntimeError, match='objective evaluation failed'):
+        _call(exploding_process_fun)
+    assert not stop.is_set()
+    assert aborts == []
+
+
+@pytest.mark.unit
+def test_worker_starts_no_evaluation_once_the_study_is_stopping(tmp_path, caplog):
+    """A worker that finds the stop signal set exits before its next
+    evaluation, although the budget is far from reached, and says why.
+    """
+    stop = threading.Event()
+    stop.set()
+    B = {1: torch.tensor([[0.6]], dtype=torch.double)}
+
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.async_BO'):
+        async_mod.worker(
+            process_fun=lambda **_kwargs: pytest.fail('no evaluation should run'),
+            build_obj=lambda **kwargs: lambda x: x,
+            D_shared={
+                'X': torch.tensor([[0.1]], dtype=torch.double),
+                'Y': torch.tensor([[0.2]], dtype=torch.double),
+            },
+            B=B,
+            T=[],
+            T0=0.0,
+            x_init=torch.tensor([[0.6]], dtype=torch.double),
+            n_init=1,
+            lock=_DummyLock(),
+            # One sample of 50: exiting here is the stop signal's doing, not
+            # the budget's.
+            max_len=50,
+            worker_id=1,
+            log_list=[],
+            output_dir=str(tmp_path),
+            stop=stop,
+            aborts=[],
+        )
+
+    assert 1 not in B
+    messages = [r.getMessage() for r in caplog.records]
+    assert 'Worker 1 exiting: the study is stopping on a failed run' in messages
+    # Not reported as the ordinary exit on a spent budget.
+    assert 'Worker 1 exiting' not in messages
+
+
+@pytest.mark.unit
+def test_parallel_process_stops_the_study_when_a_run_fails_under_abort(
+    monkeypatch, tmp_path, caplog
+):
+    """Under `abort_on_failure` one failed run ends the optimisation phase:
+    the other workers start no further evaluations, and the failure is raised
+    once they have all exited instead of a partial study being returned for a
+    best-fit summary. The real worker runs in-process here, one after another,
+    so worker 1 starts after worker 0 has failed.
+    """
+
+    class FakeProcess:
+        def __init__(self, target, args):
+            self.target = target
+            self.args = args
+            self.exitcode = None
+
+        def start(self):
+            try:
+                self.target(*self.args)
+                self.exitcode = 0
+            except BaseException:
+                self.exitcode = 1
+
+        def join(self):
+            return None
+
+    _mocked_parallel_process_env(monkeypatch, tmp_path, FakeProcess)
+    monkeypatch.setattr(async_mod, '_parent_logfile', lambda: None)
+
+    evaluated = []
+
+    def fake_bo_step(f, D, B, x_in, lock, worker_id, **_kwargs):
+        evaluated.append(worker_id)
+        if worker_id == 0:
+            raise _run_failure(0)
+        x = torch.tensor([[0.5]], dtype=torch.double)
+        return x, torch.tensor([[0.7]], dtype=torch.double), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+
+    monkeypatch.setattr(async_mod, 'BO_step', fake_bo_step)
+
+    with caplog.at_level('ERROR'), pytest.raises(ProteusRunFailure) as excinfo:
+        async_mod.parallel_process(
+            objective_builder=lambda **kwargs: lambda x: x,
+            kernel='MAT3/2',
+            acqf='LogEI',
+            n_workers=2,
+            max_len=6,
+            output='dummy',
+            seed=1,
+            ref_config='ref.toml',
+            observables={'obs': 1.0},
+            parameters={'a': [0.0, 1.0]},
+            failure_codes=[],
+        )
+
+    # The failure raised is the one that stopped the study.
+    assert (excinfo.value.worker, excinfo.value.status) == (0, 21)
+    # Worker 1 started no evaluation, although 5 steps of the budget remained.
+    assert evaluated == [0]
+    reported = '\n'.join(r.getMessage() for r in caplog.records)
+    assert 'abort_on_failure is set' in reported
+    # Only the initial sample was in the dataset when the study stopped.
+    assert '1 evaluation, initial samples included, completed' in reported
