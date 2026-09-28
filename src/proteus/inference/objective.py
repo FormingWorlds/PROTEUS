@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import subprocess
 from pathlib import Path
@@ -20,6 +21,7 @@ from proteus.inference.failures import (
     find_run_logfile,
     record_failure,
 )
+from proteus.inference.runner import ProteusRunner
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import element_list, gas_list
 from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
@@ -38,6 +40,17 @@ log = logging.getLogger('fwl.' + __name__)
 # which may be spawned, through the environment.
 DEFAULT_CHILD_TIMEOUT_S = 6 * 3600.0
 _CHILD_TIMEOUT_ENV = 'PROTEUS_INFERENCE_CHILD_TIMEOUT_S'
+
+# 'subprocess' starts one `proteus start` per evaluation; 'runner' reuses one
+# PROTEUS process per worker, skipping the Julia load on all but the first.
+DISPATCH_SUBPROCESS = 'subprocess'
+DISPATCH_RUNNER = 'runner'
+DISPATCH_MODES = (DISPATCH_SUBPROCESS, DISPATCH_RUNNER)
+_DISPATCH_ENV = 'PROTEUS_INFERENCE_DISPATCH'
+_RUNNER_MAX_JOBS_ENV = 'PROTEUS_INFERENCE_RUNNER_MAX_JOBS'
+
+# This worker's reused process, replaced whenever it is stopped.
+_RUNNER: ProteusRunner | None = None
 
 # Config entries every worker overwrites in the reference config, regardless of
 # which parameters are being swept. Shared with the startup validation so the
@@ -105,6 +118,92 @@ def child_timeout_s() -> float | None:
     except ValueError:
         return DEFAULT_CHILD_TIMEOUT_S
     return val if val > 0 else None
+
+
+def set_dispatch(mode: str | None = None, max_jobs: int | None = None) -> None:
+    """Record how workers run each evaluation, and how long a runner is kept.
+
+    Raises:
+        ValueError: If `mode` is not one of DISPATCH_MODES.
+    """
+    mode = DISPATCH_SUBPROCESS if mode is None else str(mode)
+    if mode not in DISPATCH_MODES:
+        raise ValueError(
+            f"Unknown inference dispatch '{mode}', expected one of {', '.join(DISPATCH_MODES)}"
+        )
+    os.environ[_DISPATCH_ENV] = mode
+    os.environ[_RUNNER_MAX_JOBS_ENV] = str(0 if max_jobs is None else int(max_jobs))
+
+
+def dispatch_mode() -> str:
+    """The dispatch recorded by `set_dispatch`.
+    Falls back to one process per evaluation.
+    """
+    mode = os.environ.get(_DISPATCH_ENV, DISPATCH_SUBPROCESS)
+    return mode if mode in DISPATCH_MODES else DISPATCH_SUBPROCESS
+
+
+def worker_runner(console: Path) -> ProteusRunner:
+    """This worker's reused PROTEUS process, started on its first evaluation.
+
+    Per-process state, so each worker holds its own and evaluations never queue
+    behind one another. The console file is fixed at that first use.
+    """
+    global _RUNNER
+    if _RUNNER is None:
+        try:
+            max_jobs = int(os.environ.get(_RUNNER_MAX_JOBS_ENV, '0'))
+        except ValueError:
+            max_jobs = 0
+        _RUNNER = ProteusRunner(console, max_jobs=max_jobs)
+    return _RUNNER
+
+
+def close_worker_runner() -> None:
+    """Stop this worker's reused PROTEUS process, if it has started one."""
+    global _RUNNER
+    if _RUNNER is not None:
+        _RUNNER.stop()
+        _RUNNER = None
+
+
+def _run_in_new_process(out_cfg: Path, console: Path, env: dict, failure) -> None:
+    """Run one simulation in a process of its own.
+
+    `failure` builds this run's report from a reason and an exit code.
+
+    Raises:
+        ProteusRunFailure: If this run produced no usable result. The
+            underlying error is chained, so the report names the command.
+        RuntimeError: If the `proteus` command cannot be executed at all,
+            which affects every run rather than this one.
+    """
+    command = ['proteus', 'start', '-c', str(out_cfg), '--offline']
+    # Opened outside the try so that a failure to create it is not mistaken
+    # for the simulator being absent.
+    stream = open(console, 'w')
+    try:
+        subprocess.run(
+            command,
+            check=True,
+            text=True,
+            env=env,
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+            timeout=child_timeout_s(),
+        )
+    except FileNotFoundError as err:
+        # Applies to every run, not just this one, so it is not a sample that
+        # can be scored badly and skipped.
+        log.error(f"Cannot execute '{command[0]}': command not found")
+        raise RuntimeError("Failed to run PROTEUS: 'proteus' command not found") from err
+    except subprocess.TimeoutExpired as err:
+        timeout = child_timeout_s()
+        raise failure(f'exceeded the {timeout} s timeout', exit_code=None) from err
+    except subprocess.CalledProcessError as err:
+        raise failure('the simulator exited with an error', exit_code=err.returncode) from err
+    finally:
+        stream.close()
 
 
 def apply_nested_updates(config: dict, updates: dict) -> dict:
@@ -211,6 +310,7 @@ def run_proteus(
     Parameters
     ----------
     - parameters (dict): Parameter-value pairs to set in the simulation config.
+      Not modified; the run-specific entries are added to a copy.
     - worker (int): Worker identifier for directory organization.
     - iter (int): Iteration identifier for directory organization.
     - observables (list[str]): Names of output columns to return.
@@ -261,9 +361,11 @@ def run_proteus(
     env = dict(**os.environ)
     env['OMP_NUM_THREADS'] = '1'
 
-    # A run that dies before its logger is configured leaves no logfile behind, so
-    # this stream records it.
-    console = out_abs.parent / f'{out_abs.name}{CHILD_CONSOLE_SUFFIX}'
+    # Records a run that dies before its logger exists.
+    if dispatch_mode() == DISPATCH_RUNNER:
+        console = out_abs.parent / f'runner{CHILD_CONSOLE_SUFFIX}'
+    else:
+        console = out_abs.parent / f'{out_abs.name}{CHILD_CONSOLE_SUFFIX}'
 
     def _failure(reason: str, exit_code: int | None) -> ProteusRunFailure:
         """Assemble a failure report for this run.
@@ -284,33 +386,16 @@ def run_proteus(
             parameters=swept,
         )
 
-    command = ['proteus', 'start', '-c', str(out_cfg), '--offline']
     console.parent.mkdir(parents=True, exist_ok=True)
-    # Opened outside the try so that a failure to create it is not mistaken
-    # for the simulator being absent.
-    stream = open(console, 'w')
-    try:
-        subprocess.run(
-            command,
-            check=True,
-            text=True,
-            env=env,
-            stdout=stream,
-            stderr=subprocess.STDOUT,
-            timeout=child_timeout_s(),
-        )
-    except FileNotFoundError as err:
-        # Applies to every run, not just this one, so it is not a sample that
-        # can be scored badly and skipped.
-        log.error(f"Cannot execute '{command[0]}': command not found")
-        raise RuntimeError("Failed to run PROTEUS: 'proteus' command not found") from err
-    except subprocess.TimeoutExpired as err:
-        timeout = child_timeout_s()
-        raise _failure(f'exceeded the {timeout} s timeout', exit_code=None) from err
-    except subprocess.CalledProcessError as err:
-        raise _failure('the simulator exited with an error', exit_code=err.returncode) from err
-    finally:
-        stream.close()
+
+    # Either one `proteus start` per evaluation, or a PROTEUS process this
+    # worker keeps alive between evaluations.
+    if dispatch_mode() == DISPATCH_RUNNER:
+        outcome = worker_runner(console).run(out_cfg, child_timeout_s())
+        if outcome is not None:
+            raise _failure(*outcome)
+    else:
+        _run_in_new_process(out_cfg, console, env, _failure)
 
     # Re-write config in case simulator mutates or removes it
     update_toml(ref_config, updates, str(out_cfg))
@@ -371,7 +456,7 @@ def log_warp(sq_dist):
     return warped_dist
 
 
-def eval_obj(sim_dict, tru_dict):
+def eval_obj(sim_dict, tru_dict, sigma=None):
     """Evaluate objective value from simulated and target observables.
 
     The metric compares each observable in either linear or log space,
@@ -382,35 +467,104 @@ def eval_obj(sim_dict, tru_dict):
     ----------
     - sim_dict (dict): Simulated observable values.
     - tru_dict (dict): Target (reference) observable values.
+    - sigma (dict, optional): 1-sigma uncertainty of each observable, keyed
+      like `sim_dict` and in the same units as the observable. If None, the
+      relative-difference objective is used.
 
     Returns
     ----------
     - torch.Tensor: Objective tensor of shape (1, 1).
     """
 
+    # Looked up by name, so the order of `sigma` does not have to match `sim_dict`
+    if sigma is not None:
+        missing = [k for k in sim_dict.keys() if k not in sigma]
+        if missing:
+            raise KeyError(f'No sigma given for observables: {missing}')
+
     sim_vals = []
     tru_vals = []
+    sig_vals = []
     for k in sim_dict.keys():
         # some variables scale logarithmically
         if variable_is_logarithmic(k):
+            tru_k = max(tru_dict[k], LOG_CLIP)
             sim_vals.append(log10(max(sim_dict[k], LOG_CLIP)))
-            tru_vals.append(log10(max(tru_dict[k], LOG_CLIP)))
+            tru_vals.append(log10(tru_k))
+            if sigma is not None:
+                # First-order conversion to dex, sigma / (x ln 10), only accurate while sigma << x.
+                sig_vals.append(sigma[k] / (tru_k * math.log(10.0)))
         # others are just linear
         else:
             sim_vals.append(sim_dict[k])
             tru_vals.append(tru_dict[k])
+            if sigma is not None:
+                sig_vals.append(sigma[k])
 
     # Convert to tensor and reshape
     sim = torch.tensor(sim_vals, dtype=dtype).reshape(1, -1)
     true_y = torch.tensor(tru_vals, dtype=dtype).reshape(1, -1)
 
     # Compute normalized difference and squared distance
-    denom = torch.where(true_y >= 0, true_y + EPS_CLIP, true_y - EPS_CLIP)
-    diff = torch.ones_like(true_y) - sim / denom
+
+    if sigma is None:
+        # reproduces the original objective function
+        denom = torch.where(true_y >= 0, true_y + EPS_CLIP, true_y - EPS_CLIP)
+        diff = torch.ones_like(true_y) - sim / denom
+    else:
+        # Use the provided sigma values, no epsilon offset
+        sigma_tensor = torch.tensor(sig_vals, dtype=dtype).reshape(1, -1)
+        diff = (sim - true_y) / sigma_tensor
+
     sq_dist = (diff**2).sum(dim=1, keepdim=True)
 
     obj = log_warp(sq_dist)
+
     return obj
+
+
+def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
+    """Check the observable uncertainties given in the inference config.
+
+    Parameters
+    ----------
+    - observables (dict): Target observable values.
+    - sigma (dict | None): 1-sigma uncertainty of each observable, in the same
+      units as the observable, or None to use the relative-difference objective.
+
+    Returns
+    ----------
+    - dict | None: The uncertainties as floats, or None.
+
+    Raises:
+        ValueError: If an observable has no uncertainty, an uncertainty names
+            no observable, an uncertainty is not a positive finite number, or a
+            log-scaled observable with an uncertainty is not positive.
+    """
+    if sigma is None:
+        return None
+
+    missing = sorted(set(observables) - set(sigma))
+    if missing:
+        raise ValueError(f'No sigma given for observables: {missing}')
+    unknown = sorted(set(sigma) - set(observables))
+    if unknown:
+        raise ValueError(f'sigma given for names that are not observables: {unknown}')
+
+    out = {}
+    for k, v in sigma.items():
+        v = float(v)
+        if not (math.isfinite(v) and v > 0):
+            raise ValueError(f"sigma for '{k}' must be a positive finite number, got {v!r}")
+        if variable_is_logarithmic(k):
+            x = float(observables[k])
+            if x <= 0:
+                raise ValueError(
+                    f"Observable '{k}' is compared in log space, so its value must be "
+                    f'positive when a sigma is given, got {x!r}'
+                )
+        out[k] = v
+    return out
 
 
 def J(
@@ -422,6 +576,7 @@ def J(
     output: str,
     ref_config: str,
     failure_codes: list[int] = [],
+    sigma: dict | None = None,
 ) -> torch.Tensor:
     """Run PROTEUS, and then compute the objective value for a given normalized input.
 
@@ -429,6 +584,8 @@ def J(
     and computes the squared-error based objective:
 
         J = log_10(sum((1 - sim/true)^2) + eps)
+
+    or, when `sigma` is given, the same with sum(((sim - true) / sigma)^2).
 
     Parameters
     ----------
@@ -441,6 +598,7 @@ def J(
     - ref_config (str): Reference TOML config path.
     - failure_codes (list[int]): PROTEUS status codes that complete normally but
       that this study excludes from the fit.
+    - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
 
     Returns
     ----------
@@ -492,7 +650,7 @@ def J(
         return _handle_unscored(failure, output)
 
     # Compute value of objective function given these results
-    return eval_obj(sim_vals, true_observables)
+    return eval_obj(sim_vals, true_observables, sigma)
 
 
 def _handle_unscored(failure: ProteusRunFailure, output: str) -> torch.Tensor:
@@ -534,6 +692,7 @@ def prot_builder(
     output: str,
     ref_config: str,
     failure_codes: list[int] = [],
+    sigma: dict | None = None,
 ) -> callable:
     """Factory returning a BO-compatible objective function for PROTEUS inference.
 
@@ -549,6 +708,7 @@ def prot_builder(
     - ref_config (str): Reference TOML config path.
     - failure_codes (list[int]): PROTEUS status codes that complete normally but
       that this study excludes from the fit.
+    - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
 
     Returns
     ----------
@@ -582,6 +742,7 @@ def prot_builder(
             ref_config=ref_config,
             output=output,
             failure_codes=failure_codes,
+            sigma=sigma,
         )
 
         # Check J is finite

@@ -36,8 +36,11 @@ from proteus.inference.objective import (
     SPECTRAL_CACHE_ENV,
     WORKER_CONFIG_OVERRIDES,
     apply_nested_updates,
+    dispatch_mode,
     prot_builder,
     set_child_timeout,
+    set_dispatch,
+    validate_sigma,
     worker_spectral_cache,
 )
 from proteus.inference.utils import print_results, str_time
@@ -123,6 +126,67 @@ def parameter_bounds(parameters: dict) -> dict[str, tuple[float, float]]:
             )
         bounds[key] = (low, high)
     return bounds
+
+
+def validate_truth(parameters: dict, truth: dict | None) -> dict | None:
+    """Check the ground-truth parameter values given in the inference config.
+
+    Parameters
+    ----------
+    - parameters (dict): Mapping of dot-separated config keys to [min, max].
+    - truth (dict | None): True value of each parameter, or None.
+
+    Returns
+    ----------
+    - dict | None: The true values as floats, in the order of `parameters`, or None.
+
+    Raises:
+        ValueError: If a parameter has no true value, a true value names no
+            parameter, a value is not a finite number, or a log-scaled
+            parameter has a value that is not positive.
+    """
+    if truth is None:
+        return None
+
+    missing = [k for k in parameters if k not in truth]
+    if missing:
+        raise ValueError(f'No true value given for parameters: {missing}')
+    unknown = sorted(set(truth) - set(parameters))
+    if unknown:
+        raise ValueError(f'True values given for names that are not parameters: {unknown}')
+
+    out = {}
+    for k in parameters:
+        v = truth[k]
+        # bool is an int subclass, and TOML `true` is never a parameter value
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            raise ValueError(f"True value for '{k}' must be a finite number, got {v!r}")
+        if variable_is_logarithmic(k) and v <= 0:
+            raise ValueError(
+                f"Parameter '{k}' is sampled in log space, so its true value must be "
+                f'positive, got {v!r}'
+            )
+        out[k] = float(v)
+    return out
+
+
+def truth_outside_bounds(parameters: dict, truth: dict | None) -> dict[str, float]:
+    """True values that lie outside the range the optimiser samples.
+    Such a value cannot be recovered by the study.
+
+    Parameters
+    ----------
+    - parameters (dict): Mapping of dot-separated config keys to [min, max].
+    - truth (dict | None): True values, as returned by `validate_truth`.
+
+    Returns
+    ----------
+    - dict[str, float]: Out-of-range true values, by name.
+    """
+    if truth is None:
+        return {}
+    bounds = parameter_bounds(parameters)
+    return {k: v for k, v in truth.items() if not bounds[k][0] <= v <= bounds[k][1]}
 
 
 def validate_reference_config(
@@ -215,6 +279,16 @@ def run_inference(config):
 
     validate_reference_config(config['ref_config'], config['parameters'], spectral_cache)
 
+    # Optional uncertainty of each observable, in the observable's own units
+    config['sigma'] = validate_sigma(config['observables'], config.get('sigma'))
+
+    # Optional true value of each parameter, for studies of a known simulation
+    config['truth'] = validate_truth(config['parameters'], config.get('truth'))
+
+    # How each worker runs its evaluations. Recorded here because the next step empties
+    # the output folder.
+    set_dispatch(config.get('dispatch'), config.get('runner_max_jobs'))
+
     # Create output directory
     safe_rm(dirs['output'])
     os.makedirs(dirs['output'])
@@ -255,6 +329,12 @@ def run_inference(config):
     # Default for configs that pre-date this field
     config.setdefault('failure_codes', [])
 
+    for k, v in truth_outside_bounds(config['parameters'], config['truth']).items():
+        log.warning(
+            f"True value {v:g} of '{k}' lies outside its sampled range "
+            f'{config["parameters"][k]}, so the study cannot recover it'
+        )
+
     log.info(f'Reference config: {config["ref_config"]}')
 
     # Update ref_config path to point to a copy, in case user removes the original file
@@ -279,6 +359,8 @@ def run_inference(config):
     log.info(f'    optim steps   = {config["n_steps"]}')
     log.info(f'    kernel        = {config["kernel"]}')
     log.info(f'    acquisition   = {config["acqf"]}')
+    log.info(f'    dispatch      = {dispatch_mode()}')
+    log.info(f'    objective     = {"chi-squared" if config["sigma"] else "relative"}')
     log.info(' ')
     t_0 = time.perf_counter()
 
@@ -295,6 +377,7 @@ def run_inference(config):
         config['observables'],
         config['parameters'],
         config['failure_codes'],
+        config['sigma'],
     )
 
     t_1 = time.perf_counter()
@@ -318,6 +401,18 @@ def run_inference(config):
     plotBO.plots_perf_converge(D_final, Ts, n_init, dirs['output'])
     plotBO.plot_result_objective(D_final, config['parameters'], n_init, dirs['output'])
     plotBO.plot_result_correlation(config['parameters'], config['observables'], dirs['output'])
+    plotBO.plot_result_observables(
+        config['observables'], dirs['output'], best_config, config['sigma']
+    )
+    if config['truth'] is not None:
+        plotBO.plot_result_parameters(
+            config['parameters'],
+            config['truth'],
+            config['observables'],
+            dirs['output'],
+            best_config,
+            config['sigma'],
+        )
 
     # Make PROTEUS plots for best fitting case
     plotBO.plot_proteus(best_config)

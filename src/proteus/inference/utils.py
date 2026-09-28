@@ -228,9 +228,16 @@ def print_results(D, logs, config, output, n_init):
         log.info(f'{k:28s}   {tru:8.4e}    {obs:8.4e}    {dif:+.3f}')
     log.info(' ')
 
-    log.info(f'{"Parameter":28s} | Best fitting value')
-    for i, k in enumerate(param_keys):
-        log.info(f'{k:28s}   {input[k]:g}')
+    # True parameters are known when the observables came from a known simulation
+    truth = config.get('truth')
+    if truth is None:
+        log.info(f'{"Parameter":28s} | Best fitting value')
+        for i, k in enumerate(param_keys):
+            log.info(f'{k:28s}   {input[k]:g}')
+    else:
+        log.info(f'{"Parameter":28s} |    True     |  Best fit')
+        for i, k in enumerate(param_keys):
+            log.info(f'{k:28s}   {truth[k]:8.4e}    {input[k]:8.4e}')
     log.info(' ')
 
     # Log parameter statistics

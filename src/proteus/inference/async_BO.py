@@ -15,6 +15,7 @@ import torch
 
 from proteus.inference.BO import BO_step, init_locs
 from proteus.inference.failures import ProteusRunFailure
+from proteus.inference.objective import close_worker_runner
 from proteus.inference.utils import get_kernel, load_dataset_csv, save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.logs import attach_worker_logfile
@@ -169,6 +170,10 @@ def worker(
         except Exception:
             log.warning(f'Worker {worker_id} could not release its busy point')
 
+        # Stop the PROTEUS process this worker was reusing, if it had one, so
+        # that a study which ends early leaves nothing running behind it.
+        close_worker_runner()
+
 
 def _worker_loop(
     process_fun,
@@ -285,6 +290,7 @@ def parallel_process(
     observables: dict,
     parameters: dict,
     failure_codes: list[int],
+    sigma: dict | None = None,
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -305,6 +311,8 @@ def parallel_process(
     - parameters (dict):  Parameters (keys) with bounds (values) for inference.
     - failure_codes (list[int]): PROTEUS status codes that complete normally but
       that this run excludes from the fit.
+    - sigma (dict | None): Uncertainty of each observable, or None for the
+      relative-difference objective.
 
     Returns
     ----------
@@ -321,6 +329,7 @@ def parallel_process(
         ref_config=ref_config,
         output=output,
         failure_codes=failure_codes,
+        sigma=sigma,
     )
 
     # Build kernel

@@ -37,7 +37,15 @@ def test_create_init_falls_back_to_n_workers_when_init_samps_less_than_one(monke
     received: list = []
 
     def _mock_bounds(
-        output, ref_config, parameters, observables, n, seed, n_workers, failure_codes
+        output,
+        ref_config,
+        parameters,
+        observables,
+        n,
+        seed,
+        n_workers,
+        failure_codes,
+        sigma=None,
     ):
         received.append(n)
         return n
@@ -106,7 +114,7 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
         lambda outdir: {'output': str(tmp_path / 'output' / outdir)},
     )
 
-    def fake_sample_from_grid(output, params, observables, grid_dir):
+    def fake_sample_from_grid(output, params, observables, grid_dir, sigma=None):
         observed['grid_dir'] = grid_dir
         return 6
 

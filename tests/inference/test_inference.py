@@ -471,6 +471,188 @@ def test_run_inference_reports_the_spectral_cache_the_study_uses(
         assert os.environ[SPECTRAL_CACHE_ENV] == '1'
 
 
+@pytest.mark.unit
+def test_run_inference_rejects_incomplete_sigma_before_emptying_output(monkeypatch, tmp_path):
+    """A ``[sigma]`` table missing an observable is refused before the output
+    folder is emptied, so a typo does not cost the previous study's results.
+    A complete table is stored back on the config as floats.
+    """
+    config = {
+        'output': 'unit_inference',
+        'logging': 'INFO',
+        'n_workers': 1,
+        'ref_config': BASE_CONFIG,
+        'n_steps': 1,
+        'kernel': 'MAT3/2',
+        'acqf': 'LogEI',
+        'seed': 1,
+        'observables': {'R_obs': 6.0e6, 'T_obs': 400.0},
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
+        'sigma': {'R_obs': 1.0e5},
+    }
+    output_root = tmp_path / 'output'
+    output_root.mkdir()
+    previous = output_root / 'init.csv'
+    previous.write_text('x_0,y\n0.5,1.0\n', encoding='utf-8')
+
+    monkeypatch.setattr(
+        inference_mod,
+        'get_proteus_directories',
+        lambda _output: {'output': str(output_root), 'proteus': ''},
+    )
+    monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
+    monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
+    create_init_calls: list = []
+    monkeypatch.setattr(
+        inference_mod, 'create_init', lambda *a, **kw: create_init_calls.append((a, kw))
+    )
+
+    with pytest.raises(ValueError, match='T_obs'):
+        inference_mod.run_inference(config)
+    assert create_init_calls == []
+    # A check placed after `safe_rm` would leave this file deleted.
+    assert previous.read_text(encoding='utf-8') == 'x_0,y\n0.5,1.0\n'
+
+    # Complete table: accepted, and the run proceeds to the initial design.
+    # Stopped there, since only the validation step is under test.
+    config['sigma'] = {'T_obs': 20, 'R_obs': 1.0e5}
+    # run_inference records these for its workers; restored after the test.
+    for name in (
+        'PROTEUS_INFERENCE_CHILD_TIMEOUT_S',
+        'PROTEUS_INFERENCE_DISPATCH',
+        'PROTEUS_INFERENCE_RUNNER_MAX_JOBS',
+        inference_mod.ABORT_ON_FAILURE_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    def _stop(cfg):
+        raise RuntimeError('stop after validation')
+
+    monkeypatch.setattr(inference_mod, 'create_init', _stop)
+    with pytest.raises(RuntimeError, match='stop after validation'):
+        inference_mod.run_inference(config)
+    assert config['sigma'] == {'T_obs': pytest.approx(20.0), 'R_obs': pytest.approx(1.0e5)}
+    assert isinstance(config['sigma']['T_obs'], float)
+
+
+@pytest.mark.unit
+def test_validate_truth_returns_ordered_floats_and_rejects_bad_tables():
+    """A complete ``[truth]`` table comes back as floats in parameter order;
+    a missing, unknown, non-finite, boolean or non-positive log-scaled entry
+    is refused with the offending name in the message.
+    """
+    pars = {
+        'outgas.fO2_shift_IW': [-4.0, 4.0],
+        'planet.elements.H_budget': [1e3, 2e4],
+    }
+    # Written in reverse order and with an int, so both conversions are exercised.
+    out = inference_mod.validate_truth(
+        pars, {'planet.elements.H_budget': 5000, 'outgas.fO2_shift_IW': -1.5}
+    )
+    assert list(out) == list(pars)
+    assert out['planet.elements.H_budget'] == pytest.approx(5.0e3, rel=1e-12)
+    assert isinstance(out['planet.elements.H_budget'], float)
+    # Edge case: a zero or negative true value is valid for a linear parameter.
+    assert out['outgas.fO2_shift_IW'] == pytest.approx(-1.5, rel=1e-12)
+    assert inference_mod.validate_truth(pars, None) is None
+
+    with pytest.raises(ValueError, match='H_budget'):
+        inference_mod.validate_truth(pars, {'outgas.fO2_shift_IW': 0.0})
+    with pytest.raises(ValueError, match='not parameters.*mass_tot'):
+        inference_mod.validate_truth(
+            pars,
+            {
+                'outgas.fO2_shift_IW': 0.0,
+                'planet.elements.H_budget': 5e3,
+                'planet.mass_tot': 1.0,
+            },
+        )
+    with pytest.raises(ValueError, match='finite number'):
+        inference_mod.validate_truth(
+            pars, {'outgas.fO2_shift_IW': float('nan'), 'planet.elements.H_budget': 5e3}
+        )
+    with pytest.raises(ValueError, match='finite number'):
+        inference_mod.validate_truth(
+            pars, {'outgas.fO2_shift_IW': True, 'planet.elements.H_budget': 5e3}
+        )
+    # H_budget is sampled in log10, where a non-positive value has no position.
+    with pytest.raises(ValueError, match='log space'):
+        inference_mod.validate_truth(
+            pars, {'outgas.fO2_shift_IW': 0.0, 'planet.elements.H_budget': 0.0}
+        )
+
+
+@pytest.mark.unit
+def test_truth_outside_bounds_flags_only_values_beyond_the_range():
+    """True values on a bound are recoverable and not flagged; values beyond
+    either bound are returned by name so the study can warn about them.
+    """
+    pars = {'a.x': [0.0, 1.0], 'a.y': [2.0, 3.0], 'a.z': [-1.0, 1.0]}
+    # Edge case: 'a.x' sits exactly on its lower bound.
+    truth = {'a.x': 0.0, 'a.y': 3.5, 'a.z': -1.2}
+
+    out = inference_mod.truth_outside_bounds(pars, truth)
+
+    assert set(out) == {'a.y', 'a.z'}
+    assert out['a.y'] == pytest.approx(3.5, rel=1e-12)
+    assert inference_mod.truth_outside_bounds(pars, None) == {}
+
+
+@pytest.mark.unit
+def test_run_inference_rejects_incomplete_truth_before_emptying_output(monkeypatch, tmp_path):
+    """A ``[truth]`` table missing a parameter is refused before the output
+    folder is emptied, and a complete one is stored back as floats.
+    """
+    config = {
+        'output': 'unit_inference',
+        'logging': 'INFO',
+        'n_workers': 1,
+        'ref_config': BASE_CONFIG,
+        'n_steps': 1,
+        'kernel': 'MAT3/2',
+        'acqf': 'LogEI',
+        'seed': 1,
+        'observables': {'R_obs': 6.0e6},
+        'parameters': {'planet.mass_tot': [0.7, 3.0], 'interior_struct.core_frac': [0.3, 0.7]},
+        'truth': {'planet.mass_tot': 1.0},
+    }
+    output_root = tmp_path / 'output'
+    output_root.mkdir()
+    previous = output_root / 'init.csv'
+    previous.write_text('x_0,y\n0.5,1.0\n', encoding='utf-8')
+
+    monkeypatch.setattr(
+        inference_mod,
+        'get_proteus_directories',
+        lambda _output: {'output': str(output_root), 'proteus': ''},
+    )
+    monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
+    monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
+
+    with pytest.raises(ValueError, match='core_frac'):
+        inference_mod.run_inference(config)
+    # A check placed after `safe_rm` would leave this file deleted.
+    assert previous.read_text(encoding='utf-8') == 'x_0,y\n0.5,1.0\n'
+
+    config['truth'] = {'planet.mass_tot': 1, 'interior_struct.core_frac': 0.325}
+    for name in (
+        'PROTEUS_INFERENCE_CHILD_TIMEOUT_S',
+        'PROTEUS_INFERENCE_DISPATCH',
+        'PROTEUS_INFERENCE_RUNNER_MAX_JOBS',
+        inference_mod.ABORT_ON_FAILURE_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    def _stop(cfg):
+        raise RuntimeError('stop after validation')
+
+    monkeypatch.setattr(inference_mod, 'create_init', _stop)
+    with pytest.raises(RuntimeError, match='stop after validation'):
+        inference_mod.run_inference(config)
+    assert config['truth']['planet.mass_tot'] == pytest.approx(1.0, rel=1e-12)
+    assert isinstance(config['truth']['planet.mass_tot'], float)
+
+
 # ============================================================================
 # Regression: no stray prints + docstring uses current schema
 # ============================================================================

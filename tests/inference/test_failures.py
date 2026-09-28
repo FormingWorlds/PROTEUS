@@ -544,3 +544,42 @@ def test_summarise_failures_labels_the_logfile_sample_and_counts_the_whole_study
     with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.failures'):
         failures_mod.summarise_failures(str(tmp_path), n_attempted=20)
     assert not [r for r in caplog.records if r.message.startswith('Logfiles (')]
+
+
+@pytest.mark.unit
+def test_failure_report_renders_a_parameter_that_is_not_a_number():
+    """A report is what is left to read when an evaluation has gone wrong, so it
+    renders whatever the study put in front of it. A sweep is over numbers and
+    they keep their compact form, but a value of another kind is shown as it
+    stands rather than ending the worker that was trying to describe its own
+    failure.
+    """
+    failure = failures_mod.ProteusRunFailure(
+        reason='the simulator exited with an error',
+        worker=3,
+        iter=7,
+        out_dir='/study/workers/w_3/i_7',
+        exit_code=1,
+        status=22,
+        parameters={
+            'planet.mass_tot': 1.25,
+            'params.out.plot_mod': 'none',
+            'params.out.archive_mod': 0,
+            'atmos_clim.surf_greyalbedo': True,
+            'star.mass': 1234567.0,
+        },
+    )
+
+    rendered = failure.report()
+
+    assert 'params.out.plot_mod=none' in rendered
+    assert 'planet.mass_tot=1.25' in rendered
+    # Discrimination: numbers are not simply passed through `str`. The compact
+    # form is what keeps a wide sweep on a readable line, so a regression that
+    # rendered everything as `str` would show 1234567.0 here.
+    assert 'star.mass=1.23457e+06' in rendered
+    assert 'star.mass=1234567.0' not in rendered
+    # A bool is an int in Python, so the compact form would render it as 1 or 0
+    # and lose which switch was set. Edge case worth pinning separately.
+    assert 'atmos_clim.surf_greyalbedo=True' in rendered
+    assert 'params.out.archive_mod=0' in rendered

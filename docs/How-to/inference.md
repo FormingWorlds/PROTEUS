@@ -76,6 +76,44 @@ Where `sim` are the simulated observables and `true` are the target values.
 This means that the 'best' value for the objective function is 1. Values closer to 1 represent
 better fits, while smaller values (including negative ones) are worse fits.
 
+### Observable uncertainties
+
+An optional `[sigma]` table gives the 1-sigma uncertainty of each observable, in the same
+units as the value in `[observables]`. When it is present every observable needs an entry,
+and each residual is divided by its uncertainty instead of by the target value:
+
+```
+J = -log10( sum( ((sim - true) / sigma)^2 ) + 1e-10 )
+```
+
+Observables that span orders of magnitude (`atm_kg_per_mol`, `*_vmr`, `*_bar`, `P_surf`, ...)
+are compared as `log10` values. Their uncertainty is converted to log10 units by first-order
+propagation, `sigma / (true * ln 10)`. This approximation is only accurate when the uncertainty is
+small compared to the value. A warning is logged at start-up when it exceeds 30 % of the value.
+
+The two objectives are on different scales, so compare `J` only between studies that use the same
+one. The objective in use is reported at start-up.
+
+### Known true parameters
+
+When the target observables were extracted from a simulation whose parameters you know (a
+synthetic retrieval test), an optional `[truth]` table records those parameters so the best fit
+can be compared against them:
+
+```toml
+[truth]
+"interior_struct.core_frac" = 0.325
+"outgas.fO2_shift_IW"       = 2.0
+```
+
+When it is present every entry of `[parameters]` needs a value, as with `[sigma]`. A value outside
+the sampled range is accepted with a warning, since the study cannot recover it. The table does
+not change the optimisation; it adds a True column to the results summary and the
+`result_parameters.png` plot.
+
+A best fit that matches the observables but not the true parameters is not necessarily a failed
+study: different parameter combinations can produce the same observables.
+
 ### Parallel Processing
 
 - Multiple workers run simultaneously, each performing BO steps
@@ -143,6 +181,10 @@ Plots prefixed with `result_` show the results of the optimisation.
 
 - `result_correlation.png`: Scatter plot observables for each parameter, at each sample.
 - `result_objective.png`: Value of objective `J` for each parameter, at each sample.
+- `result_observables.png`: Final observables of every sample as a ratio to their target. 
+- `result_parameters.png`: Only with a `[truth]` table. Every sample, the true value and the best
+  fit placed within each parameter's sampled range (in log10 for log-scaled parameters), and the
+  best-fit error as a percentage of that range.
 
 ### Results Summary
 The system prints the final results including:
@@ -172,3 +214,21 @@ During the inference run, some PROTEUS simulations might crash or fail, or stop 
 - The system automatically limits thread usage to prevent oversubscription
 - PROTEUS evaluation time typically dominates total runtime
 - Workers share prepared spectral files through a cache in the inference run's output folder. Set `spectral_cache = false` in the inference config to turn it off. The study log names the cache in use.
+
+### Reusing one PROTEUS process per worker
+
+By default each evaluation runs as its own `proteus start`, so every sample
+pays for importing PROTEUS, loading the Julia environment and compiling AGNI
+on its first call. Setting `dispatch = "runner"` in the inference config keeps 
+one PROTEUS process alive per worker and reuses it for every evaluation that worker makes.
+
+On the default dispatch each evaluation writes its own `i_<n>_console.log`; 
+a reused process instead writes a single `runner_console.log` per worker, covering every simulation that worker ran, because Julia cannot be redirected between simulations. 
+Each run's own `proteus_*.log` is unaffected.
+
+```toml
+dispatch = "runner"      # "subprocess" (default) or "runner"
+runner_max_jobs = 0      # replace the process after this many simulations; 0 keeps it
+```
+
+Set `runner_max_jobs` to a positive number to bound how long any one process is kept.
