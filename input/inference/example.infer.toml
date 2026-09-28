@@ -19,8 +19,9 @@ init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEU
 # Completion codes to exclude from the fit. Evaporated (29) is always excluded.
 failure_codes = [11, ] # solidified (10), escaped (15), max_runtime (11)
 
-# Stop the whole inference run at the first simulation that fails, instead of scoring
-# it as a poor sample and carrying on. Off by default.
+# Stop the whole inference run at the first simulation that fails.
+# Simulations already running finish first.
+# Off by default.
 abort_on_failure = false
 
 # Parameters for Bayesian optimisation
