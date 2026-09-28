@@ -30,6 +30,8 @@ dtype = torch.double
 EPS_CLIP = 1e-10
 LOG_CLIP = 1e-20
 BAD_OBJ_VALUE = -20.0
+# Completion statuses excluded from every fit, whatever `failure_codes` holds.
+ALWAYS_EXCLUDED_STATUSES = frozenset({29})
 log = logging.getLogger('fwl.' + __name__)
 
 # Per-child PROTEUS run timeout for inference workers. A single wedged child
@@ -453,11 +455,10 @@ def J(
     failed = (20 <= sim_status <= 28) or (sim_status in (0, 1, STATUS_MISSING))
 
     # Runs that completed normally on an outcome this study does not fit
-    # against, named by the `failure_codes` field of the inference config: a
-    # run stopped by its clock limit (status 11) or one whose volatiles all
-    # escaped (status 15), for instance. Nothing went wrong in such a run, so
-    # it is scored as a poor sample but is not reported as a fault.
-    excluded = (not failed) and (sim_status in failure_codes)
+    # against, in `failure_codes` or in ALWAYS_EXCLUDED_STATUSES.
+    excluded = (not failed) and (
+        sim_status in failure_codes or sim_status in ALWAYS_EXCLUDED_STATUSES
+    )
 
     # Either way the evaluation carries the failure score instead of a fit
     # quality, and is recorded so that the end-of-study tally covers it.
