@@ -186,6 +186,38 @@ def test_parameter_bounds_converts_pairs_and_rejects_malformed_ranges():
 
 
 @pytest.mark.unit
+def test_parameter_bounds_rejects_a_log_scaled_range_that_reaches_zero():
+    """A parameter swept on a log scale cannot have a bound at or below zero:
+    the optimiser samples it in log10 space. The range is rejected here, while
+    the config is being read, not in every worker after the previous study
+    has been removed. `planet.elements.H_budget` is log-scaled; a linear
+    parameter with the same bounds is accepted.
+    """
+    with pytest.raises(ValueError, match='log scale') as excinfo:
+        inference_mod.parameter_bounds({'planet.elements.H_budget': [0.0, 2e4]})
+    # The message names the offending parameter and the range as written.
+    assert "'planet.elements.H_budget'" in str(excinfo.value)
+    assert '[0, 20000]' in str(excinfo.value)
+    with pytest.raises(ValueError, match='log scale'):
+        inference_mod.parameter_bounds({'planet.elements.H_budget': [-10.0, 2e4]})
+    # A range that is negative throughout is rejected on the same grounds.
+    with pytest.raises(ValueError, match='log scale'):
+        inference_mod.parameter_bounds({'orbit.semimajoraxis': [-2.0, -1.0]})
+
+    # Edge case: the smallest positive lower bound is accepted, so the check is
+    # `> 0` and not a threshold further from zero.
+    tiny = inference_mod.parameter_bounds({'planet.elements.H_budget': [5e-324, 2e4]})
+    assert tiny['planet.elements.H_budget'][0] > 0.0
+
+    # Discrimination: the same bounds on a linear parameter are valid, so the
+    # rejection comes from the log scale, not from the value itself.
+    linear = inference_mod.parameter_bounds({'outgas.fO2_shift_IW': [-4.0, 0.0]})
+    assert linear['outgas.fO2_shift_IW'] == (pytest.approx(-4.0), pytest.approx(0.0))
+    assert inference_mod.variable_is_logarithmic('outgas.fO2_shift_IW') is False
+    assert inference_mod.variable_is_logarithmic('planet.elements.H_budget') is True
+
+
+@pytest.mark.unit
 def test_validate_reference_config_accepts_a_runnable_sweep():
     """A reference config that PROTEUS accepts, swept over parameters that stay
     inside the schema at both ends, passes validation. Each accepted sweep is
@@ -274,11 +306,24 @@ def test_validate_reference_config_rejects_a_faulty_reference_file(tmp_path):
 
 
 @pytest.mark.unit
-def test_run_inference_validates_reference_config_before_emptying_output(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    ('parameters', 'error', 'match'),
+    [
+        ({'planet.mass_tott': [0.7, 3.0]}, UnknownConfigKeyError, 'planet.mass_tott'),
+        # Accepted by the schema, and rejected by the optimiser only once the
+        # workers start sampling it in log10 space.
+        ({'planet.elements.H_budget': [0.0, 2e4]}, ValueError, 'log scale'),
+    ],
+    ids=['misspelt_parameter', 'log_scaled_range_reaching_zero'],
+)
+def test_run_inference_validates_reference_config_before_emptying_output(
+    monkeypatch, tmp_path, parameters, error, match
+):
     """``run_inference`` validates the reference config before it empties the
     study output folder and before it generates any initial design. Re-running
-    a finished study with a typo'd parameter name must cost the user neither
-    simulation time nor the previous study's results.
+    a finished study with a typo'd parameter name, or with a range the
+    optimiser cannot sample, must cost the user neither simulation time nor
+    the previous study's results.
     """
     config = {
         'output': 'unit_inference',
@@ -290,7 +335,7 @@ def test_run_inference_validates_reference_config_before_emptying_output(monkeyp
         'acqf': 'LogEI',
         'seed': 1,
         'observables': {'P_surf': 1.0},
-        'parameters': {'planet.mass_tott': [0.7, 3.0]},
+        'parameters': parameters,
     }
     # Stand in for a completed earlier study occupying the same output folder.
     output_root = tmp_path / 'output'
@@ -314,7 +359,7 @@ def test_run_inference_validates_reference_config_before_emptying_output(monkeyp
         inference_mod, 'create_init', lambda *a, **kw: create_init_calls.append((a, kw))
     )
 
-    with pytest.raises(UnknownConfigKeyError, match='planet.mass_tott'):
+    with pytest.raises(error, match=match):
         inference_mod.run_inference(config)
     # Ordering: the guard must fire before the initial design is generated.
     assert create_init_calls == []
