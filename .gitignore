@@ -349,3 +349,5 @@ src/proteus/_version.py
 # test inference tomls
 input/test_infer_proteus/
 input/inference/test_infer
+# Resolved at install time from the current package set
+pixi.lock

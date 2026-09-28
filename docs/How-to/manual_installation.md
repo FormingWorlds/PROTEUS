@@ -39,6 +39,11 @@ Install the required system packages for your platform before proceeding.
 
 ## 2. Set up a Python environment
 
+!!! tip "Using pixi instead of conda"
+    PROTEUS can also be installed into a [pixi](https://pixi.sh) environment,
+    which replaces the conda steps below. See [Install with pixi](pixi.md)
+    (experimental).
+
 Python **3.12** is required, and is installed via
 [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
 or [miniforge](https://github.com/conda-forge/miniforge). If you do not have [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
