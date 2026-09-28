@@ -497,6 +497,14 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     # yet hold, so it can be stored once the build is known to have succeeded.
     cache_store_key = None
 
+    # Aerosol species dictionary (set MMR to zero initially). Determined before
+    # the spectral file, whose cache key depends on it.
+    aerosol_species = {}
+    if config.atmos_clim.aerosols_enabled:
+        aerosol_species = {a: 0.0 for a in _determine_aerosols(dirs)}
+        if len(aerosol_species) == 0:
+            log.warning('No data found for aerosol species')
+
     # Spectral file path provided?
     if config.atmos_clim.agni.spectral_file is not None:
         # Grey gas?
@@ -548,6 +556,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
                 sflux_path,
                 config.atmos_clim.spectral_group,
                 config.atmos_clim.spectral_bands,
+                rayleigh=config.atmos_clim.rayleigh,
+                aerosols=list(aerosol_species) if config.atmos_clim.aerosols_enabled else None,
             )
             if seed_from_cache(config.atmos_clim.spectral_cache, key, io_dir):
                 log.debug('Reusing prepared spectral file from cache')
@@ -586,13 +596,6 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     p_surf = hf_row['P_surf']
     p_top = config.atmos_clim.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
-
-    # Aerosol species dictionary (set MMR to zero initially)
-    aerosol_species = {}
-    if config.atmos_clim.aerosols_enabled:
-        aerosol_species = {a: 0.0 for a in _determine_aerosols(dirs)}
-        if len(aerosol_species) == 0:
-            log.warning('No data found for aerosol species')
 
     # Build the AGNI setup! kwargs. The ``aerosol_species`` parameter is
     # only present on newer AGNI installs; if the installed AGNI predates

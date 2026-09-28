@@ -1,8 +1,8 @@
 """Reuse of prepared spectral files across runs that share a stellar spectrum.
 
 A run's `runtime.sf` is the base spectral file from FWL_DATA with that run's
-stellar spectrum inserted. This module keeps one copy per distinct input set so the
-second and later runs copy it instead.
+stellar spectrum inserted, plus Rayleigh and aerosol blocks when enabled. This
+module keeps one copy per distinct input set so later runs copy it instead.
 
 The cache is seeded into the run's output folder as `runtime.sf`, which is
 where the atmosphere wrapper already expects to manage it.
@@ -14,6 +14,7 @@ import hashlib
 import logging
 import os
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
 
 log = logging.getLogger('fwl.' + __name__)
@@ -36,8 +37,20 @@ def _file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def cache_key(base_sf: Path | str, star_spectrum: Path | str, group: str, bands: str) -> str:
+def cache_key(
+    base_sf: Path | str,
+    star_spectrum: Path | str,
+    group: str,
+    bands: str,
+    *,
+    rayleigh: bool,
+    aerosols: Sequence[str] | None,
+) -> str:
     """Name the cache entry for a prepared spectral file. The stellar spectrum is hashed by content.
+
+    AGNI also writes Rayleigh scattering and aerosol blocks into the prepared
+    file, so both settings are part of the key. They are keyword-only and have
+    no default, so a caller cannot leave them out and reuse the wrong file.
 
     Parameters
     ----------
@@ -45,6 +58,9 @@ def cache_key(base_sf: Path | str, star_spectrum: Path | str, group: str, bands:
     - star_spectrum (Path | str): Stellar spectrum (`.sflux`) to be inserted.
     - group (str): Spectral file group.
     - bands (str): Number of wavenumber bands.
+    - rayleigh (bool): Whether Rayleigh scattering is included.
+    - aerosols (Sequence[str] | None): Aerosol species included, or None when
+      aerosols are disabled. Order does not matter.
 
     Returns
     ----------
@@ -59,6 +75,10 @@ def cache_key(base_sf: Path | str, star_spectrum: Path | str, group: str, bands:
         str(stat.st_size),
         str(int(stat.st_mtime)),
         _file_digest(Path(star_spectrum)),
+        f'rayleigh={bool(rayleigh)}',
+        # Disabled and enabled with no species are distinct: AGNI still sets
+        # the aerosol flag when inserting blocks in the second case.
+        'aerosols=off' if aerosols is None else 'aerosols=' + ','.join(sorted(aerosols)),
     )
     return hashlib.sha256('\0'.join(parts).encode()).hexdigest()[:32]
 
