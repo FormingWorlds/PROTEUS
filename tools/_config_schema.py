@@ -42,7 +42,6 @@ ANNOTATION_OVERRIDES = {
     'interior_struct.core_heatcap': 'float | str',
     'interior_struct.melting_dir': 'str',
     'interior_struct.eos_dir': 'str',
-    'atmos_clim.p_obs': 'float | none',
 }
 
 # Validator hooks that read config state but enforce nothing; excluded from

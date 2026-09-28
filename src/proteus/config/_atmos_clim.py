@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from typing import Literal, Union
 
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le
@@ -400,8 +401,11 @@ class AtmosClim:
         Number of vertical atmosphere levels.
     p_top: float
         Top-of-atmosphere pressure [bar].
-    p_obs: float | None
-        Observation pressure level [bar]. Set to 'none' to use tau_obs and wl_obs.
+    p_obs: float | Literal['none']
+        Observation pressure level [bar] (transit radius). Set to 'none'
+        (-> None) to instead let AGNI determine this pressure level
+        self-consistently from the optical depth (see `agni.tau_obs`,
+        `agni.wl_obs`); AGNI only.
     overlap_method: str
         Gas overlap method. Choices: 'ro', 'rorr', 'ee'.
     surface_d: float
@@ -443,7 +447,9 @@ class AtmosClim:
     spectral_bands: str = field(default='48')
     num_levels: int = field(default=50, validator=ge(15))
     p_top: float = field(default=1e-6, validator=gt(0))
-    p_obs = field(default='none', validator=valid_p_obs, converter=none_if_none)
+    p_obs: Union[float, Literal['none']] = field(
+        default=20e-3, validator=valid_p_obs, converter=none_if_none
+    )
     overlap_method: str = field(default='ee', validator=check_overlap)
 
     # Radiative and surface properties

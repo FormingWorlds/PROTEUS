@@ -26,26 +26,6 @@ def structure_k_val(val, _cls):
 cattrs.register_structure_hook(Union[int, Literal['none']], structure_k_val)
 
 
-def structure_p_obs_val(val, _cls):
-    """Structure atmos_clim.p_obs: a positive pressure, or 'none' (AGNI
-    determines the photosphere from optical depth instead; issue #694).
-
-    cattrs' default handling of `Union[float, Literal['none']]` tries the
-    float branch first and raises on the non-numeric string 'none' before
-    the field's own attrs converter/validator ever run, so this hook has to
-    intercept the raw TOML value directly.
-    """
-    if isinstance(val, bool) or not isinstance(val, (int, float, str)):
-        raise ValueError(f'Expected a number or "none", got {val!r}')
-    if val == 'none':
-        return 'none'
-    return float(val)
-
-
-# Register this for the specific Union type
-# cattrs.register_structure_hook(Union[float, Literal['none']], structure_p_obs_val)
-
-
 def _is_explicit_zero(value: object) -> bool:
     """True for a TOML int or float value of zero, false for a bool or 0.0."""
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value == 0.0
