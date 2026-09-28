@@ -744,11 +744,8 @@ def test_plot_result_correlation_two_par_two_obs_uses_2d_axes(monkeypatch, tmp_p
     # Legend lands on axs[0, 0] in the 2D branch.
     cells[(0, 0)].legend.assert_called_once()
     fig.savefig.assert_called_once()
-    # Outer rim x-labels go on axs[-1, i]: the test grid is 2x2 so [-1, 0]
-    # and [-1, 1] both get set_xlabel. With our mock, [-1, 0] resolves
-    # the same way [1, 0] does only if __getitem__ supports negative keys.
-    # Skip that exact assertion and instead pin: at least 4 set_xticklabels
-    # calls happened across the bottom row and right column hiders.
+    # The mock does not resolve negative keys like axs[-1, i], so instead of
+    # the outer-rim labels, pin the set_xticklabels calls across the grid.
     total_xtick_hide = sum(c.set_xticklabels.call_count for c in cells.values())
     # Top row hides x-tick labels: j=0 for both i=0 and i=1.
     assert total_xtick_hide >= 2

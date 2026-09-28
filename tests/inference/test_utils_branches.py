@@ -171,10 +171,8 @@ def test_print_results_returns_best_input_toml_path_and_logs_summary(tmp_path, c
     """
     from proteus.inference.utils import print_results
 
-    # Build a workspace with three runs: indices 0..2. Mark the first as
-    # the initial guess (n_init=1) so only entries 1 and 2 are eligible
-    # for the best-case selection. Entry 1 carries the largest Y and
-    # therefore must be picked.
+    # Three runs; the first is the initial guess (n_init=1), so only entries
+    # 1 and 2 are eligible. Entry 1 has the largest Y and must be picked.
     _make_worker_dir(tmp_path, worker=0, iteration=0, obs_value=0.1, param_value=0.5)
     best_dir = _make_worker_dir(tmp_path, worker=0, iteration=1, obs_value=0.9, param_value=1.0)
     _make_worker_dir(tmp_path, worker=0, iteration=2, obs_value=0.5, param_value=1.5)
@@ -291,7 +289,7 @@ def test_get_kernel_raises_for_unknown_kernel_name():
     with pytest.raises(ValueError, match='Unknown kernel'):
         get_kernel('', d=2)
 
-    # Edge: case-sensitive — 'rbf' is not 'RBF'.
+    # Edge: case-sensitive, 'rbf' is not 'RBF'.
     with pytest.raises(ValueError, match='Unknown kernel'):
         get_kernel('rbf', d=2)
 

@@ -135,10 +135,8 @@ def test_parallel_process_rejects_unknown_kernel():
             parameters={'a': [0.0, 1.0]},
             failure_codes=[],
         )
-    # Discrimination: the error message must surface the valid choices so
-    # callers can correct the misconfiguration; this guards against a
-    # regression that left only a bare "Unknown kernel" string with no
-    # remediation hint.
+    # Discrimination: the message names the valid choices, not just
+    # "Unknown kernel", so the user can correct the config.
     with pytest.raises(ValueError, match='RBF'):
         async_mod.parallel_process(
             objective_builder=lambda **kwargs: None,
@@ -153,10 +151,8 @@ def test_parallel_process_rejects_unknown_kernel():
             parameters={'a': [0.0, 1.0]},
             failure_codes=[],
         )
-    # Discrimination: the error message must surface the valid choices so
-    # callers can correct the misconfiguration; this guards against a
-    # regression that left only a bare "Unknown kernel" string with no
-    # remediation hint.
+    # Discrimination: the message names the valid choices, not just
+    # "Unknown kernel", so the user can correct the config.
     with pytest.raises(ValueError, match='RBF'):
         async_mod.parallel_process(
             objective_builder=lambda **kwargs: None,

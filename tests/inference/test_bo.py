@@ -460,10 +460,9 @@ def test_bo_step_identifies_busy_points_by_worker_id_not_position(monkeypatch):
         'X': torch.tensor([[0.1]], dtype=torch.double),
         'Y': torch.tensor([[1.0]], dtype=torch.double),
     }
-    # Worker 1 has stopped and released its point. Worker 2 is still running,
-    # and is the caller here: its own claim must be excluded, the others kept.
-    # Two other workers are present so the nearest is not also the furthest,
-    # which a single other point would make indistinguishable.
+    # Worker 1 has stopped and released its point; worker 2 is the caller, so
+    # its own claim is excluded. Two other points keep the nearest distinct
+    # from the furthest.
     B = {
         0: torch.tensor([[0.1]], dtype=torch.double),
         2: torch.tensor([[0.75]], dtype=torch.double),

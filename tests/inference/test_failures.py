@@ -131,10 +131,9 @@ def test_proteus_run_failure_survives_the_trip_back_from_a_pool_worker():
     assert restored.console_path == original.console_path
     assert restored.category == failures_mod.CATEGORY_FAILURE
 
-    # The category rides along in the same tuple, and it decides whether the
-    # parent calls the run a fault. A field dropped from the reconstruction
-    # would fall back to the 'failure' default and go unnoticed on a failure,
-    # so the round trip is checked on the other value too.
+    # The category decides whether the parent calls the run a fault. A dropped
+    # field would fall back to the 'failure' default unnoticed, so the round
+    # trip is checked on the other value too.
     excluded = failures_mod.ProteusRunFailure(
         reason='completed on a status this study excludes',
         worker=2,
@@ -216,10 +215,8 @@ def test_failure_records_round_trip_into_one_table(tmp_path):
     assert reread['reason'] == 'the simulator exited with an error, code 3'
     assert reread['planet.mass_tot'] == pytest.approx(5.0)
 
-    # Edge case: a table that cannot be parsed is reported and treated as empty
-    # rather than aborting the summary it feeds. A zero-length file is the
-    # reachable form of this: a worker killed between creating the table and
-    # writing its first row leaves exactly that behind.
+    # Edge case: an unparseable table is treated as empty, not an abort. A
+    # zero-length file is what a worker killed before its first row leaves.
     table.write_text('')
     assert failures_mod.read_failure_records(tmp_path) == []
 
@@ -344,10 +341,9 @@ def test_summarise_failures_tabulates_causes_and_warns_on_every_real_failure(tmp
     # Grouped by cause, so two runs that died the same way count as one line.
     assert 'Interior model' in messages
 
-    # 3 of 20 is 15%, well under the half-the-study line the old threshold drew,
-    # and it is raised to a warning anyway: the count is what the reader weighs.
-    # One record carries it, so the level changes rather than a second line
-    # repeating the counts the report already gave.
+    # 3 of 20 is 15%, well under half the study, and still a warning: the
+    # count is what the reader weighs. One record carries it, not a second
+    # line repeating the counts.
     warnings = [r for r in caplog.records if r.levelname == 'WARNING']
     assert len(warnings) == 1
     # unscored, attempted, percent, failed, excluded.

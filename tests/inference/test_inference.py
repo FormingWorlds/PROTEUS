@@ -69,10 +69,8 @@ def test_run_inference_rejects_too_many_workers(monkeypatch, tmp_path):
     )
     with pytest.raises(RuntimeError, match='Not enough CPU cores'):
         inference_mod.run_inference(config)
-    # Discrimination: the CPU-count guard must fire before any expensive
-    # initial-design dispatch. A regression that allowed init sampling to
-    # start and only raised at parallel_process would have a non-empty
-    # call list here.
+    # Discrimination: the CPU-count guard fires before initial sampling. A
+    # guard that raised only at parallel_process would leave calls here.
     assert create_init_calls == []
 
 

@@ -118,10 +118,9 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
     }
 
     assert init_mod.create_init(config) == 6
-    # The grid dir is resolved through get_proteus_directories(grid)['output'],
-    # i.e. the (possibly relocated) output root joined with the grid name, not a
-    # hard-coded <proteus>/output. Pinning the full path discriminates a
-    # regression that ignored the grid name or reintroduced the hard-coded root.
+    # The grid dir is the (possibly relocated) output root joined with the grid
+    # name. The full path rules out ignoring the grid name or a hard-coded
+    # <proteus>/output root.
     assert observed['grid_dir'] == str(tmp_path / 'output' / 'my_grid')
 
 
@@ -179,10 +178,8 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
             n_workers=0,
             failure_codes=[],
         )
-    # Discrimination: negative worker counts must also raise. A regression
-    # that only guarded the n_workers==0 boundary (e.g. `if n == 0`) would
-    # let -1 slip through and crash multiprocessing.Pool with an opaque
-    # error far from the user's misconfiguration.
+    # Discrimination: negative counts raise too. A guard on n_workers == 0
+    # alone would let -1 reach multiprocessing.Pool and fail opaquely there.
     with pytest.raises(ValueError, match='at least 1'):
         init_mod.sample_from_bounds(
             output='out',
@@ -194,10 +191,8 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
             n_workers=-1,
             failure_codes=[],
         )
-    # Discrimination: negative worker counts must also raise. A regression
-    # that only guarded the n_workers==0 boundary (e.g. `if n == 0`) would
-    # let -1 slip through and crash multiprocessing.Pool with an opaque
-    # error far from the user's misconfiguration.
+    # Discrimination: negative counts raise too. A guard on n_workers == 0
+    # alone would let -1 reach multiprocessing.Pool and fail opaquely there.
     with pytest.raises(ValueError, match='at least 1'):
         init_mod.sample_from_bounds(
             output='out',

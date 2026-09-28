@@ -192,10 +192,8 @@ def test_run_proteus_raises_when_command_missing(monkeypatch, tmp_path):
             ref_config='reference.toml',
             output='dummy_output',
         )
-    # Cause-preservation guard: the original FileNotFoundError must be
-    # chained via __cause__. A regression that swallowed the cause and
-    # raised a bare RuntimeError would still match the 'command not found'
-    # text but lose the traceback the operator needs.
+    # Cause guard: the FileNotFoundError is chained via __cause__. A bare
+    # RuntimeError would match the text but lose the traceback.
     assert isinstance(excinfo.value.__cause__, FileNotFoundError)
     # Side-effect guard: subprocess.run must have been invoked exactly
     # once. A regression that short-circuited before dispatch would
@@ -300,10 +298,8 @@ def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
             ref_config='reference.toml',
             output='dummy_output',
         )
-    # Identity guard: the raised KeyError must name the offending
-    # observable explicitly. A regression that emitted a generic
-    # 'Requested observable not found' without the field name would
-    # match the regex above but lose the diagnostic information.
+    # Identity guard: the KeyError names the missing observable. A generic
+    # message would match the regex above but not say which field.
     assert 'not_present' in str(excinfo.value)
     # Discrimination: a valid observable on the same helpfile must
     # complete normally. This rules out a regression that hard-raises
@@ -339,20 +335,17 @@ def test_eval_obj_mixes_log_and_linear_variables(monkeypatch):
     expected_sq = ((1.0 - (-6.0 / -5.0)) ** 2) + ((1.0 - 2.0 / 1.0) ** 2)
     expected = -torch.log10(torch.tensor([[expected_sq + 1e-10]], dtype=torch.double))
     assert value.item() == pytest.approx(expected.item())
-    # Discrimination guard: a regression that treated P_surf as linear
-    # (1e-6 vs 1e-5: relative residual 0.9) would land at a very
-    # different objective than the log-mode (-6/-5 = 1.2: residual
-    # 0.04). Pin the magnitude with a wrong-mode counter-value.
+    # Discrimination: treating P_surf as linear (1e-6 vs 1e-5, residual 0.9)
+    # gives a very different objective from log mode (-6/-5 = 1.2, residual
+    # 0.04). Pin against that wrong-mode value.
     sim_lin = {'P_surf': 1e-6, 'R_obs': 2.0}
     expected_sq_wrong = ((1.0 - 1e-6 / 1e-5) ** 2) + ((1.0 - 2.0 / 1.0) ** 2)
     expected_wrong = -torch.log10(
         torch.tensor([[expected_sq_wrong + 1e-10]], dtype=torch.double)
     )
     assert abs(value.item() - expected_wrong.item()) > 0.1
-    # Sign / boundedness guard: the objective is -log10(sum_sq + 1e-10).
-    # With sum_sq > 0 (mismatched sim vs tru), the inner argument
-    # exceeds 1e-10 and the result is finite. A regression that
-    # produced NaN or inf would fail an isfinite check.
+    # Boundedness guard: the objective is -log10(sum_sq + 1e-10), finite for
+    # any sum_sq >= 0, so NaN or inf means a regression.
     assert torch.isfinite(value).all()
     # Identical sim == tru produces sum_sq = 0, hence -log10(1e-10) = 10.
     value_match = objective_mod.eval_obj(sim_lin, sim_lin)
@@ -781,10 +774,9 @@ def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp
     # on the child having exited non-zero.
     assert caught.value.exit_code == 0
 
-    # Boundary of the failure set: STATUS_MISSING is the lowest code treated
-    # as a fault, and the run's own account of itself is absent, so it cannot
-    # be scored. A range check written as `20 <= status <= 28` alone would
-    # miss it.
+    # Boundary of the failure set: STATUS_MISSING is a fault because the run's
+    # own account of itself is absent. A check on `20 <= status <= 28` alone
+    # would miss it.
     with pytest.raises(objective_mod.ProteusRunFailure) as missing:
         _run(objective_mod.STATUS_MISSING, worker=0, iter=1)
     assert missing.value.status == objective_mod.STATUS_MISSING
@@ -816,8 +808,7 @@ def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp
 
 @pytest.mark.unit
 def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
-    """The failure range covers the error statuses the simulator can record.
-    """
+    """The failure range covers the error statuses the simulator can record."""
     monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
     monkeypatch.setattr(
         objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
@@ -1033,10 +1024,9 @@ def test_J_records_clean_exit_failures_through_the_real_simulator_wrapper(
     assert calls[1]['atmos_clim']['spectral_cache'].endswith('spectral_cache')
     assert calls[1]['planet']['mass_tot'] == pytest.approx(2.5)
 
-    # One header and one row per unscored run, all the same width: the fixed
-    # columns plus the single swept parameter, and none of the fixed entries.
-    # Parsed as CSV rather than split on commas: status descriptions such as
-    # the one for status 25 contain a comma and are written quoted.
+    # One header and one row per unscored run, all the fixed columns plus the
+    # swept parameter. Parsed as CSV, since the status 25 description holds a
+    # quoted comma.
     with open(tmp_path / 'study' / failures_mod.FAILURE_CSV, newline='') as f:
         table = list(csv.reader(f))
     header = table[0]
