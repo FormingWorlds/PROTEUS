@@ -163,8 +163,8 @@ def store_in_cache(cache_dir: Path | str, key: str, out_dir: Path | str) -> bool
             except Exception:
                 try:
                     tmp.unlink(missing_ok=True)
-                except OSError:
-                    pass
+                except OSError as cleanup_err:
+                    log.debug(f'Could not remove temporary cache file {tmp}: {cleanup_err}')
                 raise
     except OSError as err:
         log.warning(f'Could not store spectral file in cache: {err}')
