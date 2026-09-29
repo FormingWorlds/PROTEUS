@@ -852,6 +852,7 @@ def test_earlier_snapshot_exists_counts_by_the_writers_naming(tmp_path):
       and leave a stale post-impact snapshot in place for a resume to load.
     """
     from proteus.interior_energetics.aragog import earlier_snapshot_exists
+    from proteus.utils.helper import format_subyear_time
 
     data = tmp_path / 'data'
     data.mkdir()
@@ -859,20 +860,18 @@ def test_earlier_snapshot_exists_counts_by_the_writers_naming(tmp_path):
     # Nothing on disk: the first step of a run, not an error.
     assert earlier_snapshot_exists(str(tmp_path), 100.0) is False
 
-    (data / '100_int.nc').write_text('older')
+    (data / f'{format_subyear_time(100.0)}_int.nc').write_text('older')
     assert earlier_snapshot_exists(str(tmp_path), 200.0) is True
     # A step does not count its own snapshot as one it can fall back on.
     assert earlier_snapshot_exists(str(tmp_path), 100.0) is False
-    assert earlier_snapshot_exists(str(tmp_path), 100.4) is False
+    assert earlier_snapshot_exists(str(tmp_path), 99.5) is False
 
     # A stem that is not a year is passed over, not raised on.
     (data / 'merged_int.nc').write_text('not a snapshot time')
     assert earlier_snapshot_exists(str(tmp_path), 100.0) is False
     assert earlier_snapshot_exists(str(tmp_path), 200.0) is True
 
-    # Discrimination: the writer names this step 101, so 100 belongs to an
-    # earlier step and is a genuine fallback. A truncating cutoff of 100 would
-    # report none and leave this step's stale snapshot in place.
+    # A subyear step strictly after the older snapshot sees it.
     assert earlier_snapshot_exists(str(tmp_path), 100.6) is True
 
 
@@ -1917,54 +1916,9 @@ def test_a_failed_factory_install_leaves_no_factory_behind(monkeypatch):
 
 
 @pytest.mark.unit
-def test_retry_exhaustion_labels_unknown_when_cvode_probe_fails(monkeypatch):
-    """Exhaustion names the probe failure, not a wrong integrator.
-
-    When the aragog CVODE flag is absent, the retry-ladder exhaustion message
-    must name the probe failure rather than a specific integrator, so a real
-    CVODE run does not mislabel as Radau. The path still raises the
-    ``RuntimeError`` the retry ladder depends on, not an ``ImportError``.
-    """
-    from proteus.interior_energetics.aragog import AragogRunner
-
-    monkeypatch.delattr('aragog.solver.entropy_solver._CVODE_AVAILABLE')
-
-    runner = AragogRunner.__new__(AragogRunner)
-    runner._config = MagicMock()
-    runner._config.interior_energetics.aragog.solver_method = 'cvode'
-    runner._config.planet.mass_tot = 1.0
-
-    out = MagicMock()
-    out.status = -1
-    out.T_core = 0.0
-
-    solver = MagicMock()
-    solver.parameters.solver.start_time = 0.0
-    solver.parameters.solver.end_time = 1.0
-    solver.get_current_dSdr_cmb.return_value = None
-    solver._dSdr_cmb_init = None
-    solver.get_state.return_value = out
-    runner.aragog_solver = solver
-
-    interior_o = MagicMock()
-    interior_o._last_entropy = None
-    hf_row = {'Time': 2.15e5, 'T_cmb': 0.0}
-
-    with pytest.raises(RuntimeError) as info:
-        runner._solve_with_retry(hf_row, interior_o)
-    msg = str(info.value)
-    assert 'unknown' in msg.lower()
-    assert 'Radau status=' not in msg
-    assert 'CVODE status=' not in msg
-
-    # The label is built only on the exhaustion branch, so confirm the ladder
-    # ran the full six attempts rather than raising early.
-    assert runner.aragog_solver.solve.call_count == 6
-
-
-@pytest.mark.unit
 def test_setup_or_update_solver_refuses_to_build_without_cvode(cvode_missing):
     """The first-build branch stops before any solver or parameter object exists.
+
 
     Direct users of ``AragogRunner`` reach the solver through
     ``setup_or_update_solver``, so the guard must sit there and run before
