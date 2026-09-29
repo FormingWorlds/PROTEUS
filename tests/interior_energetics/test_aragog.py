@@ -1850,13 +1850,15 @@ def test_a_failed_factory_install_leaves_no_factory_behind(monkeypatch):
 
 
 @pytest.mark.unit
-def test_cvode_factory_installs_with_empty_mesh_mock():
+def test_cvode_factory_installs_with_empty_mesh_mock(caplog):
     """An empty mesh on a solver mock must not abort factory installation.
 
     Verifies that diagnostic mesh formatting handles an empty or uninitialized
     mesh array without raising IndexError, allowing the JAX CVODE factory
-    to remain installed.
+    to remain installed and recording the fallback geometry label in logs.
     """
+    import logging
+
     pytest.importorskip('jax')
     pytest.importorskip('aragog.jax.phase')
     from proteus.interior_energetics.aragog import AragogRunner
@@ -1877,19 +1879,22 @@ def test_cvode_factory_installs_with_empty_mesh_mock():
     solver.set_jax_cvode_factory = lambda f: installed.update(factory=f)
     interior_o = SimpleNamespace(aragog_solver=solver, _spider_eos_dir='/nonexistent')
 
-    with (
-        patch('aragog.jax.phase.MeshArrays'),
-        patch('aragog.jax.phase.PhaseParams'),
-        patch('aragog.jax.solver.BoundaryParams'),
-        patch(
-            'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
-            return_value=('rhs', 'jac', {}),
-        ),
-        patch('proteus.interior_energetics.aragog._cached_entropy_eos_jax'),
-    ):
-        AragogRunner._maybe_install_jax_cvode_factory(_jax_factory_config(), interior_o)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.aragog'):
+        with (
+            patch('aragog.jax.phase.MeshArrays'),
+            patch('aragog.jax.phase.PhaseParams'),
+            patch('aragog.jax.solver.BoundaryParams'),
+            patch(
+                'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
+                return_value=('rhs', 'jac', {}),
+            ),
+            patch('proteus.interior_energetics.aragog._cached_entropy_eos_jax'),
+        ):
+            AragogRunner._maybe_install_jax_cvode_factory(_jax_factory_config(), interior_o)
 
     assert installed.get('factory') is not None, 'the factory was not installed'
+    assert 'r_cmb=unknown, r_surf=unknown' in caplog.text
+    assert 'Option Z: JAX CVODE factory installed on aragog solver' in caplog.text
 
 
 @pytest.mark.unit

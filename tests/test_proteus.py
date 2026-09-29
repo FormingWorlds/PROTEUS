@@ -1293,7 +1293,7 @@ def test_structure_baseline_skipped_for_superliquidus_adiabat(tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_the_per_step_impact_heat_starts_each_row_at_zero():
+def test_the_per_step_impact_heat_starts_each_row_at_zero(tmp_path):
     """The impact-heat column is cleared when a row is created, on every path.
 
     The column accumulates within a timestep, because several impacts can land
@@ -1303,49 +1303,41 @@ def test_the_per_step_impact_heat_starts_each_row_at_zero():
     cumulatives without ever disturbing the residual, which is the one quantity
     that would otherwise reveal it.
 
-    Clearing it where the row is created, rather than in an interior solver's
-    success branch, is what makes this hold for every interior module and for
-    the retry paths that return before that branch is reached.
+    Clearing it where the row is created in Proteus.start (loop > 0), rather
+    than in an interior solver's success branch, ensures each step begins clean.
     """
-    import inspect
-    import re
+    from proteus.utils.constants import vol_gas_list
 
-    from proteus.proteus import Proteus
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+    rows = []
+    incoming_impact_heat = []
 
-    source = inspect.getsource(Proteus.start)
+    def _writer(hf_row, step):
+        incoming_impact_heat.append(hf_row.get('step_dE_impact_J'))
+        for s in vol_gas_list:
+            hf_row[s + '_kg_atm'] = 1.0e18
+            hf_row[s + '_kg_total'] = 1.0e18
+        hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+        hf_row['M_vaps'] = 0.0
+        hf_row['M_atm'] = hf_row['M_vol_atm']
+        hf_row['M_planet'] = _MASS_PLANET_KG
+        hf_row['P_vol'] = 260.0
+        hf_row['P_vap'] = 0.0
+        hf_row['P_surf'] = 260.0
+        if step == 0:
+            hf_row['step_dE_impact_J'] = 6.1e30
+        return hf_row
 
-    # The row is created by copying the previous one; the clear must follow that
-    # copy, or it would be overwritten by the very value it exists to drop.
-    # ``start`` copies the row in more than one place, so every copy has to be
-    # cleared afterwards: comparing against the first one alone would pass with
-    # the clear sitting before the copy that creates the stepped row.
-    copy_stmt = 'self.hf_row = self.hf_all.iloc[-1].to_dict()'
-    clear_stmt = "self.hf_row['step_dE_impact_J'] = 0.0"
-    copies = [m.start() for m in re.finditer(re.escape(copy_stmt), source)]
-    clears = [m.start() for m in re.finditer(re.escape(clear_stmt), source)]
-    assert copies, 'the row-copy statement this test pins has been renamed'
-    assert clears, 'the impact-heat clear has been removed from Proteus.start'
-    # Every copy must be followed by a clear. Checking the last one is what
-    # discriminates: a clear placed before it satisfies a first-occurrence
-    # comparison while leaving the stepped row carrying the previous value.
-    for copy_at in copies:
-        assert any(clear_at > copy_at for clear_at in clears), (
-            f'the row copy at offset {copy_at} is not followed by a clear of '
-            'step_dE_impact_J, so that row carries the previous impact heat'
-        )
+    _run_main_loop_recording_mass(p, stop_at_loop=2, rows=rows, row_writer=_writer)
 
-    # Behavioural check on the same two operations, which is what a row carrying
-    # a booked value through to the next step would break.
-    previous = {'step_dE_impact_J': 6.1e30, 'T_surf': 1500.0}
-    row = dict(previous)
-    row['step_dE_impact_J'] = 0.0
-
-    assert row['step_dE_impact_J'] == 0.0
-    # Everything else survives the copy: the clear is scoped to the one column.
-    assert row['T_surf'] == pytest.approx(previous['T_surf'], rel=1e-12)
-    # Discrimination: without the clear the row would carry 6.1e30 J into the
-    # next step's budget, the whole of a mantle re-melt.
-    assert previous['step_dE_impact_J'] > 1e30
+    # Initial step 0 started with zero impact heat before booking 6.1e30 J
+    assert incoming_impact_heat[0] == 0.0
+    # Step 1 received a fresh row reset to 0.0 rather than inheriting 6.1e30 J
+    assert incoming_impact_heat[1] == 0.0
+    # Discrimination: the previous step actually set non-zero impact heat
+    assert rows[0]['step_dE_impact_J'] == 6.1e30
 
 
 # ---------------------------------------------------------------------------
