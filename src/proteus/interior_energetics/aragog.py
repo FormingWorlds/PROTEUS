@@ -545,10 +545,13 @@ class AragogRunner:
                     )
                     AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
                 else:
-                    # Restore the snapshot's energy_balance CMB entropy gradient. Else
+                    # Restore the snapshot's energy_balance or core_module CMB entropy gradient. Else
                     # set_initial_entropy restarts it from a bottom-cell finite
                     # difference, which spikes the CMB flux on the first resumed step.
-                    if config.interior_energetics.aragog.core_bc == 'energy_balance':
+                    if config.interior_energetics.aragog.core_bc in (
+                        'energy_balance',
+                        'core_module',
+                    ):
                         dSdr_cmb = getattr(interior_o, '_last_dSdr_cmb', None)
                         if dSdr_cmb is None:
                             log.warning(
@@ -560,6 +563,24 @@ class AragogRunner:
                             solver.set_initial_dSdr_cmb(dSdr_cmb)
                         else:
                             solver._dSdr_cmb_init = dSdr_cmb
+                    if config.interior_energetics.aragog.core_bc in (
+                        'core_module',
+                        'bower2018',
+                    ):
+                        T_core = getattr(interior_o, '_last_T_core', None)
+                        if T_core is None:
+                            log.warning(
+                                'Snapshot core temperature is %s; it restarts from initial condition.',
+                                getattr(interior_o, '_last_T_core_status', 'absent'),
+                            )
+                        elif hasattr(solver, 'set_initial_core_temperature'):
+                            solver.set_initial_core_temperature(T_core)
+                            log.info(
+                                'Restored core temperature from snapshot: T_core=%.2f K',
+                                T_core,
+                            )
+                        else:
+                            solver._T_core_init = T_core
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
@@ -1748,6 +1769,9 @@ class AragogRunner:
             dSdr, status = _snapshot_scalar(output_dir, hf_row['Time'], 'dSdr_cmb_state')
             interior_o._last_dSdr_cmb = dSdr
             interior_o._last_dSdr_cmb_status = status
+            T_core, status_t = _snapshot_scalar(output_dir, hf_row['Time'], 'T_core_state')
+            interior_o._last_T_core = T_core
+            interior_o._last_T_core_status = status_t
             # The run built its mesh with the surface pressure of its own setup.
             P_mesh, status = _snapshot_scalar(
                 output_dir, hf_row['Time'], 'mesh_surface_pressure'
@@ -2044,6 +2068,9 @@ class AragogRunner:
                 dSdr_cmb=cmb_gradient_state(
                     interior_o.aragog_solver, self._config.interior_energetics.aragog.core_bc
                 ),
+                T_core=core_temperature_state(
+                    interior_o.aragog_solver, self._config.interior_energetics.aragog.core_bc
+                ),
                 mesh_surface_pressure=mesh_surface_pressure_state(interior_o.aragog_solver),
             )
 
@@ -2165,6 +2192,12 @@ class AragogRunner:
         if dSdr_snapshot is None:
             dSdr_snapshot = getattr(solver, '_dSdr_cmb_init', None)
         dSdr_ic = dSdr_snapshot
+        T_core_snapshot = None
+        if hasattr(solver, 'get_current_core_temperature'):
+            T_core_snapshot = solver.get_current_core_temperature()
+        if T_core_snapshot is None:
+            T_core_snapshot = getattr(solver, '_T_core_init', None)
+        T_core_ic = T_core_snapshot
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.
         T_core_pre = float(hf_row.get('T_cmb', hf_row.get('T_core', 0.0)))
@@ -2394,6 +2427,11 @@ class AragogRunner:
                         solver.set_initial_dSdr_cmb(dSdr_ic)
                     else:
                         solver._dSdr_cmb_init = dSdr_ic
+                if T_core_ic is not None:
+                    if hasattr(solver, 'set_initial_core_temperature'):
+                        solver.set_initial_core_temperature(T_core_ic)
+                    else:
+                        solver._T_core_init = T_core_ic
                 solver.reset()
                 if S_ic is not None:
                     solver.set_initial_entropy(S_ic)
@@ -2406,16 +2444,15 @@ class AragogRunner:
             solver.parameters.solver.rtol = base_rtol
             if hasattr(solver, '_max_steps'):
                 solver._max_steps = base_max_steps
-            # Release the dSdr_cmb override so the NEXT coupling step's
-            # set_initial_entropy can hot-start from its own _solution
-            # (which, after a successful retry, holds the accepted
-            # attempt's final dSdr_cmb, or after a full ladder exhaustion
-            # the wrapper will apply its own skip-step fallback before
-            # the next coupling step begins).
+            # Release the dSdr_cmb and T_core overrides for the next coupling step.
             if hasattr(solver, 'set_initial_dSdr_cmb'):
                 solver.set_initial_dSdr_cmb(None)
             else:
                 solver._dSdr_cmb_init = None
+            if hasattr(solver, 'set_initial_core_temperature'):
+                solver.set_initial_core_temperature(None)
+            else:
+                solver._T_core_init = None
 
         return out
 
@@ -2591,6 +2628,7 @@ class AragogRunner:
         write_diagnostics: bool = False,
         T_surf_coupled: float | None = None,
         dSdr_cmb: float | None = None,
+        T_core: float | None = None,
         mesh_surface_pressure: float | None = None,
     ):
         """Write entropy solver output to NetCDF using SolverOutput.
@@ -2608,10 +2646,15 @@ class AragogRunner:
             snapshot holds the value from the previous coupling step); a
             resume reads T_surf from the helpfile.
         dSdr_cmb : float or None
-            CMB entropy gradient state of the ``energy_balance`` core boundary
-            condition at ``time`` [J kg-1 K-1 m-1], written as
-            ``dSdr_cmb_state`` so a resume restarts the boundary state where
-            it was. None (other core_bc modes) writes nothing.
+            CMB entropy gradient state of the ``energy_balance`` or
+            ``core_module`` core boundary condition at ``time``
+            [J kg-1 K-1 m-1], written as ``dSdr_cmb_state`` so a resume
+            restarts the boundary state where it was. None writes nothing.
+        T_core : float or None
+            Core temperature state of the ``core_module`` or ``bower2018``
+            core boundary condition at ``time`` [K], written as
+            ``T_core_state`` so a resume restarts the core temperature. None
+            writes nothing.
         mesh_surface_pressure : float or None
             Surface pressure of the solver's Adams-Williamson mesh [Pa], the
             value fixed at solver setup; a resume rebuilds the same mesh from
@@ -2666,6 +2709,7 @@ class AragogRunner:
             for name, value, units in (
                 ('T_surf_coupled', T_surf_coupled, 'K'),
                 ('dSdr_cmb_state', dSdr_cmb, 'J kg-1 K-1 m-1'),
+                ('T_core_state', T_core, 'K'),
                 ('mesh_surface_pressure', mesh_surface_pressure, 'Pa'),
             ):
                 if value is None:
@@ -2697,7 +2741,7 @@ def read_last_Sfield(output_dir: str, time: float):
 
 
 def cmb_gradient_state(solver, core_bc: str) -> float | None:
-    """CMB entropy gradient state of an ``energy_balance`` Aragog solve.
+    """CMB entropy gradient state of an ``energy_balance`` or ``core_module`` solve.
 
     ``get_current_dSdr_cmb`` identifies the slot by the state-vector length
     alone, which ``bower2018`` shares (its extra slot holds T_core), so the
@@ -2713,11 +2757,35 @@ def cmb_gradient_state(solver, core_bc: str) -> float | None:
     Returns
     -------
     float or None
-        dSdr_cmb [J kg-1 K-1 m-1] for ``energy_balance``, else None.
+        dSdr_cmb [J kg-1 K-1 m-1] for ``energy_balance`` or ``core_module``, else None.
     """
-    if core_bc != 'energy_balance' or not hasattr(solver, 'get_current_dSdr_cmb'):
+    if core_bc not in ('energy_balance', 'core_module') or not hasattr(
+        solver, 'get_current_dSdr_cmb'
+    ):
         return None
     return solver.get_current_dSdr_cmb()
+
+
+def core_temperature_state(solver, core_bc: str) -> float | None:
+    """Core temperature state of a ``core_module`` or ``bower2018`` solve [K].
+
+    Parameters
+    ----------
+    solver : EntropySolver
+        Aragog solver after at least one solve.
+    core_bc : str
+        ``interior_energetics.aragog.core_bc``.
+
+    Returns
+    -------
+    float or None
+        T_core [K] for ``core_module`` or ``bower2018``, else None.
+    """
+    if core_bc not in ('core_module', 'bower2018') or not hasattr(
+        solver, 'get_current_core_temperature'
+    ):
+        return None
+    return solver.get_current_core_temperature()
 
 
 def mesh_surface_pressure_state(solver) -> float | None:
@@ -2775,6 +2843,7 @@ def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_
         write_diagnostics=getattr(config.interior_energetics, 'write_flux_diagnostics', False),
         T_surf_coupled=hf_row.get('T_surf'),
         dSdr_cmb=cmb_gradient_state(solver, config.interior_energetics.aragog.core_bc),
+        T_core=core_temperature_state(solver, config.interior_energetics.aragog.core_bc),
         mesh_surface_pressure=mesh_surface_pressure_state(solver),
     )
 

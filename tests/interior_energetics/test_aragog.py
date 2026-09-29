@@ -2303,3 +2303,82 @@ def test_write_core_module_diagnostics_wiring_and_cache():
     before = dict(output)
     runner._write_core_module_diagnostics(output)
     assert output == before
+
+
+@pytest.mark.unit
+def test_core_module_snapshot_and_resume_preserves_t_core_and_gradient(tmp_path):
+    """Resume with core_bc='core_module' preserves both T_core and dSdr_cmb.
+
+    Guards against losing T_core and dSdr_cmb across a resume, which would reset
+    T_core to the t=0 initial condition and spike the CMB heat flux.
+    """
+    from proteus.interior_energetics.aragog import (
+        AragogRunner,
+        _snapshot_scalar,
+        cmb_gradient_state,
+        core_temperature_state,
+        write_final_snapshot,
+    )
+
+    class _MockSolver:
+        def __init__(self, dSdr, T_c):
+            self._dSdr = dSdr
+            self._T_c = T_c
+            self._S0 = None
+            self._T_core_init = None
+            self._dSdr_cmb_init = None
+            self.parameters = MagicMock()
+            self.parameters.mesh.surface_pressure = 0.0
+
+        def get_current_dSdr_cmb(self):
+            return self._dSdr
+
+        def get_current_core_temperature(self):
+            return self._T_c
+
+        def set_initial_core_temperature(self, val):
+            self._T_core_init = val
+
+        def set_initial_dSdr_cmb(self, val):
+            self._dSdr_cmb_init = val
+
+        def set_initial_entropy(self, s):
+            pass
+
+        def get_state(self):
+            return _snapshot_output()
+
+    solver = _MockSolver(-4.567e-8, 5987.654321)
+    assert cmb_gradient_state(solver, 'core_module') == pytest.approx(-4.567e-8)
+    assert core_temperature_state(solver, 'core_module') == pytest.approx(5987.654321)
+
+    (tmp_path / 'data').mkdir()
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.interior_energetics.aragog.core_bc = 'core_module'
+    config.interior_energetics.write_flux_diagnostics = False
+    interior_o = MagicMock()
+    interior_o.aragog_solver = solver
+    t_snap = 150.0
+    hf_row = {'Time': t_snap, 'T_surf': 3200.0}
+    write_final_snapshot(config, interior_o, {'output': str(tmp_path)}, hf_row)
+
+    t_val, status_t = _snapshot_scalar(str(tmp_path), t_snap, 'T_core_state')
+    assert status_t == 'ok'
+    assert t_val == pytest.approx(5987.654321, rel=1e-12)
+
+    g_val, status_g = _snapshot_scalar(str(tmp_path), t_snap, 'dSdr_cmb_state')
+    assert status_g == 'ok'
+    assert g_val == pytest.approx(-4.567e-8, rel=1e-12)
+
+    new_interior = MagicMock()
+    new_solver = _MockSolver(0.0, 4500.0)
+    new_interior.aragog_solver = new_solver
+    AragogRunner.update_solver(
+        50.0,
+        {'Time': t_snap, 'F_atm': 1e5, 'T_eqm': 250.0},
+        new_interior,
+        output_dir=str(tmp_path),
+    )
+
+    assert getattr(new_interior, '_last_T_core', None) == pytest.approx(5987.654321, rel=1e-12)
+    assert getattr(new_interior, '_last_dSdr_cmb', None) == pytest.approx(-4.567e-8, rel=1e-12)
