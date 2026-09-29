@@ -44,8 +44,8 @@ conda activate proteus
 proteus start --offline -c input/dummy.toml
 ```
 
-The `--offline` flag skips data downloads. The run should complete in
-under 30 seconds.
+The `--offline` flag skips data downloads. The run takes about a minute,
+including the plots.
 
 ## Expected output
 
@@ -60,7 +60,7 @@ output should look similar to this:
   flux (ASF) is constant. (b) Surface partial pressures: H<sub>2</sub>O dominates
   (~10<sup>4</sup> bar), with CO<sub>2</sub>, N<sub>2</sub>, and SO<sub>2</sub> as minor species; pressures
   increase as solidification forces dissolved volatiles into the atmosphere.
-  (c) Surface temperature: monotonic cooling from 4000 K to ~1700 K (solidus).
+  (c) Surface temperature: monotonic cooling to ~1700 K (solidus).
   (d) Atmospheric mole fractions: H<sub>2</sub>O at ~95%, stable throughout.
   (e) Mantle evolution: melt fraction drops from 1 (fully molten) to ~0
   (solidified) over ~23,000 yr; the rheological front (orange) tracks the
@@ -84,7 +84,7 @@ series. Key columns:
 |--------|-------|----------------|
 | `Time` | yr | Stays at 0 for the first 3 iterations (init stage), then advances to ~23,000 yr |
 | `T_magma` | K | Decreases monotonically from 4000 to ~1700 |
-| `Phi_global` | 1 | Drops from 1.0 to ~0.01, triggering the solidification stop |
+| `Phi_global` | 1 | Drops from 1.0 to ~0.003, triggering the solidification stop |
 | `P_surf` | bar | Increases from ~7,000 to ~70,000 as volatiles outgas |
 | `F_atm` | W m$^{-2}$ | Outgoing longwave radiation; decreases as the surface cools |
 | `F_int` | W m$^{-2}$ | Interior heat flux; tracks `F_atm` in the dummy coupling |
