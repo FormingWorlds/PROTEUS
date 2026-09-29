@@ -249,20 +249,43 @@ def drainage_integral(
 
 
 def porosity_from_densities(
-    rho: np.ndarray, rho_solid: np.ndarray, rho_melt: np.ndarray
+    rho: np.ndarray,
+    rho_solid: np.ndarray,
+    rho_melt: np.ndarray,
+    melt_fraction: np.ndarray,
 ) -> np.ndarray:
     """Volume fraction of melt from the mixture and end-member densities [1].
 
-    ``phi = (rho_s - rho) / (rho_s - rho_l)``, the same lever rule on density
-    the interior solver applies, clipped to [0, 1]. Where the tabulated melt is
-    locally denser than the solid the denominator is floored, which drives the
-    porosity to zero there rather than inverting it; those nodes are reported
-    separately by :func:`locate_front` and take the guard branch.
+    Inside the mush, ``phi = (rho_s - rho) / (rho_s - rho_l)``, the lever rule
+    on density. The interior solver builds the mush density from the same two
+    phase-boundary densities, so the rule returns the melt volume fraction
+    exactly whichever phase is denser: where the tabulated melt is denser than
+    the solid, numerator and denominator are both negative and their ratio is
+    still the positive melt volume. The solver's own separation flux floors the
+    denominator there instead, to stop settling where the melt reads as the
+    denser phase; that floor would read such a mush as solid rock and cut the
+    front short, so it is not applied here.
+
+    A node that is fully solid or fully molten takes its melt fraction, 0 or 1.
+    The solver evaluates its density on the single-phase table at the node's own
+    entropy rather than as a two-phase mixture, so the lever rule does not hold
+    there: a cold solid denser than the solid at the phase boundary would
+    otherwise read as porous wherever the melt is the denser phase. Where the
+    two phase-boundary densities are equal the rule is 0/0, and mass and volume
+    fractions coincide, so the melt fraction is used there too. The result is
+    clipped to [0, 1].
     """
-    drho = np.asarray(rho_solid, dtype=float) - np.asarray(rho_melt, dtype=float)
-    drho = np.where(drho > 1.0e-6, drho, 1.0e-6)
-    phi = (np.asarray(rho_solid, dtype=float) - np.asarray(rho, dtype=float)) / drho
-    return np.clip(phi, 0.0, 1.0)
+    rho_s, rho_l, rho_mix, phi_s = np.broadcast_arrays(
+        np.asarray(rho_solid, dtype=float),
+        np.asarray(rho_melt, dtype=float),
+        np.asarray(rho, dtype=float),
+        np.asarray(melt_fraction, dtype=float),
+    )
+    drho = rho_s - rho_l
+    two_phase = (phi_s > 0.0) & (phi_s < 1.0) & (drho != 0.0)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        lever = (rho_s - rho_mix) / drho
+    return np.clip(np.where(two_phase, lever, phi_s), 0.0, 1.0)
 
 
 def _contiguous_runs(mask: np.ndarray) -> list[np.ndarray]:

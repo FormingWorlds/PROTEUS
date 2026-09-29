@@ -1159,3 +1159,65 @@ def test_the_front_drains_under_the_interior_solvers_per_node_gravity(caplog):
         bare = matrix_time(_aragog_interior(phi_stag, gravity=None))
     assert bare.tau_s == pytest.approx(expected_tau_s(8.0), rel=1e-9)
     assert any('no usable per-node gravity' in r.getMessage() for r in caplog.records)
+
+
+class _ShallowDenseMeltEOS:
+    """Phase-boundary densities with the melt the denser phase below 5 GPa.
+
+    The shallow phase-boundary tables of the Earth-analogue run read that way
+    (3084 kg/m3 solid against 3456 kg/m3 melt at 1.9 GPa); deeper, the melt is
+    the lighter phase, at the end-member densities of the other doubles.
+    """
+
+    def _lookup_at_phase_boundary(self, prop, pressure, phase):
+        if prop != 'density':
+            raise KeyError(prop)
+        shallow = np.asarray(pressure, dtype=float) < 5.0e9
+        if phase == 'solid':
+            return np.where(shallow, 3084.0, _RHO_SOLID)
+        return np.where(shallow, 3456.0, _RHO_MELT)
+
+
+@pytest.mark.physics_invariant
+def test_a_mush_reaching_the_dense_shallow_mantle_takes_the_no_drainage_bound(caplog):
+    """Once no node is above the transition, the mush runs to the surface,
+    where the shallow tables make its melt denser than the solid. The front
+    must include those porous nodes and take the guard branch at the entry
+    porosity of the top node, rather than stop at the last node with lighter
+    melt and integrate the drainage of a front cut short there."""
+    phi = np.linspace(0.02, 0.45, _N_STAG)
+    pres = np.linspace(1.3e11, 1.0e5, _N_STAG)
+    eos = _ShallowDenseMeltEOS()
+    rho_s = eos._lookup_at_phase_boundary('density', pres, 'solid')
+    rho_l = eos._lookup_at_phase_boundary('density', pres, 'melt')
+    rho = 1.0 / (phi / rho_l + (1.0 - phi) / rho_s)
+    shallow = pres < 5.0e9
+    assert 1 < shallow.sum() < _N_STAG // 2  # a shallow band, not the whole column
+    solver = SimpleNamespace(
+        entropy_eos=eos,
+        state=SimpleNamespace(phase_staggered=SimpleNamespace(_g=np.full(_N_STAG, 9.8))),
+    )
+    interior = SimpleNamespace(
+        phi=phi,
+        density=rho,
+        pres=pres,
+        radius=np.linspace(_R_CMB, _R_SURF, _N_STAG + 1),
+        aragog_solver=solver,
+    )
+    row = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.trapping'):
+        step = run_trapping(_drainage_config(), row, _hf_all(M_mantle_solid=2.2e24), interior)
+
+    assert step.branch == BRANCH_GUARD
+    assert 'denser than the solid' in step.guard_reason
+    assert 'reaches the surface node' in step.guard_reason
+    # Every node is porous mush, the dense ones included, so the front spans
+    # the whole column; cut short, it would have ended below the shallow band.
+    assert step.n_front == _N_STAG
+    # The bound is the entry porosity of the top node, its melt volume
+    # fraction, converted to mass and capped at rfront_loc = 0.5.
+    top_por = phi[-1] * rho[-1] / rho_l[-1]
+    bound = volume_to_mass_fraction(top_por, float(np.mean(rho_l)), float(rho_s[0]))
+    assert step.f_tl == pytest.approx(min(bound, 0.5), rel=1e-12)
+    assert 0.3 < step.f_tl < 0.5
+    assert any('denser than the solid' in r.getMessage() for r in caplog.records)

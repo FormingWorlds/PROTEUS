@@ -425,27 +425,68 @@ def test_a_front_still_porous_at_the_lowest_node_rests_on_the_core_mantle_bounda
     assert top_geom.guard_reason == 'the front reaches the surface node'
 
 
+def _two_phase_density(phi_s, rho_s, rho_l):
+    """Mush density the interior solver builds: the two phase volumes add up."""
+    return 1.0 / (phi_s / rho_l + (1.0 - phi_s) / rho_s)
+
+
 @pytest.mark.physics_invariant
 def test_porosity_and_mass_conversion_follow_the_density_lever_rule():
-    """Porosity is the lever rule on density between the two end members, and
-    the trapped fraction converts from the volume fraction the compaction
-    physics uses to the mass fraction the volatile budget needs."""
-    rho_s, rho_l = np.array([3300.0]), np.array([2970.0])
-    # A mixture halfway between the end members is half melt by volume.
-    assert porosity_from_densities(np.array([3135.0]), rho_s, rho_l)[0] == pytest.approx(
-        0.5, rel=1e-12
-    )
-    assert porosity_from_densities(rho_s, rho_s, rho_l)[0] == pytest.approx(0.0, abs=1e-12)
-    assert porosity_from_densities(rho_l, rho_s, rho_l)[0] == pytest.approx(1.0, rel=1e-12)
-    # Boundedness: a density outside the end members cannot give a porosity
-    # outside [0, 1].
-    out = porosity_from_densities(np.array([1000.0, 5000.0]), rho_s, rho_l)
-    assert np.all((out >= 0.0) & (out <= 1.0))
+    """Inside the mush the porosity is the lever rule on density between the
+    two end members, which for the solver's two-phase mixture is the melt
+    volume fraction exactly, whichever phase is denser and down to a mush with
+    one percent melt. Fully solid and fully molten nodes take their melt
+    fraction. The trapped fraction then converts from the volume fraction the
+    compaction physics uses to the mass fraction the volatile budget needs."""
+    phi_s = np.array([0.01, 0.2, 0.37])
+    # Melt lighter than the solid, as through most of the mantle, and denser
+    # than it, as the shallow phase-boundary tables have it at 1.9 GPa.
+    for rho_s, rho_l in ((3300.0, 2970.0), (3084.0, 3456.0)):
+        s, l = np.full(3, rho_s), np.full(3, rho_l)
+        rho = _two_phase_density(phi_s, s, l)
+        por = porosity_from_densities(rho, s, l, phi_s)
+        np.testing.assert_allclose(por, phi_s * rho / l, rtol=1e-12)
+        # A lighter melt fills more volume than its mass share, a denser less.
+        assert np.all((por > phi_s) == (rho_l < rho_s))
+    # Discrimination: the floored denominator read the dense-melt mush as solid
+    # rock, even at 37% melt.
+    floored = np.clip((3084.0 - rho) / 1.0e-6, 0.0, 1.0)
+    np.testing.assert_allclose(floored, 0.0, atol=0.0)
+    # One percent melt by mass is 0.89 percent by volume here, not zero.
+    assert 0.008 < por[0] < 0.01
 
-    # Edge case: equal end-member densities floor the denominator instead of
-    # dividing by zero.
-    same = porosity_from_densities(np.array([3300.0]), rho_s, rho_s)
-    assert np.all(np.isfinite(same))
+    # Fully molten node at 5.05 GPa from the Earth-analogue run: a melt hotter
+    # than the phase boundary is lighter than the boundary solid there, so the
+    # lever rule would read it as solid. Its porosity is 1 by definition.
+    molten = porosity_from_densities(
+        np.array([3147.3]), np.array([3152.0]), np.array([3181.0]), np.array([1.0])
+    )
+    assert molten[0] == pytest.approx(1.0, rel=1e-12)
+    assert (3152.0 - 3147.3) / (3152.0 - 3181.0) < 0.0
+    # Fully solid node where the melt is denser: a solid colder than the phase
+    # boundary is denser than the boundary solid, and the lever rule would give
+    # it a spurious 26/372 = 0.07 of porosity. Its porosity is 0.
+    solid = porosity_from_densities(
+        np.array([3110.0]), np.array([3084.0]), np.array([3456.0]), np.array([0.0])
+    )
+    assert solid[0] == pytest.approx(0.0, abs=0.0)
+    assert (3084.0 - 3110.0) / (3084.0 - 3456.0) > 0.05
+
+    # Edge case: equal phase-boundary densities make the lever rule 0/0; mass
+    # and volume fractions coincide there, so the melt fraction is returned.
+    same = porosity_from_densities(
+        np.array([3300.0]), np.array([3300.0]), np.array([3300.0]), np.array([0.4])
+    )
+    assert same[0] == pytest.approx(0.4, rel=1e-12)
+    # Boundedness: a mush density outside the end members cannot give a
+    # porosity outside [0, 1].
+    out = porosity_from_densities(
+        np.array([1000.0, 5000.0]),
+        np.full(2, 3300.0),
+        np.full(2, 2970.0),
+        np.full(2, 0.5),
+    )
+    assert np.all((out >= 0.0) & (out <= 1.0))
 
     # The melt is lighter, so its mass fraction is below its volume fraction.
     mass = volume_to_mass_fraction(0.3, 2970.0, 3300.0)
@@ -456,6 +497,55 @@ def test_porosity_and_mass_conversion_follow_the_density_lever_rule():
     # Limits: all melt or no melt convert to themselves whatever the densities.
     assert volume_to_mass_fraction(1.0, 2970.0, 3300.0) == pytest.approx(1.0, rel=1e-12)
     assert volume_to_mass_fraction(0.0, 2970.0, 3300.0) == pytest.approx(0.0, abs=1e-30)
+
+
+@pytest.mark.physics_invariant
+def test_a_mush_holding_dense_melt_is_porous_and_takes_the_dense_melt_guard():
+    """Near the surface the phase-boundary tables make the melt denser than the
+    solid. A mush there is still porous. Read as solid rock, it cut the front
+    short at the last node with lighter melt, and the dense melt never reached
+    the guard. With the porosity it has, the front runs on to the surface and
+    takes the guard branch, naming both causes."""
+    n = 40
+    r = np.linspace(3.0e6, 6.0e6, n)
+    # The whole column is mush below the transition, as in the Earth-analogue
+    # run once no node exceeds rfront_loc; the top four nodes carry the
+    # dense-melt tables of the shallow mantle.
+    phi_s = np.linspace(0.0, 0.45, n)
+    rho_s, rho_l = np.full(n, 4000.0), np.full(n, 3600.0)
+    rho_s[-4:], rho_l[-4:] = 3084.0, 3456.0
+    rho = _two_phase_density(phi_s, rho_s, rho_l)
+    por = porosity_from_densities(rho, rho_s, rho_l, phi_s)
+    np.testing.assert_allclose(por, phi_s * rho / rho_l, rtol=1e-12)
+    assert np.all(por[-4:] > 0.35)
+
+    geom, branch = locate_front(r, phi_s, por, rho_s, rho_l, rfront_loc=0.5, phi_min=0.01)
+    assert branch == BRANCH_GUARD
+    assert geom.dense_melt
+    assert 'denser than the solid' in geom.guard_reason
+    assert 'reaches the surface node' in geom.guard_reason
+
+    # Discrimination: the floored denominator read the dense nodes as solid,
+    # which ended the front four nodes below the surface and integrated it as
+    # an ordinary front.
+    drho = rho_s - rho_l
+    floored = np.clip((rho_s - rho) / np.where(drho > 1.0e-6, drho, 1.0e-6), 0.0, 1.0)
+    old_geom, old_branch = locate_front(
+        r, phi_s, floored, rho_s, rho_l, rfront_loc=0.5, phi_min=0.01
+    )
+    assert old_branch == BRANCH_DARCY
+    assert int(old_geom.index[-1]) == n - 5
+
+    # Edge case: dense melt above the transition is too molten to be part of
+    # the front, so the front still ends at the transition and is integrated.
+    hot = np.linspace(0.0, 0.9, n)
+    hot_por = porosity_from_densities(_two_phase_density(hot, rho_s, rho_l), rho_s, rho_l, hot)
+    hot_geom, hot_branch = locate_front(
+        r, hot, hot_por, rho_s, rho_l, rfront_loc=0.5, phi_min=0.01
+    )
+    assert hot_branch == BRANCH_DARCY
+    assert not hot_geom.dense_melt
+    assert int(hot_geom.index[-1]) < n - 4
 
 
 def test_branch_codes_are_distinct_and_cover_the_reported_regimes():

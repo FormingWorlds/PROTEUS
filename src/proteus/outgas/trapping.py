@@ -735,7 +735,7 @@ def _drainage_fraction(config, hf_row: dict, prev: dict, interior_o) -> Trapping
         return None
     rho_s, rho_l = densities
 
-    porosity = porosity_from_densities(rho, rho_s, rho_l)
+    porosity = porosity_from_densities(rho, rho_s, rho_l, phi_solver)
     r_stag = _staggered_radii(radius, phi_solver.size)
     # The basic mesh starts at the core-mantle boundary, the base of a front
     # that is still porous at the lowest staggered node.
