@@ -515,14 +515,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
     # Set when this run built a prepared spectral file that the cache does not
     # yet hold, so it can be stored once the build is known to have succeeded.
     cache_store_key = None
-
-    # Aerosol species dictionary (set MMR to zero initially). Determined before
-    # the spectral file, whose cache key depends on it.
-    aerosol_species = {}
-    if config.atmos_clim.aerosols_enabled:
-        aerosol_species = {a: 0.0 for a in _determine_aerosols(dirs)}
-        if len(aerosol_species) == 0:
-            log.warning('No data found for aerosol species')
+    cache_candidate = False
 
     # Spectral file path provided?
     if config.atmos_clim.agni.spectral_file is not None:
@@ -567,23 +560,9 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         input_sf = get_spfile_path(dirs['fwl'], config)
         input_star = sflux_path
 
-        # Reuse a cached file built earlier from this base file and this stellar
-        # spectrum, and skip the insertion.
-        if config.atmos_clim.spectral_cache and use_cache:
-            key = cache_key(
-                input_sf,
-                sflux_path,
-                config.atmos_clim.spectral_group,
-                config.atmos_clim.spectral_bands,
-                rayleigh=config.atmos_clim.rayleigh,
-                aerosols=list(aerosol_species) if config.atmos_clim.aerosols_enabled else None,
-            )
-            if seed_from_cache(config.atmos_clim.spectral_cache, key, io_dir):
-                log.debug('Reusing prepared spectral file from cache')
-                input_sf = os.path.join(io_dir, 'runtime.sf')
-                input_star = ''
-            else:
-                cache_store_key = key
+        # The cache is consulted once the aerosol species are known, because they
+        # are part of the cache key.
+        cache_candidate = bool(config.atmos_clim.spectral_cache and use_cache)
 
     # composition
     vol_dict = _construct_voldict(config, hf_row, dirs)
@@ -650,6 +629,24 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
     # Warn if no aerosol species were found
     if len(aerosol_species) == 0:
         log.warning('    No aerosols mapped or data unavailable')
+
+    # Reuse a cached file built earlier from this base file and this stellar
+    # spectrum, and skip the insertion.
+    if cache_candidate:
+        key = cache_key(
+            input_sf,
+            sflux_path,
+            config.atmos_clim.spectral_group,
+            config.atmos_clim.spectral_bands,
+            rayleigh=config.atmos_clim.rayleigh,
+            aerosols=list(aerosol_species) if config.atmos_clim.aerosols_enabled else None,
+        )
+        if seed_from_cache(config.atmos_clim.spectral_cache, key, io_dir):
+            log.debug('Reusing prepared spectral file from cache')
+            input_sf = os.path.join(io_dir, 'runtime.sf')
+            input_star = ''
+        else:
+            cache_store_key = key
 
     # Build the AGNI setup! kwargs.
     setup_kwargs = dict(

@@ -544,7 +544,9 @@ def _setup_cached_spectral_run(monkeypatch, tmp_path, cache_dir, verbosity=1, lo
     AGNI works in: the output folder only when verbose or debug-logged.
     """
     fake_agni = _SpectralWritingAGNI()
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -592,6 +594,7 @@ def _setup_cached_spectral_run(monkeypatch, tmp_path, cache_dir, verbosity=1, lo
             'axial_period': 86400.0,
             'longitude': 0.0,
             'latitude': 0.0,
+            'hill_radius': 6.4e8,
         },
         output_dir=output_dir,
         scratch=scratch,
@@ -735,6 +738,47 @@ def test_a_cached_spectral_file_is_not_reused_across_rayleigh_settings(monkeypat
         [f'{without}.sf', f'{without}.sf_k', f'{with_rayleigh}.sf', f'{with_rayleigh}.sf_k']
     )
     assert (cache / f'{without}.sf').read_text() == 'built without rayleigh'
+
+
+@pytest.mark.unit
+def test_a_cached_spectral_file_is_keyed_on_the_aerosols_agni_receives(monkeypatch, tmp_path):
+    """The cache key names the aerosols tied to a condensate, not all available ones.
+
+    AGNI only receives aerosols tied to a condensate, and writes their blocks
+    into the prepared file. A run without condensates therefore passes no
+    aerosols even when SiO2 data exist, and must not reuse an entry built by a
+    run whose rainout tied SiO2 in. Keying on every available species would
+    give both runs the same key and hand the first the wrong file.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    ctx.config.atmos_clim.aerosols_enabled = True
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda _d: {'SiO2': 'mon'})
+    monkeypatch.setattr(agni_mod, '_determine_condensates', lambda _v: ['SiO2'])
+
+    tied = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=['SiO2']
+    )
+    untied = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=[])
+    # Discrimination guard: the two runs must map to different entries.
+    assert tied != untied
+    (cache / f'{tied}.sf').write_text('built with SiO2 block', encoding='utf-8')
+    (cache / f'{tied}.sf_k').write_text('ktable with SiO2 block', encoding='utf-8')
+
+    # Edge case: SiO2 data available, but no condensates, so nothing is tied.
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert ctx.fake_agni.last_setup_kwargs['aerosol_species'] == {}
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (cache / f'{untied}.sf').read_text() == 'prepared from 100.sflux'
+    assert (cache / f'{tied}.sf').read_text() == 'built with SiO2 block'
+
+    # With rainout on, SiO2 is tied and the matching entry is reused as is.
+    ctx.config.atmos_clim.agni.rainout = True
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert list(ctx.fake_agni.last_setup_kwargs['aerosol_species']) == ['SiO2']
+    assert ctx.fake_agni.last_allocate_input_star == ''
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'built with SiO2 block'
 
 
 @pytest.mark.unit
