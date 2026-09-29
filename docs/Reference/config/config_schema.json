@@ -5334,7 +5334,8 @@
         "quasi_steady",
         "energy_balance",
         "gradient",
-        "bower2018"
+        "bower2018",
+        "core_module"
       ],
       "bounds": null,
       "description": "Core-mantle boundary condition mode. Default 'energy_balance'. Valid values: - 'quasi_steady': alpha-factor heat-flux partition; gives about -19% T_core offset vs SPIDER. - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a new state variable (mirrors SPIDER bc.c:76-131). - 'gradient': gradient-based state with two boundary entropies as state variables. - 'bower2018': experimental, do not use for production.",
@@ -5429,6 +5430,394 @@
       "bounds": null,
       "description": "Per-call melt-fraction step cap. When > 0 and any staggered cell is in or near the two-phase window at solve() entry, a CVODE root function (and the equivalent scipy event) returns control at the exact time the larger of the global mass-weighted |ΔΦ| and the maximum single-cell |Δφ| reaches this cap. Off by default: the schema default 0.0 resolves to no cap, because on a benign freezing-front crossing the root function slices the coupled step into many small ones and drives the reported CMB heat flux briefly negative where the uncapped run stays positive, so the cap is a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too.",
       "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.rho_cen",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "12500.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Density at the planet centre [kg m-3] of the Gaussian core profile.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.length_scale",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "7272000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Gaussian density length scale L [m].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.alpha",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.35e-05",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Core thermal expansion coefficient [K-1].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.c_p",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "840.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Core specific heat capacity [J kg-1 K-1].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.melting_curve",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"iron\"",
+      "choices": [
+        "iron",
+        "quadratic"
+      ],
+      "bounds": null,
+      "description": "'iron' (Anzellini et al. 2013 via PALEOS, with light-element depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.light_element_fraction",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Mole fraction of light elements depressing the iron melting curve.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.depression",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Melting-point depression per unit mole fraction.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.t_m0",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "2677.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Quadratic-curve prefactor [K] (melting_curve = 'quadratic').",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.t_m1",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "2.95e-12",
+      "choices": null,
+      "bounds": null,
+      "description": "Quadratic-curve linear coefficient [Pa-1].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.t_m2",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "8.37e-25",
+      "choices": null,
+      "bounds": null,
+      "description": "Quadratic-curve quadratic coefficient [Pa-2].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.ds_fusion",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "172.8",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Entropy of fusion at the inner-core boundary [J kg-1 K-1].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.icn_width",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "10.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Temperature width [K] of the smoothed inner-core-nucleation switch.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.alpha_c",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Compositional expansivity of the outer-core alloy.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.c_light",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Light-element mass fraction of the outer core (complete rejection).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.q_radio",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Core radiogenic power [W], constant over a run.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.stratification",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "When true, a stably stratified sub-CMB layer at its equilibrium conductive-matching depth reduces the convecting volume in the core's energy and entropy budgets whenever the CMB heat flow is subadiabatic.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.k_core",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "130.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Core thermal conductivity [W m-1 K-1] for the stratified-layer depth and the entropy and dynamo diagnostics; the default is the Nimmo (2015) Table 2 value.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.f_ohm",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1]; Christensen et al. (2009) adopt 1 for planets.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.flux_geometry",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"const_flux\"",
+      "choices": [
+        "const_flux",
+        "zero_outer"
+      ],
+      "bounds": null,
+      "description": "Which printed Earth-core efficiency factor converts the superadiabatic flux into the field-strength scaling's F: 'const_flux' or 'zero_outer'.",
+      "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
       "group": null,

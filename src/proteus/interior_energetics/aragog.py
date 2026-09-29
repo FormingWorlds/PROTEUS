@@ -638,12 +638,26 @@ class AragogRunner:
         #   'quasi_steady'   (alpha-factor approximation)
         #   'gradient'       (gradient-based state)
         #   'bower2018'      (EXPERIMENTAL, not recommended)
+        #   'core_module'    (staged core-evolution budget; T_cmb as ODE state)
         # Validation lives on the attrs schema (config._interior.Aragog).
         # The attrs schema (config._interior.Aragog) already restricts
-        # core_bc to the four valid modes, so it is consumed directly here
+        # core_bc to the five valid modes, so it is consumed directly here
         # rather than re-checked with a silent fallback that could swap in a
         # different core model.
         core_bc_str = config.interior_energetics.aragog.core_bc
+        core_module_params = None
+        if core_bc_str == 'core_module':
+            import attrs as _attrs
+
+            # The attrs sub-config maps one-to-one onto the aragog factory
+            # keys plus q_radio; geometry stays with the mesh. k_core
+            # travels (the stratified-layer depth needs it inside the
+            # budget); the field-strength fields feed the wrapper-side
+            # CoreEntropyBudget only, and the factory validates its keys
+            # strictly, so those two are stripped here.
+            core_module_params = _attrs.asdict(config.interior_energetics.aragog.core_module)
+            for _diag_key in ('f_ohm', 'flux_geometry'):
+                core_module_params.pop(_diag_key)
 
         boundary_conditions = _BoundaryConditionsParameters(
             # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
@@ -670,6 +684,7 @@ class AragogRunner:
             param_utbl_const=config.interior_energetics.param_utbl_const,
             # core BC mode (the 'energy_balance' option is available)
             core_bc=core_bc_str,
+            core_module_params=core_module_params,
         )
 
         # Define the inner_radius for the mesh.
@@ -1325,6 +1340,10 @@ class AragogRunner:
                     scales,
                     core_bc_mode=core_bc_mode,
                     radio_isotope_params=radio_isotope_params,
+                    # core_module closure: the solver's own budget and
+                    # constant core source; None/0 in every other mode.
+                    core_module_budget=getattr(solver, '_core_module_budget', None),
+                    core_module_q_radio=float(getattr(solver, '_core_module_q_radio', 0.0)),
                 )
                 return rhs_fn, jac_fn
 
@@ -1916,6 +1935,64 @@ class AragogRunner:
             )
         solver._prev_struct_log = (t_new, R_int_new, R_core_new, g_new)
 
+    def _write_core_module_diagnostics(self, output: dict, dt_actual_yr: float = 0.0) -> None:
+        """Fill the ``core_*`` helpfile columns from the staged core budget.
+
+        Evaluates the energy-side quantities on the solver's own
+        ``CoreEnergyBudget`` and the entropy, dynamo, and stratification
+        diagnostics on a wrapper-side ``CoreEntropyBudget`` built from the
+        config's ``k_core`` / ``f_ohm`` / ``flux_geometry``. The entropy
+        budget is rebuilt whenever the solver's budget object changes (a
+        structure re-solve rebuilds it with the new CMB radius), keyed on
+        object identity.
+
+        The CMB heat flow driving the diagnostics is the step-averaged
+        power ``step_dE_F_cmb_J / dt`` rather than the end-of-step flux
+        snapshot, which spikes at phase boundaries (the same reason the
+        energy ledger integrates over the sub-step trajectory); the
+        snapshot is the fallback when no time elapsed (the init call).
+        """
+        solver = self.aragog_solver
+        budget = getattr(solver, '_core_module_budget', None)
+        if budget is None:
+            return
+        from aragog.core import (
+            CoreEntropyBudget,
+            crystallization_regime,
+            stratification_depth,
+        )
+
+        cm_cfg = self._config.interior_energetics.aragog.core_module
+        if getattr(self, '_core_entropy_for', None) is not budget:
+            self._core_entropy_budget = CoreEntropyBudget(
+                budget,
+                k_core=cm_cfg.k_core,
+                f_ohm=cm_cfg.f_ohm,
+                flux_geometry=cm_cfg.flux_geometry,
+            )
+            self._core_entropy_for = budget
+        ent = self._core_entropy_budget
+
+        t_cmb = float(output['T_cmb'])
+        area = 4.0 * np.pi * float(budget.profiles.r_cmb) ** 2
+        from proteus.utils.constants import secs_per_year
+
+        span_s = float(dt_actual_yr) * secs_per_year
+        if span_s > 0.0:
+            q_cmb = float(output.get('step_dE_F_cmb_J', 0.0)) / span_s
+        else:
+            q_cmb = float(output['F_cmb']) * area
+        output['core_r_icb'] = float(budget.r_icb(t_cmb))
+        # With stratification the capacity depends on the heat flow; the
+        # recorded value reflects the active convecting volume.
+        output['core_C_eff'] = float(budget.effective_capacity(t_cmb, q_cmb))
+        output['core_dynamo_margin'] = float(
+            ent.entropy_margin(t_cmb, q_cmb, q_radio=cm_cfg.q_radio)
+        )
+        output['core_B_rms'] = float(ent.b_rms_core(t_cmb, q_cmb))
+        output['core_regime'] = float(int(crystallization_regime(budget, t_cmb)))
+        output['core_strat_depth'] = float(stratification_depth(ent, t_cmb, q_cmb))
+
     def run_solver(self, hf_row, interior_o, dirs, write_data: bool = True):
         # Dispatch to JAX solver if configured
         if self._use_jax:
@@ -1938,6 +2015,11 @@ class AragogRunner:
             surface_d=self._config.atmos_clim.surface_d,
             surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
         )
+
+        # Core-evolution diagnostics ride along when the staged core
+        # budget is active; every other mode leaves the zero defaults.
+        if self._config.interior_energetics.aragog.core_bc == 'core_module':
+            self._write_core_module_diagnostics(output, dt_actual_yr=float(out.dt_actual))
 
         # Store arrays on interior object for inter-module access.
         # Radius is stored in metres (SI), matching SPIDER's convention

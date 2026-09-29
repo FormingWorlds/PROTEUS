@@ -304,3 +304,43 @@ def test_aragog_defaults():
     # field. ``TypeError`` from attrs' ``__init__``.
     with _pt.raises(TypeError):
         Aragog(dilatation=True)
+
+
+def test_aragog_core_module_defaults_and_mode_validator():
+    """The staged core-module sub-config initialises to the pure-iron
+    Earth-like defaults (depression off, radiogenic off), the core_bc
+    validator accepts the fifth mode and still rejects arbitrary strings,
+    and the physical bounds on the sub-config reject out-of-range values."""
+    from proteus.config._interior import AragogCoreModule
+
+    aragog = Aragog()
+    cm = aragog.core_module
+    assert cm.rho_cen == pytest.approx(12500.0)
+    assert cm.melting_curve == 'iron'
+    assert cm.light_element_fraction == pytest.approx(0.0)  # pure iron
+    assert cm.q_radio == pytest.approx(0.0)
+    assert cm.ds_fusion == pytest.approx(172.8, rel=1e-6)  # 1.16 k_B/atom of Fe
+
+    assert Aragog(core_bc='core_module').core_bc == 'core_module'
+    with pytest.raises(ValueError):
+        Aragog(core_bc='core_reservoir')
+    with pytest.raises(ValueError):
+        AragogCoreModule(light_element_fraction=1.0)  # bound is exclusive
+    with pytest.raises(ValueError):
+        AragogCoreModule(melting_curve='cubic')
+    with pytest.raises(ValueError):
+        AragogCoreModule(icn_width=0.0)
+
+    # Diagnostics fields: Nimmo (2015) conductivity default, ohmic
+    # fraction bounded on (0, 1], and the two printed CHR09 geometries.
+    assert cm.k_core == pytest.approx(130.0)
+    assert cm.f_ohm == pytest.approx(1.0)
+    assert cm.flux_geometry == 'const_flux'
+    with pytest.raises(ValueError):
+        AragogCoreModule(k_core=0.0)
+    with pytest.raises(ValueError):
+        AragogCoreModule(f_ohm=1.5)  # bound is inclusive at 1
+    with pytest.raises(ValueError):
+        AragogCoreModule(f_ohm=0.0)  # bound is exclusive at 0
+    with pytest.raises(ValueError):
+        AragogCoreModule(flux_geometry='spherical_cow')

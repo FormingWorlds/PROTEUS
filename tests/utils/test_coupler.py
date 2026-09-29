@@ -4483,3 +4483,32 @@ def test_select_resumable_snapshot_resolves_sub_year_rows_to_distinct_files(tmp_
     )
     assert none_dropped == []
     assert kept.iloc[-1]['Time'] == pytest.approx(30.2)
+
+
+@pytest.mark.unit
+def test_core_module_columns_registered_and_zero_seeded():
+    """The six core-evolution diagnostics are registered in the helpfile
+    schema exactly once each and seed to exactly 0.0 in a fresh row,
+    which is the documented default every non-core_module run keeps.
+
+    Edge case: uniqueness guards against a duplicate registration, which
+    pandas would silently disambiguate into misaligned columns; the
+    exact-equality zero check is on the seed (an assignment, not an
+    arithmetic result), where approx would weaken the contract.
+    """
+    from proteus.utils.coupler import GetHelpfileKeys, ZeroHelpfileRow
+
+    core_cols = [
+        'core_r_icb',
+        'core_C_eff',
+        'core_dynamo_margin',
+        'core_B_rms',
+        'core_regime',
+        'core_strat_depth',
+    ]
+    keys = GetHelpfileKeys()
+    for col in core_cols:
+        assert keys.count(col) == 1, f'{col} must be registered exactly once'
+    row = ZeroHelpfileRow()
+    for col in core_cols:
+        assert row[col] == 0.0  # seed value, assigned not computed
