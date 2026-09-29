@@ -1899,6 +1899,8 @@ def test_discard_preimpact_snapshot_drops_only_the_impact_steps_own_snapshot(tmp
     )
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypatch):
     """The main loop discards the pre-impact snapshot when an impact occurs.
 
@@ -1908,6 +1910,8 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
     snapshot while preserving earlier valid snapshots.
 
     Verifies:
+    - The snapshot written on the impact step was initially created.
+    - The impact landed and delivered rock mass.
     - The snapshot written on the impact step is removed from disk.
     - Earlier valid snapshots remain intact for resuming.
     """
@@ -1924,7 +1928,7 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
     output_dir = tmp_path / 'run'
     data_dir = output_dir / 'data'
 
-    config_path = Path('input/dummy.toml')
+    config_path = Path(__file__).resolve().parents[2] / 'input' / 'dummy.toml'
     text = config_path.read_text().replace('path = "auto"', f'path = "{output_dir}"', 1)
     cfg = tmp_path / 'test.toml'
     cfg.write_text(text)
@@ -1952,6 +1956,8 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
     runner.config.accretion.dummy.eccentricity = 0.05
     runner.config.accretion.impactor_volatiles = 'dry'
 
+    written_snapshots = []
+
     def mock_run_interior(
         dirs, config, hf_all, hf_row, interior_o, atmos_o=None, verbose=True, write_data=True
     ):
@@ -1971,6 +1977,7 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
             snap_path = data_dir / f'{format_subyear_time(t)}_int.nc'
             snap_path.parent.mkdir(parents=True, exist_ok=True)
             snap_path.write_text('snapshot')
+            written_snapshots.append(snap_path)
 
     monkeypatch.setattr(interior_wrapper, 'run_interior', mock_run_interior)
     monkeypatch.setattr(
@@ -1986,9 +1993,18 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
 
     runner.start(resume=False, offline=True)
 
-    impact_snap = data_dir / f'{format_subyear_time(1.0)}_int.nc'
+    expected_impact_snap = data_dir / f'{format_subyear_time(1.0)}_int.nc'
+    # Positive controls: the interior wrote the snapshot during the step, and the impact landed
+    assert expected_impact_snap in written_snapshots, (
+        'the interior must have written the impact step snapshot'
+    )
+    assert float(runner.hf_all.iloc[-1]['M_accreted_rock']) > 0.0, 'the impact must have landed'
+
+    # The main loop must have discarded the pre-impact snapshot while keeping earlier snapshots
     assert earlier_snap.exists(), 'earlier snapshot must be kept'
-    assert not impact_snap.exists(), 'impact step snapshot must be discarded by main loop'
+    assert not expected_impact_snap.exists(), (
+        'impact step snapshot must be discarded by main loop'
+    )
 
 
 @pytest.mark.unit
