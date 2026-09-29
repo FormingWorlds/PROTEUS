@@ -284,10 +284,9 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
     elif mode == 'liquidus_super':
         # Coarse CMB-anchored placeholder T(r) for the dummy structure only:
         # T_cmb = T_liq_Fei2021(P_cmb) + delta_T_super, integrated upward with
-        # constant alpha/Cp/g. The production energetics initial condition does
-        # NOT use this anchor; it solves a fully-molten super-liquidus adiabat
-        # via solve_superliquidus_adiabat regardless of the structure module, so
-        # this coarse anchor affects only the dummy structure's density profile.
+        # constant alpha/Cp/g. The energetics initial entropy does not use this
+        # anchor; it is solved on the run's P-S tables, so this anchor affects
+        # only the dummy structure's density profile.
         try:
             from zalmoxis.melting_curves import paleos_liquidus
         except (ImportError, ModuleNotFoundError) as e:
