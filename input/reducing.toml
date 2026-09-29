@@ -1,8 +1,4 @@
-# PROTEUS: all configuration options
-# Full reference of every available parameter with recommended starting values.
-# Use this as a guide when building your own config files. Values shown here
-# are recommended starting points for a typical rocky planet and may differ
-# from Python-level defaults. Omitted fields fall back to their defaults.
+# PROTEUS: rocky-planet configuration with a reducing atmosphere.
 # Documentation: https://proteus-framework.org/PROTEUS/How-to/config.html
 
 # ----------------------------------------------------
@@ -32,12 +28,10 @@ config_version = "3.0"
     offline                   = false        # offline mode (no data downloads)
 
     [params.out]
-        # Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
-        # name (run_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
-        path                  = "auto"
+        path                  = "reducing"
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
-        plot_fmt              = "png"        # png | pdf
+        plot_fmt              = "pdf"        # png | pdf
         write_mod             = 1            # 0: at end | n: every n iters
         dt_write_rel          = 1e-3         # extra time-based write trigger as fraction of sim time, OR-ed with write_mod (0: off)
         archive_mod           = "none"       # 0: at end | n: every n iters | none: never
@@ -48,10 +42,9 @@ config_version = "3.0"
         minimum_rel           = 1e-5         # minimum relative time step
         maximum               = 1e7          # maximum time step [yr]
         initial               = 3e1          # initial step size [yr]
-        maximum_rel           = 1.0          # time-fraction allowance added to the maximum step; 0 disables
-        starspec              = 1e8          # recalculate stellar spectrum interval [yr]
+        starspec              = 1e9          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
-        method                = "adaptive"   # proportional | adaptive | maximum
+        method                = "maximum"   # proportional | adaptive | maximum
         propconst             = 52.0         # proportionality constant (proportional method)
         atol                  = 0.02         # step size absolute tolerance (adaptive method)
         rtol                  = 0.10         # step size relative tolerance (adaptive method)
@@ -61,12 +54,6 @@ config_version = "3.0"
         max_growth_factor     = 0.0          # cap on dt growth ratio between consecutive steps; 0 = disabled
         mushy_maximum         = 1.0e6        # max dt [yr] while stop.solid.phi_crit < Phi < mushy_upper (0 = disabled); caps steps through the mushy band so the integrator resolves the solidification front rather than overstepping it
         mushy_upper           = 0.99         # mushy regime upper bound (melt fraction)
-        evection_maximum      = 'none'       # ceiling dt [yr] while hf_row['in_evection_band']/['near_evection_band'] ('none' = disabled, must be >0 otherwise); used directly until rate history exists, then only as an upper bound on the rate-based cap below
-        evection_target_rel_de = 0.05        # target max fractional change in eccentricity_sat per step while in/near the evection band
-        evection_de_floor     = 0.02         # floor on eccentricity_sat in the evection_target_rel_de ratio's denominator
-        evection_rate_window  = 2            # trailing macro-steps used to fit the secular |de/dt| (least-squares for >2, two-point diff at the default of 2); widen (e.g. 10-20) if eccentricity_sat's own evection-angle-driven oscillation aliases into a stuck-small dt
-        evection_growth_factor = 'none'      # cap on dt growth ratio while in/near the evection band or within evection_cooldown_iters of leaving it; 'none' = disabled, must be >0 otherwise
-        evection_cooldown_iters = 'none'     # iterations after leaving the evection band during which evection_growth_factor stays active; 'none' = disabled, must be >0 otherwise
         hysteresis_iters      = 0            # suppress speed-up for N iters after a slow-down; 0 = disabled
         hysteresis_sfinc      = 1.1          # gentler speed-up factor while hysteresis active
 
@@ -82,7 +69,7 @@ config_version = "3.0"
         [params.stop.time]                   # simulation time limits
             enabled           = true
             minimum           = 1.0e3        # run at least this long [yr]
-            maximum           = 6.0e+9       # stop after this time [yr]
+            maximum           = 5.0e+9       # stop after this time [yr]
 
         [params.stop.solid]                  # solidification criterion
             enabled           = true
@@ -105,31 +92,11 @@ config_version = "3.0"
             spin_enabled      = true         # check rotational breakup
             offset_spin       = 0            # correction to breakup period [s]
 
-        [params.stop.disint_sat]              # satellite disintegration criterion
-            enabled           = false
-            roche_enabled     = true         # check Roche limit (around the planet)
-            offset_roche      = 0            # correction to the satellite's Roche limit [m]
-            spin_enabled      = true         # check rotational breakup
-            offset_spin       = 0            # correction to the satellite's breakup period [s]
-
-        [params.stop.satellite]              # satellite escape criterion
-            enabled           = false
-            sma_max           = 60           # terminate when the satellite's semi-major axis exceeds this value [R_earth]
-
-        [params.stop.clock]                  # wall-clock runtime criterion
-            enabled           = false
-            maximum           = 8.64e4       # terminate after this wall-clock runtime [s]
-
-        [params.stop.stall]                  # unconverged atmosphere criterion
-            enabled           = true
-            maximum           = 150          # stop after this many consecutive iterations without a converged atmosphere
-
 # ----------------------------------------------------
 
 # Bulk planet properties, initial temperature, and volatile inventory
 [planet]
     mass_tot                  = 1.0          # total initial planet mass [M_earth]
-    R_int_override            = "none"       # force a fixed interior radius [m]; none = use the root finder
 
     # Initial temperature profile
     temperature_mode          = "liquidus_super"  # default; other modes: isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
@@ -138,7 +105,7 @@ config_version = "3.0"
     tcenter_init              = 6000         # center temperature [K] (linear only)
     delta_T_super             = 100.0        # min superheat above the liquidus [K] (liquidus_super); small value starts the interior near the liquidus for a stable default run
     ini_entropy               = 3900.0       # initial specific entropy [J/kg/K] (isentropic only)
-    ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (<= 0 with liquidus_super)
+    ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
     f_accretion               = 0.04         # accretion heat retention [0-1] (accretion only)
     f_differentiation         = 0.50         # differentiation heat retention [0-1] (accretion only)
 
@@ -156,8 +123,8 @@ config_version = "3.0"
     [planet.elements]
         O_mode                = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct
         O_budget              = 0.0          # ignored for ic_chemistry mode
-        H_mode                = "oceans"     # oceans | ppmw | kg
-        H_budget              = 1.0          # unit defined by H_mode
+        H_mode                = "ppmw"     # oceans | ppmw | kg
+        H_budget              = 2e5          # unit defined by H_mode
         C_mode                = "C/H"        # C/H mass ratio | ppmw | kg
         C_budget              = 1.0          # unit defined by C_mode
         N_mode                = "N/H"        # N/H mass ratio | ppmw | kg
@@ -168,16 +135,16 @@ config_version = "3.0"
         metallicity           = 1000         # metallicity relative to solar [by mass]
         # Noble gases (opt-in per gas via outgas.calliope.include_*). Mode is
         # kg | ppmw | solar; solar = multiple of the protosolar X/H mass ratio.
-        He_mode               = "kg"         # kg | ppmw | solar
-        He_budget             = 0.0          # unit defined by He_mode
-        Ne_mode               = "kg"
-        Ne_budget             = 0.0
-        Ar_mode               = "kg"
-        Ar_budget             = 0.0
-        Kr_mode               = "kg"
-        Kr_budget             = 0.0
-        Xe_mode               = "kg"
-        Xe_budget             = 0.0
+        He_mode               = "solar"         # kg | ppmw | solar
+        He_budget             = 1.0          # unit defined by He_mode
+        Ne_mode               = "solar"
+        Ne_budget             = 1.0
+        Ar_mode               = "solar"
+        Ar_budget             = 1.0
+        Kr_mode               = "solar"
+        Kr_budget             = 1.0
+        Xe_mode               = "solar"
+        Xe_budget             = 1.0
 
     # Partial pressures (used when volatile_mode = 'gas_prs') [bar]
     [planet.gas_prs]
@@ -200,8 +167,6 @@ config_version = "3.0"
     age_ini                   = 0.100        # model start age [Gyr]
     module                    = "mors"       # mors | dummy
     bol_scale                 = 1.0          # bolometric luminosity scaling factor
-    bol_scale_start           = "none"       # stellar age from which bol_scale is applied [Gyr]; None to disable
-    bol_scale_duration        = 0.0          # duration for which bol_scale is applied [Gyr]
 
     [star.mors]
         # Rotation and evolution
@@ -229,133 +194,27 @@ config_version = "3.0"
 
 # Planetary orbit & tides
 [orbit]
-    # Orbit instellation
-    instellation_method       = "distance"   # "distance" (semi-major axis) | "inst" (flux)
-    instellationflux          = 1.0          # instellation [S_Earth] (if method = "inst")
+    module                    = "none"       # tidal heating module: none | dummy | lovepy
 
-    # Orbit geometry
-    semimajoraxis             = 1.0          # semi-major axis [AU] (if method = "distance")
+    # Orbit geometry and instellation
+    instellation_method       = "distance"   # "distance" (semi-major axis) | "inst" (flux)
+    semimajoraxis             = 0.7          # semi-major axis [AU] (if method = "distance")
+    instellationflux          = 5.0          # instellation [S_Earth] (if method = "inst")
     eccentricity              = 0.0          # orbital eccentricity
     zenith_angle              = 48.19        # characteristic zenith angle [degrees]
     s0_factor                 = 0.375        # instellation geometric scale factor
-    axial_period              = "none"       # day length [hours]; none = tidally locked
-
-    # Tidal evolution and rotation
-    star_planet_model         = "none"       # evolve star-planet orbital parameters (semi-major axis and eccentricity); options = "none" | "sp0d" | "sp1d"
-    planet_satellite_model    = "none"       # evolve planet-satellite orbital parameters (semi-major axis and eccentricity); options = "none" | "ps1d" | "ps1d_evec"
-
-    perturber                 = "star"       # perturbing object ("star", "satellite") to induce tides on the primairy (planet)
-
-    # Tidal heating module
-    module                    = "none"       # tidal heating module: none | dummy | lovepy | obliqua
-
-    # Satellite
-    [orbit.satellite]
-        include_satellite     = false        # include satellite
-        mass_sat              = 0.012        # satellite mass [M_earth]
-        radius_sat            = 0.273        # satellite radius [R_earth]
-        axial_period_sat      = "none"       # day length [hours]; none = tidally locked
-        semimajoraxis_sat     = 3.5          # satellite orbit semi-major axis [R_earth]
-        eccentricity_sat      = 0.0          # satellite initial orbital eccentricity [dimensionless]
-        evection_angle        = 0.0          # initial evection angle [degrees]
-        c_factor_sat          = 0.4          # satellite normalized moment of inertia factor [dimensionless]
-        love_number_sat       = "none"       # satellite love number spectrum or interior structure, provide absolute path to file.
-
-    # Shared ODE-solver and adaptive-substep-controller settings, used by
-    # both the star-planet models (sp0d, sp1d) and the planet-satellite
-    # models (ps0d, ps1d, ps1d_evec)
-    [orbit.solver]
-        method                 = "Radau"     # scipy.integrate.solve_ivp integration method
-        rtol                   = 1e-6        # relative tolerance passed to solve_ivp
-        atol                   = 1e-9        # absolute tolerance passed to solve_ivp
-
-        dt0_yr                 = 1e-4        # initial adaptive-substep size [yr]
-        dt_max_yr              = 2000.0      # maximum adaptive-substep size [yr]
-        growth                 = 1.15        # substep growth factor applied after an accepted step
-        shrink                 = 0.35        # substep shrink factor applied after a rejected step
-
-        max_rel_da             = 0.01        # max tolerated relative change in semi-major axis per substep
-        max_rel_de             = 0.01        # max tolerated relative change in eccentricity per substep
-        max_rel_dOmega         = 0.02        # max tolerated relative change in a spin rate per substep
-        de_floor               = 0.05        # floor on the eccentricity-change-ratio denominator
-        max_substeps           = 10_000_000  # maximum number of substeps attempted per call
-
-        # ps1d_evec only
-        resonance_margin_enter = 0.10        # evection-band entry margin ((a-a_res)/a < margin)
-        resonance_margin_exit  = 0.50        # evection-band exit margin  ((a-a_res)/a > margin)
-        resonance_margin_approach = 0.30     # wider pre-emptive margin for event detection
-        fine_csv_target_rel_dt = 0.01        # target storage-clock spacing for out-of-band fine samples, stores with 1% of current time, time resolution
-
-    # Tidal heating
-    [orbit.dummy]
-        H_tide                = 1e-7         # fixed tidal power density [W kg-1]
-        Phi_tide              = "<0.3"       # apply heating where melt fraction satisfies inequality
-        Imk2                  = 0.0          # fixed Im(k2) love number (must be <= 0)
-
-    [orbit.lovepy]
-        visc_thresh           = 1e9          # minimum viscosity for tidal heating [Pa s]
-        ncalc                 = 1000         # grid points for tidal calculation
-
-    [orbit.obliqua]
-        store_3D              = false        # Store 3D tidal response for each layer. Note: this will generate large output files. If false, radial profiles of tidal responses will be stored instead.
-        enforce_ec            = true         # Enforce energy conservation in tidal response calculations, improves stability in fluid-mush cases at low forcing frequencies (< 1e-7 Hz). This does not affect the Lovenumbers.
-        optimize_scales       = false        # Optimize non-dimensionalization scales for the relaxation method. This can improve convergence and stability, especially for low forcing frequencies (< 1e-7 Hz). However, do not use with Bigfloat precision.
-        solid_shell           = true         # Insert an infinitesimal solid shell around the core. This patches an issue where y2 and y4 become decoupled and cause the solution to diverge in fluid layers. Only use with solid1d_relax or solid1d_mush_relax.
-        cap_LN                = false        # Clamp each mode's Re(k2)/Im(k2) to 3x/2x the fluid Love-number limit for its degree n, heating is rescaled to match via enforce_ec.
-
-        min_frac              = 0.02         # minimum segment radius fraction before smoothing [dimensionless]
-        visc_lus              = 5e5          # liquid-mush handoff viscosity [Pa s]
-        visc_sus              = 5e5          # solid-mush handoff viscosity [Pa s]
-        n                     = [2]          # power of the radial factor (goes with (r/a)^{n}, since r<<a only n=2 contributes significantly)
-        m                     = [0, 2]       # harmonic of the true anomaly. m=2 corresponds to the semidiurnal tide, m=1 diurnal tide
-        k_min                 = "none"       # minimum tidal mode range (k is the Fourier index in mean anomaly), set "none" to obtain tidal mode range from eccentricity relation
-        k_max                 = "none"       # maximum tidal mode range (k is the Fourier index in mean anomaly), set "none" to obtain tidal mode range from eccentricity relation
-        evection_padding_factor = 2.0        # safety multiplier on the look-ahead eccentricity padding applied to the adaptive k-range while in/near the evection band; 0 = no padding
-
-        material_mu           = "andrade"    # material type for complex shear modulus ("andrade", "maxwell", "elastic")
-        material_k            = "andrade"    # material type for complex bulk modulus ("andrade", "maxwell", "elastic")
-        alpha                 = 0.3          # power-law exponent, only for Andrade rheology (free parameter)
-
-        verbosity             = 1            # obliqua log level: 0 (silent) | 1 (info) | 2 (debug)
-
-        # tidal models, see Obliqua documentation for details.
-        module_solid = "solid1d-relax"       # solid-phase tidal model, options: "none" | "solid0d" | "solid1d" | "solid1d-mush" | "solid1d-relax" | "solid1d-mush-relax" | "solid1d-equil-relax"
-        module_mushy = "none"                # mushy-phase tidal model, options: "none" | "interp"
-        module_fluid = "fluid1d"             # fluid-phase tidal model, options: "none" | "fluid0d" | "fluid1d"
-
-        [orbit.obliqua.solid]
-            ncalc             = 1000         # number of sublayers to use for dim=1 solid tides (for shooting method)
-            dr_min            = 300          # minimum spacing between grid points (for relaxation method) [m]
-            dr_max            = 3000         # maximum spacing between grid points (for relaxation method) [m]
-            core              = "liquid"     # core solution to use as CMB boundary condition, options: "liquid", "solid", "inertial-liquid", "inertial"
-            core_props        = "core"       # Core properties to use for CMB boundary condition, options: "core", "mantle"
-            inertial_terms    = true         # Include inertial terms in the solid tidal response equations
-            bulk_l            = 1e9          # liquid bulk modulus [Pa]
-            dbulk_power       = 1            # drained bulk modulus powerlaw scaling exponent
-            porosity_thresh   = 3e-2         # percolation threshold, at which there is a first‐order transition from fully connected to fully isolated pore space [dimensionless]
-
-         [orbit.obliqua.mushy]
-            b_width           = 5e-1         # fraction of segment height as standard deviation for lower dissipation peak
-            t_width           = 3e-2         # fraction of segment height as standard deviation for upper dissipation peak
-
-        [orbit.obliqua.fluid]
-            sigma_R           = 1e-4         # rayleigh drag coefficient at interface [dimensionless]
-            sigma_R_factor    = 0.5          # rayleigh drag coefficient in pure fluid as fraction of the interface [dimensionless]
-            sigma_R_prf       = "dynamic_interp"# heating profile distribution ("uniform", "exp", "linear", "quadratic", "dynamic", "dynamic_interp")
-            H_R               = 1e5          # heating profile scale height [m]
-            efficiency        = 1e0          # rayleigh drag efficiency at core interface [dimensionless]
 
 # ----------------------------------------------------
 
 # Interior structure (hydrostatic equilibrium & composition)
 [interior_struct]
-    module                    = "zalmoxis"   # zalmoxis | dummy | spider
-    core_frac_mode            = "mass"       # radius | mass; zalmoxis always uses mass (radius is ignored with a warning)
-    core_frac                 = 0.325        # radius or mass fraction (see core_frac_mode)
-    core_density              = "self"       # core density [kg m-3]; "self" = from zalmoxis/dummy
-    core_heatcap              = "self"       # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis/dummy
-    melting_dir               = "none"       # melting curve folder in FWL_DATA; none if PALEOS-derived; otherwise see tools/solidus_func.py
-    eos_dir                   = "none"       # EOS folder in FWL_DATA; none if PALEOS
+    module                    = "dummy"   # zalmoxis | dummy | spider
+    core_frac_mode            = "radius"       # radius | mass; zalmoxis always uses mass (radius is ignored with a warning)
+    core_frac                 = 0.55        # radius or mass fraction (see core_frac_mode)
+    core_density              = 12000       # core density [kg m-3]; "self" = from zalmoxis/dummy
+    core_heatcap              = 800       # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis/dummy
+    melting_dir               = "Monteux-600"       # melting curve folder in FWL_DATA; none if PALEOS-derived; otherwise see tools/solidus_func.py
+    eos_dir                   = "1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa/"       # EOS folder in FWL_DATA; none if PALEOS
 
     [interior_struct.zalmoxis]
         # Equation of state
@@ -421,15 +280,13 @@ config_version = "3.0"
 
 # Interior energy transport (mantle & core thermal evolution)
 [interior_energetics]
-    module                    = "aragog"     # aragog | spider | dummy
+    module                    = "dummy"     # aragog | spider | dummy
 
     # Grid and solver tolerances (shared by Aragog + SPIDER; ignored for dummy)
     num_levels                = 80           # radial grid levels (energetics domain only)
     rtol                      = 1.0e-10      # relative ODE solver tolerance
     atol                      = 1.0e-10      # absolute ODE solver tolerance
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
-    num_tolerance             = -1           # deprecated alias for rtol; leave at -1 (unset)
-    surface_bc_mode           = "flux"       # flux (F_atm from the atmosphere) | grey_body (native BC)
 
     # Constant-properties mode: bypass EOS tables, use analytical T(S) = T_ref * exp((S - S_ref) / Cp)
     const_properties          = false
@@ -460,14 +317,13 @@ config_version = "3.0"
     # Rheology and convection
     rfront_loc                = 0.40         # rheological front centre [melt fraction]
     rfront_wid                = 0.20         # rheological front width [melt fraction]
-    grain_size                = 1e-3          # crystal grain size [m]
+    grain_size                = 0.1          # crystal grain size [m]
     mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
     kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
 
     # Coupling limits (max T_magma change per PROTEUS step)
-    tmagma_atol               = 20.0         # absolute limit [K]
+    tmagma_atol               = 50.0         # absolute limit [K]
     tmagma_rtol               = 0.02         # relative limit
-    tmagma_tides_step         = 10.0         # Maximum change in T_magma allowed when tides are active [K].
 
     # Ultra-thin boundary layer parameterization
     param_utbl                = false        # enable UTBL
@@ -500,19 +356,9 @@ config_version = "3.0"
     [interior_energetics.aragog]
         mass_coordinates              = true     # mass coordinate mesh spacing
         backend                       = "jax"    # jax (CVODE + analytic Jacobian) | numpy (CVODE + FD Jacobian)
-        solver_method                 = "cvode"  # cvode (SUNDIALS, required unless a scipy solver is chosen) | radau (scipy) | bdf (scipy)
+        solver_method                 = "cvode"  # cvode (SUNDIALS) | radau (scipy) | bdf (scipy)
         atol_temperature_equivalent   = 1.0e-8   # CVODE atol [K]
         phase_smoothing               = "tanh"   # phase-boundary smoothing: tanh | cubic_hermite
-        separation_viscosity          = "mixture" # gravitational-separation drag viscosity: melt (SPIDER parity) | mixture (keeps the CMB temperature from collapsing in coupled caps-off runs)
-        core_bc                       = "energy_balance"  # CMB condition: energy_balance | quasi_steady | gradient | bower2018
-        tolerance_struct              = 100      # absolute mass tolerance [kg] for the radius secant solver
-        scalar_gravity_override       = false    # replace the mesh gravity column with a uniform surface scalar
-        # phi_step_cap, temperature_step_cap, entropy_step_cap: omitted here so they
-        # fall back to the schema default (0.0), which the Aragog wrapper reads as off
-        # (no cap). The caps are a debugging control, not a production setting: each
-        # ends the interior sub-solve at a freezing-front crossing, which slices the
-        # coupled step and drives the reported CMB heat flux briefly negative. Set a
-        # positive value to enable one; -1.0 is the off spelling; explicit 0.0 rejected.
         # Proximity band [J/kg/K] within which a cell counts as near a solidus/liquidus
         # crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase
         # RHS. Solver-accuracy control, not a cosmetic step-size knob: lowering it below the
@@ -526,9 +372,6 @@ config_version = "3.0"
     [interior_energetics.spider]
         solver_type           = "bdf"        # SUNDIALS method: adams | bdf
         matprop_smooth_width  = 1.0e-2       # melt-fraction smoothing window across solidus/liquidus
-        tolerance_rel         = -1           # deprecated alias for interior_energetics.rtol; leave at -1 (unset)
-        tolerance_struct      = 100          # absolute mass tolerance [kg] for the radius secant solver
-        log_output            = true         # write SPIDER solver log output
 
     # Dummy module parameters
     [interior_energetics.dummy]
@@ -546,11 +389,8 @@ config_version = "3.0"
         nusselt_exponent          = 0.33         # Nusselt-Rayleigh scaling exponent
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
-        atm_heat_capacity_const   = true         # use the constant fallback heat capacity above
         silicate_density          = 4103.0       # silicate density [kg/m^3]
         core_density              = 10738        # core density if not defined by structure module [kg/m^3]
-        core_shear                = 1.0e9        # core shear modulus [Pa]
-        core_bulk                 = 1.0e12       # core bulk modulus [Pa]
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
         thermal_diffusivity       = 1.0e-6       # thermal diffusivity [m^2/s]
         thermal_expansivity       = 2.0e-5       # thermal expansivity [1/K]
@@ -567,7 +407,7 @@ config_version = "3.0"
 # Outgassing (volatile partitioning between interior and atmosphere)
 [outgas]
     module                    = "calliope"   # calliope | atmodeller | dummy
-    fO2_shift_IW              = 4            # redox state [log10(delta_IW)]
+    fO2_shift_IW              = -4            # redox state [log10(delta_IW)]
     mass_thresh               = 1e16         # minimum volatile mass threshold [kg]
     h2_binodal                = false        # H2 binodal partitioning; true is rejected at config load (not production ready)
     vapourise                 = false        # include rock vapour species
@@ -576,32 +416,6 @@ config_version = "3.0"
     T_floor                   = 700.0        # outgassing temperature floor [K]; clamped from below
     solver_rtol               = 1e-4         # relative mass/equilibrium tolerance
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
-
-    # Solid-phase volatile trapping during mantle crystallisation
-    trap_mode                 = "none"       # none | constant | dynamic
-    trap_F_tl                 = 0.01         # trapped melt fraction [1], constant mode
-    trap_tau                  = 1.0e6        # compaction time scale [yr], dynamic mode
-    trap_delta_T              = -1.0         # solidus to freezing front [K]; negative derives it from the melting curves
-
-    # Drainage integral: compaction time from the front the solver resolves
-    trap_tau_source           = "fixed"      # fixed (published law) | aragog (drainage integral)
-    trap_phi_min              = 0.01         # porosity below which a node counts as solid [1]
-    trap_mush_log10visc       = -1.0         # log10 mush viscosity [Pa s]; negative selects 20
-    trap_n_front_min          = 3            # fewest nodes a front must span to be integrated
-    trap_max_front_fraction   = 1.0          # largest fraction of the mantle the front may occupy; 1 = no limit
-
-    # Crystal/melt partition coefficients, D = w_solid / w_liquid
-    D_const_H2O              = 0.0017       # H2O lattice incorporation [1]
-    D_const_CO2              = 0.0          # CO2 lattice incorporation [1]
-    D_const_O2               = 0.0          # O2 lattice incorporation [1]
-    D_const_H2               = 0.0          # H2 lattice incorporation [1]
-    D_const_CH4              = 0.0          # CH4 lattice incorporation [1]
-    D_const_CO               = 0.0          # CO lattice incorporation [1]
-    D_const_N2               = 0.0          # N2 lattice incorporation [1]
-    D_const_NH3              = 0.0          # NH3 lattice incorporation [1]
-    D_const_S2               = 0.0          # S2 lattice incorporation [1]
-    D_const_SO2              = 0.0          # SO2 lattice incorporation [1]
-    D_const_H2S              = 0.0          # H2S lattice incorporation [1]
 
     [outgas.calliope]
         # Species switches (false = excluded entirely from equilibrium calculation)
@@ -622,11 +436,6 @@ config_version = "3.0"
         include_Kr            = false
         include_Xe            = false
         solubility            = true         # melt-gas partitioning (false = all in atmosphere)
-
-        # Solver
-        nguess                = 1000         # max initial-guess samples for the equilibrium solver
-        nsolve                = 3000         # max solver iterations per call
-        p_guess_max           = 1e5          # upper bound [bar] of the cold-start surface-pressure draw
 
     [outgas.atmodeller]
         solver_mode           = "robust"     # robust (better convergence) | basic (faster)
@@ -661,23 +470,23 @@ config_version = "3.0"
     module                    = "agni"       # agni | janus | dummy
 
     # Grid and spectral setup (shared by agni + janus)
-    spectral_group            = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
+    spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
     spectral_bands            = "48"         # wavenumber bands in k-table
-    num_levels                = 50           # vertical atmosphere levels (min 15)
-    p_top                     = 1.0e-6       # top-of-atmosphere pressure [bar]
-    p_obs                     = "none"       # observation pressure level [bar] (transit radius)
+    num_levels                = 40           # vertical atmosphere levels (min 15)
+    p_top                     = 1.0e-5       # top-of-atmosphere pressure [bar]
+    p_obs                     = 'none'       # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
     # Radiative properties (agni, janus only)
-    rayleigh                  = true         # Rayleigh scattering
-    cloud_enabled             = false        # water cloud radiative effects
+    rayleigh                  = false         # Rayleigh scattering
+    cloud_enabled             = true        # water cloud radiative effects
     cloud_alpha               = 0.0          # condensate retention fraction (0 to 1)
-    aerosols_enabled          = false        # enable aerosol radiative effects (agni only)
+    aerosols_enabled          = true        # enable aerosol radiative effects (agni only)
     albedo_pl                 = 0.0          # planetary bond albedo (0 to 1)
     surf_greyalbedo           = 0.1          # grey surface albedo (used when agni.surf_material = "greybody")
 
     # Surface boundary condition
-    surf_state                = "skin"       # energy balance: mixed_layer | fixed | skin
+    surf_state                = "fixed"       # energy balance: mixed_layer | fixed | skin
     surface_d                 = 0.01         # conductive skin thickness [m]
     surface_k                 = 2.0          # conductive skin conductivity [W/m/K]
 
@@ -693,11 +502,7 @@ config_version = "3.0"
         rainout               = true         # volatile condensation and evaporation
         oceans                = true         # surface liquid water oceans
         latent_heat           = false        # latent heat from condensation/evaporation
-        thermo_functions      = true         # temperature-dependent thermodynamic properties
-        spectral_file         = "none"       # AGNI spectral file path, or "greygas"; none = use spectral_group/bands
-        grey_opacity_lw       = 10.0         # grey longwave opacity [m2/kg] (spectral_file = "greygas")
-        grey_opacity_sw       = 1e-4         # grey shortwave opacity [m2/kg] (spectral_file = "greygas")
-        real_gas              = false        # real-gas EOS where available
+        real_gas              = true         # real-gas EOS where available
         chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
         mlt_criterion         = "s"          # convection criterion: s (Schwarzschild) | l (Ledoux)
 
@@ -711,15 +516,15 @@ config_version = "3.0"
         evap_efficiency       = 0.01         # raindrop re-evaporation efficiency (0 to 1)
 
         # Solver tuning (rarely need to change)
-        solution_atol         = 0.5          # Newton solver absolute tolerance [W/m2]
-        solution_rtol         = 0.15         # Newton solver relative tolerance
+        solution_atol         = 0.4          # Newton solver absolute tolerance [W/m2]
+        solution_rtol         = 0.2         # Newton solver relative tolerance
         psurf_thresh          = 0.1          # skip full RCE when P_surf below this [bar]
-        dx_max                = 200.0        # max Newton step per iteration [K]; wide cap lets the RCE solve reach equilibrium from a hot start within max_steps
-        dx_max_ini            = 50.0         # max Newton step during first few PROTEUS loops [K]
-        max_steps             = 200          # max Newton iterations per call
-        perturb_all           = false        # recompute full Jacobian each iteration
-        ini_profile           = "isothermal" # initial T(p) guess: isothermal | loglinear | dry_adiabat | analytic
-        ls_default            = 2            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
+        dx_max                = 50.0        # max Newton step per iteration [K]; wide cap lets the RCE solve reach equilibrium from a hot start within max_steps
+        dx_max_ini            = 400.0         # max Newton step during first few PROTEUS loops [K]
+        max_steps             = 100          # max Newton iterations per call
+        perturb_all           = true        # recompute full Jacobian each iteration
+        ini_profile           = "loglinear" # initial T(p) guess: isothermal | loglinear | dry_adiabat | analytic
+        ls_default            = 0            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
         fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
         check_safe_gas        = true         # require at least one gas with opacity+thermo data
         verbosity             = 1            # AGNI log level: 0 (silent) | 1 (info) | 2 (debug)
@@ -730,23 +535,6 @@ config_version = "3.0"
         fastchem_maxiter_solv = 20000        # max FastChem iterations (internal solver)
         fastchem_xtol_chem    = 1e-4         # FastChem convergence tolerance (chemistry)
         fastchem_xtol_elem    = 1e-4         # FastChem convergence tolerance (elemental)
-
-        # Hydrostatic integration
-        hydrograv_steps     = 4096          # Number of steps to use when calculating heights and gravity.
-        hydrograv_maxdr     = 6335439.0     # Maximum step size to use when calculating heights [m]
-        hydrograv_hilldr    = 6335.439      # Maximum step size to use beyond the Hill radius [m]
-        hydrograv_mindr     = 1e-5          # Minimum step size to use when calculating heights [m]
-        hydrograv_ming      = 1e-4          # Minimum allowed gravity in the atmosphere [m/s^2]
-        hydrograv_constg    = false         # Constant gravity with height?
-        hydrograv_selfg     = true          # Include self-gravity of the atmosphere?
-
-        # Aerosol optics (used for auto-discovered Mie-theory aerosols)
-        aerosol_r_eff       = 1.0e-6         # Effective radius of the log-normal size distribution [m]
-        aerosol_sigma_g     = 1.65           # Geometric standard deviation of the log-normal size distribution
-
-        # Photosphere from optical depth (used when atmos_clim.p_obs='none')
-        tau_obs             = 0.02           # Reference vertical optical depth defining the photosphere
-        wl_obs              = 1.125e-6       # Reference wavelength at which tau_obs is evaluated [m]
 
     [atmos_clim.janus]
         F_atm_bc              = 0            # outgoing flux boundary: 0 (TOA) | 1 (surface)
@@ -761,12 +549,8 @@ config_version = "3.0"
 
 # Atmospheric escape
 [escape]
-    module                    = "zephyrus"   # zephyrus | dummy | boreas | none
+    module                    = "zephyrus"   # zephyrus | dummy
     reservoir                 = "outgas"     # reservoir setting escaping composition
-    hill_clamp                = true         # limit the XUV level to the Hill radius
-    hill_clamp_frac           = 1.0          # fraction of the Hill radius used as that limit
-    step_max_frac             = 0.25         # largest share of the reservoir one step may remove
-    step_dt_floor_frac        = 1e-3         # how far below dt.minimum a capped step may shorten the next
 
     [escape.zephyrus]
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
@@ -775,26 +559,6 @@ config_version = "3.0"
 
     [escape.dummy]
         rate                  = 0.0          # bulk escape rate [kg s-1]
-
-    [escape.boreas]
-        fractionate           = true         # elemental fractionation in outflow
-        efficiency            = 0.1          # energy efficiency factor
-        sigma_H               = 1.89e-18     # H absorption cross-section in XUV [cm2]
-        sigma_O               = 2.00e-18     # O absorption cross-section in XUV [cm2]
-        sigma_C               = 2.50e-18     # C absorption cross-section in XUV [cm2]
-        sigma_N               = 3.00e-18     # N absorption cross-section in XUV [cm2]
-        sigma_S               = 6.00e-18     # S absorption cross-section in XUV [cm2]
-        kappa_H2              = 1e-2         # grey H2 opacity in IR [cm2 g-1]
-        kappa_H2O             = 1.0          # grey H2O opacity in IR [cm2 g-1]
-        kappa_O2              = 1.0          # grey O2 opacity in IR [cm2 g-1]
-        kappa_CO2             = 1.0          # grey CO2 opacity in IR [cm2 g-1]
-        kappa_CO              = 1.0          # grey CO opacity in IR [cm2 g-1]
-        kappa_CH4             = 1.0          # grey CH4 opacity in IR [cm2 g-1]
-        kappa_N2              = 1.0          # grey N2 opacity in IR [cm2 g-1]
-        kappa_NH3             = 1.0          # grey NH3 opacity in IR [cm2 g-1]
-        kappa_H2S             = 1.0          # grey H2S opacity in IR [cm2 g-1]
-        kappa_SO2             = 1.0          # grey SO2 opacity in IR [cm2 g-1]
-        kappa_S2              = 1.0          # grey S2 opacity in IR [cm2 g-1]
 
 # Late accretion
 [accretion]

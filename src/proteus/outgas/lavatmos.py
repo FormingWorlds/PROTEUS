@@ -222,6 +222,8 @@ _SPECIES_TABLE = [
     ('SiH4', 'H4Si1'),
     ('NaOH', 'H1Na1O1'),
     ('NaO', 'Na1O1'),
+    ('Mg2', 'Mg2'),
+    ('Na2', 'Na2'),
     ('SiN', 'N1Si1'),
     ('CaS', 'Ca1S1'),
     ('HO2', 'H1O2'),
