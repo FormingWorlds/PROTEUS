@@ -77,7 +77,6 @@ def evolve_orbit_star(
         run_parameterized_orbital_migration(hf_row, config, interior_o.dt)
         return
 
-
     else:
         UpdateStatusfile(dirs, 26)
         raise ValueError(f'unrecognised star_planet_model: {model!r}')

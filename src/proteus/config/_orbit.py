@@ -256,6 +256,7 @@ def ax_valid(instance, attribute, value):
     if float(value) <= 0:
         raise ValueError(f'Initial axial period must be >0 hours, got {value}')
 
+
 @define
 class Parameterized:
     """Parameterized orbital migration module.
@@ -273,13 +274,16 @@ class Parameterized:
     tau_migration: float
         Timescale of migration (for sigmoid migration) [yr].
     """
+
     sma_init = field(default=None, validator=optional(gt(0)), converter=none_if_none)
     sma_final = field(default=None, validator=optional(gt(0)), converter=none_if_none)
 
-
-    migration: str = field(default="none", validator=in_(("none", 'instant', 'sigmoid', 'high_ecc')))
+    migration: str = field(
+        default='none', validator=in_(('none', 'instant', 'sigmoid', 'high_ecc'))
+    )
     time_migration: float = field(default=1e6, validator=gt(0))
     tau_migration: float = field(default=1e9, validator=gt(0))
+
 
 @define
 class Satellite:
@@ -475,7 +479,9 @@ class Orbit:
 
     # Orbital model to use for star-planet orbit evolution based on tides
     star_planet_model: str | None = field(
-        default='none', validator=in_((None, 'none', 'sp0d', 'sp1d', 'parameterized')), converter=none_if_none
+        default='none',
+        validator=in_((None, 'none', 'sp0d', 'sp1d', 'parameterized')),
+        converter=none_if_none,
     )
     # Initial day length for planet [hours]
     # If none, assume 1:1 spin orbit synchronization and use orbital period as day length

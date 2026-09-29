@@ -61,6 +61,7 @@ def init_orbit(handler: Proteus):
         # setup logging for Obliqua
         setup_logging(handler.directories, handler.config.orbit.obliqua.verbosity)
 
+
 def update_separation(hf_row: dict):
     """
     Calculate time-averaged orbital separation on an elliptical path.

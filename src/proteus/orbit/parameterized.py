@@ -14,7 +14,9 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
-def instant_migration(t: float, sma_init: float, sma_final: float, time_migration: float) -> float:
+def instant_migration(
+    t: float, sma_init: float, sma_final: float, time_migration: float
+) -> float:
     """
     Step-function for instant orbital migration.
 
@@ -40,7 +42,10 @@ def instant_migration(t: float, sma_init: float, sma_final: float, time_migratio
     else:
         return sma_final
 
-def sigmoid_migration(t: float, sma_init: float, sma_final: float, time_migration: float, tau_mig: float) -> float:
+
+def sigmoid_migration(
+    t: float, sma_init: float, sma_final: float, time_migration: float, tau_mig: float
+) -> float:
     """
     Sigmoid function for orbital migration with a time transition.
 
@@ -69,10 +74,20 @@ def sigmoid_migration(t: float, sma_init: float, sma_final: float, time_migratio
     if t < time_migration:
         return sma_init
     else:
-        sma = ((sma_init - sma_final) / (1.0 + np.exp((t - time_migration) / tau_mig))) + sma_final
+        sma = (
+            (sma_init - sma_final) / (1.0 + np.exp((t - time_migration) / tau_mig))
+        ) + sma_final
         return sma
 
-def high_eccentricity_migration(t: float, ecc: float, sma_init: float, sma_final: float, time_migration: float, tau_mig: float) -> float:
+
+def high_eccentricity_migration(
+    t: float,
+    ecc: float,
+    sma_init: float,
+    sma_final: float,
+    time_migration: float,
+    tau_mig: float,
+) -> float:
     """
     Orbital migration triggered by a high-eccentricity event, with a time transition.
 
@@ -106,9 +121,10 @@ def high_eccentricity_migration(t: float, ecc: float, sma_init: float, sma_final
         return sma_init, ecc
     else:
         e_mig = np.sqrt(1.0 - sma_final / sma_init)
-        sma = sma_final / (1.0 - e_mig ** 2 * np.exp( -2 * (t - time_migration) / tau_mig))
+        sma = sma_final / (1.0 - e_mig**2 * np.exp(-2 * (t - time_migration) / tau_mig))
         ecc = np.sqrt(max(0, 1.0 - sma_final / sma))
         return sma, ecc
+
 
 def run_parameterized_orbital_migration(hf_row: dict, config: Config, dt: float):
     """
@@ -149,34 +165,40 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config, dt: float)
 
     # Evaluate migration regime
     if migration is None:
-        raise ValueError(f'Unknown migration option: {migration}. Expected None, "instant", "sigmoid", or "high_ecc".')
-    elif migration == "none": # no migration
+        raise ValueError(
+            f'Unknown migration option: {migration}. Expected None, "instant", "sigmoid", or "high_ecc".'
+        )
+    elif migration == 'none':  # no migration
         hf_row['semimajorax'] = sma_i
         hf_row['eccentricity'] = eccentricity
-    elif migration == "instant": # instant migration
-        hf_row['semimajorax'] = instant_migration(t=current_time, sma_init=sma_i, sma_final=sma_f, time_migration=t_mig)
+    elif migration == 'instant':  # instant migration
+        hf_row['semimajorax'] = instant_migration(
+            t=current_time, sma_init=sma_i, sma_final=sma_f, time_migration=t_mig
+        )
         hf_row['eccentricity'] = eccentricity
-    elif migration == "sigmoid": # sigmoid migration
+    elif migration == 'sigmoid':  # sigmoid migration
         if tau_mig is None:
             raise ValueError('Sigmoid migration requires timescale tau_mig')
         else:
-            hf_row['semimajorax'] = sigmoid_migration(t=current_time,
-                                                sma_init=sma_i,
-                                                sma_final=sma_f,
-                                                time_migration=t_mig,
-                                                tau_mig=tau_mig,
-                                            )
+            hf_row['semimajorax'] = sigmoid_migration(
+                t=current_time,
+                sma_init=sma_i,
+                sma_final=sma_f,
+                time_migration=t_mig,
+                tau_mig=tau_mig,
+            )
             hf_row['eccentricity'] = eccentricity
 
-    elif migration == "high_ecc": # high-eccentricity migration
+    elif migration == 'high_ecc':  # high-eccentricity migration
         if tau_mig is None:
             raise ValueError('High-eccentricity migration requires timescale tau_mig')
         else:
-            hf_row['semimajorax'], hf_row['eccentricity'] = high_eccentricity_migration(t=current_time,
-                                                                                        ecc=eccentricity,
-                                                                                        sma_init=sma_i,
-                                                                                        sma_final=sma_f,
-                                                                                        time_migration=t_mig,
-                                                                                        tau_mig=tau_mig,
-                                                                                    )
+            hf_row['semimajorax'], hf_row['eccentricity'] = high_eccentricity_migration(
+                t=current_time,
+                ecc=eccentricity,
+                sma_init=sma_i,
+                sma_final=sma_f,
+                time_migration=t_mig,
+                tau_mig=tau_mig,
+            )
     return hf_row['semimajorax'], hf_row['eccentricity']
