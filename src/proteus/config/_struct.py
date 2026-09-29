@@ -12,6 +12,17 @@ from ._converters import none_if_none
 
 def valid_zalmoxis(instance, attribute, value):
     """Validate Zalmoxis EOS format strings and reject unsupported miscibility options."""
+    # `global_miscibility` needs the H2-silicate binodal handoff (Zalmoxis tracker #64),
+    # not yet implemented. Reject it for every structure module: only the zalmoxis
+    # structure writes the solvus that the main loop and SPIDER read.
+    if getattr(instance.zalmoxis, 'global_miscibility', False):
+        raise ValueError(
+            '`interior_struct.zalmoxis.global_miscibility = true` is not yet usable: '
+            'it requires the H2-silicate binodal handoff on the Zalmoxis side '
+            '(Zalmoxis tracker #64), which the pinned release does not implement. '
+            'Use `dry_mantle = false` for phase-aware H2O mixing without miscibility.'
+        )
+
     if instance.module == 'spider':
         return
 
@@ -31,20 +42,6 @@ def valid_zalmoxis(instance, attribute, value):
         raise ValueError(
             f"`interior_struct.zalmoxis.ice_layer_eos` must be 'none' or '<source>:<material>' format, "
             f"got '{ice_layer_eos}'"
-        )
-
-    # Phase-aware volatile mixing (`dry_mantle = false`) is supported: the
-    # pinned Zalmoxis release evaluates a per-shell volatile profile in the
-    # mantle density. Binodal-aware miscibility (`global_miscibility`)
-    # additionally requires the H2-silicate binodal handoff on the Zalmoxis
-    # side (Zalmoxis tracker #64), which is not yet implemented, so it stays
-    # gated on its own merits rather than on the pin.
-    if getattr(instance.zalmoxis, 'global_miscibility', False):
-        raise ValueError(
-            '`interior_struct.zalmoxis.global_miscibility = true` is not yet usable: '
-            'it requires the H2-silicate binodal handoff on the Zalmoxis side '
-            '(Zalmoxis tracker #64), which the pinned release does not implement. '
-            'Use `dry_mantle = false` for phase-aware H2O mixing without miscibility.'
         )
 
     # WolfBower2018 EOS is limited to 1 TPa. For planets > 2 M_earth,

@@ -15,6 +15,7 @@ from scipy.interpolate import RegularGridInterpolator
 
 from proteus.interior_energetics.common import Interior_t, get_file_tides
 from proteus.interior_energetics.timestep import next_step
+from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import radnuc_data
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 
@@ -612,6 +613,55 @@ def _interp_ps_lookup(S: float, P: float, lookup: np.ndarray) -> float:
 
 
 # ====================================================================
+def _resolve_spider_eos_dir(dirs: dict, config: Config) -> str:
+    """Resolve the P-S EOS table directory SPIDER reads for this run.
+
+    Prefers the per-run Zalmoxis/PALEOS-generated tables at
+    ``dirs['spider_eos_dir']`` (which may live outside the run's own output
+    tree when ``PROTEUS_PS_CACHE_DIR`` is set), then FWL_DATA, then SPIDER's
+    bundled lookup_data as a final fallback. Both the initial-entropy
+    computation and the solver call site use this so they always agree on
+    which directory backs the run.
+    """
+    if dirs.get('spider_eos_dir') and os.path.isdir(dirs['spider_eos_dir']):
+        eos_dir = dirs['spider_eos_dir']
+        log.debug('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
+        return eos_dir
+
+    if config.interior_struct.eos_dir is None:
+        raise FileNotFoundError(
+            'interior_struct.eos_dir must be set when no Zalmoxis-generated '
+            'EOS tables are available. Set eos_dir to a valid EOS folder name.'
+        )
+    eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.interior_struct.eos_dir, 'P-S')
+    if not os.path.isdir(eos_dir):
+        # Fall back to SPIDER's local lookup_data directory
+        eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
+    if not os.path.isdir(eos_dir):
+        raise FileNotFoundError(
+            f'SPIDER EOS directory not found: {eos_dir}. '
+            f"Check interior.eos_dir='{config.interior_struct.eos_dir}'."
+        )
+    return eos_dir
+
+
+def _compute_spider_initial_entropy(config: Config, hf_row: dict, spider_eos_dir: str) -> float:
+    """Compute SPIDER's initial mantle entropy via the shared PALEOS lookup.
+
+    This is the entry point SPIDER's own t=0 setup calls in `_try_spider`;
+    kept as a standalone function so it can be exercised the same way
+    Aragog's `AragogRunner._set_entropy_ic` is, for parity testing between
+    the two interior energetics modules.
+    """
+    from proteus.interior_energetics.common import compute_initial_entropy
+
+    return compute_initial_entropy(
+        config,
+        hf_row,
+        spider_eos_dir=spider_eos_dir,
+    )
+
+
 def _try_spider(
     dirs: dict,
     config: Config,
@@ -713,23 +763,24 @@ def _try_spider(
     spider_radius = hf_row['R_int']
     spider_gravity = hf_row['gravity']
     spider_coresize = coresize
-    if config.interior_struct.zalmoxis.global_miscibility and 'R_solvus' in hf_row:
-        R_solvus = hf_row['R_solvus']
-        if R_solvus is not None and R_solvus < hf_row['R_int']:
-            spider_radius = R_solvus
-            # Gravity at solvus: interpolate from structure if available,
-            # otherwise scale by (R_solvus/R_int)^2 * M_solvus/M_int
-            spider_gravity = hf_row['gravity'] * (R_solvus / hf_row['R_int']) ** 2
-            # Coresize relative to solvus, not surface
-            R_cmb_actual = coresize * hf_row['R_int']
-            spider_coresize = R_cmb_actual / R_solvus if R_solvus > 0 else coresize
-            log.info(
-                'SPIDER domain: [%.2e, %.2e] m (solvus), coresize=%.4f, gravity=%.2f m/s^2',
-                R_cmb_actual,
-                R_solvus,
-                spider_coresize,
-                spider_gravity,
-            )
+    R_solvus = solvus_radius(
+        config, hf_row.get('R_solvus'), hf_row['R_int'], R_inner=coresize * hf_row['R_int']
+    )
+    if R_solvus is not None:
+        spider_radius = R_solvus
+        # Gravity at solvus: interpolate from structure if available,
+        # otherwise scale by (R_solvus/R_int)^2 * M_solvus/M_int
+        spider_gravity = hf_row['gravity'] * (R_solvus / hf_row['R_int']) ** 2
+        # Coresize relative to solvus, not surface
+        R_cmb_actual = coresize * hf_row['R_int']
+        spider_coresize = R_cmb_actual / R_solvus
+        log.info(
+            'SPIDER domain: [%.2e, %.2e] m (solvus), coresize=%.4f, gravity=%.2f m/s^2',
+            R_cmb_actual,
+            R_solvus,
+            spider_coresize,
+            spider_gravity,
+        )
 
     ### SPIDER base call sequence
     call_sequence = [
@@ -784,6 +835,11 @@ def _try_spider(
     call_sequence.extend(['-ic_surface_entropy', '-1'])
     call_sequence.extend(['-ic_core_entropy', '-1'])
 
+    # EOS lookup data: prefer per-run generated tables (from Zalmoxis/PALEOS),
+    # then FWL_DATA, then SPIDER local as final fallback. The initial entropy
+    # and the solver arguments both read this one directory.
+    eos_dir = _resolve_spider_eos_dir(dirs, config)
+
     # Initial condition
     if IC_INTERIOR == 2:
         # get last JSON File
@@ -801,14 +857,7 @@ def _try_spider(
         )
     else:
         # Compute initial entropy from planet temperature settings (PALEOS lookup)
-        from proteus.interior_energetics.common import compute_initial_entropy
-
-        spider_eos_dir = os.path.join(dirs['output/data'], 'spider_eos')
-        ini_entropy = compute_initial_entropy(
-            config,
-            hf_row,
-            spider_eos_dir=spider_eos_dir,
-        )
+        ini_entropy = _compute_spider_initial_entropy(config, hf_row, eos_dir)
         call_sequence.extend(
             [
                 '-ic_adiabat_entropy',
@@ -873,27 +922,6 @@ def _try_spider(
         call_sequence.extend(['-HTIDAL', '2'])
         call_sequence.extend(['-htidal_filename', get_file_tides(dirs['output'])])
 
-    # EOS lookup data: prefer per-run generated tables (from Zalmoxis/PALEOS),
-    # then FWL_DATA, then SPIDER local as final fallback.
-    if dirs.get('spider_eos_dir') and os.path.isdir(dirs['spider_eos_dir']):
-        eos_dir = dirs['spider_eos_dir']
-        log.debug('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
-    else:
-        if config.interior_struct.eos_dir is None:
-            raise FileNotFoundError(
-                'interior_struct.eos_dir must be set when no Zalmoxis-generated '
-                'EOS tables are available. Set eos_dir to a valid EOS folder name.'
-            )
-        eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.interior_struct.eos_dir, 'P-S')
-        if not os.path.isdir(eos_dir):
-            # Fall back to SPIDER's local lookup_data directory
-            eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
-        if not os.path.isdir(eos_dir):
-            raise FileNotFoundError(
-                f'SPIDER EOS directory not found: {eos_dir}. '
-                f"Check interior.eos_dir='{config.interior_struct.eos_dir}'."
-            )
-
     # Resolve melting curve S(P) files: prefer generated paths, then FWL_DATA,
     # then SPIDER's bundled lookup_data as a final fallback. The bundled
     # lookup_data ships P-S melting curves (Andrault+2011 / Hirschmann+2013)
@@ -901,7 +929,12 @@ def _try_spider(
     if dirs.get('spider_liquidus_ps') and os.path.isfile(dirs['spider_liquidus_ps']):
         liquidus_ps = dirs['spider_liquidus_ps']
         solidus_ps = dirs['spider_solidus_ps']
-        log.info('Using Zalmoxis-generated phase boundaries')
+        log.info(
+            'Using P-S phase boundaries from %s (interior_struct.module=%s, melting_dir=%s)',
+            os.path.dirname(liquidus_ps),
+            config.interior_struct.module,
+            config.interior_struct.melting_dir,
+        )
     else:
         mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior_struct.melting_dir)
         liquidus_ps = os.path.join(mc_dir, 'liquidus_P-S.dat')
@@ -1344,6 +1377,9 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
 
     # Core (CMB) temperature: last staggered node (SPIDER ordering is surface-to-CMB)
     output['T_cmb'] = float(interior_o.temp[-1])
+
+    # Temperature at the CMB basic node itself (last basic node in the surface-to-CMB order)
+    output['T_cmb_node'] = float(json_file.get_dict_values(['data', 'temp_b'])[-1])
 
     # Core (CMB) pressure and heat flux: last basic node (SPIDER ordering is surface-to-CMB)
     output['P_cmb'] = float(json_file.get_dict_values(['data', 'pressure_b'])[-1])

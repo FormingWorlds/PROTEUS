@@ -138,7 +138,7 @@ config_version = "3.0"
     tcenter_init              = 6000         # center temperature [K] (linear only)
     delta_T_super             = 100.0        # min superheat above the liquidus [K] (liquidus_super); small value starts the interior near the liquidus for a stable default run
     ini_entropy               = 3900.0       # initial specific entropy [J/kg/K] (isentropic only)
-    ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
+    ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (<= 0 with liquidus_super)
     f_accretion               = 0.04         # accretion heat retention [0-1] (accretion only)
     f_differentiation         = 0.50         # differentiation heat retention [0-1] (accretion only)
 
@@ -466,7 +466,7 @@ config_version = "3.0"
     radio_Th                  = 0.124        # Th [ppmw of element]; BSE value
 
     # Rheology and convection
-    rfront_loc                = 0.50         # rheological front centre [melt fraction]
+    rfront_loc                = 0.40         # rheological front centre [melt fraction]
     rfront_wid                = 0.20         # rheological front width [melt fraction]
     grain_size                = 1e-3          # crystal grain size [m]
     mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
@@ -508,7 +508,7 @@ config_version = "3.0"
     [interior_energetics.aragog]
         mass_coordinates              = true     # mass coordinate mesh spacing
         backend                       = "jax"    # jax (CVODE + analytic Jacobian) | numpy (CVODE + FD Jacobian)
-        solver_method                 = "cvode"  # cvode (SUNDIALS) | radau (scipy) | bdf (scipy)
+        solver_method                 = "cvode"  # cvode (SUNDIALS, required unless a scipy solver is chosen) | radau (scipy) | bdf (scipy)
         atol_temperature_equivalent   = 1.0e-8   # CVODE atol [K]
         phase_smoothing               = "tanh"   # phase-boundary smoothing: tanh | cubic_hermite
         separation_viscosity          = "mixture" # gravitational-separation drag viscosity: melt (SPIDER parity) | mixture (keeps the CMB temperature from collapsing in coupled caps-off runs)
@@ -647,7 +647,7 @@ config_version = "3.0"
     spectral_bands            = "48"         # wavenumber bands in k-table
     num_levels                = 50           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-6       # top-of-atmosphere pressure [bar]
-    p_obs                     = 0.02         # observation pressure level [bar] (transit radius)
+    p_obs                     = "none"       # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
     # Radiative properties (agni, janus only)
@@ -714,12 +714,21 @@ config_version = "3.0"
         fastchem_xtol_elem    = 1e-4         # FastChem convergence tolerance (elemental)
 
         # Hydrostatic integration
-        hydrograv_steps     = 2000          # Number of steps to use when calculating heights and gravity.
-        hydrograv_maxdr     = 1e8           # Maximum step size to use when calculating heights [m]
+        hydrograv_steps     = 4096          # Number of steps to use when calculating heights and gravity.
+        hydrograv_maxdr     = 6335439.0     # Maximum step size to use when calculating heights [m]
+        hydrograv_hilldr    = 6335.439      # Maximum step size to use beyond the Hill radius [m]
         hydrograv_mindr     = 1e-5          # Minimum step size to use when calculating heights [m]
         hydrograv_ming      = 1e-4          # Minimum allowed gravity in the atmosphere [m/s^2]
         hydrograv_constg    = false         # Constant gravity with height?
         hydrograv_selfg     = true          # Include self-gravity of the atmosphere?
+
+        # Aerosol optics (used for auto-discovered Mie-theory aerosols)
+        aerosol_r_eff       = 1.0e-6         # Effective radius of the log-normal size distribution [m]
+        aerosol_sigma_g     = 1.65           # Geometric standard deviation of the log-normal size distribution
+
+        # Photosphere from optical depth (used when atmos_clim.p_obs='none')
+        tau_obs             = 0.02           # Reference vertical optical depth defining the photosphere
+        wl_obs              = 1.125e-6       # Reference wavelength at which tau_obs is evaluated [m]
 
     [atmos_clim.janus]
         F_atm_bc              = 0            # outgoing flux boundary: 0 (TOA) | 1 (surface)

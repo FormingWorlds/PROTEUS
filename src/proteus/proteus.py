@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +24,7 @@ from proteus.config import (
     read_config_object,
     structure_config,
 )
+from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
@@ -167,10 +169,6 @@ class Proteus:
             False  # Mantle solidified, outgassing stopped but evolution continues
         )
         self.lockfile = '/tmp/none'  # Path to keepalive file
-
-        # Resume skin-layer anchor (set during resume setup, cleared when
-        # the AGNI skin layer reconverges). None on non-resume runs.
-        self._resume_T_surf: float | None = None
 
         # Default values for mors.spada cases
         self.star_props = None
@@ -376,6 +374,11 @@ class Proteus:
             Run in offline mode; do not try to connect to the internet.
         """
 
+        # Anchor solves memoised by an earlier run in this process do not carry over.
+        zalmoxis_module = sys.modules.get('proteus.interior_struct.zalmoxis')
+        if zalmoxis_module is not None:
+            zalmoxis_module._clear_superliquidus_cache()
+
         # Import things needed to run PROTEUS
         #    atmospheric chemistry
         from proteus.atmos_chem.wrapper import run_chemistry
@@ -451,6 +454,12 @@ class Proteus:
 
         # termination criteria
         from proteus.utils.terminate import check_termination, print_termination_criteria
+
+        # Stop before any output is touched when Aragog needs CVODE and it is missing
+        if self.config.interior_energetics.module == 'aragog':
+            from proteus.interior_energetics.aragog import require_cvode
+
+            require_cvode(self.config)
 
         # First things
         start_time = datetime.now()
@@ -880,13 +889,6 @@ class Proteus:
 
             self.directories['_resume_struct_settle_loops'] = _RESUME_STRUCT_SETTLE_LOOPS
 
-            # Save the coupled T_surf for the first resumed atmosphere solve.
-            # Aragog's first step outputs an adiabatic T_magma ~30-50 K above
-            # the coupled T_surf because the conductive skin layer is an AGNI
-            # construct that Aragog does not model. Anchoring AGNI's first
-            # solve at the coupled T_surf prevents the skin-layer transient.
-            self._resume_T_surf = self.hf_row.get('T_surf')
-
         log.info(' ')
 
         # Prepare star stuff
@@ -965,48 +967,6 @@ class Proteus:
             )
             if _IT_TIMING_ENABLED:
                 _t_mod['interior'] = time.perf_counter() - _t0
-
-            # After resume, adiabat-based interior solvers (Aragog, SPIDER)
-            # output T_magma ~30-50 K above the coupled T_surf because the
-            # conductive skin layer is an atmosphere-side construct. Override
-            # T_magma for the atmosphere call only (not the helpfile) until
-            # AGNI's skin layer reconverges. The override introduces a
-            # bounded energy inconsistency (~1-4% of F_atm per step) that
-            # decays as the anchor releases.
-            _SKIN_DELTA_THRESHOLD = 5.0  # K; release anchor below this
-            if self._resume_T_surf is not None and self.config.interior_energetics.module in (
-                'aragog',
-                'spider',
-            ):
-                T_adiab = self.hf_row.get('T_magma', 0.0)
-                skin_delta = T_adiab - self._resume_T_surf
-                if abs(skin_delta) > _SKIN_DELTA_THRESHOLD:
-                    if skin_delta < 0:
-                        log.warning(
-                            'Resume: anomalous negative skin delta %.1f K '
-                            '(T_magma=%.1f < anchor=%.1f), releasing anchor',
-                            skin_delta,
-                            T_adiab,
-                            self._resume_T_surf,
-                        )
-                        self._resume_T_surf = None
-                    else:
-                        # Override for atmosphere only; preserve raw value
-                        self.hf_row['_T_magma_raw'] = T_adiab
-                        self.hf_row['T_magma'] = self._resume_T_surf
-                        log.info(
-                            'Resume: anchoring T_magma for atmosphere '
-                            '(%.1f K -> %.1f K, skin delta %.1f K)',
-                            T_adiab,
-                            self._resume_T_surf,
-                            skin_delta,
-                        )
-                else:
-                    log.info(
-                        'Resume: skin layer converged (delta %.1f K), releasing anchor',
-                        skin_delta,
-                    )
-                    self._resume_T_surf = None
 
             # Advance current time in main loop according to interior step
             self.hf_row['Time'] += self.interior_o.dt  # in years
@@ -1248,22 +1208,23 @@ class Proteus:
             # so the atmosphere is computed from the solvus outward.
             # Save originals to restore after the atmosphere step.
             _saved_atm_bc = {}
-            if (
-                self.config.interior_struct.zalmoxis.global_miscibility
-                and 'R_solvus' in self.hf_row
-            ):
-                R_sol = self.hf_row.get('R_solvus')
-                if R_sol is not None and R_sol < self.hf_row['R_int']:
-                    _saved_atm_bc = {
-                        'T_surf': self.hf_row['T_surf'],
-                        'P_surf': self.hf_row['P_surf'],
-                        'R_int': self.hf_row['R_int'],
-                        'T_magma': self.hf_row['T_magma'],
-                    }
-                    self.hf_row['T_surf'] = self.hf_row['T_solvus']
-                    self.hf_row['T_magma'] = self.hf_row['T_solvus']
-                    self.hf_row['P_surf'] = self.hf_row['P_solvus'] * 1e-5  # Pa -> bar
-                    self.hf_row['R_int'] = R_sol
+            R_sol = solvus_radius(
+                self.config,
+                self.hf_row.get('R_solvus'),
+                self.hf_row['R_int'],
+                R_inner=self.hf_row.get('R_core') or 0.0,
+            )
+            if R_sol is not None:
+                _saved_atm_bc = {
+                    'T_surf': self.hf_row['T_surf'],
+                    'P_surf': self.hf_row['P_surf'],
+                    'R_int': self.hf_row['R_int'],
+                    'T_magma': self.hf_row['T_magma'],
+                }
+                self.hf_row['T_surf'] = self.hf_row['T_solvus']
+                self.hf_row['T_magma'] = self.hf_row['T_solvus']
+                self.hf_row['P_surf'] = self.hf_row['P_solvus'] * 1e-5  # Pa -> bar
+                self.hf_row['R_int'] = R_sol
 
             try:
                 run_atmosphere(
@@ -1285,17 +1246,6 @@ class Proteus:
                 if _saved_atm_bc:
                     for key, val in _saved_atm_bc.items():
                         self.hf_row[key] = val
-
-                # Restore raw T_magma if it was overridden for the atmosphere
-                T_raw = self.hf_row.pop('_T_magma_raw', None)
-                if T_raw is not None:
-                    self.hf_row['T_magma'] = T_raw
-
-            # Update the resume T_surf anchor with the new coupled value,
-            # unless the solvus override was active (in which case T_surf
-            # reflects the pre-solvus value, not what the atmosphere saw).
-            if self._resume_T_surf is not None and not _saved_atm_bc:
-                self._resume_T_surf = self.hf_row.get('T_surf', self._resume_T_surf)
 
             # Atmosphere-interior coupling deadlock detection.
             # If the atmosphere solver failed AND the interior state has
@@ -1444,15 +1394,9 @@ class Proteus:
             self.config.interior_energetics.module == 'aragog'
             and self.interior_o.aragog_solver is not None
         ):
-            from proteus.interior_energetics.aragog import AragogRunner
+            from proteus.interior_energetics.aragog import write_final_snapshot
 
-            out = self.interior_o.aragog_solver.get_state()
-            AragogRunner._write_output_ncdf(
-                self.directories['output'],
-                self.hf_row['Time'],
-                out,
-                T_surf_coupled=self.hf_row.get('T_surf'),
-            )
+            write_final_snapshot(self.config, self.interior_o, self.directories, self.hf_row)
 
         # Ensure the final atmosphere state is on disk, since it won't always happen to
         # be written on the last iteration of the model.

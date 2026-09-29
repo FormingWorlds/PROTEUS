@@ -37,6 +37,7 @@ pytest.importorskip('aragog.jax')
 
 from aragog.jax.phase import PhaseParams  # noqa: E402
 
+from proteus.config import read_config_object  # noqa: E402
 from proteus.interior_energetics.aragog import AragogRunner  # noqa: E402
 from proteus.interior_energetics.aragog_jax import AragogJAXRunner  # noqa: E402
 from proteus.interior_energetics.aragog_phase import (  # noqa: E402
@@ -166,6 +167,23 @@ def test_shared_quantities_match_across_numpy_and_jax():
     assert jax_params.grain_size == pytest.approx(ie.grain_size)
     assert numpy_params.matprop_smooth_width == pytest.approx(ie.spider.matprop_smooth_width)
     assert jax_params.matprop_smooth_width == pytest.approx(ie.spider.matprop_smooth_width)
+
+
+def test_default_rfront_loc_reaches_both_phase_types(config_minimal):
+    """The rfront_loc default reaches the numpy and JAX aragog phase parameters.
+
+    input/minimal.toml sets no rfront_loc, so the parsed value is the Interior default
+    (0.4). Both phase types carry it as the rheological transition, an explicit value
+    still overrides it, and a value of 1 is rejected before it reaches a builder.
+    """
+    config = read_config_object(config_minimal)
+    mixed = build_mixed_phase_params(config, 'solidus.dat', 'liquidus.dat')
+    assert mixed.rheological_transition_melt_fraction == pytest.approx(0.4, abs=1e-12)
+    assert build_jax_phase_params(config).phi_rheo == pytest.approx(0.4, abs=1e-12)
+    config.interior_energetics.rfront_loc = 0.3
+    assert build_jax_phase_params(config).phi_rheo == pytest.approx(0.3, abs=1e-12)
+    with pytest.raises(ValueError, match='rfront_loc'):
+        config.interior_energetics.rfront_loc = 1.0
 
 
 @pytest.mark.parametrize(
@@ -385,6 +403,34 @@ def test_cvode_factory_site_delegates_to_the_shared_jax_builder(tmp_path):
         AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
 
     mock_builder.assert_called_once_with(config)
+
+
+@pytest.mark.parametrize('spider_eos_dir', ['', 'missing'])
+def test_cvode_factory_reads_the_setup_solver_fallback_tables(tmp_path, spider_eos_dir):
+    """With no usable ``_spider_eos_dir`` the JAX EOS is read from
+    ``outdir/data/spider_eos``, the directory ``setup_solver`` falls back to.
+    """
+    config = _make_full_config()
+    config.interior_energetics.aragog.backend = 'jax'
+    eos_dir = str(tmp_path / spider_eos_dir) if spider_eos_dir else ''
+    interior_o = _make_runner_interior_o(spider_eos_dir=eos_dir)
+
+    with (
+        patch(
+            'proteus.interior_energetics.aragog._cached_entropy_eos_jax',
+            return_value=MagicMock(),
+        ) as mock_eos,
+        patch('aragog.jax.phase.MeshArrays.from_numpy_mesh', return_value=MagicMock()),
+        patch(
+            'proteus.interior_energetics.aragog.build_jax_phase_params',
+            return_value=MagicMock(),
+        ),
+    ):
+        AragogRunner._maybe_install_jax_cvode_factory(config, interior_o, str(tmp_path))
+
+    mock_eos.assert_called_once_with(str(tmp_path / 'data' / 'spider_eos'))
+    # Discrimination: the configured directory is not what the EOS reads.
+    assert mock_eos.call_args.args[0] != eos_dir
 
 
 def test_numpy_setup_solver_site_delegates_to_the_shared_builder():

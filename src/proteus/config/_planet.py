@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from attr.validators import ge, gt, in_, optional
 from attrs import define, field
 
@@ -200,6 +202,29 @@ def _reject_reserved_fO2_source(instance, attribute, value):
         )
 
 
+def _validate_ini_dsdr(instance, attribute, value):
+    """Reject a non-finite ``ini_dsdr``, and a positive one with liquidus_super.
+
+    SPIDER and Aragog add ``ini_dsdr * (r - R_surf)`` to the uniform initial
+    entropy in every temperature mode, so a non-finite value gives a
+    non-finite profile. With ``temperature_mode = 'liquidus_super'`` a
+    positive gradient also lowers the deep entropy below the adiabat that was
+    shown to be ``delta_T_super`` above the liquidus.
+    """
+    if not math.isfinite(value):
+        raise ValueError(
+            f'planet.ini_dsdr = {value} is not finite; the interior solvers add it '
+            'to the initial entropy profile.'
+        )
+    if value > 0 and instance.temperature_mode == 'liquidus_super':
+        raise ValueError(
+            f'planet.ini_dsdr = {value} is positive, which lowers the deep initial '
+            'entropy below the adiabat that planet.temperature_mode = '
+            '"liquidus_super" solves to be fully molten. Use ini_dsdr <= 0 with '
+            'liquidus_super.'
+        )
+
+
 @define
 class Planet:
     """Bulk planet properties, initial temperature profile, and volatile inventory.
@@ -233,19 +258,27 @@ class Planet:
             The surface temperature (hence the uniform initial entropy) is
             solved so the minimum superheat over the whole mantle equals
             delta_T_super, evaluated against the solidus/liquidus actually in
-            use. This guarantees a fully molten initial state with a controlled
-            margin for any planet mass and any melting-curve parameterisation,
-            without the user having to pick a surface temperature or entropy.
-            The solve raises if the requested superheat cannot be reached
-            before the deep adiabat exhausts the EOS table.
+            use. This controls the molten margin without the user picking a
+            surface temperature or entropy. If the requested superheat cannot
+            be reached before the deep adiabat exhausts the EOS table, the
+            solve clamps to the largest achievable superheat and emits a
+            warning that reports it. If even the hottest adiabat the table
+            supports stays below the liquidus somewhere in the mantle, no fully
+            molten initial condition exists and the solve raises a
+            RuntimeError. The liquidus is the one in the interior P-S tables,
+            which the interior solver also uses for its melt fraction, for
+            every structure module.
     tsurf_init: float
         Initial magma surface temperature [K] (isothermal, linear, adiabatic).
         Ignored when temperature_mode = 'isentropic', 'adiabatic_from_cmb',
         or 'liquidus_super'.
     tcmb_init: float
-        Initial core-mantle boundary temperature [K] (adiabatic_from_cmb only).
+        Initial core-mantle boundary temperature [K] (adiabatic_from_cmb).
         The mantle adiabat is anchored at this temperature at P = P_cmb
-        and integrated outward to the surface.
+        and integrated outward to the surface. With liquidus_super, the
+        Zalmoxis structure, a PALEOS mantle and spider or aragog energetics
+        it is also the core-mantle boundary temperature of a structure solve
+        whose P-T anchor fails before any anchor is solved.
     tcenter_init: float
         Center temperature [K] (linear only).
     f_accretion: float
@@ -256,21 +289,24 @@ class Planet:
         Initial specific entropy at the surface [J/kg/K] (isentropic mode).
         CHILI Earth-SPIDER reference: 3900.0.
     ini_dsdr: float
-        Initial entropy gradient with radius [J/kg/K/m] (isentropic mode).
-        CHILI Earth-SPIDER reference: -4.698e-6 (small numerical
-        perturbation needed for SPIDER's BDF stability on a uniform IC).
+        Initial entropy gradient with radius [J/kg/K/m], added to the uniform
+        initial entropy by SPIDER and Aragog in every temperature mode; must
+        be finite, and must be <= 0 with liquidus_super. CHILI Earth-SPIDER reference:
+        -4.698e-6 (small numerical perturbation needed for SPIDER's BDF
+        stability on a uniform IC).
     delta_T_super: float
         Minimum superheat [K] above the liquidus for the liquidus_super
         initial condition (liquidus_super mode only). The initial adiabat is
         solved so that, at its most-constraining depth, the temperature is at
-        least delta_T_super above the configured liquidus; this fixes the whole
-        isentropic profile and guarantees a fully molten mantle with that
-        margin, for any planet mass and any melting curve. The default 500 K
-        gives a comfortably molten start across the Earth-mass to
-        ten-Earth-mass range. delta_T_super = 0 makes the mantle marginally
+        least delta_T_super above the liquidus of the interior P-S tables;
+        this fixes the whole isentropic profile. Whether the default 500 K is
+        reachable depends on the tables and the planet mass (see the
+        initial-conditions guide). delta_T_super = 0 makes the mantle marginally
         molten (just touching the liquidus at the binding depth). If the
         requested superheat cannot be reached within the EOS table, the solve
-        raises and reports the largest achievable value.
+        clamps to the largest achievable superheat and emits a warning that
+        reports it; if no fully molten adiabat exists within the table at
+        all, it raises a RuntimeError.
     volatile_mode: str
         How to set the initial volatile inventory: 'elements' or 'gas_prs'.
     volatile_reservoir: str
@@ -315,8 +351,7 @@ class Planet:
 
     # Initial temperature profile. Default 'liquidus_super' solves for the
     # coolest adiabat that is fully molten everywhere with delta_T_super of
-    # superheat above the configured liquidus, robust to planet mass and to the
-    # melting-curve choice. The other six modes cover the fixed-T_cmb adiabat
+    # superheat above the table liquidus. The other six modes cover the fixed-T_cmb adiabat
     # (adiabatic_from_cmb), surface-anchored adiabatic, isothermal, linear,
     # accretion (White & Li 2025), and isentropic (CHILI protocol) ICs.
     temperature_mode: str = field(
@@ -343,15 +378,13 @@ class Planet:
     # temperature_mode = 'isentropic' (CHILI protocol). The interior solver
     # maps S -> T(P) via its own EOS table; tsurf_init is ignored.
     ini_entropy: float = field(default=3900.0, validator=gt(0))
-    ini_dsdr: float = field(default=-4.698e-6)
+    ini_dsdr: float = field(default=-4.698e-6, validator=_validate_ini_dsdr)
 
     # Minimum superheat above the liquidus for temperature_mode =
     # 'liquidus_super'. The IC adiabat is solved so its temperature exceeds the
-    # configured liquidus by at least delta_T_super at the most-constraining
-    # mantle depth, which fixes a fully molten isentropic profile for any mass
-    # and any melting curve. The default 500 K gives a comfortably molten start
-    # across the Earth-mass to ten-Earth-mass range; delta_T_super = 0 makes the
-    # mantle marginally molten (touching the liquidus at the binding depth).
+    # table liquidus by at least delta_T_super at the most-constraining mantle
+    # depth; delta_T_super = 0 makes the mantle marginally molten (touching the
+    # liquidus at the binding depth).
     delta_T_super: float = field(default=500.0, validator=ge(0))
 
     # Initial volatile inventory
