@@ -659,33 +659,22 @@ class AragogRunner:
             for _diag_key in ('f_ohm', 'flux_geometry'):
                 core_module_params.pop(_diag_key)
 
-        boundary_conditions = _BoundaryConditionsParameters(
-            # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
-            # 1 = native grey-body (emissivity * sigma * (T^4 - T_eqm^4))
-            outer_boundary_condition=_aragog_outer_bc,
-            # first guess surface heat flux [W/m2] (only used if outer_bc=4)
-            outer_boundary_value=hf_row['F_atm'],
-            # 1 = core cooling model
-            # 2 = prescribed heat flux
-            # 3 = prescribed temperature
-            inner_boundary_condition=(1),
-            # core temperature [K], if inner_boundary_condition = 3
-            inner_boundary_value=(4000),
-            # only used in gray body BC, outer_boundary_condition = 1
-            emissivity=1,
-            # only used in gray body BC, outer_boundary_condition = 1
-            equilibrium_temperature=hf_row['T_eqm'],
-            # used if inner_boundary_condition = 1
-            core_heat_capacity=get_core_heatcap(config, hf_row),
-            # core T_avg/T_cmb ratio from adiabatic gradient (Bower+2018 Table 2)
-            tfac_core_avg=config.interior_energetics.core_tfac_avg,
-            # ultra-thin boundary layer parameterization (Bower et al. 2018, Eq. 18)
-            param_utbl=config.interior_energetics.param_utbl,
-            param_utbl_const=config.interior_energetics.param_utbl_const,
-            # core BC mode (the 'energy_balance' option is available)
-            core_bc=core_bc_str,
-            core_module_params=core_module_params,
-        )
+        bc_kwargs: dict[str, object] = {
+            'outer_boundary_condition': _aragog_outer_bc,
+            'outer_boundary_value': hf_row['F_atm'],
+            'inner_boundary_condition': 1,
+            'inner_boundary_value': 4000,
+            'emissivity': 1,
+            'equilibrium_temperature': hf_row['T_eqm'],
+            'core_heat_capacity': get_core_heatcap(config, hf_row),
+            'tfac_core_avg': config.interior_energetics.core_tfac_avg,
+            'param_utbl': config.interior_energetics.param_utbl,
+            'param_utbl_const': config.interior_energetics.param_utbl_const,
+            'core_bc': core_bc_str,
+        }
+        if core_module_params is not None:
+            bc_kwargs['core_module_params'] = core_module_params
+        boundary_conditions = _BoundaryConditionsParameters(**bc_kwargs)
 
         # Define the inner_radius for the mesh.
         # Prefer hf_row['R_core'] (set by the structure module) over
