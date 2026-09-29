@@ -57,6 +57,7 @@ def _make_proteus_instance(
     config.interior_energetics.module = interior_module
     config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
     config.orbit.module = None
+    config.accretion.module = None
     # Attributes used during start() setup
     config.params.out.logging = 'WARNING'
     config.params.stop.iters.minimum = 10
@@ -2239,6 +2240,7 @@ def _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibili
     config.interior_energetics.flux_guess = 100.0
     config.orbit.module = None
     config.observe.module = None
+    config.accretion.module = None
     config.atmos_chem.when = 'never'
     config.outgas.vapourise = True
     config.planet.temperature_mode = 'isothermal'
