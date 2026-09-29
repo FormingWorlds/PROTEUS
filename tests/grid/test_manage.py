@@ -1262,6 +1262,10 @@ _UNSET = (1e-8, 1e-10)
         ('num_tolerance = 3e-9', {}, (3e-9, 3e-9)),
         ('[interior_energetics.spider]\ntolerance_rel = 3e-9', {}, (3e-9, 3e-9)),
         ('', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
+        ('', {'interior_energetics.num_tolerance': [1e-6]}, (1e-6, 1e-6)),
+        ('', {'interior_energetics.spider.tolerance_rel': [1e-6]}, (1e-6, 1e-6)),
+        ('num_tolerance = 3e-9', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
+        ('[interior_energetics.spider]\ntolerance_rel = 0.0', {}, _UNSET),
     ],
 )
 def test_write_config_files_gives_each_module_its_default_rtol(
