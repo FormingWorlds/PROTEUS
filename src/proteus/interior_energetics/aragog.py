@@ -1422,11 +1422,14 @@ class AragogRunner:
             # Read the diagnostic geometry before installing, so that the
             # install is the last thing here that can fail. Anything raising
             # after it would send a working factory into the handler below.
-            r_basic = np.asarray(solver._r_basic_flat).ravel()
+            r_basic = np.asarray(getattr(solver, '_r_basic_flat', [])).ravel()
+            if r_basic.size > 0:
+                geom = f'r_cmb={float(r_basic[0]):.6e} m, r_surf={float(r_basic[-1]):.6e} m'
+            else:
+                geom = 'r_cmb=unknown, r_surf=unknown'
             installed = (
                 'Option Z: JAX CVODE factory installed on aragog solver '
-                f'(core_bc={solver._core_bc}, n_stag={int(solver._n_stag)}, '
-                f'r_cmb={float(r_basic[0]):.6e} m, r_surf={float(r_basic[-1]):.6e} m). '
+                f'(core_bc={solver._core_bc}, n_stag={int(solver._n_stag)}, {geom}). '
                 'The mesh is read from the solver on every solve, so this is the '
                 'geometry at install time, not for the run.'
             )
