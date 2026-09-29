@@ -34,9 +34,12 @@ for the test framework.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
+import proteus.outgas.compaction as compaction
 from proteus.outgas.compaction import (
     BRANCH_DARCY,
     BRANCH_GUARD,
@@ -65,42 +68,71 @@ _T_RES_FAST = _L / (0.70 / _SECS_PER_YEAR)
 _T_RES_SLOW = _L / (0.05 / _SECS_PER_YEAR)
 
 
-def _solver_mobility(porosity, grain_size):
-    """The interior solver's own permeability, transcribed from its source.
+class _EndMemberEOS:
+    """Phase-boundary densities the solver's separation velocity reads."""
 
-    ``aragog.eos.entropy_phase.EntropyPhaseEvaluator.relative_velocity`` builds
-    this inline, so it cannot be imported; reproducing it here from that source
-    is what makes the comparison below a real cross-check rather than the module
-    agreeing with itself.
+    def __init__(self, rho_solid, rho_melt):
+        self.rho = {'solid': rho_solid, 'melt': rho_melt}
+
+    def _lookup_at_phase_boundary(self, prop, pressure, phase):
+        return np.full(np.shape(pressure), self.rho[phase])
+
+
+def _solver_velocity(porosity, grain_size, rho_s=4000.0, rho_l=3600.0, gravity=9.8, eta=100.0):
+    """Separation velocity from the interior solver's own ``relative_velocity``.
+
+    ``EntropyPhaseEvaluator.relative_velocity`` is called on a stand-in that
+    carries the attributes it reads: a mush at the given porosity, fixed
+    phase-boundary densities, gravity, grain size and the melt viscosity as
+    drag. Nothing of the solver's law is transcribed here.
     """
-    from aragog.utilities import tanh_weight
+    from aragog.eos.entropy_phase import EntropyPhaseEvaluator
 
-    por = np.maximum(porosity, 1.0e-20)
-    one_m_por = np.maximum(1.0 - porosity, 1.0e-20)
-    f_bkc = grain_size**2 * por**2 / (one_m_por**2 * 1000.0)
-    f_rg = grain_size**2 * por**4.5 * (5.0 / 7.0)
-    f_stokes = grain_size**2 * 2.0 / 9.0
-    w_rg = tanh_weight(porosity, 0.0769452, 0.02)
-    w_stokes = tanh_weight(porosity, 0.771462, 0.05)
-    return np.maximum(
-        (1.0 - w_rg) * f_bkc + (w_rg - w_stokes) * f_rg + w_stokes * f_stokes, 0.0
+    phi = np.asarray(porosity, dtype=float)
+    stand_in = SimpleNamespace(
+        _const_properties=False,
+        _eos=_EndMemberEOS(rho_s, rho_l),
+        pressure=np.full(phi.shape, 1.0e10),
+        _density=rho_s - phi * (rho_s - rho_l),
+        _g=gravity,
+        _grain_size=grain_size,
+        _separation_viscosity='melt',
+        _visc_liquid=eta,
+        _viscosity_val=np.full(phi.shape, 1.0e12),
     )
+    return EntropyPhaseEvaluator.relative_velocity(stand_in)
 
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_mobility_reproduces_the_interior_solver_in_every_regime():
     """Cross-implementation check against the permeability the interior solver
-    uses for gravitational separation (Bower et al. 2018 section 2.1, as
-    implemented in aragog ``eos/entropy_phase.py``). The law is transcribed
-    rather than imported because the solver does not expose it, so this is the
-    only thing stopping the two from drifting apart."""
+    uses for gravitational separation (Bower et al. 2018 section 2.1), by
+    calling the solver's own ``relative_velocity`` and backing the mobility out
+    of it, so a change to the solver's law fails here. The drainage velocity is
+    the solver's melt velocity times the matrix fraction (1 - phi), the one
+    deliberate difference between the two."""
     pytest.importorskip('aragog')
+    rho_s, rho_l, gravity, eta = 4000.0, 3600.0, 9.8, 100.0
+    # Both blends and all three regimes, from the porosity floor to Stokes.
+    phi = np.array([0.02, 0.05, 0.0769452, 0.1, 0.3, 0.5, 0.771462, 0.9, 0.99])
     for grain in (1.0e-4, 1.0e-3, 1.0e-2):
-        phi = np.linspace(1.0e-4, 0.99, 300)
+        v = _solver_velocity(phi, grain, rho_s, rho_l, gravity, eta)
+        theirs = v * eta / ((rho_s - rho_l) * gravity)
         mine = mobility_function(phi, grain)
-        theirs = _solver_mobility(phi, grain)
-        np.testing.assert_allclose(mine, theirs, rtol=1e-13, atol=0.0)
+        # The solver soft-clips its porosity (width 1e-3), which raises it by
+        # about 1e-6 / (4 phi); on the phi^2 branch that is 1.25e-3 of the
+        # mobility at phi = 0.02 and under 2e-4 from 0.05 up.
+        np.testing.assert_allclose(mine[phi >= 0.05], theirs[phi >= 0.05], rtol=2.0e-4)
+        np.testing.assert_allclose(mine[phi < 0.05], theirs[phi < 0.05], rtol=1.5e-3)
+        # The drainage velocity is the solver's velocity times (1 - phi).
+        w = darcy_velocity(phi, grain, rho_s - rho_l, gravity, eta)
+        np.testing.assert_allclose(w[phi >= 0.05], ((1.0 - phi) * v)[phi >= 0.05], rtol=2.0e-4)
+    # Discrimination: a Rumpf-Gupte exponent of 4 instead of 4.5 would be off
+    # by 0.3**-0.5 = 1.8 at phi = 0.3, far outside the tolerance.
+    v_rg = _solver_velocity(np.array([0.3]), 1.0e-3)[0] * eta / ((rho_s - rho_l) * gravity)
+    wrong = 1.0e-6 * 0.3**4.0 * (5.0 / 7.0)
+    assert abs(wrong / v_rg - 1.0) > 0.5
 
     # The three regimes must actually differ, or the comparison above would
     # pass on a single-branch stub. Probe one porosity well inside each.
@@ -196,7 +228,10 @@ def test_drainage_is_limited_by_the_slower_of_the_two_processes():
         _PHI_C, _T_RES_FAST, _L, grain, _DRHO, _G, eta_m, 1.0e22
     )
     assert tau_s > tau_d
-    assert stiff == pytest.approx(0.294, rel=0.02)
+    # Matrix-limited throughout, the integral has the closed form
+    # phi_c exp(-t_res / tau_s), which the stiff solver reproduces to 1e-6.
+    assert stiff == pytest.approx(_PHI_C * np.exp(-_T_RES_FAST / tau_s), rel=1.0e-6)
+    assert stiff == pytest.approx(0.294096, rel=1.0e-5)
     # Discrimination: had the faster process been taken, the stiff case would
     # drain to well under 0.1 instead of sitting just below phi_c.
     assert stiff > 0.25
@@ -221,36 +256,68 @@ def test_drainage_is_limited_by_the_slower_of_the_two_processes():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_drainage_reproduces_the_published_scaling_table():
-    """Trapped melt fractions for a 60 km martian front, against the five cases
-    of Table 2 of the PROTEUS compaction note (Lichtenberg, 21 September 2026),
-    which evaluates the same drainage equation with the same permeability model.
+def test_drainage_reproduces_the_published_scaling_table(monkeypatch):
+    """Trapped melt fractions and timescales for a 60 km martian front,
+    against the five cases of Table 2 of the PROTEUS compaction note
+    (Lichtenberg, 21 September 2026), which evaluates the same drainage
+    equation with the same permeability model.
 
-    Agreement is to a few percent rather than exactly: the table omits the
-    (1-phi) matrix fraction in the percolation speed, which this module applies,
-    so these values sit slightly above the published ones.
+    The table omits the (1 - phi) matrix fraction in the percolation speed,
+    which this module applies. With that factor removed, the integral
+    reproduces every entry to the table's printed precision; with it, the
+    percolation time is longer by exactly 1 / (1 - phi_c) and the parcel keeps
+    slightly more melt.
     """
+    # grain [m], melt visc [Pa s], mush visc [Pa s], then the printed
+    # tau_D / t_res, tau_s / t_res, F_vol at 70 cm/yr and at 5 cm/yr.
     cases = (
-        # grain [m], melt visc [Pa s], mush visc [Pa s], fast, slow
-        (100.0e-6, 10.0, 1.0e20, 0.26, 0.17),
-        (1.0e-3, 100.0, 1.0e22, 0.29, 0.23),
-        (1.0e-3, 100.0, 1.0e18, 0.19, 0.11),
-        (1.0e-3, 1.0, 1.0e18, 0.07, 0.02),
-        (1.0e-2, 1.0, 1.0e18, 0.009, 0.003),
+        (100.0e-6, 10.0, 1.0e20, 5.7, 0.50, 0.26, 0.17),
+        (1.0e-3, 100.0, 1.0e22, 0.57, 50.0, 0.29, 0.23),
+        (1.0e-3, 100.0, 1.0e18, 0.57, 0.005, 0.19, 0.11),
+        (1.0e-3, 1.0, 1.0e18, 0.006, 0.005, 0.07, 0.02),
+        (1.0e-2, 1.0, 1.0e18, 6.0e-5, 0.005, 0.009, 0.003),
     )
-    for grain, eta_m, eta_s, published_fast, published_slow in cases:
-        fast, _, _ = drainage_integral(_PHI_C, _T_RES_FAST, _L, grain, _DRHO, _G, eta_m, eta_s)
-        slow, _, _ = drainage_integral(_PHI_C, _T_RES_SLOW, _L, grain, _DRHO, _G, eta_m, eta_s)
-        assert fast == pytest.approx(published_fast, abs=0.015)
-        assert slow == pytest.approx(published_slow, abs=0.015)
+
+    def printed(value):
+        """Half a unit in the last digit the table prints for ``value``."""
+        return 0.5 * 10.0 ** (np.floor(np.log10(abs(value))) - (1 if abs(value) >= 0.01 else 0))
+
+    module = [
+        (drainage_integral(_PHI_C, t, _L, a, _DRHO, _G, eta_m, eta_s))
+        for a, eta_m, eta_s, *_ in cases
+        for t in (_T_RES_FAST, _T_RES_SLOW)
+    ]
+    # The note's percolation speed: the module's without the matrix fraction.
+    darcy = compaction.darcy_velocity
+    monkeypatch.setattr(
+        compaction,
+        'darcy_velocity',
+        lambda phi, *args: darcy(phi, *args) / (1.0 - np.asarray(phi, dtype=float)),
+    )
+    for i, (a, eta_m, eta_s, tau_d_tab, tau_s_tab, fast_tab, slow_tab) in enumerate(cases):
+        fast, tau_d, tau_s = drainage_integral(
+            _PHI_C, _T_RES_FAST, _L, a, _DRHO, _G, eta_m, eta_s
+        )
+        slow, _, _ = drainage_integral(_PHI_C, _T_RES_SLOW, _L, a, _DRHO, _G, eta_m, eta_s)
+        assert tau_d / _T_RES_FAST == pytest.approx(tau_d_tab, abs=printed(tau_d_tab))
+        assert tau_s / _T_RES_FAST == pytest.approx(tau_s_tab, abs=printed(tau_s_tab))
+        # Two-decimal entries within 0.006: the soft-mush case sits at 0.1847
+        # against a printed 0.19, just past half a unit.
+        for value, tab in ((fast, fast_tab), (slow, slow_tab)):
+            tol = 0.006 if tab >= 0.01 else printed(tab)
+            assert value == pytest.approx(tab, abs=tol)
         # A slower front always drains further, for every parameter set.
         assert slow <= fast + 1e-12
+        # The module's matrix fraction slows percolation by exactly 1/(1 - phi_c)
+        # at the entry porosity and never lets the parcel keep less melt.
+        mod_fast, mod_tau_d, mod_tau_s = module[2 * i]
+        assert mod_tau_d == pytest.approx(tau_d / (1.0 - _PHI_C), rel=1e-12)
+        assert mod_tau_s == pytest.approx(tau_s, rel=1e-12)
+        assert fast - 1e-12 <= mod_fast <= fast + 0.01
 
     # The table spans a factor of thirty across its rows, so a stub returning a
     # constant could not pass the loop above.
-    stiff, _, _ = drainage_integral(_PHI_C, _T_RES_FAST, _L, 1e-3, _DRHO, _G, 100.0, 1e22)
-    coarse, _, _ = drainage_integral(_PHI_C, _T_RES_FAST, _L, 1e-2, _DRHO, _G, 1.0, 1e18)
-    assert stiff / coarse > 20.0
+    assert module[2][0] / module[8][0] > 20.0
 
 
 @pytest.mark.physics_invariant

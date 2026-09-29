@@ -52,6 +52,7 @@ from proteus.outgas.trapping import (
     critical_melt_fraction,
     crystallised_mass_from_phi,
     derived_total_elements,
+    effective_partition,
     escapable_inventory,
     keep_only_trapped_mass,
     locked_solid_mass,
@@ -262,13 +263,16 @@ def test_crystallised_mass_follows_melt_fraction_through_a_remesh():
         assert dm_bad == pytest.approx(0.0, abs=1.0e-6)
 
 
+@pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_incompatible_species_traps_through_the_interstitial_melt_alone():
-    """A species at D_Z = 0 takes no place in the crystal lattice, but the melt
-    buried between the crystals carries it down regardless, so it still traps
-    F_tl * C_Z * dM_RM. With F_tl = 0.02, C_Z = 2e-3 and dM_RM = 2e23 kg that
-    is 8e18 kg of CO2, while H2O at D_Z = 0.0017 traps 4.3332e18 kg from a melt
-    half as concentrated."""
+    """Sim, Hirschmann and Hier-Majumder (2024), JGR Planets 129, e2024JE008346,
+    Eq. 6: a species at D_Z = 0 takes no place in the crystal lattice, but the
+    melt buried between the crystals carries it down regardless, so it still
+    traps F_tl * C_Z * dM_RM. With F_tl = 0.02, C_Z = 2e-3 and dM_RM = 2e23 kg
+    that is 8e18 kg of CO2, while H2O at D_Z = 0.0017 traps 4.3332e18 kg from a
+    melt half as concentrated. The bracket's analytic limits, D_Z at F_tl = 0
+    and 1 at F_tl = 1, are pinned as well."""
     carbon, carbon_capped = trapped_mass(0.0, 0.02, 2.0e-3, _DM_RM, 3.6e21)
     assert carbon == pytest.approx(8.0e18, rel=1e-12)
     assert not carbon_capped
@@ -295,6 +299,11 @@ def test_incompatible_species_traps_through_the_interstitial_melt_alone():
     assert capped == pytest.approx(1.0e18, rel=1e-12)
     assert was_capped
     assert capped < 0.5 * 1.0e-2 * _DM_RM
+
+    # Analytic limits of the bracket: no retained melt leaves the lattice term,
+    # and a fully retained melt buries the species at the melt concentration.
+    assert effective_partition(0.0, 0.0017) == pytest.approx(0.0017, rel=1e-12)
+    assert effective_partition(1.0, 0.0017) == pytest.approx(1.0, rel=1e-12)
 
     # Error contract: an unphysical partition coefficient or trapped fraction
     # is refused rather than moving mass on it.

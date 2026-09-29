@@ -19,6 +19,8 @@ test inventoried here.
 | Orbit | `orbit/wrapper.py` | [Orbit module wrapper](orbit/wrapper.md) |
 | Outgassing | `outgas/atmodeller.py` | [Species-to-element mass split](outgas/atmodeller.md) |
 | Outgassing | `outgas/binodal.py` | [H2-MgSiO3 binodal](outgas/binodal.md) |
+| Outgassing | `outgas/compaction.py` | [Melt drainage across the freezing front](outgas/compaction.md) |
+| Outgassing | `outgas/trapping.py` | [Solid-phase volatile trapping](outgas/trapping.md) |
 | Star | `star/star.py` | [Stellar luminosity and instellation](star/star.md) |
 | Star | `star/wrapper.py` | [Stellar wrapper dispatch](star/wrapper.md) |
 
