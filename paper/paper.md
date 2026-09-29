@@ -185,6 +185,6 @@ Generative AI tools have assisted the development of PROTEUS since early 2026, a
 
 # Acknowledgements
 
-TL acknowledges support from the Netherlands eScience Center (PROTEUS project, NLESC.OEC.2023.017), the Branco Weiss Foundation, and the Alfred P. Sloan Foundation (AEThER project, G202114194). TL further acknowledges the United States National Aeronautics and Space Administration's Nexus for Exoplanet System Science research coordination network (Alien Earths project, 80NSSC21K0593). RC and OS acknowledge support from the United Kingdom Science and Technology Facilities Council (grant numbers ST/Y509139/1 and UKRI1184).
+This research was supported by the Netherlands eScience Center (PROTEUS project, NLESC.OEC.2023.017), the Branco Weiss Foundation, the Alfred P. Sloan Foundation (AEThER, G-2025-25284), and the NWO NWA-ORC PRELIFE Consortium (NWA.1630.23.013). It was further supported by the European Research Council (ERC) under the European Union's Horizon Europe research and innovation programme (MagmaWorlds, 101219807). TL acknowledges NASA's Nexus for Exoplanet System Science research coordination network (Alien Earths, 80NSSC21K0593). MA is supported by the Swiss National Science Foundation through the Postdoc.Mobility fellowship, grant number 230229. DJB acknowledges support from the Swiss State Secretariat for Education, Research and Innovation (SERI) under contract number MB22.00033 (ERC Starting Grant 2ATMO). HN and RC acknowledge support from STFC grants UKRI1184 and ST/Y509139/1, respectively.
 
 # References
