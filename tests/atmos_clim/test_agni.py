@@ -1430,12 +1430,16 @@ def _make_run_agni_config(
     xuv_defined_by_radius=False,
     hill_clamp=False,
     p_obs=1e-3,
+    cloud_enabled=False,
+    aerosols_enabled=False,
 ):
     """Build the config namespace run_agni reads."""
     return SimpleNamespace(
         atmos_clim=SimpleNamespace(
             p_obs=p_obs,
             p_top=1e-5,
+            cloud_enabled=cloud_enabled,
+            aerosols_enabled=aerosols_enabled,
             agni=SimpleNamespace(
                 solve_energy=solve_energy,
                 oceans=oceans,
