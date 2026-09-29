@@ -15,6 +15,8 @@ stays put. These tests exercise:
 * the ``phi_c`` clamp and the warming branch of the dynamic fraction, with
   ``phi_c`` the interior solver's rheological transition ``rfront_loc``,
 * the start condition, so the first step with no previous row traps nothing,
+* the initialisation stage, whose steps do not advance the mantle, trapping
+  nothing and recording no diagnostics,
 * the solid reservoirs surviving a chemistry solve that writes them as zero,
 * escape and the desiccation gate both seeing only the reachable inventory,
 * ``DeltaT`` derived from the active melting curves rather than fixed at the
@@ -446,6 +448,36 @@ def test_trapping_waits_for_a_previous_step_and_for_an_enabled_mode():
     # reason nothing moved, not an inert calculation.
     live = _hf_row()
     assert run_trapping(_config(), live, _hf_all()).total_trapped > 0.0
+
+
+@pytest.mark.physics_invariant
+def test_the_initialisation_stage_buries_nothing_and_writes_no_diagnostics():
+    """The initialisation iterations advance the clock but not the mantle, and
+    the time is reset to zero after each, so a step flagged as one traps
+    nothing and records nothing, even on inputs that would otherwise trap. The
+    same inputs outside it bury [(1 - F_tl) D + F_tl] C dM_RM of water and
+    record the drainage diagnostics at their front-scheme values."""
+    held = _hf_row()
+    assert run_trapping(_config(), held, _hf_all(), init_stage=True) is None
+    assert held['H2O_kg_solid'] == pytest.approx(0.0, abs=0.0)
+    assert held['H2O_kg_liquid'] == pytest.approx(1.8e21, rel=1e-12)
+    assert 'trap_branch' not in held
+    assert 'trap_n_exited' not in held
+
+    # Outside the initialisation stage: (0.98 * 0.0017 + 0.02) * 1e-3 * 2e23.
+    live = _hf_row()
+    step = run_trapping(_config(), live, _hf_all(), init_stage=False)
+    expected = (0.98 * 0.0017 + 0.02) * 1.0e-3 * _DM_RM
+    assert live['H2O_kg_solid'] == pytest.approx(expected, rel=1e-9)
+    # Dropping the interstitial-melt term would bury about 12 times less.
+    assert 0.98 * 0.0017 * 1.0e-3 * _DM_RM < 0.1 * expected
+    assert live['H2O_kg_solid'] + live['H2O_kg_liquid'] == pytest.approx(1.8e21, rel=1e-12)
+    # The front scheme resolves no nodes and takes no sub-steps, and with no
+    # node reaching the floor the share on the no-drainage bound is undefined.
+    assert step.n_exited == 0
+    assert live['trap_n_exited'] == pytest.approx(0.0, abs=0.0)
+    assert live['trap_n_substeps'] == pytest.approx(0.0, abs=0.0)
+    assert np.isnan(live['trap_frac_bound'])
 
 
 def test_solid_reservoir_survives_a_chemistry_solve_that_writes_it_as_zero():

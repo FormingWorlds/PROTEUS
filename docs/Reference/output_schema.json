@@ -2994,6 +2994,48 @@
       "consumers": []
     },
     {
+      "name": "trap_n_exited",
+      "unit": "1",
+      "description": "mush nodes that reached the porosity floor this step",
+      "group": "Solid-phase volatile trapping",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "trap_frac_bound",
+      "unit": "1",
+      "description": "share of their mass trapped at the no-drainage bound",
+      "group": "Solid-phase volatile trapping",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": []
+    },
+    {
+      "name": "trap_n_substeps",
+      "unit": "1",
+      "description": "drainage sub-steps of the step",
+      "group": "Solid-phase volatile trapping",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": []
+    },
+    {
       "name": "H2O_mol_atm",
       "unit": "mol",
       "description": "number outgassed to atmosphere",

@@ -1022,10 +1022,16 @@ class Proteus:
             # final; escape and outgassing have not yet read the inventories.
             # That makes this the one point where trapping can bury volatiles
             # and have every downstream consumer see one consistent state.
-            # Inactive unless outgas.trap_mode is set, and on the first step,
-            # which has no previous row to difference.
+            # Inactive unless outgas.trap_mode is set, during the initialisation
+            # stage, and on the first step, which has no previous row to difference.
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-            run_trapping(self.config, self.hf_row, self.hf_all, self.interior_o)
+            run_trapping(
+                self.config,
+                self.hf_row,
+                self.hf_all,
+                self.interior_o,
+                init_stage=self.init_stage,
+            )
             if _IT_TIMING_ENABLED:
                 _t_mod['trapping'] = time.perf_counter() - _t0
 

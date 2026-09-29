@@ -1098,6 +1098,9 @@ def GetHelpfileKeys():
         'trap_v_front',     # freezing-front speed [m s-1]
         'trap_front_courant',  # front advance over one step, in front thicknesses [1]
         'trap_w_matrix_over_vf',  # matrix speed over front speed [1]
+        'trap_n_exited',    # mush nodes that reached the porosity floor this step [1]
+        'trap_frac_bound',  # share of their mass trapped at the no-drainage bound [1]
+        'trap_n_substeps',  # drainage sub-steps of the step [1]
         ]
 
     # gases from outgassing

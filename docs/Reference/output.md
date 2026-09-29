@@ -280,6 +280,9 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `trap_v_front` | `m s-1` | freezing-front speed | `outgas/trapping.py` | always |   |
 | `trap_front_courant` | `1` | front advance over one step, in front thicknesses | `outgas/trapping.py` | always |   |
 | `trap_w_matrix_over_vf` | `1` | matrix speed over front speed | `outgas/trapping.py` | always |   |
+| `trap_n_exited` | `1` | mush nodes that reached the porosity floor this step | `outgas/trapping.py` | always |   |
+| `trap_frac_bound` | `1` | share of their mass trapped at the no-drainage bound | `outgas/trapping.py` | always |   |
+| `trap_n_substeps` | `1` | drainage sub-steps of the step | `outgas/trapping.py` | always |   |
 
 ### Gases from outgassing
 

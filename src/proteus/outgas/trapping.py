@@ -185,6 +185,9 @@ class TrappingStep:
     front_courant: float = float('nan')
     w_matrix_over_vf: float = float('nan')
     guard_reason: str = ''
+    n_exited: int = 0  # mush nodes that reached the porosity floor this step
+    frac_bound: float = float('nan')  # share of their mass on the no-drainage bound
+    n_substeps: int = 0  # drainage sub-steps the step took
 
     @property
     def total_trapped(self) -> float:
@@ -830,6 +833,9 @@ def _record(hf_row: dict, step: TrappingStep) -> None:
     hf_row['trap_v_front'] = step.v_front
     hf_row['trap_front_courant'] = step.front_courant
     hf_row['trap_w_matrix_over_vf'] = step.w_matrix_over_vf
+    hf_row['trap_n_exited'] = float(step.n_exited)
+    hf_row['trap_frac_bound'] = step.frac_bound
+    hf_row['trap_n_substeps'] = float(step.n_substeps)
     hf_row['trap_kg_cumulative'] = (
         float(hf_row.get('trap_kg_cumulative', 0.0)) + step.total_trapped
     )
@@ -854,14 +860,22 @@ def _record(hf_row: dict, step: TrappingStep) -> None:
         )
 
 
-def run_trapping(config: Config, hf_row: dict, hf_all, interior_o=None) -> TrappingStep | None:
+def run_trapping(
+    config: Config,
+    hf_row: dict,
+    hf_all,
+    interior_o=None,
+    *,
+    init_stage: bool = False,
+) -> TrappingStep | None:
     """Bury volatiles into the solid mantle over this crystallisation step.
 
     Called once per iteration, after the interior has advanced and any structure
     re-solve has finished, and before escape and outgassing read the
-    inventories. Returns ``None`` when trapping is inactive: on the first step,
-    where there is no previous state to difference, and whenever the mode is
-    ``none``.
+    inventories. Returns ``None`` when trapping is inactive: during the
+    initialisation stage, whose interior steps do not advance the mantle, on
+    the first step, where there is no previous state to difference, and
+    whenever the mode is ``none``.
 
     Parameters
     ----------
@@ -876,6 +890,8 @@ def run_trapping(config: Config, hf_row: dict, hf_all, interior_o=None) -> Trapp
         Interior state. Required by ``trap_tau_source = 'aragog'``, which reads
         the melt-fraction, density and pressure profiles to locate the freezing
         front; the published-law paths do not use it.
+    init_stage : bool
+        True during the initialisation stage, which traps nothing.
     """
     mode = getattr(config.outgas, 'trap_mode', 'none')
     # A config that never declared a mode leaves trapping inactive. The schema
@@ -888,6 +904,10 @@ def run_trapping(config: Config, hf_row: dict, hf_all, interior_o=None) -> Trapp
     if mode not in TRAPPING_MODES:
         raise ValueError(f'Unknown trapping mode {mode!r}; expected one of {TRAPPING_MODES}')
     if mode == 'none':
+        return None
+    if init_stage:
+        # The initialisation iterations advance the clock but not the mantle,
+        # and the time is reset to zero after each, so there is nothing to bury.
         return None
     if hf_all is None or len(hf_all) < 1:
         return None
