@@ -31,18 +31,21 @@ Physics invariants asserted:
 - **Monotonicity**: ``a`` and ``e`` decrease monotonically once
   migration is active.
 - **Pinned values with discrimination guards**: the logistic centre
-  and quarter point, and the high-eccentricity half-decay point.
+  and quarter point, the high-eccentricity half-decay point, and the
+  one-tau e-folding of the eccentricity.
 
 Anti-happy-path coverage:
 
 - Limit inputs: ``sma_init == sma_final`` is a fixed point of all
   three laws, and the pre-migration epoch returns the untouched orbit.
-- Error contract: a non-positive ``tau_mig`` raises, and
-  ``migration=None`` raises rather than falling through.
-- Two documented gaps are pinned as strict xfails so that closing
-  either one turns the corresponding test red: the discontinuity in
-  ``sigmoid_migration`` at ``time_migration``, and the unguarded
-  ``sqrt`` of a negative number when ``sma_final > sma_init``.
+- Error contract: a non-positive ``tau_mig`` raises, a missing
+  ``sma_init`` or ``sma_final`` is named rather than failing inside
+  the unit conversion, outward high-eccentricity migration raises,
+  and an unrecognised or null ``migration`` raises rather than
+  falling through.
+- One documented gap is pinned as a strict xfail so that closing it
+  turns the corresponding test red: the discontinuity in
+  ``sigmoid_migration`` at ``time_migration``.
 
 See ``docs/Validation/orbit/parameterized.md`` for the validation
 registry entry behind the ``reference_pinned`` test.
@@ -130,8 +133,9 @@ def test_instant_migration_is_a_step_with_an_inclusive_switch():
     assert just_before == pytest.approx(SMA_I, rel=RTOL)
     assert at_epoch == pytest.approx(SMA_F, rel=RTOL)
     assert late == pytest.approx(SMA_F, rel=RTOL)
-    # Boundedness: a step never produces a value off the endpoints, so a
-    # regression that interpolated instead would be caught here.
+    # Boundedness: the step only ever returns one of the two endpoints, so
+    # the orbit never leaves the interval they span. The pinned values above
+    # are what separate a step from an interpolation.
     assert at_epoch > 0.0
     assert SMA_F <= before <= SMA_I
 
@@ -141,7 +145,6 @@ def test_instant_migration_is_a_step_with_an_inclusive_switch():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_sigmoid_matches_the_logistic_centre_and_quarter_point():
     """Pin sigmoid_migration against the analytical logistic
@@ -199,7 +202,6 @@ def test_sigmoid_decreases_monotonically_onto_sma_final():
     'semi-major axis steps by half the migration distance at the epoch '
     'instead of passing through it smoothly',
 )
-@pytest.mark.physics_invariant
 def test_sigmoid_is_continuous_across_the_migration_epoch():
     """A logistic centred on t_mig is smooth and antisymmetric about its
     centre. Mirroring the 1.1 AU quarter point, the value at
@@ -261,23 +263,40 @@ def test_high_ecc_half_decay_point_pins_the_factor_of_two():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_high_ecc_conserves_orbital_angular_momentum():
+def test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity():
     """Analytical limit: the specific orbital angular momentum of a
-    two-body orbit is ``h = sqrt(G M a (1 - e^2))``, so a migration law
-    that conserves h holds the semi-latus rectum ``a (1 - e^2)``
-    constant at sma_final, the radius the now-circular orbit ends on.
+    two-body orbit is ``h = sqrt(G M a (1 - e^2))``, so a law that
+    conserves h holds the semi-latus rectum ``a (1 - e^2)`` at sma_final,
+    the radius the now-circular orbit ends on.
 
-    The source derives ``e`` from ``a``, so that equality is an identity
-    of the implementation and holds for any ``a(t)`` at all. It checks
-    that ``e(t)`` is the exact inverse of ``a(t)``, not that the time
-    dependence is right. The independent pin on ``a(t)`` below is what
-    anchors the law itself:
+    That equality alone is weak as a test. The source derives ``e`` from
+    ``a``, so it follows algebraically for any ``a(t)`` whatsoever. The
+    anchor is instead the form the source never evaluates. Substituting
 
         a(t) = a_f / (1 - e_mig^2 exp(-2 (t - t_mig) / tau))
 
-    The pericentre ``a (1 - e)`` is meanwhile free to rise, which is
-    what separates this law from pericentre-conserving tidal
-    circularisation. See ``docs/Validation/orbit/parameterized.md``.
+    into ``1 - e^2 = a_f / a`` collapses the eccentricity to a pure
+    exponential with half the decay rate of the semi-major axis:
+
+        e(t) = e_mig exp(-(t - t_mig) / tau)
+
+    so the eccentricity e-folds in exactly one tau. Checked at the half
+    decay point: ``sqrt(0.6) exp(-0.5 ln 2) = 0.547723 = sqrt(0.3)``. A
+    factor of two lost from the exponent doubles the e-folding time and
+    fails immediately.
+
+    The exponential is pinned only over the first few tau. The source
+    recovers the eccentricity as ``sqrt(1 - sma_final / a)``, and as the
+    orbit circularises that subtraction cancels away its significant
+    digits: the quantity under the root is ``e^2``, so it drops below
+    double precision once ``e`` falls near 1e-8, and the returned
+    eccentricity floors to exactly zero. That floor is asserted below in
+    its own right, since reaching it through a negative intermediate
+    would produce a nan instead.
+
+    The pericentre ``a (1 - e)`` is meanwhile free to rise, which is what
+    separates this law from pericentre-conserving tidal circularisation.
+    See ``docs/Validation/orbit/parameterized.md``.
     """
     t = np.linspace(T_MIG, T_MIG + 40.0 * TAU, 2000)
     a, e = _sweep(
@@ -292,10 +311,38 @@ def test_high_ecc_conserves_orbital_angular_momentum():
 
     semi_latus = a * (1.0 - e**2)
     np.testing.assert_allclose(semi_latus, SMA_F, rtol=1e-10)
-    # Independent pin on the time dependence, written out from the
-    # closed form rather than read back from the module.
-    a_expected = SMA_F / (1.0 - 0.6 * np.exp(-2.0 * (t - T_MIG) / TAU))
-    np.testing.assert_allclose(a, a_expected, rtol=1e-12)
+
+    # The anchor: an exponential decay the source never writes down.
+    # Five tau keeps e above 2.6e-3, where the cancellation still leaves
+    # far more precision than the tolerance asks for.
+    t_early = np.linspace(T_MIG, T_MIG + 5.0 * TAU, 500)
+    _, e_early = _sweep(
+        high_eccentricity_migration,
+        t_early,
+        ecc=0.0,
+        sma_init=SMA_I,
+        sma_final=SMA_F,
+        time_migration=T_MIG,
+        tau_mig=TAU,
+    )
+    e_expected = np.sqrt(0.6) * np.exp(-(t_early - T_MIG) / TAU)
+    np.testing.assert_allclose(e_early, e_expected, rtol=1e-9)
+
+    # E-folding guard: one tau must take the eccentricity down by exactly
+    # 1/e. Dropping the 2 from the semi-major-axis exponent makes the
+    # eccentricity e-fold in 2 tau instead, landing at 0.6065 of its
+    # initial value here rather than 0.3679.
+    one_tau = high_eccentricity_migration(T_MIG + TAU, 0.0, SMA_I, SMA_F, T_MIG, TAU)[1]
+    assert one_tau / np.sqrt(0.6) == pytest.approx(np.exp(-1.0), rel=1e-10)
+    assert abs(one_tau / np.sqrt(0.6) - np.exp(-0.5)) > 0.2
+
+    # Boundedness once the cancellation has eaten the last digits: the
+    # eccentricity settles on exactly zero and never turns negative or
+    # non-finite on the way.
+    assert np.all(np.isfinite(e))
+    assert np.all(e >= 0.0)
+    assert e[-1] == 0.0
+
     # The pericentre is NOT conserved. Derived spread is
     # a_f - a_f/(1 + e_mig) = 0.34919 AU; the guard takes half of it.
     pericentre = a * (1.0 - e)
@@ -387,43 +434,29 @@ def test_no_net_migration_is_a_fixed_point_of_every_law():
     assert instant_migration(T_MIG * 2.0, SMA_I, SMA_I, T_MIG) == pytest.approx(SMA_I, rel=RTOL)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='run_parameterized_orbital_migration multiplies sma_init by AU without '
-    'checking it, so a config that leaves the schema default of None in '
-    'place fails with TypeError instead of naming the missing key',
-)
 @pytest.mark.physics_invariant
 def test_wrapper_reports_a_missing_semimajor_axis():
     """``sma_init`` and ``sma_final`` default to None in the orbit schema,
     so selecting the parameterized model without setting them is a
-    reachable configuration. It should name the missing key rather than
+    reachable configuration. The missing key is named rather than
     failing inside an arithmetic expression. A fully specified config is
     asserted alongside as the positive control."""
-    with pytest.raises(ValueError):
-        run_parameterized_orbital_migration(
-            {'Time': 1.0e6}, _config('none', sma_init=None), dt=0.0
-        )
+    with pytest.raises(ValueError, match='sma_init'):
+        run_parameterized_orbital_migration({'Time': 1.0e6}, _config('none', sma_init=None))
 
-    a, e = run_parameterized_orbital_migration({'Time': 1.0e6}, _config('none'), dt=0.0)
+    a, e = run_parameterized_orbital_migration({'Time': 1.0e6}, _config('none'))
     assert a == pytest.approx(SMA_I * AU, rel=RTOL)
     assert 0.0 <= e < 1.0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='high_eccentricity_migration evaluates sqrt(1 - sma_final / sma_init), '
-    'which is the square root of a negative number when the planet '
-    'migrates outward, and returns nan instead of reporting it',
-)
 @pytest.mark.physics_invariant
 def test_high_ecc_refuses_outward_migration():
     """Outward migration has no high-eccentricity circularisation
-    solution, since it would need a negative ``e_mig^2``. The law should
-    say so rather than propagating a nan into the orbit. The mirrored
-    inward case is well posed and is asserted alongside, so that closing
-    the gap turns this test green rather than moving the failure."""
-    with pytest.raises(ValueError):
+    solution, since it would need a negative ``e_mig^2``. The law reports
+    that rather than propagating a nan into the orbit. The mirrored
+    inward case is well posed and is asserted alongside, so a law that
+    rejected every input would also fail."""
+    with pytest.raises(ValueError, match='inward only'):
         high_eccentricity_migration(T_MIG, 0.0, 0.5, 1.5, T_MIG, TAU)
 
     a, e = high_eccentricity_migration(T_MIG, 0.0, 1.5, 0.5, T_MIG, TAU)
@@ -442,7 +475,7 @@ def test_wrapper_converts_semimajor_axis_from_au_to_metres():
     or doubled AU factor is the classic failure here and a dimensionless
     comparison would not see it."""
     hf_row = {'Time': 1.0e6}
-    a, _ = run_parameterized_orbital_migration(hf_row, _config('none'), dt=0.0)
+    a, _ = run_parameterized_orbital_migration(hf_row, _config('none'))
 
     assert a == pytest.approx(SMA_I * AU, rel=RTOL)
     assert hf_row['semimajorax'] == pytest.approx(SMA_I * AU, rel=RTOL)
@@ -472,7 +505,7 @@ def test_wrapper_dispatches_each_law_at_the_migration_epoch(migration, a_au, ecc
     all four differ, rather than at late time where three of them have
     already converged on sma_final and a mis-dispatch would hide."""
     hf_row = {'Time': T_MIG}
-    a, e = run_parameterized_orbital_migration(hf_row, _config(migration), dt=0.0)
+    a, e = run_parameterized_orbital_migration(hf_row, _config(migration))
 
     assert a == pytest.approx(a_au * AU, rel=RTOL)
     assert e == pytest.approx(ecc, abs=1e-12)
@@ -500,7 +533,7 @@ def test_wrapper_dispatch_holds_at_a_second_epoch(migration, a_au, ecc):
     quarter point and the high-eccentricity law has decayed by 1/9, so a
     regime swap cannot survive on a coincidence at a single time."""
     hf_row = {'Time': T_MIG + TAU * np.log(3.0)}
-    a, e = run_parameterized_orbital_migration(hf_row, _config(migration), dt=0.0)
+    a, e = run_parameterized_orbital_migration(hf_row, _config(migration))
 
     assert a == pytest.approx(a_au * AU, rel=RTOL)
     assert e == pytest.approx(ecc, abs=1e-12)
@@ -517,8 +550,8 @@ def test_wrapper_settles_on_the_final_orbit(migration, a_au):
     """Long after the epoch every migrating law has arrived at
     sma_final on a circular orbit, and the static law is still at
     sma_init."""
-    hf_row = {'Time': T_MIG + 500.0 * TAU}
-    a, e = run_parameterized_orbital_migration(hf_row, _config(migration), dt=0.0)
+    hf_row = {'Time': T_MIG + 60.0 * TAU}
+    a, e = run_parameterized_orbital_migration(hf_row, _config(migration))
 
     assert a == pytest.approx(a_au * AU, rel=1e-8)
     assert 0.0 <= e < 1.0
@@ -531,22 +564,23 @@ def test_wrapper_preserves_angular_momentum_after_unit_conversion():
     metre conversion, and the eccentricity is excited even though the
     config starts the planet on a circular orbit."""
     hf_row = {'Time': T_MIG + 2.0 * TAU}
-    a, e = run_parameterized_orbital_migration(hf_row, _config('high_ecc'), dt=0.0)
+    a, e = run_parameterized_orbital_migration(hf_row, _config('high_ecc'))
 
     assert a * (1.0 - e**2) == pytest.approx(SMA_F * AU, rel=1e-10)
     assert e > 0.0
     assert 0.0 <= e < 1.0
 
 
+@pytest.mark.parametrize('time_yr', [1.0, T_MIG], ids=['first_recorded_step', 'mid_evolution'])
 @pytest.mark.physics_invariant
-def test_wrapper_overwrites_a_stale_orbit_on_the_first_recorded_step():
-    """At Time <= 1 yr, the first step PROTEUS records, a row carrying a
-    stale orbit is replaced by the config values. Every valid regime
-    also writes both keys on this path, so the seeding block itself is
-    not observable through the return; this pins the row contract, not
-    the block."""
-    hf_row = {'Time': 1.0, 'semimajorax': 999.0, 'eccentricity': 0.9}
-    a, e = run_parameterized_orbital_migration(hf_row, _config('none', ecc=0.05), dt=0.0)
+def test_wrapper_overwrites_a_stale_orbit_at_every_time(time_yr):
+    """A row carrying a stale orbit is replaced by the config values at
+    every recorded time, including the first step PROTEUS writes. The
+    edge case is that first step, where an earlier revision seeded the
+    row before validating the config and so could leave half an orbit
+    behind on a bad one."""
+    hf_row = {'Time': time_yr, 'semimajorax': 999.0, 'eccentricity': 0.9}
+    a, e = run_parameterized_orbital_migration(hf_row, _config('none', ecc=0.05))
 
     assert a == pytest.approx(SMA_I * AU, rel=RTOL)
     assert e == pytest.approx(0.05, rel=RTOL)
@@ -564,7 +598,7 @@ def test_wrapper_rejects_a_null_migration_setting():
     hf_row = {'Time': 1.0e6}
 
     with pytest.raises(ValueError) as excinfo:
-        run_parameterized_orbital_migration(hf_row, _config(None), dt=0.0)
+        run_parameterized_orbital_migration(hf_row, _config(None))
 
     message = str(excinfo.value)
     assert 'Unknown migration option' in message
@@ -574,24 +608,70 @@ def test_wrapper_rejects_a_null_migration_setting():
     assert 'eccentricity' not in hf_row
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='run_parameterized_orbital_migration has no else branch, so an '
-    'unrecognised migration string falls through every elif. With a bare '
-    'row it raises KeyError on the return; with a pre-populated row it '
-    'silently returns the previous orbit',
-)
 @pytest.mark.physics_invariant
 def test_wrapper_rejects_an_unrecognised_migration_setting():
-    """An unrecognised regime should be reported. Config validation
-    blocks this upstream, so the gap is reachable only by calling the
-    function directly. A recognised regime on the same row is asserted
-    alongside, so that closing the gap turns this test green rather than
-    moving the failure onto the second call."""
-    with pytest.raises(ValueError):
-        run_parameterized_orbital_migration({'Time': 1.0e6}, _config('bogus'), dt=0.0)
+    """An unrecognised regime is reported. Config validation blocks this
+    upstream, so the path is reachable only by calling the function
+    directly. A recognised regime on the same row is asserted alongside,
+    so a wrapper that rejected every regime would also fail."""
+    with pytest.raises(ValueError, match='Unknown migration option'):
+        run_parameterized_orbital_migration({'Time': 1.0e6}, _config('bogus'))
 
     hf_row = {'Time': 1.0e6}
-    a, e = run_parameterized_orbital_migration(hf_row, _config('none'), dt=0.0)
+    a, e = run_parameterized_orbital_migration(hf_row, _config('none'))
+    assert a == pytest.approx(SMA_I * AU, rel=RTOL)
+    assert 0.0 <= e < 1.0
+
+
+@pytest.mark.parametrize('time_yr', [1.0, T_MIG], ids=['first_recorded_step', 'mid_evolution'])
+@pytest.mark.parametrize(
+    'migration',
+    ['sigmoid', 'high_ecc'],
+    ids=['sigmoid_ramp', 'high_eccentricity'],
+)
+def test_wrapper_requires_a_migration_timescale(migration, time_yr):
+    """Both smooth laws need a transition width, and the wrapper names
+    the missing timescale instead of passing None into the exponential.
+    The schema gives tau_migration a positive default and no null, so
+    this path is reachable only by calling the function directly.
+
+    Probed at the first recorded step as well as mid-evolution, because
+    that early step is where a config-independent write could slip in
+    ahead of the validation. This is an error-contract test, so it
+    asserts the contract and the absence of a side effect rather than a
+    physical invariant."""
+    hf_row = {'Time': time_yr}
+
+    with pytest.raises(ValueError) as excinfo:
+        run_parameterized_orbital_migration(hf_row, _config(migration, tau_migration=None))
+
+    assert 'tau_mig' in str(excinfo.value)
+    # No side effect: the orbit keys were never written.
+    assert 'semimajorax' not in hf_row
+    assert 'eccentricity' not in hf_row
+
+
+@pytest.mark.parametrize('time_yr', [1.0, T_MIG], ids=['first_recorded_step', 'mid_evolution'])
+@pytest.mark.parametrize(
+    'migration',
+    ['instant', 'sigmoid', 'high_ecc'],
+    ids=['instant_jump', 'sigmoid_ramp', 'high_eccentricity'],
+)
+@pytest.mark.physics_invariant
+def test_wrapper_requires_a_final_semimajor_axis_for_every_migrating_law(migration, time_yr):
+    """Every law that actually moves the planet needs a destination, and
+    the wrapper names it. The static regime is asserted alongside because
+    it has no destination to require, so a blanket check would break it.
+    Probed at the first recorded step as well as mid-evolution, so a
+    write that slipped in ahead of the validation would surface."""
+    hf_row = {'Time': time_yr}
+
+    with pytest.raises(ValueError) as excinfo:
+        run_parameterized_orbital_migration(hf_row, _config(migration, sma_final=None))
+
+    assert 'sma_final' in str(excinfo.value)
+    assert 'semimajorax' not in hf_row
+
+    a, e = run_parameterized_orbital_migration({'Time': T_MIG}, _config('none', sma_final=None))
     assert a == pytest.approx(SMA_I * AU, rel=RTOL)
     assert 0.0 <= e < 1.0

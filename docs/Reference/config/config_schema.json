@@ -1785,10 +1785,11 @@
         null,
         "none",
         "sp0d",
-        "sp1d"
+        "sp1d",
+        "parameterized"
       ],
       "bounds": null,
-      "description": "Select star-planet orbit module to use. Choices: 'none', 'sp0d', 'sp1d'.",
+      "description": "Select star-planet orbit module to use. Choices: 'none', 'sp0d', 'sp1d', 'parameterized'.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -2347,6 +2348,111 @@
         }
       ],
       "description": "Target storage-clock spacing for out-of-band fine samples, as a fraction of the requested call duration (ps1d_evec only).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.sma_init",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Initial semi-major axis [AU].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.sma_final",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Final semi-major axis [AU].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.migration",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"none\"",
+      "choices": [
+        "none",
+        "instant",
+        "sigmoid",
+        "high_ecc"
+      ],
+      "bounds": null,
+      "description": "Type of orbital migration to apply.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.time_migration",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Time at which migration occurs [yr].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.tau_migration",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Timescale of migration (for sigmoid and high_ecc migration) [yr].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

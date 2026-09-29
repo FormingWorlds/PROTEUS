@@ -37,6 +37,10 @@
           "condition": "orbit.evolve = true"
         },
         {
+          "file": "src/proteus/orbit/parameterized.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/orbit/wrapper.py",
           "condition": "always"
         }
@@ -44,7 +48,8 @@
       "consumers": [
         "escape",
         "orbit",
-        "plot"
+        "plot",
+        "star"
       ]
     },
     {
@@ -80,11 +85,9 @@
       "consumers": [
         "atmos_chem",
         "atmos_clim",
-        "main loop",
         "observe",
         "orbit",
         "plot",
-        "star",
         "utils"
       ]
     },
@@ -133,6 +136,10 @@
           "condition": "orbit.evolve = true"
         },
         {
+          "file": "src/proteus/orbit/parameterized.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/orbit/wrapper.py",
           "condition": "always"
         }
@@ -140,7 +147,8 @@
       "consumers": [
         "escape",
         "orbit",
-        "plot"
+        "plot",
+        "star"
       ]
     },
     {

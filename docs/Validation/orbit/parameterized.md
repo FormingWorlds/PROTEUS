@@ -92,4 +92,4 @@ dispatch in `evolve_orbit_star` are covered as well as the algebra.
 | `high_ecc` | 4.3e-11 | 2.8e-09 |
 
 The figure and the run settings are in
-[Star-planet models](../../Explanations/orbit.md#verifying-the-four-regimes).
+[Star-planet models](../../Explanations/orbit.md#visualizing-the-four-parameterized-regimes).

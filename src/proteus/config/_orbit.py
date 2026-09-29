@@ -264,15 +264,15 @@ class Parameterized:
     Attributes
     ----------
     migration: str
-        Type of orbital migration to apply. Options: "none",'instant', 'sigmoid'.
-    sma_init: float
+        Type of orbital migration to apply.
+    sma_init: float | None
         Initial semi-major axis [AU].
-    sma_final: float
+    sma_final: float | None
         Final semi-major axis [AU].
     time_migration: float
         Time at which migration occurs [yr].
     tau_migration: float
-        Timescale of migration (for sigmoid migration) [yr].
+        Timescale of migration (for sigmoid and high_ecc migration) [yr].
     """
 
     sma_init = field(default=None, validator=optional(gt(0)), converter=none_if_none)
@@ -434,12 +434,17 @@ class Orbit:
 
     satellite: Satellite
         Satellite and orbit configuration for planet-satellite systems.
-    module: str | None
+
+    planet_satellite_model: str | None
         Select planet-satellite orbit module to use. Choices: 'none', 'ps0d', 'ps1d', 'ps1d_evec'.
 
     solver: OrbitSolver
         Shared ODE-solver and adaptive-substep-controller settings for the
         star-planet and planet-satellite orbital-evolution models.
+
+    parameterized: Parameterized
+        Prescribed orbital-migration track, used when
+        star_planet_model = 'parameterized'.
 
     perturber: str | None
         Select perturber to induce tides on the planet. Options: 'none', 'star', 'satellite'.

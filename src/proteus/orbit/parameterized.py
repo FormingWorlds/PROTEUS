@@ -117,6 +117,12 @@ def high_eccentricity_migration(
     if tau_mig <= 0:
         raise ValueError(f'Migration speed tau_mig must be > 0, got {tau_mig}')
 
+    if sma_final > sma_init:
+        raise ValueError(
+            'High-eccentricity migration is inward only and requires '
+            f'sma_final <= sma_init, got sma_init={sma_init} and sma_final={sma_final}'
+        )
+
     if t < time_migration:
         return sma_init, ecc
     else:
@@ -126,7 +132,7 @@ def high_eccentricity_migration(
         return sma, ecc
 
 
-def run_parameterized_orbital_migration(hf_row: dict, config: Config, dt: float):
+def run_parameterized_orbital_migration(hf_row: dict, config: Config):
     """
     Run the parameterized orbital migration module.
 
@@ -150,25 +156,31 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config, dt: float)
     # Initial parameters from config
     eccentricity = config.orbit.eccentricity
     migration = config.orbit.parameterized.migration
-    sma_i = config.orbit.parameterized.sma_init * AU
-    sma_f = config.orbit.parameterized.sma_final * AU
     t_mig = config.orbit.parameterized.time_migration
     tau_mig = config.orbit.parameterized.tau_migration
+
+    # Both endpoints are schema-optional, so name the missing one here rather
+    # than failing inside the unit conversion below.
+    if config.orbit.parameterized.sma_init is None:
+        raise ValueError('Parameterized migration requires orbit.parameterized.sma_init')
+    sma_i = config.orbit.parameterized.sma_init * AU
+
+    if migration in ('instant', 'sigmoid', 'high_ecc'):
+        if config.orbit.parameterized.sma_final is None:
+            raise ValueError(
+                f'Migration option {migration!r} requires orbit.parameterized.sma_final'
+            )
+        sma_f = config.orbit.parameterized.sma_final * AU
+    else:
+        sma_f = sma_i
 
     # Time step
     current_time = float(hf_row['Time'])
 
-    # Use config parameters as initial guess
-    if current_time <= 1:
-        hf_row['semimajorax'] = sma_i
-        hf_row['eccentricity'] = eccentricity
+    # Evaluate migration regime. Every regime below writes both orbital
+    # elements, so the row is either fully updated or left untouched.
 
-    # Evaluate migration regime
-    if migration is None:
-        raise ValueError(
-            f'Unknown migration option: {migration}. Expected None, "instant", "sigmoid", or "high_ecc".'
-        )
-    elif migration == 'none':  # no migration
+    if migration == 'none':  # no migration
         hf_row['semimajorax'] = sma_i
         hf_row['eccentricity'] = eccentricity
     elif migration == 'instant':  # instant migration
@@ -201,4 +213,10 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config, dt: float)
                 time_migration=t_mig,
                 tau_mig=tau_mig,
             )
+    else:
+        raise ValueError(
+            f'Unknown migration option: {migration!r}. '
+            'Expected "none", "instant", "sigmoid" or "high_ecc".'
+        )
+
     return hf_row['semimajorax'], hf_row['eccentricity']

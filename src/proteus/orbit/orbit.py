@@ -74,7 +74,17 @@ def evolve_orbit_star(
         needs_c_planet = True
 
     elif model == 'parameterized':
-        run_parameterized_orbital_migration(hf_row, config, interior_o.dt)
+        run_parameterized_orbital_migration(hf_row, config)
+        # A prescribed track bypasses the substep controller, so the validity
+        # guard that normally rejects a spiral-in is applied here instead.
+        if not _state_is_valid_star(hf_row):
+            log.warning(
+                'Prescribed orbit is outside the validity range at Time = %.6e yr: '
+                'a = %.6e m, e = %.6f',
+                float(hf_row['Time']),
+                hf_row['semimajorax'],
+                hf_row['eccentricity'],
+            )
         return
 
     else:

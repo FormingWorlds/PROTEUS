@@ -275,5 +275,5 @@ rot_pcntle = 50.0
 rot_period = "none"
 spectrum_source = "solar"
 star_name = "sun"
-star_path = "../FWL_DATA/stellar_spectra/Named/toi561.txt"  # resolved against the process CWD, so launch from the PROTEUS root
+star_path = "$FWL_DATA/stellar_spectra/Named/toi561.txt"
 tracks = "spada"

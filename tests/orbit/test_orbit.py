@@ -36,6 +36,9 @@ Anti-happy-path coverage (sp0d):
 - ``evolve_orbit_star`` dispatch is exercised both for the
   recognized ``'sp0d'`` model and for an unrecognized model (no-op,
   the current source has no ``else`` branch).
+- The ``'parameterized'`` branch returns before the shared substep
+  controller, so both the prescribed track it writes and the validity
+  warning it raises on an orbit inside the star are exercised here.
 
 ``sp1d`` (planet spin + orbit, Hansen-coefficient-based) is tested the
 same way, black-box through the public ``sp1d(hf_row, tides_o, dt)``
@@ -86,6 +89,7 @@ See also:
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -102,7 +106,7 @@ from proteus.orbit.orbit import (
     sp0d,
     sp1d,
 )
-from proteus.utils.constants import const_G, secs_per_year
+from proteus.utils.constants import AU, const_G, secs_per_year
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -831,3 +835,156 @@ def test_evolve_orbit_star_sp1d_model_calls_get_c_planet_and_evolves_hf_row(
     # Discrimination: the orbit actually evolved under sp1d, not a
     # silent no-op.
     assert hf_row['eccentricity'] < 0.3
+
+
+# ---------------------------------------------------------------------------
+# evolve_orbit_star: prescribed migration track
+# ---------------------------------------------------------------------------
+
+
+def _make_parameterized_config(migration, sma_init_au, sma_final_au, ecc=0.0) -> Any:
+    """Config stand-in carrying only what the prescribed-track branch of
+    the dispatch reads."""
+    return cast(
+        Any,
+        SimpleNamespace(
+            orbit=SimpleNamespace(
+                star_planet_model='parameterized',
+                eccentricity=ecc,
+                solver=OrbitSolver(),
+                parameterized=SimpleNamespace(
+                    migration=migration,
+                    sma_init=sma_init_au,
+                    sma_final=sma_final_au,
+                    time_migration=1.0e5,
+                    tau_migration=1.0e4,
+                ),
+            )
+        ),
+    )
+
+
+@pytest.mark.physics_invariant
+def test_evolve_orbit_star_parameterized_writes_the_prescribed_track(monkeypatch):
+    """A prescribed high-eccentricity track is written straight into
+    hf_row, and the shared adaptive-substep controller is never entered
+    because the orbit is a closed-form function of time rather than an
+    ODE.
+
+    Probed at the half-decay time ``t_mig + (tau / 2) ln 2``, where the
+    decay factor is exactly 1/2 and the orbit sits at
+    ``a = a_f / (1 - e_mig^2 / 2) = 0.8 / 0.7 au`` with
+    ``e = sqrt(0.3)``. Pinning those two values is what makes the
+    dispatch test discriminating: a factor of two lost from the exponent
+    lands at 1.38951 au instead, while the semi-latus rectum is
+    conserved either way and so cannot tell the two apart.
+    """
+    from proteus.orbit import orbit as orbit_mod
+
+    mock_substeps = MagicMock()
+    monkeypatch.setattr(orbit_mod, 'run_adaptive_orbit_substeps', mock_substeps)
+
+    hf_row = _make_hf_row(ecc=0.0)
+    hf_row['Time'] = 1.0e5 + 0.5 * 1.0e4 * np.log(2.0)
+    hf_row['R_star'] = 6.957e8
+    config = _make_parameterized_config('high_ecc', 2.0, 0.8)
+
+    evolve_orbit_star(
+        hf_row, config, dirs={}, tides_o=object(), interior_o=SimpleNamespace(dt=1e7)
+    )
+
+    assert mock_substeps.call_count == 0
+    sma = hf_row['semimajorax']
+    ecc = hf_row['eccentricity']
+    assert sma == pytest.approx(0.8 / 0.7 * AU, rel=1e-10)
+    assert ecc == pytest.approx(np.sqrt(0.3), rel=1e-10)
+    # Exponent guard: without the factor of two the orbit would sit at
+    # 1.38951 au, which the tolerance above cannot absorb.
+    wrong_no_two = 0.8 / (1.0 - 0.6 * np.exp(-0.5 * np.log(2.0))) * AU
+    assert abs(sma - wrong_no_two) > 0.1 * AU
+    # Conservation of orbital angular momentum survives the unit change.
+    assert sma * (1.0 - ecc**2) == pytest.approx(0.8 * AU, rel=1e-10)
+    assert 0.0 < ecc < 1.0
+
+
+def _run_parameterized_and_capture(
+    caplog, migration, sma_init_au, sma_final_au, r_star, time_yr=1.0e6
+):
+    """Drive the prescribed-track branch and return the hf_row together
+    with the validity warnings it emitted."""
+    hf_row = _make_hf_row(ecc=0.0)
+    hf_row['Time'] = time_yr
+    hf_row['R_star'] = r_star
+    config = _make_parameterized_config(migration, sma_init_au, sma_final_au)
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.orbit.orbit'):
+        evolve_orbit_star(
+            hf_row, config, dirs={}, tides_o=object(), interior_o=SimpleNamespace(dt=1e7)
+        )
+
+    warnings = [r.getMessage() for r in caplog.records if 'validity range' in r.getMessage()]
+    return hf_row, warnings
+
+
+def test_evolve_orbit_star_parameterized_brackets_the_spiral_in_threshold(caplog):
+    """Edge case: a prescribed track is not screened by the substep
+    controller, so an orbit inside 1.05 stellar radii is reported here
+    instead of passing silently. The two probes sit either side of that
+    multiple rather than orders of magnitude away, so a regression that
+    moved the threshold would change the outcome of one of them. The
+    orbit is written in both cases, since the run's own termination
+    checks decide what to do with it. This is an error-contract test
+    rather than a physical invariant.
+    """
+    r_star = 1.0e9
+    inside_au = 1.04 * r_star / AU
+    outside_au = 1.06 * r_star / AU
+
+    hf_inside, warned = _run_parameterized_and_capture(
+        caplog, 'instant', 2.0, inside_au, r_star
+    )
+    assert len(warned) == 1
+    # The reported state, not just the phrase: a guard reading the wrong
+    # key or dropping the eccentricity would not print these values.
+    assert '%.6e' % (1.04 * r_star) in warned[0]
+    assert 'e = 0.000000' in warned[0]
+    assert hf_inside['semimajorax'] == pytest.approx(1.04 * r_star, rel=1e-12)
+
+    caplog.clear()
+    hf_outside, quiet = _run_parameterized_and_capture(
+        caplog, 'instant', 2.0, outside_au, r_star
+    )
+    assert quiet == []
+    assert hf_outside['semimajorax'] == pytest.approx(1.06 * r_star, rel=1e-12)
+
+
+def test_evolve_orbit_star_parameterized_reports_a_near_radial_orbit(caplog):
+    """The validity guard has a second half, rejecting an eccentricity at
+    or above 0.999. A high-eccentricity track reaches that whenever the
+    destination is a thousandth of the starting orbit, since it excites
+    the eccentricity to ``sqrt(1 - a_f / a_0)``. Probed just inside and
+    just outside that bound so the test pins the threshold rather than
+    the fact that a warning exists at all, and at the migration epoch
+    itself, which is where that peak excitation occurs: by the default
+    probe time the track has long since circularised. The semi-major
+    axis stays at 2 au throughout, so only the eccentricity half of the
+    guard can fire.
+    """
+    r_star = 6.957e8
+    epoch = 1.0e5
+
+    # e_mig = sqrt(1 - 1e-3) = 0.99950, above the 0.999 bound.
+    hf_bad, warned = _run_parameterized_and_capture(
+        caplog, 'high_ecc', 2.0, 2.0e-3, r_star, time_yr=epoch
+    )
+    assert len(warned) == 1
+    assert 'e = 0.999500' in warned[0]
+    assert hf_bad['semimajorax'] > 1.05 * r_star
+
+    caplog.clear()
+    # e_mig = sqrt(1 - 0.01) = 0.99499, below it.
+    hf_row, quiet = _run_parameterized_and_capture(
+        caplog, 'high_ecc', 2.0, 2.0e-2, r_star, time_yr=epoch
+    )
+    assert quiet == []
+    assert hf_row['eccentricity'] == pytest.approx(np.sqrt(1.0 - 0.01), rel=1e-10)
