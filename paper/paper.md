@@ -174,7 +174,7 @@ Predictions from PROTEUS are used in JWST observing programmes, including the la
 
 # AI usage disclosure
 
-Generative AI tools assisted the development of PROTEUS and the preparation of this paper. We used GitHub Copilot (code completion, automated fixes, and agent-generated pull requests) and Claude Code (Anthropic; Claude Opus 4.6, Claude Sonnet 5, Claude Opus 5.5, and Claude Fable 5.1). These tools drafted and refactored code, scaffolded tests, wrote and revised documentation, and copy-edited this manuscript. Gemini 3.1 Pro and Gemini 3.8 Flash (Google) reviewed code and documentation. The human authors reviewed, edited, and validated all AI-assisted output. They made all design decisions and are responsible for the content of the software and of this paper.
+Generative AI tools assist the development of PROTEUS since early 2026, and were used in the preparation of this paper. We make use of Claude Code (Anthropic; Fable, Opus, and Sonnet model families), GitHub Copilot, and Gemini (Google; Pro and Flash model families) for drafting and refactoring of code, scaffolding tests, revising and extending documentation, and copy-editing of this manuscript. Human authors review, edit, and validate all AI-assisted output, make all design decisions and are responsible for the content of the software and of this paper.
 
 # Acknowledgements
 
