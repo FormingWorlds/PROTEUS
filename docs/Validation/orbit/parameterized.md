@@ -84,7 +84,7 @@ compares the recorded `semimajorax` and `eccentricity` against the same
 closed forms, so the config plumbing, the AU-to-metre conversion and the
 dispatch in `evolve_orbit_star` are covered as well as the algebra.
 
-| Regime | max abs da [au] | max abs de |
+| Regime | max abs da \[au\] | max abs de |
 |---|---|---|
 | `none` | 0 | 0 |
 | `instant` | 0 | 0 |
