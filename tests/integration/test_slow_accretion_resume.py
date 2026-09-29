@@ -203,9 +203,14 @@ def _make_runner(output_dir, stop_time):
 
 def _snapshot_times(output_dir):
     """Simulation times of the interior snapshots on disk [yr], ascending."""
-    return sorted(
-        int(path.name.split('_int.nc')[0]) for path in (output_dir / 'data').glob('*_int.nc')
-    )
+    times = []
+    for path in (output_dir / 'data').glob('*_int.nc'):
+        stem = path.name.split('_int.nc')[0]
+        try:
+            times.append(round(float(stem.replace('p', '.'))))
+        except ValueError:
+            continue
+    return sorted(times)
 
 
 @pytest.mark.slow
@@ -397,3 +402,64 @@ def test_a_run_stopped_on_an_impact_resumes_from_before_it(tmp_path):
         f'{resumed_snapshots}), so a further restart would have to recompute '
         'the impact a third time'
     )
+
+
+@pytest.mark.slow
+@pytest.mark.physics_invariant
+def test_accretion_resume_matches_uninterrupted_run(tmp_path):
+    """A run stopped and resumed past an impact reproduces the uninterrupted state.
+
+    Contract clause: resuming a run that experienced an impact restores the
+    consistent post-impact state by walking back over the stale pre-impact
+    snapshot and re-applying the impact. At the end of the simulation, the
+    resumed run must match an uninterrupted run across its interior mass,
+    planet mass, magma temperature, and delivered impact count.
+
+    Verifies:
+    - M_int in the resumed run matches the uninterrupted run.
+    - M_planet in the resumed run matches the uninterrupted run.
+    - T_magma in the resumed run matches the uninterrupted run within 2 K.
+    - Accreted rock mass and impact count match across both runs.
+    """
+    dir_uninterrupted = tmp_path / 'uninterrupted'
+    dir_uninterrupted.mkdir()
+
+    runner_a = _make_runner(dir_uninterrupted, LEG2_STOP_TIME)
+    runner_a.config.params.offline = False
+    try:
+        download_sufficient_data(runner_a.config, clean=False)
+    finally:
+        runner_a.config.params.offline = True
+    runner_a.start(resume=False, offline=True)
+
+    dir_resumed = tmp_path / 'resumed'
+    dir_resumed.mkdir()
+
+    runner_b1 = _make_runner(dir_resumed, IMPACT_TIME)
+    runner_b1.start(resume=False, offline=True)
+
+    runner_b2 = _make_runner(dir_resumed, LEG2_STOP_TIME)
+    runner_b2.start(resume=True, offline=True)
+
+    row_a = runner_a.hf_all.iloc[-1]
+    row_b = runner_b2.hf_all.iloc[-1]
+
+    # Simulation times match
+    assert float(row_b['Time']) == pytest.approx(float(row_a['Time']), abs=1.0)
+
+    # Interior and planet mass match within machine precision
+    assert float(row_b['M_int']) == pytest.approx(float(row_a['M_int']), rel=1e-9)
+    assert float(row_b['M_planet']) == pytest.approx(float(row_a['M_planet']), rel=1e-9)
+
+    # Magma temperature matches uninterrupted cooling trajectory within 2 K
+    assert float(row_b['T_magma']) == pytest.approx(float(row_a['T_magma']), abs=2.0)
+
+    # Exactly one impact landed in both runs with identical delivered rock mass
+    delivered_kg = DELIVERED * M_earth
+    assert float(row_a['M_accreted_rock']) == pytest.approx(delivered_kg, rel=1e-6)
+    assert float(row_b['M_accreted_rock']) == pytest.approx(delivered_kg, rel=1e-6)
+
+    impacts_a = int((runner_a.hf_all['M_accreted_rock'].diff() > 0.0).sum())
+    impacts_b = int((runner_b2.hf_all['M_accreted_rock'].diff() > 0.0).sum())
+    assert impacts_a == 1
+    assert impacts_b == 1
