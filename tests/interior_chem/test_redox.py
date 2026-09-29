@@ -310,7 +310,7 @@ def test_reduced_melt_saturates_in_metal_and_becomes_more_oxidised():
 
 @pytest.mark.physics_invariant
 def test_metal_diagnostics_reach_the_helpfile_csv(tmp_path, caplog):
-    """The three Fe-metal diagnostics the tracker writes into hf_row are
+    """The Fe-metal diagnostics the tracker writes into hf_row are
     helpfile schema columns, so they pass the row filter, are written to
     runtime_helpfile.csv and read back unchanged.
 
@@ -326,7 +326,12 @@ def test_metal_diagnostics_reach_the_helpfile_csv(tmp_path, caplog):
         ZeroHelpfileRow,
     )
 
-    metal_keys = ('a_fe_max_mantle', 'n_fe_metal_mantle', 'n_fe_metal_step_mantle')
+    metal_keys = (
+        'a_fe_max_mantle',
+        'fe_metal_kg_mantle',
+        'n_fe_metal_mantle',
+        'n_fe_metal_step_mantle',
+    )
     config = _make_config(0.005)
     interior = _make_interior()
     rows = []
@@ -368,6 +373,15 @@ def test_metal_diagnostics_reach_the_helpfile_csv(tmp_path, caplog):
         rtol=1e-9, atol=0.0,
     )
     assert np.all(np.diff(csv['n_fe_metal_mantle'].to_numpy()) >= 0.0)
+
+    # The mass column is the cumulative moles times the molar mass of Fe
+    # metal, 0.055845 kg/mol.
+    kg = csv['fe_metal_kg_mantle'].to_numpy()
+    mol = csv['n_fe_metal_mantle'].to_numpy()
+    np.testing.assert_allclose(kg, mol * 0.055845, rtol=1e-9, atol=0.0)
+    # Discrimination guard: using the FeO molar mass (0.07184 kg/mol) instead
+    # would overstate the mass by 29 %, far outside rtol=1e-9.
+    assert abs(kg[-1] / (mol[-1] * 0.07184) - 1.0) > 0.2
 
     # Error contract: the schema is enforced, so a row that lacks one of the
     # metal columns is rejected rather than written with a gap.

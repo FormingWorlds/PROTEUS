@@ -92,6 +92,7 @@ import numpy as np
 
 from proteus.interior_chem import disproportionation as dispro
 from proteus.interior_chem import eos_deng
+from proteus.utils.constants import element_mmw
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -506,6 +507,8 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     # diagnostic during an f_0 scan.
     hf_row['a_fe_max_mantle'] = float(np.max(state.a_fe_cell))
     hf_row['n_fe_metal_mantle'] = float(np.sum(state.n_fe_metal_cell))
+    # Same cumulative metal as a mass: moles times the molar mass of Fe.
+    hf_row['fe_metal_kg_mantle'] = hf_row['n_fe_metal_mantle'] * element_mmw['Fe']
     # Reaction extent this step: moles of metal formed (>= 0; no
     # redissolution).
     hf_row['n_fe_metal_step_mantle'] = xi

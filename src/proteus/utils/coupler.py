@@ -1013,12 +1013,13 @@ def GetHelpfileKeys():
         # outgas dispatch buffers to under that source, echoed here
         # verbatim for single-source-of-truth analysis (same convention
         # as fO2_shift_IW_derived above).
-        # The three Fe-metal columns are the saturation diagnostics of the
-        # same tracker: the largest per-cell metal activity (0 when no cell
-        # was tested), the cumulative metal formed, and the metal formed on
-        # this step.
+        # The Fe-metal columns are the saturation diagnostics of the same
+        # tracker: the largest per-cell metal activity (0 when no cell was
+        # tested), the cumulative metal formed in mol and in kg, and the
+        # metal formed on this step.
         'a_fe_max_mantle',  # largest per-cell Fe-metal activity [1]
         'fO2_shift_IW_mantle',  # tracked-melt-redox surface Delta-IW [log10 bar]
+        'fe_metal_kg_mantle',  # cumulative Fe metal formed in the mantle [kg]
         'ferric_frac_mantle',  # global melt Fe3+/FeT from the tracker [1]
         'n_fe_metal_mantle',  # cumulative Fe metal formed in the mantle [mol]
         'n_fe_metal_step_mantle',  # Fe metal formed on this step [mol]
