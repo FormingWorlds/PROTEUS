@@ -10616,6 +10616,18 @@
       "doc": "Check that required external packages are importable for the selected modules."
     },
     {
+      "validator": "front_trapping_requires_aragog",
+      "module": "_config.py",
+      "attached_to": [
+        "outgas"
+      ],
+      "touches": [
+        "interior_energetics.module",
+        "outgas"
+      ],
+      "doc": "Front trapping reads the freezing front the Aragog interior resolves."
+    },
+    {
       "validator": "instmethod_dummy",
       "module": "_config.py",
       "attached_to": [

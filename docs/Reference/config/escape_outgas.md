@@ -232,6 +232,7 @@ Rock vapourisation parameters, used when `outgas.vapourise = true`. Requires
 Cross-field constraints enforced when the config file loads:
 
 - BOREAS escape requires a radiative atmosphere (not dummy).
+- Front trapping reads the freezing front the Aragog interior resolves.
 - ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled.
 - ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks.
 - Dummy escape requires a non-negative escape rate.
