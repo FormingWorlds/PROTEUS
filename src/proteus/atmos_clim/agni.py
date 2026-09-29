@@ -461,6 +461,11 @@ def _determine_aerosols(dirs: dict) -> dict:
     for name in jl.AGNI.aerosol_optics.list_materials():
         aerosols[name] = 'mie'
 
+    # Remove H2O from aerosols list
+    if 'H2O' in aerosols:
+        del aerosols['H2O']
+        log.debug('Removed H2O from aerosols list')
+
     log.debug(f'Available aerosols: {sorted(aerosols)}')
     return aerosols
 
@@ -603,10 +608,10 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             # tied to a species by name
             entry['species'] = tied
             aerosol_species[name] = entry
-            log.info(f'    {name:10s} ({method}) tied to condensate {tied}')
+            log.info(f'    {name:8s} ({method}) tied to condensate {tied}')
         else:
             # skip otherwise
-            log.debug(f'    {name:10s} ({method}) not tied to any condensate; skipping')
+            log.debug(f'    {name:8s} ({method}) not tied to any condensate; skipping')
 
     # Warn if no aerosol species were found
     if len(aerosol_species) == 0:
@@ -1265,6 +1270,14 @@ def _solve_once(atmos, config: Config):
         config.atmos_clim.agni.chemistry == 'eq',
         config.atmos_clim.agni.rainout,
     )
+
+    # set clouds
+    if config.atmos_clim.cloud_enabled:
+        jl.AGNI.atmosphere.set_clouds_b(atmos)
+
+    # set aerosols
+    if config.atmos_clim.aerosols_enabled:
+        jl.AGNI.atmosphere.set_aerosols_b(atmos)
 
     # solve fluxes
     jl.AGNI.energy.calc_fluxes_b(atmos, radiative=True, convective=True, calc_cf=True)

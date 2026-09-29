@@ -1,8 +1,4 @@
-# PROTEUS: worked AGNI example
-# A complete rocky-planet configuration using the AGNI atmosphere module, with
-# aerosols enabled (composition-tied Mie/mon optical properties) and the
-# photosphere pressure level (p_obs) determined self-consistently from
-# optical depth rather than fixed by hand (set p_obs = 'none').
+# PROTEUS: rocky-planet configuration with a reducing atmosphere.
 # Documentation: https://proteus-framework.org/PROTEUS/How-to/config.html
 
 # ----------------------------------------------------
@@ -32,12 +28,10 @@ config_version = "3.0"
     offline                   = false        # offline mode (no data downloads)
 
     [params.out]
-        # Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
-        # name (run_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
-        path                  = "auto"
+        path                  = "reducing"
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
-        plot_fmt              = "png"        # png | pdf
+        plot_fmt              = "pdf"        # png | pdf
         write_mod             = 1            # 0: at end | n: every n iters
         dt_write_rel          = 1e-3         # extra time-based write trigger as fraction of sim time, OR-ed with write_mod (0: off)
         archive_mod           = "none"       # 0: at end | n: every n iters | none: never
@@ -48,9 +42,9 @@ config_version = "3.0"
         minimum_rel           = 1e-5         # minimum relative time step
         maximum               = 1e7          # maximum time step [yr]
         initial               = 3e1          # initial step size [yr]
-        starspec              = 1e8          # recalculate stellar spectrum interval [yr]
+        starspec              = 1e9          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
-        method                = "adaptive"   # proportional | adaptive | maximum
+        method                = "maximum"   # proportional | adaptive | maximum
         propconst             = 52.0         # proportionality constant (proportional method)
         atol                  = 0.02         # step size absolute tolerance (adaptive method)
         rtol                  = 0.10         # step size relative tolerance (adaptive method)
@@ -75,7 +69,7 @@ config_version = "3.0"
         [params.stop.time]                   # simulation time limits
             enabled           = true
             minimum           = 1.0e3        # run at least this long [yr]
-            maximum           = 6.0e+9       # stop after this time [yr]
+            maximum           = 5.0e+9       # stop after this time [yr]
 
         [params.stop.solid]                  # solidification criterion
             enabled           = true
@@ -129,8 +123,8 @@ config_version = "3.0"
     [planet.elements]
         O_mode                = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct
         O_budget              = 0.0          # ignored for ic_chemistry mode
-        H_mode                = "oceans"     # oceans | ppmw | kg
-        H_budget              = 1000.0          # unit defined by H_mode
+        H_mode                = "ppmw"     # oceans | ppmw | kg
+        H_budget              = 2e5          # unit defined by H_mode
         C_mode                = "C/H"        # C/H mass ratio | ppmw | kg
         C_budget              = 1.0          # unit defined by C_mode
         N_mode                = "N/H"        # N/H mass ratio | ppmw | kg
@@ -141,16 +135,16 @@ config_version = "3.0"
         metallicity           = 1000         # metallicity relative to solar [by mass]
         # Noble gases (opt-in per gas via outgas.calliope.include_*). Mode is
         # kg | ppmw | solar; solar = multiple of the protosolar X/H mass ratio.
-        He_mode               = "kg"         # kg | ppmw | solar
-        He_budget             = 0.0          # unit defined by He_mode
-        Ne_mode               = "kg"
-        Ne_budget             = 0.0
-        Ar_mode               = "kg"
-        Ar_budget             = 0.0
-        Kr_mode               = "kg"
-        Kr_budget             = 0.0
-        Xe_mode               = "kg"
-        Xe_budget             = 0.0
+        He_mode               = "solar"         # kg | ppmw | solar
+        He_budget             = 1.0          # unit defined by He_mode
+        Ne_mode               = "solar"
+        Ne_budget             = 1.0
+        Ar_mode               = "solar"
+        Ar_budget             = 1.0
+        Kr_mode               = "solar"
+        Kr_budget             = 1.0
+        Xe_mode               = "solar"
+        Xe_budget             = 1.0
 
     # Partial pressures (used when volatile_mode = 'gas_prs') [bar]
     [planet.gas_prs]
@@ -204,7 +198,7 @@ config_version = "3.0"
 
     # Orbit geometry and instellation
     instellation_method       = "distance"   # "distance" (semi-major axis) | "inst" (flux)
-    semimajoraxis             = 1.0          # semi-major axis [AU] (if method = "distance")
+    semimajoraxis             = 0.7          # semi-major axis [AU] (if method = "distance")
     instellationflux          = 5.0          # instellation [S_Earth] (if method = "inst")
     eccentricity              = 0.0          # orbital eccentricity
     zenith_angle              = 48.19        # characteristic zenith angle [degrees]
@@ -216,7 +210,7 @@ config_version = "3.0"
 [interior_struct]
     module                    = "dummy"   # zalmoxis | dummy | spider
     core_frac_mode            = "radius"       # radius | mass; zalmoxis always uses mass (radius is ignored with a warning)
-    core_frac                 = 0.325        # radius or mass fraction (see core_frac_mode)
+    core_frac                 = 0.55        # radius or mass fraction (see core_frac_mode)
     core_density              = 12000       # core density [kg m-3]; "self" = from zalmoxis/dummy
     core_heatcap              = 800       # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis/dummy
     melting_dir               = "Monteux-600"       # melting curve folder in FWL_DATA; none if PALEOS-derived; otherwise see tools/solidus_func.py
@@ -321,14 +315,14 @@ config_version = "3.0"
     radio_Th                  = 0.124        # Th [ppmw of element]; BSE value
 
     # Rheology and convection
-    rfront_loc                = 0.50         # rheological front centre [melt fraction]
+    rfront_loc                = 0.40         # rheological front centre [melt fraction]
     rfront_wid                = 0.20         # rheological front width [melt fraction]
     grain_size                = 0.1          # crystal grain size [m]
     mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
     kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
 
     # Coupling limits (max T_magma change per PROTEUS step)
-    tmagma_atol               = 20.0         # absolute limit [K]
+    tmagma_atol               = 50.0         # absolute limit [K]
     tmagma_rtol               = 0.02         # relative limit
 
     # Ultra-thin boundary layer parameterization
@@ -477,15 +471,15 @@ config_version = "3.0"
 
     # Grid and spectral setup (shared by agni + janus)
     spectral_group            = "Dayspring"  # opacity k-table set; see docs/assets/spectral_files.pdf
-    spectral_bands            = "16"         # wavenumber bands in k-table
-    num_levels                = 30           # vertical atmosphere levels (min 15)
-    p_top                     = 1.0e-4       # top-of-atmosphere pressure [bar]
+    spectral_bands            = "48"         # wavenumber bands in k-table
+    num_levels                = 40           # vertical atmosphere levels (min 15)
+    p_top                     = 1.0e-5       # top-of-atmosphere pressure [bar]
     p_obs                     = 'none'       # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
     # Radiative properties (agni, janus only)
     rayleigh                  = false         # Rayleigh scattering
-    cloud_enabled             = false        # water cloud radiative effects
+    cloud_enabled             = true        # water cloud radiative effects
     cloud_alpha               = 0.0          # condensate retention fraction (0 to 1)
     aerosols_enabled          = true        # enable aerosol radiative effects (agni only)
     albedo_pl                 = 0.0          # planetary bond albedo (0 to 1)
@@ -508,7 +502,7 @@ config_version = "3.0"
         rainout               = true         # volatile condensation and evaporation
         oceans                = true         # surface liquid water oceans
         latent_heat           = false        # latent heat from condensation/evaporation
-        real_gas              = false        # real-gas EOS where available
+        real_gas              = true         # real-gas EOS where available
         chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
         mlt_criterion         = "s"          # convection criterion: s (Schwarzschild) | l (Ledoux)
 
@@ -522,15 +516,15 @@ config_version = "3.0"
         evap_efficiency       = 0.01         # raindrop re-evaporation efficiency (0 to 1)
 
         # Solver tuning (rarely need to change)
-        solution_atol         = 0.5          # Newton solver absolute tolerance [W/m2]
-        solution_rtol         = 0.15         # Newton solver relative tolerance
+        solution_atol         = 0.4          # Newton solver absolute tolerance [W/m2]
+        solution_rtol         = 0.2         # Newton solver relative tolerance
         psurf_thresh          = 0.1          # skip full RCE when P_surf below this [bar]
-        dx_max                = 200.0        # max Newton step per iteration [K]; wide cap lets the RCE solve reach equilibrium from a hot start within max_steps
-        dx_max_ini            = 50.0         # max Newton step during first few PROTEUS loops [K]
-        max_steps             = 200          # max Newton iterations per call
-        perturb_all           = false        # recompute full Jacobian each iteration
-        ini_profile           = "isothermal" # initial T(p) guess: isothermal | loglinear | dry_adiabat | analytic
-        ls_default            = 2            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
+        dx_max                = 50.0        # max Newton step per iteration [K]; wide cap lets the RCE solve reach equilibrium from a hot start within max_steps
+        dx_max_ini            = 400.0         # max Newton step during first few PROTEUS loops [K]
+        max_steps             = 100          # max Newton iterations per call
+        perturb_all           = true        # recompute full Jacobian each iteration
+        ini_profile           = "loglinear" # initial T(p) guess: isothermal | loglinear | dry_adiabat | analytic
+        ls_default            = 0            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
         fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
         check_safe_gas        = true         # require at least one gas with opacity+thermo data
         verbosity             = 1            # AGNI log level: 0 (silent) | 1 (info) | 2 (debug)
