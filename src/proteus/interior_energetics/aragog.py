@@ -113,44 +113,6 @@ def _write_paleos_melting_curves(outdir, config):
     return sol_file, liq_file
 
 
-_entropy_eos_cache: dict = {}
-_entropy_eos_jax_cache: dict = {}
-
-
-def _eos_content_key(eos_dir_str: str) -> str:
-    """Compute a content fingerprint for an EOS directory.
-
-    The PROTEUS test fixture materialises the EOS tables into a fresh
-    per-test ``outdir/data/spider_eos`` directory each time, so a path
-    based cache key misses across tests.
-
-    The generator writes the parameters that define the tables into
-    ``.cache_info.txt``: the pressure ceiling, the grid shape, the mushy-zone
-    factor and the EOS identity. That marker is the key when present. Sizes
-    alone are not enough on the accretion path: a giant impact grows the planet
-    and the tables are rewritten to a higher pressure ceiling on the same grid,
-    so every file keeps its length and a size-based key cannot see that the
-    tables now describe a different planet.
-    """
-    try:
-        marker = os.path.join(eos_dir_str, '.cache_info.txt')
-        if os.path.isfile(marker):
-            with open(marker) as f:
-                key = f.read().strip()
-            if key:
-                return key
-        pairs = []
-        for name in sorted(os.listdir(eos_dir_str)):
-            full = os.path.join(eos_dir_str, name)
-            if os.path.isfile(full):
-                pairs.append((name, os.path.getsize(full)))
-        return repr(pairs)
-    except OSError:
-        # Filesystem error: fall back to the path as the key.
-        return eos_dir_str
-
-
-
 def _cached_entropy_eos(eos_dir_str: str):
     """Return the shared, cached EntropyEOS for ``eos_dir_str``.
 
@@ -1270,8 +1232,8 @@ class AragogRunner:
         throughout the solve (the RHS, the per-call energy integrals, and the
         compression-work diagnostic inside ``reset()``), so a stale object
         misreports the energy budget on exactly the runs that outgrow their
-        starting table. The loader is cached on the table parameters, so an
-        unchanged table costs one small read.
+        starting table. The loader is cached on file stamps, so an
+        unchanged table avoids reloading.
 
         Parameters
         ----------
@@ -1292,7 +1254,6 @@ class AragogRunner:
     def _maybe_install_jax_cvode_factory(
         config: Config, interior_o: Interior_t, outdir: str | None = None
     ) -> None:
-
         """Install a JAX CVODE callback factory on the solver (option Z).
 
         Activated only when ``config.interior_energetics.aragog.backend ==
@@ -2993,7 +2954,6 @@ def discard_snapshot(output_dir: str, time: float) -> bool:
         return False
     os.remove(fpath)
     return True
-
 
 
 def read_last_Sfield(output_dir: str, time: float):

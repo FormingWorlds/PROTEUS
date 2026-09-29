@@ -5,7 +5,7 @@ Tests the Zalmoxis-specific branches in AragogRunner.setup_solver() that set
 inner_radius from zalmoxis_solver and configure temperature-dependent initial
 conditions, plus the contracts that keep the solver on the planet as it grows:
 the retry ladder and its giant-impact exemption, per-solve mesh re-reads, the
-EOS-table reload and its content-keyed cache, and the JAX factory install and
+EOS-table reload, and the JAX factory install and
 failure paths.
 
 Testing standards and documentation:
@@ -15,7 +15,7 @@ Testing standards and documentation:
 Functions tested:
 - AragogRunner.setup_solver(): Zalmoxis branches for inner_radius, EOS fallback
 - AragogRunner._solve_with_retry(): ladder policy, guards, table refresh wiring
-- AragogRunner._refresh_entropy_eos() and _eos_content_key(): reload discipline
+- AragogRunner._refresh_entropy_eos(): reload discipline
 - AragogRunner._maybe_install_jax_cvode_factory(): install-last and clear-on-fail
 """
 
@@ -1806,72 +1806,6 @@ def test_the_solver_is_pointed_at_the_current_tables_before_each_solve(tmp_path)
         AragogRunner._refresh_entropy_eos(config, gone)
         assert loader.call_count == 0
     assert solver.entropy_eos is startup
-
-
-@pytest.mark.unit
-def test_regenerated_eos_tables_are_seen_even_at_identical_file_sizes(tmp_path):
-    """Tables rewritten to a higher pressure ceiling are treated as new tables.
-
-    A giant impact grows the planet, and the P-S tables are rewritten with a
-    ceiling scaled to the new mass on the same entropy and pressure grid. Every
-    file therefore keeps its length, so a key made of file sizes reports the
-    tables unchanged and the solver keeps evaluating the deepest cells against a
-    table built for the smaller planet, clamping at its edge.
-
-    Verifies:
-    - The key changes when only the recorded ceiling changes, with byte counts
-      held equal, which is what the size-based key could not see.
-    - It still changes for a genuine size change, so the marker has not simply
-      replaced one blind spot with another.
-    - A directory with no marker still yields a usable key rather than raising.
-    """
-    from proteus.interior_energetics.aragog import _eos_content_key
-
-    def write(ceiling, pad=0):
-        d = tmp_path / f'eos_{ceiling}_{pad}'
-        d.mkdir()
-        (d / '.cache_info.txt').write_text(
-            f'P_max={ceiling:.6e}_nP=1350_nS=280_mzf=0.8_layout=2phase_eos=PALEOS-2phase'
-        )
-        # Same grid shape means the same byte count, which is the whole trap.
-        (d / 'density_melt.dat').write_bytes(b'x' * (4096 + pad))
-        return d
-
-    before = write(2.750e11)  # 0.5 M_earth embryo
-    after = write(8.750e11)  # the same planet after growing to 4.5 M_earth
-
-    sizes = {p.name: p.stat().st_size for p in before.iterdir() if p.name != '.cache_info.txt'}
-    after_sizes = {
-        p.name: p.stat().st_size for p in after.iterdir() if p.name != '.cache_info.txt'
-    }
-    assert sizes == after_sizes, 'the table files must match in size for this to bite'
-
-    k_before = _eos_content_key(str(before))
-    k_after = _eos_content_key(str(after))
-    assert k_before != k_after
-    # The ceiling is what moved, so it must be what the key carries.
-    assert '2.750000e+11' in k_before
-    assert '8.750000e+11' in k_after
-
-    # The marker fully describes the tables, so identical markers are the same
-    # tables however the bytes fall. This is deliberate, not a second blind spot.
-    grown = write(2.750e11, pad=512)
-    assert _eos_content_key(str(grown)) == k_before
-
-    # Without a marker the fallback is the file listing, and it still separates
-    # two directories that differ only in size.
-    bare = tmp_path / 'bare'
-    bare.mkdir()
-    (bare / 'density_melt.dat').write_bytes(b'y' * 2048)
-    bigger = tmp_path / 'bigger'
-    bigger.mkdir()
-    (bigger / 'density_melt.dat').write_bytes(b'y' * 4096)
-    bare_key = _eos_content_key(str(bare))
-    assert 'density_melt.dat' in bare_key
-    assert bare_key != _eos_content_key(str(bigger))
-
-    # A missing directory yields the path itself rather than raising.
-    assert _eos_content_key(str(tmp_path / 'missing')) == str(tmp_path / 'missing')
 
 
 @pytest.mark.unit
