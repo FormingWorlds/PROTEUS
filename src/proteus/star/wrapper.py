@@ -548,16 +548,47 @@ def update_stellar_temperature(hf_row: dict, config: Config, stellar_track=None)
                 hf_row['T_star'] = stellar_track.BaraffeStellarTeff(hf_row['age_star'])
 
 
+def flux_weighted_distance(hf_row: dict) -> float:
+    """
+    Distance reproducing the orbit-averaged inverse-square stellar flux.
+
+    Averaging 1/r^2 over one orbit gives 1 / (a^2 sqrt(1 - e^2)), so the
+    distance that carries the same flux is a (1 - e^2)^(1/4). This differs
+    from hf_row['separation'], which is the time-averaged separation
+    a (1 + e^2 / 2) and is the right quantity for the Roche limit, the Hill
+    radius and the geometry the observation modules work in.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Dictionary of current runtime variables
+
+    Returns
+    -------
+    float
+        Flux-weighted star-planet distance [m].
+    """
+
+    ecc = float(hf_row.get('eccentricity', 0.0))
+    if not 0.0 <= ecc < 1.0:
+        raise ValueError(f'Eccentricity must be >= 0 and < 1, got {ecc}')
+
+    return float(hf_row['semimajorax']) * (1.0 - ecc * ecc) ** 0.25
+
+
 def update_instellation(hf_row: dict, config: Config, stellar_track=None):
     """
     Update hf_row value of bolometric stellar flux impinging upon the planet.
     """
 
+    # Flux-weighted distance, so bolometric and XUV share one orbital average
+    sep_flux = flux_weighted_distance(hf_row)
+
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import calc_instellation
 
-        S_0 = calc_instellation(config.star.dummy.Teff, hf_row['R_star'], hf_row['separation'])
+        S_0 = calc_instellation(config.star.dummy.Teff, hf_row['R_star'], sep_flux)
         Fxuv_SI = 0.0
 
     # Mors cases
@@ -569,31 +600,18 @@ def update_instellation(hf_row: dict, config: Config, stellar_track=None):
 
                 # Bolometric flux
                 S_0 = (
-                    stellar_track.Value(age_star, 'Lbol')
-                    * 1e-7
-                    / (4.0 * np.pi * hf_row['separation'] ** 2.0)
+                    stellar_track.Value(age_star, 'Lbol') * 1e-7 / (4.0 * np.pi * sep_flux**2.0)
                 )
 
                 # Interpolating the XUV flux at the age of the star
                 Lxuv_cgs = stellar_track.Value(age_star, 'Lx') + stellar_track.Value(
                     age_star, 'Leuv'
                 )
-                Fxuv_SI = (
-                    Lxuv_cgs
-                    / (
-                        4
-                        * np.pi
-                        * (hf_row['semimajorax'] * 1e2) ** 2
-                        * np.sqrt(1 - hf_row['eccentricity'] ** 2)
-                    )
-                    * ergcm2stoWm2
-                )
+                Fxuv_SI = Lxuv_cgs / (4.0 * np.pi * (sep_flux * 1e2) ** 2) * ergcm2stoWm2
 
             case 'baraffe':
                 # Bolometric flux
-                S_0 = stellar_track.BaraffeSolarConstant(
-                    hf_row['age_star'], hf_row['separation'] / AU
-                )
+                S_0 = stellar_track.BaraffeSolarConstant(hf_row['age_star'], sep_flux / AU)
 
                 # XUV flux not provided by Baraffe tracks
                 Fxuv_SI = 0.0
