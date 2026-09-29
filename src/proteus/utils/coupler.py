@@ -1467,12 +1467,7 @@ def _describe_missing_columns(missing: list[str]) -> str:
 # helpfile written before one of them joined the schema still resumes: the
 # reader backfills these with zeros. Add a column here only if no module,
 # resume path or solver consumes it.
-_DIAGNOSTIC_KEYS = (
-    'T_cmb_node',
-    'esc_kg_cumulative',
-    'M_accreted_rock',
-    'step_dE_impact_J',
-)
+_DIAGNOSTIC_KEYS = ('T_cmb_node',)
 
 
 def GetHelpfileDiagnosticKeys():
@@ -1601,14 +1596,29 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     hf_all = pd.read_csv(fpath, sep=r'\s+')
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
-    if missing:
+    fillable = [key for key in missing if key in RESUMABLE_ZERO_FILL_KEYS]
+    unfillable = sorted(set(missing) - set(fillable))
+
+    if unfillable:
         raise HelpfileSchemaDriftError(
             "Helpfile '%s' was written before %d column(s) of the current output "
             'schema existed that carry physical state and cannot be reconstructed: %s. '
             'Run this configuration again from t=0, or read this run with the '
             'PROTEUS version that wrote it.'
-            % (fpath, len(missing), _describe_missing_columns(missing))
+            % (fpath, len(unfillable), _describe_missing_columns(unfillable))
         )
+
+    if fillable:
+        log.warning(
+            'Helpfile predates %d column(s) in the current schema, and they are read '
+            'as zero for the rest of this run: %s. Zero is exact for a column that '
+            'resets every step; for one that accumulates, any history from before '
+            'this column existed is not recoverable.',
+            len(fillable),
+            ', '.join(sorted(fillable)),
+        )
+        zeros_fillable = pd.DataFrame(0.0, index=hf_all.index, columns=fillable)
+        hf_all = pd.concat([hf_all, zeros_fillable], axis=1)
 
     backfill = [k for k in GetHelpfileDiagnosticKeys() if k not in hf_all.columns]
     if backfill:
