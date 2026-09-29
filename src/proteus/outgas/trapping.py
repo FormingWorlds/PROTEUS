@@ -296,17 +296,18 @@ def derived_total_elements(config: Config) -> tuple[str, ...]:
     budget after the copy, so oxygen is conserved state there and is absent
     from this tuple.
 
-    Trapping must therefore neither withhold nor debit the oxygen total in the
-    ``user_constant`` case: the trapped oxygen is recorded in ``O_kg_trapped``
-    and ``O_kg_solid`` as a diagnostic, and the per-element closure is not
-    asserted for it.
+    Trapping still treats oxygen like every other element around a solve: the
+    trapped oxygen is taken out before it and added back to the total the
+    chemistry writes, so ``O_kg_total`` is the whole planet's oxygen under
+    either source. The per-element closure is not asserted for it, because the
+    chemistry total closes only to the solver's own convention.
     """
     if getattr(getattr(config, 'planet', None), 'fO2_source', '') == 'user_constant':
         return ('O',)
     return ()
 
 
-def withhold_trapped_mass(hf_row: dict, derived: tuple[str, ...] = ()) -> None:
+def withhold_trapped_mass(hf_row: dict) -> None:
     """Take the trapped mass out of the reservoirs a chemistry solve owns.
 
     Every outgassing backend partitions a whole-planet inventory between melt and
@@ -319,8 +320,10 @@ def withhold_trapped_mass(hf_row: dict, derived: tuple[str, ...] = ()) -> None:
     the backend exactly the share it owns.
 
     Pair with :func:`restore_trapped_mass`, or use :func:`trapped_mass_withheld`,
-    which pairs the two. ``derived`` names elements whose total the chemistry
-    recomputes (see :func:`derived_total_elements`); their total is left alone.
+    which pairs the two. An element whose total the chemistry recomputes, such
+    as oxygen under a buffered fO2, is treated the same way: the solve writes its
+    own total over the withheld one and the restore adds the trapped share to
+    it, and a solve that writes nothing leaves the total where it started.
     """
     for species in vol_list:
         mass = _trapped(hf_row, species)
@@ -331,11 +334,10 @@ def withhold_trapped_mass(hf_row: dict, derived: tuple[str, ...] = ()) -> None:
         if mass <= 0.0:
             continue
         _shift(hf_row, f'{element}_kg_solid', -mass)
-        if element not in derived:
-            _shift(hf_row, f'{element}_kg_total', -mass)
+        _shift(hf_row, f'{element}_kg_total', -mass)
 
 
-def restore_trapped_mass(hf_row: dict, derived: tuple[str, ...] = ()) -> None:
+def restore_trapped_mass(hf_row: dict) -> None:
     """Put the trapped mass back after a chemistry solve.
 
     Adds it to whatever the backend wrote into ``_kg_solid``, and restores each
@@ -359,25 +361,24 @@ def restore_trapped_mass(hf_row: dict, derived: tuple[str, ...] = ()) -> None:
         if mass <= 0.0:
             continue
         _shift(hf_row, f'{element}_kg_solid', mass)
-        if element not in derived:
-            _shift(hf_row, f'{element}_kg_total', mass)
+        _shift(hf_row, f'{element}_kg_total', mass)
 
 
 @contextmanager
-def trapped_mass_withheld(hf_row: dict, derived: tuple[str, ...] = ()):
+def trapped_mass_withheld(hf_row: dict):
     """Hide the trapped mass from the chemistry for the duration of a solve.
 
     Withholds on entry and restores on exit, also when the solve raises, so the
     row never carries the reachable inventory as the whole planet's.
     """
-    withhold_trapped_mass(hf_row, derived)
+    withhold_trapped_mass(hf_row)
     try:
         yield
     finally:
-        restore_trapped_mass(hf_row, derived)
+        restore_trapped_mass(hf_row)
 
 
-def keep_only_trapped_mass(hf_row: dict, derived: tuple[str, ...] = ()) -> None:
+def keep_only_trapped_mass(hf_row: dict) -> None:
     """Leave only the trapped mass in a row whose atmosphere and melt were emptied.
 
     Desiccation empties the atmosphere and the melt, while what trapping buried
@@ -385,8 +386,7 @@ def keep_only_trapped_mass(hf_row: dict, derived: tuple[str, ...] = ()) -> None:
     each trapped species and element gets its trapped mass back as its solid
     reservoir, and the total of every volatile and noble element is set to what
     it still holds, its trapped mass or zero, so that each total equals the sum of
-    its reservoirs. The total of a ``derived`` element follows the chemistry's
-    convention, which excludes the solid, and is left as it is.
+    its reservoirs.
     """
     for species in vol_list:
         mass = _trapped(hf_row, species)
@@ -400,8 +400,7 @@ def keep_only_trapped_mass(hf_row: dict, derived: tuple[str, ...] = ()) -> None:
     for element in list(vol_element_list) + list(noble_gases):
         mass = _trapped(hf_row, element)
         hf_row[f'{element}_kg_solid'] = mass
-        if element not in derived:
-            hf_row[f'{element}_kg_total'] = mass
+        hf_row[f'{element}_kg_total'] = mass
 
 
 def _apply_to_reservoirs(hf_row: dict, moved: dict[str, float]) -> None:

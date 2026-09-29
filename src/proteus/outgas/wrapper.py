@@ -9,7 +9,6 @@ import numpy as np
 from proteus.outgas.common import expected_keys
 from proteus.outgas.lavatmos import run_vapourisation
 from proteus.outgas.trapping import (
-    derived_total_elements,
     keep_only_trapped_mass,
     trapped_mass_withheld,
 )
@@ -426,7 +425,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     # override, graphite in atmodeller. Hide the trapped mass for the duration
     # of the solve, so that it is neither re-dissolved nor mistaken for
     # condensate, and put it back afterwards.
-    with trapped_mass_withheld(hf_row, derived_total_elements(config)):
+    with trapped_mass_withheld(hf_row):
         _solve_chemistry(dirs, config, hf_row)
 
     # P_surf here is the volatile+noble gas total
@@ -636,7 +635,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     # keep what trapping buried, and empty the escape-owned totals of every
     # volatile and noble element that has nothing left, so that each total
     # still equals the sum of its reservoirs.
-    keep_only_trapped_mass(hf_row, derived_total_elements(config))
+    keep_only_trapped_mass(hf_row)
 
     # Vapourisation of refractories, under the same crystallised gate as
     # volatile outgassing path.

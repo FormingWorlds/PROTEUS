@@ -684,15 +684,15 @@ def test_chemistry_cannot_redissolve_what_the_mantle_has_buried():
     assert stale['H_kg_total'] == pytest.approx(2.0e20, rel=1e-12)
 
 
-def test_oxygen_total_is_left_to_the_chemistry_when_the_buffer_owns_it():
+def test_the_oxygen_total_is_the_whole_planets_under_either_fo2_source():
     """Holding the oxygen fugacity at a fixed buffer offset requires the
-    chemistry to move oxygen, so under ``fO2_source = 'user_constant'`` the
-    oxygen total is an output of the solve rather than a conserved budget.
-    Trapping must not withhold or debit it, and the per-element closure cannot
-    be asserted for it; the trapped oxygen stays as a diagnostic in
-    ``O_kg_trapped`` and ``O_kg_solid``. Under ``'from_O_budget'`` the wrapper
-    restores the authoritative budget, so oxygen is conserved state and is
-    treated like any other element."""
+    chemistry to move oxygen, so under ``fO2_source = 'user_constant'`` it
+    writes the oxygen total itself, as its atmosphere plus melt. Trapping
+    treats that total like any other: the trapped oxygen is withheld before
+    the solve and added to what the solve writes, so ``O_kg_total`` is the
+    whole planet's oxygen and escape and desiccation, which subtract the
+    trapped share, see exactly the chemistry's oxygen. Under
+    ``'from_O_budget'`` the budget is withheld and restored the same way."""
     buffered = SimpleNamespace(planet=SimpleNamespace(fO2_source='user_constant'))
     budgeted = SimpleNamespace(planet=SimpleNamespace(fO2_source='from_O_budget'))
     assert derived_total_elements(buffered) == ('O',)
@@ -704,26 +704,38 @@ def test_oxygen_total_is_left_to_the_chemistry_when_the_buffer_owns_it():
 
     row = _hf_row(H_kg_total=2.0e20, H_kg_solid=4.0e19, O_kg_total=1.6e21, O_kg_solid=3.2e20)
     row.update(H_kg_trapped=4.0e19, O_kg_trapped=3.2e20)
-    withhold_trapped_mass(row, derived_total_elements(buffered))
-    # Hydrogen is withheld so the chemistry partitions only what it can reach.
+    withhold_trapped_mass(row)
+    # The chemistry sees the reachable hydrogen and oxygen alone.
     assert row['H_kg_total'] == pytest.approx(1.6e20, rel=1e-12)
-    # The oxygen total is left exactly as it was, for the chemistry to
-    # overwrite, while its solid column still holds only the backend's share.
-    assert row['O_kg_total'] == pytest.approx(1.6e21, rel=1e-12)
+    assert row['O_kg_total'] == pytest.approx(1.28e21, rel=1e-12)
     assert row['O_kg_solid'] == pytest.approx(0.0, abs=0.0)
-    restore_trapped_mass(row, derived_total_elements(buffered))
-    # Nothing is credited to the chemistry's total; the solid gets its share.
-    assert row['O_kg_total'] == pytest.approx(1.6e21, rel=1e-12)
-    assert row['O_kg_solid'] == pytest.approx(3.2e20, rel=1e-12)
+    # Stand in for a buffered solve, which writes its own oxygen split and
+    # total from the fugacity constraint, here 1.3e21 kg.
+    row.update(O_kg_atm=3.0e20, O_kg_liquid=1.0e21, O_kg_total=1.3e21)
+    restore_trapped_mass(row)
+    # The total is the solve's oxygen plus the trapped oxygen, and closes.
+    assert row['O_kg_total'] == pytest.approx(1.3e21 + 3.2e20, rel=1e-12)
+    parts = row['O_kg_atm'] + row['O_kg_liquid'] + row['O_kg_solid']
+    assert parts == pytest.approx(row['O_kg_total'], rel=1e-12)
+    # Discrimination: a total left at the solve's value would leave out the
+    # trapped oxygen, and escape would subtract it a second time.
+    assert abs(row['O_kg_total'] - 1.3e21) > 1.0e20
+    assert escapable_inventory(row, 'O') == pytest.approx(1.3e21, rel=1e-12)
     assert row['H_kg_total'] == pytest.approx(2.0e20, rel=1e-12)
+
+    # Edge case: a solve that writes no oxygen total leaves it where it was.
+    idle = _hf_row(O_kg_total=1.6e21, O_kg_solid=3.2e20, O_kg_trapped=3.2e20)
+    withhold_trapped_mass(idle)
+    restore_trapped_mass(idle)
+    assert idle['O_kg_total'] == pytest.approx(1.6e21, rel=1e-12)
 
     # With the budget authoritative, oxygen is withheld like everything else.
     row2 = _hf_row(O_kg_total=1.6e21, O_kg_solid=3.2e20, O_kg_trapped=3.2e20)
-    withhold_trapped_mass(row2, derived_total_elements(budgeted))
+    withhold_trapped_mass(row2)
     assert row2['O_kg_total'] == pytest.approx(1.28e21, rel=1e-12)
     # Discrimination: the unwithheld total is 1.6e21, well clear of 1.28e21.
     assert abs(row2['O_kg_total'] - 1.6e21) > 1.0e20
-    restore_trapped_mass(row2, derived_total_elements(budgeted))
+    restore_trapped_mass(row2)
     assert row2['O_kg_total'] == pytest.approx(1.6e21, rel=1e-12)
 
     # The closure invariant skips a chemistry-owned total and still enforces
@@ -785,13 +797,10 @@ def test_desiccation_keeps_the_trapped_mass_and_empties_the_rest():
     assert row['He_kg_total'] == pytest.approx(0.0, abs=0.0)
     assert_mass_conservation(row, require_atm_le_planet=False)
 
-    # Under the oxygen buffer the chemistry's oxygen total excludes the solid:
-    # it stays empty while the trapped oxygen is kept as the diagnostic solid.
-    buffered = _desiccated_row()
-    keep_only_trapped_mass(buffered, ('O',))
-    assert buffered['O_kg_total'] == pytest.approx(0.0, abs=0.0)
-    assert buffered['O_kg_solid'] == pytest.approx(3.2e20, rel=1e-12)
-    assert_mass_conservation(buffered, require_atm_le_planet=False, derived_elements=('O',))
+    # The oxygen total is the whole planet's under either fO2 source, so the
+    # trapped oxygen is all that is left of it, and it closes.
+    assert row['O_kg_solid'] == pytest.approx(3.2e20, rel=1e-12)
+    assert row['O_kg_total'] == pytest.approx(row['O_kg_solid'], rel=1e-12)
 
     # Error contract: a non-finite trapped record counts as nothing trapped.
     stale = _desiccated_row()
