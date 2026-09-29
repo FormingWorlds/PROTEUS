@@ -34,7 +34,7 @@ surf_state = "fixed"
 surface_d = 0.01
 surface_k = 2.0
 tmp_minimum = 0.5
-p_top = 1e-05
+p_top = 1e-06
 
 [atmos_clim.agni]
 chemistry = "none"
@@ -155,12 +155,9 @@ core_frac = 0.35  # radius fraction, Brinkman et al. 2023
 module = "spider"
 core_frac_mode = "radius"
 
-# star_planet_model = "none" reproduces the 2.0 setting orbit.evolve = false:
-# the orbit is held fixed at semimajoraxis below. Setting it to "parameterized"
-# activates [orbit.parameterized], which OVERWRITES semimajoraxis with sma_init.
 [orbit]
 axial_period = "none"
-star_planet_model = "none"
+star_planet_model = "parameterized"
 eccentricity = 0.0  # Brinkman et al. 2023
 instellation_method = "distance"
 instellationflux = 1.0
@@ -177,14 +174,12 @@ Phi_tide = "<0.3"
 [orbit.lovepy]
 visc_thresh = 1000000000.0
 
-# Prescribed migration track (no tides). Inert while
-# orbit.star_planet_model = "none". See docs/Explanations/orbit.md.
 [orbit.parameterized]
 migration = "none"
 sma_init = 0.029
 sma_final = 0.0106
-time_migration = 1000000000.0
-tau_migration = 1000000000.0
+time_migration = 1e6
+tau_migration = 1e7
 
 [outgas]
 T_floor = 700.0
