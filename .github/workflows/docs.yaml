@@ -4,6 +4,12 @@ on:
     branches:
       - master
       - main
+  workflow_dispatch:
+# One group for every trigger: all runs publish to the same github-pages
+# environment, so the group is deliberately not scoped by ref.
+concurrency:
+  group: pages
+  cancel-in-progress: false
 permissions:
   contents: read
   pages: write

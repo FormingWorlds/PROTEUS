@@ -24,10 +24,10 @@ from pathlib import Path
 EXOPLANET_REFERENCE = 'observe.exoplanet_reference'
 MASS_RADIUS_ZENG_2019 = 'observe.mass_radius.zeng_2019'
 
-# The manifest schema this manifest is written against. An fwl-io older than
-# this reads the manifest as malformed rather than as a version mismatch, so the
-# load names which side is out of date. Keep in step with the fwl-io requirement
-# in pyproject.toml; the test suite pins the two together.
+# The oldest fwl-io that reads this manifest schema. An older fwl-io reads the
+# manifest as malformed rather than as a version mismatch, so the load names
+# which side is out of date. The fwl-io requirement in pyproject.toml must be at
+# least this version; the test suite enforces the relation.
 FWL_IO_FLOOR = '26.7.25'
 
 

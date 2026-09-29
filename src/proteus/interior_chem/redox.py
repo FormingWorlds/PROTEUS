@@ -476,9 +476,23 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
         if xi != 0.0:
             _update_ratios(state)
 
-    # Step 10: surface fO2 and Delta-IW, evaluated at the true surface T
-    # (T_magma, the same temperature the outgas dispatch uses)
-    T_surf = float(hf_row['T_magma'])
+    # Step 10: surface fO2 and Delta-IW, evaluated at the temperature the
+    # outgassing step uses. CALLIOPE and atmodeller both raise T_magma to
+    # outgas.T_floor before solving, so the offset handed to them is computed
+    # at max(T_magma, T_floor). Evaluating it at a colder T_magma instead
+    # would pass an fO2 from one temperature to a solve at another; below the
+    # floor the Hirschmann relation also gives offsets of -10 or lower, which
+    # the chemistry cannot solve.
+    T_magma = float(hf_row['T_magma'])
+    T_floor = float(config.outgas.T_floor)
+    T_surf = max(T_magma, T_floor)
+    if T_surf > T_magma:
+        log.warning(
+            'Melt redox: T_magma = %.1f K is below outgas.T_floor = %.1f K; '
+            'surface fO2 and Delta-IW are evaluated at %.1f K, the temperature '
+            'the outgassing uses',
+            T_magma, T_floor, T_surf,
+        )
     log10_fO2_surf = _log10_fO2_surface(state.redox_ratio, T_surf, state.X)
     dIW = log10_fO2_surf - _iw_buffer_bower2022(T_surf)
 

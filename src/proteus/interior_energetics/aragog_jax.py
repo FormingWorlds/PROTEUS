@@ -238,6 +238,11 @@ class AragogJAXRunner:
 
         T_magma = float(T[-1])
         T_core = float(T[0])
+        # Temperature of the CMB basic node (index 0), distinct from the bottom cell T[0].
+        S_basic = np.asarray(mesh.quantity_matrix @ jnp.asarray(S))
+        T_cmb_node = float(
+            np.asarray(eos.temperature(mesh.P_basic[:1], jnp.asarray(S_basic[:1])))[0]
+        )
         mass = rho * vol
         M_mantle = float(mass.sum())
         # Mass-weighted melt fraction = M_mantle_liquid / M_mantle.
@@ -319,6 +324,7 @@ class AragogJAXRunner:
             'Phi_global_vol': Phi_global,  # simplified (same as mass-weighted)
             'T_pot': T_magma,
             'T_cmb': T_core,
+            'T_cmb_node': T_cmb_node,
             'E_th_mantle': E_th,
             'Cp_eff': Cp_eff,
             'F_radio': F_radio,

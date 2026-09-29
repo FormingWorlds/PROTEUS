@@ -65,10 +65,11 @@ _M_MELT = 4.0e21
 
 
 def _make_config(f_0: float, source: str = 'from_mantle_redox') -> MagicMock:
-    """Minimal config exposing only the two planet fields the tracker reads."""
+    """Minimal config exposing only the fields the tracker reads."""
     config = MagicMock()
     config.planet.fO2_source = source
     config.planet.ferric_fraction_initial = f_0
+    config.outgas.T_floor = 700.0  # the outgassing temperature floor default
     return config
 
 
@@ -389,6 +390,51 @@ def test_metal_diagnostics_reach_the_helpfile_csv(tmp_path, caplog):
     del broken['n_fe_metal_step_mantle']
     with pytest.raises(Exception, match='missing expected keys'):
         ExtendHelpfile(hf_all, broken)
+
+
+@pytest.mark.physics_invariant
+def test_surface_delta_iw_is_evaluated_at_the_outgassing_temperature_floor(caplog):
+    """Below outgas.T_floor the outgassing solves at T_floor, so the offset
+    handed to it is evaluated at T_floor too, not at the colder T_magma.
+
+    T_magma = 302 K reproduces a surface temperature an interior step can
+    return; at that temperature the fO2 relation gives an offset near -11,
+    which the chemistry cannot solve at 700 K.
+    """
+    from proteus.interior_chem.redox import _iw_buffer_bower2022, _log10_fO2_surface
+
+    def diw_at(T, state):
+        return _log10_fO2_surface(state.redox_ratio, T, state.X) - _iw_buffer_bower2022(T)
+
+    config = _make_config(0.1344)
+    results = {}
+    for T in (302.342, 700.0, 2200.0):
+        interior = _make_interior()
+        hf_row = {'T_magma': T}
+        caplog.clear()
+        with caplog.at_level('WARNING'):
+            update_melt_redox(interior, hf_row, config)
+        warned = any('below outgas.T_floor' in r.message for r in caplog.records)
+        results[T] = (hf_row['fO2_shift_IW_mantle'], interior.redox_state, warned)
+
+    cold, cold_state, cold_warned = results[302.342]
+    # Below the floor the offset is the one at 700 K, and the clamp is logged.
+    assert cold == pytest.approx(diw_at(700.0, cold_state), rel=1e-12)
+    assert cold_warned
+    # Discrimination guard: the offset at the raw 302 K is about 12 log units
+    # lower, so evaluating at T_magma could not pass the check above.
+    assert diw_at(302.342, cold_state) < cold - 10.0
+    # Edge case: exactly at the floor there is nothing to clamp.
+    at_floor, floor_state, floor_warned = results[700.0]
+    assert at_floor == pytest.approx(diw_at(700.0, floor_state), rel=1e-12)
+    assert not floor_warned
+    # Above the floor the offset is evaluated at T_magma itself, unchanged.
+    hot, hot_state, hot_warned = results[2200.0]
+    assert hot == pytest.approx(diw_at(2200.0, hot_state), rel=1e-12)
+    assert not hot_warned
+    # The same melt is more oxidised relative to IW at 2200 K than at 700 K,
+    # so the clamp changes the value rather than coinciding with it.
+    assert hot > at_floor
 
 
 def test_oxidised_melt_stays_below_metal_saturation():

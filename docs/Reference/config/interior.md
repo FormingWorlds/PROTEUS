@@ -49,7 +49,7 @@ belong to the experimental binodal-aware mode.
 | `core_eos` | str | `"PALEOS:iron"` | EOS for the core layer. Format: "<source>:<material>". Tabulated: "PALEOS:iron" (default), "Seager2007:iron". Analytic: "Analytic:iron", "Analytic:MgFeSiO3", etc. |
 | `mantle_eos` | str | `"PALEOS:MgSiO3"` | EOS for the mantle layer. Format: "<source>:<material>". Tabulated: "PALEOS:MgSiO3" (default), "PALEOS-2phase:MgSiO3", "Seager2007:MgSiO3", "WolfBower2018:MgSiO3". Analytic: "Analytic:MgSiO3", "Analytic:MgFeSiO3", etc. |
 | `ice_layer_eos` | str or none | `none` | EOS for the ice/water layer (3-layer model). 'none' for 2-layer model (core + mantle only). Tabulated: "PALEOS:H2O", "Seager2007:H2O". Analytic: "Analytic:H2O". |
-| `mushy_zone_factor` | float | `0.8` | Cryoscopic depression factor controlling the width of the mushy zone (partially molten region) in the PALEOS EOS family. Defines the solidus as T_sol = T_liq * mushy_zone_factor. 1.0 = sharp phase boundary (no mushy zone). 0.8 = solidus at 80% of the liquidus temperature, roughly matching the Stixrude+2014 cryoscopic depression for MgSiO3. Must be in \[0.7, 1.0\]. Applies to the PALEOS EOS family (PALEOS, PALEOS-2phase, PALEOS-API, PALEOS-API-2phase); ignored for WolfBower2018 and RTPress100TPa (which use explicit melting curve files) and for Seager2007/Analytic (no derived solidus). Must be >= 0.7 and <= 1.0. |
+| `mushy_zone_factor` | float | `0.8` | Cryoscopic depression factor controlling the width of the mushy zone (partially molten region) in the PALEOS EOS family. Defines the solidus as T_sol = T_liq * mushy_zone_factor. 1.0 = sharp phase boundary (no mushy zone). 0.8 = solidus at 80% of the liquidus temperature, the constant solidus-to-liquidus ratio of Stixrude+2014 for MgSiO3, applied here to the PALEOS liquidus. Must be in \[0.7, 1.0\]. Applies to the PALEOS EOS family (PALEOS, PALEOS-2phase, PALEOS-API, PALEOS-API-2phase); ignored for WolfBower2018 and RTPress100TPa (which use explicit melting curve files) and for Seager2007/Analytic (no derived solidus). Must be >= 0.7 and <= 1.0. |
 | `mantle_mass_fraction` | float | `0` | Fraction of the planet's interior mass corresponding to the mantle. Required for 3-layer models (with ice layer) and for T-dependent 2-layer models (WolfBower2018, RTPress100TPa) where it partitions mass between core and mantle layers. Must be >= 0 and < 1. |
 | `dry_mantle` | bool | `true` | Structure EOS assumes a dry mantle. Set False for melt-fraction-aware dissolved-volatile mixing in the mantle density (per-shell volatile profile); the dissolved mass then stays inside the interior mass target. |
 
@@ -119,11 +119,18 @@ The MgSiO$_3$ mantle EOS resolves through two distinct paths depending on the `<
 With `mantle_eos = "PALEOS:MgSiO3"` (the default), the hydrostatic structure solve uses the PALEOS *unified* MgSiO$_3$ table for the density profile.
 The phase-specific property surfaces used by Aragog (density, heat capacity, thermal expansion, adiabatic gradient) and the pressure-entropy lookup tables are built from the PALEOS *two-phase* solid and liquid tables shipped with Zalmoxis when those tables are present, which keeps the properties well resolved across the melting-curve discontinuity that a single unified table interpolates through.
 If the two-phase tables are not available, the property surfaces are built from the unified table alone, and the entropy near the melting curve is less reliable.
-The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa, Fei et al. 2021 above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8), the constant solidus-to-liquidus ratio of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization.
+The liquidus is the analytic PALEOS curve (Belonoshko et al. 2005 below 2.55 GPa, Fei et al. 2021 above, in Simon-Glatzel form), and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor` (default 0.8).
+The default is the constant solidus-to-liquidus ratio ($\approx 0.809$) of the Stixrude (2014)[^cite-stixrude2014] MgSiO$_3$ melting parametrization, applied to the PALEOS liquidus instead of the Stixrude liquidus.
+The derived solidus is therefore a constant depression of the PALEOS liquidus, not the Stixrude solidus curve: its absolute value lies well above the Stixrude solidus at low to moderate pressure (about 2900 K against 1700 K at 20 GPa, and about 10% higher at 140 GPa) and below it above roughly 200 GPa.
 The melt fraction then follows from the lever rule between this solidus and liquidus.
 
-With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the solid and liquid tables define the phase boundaries directly.
-`mushy_zone_factor` is treated as 1.0 so the solidus coincides with the liquidus, and the latent-heat gap is supplied by the entropy difference between the solid and liquid tables rather than by a fixed temperature depression.
+With `mantle_eos = "PALEOS-2phase:MgSiO3"`, the SPIDER/Aragog entropy tables use the separate solid and liquid PALEOS tables, which supply the latent-heat entropy gap across the melting curve directly rather than through a single interpolated unified table.
+Their phase boundaries follow the same construction as the unified case: the liquidus is the analytic PALEOS curve, and the solidus is derived as $T_\mathrm{sol}(P) = f\,T_\mathrm{liq}(P)$ with $f$ the `mushy_zone_factor`.
+
+!!! note "`mushy_zone_factor` and the two-phase structure solve"
+    In a PROTEUS-coupled run, `load_zalmoxis_solidus_liquidus_functions` builds the `mushy_zone_factor * liquidus` solidus described above and passes it into the Zalmoxis structure solve. The same curve pair sets the SPIDER/Aragog table boundaries, the adiabatic gradient in the mushy zone, and the two-phase density (`PALEOS-2phase`, `PALEOS-API-2phase`), so `mushy_zone_factor` acts consistently in the tables and in the structure.
+    A standalone Zalmoxis run uses its own `rock_solidus` and `rock_liquidus` keys (Stixrude 2014 by default). With those defaults a two-phase mantle does not depend on `mushy_zone_factor`; with no unified PALEOS layer elsewhere (for example a `Seager2007:iron` core), a value below 1.0 is rejected at validation. A unified PALEOS layer such as a `PALEOS:iron` core does honor the factor in its own density, so validation accepts it, but it does not change the two-phase mantle. Setting `rock_liquidus = "PALEOS-liquidus"` selects the PALEOS liquidus and derives the solidus as `mushy_zone_factor * liquidus`, as in the coupled case.
+    For a 1 $M_\oplus$ planet with a `Seager2007:iron` core and a `PALEOS-2phase:MgSiO3` mantle in a standalone Zalmoxis run with a linear temperature profile, the default Stixrude (2014) curves give a radius that does not depend on `mushy_zone_factor`, whereas `rock_liquidus = "PALEOS-liquidus"` makes the resolved radius respond to `mushy_zone_factor`, so `mushy_zone_factor = 0.8` and `1.0` give different radii. Run this standalone case to quantify the shift for a given planet and table set.
 
 !!! note "Two-phase table versions"
     Two versions of the PALEOS two-phase MgSiO$_3$ tables are in circulation: the set shipped in the Zalmoxis data directory, and the finer-grid set on Zenodo that the reference-data manifest fetches.
@@ -140,9 +147,24 @@ Aragog and SPIDER. By default each run derives its own copy of these tables
 under its output `data/` directory. Set the `PROTEUS_PS_CACHE_DIR`
 environment variable to an absolute path to instead share one derived copy
 across runs: tables are stored in a subdirectory keyed by pressure ceiling,
-resolution, mantle-mass fraction, table layout, and the resolved mantle-EOS
-identity, so a run reuses the cache only when every one of those matches and
-different equations of state never collide. This is the mitigation for the
+resolution, mushy zone factor, table layout, the resolved mantle-EOS identity,
+and the Zalmoxis table generator, so a run reuses the cache only when every one
+of those matches and different equations of state never collide. The generator
+identity is the Zalmoxis version plus a digest of two source files,
+`zalmoxis/eos_export.py` and `zalmoxis/melting_curves.py`; a new version or an
+edit to either file starts a new subdirectory. The digest does not cover other
+Zalmoxis modules (for example the PALEOS-API cache modules) or the contents of
+the EOS data files, which enter the key only through their resolved paths. A
+resumed run (`proteus start -r`) keeps the energetics P-S tables it already
+uses, in its own `data/` directory or in the shared cache, whatever differs from
+the current settings, including a changed mantle EOS or a new table generator.
+The first time a process reads them, it logs one warning that names the
+difference, or the reason the current key is not checked (for example a
+PALEOS-API mantle EOS, which is not resolved on resume, or a mantle EOS that is
+no longer PALEOS). The structure solve uses the current melting curves. A
+resumed run with no kept tables (no completion marker with both phase-boundary
+files) logs a warning and continues on the tables of the current key, which it
+builds if they are absent. Sharing tables is the mitigation for the
 per-run disk duplication that a grid or batch of same-EOS runs would
 otherwise incur, since all such runs then read one shared copy. The cache
 directory is not size-limited or auto-pruned; it grows with the number of
@@ -200,7 +222,7 @@ controlled parity tests.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `rfront_loc` | float | `0.5` | Centre of rheological transition in terms of melt fraction. Must be > 0 and < 1. |
+| `rfront_loc` | float | `0.4` | Centre of rheological transition in terms of melt fraction. SPIDER receives it as ``-phi_critical``. Aragog centres its viscosity blend, its reported rheological front and the melt-fraction ramp of ``kappah_floor`` on it; the boundary module uses it as the transition point of its viscosity models. SPIDER and Aragog use melt mass fraction (0.4 by volume is about 0.375 by mass at a 10 percent melt-solid density contrast); the boundary module takes its melt fraction linearly in temperature between solidus and liquidus and its rheological transition width from ``phase_transition_width``, not ``rfront_wid``. Must be > 0 and < 1. |
 | `rfront_wid` | float | `0.2` | Width of rheological transition in terms of melt fraction. Must be > 0 and < 1. |
 | `grain_size` | float | `0.001` | Crystal settling grain size \[m\]. Must be > 0. |
 | `mixing_length` | str | `"nearest"` | Mixing-length scale: 'nearest' (distance to nearest boundary) or 'constant' (a quarter of the mantle depth). Choices: `"nearest"`, `"constant"`. |
@@ -284,7 +306,7 @@ Jacobians for robust convergence.
 | `core_bc` | str | `"energy_balance"` | Core-mantle boundary condition mode. Default 'energy_balance'. Valid values: - 'quasi_steady': alpha-factor heat-flux partition; gives about -19% T_core offset vs SPIDER. - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a new state variable (mirrors SPIDER bc.c:76-131). - 'gradient': gradient-based state with two boundary entropies as state variables. - 'bower2018': experimental, do not use for production. Choices: `"quasi_steady"`, `"energy_balance"`, `"gradient"`, `"bower2018"`. |
 | `phase_smoothing` | str | `"tanh"` | Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'. Choices: `"tanh"`, `"cubic_hermite"`. |
 | `separation_viscosity` | str | `"mixture"` | Drag viscosity for the gravitational-separation velocity v_rel = \|dRho\| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c). Choices: `"melt"`, `"mixture"`. |
-| `solver_method` | str | `"cvode"` | ODE solver: 'cvode' (SUNDIALS, SPIDER parity), 'radau' (scipy), 'bdf' (scipy). Choices: `"cvode"`, `"radau"`, `"bdf"`. |
+| `solver_method` | str | `"cvode"` | ODE solver: 'cvode' (SUNDIALS, SPIDER parity; needs scikits-odes-sundials and stops the run at setup without it), 'radau' (scipy), 'bdf' (scipy). Choices: `"cvode"`, `"radau"`, `"bdf"`. |
 | `scalar_gravity_override` | bool | `false` | Scalar-gravity comparison knob. When True, the external mesh file that Zalmoxis writes has its gravity column overwritten with a uniform scalar (the surface value from ``hf_row['gravity']``) before Aragog reads it, so Aragog's per-node gravity path interpolates to that scalar everywhere. False by default; set True only when running a paired scalar-gravity comparison. |
 | `phi_step_cap` | float | `0.0` | Per-call melt-fraction step cap. When > 0 and any staggered cell is in or near the two-phase window at solve() entry, a CVODE root function (and the equivalent scipy event) returns control at the exact time the larger of the global mass-weighted \|ΔΦ\| and the maximum single-cell \|Δφ\| reaches this cap. Off by default: the schema default 0.0 resolves to no cap, because on a benign freezing-front crossing the root function slices the coupled step into many small ones and drives the reported CMB heat flux briefly negative where the uncapped run stays positive, so the cap is a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too. |
 | `temperature_step_cap` | float | `0.0` | Per-call per-cell temperature step cap \[K\]. Shares the same root function as phi_step_cap and fires on the maximum single-cell \|ΔT\| since solve() entry. When enabled it bounds the per-cell temperature change on the solid adiabat just below the solidus, where the melt-fraction cap cannot act because a fully solid cell's melt fraction no longer moves. Off by default (schema default 0.0 resolves to no cap); on a benign freezing-front crossing the caps slice the coupled step into many small ones and drive the reported CMB heat flux briefly negative, so they are a debugging control, not a production setting. Set a positive value to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is rejected at load, since it cannot be told apart from the unset default; any other negative, NaN, or infinity is rejected too. |

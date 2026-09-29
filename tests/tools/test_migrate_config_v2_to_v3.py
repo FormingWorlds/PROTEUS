@@ -79,15 +79,20 @@ _DROP_PREFIXES = (
 _REVIEWED_NEUTRAL = frozenset(
     {
         'atmos_clim.aerosols_enabled',
+        'atmos_clim.agni.aerosol_r_eff',
+        'atmos_clim.agni.aerosol_sigma_g',
         'atmos_clim.agni.grey_opacity_lw',
         'atmos_clim.agni.grey_opacity_sw',
         'atmos_clim.agni.hydrograv_constg',
+        'atmos_clim.agni.hydrograv_hilldr',
         'atmos_clim.agni.hydrograv_maxdr',
         'atmos_clim.agni.hydrograv_mindr',
         'atmos_clim.agni.hydrograv_ming',
         'atmos_clim.agni.hydrograv_selfg',
         'atmos_clim.agni.hydrograv_steps',
         'atmos_clim.agni.spectral_file',
+        'atmos_clim.agni.tau_obs',
+        'atmos_clim.agni.wl_obs',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
         # Inert while escape.hill_clamp is pinned off for migrated configs.

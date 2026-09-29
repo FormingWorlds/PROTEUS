@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import builtins
 import importlib.util
+import logging
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -2679,3 +2682,193 @@ def test_start_defaults_to_no_resume_no_offline(monkeypatch, tmp_path):
     inst = _FakeProteusStart.instances[0]
     assert inst.resume is False
     assert inst.offline is False
+
+
+def _cvode_recorder(fail: bool, import_fails: bool = False):
+    """Return a subprocess.run stand-in that records commands and can fail the install.
+
+    ``fail`` makes tools/get_cvode.sh fail; ``import_fails`` makes the follow-up
+    import check in the interpreter running PROTEUS fail.
+    """
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        if fail and str(cmd[1]).endswith('get_cvode.sh'):
+            raise cli.subprocess.CalledProcessError(1, cmd)
+        if import_fails and cmd[1:] == ['-c', cli._CVODE_IMPORT]:
+            raise cli.subprocess.CalledProcessError(1, cmd)
+        return type('R', (), {'returncode': 0})()
+
+    return fake_run, calls
+
+
+def _cvode_command_env(monkeypatch, tmp_path):
+    """Pin the tree, disk, Julia and data directories so install-all and update-all run offline."""
+    _pin_proteus_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    (tmp_path / 'fwl_data').mkdir()
+    (tmp_path / 'socrates').mkdir()
+    (tmp_path / 'AGNI').mkdir()
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('command', ['install-all', 'update-all'])
+@pytest.mark.parametrize('import_fails', [False, True], ids=['script-fails', 'import-fails'])
+def test_a_failed_cvode_install_warns_and_the_command_goes_on(
+    monkeypatch, tmp_path, command, import_fails
+):
+    """A CVODE failure is a warning: exit 0, the message says who needs it, later steps run.
+
+    Only Aragog on ``solver_method = "cvode"`` needs CVODE, and that run stops
+    at setup, so SPIDER, radau and bdf users can finish the installation.
+    """
+    _cvode_command_env(monkeypatch, tmp_path)
+    fake_run, calls = _cvode_recorder(fail=not import_fails, import_fails=import_fails)
+    monkeypatch.setattr(cli.subprocess, 'run', fake_run)
+
+    res = runner.invoke(cli.cli, [command])
+
+    out = res.output.replace('\n', ' ')
+    assert res.exit_code == 0, res.output
+    assert '[!] CVODE (scikits-odes-sundials)' in out
+    assert 'stops at setup until it does' in out
+    assert 'bash tools/get_cvode.sh' in out
+    assert 'radau' in out and 'bdf' in out
+    assert 'CVODE available' not in out
+    assert 'completed' in out
+    # The command went on past the CVODE step to its end.
+    assert out.index('[!] CVODE') < out.index('completed')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('command', ['install-all', 'update-all'])
+def test_a_successful_cvode_install_runs_the_script_from_the_source_tree(
+    monkeypatch, tmp_path, command
+):
+    """Both commands run tools/get_cvode.sh from the PROTEUS root and go on to finish."""
+    _cvode_command_env(monkeypatch, tmp_path)
+    fake_run, calls = _cvode_recorder(fail=False)
+    monkeypatch.setattr(cli.subprocess, 'run', fake_run)
+
+    res = runner.invoke(cli.cli, [command])
+
+    assert res.exit_code == 0, res.output
+    cvode_calls = [c for c in calls if str(c[1]).endswith('get_cvode.sh')]
+    assert cvode_calls == [['bash', str(tmp_path / 'tools' / 'get_cvode.sh')]]
+    assert [sys.executable, '-c', cli._CVODE_IMPORT] in calls
+    assert 'CVODE available' in res.output
+    assert 'completed' in res.output
+
+
+# ---------------------------
+# Extended tests: `proteus get` logfile location
+# ---------------------------
+
+LEGACY_GET_LOG = 'proteus_get.log'
+
+
+def _stub_reference_downloaders(monkeypatch, calls=None):
+    """Replace the two downloaders behind ``get reference`` with recording no-ops."""
+    if calls is None:
+        calls = []
+
+    monkeypatch.setattr(
+        'proteus.utils.data.download_exoplanet_data', lambda: calls.append('exo')
+    )
+    monkeypatch.setattr(
+        'proteus.utils.data.download_massradius_data', lambda: calls.append('mr')
+    )
+    return calls
+
+
+@pytest.mark.unit
+def test_get_logfile_is_scoped_to_the_calling_user(monkeypatch, tmp_path):
+    """Two users running ``proteus get`` on one machine target two different logfiles.
+
+    A shared temporary directory is normally sticky, so a fixed logfile name
+    puts every user of the machine on one path that only its owner can
+    recreate. The path must therefore vary with the caller, and must no longer
+    be the shared name that collided.
+    """
+    runner = CliRunner()
+    _stub_reference_downloaders(monkeypatch)
+    monkeypatch.setattr('proteus.cli.tempfile.gettempdir', lambda: str(tmp_path))
+
+    seen = []
+    monkeypatch.setattr(cli, 'setup_logger', lambda logpath, **kw: seen.append(Path(logpath)))
+
+    for uid in (1001, 2002):
+        monkeypatch.setattr('proteus.cli.os.getuid', lambda uid=uid: uid)
+        res = runner.invoke(cli.cli, ['get', 'reference'])
+        assert res.exit_code == 0, res.output
+
+    assert seen[0] != seen[1]
+    assert {path.parent for path in seen} == {tmp_path}
+    assert LEGACY_GET_LOG not in {path.name for path in seen}
+
+
+@pytest.mark.unit
+def test_get_leaves_an_unremovable_foreign_logfile_alone(monkeypatch, tmp_path):
+    """``proteus get`` runs although another user's logfile sits in the temp directory.
+
+    Reproduces the shared-cluster failure: a logfile written by a different
+    user in a sticky temporary directory, where the kernel refuses removal by
+    a non-owner. Removal of that path is made to raise the same
+    ``PermissionError``, so a command that still targeted it would abort.
+    """
+    runner = CliRunner()
+    calls = _stub_reference_downloaders(monkeypatch)
+    monkeypatch.setattr('proteus.cli.tempfile.gettempdir', lambda: str(tmp_path))
+    monkeypatch.setattr('proteus.cli.os.getuid', lambda: 4242)
+
+    foreign = tmp_path / LEGACY_GET_LOG
+    foreign.write_text('owned by another user\n')
+
+    real_remove = os.remove
+
+    def guarded_remove(path, *args, **kwargs):
+        if Path(path) == foreign:
+            raise PermissionError(1, 'Operation not permitted', str(path))
+        return real_remove(path, *args, **kwargs)
+
+    monkeypatch.setattr('proteus.utils.logs.os.remove', guarded_remove)
+
+    res = runner.invoke(cli.cli, ['get', 'reference'])
+    assert res.exit_code == 0, res.output
+    assert calls == ['exo', 'mr']
+    # The other user's file is untouched, and this user gets a logfile of their own.
+    assert foreign.read_text() == 'owned by another user\n'
+    assert (tmp_path / 'proteus_get_4242.log').exists()
+
+
+@pytest.mark.unit
+def test_get_continues_when_the_logfile_cannot_be_opened(monkeypatch, tmp_path):
+    """A logfile that cannot be opened at all warns but does not stop the download.
+
+    Covers what a per-user name cannot: a read-only or full temporary
+    directory. The download proceeds on terminal-only logging.
+    """
+    runner = CliRunner()
+    calls = _stub_reference_downloaders(monkeypatch)
+    monkeypatch.setattr('proteus.cli.tempfile.gettempdir', lambda: str(tmp_path))
+
+    def refuse(*args, **kwargs):
+        raise PermissionError(1, 'Operation not permitted')
+
+    monkeypatch.setattr(cli, 'setup_logger', refuse)
+
+    try:
+        res = runner.invoke(cli.cli, ['get', 'reference'])
+        assert res.exit_code == 0, res.output
+        assert calls == ['exo', 'mr']
+        assert 'Cannot write' in res.output
+        # Exactly one terminal handler remains; no half-configured logger survives.
+        assert len(logging.getLogger('fwl').handlers) == 1
+    finally:
+        logging.getLogger('fwl').handlers.clear()
