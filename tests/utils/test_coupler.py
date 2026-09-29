@@ -4512,3 +4512,28 @@ def test_core_module_columns_registered_and_zero_seeded():
     row = ZeroHelpfileRow()
     for col in core_cols:
         assert row[col] == 0.0  # seed value, assigned not computed
+
+
+@pytest.mark.unit
+def test_helpfile_without_core_evolution_diagnostic_columns_resumes():
+    """A helpfile written before the six core evolution columns existed loads
+    on resume, with all six core columns zero-filled as diagnostic keys."""
+    core_cols = [
+        'core_r_icb',
+        'core_C_eff',
+        'core_dynamo_margin',
+        'core_B_rms',
+        'core_regime',
+        'core_strat_depth',
+    ]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, core_cols, n_rows=3)
+        raw = pd.read_csv(os.path.join(tmpdir, 'runtime_helpfile.csv'), sep=r'\s+')
+        for col in core_cols:
+            assert col not in raw.columns
+
+        hf = ReadHelpfileFromCSV(tmpdir)
+        assert len(hf) == 3
+        for col in core_cols:
+            assert col in hf.columns
+            assert (hf[col] == 0.0).all()

@@ -1421,7 +1421,15 @@ def _describe_missing_columns(missing: list[str]) -> str:
 # helpfile written before one of them joined the schema still resumes: the
 # reader backfills these with zeros. Add a column here only if no module,
 # resume path or solver consumes it.
-_DIAGNOSTIC_KEYS = ('T_cmb_node',)
+_DIAGNOSTIC_KEYS = (
+    'T_cmb_node',
+    'core_r_icb',
+    'core_C_eff',
+    'core_dynamo_margin',
+    'core_B_rms',
+    'core_regime',
+    'core_strat_depth',
+)
 
 
 def GetHelpfileDiagnosticKeys():
