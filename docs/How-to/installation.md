@@ -5,7 +5,7 @@ script. It handles Julia, SOCRATES, AGNI, all Python submodules, environment
 variables, and reference data downloads in a single command.
 
 !!! info "Prerequisites"
-    - macOS (Intel or Apple Silicon) or Linux
+    - macOS (Apple Silicon or Intel) or Linux x86_64; Linux ARM64 is not tested
     - ~20 GB disk space (conda, Julia, reference data, submodules)
     - Standard command-line tools: `curl`, `wget`
     - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
@@ -44,7 +44,7 @@ Install the required system libraries for your platform. See the
 === "Fedora / RHEL"
 
     ```console
-    sudo dnf install gcc-gfortran netcdf-fortran-devel make curl git cmake unzip
+    sudo dnf install gcc-gfortran gcc-c++ netcdf-fortran-devel make curl git cmake unzip
     ```
 
 **Compute clusters**: use the dedicated guides instead

@@ -5,7 +5,7 @@ control each step, follow the manual procedure below. These steps cover the
 same ground as the installer script.
 
 !!! info "Prerequisites"
-    - macOS (Intel or Apple Silicon) or Linux
+    - macOS (Apple Silicon or Intel) or Linux x86_64; Linux ARM64 is not tested
     - ~20 GB disk space (conda, Julia, reference data, submodules)
     - Standard command-line tools: `curl`, `wget`
     - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
@@ -112,6 +112,7 @@ Set the Julia environment variable:
     ```console
     echo "export PYTHON_JULIAPKG_EXE=$(which julia)" >> ~/.bashrc
     source ~/.bashrc
+    conda activate proteus
     ```
 
 === "zsh"
@@ -119,6 +120,7 @@ Set the Julia environment variable:
     ```console
     echo "export PYTHON_JULIAPKG_EXE=$(which julia)" >> ~/.zshrc
     source ~/.zshrc
+    conda activate proteus
     ```
 
 ## 4. Create environment variables and clone PROTEUS
@@ -132,6 +134,7 @@ reference data. This variable must always be set.
     mkdir -p /your/local/path/FWL_DATA
     echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.bashrc"
     source "$HOME/.bashrc"
+    conda activate proteus
     ```
 
 === "zsh"
@@ -140,6 +143,7 @@ reference data. This variable must always be set.
     mkdir -p /your/local/path/FWL_DATA
     echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.zshrc"
     source "$HOME/.zshrc"
+    conda activate proteus
     ```
 
 Clone the repository:
@@ -153,11 +157,12 @@ cd PROTEUS
 
 [SOCRATES](https://github.com/FormingWorlds/SOCRATES) is a Fortran spectral radiative transfer code used by [AGNI](https://www.h-nicholls.space/AGNI/) and [JANUS](https://proteus-framework.org/JANUS/).
 
-!!! note "Fortran compiler and NetCDF"
-    SOCRATES requires `gfortran` (version 9+) and the NetCDF Fortran
-    development libraries. Verify they are available:
+!!! note "Fortran compiler, NetCDF, and make"
+    SOCRATES requires `gfortran` (version 9+), the NetCDF Fortran
+    development libraries, and `make`. Verify they are available:
 
     ```console
+    which make
     which gfortran
     which nf-config
     nf-config --version
@@ -174,6 +179,7 @@ Set `RAD_DIR` to point to the SOCRATES installation:
     ```console
     echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.bashrc"
     source "$HOME/.bashrc"
+    conda activate proteus
     ```
 
 === "zsh"
@@ -181,6 +187,7 @@ Set `RAD_DIR` to point to the SOCRATES installation:
     ```console
     echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.zshrc"
     source "$HOME/.zshrc"
+    conda activate proteus
     ```
 
 ## 6. Install AGNI and FastChem
@@ -213,6 +220,7 @@ Set the FastChem environment variable:
     ```console
     echo "export FC_DIR=$PWD/AGNI/fastchem/" >> "$HOME/.bashrc"
     source "$HOME/.bashrc"
+    conda activate proteus
     ```
 
 === "zsh"
@@ -220,6 +228,7 @@ Set the FastChem environment variable:
     ```console
     echo "export FC_DIR=$PWD/AGNI/fastchem/" >> "$HOME/.zshrc"
     source "$HOME/.zshrc"
+    conda activate proteus
     ```
 
 ## 7. Install Python submodules
