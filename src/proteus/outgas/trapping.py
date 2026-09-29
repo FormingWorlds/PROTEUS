@@ -26,73 +26,28 @@ would overstate the concentration by ``Phi(t-1) / Phi(t)``.
 
 Critical melt fraction
 ----------------------
-Sim et al. take the disaggregation melt fraction ``phi_c`` as a free parameter
-(0.3). Here it is the interior solver's rheological transition,
-``interior_energetics.rfront_loc``: the melt fraction at which the solver
-switches the mantle from melt-like to solid-like rheology is the model's own
-disaggregation point, and a separate value would let trapping and the
-rheology disagree about where the crystal framework locks. The same value
-clamps the published law, sets the derived ``DeltaT``, marks the top of the
-drainage front, and caps the no-drainage bound.
+The disaggregation melt fraction ``phi_c`` is the interior solver's
+rheological transition, ``interior_energetics.rfront_loc``: the melt fraction at
+which the solver switches the mantle from melt-like to solid-like rheology is
+the model's own disaggregation point, and a separate value would let trapping
+and the rheology disagree about where the crystal framework locks. It marks the
+top of the freezing front and caps the no-drainage bound.
 
 Trapped-melt fraction
 ---------------------
-``outgas.trap_mode`` selects how ``F_tl`` is obtained. The mass balance above is
-identical in all three cases; only the source of ``F_tl`` changes.
+``outgas.trap_mode`` selects whether trapping runs.
 
 ``none``
     No trapping. The bracket is not evaluated and no mass moves. This is the
     default, so enabling trapping is an explicit choice.
-``constant``
-    A fixed scalar, ``outgas.trap_F_tl``. Sim et al. report a constant
-    comparison case at 0.01.
-``dynamic``
-    Recomputed every step from the secular cooling rate, Sim et al. Eq. 7:
-
-        F_tl = -(phi_c * tau / DeltaT) * dT/dt
-
-    clamped to ``[0, phi_c]``. The upper bound is the disaggregation melt
-    fraction, beyond which the paper states the relation breaks down; here it is
-    ``interior_energetics.rfront_loc`` (see Critical melt fraction). The lower
-    bound appears in neither the paper nor its published source: their magma
-    ocean cools monotonically, so warming steps never arise. A PROTEUS run can
-    warm, and a warming step here yields ``F_tl = 0``, which still buries the
-    species at ``D_Z`` because crystal partitioning continues without any melt
-    being retained.
-
-    The prefactor is checked against the model the paper was run with,
-    https://github.com/joycesim/MOE at commit e7edd1c, whose
-    ``mars_module.py`` line 1241 reads
-    ``self.Ftl[ii] = -self.phic * self.tau * self.dTdt[ii] / self.deltaT``.
-
-Departure from Sim et al.: DeltaT is derived, not fixed
--------------------------------------------------------
-Sim et al. fix ``DeltaT = 100 C`` for every simulation. Here it is derived from
-the active melting curves instead. ``DeltaT`` is defined as the temperature
-difference between the solidus and the temperature at which the melt fraction
-reaches ``phi_c``. The melt fraction follows the lever rule between the melting
-curves (``zalmoxis.mixing.compute_melt_fraction``), so
-
-    DeltaT = phi_c * (T_liquidus(P) - T_solidus(P))
-
-evaluated at a reference pressure. With the PALEOS liquidus, the default
-``mushy_zone_factor = 0.8`` and ``phi_c = rfront_loc = 0.5`` this gives about
-183 K at the surface, rising to roughly 550 K at 100 GPa (110 K and 330 K at the
-paper's ``phi_c = 0.3``). The reference pressure is therefore a real physical
-knob and is logged with the derived value. A derived ``DeltaT`` scales with
-``phi_c``, so the ratio ``phi_c / DeltaT`` in the published law does not, and
-only the clamp moves with ``rfront_loc``; a fixed ``trap_delta_T`` override
-brings the full ``phi_c`` dependence back.
-
-``interior_struct.zalmoxis.mantle_eos`` and ``mushy_zone_factor`` carry defaults
-whatever ``interior_struct.module`` is set to, so the derivation runs for every
-backend. If the curves cannot be loaded the paper's 100 K is used and the
-substitution is logged. Setting ``outgas.trap_delta_T`` to a positive value
-overrides the derivation.
-
-The reference pressure is lithostatic and defaults to 1 bar. It is deliberately
-not taken from ``hf_row['P_surf']``, which is the atmospheric surface pressure
-and can reach hundreds of bar without the rock beneath it being any deeper.
+``front``
+    ``F_tl`` is the melt a parcel still holds after crossing the freezing front
+    the interior solver resolves, from the drainage integral of
+    :mod:`proteus.outgas.compaction`, converted from a volume to a mass
+    fraction. A front the mesh or the step cannot resolve takes the
+    no-drainage bound, the entry porosity capped at ``phi_c``. A step on which
+    the interior state is unavailable buries at ``D_Z`` alone (``F_tl = 0``)
+    and says so.
 
 Reservoir bookkeeping
 ---------------------
@@ -131,7 +86,6 @@ from proteus.outgas.compaction import (
     BRANCH_GUARD,
     BRANCH_MATRIX,
     BRANCH_NONE,
-    BRANCH_PUBLISHED,
     DEFAULT_MUSH_LOG10VISC,
     drainage_integral,
     locate_front,
@@ -146,25 +100,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-# How F_tl is obtained. Kept in the order the config validator reports them.
-TRAPPING_MODES = ('none', 'constant', 'dynamic')
-
-# Helpfile column differenced for dT/dt. Sim et al. define the secular cooling
-# rate on the magma-ocean potential temperature; T_pot is its analogue here and
-# every interior module writes it.
-TEMPERATURE_COLUMN = 'T_pot'
-
-# Lithostatic reference pressure for the DeltaT derivation [Pa]. The melting
-# curve is undefined at exactly zero pressure, so the surface is taken as 1 bar.
-DELTA_T_REFERENCE_PRESSURE = 1.0e5
-
-# Fallback when the melting curves cannot be loaded [K]: the value Sim et al.
-# fix for every simulation.
-SIM_DELTA_T_K = 100.0
-
-# Derived-DeltaT cache, keyed by the inputs that change it. Loading the melting
-# curves reads tables, so it must not happen once per timestep.
-_DELTA_T_CACHE: dict[tuple, float] = {}
+# Whether trapping runs. Kept in the order the config validator reports them.
+TRAPPING_MODES = ('none', 'front')
 
 
 @dataclass
@@ -174,13 +111,9 @@ class TrappingStep:
     mode: str
     dm_rm: float
     f_tl: float
-    dt_dt: float
-    delta_t: float
     melt_mass: float
     trapped_kg: dict[str, float] = field(default_factory=dict)
     remelted: bool = False
-    clamped_high: bool = False
-    clamped_low: bool = False
     supply_capped: list[str] = field(default_factory=list)
     branch: int = BRANCH_NONE
     tau_d: float = float('nan')
@@ -218,63 +151,6 @@ def effective_partition(f_tl: float | np.ndarray, d_z: float) -> float | np.ndar
     if d_z < 0.0:
         raise ValueError(f'D_Z must be non-negative, got {d_z!r}')
     return (1.0 - f_tl) * d_z + f_tl
-
-
-def raw_trapped_fraction(
-    dt_dt: float | np.ndarray,
-    phi_c: float,
-    tau: float,
-    delta_t: float,
-) -> np.ndarray:
-    """Trapped melt fraction before clamping, after Sim et al. Eq. 7.
-
-    The prefactor is the one piece the offline calculator and the live coupling
-    must never disagree on, so both take it from here. The clamp is applied by
-    the caller: the offline tool reports the unclamped series alongside the
-    clamped one so a run can be read for how far outside the valid window it
-    sat, while the live step needs only the clamped value.
-    """
-    if not 0.0 < phi_c <= 1.0:
-        raise ValueError(f'phi_c must lie in (0, 1], got {phi_c!r}')
-    if tau <= 0.0:
-        raise ValueError(f'tau must be positive, got {tau!r}')
-    if delta_t <= 0.0:
-        raise ValueError(f'DeltaT must be positive, got {delta_t!r}')
-    raw = -(phi_c * tau / delta_t) * np.asarray(dt_dt, dtype=float)
-    return np.where(np.isfinite(raw), raw, 0.0)
-
-
-def trapped_fraction(
-    dt_dt: float | np.ndarray,
-    phi_c: float,
-    tau: float,
-    delta_t: float,
-) -> tuple[float | np.ndarray, bool | np.ndarray, bool | np.ndarray]:
-    """Trapped melt fraction from the cooling rate, after Sim et al. Eq. 7.
-
-    Parameters
-    ----------
-    dt_dt : float or ndarray
-        Secular cooling rate [K yr-1]. Negative while the mantle cools.
-    phi_c : float
-        Disaggregation melt fraction [1]. Also the upper clamp.
-    tau : float
-        Compaction time scale [yr].
-    delta_t : float
-        Solidus to freezing-front temperature difference [K].
-
-    Returns
-    -------
-    tuple
-        ``F_tl`` clamped to ``[0, phi_c]``, and whether each clamp bound.
-    """
-    raw = raw_trapped_fraction(dt_dt, phi_c, tau, delta_t)
-    clipped = np.clip(raw, 0.0, phi_c)
-    high = raw > phi_c
-    low = raw < 0.0
-    if np.ndim(dt_dt) == 0:
-        return float(clipped), bool(high), bool(low)
-    return clipped, high, low
 
 
 def melt_concentration(
@@ -351,72 +227,11 @@ def crystallised_mass_from_phi(
 def critical_melt_fraction(config: Config) -> float:
     """Disaggregation melt fraction ``phi_c`` [1], the solver's rheological transition.
 
-    The single definition of ``phi_c`` for the trapping step, so the published
-    law's clamp, the derived ``DeltaT``, the drainage front and the no-drainage
-    bound cannot drift apart from each other or from the interior rheology.
+    The single definition of ``phi_c`` for the trapping step, so the top of the
+    drainage front and the no-drainage bound cannot drift apart from each other
+    or from the interior rheology.
     """
     return float(config.interior_energetics.rfront_loc)
-
-
-def derive_delta_T(
-    config: Config,
-    phi_c: float,
-    pressure: float = DELTA_T_REFERENCE_PRESSURE,
-) -> float:
-    """Solidus to freezing-front temperature difference [K].
-
-    ``DeltaT = phi_c * (T_liquidus - T_solidus)`` at ``pressure``, which follows
-    from the lever-rule melt fraction the structure solver uses. Falls back to
-    the 100 K Sim et al. fix if the melting curves cannot be loaded.
-    """
-    eos = config.interior_struct.zalmoxis.mantle_eos
-    mzf = config.interior_struct.zalmoxis.mushy_zone_factor
-    key = (eos, float(mzf), float(phi_c), float(pressure))
-    if key in _DELTA_T_CACHE:
-        return _DELTA_T_CACHE[key]
-
-    delta_t = SIM_DELTA_T_K
-    try:
-        from proteus.interior_struct.zalmoxis import (
-            load_zalmoxis_solidus_liquidus_functions,
-        )
-
-        curves = load_zalmoxis_solidus_liquidus_functions(eos, config)
-        if curves is None:
-            raise ValueError(f'no melting curves for mantle_eos {eos!r}')
-        solidus_func, liquidus_func = curves
-        t_sol = float(solidus_func(pressure))
-        t_liq = float(liquidus_func(pressure))
-        if not (np.isfinite(t_sol) and np.isfinite(t_liq)) or t_liq <= t_sol:
-            raise ValueError(f'melting curves give T_liq={t_liq!r}, T_sol={t_sol!r}')
-        delta_t = float(phi_c) * (t_liq - t_sol)
-        log.info(
-            'Trapping DeltaT = %.1f K, derived at %.3g Pa from %s '
-            '(T_liq %.1f K, T_sol %.1f K). Sim et al. fix 100 K.',
-            delta_t,
-            pressure,
-            eos,
-            t_liq,
-            t_sol,
-        )
-    except Exception as exc:
-        log.warning(
-            'Trapping DeltaT could not be derived from the melting curves (%s); '
-            'using the %.1f K of Sim et al. instead.',
-            exc,
-            SIM_DELTA_T_K,
-        )
-
-    _DELTA_T_CACHE[key] = delta_t
-    return delta_t
-
-
-def resolve_delta_T(config: Config, phi_c: float) -> float:
-    """DeltaT [K]: the configured override when positive, else the derivation."""
-    override = float(getattr(config.outgas, 'trap_delta_T', -1.0))
-    if override > 0.0:
-        return override
-    return derive_delta_T(config, phi_c)
 
 
 def partition_coefficients(config: Config) -> dict[str, float]:
@@ -636,7 +451,7 @@ def _phase_densities(interior_o, pressure: np.ndarray):
         log.warning(
             'Trapping: no phase-boundary lookup on the interior solver '
             '(solver=%s, eos=%s), so the drainage integral cannot run and the '
-            'step falls back to the published law.',
+            'step buries at the crystal partition coefficients alone.',
             type(solver).__name__ if solver is not None else None,
             type(eos).__name__ if eos is not None else None,
         )
@@ -646,15 +461,16 @@ def _phase_densities(interior_o, pressure: np.ndarray):
         rho_l = np.asarray(lookup('density', pressure, 'melt'), dtype=float).ravel()
     except Exception as exc:
         log.warning(
-            'Phase-boundary densities unavailable (%s); trapping falls back '
-            'to the published law this step.',
+            'Phase-boundary densities unavailable (%s); trapping buries at the '
+            'crystal partition coefficients alone this step.',
             exc,
         )
         return None
     if rho_s.shape != rho_l.shape or not np.all(np.isfinite(rho_s + rho_l)):
         log.warning(
             'Trapping: phase-boundary densities are inconsistent or non-finite '
-            '(shapes %s and %s), so the step falls back to the published law.',
+            '(shapes %s and %s), so the step buries at the crystal partition '
+            'coefficients alone.',
             rho_s.shape,
             rho_l.shape,
         )
@@ -712,7 +528,7 @@ def _drainage_fraction(config, hf_row: dict, prev: dict, interior_o) -> Trapping
     """Trapped melt fraction from the drainage integral over the front.
 
     Returns ``None`` when the interior state needed to locate a front is not
-    available, so the caller can fall back to the published law.
+    available, so the caller can bury at the crystal partition coefficients alone.
     """
     tr = config.outgas
     phi_solver = np.asarray(getattr(interior_o, 'phi', None), dtype=float).ravel()
@@ -722,9 +538,9 @@ def _drainage_fraction(config, hf_row: dict, prev: dict, interior_o) -> Trapping
     if phi_solver.size == 0 or rho.size != phi_solver.size or radius is None:
         log.warning(
             'Trapping: the interior profiles needed to locate a freezing front '
-            'are unavailable (phi %d, density %d, radius %s), so the step falls '
-            'back to the published law. The drainage integral needs an aragog '
-            'interior; no other backend supplies these.',
+            'are unavailable (phi %d, density %d, radius %s), so the step buries '
+            'at the crystal partition coefficients alone. The drainage integral '
+            'needs an aragog interior; no other backend supplies these.',
             phi_solver.size,
             rho.size,
             'absent' if radius is None else str(np.asarray(radius).size),
@@ -756,13 +572,7 @@ def _drainage_fraction(config, hf_row: dict, prev: dict, interior_o) -> Trapping
     )
     if geom is None:
         return TrappingStep(
-            mode='dynamic',
-            dm_rm=0.0,
-            f_tl=0.0,
-            dt_dt=0.0,
-            delta_t=0.0,
-            melt_mass=0.0,
-            branch=BRANCH_NONE,
+            mode='front', dm_rm=0.0, f_tl=0.0, melt_mass=0.0, branch=BRANCH_NONE
         )
 
     # Front speed from the crystallised mass rather than the reported front
@@ -792,11 +602,9 @@ def _drainage_fraction(config, hf_row: dict, prev: dict, interior_o) -> Trapping
         gravity = float(np.mean(g_nodes[geom.index]))
 
     step = TrappingStep(
-        mode='dynamic',
+        mode='front',
         dm_rm=0.0,
         f_tl=0.0,
-        dt_dt=0.0,
-        delta_t=0.0,
         melt_mass=0.0,
         branch=branch,
         n_front=int(geom.index.size),
@@ -850,36 +658,10 @@ def _drainage_fraction(config, hf_row: dict, prev: dict, interior_o) -> Trapping
     return step
 
 
-def _resolve_f_tl(
-    config: Config, hf_row: dict, prev: dict, phi_c: float
-) -> tuple[float, float, float, bool, bool]:
-    """F_tl for this step, plus the cooling rate, DeltaT, and the clamp flags."""
-    if config.outgas.trap_mode == 'constant':
-        # The cooling rate and DeltaT are not consulted in this mode. Reported
-        # as zero rather than NaN so the helpfile carries a clean column the
-        # writer does not have to coerce.
-        return float(config.outgas.trap_F_tl), 0.0, 0.0, False, False
-
-    dt = float(hf_row.get('Time', 0.0)) - float(prev.get('Time', 0.0))
-    t_now = float(hf_row.get(TEMPERATURE_COLUMN, float('nan')))
-    t_prev = float(prev.get(TEMPERATURE_COLUMN, float('nan')))
-    if dt > 0.0 and np.isfinite(t_now) and np.isfinite(t_prev):
-        dt_dt = (t_now - t_prev) / dt
-    else:
-        dt_dt = 0.0
-
-    delta_t = resolve_delta_T(config, phi_c)
-    tau = float(config.outgas.trap_tau)
-    f_tl, high, low = trapped_fraction(dt_dt, phi_c, tau, delta_t)
-    return f_tl, dt_dt, delta_t, bool(high), bool(low)
-
-
 def _record(hf_row: dict, step: TrappingStep) -> None:
     """Publish the step's diagnostics so a trajectory can be read back."""
     hf_row['trap_dM_RM'] = step.dm_rm
     hf_row['trap_F_tl'] = step.f_tl
-    hf_row['trap_dT_dt'] = step.dt_dt
-    hf_row['trap_delta_T'] = step.delta_t
     hf_row['trap_kg_step'] = step.total_trapped
     hf_row['trap_branch'] = float(step.branch)
     hf_row['trap_tau_D'] = step.tau_d
@@ -941,12 +723,10 @@ def run_trapping(
     hf_row : dict
         Current helpfile row, modified in place.
     hf_all : pandas.DataFrame or None
-        Completed rows. The last one supplies the previous melt fraction and
-        temperature.
+        Completed rows. The last one supplies the previous melt fraction.
     interior_o : Interior_t or None
-        Interior state. Required by ``trap_tau_source = 'aragog'``, which reads
-        the melt-fraction, density and pressure profiles to locate the freezing
-        front; the published-law paths do not use it.
+        Interior state. The front scheme reads its melt-fraction, density and
+        pressure profiles to locate the freezing front.
     init_stage : bool
         True during the initialisation stage, which traps nothing.
     """
@@ -972,59 +752,28 @@ def run_trapping(
         return None
 
     prev = hf_all.iloc[-1].to_dict()
-    phi_c = critical_melt_fraction(config)
     m_mantle = float(hf_row.get('M_mantle', 0.0))
     phi_now = float(hf_row.get('Phi_global', float('nan')))
     phi_prev = float(prev.get('Phi_global', float('nan')))
     dm_rm, remelted = crystallised_mass_from_phi(m_mantle, phi_prev, phi_now)
-
-    # Dynamic mode with tau_source = 'aragog' replaces the published linear law
-    # by the drainage integral over the resolved front, which needs neither tau
-    # nor DeltaT. It falls back to the published law when the interior state it
-    # needs is unavailable, which is every backend other than aragog.
-    drained = None
-    if mode == 'dynamic' and getattr(config.outgas, 'trap_tau_source', 'fixed') == 'aragog':
-        drained = _drainage_fraction(config, hf_row, prev, interior_o)
-
-    if drained is not None:
-        f_tl, dt_dt, delta_t, high, low = drained.f_tl, 0.0, 0.0, False, False
-    else:
-        f_tl, dt_dt, delta_t, high, low = _resolve_f_tl(config, hf_row, prev, phi_c)
     # The dissolved masses in hf_row are still those of the previous chemistry
     # solve, so the melt they were dissolved into is the previous one. Dividing
     # by it recovers the concentration the solver computed.
     m_mantle_prev = float(prev.get('M_mantle', m_mantle))
     melt_mass = m_mantle_prev * max(0.0, min(1.0, phi_prev)) if np.isfinite(phi_prev) else 0.0
 
-    step = TrappingStep(
-        mode=mode,
-        dm_rm=dm_rm,
-        f_tl=f_tl,
-        dt_dt=dt_dt,
-        delta_t=delta_t,
-        melt_mass=melt_mass,
-        remelted=remelted,
-        clamped_high=high,
-        clamped_low=low,
-    )
-    if drained is not None:
-        step.branch = drained.branch
-        step.tau_d = drained.tau_d
-        step.tau_s = drained.tau_s
-        step.t_res = drained.t_res
-        step.n_front = drained.n_front
-        step.l_front = drained.l_front
-        step.v_front = drained.v_front
-        step.front_courant = drained.front_courant
-        step.w_matrix_over_vf = drained.w_matrix_over_vf
-        step.guard_reason = drained.guard_reason
-    elif mode == 'dynamic' and getattr(config.outgas, 'trap_tau_source', 'fixed') == 'aragog':
-        # The drainage integral was asked for and could not run. Recorded
-        # distinctly from a deliberate published-law step so a run cannot
-        # report a silent fallback as normal operation.
+    step = _drainage_fraction(config, hf_row, prev, interior_o)
+    if step is None:
+        # The front cannot be located without the interior profiles. The
+        # crystals still take up D_Z of each species, so the step buries at the
+        # crystal partition coefficients alone, on a branch of its own so a run
+        # cannot report it as a front that drained completely.
+        step = TrappingStep(mode=mode, dm_rm=0.0, f_tl=0.0, melt_mass=0.0)
         step.branch = BRANCH_FALLBACK
-    elif mode in ('constant', 'dynamic'):
-        step.branch = BRANCH_PUBLISHED
+    step.mode = mode
+    step.dm_rm = dm_rm
+    step.melt_mass = melt_mass
+    step.remelted = remelted
     if dm_rm <= 0.0 or melt_mass <= 0.0:
         _record(hf_row, step)
         return step
@@ -1035,7 +784,7 @@ def run_trapping(
         if kg_liquid <= 0.0:
             continue
         c_z = melt_concentration(kg_liquid, melt_mass)
-        raw = float(effective_partition(f_tl, d_z[species])) * c_z * dm_rm
+        raw = float(effective_partition(step.f_tl, d_z[species])) * c_z * dm_rm
         mass = min(raw, kg_liquid)
         if mass <= 0.0:
             continue

@@ -2810,34 +2810,6 @@
       "consumers": []
     },
     {
-      "name": "trap_dT_dt",
-      "unit": "K yr-1",
-      "description": "secular cooling rate this step",
-      "group": "Solid-phase volatile trapping",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/outgas/trapping.py",
-          "condition": "always"
-        }
-      ],
-      "consumers": []
-    },
-    {
-      "name": "trap_delta_T",
-      "unit": "K",
-      "description": "solidus to freezing-front difference",
-      "group": "Solid-phase volatile trapping",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/outgas/trapping.py",
-          "condition": "always"
-        }
-      ],
-      "consumers": []
-    },
-    {
       "name": "trap_kg_step",
       "unit": "kg",
       "description": "volatile mass buried this step",
@@ -2870,7 +2842,7 @@
     {
       "name": "trap_branch",
       "unit": "1",
-      "description": "drainage regime code: 0 none, 1 Darcy, 2 matrix, 3 guard, 5 published, 6 fallback",
+      "description": "drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [

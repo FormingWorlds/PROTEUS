@@ -80,16 +80,12 @@ _REVIEWED_NEUTRAL = frozenset(
     {
         # Solid-phase volatile trapping. Inert on a migrated config:
         # trap_mode defaults to 'none', so the partition coefficients and
-        # the F_tl parameters are never read and behaviour is unchanged.
-        'outgas.trap_tau_source',
+        # the front parameters are never read and behaviour is unchanged.
         'outgas.trap_phi_min',
         'outgas.trap_mush_log10visc',
         'outgas.trap_n_front_min',
         'outgas.trap_max_front_fraction',
         'outgas.trap_mode',
-        'outgas.trap_F_tl',
-        'outgas.trap_tau',
-        'outgas.trap_delta_T',
         'outgas.D_const_CH4',
         'outgas.D_const_CO',
         'outgas.D_const_CO2',

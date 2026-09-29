@@ -231,22 +231,12 @@ class Outgas:
         Absolute tolerance for the volatile equilibrium solver.
     trap_mode: str
         Solid-phase volatile trapping during mantle crystallisation.
-        Choices: 'none' (off), 'constant' (fixed F_tl), 'dynamic'
-        (F_tl from the cooling rate, after Sim et al. 2024 Eq. 7).
-    trap_F_tl: float
-        Trapped melt fraction [1] used by `trap_mode = 'constant'`. The
-        disaggregation melt fraction that bounds F_tl in `trap_mode =
-        'dynamic'` is `interior_energetics.rfront_loc`, the melt fraction of
-        the solver's own rheological transition, not a separate field.
-    trap_tau: float
-        Compaction time scale [yr] used by `trap_mode = 'dynamic'`.
-    trap_tau_source: str
-        Where the compaction time comes from in `trap_mode = 'dynamic'`.
-        'fixed' uses `trap_tau` and `trap_delta_T`, the published linear
-        law, and works with any interior module. 'aragog' replaces both
-        by the drainage integral over the freezing front the interior
-        solver resolves, which needs neither parameter; it falls back to
-        'fixed' when the interior state is unavailable.
+        Choices: 'none' (off) and 'front' (F_tl from the drainage of melt
+        across the freezing front the interior solver resolves; needs
+        `interior_energetics.module = 'aragog'`). The disaggregation melt
+        fraction that tops the front is `interior_energetics.rfront_loc`,
+        the melt fraction of the solver's own rheological transition, not a
+        separate field.
     trap_phi_min: float
         Porosity below which a node counts as solid [1]. Needed because
         the density-derived porosity never reaches exactly zero.
@@ -264,11 +254,6 @@ class Outgas:
         drainage, the retained fraction depends on the ratio of drainage
         speed to front speed and not on the front thickness, and a thicker
         front only lengthens the residence time.
-    trap_delta_T: float
-        Solidus to freezing-front temperature difference [K]. Negative
-        derives it from the active melting curves as
-        `interior_energetics.rfront_loc * (T_liquidus - T_solidus)`;
-        positive overrides the derivation. Sim et al. fix 100 K.
     D_const_H2O: float
         Crystal/melt partition coefficient of H2O [1], D = w_solid / w_liquid.
     D_const_CO2: float
@@ -329,17 +314,10 @@ class Outgas:
     # and independently of the chemistry solve, so these sit beside T_floor
     # rather than under [outgas.calliope]. Default 'none' leaves every existing
     # run unchanged.
-    trap_mode: str = field(
-        default='none', validator=validators.in_(('none', 'constant', 'dynamic'))
-    )
-    trap_F_tl: float = field(default=0.01, validator=[validators.ge(0.0), validators.le(1.0)])
-    trap_tau: float = field(default=1.0e6, validator=validators.gt(0.0))
-    trap_delta_T: float = field(default=-1.0)
+    trap_mode: str = field(default='none', validator=validators.in_(('none', 'front')))
 
-    # Drainage-integral parameters. Used only by trap_tau_source = 'aragog',
-    # which computes the compaction time from the front the interior solver
-    # resolves instead of taking it as an input.
-    trap_tau_source: str = field(default='fixed', validator=validators.in_(('fixed', 'aragog')))
+    # Drainage-integral parameters of the front scheme, which computes the
+    # trapped melt fraction from the front the interior solver resolves.
     trap_phi_min: float = field(
         default=0.01, validator=[validators.gt(0.0), validators.lt(1.0)]
     )

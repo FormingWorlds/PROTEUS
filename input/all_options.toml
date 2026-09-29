@@ -578,13 +578,9 @@ config_version = "3.0"
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
 
     # Solid-phase volatile trapping during mantle crystallisation
-    trap_mode                 = "none"       # none | constant | dynamic
-    trap_F_tl                 = 0.01         # trapped melt fraction [1], constant mode
-    trap_tau                  = 1.0e6        # compaction time scale [yr], dynamic mode
-    trap_delta_T              = -1.0         # solidus to freezing front [K]; negative derives it from the melting curves
+    trap_mode                 = "none"       # none | front (needs interior_energetics.module = "aragog")
 
-    # Drainage integral: compaction time from the front the solver resolves
-    trap_tau_source           = "fixed"      # fixed (published law) | aragog (drainage integral)
+    # Drainage integral over the freezing front the solver resolves
     trap_phi_min              = 0.01         # porosity below which a node counts as solid [1]
     trap_mush_log10visc       = -1.0         # log10 mush viscosity [Pa s]; negative selects 20
     trap_n_front_min          = 3            # fewest nodes a front must span to be integrated

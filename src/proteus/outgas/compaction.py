@@ -95,8 +95,7 @@ BRANCH_DARCY = 1  # dynamic, percolation-limited at the top of the front
 BRANCH_MATRIX = 2  # dynamic, matrix-deformation-limited
 BRANCH_GUARD = 3  # upper bound: front unresolved, doubled, too thick, or dense melt
 BRANCH_UNUSABLE = 4  # first iteration, zero-length step, or remesh
-BRANCH_PUBLISHED = 5  # constant or fixed-tau mode
-BRANCH_FALLBACK = 6  # drainage requested but the interior state was unavailable
+BRANCH_FALLBACK = 6  # interior state unavailable: crystal partitioning alone
 
 
 @dataclass
@@ -424,9 +423,8 @@ def volume_to_mass_fraction(f_vol: float, rho_melt: float, rho_solid: float) -> 
     disaggregation limit is a geometric packing threshold, and a mass fraction in
     the volatile budget. The two differ by the melt-to-mixture density ratio,
     about 0.93 at a ten percent density contrast and a porosity of 0.3. The
-    conversion is applied once, here, and only on the dynamic paths: the
-    constant and fixed-tau modes report the published law's fraction unconverted
-    so they match the papers and the offline calculator.
+    conversion is applied once, here, to every fraction the front scheme hands
+    to the budget.
     """
     f = float(np.clip(f_vol, 0.0, 1.0))
     denom = f * rho_melt + (1.0 - f) * rho_solid

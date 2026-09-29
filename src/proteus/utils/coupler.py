@@ -1086,11 +1086,9 @@ def GetHelpfileKeys():
         # Solid-phase volatile trapping
         'trap_dM_RM',       # mantle mass crystallised this step [kg]
         'trap_F_tl',        # trapped melt fraction applied this step [1]
-        'trap_dT_dt',       # secular cooling rate this step [K yr-1]
-        'trap_delta_T',     # solidus to freezing-front difference [K]
         'trap_kg_step',     # volatile mass buried this step [kg]
         'trap_kg_cumulative',  # volatile mass buried since the run began [kg]
-        'trap_branch',      # drainage regime code: 0 none, 1 Darcy, 2 matrix, 3 guard, 5 published, 6 fallback [1]
+        'trap_branch',      # drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state [1]
         'trap_tau_D',       # percolation time at the top of the front [yr]
         'trap_tau_s',       # matrix deformation time [yr]
         'trap_t_res',       # parcel residence time in the front [yr]

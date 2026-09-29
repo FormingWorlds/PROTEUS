@@ -12,8 +12,6 @@ stays put. These tests exercise:
 * per-element closure across the three reservoirs, before and after the step,
 * the melt concentration taken as the chemistry solver computed it, on the melt
   it dissolved the volatiles into,
-* the ``phi_c`` clamp and the warming branch of the dynamic fraction, with
-  ``phi_c`` the interior solver's rheological transition ``rfront_loc``,
 * the start condition, so the first step with no previous row traps nothing,
 * the initialisation stage, whose steps do not advance the mantle, trapping
   nothing and recording no diagnostics,
@@ -25,8 +23,6 @@ stays put. These tests exercise:
 * desiccation keeping the trapped mass and emptying the totals with nothing
   left, so the closure holds on the desiccated row,
 * escape and the desiccation gate both seeing only the reachable inventory,
-* ``DeltaT`` derived from the active melting curves rather than fixed at the
-  100 K of Sim et al. (2024),
 * the drainage integral run on an interior-solver profile, including a front
   that rests on the core-mantle boundary, and the warning every step on the
   no-drainage upper bound emits with its cause and the mass it buried,
@@ -41,6 +37,7 @@ from __future__ import annotations
 
 import logging
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import attrs
 import numpy as np
@@ -51,16 +48,15 @@ from proteus.config._outgas import Outgas
 from proteus.escape.wrapper import calc_new_elements, escapable_mass, reservoir_mass
 from proteus.outgas.compaction import BRANCH_DARCY, BRANCH_GUARD, volume_to_mass_fraction
 from proteus.outgas.trapping import (
+    TrappingStep,
     critical_melt_fraction,
     crystallised_mass_from_phi,
-    derive_delta_T,
     derived_total_elements,
     escapable_inventory,
     keep_only_trapped_mass,
     locked_solid_mass,
     restore_trapped_mass,
     run_trapping,
-    trapped_fraction,
     trapped_mass,
     trapped_mass_withheld,
     withhold_trapped_mass,
@@ -94,10 +90,7 @@ def _config(rfront_loc: float = 0.5, **overrides):
     melt fraction the trapped fraction is bounded by.
     """
     outgas = SimpleNamespace(
-        trap_mode='constant',
-        trap_F_tl=0.02,
-        trap_tau=1.0e6,
-        trap_delta_T=100.0,
+        trap_mode='front',
         D_const_H2O=0.0017,
         mass_thresh=1e16,
     )
@@ -142,6 +135,24 @@ def _hf_all(**overrides) -> pd.DataFrame:
     return pd.DataFrame([prev])
 
 
+@pytest.fixture
+def fixed_front():
+    """Front scheme held at F_tl = 0.02, the round value the bookkeeping pins use.
+
+    The bracket and the reservoir bookkeeping are pinned with round numbers
+    here; the front that sets F_tl is tested on its own further down, on
+    interior-solver profiles.
+    """
+
+    def front(*_args, **_kwargs):
+        return TrappingStep(
+            mode='front', dm_rm=0.0, f_tl=0.02, melt_mass=0.0, branch=BRANCH_DARCY
+        )
+
+    with patch('proteus.outgas.trapping._drainage_fraction', side_effect=front) as mocked:
+        yield mocked
+
+
 # Interior-solver profile for the drainage path: 40 uniform cells from a
 # core-mantle boundary at 3500 km to a surface at 6300 km, with end-member
 # densities 4000 and 3600 kg/m3 at every pressure.
@@ -174,7 +185,7 @@ def _aragog_interior(
     porosity read back from it is exactly that; it defaults to the solver melt
     fraction. The equation of state sits under ``entropy_eos``, the attribute
     the entropy solver uses; a lookup through the unrelated ``eos`` name finds
-    nothing and falls back to the published law. ``gravity`` is the solver's
+    nothing and buries at the crystal partition coefficients alone. ``gravity`` is the solver's
     per-node value on the staggered nodes (``state.phase_staggered._g``), and
     ``structure`` the radius and gravity columns of the structure profile the
     solver was built from (``parameters.mesh.eos_radius`` and ``eos_gravity``).
@@ -200,10 +211,8 @@ def _aragog_interior(
 
 
 def _drainage_config():
-    """Dynamic trapping with the drainage integral over the resolved front."""
+    """Front trapping with the drainage integral over the resolved front."""
     config = _config(
-        trap_mode='dynamic',
-        trap_tau_source='aragog',
         trap_phi_min=0.01,
         trap_mush_log10visc=-1.0,
         trap_n_front_min=3,
@@ -294,7 +303,7 @@ def test_incompatible_species_traps_through_the_interstitial_melt_alone():
 
 
 @pytest.mark.physics_invariant
-def test_trapping_step_moves_mass_between_reservoirs_and_conserves_each_element():
+def test_trapping_step_moves_mass_between_reservoirs_and_conserves_each_element(fixed_front):
     """The step buries 4.3332e18 kg of H2O and 8e18 kg of CO2, taking each out
     of the liquid and putting it into the solid. The whole-planet total of every
     element is untouched, so the three reservoirs still close against it."""
@@ -340,7 +349,7 @@ def test_trapping_step_moves_mass_between_reservoirs_and_conserves_each_element(
 
 
 @pytest.mark.physics_invariant
-def test_melt_concentration_is_the_one_the_chemistry_last_solved_for():
+def test_melt_concentration_is_the_one_the_chemistry_last_solved_for(fixed_front):
     """The dissolved masses in the row come from the previous chemistry solve,
     which spread them over the previous step's melt. Trapping uses that
     concentration as it is: dividing by the current, smaller melt would inflate
@@ -370,71 +379,8 @@ def test_melt_concentration_is_the_one_the_chemistry_last_solved_for():
     assert 0.0 < frozen.trapped_kg['CO2'] < 3.6e21
 
 
-@pytest.mark.physics_invariant
-def test_dynamic_fraction_clamps_at_disaggregation_and_zeroes_on_warming():
-    """F_tl = -(phi_c * tau / DeltaT) * dT/dt. With phi_c = 0.3, tau = 1e6 yr
-    and DeltaT = 100 K the prefactor is 3000 yr K-1, so cooling at 1e-6 K/yr
-    gives 0.003, cooling at 1e-3 K/yr overshoots to 3.0 and clamps to 0.3, and
-    a warming step goes negative and clamps to zero. In a run, phi_c is the
-    interior solver's rheological transition rfront_loc, so the clamp moves
-    with it."""
-    gentle, high, low = trapped_fraction(-1.0e-6, 0.3, 1.0e6, 100.0)
-    assert gentle == pytest.approx(0.003, rel=1e-12)
-    assert not (high or low)
-    # Sign guard: the leading minus is what makes a cooling mantle trap melt.
-    assert gentle > 0.0
-    # Prefactor guard: dropping tau/DeltaT leaves phi_c * |dT/dt| = 3e-7.
-    assert abs(gentle - 0.3 * 1.0e-6) > 1.0e-3
-
-    clamped, high, low = trapped_fraction(-1.0e-3, 0.3, 1.0e6, 100.0)
-    assert clamped == pytest.approx(0.3, rel=1e-12)
-    assert high and not low
-    # Boundedness: the fraction used never leaves the physical window.
-    assert 0.0 <= clamped <= 0.3
-
-    warming, high, low = trapped_fraction(2.0e-6, 0.3, 1.0e6, 100.0)
-    assert warming == pytest.approx(0.0, abs=1e-15)
-    assert low and not high
-
-    # A warming step still buries the species at D_Z, because crystal
-    # partitioning continues even with no interstitial melt retained. That is
-    # what separates it from the none mode, where both would be zero.
-    row = _hf_row(T_pot=2000.02)
-    step = run_trapping(_config(trap_mode='dynamic'), row, _hf_all())
-    assert step.f_tl == pytest.approx(0.0, abs=1e-15)
-    assert step.trapped_kg['H2O'] == pytest.approx(0.0017 * 1.0e-3 * _DM_RM, rel=1e-12)
-    assert 'CO2' not in step.trapped_kg
-
-    # The clamp is the solver's rheological transition, not a separate value:
-    # cooling 10 K over the 1e4 yr step drives the raw fraction to 10 * phi_c,
-    # so the step sits on the clamp, and the clamp lands on rfront_loc. Neither
-    # value is the paper's 0.3, which a hard-coded bound would return.
-    for rfront_loc in (0.5, 0.35):
-        fast = run_trapping(
-            _config(rfront_loc=rfront_loc, trap_mode='dynamic'),
-            _hf_row(T_pot=1990.0),
-            _hf_all(),
-        )
-        assert fast.f_tl == pytest.approx(rfront_loc, rel=1e-12)
-        assert fast.clamped_high
-
-    # Edge case: an isothermal step has a rate of exactly zero, which yields no
-    # trapped melt without tripping the lower clamp.
-    flat, high, low = trapped_fraction(0.0, 0.3, 1.0e6, 100.0)
-    assert flat == pytest.approx(0.0, abs=1e-15)
-    assert not (high or low)
-
-    # Error contract: the three parameters are refused out of range.
-    with pytest.raises(ValueError, match='phi_c'):
-        trapped_fraction(-1.0e-6, 0.0, 1.0e6, 100.0)
-    with pytest.raises(ValueError, match='tau'):
-        trapped_fraction(-1.0e-6, 0.3, -1.0, 100.0)
-    with pytest.raises(ValueError, match='DeltaT'):
-        trapped_fraction(-1.0e-6, 0.3, 1.0e6, 0.0)
-
-
-def test_trapping_waits_for_a_previous_step_and_for_an_enabled_mode():
-    """There is no dM_RM and no dT/dt without a previous row, so the first step
+def test_trapping_waits_for_a_previous_step_and_for_an_enabled_mode(fixed_front):
+    """There is no dM_RM without a previous row, so the first step
     traps nothing and leaves the solid reservoir untouched. The none mode does
     the same at every step, which is the default so an existing run is
     unchanged until trapping is asked for."""
@@ -463,7 +409,7 @@ def test_trapping_waits_for_a_previous_step_and_for_an_enabled_mode():
 
 
 @pytest.mark.physics_invariant
-def test_the_initialisation_stage_buries_nothing_and_writes_no_diagnostics():
+def test_the_initialisation_stage_buries_nothing_and_writes_no_diagnostics(fixed_front):
     """The initialisation iterations advance the clock but not the mantle, and
     the time is reset to zero after each, so a step flagged as one traps
     nothing and records nothing, even on inputs that would otherwise trap. The
@@ -630,47 +576,8 @@ def test_desiccation_ignores_the_reservoir_nothing_can_reach():
     assert not check_desiccation(config, partial)
 
 
-@pytest.mark.reference_pinned
-def test_delta_T_is_derived_from_the_melting_curves_not_fixed_at_100_K():
-    """Sim, Hirschmann and Hier-Majumder (2024), JGR Planets 129, e2024JE008346
-    fix DeltaT = 100 C for every simulation. Here it is the temperature interval
-    between the solidus and the melt fraction phi_c, which under the lever rule
-    the structure solver uses is phi_c * (T_liquidus - T_solidus). With the
-    PALEOS liquidus and mushy_zone_factor = 0.8 that is
-    0.3 * 1831.0 * 0.2 = 109.9 K at the surface, close to the paper's value."""
-    pytest.importorskip('zalmoxis')
-    from proteus.config import read_config_object
-
-    config = read_config_object('input/all_options.toml')
-    derived = derive_delta_T(config, phi_c=0.3)
-
-    mzf = config.interior_struct.zalmoxis.mushy_zone_factor
-    assert mzf == pytest.approx(0.8, rel=1e-12)
-    assert derived == pytest.approx(109.86, rel=1e-3)
-    # It is genuinely derived, not the fallback constant being returned.
-    assert abs(derived - 100.0) > 5.0
-    # Scale guard: same order as the paper, not 10 K or 1000 K, so a curve read
-    # in the wrong unit would not pass.
-    assert 50.0 < derived < 400.0
-
-    # The derivation is linear in phi_c, which fixes the lever rule
-    # independently of the curves themselves.
-    assert derive_delta_T(config, phi_c=0.6) == pytest.approx(2.0 * derived, rel=1e-9)
-
-    # Deeper in the mantle the melting interval widens, so DeltaT is a real
-    # function of the reference pressure rather than a constant in disguise.
-    deep = derive_delta_T(config, phi_c=0.3, pressure=10.0e9)
-    assert deep > 1.5 * derived
-
-    # Error contract: an EOS with no melting curves falls back to the paper's
-    # 100 K rather than raising or returning a nonsensical interval.
-    broken = read_config_object('input/all_options.toml')
-    object.__setattr__(broken.interior_struct.zalmoxis, 'mantle_eos', 'NotAnEOS:Nothing')
-    assert derive_delta_T(broken, phi_c=0.3) == pytest.approx(100.0, rel=1e-12)
-
-
 @pytest.mark.physics_invariant
-def test_reservoir_closure_invariant_catches_a_debit_without_its_credit():
+def test_reservoir_closure_invariant_catches_a_debit_without_its_credit(fixed_front):
     """The per-element closure is the check that would actually catch a
     trapping bug. A step that takes mass out of the liquid without crediting the
     solid breaks total == atm + liquid + solid, and the invariant refuses the
@@ -1221,3 +1128,28 @@ def test_a_mush_reaching_the_dense_shallow_mantle_takes_the_no_drainage_bound(ca
     assert step.f_tl == pytest.approx(min(bound, 0.5), rel=1e-12)
     assert 0.3 < step.f_tl < 0.5
     assert any('denser than the solid' in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.physics_invariant
+def test_a_step_without_the_interior_profiles_buries_at_the_crystal_term_alone(caplog):
+    """The front cannot be located without the interior solver's profiles. The
+    crystals still take up D_Z of each species, so such a step buries at the
+    partition coefficients alone, with F_tl = 0, on a branch of its own and
+    with a warning, rather than inventing a trapped melt fraction."""
+    from proteus.outgas.compaction import BRANCH_FALLBACK
+
+    row = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
+    bare = SimpleNamespace(phi=None, density=None, pres=None, radius=None)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.trapping'):
+        step = run_trapping(_config(), row, _hf_all(M_mantle_solid=2.2e24), bare)
+
+    assert step.branch == BRANCH_FALLBACK
+    assert step.f_tl == pytest.approx(0.0, abs=0.0)
+    # Water is buried at D_Z * C_Z * dM_RM = 0.0017 * 1e-3 * 2e23 kg, and CO2,
+    # with no lattice incorporation, not at all.
+    assert row['H2O_kg_trapped'] == pytest.approx(0.0017 * 1.0e-3 * _DM_RM, rel=1e-12)
+    assert row.get('CO2_kg_trapped', 0.0) == pytest.approx(0.0, abs=0.0)
+    # Discrimination: burying at the no-drainage bound instead would take the
+    # interstitial melt too, some two orders of magnitude more water.
+    assert row['H2O_kg_trapped'] < 0.01 * 0.5 * 1.0e-3 * _DM_RM
+    assert any('interior profiles' in r.getMessage() for r in caplog.records)

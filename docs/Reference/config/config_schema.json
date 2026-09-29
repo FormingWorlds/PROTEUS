@@ -6974,92 +6974,10 @@
       "default": "\"none\"",
       "choices": [
         "none",
-        "constant",
-        "dynamic"
+        "front"
       ],
       "bounds": null,
-      "description": "Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off), 'constant' (fixed F_tl), 'dynamic' (F_tl from the cooling rate, after Sim et al. 2024 Eq. 7).",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
-      "path": "outgas.trap_F_tl",
-      "toml_section": "outgas",
-      "class": "Outgas",
-      "type": "float",
-      "accepts_none": false,
-      "default": "0.01",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">=",
-          "value": 0.0
-        },
-        {
-          "op": "<=",
-          "value": 1.0
-        }
-      ],
-      "description": "Trapped melt fraction [1] used by `trap_mode = 'constant'`. The disaggregation melt fraction that bounds F_tl in `trap_mode = 'dynamic'` is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field.",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
-      "path": "outgas.trap_tau",
-      "toml_section": "outgas",
-      "class": "Outgas",
-      "type": "float",
-      "accepts_none": false,
-      "default": "1000000.0",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0.0
-        }
-      ],
-      "description": "Compaction time scale [yr] used by `trap_mode = 'dynamic'`.",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
-      "path": "outgas.trap_delta_T",
-      "toml_section": "outgas",
-      "class": "Outgas",
-      "type": "float",
-      "accepts_none": false,
-      "default": "-1.0",
-      "choices": null,
-      "bounds": null,
-      "description": "Solidus to freezing-front temperature difference [K]. Negative derives it from the active melting curves as `interior_energetics.rfront_loc * (T_liquidus - T_solidus)`; positive overrides the derivation. Sim et al. fix 100 K.",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
-      "path": "outgas.trap_tau_source",
-      "toml_section": "outgas",
-      "class": "Outgas",
-      "type": "str",
-      "accepts_none": false,
-      "default": "\"fixed\"",
-      "choices": [
-        "fixed",
-        "aragog"
-      ],
-      "bounds": null,
-      "description": "Where the compaction time comes from in `trap_mode = 'dynamic'`. 'fixed' uses `trap_tau` and `trap_delta_T`, the published linear law, and works with any interior module. 'aragog' replaces both by the drainage integral over the freezing front the interior solver resolves, which needs neither parameter; it falls back to 'fixed' when the interior state is unavailable.",
+      "description": "Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off) and 'front' (F_tl from the drainage of melt across the freezing front the interior solver resolves; needs `interior_energetics.module = 'aragog'`). The disaggregation melt fraction that tops the front is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
