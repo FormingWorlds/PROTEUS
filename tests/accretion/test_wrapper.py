@@ -1819,14 +1819,42 @@ def test_the_impact_eccentricity_is_clamped_to_a_bound_orbit(monkeypatch, caplog
 
 
 @pytest.mark.unit
+def test_apply_impact_passes_thermal_solve_false_to_solve_structure(monkeypatch):
+    """apply_impact re-solves structure with thermal_solve=False.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest fixture for monkeypatching.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    captured_kwargs = {}
+
+    def _mock_solve_structure(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure',
+        _mock_solve_structure,
+    )
+
+    handler = _impact_handler(mass_tot=1.0)
+    apply_impact(handler, _impact_event())
+
+    assert 'thermal_solve' in captured_kwargs
+    assert captured_kwargs['thermal_solve'] is False
+
+
+@pytest.mark.unit
 def test_orbit_elements_evolve_from_helpfile_row(monkeypatch):
     """An impact evolves orbit elements from the helpfile row rather than config.
 
     During a run, the orbit elements in the helpfile row evolve over time.
     When an impact occurs, the eccentricity change and semi-major axis ratio
     must be applied to the current helpfile row values, updating both the
-    config and the row. If the row values are missing or NaN, they fall back
-    to config.orbit.
+    config and the row. If the row values are missing or non-finite, they fall
+    back to config.orbit.
     """
     from proteus.accretion.wrapper import apply_impact
     from proteus.utils.constants import AU
@@ -1853,21 +1881,42 @@ def test_orbit_elements_evolve_from_helpfile_row(monkeypatch):
     assert handler_a.config.orbit.semimajoraxis == pytest.approx(0.96, rel=1e-12)
     assert handler_a.hf_row['semimajorax'] == pytest.approx(0.96 * AU, rel=1e-12)
 
-    # Missing or NaN row eccentricity falls back to config.orbit.eccentricity
-    handler_nan = _impact_handler(semimajoraxis=1.0, eccentricity=0.15)
-    handler_nan.hf_row['eccentricity'] = float('nan')
+    # First iteration: hf_row has e=0.0 and a=0.0; falls back to config.orbit
+    handler_first = _impact_handler(semimajoraxis=0.5, eccentricity=0.1)
+    handler_first.hf_row['semimajorax'] = 0.0
+    handler_first.hf_row['eccentricity'] = 0.0
+    event_first = _impact_event(a_before=1.0e11, a_after=1.2e11, e_before=0.01, e_after=0.04)
+    apply_impact(handler_first, event_first)
+
+    assert handler_first.config.orbit.eccentricity == pytest.approx(0.13, rel=1e-12)
+    assert handler_first.hf_row['eccentricity'] == pytest.approx(0.13, rel=1e-12)
+    assert handler_first.config.orbit.semimajoraxis == pytest.approx(0.6, rel=1e-12)
+    assert handler_first.hf_row['semimajorax'] == pytest.approx(0.6 * AU, rel=1e-12)
+
+    # Non-finite, negative, or missing semimajoraxis falls back to config.orbit
+    for bad_a in (float('inf'), float('nan'), -1.0, None):
+        handler_bad = _impact_handler(semimajoraxis=0.5, eccentricity=0.1)
+        if bad_a is None:
+            del handler_bad.hf_row['semimajorax']
+        else:
+            handler_bad.hf_row['semimajorax'] = bad_a
+        handler_bad.hf_row['eccentricity'] = 0.0
+        apply_impact(handler_bad, event_first)
+        assert handler_bad.config.orbit.eccentricity == pytest.approx(0.13, rel=1e-12)
+        assert handler_bad.config.orbit.semimajoraxis == pytest.approx(0.6, rel=1e-12)
+
+    # Non-finite or missing eccentricity falls back to config.orbit.eccentricity
     event_nan = _impact_event(a_before=1.0e11, a_after=1.0e11, e_before=0.01, e_after=0.04)
-    apply_impact(handler_nan, event_nan)
-
-    assert handler_nan.config.orbit.eccentricity == pytest.approx(0.18, rel=1e-12)
-    assert handler_nan.hf_row['eccentricity'] == pytest.approx(0.18, rel=1e-12)
-
-    handler_none = _impact_handler(semimajoraxis=1.0, eccentricity=0.15)
-    del handler_none.hf_row['eccentricity']
-    apply_impact(handler_none, event_nan)
-
-    assert handler_none.config.orbit.eccentricity == pytest.approx(0.18, rel=1e-12)
-    assert handler_none.hf_row['eccentricity'] == pytest.approx(0.18, rel=1e-12)
+    for bad_e in (float('inf'), float('nan'), None):
+        handler_bad_e = _impact_handler(semimajoraxis=1.0, eccentricity=0.15)
+        handler_bad_e.hf_row['semimajorax'] = 1.0 * AU
+        if bad_e is None:
+            del handler_bad_e.hf_row['eccentricity']
+        else:
+            handler_bad_e.hf_row['eccentricity'] = bad_e
+        apply_impact(handler_bad_e, event_nan)
+        assert handler_bad_e.config.orbit.eccentricity == pytest.approx(0.18, rel=1e-12)
+        assert handler_bad_e.hf_row['eccentricity'] == pytest.approx(0.18, rel=1e-12)
 
 
 @pytest.mark.unit

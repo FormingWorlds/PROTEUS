@@ -200,7 +200,9 @@ def check_accretion_interior_compatibility(instance, attribute, value):
     binary; the boundary interior never forwards its interior state object to the
     time-stepper, so the step cannot be capped to land on the impact and impacts
     would be applied late by an unbounded amount, or several would collapse onto
-    the end of one long step.
+    the end of one long step. Furthermore, interior_struct.module == 'spider' is
+    refused because SPIDER structure solves do not support non-thermal solves
+    during giant impacts.
     """
     if instance.accretion.module is None:
         return

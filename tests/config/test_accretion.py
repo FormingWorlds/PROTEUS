@@ -370,10 +370,11 @@ def test_accretion_with_spider_interior_struct_is_refused_at_config_load():
         with pytest.raises(
             ValueError,
             match="interior_struct.module = 'spider': SPIDER structure solve does not support",
-        ):
+        ) as exc_info:
             check_accretion_interior_compatibility(
                 _compat_instance(module, 'aragog', struct_module='spider'), None, None
             )
+        assert 'accretion' in str(exc_info.value).lower()
 
     # When accretion is disabled, interior_struct spider is admitted.
     check_accretion_interior_compatibility(

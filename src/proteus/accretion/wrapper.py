@@ -420,11 +420,26 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # impact that excites a planet already near unity cannot unbind it on paper.
     ratio = event.semimajoraxis_ratio
 
-    base_e = hf_row.get('eccentricity')
-    if base_e is None or math.isnan(float(base_e)):
+    raw_a = hf_row.get('semimajorax')
+    try:
+        val_a = float(raw_a) if raw_a is not None else None
+    except (ValueError, TypeError):
+        val_a = None
+
+    if val_a is None or not math.isfinite(val_a) or val_a <= 0.0:
+        base_a = float(config.orbit.semimajoraxis) * AU
         base_e = float(config.orbit.eccentricity)
     else:
-        base_e = float(base_e)
+        base_a = val_a
+        raw_e = hf_row.get('eccentricity')
+        try:
+            val_e = float(raw_e) if raw_e is not None else None
+        except (ValueError, TypeError):
+            val_e = None
+        if val_e is None or not math.isfinite(val_e):
+            base_e = float(config.orbit.eccentricity)
+        else:
+            base_e = val_e
 
     requested = base_e + event.eccentricity_change
     eccentricity = min(max(requested, 0.0), _ECC_MAX)
@@ -440,12 +455,6 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
             eccentricity,
             event.eccentricity_change,
         )
-
-    base_a = hf_row.get('semimajorax')
-    if base_a is None or math.isnan(float(base_a)) or float(base_a) <= 0.0:
-        base_a = float(config.orbit.semimajoraxis) * AU
-    else:
-        base_a = float(base_a)
 
     new_a = base_a * ratio
     config.orbit.semimajoraxis = new_a / AU

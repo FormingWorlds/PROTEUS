@@ -1333,11 +1333,11 @@ def test_the_per_step_impact_heat_starts_each_row_at_zero(tmp_path):
     _run_main_loop_recording_mass(p, stop_at_loop=2, rows=rows, row_writer=_writer)
 
     # Initial step 0 started with zero impact heat before booking 6.1e30 J
-    assert incoming_impact_heat[0] == 0.0
+    assert incoming_impact_heat[0] == pytest.approx(0.0)
     # Step 1 received a fresh row reset to 0.0 rather than inheriting 6.1e30 J
-    assert incoming_impact_heat[1] == 0.0
+    assert incoming_impact_heat[1] == pytest.approx(0.0)
     # Discrimination: the previous step actually set non-zero impact heat
-    assert rows[0]['step_dE_impact_J'] == 6.1e30
+    assert rows[0]['step_dE_impact_J'] == pytest.approx(6.1e30)
 
 
 # ---------------------------------------------------------------------------

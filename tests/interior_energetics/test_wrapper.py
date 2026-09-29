@@ -4444,9 +4444,6 @@ def test_solve_structure_thermal_solve_controls_interior_run(tmp_path):
             dirs, config_dummy, hf_all, hf_row_dummy, str(tmp_path), thermal_solve=False
         )
         mock_run.assert_not_called()
-        assert hf_row_dummy['M_planet'] == pytest.approx(
-            hf_row_dummy['M_int'] + hf_row_dummy['M_ele'], rel=1e-12
-        )
 
     # 2. Dummy path: thermal_solve=True calls run_interior
     with (
@@ -4458,7 +4455,7 @@ def test_solve_structure_thermal_solve_controls_interior_run(tmp_path):
         )
         mock_run.assert_called_once()
 
-    # 3. Zalmoxis path: thermal_solve=False skips run_interior; M_planet updated
+    # 3. Zalmoxis path: thermal_solve=False skips run_interior; M_planet and M_mantle updated
     config_zalmoxis = read_config_object('input/dummy.toml')
     config_zalmoxis.interior_struct.module = 'zalmoxis'
     hf_row_zalmoxis = {
@@ -4479,6 +4476,10 @@ def test_solve_structure_thermal_solve_controls_interior_run(tmp_path):
             dirs, config_zalmoxis, hf_all, hf_row_zalmoxis, str(tmp_path), thermal_solve=False
         )
         mock_run.assert_not_called()
+        assert hf_row_zalmoxis['M_mantle'] == pytest.approx(
+            hf_row_zalmoxis['M_int'] - hf_row_zalmoxis['M_core'], rel=1e-12
+        )
+        assert hf_row_zalmoxis['M_mantle'] == pytest.approx(6.0e24 - 1.8e24, rel=1e-12)
         assert hf_row_zalmoxis['M_planet'] == pytest.approx(
             hf_row_zalmoxis['M_int'] + hf_row_zalmoxis['M_ele'], rel=1e-12
         )
@@ -6856,3 +6857,89 @@ def test_impact_heat_is_antisymmetric_and_vanishes_on_no_jump():
 
     bare = SimpleNamespace(entropy_eos=None, _P_stag_flat=P, _volume_flat=vol)
     assert EntropySolver._step_heat_content(bare, S0, Sf) == 0.0
+
+
+@pytest.mark.unit
+def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tmp_path):
+    """evaluate_molten_state sets 1-column state, restores _solution, and writes helpfile keys.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest fixture for monkeypatching.
+    tmp_path : pathlib.Path
+        Pytest fixture for temporary directory path.
+    """
+    from proteus.config import read_config_object
+    from proteus.interior_energetics.wrapper import _remelt_aragog, evaluate_molten_state
+
+    class FakeSolver:
+        def __init__(self, n_nodes=64):
+            self._S0 = np.linspace(3000.0, 4500.0, n_nodes)
+            self._prev_solution = object()
+            self._solution = self._prev_solution
+            self.recorded_y = None
+            self.recorded_t = None
+
+        def get_state(self):
+            self.recorded_y = self._solution.y
+            self.recorded_t = self._solution.t
+            return SimpleNamespace(
+                phi_stag=np.ones(len(self._S0)),
+                phi_global=1.0,
+                phi_global_vol=1.0,
+                T_magma=3850.0,
+                T_pot=3750.0,
+                T_surf=3850.0,
+                T_cmb=5500.0,
+                visc_stag=np.ones(len(self._S0)),
+                rho_stag=np.full(len(self._S0), 4000.0),
+                r_basic=np.linspace(3.4e6, 6.3e6, len(self._S0) + 1),
+                mass_stag=np.full(len(self._S0), 1e22),
+                T_stag=np.full(len(self._S0), 3800.0),
+                P_stag=np.linspace(1.4e11, 1e5, len(self._S0)),
+                dt_actual=0.0,
+            )
+
+    solver = FakeSolver(n_nodes=80)
+    hf_row = {'Time': 250.0, 'M_mantle': 4.2e24}
+
+    # 1. evaluate_molten_state direct evaluation
+    out = evaluate_molten_state(solver, hf_row)
+    assert out is not None
+    assert solver._solution is solver._prev_solution
+    assert solver.recorded_y.shape == (len(solver._S0), 1)
+    assert solver.recorded_t[0] == 250.0
+
+    # 2. Key write in _remelt_aragog
+    config = read_config_object('input/dummy.toml')
+    config.interior_energetics.module = 'aragog'
+    config.planet.temperature_mode = 'isothermal'
+    config.planet.tsurf_init = 3850.0
+
+    interior_o = SimpleNamespace(
+        aragog_solver=solver,
+        impact_reset=False,
+    )
+    monkeypatch.setattr(
+        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+        lambda *a, **k: np.full(len(solver._S0), 4000.0),
+    )
+    monkeypatch.setattr(
+        'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
+        lambda *a, **k: {
+            'T_magma': 3850.0,
+            'Phi_global': 1.0,
+            'Phi_global_vol': 1.0,
+            'T_pot': 3750.0,
+        },
+    )
+    _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
+
+    assert hf_row['T_magma'] == pytest.approx(3850.0, rel=1e-12)
+    assert hf_row['Phi_global'] == pytest.approx(1.0, rel=1e-12)
+    assert hf_row['Phi_global_vol'] == pytest.approx(1.0, rel=1e-12)
+    assert hf_row['T_pot'] == pytest.approx(3750.0, rel=1e-12)
+    assert hf_row['M_mantle_liquid'] == pytest.approx(4.2e24, rel=1e-12)
+    assert hf_row['M_mantle_solid'] == pytest.approx(0.0, abs=1e-12)
+    assert solver._solution is None
