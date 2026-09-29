@@ -97,22 +97,28 @@ and can reach hundreds of bar without the rock beneath it being any deeper.
 Reservoir bookkeeping
 ---------------------
 Trapped mass moves from ``{sp}_kg_liquid`` to ``{sp}_kg_solid``, leaving
-``{sp}_kg_total`` unchanged. The same mass is moved between the per-element
-reservoirs by stoichiometry, so the per-element closure
-``total == atm + liquid + solid`` holds after the step.
+``{sp}_kg_total`` unchanged, and is recorded in ``{sp}_kg_trapped``. The same
+mass is moved between the per-element reservoirs by stoichiometry, so the
+per-element closure ``total == atm + liquid + solid`` holds after the step.
 
-Once ``{sp}_kg_solid`` is nonzero it must be excluded anywhere the code assumes
-the whole-planet inventory is reachable. :func:`locked_solid_mass` is the single
-definition of that exclusion, used by the escape step and the desiccation gate.
+``_kg_trapped`` is the part of ``_kg_solid`` that trapping owns. The rest of
+``_kg_solid`` belongs to the chemistry backend, which writes it on every solve:
+zero for CALLIOPE and the dummy backend, and the condensed graphite for
+atmodeller. Keeping the two apart lets the chemistry own its share while the
+trapped share stays buried, so condensed carbon is never mistaken for trapped
+melt.
 
-TODO: ``outgas.module = 'atmodeller'`` already writes condensate mass (graphite)
-into the same ``_kg_solid`` columns. Trapped melt and condensed carbon are
-different physics sharing one column, and this pass does not separate them.
+Trapped mass must be excluded anywhere the code assumes the whole-planet
+inventory is reachable. :func:`locked_solid_mass` is the single definition of
+that exclusion, used by the escape step and the desiccation gate.
+:func:`trapped_mass_withheld` hides it from the chemistry for the duration of a
+solve, and :func:`keep_only_trapped_mass` keeps it through desiccation.
 """
 
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -132,7 +138,8 @@ from proteus.outgas.compaction import (
     porosity_from_densities,
     volume_to_mass_fraction,
 )
-from proteus.utils.constants import element_list, vol_list
+from proteus.utils.constants import noble_gases, vol_element_list, vol_list
+from proteus.utils.helper import eval_gas_mmw
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -421,18 +428,37 @@ def partition_coefficients(config: Config) -> dict[str, float]:
     return {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in vol_list}
 
 
-def locked_solid_mass(hf_row: dict, element: str) -> float:
-    """Whole-planet mass of one element locked in the solid mantle [kg].
-
-    The single definition of what trapping has put beyond reach. The escape step
-    subtracts it from the mass available to escape, and the desiccation gate
-    subtracts it from the inventory it tests, so a planet whose atmosphere and
-    melt have both emptied still registers as desiccated.
-    """
-    mass = float(hf_row.get(f'{element}_kg_solid', 0.0))
+def _trapped(hf_row: dict, name: str) -> float:
+    """Mass of one species or element that trapping has buried [kg], else zero."""
+    mass = float(hf_row.get(f'{name}_kg_trapped', 0.0))
     if not np.isfinite(mass) or mass <= 0.0:
         return 0.0
     return mass
+
+
+def _shift(hf_row: dict, key: str, delta: float) -> None:
+    """Add ``delta`` to one reservoir, floored at zero; a non-finite value is left alone."""
+    value = float(hf_row.get(key, 0.0))
+    if np.isfinite(value):
+        hf_row[key] = max(0.0, value + delta)
+
+
+def _reservoir_sum(hf_row: dict, name: str, unit: str) -> float:
+    """Atmosphere plus melt plus solid for one species, in ``kg`` or ``mol``."""
+    return sum(float(hf_row.get(f'{name}_{unit}_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
+
+
+def locked_solid_mass(hf_row: dict, element: str) -> float:
+    """Whole-planet mass of one element locked in the solid mantle [kg].
+
+    The single definition of what trapping has put beyond reach, read from
+    ``{element}_kg_trapped``. The rest of ``{element}_kg_solid`` is the chemistry
+    backend's own condensate, such as atmodeller's graphite, which is not locked.
+    The escape step subtracts this mass from the mass available to escape, and
+    the desiccation gate subtracts it from the inventory it tests, so a planet
+    whose atmosphere and melt have both emptied still registers as desiccated.
+    """
+    return _trapped(hf_row, element)
 
 
 def escapable_inventory(hf_row: dict, element: str) -> float:
@@ -456,90 +482,119 @@ def derived_total_elements(config: Config) -> tuple[str, ...]:
     from this tuple.
 
     Trapping must therefore neither withhold nor debit the oxygen total in the
-    ``user_constant`` case: the trapped oxygen is recorded in ``O_kg_solid``
-    as a diagnostic, and the per-element closure is not asserted for it.
+    ``user_constant`` case: the trapped oxygen is recorded in ``O_kg_trapped``
+    and ``O_kg_solid`` as a diagnostic, and the per-element closure is not
+    asserted for it.
     """
     if getattr(getattr(config, 'planet', None), 'fO2_source', '') == 'user_constant':
         return ('O',)
     return ()
 
 
-def snapshot_solid_reservoirs(hf_row: dict) -> dict[str, float]:
-    """Record every solid-mantle reservoir before the chemistry solve runs.
+def withhold_trapped_mass(hf_row: dict, derived: tuple[str, ...] = ()) -> None:
+    """Take the trapped mass out of the reservoirs a chemistry solve owns.
 
-    Pair with :func:`restore_solid_reservoirs`. The solid reservoirs are owned
-    by trapping, not by the chemistry: CALLIOPE has no solid phase and writes
-    every ``_kg_solid`` field as a hard zero, so a trapped inventory would be
-    erased on the first iteration it survived to.
+    Every outgassing backend partitions a whole-planet inventory between melt and
+    atmosphere, and rewrites the ``_kg_solid`` columns with its own condensate:
+    zero for CALLIOPE and the dummy backend, graphite for atmodeller. Trapped mass
+    belongs to neither. Left in an element total, it would be re-dissolved by the
+    solve; left in a solid column, it would be added to by a backend that sums its
+    condensate into that column. It is therefore subtracted from each element's
+    ``_kg_total`` and from each species' and element's ``_kg_solid``, which leaves
+    the backend exactly the share it owns.
+
+    Pair with :func:`restore_trapped_mass`, or use :func:`trapped_mass_withheld`,
+    which pairs the two. ``derived`` names elements whose total the chemistry
+    recomputes (see :func:`derived_total_elements`); their total is left alone.
     """
-    from proteus.utils.constants import gas_list
+    for species in vol_list:
+        mass = _trapped(hf_row, species)
+        if mass > 0.0:
+            _shift(hf_row, f'{species}_kg_solid', -mass)
+    for element in vol_element_list:
+        mass = _trapped(hf_row, element)
+        if mass <= 0.0:
+            continue
+        _shift(hf_row, f'{element}_kg_solid', -mass)
+        if element not in derived:
+            _shift(hf_row, f'{element}_kg_total', -mass)
 
-    return {
-        name: float(hf_row.get(f'{name}_kg_solid', 0.0))
-        for name in list(gas_list) + list(element_list)
-    }
 
+def restore_trapped_mass(hf_row: dict, derived: tuple[str, ...] = ()) -> None:
+    """Put the trapped mass back after a chemistry solve.
 
-def restore_solid_reservoirs(hf_row: dict, snapshot: dict[str, float]) -> None:
-    """Put back the solid reservoirs the chemistry solve flattened.
-
-    Takes the larger of the snapshot and whatever the backend produced, rather
-    than overwriting. atmodeller writes real condensate mass (graphite) into
-    these same columns, so the larger value keeps whichever source actually
-    filled the reservoir without counting both. Trapped melt and condensed
-    carbon share one column and are not yet separable; see the module TODO.
+    Adds it to whatever the backend wrote into ``_kg_solid``, and restores each
+    element's whole-planet ``_kg_total``. A species total is an output of the
+    solve, the backend's atmosphere plus melt, so for every trapped species it is
+    rebuilt as ``atm + liquid + solid``, and the solid and total moles follow the
+    masses. Putting back the species total saved before the solve would instead
+    overwrite the partition the solve has just produced.
     """
-    for name, before in snapshot.items():
-        if before > 0.0:
-            hf_row[f'{name}_kg_solid'] = max(before, float(hf_row.get(f'{name}_kg_solid', 0.0)))
+    for species in vol_list:
+        mass = _trapped(hf_row, species)
+        if mass <= 0.0:
+            continue
+        _shift(hf_row, f'{species}_kg_solid', mass)
+        hf_row[f'{species}_kg_total'] = _reservoir_sum(hf_row, species, 'kg')
+        mmw = eval_gas_mmw(species)
+        hf_row[f'{species}_mol_solid'] = float(hf_row[f'{species}_kg_solid']) / mmw
+        hf_row[f'{species}_mol_total'] = _reservoir_sum(hf_row, species, 'mol')
+    for element in vol_element_list:
+        mass = _trapped(hf_row, element)
+        if mass <= 0.0:
+            continue
+        _shift(hf_row, f'{element}_kg_solid', mass)
+        if element not in derived:
+            _shift(hf_row, f'{element}_kg_total', mass)
 
 
-def withhold_locked_totals(hf_row: dict, derived: tuple[str, ...] = ()) -> dict[str, float]:
-    """Hide the solid-trapped mass from the chemistry, returning the full totals.
+@contextmanager
+def trapped_mass_withheld(hf_row: dict, derived: tuple[str, ...] = ()):
+    """Hide the trapped mass from the chemistry for the duration of a solve.
 
-    Every outgassing backend partitions a whole-planet inventory between melt
-    and atmosphere and has no solid reservoir of its own, so a total that still
-    counted the trapped mass would have the chemistry re-dissolve volatiles the
-    crystallising mantle has already buried. The per-element closure would then
-    over-count by exactly the solid reservoir.
-
-    Pair with :func:`restore_locked_totals`, which puts the full totals back
-    once the solve has finished. Applying this once around the dispatch covers
-    every backend rather than each one separately.
-
-    ``derived`` names elements whose total the chemistry owns; see
-    :func:`derived_total_elements`. Those are left untouched.
+    Withholds on entry and restores on exit, also when the solve raises, so the
+    row never carries the reachable inventory as the whole planet's.
     """
-    from proteus.utils.constants import gas_list
-
-    saved: dict[str, float] = {}
-    for name in list(gas_list) + list(element_list):
-        if name in derived:
-            # The chemistry overwrites this total from its own constraint, so
-            # withholding and restoring it would put back a stale value that
-            # cannot match what the solve just produced.
-            continue
-        if f'{name}_kg_total' not in hf_row:
-            continue
-        locked = locked_solid_mass(hf_row, name)
-        if locked <= 0.0:
-            continue
-        total = float(hf_row[f'{name}_kg_total'])
-        if not np.isfinite(total):
-            continue
-        saved[name] = total
-        hf_row[f'{name}_kg_total'] = max(0.0, total - locked)
-    return saved
+    withhold_trapped_mass(hf_row, derived)
+    try:
+        yield
+    finally:
+        restore_trapped_mass(hf_row, derived)
 
 
-def restore_locked_totals(hf_row: dict, saved: dict[str, float]) -> None:
-    """Put back the whole-planet totals :func:`withhold_locked_totals` hid."""
-    for name, total in saved.items():
-        hf_row[f'{name}_kg_total'] = total
+def keep_only_trapped_mass(hf_row: dict, derived: tuple[str, ...] = ()) -> None:
+    """Leave only the trapped mass in a row whose atmosphere and melt were emptied.
+
+    Desiccation empties the atmosphere and the melt, while what trapping buried
+    stays in the solid mantle. Once the outgassing reservoirs have been zeroed,
+    each trapped species and element gets its trapped mass back as its solid
+    reservoir, and the total of every volatile and noble element is set to what
+    it still holds, its trapped mass or zero, so that each total equals the sum of
+    its reservoirs. The total of a ``derived`` element follows the chemistry's
+    convention, which excludes the solid, and is left as it is.
+    """
+    for species in vol_list:
+        mass = _trapped(hf_row, species)
+        if mass <= 0.0:
+            continue
+        mol = mass / eval_gas_mmw(species)
+        hf_row[f'{species}_kg_solid'] = mass
+        hf_row[f'{species}_kg_total'] = mass
+        hf_row[f'{species}_mol_solid'] = mol
+        hf_row[f'{species}_mol_total'] = mol
+    for element in list(vol_element_list) + list(noble_gases):
+        mass = _trapped(hf_row, element)
+        hf_row[f'{element}_kg_solid'] = mass
+        if element not in derived:
+            hf_row[f'{element}_kg_total'] = mass
 
 
 def _apply_to_reservoirs(hf_row: dict, trapped: dict[str, float]) -> None:
-    """Move trapped mass from liquid to solid, per species and per element."""
+    """Move trapped mass from liquid to solid, per species and per element.
+
+    The same mass is added to ``_kg_trapped``, the share of ``_kg_solid`` that
+    trapping owns and that the chemistry solve must leave alone.
+    """
     for species, mass in trapped.items():
         if mass <= 0.0:
             continue
@@ -547,14 +602,16 @@ def _apply_to_reservoirs(hf_row: dict, trapped: dict[str, float]) -> None:
         sol = float(hf_row.get(f'{species}_kg_solid', 0.0))
         hf_row[f'{species}_kg_liquid'] = max(0.0, liq - mass)
         hf_row[f'{species}_kg_solid'] = sol + mass
+        hf_row[f'{species}_kg_trapped'] = _trapped(hf_row, species) + mass
 
     for element, mass in element_masses_from_species(trapped).items():
-        if element not in element_list or mass <= 0.0:
+        if element not in vol_element_list or mass <= 0.0:
             continue
         liq = float(hf_row.get(f'{element}_kg_liquid', 0.0))
         sol = float(hf_row.get(f'{element}_kg_solid', 0.0))
         hf_row[f'{element}_kg_liquid'] = max(0.0, liq - mass)
         hf_row[f'{element}_kg_solid'] = sol + mass
+        hf_row[f'{element}_kg_trapped'] = _trapped(hf_row, element) + mass
 
 
 SECS_PER_YEAR = 3.15576e7  # Julian year, matching the interior solver's step length

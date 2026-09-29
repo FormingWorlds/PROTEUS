@@ -10,10 +10,8 @@ from proteus.outgas.common import expected_keys
 from proteus.outgas.lavatmos import run_vapourisation
 from proteus.outgas.trapping import (
     derived_total_elements,
-    restore_locked_totals,
-    restore_solid_reservoirs,
-    snapshot_solid_reservoirs,
-    withhold_locked_totals,
+    keep_only_trapped_mass,
+    trapped_mass_withheld,
 )
 from proteus.utils.constants import (
     element_list,
@@ -333,6 +331,39 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     return True
 
 
+def _solve_chemistry(dirs: dict, config: Config, hf_row: dict) -> None:
+    """Partition the volatile inventory between melt and atmosphere.
+
+    Dispatches to the configured chemistry backend, then applies the bulk H2
+    binodal override where it is enabled.
+    """
+    if config.outgas.module == 'calliope':
+        from proteus.outgas.calliope import calc_surface_pressures
+
+        calc_surface_pressures(dirs, config, hf_row)
+    elif config.outgas.module == 'atmodeller':
+        from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+        calc_surface_pressures_atmodeller(dirs, config, hf_row)
+    elif config.outgas.module == 'dummy':
+        from proteus.outgas.dummy import calc_surface_pressures_dummy
+
+        calc_surface_pressures_dummy(dirs, config, hf_row)
+
+    # Apply binodal-controlled H2 partitioning.
+    # When global_miscibility is enabled, the binodal is handled radially
+    # by Zalmoxis (solve_miscible_interior), and the H2 partition was
+    # already set during the structure update. Skip the bulk binodal here.
+    # When global_miscibility is disabled but h2_binodal is on, use the
+    # original bulk binodal override from Rogers+2025.
+    if config.interior_struct.zalmoxis.global_miscibility:
+        log.debug('Skipping apply_binodal_h2: handled by Zalmoxis (global_miscibility)')
+    elif config.outgas.h2_binodal:
+        from proteus.outgas.binodal import apply_binodal_h2
+
+        apply_binodal_h2(hf_row, config)
+
+
 def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     """
     Run outgassing model to get new volatile surface pressures
@@ -388,53 +419,15 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
     hf_row['O_res'] = 0.0
 
-    # Solid-mantle reservoirs are owned by the trapping step, not by the
-    # chemistry. CALLIOPE has no solid reservoir and writes every
-    # `_kg_solid` field as a hard 0.0 (calliope/solve.py:784, 814, 1289,
-    # 1321), and the binodal H2 override below does the same, so a trapped
-    # inventory would be erased on every iteration it survived to. Snapshot
-    # them here and put them back after the chemistry has run.
-    solid_before = snapshot_solid_reservoirs(hf_row)
-    # The chemistry partitions a whole-planet inventory between melt and
-    # atmosphere. Hide the trapped mass from it for the duration of the solve,
-    # or it re-dissolves volatiles the mantle has already buried.
-    totals_before = withhold_locked_totals(hf_row, derived_total_elements(config))
-
-    # Run outgassing calculation
-    if config.outgas.module == 'calliope':
-        from proteus.outgas.calliope import calc_surface_pressures
-
-        calc_surface_pressures(dirs, config, hf_row)
-    elif config.outgas.module == 'atmodeller':
-        from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
-
-        calc_surface_pressures_atmodeller(dirs, config, hf_row)
-    elif config.outgas.module == 'dummy':
-        from proteus.outgas.dummy import calc_surface_pressures_dummy
-
-        calc_surface_pressures_dummy(dirs, config, hf_row)
-
-    # Apply binodal-controlled H2 partitioning.
-    # When global_miscibility is enabled, the binodal is handled radially
-    # by Zalmoxis (solve_miscible_interior), and the H2 partition was
-    # already set during the structure update. Skip the bulk binodal here.
-    # When global_miscibility is disabled but h2_binodal is on, use the
-    # original bulk binodal override from Rogers+2025.
-    if config.interior_struct.zalmoxis.global_miscibility:
-        log.debug('Skipping apply_binodal_h2: handled by Zalmoxis (global_miscibility)')
-    elif config.outgas.h2_binodal:
-        from proteus.outgas.binodal import apply_binodal_h2
-
-        apply_binodal_h2(hf_row, config)
-
-    # Restore the solid reservoirs the chemistry just flattened. `max` rather
-    # than a plain overwrite because atmodeller writes real condensate mass
-    # (graphite) into these same columns: taking the larger keeps whichever
-    # source actually filled the reservoir without counting both. Trapped melt
-    # and condensed carbon share one column and are not yet separable; see the
-    # TODO in outgas/trapping.py.
-    restore_locked_totals(hf_row, totals_before)
-    restore_solid_reservoirs(hf_row, solid_before)
+    # Trapped mass is owned by the trapping step, not by the chemistry, which
+    # partitions a whole-planet inventory between melt and atmosphere and
+    # rewrites every `_kg_solid` column with its own condensate: a hard 0.0 in
+    # CALLIOPE (calliope/solve.py:784, 814, 1289, 1321) and in the binodal H2
+    # override, graphite in atmodeller. Hide the trapped mass for the duration
+    # of the solve, so that it is neither re-dissolved nor mistaken for
+    # condensate, and put it back afterwards.
+    with trapped_mass_withheld(hf_row, derived_total_elements(config)):
+        _solve_chemistry(dirs, config, hf_row)
 
     # P_surf here is the volatile+noble gas total
     hf_row['P_vol'] = hf_row['P_surf']
@@ -638,6 +631,12 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     for k in expected_keys():
         if k not in excepted_keys:
             hf_row[k] = 0.0
+
+    # Desiccation empties the atmosphere and the melt, not the solid mantle:
+    # keep what trapping buried, and empty the escape-owned totals of every
+    # volatile and noble element that has nothing left, so that each total
+    # still equals the sum of its reservoirs.
+    keep_only_trapped_mass(hf_row, derived_total_elements(config))
 
     # Vapourisation of refractories, under the same crystallised gate as
     # volatile outgassing path.

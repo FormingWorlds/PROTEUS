@@ -25,6 +25,7 @@ from proteus.utils.constants import (
     gas_list,
     secs_per_hour,
     secs_per_minute,
+    vol_element_list,
     vol_gas_list,
     vol_list,
 )
@@ -1102,6 +1103,13 @@ def GetHelpfileKeys():
         'trap_frac_bound',  # share of their mass trapped at the no-drainage bound [1]
         'trap_n_substeps',  # drainage sub-steps of the step [1]
         ]
+
+    # Share of the solid-mantle reservoir that trapping owns. The chemistry
+    # writes the rest of `_kg_solid`, its own condensate, on every solve.
+    for s in vol_list:
+        keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
+    for e in vol_element_list:
+        keys.append(e + '_kg_trapped')  # mass trapped in the solid mantle [kg]
 
     # gases from outgassing
     for s in gas_list:

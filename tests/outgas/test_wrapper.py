@@ -2106,3 +2106,176 @@ def test_two_frozen_mantle_steps_keep_the_escapable_reservoir_with_the_column():
     # Discrimination: reservoirs pinned at their starting value would report
     # 1.0e20 escapable against a 2.5e19 column, a factor of four out.
     assert escapable_mass(hf_row, 'outgas') == pytest.approx(2.5e19, rel=1e-9)
+
+
+def _outgas_row(**values) -> dict:
+    """Row carrying every reservoir the wrapper reads around a chemistry solve."""
+    row = {'P_surf': 0.0, 'atm_kg_per_mol': 0.044, 'M_planet': 6.0e24}
+    for s in gas_list:
+        for key in ('_kg_atm', '_kg_liquid', '_kg_solid', '_kg_total', '_vmr', '_bar'):
+            row[s + key] = 0.0
+    for e in element_list:
+        if e not in gas_list:
+            for reservoir in ('atm', 'liquid', 'solid', 'total'):
+                row[f'{e}_kg_{reservoir}'] = 0.0
+    row.update(values)
+    return row
+
+
+def _outgas_config() -> MagicMock:
+    """Config for a dummy-backend solve under the default oxygen buffer."""
+    config = MagicMock()
+    config.outgas.module = 'dummy'
+    config.outgas.fO2_shift_IW = 0.0
+    config.outgas.h2_binodal = False
+    config.planet.fO2_source = 'user_constant'
+    config.interior_struct.zalmoxis.global_miscibility = False
+    return config
+
+
+@pytest.mark.physics_invariant
+def test_run_outgassing_leaves_condensed_graphite_to_the_backend_that_wrote_it():
+    """atmodeller writes the carbon it condenses as graphite into C_kg_solid.
+    That share belongs to the chemistry, not to trapping, so each solve must
+    see the whole carbon budget and write its own graphite over the last one.
+    Taking last step's graphite for trapped mass would hide it from the budget
+    and keep the larger of the two solids, leaving the carbon reservoirs short
+    of the total by the smaller of them, which the closure check refuses."""
+    from proteus.utils.coupler import assert_mass_conservation
+
+    received = []
+
+    def condensing_backend(dirs, config, hf_row):
+        # Stand in for atmodeller: read the carbon budget, condense a fifth of
+        # it as graphite, and split the rest 3:5 between atmosphere and melt.
+        total = hf_row['C_kg_total']
+        received.append(total)
+        hf_row.update(C_kg_solid=0.2 * total, C_kg_atm=0.3 * total, C_kg_liquid=0.5 * total)
+        hf_row.update(CO2_kg_atm=0.3 * total * 44.009 / 12.011, CO2_vmr=1.0, CO2_bar=100.0)
+        hf_row['P_surf'] = 100.0
+
+    config = _outgas_config()
+    row = _outgas_row(C_kg_total=1.0e21)
+    target = 'proteus.outgas.dummy.calc_surface_pressures_dummy'
+    with patch(target, side_effect=condensing_backend):
+        run_outgassing({}, config, row)
+        assert_mass_conservation(row, derived_elements=('O',))
+        # The second solve starts with last step's graphite in the column.
+        run_outgassing({}, config, row)
+
+    # Both solves partitioned the whole budget; hiding the graphite would have
+    # handed the second one 8e20 kg.
+    assert received == pytest.approx([1.0e21, 1.0e21], rel=1e-12)
+    # The solid is this solve's graphite, and nothing was recorded as trapped.
+    assert row['C_kg_solid'] == pytest.approx(2.0e20, rel=1e-12)
+    assert row.get('C_kg_trapped', 0.0) == pytest.approx(0.0, abs=0.0)
+    assert_mass_conservation(row, derived_elements=('O',))
+
+
+@pytest.mark.physics_invariant
+def test_run_outgassing_hides_the_trapped_mass_and_rebuilds_species_totals():
+    """The chemistry partitions only the inventory it can reach, so the trapped
+    mass is withheld from the element totals it is handed. The species totals
+    it writes stay its own: after each solve a trapped species' total is its
+    fresh atmosphere plus melt plus the trapped share, so the total follows the
+    chemistry from one solve to the next. The trapped mass is put back even
+    when the solve raises."""
+    from proteus.utils.coupler import assert_mass_conservation
+    from proteus.utils.helper import eval_gas_mmw
+
+    mmw = eval_gas_mmw('H2O')
+    received = []
+    # Reachable water [kg] in the atmosphere and the melt, one pair per solve:
+    # the second solve turns some water into other species.
+    water = iter([(3.6e20, 1.08e21), (4.0e20, 8.0e20)])
+
+    def backend(dirs, config, hf_row):
+        # Stand in for CALLIOPE: split the hydrogen it is handed 1:3, write the
+        # water partition with its own species total, and zero every solid.
+        total = hf_row['H_kg_total']
+        received.append(total)
+        hf_row.update(H_kg_atm=0.25 * total, H_kg_liquid=0.75 * total, H_kg_solid=0.0)
+        atm, liquid = next(water)
+        hf_row.update(H2O_kg_atm=atm, H2O_kg_liquid=liquid, H2O_kg_solid=0.0)
+        hf_row.update(H2O_kg_total=atm + liquid, H2O_mol_solid=0.0)
+        hf_row.update(H2O_mol_atm=atm / mmw, H2O_mol_liquid=liquid / mmw)
+        hf_row.update(H2O_mol_total=(atm + liquid) / mmw)
+        hf_row.update(H2O_vmr=1.0, H2O_bar=200.0, P_surf=200.0)
+
+    config = _outgas_config()
+    row = _outgas_row(H_kg_total=2.0e20, H_kg_solid=4.0e19, H_kg_trapped=4.0e19)
+    row.update(H2O_kg_total=1.8e21, H2O_kg_solid=3.6e20, H2O_kg_trapped=3.6e20)
+    target = 'proteus.outgas.dummy.calc_surface_pressures_dummy'
+    with patch(target, side_effect=backend):
+        run_outgassing({}, config, row)
+        assert row['H2O_kg_total'] == pytest.approx(1.8e21, rel=1e-12)
+        assert_mass_conservation(row, derived_elements=('O',))
+        run_outgassing({}, config, row)
+
+    # Both solves saw the reachable hydrogen alone, 2e20 - 4e19 kg.
+    assert received == pytest.approx([1.6e20, 1.6e20], rel=1e-12)
+    assert row['H_kg_total'] == pytest.approx(2.0e20, rel=1e-12)
+    # The species total followed the second solve to 1.2e21 + 3.6e20 kg;
+    # restoring the total saved before the solve would have left it at 1.8e21.
+    assert row['H2O_kg_total'] == pytest.approx(1.56e21, rel=1e-12)
+    assert abs(row['H2O_kg_total'] - 1.8e21) > 1.0e20
+    assert row['H2O_mol_solid'] == pytest.approx(3.6e20 / mmw, rel=1e-12)
+    assert_mass_conservation(row, derived_elements=('O',))
+
+    # Error contract: a solve that raises still has the trapped mass put back.
+    with patch(target, side_effect=RuntimeError('no convergence')):
+        with pytest.raises(RuntimeError, match='no convergence'):
+            run_outgassing({}, config, row)
+    assert row['H_kg_total'] == pytest.approx(2.0e20, rel=1e-12)
+    assert row['H2O_kg_solid'] == pytest.approx(3.6e20, rel=1e-12)
+
+
+def _nearly_dry_row(**values) -> dict:
+    """Row whose reachable inventory is below the 1e16 kg desiccation threshold."""
+    row = _outgas_row(M_atm=1.0e14, M_vol_atm=0.0)
+    row.update(He_kg_total=1.0e14, He_kg_atm=1.0e14)
+    row.update(values)
+    return row
+
+
+@pytest.mark.physics_invariant
+def test_desiccation_with_trapped_mass_or_a_noble_gas_keeps_the_closure():
+    """A planet whose atmosphere and melt have emptied is desiccated even when
+    its mantle holds trapped volatiles, and a trace noble-gas inventory below
+    the threshold does not prevent it. The desiccated row must still pass the
+    per-element closure check instead of aborting the run: the trapped mass
+    stays in the solid and in the total, and every total with nothing left,
+    the helium one included, is emptied."""
+    from proteus.utils.coupler import assert_mass_conservation
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1e16
+    config.planet.fO2_source = 'from_O_budget'
+
+    # 4e19 kg of hydrogen trapped, 5e15 kg still reachable, 1e14 kg of helium.
+    trapped = _nearly_dry_row(H_kg_total=4.0e19 + 5.0e15, H_kg_atm=5.0e15)
+    trapped.update(H_kg_solid=4.0e19, H_kg_trapped=4.0e19)
+    trapped.update(H2O_kg_solid=3.6e20, H2O_kg_trapped=3.6e20, H2O_kg_total=3.6e20)
+    assert check_desiccation(config, trapped)
+    run_desiccated({}, config, trapped, False)
+    assert trapped['H_kg_solid'] == pytest.approx(4.0e19, rel=1e-12)
+    assert trapped['H_kg_total'] == pytest.approx(4.0e19, rel=1e-12)
+    assert trapped['H2O_kg_solid'] == pytest.approx(3.6e20, rel=1e-12)
+    assert trapped['He_kg_total'] == pytest.approx(0.0, abs=0.0)
+    assert_mass_conservation(trapped)
+
+    # Edge case, no trapping at all: helium alone, which escape never floors.
+    noble = _nearly_dry_row()
+    assert check_desiccation(config, noble)
+    run_desiccated({}, config, noble, False)
+    assert noble['He_kg_total'] == pytest.approx(0.0, abs=0.0)
+    assert_mass_conservation(noble)
+
+    # The step that keeps the trapped mass and empties the rest is what lets
+    # the row close: without it the helium total is left behind and refused.
+    stale = _nearly_dry_row()
+    with patch('proteus.outgas.wrapper.keep_only_trapped_mass'):
+        run_desiccated({}, config, stale, False)
+    with pytest.raises(RuntimeError, match='closure failed for He'):
+        assert_mass_conservation(stale)

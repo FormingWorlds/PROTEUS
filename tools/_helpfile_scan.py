@@ -65,6 +65,7 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str], tuple[str, ...]] = {
     ('outgas/trapping.py', '<?>_kg_liquid'): ('vol_list', 'element_list'),
     ('outgas/trapping.py', '<?>_kg_solid'): ('gas_list', 'element_list'),
     ('outgas/trapping.py', '<?>_kg_total'): ('gas_list', 'element_list'),
+    ('outgas/trapping.py', '<?>_kg_trapped'): ('vol_list', 'vol_element_list'),
     ('outgas/atmodeller.py', '<?>_bar'): ('gas_list',),
     ('outgas/atmodeller.py', '<?>_vmr'): ('gas_list',),
     ('outgas/atmodeller.py', '<?>_kg_atm'): ('gas_list', 'element_list'),
@@ -97,6 +98,9 @@ SUPPRESSED_DYNAMIC_WRITES = {
     # The mass-ratio loop assembles its key in a local; EXTRA_PRODUCERS
     # declares the full expansion for it.
     ('outgas/wrapper.py', 'run_outgassing'),
+    # The trapped mass withheld from, and restored to, reservoirs the
+    # chemistry and the trapping step already write, around each solve.
+    ('outgas/trapping.py', '_shift'),
     # hf_row.update(saved) restores of pre-call snapshots.
     ('interior_energetics/wrapper.py', '_solve_structure_with_adiabat_or_rollback'),
     ('interior_energetics/wrapper.py', 'update_structure_from_interior'),

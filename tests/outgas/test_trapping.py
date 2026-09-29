@@ -17,7 +17,13 @@ stays put. These tests exercise:
 * the start condition, so the first step with no previous row traps nothing,
 * the initialisation stage, whose steps do not advance the mantle, trapping
   nothing and recording no diagnostics,
-* the solid reservoirs surviving a chemistry solve that writes them as zero,
+* the trapped share of the solid reservoirs surviving a chemistry solve that
+  writes them as zero, and adding to condensed graphite rather than competing
+  with it,
+* species totals rebuilt from each fresh partition rather than restored, so
+  they follow the chemistry instead of freezing,
+* desiccation keeping the trapped mass and emptying the totals with nothing
+  left, so the closure holds on the desiccated row,
 * escape and the desiccation gate both seeing only the reachable inventory,
 * ``DeltaT`` derived from the active melting curves rather than fixed at the
   100 K of Sim et al. (2024),
@@ -50,17 +56,18 @@ from proteus.outgas.trapping import (
     derive_delta_T,
     derived_total_elements,
     escapable_inventory,
+    keep_only_trapped_mass,
     locked_solid_mass,
-    restore_locked_totals,
-    restore_solid_reservoirs,
+    restore_trapped_mass,
     run_trapping,
-    snapshot_solid_reservoirs,
     trapped_fraction,
     trapped_mass,
-    withhold_locked_totals,
+    trapped_mass_withheld,
+    withhold_trapped_mass,
 )
 from proteus.outgas.wrapper import check_desiccation
 from proteus.utils.coupler import assert_mass_conservation
+from proteus.utils.helper import eval_gas_mmw
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -305,6 +312,11 @@ def test_trapping_step_moves_mass_between_reservoirs_and_conserves_each_element(
     assert step.trapped_kg['CO2'] == pytest.approx(8.0e18, rel=1e-12)
     assert row['H2O_kg_solid'] == pytest.approx(4.3332e18, rel=1e-12)
     assert row['H2O_kg_liquid'] == pytest.approx(1.8e21 - 4.3332e18, rel=1e-12)
+    # The same mass is recorded as trapping's own share of the solid, per
+    # species and per element, which is what later solves leave alone.
+    assert row['H2O_kg_trapped'] == pytest.approx(4.3332e18, rel=1e-12)
+    assert row['H_kg_trapped'] == pytest.approx(row['H_kg_solid'], rel=1e-12)
+    assert row['C_kg_trapped'] == pytest.approx(row['C_kg_solid'], rel=1e-12)
 
     # Conservation: the per-element closure the runtime invariant asserts.
     for element, total in totals_before.items():
@@ -480,39 +492,54 @@ def test_the_initialisation_stage_buries_nothing_and_writes_no_diagnostics():
     assert np.isnan(live['trap_frac_bound'])
 
 
-def test_solid_reservoir_survives_a_chemistry_solve_that_writes_it_as_zero():
-    """CALLIOPE has no solid phase and writes every _kg_solid field as a hard
-    zero, and the binodal H2 override does the same. The snapshot taken before
-    the solve puts the trapped inventory back afterwards, so it is overwritten
-    rather than lost."""
-    row = _hf_row(H2O_kg_solid=4.3332e18, H_kg_solid=4.849e17, CO2_kg_solid=8.0e18)
-    snapshot = snapshot_solid_reservoirs(row)
-    assert snapshot['H2O'] == pytest.approx(4.3332e18, rel=1e-12)
+@pytest.mark.physics_invariant
+def test_trapped_mass_survives_a_chemistry_solve_that_rewrites_the_solid_columns():
+    """CALLIOPE writes every _kg_solid field as a hard zero and atmodeller
+    writes its condensed graphite there. The trapped share, recorded in
+    _kg_trapped, is taken out of the solid columns for the solve and added back
+    afterwards, so it survives a solve that zeroes them and adds to condensate
+    instead of competing with it."""
+    trapped = {'H2O': 4.3332e18, 'CO2': 8.0e18, 'H': 4.849e17, 'C': 2.1818e18}
+    row = _hf_row()
+    for name, mass in trapped.items():
+        row[f'{name}_kg_solid'] = mass
+        row[f'{name}_kg_trapped'] = mass
 
-    # Stand in for the chemistry solve, which flattens the whole set.
-    for name in snapshot:
-        row[f'{name}_kg_solid'] = 0.0
-    assert row['H2O_kg_solid'] == pytest.approx(0.0, abs=1e-30)
+    with trapped_mass_withheld(row):
+        # Inside the solve the backend holds only its own share of the solid.
+        assert row['H2O_kg_solid'] == pytest.approx(0.0, abs=0.0)
+        assert row['C_kg_solid'] == pytest.approx(0.0, abs=0.0)
+        # Stand in for a solve that zeroes the species solids and condenses
+        # 3e18 kg of carbon as graphite, as atmodeller writes it.
+        for name in ('H2O', 'CO2', 'H'):
+            row[f'{name}_kg_solid'] = 0.0
+        row['C_kg_solid'] = 3.0e18
 
-    restore_solid_reservoirs(row, snapshot)
     assert row['H2O_kg_solid'] == pytest.approx(4.3332e18, rel=1e-12)
     assert row['CO2_kg_solid'] == pytest.approx(8.0e18, rel=1e-12)
     assert row['H_kg_solid'] == pytest.approx(4.849e17, rel=1e-12)
+    # Condensed and trapped carbon add. Keeping the larger of the two, the
+    # previous rule, would leave 3e18 kg and lose the trapped share.
+    assert row['C_kg_solid'] == pytest.approx(3.0e18 + 2.1818e18, rel=1e-12)
+    assert abs(row['C_kg_solid'] - 3.0e18) > 1.0e18
+    # The record of what trapping owns is never touched by the solve.
+    assert row['C_kg_trapped'] == pytest.approx(2.1818e18, rel=1e-12)
 
-    # A backend that writes a larger condensate mass into the same column keeps
-    # it: atmodeller reports graphite there, and taking the larger avoids both
-    # erasing it and counting the two sources twice.
-    row['CO2_kg_solid'] = 9.0e18
-    restore_solid_reservoirs(row, snapshot)
-    assert row['CO2_kg_solid'] == pytest.approx(9.0e18, rel=1e-12)
+    # Error contract: a solve that raises still has the trapped mass put back,
+    # so the row is never left carrying only the reachable inventory.
+    with pytest.raises(RuntimeError, match='solver failed'):
+        with trapped_mass_withheld(row):
+            raise RuntimeError('solver failed')
+    assert row['H2O_kg_solid'] == pytest.approx(4.3332e18, rel=1e-12)
+    assert row['C_kg_solid'] == pytest.approx(5.1818e18, rel=1e-12)
 
-    # Edge case: a reservoir that was empty before the solve is not resurrected,
-    # so the restore cannot invent mass the run never had.
-    empty = _hf_row()
-    empty_snapshot = snapshot_solid_reservoirs(empty)
-    empty['N2_kg_solid'] = 5.0e17
-    restore_solid_reservoirs(empty, empty_snapshot)
-    assert empty['N2_kg_solid'] == pytest.approx(5.0e17, rel=1e-12)
+    # Edge case: a row that never trapped anything leaves the backend's
+    # graphite exactly as the backend wrote it, as before trapping existed.
+    plain = _hf_row(C_kg_solid=3.0e18)
+    with trapped_mass_withheld(plain):
+        assert plain['C_kg_solid'] == pytest.approx(3.0e18, rel=1e-12)
+        plain['C_kg_solid'] = 2.5e18
+    assert plain['C_kg_solid'] == pytest.approx(2.5e18, rel=1e-12)
 
 
 @pytest.mark.physics_invariant
@@ -524,6 +551,7 @@ def test_escape_cannot_reach_mass_locked_in_the_solid_mantle():
     row = {f'{e}_kg_total': 0.0 for e in ('H', 'O', 'C', 'N', 'S')}
     row['H_kg_total'] = 1.0e20
     row['H_kg_solid'] = 4.0e19
+    row['H_kg_trapped'] = 4.0e19
     row['H_kg_atm'] = 1.0e19
 
     # Sizing: the bulk reservoir sees only the reachable 6e19 kg.
@@ -543,6 +571,13 @@ def test_escape_cannot_reach_mass_locked_in_the_solid_mantle():
     # Without the floor the total would land at 1e19 kg, or be zeroed outright
     # by the minimum-mass threshold; neither is reachable now.
     assert abs(target['H'] - 1.0e19) > 1.0e19
+
+    # Condensate the chemistry owns is not locked: atmodeller's graphite in
+    # C_kg_solid stays within reach of escape, as it was before trapping.
+    row['C_kg_total'] = 5.0e18
+    row['C_kg_solid'] = 5.0e18
+    assert locked_solid_mass(row, 'C') == pytest.approx(0.0, abs=0.0)
+    assert reservoir_mass(row, 'C', '_kg_total') == pytest.approx(5.0e18, rel=1e-12)
 
     # Edge case: with nothing locked, the floor is zero and behaviour is
     # unchanged from before trapping existed.
@@ -572,18 +607,25 @@ def test_desiccation_ignores_the_reservoir_nothing_can_reach():
         locked[f'{element}_kg_solid'] = 0.0
     locked['H_kg_total'] = 5.0e19
     locked['H_kg_solid'] = 5.0e19
+    locked['H_kg_trapped'] = 5.0e19
 
     assert escapable_inventory(locked, 'H') == pytest.approx(0.0, abs=1e-30)
     assert locked['H_kg_total'] > config.outgas.mass_thresh
     assert check_desiccation(config, locked)
 
     # The same inventory reachable rather than locked is not desiccated.
-    reachable = dict(locked, H_kg_solid=0.0, H_kg_atm=5.0e19)
+    reachable = dict(locked, H_kg_solid=0.0, H_kg_trapped=0.0, H_kg_atm=5.0e19)
     assert escapable_inventory(reachable, 'H') == pytest.approx(5.0e19, rel=1e-12)
     assert not check_desiccation(config, reachable)
 
+    # Condensate is reachable too: a solid reservoir the chemistry owns does
+    # not hold the planet in the desiccated state.
+    condensed = dict(locked, H_kg_trapped=0.0)
+    assert escapable_inventory(condensed, 'H') == pytest.approx(5.0e19, rel=1e-12)
+    assert not check_desiccation(config, condensed)
+
     # Edge case: a partially locked inventory is judged on the remainder alone.
-    partial = dict(locked, H_kg_total=5.0e19, H_kg_solid=4.99e19)
+    partial = dict(locked, H_kg_total=5.0e19, H_kg_solid=4.99e19, H_kg_trapped=4.99e19)
     assert escapable_inventory(partial, 'H') == pytest.approx(1.0e17, rel=1e-9)
     assert not check_desiccation(config, partial)
 
@@ -666,45 +708,71 @@ def test_reservoir_closure_invariant_catches_a_debit_without_its_credit():
 def test_chemistry_cannot_redissolve_what_the_mantle_has_buried():
     """Every outgassing backend partitions a whole-planet inventory between melt
     and atmosphere and has no solid reservoir of its own. The trapped mass is
-    withheld from the total for the duration of the solve, so the chemistry
-    shares out only what it can reach, and the full total is put back
-    afterwards. Without this the reservoirs over-count by exactly the solid."""
+    withheld from the element totals for the duration of the solve, so the
+    chemistry shares out only what it can reach, and the full total is put back
+    afterwards; without this the reservoirs over-count by exactly the solid. A
+    species total is an output of the solve, so it is rebuilt from the fresh
+    partition plus the trapped share rather than restored, and it follows the
+    chemistry from one solve to the next instead of freezing."""
+    mmw = eval_gas_mmw('H2O')
     row = _hf_row(H_kg_total=2.0e20, H_kg_solid=4.0e19, H2O_kg_total=1.8e21)
-    row['H2O_kg_solid'] = 3.6e20
+    row.update(H_kg_trapped=4.0e19, H2O_kg_solid=3.6e20, H2O_kg_trapped=3.6e20)
 
-    saved = withhold_locked_totals(row)
-    # The chemistry now sees the reachable inventory alone.
+    def solve(h2o_atm: float, h2o_liquid: float) -> None:
+        """Stand in for the solve: split the reachable hydrogen 1:3 between
+        atmosphere and melt, write the water partition, and zero the solids."""
+        row['H_kg_atm'] = 0.25 * row['H_kg_total']
+        row['H_kg_liquid'] = 0.75 * row['H_kg_total']
+        row['H_kg_solid'] = 0.0
+        row.update(H2O_kg_atm=h2o_atm, H2O_kg_liquid=h2o_liquid, H2O_kg_solid=0.0)
+        row['H2O_kg_total'] = h2o_atm + h2o_liquid
+        row.update(H2O_mol_atm=h2o_atm / mmw, H2O_mol_liquid=h2o_liquid / mmw)
+        row.update(H2O_mol_solid=0.0, H2O_mol_total=(h2o_atm + h2o_liquid) / mmw)
+
+    withhold_trapped_mass(row)
+    # The chemistry now sees the reachable hydrogen alone.
     assert row['H_kg_total'] == pytest.approx(1.6e20, rel=1e-12)
-    assert row['H2O_kg_total'] == pytest.approx(1.44e21, rel=1e-12)
-    # Discrimination: the unwithheld totals are 2e20 and 1.8e21 kg.
     assert abs(row['H_kg_total'] - 2.0e20) > 1.0e19
-
-    # Stand in for the solve, which splits the reachable total it was given
-    # across melt and atmosphere and writes no solid.
-    row['H_kg_atm'] = 0.25 * row['H_kg_total']
-    row['H_kg_liquid'] = 0.75 * row['H_kg_total']
-    row['H_kg_solid'] = 0.0
-
-    restore_locked_totals(row, saved)
-    restore_solid_reservoirs(row, {'H': 4.0e19})
+    solve(3.6e20, 1.08e21)
+    restore_trapped_mass(row)
     assert row['H_kg_total'] == pytest.approx(2.0e20, rel=1e-12)
 
-    # Closure: the reachable split plus the restored solid is the whole planet.
+    # Closure, per element and per species: the reachable split plus the
+    # trapped solid is the whole planet, in mass and in moles.
     parts = row['H_kg_atm'] + row['H_kg_liquid'] + row['H_kg_solid']
     assert parts == pytest.approx(row['H_kg_total'], rel=1e-12)
-    assert row['H_kg_solid'] > 0.0
+    assert row['H2O_kg_total'] == pytest.approx(3.6e20 + 1.08e21 + 3.6e20, rel=1e-12)
+    assert row['H2O_mol_solid'] == pytest.approx(3.6e20 / mmw, rel=1e-12)
+    mol_parts = row['H2O_mol_atm'] + row['H2O_mol_liquid'] + row['H2O_mol_solid']
+    assert row['H2O_mol_total'] == pytest.approx(mol_parts, rel=1e-12)
 
-    # Edge case: with nothing trapped the totals are untouched, so a run with
-    # trapping disabled sees byte-identical chemistry input.
-    plain = _hf_row(H_kg_total=2.0e20)
-    assert withhold_locked_totals(plain) == {}
+    # A second solve turns some water into other species, so the reachable
+    # water falls to 1.2e21 kg. The species total follows it to 1.56e21 kg;
+    # restoring the total saved before the solve would freeze it at 1.8e21.
+    withhold_trapped_mass(row)
+    solve(4.0e20, 8.0e20)
+    restore_trapped_mass(row)
+    assert row['H2O_kg_total'] == pytest.approx(1.56e21, rel=1e-12)
+    assert abs(row['H2O_kg_total'] - 1.8e21) > 1.0e20
+    assert row['H2O_kg_solid'] == pytest.approx(3.6e20, rel=1e-12)
+
+    # Edge case: with nothing trapped every total is untouched, so a run with
+    # trapping disabled hands the chemistry exactly the inventory it had.
+    plain = _hf_row(H_kg_total=2.0e20, H2O_kg_total=1.8e21)
+    withhold_trapped_mass(plain)
     assert plain['H_kg_total'] == pytest.approx(2.0e20, rel=1e-12)
+    restore_trapped_mass(plain)
+    assert plain['H2O_kg_total'] == pytest.approx(1.8e21, rel=1e-12)
 
     # Error contract: an element whose total is not finite is left alone rather
-    # than having a NaN propagated into the chemistry input.
-    broken = _hf_row(H_kg_total=float('nan'), H_kg_solid=4.0e19)
-    withhold_locked_totals(broken)
+    # than having a NaN propagated into the chemistry input, and a non-finite
+    # trapped record counts as nothing trapped.
+    broken = _hf_row(H_kg_total=float('nan'), H_kg_trapped=4.0e19)
+    withhold_trapped_mass(broken)
     assert np.isnan(broken['H_kg_total'])
+    stale = _hf_row(H_kg_total=2.0e20, H_kg_trapped=float('nan'))
+    withhold_trapped_mass(stale)
+    assert stale['H_kg_total'] == pytest.approx(2.0e20, rel=1e-12)
 
 
 def test_oxygen_total_is_left_to_the_chemistry_when_the_buffer_owns_it():
@@ -713,9 +781,9 @@ def test_oxygen_total_is_left_to_the_chemistry_when_the_buffer_owns_it():
     oxygen total is an output of the solve rather than a conserved budget.
     Trapping must not withhold or debit it, and the per-element closure cannot
     be asserted for it; the trapped oxygen stays as a diagnostic in
-    ``O_kg_solid``. Under ``'from_O_budget'`` the wrapper restores the
-    authoritative budget, so oxygen is conserved state and is treated like any
-    other element."""
+    ``O_kg_trapped`` and ``O_kg_solid``. Under ``'from_O_budget'`` the wrapper
+    restores the authoritative budget, so oxygen is conserved state and is
+    treated like any other element."""
     buffered = SimpleNamespace(planet=SimpleNamespace(fO2_source='user_constant'))
     budgeted = SimpleNamespace(planet=SimpleNamespace(fO2_source='from_O_budget'))
     assert derived_total_elements(buffered) == ('O',)
@@ -726,21 +794,28 @@ def test_oxygen_total_is_left_to_the_chemistry_when_the_buffer_owns_it():
     assert 'C' not in derived_total_elements(buffered)
 
     row = _hf_row(H_kg_total=2.0e20, H_kg_solid=4.0e19, O_kg_total=1.6e21, O_kg_solid=3.2e20)
-    saved = withhold_locked_totals(row, derived_total_elements(buffered))
+    row.update(H_kg_trapped=4.0e19, O_kg_trapped=3.2e20)
+    withhold_trapped_mass(row, derived_total_elements(buffered))
     # Hydrogen is withheld so the chemistry partitions only what it can reach.
-    assert 'H' in saved
     assert row['H_kg_total'] == pytest.approx(1.6e20, rel=1e-12)
-    # Oxygen is left exactly as it was, for the chemistry to overwrite.
-    assert 'O' not in saved
+    # The oxygen total is left exactly as it was, for the chemistry to
+    # overwrite, while its solid column still holds only the backend's share.
     assert row['O_kg_total'] == pytest.approx(1.6e21, rel=1e-12)
+    assert row['O_kg_solid'] == pytest.approx(0.0, abs=0.0)
+    restore_trapped_mass(row, derived_total_elements(buffered))
+    # Nothing is credited to the chemistry's total; the solid gets its share.
+    assert row['O_kg_total'] == pytest.approx(1.6e21, rel=1e-12)
+    assert row['O_kg_solid'] == pytest.approx(3.2e20, rel=1e-12)
+    assert row['H_kg_total'] == pytest.approx(2.0e20, rel=1e-12)
 
     # With the budget authoritative, oxygen is withheld like everything else.
-    row2 = _hf_row(O_kg_total=1.6e21, O_kg_solid=3.2e20)
-    saved2 = withhold_locked_totals(row2, derived_total_elements(budgeted))
-    assert 'O' in saved2
+    row2 = _hf_row(O_kg_total=1.6e21, O_kg_solid=3.2e20, O_kg_trapped=3.2e20)
+    withhold_trapped_mass(row2, derived_total_elements(budgeted))
     assert row2['O_kg_total'] == pytest.approx(1.28e21, rel=1e-12)
     # Discrimination: the unwithheld total is 1.6e21, well clear of 1.28e21.
     assert abs(row2['O_kg_total'] - 1.6e21) > 1.0e20
+    restore_trapped_mass(row2, derived_total_elements(budgeted))
+    assert row2['O_kg_total'] == pytest.approx(1.6e21, rel=1e-12)
 
     # The closure invariant skips a chemistry-owned total and still enforces
     # every other element, which is what keeps the check live where it applies.
@@ -756,6 +831,65 @@ def test_oxygen_total_is_left_to_the_chemistry_when_the_buffer_owns_it():
     assert_mass_conservation(broken, require_atm_le_planet=False, derived_elements=('O',))
     with pytest.raises(RuntimeError, match='closure failed for O'):
         assert_mass_conservation(broken, require_atm_le_planet=False)
+
+
+def _desiccated_row() -> dict:
+    """Row as desiccation leaves it: every outgassing reservoir zeroed.
+
+    The escape-owned totals are not outgassing keys and survive the zeroing:
+    hydrogen holds its trapped 4e19 kg plus a 5e15 kg remainder below the
+    desiccation threshold, carbon a 1e15 kg remainder, and helium, which escape
+    never floors, 1e14 kg. The oxygen total is an outgassing key and is zeroed.
+    """
+    row = {'M_planet': 6.0e24, 'M_atm': 0.0, 'M_vol_atm': 0.0}
+    for element in ('H', 'O', 'C', 'N', 'S', 'He'):
+        for reservoir in ('atm', 'liquid', 'solid', 'total'):
+            row[f'{element}_kg_{reservoir}'] = 0.0
+    row.update(H_kg_total=4.0e19 + 5.0e15, C_kg_total=1.0e15, He_kg_total=1.0e14)
+    row.update(H_kg_trapped=4.0e19, O_kg_trapped=3.2e20, H2O_kg_trapped=3.6e20)
+    return row
+
+
+@pytest.mark.physics_invariant
+def test_desiccation_keeps_the_trapped_mass_and_empties_the_rest():
+    """Desiccation empties the atmosphere and the melt, not the solid mantle.
+    On a row whose outgassing reservoirs have been zeroed, each trapped species
+    and element gets its trapped mass back as its solid reservoir and its total,
+    and each volatile or noble element that holds nothing has its total emptied,
+    so the per-element closure holds on the desiccated row."""
+    row = _desiccated_row()
+    # The zeroed row fails the closure on the trapped hydrogen: the failure the
+    # desiccated step would otherwise abort the run with.
+    with pytest.raises(RuntimeError, match='closure failed for H'):
+        assert_mass_conservation(row, require_atm_le_planet=False)
+
+    keep_only_trapped_mass(row)
+    assert row['H_kg_solid'] == pytest.approx(4.0e19, rel=1e-12)
+    assert row['H_kg_total'] == pytest.approx(4.0e19, rel=1e-12)
+    # Discrimination: the 5e15 kg remainder has nowhere left to live and goes.
+    assert abs(row['H_kg_total'] - (4.0e19 + 5.0e15)) > 1.0e15
+    assert row['O_kg_total'] == pytest.approx(3.2e20, rel=1e-12)
+    assert row['H2O_kg_solid'] == pytest.approx(3.6e20, rel=1e-12)
+    assert row['H2O_mol_total'] == pytest.approx(3.6e20 / eval_gas_mmw('H2O'), rel=1e-12)
+    # Edge cases: an element that trapped nothing, and a noble gas, empty.
+    assert row['C_kg_total'] == pytest.approx(0.0, abs=0.0)
+    assert row['He_kg_total'] == pytest.approx(0.0, abs=0.0)
+    assert_mass_conservation(row, require_atm_le_planet=False)
+
+    # Under the oxygen buffer the chemistry's oxygen total excludes the solid:
+    # it stays empty while the trapped oxygen is kept as the diagnostic solid.
+    buffered = _desiccated_row()
+    keep_only_trapped_mass(buffered, ('O',))
+    assert buffered['O_kg_total'] == pytest.approx(0.0, abs=0.0)
+    assert buffered['O_kg_solid'] == pytest.approx(3.2e20, rel=1e-12)
+    assert_mass_conservation(buffered, require_atm_le_planet=False, derived_elements=('O',))
+
+    # Error contract: a non-finite trapped record counts as nothing trapped.
+    stale = _desiccated_row()
+    stale['H_kg_trapped'] = float('nan')
+    keep_only_trapped_mass(stale)
+    assert stale['H_kg_total'] == pytest.approx(0.0, abs=0.0)
+    assert stale['H_kg_solid'] == pytest.approx(0.0, abs=0.0)
 
 
 def _closure_row(parts_over_total: float) -> dict:

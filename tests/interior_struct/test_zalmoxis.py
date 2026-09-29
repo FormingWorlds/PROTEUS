@@ -25,6 +25,7 @@ import pytest
 
 from proteus.interior_struct.zalmoxis import (
     compute_structure_mass_desync,
+    dissolved_h2_mass,
     write_spider_mesh_file,
 )
 
@@ -3264,3 +3265,27 @@ def test_resume_keeps_tables_when_the_key_builder_fails(tmp_path, monkeypatch, c
     assert out['eos_dir'] == str(run_eos)
     bounds.assert_not_called()
     assert 'current key is not checked: registry unreadable' in caplog.text
+
+
+@pytest.mark.physics_invariant
+def test_dissolved_h2_excludes_the_share_trapped_in_the_solid_mantle():
+    """The miscible structure solve takes the dissolved H2 as its hydrogen
+    target. The species total includes the H2 trapped in the crystallising
+    mantle, which is not dissolved in the melt, so the dissolved mass is the
+    total less both the atmosphere and the solid, and the three add back to the
+    total."""
+    row = {'H2_kg_total': 5.0e20, 'H2_kg_atm': 1.0e20, 'H2_kg_solid': 1.5e20}
+    dissolved = dissolved_h2_mass(row)
+    assert dissolved == pytest.approx(2.5e20, rel=1e-12)
+    # Discrimination: counting the trapped share as dissolved gives 4e20 kg.
+    assert abs(dissolved - 4.0e20) > 1.0e20
+    # Conservation: dissolved, atmospheric and solid H2 make up the total.
+    parts = dissolved + row['H2_kg_atm'] + row['H2_kg_solid']
+    assert parts == pytest.approx(row['H2_kg_total'], rel=1e-12)
+
+    # Edge case: with nothing trapped the target is the total less the
+    # atmosphere, as it was before the solid reservoir could hold H2.
+    no_solid = {'H2_kg_total': 5.0e20, 'H2_kg_atm': 1.0e20}
+    assert dissolved_h2_mass(no_solid) == pytest.approx(4.0e20, rel=1e-12)
+    # Limit: an empty row has no dissolved H2, so no target is built from it.
+    assert dissolved_h2_mass({}) == pytest.approx(0.0, abs=0.0)
