@@ -785,9 +785,20 @@ def CreateLockFile(output_dir: str):
     return keepalive_file
 
 
-def GetHelpfileKeys():
+# Schema columns a resumed run may read as zero when its helpfile predates them.
+# Other columns carry physical state, where zero is invalid; see ReadHelpfileFromCSV.
+RESUMABLE_ZERO_FILL_KEYS = frozenset(
+    {
+        'esc_kg_cumulative',
+        'M_accreted_rock',
+        'step_dE_impact_J',
+    }
+)
 
+
+def GetHelpfileKeys():
     """
+
     Variables to be held in the helpfile.
 
     All dimensional quantites should be stored in SI units, except those noted below.
@@ -1464,9 +1475,9 @@ _DIAGNOSTIC_KEYS = (
 )
 
 
-
 def GetHelpfileDiagnosticKeys():
     """
+
     Helpfile columns that are derived diagnostics, not simulation state.
 
     A helpfile that lacks one of these is still resumable, because no module
@@ -1585,7 +1596,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
 
     fpath = helpfile_path(output_dir)
     if not os.path.exists(fpath):
-        raise FileNotFoundError(f"Helpfile '{fpath}' does not exist.")
+        raise Exception("Cannot find helpfile at '%s'" % fpath)
 
     hf_all = pd.read_csv(fpath, sep=r'\s+')
 
@@ -1593,8 +1604,9 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     if missing:
         raise HelpfileSchemaDriftError(
             "Helpfile '%s' was written before %d column(s) of the current output "
-            'schema existed: %s. Run this configuration again from t=0, or read '
-            'this run with the PROTEUS version that wrote it.'
+            'schema existed that carry physical state and cannot be reconstructed: %s. '
+            'Run this configuration again from t=0, or read this run with the '
+            'PROTEUS version that wrote it.'
             % (fpath, len(missing), _describe_missing_columns(missing))
         )
 
@@ -1607,8 +1619,6 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
         )
         zeros = pd.DataFrame(0.0, index=hf_all.index, columns=backfill)
         hf_all = pd.concat([hf_all, zeros], axis=1)
-    return hf_all
-
     return hf_all
 
 
@@ -1736,7 +1746,6 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
     # Past a few Gyr the helpfile precision itself exceeds the one-year name
     # bucket, so no margin separates two rows in it: accept on name instead.
     if tolerance >= 0.5:
-
         return True
 
     return abs(recorded - time) <= tolerance
