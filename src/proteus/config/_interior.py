@@ -274,6 +274,9 @@ class Aragog:
           - 'gradient': gradient-based state with two boundary entropies
                         as state variables.
           - 'bower2018': experimental, do not use for production.
+          - 'core_module': full core evolution module with nucleation,
+                           crystallisation regimes, and dynamo energetics
+                           (aragog.core).
     """
 
     mass_coordinates: bool = field(default=True)
