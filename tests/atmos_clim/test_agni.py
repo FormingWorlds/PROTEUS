@@ -523,10 +523,17 @@ class _SpectralWritingAGNI(_FakeAGNI):
 
     AGNI builds `<IO_DIR>/runtime.sf` and its `_k` companion inside `allocate!`,
     and only when a stellar spectrum is supplied; an empty spectrum means the
-    spectral file it was handed is already prepared and is used untouched.
+    spectral file it was handed is already prepared and is used untouched. As
+    in AGNI, a prepared file is refused when an enabled aerosol uses Mie theory,
+    whose properties are computed from the stellar spectrum.
     """
 
     def _allocate_b(self, atmos, input_star, **kwargs):
+        setup = self.last_setup_kwargs
+        aerosols = setup.get('aerosol_species', {})
+        if not input_star and setup.get('flag_aerosol'):
+            if any(entry['method'] == 'mie' for entry in aerosols.values()):
+                return False
         if input_star:
             io_dir = Path(self.last_setup_kwargs['IO_DIR'])
             io_dir.mkdir(parents=True, exist_ok=True)
@@ -779,6 +786,29 @@ def test_a_cached_spectral_file_is_keyed_on_the_aerosols_agni_receives(monkeypat
     assert list(ctx.fake_agni.last_setup_kwargs['aerosol_species']) == ['SiO2']
     assert ctx.fake_agni.last_allocate_input_star == ''
     assert (ctx.scratch / 'runtime.sf').read_text() == 'built with SiO2 block'
+
+
+@pytest.mark.unit
+def test_a_run_with_a_mie_aerosol_builds_its_own_spectral_file(monkeypatch, tmp_path):
+    """A Mie aerosol skips the cache: AGNI refuses a prepared file for it."""
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    ctx.config.atmos_clim.aerosols_enabled = True
+    ctx.config.atmos_clim.agni.rainout = True
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda _d: {'SiO2': 'mie'})
+    monkeypatch.setattr(agni_mod, '_determine_condensates', lambda _v: ['SiO2'])
+    key = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=['SiO2']
+    )
+    (cache / f'{key}.sf').write_text('built with SiO2 block', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('ktable with SiO2 block', encoding='utf-8')
+
+    # A hit would reach the fake's refusal and raise; the run builds instead.
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert sorted(p.name for p in cache.iterdir()) == [f'{key}.sf', f'{key}.sf_k']
+    assert (cache / f'{key}.sf').read_text() == 'built with SiO2 block'
 
 
 @pytest.mark.unit

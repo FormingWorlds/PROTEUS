@@ -630,6 +630,13 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
     if len(aerosol_species) == 0:
         log.warning('    No aerosols mapped or data unavailable')
 
+    # AGNI computes Mie aerosol properties from the stellar spectrum while it
+    # builds the file, so a run with a Mie aerosol always refuses the cache.
+    if cache_candidate and config.atmos_clim.aerosols_enabled:
+        if any(entry['method'] == 'mie' for entry in aerosol_species.values()):
+            log.debug('Mie aerosols present; not using the spectral-file cache')
+            cache_candidate = False
+
     # Reuse a cached file built earlier from this base file and this stellar
     # spectrum, and skip the insertion.
     if cache_candidate:
