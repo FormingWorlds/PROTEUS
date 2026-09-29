@@ -102,16 +102,9 @@ documentation = "https://proteus-framework.org/proteus/"
 changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 
 [project.optional-dependencies]
-# Optional physics backends. None of these are pulled in by a default
-# `pip install fwl-proteus`; a standard run uses CALLIOPE (outgassing)
-# and needs none of them. Install on demand, e.g. `pip install
-# "fwl-proteus[atmodeller]"`. atmodeller and vulcan are licensed
-# GPL-3.0; review their terms before installing. (PROTEUS's own code is
-# Apache-2.0, but the default install already includes other GPL
-# dependencies such as fwl-aragog, so opting out of those two does not
-# yield a GPL-free environment.) morrigan is Apache-2.0.
+# Optional physics backends installed on demand via pip install "fwl-proteus[<extra>]".
+# atmodeller and vulcan are licensed GPL-3.0; morrigan is Apache-2.0.
 
-#
 # atmodeller: alternative outgassing backend (Bower+2025, ApJ 995:59),
 # selected via outgas.module = "atmodeller". Pulls JAX + equinox.
 atmodeller = ["atmodeller>=1.0.2"]
