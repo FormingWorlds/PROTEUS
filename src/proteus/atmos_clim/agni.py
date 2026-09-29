@@ -1273,7 +1273,7 @@ def _solve_once(atmos, config: Config):
 
     # set clouds
     if config.atmos_clim.cloud_enabled:
-        jl.AGNI.atmosphere.set_clouds_b(atmos)
+        jl.AGNI.atmosphere.set_cloud_b(atmos)
 
     # set aerosols
     if config.atmos_clim.aerosols_enabled:
