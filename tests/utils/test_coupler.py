@@ -1493,6 +1493,39 @@ def test_get_lavatmos_version_returns_unknown_without_lava_dir():
 
 
 @pytest.mark.unit
+def test_get_petitradtrans_version_reads_installed_package_metadata():
+    """_get_petitradtrans_version reads the installed package version without
+    importing petitRADTRANS itself."""
+    from proteus.utils.coupler import _get_petitradtrans_version
+
+    with patch('importlib.metadata.version', return_value='2.7.7') as mock_version:
+        version = _get_petitradtrans_version()
+
+    assert version == '2.7.7'
+    # Discrimination: the lookup must target petitRADTRANS specifically, not
+    # some other distribution name a regression might substitute.
+    mock_version.assert_called_once_with('petitRADTRANS')
+    assert 'petitRADTRANS' not in sys.modules
+
+
+@pytest.mark.unit
+def test_get_petitradtrans_version_returns_unknown_without_package():
+    """_get_petitradtrans_version degrades to an 'unknown' string, rather than
+    raising, when petitRADTRANS is not installed."""
+    from importlib.metadata import PackageNotFoundError
+
+    from proteus.utils.coupler import _get_petitradtrans_version
+
+    with patch(
+        'importlib.metadata.version',
+        side_effect=PackageNotFoundError('petitRADTRANS'),
+    ):
+        version = _get_petitradtrans_version()
+
+    assert version == 'unknown (petitRADTRANS not installed)'
+
+
+@pytest.mark.unit
 def test_get_julia_version_with_mock():
     """Test that _get_julia_version parses julia --version output."""
     from proteus.utils.coupler import _get_julia_version
@@ -2979,9 +3012,15 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
     # it by name, so the stub belongs here rather than being inherited from
     # whichever other test file happened to import first.
     monkeypatch.setitem(sys.modules, 'vulcan', types.SimpleNamespace(__version__='5.6.7'))
-    monkeypatch.setitem(
-        sys.modules, 'petitRADTRANS', types.SimpleNamespace(__version__='4.5.6')
-    )
+
+    # petitRADTRANS version is read via importlib.metadata.version rather than
+    # importing the package (importing it triggers a meson-python build step
+    # that races between parallel runs), so it is stubbed at that layer.
+    def _fake_petitradtrans_version(name):
+        assert name == 'petitRADTRANS'
+        return '4.5.6'
+
+    monkeypatch.setattr('importlib.metadata.version', _fake_petitradtrans_version)
 
     with patch('proteus.utils.coupler.log') as mock_log:
         print_module_configuration(dirs, config, '/tmp/cfg.toml')
@@ -2994,7 +3033,7 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
         assert any('Escape module     boreas version' in m for m in messages)
         assert any('Star module       mors version' in m for m in messages)
         assert any('Atmos_chem module vulcan version 5.6.7' in m for m in messages)
-        assert any('Observe module    petitRADTRANS version' in m for m in messages)
+        assert any('Observe module    petitRADTRANS version 4.5.6' in m for m in messages)
         # Discrimination: rock vapourisation is disabled here
         # (vapourise=False), so LavAtmos must not be reported at all.
         assert not any('LavAtmos' in m for m in messages)

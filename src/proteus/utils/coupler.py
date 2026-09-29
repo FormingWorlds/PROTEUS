@@ -184,6 +184,23 @@ def _get_thermoengine_version() -> str:
     return thermoengine.__version__
 
 
+def _get_petitradtrans_version() -> str:
+    """
+    Get the installed petitRADTRANS version.
+
+    Reads package metadata instead of importing petitRADTRANS directly: the
+    editable meson-python install re-runs its build step on first import in
+    each new process, which races between parallel runs sharing the install.
+    """
+
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version('petitRADTRANS')
+    except PackageNotFoundError:
+        return 'unknown (petitRADTRANS not installed)'
+
+
 def validate_module_versions(dirs: dict, config: Config):
     """Raise if module versions are incompatible."""
 
@@ -445,6 +462,9 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
 
     # Observations synthesis module
     write = 'Observe module    %s' % config.observe.module
+    if config.observe.module == 'petitRADTRANS':
+        write += ' version ' + _get_petitradtrans_version()
+
     log.info(write)
 
     # End spacer
