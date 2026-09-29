@@ -111,6 +111,7 @@ spectrum in `tides_o`).
 |---|---|---|---|
 | `sp0d` | `semimajorax`, `eccentricity` | Driscoll & Barnes (2015)[^cite-driscoll2015], Eq. 15-16 | Closed-form two-ODE system in `(a, e)` only; no spin dynamics, so it is **not** angular-momentum-conserving by construction. |
 | `sp1d` | `axial_period`, `semimajorax`, `eccentricity`, `plan_star_am` | Correia & Valente (2022)[^cite-correia2022] | Vectorial, Hansen-coefficient formulation restricted to planetary tides (star assumed non-dissipative). Genuinely angular-momentum-conserving; verified by dedicated tests. |
+| `parameterized` | `semimajorax`, `eccentricity` | -- | Prescribed migration track, not a tidal model: the orbit is a closed-form function of time, no tidal force is computed, and no angular momentum is exchanged with the interior (no tidal heating). Use it to impose a migration history, not to derive one. |
 
 ??? note "sp0d in a nutshell - Driscoll & Barnes (2015)"
     Written for rocky planets around M dwarfs, where the habitable zone
@@ -129,8 +130,49 @@ spectrum in `tides_o`).
     into classical tidal theory, and it means spin and orbit are evolved
     together as one system, exchanging angular momentum internally.
 
-Both integrate with `scipy.solve_ivp` (`orbit.solver.*` controls method 
-and tolerances). 
+`sp0d` and `sp1d` integrate with `scipy.solve_ivp` (`orbit.solver.*` controls
+method and tolerances). `parameterized` solves nothing: it updates the semi-major 
+axis and eccentricity throughout the simualtion based on input parameters chosen 
+by the user.
+
+??? note "parameterized in a nutshell"
+    The other two star-planet models derive the orbit from a tidal
+    torque. This parameterized one imposes one instead, and does not compute 
+    any physics. The user choose where the planet starts, where it ends up, 
+    when the migration happens and how long it takes. The orbit is evaluated 
+    at each time step from that closed form. It is the right tool to use when 
+    testing the influence of a migration history in a simulation without 
+    computing any tidal forces, for instance when asking how an atmosphere 
+    responds to a prescribed change in instellation.
+
+Configured under `[orbit.parameterized]`:
+
+| Key | Meaning | Unit |
+|---|---|---|
+| `migration` | `none`, `instant`, `sigmoid` or `high_ecc` | -- |
+| `sma_init` | semi-major axis held before the migration epoch | au |
+| `sma_final` | semi-major axis approached after it | au |
+| `time_migration` | epoch at which migration begins | yr |
+| `tau_migration` | width of the transition (`sigmoid` and `high_ecc` only) | yr |
+
+Only `high_ecc` evolves the eccentricity. `none`, `instant` and `sigmoid`
+hold it at `orbit.eccentricity` throughout.
+
+`high_ecc` circularises at constant orbital angular momentum: it excites the
+eccentricity to `sqrt(1 - sma_final / sma_init)` at the migration epoch and
+then decays it, until the orbit reach `sma_final`. 
+
+### Visualizing the four parameterized regimes
+
+Each regime was run as a dummy PROTEUS simulation and compared against the
+closed form in `src/proteus/orbit/parameterized.py`:
+
+![Parameterized orbital migration regimes](../assets/orbit/orbit_parameterized_migration.avif){ width="100%" }
+
+Semi-major axis (top) and eccentricity (bottom) for the four regimes, with
+`sma_init = 2.0` au, `sma_final = 0.8` au, `time_migration = 1e3` yr and
+`tau_migration = 1e4` yr. The dashed line marks the migration epoch and the
+shaded band spans one `tau_migration` after it.
 
 ## Planet-satellite models (`orbit.planet_satellite_model`)
 
