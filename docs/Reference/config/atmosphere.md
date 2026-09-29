@@ -28,7 +28,7 @@ parameter selects the surface energy balance scheme (`mixed_layer`,
 | `spectral_cache` | str or none | `none` | Folder in which to reuse prepared spectral files across runs that share a stellar spectrum. None disables the cache and every run builds its own. |
 | `num_levels` | int | `50` | Number of vertical atmosphere levels. Must be >= 15. |
 | `p_top` | float | `1e-06` | Top-of-atmosphere pressure \[bar\]. Must be > 0. |
-| `p_obs` | float | `0.02` | Observation pressure level \[bar\] (transit radius). Must be > 0. |
+| `p_obs` | float | Literal or none | `0.02` | Observation pressure level \[bar\] (transit radius). Set to 'none' (-> None) to instead let AGNI determine this pressure level self-consistently from the optical depth (see `agni.tau_obs`, `agni.wl_obs`); AGNI only. |
 | `overlap_method` | str | `"ee"` | Gas overlap method. Choices: 'ro', 'rorr', 'ee'. |
 
 **Radiative properties**
@@ -138,12 +138,27 @@ interior heat flux. The `fastchem_*` parameters apply when
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `hydrograv_steps` | int | `2000` | Number of steps to use when calculating heights and gravity. Must be > 0. |
-| `hydrograv_maxdr` | float | `100000000.0` | Maximum step size to use when calculating heights \[m\]. Must be > 0. |
+| `hydrograv_steps` | int | `2048` | Number of steps to use when calculating heights and gravity. Must be > 0. |
+| `hydrograv_maxdr` | float | `6335439.0` | Maximum step size to use when calculating heights \[m\]. Must be > 0. |
+| `hydrograv_hilldr` | float | `6335.439` | Maximum step size to use beyond the Hill radius \[m\]. Must be > 0. |
 | `hydrograv_mindr` | float | `1e-05` | Minimum step size to use when calculating heights \[m\]. Must be > 0. |
 | `hydrograv_ming` | float | `0.0001` | Minimum allowed gravity in the atmosphere \[m/s^2\]. Must be > 0. |
 | `hydrograv_constg` | bool | `false` | Constant gravity with height?. |
 | `hydrograv_selfg` | bool | `true` | Include self-gravity of the atmosphere?. |
+
+**Aerosol optics** (used for auto-discovered Mie-theory aerosols)
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `aerosol_r_eff` | float | `1e-06` | Effective radius of log-normal size distribution for Mie aerosols \[m\]. Must be > 1e-10 and <= 1.0. |
+| `aerosol_sigma_g` | float | `1.65` | Standard deviation of log-normal particle-size distribution for Mie aerosols. Must be >= 1.0 and <= 100.0. |
+
+**Photosphere from optical depth** (used when `atmos_clim.p_obs='none'`)
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `tau_obs` | float | `0.02` | Reference vertical optical depth defining the photosphere, used when `atmos_clim.p_obs='none'`. Must be > 1e-10 and <= 10000000000.0. |
+| `wl_obs` | float | `1.125e-06` | Reference wavelength \[m\] at which `tau_obs` is evaluated, used when `atmos_clim.p_obs='none'`. Must be > 1e-10 and <= 1.0. |
 <!-- END GENERATED: config-table [atmos_clim.agni] -->
 
 ### JANUS `[atmos_clim.janus]`
@@ -220,6 +235,7 @@ Cross-field constraints enforced when the config file loads:
 - Aerosol scattering needs band-resolved RT.
 - Validate AGNI settings: pressure ordering, surface-state support, rainout, spectral file.
 - Validate JANUS settings: spectral file selection and temperature-bound ordering.
+- p_obs is either a positive pressure \[bar\], or None ('none' in the config file), which lets AGNI determine the photosphere self-consistently from optical depth instead. The latter is only meaningful for AGNI.
 - Reject Rayleigh scattering with the dummy module or AGNI in grey-gas mode.
 - Reject enabling this option when the dummy atmos_clim module is selected.
 <!-- END GENERATED: config-constraints atmosphere -->

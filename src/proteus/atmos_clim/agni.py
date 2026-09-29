@@ -53,6 +53,8 @@ _REQUIRED_ATMOS_FIELDS = (
     'tmp_magma',
     # Cell-centre gravity, read at the XUV level
     'g',
+    # Hill radius, used by the hydrostatic integration to mark unbound layers
+    'hill_radius',
     # Solver flags
     'is_converged',
     'transparent',
@@ -424,9 +426,14 @@ def _determine_condensates(vol_list: list):
     return [v for v in vol_list if v not in ALWAYS_DRY]
 
 
-def _determine_aerosols(dirs: dict) -> list:
+def _determine_aerosols(dirs: dict) -> dict:
     """
-    Determine which aerosols are available.
+    Determine which aerosols are available, and which method to use for each.
+
+    AGNI can compute aerosol optical properties two ways:
+     - Pre-computed monochromatic scattering data
+     - Mie theory at runtime from refractive-index data bundled with AGNI
+    Mie is preferred when both are available for the same species.
 
     Parameters
     ----------
@@ -435,22 +442,32 @@ def _determine_aerosols(dirs: dict) -> list:
 
     Returns
     ----------
-        aerosols : list
-            List of available aerosols
+        aerosols : dict
+            Mapping of aerosol species name to the optical properties method.
     """
 
+    aerosols = {}
+
+    # Pre-computed monochromatic scattering data (FWL_DATA)
     scattering_dir = os.path.join(dirs['fwl'], 'scattering', 'scattering')
-    if not os.path.isdir(scattering_dir):
+    if os.path.isdir(scattering_dir):
+        for f in os.listdir(scattering_dir):
+            if f.endswith('.mon'):
+                aerosols[f.replace('.mon', '')] = 'mon'
+    else:
         log.warning(f'Scattering data directory not found: {scattering_dir}')
-        return []
 
-    aerosols = []
-    for f in os.listdir(scattering_dir):
-        if f.endswith('.mon'):
-            aerosols.append(f.replace('.mon', ''))
-    aerosols = sorted(aerosols)
+    # Materials AGNI can compute via Mie theory at runtime.
+    # Overrides 'mon' when a species has both.
+    for name in jl.AGNI.aerosol_optics.list_materials():
+        aerosols[name] = 'mie'
 
-    log.debug(f'Available aerosols: {aerosols}')
+    # Remove H2O from aerosols list
+    if 'H2O' in aerosols:
+        del aerosols['H2O']
+        log.debug('Removed H2O from aerosols list')
+
+    log.debug(f'Available aerosols: {sorted(aerosols)}')
     return aerosols
 
 
@@ -599,10 +616,42 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
     p_top = config.atmos_clim.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
-    # Build the AGNI setup! kwargs. The ``aerosol_species`` parameter is
-    # only present on newer AGNI installs; if the installed AGNI predates
-    # that addition, sending the kwarg raises a Julia MethodError. Detect
-    # the kwarg at module load and only pass it when AGNI accepts it.
+    # Aerosol species dictionary which maps names to properties files
+    mie_materials_by_lower = {
+        str(m).lower(): str(m) for m in jl.AGNI.aerosol_optics.list_materials()
+    }
+    condensate_by_lower = {c.lower(): c for c in condensates}
+
+    # Dictionary of aerosol species and properties
+    aerosol_species = {}
+
+    # Loop through each potential aerosol and determine which method to use
+    log.info('Aerosol species:')
+    for name, method in _determine_aerosols(dirs).items():
+        entry = {'method': method}
+
+        # Try mie
+        if method == 'mie':
+            entry['nk_file'] = mie_materials_by_lower.get(name, name)
+            entry['r_eff'] = config.atmos_clim.agni.aerosol_r_eff
+            entry['sigma_g'] = config.atmos_clim.agni.aerosol_sigma_g
+
+        # Associate this with a condensate
+        tied = condensate_by_lower.get(name.lower())
+        if tied is not None:
+            # tied to a species by name
+            entry['species'] = tied
+            aerosol_species[name] = entry
+            log.info(f'    {name:8s} ({method}) tied to condensate {tied}')
+        else:
+            # skip otherwise
+            log.debug(f'    {name:8s} ({method}) not tied to any condensate; skipping')
+
+    # Warn if no aerosol species were found
+    if len(aerosol_species) == 0:
+        log.warning('    No aerosols mapped or data unavailable')
+
+    # Build the AGNI setup! kwargs.
     setup_kwargs = dict(
         IO_DIR=io_dir,
         # radtrans
@@ -616,7 +665,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         surf_roughness=config.atmos_clim.agni.surf_roughness,
         surf_windspeed=config.atmos_clim.agni.surf_windspeed,
         # phase change
-        condensates=condensates,
+        condensates=convert(jl.Array[jl.String, 1], condensates),
         phs_timescale=config.atmos_clim.agni.phs_timescale,
         evap_efficiency=config.atmos_clim.agni.evap_efficiency,
         # eqm chemistry
@@ -648,10 +697,15 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         # hydrostatic integration parameters
         hydrograv_steps=config.atmos_clim.agni.hydrograv_steps,
         hydrograv_maxdr=config.atmos_clim.agni.hydrograv_maxdr,
+        hydrograv_hilldr=config.atmos_clim.agni.hydrograv_hilldr,
         hydrograv_mindr=config.atmos_clim.agni.hydrograv_mindr,
         hydrograv_ming=config.atmos_clim.agni.hydrograv_ming,
         hydrograv_constg=config.atmos_clim.agni.hydrograv_constg,
         hydrograv_selfg=config.atmos_clim.agni.hydrograv_selfg,
+        hill_radius=max(float(hf_row['hill_radius']), float(hf_row['R_int'])),
+        # photosphere from optical depth, used when atmos_clim.p_obs='none'
+        transspec_ref_tau=config.atmos_clim.agni.tau_obs,
+        transspec_ref_wl=config.atmos_clim.agni.wl_obs,
     )
     setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
 
@@ -976,10 +1030,11 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
         atmos.gas_ovmr[g][:] = vol_dict[g]
 
     # ---------------------
-    # Update interior geometry and spin rate
+    # Update interior geometry, spin rate, and hill radius
     atmos.grav_surf = float(hf_row['gravity'])
     atmos.rp = float(hf_row['R_int'])
     atmos.interior_mass = float(hf_row['M_int'])
+    atmos.hill_radius = max(float(hf_row['hill_radius']), float(hf_row['R_int']))
     atmos.axial_period = float(hf_row['axial_period'])
     atmos.col_lon = float(hf_row['longitude'])
     atmos.col_lat = float(hf_row['latitude'])
@@ -1254,6 +1309,14 @@ def _solve_once(atmos, config: Config):
         config.atmos_clim.agni.rainout,
     )
 
+    # set clouds
+    if config.atmos_clim.cloud_enabled:
+        jl.AGNI.atmosphere.set_cloud_b(atmos)
+
+    # set aerosols
+    if config.atmos_clim.aerosols_enabled:
+        jl.AGNI.atmosphere.set_aerosols_b(atmos)
+
     # solve fluxes
     jl.AGNI.energy.calc_fluxes_b(atmos, radiative=True, convective=True, calc_cf=True)
 
@@ -1354,15 +1417,19 @@ def run_agni(
 
     # Transparent case
     if bool(atmos.transparent):
-        # no opacity
         log.info('Using transparent solver')
         atmos.transspec_ref_p = float(atmos.p_boa)
+        photosphere_setby = 'prs'  # set photosphere as surface pressure
         atmos = _solve_transparent(atmos, config)
 
     # Opaque case
     else:
-        # Set observed pressure
-        atmos.transspec_ref_p = float(config.atmos_clim.p_obs * 1e5)  # converted to Pa
+        # p_obs=None means photosphere set from optical depth
+        if config.atmos_clim.p_obs is None:
+            photosphere_setby = 'tau'
+        else:
+            atmos.transspec_ref_p = float(config.atmos_clim.p_obs * 1e5)  # converted to Pa
+            photosphere_setby = 'prs'
 
         # full solver
         if config.atmos_clim.agni.solve_energy:
@@ -1378,7 +1445,7 @@ def run_agni(
     atmos.transspec_p = atmos.transspec_ref_p
 
     # Calculate planet transit radius and other photospheric properties
-    jl.AGNI.atmosphere.estimate_photosphere_b(atmos, setby=str('prs'))
+    jl.AGNI.atmosphere.estimate_photosphere_b(atmos, setby=str(photosphere_setby))
 
     # Write output data
     if write_data:
