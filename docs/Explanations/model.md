@@ -48,10 +48,10 @@ atmosphere), enabling hierarchical model intercomparison.
 | Tides | [Obliqua](https://proteus-framework.org/Obliqua), [Lovepy](https://github.com/nichollsh/LovePy), dummy | Tidal response of the planet (Love numbers, heating) |
 | Orbit | PROTEUS (internal) | Orbital evolution (semi-major axis, eccentricity, spin) |
 | Accretion | [Morrigan](https://proteus-framework.org/Morrigan/), timeline, dummy | Protoplanet growth by giant impacts |
-
 | Observations | [petitRADTRANS](https://petitradtrans.readthedocs.io/), none | Synthetic transit and eclipse spectra |
 
 Each module is maintained in its own repository and can be used as a standalone package outside of PROTEUS. The following sections describe each module's physical role and how PROTEUS couples to it.
+
 
 ---
 
