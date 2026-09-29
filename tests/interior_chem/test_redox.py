@@ -4,9 +4,9 @@ Covers the initial ferric fraction ``f_0`` now that it is a user-settable
 config field (``planet.ferric_fraction_initial``) rather than a module
 constant. Contract clauses exercised here:
 
-* Step 1-2 (Eq 1-3): the seeded Fe3+/Fe2+ reservoirs split the melt iron
-  inventory in the ratio the caller asked for, and the inventory itself
-  closes against ``W_FET * M_melt / MU_FEO``.
+* Step 1-2 (Eq 1-3): Fe2+ is seeded from the ferrous FeO fraction,
+  ``W_FET * M_melt / MU_FEO``, and Fe3+ is added on top so that the ferric
+  fraction equals the value the caller asked for.
 * The open-interval domain of ``f_0``: the tracker forms ``f/(1-f)``, so
   the endpoints are rejected rather than silently producing a degenerate
   or infinite redox ratio.
@@ -14,6 +14,8 @@ constant. Contract clauses exercised here:
   ``hf_row['ferric_frac_mantle']`` on the first coupling step.
 * The no-op contract: the tracker does nothing unless
   ``planet.fO2_source == 'from_mantle_redox'``.
+* Persistence: the Fe-metal diagnostics are helpfile schema columns and
+  survive the write to and read from ``runtime_helpfile.csv``.
 
 See docs/How-to/testing.md and docs/Explanations/test_framework.md.
 """
@@ -30,6 +32,7 @@ from proteus.interior_chem.redox import (
     D_FE3_BRG,
     D_FE3_SHALLOW,
     MU_FEO,
+    MU_FEO15,
     P_CUTOFF_GPA,
     W_FET,
     _init_state,
@@ -82,32 +85,42 @@ def _make_interior() -> MagicMock:
 
 @pytest.mark.physics_invariant
 def test_init_state_splits_the_melt_iron_inventory_by_the_requested_ferric_fraction():
-    """Step 1-2: Fe3+ and Fe2+ partition the melt iron inventory in the ratio
-    f_0 : (1 - f_0), and the inventory closes against W_FET * M_melt / MU_FEO.
+    """Step 1-2: the ferrous FeO fraction fixes Fe2+ at W_FET * M_melt / MU_FEO,
+    and Fe3+ is added on top so that Fe3+ / (Fe2+ + Fe3+) equals f_0.
 
     Uses f_0 = 0.25 rather than 0.5 so a swapped Fe3+/Fe2+ assignment lands
-    at 0.75 and cannot pass.
+    at 0.75 and cannot pass, and so the two readings of W_FET (ferrous only
+    versus total iron) differ by a factor 1 / (1 - f_0) = 1.33 in total iron.
     """
     f_0 = 0.25
     state = _init_state(_PHI, _MASS, _PRES, f_0)
 
+    n_fe2_expected = W_FET * _M_MELT / MU_FEO  # mol of Fe2+ in the melt
     n_total = state.n_fe3_melt + state.n_fe2_melt
-    expected_total = W_FET * _M_MELT / MU_FEO  # mol of Fe in the melt
 
-    # Conservation: the two reservoirs close on the independently computed
-    # inventory. Any prefactor bug breaks closure at the same order.
-    assert n_total == pytest.approx(expected_total, rel=1e-12)
+    # Fe2+ is set by the ferrous FeO fraction alone.
+    assert state.n_fe2_melt == pytest.approx(n_fe2_expected, rel=1e-12)
     # The split is the requested fraction, not the module default of 0.1.
     assert state.n_fe3_melt / n_total == pytest.approx(f_0, rel=1e-12)
     assert state.ferric_frac == pytest.approx(f_0, rel=1e-12)
+    # Closure: total iron is Fe2+ / (1 - f_0), i.e. Fe3+ sits on top of the
+    # ferrous inventory rather than being carved out of it.
+    assert n_total == pytest.approx(n_fe2_expected / (1.0 - f_0), rel=1e-12)
+    # Discrimination guard: reading W_FET as total iron would give a total of
+    # n_fe2_expected, 25% below the correct value, far outside rel=1e-12.
+    assert abs(n_total / n_fe2_expected - 1.0) > 0.3
+    # The FeO1.5 mass fraction carried into the metal step matches Fe3+.
+    assert state.w_feo15 == pytest.approx(
+        state.n_fe3_melt * MU_FEO15 / _M_MELT, rel=1e-12
+    )
     # Swapped-assignment guard: Fe2+ is the majority reservoir at f_0 = 0.25,
     # so a transposed split would put 0.75 here and miss by 0.5.
     assert abs(state.n_fe3_melt / n_total - (1.0 - f_0)) > 0.4
     # Sign guard: mole counts are physical amounts, never negative.
     assert state.n_fe3_melt > 0
     assert state.n_fe2_melt > 0
-    # Scale guard: ~4.5e21 mol, not ~4.5e18 (a g-vs-kg slip in MU_FEO) or
-    # ~4.5e24 (dropping the phi weighting and using the whole mantle mass).
+    # Scale guard: ~5.9e21 mol, not ~5.9e18 (a g-vs-kg slip in MU_FEO) or
+    # ~5.9e24 (dropping the phi weighting and using the whole mantle mass).
     assert 1e21 < n_total < 1e22
 
 
@@ -293,6 +306,75 @@ def test_reduced_melt_saturates_in_metal_and_becomes_more_oxidised():
     # partitioning alone lifts it by well under a factor of two over this many
     # steps, whereas the metal reaction drives it several times higher.
     assert reduced.ferric_frac > 2.0 * f_0
+
+
+@pytest.mark.physics_invariant
+def test_metal_diagnostics_reach_the_helpfile_csv(tmp_path, caplog):
+    """The three Fe-metal diagnostics the tracker writes into hf_row are
+    helpfile schema columns, so they pass the row filter, are written to
+    runtime_helpfile.csv and read back unchanged.
+
+    Uses the reduced melt (f_0 = 0.005) so metal actually forms and the
+    columns carry non-zero values; an all-zero column would also pass a
+    presence check if the values were being dropped and re-seeded with 0.
+    """
+    from proteus.utils.coupler import (
+        CreateHelpfileFromDict,
+        ExtendHelpfile,
+        ReadHelpfileFromCSV,
+        WriteHelpfileToCSV,
+        ZeroHelpfileRow,
+    )
+
+    metal_keys = ('a_fe_max_mantle', 'n_fe_metal_mantle', 'n_fe_metal_step_mantle')
+    config = _make_config(0.005)
+    interior = _make_interior()
+    rows = []
+    hf_all = None
+    with caplog.at_level('WARNING'):
+        for step in range(6):
+            interior.phi = np.clip(_PHI - np.array([0.12, 0.07, 0.0]) * step, 0.0, None)
+            hf_row = ZeroHelpfileRow()
+            hf_row['Time'] = float(step)
+            hf_row['T_magma'] = 2200.0
+            update_melt_redox(interior, hf_row, config)
+            rows.append(hf_row)
+            hf_all = (CreateHelpfileFromDict(hf_row) if hf_all is None
+                      else ExtendHelpfile(hf_all, hf_row))
+    # The row filter no longer reports the metal keys as unknown.
+    assert not any('not declared in GetHelpfileKeys' in r.message for r in caplog.records)
+
+    WriteHelpfileToCSV(str(tmp_path), hf_all)
+    csv = ReadHelpfileFromCSV(str(tmp_path))
+    for key in metal_keys:
+        assert key in csv.columns
+        # Round trip: every step's value survives, not just the column.
+        # rel=1e-9 because the CSV stores 11 significant digits (%.10e).
+        np.testing.assert_allclose(
+            csv[key].to_numpy(), [r[key] for r in rows], rtol=1e-9, atol=0.0
+        )
+
+    # Edge case: the first call runs no metal check, so all three are zero.
+    assert csv['n_fe_metal_mantle'].iloc[0] == pytest.approx(0.0, abs=1e-30)
+    assert csv['a_fe_max_mantle'].iloc[0] == pytest.approx(0.0, abs=1e-30)
+    # Metal formed and was recorded, so a zero-filled column cannot pass.
+    assert csv['n_fe_metal_mantle'].iloc[-1] > 0.0
+    # Conservation: with no redissolution, the cumulative metal equals the
+    # running sum of the per-step metal. A column holding a different
+    # quantity (for example the metal activity) would break this closure.
+    np.testing.assert_allclose(
+        csv['n_fe_metal_mantle'].to_numpy(),
+        np.cumsum(csv['n_fe_metal_step_mantle'].to_numpy()),
+        rtol=1e-9, atol=0.0,
+    )
+    assert np.all(np.diff(csv['n_fe_metal_mantle'].to_numpy()) >= 0.0)
+
+    # Error contract: the schema is enforced, so a row that lacks one of the
+    # metal columns is rejected rather than written with a gap.
+    broken = dict(rows[-1])
+    del broken['n_fe_metal_step_mantle']
+    with pytest.raises(Exception, match='missing expected keys'):
+        ExtendHelpfile(hf_all, broken)
 
 
 def test_oxidised_melt_stays_below_metal_saturation():

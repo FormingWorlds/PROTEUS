@@ -253,6 +253,20 @@ def build_table(P_max: float = P_EXERCISED * 1.05, T_min: float = 1500.0,
              nP, nT, P_max, _TABLE.T[0], _TABLE.T[-1])
 
 
+def clamped_mask(T, P):
+    """Points whose int dV dP lookup falls outside the tabulated (P, T) grid
+    and is therefore taken from the nearest grid edge rather than computed.
+
+    Pressures below the 1 bar grid foot are not flagged: the integral from
+    1 bar is zero there by definition, so the edge value is exact.
+    """
+    T = np.asarray(T, dtype=float)
+    P = np.asarray(P, dtype=float)
+    if _TABLE is None:
+        build_table(P_max=P_EXERCISED * 1.05)
+    return (T < _TABLE.T[0]) | (T > _TABLE.T[-1]) | (P > _TABLE.P[-1])
+
+
 def int_dV_dP(T, P):
     """int dV dP for 3FeO = 2FeO1.5 + Fe, from 1 bar to P at T. J/mol.
 

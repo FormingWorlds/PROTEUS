@@ -64,6 +64,11 @@ config_version = "3.0"
     temperature_mode = "liquidus_super"
     delta_T_super    = 500.0
     volatile_mode    = "elements"
+    fO2_source       = "from_mantle_redox"
+    ferric_fraction_initial = 0.005
+
+
+
     [planet.elements]
         O_mode   = "ic_chemistry"
         O_budget = 0.0
@@ -77,18 +82,10 @@ config_version = "3.0"
         S_budget = 0.0
 
 [interior_struct]
-    module         = "zalmoxis"
-    core_frac      = 0.325
-    core_frac_mode = "mass"
-
-    [interior_struct.zalmoxis]
-        core_eos          = "PALEOS:iron"
-        mantle_eos        = "PALEOS-2phase:MgSiO3"
-        mushy_zone_factor = 0.8
-        num_levels        = 150
-        dry_mantle        = true
-        use_jax           = true
-        update_interval   = 0.0
+    module         = "dummy"
+    core_frac      = 0.55        # radius fraction
+    core_frac_mode = "radius"
+    melting_dir   = "Wolf_Bower+2018"
 
 [interior_energetics]
     module           = "aragog"
@@ -107,12 +104,6 @@ config_version = "3.0"
     grain_size       = 1e-3
     mixing_length    = "constant"
 
-    [interior_energetics.aragog]
-        mass_coordinates = true
-        core_bc          = "energy_balance"
-        phase_smoothing  = "tanh"
-        solver_method    = "cvode"
-        backend          = "jax"
 
 [outgas]
     module       = "calliope"
@@ -128,7 +119,7 @@ config_version = "3.0"
         solubility  = true
 
 [atmos_clim]
-    module         = "agni"
+    module         = "dummy"
     surf_state     = "skin"
     surface_d      = 0.01
     surface_k      = 2.0
@@ -147,6 +138,6 @@ config_version = "3.0"
         perturb_all  = true
 
 [escape]
-    module = "zephyrus"
+    module = "dummy"
     [escape.zephyrus]
         efficiency = 0.3

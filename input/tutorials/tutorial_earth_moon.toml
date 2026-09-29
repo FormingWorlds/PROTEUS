@@ -143,7 +143,7 @@ config_version = "3.0"
     prevent_warming  = false
     temperature_mode = "isentropic"
     ini_entropy               = 3500.0       # initial specific entropy [J/kg/K] (isentropic only)
-    ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
+    ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (<= 0 with liquidus_super)
     volatile_mode    = "elements"
     [planet.elements]
         O_mode                = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct

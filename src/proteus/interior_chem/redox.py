@@ -12,7 +12,8 @@ post-processing a full SPIDER output series.
 Physics summary (see tools/redox_step.py for the full derivation
 this was validated against):
 
-  Step 1-2  initial melt iron inventory and Fe3+/Fe2+ split, from f_0
+  Step 1-2  initial melt iron inventory: Fe2+ from the ferrous FeO fraction
+            W_FET, Fe3+ = Fe2+ * f_0 / (1 - f_0) on top of it
   Step 3    new solid mass each step, from the decrease in local melt
             fraction (delta_phi), using the mass-invariant _s grid
   Step 4    redistribute the *previous* step's global Fe3+/Fe2+ reservoirs
@@ -43,7 +44,8 @@ this was validated against):
             reaction extent xi suffices. Fe and O conservation are identities
             under that parameterisation. Metal is deposited where it formed
             and does not move, so n_fe_metal_cell is spatially resolved while
-            the melt stays uniform; xi < 0 redissolves it. Because metal
+            the melt stays uniform; only the forward reaction is applied
+            (xi >= 0), so metal is never redissolved. Because metal
             removes Fe but leaves the O behind, saturation drives Fe3+/FeT
             *up*, and the melt is buffered at the saturation value regardless
             of f_0. The equilibrium constant always carries int(dV dP) from
@@ -97,14 +99,16 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-# ── Step 0: fixed input parameters (McDonough 2003 BSE via Hirschmann 2022;
-# Schaefer et al. 2024 Table 3 / Eq 6) ──────────────────────────────────────
-# FeO (not Fe) mass fraction of the melt: it is divided by the molar mass of
-# FeO below, so it must be the oxide fraction. BSE is 7.82 wt% FeO against
-# 6.08 wt% Fe, and 0.08 matches the former. This matters beyond naming --
-# (1 - W_FET) is the non-FeO mass that becomes MgSiO3 in _metal_saturation_step.
-W_FET  = 0.08       # FeO mass fraction in the melt (dimensionless)
+# ── Step 0: fixed input parameters (McDonough 2003 BSE, Schaefer et al. 2024
+# Table 1; partition coefficients Schaefer et al. 2024 Table 3 / Eq 6) ──────
+# Ferrous FeO mass fraction of the melt. Schaefer et al. (2024) Table 1 lists
+# FeO (7.82 wt%) and FeO1.5 as separate oxides, so this is Fe2+ only: it sets
+# the initial Fe2+ reservoir, and Fe3+ is added on top of it from f_0 (Step 2).
+# The non-iron mass that becomes MgSiO3 in _metal_saturation_step is
+# therefore 1 - W_FET - w_FeO1.5, with w_FeO1.5 fixed at initialisation.
+W_FET  = 0.08       # ferrous FeO mass fraction in the melt (dimensionless)
 MU_FEO = 0.07184    # molar mass of FeO in kg/mol (= 71.84 g/mol)
+MU_FEO15 = 0.07984  # molar mass of FeO1.5 in kg/mol (= 79.84 g/mol)
 MU_MGSIO3 = 0.100389  # molar mass of MgSiO3 in kg/mol (= 100.389 g/mol)
 # Default initial ferric fraction Fe3+/FeT. The value actually used is
 # config.planet.ferric_fraction_initial, which defaults to this; the
@@ -208,6 +212,9 @@ class MeltRedoxState:
     a_fe_cell: np.ndarray
     ferric_frac: float = F_0
     redox_ratio: float = field(default=F_0 / (1.0 - F_0))
+    # Initial FeO1.5 mass fraction of the melt, set from f_0 in Step 2 and held
+    # fixed; enters the non-iron melt mass in the metal step.
+    w_feo15: float = 0.0
     melt_exhausted: bool = False
     eos_coverage_logged: bool = False
     X: dict = field(default_factory=_compute_mole_fractions)
@@ -219,6 +226,10 @@ def _init_state(
     """Step 1-2 (Eq 1-3): seed the global Fe3+/Fe2+ reservoirs from the
     interior state at the first call, and the per-cell bridgmanite/Cpx-Opx
     split from the (time-invariant) pressure profile.
+
+    W_FET is the ferrous FeO fraction, so it fixes n_Fe2 directly. Fe3+ is
+    then set so that n_Fe3 / (n_Fe2 + n_Fe3) = f_0, which rearranges to
+    n_Fe3 = n_Fe2 * f_0 / (1 - f_0). Total iron is n_Fe2 + n_Fe3.
 
     ``f_0`` is the initial ferric fraction Fe3+/FeT, from
     config.planet.ferric_fraction_initial. The config validator confines
@@ -232,19 +243,40 @@ def _init_state(
         )
 
     M_melt_0 = float(np.sum(phi * mass))
-    n_FeT_0 = (W_FET * M_melt_0) / MU_FEO
+    n_fe2_0 = (W_FET * M_melt_0) / MU_FEO
+    n_fe3_0 = n_fe2_0 * f_0 / (1.0 - f_0)
+    w_feo15 = n_fe3_0 * MU_FEO15 / M_melt_0 if M_melt_0 > 0.0 else 0.0
 
     D_fe3_cell = np.where(pres >= P_CUTOFF_GPA * 1e9, D_FE3_BRG, D_FE3_SHALLOW)
 
     return MeltRedoxState(
-        n_fe3_melt=f_0 * n_FeT_0,
-        n_fe2_melt=(1.0 - f_0) * n_FeT_0,
+        n_fe3_melt=n_fe3_0,
+        n_fe2_melt=n_fe2_0,
         phi_prev=phi.copy(),
         D_fe3_cell=D_fe3_cell,
         n_fe_metal_cell=np.zeros_like(phi),
         a_fe_cell=np.zeros_like(phi),
         ferric_frac=f_0,
         redox_ratio=f_0 / (1.0 - f_0),
+        w_feo15=w_feo15,
+    )
+
+
+def _warn_clamped_cells(temp: np.ndarray, P_gpa: np.ndarray, usable: np.ndarray) -> None:
+    """Warn when usable melt cells lie outside the tabulated Deng EOS grid, so
+    their int dV dP is the nearest grid-edge value rather than a computed one.
+    In practice this is melt below the table's lowest temperature (1500 K),
+    which the validity mask does not exclude."""
+    clamped = usable & eos_deng.clamped_mask(temp, P_gpa)
+    if not np.any(clamped):
+        return
+    log.warning(
+        'Out of the bounds of the Deng EOS: %d melt cell(s) at T=%.0f-%.0f K, '
+        'P=%.1f-%.1f GPa; values of int(dV dP) are clamped to the nearest '
+        'available grid value',
+        int(np.count_nonzero(clamped)),
+        float(np.min(temp[clamped])), float(np.max(temp[clamped])),
+        float(np.min(P_gpa[clamped])), float(np.max(P_gpa[clamped])),
     )
 
 
@@ -258,7 +290,7 @@ def _metal_saturation_step(
     """Step 9a-9h: check the melt for Fe-metal saturation and, if it is
     supersaturated, react it to equilibrium. Returns the reaction extent xi
     [mol], which because the Fe stoichiometric coefficient is 1 is also the
-    moles of metal formed (negative = metal redissolved).
+    moles of metal formed. Always >= 0: the back-reaction is disabled.
 
     This is an intrinsic step of the crystallization algorithm, not an
     option: Schaefer et al. (2024) Section 2.7 "add an additional step in
@@ -284,7 +316,9 @@ def _metal_saturation_step(
     M_melt = float(np.sum(phi * mass))
     if M_melt <= 0.0:
         return 0.0
-    n_other = 2.0 * M_melt * (1.0 - W_FET) / MU_MGSIO3
+    # Non-iron mass excludes both the ferrous FeO and the ferric FeO1.5 that
+    # Step 2 adds on top of it.
+    n_other = 2.0 * M_melt * (1.0 - W_FET - state.w_feo15) / MU_MGSIO3
     n2, n3 = state.n_fe2_melt, state.n_fe3_melt
     n_sil = n_other + n2 + n3
 
@@ -303,6 +337,7 @@ def _metal_saturation_step(
     )
     a_fe = np.where(melt & eos_valid, a_fe, 0.0)
     state.a_fe_cell = a_fe
+    _warn_clamped_cells(temp, P_gpa, melt & eos_valid)
 
     # Step 9e: the binding cell. Because the melt is homogeneous, only the
     # most supersaturated cell can host equilibrium -- once it reaches
@@ -325,30 +360,25 @@ def _metal_saturation_step(
         return 0.0
     cstar = int(np.argmax(np.where(usable, a_fe, -np.inf)))
 
-    n_metal_avail = float(np.sum(state.n_fe_metal_cell))
-    if a_fe[cstar] < 1.0 and n_metal_avail <= 0.0:
-        return 0.0                      # undersaturated, nothing to dissolve
+    # Forward reaction only: metal that has formed is never redissolved, so an
+    # undersaturated melt is left untouched even if metal is present.
+    if a_fe[cstar] < 1.0:
+        return 0.0                      # undersaturated, no metal forms
 
     # Step 9f: the only equation solved. One scalar unknown, monotonic in xi,
     # bracketed automatically because F(0) = RHS(0)*(a_Fe - 1).
+    # n_metal_avail = 0 disables the back-reaction branch, so xi >= 0.
     K, _ = dispro.K_eq(temp[cstar], P_gpa[cstar], use_P_term=True)
-    xi = dispro.solve_extent(float(K), n2, n3, n_sil, n_metal_avail)
-    if xi == 0.0:
+    xi = dispro.solve_extent(float(K), n2, n3, n_sil, n_metal_avail=0.0)
+    if xi <= 0.0:
         return 0.0
 
     # Step 9g: apply. Fe and O conservation are identities here.
+    # Metal is deposited where it formed and does not move; the radial
+    # field builds up over many steps as cstar migrates with the front.
     state.n_fe2_melt = n2 - 3.0 * xi
     state.n_fe3_melt = n3 + 2.0 * xi
-    if xi > 0.0:
-        # Metal is deposited where it formed and does not move; the radial
-        # field builds up over many steps as cstar migrates with the front.
-        state.n_fe_metal_cell[cstar] += xi
-    else:
-        # Back-reaction: dissolve proportionally from wherever metal sits.
-        total = float(np.sum(state.n_fe_metal_cell))
-        if total > 0.0:
-            state.n_fe_metal_cell += xi * (state.n_fe_metal_cell / total)
-            np.clip(state.n_fe_metal_cell, 0.0, None, out=state.n_fe_metal_cell)
+    state.n_fe_metal_cell[cstar] += xi
     return xi
 
 
@@ -444,10 +474,6 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
         xi = _metal_saturation_step(state, temp, pres, phi, mass)
         if xi != 0.0:
             _update_ratios(state)
-            log.debug(
-                'Metal saturation: xi=%.4e mol, total metal=%.4e mol, f=%.6f',
-                xi, float(np.sum(state.n_fe_metal_cell)), state.ferric_frac,
-            )
 
     # Step 10: surface fO2 and Delta-IW, evaluated at the true surface T
     # (T_magma, the same temperature the outgas dispatch uses)
@@ -458,12 +484,28 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     hf_row['fO2_shift_IW_mantle'] = dIW
     hf_row['ferric_frac_mantle'] = state.ferric_frac
 
+    # Per-step summary at INFO, so the metal state is visible without DEBUG
+    n_metal_total = float(np.sum(state.n_fe_metal_cell))
+    if first_call:
+        metal_msg = 'not checked (first step)'
+    elif state.melt_exhausted:
+        metal_msg = 'not checked (mantle solidified)'
+    elif xi > 0.0:
+        metal_msg = 'metal formed (%.3e mol this step)' % xi
+    else:
+        metal_msg = 'no metal formed'
+    log.info(
+        'Metal redox state: %s; cumulative metal=%.3e mol, '
+        'Fe3+/FeT=%.4f, surface dIW=%+.3f',
+        metal_msg, n_metal_total, state.ferric_frac, dIW,
+    )
+
     # Step 11: metal-saturation diagnostics. Written unconditionally so the
     # columns exist whether or not the check ran; a_Fe is reported even when
     # below 1, because how close the melt runs to the buffer is the useful
     # diagnostic during an f_0 scan.
     hf_row['a_fe_max_mantle'] = float(np.max(state.a_fe_cell))
     hf_row['n_fe_metal_mantle'] = float(np.sum(state.n_fe_metal_cell))
-    # Reaction extent this step: positive where metal exsolved, negative
-    # where it redissolved.
+    # Reaction extent this step: moles of metal formed (>= 0; no
+    # redissolution).
     hf_row['n_fe_metal_step_mantle'] = xi
