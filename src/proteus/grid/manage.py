@@ -145,6 +145,13 @@ class Grid:
     def add_dimension(self, name: str, var: str):
         if name in self.dim_names:
             raise Exception("Dimension '%s' cannot be added twice" % name)
+        if var in (
+            'interior_energetics.num_tolerance',
+            'interior_energetics.spider.tolerance_rel',
+        ):
+            raise ValueError(
+                f'{var} is a deprecated alias; sweep interior_energetics.rtol instead'
+            )
 
         log.info("Added new dimension '%s' " % name)
         log.debug(
@@ -276,10 +283,6 @@ class Grid:
         base_config = read_config_object(self.conf)
         # A module set per case takes that module's default rtol when nothing sets one.
         rtol_unset = not rtol_is_set(read_config(self.conf).get('interior_energetics', {}))
-        tol_keys = [
-            f'interior_energetics.{k}'
-            for k in ('rtol', 'num_tolerance', 'spider.tolerance_rel')
-        ]
 
         # Loop over grid points to write config files
         log.info('Writing config files')
@@ -293,10 +296,8 @@ class Grid:
             # Set other parameters in Config object
             for key in gp.keys():
                 recursive_setattr(thisconf, key, gp[key])
-            tol = next((gp[k] for k in tol_keys if k in gp), None)
-            if tol is not None:  # write the case with rtol only, so it reloads
+            if 'interior_energetics.rtol' in gp:  # a base alias would conflict on reload
                 ie = thisconf.interior_energetics
-                ie.rtol = float(tol)
                 ie.num_tolerance = ie.spider.tolerance_rel = _TOL_UNSET
             elif rtol_unset and 'interior_energetics.module' in gp:
                 ie = thisconf.interior_energetics

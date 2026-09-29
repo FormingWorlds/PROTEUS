@@ -1262,8 +1262,11 @@ _UNSET = (1e-8, 1e-10)
         ('num_tolerance = 3e-9', {}, (3e-9, 3e-9)),
         ('[interior_energetics.spider]\ntolerance_rel = 3e-9', {}, (3e-9, 3e-9)),
         ('', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
-        ('', {'interior_energetics.num_tolerance': [1e-6]}, (1e-6, 1e-6)),
-        ('', {'interior_energetics.spider.tolerance_rel': [1e-6]}, (1e-6, 1e-6)),
+        (
+            '[interior_energetics.spider]\ntolerance_rel = 3e-9',
+            {'interior_energetics.rtol': [1e-6]},
+            (1e-6, 1e-6),
+        ),
         ('num_tolerance = 3e-9', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
         ('[interior_energetics.spider]\ntolerance_rel = 0.0', {}, _UNSET),
     ],
@@ -1292,3 +1295,16 @@ def test_write_config_files_gives_each_module_its_default_rtol(
     ]
     assert got == pytest.approx(expected, rel=1e-12)
     assert loaded == pytest.approx(expected, rel=1e-12)
+
+
+@pytest.mark.parametrize(
+    'alias', ['interior_energetics.num_tolerance', 'interior_energetics.spider.tolerance_rel']
+)
+def test_add_dimension_rejects_a_deprecated_tolerance_alias(fake_proteus_dir, tmp_path, alias):
+    """A grid over a deprecated rtol alias is refused at setup, naming the key to use."""
+    cfg = tmp_path / 'base_ie.toml'
+    cfg.write_text('')
+    g = Grid(name='alias_grid', base_config_path=str(cfg))
+    with pytest.raises(ValueError, match='interior_energetics.rtol'):
+        g.add_dimension('tol', alias)
+    assert g.dim_names == []
