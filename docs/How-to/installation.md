@@ -5,14 +5,16 @@ script. It handles Julia, SOCRATES, AGNI, all Python submodules, environment
 variables, and reference data downloads in a single command.
 
 !!! info "Prerequisites"
-    - macOS (Intel or Apple Silicon) or Linux
+    - Tested in CI: Linux x86_64 (Ubuntu) and macOS on Apple Silicon. Intel macOS and
+      Linux ARM64 are not tested; the Linux Miniconda commands below download the
+      x86_64 installer.
     - ~20 GB disk space (conda, Julia, reference data, submodules)
-    - Standard command-line tools: `curl`, `wget`
+    - Standard command-line tools: `curl`, `wget`, `make`
     - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
     - Internet connection for initial setup and data downloads
     - Allow ~60 minutes for a full installation including all submodules
 
-PROTEUS runs on macOS and Linux. Windows users should install via
+On Windows, install PROTEUS under
 [WSL2](local_machine_guide.md#microsoft-windows). Depending on your system
 configuration, some steps may differ. If you run into problems, check the
 [Troubleshooting](troubleshooting.md) page or
@@ -38,13 +40,13 @@ Install the required system libraries for your platform. See the
 === "Debian / Ubuntu"
 
     ```console
-    sudo apt install gfortran libnetcdff-dev build-essential curl git cmake unzip
+    sudo apt install gfortran libnetcdff-dev build-essential curl wget git cmake unzip
     ```
 
 === "Fedora / RHEL"
 
     ```console
-    sudo dnf install gcc-gfortran netcdf-fortran-devel make curl git cmake unzip
+    sudo dnf install gcc-gfortran gcc-c++ netcdf-fortran-devel make curl wget git cmake unzip
     ```
 
 **Compute clusters**: use the dedicated guides instead
@@ -54,6 +56,11 @@ Install the required system libraries for your platform. See the
 [Cambridge IoA](ioa_cluster_guide.md)).
 
 ## 2. Clone PROTEUS and set up Python environment
+
+!!! tip "Using pixi instead of conda"
+    PROTEUS can also be installed into a [pixi](https://pixi.sh) environment,
+    which replaces the conda steps below. See [Install with pixi](pixi.md)
+    (experimental).
 
 Python **3.12** is required, and is installed via
 [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
@@ -110,17 +117,27 @@ bash install.sh
 The installer runs through the following phases automatically:
 
 1. Pre-flight checks (OS, disk space, Python version, system dependencies)
-2. Julia installation and version pinning (1.12)
+2. Julia installation and version pinning (1.13)
 3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`)
 4. SOCRATES compilation and `RAD_DIR` setup
 5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry)
-6. Python packages (editable installs of all submodules + PROTEUS itself)
+6. Python packages (editable installs of all submodules, the SUNDIALS CVODE solver, and PROTEUS itself)
 7. Reference data downloads
 8. Verification via `proteus doctor`
 
 Each phase is idempotent: if the installer fails partway through, fix the
 reported issue and re-run `bash install.sh`. It will skip already-completed
 phases.
+
+!!! note "CVODE is required for Aragog"
+    Aragog integrates with SUNDIALS CVODE by default (`solver_method = "cvode"`).
+    The installer builds it (`scikits-odes-sundials` on the SUNDIALS C library,
+    through `tools/get_cvode.sh`, which needs an active conda environment) and
+    warns when that fails, since only Aragog on the default solver needs it.
+    A run with Aragog on the default `solver_method = "cvode"` stops at setup,
+    with the same install command in the message, when CVODE cannot be imported.
+    Choosing `solver_method = "radau"` or `"bdf"` selects scipy on purpose and
+    does not need CVODE. See [Aragog stops at setup](troubleshooting.md#aragog-stops-at-setup-cvode-cannot-be-imported).
 
 **Installer options:**
 
@@ -132,7 +149,7 @@ phases.
 
 !!! tip "CLI alternative: `proteus install-all`"
     If PROTEUS is already importable in your environment, `proteus install-all`
-    performs the same setup from the CLI: it installs PROTEUS and the required
+    performs the same setup from the CLI: it installs the SUNDIALS CVODE solver and the required
     submodules (SOCRATES, AGNI), downloads reference data, checks for sufficient
     disk space, creates `FWL_DATA` if needed, and sets the environment variables. 
 

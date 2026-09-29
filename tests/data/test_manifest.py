@@ -238,13 +238,16 @@ def test_capability_check_reads_the_installed_fwl_io(monkeypatch):
     assert _fwl_io_derives_the_location() is True
 
 
-def test_declared_floor_matches_the_requirement():
-    """The fwl-io floor in the error message equals the one pip installs.
+def test_declared_floor_is_not_below_the_schema_floor():
+    """The pyproject fwl-io floor is not below the manifest schema floor.
 
-    If the two drift, the upgrade instruction names a version that does not fix
-    the problem the reader is looking at.
+    A pyproject floor below the schema floor would let pip install an fwl-io that
+    cannot read the manifest, which the load reports as a stale install. A
+    pyproject floor above it is allowed: it tracks fixes in later fwl-io
+    releases, and the upgrade instruction names only the schema floor.
     """
     from packaging.requirements import Requirement
+    from packaging.version import Version
 
     requirements = _pyproject()['project']['dependencies']
     bounds = [
@@ -258,7 +261,9 @@ def test_declared_floor_matches_the_requirement():
     # Checked first so a dropped `>=` reports the absence it is, rather than
     # reaching the comparison below and reading as a version mismatch.
     assert len(bounds) == 1, f'expected one lower bound on fwl-io, found {bounds}'
-    assert bounds == [FWL_IO_FLOOR], f'pyproject floor {bounds} vs module floor {FWL_IO_FLOOR}'
+    assert Version(bounds[0]) >= Version(FWL_IO_FLOOR), (
+        f'pyproject floor {bounds[0]} is below the manifest schema floor {FWL_IO_FLOOR}'
+    )
 
 
 def test_manifest_and_registries_are_declared_as_package_data():

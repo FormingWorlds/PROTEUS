@@ -86,6 +86,13 @@ lovepy
 Lovepy
 LOVEPY
 LovePy
+obliqua
+Obliqua
+OBLIQUA
+Obliqua_data
+platon
+Platon
+PLATON
 /prt
 petitradtrans
 petitRADTRANS
@@ -341,3 +348,5 @@ src/proteus/_version.py
 
 # Diagnostic dumps written by `proteus update` into the repo root.
 /proteus_update_*.log
+# Resolved at install time from the current package set
+pixi.lock

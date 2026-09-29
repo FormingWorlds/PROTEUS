@@ -11,8 +11,8 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 
-def run_dummy_orbit(config: Config, interior_o: Interior_t):
-    """Run the dummy orbit module.
+def run_dummy_tides(config: Config, interior_o: Interior_t):
+    """Run the dummy tidal module.
 
     Sets interior tidal heating, returns Im(k2) value from config.
 

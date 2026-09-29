@@ -12,7 +12,7 @@ import pandas as pd
 
 from proteus.atmos_clim.common import clip_radius_to_hill, get_oarr_from_parr
 from proteus.utils.constants import vap_list, vol_list, gas_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, format_subyear_time
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -154,7 +154,7 @@ def write_atmos_ncdf(atm, dirs: dict, time: float):
         time : float
             Current simulation time (used for timestamping the output file).
     """
-    nc_fpath = os.path.join(dirs['output'], 'data', '%.0f_atm.nc' % time)
+    nc_fpath = os.path.join(dirs['output'], 'data', format_subyear_time(time) + '_atm.nc')
     log.debug(f'Write JANUS atmosphere to {nc_fpath}')
     atm.write_ncdf(nc_fpath)
 

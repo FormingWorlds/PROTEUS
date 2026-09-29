@@ -79,6 +79,13 @@ GIT_META = {
         'https://proteus-framework.org/SPIDER/',
         'Docs',
     ),
+    'obliqua': (
+        'Obliqua',
+        'Multi-phase tidal response (Julia)',
+        'https://github.com/FormingWorlds/Obliqua',
+        'https://proteus-framework.org/Obliqua/',
+        'Docs',
+    ),
 }
 
 # Each entry: (label, role, pin_val, color, pin_link, doc_url, doc_label, extra).
@@ -89,7 +96,7 @@ GIT_META = {
 OPTIONAL = [
     (
         'LovePy',
-        'Multi-phase tidal heating (Julia)',
+        'Solid-phase tidal heating (Julia)',
         'main',
         'lightgrey',
         'https://github.com/nichollsh/LovePy',
@@ -126,16 +133,6 @@ OPTIONAL = [
         'https://github.com/FormingWorlds/Morrigan',
         'GitHub',
         ('morrigan', 'fwl-morrigan'),
-    ),
-    (
-        'Obliqua',
-        'Orbital evolution and tides (Julia)',
-        None,
-        None,
-        None,
-        'https://github.com/FormingWorlds/Obliqua',
-        'GitHub',
-        None,
     ),
 ]
 

@@ -14,7 +14,7 @@ from matplotlib import patches, ticker
 
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.utils.constants import R_earth
-from proteus.utils.helper import safe_rm
+from proteus.utils.helper import safe_rm, snapshot_path_for_time
 from proteus.utils.visual import cs_srgb, interp_spec
 
 if TYPE_CHECKING:
@@ -95,7 +95,7 @@ def plot_visual(
             log.warning('You may need to extract archived data files')
         return False
 
-    fpath = os.path.join(output_dir, 'data', '%.0f_atm.nc' % time)
+    fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_atm.nc')
     if not os.path.exists(fpath):
         log.warning(f'Cannot find file {fpath}')
         if os.path.exists(os.path.join(output_dir, 'data', 'data.tar')):

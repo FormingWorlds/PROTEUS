@@ -77,7 +77,7 @@ guide pages.
 
     ```console
     sudo dnf install gcc gcc-gfortran gcc-c++ netcdf netcdf-fortran netcdf-fortran-devel \
-        lapack lapack-devel lapack-static cmake unzip curl wget git
+        lapack lapack-devel lapack-static make cmake unzip curl wget git
     ```
 
 2. Install [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux):

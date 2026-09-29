@@ -202,10 +202,10 @@ function postproc(output_dir::String, nsamples::Int, spfile::String)
     @info @sprintf("Found %d atm files \n", nfiles)
 
     # get years
-    all_years = Int[]
+    all_years = Float64[]
     for f in all_files
         s = split(split(f,"/")[end],"_")[1]
-        push!(all_years, parse(Int, s))
+        push!(all_years, parse(Float64, replace(s, 'p' => '.')))
     end
 
     # get sorting mask

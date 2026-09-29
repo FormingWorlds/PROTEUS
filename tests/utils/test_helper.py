@@ -353,6 +353,24 @@ class TestCommentFromStatus:
         assert 'volatiles' in CommentFromStatus(15)
 
     @pytest.mark.unit
+    def test_status_satellite_escaped(self):
+        """Status 17: Completed (satellite escaped)."""
+        assert CommentFromStatus(17) == 'Completed (satellite escaped)'
+        # Discrimination: differentiate from 18 (satellite disintegrated)
+        # by pinning the escaped-specific qualifier substring.
+        assert 'escaped' in CommentFromStatus(17)
+        assert 'disintegrated' not in CommentFromStatus(17)
+
+    @pytest.mark.unit
+    def test_status_satellite_disintegrated(self):
+        """Status 18: Completed (satellite disintegrated)."""
+        assert CommentFromStatus(18) == 'Completed (satellite disintegrated)'
+        # Discrimination: differentiate from 16 (planet disintegrated) by
+        # pinning that the qualifier names the satellite, not the planet.
+        assert 'satellite disintegrated' in CommentFromStatus(18)
+        assert CommentFromStatus(18) != CommentFromStatus(16)
+
+    @pytest.mark.unit
     def test_status_generic_error(self):
         """Status 20: Generic error."""
         result = CommentFromStatus(20)
@@ -754,3 +772,51 @@ def test_is_write_snapshot_initial_iteration_and_disabled_time_guard():
     assert is_write_snapshot(3, 100, 0.0, 1.0e12, -math.inf) is False
     # write_mod = 0 ("wait until completion") with time trigger off -> no write.
     assert is_write_snapshot(50, 0, 0.0, 1.0e6, 0.0) is False
+
+
+@pytest.mark.unit
+def test_format_subyear_time_replaces_dot_with_p():
+    """format_subyear_time uses ``p`` as the decimal separator."""
+    from proteus.utils.helper import format_subyear_time
+
+    assert format_subyear_time(884.7) == '884p700'
+    assert format_subyear_time(0.0) == '0p000'
+    assert format_subyear_time(30.0) == '30p000'
+    assert format_subyear_time(1000.6) == '1000p600'
+    # Three decimal places
+    assert format_subyear_time(0.1234) == '0p123'
+
+
+@pytest.mark.unit
+def test_parse_subyear_time_handles_both_conventions():
+    """parse_subyear_time accepts ``p`` and ``.`` as decimal separators."""
+    from proteus.utils.helper import parse_subyear_time
+
+    assert parse_subyear_time('884p700') == pytest.approx(884.7)
+    assert parse_subyear_time('0p000') == pytest.approx(0.0)
+    # Plain-dot format (legacy)
+    assert parse_subyear_time('884.700') == pytest.approx(884.7)
+    # Whole-year token (no separator)
+    assert parse_subyear_time('1000') == pytest.approx(1000.0)
+
+
+@pytest.mark.unit
+def test_format_parse_subyear_roundtrip():
+    """format_subyear_time and parse_subyear_time are inverses."""
+    from proteus.utils.helper import format_subyear_time, parse_subyear_time
+
+    for t in [0.0, 0.5, 1.0, 30.2, 884.7, 1e6]:
+        assert parse_subyear_time(format_subyear_time(t)) == pytest.approx(t)
+
+
+@pytest.mark.unit
+def test_parse_subyear_time_rejects_multiple_p():
+    """A token with more than one ``p`` raises ValueError."""
+    from proteus.utils.helper import parse_subyear_time
+
+    with pytest.raises(ValueError, match="multiple 'p' characters"):
+        parse_subyear_time('884p700p')
+    with pytest.raises(ValueError, match="multiple 'p' characters"):
+        parse_subyear_time('1p2p3')
+    with pytest.raises(ValueError, match="multiple 'p' characters"):
+        parse_subyear_time('884pp700')

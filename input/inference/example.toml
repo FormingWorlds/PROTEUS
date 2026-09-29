@@ -126,7 +126,7 @@ config_version = "3.0"
     tcenter_init              = 6000         # center temperature [K] (linear only)
     delta_T_super             = 500.0        # superliquidus offset at CMB [K] (liquidus_super)
     ini_entropy               = 3900.0       # initial specific entropy [J/kg/K] (isentropic only)
-    ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
+    ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (<= 0 with liquidus_super)
     f_accretion               = 0.04         # accretion heat retention [0-1] (accretion only)
     f_differentiation         = 0.50         # differentiation heat retention [0-1] (accretion only)
 
@@ -225,13 +225,13 @@ config_version = "3.0"
     s0_factor                 = 0.25        # instellation geometric scale factor
 
     # Tidal evolution and rotation
-    evolve                    = false        # evolve semi-major axis and eccentricity
     axial_period              = "none"       # day length [hours]; none = tidally locked
 
     # Satellite (moon)
-    satellite                 = false        # include satellite
-    mass_sat                  = 7.347e+22    # satellite mass [kg]
-    semimajoraxis_sat         = 3e8          # satellite orbit semi-major axis [m]
+    [orbit.satellite]
+        include_satellite     = false        # include satellite
+        mass_sat              = 0.0123024    # satellite mass [M_earth]
+        semimajoraxis_sat     = 47.3527      # satellite orbit semi-major axis [R_earth]
 
     [orbit.dummy]
         H_tide                = 1e-7         # fixed tidal power density [W kg-1]

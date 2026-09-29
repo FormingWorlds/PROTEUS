@@ -13,7 +13,8 @@ coupled planetary evolution simulation:
 - [`escape/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/escape): atmospheric mass loss (ZEPHYRUS, dummy)
 - [`outgas/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/outgas): volatile partitioning (CALLIOPE, atmodeller, dummy)
 - [`accretion/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/accretion): protoplanet growth by giant impacts (Morrigan, timeline, dummy)
-- [`orbit/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/orbit): orbital evolution and tides (Obliqua/LovePy, dummy)
+- [`orbit/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/orbit): tidal response (Obliqua/LovePy, dummy) and orbital evolution (native)
+
 - [`star/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/star): stellar evolution and spectra (MORS, dummy)
 
 Most modules follow a common pattern: a `wrapper.py` defining the dispatch

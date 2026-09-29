@@ -183,6 +183,7 @@ def _next_step_config(dt_maximum, bol_scale, bol_scale_start, bol_scale_duration
         initial=1.0,
         mushy_maximum=0.0,
         mushy_upper=0.99,
+        evection_maximum=0.0,
         hysteresis_iters=0,
         hysteresis_sfinc=1.1,
         max_growth_factor=0.0,

@@ -21,6 +21,7 @@ import numpy as np
 
 from proteus.interior_energetics.aragog_phase import build_jax_phase_params
 from proteus.interior_energetics.common import Interior_t
+from proteus.utils.helper import format_subyear_time
 
 jax.config.update('jax_enable_x64', True)
 
@@ -237,6 +238,11 @@ class AragogJAXRunner:
 
         T_magma = float(T[-1])
         T_core = float(T[0])
+        # Temperature of the CMB basic node (index 0), distinct from the bottom cell T[0].
+        S_basic = np.asarray(mesh.quantity_matrix @ jnp.asarray(S))
+        T_cmb_node = float(
+            np.asarray(eos.temperature(mesh.P_basic[:1], jnp.asarray(S_basic[:1])))[0]
+        )
         mass = rho * vol
         M_mantle = float(mass.sum())
         # Mass-weighted melt fraction = M_mantle_liquid / M_mantle.
@@ -318,6 +324,7 @@ class AragogJAXRunner:
             'Phi_global_vol': Phi_global,  # simplified (same as mass-weighted)
             'T_pot': T_magma,
             'T_cmb': T_core,
+            'T_cmb_node': T_cmb_node,
             'E_th_mantle': E_th,
             'Cp_eff': Cp_eff,
             'F_radio': F_radio,
@@ -335,7 +342,7 @@ class AragogJAXRunner:
         phi = np.asarray(eos.melt_fraction(P, S))
         rho = np.asarray(eos.density(P, S))
 
-        fpath = os.path.join(output_dir, 'data', '%.0f_int.nc' % time)
+        fpath = os.path.join(output_dir, 'data', format_subyear_time(time) + '_int.nc')
         ds = nc.Dataset(fpath, mode='w')
         ds.description = 'Aragog JAX entropy solver output'
 

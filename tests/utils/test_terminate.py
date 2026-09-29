@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 import proteus.utils.terminate as terminate
+from proteus.utils.constants import R_earth
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -35,6 +36,14 @@ def _cfg(**kwargs: Any) -> Any:
             offset_roche=0.0,
             offset_spin=0.0,
         ),
+        disint_sat=ns(
+            enabled=False,
+            roche_enabled=True,
+            spin_enabled=True,
+            offset_roche=0.0,
+            offset_spin=0.0,
+        ),
+        satellite=ns(enabled=False, sma_max=0.0),
         time=ns(enabled=True, maximum=100.0, minimum=0.0),
         iters=ns(enabled=True, total_loops=5, total_min=1),
         clock=ns(enabled=True, maximum=600.0),
@@ -196,6 +205,176 @@ def test_check_spinrate_triggers_breakup(patch_statusfile):
     h.hf_row['breakup_period'] = 5.0
     assert terminate._check_spinrate(h) is True
     assert patch_statusfile[-1][1] == 16
+
+
+@pytest.mark.unit
+def test_check_satellite_triggers_escape_sma(patch_statusfile):
+    """Satellite escape: semimajor axis at/above sma_max exits with status 17."""
+    cfg = _cfg()
+    cfg.params.stop.satellite.enabled = True
+    cfg.params.stop.satellite.sma_max = 10.0
+    h = _handler(cfg)
+    h.hf_row['semimajorax_sat'] = 10.0 * R_earth
+    assert terminate._check_satellite(h) is True
+    assert patch_statusfile[-1][1] == 17
+
+
+@pytest.mark.unit
+def test_check_satellite_not_triggered_below_escape_sma(patch_statusfile):
+    """Satellite escape: semimajor axis comfortably below sma_max keeps the
+    simulation running -- edge case for the >= boundary above."""
+    cfg = _cfg()
+    cfg.params.stop.satellite.enabled = True
+    cfg.params.stop.satellite.sma_max = 10.0
+    h = _handler(cfg)
+    h.hf_row['semimajorax_sat'] = 5.0 * R_earth
+    assert terminate._check_satellite(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_satellite_separation_triggers_roche_limit(patch_statusfile):
+    """Satellite disintegration: the satellite's own time-averaged
+    separation from the planet, below the satellite's own Roche limit,
+    exits with status 18.
+    """
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['separation_sat'] = 0.9
+    h.hf_row['roche_limit_sat'] = 1.0
+    assert terminate._check_satellite_separation(h) is True
+    assert patch_statusfile[-1][1] == 18
+
+
+@pytest.mark.unit
+def test_check_satellite_separation_not_triggered_outside_roche_limit(patch_statusfile):
+    """Edge case for the boundary above: satellite separation comfortably
+    outside the satellite's Roche limit keeps the simulation running."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['separation_sat'] = 5.0
+    h.hf_row['roche_limit_sat'] = 1.0
+    h.hf_row['separation'] = 1.5e11  # ~1 AU; must not leak into this check
+    assert terminate._check_satellite_separation(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_satellite_spinrate_triggers_breakup(patch_statusfile):
+    """Satellite disintegration: spinning faster than its own breakup
+    rate exits with status 18."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['axial_period_sat'] = 4.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    assert terminate._check_satellite_spinrate(h) is True
+    assert patch_statusfile[-1][1] == 18
+
+
+@pytest.mark.unit
+def test_check_satellite_spinrate_not_triggered_above_breakup_period(patch_statusfile):
+    """Edge case for the boundary above: satellite spin period
+    comfortably longer than its breakup period keeps the simulation
+    running."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['axial_period_sat'] = 20.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    assert terminate._check_satellite_spinrate(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_termination_dispatches_satellite_disintegration_checks(
+    monkeypatch, patch_statusfile
+):
+    """``check_termination`` must actually reach the satellite
+    disintegration checks when ``stop.disint_sat.enabled`` is True.
+    """
+    cfg = _cfg()
+    cfg.params.stop.disint_sat.enabled = True
+    h = _handler(cfg)
+    # Roche check runs first (roche_enabled defaults True); keep it safely
+    # unmet so the spin-rate trigger below is what's actually observed.
+    h.hf_row['separation_sat'] = 5.0
+    h.hf_row['roche_limit_sat'] = 1.0
+    h.hf_row['axial_period_sat'] = 4.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    h.loops['total'] = 5  # satisfy min_iter so exit is allowed
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    assert patch_statusfile[-1][1] == 18
+
+
+@pytest.mark.unit
+def test_check_termination_skips_satellite_roche_check_when_disabled(
+    monkeypatch, patch_statusfile
+):
+    """``disint_sat.roche_enabled=False`` must skip the satellite Roche
+    check entirely -- a satellite well within its Roche limit (which
+    would otherwise terminate the run) must NOT trigger termination while
+    the gate is off.
+    """
+    cfg = _cfg()
+    cfg.params.stop.disint_sat.enabled = True
+    cfg.params.stop.disint_sat.roche_enabled = False
+    h = _handler(cfg)
+    # Deep within the Roche limit -- would trigger if the check ran.
+    h.hf_row['separation_sat'] = 0.5
+    h.hf_row['roche_limit_sat'] = 1.0
+    # Spin safely unmet, so it is not what keeps this from terminating.
+    h.hf_row['axial_period_sat'] = 10.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    h.loops['total'] = 5
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_termination_skips_satellite_spinrate_check_when_disabled(
+    monkeypatch, patch_statusfile
+):
+    """``disint_sat.spin_enabled=False`` must skip the satellite spin-rate
+    check entirely -- a satellite spinning faster than its breakup rate
+    (which would otherwise terminate the run) must NOT trigger termination
+    while the gate is off.
+    """
+    cfg = _cfg()
+    cfg.params.stop.disint_sat.enabled = True
+    cfg.params.stop.disint_sat.spin_enabled = False
+    h = _handler(cfg)
+    # Roche safely unmet, so it is not what keeps this from terminating.
+    h.hf_row['separation_sat'] = 5.0
+    h.hf_row['roche_limit_sat'] = 1.0
+    # Spinning faster than breakup -- would trigger if the check ran.
+    h.hf_row['axial_period_sat'] = 4.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    h.loops['total'] = 5
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_termination_wires_up_satellite_escape_check(monkeypatch, patch_statusfile):
+    """The satellite-escape criterion must actually be reachable through
+    the top-level ``check_termination`` orchestrator when enabled, not
+    just callable in isolation (see ``test_check_satellite_triggers_escape_sma``
+    above)."""
+    cfg = _cfg()
+    cfg.params.stop.satellite.enabled = True
+    cfg.params.stop.satellite.sma_max = 10.0
+    h = _handler(cfg)
+    h.hf_row['semimajorax_sat'] = 10.0 * R_earth
+    h.loops['total'] = 5  # satisfy min_iter so exit is allowed
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    assert patch_statusfile[-1][1] == 17
 
 
 @pytest.mark.unit

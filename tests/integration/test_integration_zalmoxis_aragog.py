@@ -72,10 +72,9 @@ Integration-tier scope:
   round-trip while any other negative rejects.
 - The wrapper merge contract: ``R_int``, ``M_int``, ``R_core``,
   ``P_center``, ``P_cmb``, ``core_density``, ``core_heatcap``,
-  ``T_cmb``, ``T_cmb_initial``, and ``F_cmb`` are registered in
-  ``GetHelpfileKeys`` and seeded as float(0.0) by
-  ``ZeroHelpfileRow``, so the Zalmoxis -> Aragog hf_row hand-off
-  is intact.
+  ``T_cmb``, and ``F_cmb`` are registered in ``GetHelpfileKeys``
+  and seeded as float(0.0) by ``ZeroHelpfileRow``, so the
+  Zalmoxis -> Aragog hf_row hand-off is intact.
 
 The two-timestep real-solver boot lives at the slow tier in
 ``test_slow_zalmoxis_dummy.py`` (real Zalmoxis with dummy
@@ -773,8 +772,8 @@ def test_zalmoxis_aragog_helpfile_keys_register_structure_handoff():
     - Structure outputs (Zalmoxis): ``R_int``, ``M_int``, ``R_core``,
       ``M_core``, ``M_mantle``, ``M_planet``, ``P_center``, ``P_cmb``,
       ``core_density``, ``core_heatcap``.
-    - Temperature hand-off (Aragog reads): ``T_cmb``,
-      ``T_cmb_initial``, ``T_magma``, ``T_surf``.
+    - Temperature hand-off (Aragog reads): ``T_cmb``, ``T_magma``,
+      ``T_surf``.
     - CMB energy hand-off (Aragog writes back): ``F_cmb``, ``F_int``.
     - Melt-fraction state (interior_energetics output): ``Phi_global``,
       ``Phi_global_vol``, ``M_mantle_solid``, ``M_mantle_liquid``.
@@ -798,7 +797,7 @@ def test_zalmoxis_aragog_helpfile_keys_register_structure_handoff():
         'core_density',
         'core_heatcap',
     )
-    temperature_keys = ('T_cmb', 'T_cmb_initial', 'T_magma', 'T_surf')
+    temperature_keys = ('T_cmb', 'T_magma', 'T_surf')
     cmb_flux_keys = ('F_cmb', 'F_int')
     melt_keys = (
         'Phi_global',

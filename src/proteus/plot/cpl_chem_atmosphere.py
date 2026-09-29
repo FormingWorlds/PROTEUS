@@ -12,7 +12,7 @@ from matplotlib.ticker import LogLocator
 from proteus.atmos_chem.common import read_result
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.utils.constants import gas_list, vap_list
-from proteus.utils.helper import natural_sort
+from proteus.utils.helper import parse_subyear_time
 from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
@@ -118,7 +118,7 @@ def plot_chem_atmosphere(
     if len(files) == 0:
         log.warning('No atmosphere NetCDF files found in output folder')
         return
-    nc_fpath = natural_sort(files)[-1]
+    nc_fpath = max(files, key=lambda f: parse_subyear_time(os.path.basename(f).split('_')[0]))
     atm_profile = read_ncdf_profile(
         nc_fpath, extra_keys=['pl', 'tmpl', 'x_gas', 'cloud_mmr', 'aer_mmr', 'aerosols']
     )
@@ -127,7 +127,7 @@ def plot_chem_atmosphere(
     tarr = atm_profile['tmpl']  # temperature profile
 
     # Get year
-    year = float(nc_fpath.split('/')[-1].split('_atm')[0])
+    year = parse_subyear_time(nc_fpath.split('/')[-1].split('_atm')[0])
 
     # Read offline chemistry output if available and requested
     if plot_offchem and (chem_module is not None) and (chem_module != 'none'):

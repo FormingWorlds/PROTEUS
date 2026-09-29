@@ -57,10 +57,12 @@ from __future__ import annotations
 import shutil
 
 import numpy as np
+import pandas as pd
 import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
+from proteus.utils.coupler import GetHelpfileKeys
 
 # Integration tier. Each test runs two or three real dummy-module
 # simulations, so the file costs roughly 80 to 105 s locally and its slowest
@@ -757,4 +759,227 @@ def test_resume_reproduces_uninterrupted_run(tmp_path):
     assert compared >= MIN_COLUMNS_COMPARED, (
         f'only {compared} of the {len(reference.columns)} columns written were '
         'compared; the parity check is not covering the helpfile'
+    )
+
+
+@pytest.mark.integration
+def test_resume_drops_retired_helpfile_column(tmp_path):
+    """A resume tolerates a stored helpfile column the current schema retired.
+
+    Contract clause: a helpfile written under an older schema can carry a
+    column no longer part of ``GetHelpfileKeys()`` (for example, a field an
+    interior module used to write). ``ReadHelpfileFromCSV`` only checks for
+    missing required columns, so it loads such a row without complaint, but
+    ``ExtendHelpfile`` builds every appended row strictly from the current
+    schema; carrying the retired column into ``self.hf_all`` unchanged would
+    leave every row appended after resume with a NaN there instead. The
+    resume path drops any such column before appending starts.
+
+    Verifies:
+    - Resuming past a stored helpfile with an extra, schema-unknown column
+      does not raise.
+    - The retired column is gone from the resumed dataframe.
+    - No schema column holds a NaN in any row appended after the resume.
+    """
+    outdir = tmp_path / 'retired_column'
+    leg1 = _make_runner(outdir, LEG1_STOP_TIME)
+    leg1.start(resume=False, offline=True)
+    n_leg1 = len(leg1.hf_all)
+
+    helpfile = outdir / 'runtime_helpfile.csv'
+    assert helpfile.is_file(), 'first leg left no helpfile on disk'
+
+    retired_column = '_test_retired_schema_column'
+    assert retired_column not in GetHelpfileKeys(), (
+        f'{retired_column!r} collides with the live schema; pick a name the schema '
+        'does not define'
+    )
+    stored = pd.read_csv(helpfile, sep=r'\s+')
+    stored[retired_column] = 1.0
+    stored.to_csv(helpfile, index=False, sep='\t', float_format='%.10e')
+
+    leg2 = _make_runner(outdir, LEG2_STOP_TIME)
+    leg2.start(resume=True, offline=True)
+
+    assert retired_column not in leg2.hf_all.columns, (
+        'resume left the retired column in hf_all instead of dropping it'
+    )
+    assert len(leg2.hf_all) > n_leg1, 'resume with a retired column present did not advance'
+
+    appended = leg2.hf_all.iloc[n_leg1:]
+    schema_columns = [c for c in GetHelpfileKeys() if c in appended.columns]
+    nan_columns = [c for c in schema_columns if appended[c].isna().any()]
+    assert not nan_columns, (
+        f'rows appended after resume hold NaN in {nan_columns}; the retired column '
+        'rode along into the concat instead of being dropped first'
+    )
+
+
+# Leg 1 stays molten so the resume row is hot; leg 2 cools but stops short of
+# the solidus, so only the on-resume restore can set the flag.
+CRYST_LEG1_STOP_TIME = 3.0e3
+CRYST_LEG2_STOP_TIME = 1.2e4
+
+# Bulk escape rate for the scenario [kg s-1]. Nonzero so the escape branch
+# runs and the frozen path (atmosphere-only escape) is exercised, small
+# enough that its per-step mass loss is negligible against the atmosphere.
+CRYST_ESCAPE_RATE = 1.0e6
+
+# Float-noise band for the across-seam non-increase check on the atmospheric
+# hydrogen inventory. A frozen mantle does not degas, so the inventory only
+# falls by escape; on a correct restore the largest across-seam step is a fall
+# of about 9e-9 relative, so this rejects any degassing rise while absorbing
+# round-off.
+CRYST_ATM_NOISE_RTOL = 1.0e-6
+
+# Largest fraction of the resume-seam atmosphere the frozen run may lose.
+# Escape removes only a negligible fraction here (about 8e-6 of the baseline),
+# so a loss past this bound means the atmosphere collapsed rather than that
+# escape ran. This is the lower-bound guard; a cleared flag instead grows the
+# inventory and trips the non-increase check above.
+CRYST_ATM_LOSS_BOUND = 1.0e-2
+
+
+def _make_freeze_runner(output_dir, stop_time):
+    """Build a runner that freezes volatiles once the mantle is solid.
+
+    Extends :func:`_make_runner` with the two settings the
+    crystallization-on-resume scenario needs: volatile freezing enabled, so a
+    mantle that once crystallized stays frozen for the rest of the run, and a
+    nonzero dummy escape rate, so the escape branch runs and the frozen escape
+    path is exercised. The escape reservoir stays at its ``'outgas'`` default;
+    a frozen mantle forces atmosphere-only escape whatever the reservoir
+    setting is, so no override is needed to reach that path.
+
+    Parameters
+    ----------
+    output_dir : pathlib.Path
+        Absolute run directory, shared by both legs.
+    stop_time : float
+        Maximum simulation time for this leg [yr].
+
+    Returns
+    -------
+    Proteus
+        Configured runner; the caller starts it.
+    """
+    runner = _make_runner(output_dir, stop_time)
+    runner.config.params.stop.solid.freeze_volatiles = True
+    runner.config.escape.dummy.rate = CRYST_ESCAPE_RATE
+    return runner
+
+
+@pytest.mark.integration
+@pytest.mark.physics_invariant
+def test_resume_restores_crystallization_across_remelting(tmp_path):
+    """A resume restores the crystallization flag from the whole history.
+
+    Physical scenario: a magma-ocean planet crystallizes early, then remelts,
+    so its stored history holds a solid row followed by molten ones with the
+    final row molten. With volatile freezing enabled, a mantle that once
+    crystallized stays frozen for the rest of the run, so the restored state
+    on resume must reflect the whole history and not only the resumed row.
+
+    Reading only the resumed row clears the flag in exactly this case: the
+    resume row is molten, so the flag comes back False, the volatile branch
+    treats the mantle as molten again, and the melt degasses into the
+    atmosphere. The restore reads the whole loaded history instead, keeps the
+    flag set, and the frozen mantle stops feeding the atmosphere.
+
+    Verifies, on unmocked dummy backends with no patching in the call chain:
+    - The stored history is a genuine remelting record: an early row is below
+      the crystallization fraction while the resume row is above it.
+    - The crystallization flag comes back set after the resume.
+    - The downstream consequence holds: the atmospheric hydrogen inventory
+      changes by escape only across the resume seam, so it does not grow and
+      loses at most a negligible fraction. A resume that cleared the flag
+      would run outgassing and grow it several-fold, which the non-increase
+      check rejects; the loss bound rejects a collapse to near zero.
+    - Escape is active over the resumed leg, so the frozen escape path
+      (atmosphere-only escape, forced by the frozen mantle) is exercised
+      rather than skipped.
+
+    Scope and boundary. The dummy interior splits melt and solid by an
+    algebraic rule and writes no interior snapshot, so this test covers the
+    control-flow and reservoir-bookkeeping consequence of restoring the flag,
+    not the magnitude of a physically faithful melt/solid partition. The
+    remelting history is constructed on disk because the dummy cools
+    monotonically and cannot remelt itself, the same on-disk-construction
+    approach as :func:`test_resume_drops_retired_helpfile_column`. Coverage
+    of the partition magnitude belongs with an interior module that resolves
+    melt/solid volatile exchange and is not attempted here.
+    """
+    outdir = tmp_path / 'crystallization_resume'
+    leg1 = _make_freeze_runner(outdir, CRYST_LEG1_STOP_TIME)
+    phi_crit = float(leg1.config.params.stop.solid.phi_crit)
+    leg1.start(resume=False, offline=True)
+    n_leg1 = len(leg1.hf_all)
+    assert n_leg1 > leg1.loops['init_loops'] + 1, (
+        f'first leg produced only {n_leg1} rows, too short to resume from'
+    )
+
+    helpfile = outdir / 'runtime_helpfile.csv'
+    assert helpfile.is_file(), 'first leg left no helpfile on disk'
+    stored = pd.read_csv(helpfile, sep=r'\s+')
+    # Inject the solid marker on the first post-init evolution row (Time>0),
+    # not an init row (Time=0.0), so it stands for real early crystallization.
+    evolution_rows = stored.index[stored['Time'] > 0.0]
+    assert len(evolution_rows) > 1 and int(evolution_rows[0]) < len(stored) - 1, (
+        f'stored history has too few post-init rows ({len(evolution_rows)}) to '
+        'inject an early solid row and keep a later molten resume row'
+    )
+    inject_row = int(evolution_rows[0])
+    # The dummy cools too little over the short first leg to crystallize on
+    # its own, so force one early row solid to build the remelting history.
+    stored.loc[inject_row, 'Phi_global'] = phi_crit / 2.0
+    injected_phi = float(stored['Phi_global'].iloc[inject_row])
+    resume_phi = float(stored['Phi_global'].iloc[-1])
+    assert injected_phi <= phi_crit < resume_phi, (
+        f'injection did not build a remelting history: injected Phi {injected_phi} '
+        f'and resume Phi {resume_phi} do not straddle phi_crit {phi_crit}'
+    )
+    stored.to_csv(helpfile, index=False, sep='\t', float_format='%.10e')
+
+    leg2 = _make_freeze_runner(outdir, CRYST_LEG2_STOP_TIME)
+    leg2.start(resume=True, offline=True)
+
+    appended = leg2.hf_all.iloc[n_leg1:]
+    assert len(appended) > 0, 'resume appended no rows to advance from'
+    # The resumed leg cools but must stay above the solidus, so nothing during
+    # leg 2 latches the flag; only the on-resume restore can set it.
+    assert (appended['Phi_global'] > phi_crit).all(), (
+        'the resumed leg crystallized on its own, so a set flag no longer '
+        'isolates the on-resume restore'
+    )
+
+    assert leg2.crystallized, (
+        'resume cleared the crystallization flag; the restore read only the '
+        'resumed row instead of the whole history'
+    )
+
+    assert (appended['esc_step_kg'] > 0).any(), (
+        'escape never ran over the resumed leg, so the frozen escape path was not exercised'
+    )
+
+    # The frozen mantle no longer degasses, so run_crystallized changes the
+    # atmospheric hydrogen inventory by escape only: across the resume seam it
+    # falls and never rises, and it loses only a negligible fraction.
+    atm_baseline = float(leg2.hf_all['H_kg_atm'].iloc[n_leg1 - 1])
+    assert atm_baseline > 0.0, (
+        'resume-seam atmosphere holds no hydrogen, so the inventory check has '
+        'no baseline to measure against'
+    )
+    # Include the last pre-resume row so the first post-resume step is measured
+    # against the seam value, not divided away.
+    seam_atm = leg2.hf_all['H_kg_atm'].iloc[n_leg1 - 1 :].to_numpy()
+    atm_steps = np.diff(seam_atm)
+    assert (atm_steps <= atm_baseline * CRYST_ATM_NOISE_RTOL).all(), (
+        f'atmospheric hydrogen rose by up to {float(atm_steps.max()):.3e} kg across '
+        'the resume seam; the frozen mantle degassed, so the crystallization flag '
+        'was not restored'
+    )
+    assert float(seam_atm.min()) >= atm_baseline * (1.0 - CRYST_ATM_LOSS_BOUND), (
+        f'atmospheric hydrogen fell to {float(seam_atm.min()):.3e} kg after resume, '
+        f'below {1.0 - CRYST_ATM_LOSS_BOUND:g} of the {atm_baseline:.3e} kg baseline; '
+        'escape-only removal from a frozen mantle cannot lose this much'
     )

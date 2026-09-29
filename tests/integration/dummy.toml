@@ -81,7 +81,7 @@ config_version = "3.0"
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
 
-    evolve = true
+    star_planet_model = "sp0d"
 
     module  = "dummy"
 

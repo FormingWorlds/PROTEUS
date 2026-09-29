@@ -29,7 +29,7 @@ superheat, is:
 
 from __future__ import annotations
 
-import re
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -242,8 +242,9 @@ class TestExternalTemperatureSourceSkipsResolve:
         calls = {'n': 0}
         monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', self._counting_solve(calls))
         # Simulate the internal-dispatch IC solve having recorded the anchor.
-        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
         cfg = _make_minimal_config(tcmb_init=6000.0)
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(cfg))
 
         # P_cmb has drifted from the 6.7e11 the anchor was solved at; the
         # external path must not re-solve regardless of the drift.
@@ -282,6 +283,45 @@ class TestExternalTemperatureSourceSkipsResolve:
         # would have produced had it run.
         assert abs(T - 8765.0) > 100.0
 
+    @pytest.mark.physics_invariant
+    def test_external_source_ignores_anchor_solved_for_another_superheat(self, monkeypatch):
+        """An anchor solved for a different superheat or mantle EOS is not
+        reused on the external path: the call falls back to ``tcmb_init``, the
+        same rule the anchor-failure path applies, and still skips the solve.
+        """
+        import proteus.interior_struct.zalmoxis as zmod
+
+        calls = {'n': 0}
+        monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', self._counting_solve(calls))
+        cfg_old = _make_minimal_config(delta_T_super=200.0, tcmb_init=6000.0)
+        cfg = _make_minimal_config(delta_T_super=500.0, tcmb_init=6000.0)
+        cfg.interior_struct.zalmoxis.mantle_eos = cfg_old.interior_struct.zalmoxis.mantle_eos
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+        monkeypatch.setattr(
+            zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(cfg_old)
+        )
+
+        T = zmod._resolve_zalmoxis_cmb_temperature(
+            cfg, {'P_cmb': 6.7e11}, 'liquidus_super', external_temperature_source=True
+        )
+        assert calls['n'] == 0, 'the external path must not solve the anchor'
+        assert T == pytest.approx(6000.0)
+        # Discrimination: the 200 K-superheat anchor (8765 K) is far from the fallback.
+        assert abs(T - 8765.0) > 100.0
+
+        # A different mantle EOS at the same superheat is also a mismatch.
+        cfg_eos = _make_minimal_config(delta_T_super=200.0, tcmb_init=6000.0)
+        cfg_eos.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+        cfg_old.interior_struct.zalmoxis.mantle_eos = 'PALEOS-2phase:MgSiO3'
+        monkeypatch.setattr(
+            zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(cfg_old)
+        )
+        T_eos = zmod._resolve_zalmoxis_cmb_temperature(
+            cfg_eos, {'P_cmb': 6.7e11}, 'liquidus_super', external_temperature_source=True
+        )
+        assert T_eos == pytest.approx(6000.0)
+        assert calls['n'] == 0, 'the external path must not solve the anchor'
+
     def test_internal_dispatch_solves_despite_cached_anchor(self, monkeypatch):
         """The skip is gated on the external-source flag, not on a cached
         anchor: an internal-dispatch call re-solves even when an anchor exists,
@@ -307,6 +347,65 @@ class TestExternalTemperatureSourceSkipsResolve:
         assert T == pytest.approx(8765.0)
         # Discrimination: the freshly solved value, not the stale cached anchor.
         assert abs(T - 9999.0) > 100.0
+
+
+class TestSuperliquidusMemoBound:
+    """The super-liquidus memos keep a bounded number of entries."""
+
+    def test_lru_dict_drops_least_recently_used(self):
+        """At capacity an insert drops the least recently used entry; a read
+        counts as a use, so a read entry outlives an older unread one."""
+        from proteus.interior_struct.zalmoxis import _LRUDict
+
+        d = _LRUDict(maxsize=3)
+        for k in 'abc':
+            d[k] = k.upper()
+        assert d['a'] == 'A'  # 'a' is now the most recently used
+        d['d'] = 'D'
+        # Without the read, 'a' (the oldest insert) would be the one dropped.
+        assert list(d) == ['c', 'a', 'd']
+        assert 'b' not in d
+        # Re-inserting an existing key refreshes it without growing the map.
+        d['c'] = 'C2'
+        assert len(d) == 3 and list(d)[-1] == 'c' and d['c'] == 'C2'
+        # Edge case: a capacity below 1 is refused.
+        with pytest.raises(ValueError, match='maxsize'):
+            _LRUDict(maxsize=0)
+
+    def test_module_memos_are_bounded(self):
+        """Both module memos hold at most ``_SUPERLIQ_CACHE_MAXSIZE`` entries,
+        so a long-lived process that solves many distinct anchors does not
+        keep every one; the oldest key goes first and clearing empties both."""
+        import proteus.interior_struct.zalmoxis as zmod
+
+        n = zmod._SUPERLIQ_CACHE_MAXSIZE
+        try:
+            for memo in (zmod._SUPERLIQ_CACHE, zmod._SUPERLIQ_FAILED):
+                for i in range(n + 5):
+                    memo[(i, 500.0, 'PALEOS:MgSiO3')] = {'cmb_T': 6000.0 + i}
+                assert len(memo) == n
+                assert (0, 500.0, 'PALEOS:MgSiO3') not in memo
+                assert (n + 4, 500.0, 'PALEOS:MgSiO3') in memo
+            zmod._clear_superliquidus_cache()
+            assert len(zmod._SUPERLIQ_CACHE) == 0 and len(zmod._SUPERLIQ_FAILED) == 0
+        finally:
+            # The synthetic entries must not reach later tests in this process.
+            zmod._clear_superliquidus_cache()
+
+    def test_lru_dict_copy_keeps_entries_and_bound(self):
+        """A copy holds every entry in the same order with the same
+        ``maxsize``, and reading from it leaves the original order alone."""
+        from proteus.interior_struct.zalmoxis import _LRUDict
+
+        d = _LRUDict(maxsize=3)
+        for k in 'abc':
+            d[k] = k.upper()
+        c = d.copy()
+        assert isinstance(c, _LRUDict) and c.maxsize == 3
+        assert list(c.items()) == [('a', 'A'), ('b', 'B'), ('c', 'C')]
+        assert c['a'] == 'A' and list(d) == ['a', 'b', 'c']
+        c['d'] = 'D'
+        assert list(c) == ['c', 'a', 'd'] and len(d) == 3
 
 
 # ----------------------------------------------------------------------
@@ -410,23 +509,57 @@ class TestSolveSuperliquidusAdiabat:
         assert res['surface_T'] > 3900.0
         assert res['cmb_T'] > res['surface_T']
 
-    def test_unachievable_superheat_raises(self, monkeypatch):
-        """A superheat the synthetic table cannot support raises RuntimeError
-        rather than silently returning a partially-solid initial condition, and
-        the error reports the largest achievable superheat.
+    def test_unachievable_superheat_clamps_and_warns(self, monkeypatch, caplog):
+        """A superheat the synthetic table cannot support clamps to the largest
+        achievable superheat, reports it, and emits a WARNING that names the
+        requested and the achieved superheat.
         """
         _install_fake_solver_deps(monkeypatch, ceiling_T=4800.0)
         from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
 
         cfg = self._cfg(delta_T_super=6000.0)  # beyond the synthetic ceiling
-        with pytest.raises(RuntimeError, match='cannot initialise a fully molten') as exc:
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_struct.zalmoxis'):
+            res = solve_superliquidus_adiabat(cfg, {'P_cmb': 1.5e11})
+        assert res['clamped'] is True
+        # The achieved superheat is a concrete value below the unreachable
+        # request, and the returned adiabat is the one that achieves it.
+        assert 0.0 < res['achieved_superheat'] < 6000.0
+        assert res['surface_T'] > 3700.0
+        warns = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+        msg = next((m for m in warns if 'not reachable' in m), None)
+        assert msg is not None, warns
+        assert 'requested superheat of 6000 K' in msg
+        assert f'{res["achieved_superheat"]:.0f} K' in msg
+        assert 'Lower delta_T_super' in msg
+
+    def test_unreachable_superheat_raises(self, monkeypatch):
+        """When even the hottest valid adiabat sits below the liquidus, the
+        solve raises instead of clamping to a negative superheat.
+        """
+        _install_fake_solver_deps(monkeypatch, ceiling_T=3000.0)  # below the 3700 K offset
+        from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
+
+        cfg = self._cfg(delta_T_super=500.0)
+        with pytest.raises(
+            RuntimeError, match='no fully-molten initial condition is reachable'
+        ) as exc:
             solve_superliquidus_adiabat(cfg, {'P_cmb': 1.5e11})
         msg = str(exc.value)
-        # The message must quote a concrete, achievable ceiling below the
-        # unreachable 6000 K request (so the user knows what to lower to).
-        assert 'largest achievable superheat' in msg
-        ceiling = re.search(r'largest achievable superheat is (\d+) K', msg)
-        assert ceiling is not None and 0.0 < float(ceiling.group(1)) < 6000.0
+        assert 'below the liquidus' in msg
+        assert 'GPa' in msg
+
+    def test_reachable_superheat_is_not_clamped(self, monkeypatch, caplog):
+        """A reachable superheat is not flagged as clamped and emits no
+        unreachable-superheat warning.
+        """
+        _install_fake_solver_deps(monkeypatch)
+        from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
+
+        cfg = self._cfg(delta_T_super=500.0)
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_struct.zalmoxis'):
+            res = solve_superliquidus_adiabat(cfg, {'P_cmb': 1.5e11})
+        assert res['clamped'] is False
+        assert not [r for r in caplog.records if 'not reachable' in r.getMessage()]
 
     def test_missing_p_cmb_uses_nl20_estimate(self, monkeypatch):
         """When hf_row lacks P_cmb the solve falls back to the
@@ -450,6 +583,32 @@ class TestSolveSuperliquidusAdiabat:
         assert 'p' in seen  # NL20 was consulted
         assert res['P_cmb'] == pytest.approx(seen['p'])
         # A 5 M_Earth core-mantle pressure is far above the Earth-like 135 GPa.
+        assert res['P_cmb'] > 4e11
+
+    def test_nan_p_cmb_uses_nl20_estimate(self, monkeypatch):
+        """A NaN ``hf_row['P_cmb']`` also falls back to the NL20 estimate,
+        rather than propagating the NaN into the adiabat solve. Pins the
+        ``np.isfinite`` check in ``resolve_P_cmb``: a NaN is truthy and
+        passes no comparison, so only the finite check catches it.
+        """
+        import math
+
+        _install_fake_solver_deps(monkeypatch)
+        import proteus.utils.structure_estimate as se
+        from proteus.interior_struct.zalmoxis import solve_superliquidus_adiabat
+
+        seen = {}
+        real_nl20 = se.estimate_P_cmb_NL20
+
+        def spy(mass, core_frac, core_frac_mode):
+            seen['p'] = real_nl20(mass, core_frac, core_frac_mode)
+            return seen['p']
+
+        monkeypatch.setattr(se, 'estimate_P_cmb_NL20', spy)
+        cfg = self._cfg(delta_T_super=300.0, mass_tot=5.0)
+        res = solve_superliquidus_adiabat(cfg, {'P_cmb': math.nan})
+        assert 'p' in seen  # NL20 was consulted despite a present P_cmb key
+        assert res['P_cmb'] == pytest.approx(seen['p'])
         assert res['P_cmb'] > 4e11
 
 
@@ -637,6 +796,9 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', counting_solve)
         # The internal-dispatch IC solve has already recorded the anchor.
         monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+        monkeypatch.setattr(
+            zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(config)
+        )
 
         cp = load_zalmoxis_configuration(
             config,

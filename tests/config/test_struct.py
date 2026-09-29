@@ -13,6 +13,8 @@ Testing standards:
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from proteus.config._struct import Struct, Zalmoxis
@@ -143,16 +145,24 @@ class TestZalmoxisVolatileGates:
         # Retro-compat: the default remains dry, byte-identical to baseline.
         assert Struct(module='zalmoxis').zalmoxis.dry_mantle is True
 
-    def test_spider_module_skips_the_gate(self):
-        """The miscibility gate only constrains the zalmoxis structure path:
-        a spider config carrying the same value is not validated against it
-        (the zalmoxis sub-config is inert under spider)."""
-        s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(global_miscibility=True)))
-        assert s.zalmoxis.global_miscibility is True
-        # The skip covers the whole sub-config, not the miscibility flag alone:
-        # an EOS string that fails the zalmoxis format check is equally inert
-        # under spider. Narrowing the skip to the flag, and validating EOS
-        # strings for every module, would reject this spider config.
+    @pytest.mark.parametrize('module', ['spider', 'dummy', 'zalmoxis'])
+    def test_global_miscibility_is_rejected_for_every_structure(self, module):
+        """`global_miscibility = true` is rejected for every structure module:
+        only the zalmoxis structure writes the solvus that the main loop and
+        SPIDER read, so under any other module the solvus frame would start
+        from the zero-initialised helpfile values."""
+        kwargs = _spider_kwargs() if module == 'spider' else {'module': module}
+        with pytest.raises(ValueError, match='global_miscibility'):
+            Struct(**kwargs, zalmoxis=Zalmoxis(global_miscibility=True))
+        # Discrimination: the same structure with the flag off constructs.
+        s = Struct(**kwargs, zalmoxis=Zalmoxis(global_miscibility=False))
+        assert s.module == module
+        assert s.zalmoxis.global_miscibility is False
+
+    def test_spider_module_skips_the_eos_format_check(self):
+        """Under spider the zalmoxis EOS strings are inert: an EOS string that
+        fails the zalmoxis format check still constructs. The miscibility
+        rejection is the one check that applies to every module."""
         s = Struct(**_spider_kwargs(zalmoxis=Zalmoxis(core_eos='no_colon')))
         assert s.zalmoxis.core_eos == 'no_colon'
         # The paired negative: zalmoxis does enforce the format, so acceptance
@@ -160,3 +170,82 @@ class TestZalmoxisVolatileGates:
         # absent.
         with pytest.raises(ValueError, match='core_eos'):
             Struct(module='zalmoxis', zalmoxis=Zalmoxis(core_eos='no_colon'))
+
+
+class TestZalmoxisMushyZoneWarning:
+    """The mushy_zone_factor no-effect warning must fire only for the EOS
+    families that actually ignore the factor.
+
+    mushy_zone_factor scales the derived solidus ``T_sol = T_liq * mzf`` for
+    the PALEOS family (unified, 2-phase, and the API variants) through
+    ``load_zalmoxis_solidus_liquidus_functions``. For WolfBower2018 and
+    RTPress100TPa the melting curves come from file and the factor is inert,
+    so there the warning is correct and must still fire.
+    """
+
+    @staticmethod
+    def _warns(caplog, mantle_eos, mzf=0.8, core_eos='Seager2007:iron', ice_layer_eos=None):
+        """Construct a zalmoxis Struct and report whether the no-effect
+        warning fired for the given layer EOS at the given factor.
+
+        The core defaults to a file-curve EOS so that ``mantle_eos`` alone
+        decides the outcome."""
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.config._struct'):
+            Struct(
+                module='zalmoxis',
+                zalmoxis=Zalmoxis(
+                    core_eos=core_eos,
+                    mantle_eos=mantle_eos,
+                    ice_layer_eos=ice_layer_eos,
+                    mushy_zone_factor=mzf,
+                ),
+            )
+        return any('has no effect' in r.getMessage() for r in caplog.records)
+
+    def test_warning_silent_for_the_paleos_family(self, caplog):
+        """Each PALEOS-family EOS feeds the factor into the derived solidus, so
+        the no-effect warning must stay silent for all four."""
+        for eos in (
+            'PALEOS:MgSiO3',
+            'PALEOS-2phase:MgSiO3',
+            'PALEOS-API:MgSiO3',
+            'PALEOS-API-2phase:MgSiO3',
+        ):
+            assert not self._warns(caplog, eos), eos
+
+    def test_warning_fires_for_file_curve_eos(self, caplog):
+        """WolfBower2018 and RTPress100TPa read melting curves from file, so the
+        factor has no effect and the warning must fire."""
+        for eos in ('WolfBower2018:MgSiO3', 'RTPress100TPa:MgSiO3'):
+            assert self._warns(caplog, eos), eos
+
+    def test_warning_silent_when_only_the_core_is_paleos(self, caplog):
+        """A unified PALEOS core density depends on the factor, so a
+        WolfBower2018 mantle above it does not make the setting inert."""
+        assert not self._warns(caplog, 'WolfBower2018:MgSiO3', core_eos='PALEOS:iron')
+
+    def test_warning_silent_when_only_the_ice_layer_is_paleos(self, caplog):
+        """A PALEOS ice layer also honors the factor."""
+        assert not self._warns(
+            caplog,
+            'WolfBower2018:MgSiO3',
+            ice_layer_eos='PALEOS:H2O',
+        )
+
+    def test_warning_fires_when_no_layer_is_paleos(self, caplog):
+        """Paired negative: with no PALEOS layer anywhere, the warning fires."""
+        assert self._warns(
+            caplog,
+            'WolfBower2018:MgSiO3',
+            core_eos='Seager2007:iron',
+            ice_layer_eos='Seager2007:H2O',
+        )
+
+    def test_warning_tracks_the_factor_not_only_the_eos(self, caplog):
+        """The warning depends on mushy_zone_factor < 1: at the sharp-boundary
+        value 1.0 an ignored setting is not misreported."""
+        assert not self._warns(caplog, 'WolfBower2018:MgSiO3', mzf=1.0)
+        # Paired positive: the same EOS at 0.8 fires, so silence at 1.0 is the
+        # factor guard rather than the EOS being exempt.
+        assert self._warns(caplog, 'WolfBower2018:MgSiO3', mzf=0.8)
