@@ -5,14 +5,16 @@ script. It handles Julia, SOCRATES, AGNI, all Python submodules, environment
 variables, and reference data downloads in a single command.
 
 !!! info "Prerequisites"
-    - macOS (Apple Silicon or Intel) or Linux x86_64; Linux ARM64 is not tested
+    - Tested in CI: Linux x86_64 (Ubuntu) and macOS on Apple Silicon. Intel macOS and
+      Linux ARM64 are not tested; the Linux Miniconda commands below download the
+      x86_64 installer.
     - ~20 GB disk space (conda, Julia, reference data, submodules)
-    - Standard command-line tools: `curl`, `wget`
+    - Standard command-line tools: `curl`, `wget`, `make`
     - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
     - Internet connection for initial setup and data downloads
     - Allow ~60 minutes for a full installation including all submodules
 
-PROTEUS runs on macOS and Linux. Windows users should install via
+On Windows, install PROTEUS under
 [WSL2](local_machine_guide.md#microsoft-windows). Depending on your system
 configuration, some steps may differ. If you run into problems, check the
 [Troubleshooting](troubleshooting.md) page or
@@ -38,13 +40,13 @@ Install the required system libraries for your platform. See the
 === "Debian / Ubuntu"
 
     ```console
-    sudo apt install gfortran libnetcdff-dev build-essential curl git cmake unzip
+    sudo apt install gfortran libnetcdff-dev build-essential curl wget git cmake unzip
     ```
 
 === "Fedora / RHEL"
 
     ```console
-    sudo dnf install gcc-gfortran gcc-c++ netcdf-fortran-devel make curl git cmake unzip
+    sudo dnf install gcc-gfortran gcc-c++ netcdf-fortran-devel make curl wget git cmake unzip
     ```
 
 **Compute clusters**: use the dedicated guides instead
