@@ -11,8 +11,10 @@ Contract clauses exercised:
 
 - ``instant_migration`` is a step, with the switch inclusive at
   ``t == time_migration`` (the source branches on ``t < time_migration``).
-- ``sigmoid_migration`` follows the logistic ``1 / (1 + exp(x))``
-  centred on ``time_migration`` with width ``tau_mig``.
+- ``sigmoid_migration`` holds the orbit until ``time_migration``,
+  carries it to ``sma_final`` over the following ``tau_mig`` along the
+  cubic ``3u^2 - 2u^3``, and holds it there afterwards. Both the orbit
+  and its rate of change are continuous across the window edges.
 - ``high_eccentricity_migration`` circularises at constant orbital
   angular momentum, exciting the eccentricity to
   ``sqrt(1 - sma_final / sma_init)`` at ``time_migration``.
@@ -30,9 +32,9 @@ Physics invariants asserted:
   ``sma_final``.
 - **Monotonicity**: ``a`` and ``e`` decrease monotonically once
   migration is active.
-- **Pinned values with discrimination guards**: the logistic centre
-  and quarter point, the high-eccentricity half-decay point, and the
-  one-tau e-folding of the eccentricity.
+- **Pinned values with discrimination guards**: the cubic quarter,
+  half and three-quarter points, the high-eccentricity half-decay
+  point, and the one-tau e-folding of the eccentricity.
 
 Anti-happy-path coverage:
 
@@ -43,9 +45,9 @@ Anti-happy-path coverage:
   the unit conversion, outward high-eccentricity migration raises,
   and an unrecognised or null ``migration`` raises rather than
   falling through.
-- One documented gap is pinned as a strict xfail so that closing it
-  turns the corresponding test red: the discontinuity in
-  ``sigmoid_migration`` at ``time_migration``.
+- Window edges: the cubic is clamped to its endpoints outside the
+  migration window, since continued past it the curve runs away to
+  6.8 AU at ``u = 2``.
 
 See ``docs/Validation/orbit/parameterized.md`` for the validation
 registry entry behind the ``reference_pinned`` test.
@@ -145,75 +147,124 @@ def test_instant_migration_is_a_step_with_an_inclusive_switch():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_sigmoid_matches_the_logistic_centre_and_quarter_point():
-    """Pin sigmoid_migration against the analytical logistic
-    ``s(x) = 1 / (1 + exp(x))``, with ``x = (t - t_mig) / tau``, so that
-    ``a = (a_0 - a_f) s + a_f``.
+def test_sigmoid_matches_the_cubic_smoothstep_across_the_window():
+    """Analytical limit: the cubic Hermite interpolant that carries a
+    value between two endpoints with zero slope at both is
+    ``S(u) = 3u^2 - 2u^3``, evaluated on the window fraction
+    ``u = (t - t_mig) / tau``, so ``a = a_0 + (a_f - a_0) S(u)``.
 
-    Two points on the analytic curve, chosen because they separate the
-    plausible wrong formulas:
+    Three points fix it. The quarter point ``S(1/4) = 5/32`` gives
+    ``2.0 - 1.2 * 5/32 = 1.8125 AU``, the midpoint ``S(1/2) = 1/2``
+    gives 1.4 AU, and the three-quarter point ``S(3/4) = 27/32`` gives
+    0.9875 AU.
 
-    - At the centre ``t = t_mig``, ``s = 1/2``, giving the arithmetic
-      mean ``a = 0.8 + 1.2 / 2 = 1.4 AU``.
-    - At ``t = t_mig + tau ln(3)``, ``exp(x) = 3`` so ``s = 1/4``,
-      giving ``a = 0.8 + 1.2 / 4 = 1.1 AU``.
-
-    The second point is what fixes the width: halving tau in the
-    exponent moves it to 0.92 AU, far outside tolerance. See
-    ``docs/Validation/orbit/parameterized.md``.
+    The quarter point is what separates the cubic from its neighbours: a
+    linear ramp would put it at 1.7 AU and the quintic smootherstep
+    ``6u^5 - 15u^4 + 10u^3`` at 1.8757 AU, both outside the tolerance.
+    See ``docs/Validation/orbit/parameterized.md``.
     """
-    centre = sigmoid_migration(T_MIG, SMA_I, SMA_F, T_MIG, TAU)
-    quarter = sigmoid_migration(T_MIG + TAU * np.log(3.0), SMA_I, SMA_F, T_MIG, TAU)
+    quarter = sigmoid_migration(T_MIG + 0.25 * TAU, SMA_I, SMA_F, T_MIG, TAU)
+    middle = sigmoid_migration(T_MIG + 0.50 * TAU, SMA_I, SMA_F, T_MIG, TAU)
+    three_q = sigmoid_migration(T_MIG + 0.75 * TAU, SMA_I, SMA_F, T_MIG, TAU)
 
-    assert centre == pytest.approx(1.4, rel=RTOL)
-    assert quarter == pytest.approx(1.1, rel=RTOL)
-    # Width guard: tau -> tau/2 puts the quarter point at
-    # 0.8 + 1.2 / (1 + 9) = 0.92 AU, so the gap discriminates.
-    wrong_half_tau = SMA_F + (SMA_I - SMA_F) / (1.0 + 9.0)
-    assert abs(quarter - wrong_half_tau) > 0.1
-    # Sign guard: a semi-major axis is strictly positive under this law.
+    assert quarter == pytest.approx(SMA_I + (SMA_F - SMA_I) * 5.0 / 32.0, rel=RTOL)
+    assert middle == pytest.approx(0.5 * (SMA_I + SMA_F), rel=RTOL)
+    assert three_q == pytest.approx(SMA_I + (SMA_F - SMA_I) * 27.0 / 32.0, rel=RTOL)
+
+    # Shape guard: a linear ramp lands at 1.7 AU here, the quintic
+    # smootherstep at 1.8757 AU. Both are further off than the tolerance.
+    wrong_linear = SMA_I + (SMA_F - SMA_I) * 0.25
+    wrong_quintic = SMA_I + (SMA_F - SMA_I) * (6 * 0.25**5 - 15 * 0.25**4 + 10 * 0.25**3)
+    assert abs(quarter - wrong_linear) > 0.05
+    assert abs(quarter - wrong_quintic) > 0.02
+    # Symmetry of the cubic about the window centre, S(u) + S(1-u) = 1,
+    # which holds whatever the endpoints are.
+    assert quarter + three_q == pytest.approx(SMA_I + SMA_F, rel=RTOL)
+    # Sign and scale guards: an AU-scale semi-major axis inside the
+    # interval the endpoints span, not the dimensionless S curve itself.
     assert quarter > 0.0
-    # Scale guard: values are AU-scale, not metres (1e11) and not the
-    # dimensionless logistic itself (<= 1).
     assert SMA_F < quarter < SMA_I
 
 
 @pytest.mark.physics_invariant
 def test_sigmoid_decreases_monotonically_onto_sma_final():
-    """Inward migration: once the law is active the semi-major axis
-    falls monotonically and settles on sma_final, never overshooting
-    below it nor rising above the logistic centre value."""
-    t = np.linspace(T_MIG, T_MIG + 60.0 * TAU, 2000)
+    """Inward migration: the semi-major axis falls monotonically from
+    sma_init to sma_final and stays inside the interval the endpoints
+    span, never overshooting either one."""
+    t = np.linspace(T_MIG - TAU, T_MIG + 60.0 * TAU, 2000)
     a, _ = _sweep(
         sigmoid_migration, t, sma_init=SMA_I, sma_final=SMA_F, time_migration=T_MIG, tau_mig=TAU
     )
 
     assert np.all(np.diff(a) <= 0.0)
     assert a.min() >= SMA_F - 1e-12
-    assert a.max() <= 0.5 * (SMA_I + SMA_F) + 1e-12
-    assert a[-1] == pytest.approx(SMA_F, rel=1e-9)
+    assert a.max() <= SMA_I + 1e-12
+    assert a[0] == pytest.approx(SMA_I, rel=RTOL)
+    assert a[-1] == pytest.approx(SMA_F, rel=RTOL)
     assert np.all(a > 0.0)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='sigmoid_migration returns sma_init for t < time_migration, so the '
-    'semi-major axis steps by half the migration distance at the epoch '
-    'instead of passing through it smoothly',
-)
-def test_sigmoid_is_continuous_across_the_migration_epoch():
-    """A logistic centred on t_mig is smooth and antisymmetric about its
-    centre. Mirroring the 1.1 AU quarter point, the value at
-    ``t = t_mig - tau ln(3)`` is ``0.8 + 1.2 * 3/4 = 1.7 AU``, and the
-    pair either side of the centre sums to ``a_0 + a_f``."""
-    offset = TAU * np.log(3.0)
-    early = sigmoid_migration(T_MIG - offset, SMA_I, SMA_F, T_MIG, TAU)
-    late = sigmoid_migration(T_MIG + offset, SMA_I, SMA_F, T_MIG, TAU)
+@pytest.mark.physics_invariant
+def test_sigmoid_holds_the_orbit_outside_the_migration_window():
+    """Edge case at both window boundaries. The orbit is exactly
+    sma_init up to and including the start of the window and exactly
+    sma_final from its end onwards, so a track that is sampled before or
+    long after the migration reports the endpoint rather than an
+    extrapolation of the interior curve."""
+    before = sigmoid_migration(T_MIG - 1.0e6, SMA_I, SMA_F, T_MIG, TAU)
+    at_start = sigmoid_migration(T_MIG, SMA_I, SMA_F, T_MIG, TAU)
+    at_end = sigmoid_migration(T_MIG + TAU, SMA_I, SMA_F, T_MIG, TAU)
+    after = sigmoid_migration(T_MIG + 1.0e6 * TAU, SMA_I, SMA_F, T_MIG, TAU)
 
-    assert early == pytest.approx(1.7, rel=RTOL)
-    # Logistic symmetry about the centre, independent of the pinned value.
-    assert early + late == pytest.approx(SMA_I + SMA_F, rel=RTOL)
+    assert before == pytest.approx(SMA_I, rel=RTOL)
+    assert at_start == pytest.approx(SMA_I, rel=RTOL)
+    assert at_end == pytest.approx(SMA_F, rel=RTOL)
+    assert after == pytest.approx(SMA_F, rel=RTOL)
+    # The cubic continued past its window would run away: at u = 2 it
+    # reaches 2.0 - 1.2 * (12 - 16) = 6.8 AU, and at u = -1 it reaches
+    # 2.0 - 1.2 * 5 = -4.0 AU. Clamping is what keeps the orbit bound.
+    assert after < SMA_I
+    assert before > 0.0
+
+
+@pytest.mark.physics_invariant
+def test_sigmoid_is_continuous_across_both_window_edges():
+    """The migration starts and ends without a step in the semi-major
+    axis or in its rate of change, which is the property the cubic is
+    chosen for: a discontinuous orbit would hand the atmosphere a
+    discontinuous instellation.
+
+    Checked as a one-sided limit either side of each edge, and as a
+    centred finite difference of the slope. The cubic has
+    ``S'(u) = 6u(1 - u)``, which vanishes at both ends, so both slopes
+    are zero to the accuracy of the difference.
+    """
+    step = 1.0e-4 * TAU
+
+    for edge, expected in ((T_MIG, SMA_I), (T_MIG + TAU, SMA_F)):
+        low = sigmoid_migration(edge - step, SMA_I, SMA_F, T_MIG, TAU)
+        high = sigmoid_migration(edge + step, SMA_I, SMA_F, T_MIG, TAU)
+        assert low == pytest.approx(expected, abs=1e-6)
+        assert high == pytest.approx(expected, abs=1e-6)
+        # Slope, in AU per window length so both edges share a scale.
+        slope = (high - low) / (2.0 * step) * TAU
+        assert abs(slope) < 1e-3
+
+    # Discrimination: the interior of the window is genuinely moving, so
+    # the vanishing slopes above are a property of the edges and not of a
+    # law that never migrates at all. At the centre S'(1/2) = 3/2, giving
+    # a slope of -1.8 AU per window length.
+    centre_slope = (
+        (
+            sigmoid_migration(T_MIG + 0.5 * TAU + step, SMA_I, SMA_F, T_MIG, TAU)
+            - sigmoid_migration(T_MIG + 0.5 * TAU - step, SMA_I, SMA_F, T_MIG, TAU)
+        )
+        / (2.0 * step)
+        * TAU
+    )
+    assert centre_slope == pytest.approx(1.5 * (SMA_F - SMA_I), rel=1e-6)
 
 
 # ---------------------------------------------------------------------------
@@ -489,13 +540,13 @@ def test_wrapper_converts_semimajor_axis_from_au_to_metres():
     [
         ('none', SMA_I, 0.0),
         ('instant', SMA_F, 0.0),
-        ('sigmoid', 1.4, 0.0),
+        ('sigmoid', SMA_I, 0.0),
         ('high_ecc', SMA_I, np.sqrt(0.6)),
     ],
     ids=[
         'no_migration_holds_initial_orbit',
         'instant_jump_already_arrived',
-        'sigmoid_ramp_at_logistic_centre',
+        'sigmoid_ramp_has_not_started',
         'high_eccentricity_at_peak_excitation',
     ],
 )
@@ -517,22 +568,27 @@ def test_wrapper_dispatches_each_law_at_the_migration_epoch(migration, a_au, ecc
     [
         ('none', SMA_I, 0.0),
         ('instant', SMA_F, 0.0),
-        ('sigmoid', 1.1, 0.0),
-        ('high_ecc', 6.0 / 7.0, np.sqrt(1.0 / 15.0)),
+        ('sigmoid', 0.5 * (SMA_I + SMA_F), 0.0),
+        (
+            'high_ecc',
+            SMA_F / (1.0 - 0.6 * np.exp(-1.0)),
+            np.sqrt(0.6 * np.exp(-1.0)),
+        ),
     ],
     ids=[
         'no_migration_holds_initial_orbit',
         'instant_jump_already_arrived',
-        'sigmoid_ramp_at_quarter_point',
+        'sigmoid_ramp_at_window_centre',
         'high_eccentricity_partly_circularised',
     ],
 )
 @pytest.mark.physics_invariant
 def test_wrapper_dispatch_holds_at_a_second_epoch(migration, a_au, ecc):
-    """Second probe one ``tau ln(3)`` later, where the sigmoid is at its
-    quarter point and the high-eccentricity law has decayed by 1/9, so a
-    regime swap cannot survive on a coincidence at a single time."""
-    hf_row = {'Time': T_MIG + TAU * np.log(3.0)}
+    """Second probe half a migration window later, where the sigmoid is
+    at the midpoint of its window and the high-eccentricity law has
+    decayed by exp(-1), so a regime swap cannot survive on a coincidence
+    at a single time. All four values differ here."""
+    hf_row = {'Time': T_MIG + 0.5 * TAU}
     a, e = run_parameterized_orbital_migration(hf_row, _config(migration))
 
     assert a == pytest.approx(a_au * AU, rel=RTOL)

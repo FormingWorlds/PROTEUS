@@ -153,10 +153,16 @@ Configured under `[orbit.parameterized]`:
 | `sma_init` | semi-major axis held before the migration epoch | au |
 | `sma_final` | semi-major axis approached after it | au |
 | `time_migration` | epoch at which migration begins | yr |
-| `tau_migration` | width of the transition (`sigmoid` and `high_ecc` only) | yr |
+| `tau_migration` | length of the migration window for `sigmoid`, decay constant for `high_ecc` | yr |
 
 Only `high_ecc` evolves the eccentricity. `none`, `instant` and `sigmoid`
 hold it at `orbit.eccentricity` throughout.
+
+`sigmoid` holds the orbit until `time_migration`, carries it to `sma_final`
+over the following `tau_migration` along the cubic `3u^2 - 2u^3`, and holds
+it there afterwards. The cubic has zero slope at both window edges, so the
+semi-major axis and its rate of change are both continuous across the whole
+track and the instellation the atmosphere sees never steps.
 
 `high_ecc` circularises at constant orbital angular momentum: it excites the
 eccentricity to `sqrt(1 - sma_final / sma_init)` at the migration epoch and

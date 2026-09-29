@@ -47,7 +47,13 @@ def sigmoid_migration(
     t: float, sma_init: float, sma_final: float, time_migration: float, tau_mig: float
 ) -> float:
     """
-    Sigmoid function for orbital migration with a time transition.
+    Smooth orbital migration over a migration window of finite length.
+
+    The orbit is held at sma_init until time_migration, crosses to sma_final
+    over the following tau_mig, and is held there afterwards. Inside the
+    window it follows the cubic S curve 3u^2 - 2u^3 in the window fraction
+    u, whose derivative vanishes at both ends, so the semi-major axis and
+    its rate of change are both continuous across the whole track.
 
     Parameters
     ----------
@@ -58,9 +64,9 @@ def sigmoid_migration(
     sma_final : float
         Final semi-major axis [m].
     time_migration : float
-        Midpoint time of migration.
+        Time at which migration starts [yr].
     tau_mig : float
-        Migration speed parameter (must be positive) [yr-1].
+        Length of the migration window (must be positive) [yr].
 
     Returns
     -------
@@ -71,13 +77,15 @@ def sigmoid_migration(
     if tau_mig <= 0:
         raise ValueError(f'Migration speed tau_mig must be > 0, got {tau_mig}')
 
-    if t < time_migration:
+    if t <= time_migration:
         return sma_init
-    else:
-        sma = (
-            (sma_init - sma_final) / (1.0 + np.exp((t - time_migration) / tau_mig))
-        ) + sma_final
-        return sma
+
+    if t >= time_migration + tau_mig:
+        return sma_final
+
+    u = (t - time_migration) / tau_mig
+
+    return sma_init + (sma_final - sma_init) * u * u * (3.0 - 2.0 * u)
 
 
 def high_eccentricity_migration(

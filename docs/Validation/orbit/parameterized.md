@@ -8,29 +8,50 @@ contract is the mathematics the laws are defined by.
 
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|
-| `tests/orbit/test_parameterized.py::test_sigmoid_matches_the_logistic_centre_and_quarter_point` | Analytical limit: the logistic function `s(x) = 1 / (1 + exp(x))` at `x = 0` and `x = ln(3)` | Standard | Pins `sigmoid_migration` at its centre (`s = 1/2`) and quarter point (`s = 1/4`). Fixes the migration width `tau_mig` in the exponent and catches a swapped `sma_init`/`sma_final`. |
-| `tests/orbit/test_parameterized.py::test_high_ecc_conserves_orbital_angular_momentum` | Analytical limit: specific orbital angular momentum of a two-body orbit, `h = sqrt(G M a (1 - e^2))` | Standard | Pins `a(t)` against the closed form, which is the anchor on the law itself. The accompanying semi-latus-rectum equality `a (1 - e^2) = a_f` checks that `e(t)` is the exact inverse of `a(t)`; it is an identity of the implementation, not an emergent conservation law. Also asserts the pericentre `a (1 - e)` is not conserved. |
+| `tests/orbit/test_parameterized.py::test_sigmoid_matches_the_cubic_smoothstep_across_the_window` | Analytical limit: the cubic Hermite interpolant with zero slope at both ends, `S(u) = 3u^2 - 2u^3`, at `u = 1/4`, `1/2` and `3/4` | Standard | Pins `sigmoid_migration` across its migration window. Separates the cubic from a linear ramp and from the quintic smootherstep, and catches a swapped `sma_init`/`sma_final`. |
+| `tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity` | Analytical limit: specific orbital angular momentum of a two-body orbit, `h = sqrt(G M a (1 - e^2))`, and the exponential decay it implies for `e(t)` | Standard | Pins `e(t) = e_mig exp(-(t - t_mig) / tau)`, a form the source never evaluates, plus the one-tau e-folding. The semi-latus-rectum equality `a (1 - e^2) = a_f` is kept as a sanity check only: it is an identity of the implementation, not an emergent conservation law. Also asserts the pericentre `a (1 - e)` is not conserved. |
 
 ## Re-derivation notes
 
 ### Sigmoid migration
 
-The law is
+The law is a cubic S curve on a migration window of finite length,
+clamped to its endpoints outside it:
 
 ```
-a(t) = (a_0 - a_f) / (1 + exp((t - t_mig) / tau)) + a_f
+u    = (t - t_mig) / tau,  clamped to [0, 1]
+S(u) = 3u^2 - 2u^3
+a(t) = a_0 + (a_f - a_0) S(u)
 ```
 
-At `t = t_mig` the exponential is 1, so the logistic is `1/2` and
-`a = a_f + (a_0 - a_f) / 2`, the arithmetic mean of the endpoints. At
-`t = t_mig + tau ln(3)` the exponential is 3, so the logistic is `1/4`
-and `a = a_f + (a_0 - a_f) / 4`.
+`S` is the unique cubic with `S(0) = 0`, `S(1) = 1` and
+`S'(0) = S'(1) = 0`. Both endpoint conditions matter: the value
+conditions make `a(t)` continuous at the window edges, and the slope
+conditions make `da/dt` continuous there too. A discontinuous orbit
+would hand the atmosphere a discontinuous instellation, and a kinked
+one would hand it a discontinuous heating rate.
 
-With the test endpoints `a_0 = 2.0 AU` and `a_f = 0.8 AU` these are
-1.4 AU and 1.1 AU. Halving `tau` in the exponent moves the second point
-to `0.8 + 1.2 / 10 = 0.92 AU`, which is what makes it discriminating.
-The `rel=1e-12` tolerance is machine precision: the expression is closed-form
-algebra with no solver or lookup in the path.
+With the test endpoints `a_0 = 2.0 AU` and `a_f = 0.8 AU`,
+`S(1/4) = 5/32` gives 1.8125 AU, `S(1/2) = 1/2` gives 1.4 AU and
+`S(3/4) = 27/32` gives 0.9875 AU. The quarter point is the
+discriminating one: a linear ramp puts it at 1.7 AU and the quintic
+smootherstep `6u^5 - 15u^4 + 10u^3` at 1.8757 AU, both far outside the
+tolerance. The cubic is symmetric about the window centre,
+`S(u) + S(1 - u) = 1`, which the test also asserts and which holds
+whatever the endpoints are.
+
+The clamp is not cosmetic. Continued past its window the cubic runs
+away: `S(2) = -4` puts the orbit at 6.8 AU and `S(-1) = 5` puts it at
+-4.0 AU, so an unclamped evaluation at any time outside the window
+returns an unphysical orbit.
+
+Here `tau` is the length of the migration window, not an exponential
+decay constant. It carries that second meaning in the high-eccentricity
+law below, so the two regimes read the same configuration key
+differently.
+
+The `rel=1e-12` tolerance is machine precision: the expression is
+closed-form algebra with no solver or lookup in the path.
 
 ### High-eccentricity migration
 
@@ -66,6 +87,28 @@ At `t = t_mig` the decay factor is 1, so
 starting semi-major axis with the eccentricity excited to the value that
 places it on the final angular momentum.
 
+Substituting `a(t)` into `1 - e^2 = a_f / a` collapses the eccentricity
+to a pure exponential with half the decay rate of the semi-major axis:
+
+```
+e(t) = e_mig exp(-(t - t_mig) / tau)
+```
+
+so `e` e-folds in exactly one `tau`. That is the form the test pins,
+because the source never evaluates it: it recovers `e` from `a`, so an
+error in the time dependence cannot show up in the semi-latus rectum.
+Checked at the half decay point, `sqrt(0.6) exp(-0.5 ln 2) = 0.547723`,
+which is `sqrt(0.3)`.
+
+The same route costs precision at late times. Recovering `e` as
+`sqrt(1 - a_f / a)` subtracts two numbers that approach each other, and
+the quantity under the root is `e^2`, so it drops below double precision
+once `e` falls near 1e-8 and the returned eccentricity floors to exactly
+zero. The exponential is therefore pinned over the first five migration
+widths, and the floor is asserted separately as a boundedness property:
+the value reaches zero without passing through a negative intermediate,
+which would have produced a nan.
+
 The pericentre `a (1 - e)` is **not** conserved: with the test endpoints it
 rises from 0.45 AU to 0.80 AU over the circularisation. This distinguishes
 the law from pericentre-conserving tidal circularisation, where the tide
@@ -88,8 +131,8 @@ dispatch in `evolve_orbit_star` are covered as well as the algebra.
 |---|---|---|
 | `none` | 0 | 0 |
 | `instant` | 0 | 0 |
-| `sigmoid` | 3.8e-11 | 0 |
-| `high_ecc` | 4.3e-11 | 2.8e-09 |
+| `sigmoid` | 3.7e-11 | 0 |
+| `high_ecc` | 3.8e-11 | 1.5e-11 |
 
 The figure and the run settings are in
 [Star-planet models](../../Explanations/orbit.md#visualizing-the-four-parameterized-regimes).
