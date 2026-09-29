@@ -60,6 +60,9 @@ authors:
   - name: Imre Kisvárdai
     orcid: 0009-0009-7323-6755
     affiliation: 1
+  - name: Yamila Miguel
+    orcid: 0000-0002-0747-8862
+    affiliation: 10, 12
   - name: Ioannis Panagiotou
     orcid: 0009-0005-9147-0431
     affiliation: 1
@@ -74,13 +77,13 @@ authors:
     affiliation: 1
   - name: Ben Riegler
     orcid: 0009-0003-9173-9539
-    affiliation: 12
+    affiliation: 13
   - name: Sara Seager
     orcid: 0000-0002-6892-6948
-    affiliation: 13
+    affiliation: 14
   - name: Oliver Shorttle
     orcid: 0000-0002-8713-1446
-    affiliation: 2, 14
+    affiliation: 2, 15
   - name: Stef Smeets
     orcid: 0000-0002-5413-9038
     affiliation: 4
@@ -92,10 +95,10 @@ authors:
     affiliation: 1
   - name: Shang-Min Tsai
     orcid: 0000-0002-8163-4608
-    affiliation: 15
+    affiliation: 16
   - name: Anna Grace Ulses
     orcid: 0000-0002-9031-0824
-    affiliation: 16
+    affiliation: 17
 
 affiliations:
  - name: Kapteyn Astronomical Institute, University of Groningen, Groningen, The Netherlands
@@ -120,16 +123,18 @@ affiliations:
    index: 10
  - name: UTokyo Organization for Planetary Space Science, University of Tokyo, Tokyo, Japan
    index: 11
- - name: School of Computation, Information and Technology, Technical University of Munich, Munich, Germany
+ - name: SRON Netherlands Institute for Space Research, Leiden, The Netherlands
    index: 12
- - name: Department of Earth, Atmospheric and Planetary Sciences, Massachusetts Institute of Technology, Cambridge, MA, USA
+ - name: School of Computation, Information and Technology, Technical University of Munich, Munich, Germany
    index: 13
- - name: Department of Earth Sciences, University of Cambridge, Cambridge, United Kingdom
+ - name: Department of Earth, Atmospheric and Planetary Sciences, Massachusetts Institute of Technology, Cambridge, MA, USA
    index: 14
- - name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei, Taiwan
+ - name: Department of Earth Sciences, University of Cambridge, Cambridge, United Kingdom
    index: 15
- - name: University of Washington, Seattle, WA, USA
+ - name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei, Taiwan
    index: 16
+ - name: University of Washington, Seattle, WA, USA
+   index: 17
 
 date: 25 September 2026
 bibliography: paper.bib
