@@ -49,6 +49,15 @@ Trapped-melt fraction
     the interior state is unavailable buries at ``D_Z`` alone (``F_tl = 0``)
     and says so.
 
+Remelting
+---------
+A step on which the global melt fraction rises remelts part of the solid
+mantle. The flux is computed exactly as for a crystallising step, the same
+bracket at the same ``C_Z`` and ``F_tl`` over the remelted mass, and applied
+in reverse: the mass moves from the trapped reservoir back into the melt,
+capped at what trapping holds of each species. The remelted material is the
+most recently crystallised, so it is released at the rate it was buried.
+
 Reservoir bookkeeping
 ---------------------
 Trapped mass moves from ``{sp}_kg_liquid`` to ``{sp}_kg_solid``, leaving
@@ -131,7 +140,10 @@ class TrappingStep:
 
     @property
     def total_trapped(self) -> float:
-        """Mass buried this step, summed over species [kg]."""
+        """Net mass buried this step, summed over species [kg].
+
+        Negative on a remelting step, which releases trapped mass to the melt.
+        """
         return float(sum(self.trapped_kg.values()))
 
 
@@ -172,34 +184,26 @@ def melt_concentration(
 
 def trapped_mass(
     d_z: float,
-    f_tl: float | np.ndarray | None,
-    c_z: float | np.ndarray,
-    dm_rm: float | np.ndarray,
-    available_kg: float | np.ndarray,
-) -> float | np.ndarray:
-    """Mass of one species buried over a crystallisation increment [kg].
-
-    ``f_tl`` of ``None`` is the no-trapping mode: the bracket is not evaluated
-    and nothing moves. That is the absence of the process, not ``F_tl = 0``,
-    which would still bury the species at ``D_Z``.
-
-    The result is capped at ``available_kg``, the mass the melt actually holds,
-    which the unbounded product can exceed when ``dM_RM`` is large.
-    """
-    if f_tl is None:
-        zero = np.zeros(np.shape(np.asarray(c_z, dtype=float)), dtype=float)
-        return 0.0 if np.ndim(c_z) == 0 else zero
-    raw = effective_partition(f_tl, d_z) * np.asarray(c_z, dtype=float) * dm_rm
-    capped = np.minimum(raw, np.maximum(np.asarray(available_kg, dtype=float), 0.0))
-    capped = np.maximum(capped, 0.0)
-    if np.ndim(c_z) == 0 and np.ndim(f_tl) == 0 and np.ndim(dm_rm) == 0:
-        return float(capped)
-    return capped
-
-
-def crystallised_mass_from_phi(
-    m_mantle: float, phi_prev: float, phi_now: float
+    f_tl: float,
+    c_z: float,
+    dm_rm: float,
+    available_kg: float,
 ) -> tuple[float, bool]:
+    """Mass of one species moved over a crystallisation increment [kg].
+
+    ``[(1 - F_tl) D_Z + F_tl] C_Z |dM_RM|``, Sim et al. (2024) Eq. 6. The same
+    flux is buried on a crystallising step and released on a remelting one, so
+    only the magnitude of ``dm_rm`` enters. The result is capped at
+    ``available_kg``: the mass the melt holds when the species is buried, the
+    mass trapping holds when it is released. Returns the mass and whether the
+    cap bound.
+    """
+    raw = float(effective_partition(f_tl, d_z)) * float(c_z) * abs(float(dm_rm))
+    available = max(float(available_kg), 0.0)
+    return max(min(raw, available), 0.0), raw > available
+
+
+def crystallised_mass_from_phi(m_mantle: float, phi_prev: float, phi_now: float) -> float:
     """Mass crystallised over one step [kg], from the melt fraction.
 
     ``dM_RM = M_mantle * [Phi(t-1) - Phi(t)]``. Phi_global is a mass fraction
@@ -210,18 +214,14 @@ def crystallised_mass_from_phi(
     ``M_mantle_liquid``; the prevent-warming clamp moves Phi_global without
     resynchronising those masses, so the two disagree on clamped steps.
 
-    A negative increment means the mantle remelted, which releases trapped
-    volatiles rather than burying them. The release branch is out of scope, so
-    those steps are clamped to zero and reported.
+    A negative increment means the mantle remelted that much mass, which
+    releases trapped volatiles back to the melt.
     """
     if not np.isfinite(m_mantle) or m_mantle <= 0.0:
-        return 0.0, False
+        return 0.0
     if not (np.isfinite(phi_prev) and np.isfinite(phi_now)):
-        return 0.0, False
-    dm = float(m_mantle) * (float(phi_prev) - float(phi_now))
-    if dm < 0.0:
-        return 0.0, True
-    return dm, False
+        return 0.0
+    return float(m_mantle) * (float(phi_prev) - float(phi_now))
 
 
 def critical_melt_fraction(config: Config) -> float:
@@ -404,29 +404,29 @@ def keep_only_trapped_mass(hf_row: dict, derived: tuple[str, ...] = ()) -> None:
             hf_row[f'{element}_kg_total'] = mass
 
 
-def _apply_to_reservoirs(hf_row: dict, trapped: dict[str, float]) -> None:
-    """Move trapped mass from liquid to solid, per species and per element.
+def _apply_to_reservoirs(hf_row: dict, moved: dict[str, float]) -> None:
+    """Move mass between the melt and the solid, per species and per element.
 
-    The same mass is added to ``_kg_trapped``, the share of ``_kg_solid`` that
-    trapping owns and that the chemistry solve must leave alone.
+    A positive mass is buried: it leaves ``_kg_liquid`` for ``_kg_solid``, and
+    is added to ``_kg_trapped``, the share of ``_kg_solid`` that trapping owns
+    and that the chemistry solve must leave alone. A negative mass is released
+    by remelting and moves back the other way.
     """
-    for species, mass in trapped.items():
-        if mass <= 0.0:
-            continue
-        liq = float(hf_row.get(f'{species}_kg_liquid', 0.0))
-        sol = float(hf_row.get(f'{species}_kg_solid', 0.0))
-        hf_row[f'{species}_kg_liquid'] = max(0.0, liq - mass)
-        hf_row[f'{species}_kg_solid'] = sol + mass
-        hf_row[f'{species}_kg_trapped'] = _trapped(hf_row, species) + mass
+    for species, mass in moved.items():
+        if mass != 0.0:
+            _move(hf_row, species, mass)
+    for element, mass in element_masses_from_species(moved).items():
+        if element in vol_element_list and mass != 0.0:
+            _move(hf_row, element, mass)
 
-    for element, mass in element_masses_from_species(trapped).items():
-        if element not in vol_element_list or mass <= 0.0:
-            continue
-        liq = float(hf_row.get(f'{element}_kg_liquid', 0.0))
-        sol = float(hf_row.get(f'{element}_kg_solid', 0.0))
-        hf_row[f'{element}_kg_liquid'] = max(0.0, liq - mass)
-        hf_row[f'{element}_kg_solid'] = sol + mass
-        hf_row[f'{element}_kg_trapped'] = _trapped(hf_row, element) + mass
+
+def _move(hf_row: dict, name: str, mass: float) -> None:
+    """Take ``mass`` of one species or element out of the melt into the solid."""
+    liq = float(hf_row.get(f'{name}_kg_liquid', 0.0))
+    sol = float(hf_row.get(f'{name}_kg_solid', 0.0))
+    hf_row[f'{name}_kg_liquid'] = max(0.0, liq - mass)
+    hf_row[f'{name}_kg_solid'] = max(0.0, sol + mass)
+    hf_row[f'{name}_kg_trapped'] = max(0.0, _trapped(hf_row, name) + mass)
 
 
 SECS_PER_YEAR = 3.15576e7  # Julian year, matching the interior solver's step length
@@ -524,7 +524,9 @@ def _node_gravity(interior_o, r_stag: np.ndarray) -> np.ndarray | None:
     return None
 
 
-def _drainage_fraction(config, hf_row: dict, prev: dict, interior_o) -> TrappingStep | None:
+def _drainage_fraction(
+    config, hf_row: dict, prev: dict, interior_o, dm_rm: float
+) -> TrappingStep | None:
     """Trapped melt fraction from the drainage integral over the front.
 
     Returns ``None`` when the interior state needed to locate a front is not
@@ -575,14 +577,14 @@ def _drainage_fraction(config, hf_row: dict, prev: dict, interior_o) -> Trapping
             mode='front', dm_rm=0.0, f_tl=0.0, melt_mass=0.0, branch=BRANCH_NONE
         )
 
-    # Front speed from the crystallised mass rather than the reported front
-    # depth: the solid mantle mass is an integrated, closed quantity that moves
-    # smoothly, whereas the front depth is snapped to the nearest node and its
-    # difference is zero on most steps and a spike on the rest.
+    # Front speed from the mass crystallised over the step rather than the
+    # reported front depth, which is snapped to the nearest node and whose
+    # difference is zero on most steps and a spike on the rest. It is the same
+    # increment the flux uses, so a step cannot freeze by one measure and melt
+    # by another; a remelting step moves the front back at the same speed.
     dt_s = (float(hf_row['Time']) - float(prev['Time'])) * SECS_PER_YEAR
-    dm_solid = float(hf_row['M_mantle_solid']) - float(prev['M_mantle_solid'])
     area = 4.0 * np.pi * geom.r_base**2 * geom.rho_solid_base
-    v_f = dm_solid / (area * dt_s) if (area > 0.0 and dt_s > 0.0) else 0.0
+    v_f = abs(float(dm_rm)) / (area * dt_s) if (area > 0.0 and dt_s > 0.0) else 0.0
 
     grain = float(config.interior_energetics.grain_size)
     melt_visc = 10.0 ** float(config.interior_energetics.melt_log10visc)
@@ -618,7 +620,7 @@ def _drainage_fraction(config, hf_row: dict, prev: dict, interior_o) -> Trapping
     step.front_courant = courant
     reasons = [geom.guard_reason or 'the front is unresolved'] if branch == BRANCH_GUARD else []
     if v_f <= 0.0:
-        reasons.append(f'the solid mantle did not grow (front speed {v_f:.3g} m/s)')
+        reasons.append('the front speed is undefined on a step with no length')
     elif courant > 1.0:
         reasons.append(f'the front advanced {courant:.2f} of its thickness in one step')
     if reasons:
@@ -678,10 +680,11 @@ def _record(hf_row: dict, step: TrappingStep) -> None:
     hf_row['trap_kg_cumulative'] = (
         float(hf_row.get('trap_kg_cumulative', 0.0)) + step.total_trapped
     )
-    if step.total_trapped > 0.0:
+    if step.total_trapped != 0.0:
         log.info(
-            '    trapped    = %.3e kg  (F_tl = %.4g, dM_RM = %.3e kg)',
-            step.total_trapped,
+            '    %s = %.3e kg  (F_tl = %.4g, dM_RM = %.3e kg)',
+            'trapped ' if step.total_trapped > 0.0 else 'released',
+            abs(step.total_trapped),
             step.f_tl,
             step.dm_rm,
         )
@@ -692,10 +695,11 @@ def _record(hf_row: dict, step: TrappingStep) -> None:
         log.warning(
             'Trapping: the freezing front could not be integrated (%s). F_tl = %.3f '
             'is the no-drainage upper bound, the entry porosity capped at the '
-            'critical melt fraction; %.3e kg was buried under it this step.',
+            'critical melt fraction; %.3e kg was %s under it this step.',
             step.guard_reason or 'cause not recorded',
             step.f_tl,
-            step.total_trapped,
+            abs(step.total_trapped),
+            'released' if step.total_trapped < 0.0 else 'buried',
         )
 
 
@@ -755,42 +759,45 @@ def run_trapping(
     m_mantle = float(hf_row.get('M_mantle', 0.0))
     phi_now = float(hf_row.get('Phi_global', float('nan')))
     phi_prev = float(prev.get('Phi_global', float('nan')))
-    dm_rm, remelted = crystallised_mass_from_phi(m_mantle, phi_prev, phi_now)
+    dm_rm = crystallised_mass_from_phi(m_mantle, phi_prev, phi_now)
     # The dissolved masses in hf_row are still those of the previous chemistry
     # solve, so the melt they were dissolved into is the previous one. Dividing
     # by it recovers the concentration the solver computed.
     m_mantle_prev = float(prev.get('M_mantle', m_mantle))
     melt_mass = m_mantle_prev * max(0.0, min(1.0, phi_prev)) if np.isfinite(phi_prev) else 0.0
+    if dm_rm == 0.0 or melt_mass <= 0.0:
+        step = TrappingStep(mode=mode, dm_rm=dm_rm, f_tl=0.0, melt_mass=melt_mass)
+        _record(hf_row, step)
+        return step
 
-    step = _drainage_fraction(config, hf_row, prev, interior_o)
+    step = _drainage_fraction(config, hf_row, prev, interior_o, dm_rm)
     if step is None:
         # The front cannot be located without the interior profiles. The
-        # crystals still take up D_Z of each species, so the step buries at the
-        # crystal partition coefficients alone, on a branch of its own so a run
-        # cannot report it as a front that drained completely.
+        # crystals still take up D_Z of each species, so the step moves mass at
+        # the crystal partition coefficients alone, on a branch of its own so a
+        # run cannot report it as a front that drained completely.
         step = TrappingStep(mode=mode, dm_rm=0.0, f_tl=0.0, melt_mass=0.0)
         step.branch = BRANCH_FALLBACK
     step.mode = mode
     step.dm_rm = dm_rm
     step.melt_mass = melt_mass
-    step.remelted = remelted
-    if dm_rm <= 0.0 or melt_mass <= 0.0:
-        _record(hf_row, step)
-        return step
+    step.remelted = dm_rm < 0.0
 
+    # Crystallisation buries from the melt; remelting releases, by the same
+    # flux, from what trapping holds.
     d_z = partition_coefficients(config)
     for species in vol_list:
         kg_liquid = float(hf_row.get(f'{species}_kg_liquid', 0.0))
         if kg_liquid <= 0.0:
             continue
         c_z = melt_concentration(kg_liquid, melt_mass)
-        raw = float(effective_partition(step.f_tl, d_z[species])) * c_z * dm_rm
-        mass = min(raw, kg_liquid)
+        supply = kg_liquid if dm_rm > 0.0 else _trapped(hf_row, species)
+        mass, capped = trapped_mass(d_z[species], step.f_tl, c_z, dm_rm, supply)
         if mass <= 0.0:
             continue
-        if raw > kg_liquid:
+        if capped:
             step.supply_capped.append(species)
-        step.trapped_kg[species] = mass
+        step.trapped_kg[species] = mass if dm_rm > 0.0 else -mass
 
     _apply_to_reservoirs(hf_row, step.trapped_kg)
     _record(hf_row, step)

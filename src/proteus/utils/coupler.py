@@ -1084,10 +1084,10 @@ def GetHelpfileKeys():
         'esc_step_kg',      # loss applied on this step, after the cap [kg]
 
         # Solid-phase volatile trapping
-        'trap_dM_RM',       # mantle mass crystallised this step [kg]
+        'trap_dM_RM',       # mantle mass crystallised this step, negative when it remelted [kg]
         'trap_F_tl',        # trapped melt fraction applied this step [1]
-        'trap_kg_step',     # volatile mass buried this step [kg]
-        'trap_kg_cumulative',  # volatile mass buried since the run began [kg]
+        'trap_kg_step',     # volatile mass buried this step, negative when remelting released it [kg]
+        'trap_kg_cumulative',  # net volatile mass buried since the run began [kg]
         'trap_branch',      # drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state [1]
         'trap_tau_D',       # percolation time at the top of the front [yr]
         'trap_tau_s',       # matrix deformation time [yr]

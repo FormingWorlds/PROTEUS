@@ -1719,8 +1719,7 @@
       ],
       "consumers": [
         "interior_energetics",
-        "interior_struct",
-        "outgas"
+        "interior_struct"
       ]
     },
     {
@@ -2784,7 +2783,7 @@
     {
       "name": "trap_dM_RM",
       "unit": "kg",
-      "description": "mantle mass crystallised this step",
+      "description": "mantle mass crystallised this step, negative when it remelted",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -2812,7 +2811,7 @@
     {
       "name": "trap_kg_step",
       "unit": "kg",
-      "description": "volatile mass buried this step",
+      "description": "volatile mass buried this step, negative when remelting released it",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -2826,7 +2825,7 @@
     {
       "name": "trap_kg_cumulative",
       "unit": "kg",
-      "description": "volatile mass buried since the run began",
+      "description": "net volatile mass buried since the run began",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
