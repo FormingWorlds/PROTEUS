@@ -219,6 +219,14 @@ def check_accretion_interior_compatibility(instance, attribute, value):
             + ". Use interior_energetics.module = 'aragog' (or 'dummy' for a test)."
         )
 
+    struct_module = getattr(getattr(instance, 'interior_struct', None), 'module', None)
+    if struct_module == 'spider':
+        raise ValueError(
+            f"accretion.module = '{instance.accretion.module}' cannot run with "
+            "interior_struct.module = 'spider': SPIDER structure solve does not "
+            'support non-thermal solves during giant impacts.'
+        )
+
 
 def check_accretion_vapourise_compatibility(instance, attribute, value):
     """Reject accretion runs that also vapourise rock into the atmosphere.

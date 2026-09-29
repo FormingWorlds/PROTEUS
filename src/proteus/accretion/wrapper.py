@@ -370,7 +370,12 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # volatile budgets.
     hf_row['M_accreted_rock'] = float(hf_row.get('M_accreted_rock') or 0.0) + impactor_rock
     solve_structure(
-        handler.directories, config, handler.hf_all, hf_row, handler.directories['output']
+        handler.directories,
+        config,
+        handler.hf_all,
+        hf_row,
+        handler.directories['output'],
+        thermal_solve=False,
     )
 
     # Restore the conserved volatile budgets over the mass-scaled values the

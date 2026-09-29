@@ -1024,7 +1024,12 @@ def determine_interior_radius(
 
 
 def determine_interior_radius_with_dummy(
-    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
+    dirs: dict,
+    config: Config,
+    hf_all: pd.DataFrame,
+    hf_row: dict,
+    outdir: str,
+    thermal_solve: bool = True,
 ):
     """Determine interior structure using Noack & Lasbleis (2020) scaling laws.
 
@@ -1077,11 +1082,12 @@ def determine_interior_radius_with_dummy(
     hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']
 
     # Run first interior step
-    int_o = Interior_t(
-        nlev_b, spider_dir=dirs.get('spider'), eos_dir=config.interior_struct.eos_dir
-    )
-    int_o.ic = 1
-    run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
+    if thermal_solve:
+        int_o = Interior_t(
+            nlev_b, spider_dir=dirs.get('spider'), eos_dir=config.interior_struct.eos_dir
+        )
+        int_o.ic = 1
+        run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
     update_gravity(hf_row)
 
     calc_target_elemental_inventories(dirs, config, hf_row)
@@ -1544,7 +1550,12 @@ def _resolve_adiabatic_ic_structure(
 
 
 def determine_interior_radius_with_zalmoxis(
-    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
+    dirs: dict,
+    config: Config,
+    hf_all: pd.DataFrame,
+    hf_row: dict,
+    outdir: str,
+    thermal_solve: bool = True,
 ):
     """
     Determine the interior radius (R_int) of the planet using Zalmoxis.
@@ -1644,7 +1655,10 @@ def determine_interior_radius_with_zalmoxis(
     # by the finally block above), not the overridden 'adiabatic'.  This is
     # correct: the Zalmoxis solver already used the adiabatic mode to compute
     # the structure, and run_interior (SPIDER/ARAGOG) manages its own T(r).
-    run_interior(dirs, config, hf_all, hf_row, int_o)
+    if thermal_solve:
+        run_interior(dirs, config, hf_all, hf_row, int_o)
+    else:
+        update_planet_mass(hf_row)
 
 
 def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: str):
@@ -1868,6 +1882,43 @@ def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
     )
 
 
+def evaluate_molten_state(solver, hf_row: dict):
+    """Evaluate Aragog molten initial condition state without time integration.
+
+    Parameters
+    ----------
+    solver : EntropySolver
+        Aragog solver instance.
+    hf_row : dict
+        Current helpfile row.
+
+    Returns
+    -------
+    SolverOutput or None
+        State evaluated at the molten entropy profile with no time step.
+    """
+    if not hasattr(solver, 'get_state'):
+        return None
+
+    from types import SimpleNamespace
+
+    prev_solution = getattr(solver, '_solution', None)
+    t_curr = float(hf_row.get('Time', 0.0))
+    sol = SimpleNamespace(
+        y=solver._S0.reshape(-1, 1),
+        t=np.array([t_curr]),
+        status=0,
+        cvode_flag=0,
+        cvode_flag_name='SUCCESS',
+        message='',
+    )
+    try:
+        solver._solution = sol
+        return solver.get_state()
+    finally:
+        solver._solution = prev_solution
+
+
 def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None:
     """Re-melt the Aragog mantle so the reset survives to the next solve.
 
@@ -1981,6 +2032,26 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
 
     log.info('    mantle re-melted: Aragog entropy reset to the molten initial condition')
 
+    molten_out = evaluate_molten_state(solver, hf_row)
+    if molten_out is not None:
+        output = AragogRunner._build_helpfile_output(
+            molten_out,
+            hf_row,
+            interior_o=interior_o,
+            surface_d=config.atmos_clim.surface_d,
+            surface_bc_mode=config.interior_energetics.surface_bc_mode,
+        )
+        for key in (
+            'T_magma',
+            'Phi_global',
+            'Phi_global_vol',
+            'T_pot',
+            'M_mantle_liquid',
+            'M_mantle_solid',
+        ):
+            if key in output:
+                hf_row[key] = output[key]
+
 
 def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:
     """Reset the mantle to its molten initial condition after a giant impact.
@@ -2091,25 +2162,32 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
 
 
 def solve_structure(
-    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
+    dirs: dict,
+    config: Config,
+    hf_all: pd.DataFrame,
+    hf_row: dict,
+    outdir: str,
+    thermal_solve: bool = True,
 ):
-    """
-    Solve for the planet structure based on the method set in the configuration file.
+    """Solve for the planet structure based on the method set in the configuration file.
 
     If the structure is set by the radius, then this is trivial because the radius is used
     as an input to the interior modules anyway. If the structure is set by mass, then it is
     solved as an inverse problem for now.
     """
-
     # Set by total mass (mantle + core + volatiles)
     if config.planet.mass_tot is not None:
         # Choose the method to determine the interior radius
         match config.interior_struct.module:
             case 'dummy':
                 return determine_interior_radius_with_dummy(
-                    dirs, config, hf_all, hf_row, outdir
+                    dirs, config, hf_all, hf_row, outdir, thermal_solve=thermal_solve
                 )
             case 'spider':
+                if not thermal_solve:
+                    raise ValueError(
+                        "interior_struct.module = 'spider' does not support thermal_solve=False"
+                    )
                 return determine_interior_radius(dirs, config, hf_all, hf_row, outdir)
             case 'zalmoxis':
                 # Zalmoxis computes its own radius; temporarily disable orbital
@@ -2125,7 +2203,7 @@ def solve_structure(
                             config.params.stop.solid.phi_crit,
                         )
                     return determine_interior_radius_with_zalmoxis(
-                        dirs, config, hf_all, hf_row, outdir
+                        dirs, config, hf_all, hf_row, outdir, thermal_solve=thermal_solve
                     )
                 finally:
                     config.orbit.module = _orig_orbit_module

@@ -328,6 +328,24 @@ def test_a_run_stopped_on_an_impact_resumes_from_before_it(tmp_path):
     )
     pre_impact_T = float(t_magma[-2])
 
+    # The impact row keeps the landing step's non-zero energy increments and
+    # unclipped molten melt-state values from the re-melt.
+    impact_row = stored.iloc[-1]
+    assert float(impact_row['step_dE_state_heat_J']) != 0.0, (
+        'step_dE_state_heat_J was zeroed by the structure solve'
+    )
+    assert float(impact_row['step_dE_F_int_J']) != 0.0, (
+        'step_dE_F_int_J was zeroed by the structure solve'
+    )
+    assert float(impact_row['step_dE_F_cmb_J']) != 0.0, (
+        'step_dE_F_cmb_J was zeroed by the structure solve'
+    )
+    assert float(impact_row['step_solver_residual_J']) != 0.0, (
+        'step_solver_residual_J was zeroed by the structure solve'
+    )
+    assert float(impact_row['Phi_global']) == pytest.approx(1.0, rel=1e-6)
+    assert float(impact_row['T_magma']) == pytest.approx(TSURF_INIT, abs=1.0)
+
     # Resume. Nothing in the resume path is mocked: the walk-back is
     # select_resumable_snapshot reading what the first leg left on disk.
     leg2 = _make_runner(outdir, LEG2_STOP_TIME)
@@ -463,3 +481,42 @@ def test_accretion_resume_matches_uninterrupted_run(tmp_path):
     impacts_b = int((runner_b2.hf_all['M_accreted_rock'].diff() > 0.0).sum())
     assert impacts_a == 1
     assert impacts_b == 1
+
+
+@pytest.mark.slow
+@pytest.mark.physics_invariant
+def test_accretion_resume_with_sparse_snapshots_completes_past_impact(tmp_path):
+    """Resumed run with write_mod=2 completes past an impact on a non-snapshot step.
+
+    When write_mod > 1, the step landing the impact does not write an interior
+    snapshot. A resumed run must not attempt to load a missing snapshot at the
+    impact time during structure solving.
+    """
+    outdir = tmp_path / 'sparse_resume'
+    outdir.mkdir()
+
+    # Configure run with write_mod = 2 so odd steps write no snapshot
+    leg1 = _make_runner(outdir, IMPACT_TIME)
+    leg1.config.params.out.write_mod = 2
+    leg1.config.params.offline = False
+    try:
+        download_sufficient_data(leg1.config, clean=False)
+    finally:
+        leg1.config.params.offline = True
+    leg1.start(resume=False, offline=True)
+
+    # Confirm the impact step at IMPACT_TIME wrote no snapshot
+    snapshots = _snapshot_times(outdir)
+    assert round(IMPACT_TIME) not in snapshots, (
+        f'expected no snapshot at {IMPACT_TIME:.0f} yr with write_mod=2 (found {snapshots})'
+    )
+
+    # Resume past the impact. Pre-fix, the hidden solve looked for a snapshot and raised FileNotFoundError.
+    leg2 = _make_runner(outdir, LEG2_STOP_TIME)
+    leg2.config.params.out.write_mod = 2
+    leg2.start(resume=True, offline=True)
+
+    times = leg2.hf_all['Time'].to_numpy()
+    assert times.max() > IMPACT_TIME, (
+        f'Resumed run failed to advance past impact at {IMPACT_TIME:.1f} yr'
+    )

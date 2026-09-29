@@ -315,7 +315,11 @@ def test_reference_config_declares_the_accretion_section():
 
 
 def _compat_instance(
-    accretion_module, interior_module, temperature_mode='liquidus_super', vapourise=False
+    accretion_module,
+    interior_module,
+    temperature_mode='liquidus_super',
+    vapourise=False,
+    struct_module='dummy',
 ):
     """Duck-typed config instance the compatibility validators read."""
     from types import SimpleNamespace
@@ -323,6 +327,7 @@ def _compat_instance(
     return SimpleNamespace(
         accretion=SimpleNamespace(module=accretion_module),
         interior_energetics=SimpleNamespace(module=interior_module),
+        interior_struct=SimpleNamespace(module=struct_module),
         outgas=SimpleNamespace(vapourise=vapourise),
         planet=SimpleNamespace(temperature_mode=temperature_mode),
     )
@@ -354,6 +359,26 @@ def test_accretion_on_spider_is_refused_at_config_load():
         )
     # No accretion: SPIDER is fine, the check does not fire.
     check_accretion_interior_compatibility(_compat_instance(None, 'spider'), None, None)
+
+
+@pytest.mark.unit
+def test_accretion_with_spider_interior_struct_is_refused_at_config_load():
+    """Accretion combined with interior_struct.module == 'spider' is rejected at config load."""
+    from proteus.config._config import check_accretion_interior_compatibility
+
+    for module in ('morrigan', 'dummy', 'timeline'):
+        with pytest.raises(
+            ValueError,
+            match="interior_struct.module = 'spider': SPIDER structure solve does not support",
+        ):
+            check_accretion_interior_compatibility(
+                _compat_instance(module, 'aragog', struct_module='spider'), None, None
+            )
+
+    # When accretion is disabled, interior_struct spider is admitted.
+    check_accretion_interior_compatibility(
+        _compat_instance(None, 'aragog', struct_module='spider'), None, None
+    )
 
 
 @pytest.mark.unit

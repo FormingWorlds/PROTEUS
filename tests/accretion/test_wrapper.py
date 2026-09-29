@@ -782,7 +782,7 @@ def _converging_solve_structure():
     """
     from proteus.utils.constants import M_earth, element_list
 
-    def _mock(dirs, config, hf_all, hf_row, outdir):
+    def _mock(dirs, config, hf_all, hf_row, outdir, **kwargs):
         m_target = config.planet.mass_tot * M_earth
         m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
         hf_row['M_int'] = m_target - m_ele
@@ -1346,7 +1346,7 @@ def _rescaling_solve_structure(factor):
     against exactly this rescaling, not merely left untouched by a no-op mock.
     """
 
-    def _mock(dirs, config, hf_all, hf_row, outdir):
+    def _mock(dirs, config, hf_all, hf_row, outdir, **kwargs):
         for key in list(hf_row):
             if key.endswith('_kg_total'):
                 hf_row[key] *= factor
@@ -1503,7 +1503,7 @@ def test_the_impact_leaves_the_planet_mass_consistent_with_its_parts(monkeypatch
     handler.hf_row['M_ele'] = 5.0e20
     handler.hf_row['M_planet'] = 0.0  # stale sentinel; must not survive
 
-    def _solve(dirs, config, hf_all, hf_row, output):
+    def _solve(dirs, config, hf_all, hf_row, output, **kwargs):
         hf_row['M_int'] = config.planet.mass_tot * 5.9736e24
         # Write the inconsistent pair a real structure solve would leave.
         hf_row['M_ele'] = 9.9e21
@@ -1974,7 +1974,11 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
             )
         interior_o._last_entropy = np.array([6000.0])
         if write_data:
-            snap_path = data_dir / f'{format_subyear_time(t)}_int.nc'
+            early_path = data_dir / '0p000_int.nc'
+            if not early_path.exists():
+                early_path.write_text('initial snapshot')
+            snap_time = t + interior_o.dt
+            snap_path = data_dir / f'{format_subyear_time(snap_time)}_int.nc'
             snap_path.parent.mkdir(parents=True, exist_ok=True)
             snap_path.write_text('snapshot')
             written_snapshots.append(snap_path)
@@ -2136,7 +2140,7 @@ def test_the_row_an_impact_leaves_satisfies_the_runtime_mass_invariants(monkeypa
     assert_mass_conservation(hf_row, require_atm_le_planet=True)
     assert_surface_pressure_consistency(config, hf_row)
 
-    def _solve(dirs, cfg, hf_all, row, output):
+    def _solve(dirs, cfg, hf_all, row, output, **kwargs):
         row['M_int'] = cfg.planet.mass_tot * 5.9736e24
 
     monkeypatch.setattr(
