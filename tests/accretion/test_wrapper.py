@@ -1819,6 +1819,58 @@ def test_the_impact_eccentricity_is_clamped_to_a_bound_orbit(monkeypatch, caplog
 
 
 @pytest.mark.unit
+def test_orbit_elements_evolve_from_helpfile_row(monkeypatch):
+    """An impact evolves orbit elements from the helpfile row rather than config.
+
+    During a run, the orbit elements in the helpfile row evolve over time.
+    When an impact occurs, the eccentricity change and semi-major axis ratio
+    must be applied to the current helpfile row values, updating both the
+    config and the row. If the row values are missing or NaN, they fall back
+    to config.orbit.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import AU
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+
+    # Row eccentricity differs from config; change applies to row value
+    handler = _impact_handler(semimajoraxis=1.0, eccentricity=0.1)
+    handler.hf_row['eccentricity'] = 0.01
+    event = _impact_event(a_before=1.0e11, a_after=1.0e11, e_before=0.01, e_after=0.04)
+    apply_impact(handler, event)
+
+    assert handler.config.orbit.eccentricity == pytest.approx(0.04, rel=1e-12)
+    assert handler.hf_row['eccentricity'] == pytest.approx(0.04, rel=1e-12)
+
+    # Row semimajoraxis differs from config; ratio applies to row value
+    handler_a = _impact_handler(semimajoraxis=1.0, eccentricity=0.05)
+    handler_a.hf_row['semimajorax'] = 0.8 * AU
+    event_a = _impact_event(a_before=1.0e11, a_after=1.2e11, e_before=0.01, e_after=0.01)
+    apply_impact(handler_a, event_a)
+
+    assert handler_a.config.orbit.semimajoraxis == pytest.approx(0.96, rel=1e-12)
+    assert handler_a.hf_row['semimajorax'] == pytest.approx(0.96 * AU, rel=1e-12)
+
+    # Missing or NaN row eccentricity falls back to config.orbit.eccentricity
+    handler_nan = _impact_handler(semimajoraxis=1.0, eccentricity=0.15)
+    handler_nan.hf_row['eccentricity'] = float('nan')
+    event_nan = _impact_event(a_before=1.0e11, a_after=1.0e11, e_before=0.01, e_after=0.04)
+    apply_impact(handler_nan, event_nan)
+
+    assert handler_nan.config.orbit.eccentricity == pytest.approx(0.18, rel=1e-12)
+    assert handler_nan.hf_row['eccentricity'] == pytest.approx(0.18, rel=1e-12)
+
+    handler_none = _impact_handler(semimajoraxis=1.0, eccentricity=0.15)
+    del handler_none.hf_row['eccentricity']
+    apply_impact(handler_none, event_nan)
+
+    assert handler_none.config.orbit.eccentricity == pytest.approx(0.18, rel=1e-12)
+    assert handler_none.hf_row['eccentricity'] == pytest.approx(0.18, rel=1e-12)
+
+
+@pytest.mark.unit
 def test_discard_preimpact_snapshot_drops_only_the_impact_steps_own_snapshot(tmp_path, caplog):
     """A step that both wrote a snapshot and landed an impact discards it.
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 from typing import TYPE_CHECKING
 
@@ -418,7 +419,14 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # a ratio cannot express. The result is clamped to a bound orbit, so an
     # impact that excites a planet already near unity cannot unbind it on paper.
     ratio = event.semimajoraxis_ratio
-    requested = config.orbit.eccentricity + event.eccentricity_change
+
+    base_e = hf_row.get('eccentricity')
+    if base_e is None or math.isnan(float(base_e)):
+        base_e = float(config.orbit.eccentricity)
+    else:
+        base_e = float(base_e)
+
+    requested = base_e + event.eccentricity_change
     eccentricity = min(max(requested, 0.0), _ECC_MAX)
 
     # A saturated clamp means the impact asked for an orbit the rest of the model
@@ -433,9 +441,16 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
             event.eccentricity_change,
         )
 
-    config.orbit.semimajoraxis *= ratio
+    base_a = hf_row.get('semimajorax')
+    if base_a is None or math.isnan(float(base_a)) or float(base_a) <= 0.0:
+        base_a = float(config.orbit.semimajoraxis) * AU
+    else:
+        base_a = float(base_a)
+
+    new_a = base_a * ratio
+    config.orbit.semimajoraxis = new_a / AU
     config.orbit.eccentricity = eccentricity
-    hf_row['semimajorax'] *= ratio
+    hf_row['semimajorax'] = new_a
     hf_row['eccentricity'] = eccentricity
 
     log.info(
