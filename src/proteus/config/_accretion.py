@@ -8,30 +8,12 @@ from ._converters import none_if_none
 SELECTORS = ('match_config', 'mass', 'semimajoraxis', 'id')
 
 
-def _valid_eccentricity_init(instance, attribute, value: float) -> None:
-    if not (0.0 <= value < 1.0):
-        raise ValueError(
-            f'`accretion.morrigan.eccentricity_init` must be in [0, 1), got {value}'
-        )
-
-
-def _valid_impact_angle(instance, attribute, value: float) -> None:
-    if not (0.0 <= value <= 90.0):
-        raise ValueError(
-            f'`accretion.morrigan.impact_angle` must be in [0, 90] deg '
-            f'(Morrigan driver.py:236: b = sin(deg2rad(impact_angle))), got {value}'
-        )
-
-
 def valid_morrigan(instance, attribute, value):
     """The Morrigan module requires as many embryo masses as planets, all positive, and a selector value when the selector is a semi-major axis or planet id."""
     if instance.module != 'morrigan':
         return
 
     mor = instance.morrigan
-
-    _valid_eccentricity_init(instance, 'eccentricity_init', mor.eccentricity_init)
-    _valid_impact_angle(instance, 'impact_angle', mor.impact_angle)
 
     if mor.masses and len(mor.masses) != mor.num_planets:
         raise ValueError(
@@ -123,18 +105,18 @@ class Morrigan:
     num_planets: int = field(default=10, validator=ge(2))
     masses: list[float] = field(factory=list)
     mass_equal: float = field(default=0.5, validator=gt(0))
-    eccentricity_init: float = field(default=0.01, validator=_valid_eccentricity_init)
+    eccentricity_init: float = field(default=0.01, validator=[ge(0), lt(1)])
 
     inner_edge: float = field(default=0.1, validator=gt(0))
     spacing: float = field(default=10.0, validator=[gt(0), le(50.0)])
     density: float = field(default=5500.0, validator=gt(0))
-    impact_angle: float = field(default=45.0, validator=_valid_impact_angle)
+    impact_angle: float = field(default=45.0, validator=[ge(0), le(90)])
 
     evolution_time: float = field(default=1.0, validator=gt(0))
     inner_cutoff: float = field(default=0.005, validator=gt(0))
 
     selector: str = field(default='match_config', validator=in_(SELECTORS))
-    selector_value: int | float | str | None = field(default=None, converter=none_if_none)
+    selector_value: float | str | None = field(default=None, converter=none_if_none)
 
 
 def valid_accretiondummy(instance, attribute, value):

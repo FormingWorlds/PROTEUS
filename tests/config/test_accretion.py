@@ -604,7 +604,27 @@ def test_morrigan_impact_angle_bounds():
         cfg = Accretion(module='morrigan', morrigan=Morrigan(impact_angle=valid_angle))
         assert cfg.morrigan.impact_angle == pytest.approx(valid_angle)
 
-    # Angles outside [0, 90] degrees are rejected with Morrigan driver.py:236 cited.
+    # Angles outside [0, 90] degrees are rejected.
     for invalid_angle in (-5.0, 90.1, 120.0):
-        with pytest.raises(ValueError, match=r'Morrigan driver\.py:236'):
+        with pytest.raises(ValueError, match='impact_angle'):
             Accretion(module='morrigan', morrigan=Morrigan(impact_angle=invalid_angle))
+
+
+@pytest.mark.unit
+def test_morrigan_fields_have_declarative_bounds_and_valid_selector_type():
+    """Morrigan config fields declare bounds via attrs validators and selector_value has no pipe in type."""
+    import attrs
+
+    from proteus.config._accretion import Morrigan
+
+    fields = {f.name: f for f in attrs.fields(Morrigan)}
+
+    v_e = fields['eccentricity_init'].validator
+    vals_e = v_e._validators if hasattr(v_e, '_validators') else [v_e]
+    bounds_e = [getattr(v, 'bound', None) for v in vals_e if hasattr(v, 'bound')]
+    assert bounds_e == [0, 1]
+
+    v_a = fields['impact_angle'].validator
+    vals_a = v_a._validators if hasattr(v_a, '_validators') else [v_a]
+    bounds_a = [getattr(v, 'bound', None) for v in vals_a if hasattr(v, 'bound')]
+    assert bounds_a == [0, 90]

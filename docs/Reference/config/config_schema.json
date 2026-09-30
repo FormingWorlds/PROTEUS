@@ -10062,7 +10062,16 @@
       "accepts_none": false,
       "default": "0.01",
       "choices": null,
-      "bounds": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
       "description": "Initial eccentricity shared by all embryos.",
       "doc_source": "attributes",
       "group_order": 0,
@@ -10145,7 +10154,16 @@
       "accepts_none": false,
       "default": "45.0",
       "choices": null,
-      "bounds": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 90
+        }
+      ],
       "description": "Impact angle [deg]. The impact parameter is its sine.",
       "doc_source": "attributes",
       "group_order": 0,
@@ -10220,7 +10238,7 @@
       "path": "accretion.morrigan.selector_value",
       "toml_section": "accretion.morrigan",
       "class": "Morrigan",
-      "type": "int | float or none",
+      "type": "float or none",
       "accepts_none": true,
       "default": "none",
       "choices": null,
