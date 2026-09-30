@@ -2949,3 +2949,43 @@ def test_restore_accretion_state_ignores_events_at_or_before_zero_on_resume(tmp_
     restore_accretion_state(handler)
     assert handler.hf_row['n_impacts_applied'] == 1
     assert handler.impact_events == []
+
+
+@pytest.mark.unit
+def test_empty_user_timeline_logs_warning(tmp_path, caplog):
+    """An empty user timeline in timeline or morrigan module logs a warning."""
+    import logging
+    from unittest.mock import patch
+
+    empty_csv = tmp_path / 'empty.csv'
+    empty_csv.write_text(','.join(TIMELINE_COLUMNS) + chr(10))
+
+    # Case 1: timeline module with empty file
+    handler = _handler(
+        module='timeline',
+        timeline_path=empty_csv,
+        output_dir=tmp_path / 'out_timeline',
+    )
+    (tmp_path / 'out_timeline').mkdir()
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        events = init_accretion(handler)
+
+    assert events == []
+    assert any('0 impacts' in r.message for r in caplog.records)
+
+    # Case 2: morrigan module resolving to 0 impacts
+    caplog.clear()
+    handler_morrigan = _handler(
+        module='morrigan',
+        timeline_path=tmp_path / 'unused.csv',
+        output_dir=tmp_path / 'out_morrigan',
+    )
+    (tmp_path / 'out_morrigan').mkdir()
+
+    with patch('proteus.accretion.morrigan.get_timeline', return_value=[]):
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+            events = init_accretion(handler_morrigan)
+
+    assert events == []
+    assert any('0 impacts' in r.message for r in caplog.records)

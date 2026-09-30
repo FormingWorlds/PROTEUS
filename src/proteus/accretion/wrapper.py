@@ -106,6 +106,9 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
         events = get_timeline(config)
         write_timeline(events, resolved_path)
 
+    if not events and module in ('timeline', 'morrigan'):
+        log.warning("Accretion module '%s' resolved to 0 impacts", module)
+
     return _drop_events_before_start(
         events, handler.hf_row.get('Time', 0.0), resumed=bool(config.params.resume)
     )
