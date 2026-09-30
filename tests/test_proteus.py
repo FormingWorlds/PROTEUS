@@ -2684,6 +2684,8 @@ def test_proteus_start_resume_refuses_legacy_accretion_ledger(tmp_path):
     hf_df['M_accreted_rock'] = 1.0e23
     hf_df['n_impacts_applied'] = 0.0
 
+    initial_mass = p.config.planet.mass_tot
+
     with ExitStack() as stack:
         for target in _START_PATCHES:
             stack.enter_context(patch(target))
@@ -2721,3 +2723,66 @@ def test_proteus_start_resume_refuses_legacy_accretion_ledger(tmp_path):
         err = str(excinfo.value)
         assert 'predates the impact counter' in err
         assert 'runtime_helpfile.csv' in err
+
+    assert p.config.planet.mass_tot == initial_mass
+    assert p.impact_events == [ev1]
+
+
+@pytest.mark.unit
+def test_proteus_start_resume_accepts_legacy_accretion_ledger_when_disabled(tmp_path, caplog):
+    """Proteus.start(resume=True) accepts legacy helpfile when accretion module is None."""
+    from proteus.utils.constants import M_earth
+
+    p = _make_proteus_instance(tmp_path)
+    p.config.accretion.module = None
+    p.config.planet.mass_tot = 1.0
+    initial_mass = 1.0
+
+    hf_df = _make_hf_df()
+    hf_df['M_accreted_rock'] = 1.0e23
+    hf_df['n_impacts_applied'] = 0.0
+
+    class _StopAfterResume(Exception):
+        pass
+
+    def _status_hook(dirs, status):
+        if status == 1:
+            raise _StopAfterResume()
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                return_value=(hf_df, []),
+            )
+        )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.ZeroHelpfileRow', return_value={}))
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_int = MagicMock()
+        mock_int.ic = 1
+        mock_interior_t.return_value = mock_int
+        stack.enter_context(patch('proteus.star.wrapper.init_star'))
+        stack.enter_context(patch('proteus.orbit.wrapper.init_orbit'))
+        stack.enter_context(patch('proteus.proteus.UpdateStatusfile', side_effect=_status_hook))
+
+        with pytest.raises(_StopAfterResume):
+            p.start(resume=True, offline=True)
+
+    assert p.config.planet.mass_tot == pytest.approx(initial_mass + 1.0e23 / M_earth)
+    assert p.impact_events == []
+    log_files = list(tmp_path.glob('proteus_*.log'))
+    log_text = '\n'.join(f.read_text() for f in log_files) if log_files else caplog.text
+    assert 'Accretion is disabled for this resume' in log_text

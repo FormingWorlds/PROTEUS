@@ -3105,11 +3105,54 @@ def test_restore_accretion_state_refuses_invalid_m_accreted_rock(tmp_path):
             hf_row=dict(row),
             pending=[],
         )
-        with pytest.raises(ValueError, match='invalid M_accreted_rock') as excinfo:
+        with pytest.raises(RuntimeError, match='invalid M_accreted_rock') as excinfo:
             restore_accretion_state(handler)
 
         err = str(excinfo.value)
         assert 'runtime_helpfile.csv' in err
+        assert 'Restart the simulation' in err
+        assert 'n_impacts_applied' not in handler.hf_row
+        assert handler.hf_row == row
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_refuses_invalid_time(tmp_path):
+    """Non-finite, negative, or non-numeric Time raises RuntimeError without mutating state."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    bad_values = (
+        float('nan'),
+        'nan',
+        -1.0,
+        -100.0,
+        float('inf'),
+        float('-inf'),
+        'inf',
+        '-inf',
+        [],
+        {},
+    )
+    for bad_time in bad_values:
+        row = {
+            'Time': bad_time,
+            'M_accreted_rock': 1e23,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        }
+        handler = _resumed_handler(
+            tmp_path,
+            events=[],
+            hf_row=dict(row),
+            pending=[],
+        )
+        with pytest.raises(RuntimeError, match='invalid Time') as excinfo:
+            restore_accretion_state(handler)
+
+        err = str(excinfo.value)
+        assert 'runtime_helpfile.csv' in err
+        assert 'Restart the simulation' in err
+        assert 'n_impacts_applied' not in handler.hf_row
         assert handler.hf_row == row
 
 
@@ -3139,6 +3182,8 @@ def test_restore_accretion_state_empty_hf_all(tmp_path):
     )
     restore_accretion_state(handler)
     assert handler.hf_row['n_impacts_applied'] == 1
+    assert handler.hf_all.empty
+    assert handler.impact_events == []
 
 
 @pytest.mark.unit
@@ -3255,7 +3300,7 @@ def test_restore_accretion_state_refuses_counter_exceeding_total_events(tmp_path
         hf_row={
             'Time': 5.0,
             'M_accreted_rock': 1e23,
-            'n_impacts_applied': 5,
+            'n_impacts_applied': 2,
             'semimajorax': 1.0 * AU,
             'eccentricity': 0.0,
         },
@@ -3326,19 +3371,18 @@ def test_restore_accretion_state_legacy_ledger_accepted_when_accretion_disabled(
     from types import SimpleNamespace
 
     from proteus.accretion.wrapper import restore_accretion_state
-    from proteus.utils.constants import AU
+    from proteus.utils.constants import AU, M_earth
 
     handler = SimpleNamespace(
         config=SimpleNamespace(
             params=SimpleNamespace(resume=True),
-            accretion=SimpleNamespace(module='none'),
+            accretion=SimpleNamespace(module=None),
             planet=SimpleNamespace(mass_tot=0.5),
             orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
         ),
         hf_row={
             'Time': 100.0,
             'M_accreted_rock': 1e23,
-            'n_impacts_applied': 0,
             'semimajorax': 1.0 * AU,
             'eccentricity': 0.0,
         },
@@ -3349,13 +3393,15 @@ def test_restore_accretion_state_legacy_ledger_accepted_when_accretion_disabled(
     with caplog.at_level(logging.WARNING):
         restore_accretion_state(handler)
 
-    assert handler.config.planet.mass_tot > 0.5
+    assert handler.config.planet.mass_tot == pytest.approx(0.5 + 1e23 / M_earth)
+    assert handler.config.orbit.semimajoraxis == pytest.approx(1.0)
+    assert handler.hf_row['n_impacts_applied'] == 0
     assert 'Accretion is disabled for this resume' in caplog.text
 
 
 @pytest.mark.unit
 def test_restore_accretion_state_legacy_ledger_refused_when_impacts_active(tmp_path):
-    """When impacts are scheduled, positive rock with zero counter raises RuntimeError."""
+    """When impacts are scheduled, positive rock with zero or absent counter raises RuntimeError."""
     from types import SimpleNamespace
 
     from proteus.accretion.common import ImpactEvent
@@ -3389,7 +3435,6 @@ def test_restore_accretion_state_legacy_ledger_refused_when_impacts_active(tmp_p
         hf_row={
             'Time': 100.0,
             'M_accreted_rock': 1e23,
-            'n_impacts_applied': 0,
             'semimajorax': 1.0 * AU,
             'eccentricity': 0.0,
         },
@@ -3404,5 +3449,215 @@ def test_restore_accretion_state_legacy_ledger_refused_when_impacts_active(tmp_p
     err = str(exc_info.value)
     assert 'runtime_helpfile.csv' in err
     assert 'predates the impact counter' in err
+    assert 'Restart the simulation' in err
+    assert 'n_impacts_applied' not in handler.hf_row
     assert handler.hf_row == hf_row_orig
     assert handler.impact_events == events_orig
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_refuses_negative_counter_without_timeline(tmp_path):
+    """Negative counter without an impact timeline raises corrupt RuntimeError."""
+    from types import SimpleNamespace
+
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            params=SimpleNamespace(resume=True),
+            accretion=SimpleNamespace(module=None),
+            planet=SimpleNamespace(mass_tot=0.5),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row={
+            'Time': 100.0,
+            'M_accreted_rock': 0.0,
+            'n_impacts_applied': -1,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        hf_all=None,
+        directories={'output': str(tmp_path)},
+        impact_events=None,
+    )
+    hf_row_orig = dict(handler.hf_row)
+    with pytest.raises(RuntimeError) as exc_info:
+        restore_accretion_state(handler)
+    err = str(exc_info.value)
+    assert 'corrupt n_impacts_applied' in err
+    assert 'Restart the simulation' in err
+    assert 'runtime_helpfile.csv' in err
+    assert handler.hf_row == hf_row_orig
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_timeline_ignores_events_with_zero_or_negative_time(
+    tmp_path,
+):
+    """Events with non-positive times are excluded from events_before validation."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev_neg = _impact_event(
+        time=-5.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev_zero = _impact_event(
+        time=0.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev_pos = _impact_event(
+        time=10.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    handler = _resumed_handler(
+        tmp_path,
+        events=[ev_neg, ev_zero, ev_pos],
+        hf_row={
+            'Time': 5.0,
+            'M_accreted_rock': 0.0,
+            'n_impacts_applied': 0,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        pending=[ev_neg, ev_zero, ev_pos],
+    )
+    restore_accretion_state(handler)
+    assert handler.hf_row['n_impacts_applied'] == 0
+    assert handler.impact_events == [ev_pos]
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_excess_counter_within_init_window_accepted(tmp_path):
+    """Excess counter over preceding events within the initialization window is accepted."""
+    import pandas as pd
+
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = _impact_event(
+        time=5.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev2 = _impact_event(
+        time=8.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    ev3 = _impact_event(
+        time=15.0, M_target_before=6.172e24, M_impactor=1e23, M_merged_after=6.272e24
+    )
+    hf_all = pd.DataFrame(
+        [
+            {'Time': 0.0, 'M_accreted_rock': 0.0, 'semimajorax': 1.0 * AU, 'eccentricity': 0.0},
+            {
+                'Time': 10.0,
+                'M_accreted_rock': 2e23,
+                'semimajorax': 1.0 * AU,
+                'eccentricity': 0.0,
+            },
+        ]
+    )
+    handler = _resumed_handler(
+        tmp_path,
+        events=[ev1, ev2, ev3],
+        hf_row={
+            'Time': 0.0,
+            'M_accreted_rock': 2e23,
+            'n_impacts_applied': 2,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        hf_all=hf_all,
+        pending=[ev1, ev2, ev3],
+    )
+    restore_accretion_state(handler)
+    assert handler.hf_row['n_impacts_applied'] == 2
+    assert handler.impact_events == [ev3]
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_excess_counter_exceeding_init_window_refused(tmp_path):
+    """Excess counter greater than initialization window events raises RuntimeError."""
+    import pandas as pd
+
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = _impact_event(
+        time=5.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev2 = _impact_event(
+        time=8.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    ev3 = _impact_event(
+        time=15.0, M_target_before=6.172e24, M_impactor=1e23, M_merged_after=6.272e24
+    )
+    hf_all = pd.DataFrame(
+        [
+            {'Time': 0.0, 'M_accreted_rock': 0.0, 'semimajorax': 1.0 * AU, 'eccentricity': 0.0},
+            {
+                'Time': 10.0,
+                'M_accreted_rock': 2e23,
+                'semimajorax': 1.0 * AU,
+                'eccentricity': 0.0,
+            },
+        ]
+    )
+    handler = _resumed_handler(
+        tmp_path,
+        events=[ev1, ev2, ev3],
+        hf_row={
+            'Time': 0.0,
+            'M_accreted_rock': 3e23,
+            'n_impacts_applied': 3,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        hf_all=hf_all,
+        pending=[ev1, ev2, ev3],
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        restore_accretion_state(handler)
+    err = str(exc_info.value)
+    assert 'initialization window' in err
+    assert 'Restart the simulation' in err
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_excess_counter_without_positive_time_in_hf_all_warns(
+    tmp_path, caplog
+):
+    """Without positive time rows in hf_all, excess counter logs a warning with event details."""
+    import logging
+
+    import pandas as pd
+
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = _impact_event(
+        time=5.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 0.0,
+                'M_accreted_rock': 1e23,
+                'semimajorax': 1.0 * AU,
+                'eccentricity': 0.0,
+            },
+        ]
+    )
+    handler = _resumed_handler(
+        tmp_path,
+        events=[ev1],
+        hf_row={
+            'Time': 0.0,
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 1,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        hf_all=hf_all,
+        pending=[ev1],
+    )
+    with caplog.at_level(logging.WARNING):
+        restore_accretion_state(handler)
+    assert handler.hf_row['n_impacts_applied'] == 1
+    assert 'initialization-stage impacts' in caplog.text
