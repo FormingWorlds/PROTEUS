@@ -2859,6 +2859,114 @@ def test_restore_accretion_state_persists_counter_to_hf_all_last_row(tmp_path):
 
 
 @pytest.mark.unit
+def test_legacy_resume_then_impact_records_k_plus_one_in_hf_all(tmp_path):
+    """Resuming legacy helpfile with k impacts then applying one more records k+1 in hf_all."""
+    import pandas as pd
+
+    from proteus.accretion.common import ImpactEvent, write_timeline
+    from proteus.accretion.wrapper import (
+        _RESOLVED_TIMELINE_FILE,
+        apply_impact,
+        restore_accretion_state,
+    )
+    from proteus.config import Config
+    from proteus.utils.constants import AU
+
+    ev1 = ImpactEvent(
+        time=50.0,
+        M_target_before=5.972e24,
+        M_impactor=1e23,
+        M_merged_after=6.072e24,
+        v_impact=1.2e4,
+        v_esc=1.1e4,
+        impact_parameter=0.3,
+        R_target_before=6.4e6,
+        R_impactor=2.0e6,
+        rho_target=5510.0,
+        rho_impactor=3930.0,
+        a_before=1.4e11,
+        a_after=1.4e11,
+        e_before=0.03,
+        e_after=0.03,
+        id_target=1,
+        id_impactor=2,
+    )
+    ev2 = ImpactEvent(
+        time=200.0,
+        M_target_before=6.072e24,
+        M_impactor=1e23,
+        M_merged_after=6.172e24,
+        v_impact=1.2e4,
+        v_esc=1.1e4,
+        impact_parameter=0.3,
+        R_target_before=6.4e6,
+        R_impactor=2.0e6,
+        rho_target=5510.0,
+        rho_impactor=3930.0,
+        a_before=1.4e11,
+        a_after=1.4e11,
+        e_before=0.03,
+        e_after=0.03,
+        id_target=1,
+        id_impactor=3,
+    )
+    write_timeline([ev1, ev2], str(tmp_path / _RESOLVED_TIMELINE_FILE))
+
+    config = Config()
+    config.interior_struct.module = 'dummy'
+    config.interior_energetics.module = 'dummy'
+    config.planet.mass_tot = 1.0
+    config.accretion.module = 'timeline'
+    config.accretion.impactor_volatiles = 'dry'
+    config.params.resume = True
+
+    # Legacy helpfile has k=1 prior impact and backfilled 0.0 counter.
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 100.0,
+                'M_accreted_rock': 1e23,
+                'n_impacts_applied': 0.0,
+                'semimajorax': 1.0 * AU,
+                'eccentricity': 0.0,
+                'T_magma': 2000.0,
+                'Phi_global': 1.0,
+                'M_int': 5.972e24,
+                'M_core': 0.3 * 5.972e24,
+                'M_mantle': 0.7 * 5.972e24,
+                'R_int': 6.4e6,
+                'R_core': 3.5e6,
+                'gravity': 9.8,
+                'F_atm': 0.0,
+            }
+        ]
+    )
+    handler = SimpleNamespace(
+        config=config,
+        hf_row=hf_all.iloc[-1].to_dict(),
+        hf_all=hf_all,
+        interior_o=SimpleNamespace(impact_reset=False, dt=100.0),
+        crystallized=False,
+        desiccated=False,
+        directories={'output': str(tmp_path)},
+        impact_events=[ev1, ev2],
+    )
+
+    restore_accretion_state(handler)
+
+    # Next iteration: main loop rebuilds hf_row from hf_all.iloc[-1].
+    handler.hf_row = handler.hf_all.iloc[-1].to_dict()
+    handler.hf_row['Time'] = 200.0
+    apply_impact(handler, ev2)
+
+    # Iteration write appends row to hf_all: counter must advance to k+1 = 2.
+    handler.hf_all = pd.concat(
+        [handler.hf_all, pd.DataFrame([handler.hf_row])], ignore_index=True
+    )
+    assert handler.hf_all['n_impacts_applied'].iloc[-1] == 2
+
+
+@pytest.mark.unit
 def test_restore_accretion_state_derived_count_never_drops_future_events(tmp_path):
     """Legacy resume fallback derives counter only from events up to resume time."""
     from proteus.accretion.common import write_timeline
