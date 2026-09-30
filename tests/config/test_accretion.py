@@ -157,11 +157,24 @@ def test_targeted_selectors_require_a_selector_value():
         with pytest.raises(ValueError, match='selector_value'):
             Accretion(module='morrigan', morrigan=Morrigan(selector=targeted))
 
-    for targeted, value in (('semimajoraxis', 1.0), ('id', 3)):
+    for targeted, value in (('semimajoraxis', 1.0), ('id', 3), ('id', 0), ('id', 0.0)):
         cfg = Accretion(
             module='morrigan', morrigan=Morrigan(selector=targeted, selector_value=value)
         )
         assert cfg.morrigan.selector_value == value
+
+    for bad_id in (-1, 1.9, float('nan'), 'earth'):
+        with pytest.raises(ValueError, match='selector_value'):
+            Accretion(
+                module='morrigan', morrigan=Morrigan(selector='id', selector_value=bad_id)
+            )
+
+    for bad_sma in (0.0, -0.5, float('nan'), float('inf'), 'earth'):
+        with pytest.raises(ValueError, match='selector_value'):
+            Accretion(
+                module='morrigan',
+                morrigan=Morrigan(selector='semimajoraxis', selector_value=bad_sma),
+            )
 
     for untargeted in ('mass', 'match_config'):
         cfg = Accretion(module='morrigan', morrigan=Morrigan(selector=untargeted))
@@ -612,27 +625,32 @@ def test_morrigan_impact_angle_bounds():
 
 @pytest.mark.unit
 def test_morrigan_declarative_bounds_and_selector_value_behaviour():
-    """Morrigan config validates eccentricity_init and impact_angle bounds and accepts valid selector values."""
+    """Morrigan config validates eccentricity_init and impact_angle bounds on both edges."""
     from proteus.config._accretion import Accretion, Morrigan
 
-    # Behaviour on bounds: valid values in [0, 1) and [0, 90] accepted
-    cfg_valid = Accretion(
+    # Both edges of both bounds accepted: [0, 1) and [0, 90]
+    cfg_edges = Accretion(
         module='morrigan',
-        morrigan=Morrigan(eccentricity_init=0.5, impact_angle=45.0, selector_value=1.5),
+        morrigan=Morrigan(eccentricity_init=0.0, impact_angle=90.0, selector_value=1.5),
     )
-    assert cfg_valid.morrigan.eccentricity_init == pytest.approx(0.5)
-    assert cfg_valid.morrigan.impact_angle == pytest.approx(45.0)
-    assert cfg_valid.morrigan.selector_value == pytest.approx(1.5)
+    assert cfg_edges.morrigan.eccentricity_init == pytest.approx(0.0)
+    assert cfg_edges.morrigan.impact_angle == pytest.approx(90.0)
+    assert cfg_edges.morrigan.selector_value == pytest.approx(1.5)
 
-    # Valid string and None selector values accepted
-    cfg_str = Accretion(module='morrigan', morrigan=Morrigan(selector_value='earth'))
-    assert cfg_str.morrigan.selector_value == 'earth'
+    cfg_edges_lower = Accretion(
+        module='morrigan',
+        morrigan=Morrigan(impact_angle=0.0),
+    )
+    assert cfg_edges_lower.morrigan.impact_angle == pytest.approx(0.0)
+
     cfg_none = Accretion(module='morrigan', morrigan=Morrigan(selector_value=None))
     assert cfg_none.morrigan.selector_value is None
 
-    # Invalid boundary values rejected
-    with pytest.raises(ValueError, match='eccentricity_init'):
-        Accretion(module='morrigan', morrigan=Morrigan(eccentricity_init=1.0))
+    # Invalid boundary values rejected on both sides
+    for bad_e in (-0.01, 1.0):
+        with pytest.raises(ValueError, match='eccentricity_init'):
+            Accretion(module='morrigan', morrigan=Morrigan(eccentricity_init=bad_e))
 
-    with pytest.raises(ValueError, match='impact_angle'):
-        Accretion(module='morrigan', morrigan=Morrigan(impact_angle=91.0))
+    for bad_angle in (-0.01, -1.0, 90.01):
+        with pytest.raises(ValueError, match='impact_angle'):
+            Accretion(module='morrigan', morrigan=Morrigan(impact_angle=bad_angle))

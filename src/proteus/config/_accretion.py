@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from attr.validators import ge, gt, in_, le, lt
 from attrs import define, field
 
@@ -13,6 +15,7 @@ def valid_morrigan(instance, attribute, value):
     if instance.module != 'morrigan':
         return
 
+
     mor = instance.morrigan
 
     if mor.masses and len(mor.masses) != mor.num_planets:
@@ -24,16 +27,39 @@ def valid_morrigan(instance, attribute, value):
     if any(m <= 0 for m in mor.masses):
         raise ValueError('All `accretion.morrigan.masses` entries must be > 0')
 
-    if mor.selector == 'semimajoraxis' and mor.selector_value is None:
-        raise ValueError(
-            '`accretion.morrigan.selector_value` must be set (target orbit in AU) '
-            "when selector = 'semimajoraxis'"
-        )
+    if mor.selector == 'semimajoraxis':
+        if mor.selector_value is None:
+            raise ValueError(
+                '`accretion.morrigan.selector_value` must be set (target orbit in AU) '
+                "when selector = 'semimajoraxis'"
+            )
+        if (
+            not isinstance(mor.selector_value, (int, float))
+            or isinstance(mor.selector_value, bool)
+            or not math.isfinite(mor.selector_value)
+            or mor.selector_value <= 0
+        ):
+            raise ValueError(
+                '`accretion.morrigan.selector_value` must be a finite positive number '
+                "when selector = 'semimajoraxis'"
+            )
 
-    if mor.selector == 'id' and mor.selector_value is None:
-        raise ValueError(
-            "`accretion.morrigan.selector_value` must be set (planet id) when selector = 'id'"
-        )
+    if mor.selector == 'id':
+        if mor.selector_value is None:
+            raise ValueError(
+                "`accretion.morrigan.selector_value` must be set (planet id) when selector = 'id'"
+            )
+        if (
+            not isinstance(mor.selector_value, (int, float))
+            or isinstance(mor.selector_value, bool)
+            or not math.isfinite(mor.selector_value)
+            or mor.selector_value < 0
+            or not float(mor.selector_value).is_integer()
+        ):
+            raise ValueError(
+                '`accretion.morrigan.selector_value` must be a finite non-negative integer '
+                "when selector = 'id'"
+            )
 
 
 @define
@@ -113,6 +139,7 @@ class Morrigan:
     impact_angle: float = field(default=45.0, validator=[ge(0), le(90)])
 
     evolution_time: float = field(default=1.0, validator=gt(0))
+
     inner_cutoff: float = field(default=0.005, validator=gt(0))
 
     selector: str = field(default='match_config', validator=in_(SELECTORS))
