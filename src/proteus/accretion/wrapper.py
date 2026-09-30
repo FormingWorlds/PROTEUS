@@ -131,13 +131,14 @@ def _current_orbit(hf_row: dict, config: Config) -> tuple[float, float]:
         Current semi-major axis in metres [m] and eccentricity [1].
     """
 
-    def _num(key: str) -> float:
+    def _as_float(val: object) -> float:
         try:
-            return float(hf_row.get(key))  # type: ignore[arg-type]
+            return float(val)  # type: ignore[arg-type]
         except (ValueError, TypeError):
             return float('nan')
 
-    a, e = _num('semimajorax'), _num('eccentricity')
+    a = _as_float(hf_row.get('semimajorax'))
+    e = _as_float(hf_row.get('eccentricity'))
     e_cfg = float(config.orbit.eccentricity)
     if not (math.isfinite(a) and a > 0.0):
         return float(config.orbit.semimajoraxis) * AU, e_cfg

@@ -19,6 +19,7 @@ for the test framework.
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import sys
 from pathlib import Path
@@ -217,3 +218,14 @@ def test_declared_scan_tables_are_all_live(monkeypatch):
     # EXTRA_PRODUCERS: the ratio loop must still be a live dynamic write.
     for rel, _function, _pattern in _scan.EXTRA_PRODUCERS:
         assert by_file.get(rel), f'EXTRA_PRODUCERS names {rel} but no event arises'
+
+
+def test_variable_key_get_reported_as_unresolved():
+    """A variable key passed to hf_row.get() cannot be attributed statically
+    and must be recorded as an unresolved event rather than silently dropped."""
+    code = 'def f(hf_row, k):\n    return hf_row.get(k)\n'
+    tree = ast.parse(code)
+    visitor = _scan.HfRowVisitor('test_file.py', {})
+    visitor.visit(tree)
+    assert len(visitor.unresolved) == 1
+    assert any('dynamic key k' in reason for _line, reason in visitor.unresolved)

@@ -104,7 +104,6 @@ SUPPRESSED_DYNAMIC_WRITES = {
     # on a rejected adaptive step; shared by evolve_orbit_star (orbit.py) and
     # evolve_orbit_satellite (satellite.py).
     ('orbit/common.py', 'run_adaptive_orbit_substeps'),
-
 }
 
 # Producers that assemble their key through a local variable the visitor
@@ -192,6 +191,7 @@ class HfRowVisitor(ast.NodeVisitor):
         self.species = species
         self.func_stack: list[str] = []
         self.loop_domains: dict[str, str] = {}  # loop var -> domain-list name
+        self.local_vars: dict[str, ast.AST] = {}
         self.writes: list[tuple[str, str]] = []  # (key, function)
         self.reads: list[str] = []
         self.unresolved: list[tuple[int, str]] = []  # (lineno, reason)
@@ -199,12 +199,20 @@ class HfRowVisitor(ast.NodeVisitor):
     # -- context tracking ---------------------------------------------------
 
     def _visit_func(self, node):
+        old_locals = dict(self.local_vars)
         self.func_stack.append(node.name)
         self.generic_visit(node)
         self.func_stack.pop()
+        self.local_vars = old_locals
 
     visit_FunctionDef = _visit_func
     visit_AsyncFunctionDef = _visit_func
+
+    def visit_Assign(self, node):
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                self.local_vars[target.id] = node.value
+        self.generic_visit(node)
 
     def visit_For(self, node):
         added = []
@@ -261,7 +269,7 @@ class HfRowVisitor(ast.NodeVisitor):
             owner = func.value.id if isinstance(func.value, ast.Name) else func.value.attr
             if owner in ROW_NAMES | FRAME_NAMES:
                 if func.attr == 'get' and node.args:
-                    self._record(node.args[0], node.lineno, is_write=False)
+                    self._record(node.args[0], node.lineno, is_write=False, is_get=True)
                 elif func.attr == 'update' and owner in ROW_NAMES and not self._suppressed():
                     self.unresolved.append((node.lineno, f'{owner}.update(...) bulk write'))
         self.generic_visit(node)
@@ -270,16 +278,20 @@ class HfRowVisitor(ast.NodeVisitor):
         """Whether any enclosing function is a declared non-producer site."""
         return any((self.rel_file, fn) in SUPPRESSED_DYNAMIC_WRITES for fn in self.func_stack)
 
-    def _record(self, key_node, lineno: int, is_write: bool) -> None:
+    def _record(self, key_node, lineno: int, is_write: bool, is_get: bool = False) -> None:
         func = self.func_stack[-1] if self.func_stack else '<module>'
-        keys = self._resolve_keys(key_node, lineno, is_write)
+        keys = self._resolve_keys(key_node, lineno, is_write, is_get)
         for key in keys:
             if is_write:
                 self.writes.append((key, func))
             else:
                 self.reads.append(key)
 
-    def _resolve_keys(self, key_node, lineno: int, is_write: bool) -> list[str]:
+    def _resolve_keys(
+        self, key_node, lineno: int, is_write: bool, is_get: bool = False
+    ) -> list[str]:
+        if is_get and isinstance(key_node, ast.Name) and key_node.id in self.local_vars:
+            key_node = self.local_vars[key_node.id]
         if isinstance(key_node, ast.Constant):
             return [key_node.value] if isinstance(key_node.value, str) else []
         suppressed = self._suppressed()
@@ -300,7 +312,7 @@ class HfRowVisitor(ast.NodeVisitor):
             domain = self.loop_domains.get(key_node.id)
             if domain is not None:
                 return self._expand_domain(domain)
-            if is_write and not suppressed:
+            if (is_write or is_get) and not suppressed:
                 self.unresolved.append((lineno, f'dynamic key {key_node.id}'))
             return []
         # Slices, tuples, and computed expressions are frame operations
