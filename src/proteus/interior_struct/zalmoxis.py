@@ -28,6 +28,7 @@ from proteus.utils.constants import (
     element_list,
 )
 from proteus.utils.data import get_zalmoxis_eos_dir, get_zalmoxis_melting_curves
+from proteus.utils.helper import format_subyear_time
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
@@ -397,8 +398,28 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
         return None
     R_core = float(hf_row['R_core'])
     R_int = float(hf_row['R_int'])
-    atol = max(1.0, 1.0e-9 * max(R_int - R_core, 1.0))
+    atol = max(1.0, 1.0e-9 * (R_int - R_core))
     return float(r[0]) - R_core, float(r[-1]) - R_int, atol
+
+
+def save_zalmoxis_output_snapshot(outdir: str, time: float) -> None:
+    """Copy ``zalmoxis_output.dat`` to ``data/<time>_zalmoxis.dat``.
+
+    The copy carries the snapshot time naming of ``<time>_int.nc``, so the
+    archive and pruning treat it as part of the same snapshot and a resume can
+    restore the structure its row was computed with.
+
+    Parameters
+    ----------
+    outdir : str
+        Run output directory.
+    time : float
+        Simulated time of the helpfile row being written [yr].
+    """
+    src = get_zalmoxis_output_filepath(outdir)
+    if os.path.isfile(src):
+        dst = os.path.join(outdir, 'data', format_subyear_time(time) + '_zalmoxis.dat')
+        shutil.copy2(src, dst)
 
 
 def build_volatile_profile(hf_row: dict, mantle_eos: str):

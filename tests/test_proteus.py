@@ -22,7 +22,6 @@ Functions tested:
 
 from __future__ import annotations
 
-import re
 import sys
 from contextlib import ExitStack
 from pathlib import Path
@@ -283,122 +282,138 @@ def _resync_instance(tmp_path, *, dat=None, prev=None):
     return p, data / 'zalmoxis_output.dat'
 
 
-def _write_int_snapshot(data, time, radius_km, temp):
-    """Write the two variables the re-solve reads from an Aragog snapshot."""
-    import netCDF4 as nc
+def _write_mesh_nan_top(path):
+    """Write a mesh file whose outermost radius is NaN."""
+    _write_mesh(path, 3.4e6, 6.4e6)
+    data = np.loadtxt(path)
+    data[-1, 0] = np.nan
+    np.savetxt(path, data, fmt='%.17e')
 
+
+def _saved_copy(tmp_path, time=100.0):
+    """Path of the structure copy saved with the row at ``time``."""
     from proteus.utils.helper import format_subyear_time
 
-    with nc.Dataset(data / (format_subyear_time(time) + '_int.nc'), 'w') as ds:
-        ds.createDimension('basic', len(radius_km))
-        ds.createDimension('staggered', len(temp))
-        ds.createVariable('radius_b', 'f8', ('basic',))[:] = radius_km
-        ds.createVariable('temp_s', 'f8', ('staggered',))[:] = temp
-
-
-@pytest.mark.unit
-def test_resync_keeps_a_matching_mesh_file(tmp_path):
-    """A file within the tolerance is left byte for byte; nothing is re-solved."""
-    p, dat = _resync_instance(tmp_path, dat=(3.4e6 + 0.5, 6.4e6 - 0.5), prev=(3.0e6, 6.0e6))
-    before = dat.read_bytes()
-
-    with patch('proteus.interior_energetics.wrapper.update_structure_from_interior') as solve:
-        p._resync_zalmoxis_mesh()
-
-    assert dat.read_bytes() == before
-    solve.assert_not_called()
-
-
-@pytest.mark.unit
-def test_resync_restores_prev_when_it_matches_the_row(tmp_path):
-    """A file 300 m beyond R_int is replaced by the matching .prev backup."""
-    p, dat = _resync_instance(tmp_path, dat=(3.4e6, 6.4e6 + 300.0), prev=(3.4e6, 6.4e6))
-    prev_bytes = (tmp_path / 'data' / 'zalmoxis_output.dat.prev').read_bytes()
-
-    with patch('proteus.interior_energetics.wrapper.update_structure_from_interior') as solve:
-        p._resync_zalmoxis_mesh()
-
-    assert dat.read_bytes() == prev_bytes
-    solve.assert_not_called()
-
-
-@pytest.mark.unit
-def test_resync_rejects_a_mesh_inside_the_bounds(tmp_path):
-    """A file 300 m short of R_int is a mismatch too, though reset() lets it pass."""
-    p, dat = _resync_instance(tmp_path, dat=(3.4e6, 6.4e6 - 300.0), prev=(3.4e6, 6.4e6))
-
-    p._resync_zalmoxis_mesh()
-
-    assert np.loadtxt(dat)[-1, 0] == 6.4e6
-
-
-def _fake_resolve(dat, dR_int, seen):
-    """Stand-in for update_structure_from_interior: write a mesh R_int + dR_int."""
-
-    def solve(dirs, config, hf_row, interior_o, t, T, phi, force=False):
-        seen.update(radius=interior_o.radius.copy(), temp=interior_o.temp.copy(), force=force)
-        hf_row['R_int'] += dR_int
-        _write_mesh(dat, hf_row['R_core'], hf_row['R_int'])
-        return 100.0, 2500.0, 0.8
-
-    return solve
-
-
-@pytest.mark.unit
-def test_resync_resolves_from_the_snapshot_when_no_file_matches(tmp_path):
-    """Neither file matches: the structure is re-solved from the snapshot T(r)."""
-    p, dat = _resync_instance(tmp_path, dat=(3.4e6, 6.5e6), prev=(3.4e6, 6.3e6))
-    _write_int_snapshot(tmp_path / 'data', 100.0, [3400.0, 5000.0, 6400.0], [4000.0, 3000.0])
-    seen = {}
-
-    with patch(
-        'proteus.interior_energetics.wrapper.update_structure_from_interior',
-        side_effect=_fake_resolve(dat, 1.0e4, seen),
-    ):
-        p._resync_zalmoxis_mesh()
-
-    assert seen['force'] is True
-    np.testing.assert_array_equal(seen['radius'], [3.4e6, 5.0e6, 6.4e6])
-    np.testing.assert_array_equal(seen['temp'], [4000.0, 3000.0])
-    # The pre-step arrays are put back for the first interior step.
-    np.testing.assert_array_equal(p.interior_o.radius, [-1.0])
-    assert (p.last_struct_time, p.last_struct_Tmagma, p.last_struct_Phi) == (100.0, 2500.0, 0.8)
-    assert np.loadtxt(dat)[-1, 0] == p.hf_row['R_int'] == 6.41e6
+    return tmp_path / 'data' / (format_subyear_time(time) + '_zalmoxis.dat')
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ('dR_int', 'rewrite', 'message'),
-    [(1.0e4, False, 'differs by R_core'), (2.0e5, True, 'limit 1.500e+05 m')],
-    ids=['file still stale', 'radius moved beyond setup tolerance'],
+    ('dat', 'kept'),
+    [
+        ((3.4e6 + 0.5, 6.4e6 - 0.5), 'dat'),
+        ((3.4e6, 6.4e6 + 300.0), 'prev'),
+        ((3.4e6, 6.4e6 - 300.0), 'prev'),
+        ((3.4e6 - 300.0, 6.4e6), 'prev'),
+        ((3.4e6 + 300.0, 6.4e6), 'prev'),
+        (None, 'prev'),
+    ],
+    ids=[
+        'within tolerance',
+        'R_int above',
+        'R_int inside',
+        'R_core below',
+        'R_core inside',
+        'NaN outer radius',
+    ],
 )
-def test_resync_stops_at_resume(tmp_path, dR_int, rewrite, message):
-    """A re-solve that leaves a mismatch, or moves R_int > 5 %, stops with status 20."""
-    p, dat = _resync_instance(tmp_path, dat=(3.4e6, 6.5e6), prev=(3.4e6, 6.3e6))
-    _write_int_snapshot(tmp_path / 'data', 100.0, [3400.0, 6400.0], [4000.0])
-    solve = _fake_resolve(dat, dR_int, {})
-    if not rewrite:
-        solve = MagicMock(return_value=(100.0, 2500.0, 0.8))
+def test_resync_without_a_saved_copy_keeps_the_file_else_restores_prev(tmp_path, dat, kept):
+    """Both bounds are compared in both directions; a NaN radius never matches."""
+    p, path = _resync_instance(tmp_path, dat=dat, prev=(3.4e6, 6.4e6))
+    if dat is None:
+        _write_mesh_nan_top(path)
+    before = path.read_bytes()
+    expected = before if kept == 'dat' else path.with_name(path.name + '.prev').read_bytes()
 
-    with (
-        patch('proteus.interior_energetics.wrapper.update_structure_from_interior', solve),
-        patch('proteus.utils.coupler.UpdateStatusfile') as status,
-        pytest.raises(RuntimeError, match=re.escape(message)) as err,
-    ):
+    p._resync_zalmoxis_mesh()
+
+    assert path.read_bytes() == expected
+    assert (path.read_bytes() == before) is (kept == 'dat')
+
+
+@pytest.mark.unit
+def test_resync_restores_the_copy_saved_with_the_row(tmp_path):
+    """The saved copy wins over a stale file and a stale .prev."""
+    p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.4e6 + 300.0), prev=(3.4e6, 6.3e6))
+    _write_mesh(_saved_copy(tmp_path), 3.4e6, 6.4e6)
+
+    p._resync_zalmoxis_mesh()
+
+    assert path.read_bytes() == _saved_copy(tmp_path).read_bytes()
+    assert np.loadtxt(path)[-1, 0] == pytest.approx(6.4e6)
+
+
+@pytest.mark.unit
+def test_resync_checks_the_saved_copy_before_using_it(tmp_path):
+    """A saved copy off the row is skipped; the matching .prev is restored."""
+    p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.5e6), prev=(3.4e6, 6.4e6))
+    _write_mesh(_saved_copy(tmp_path), 3.4e6, 6.3e6)
+
+    p._resync_zalmoxis_mesh()
+
+    assert np.loadtxt(path)[-1, 0] == pytest.approx(6.4e6)
+    assert np.loadtxt(_saved_copy(tmp_path))[-1, 0] == pytest.approx(6.3e6)
+
+
+@pytest.mark.unit
+def test_resync_stops_when_no_file_matches_the_row(tmp_path):
+    """A legacy run with a stale file and a stale .prev stops with one message."""
+    p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.5e6), prev=(3.4e6 - 2.0e3, 6.3e6))
+    before = path.read_bytes()
+
+    with pytest.raises(RuntimeError) as err:
         p._resync_zalmoxis_mesh()
 
-    assert str(dat) in str(err.value) and 'helpfile row 5' in str(err.value)
-    status.assert_called_once_with(p.directories, 20)
+    msg = str(err.value)
+    assert 't = 1.000000e+02 yr' in msg and str(path) in msg
+    assert 'zalmoxis_output.dat: R_core +0.000e+00 m, R_int +1.000e+05 m' in msg
+    assert 'zalmoxis_output.dat.prev: R_core -2.000e+03 m, R_int -1.000e+05 m' in msg
+    assert path.read_bytes() == before
+
+
+@pytest.mark.unit
+def test_resume_records_error_status_when_the_resync_raises(tmp_path):
+    """Any error in the resync, not only its own mismatch, leaves status 20."""
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog')
+    p.config.interior_struct.module = 'zalmoxis'
+
+    with (
+        patch.object(type(p), '_resync_zalmoxis_mesh', side_effect=KeyError('R_core')),
+        pytest.raises(KeyError, match='R_core'),
+    ):
+        _run_resumed_loop_until_stop(p, _make_resume_checkpoint_df(), None, None)
+
+    assert (tmp_path / 'status').read_text().splitlines()[0] == '20'
 
 
 @pytest.mark.unit
 def test_resync_without_a_mesh_file_does_nothing(tmp_path):
-    """No zalmoxis_output.dat: nothing to compare, nothing written."""
-    p, dat = _resync_instance(tmp_path)
+    """No zalmoxis_output.dat and no saved copy: nothing to compare or write."""
+    p, path = _resync_instance(tmp_path)
 
     p._resync_zalmoxis_mesh()
 
-    assert not dat.exists()
+    assert not path.exists()
+    assert list((tmp_path / 'data').iterdir()) == []
+
+
+@pytest.mark.unit
+def test_save_zalmoxis_output_snapshot_copies_under_the_row_time(tmp_path):
+    """The copy is named like the interior snapshot of the same time."""
+    from proteus.interior_struct.zalmoxis import save_zalmoxis_output_snapshot
+
+    (tmp_path / 'data').mkdir()
+    save_zalmoxis_output_snapshot(str(tmp_path), 100.0)
+    assert list((tmp_path / 'data').iterdir()) == []
+
+    _write_mesh(tmp_path / 'data' / 'zalmoxis_output.dat', 3.4e6, 6.4e6)
+    save_zalmoxis_output_snapshot(str(tmp_path), 100.0)
+
+    assert _saved_copy(tmp_path).name == '100p000_zalmoxis.dat'
+    assert (
+        _saved_copy(tmp_path).read_bytes()
+        == (tmp_path / 'data' / 'zalmoxis_output.dat').read_bytes()
+    )
 
 
 def _aragog_like_interior(mesh_path, calls):
@@ -427,7 +442,9 @@ def _aragog_like_interior(mesh_path, calls):
     return run
 
 
-def _stop_on_second_atmosphere_call(seen):
+def _stop_on_second_atmosphere_call():
+    seen = []
+
     def run(*args, **kwargs):
         seen.append(1)
         if len(seen) == 2:
@@ -437,40 +454,38 @@ def _stop_on_second_atmosphere_call(seen):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('case', ['prev matches', 're-solve'])
+@pytest.mark.parametrize('case', ['saved copy', 'prev matches'])
 def test_resumed_loop_reaches_a_second_reset_on_a_stale_mesh(tmp_path, case):
     """Through start(resume=True), a stale mesh file no longer fails reset() at step 2.
 
     The fake interior applies Aragog's setup and reset() checks against the row
-    the main loop hands it, so the loop-start copy of the last helpfile row is
-    part of what is tested.
+    the main loop hands it. Every iteration writes a snapshot here, so the copy
+    saved with the first resumed row is checked too.
     """
+    from proteus.utils.helper import format_subyear_time
+
     p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog')
     p.config.interior_struct.module = 'zalmoxis'
+    p.config.params.out.write_mod = 1
     hf_df = _make_resume_checkpoint_df()
     hf_df['R_core'], hf_df['R_int'] = 3.4e6, 6.4e6
     data = tmp_path / 'data'
     mesh = data / 'zalmoxis_output.dat'
     _write_mesh(mesh, 3.4e6, 6.4e6 + 300.0)
-    prev = (3.4e6, 6.4e6) if case == 'prev matches' else (3.4e6, 6.4e6 - 300.0)
-    _write_mesh(data / 'zalmoxis_output.dat.prev', *prev)
-    _write_int_snapshot(data, 400.0, [3400.0, 6400.0], [4000.0])
+    if case == 'saved copy':
+        _write_mesh(_saved_copy(tmp_path, 400.0), 3.4e6, 6.4e6)
+        _write_mesh(data / 'zalmoxis_output.dat.prev', 3.4e6, 6.4e6 - 300.0)
+    else:
+        _write_mesh(data / 'zalmoxis_output.dat.prev', 3.4e6, 6.4e6)
     calls = []
 
-    with patch(
-        'proteus.interior_energetics.wrapper.update_structure_from_interior',
-        side_effect=_fake_resolve(mesh, 21.0, {}),
-    ):
-        _run_resumed_loop_until_stop(
-            p,
-            hf_df,
-            _aragog_like_interior(mesh, calls),
-            _stop_on_second_atmosphere_call([]),
-        )
+    _run_resumed_loop_until_stop(
+        p, hf_df, _aragog_like_interior(mesh, calls), _stop_on_second_atmosphere_call()
+    )
 
-    assert len(calls) == 2
-    expected_R_int = 6.4e6 if case == 'prev matches' else 6.4e6 + 21.0
-    assert calls[1] == (3.4e6, expected_R_int)
+    assert calls == pytest.approx([(3.4e6, 6.4e6), (3.4e6, 6.4e6)])
+    first_row = data / (format_subyear_time(p.hf_all['Time'].iloc[-1]) + '_zalmoxis.dat')
+    assert first_row.read_bytes() == mesh.read_bytes()
 
 
 @pytest.mark.unit

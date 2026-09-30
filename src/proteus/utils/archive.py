@@ -21,9 +21,10 @@ def _tarfile_from_dir(dir: str) -> str:
 def _snapshot_time(name: str) -> float | None:
     """Parse the simulated time from a timestamped snapshot filename.
 
-    A timestamped snapshot is a file ending in ``.nc`` or ``.json`` whose
-    leading token is the simulated time in years, e.g. ``1000p000_int.nc``,
-    ``1000p000_atm.nc``, ``0p200_int.nc``, or ``5000.json``. Whole-year
+    A timestamped snapshot is a file ending in ``.nc``, ``.json`` or
+    ``_zalmoxis.dat`` whose leading token is the simulated time in years, e.g.
+    ``1000p000_int.nc``, ``1000p000_atm.nc``, ``1000p000_zalmoxis.dat``,
+    ``0p200_int.nc``, or ``5000.json``. Whole-year
     names without a fractional part (``1000_int.nc``) parse to the same
     value.
 
@@ -46,7 +47,7 @@ def _snapshot_time(name: str) -> float | None:
         itself.
     """
 
-    if not (name.endswith('.nc') or name.endswith('.json')):
+    if not name.endswith(('.nc', '.json', '_zalmoxis.dat')):
         return None
     try:
         return parse_subyear_time(name.rsplit('.', 1)[0].split('_')[0])

@@ -740,7 +740,7 @@ def test_zalmoxis_mesh_gaps_reports_signed_gaps(tmp_path, r_first, r_last, expec
     dR_core, dR_int, atol = zalmoxis_mesh_gaps(str(path), {'R_core': 3.4e6, 'R_int': 6.4e6})
 
     assert (dR_core, dR_int) == pytest.approx(expected, abs=1e-6)
-    assert atol == 1.0  # span 3e6 m: 1e-9 * span = 3e-3 m, below the floor
+    assert atol == pytest.approx(1.0)  # span 3e6 m: 1e-9 * span = 3e-3 m, below the floor
 
 
 @pytest.mark.unit
