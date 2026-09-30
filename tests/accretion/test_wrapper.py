@@ -3219,3 +3219,107 @@ def test_restore_accretion_state_refuses_invalid_m_accreted_rock(tmp_path):
         )
         with pytest.raises(ValueError, match='invalid M_accreted_rock'):
             restore_accretion_state(handler)
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_refuses_counter_smaller_than_events_before(tmp_path):
+    """Helpfile counter smaller than events preceding resume time raises RuntimeError."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = _impact_event(
+        time=10.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev2 = _impact_event(
+        time=20.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    handler = _resumed_handler(
+        tmp_path,
+        events=[ev1, ev2],
+        hf_row={
+            'Time': 25.0,
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 1,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        pending=[ev1, ev2],
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        restore_accretion_state(handler)
+    err = str(exc_info.value)
+    assert 'runtime_helpfile.csv' in err
+    assert 'precede the resume time' in err
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_refuses_counter_exceeding_total_events(tmp_path):
+    """Helpfile counter exceeding the total number of timeline events raises RuntimeError."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = _impact_event(
+        time=10.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    handler = _resumed_handler(
+        tmp_path,
+        events=[ev1],
+        hf_row={
+            'Time': 5.0,
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 5,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        pending=[ev1],
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        restore_accretion_state(handler)
+    err = str(exc_info.value)
+    assert 'runtime_helpfile.csv' in err
+    assert 'exceeding the total' in err
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_event_at_exact_resume_time_boundary(tmp_path):
+    """An event exactly at resume_time is treated as preceding the resume boundary."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = _impact_event(
+        time=25.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev2 = _impact_event(
+        time=50.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    handler_ok = _resumed_handler(
+        tmp_path,
+        events=[ev1, ev2],
+        hf_row={
+            'Time': 25.0,
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 1,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        pending=[ev1, ev2],
+    )
+    restore_accretion_state(handler_ok)
+    assert handler_ok.impact_events == [ev2]
+    assert handler_ok.hf_row['n_impacts_applied'] == 1
+
+    handler_bad = _resumed_handler(
+        tmp_path,
+        events=[ev1, ev2],
+        hf_row={
+            'Time': 25.0,
+            'M_accreted_rock': 0.0,
+            'n_impacts_applied': 0,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        pending=[ev1, ev2],
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        restore_accretion_state(handler_bad)
+    assert 'precede the resume time' in str(exc_info.value)

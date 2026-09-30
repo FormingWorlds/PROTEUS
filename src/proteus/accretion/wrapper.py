@@ -249,6 +249,19 @@ def restore_accretion_state(handler: Proteus) -> None:
 
         if all_events is not None:
             events_before = sum(1 for ev in all_events if 0.0 < ev.time <= resume_time)
+            total_events = sum(1 for ev in all_events if ev.time > 0.0)
+            if n_applied < events_before:
+                raise RuntimeError(
+                    f'Resume refused: {hf_name} records n_impacts_applied = {n_applied}, '
+                    f'but {events_before} impact(s) precede the resume time {resume_time} yr. '
+                    'This inconsistent counter would lose prior impacts; restart the simulation.'
+                )
+            if n_applied > total_events:
+                raise RuntimeError(
+                    f'Resume refused: {hf_name} records n_impacts_applied = {n_applied}, '
+                    f'exceeding the total {total_events} impact(s) in the timeline. '
+                    'Restart the simulation.'
+                )
             remaining_to_drop = max(n_applied - events_before, 0)
             if remaining_to_drop > 0:
                 handler.impact_events = handler.impact_events[remaining_to_drop:]
