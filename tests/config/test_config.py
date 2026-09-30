@@ -2896,11 +2896,23 @@ def test_no_input_toml_uses_bare_interior_section():
     backend, with no warning.
     """
     import re
+    import subprocess
 
     repo_root = PROTEUS_ROOT
     pattern = re.compile(r'^\[interior\](?:\.|$)', re.MULTILINE)
+    # Only files the repository ships. A working tree may hold untracked
+    # scratch configs under input/, which are not what this guards.
+    tracked = subprocess.run(
+        ['git', 'ls-files', '-z', '--', 'input'],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split('\0')
+    toml_files = [repo_root / rel for rel in tracked if rel.endswith('.toml')]
+
     offenders = []
-    for toml_path in (repo_root / 'input').rglob('*.toml'):
+    for toml_path in toml_files:
         text = toml_path.read_text(encoding='utf-8')
         if pattern.search(text):
             offenders.append(str(toml_path.relative_to(repo_root)))
@@ -2912,7 +2924,6 @@ def test_no_input_toml_uses_bare_interior_section():
     # TOML file. A regression where the glob returned an empty list (wrong
     # path, missing directory) would produce ``offenders == []`` for the
     # wrong reason and silently pass the assertion above.
-    toml_files = list((repo_root / 'input').rglob('*.toml'))
     assert len(toml_files) > 0
 
 
