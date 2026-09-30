@@ -6880,7 +6880,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     assert out is not None
     assert solver._solution is solver._prev_solution
     assert solver.recorded_y.shape == (len(solver._S0), 1)
-    assert solver.recorded_t[0] == 250.0
+    assert solver.recorded_t[0] == pytest.approx(250.0)
 
     # 2. Key write in _remelt_aragog with non-unity melt fraction (0.73)
     config = read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml')
@@ -6967,4 +6967,6 @@ def test_f_atm_is_not_produced_by_interior_energetics_wrapper():
         schema = json.load(f)
     f_atm_entry = next(k for k in schema['keys'] if k['name'] == 'F_atm')
     producer_files = [p['file'] for p in f_atm_entry.get('producers', [])]
+    assert len(producer_files) >= 4
+    assert 'src/proteus/atmos_clim/dummy.py' in producer_files
     assert 'src/proteus/interior_energetics/wrapper.py' not in producer_files

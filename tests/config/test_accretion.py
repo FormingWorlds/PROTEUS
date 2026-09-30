@@ -611,20 +611,28 @@ def test_morrigan_impact_angle_bounds():
 
 
 @pytest.mark.unit
-def test_morrigan_fields_have_declarative_bounds_and_valid_selector_type():
-    """Morrigan config fields declare bounds via attrs validators and selector_value has no pipe in type."""
-    import attrs
+def test_morrigan_declarative_bounds_and_selector_value_behaviour():
+    """Morrigan config validates eccentricity_init and impact_angle bounds and accepts valid selector values."""
+    from proteus.config._accretion import Accretion, Morrigan
 
-    from proteus.config._accretion import Morrigan
+    # Behaviour on bounds: valid values in [0, 1) and [0, 90] accepted
+    cfg_valid = Accretion(
+        module='morrigan',
+        morrigan=Morrigan(eccentricity_init=0.5, impact_angle=45.0, selector_value=1.5),
+    )
+    assert cfg_valid.morrigan.eccentricity_init == pytest.approx(0.5)
+    assert cfg_valid.morrigan.impact_angle == pytest.approx(45.0)
+    assert cfg_valid.morrigan.selector_value == pytest.approx(1.5)
 
-    fields = {f.name: f for f in attrs.fields(Morrigan)}
+    # Valid string and None selector values accepted
+    cfg_str = Accretion(module='morrigan', morrigan=Morrigan(selector_value='earth'))
+    assert cfg_str.morrigan.selector_value == 'earth'
+    cfg_none = Accretion(module='morrigan', morrigan=Morrigan(selector_value=None))
+    assert cfg_none.morrigan.selector_value is None
 
-    v_e = fields['eccentricity_init'].validator
-    vals_e = v_e._validators if hasattr(v_e, '_validators') else [v_e]
-    bounds_e = [getattr(v, 'bound', None) for v in vals_e if hasattr(v, 'bound')]
-    assert bounds_e == [0, 1]
+    # Invalid boundary values rejected
+    with pytest.raises(ValueError, match='eccentricity_init'):
+        Accretion(module='morrigan', morrigan=Morrigan(eccentricity_init=1.0))
 
-    v_a = fields['impact_angle'].validator
-    vals_a = v_a._validators if hasattr(v_a, '_validators') else [v_a]
-    bounds_a = [getattr(v, 'bound', None) for v in vals_a if hasattr(v, 'bound')]
-    assert bounds_a == [0, 90]
+    with pytest.raises(ValueError, match='impact_angle'):
+        Accretion(module='morrigan', morrigan=Morrigan(impact_angle=91.0))

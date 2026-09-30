@@ -1177,8 +1177,7 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
             new_row.setdefault(k, 0.0)
         return
 
-    # Predicted energy increment [J]: boundary fluxes, sources, and booked
-    # impact heat (symmetric entry, not a residual closure check).
+    # Predicted energy increment [J]: boundary fluxes, sources, and booked impact heat.
     dE_impact_inc = float(new_row.get('step_dE_impact_J', 0.0))
 
     dE_inc_cons = (
@@ -1188,8 +1187,7 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
         + float(new_row.get('step_dE_Q_tidal_J', 0.0))
         + dE_impact_inc
     )
-    # State increment [J]: entropy-transported heat (Σ rho T dS) plus
-    # symmetric booked impact heat (not checked for closure).
+    # State increment [J]: entropy-transported heat (Σ rho T dS) plus impact heat.
     dE_state_heat_inc = float(new_row.get('step_dE_state_heat_J', 0.0)) + dE_impact_inc
     solver_inc = float(new_row.get('step_solver_residual_J', 0.0))
 

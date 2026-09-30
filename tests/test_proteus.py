@@ -2623,7 +2623,7 @@ def test_start_goes_ahead_without_cvode_when_it_is_not_needed(
 
 @pytest.mark.unit
 def test_crystallization_not_rearmed_on_impact_step(tmp_path):
-    """Crystallization is not re-armed when an impact re-melts the mantle this iteration."""
+    """Crystallization helper respects impact_reset, freeze_volatiles, and boundary condition."""
     p = _make_proteus_instance(tmp_path)
     p.interior_o = MagicMock()
     p.interior_o.impact_reset = True
@@ -2632,9 +2632,23 @@ def test_crystallization_not_rearmed_on_impact_step(tmp_path):
     p.crystallized = False
     p.hf_row = {'Phi_global': 0.5}
 
+    # 1. impact_reset=True prevents re-arming crystallization
     p._check_crystallization()
     assert p.crystallized is False
 
+    # 2. freeze_volatiles=False keeps crystallization disabled even without impact_reset
     p.interior_o.impact_reset = False
+    p.config.params.stop.solid.freeze_volatiles = False
+    p._check_crystallization()
+    assert p.crystallized is False
+
+    # 3. Phi_global strictly above threshold does not trigger crystallization
+    p.config.params.stop.solid.freeze_volatiles = True
+    p.hf_row = {'Phi_global': 0.81}
+    p._check_crystallization()
+    assert p.crystallized is False
+
+    # 4. Exact boundary Phi_global == phi_crit triggers crystallization (tests <= condition)
+    p.hf_row = {'Phi_global': 0.8}
     p._check_crystallization()
     assert p.crystallized is True

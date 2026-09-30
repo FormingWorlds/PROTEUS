@@ -427,7 +427,10 @@ def test_survivor_with_no_impacts_returns_empty_timeline(monkeypatch):
     }
     fake = SimpleNamespace(run_system=partial(_return_outcome, outcome))
     monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
-    assert backend.get_timeline(_config(selector='mass')) == []
+    timeline = backend.get_timeline(_config(selector='mass'))
+    assert isinstance(timeline, list)
+    assert len(timeline) == 0
+    assert timeline == []
 
 
 @pytest.mark.unit
@@ -439,8 +442,10 @@ def test_survivor_missing_from_impacts_raises_value_error(monkeypatch):
     }
     fake = SimpleNamespace(run_system=partial(_return_outcome, outcome))
     monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
-    with pytest.raises(ValueError, match='1'):
+    with pytest.raises(ValueError, match=r'survivor id 1\b') as exc_info:
         backend.get_timeline(_config(selector='mass'))
+    assert 'survivor id 1' in str(exc_info.value)
+    assert 'no impact history' in str(exc_info.value)
 
 
 @pytest.mark.unit
