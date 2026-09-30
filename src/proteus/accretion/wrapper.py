@@ -10,6 +10,7 @@ from proteus.utils.constants import AU, M_earth, element_list, noble_gases, vol_
 
 if TYPE_CHECKING:
     from proteus.accretion.common import ImpactEvent
+    from proteus.config import Config
     from proteus.proteus import Proteus
 
 log = logging.getLogger('fwl.' + __name__)
@@ -127,6 +128,49 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
     )
 
 
+def _current_orbit(hf_row: dict, config: Config) -> tuple[float, float]:
+    """Return the current planetary orbit (semi-major axis [m] and eccentricity [1]).
+
+    Reads from ``hf_row`` when available, falling back to ``config.orbit``
+    when row entries are missing, non-finite, or unphysical (non-positive
+    semi-major axis or negative eccentricity).
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current step helpfile row.
+    config : Config
+        Model configuration.
+
+    Returns
+    -------
+    tuple of float
+        Current semi-major axis in metres [m] and eccentricity [1].
+    """
+    raw_a = hf_row.get('semimajorax')
+    try:
+        val_a = float(raw_a) if raw_a is not None else None
+    except (ValueError, TypeError):
+        val_a = None
+
+    if val_a is None or not math.isfinite(val_a) or val_a <= 0.0:
+        base_a = float(config.orbit.semimajoraxis) * AU
+        base_e = float(config.orbit.eccentricity)
+    else:
+        base_a = val_a
+        raw_e = hf_row.get('eccentricity')
+        try:
+            val_e = float(raw_e) if raw_e is not None else None
+        except (ValueError, TypeError):
+            val_e = None
+        if val_e is None or not math.isfinite(val_e) or val_e < 0.0:
+            base_e = float(config.orbit.eccentricity)
+        else:
+            base_e = val_e
+
+    return base_a, base_e
+
+
 def restore_accretion_state(handler: Proteus) -> None:
     """Rebuild the accretion state a resumed run cannot read from its TOML.
 
@@ -184,11 +228,9 @@ def restore_accretion_state(handler: Proteus) -> None:
 
     config.planet.mass_tot += accreted / M_earth
 
-    semimajoraxis = float(hf_row.get('semimajorax') or 0.0)
-    eccentricity = float(hf_row.get('eccentricity') or 0.0)
-    if semimajoraxis > 0.0:
-        config.orbit.semimajoraxis = semimajoraxis / AU
-        config.orbit.eccentricity = eccentricity
+    base_a, base_e = _current_orbit(hf_row, config)
+    config.orbit.semimajoraxis = base_a / AU
+    config.orbit.eccentricity = base_e
 
     log.info(
         'Restored accretion state: %.4f M_earth at %.5f AU, e = %.4f '
@@ -288,6 +330,13 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
     config = handler.config
     hf_row = handler.hf_row
+
+    ratio = event.semimajoraxis_ratio
+    if not math.isfinite(ratio) or ratio <= 0.0:
+        raise ValueError(
+            f'Impact event at t = {event.time:.4e} yr has non-positive or non-finite '
+            f'semimajoraxis_ratio = {ratio!r}'
+        )
 
     log.info(
         'Giant impact at t = %.4e yr: target %d struck by %d, adding %.4f M_earth',
@@ -410,28 +459,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
     # Apply the impact's relative orbit change to the running row base,
     # updating config to reflect the new orbit and clamping eccentricity.
-    ratio = event.semimajoraxis_ratio
-
-    raw_a = hf_row.get('semimajorax')
-    try:
-        val_a = float(raw_a) if raw_a is not None else None
-    except (ValueError, TypeError):
-        val_a = None
-
-    if val_a is None or not math.isfinite(val_a) or val_a <= 0.0:
-        base_a = float(config.orbit.semimajoraxis) * AU
-        base_e = float(config.orbit.eccentricity)
-    else:
-        base_a = val_a
-        raw_e = hf_row.get('eccentricity')
-        try:
-            val_e = float(raw_e) if raw_e is not None else None
-        except (ValueError, TypeError):
-            val_e = None
-        if val_e is None or not math.isfinite(val_e):
-            base_e = float(config.orbit.eccentricity)
-        else:
-            base_e = val_e
+    base_a, base_e = _current_orbit(hf_row, config)
 
     requested = base_e + event.eccentricity_change
     eccentricity = min(max(requested, 0.0), _ECC_MAX)

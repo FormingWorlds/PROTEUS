@@ -1569,6 +1569,50 @@ def test_a_resumed_run_rebuilds_the_mass_and_orbit_the_impacts_moved():
 
 
 @pytest.mark.unit
+def test_restore_accretion_state_orbit_fallback():
+    """Missing, non-finite, or negative row orbit elements fall back to config.orbit."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU, M_earth
+
+    # Missing eccentricity in row: falls back to config.orbit.eccentricity
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            accretion=SimpleNamespace(module='timeline'),
+            params=SimpleNamespace(resume=True),
+            planet=SimpleNamespace(mass_tot=1.0),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.08),
+        ),
+        hf_row={
+            'M_accreted_rock': 0.5 * M_earth,
+            'semimajorax': 1.2 * AU,
+        },
+    )
+    restore_accretion_state(handler)
+    assert handler.config.orbit.semimajoraxis == pytest.approx(1.2, rel=1e-12)
+    assert handler.config.orbit.eccentricity == pytest.approx(0.08, rel=1e-12)
+
+    # NaN, inf, and negative eccentricity in row: fall back to config.orbit.eccentricity
+    for bad_e in (float('nan'), float('inf'), -0.05):
+        handler.config.orbit.eccentricity = 0.08
+        handler.hf_row['eccentricity'] = bad_e
+        restore_accretion_state(handler)
+        assert handler.config.orbit.eccentricity == pytest.approx(0.08, rel=1e-12)
+
+    # Missing, non-finite, or non-positive semimajoraxis: falls back to config.orbit
+    for bad_a in (None, float('nan'), float('inf'), 0.0, -1.0):
+        handler.config.orbit.semimajoraxis = 1.0
+        handler.config.orbit.eccentricity = 0.08
+        handler.hf_row['eccentricity'] = 0.04
+        if bad_a is None:
+            handler.hf_row.pop('semimajorax', None)
+        else:
+            handler.hf_row['semimajorax'] = bad_a
+        restore_accretion_state(handler)
+        assert handler.config.orbit.semimajoraxis == pytest.approx(1.0, rel=1e-12)
+        assert handler.config.orbit.eccentricity == pytest.approx(0.08, rel=1e-12)
+
+
+@pytest.mark.unit
 def test_the_accretion_restore_is_inert_outside_a_resume():
     """A fresh run, a disabled module, and an impact-free resume change nothing.
 
@@ -1896,9 +1940,9 @@ def test_orbit_elements_evolve_from_helpfile_row(monkeypatch):
         assert handler_bad.config.orbit.semimajoraxis == pytest.approx(0.6, rel=1e-12)
         assert handler_bad.hf_row['semimajorax'] == pytest.approx(0.6 * AU, rel=1e-12)
 
-    # Non-finite or missing eccentricity falls back to config.orbit.eccentricity
+    # Non-finite, negative, or missing eccentricity falls back to config.orbit.eccentricity
     event_nan = _impact_event(a_before=1.0e11, a_after=1.0e11, e_before=0.01, e_after=0.04)
-    for bad_e in (float('inf'), float('nan'), None):
+    for bad_e in (float('inf'), float('nan'), -0.05, None):
         handler_bad_e = _impact_handler(semimajoraxis=1.0, eccentricity=0.15)
         handler_bad_e.hf_row['semimajorax'] = 1.0 * AU
         if bad_e is None:
@@ -1908,6 +1952,22 @@ def test_orbit_elements_evolve_from_helpfile_row(monkeypatch):
         apply_impact(handler_bad_e, event_nan)
         assert handler_bad_e.config.orbit.eccentricity == pytest.approx(0.18, rel=1e-12)
         assert handler_bad_e.hf_row['eccentricity'] == pytest.approx(0.18, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_apply_impact_refuses_nonpositive_semimajoraxis_ratio():
+    """Non-positive or non-finite semimajoraxis_ratio raises ValueError."""
+    from unittest.mock import MagicMock
+
+    from proteus.accretion.wrapper import apply_impact
+
+    handler = _impact_handler(semimajoraxis=1.0, eccentricity=0.1)
+    for bad_ratio in (0.0, -0.5, float('nan'), float('inf')):
+        event = MagicMock()
+        event.time = 100.0
+        event.semimajoraxis_ratio = bad_ratio
+        with pytest.raises(ValueError, match='non-positive or non-finite semimajoraxis_ratio'):
+            apply_impact(handler, event)
 
 
 @pytest.mark.unit

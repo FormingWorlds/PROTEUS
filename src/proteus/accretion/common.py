@@ -187,6 +187,11 @@ def _check_event_physics(event: ImpactEvent, index: int) -> None:
         if not np.isfinite(value) or value <= 0.0:
             raise ValueError(f'{where}: {name} must be finite and > 0, got {value!r}')
 
+    if not np.isfinite(event.semimajoraxis_ratio) or event.semimajoraxis_ratio <= 0.0:
+        raise ValueError(
+            f'{where}: semimajoraxis_ratio must be finite and > 0, got {event.semimajoraxis_ratio!r}'
+        )
+
     # Perfect merging: the merged body carries the mass of both bodies.
     expected = event.M_target_before + event.M_impactor
     if abs(event.M_merged_after - expected) > MASS_CLOSURE_RTOL * expected:
