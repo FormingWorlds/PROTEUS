@@ -7,6 +7,7 @@ import os
 from typing import TYPE_CHECKING
 
 from proteus.utils.constants import AU, M_earth, element_list, noble_gases, vol_element_list
+from proteus.utils.coupler import helpfile_path
 
 if TYPE_CHECKING:
     from proteus.accretion.common import ImpactEvent
@@ -192,7 +193,7 @@ def restore_accretion_state(handler: Proteus) -> None:
 
     hf_row = handler.hf_row
     out_dir = getattr(handler, 'directories', {}).get('output', '.')
-    hf_name = getattr(handler, 'helpfile_path', None) or os.path.join(out_dir, 'helpfile.csv')
+    hf_name = getattr(handler, 'helpfile_path', None) or helpfile_path(out_dir)
     m_raw = hf_row.get('M_accreted_rock')
     try:
         accreted = float(m_raw or 0.0)

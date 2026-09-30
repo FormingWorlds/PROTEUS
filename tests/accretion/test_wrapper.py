@@ -3067,6 +3067,7 @@ def test_legacy_resume_missing_or_corrupt_counter_refuses(tmp_path, counter_key_
     err = str(excinfo.value)
     assert 'helpfile' in err or '.csv' in err
     assert 'restart' in err.lower()
+    assert err.split()[2].endswith('runtime_helpfile.csv')
 
     # Case with zero accreted rock:
     hf_row_zero = {
