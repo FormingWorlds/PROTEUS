@@ -301,6 +301,13 @@ def escapable_inventory(hf_row: dict, element: str) -> float:
     return max(0.0, total - locked_solid_mass(hf_row, element))
 
 
+def trapping_active(config: Config) -> bool:
+    """Whether the run traps volatiles; with ``trap_mode = 'none'`` nothing
+    this module owns may change what the run does."""
+    mode = getattr(config.outgas, 'trap_mode', 'none')
+    return isinstance(mode, str) and mode != 'none'
+
+
 def derived_total_elements(config: Config) -> tuple[str, ...]:
     """Elements whose whole-planet total the chemistry recomputes each step.
 

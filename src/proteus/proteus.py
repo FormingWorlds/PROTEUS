@@ -1206,11 +1206,12 @@ class Proteus:
             # that mode. An excess larger than the vapour column explains still
             # warns, and PrintCurrentState reports the vapour budget every
             # iteration. Non-conservation is a simplification of vapourisation.
-            from proteus.outgas.trapping import derived_total_elements
+            from proteus.outgas.trapping import derived_total_elements, trapping_active
 
             assert_mass_conservation(
                 self.hf_row,
                 require_atm_le_planet=not self.config.outgas.vapourise,
+                check_element_closure=trapping_active(self.config),
                 derived_elements=derived_total_elements(self.config),
                 closure_rtol=self.config.outgas.solver_rtol,
             )

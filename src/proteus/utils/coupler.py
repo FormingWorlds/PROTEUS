@@ -574,6 +574,7 @@ def assert_mass_conservation(
     atol_frac: float = 1e-6,
     *,
     require_atm_le_planet: bool = True,
+    check_element_closure: bool = False,
     derived_elements: tuple[str, ...] = (),
     closure_rtol: float | None = None,
 ) -> None:
@@ -601,7 +602,15 @@ def assert_mass_conservation(
         accumulated float-rounding from the per-species sum but not
         any physically meaningful drift.
     require_atm_le_planet : bool
-        Whether to enforce M_atm <= M_planet.
+        Whether to enforce M_atm <= M_planet. Ignored when the row carries no
+        vapour column: rock vapour is the only mass the relaxation excuses, so
+        with M_vaps == 0 the invariant is enforced either way.
+    check_element_closure : bool
+        Whether to also require that each element's ``_kg_total`` equals the
+        sum of its atmospheric, liquid and solid reservoirs. The main loop sets
+        it when solid-phase trapping is on, which is the bookkeeping it
+        guards; without trapping, desiccation empties the reservoirs and keeps
+        the totals, so the closure does not hold and is not asked for.
     derived_elements : tuple of str
         Elements whose whole-planet total the chemistry recomputes rather than
         conserving, so the per-element reservoir closure does not apply to
@@ -614,16 +623,16 @@ def assert_mass_conservation(
         tightly than the solver does. The closure is therefore checked against
         ``max(atol_frac, closure_rtol)``; the main loop supplies
         ``config.outgas.solver_rtol``. ``atol_frac`` itself, and with it the
-        atmosphere-mass and species-sum invariants, is unchanged. Ignored when the row carries no
-        vapour column: rock vapour is the only mass the relaxation excuses, so
-        with M_vaps == 0 the invariant is enforced either way.
+        atmosphere-mass and species-sum invariants, is unchanged.
 
     Raises
     ------
     RuntimeError
         If the per-species kg_atm sum over vol_gas_list disagrees with
         M_vol_atm by more than ``atol_frac``. When ``require_atm_le_planet``,
-        raises if M_atm relatively exceeds M_planet.
+        raises if M_atm relatively exceeds M_planet. When
+        ``check_element_closure``, raises if an element's reservoirs do not sum
+        to its total.
     """
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
@@ -703,32 +712,15 @@ def assert_mass_conservation(
                 f'loop is missing a species.'
             )
 
-    # Invariant 3: each element's whole-planet inventory equals the sum of the
-    # three reservoirs it is split across. This is the check that catches a
-    # trapping bug: solid-phase trapping moves mass from `_kg_liquid` into
-    # `_kg_solid` and must leave `_kg_total` alone, so any step that debits one
-    # side without crediting the other breaks the closure here rather than
-    # drifting silently for the rest of the run. It also catches a chemistry
-    # backend that flattens `_kg_solid` after trapping has filled it.
-    #
-    # Skipped for any element whose total is not positive: an element the run
-    # never carried has all four fields at zero, and one an upstream failure
-    # left non-finite is reported by the guard above rather than here.
-    #
-    # The tolerance is the looser of atol_frac and the chemistry solver's own
-    # relative tolerance. The atm and liquid reservoirs are outputs of a
-    # nonlinear solve that converges only to that tolerance, whereas the total
-    # is carried state, so demanding tighter closure than the solver guarantees
-    # fires on healthy runs: with CALLIOPE at 1e-4 a trapping-free run closed at
-    # 1.5e-6, above the bare 1e-6. A real bookkeeping error is far larger; the
-    # oxygen debit fault this check first caught was 3.3e-4.
+    # Invariant 3, with trapping on: each element total equals the sum of its
+    # reservoirs, so a debit without its credit fails here. Elements the run
+    # never carried are skipped; the tolerance is set out in the docstring.
+    if not check_element_closure:
+        return
     closure_tol = max(atol_frac, float(closure_rtol)) if closure_rtol else atol_frac
     for e in element_list:
         if e in derived_elements:
-            # This element's total is recomputed by the chemistry each step
-            # rather than carried as a conserved budget, so it cannot close
-            # against a solid reservoir trapping filled. See
-            # outgas.trapping.derived_total_elements for which, and why.
+            # A total the chemistry recomputes is not a conserved budget.
             continue
         total = float(hf_row.get(f'{e}_kg_total', 0.0))
         if not np.isfinite(total) or total <= 0.0:
@@ -1517,6 +1509,22 @@ def GetHelpfileDiagnosticKeys():
     return list(_DIAGNOSTIC_KEYS)
 
 
+def GetHelpfileTrappingKeys():
+    """
+    Helpfile columns written by solid-phase volatile trapping.
+
+    A run that never trapped holds zero in every one of them, which is also
+    what a run written before they existed has trapped. `ReadHelpfileFromCSV`
+    therefore zero-fills them on load, and such a run resumes.
+
+    Returns
+    -------
+    list of str
+        Column names, all of which are also in `GetHelpfileKeys()`.
+    """
+    return [k for k in GetHelpfileKeys() if k.startswith('trap_') or k.endswith('_kg_trapped')]
+
+
 def GetHelpfileCoreKeys():
     """
     Helpfile columns that a stored run must carry to be resumed.
@@ -1524,10 +1532,11 @@ def GetHelpfileCoreKeys():
     Returns
     -------
     list of str
-        Every column of `GetHelpfileKeys()` except the diagnostic ones.
+        Every column of `GetHelpfileKeys()` except the diagnostic and the
+        trapping ones.
     """
-    diagnostic = set(_DIAGNOSTIC_KEYS)
-    return [k for k in GetHelpfileKeys() if k not in diagnostic]
+    optional = set(_DIAGNOSTIC_KEYS) | set(GetHelpfileTrappingKeys())
+    return [k for k in GetHelpfileKeys() if k not in optional]
 
 
 # Columns the observation and offline-chemistry pipelines index without a
@@ -1586,9 +1595,11 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     are not covered.
 
     A shortfall in the core columns is reported rather than filled. The
-    diagnostic columns of `GetHelpfileDiagnosticKeys()` are the exception:
+    diagnostic columns of `GetHelpfileDiagnosticKeys()` are one exception:
     nothing reads them back, so a file without them is completed with zeros
-    and a line in the log. Seeding a core value would make the key present,
+    and a line in the log. The trapping columns of `GetHelpfileTrappingKeys()`
+    are the other: a run written before them trapped nothing, which is what a
+    zero in each of them records. Seeding a core value would make the key present,
     and several modules decide what to do by testing whether a key is there
     at all: CALLIOPE refuses a run whose oxygen budget is
     absent, the dummy and boundary interiors fall back to a configured core
@@ -1611,7 +1622,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     -------
     pandas.DataFrame
         Helpfile contents as stored, carrying at least ``required_columns``
-        and every diagnostic column.
+        and every diagnostic and trapping column.
 
     Raises
     ------
@@ -1642,7 +1653,17 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
             fpath,
             ', '.join(backfill),
         )
-        zeros = pd.DataFrame(0.0, index=hf_all.index, columns=backfill)
+    trapping = [k for k in GetHelpfileTrappingKeys() if k not in hf_all.columns]
+    if trapping:
+        log.info(
+            "Helpfile '%s' predates %d solid-phase trapping column(s) (%s); the run "
+            'trapped nothing, so they are filled with zeros.',
+            fpath,
+            len(trapping),
+            _describe_missing_columns(trapping),
+        )
+    if backfill or trapping:
+        zeros = pd.DataFrame(0.0, index=hf_all.index, columns=backfill + trapping)
         hf_all = pd.concat([hf_all, zeros], axis=1)
     return hf_all
 

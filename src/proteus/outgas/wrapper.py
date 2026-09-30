@@ -11,6 +11,7 @@ from proteus.outgas.lavatmos import run_vapourisation
 from proteus.outgas.trapping import (
     keep_only_trapped_mass,
     trapped_mass_withheld,
+    trapping_active,
 )
 from proteus.utils.constants import (
     element_list,
@@ -631,11 +632,10 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
         if k not in excepted_keys:
             hf_row[k] = 0.0
 
-    # Desiccation empties the atmosphere and the melt, not the solid mantle:
-    # keep what trapping buried, and empty the escape-owned totals of every
-    # volatile and noble element that has nothing left, so that each total
-    # still equals the sum of its reservoirs.
-    keep_only_trapped_mass(hf_row)
+    # With trapping on, desiccation leaves the solid mantle its buried mass and
+    # each element total the sum of its reservoirs.
+    if trapping_active(config):
+        keep_only_trapped_mass(hf_row)
 
     # Vapourisation of refractories, under the same crystallised gate as
     # volatile outgassing path.

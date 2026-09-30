@@ -346,7 +346,7 @@ def test_trapping_step_moves_mass_between_reservoirs_and_conserves_each_element(
         )
         assert parts == pytest.approx(total, rel=1e-12)
         assert row[f'{element}_kg_solid'] > 0.0
-    assert_mass_conservation(row, require_atm_le_planet=False)
+    assert_mass_conservation(row, check_element_closure=True, require_atm_le_planet=False)
 
     # The element split carries exactly the species mass it came from.
     element_gain = sum(row[f'{e}_kg_solid'] for e in ('H', 'O', 'C'))
@@ -600,27 +600,29 @@ def test_reservoir_closure_invariant_catches_a_debit_without_its_credit(fixed_fr
             row[f'{element}_kg_atm'] + row[f'{element}_kg_liquid'] + row[f'{element}_kg_solid']
         )
     run_trapping(_config(), row, _hf_all())
-    assert_mass_conservation(row, require_atm_le_planet=False)
+    assert_mass_conservation(row, check_element_closure=True, require_atm_le_planet=False)
     assert row['H_kg_solid'] > 0.0
 
     # Drop the credit and the closure fails, naming the element.
     broken = dict(row)
     broken['H_kg_solid'] = 0.0
     with pytest.raises(RuntimeError, match='closure failed for H'):
-        assert_mass_conservation(broken, require_atm_le_planet=False)
+        assert_mass_conservation(
+            broken, check_element_closure=True, require_atm_le_planet=False
+        )
 
     # Edge case: an element the run never carried has every field at zero and
     # is skipped rather than dividing by a zero total.
     untouched = dict(row)
     untouched['N_kg_total'] = 0.0
     untouched['N_kg_liquid'] = 0.0
-    assert_mass_conservation(untouched, require_atm_le_planet=False)
+    assert_mass_conservation(untouched, check_element_closure=True, require_atm_le_planet=False)
 
     # A drift under the tolerance is admitted, so float rounding in the element
     # split does not fire the check on every physically sound step.
     nudged = dict(row)
     nudged['H_kg_liquid'] = row['H_kg_liquid'] * (1.0 + 1.0e-9)
-    assert_mass_conservation(nudged, require_atm_le_planet=False)
+    assert_mass_conservation(nudged, check_element_closure=True, require_atm_le_planet=False)
 
 
 @pytest.mark.physics_invariant
@@ -759,9 +761,13 @@ def test_the_oxygen_total_is_the_whole_planets_under_either_fo2_source():
         broken[f'{element}_kg_total'] = (
             broken[f'{element}_kg_atm'] + broken[f'{element}_kg_liquid']
         )
-    assert_mass_conservation(broken, require_atm_le_planet=False, derived_elements=('O',))
+    assert_mass_conservation(
+        broken, check_element_closure=True, require_atm_le_planet=False, derived_elements=('O',)
+    )
     with pytest.raises(RuntimeError, match='closure failed for O'):
-        assert_mass_conservation(broken, require_atm_le_planet=False)
+        assert_mass_conservation(
+            broken, check_element_closure=True, require_atm_le_planet=False
+        )
 
 
 def _desiccated_row() -> dict:
@@ -792,7 +798,7 @@ def test_desiccation_keeps_the_trapped_mass_and_empties_the_rest():
     # The zeroed row fails the closure on the trapped hydrogen: the failure the
     # desiccated step would otherwise abort the run with.
     with pytest.raises(RuntimeError, match='closure failed for H'):
-        assert_mass_conservation(row, require_atm_le_planet=False)
+        assert_mass_conservation(row, check_element_closure=True, require_atm_le_planet=False)
 
     keep_only_trapped_mass(row)
     assert row['H_kg_solid'] == pytest.approx(4.0e19, rel=1e-12)
@@ -805,7 +811,7 @@ def test_desiccation_keeps_the_trapped_mass_and_empties_the_rest():
     # Edge cases: an element that trapped nothing, and a noble gas, empty.
     assert row['C_kg_total'] == pytest.approx(0.0, abs=0.0)
     assert row['He_kg_total'] == pytest.approx(0.0, abs=0.0)
-    assert_mass_conservation(row, require_atm_le_planet=False)
+    assert_mass_conservation(row, check_element_closure=True, require_atm_le_planet=False)
 
     # The oxygen total is the whole planet's under either fO2 source, so the
     # trapped oxygen is all that is left of it, and it closes.
@@ -852,23 +858,45 @@ def test_reservoir_closure_is_held_to_the_chemistry_solvers_own_tolerance():
     # A healthy run with trapping disabled, which the bare 1e-6 wrongly refused.
     healthy = _closure_row(1.0 - 1.49e-6)
     with pytest.raises(RuntimeError, match='closure failed for S'):
-        assert_mass_conservation(healthy, require_atm_le_planet=False)
-    assert_mass_conservation(healthy, require_atm_le_planet=False, closure_rtol=solver_rtol)
+        assert_mass_conservation(
+            healthy, check_element_closure=True, require_atm_le_planet=False
+        )
+    assert_mass_conservation(
+        healthy,
+        check_element_closure=True,
+        require_atm_le_planet=False,
+        closure_rtol=solver_rtol,
+    )
 
     # The same configuration with trapping on, still inside the solver's reach.
     trapped = _closure_row(1.0 + 2.49e-5)
-    assert_mass_conservation(trapped, require_atm_le_planet=False, closure_rtol=solver_rtol)
+    assert_mass_conservation(
+        trapped,
+        check_element_closure=True,
+        require_atm_le_planet=False,
+        closure_rtol=solver_rtol,
+    )
 
     # Discrimination: a real bookkeeping fault three times the solver tolerance
     # is still caught, which is what keeps the relaxation from blinding the check.
     fault = _closure_row(1.0 + 3.27e-4)
     with pytest.raises(RuntimeError, match='closure failed for S'):
-        assert_mass_conservation(fault, require_atm_le_planet=False, closure_rtol=solver_rtol)
+        assert_mass_conservation(
+            fault,
+            check_element_closure=True,
+            require_atm_le_planet=False,
+            closure_rtol=solver_rtol,
+        )
 
     # The solver tolerance only ever loosens the closure: a tighter value leaves
     # atol_frac in charge, so the healthy row is refused exactly as before.
     with pytest.raises(RuntimeError, match='closure failed for S'):
-        assert_mass_conservation(healthy, require_atm_le_planet=False, closure_rtol=1.0e-9)
+        assert_mass_conservation(
+            healthy,
+            check_element_closure=True,
+            require_atm_le_planet=False,
+            closure_rtol=1.0e-9,
+        )
 
     # The species-sum invariant keeps its own atol_frac: a stale M_vol_atm is
     # refused however loose the closure tolerance is.
@@ -876,7 +904,9 @@ def test_reservoir_closure_is_held_to_the_chemistry_solvers_own_tolerance():
     stale['M_vol_atm'] = 1.0e20
     stale['H2O_kg_atm'] = 5.0e19
     with pytest.raises(RuntimeError, match='M_vol_atm bookkeeping'):
-        assert_mass_conservation(stale, require_atm_le_planet=False, closure_rtol=1.0e-1)
+        assert_mass_conservation(
+            stale, check_element_closure=True, require_atm_le_planet=False, closure_rtol=1.0e-1
+        )
 
 
 def _reservoir_sums(hf_row: dict) -> dict[str, float]:
@@ -1336,7 +1366,7 @@ def test_the_supply_cap_holds_a_step_to_what_the_melt_contains(fixed_front):
     # Carbon at D_Z = 0 asks for 0.02 * 2e-3 * 1.8e24 = 7.2e19 kg and gets it.
     assert row['CO2_kg_trapped'] == pytest.approx(7.2e19, rel=1e-12)
     assert 'CO2' not in step.supply_capped
-    assert_mass_conservation(row, require_atm_le_planet=False)
+    assert_mass_conservation(row, check_element_closure=True, require_atm_le_planet=False)
 
 
 @pytest.mark.physics_invariant
