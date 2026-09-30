@@ -40,6 +40,11 @@ Anti-happy-path coverage:
 
 - Limit inputs: ``sma_init == sma_final`` is a fixed point of all
   three laws, and the pre-migration epoch returns the untouched orbit.
+- Direction: ``instant`` and ``sigmoid`` are exercised outward
+  (``sma_final > sma_init``) as well as inward, since both are
+  reachable configurations. ``high_ecc`` is inward only and is
+  asserted to refuse the outward case at both the law and the
+  wrapper level.
 - Error contract: a non-positive ``tau_mig`` raises, a missing
   ``sma_init`` or ``sma_final`` is named rather than failing inside
   the unit conversion, outward high-eccentricity migration raises,
@@ -731,3 +736,148 @@ def test_wrapper_requires_a_final_semimajor_axis_for_every_migrating_law(migrati
     a, e = run_parameterized_orbital_migration({'Time': T_MIG}, _config('none', sma_final=None))
     assert a == pytest.approx(SMA_I * AU, rel=RTOL)
     assert 0.0 <= e < 1.0
+
+
+# ---------------------------------------------------------------------------
+# Outward migration: sma_final > sma_init
+# ---------------------------------------------------------------------------
+#
+# The endpoints above are reused swapped, so the outward pair is
+# 0.8 -> 2.0 AU. Keeping the same two numbers makes the reflection
+# identity below exact: for any shape function S, the inward and
+# outward tracks evaluated at the same window fraction sum to
+# SMA_I + SMA_F, since (a_0 + d S) + (a_0' - d S) with a_0' - a_0 = d
+# collapses to a constant. A law that took the magnitude of the
+# endpoint difference instead of its signed value would migrate the
+# wrong way here while staying correct inward, and would break that
+# identity.
+
+
+@pytest.mark.physics_invariant
+def test_instant_migration_steps_outward_when_sma_final_exceeds_sma_init():
+    """The step carries the planet either way. Outward, the epoch places
+    it at the larger axis, so a law clamped to the smaller endpoint (a
+    minimum rather than a selection) would still pass every inward test
+    while failing here."""
+    before = instant_migration(0.0, SMA_F, SMA_I, T_MIG)
+    at_epoch = instant_migration(T_MIG, SMA_F, SMA_I, T_MIG)
+    late = instant_migration(1.0e12, SMA_F, SMA_I, T_MIG)
+
+    assert before == pytest.approx(SMA_F, rel=RTOL)
+    assert at_epoch == pytest.approx(SMA_I, rel=RTOL)
+    assert late == pytest.approx(SMA_I, rel=RTOL)
+    # Direction guard: the post-epoch axis is the larger endpoint, which
+    # is what a min() or an abs() on the endpoint difference would miss.
+    assert at_epoch > before
+    # Boundedness and scale.
+    assert before > 0.0
+    assert SMA_F <= before <= SMA_I
+    assert SMA_F <= at_epoch <= SMA_I
+
+
+@pytest.mark.physics_invariant
+def test_sigmoid_matches_the_cubic_smoothstep_migrating_outward():
+    """Analytical limit, mirrored. With a_0 = 0.8 and a_f = 2.0 the
+    cubic ``S(u) = 3u^2 - 2u^3`` gives ``0.8 + 1.2 S(u)``: the quarter
+    point ``S(1/4) = 5/32`` lands at 0.9875 AU, the midpoint at 1.4 AU
+    and the three-quarter point ``S(3/4) = 27/32`` at 1.8125 AU.
+
+    The quarter point separates the cubic from its neighbours in this
+    direction too: a linear ramp puts it at 1.1 AU and the quintic
+    smootherstep ``6u^5 - 15u^4 + 10u^3`` at 0.92422 AU. A law using
+    ``-abs(a_f - a_0)`` would put it at 0.6125 AU, below both endpoints.
+    """
+    quarter = sigmoid_migration(T_MIG + 0.25 * TAU, SMA_F, SMA_I, T_MIG, TAU)
+    middle = sigmoid_migration(T_MIG + 0.50 * TAU, SMA_F, SMA_I, T_MIG, TAU)
+    three_q = sigmoid_migration(T_MIG + 0.75 * TAU, SMA_F, SMA_I, T_MIG, TAU)
+
+    assert quarter == pytest.approx(SMA_F + (SMA_I - SMA_F) * 5.0 / 32.0, rel=RTOL)
+    assert middle == pytest.approx(0.5 * (SMA_I + SMA_F), rel=RTOL)
+    assert three_q == pytest.approx(SMA_F + (SMA_I - SMA_F) * 27.0 / 32.0, rel=RTOL)
+
+    # Shape guards, recomputed for this direction rather than reused.
+    wrong_linear = SMA_F + (SMA_I - SMA_F) * 0.25
+    wrong_quintic = SMA_F + (SMA_I - SMA_F) * (6 * 0.25**5 - 15 * 0.25**4 + 10 * 0.25**3)
+    assert abs(quarter - wrong_linear) > 0.05
+    assert abs(quarter - wrong_quintic) > 0.02
+
+    # Reflection identity: the inward track at the same window fraction
+    # is the mirror of this one about the midpoint of the endpoints.
+    inward_quarter = sigmoid_migration(T_MIG + 0.25 * TAU, SMA_I, SMA_F, T_MIG, TAU)
+    assert quarter + inward_quarter == pytest.approx(SMA_I + SMA_F, rel=RTOL)
+
+    # Direction, boundedness and scale.
+    assert quarter < middle < three_q
+    assert SMA_F < quarter < SMA_I
+
+
+@pytest.mark.physics_invariant
+def test_sigmoid_increases_monotonically_onto_sma_final_when_migrating_outward():
+    """Outward migration: the semi-major axis rises monotonically from
+    sma_init to sma_final, never overshooting either endpoint, and is
+    clamped outside the window exactly as the inward track is."""
+    t = np.linspace(T_MIG - TAU, T_MIG + 60.0 * TAU, 2000)
+    a, _ = _sweep(
+        sigmoid_migration, t, sma_init=SMA_F, sma_final=SMA_I, time_migration=T_MIG, tau_mig=TAU
+    )
+
+    # Monotonicity in the opposite sense to the inward sweep. The slack
+    # is absolute, covering float round-off on AU-scale increments.
+    assert np.all(np.diff(a) >= -1.0e-12)
+    assert np.all(a > 0.0)
+    assert np.all(a >= SMA_F - 1.0e-12)
+    assert np.all(a <= SMA_I + 1.0e-12)
+    # The track actually spans the endpoints rather than sitting at one:
+    # held at sma_init before the window, arrived at sma_final after it.
+    assert a[0] == pytest.approx(SMA_F, rel=RTOL)
+    assert a[-1] == pytest.approx(SMA_I, rel=RTOL)
+    # Clamping past the window. Continued rather than clamped, the cubic
+    # runs away: S(2) = 3*4 - 2*8 = -4, which would put the orbit at
+    # 0.8 + 1.2 * (-4) = -4.0 AU, an unphysical negative axis.
+    past = sigmoid_migration(T_MIG + 2.0 * TAU, SMA_F, SMA_I, T_MIG, TAU)
+    assert past == pytest.approx(SMA_I, rel=RTOL)
+    assert past > 0.0
+
+
+@pytest.mark.parametrize(
+    'migration, a_au',
+    [('instant', SMA_I), ('sigmoid', SMA_F)],
+    ids=['instant_jump_already_arrived', 'sigmoid_ramp_has_not_started'],
+)
+@pytest.mark.physics_invariant
+def test_wrapper_dispatches_an_outward_track(migration, a_au):
+    """The wrapper carries the outward endpoints through the AU
+    conversion and the dispatch. Probed at the epoch, where the two
+    laws disagree: the step has arrived at 2.0 AU and the ramp has not
+    left 0.8 AU, so a mis-dispatch cannot hide behind a shared value."""
+    hf_row = {'Time': T_MIG}
+    a, e = run_parameterized_orbital_migration(
+        hf_row, _config(migration, sma_init=SMA_F, sma_final=SMA_I)
+    )
+
+    assert a == pytest.approx(a_au * AU, rel=RTOL)
+    assert hf_row['semimajorax'] == pytest.approx(a_au * AU, rel=RTOL)
+    assert e == pytest.approx(0.0, abs=RTOL)
+    # Scale guard: SI metres, not AU left unconverted nor doubled.
+    assert 1.0e9 < a < 1.0e13
+
+
+@pytest.mark.physics_invariant
+def test_wrapper_refuses_an_outward_high_eccentricity_track():
+    """High-eccentricity circularisation conserves orbital angular
+    momentum, so it can only shrink the orbit. The wrapper surfaces that
+    rather than writing a nan into hf_row. The mirrored inward config is
+    asserted alongside, so a wrapper that rejected every high_ecc track
+    would also fail."""
+    hf_row = {'Time': T_MIG}
+
+    with pytest.raises(ValueError, match='inward only'):
+        run_parameterized_orbital_migration(
+            hf_row, _config('high_ecc', sma_init=SMA_F, sma_final=SMA_I)
+        )
+
+    assert 'semimajorax' not in hf_row
+
+    a, e = run_parameterized_orbital_migration({'Time': T_MIG}, _config('high_ecc'))
+    assert a == pytest.approx(SMA_I * AU, rel=RTOL)
+    assert e == pytest.approx(np.sqrt(1.0 - SMA_F / SMA_I), rel=RTOL)
