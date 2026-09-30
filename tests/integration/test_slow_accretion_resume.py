@@ -384,13 +384,8 @@ def test_a_run_stopped_on_an_impact_resumes_from_before_it(tmp_path):
         'planet to; the restored mass and the re-applied impact do not agree'
     )
 
-    # The mantle carried past the impact is the one the impact melted. The
-    # resumed run walked back to a state cooler than the pre-impact row and
-    # re-solved forward, so every row it wrote would stay below that row if
-    # the re-melt had been lost: nothing else here can warm the interior.
-    # Read as a maximum over the whole post-impact stretch rather than at the
-    # impact row alone, because the re-melt resets the solver at the end of
-    # the step and the row it lands on is written before that reset.
+    # Verify that the post-impact evolution evolves from the re-melted mantle,
+    # exceeding the pre-impact temperature throughout the post-impact phase.
     post_impact = resumed[resumed['Time'] >= IMPACT_TIME]
     assert len(post_impact) > 1, (
         'the resumed run stored no row past the impact step, so nothing was '

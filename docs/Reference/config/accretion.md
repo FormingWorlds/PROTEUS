@@ -43,7 +43,9 @@ Accretion requires an interior module that can be re-melted and that can be
 stepped onto the moment of an impact, so `interior_energetics.module = "spider"`
 and `"boundary"` are both refused at configuration load: SPIDER has no supported
 re-melt path, and the boundary interior does not forward its state to the
-time-stepper, so the step cannot be capped to land on the collision. It is
+time-stepper, so the step cannot be capped to land on the collision. Furthermore,
+`interior_struct.module = "spider"` is refused because SPIDER structure solves
+do not support non-thermal structure updates during giant impacts. It is
 also refused together with `outgas.vapourise = true`: rock vapour adds
 rock-forming mass to the atmosphere that the whole-planet mass does not track,
 while an impact sizes its atmospheric stripping and its volatile delivery from

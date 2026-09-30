@@ -130,7 +130,7 @@ class ImpactEvent:
         """Factor by which this impact scales the semi-major axis [1].
 
         The orbit is applied as a ratio rather than an absolute value
-        because the PROTEUS configuration owns the planet's orbit; a
+        because the running row owns the planet's orbit; a
         borrowed impact history moves it proportionally instead of
         replacing it.
         """
@@ -141,7 +141,7 @@ class ImpactEvent:
         """Change in eccentricity this impact makes [1].
 
         Applied as a change for the same reason the semi-major axis is applied
-        as a ratio: the configuration owns the planet's orbit, and the followed
+        as a ratio: the running row owns the planet's orbit, and the followed
         body's absolute eccentricity belongs to its orbit rather than to the
         planet being simulated. A change is used instead of a ratio because the
         eccentricity is dimensionless and routinely zero, which a ratio cannot

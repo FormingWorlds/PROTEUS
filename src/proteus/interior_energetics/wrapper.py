@@ -1035,6 +1035,22 @@ def determine_interior_radius_with_dummy(
 
     Ultra-fast analytical parameterization replacing Zalmoxis. Fills all
     hf_row keys and writes output files needed by SPIDER/Aragog.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_all : pd.DataFrame
+        Historical helpfile dataframe.
+    hf_row : dict
+        Current step helpfile row.
+    outdir : str
+        Output directory path.
+    thermal_solve : bool, optional
+        Whether to run an interior thermal solve or update mechanical mass and
+        structure only (default is True).
     """
     from proteus.interior_struct.dummy import solve_dummy_structure
 
@@ -1557,12 +1573,27 @@ def determine_interior_radius_with_zalmoxis(
     outdir: str,
     thermal_solve: bool = True,
 ):
-    """
-    Determine the interior radius (R_int) of the planet using Zalmoxis.
+    """Determine the interior radius (R_int) of the planet using Zalmoxis.
 
     When the interior module is SPIDER, also writes a SPIDER-format mesh
     file from the Zalmoxis structure solution and stores the path in
     ``dirs['spider_mesh']`` for subsequent calls.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_all : pd.DataFrame
+        Historical helpfile dataframe.
+    hf_row : dict
+        Current step helpfile row.
+    outdir : str
+        Output directory path.
+    thermal_solve : bool, optional
+        Whether to run an interior thermal solve or update mechanical mass and
+        structure only (default is True).
     """
 
     log.info('Using Zalmoxis to solve for interior structure')
@@ -1944,6 +1975,12 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     across the impact for any booked value; the magnitude is therefore a
     defined convention quantified in the helpfile, not a quantity the residual
     itself can validate.
+
+    The melt-state keys in ``hf_row`` (``T_magma``, ``Phi_global``,
+    ``Phi_global_vol``, ``T_pot``, ``M_mantle_liquid``, ``M_mantle_solid``)
+    are updated to reflect the molten profile evaluated without time
+    integration, ensuring downstream modules on the impact iteration
+    read the post-impact melt state.
     """
     from proteus.interior_energetics.aragog import AragogRunner
 
@@ -2179,6 +2216,22 @@ def solve_structure(
     If the structure is set by the radius, then this is trivial because the radius is used
     as an input to the interior modules anyway. If the structure is set by mass, then it is
     solved as an inverse problem for now.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_all : pd.DataFrame
+        Historical helpfile dataframe.
+    hf_row : dict
+        Current step helpfile row.
+    outdir : str
+        Output directory path.
+    thermal_solve : bool, optional
+        Whether to run an interior thermal solve or update mechanical mass and
+        structure only (default is True).
     """
     # Set by total mass (mantle + core + volatiles)
     if config.planet.mass_tot is not None:

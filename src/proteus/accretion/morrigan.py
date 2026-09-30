@@ -164,8 +164,9 @@ def build_parameters(config: Config) -> dict:
     Returns
     -------
     params : dict
-        Keyword arguments for the Morrigan entry point. Masses are in kg
-        and lengths in m.
+        Keyword arguments for the Morrigan entry point. Inputs are SI apart
+        from stellar mass in M_sun and evolution time in Gyr; embryo masses
+        are in kg and lengths in m.
     """
     mor = config.accretion.morrigan
 

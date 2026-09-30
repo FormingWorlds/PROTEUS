@@ -273,10 +273,9 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
     The impactor mass is added to the planet's total mass and the interior
     structure is re-solved, so the radius, gravity and the core/mantle split
-    follow the new mass at the configured core fraction. The orbit change is
-    applied as a discrete jump to both the configuration, which pins the
-    orbit when tides are off, and the running row, which the tidal evolution
-    carries forward when tides are on, so the jump persists under either.
+    follow the new mass at the configured core fraction. The orbit change
+    updates the running row base (which tides evolve) and the configuration
+    reflects the current post-impact orbit.
 
     Parameters
     ----------
@@ -409,15 +408,8 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         handler.desiccated = False
         log.info('    desiccation latch cleared: the impact delivered volatiles')
 
-    # Move the orbit by the impact's proportional change in semi-major axis and
-    # its post-impact eccentricity, writing both the configuration and the row.
-    # Both elements are applied as the change this impact made, not as the
-    # followed body's absolute values, because the configuration owns the
-    # planet's orbit: a borrowed impact history moves it, it does not replace
-    # it. The semi-major axis takes the ratio and the eccentricity the
-    # difference, since eccentricity is dimensionless and routinely zero, which
-    # a ratio cannot express. The result is clamped to a bound orbit, so an
-    # impact that excites a planet already near unity cannot unbind it on paper.
+    # Apply the impact's relative orbit change to the running row base,
+    # updating config to reflect the new orbit and clamping eccentricity.
     ratio = event.semimajoraxis_ratio
 
     raw_a = hf_row.get('semimajorax')
