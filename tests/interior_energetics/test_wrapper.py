@@ -41,6 +41,8 @@ from proteus.interior_energetics.wrapper import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+PROTEUS_ROOT = Path(__file__).resolve().parents[2]
+
 
 def _ns_prevent_warming(prevent_warming: bool, module: str = 'aragog'):
     """Build the minimal config namespace _prevent_warming_clamp_active reads.
@@ -4406,14 +4408,26 @@ def test_solve_structure_spider_module_dispatch():
 
 
 @pytest.mark.unit
-def test_solve_structure_thermal_solve_controls_interior_run(tmp_path):
+@pytest.mark.parametrize(
+    'struct_module,thermal_solve,expect_call,expect_error',
+    [
+        ('dummy', False, False, None),
+        ('dummy', True, True, None),
+        ('zalmoxis', False, False, None),
+        ('zalmoxis', True, True, None),
+        ('spider', False, False, ValueError),
+    ],
+)
+def test_solve_structure_thermal_solve_controls_interior_run(
+    tmp_path, struct_module, thermal_solve, expect_call, expect_error
+):
     """thermal_solve=False skips run_interior on dummy and zalmoxis branches.
 
     When thermal_solve is False, run_interior must not be invoked, preventing
     state overwrite and spurious snapshot writes during giant impacts. For both
-    dummy and zalmoxis paths, M_planet must equal M_int + M_ele.
-    When thermal_solve is True, run_interior is invoked normally.
-    For spider struct, thermal_solve=False raises ValueError.
+    dummy and zalmoxis paths, M_planet must equal M_int + M_ele, and M_mantle
+    must equal M_int - M_core. When thermal_solve is True, run_interior is invoked
+    normally. For spider struct, thermal_solve=False raises ValueError.
     """
     from unittest.mock import patch
 
@@ -4424,41 +4438,10 @@ def test_solve_structure_thermal_solve_controls_interior_run(tmp_path):
 
     dirs = {'output': str(tmp_path), 'spider': '/nonexistent'}
     hf_all = pd.DataFrame()
+    config = read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml')
+    config.interior_struct.module = struct_module
 
-    # 1. Dummy path: thermal_solve=False skips run_interior; M_planet updated
-    config_dummy = read_config_object('input/dummy.toml')
-    hf_row_dummy = {
-        'M_int': 5.97e24,
-        'M_core': 1.8e24,
-        'R_int': 6.37e6,
-        'M_ele': 1.0e20,
-        'Phi_global': 1.0,
-        'P_surf': 1e5,
-        'T_magma': 3000.0,
-    }
-    with (
-        patch('proteus.interior_energetics.wrapper.run_interior') as mock_run,
-        patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
-    ):
-        solve_structure(
-            dirs, config_dummy, hf_all, hf_row_dummy, str(tmp_path), thermal_solve=False
-        )
-        mock_run.assert_not_called()
-
-    # 2. Dummy path: thermal_solve=True calls run_interior
-    with (
-        patch('proteus.interior_energetics.wrapper.run_interior') as mock_run,
-        patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
-    ):
-        solve_structure(
-            dirs, config_dummy, hf_all, hf_row_dummy, str(tmp_path), thermal_solve=True
-        )
-        mock_run.assert_called_once()
-
-    # 3. Zalmoxis path: thermal_solve=False skips run_interior; M_planet and M_mantle updated
-    config_zalmoxis = read_config_object('input/dummy.toml')
-    config_zalmoxis.interior_struct.module = 'zalmoxis'
-    hf_row_zalmoxis = {
+    hf_row = {
         'M_int': 6.0e24,
         'M_core': 1.8e24,
         'R_int': 6.4e6,
@@ -4468,40 +4451,36 @@ def test_solve_structure_thermal_solve_controls_interior_run(tmp_path):
         'P_surf': 1e5,
         'T_magma': 3000.0,
     }
+
+    if expect_error is not None:
+        with pytest.raises(expect_error, match='does not support thermal_solve=False'):
+            solve_structure(
+                dirs, config, hf_all, hf_row, str(tmp_path), thermal_solve=thermal_solve
+            )
+        return
+
     with (
         patch('proteus.interior_energetics.wrapper.run_interior') as mock_run,
+        patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
         patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.5e6, None)),
     ):
         solve_structure(
-            dirs, config_zalmoxis, hf_all, hf_row_zalmoxis, str(tmp_path), thermal_solve=False
+            dirs, config, hf_all, hf_row, str(tmp_path), thermal_solve=thermal_solve
         )
-        mock_run.assert_not_called()
-        assert hf_row_zalmoxis['M_mantle'] == pytest.approx(
-            hf_row_zalmoxis['M_int'] - hf_row_zalmoxis['M_core'], rel=1e-12
-        )
-        assert hf_row_zalmoxis['M_mantle'] == pytest.approx(6.0e24 - 1.8e24, rel=1e-12)
-        assert hf_row_zalmoxis['M_planet'] == pytest.approx(
-            hf_row_zalmoxis['M_int'] + hf_row_zalmoxis['M_ele'], rel=1e-12
-        )
-        assert hf_row_zalmoxis['M_planet'] == pytest.approx(6.0e24 + 2.0e20, rel=1e-12)
 
-    # 4. Zalmoxis path: thermal_solve=True calls run_interior
-    with (
-        patch('proteus.interior_energetics.wrapper.run_interior') as mock_run,
-        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.5e6, None)),
-    ):
-        solve_structure(
-            dirs, config_zalmoxis, hf_all, hf_row_zalmoxis, str(tmp_path), thermal_solve=True
-        )
-        mock_run.assert_called_once()
-
-    # 5. Spider struct: thermal_solve=False raises ValueError
-    config_spider = read_config_object('input/dummy.toml')
-    config_spider.interior_struct.module = 'spider'
-    with pytest.raises(ValueError, match='does not support thermal_solve=False'):
-        solve_structure(
-            dirs, config_spider, hf_all, hf_row_dummy, str(tmp_path), thermal_solve=False
-        )
+        if expect_call:
+            mock_run.assert_called_once()
+        else:
+            mock_run.assert_not_called()
+            assert hf_row['M_mantle'] == pytest.approx(
+                hf_row['M_int'] - hf_row['M_core'], rel=1e-12
+            )
+            assert hf_row['M_mantle'] == pytest.approx(6.0e24 - 1.8e24, rel=1e-12)
+            assert hf_row['M_planet'] == pytest.approx(
+                hf_row['M_int'] + hf_row['M_ele'], rel=1e-12
+            )
+            if struct_module == 'zalmoxis':
+                assert hf_row['M_planet'] == pytest.approx(6.0e24 + 2.0e20, rel=1e-12)
 
 
 # ============================================================================
@@ -6885,9 +6864,9 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
             self.recorded_y = self._solution.y
             self.recorded_t = self._solution.t
             return SimpleNamespace(
-                phi_stag=np.ones(len(self._S0)),
-                phi_global=1.0,
-                phi_global_vol=1.0,
+                phi_stag=np.full(len(self._S0), 0.73),
+                phi_global=0.73,
+                phi_global_vol=0.73,
                 T_magma=3850.0,
                 T_pot=3750.0,
                 T_surf=3850.0,
@@ -6911,8 +6890,8 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     assert solver.recorded_y.shape == (len(solver._S0), 1)
     assert solver.recorded_t[0] == 250.0
 
-    # 2. Key write in _remelt_aragog
-    config = read_config_object('input/dummy.toml')
+    # 2. Key write in _remelt_aragog with non-unity melt fraction (0.73)
+    config = read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml')
     config.interior_energetics.module = 'aragog'
     config.planet.temperature_mode = 'isothermal'
     config.planet.tsurf_init = 3850.0
@@ -6929,17 +6908,26 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
         lambda *a, **k: {
             'T_magma': 3850.0,
-            'Phi_global': 1.0,
-            'Phi_global_vol': 1.0,
+            'Phi_global': 0.73,
+            'Phi_global_vol': 0.73,
             'T_pot': 3750.0,
         },
     )
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
 
     assert hf_row['T_magma'] == pytest.approx(3850.0, rel=1e-12)
-    assert hf_row['Phi_global'] == pytest.approx(1.0, rel=1e-12)
-    assert hf_row['Phi_global_vol'] == pytest.approx(1.0, rel=1e-12)
+    assert hf_row['Phi_global'] == pytest.approx(0.73, rel=1e-12)
+    assert hf_row['Phi_global_vol'] == pytest.approx(0.73, rel=1e-12)
     assert hf_row['T_pot'] == pytest.approx(3750.0, rel=1e-12)
-    assert hf_row['M_mantle_liquid'] == pytest.approx(4.2e24, rel=1e-12)
-    assert hf_row['M_mantle_solid'] == pytest.approx(0.0, abs=1e-12)
+    assert hf_row['M_mantle_liquid'] == pytest.approx(0.73 * 4.2e24, rel=1e-12)
+    assert hf_row['M_mantle_solid'] == pytest.approx(0.27 * 4.2e24, rel=1e-12)
+    assert hf_row['M_mantle_liquid'] + hf_row['M_mantle_solid'] == pytest.approx(
+        hf_row['M_mantle'], rel=1e-12
+    )
     assert solver._solution is None
+
+    # 3. Solver without get_state returns None
+    class NoGetStateSolver:
+        pass
+
+    assert evaluate_molten_state(NoGetStateSolver(), hf_row) is None

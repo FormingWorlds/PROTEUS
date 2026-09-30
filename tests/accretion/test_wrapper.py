@@ -1881,20 +1881,9 @@ def test_orbit_elements_evolve_from_helpfile_row(monkeypatch):
     assert handler_a.config.orbit.semimajoraxis == pytest.approx(0.96, rel=1e-12)
     assert handler_a.hf_row['semimajorax'] == pytest.approx(0.96 * AU, rel=1e-12)
 
-    # First iteration: hf_row has e=0.0 and a=0.0; falls back to config.orbit
-    handler_first = _impact_handler(semimajoraxis=0.5, eccentricity=0.1)
-    handler_first.hf_row['semimajorax'] = 0.0
-    handler_first.hf_row['eccentricity'] = 0.0
+    # Non-finite, non-positive, or missing semimajoraxis falls back to config.orbit
     event_first = _impact_event(a_before=1.0e11, a_after=1.2e11, e_before=0.01, e_after=0.04)
-    apply_impact(handler_first, event_first)
-
-    assert handler_first.config.orbit.eccentricity == pytest.approx(0.13, rel=1e-12)
-    assert handler_first.hf_row['eccentricity'] == pytest.approx(0.13, rel=1e-12)
-    assert handler_first.config.orbit.semimajoraxis == pytest.approx(0.6, rel=1e-12)
-    assert handler_first.hf_row['semimajorax'] == pytest.approx(0.6 * AU, rel=1e-12)
-
-    # Non-finite, negative, or missing semimajoraxis falls back to config.orbit
-    for bad_a in (float('inf'), float('nan'), -1.0, None):
+    for bad_a in (0.0, float('inf'), float('nan'), -1.0, None):
         handler_bad = _impact_handler(semimajoraxis=0.5, eccentricity=0.1)
         if bad_a is None:
             del handler_bad.hf_row['semimajorax']
@@ -1903,7 +1892,9 @@ def test_orbit_elements_evolve_from_helpfile_row(monkeypatch):
         handler_bad.hf_row['eccentricity'] = 0.0
         apply_impact(handler_bad, event_first)
         assert handler_bad.config.orbit.eccentricity == pytest.approx(0.13, rel=1e-12)
+        assert handler_bad.hf_row['eccentricity'] == pytest.approx(0.13, rel=1e-12)
         assert handler_bad.config.orbit.semimajoraxis == pytest.approx(0.6, rel=1e-12)
+        assert handler_bad.hf_row['semimajorax'] == pytest.approx(0.6 * AU, rel=1e-12)
 
     # Non-finite or missing eccentricity falls back to config.orbit.eccentricity
     event_nan = _impact_event(a_before=1.0e11, a_after=1.0e11, e_before=0.01, e_after=0.04)

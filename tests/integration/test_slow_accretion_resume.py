@@ -484,7 +484,7 @@ def test_accretion_resume_matches_uninterrupted_run(tmp_path):
 
 
 @pytest.mark.slow
-def test_accretion_resume_with_sparse_snapshots_completes_past_impact(tmp_path):
+def test_accretion_resume_with_sparse_snapshots_completes_past_impact(tmp_path, caplog):
     """Resumed run with write_mod=2 completes past an impact on a non-snapshot step.
 
     When write_mod > 1, the step landing the impact does not write an interior
@@ -516,7 +516,12 @@ def test_accretion_resume_with_sparse_snapshots_completes_past_impact(tmp_path):
     leg2 = _make_runner(outdir, LEG2_STOP_TIME)
     leg2.config.accretion.dummy.time_last = impact_time
     leg2.config.params.out.write_mod = 2
+    caplog.clear()
     leg2.start(resume=True, offline=True)
+
+    assert 'discarded the interior snapshot' not in caplog.text, (
+        'Expected non-snapshot impact step: discard_preimpact_snapshot must not be called'
+    )
 
     assert leg2.hf_all['M_accreted_rock'].iloc[-1] > 0.0, (
         'Expected impact to land in resumed leg 2 with M_accreted_rock > 0'

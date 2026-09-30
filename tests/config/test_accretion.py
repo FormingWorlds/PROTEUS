@@ -374,7 +374,15 @@ def test_accretion_with_spider_interior_struct_is_refused_at_config_load():
             check_accretion_interior_compatibility(
                 _compat_instance(module, 'aragog', struct_module='spider'), None, None
             )
-        assert 'accretion' in str(exc_info.value).lower()
+        msg = str(exc_info.value)
+        assert (
+            f"accretion.module = '{module}' cannot run with interior_struct.module = 'spider'"
+            in msg
+        )
+        assert (
+            'SPIDER structure solve does not support non-thermal solves during giant impacts.'
+            in msg
+        )
 
     # When accretion is disabled, interior_struct spider is admitted.
     check_accretion_interior_compatibility(
