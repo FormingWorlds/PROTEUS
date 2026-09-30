@@ -1016,9 +1016,11 @@ def GetHelpfileKeys():
         # as fO2_shift_IW_derived above).
         # The Fe-metal columns are the saturation diagnostics of the same
         # tracker: the largest per-cell metal activity (0 when no cell was
-        # tested), the cumulative metal formed in mol and in kg, and the
+        # tested) and the index of the cell holding it (-1 when no cell was
+        # tested; 0 under other fO2 sources), the cumulative metal formed in mol and in kg, and the
         # metal formed on this step.
         'a_fe_max_mantle',  # largest per-cell Fe-metal activity [1]
+        'a_fe_max_cell_mantle',  # index of that cell (-1: none tested) [1]
         'fO2_shift_IW_mantle',  # tracked-melt-redox surface Delta-IW [log10 bar]
         'fe_metal_kg_mantle',  # cumulative Fe metal formed in the mantle [kg]
         'ferric_frac_mantle',  # global melt Fe3+/FeT from the tracker [1]

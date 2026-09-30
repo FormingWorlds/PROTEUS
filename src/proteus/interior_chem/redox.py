@@ -211,6 +211,10 @@ class MeltRedoxState:
     # Per-cell metal activity, overwritten each step. Diagnostic only, but
     # logged even when below 1 so the distance from the buffer is visible.
     a_fe_cell: np.ndarray
+    # Index (into the interior_o staggered-grid arrays) of the cell with the
+    # largest a_Fe this step, i.e. the binding cell cstar that receives any
+    # metal formed. -1 when no cell was tested. Overwritten each step.
+    a_fe_max_cell: int = -1
     ferric_frac: float = F_0
     redox_ratio: float = field(default=F_0 / (1.0 - F_0))
     # Initial FeO1.5 mass fraction of the melt, set from f_0 in Step 2 and held
@@ -314,6 +318,7 @@ def _metal_saturation_step(
     # the basis Schaefer's nsil is built on (her MW array lists MgO and SiO2
     # separately). Dropping the factor 2 would halve n_sil and inflate a_Fe
     # by ~1.9x, since a_Fe ~ 1/n_sil.
+    state.a_fe_max_cell = -1
     M_melt = float(np.sum(phi * mass))
     if M_melt <= 0.0:
         return 0.0
@@ -360,6 +365,7 @@ def _metal_saturation_step(
             )
         return 0.0
     cstar = int(np.argmax(np.where(usable, a_fe, -np.inf)))
+    state.a_fe_max_cell = cstar
 
     # Forward reaction only: metal that has formed is never redissolved, so an
     # undersaturated melt is left untouched even if metal is present.
@@ -520,6 +526,10 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     # below 1, because how close the melt runs to the buffer is the useful
     # diagnostic during an f_0 scan.
     hf_row['a_fe_max_mantle'] = float(np.max(state.a_fe_cell))
+    # Where that maximum sits: the binding cell, which is also where any
+    # metal formed this step was deposited. -1 on steps with no check.
+    checked = not first_call and not state.melt_exhausted
+    hf_row['a_fe_max_cell_mantle'] = float(state.a_fe_max_cell if checked else -1)
     hf_row['n_fe_metal_mantle'] = float(np.sum(state.n_fe_metal_cell))
     # Same cumulative metal as a mass: moles times the molar mass of Fe.
     hf_row['fe_metal_kg_mantle'] = hf_row['n_fe_metal_mantle'] * element_mmw['Fe']

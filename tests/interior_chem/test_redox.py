@@ -329,6 +329,7 @@ def test_metal_diagnostics_reach_the_helpfile_csv(tmp_path, caplog):
 
     metal_keys = (
         'a_fe_max_mantle',
+        'a_fe_max_cell_mantle',
         'fe_metal_kg_mantle',
         'n_fe_metal_mantle',
         'n_fe_metal_step_mantle',
@@ -363,6 +364,9 @@ def test_metal_diagnostics_reach_the_helpfile_csv(tmp_path, caplog):
     # Edge case: the first call runs no metal check, so all three are zero.
     assert csv['n_fe_metal_mantle'].iloc[0] == pytest.approx(0.0, abs=1e-30)
     assert csv['a_fe_max_mantle'].iloc[0] == pytest.approx(0.0, abs=1e-30)
+    # No cell is tested on the first call, so the index is the -1 sentinel,
+    # not 0 (which would name a real cell).
+    assert csv['a_fe_max_cell_mantle'].iloc[0] == -1.0
     # Metal formed and was recorded, so a zero-filled column cannot pass.
     assert csv['n_fe_metal_mantle'].iloc[-1] > 0.0
     # Conservation: with no redissolution, the cumulative metal equals the
@@ -533,3 +537,36 @@ def test_metal_saturation_does_not_run_before_any_crystallisation():
     # The reservoirs were still seeded, so the step was skipped rather than
     # the whole tracker having been short-circuited.
     assert interior.redox_state.n_fe3_melt > 0.0
+
+
+@pytest.mark.physics_invariant
+def test_a_fe_max_cell_is_the_cell_that_receives_the_metal():
+    """The binding-cell index names the cell holding the largest a_Fe, and on
+    every step that forms metal it is exactly the cell whose inventory grew.
+    A column filled with argmax over the wrong array, or left stale from an
+    earlier step, would fail one of the two checks."""
+    config = _make_config(0.005)
+    interior = _make_interior()
+    formed_any = False
+    for step in range(6):
+        interior.phi = np.clip(_PHI - np.array([0.12, 0.07, 0.0]) * step, 0.0, None)
+        before = (None if interior.redox_state is None
+                  else interior.redox_state.n_fe_metal_cell.copy())
+        hf_row = {'T_magma': 2200.0}
+        update_melt_redox(interior, hf_row, config)
+        idx = hf_row['a_fe_max_cell_mantle']
+        state = interior.redox_state
+        if before is None:
+            assert idx == -1.0
+            continue
+        assert idx == float(np.argmax(state.a_fe_cell))
+        assert state.a_fe_cell[int(idx)] == hf_row['a_fe_max_mantle']
+        grown = np.flatnonzero(state.n_fe_metal_cell > before)
+        if hf_row['n_fe_metal_step_mantle'] > 0.0:
+            formed_any = True
+            np.testing.assert_array_equal(grown, [int(idx)])
+        else:
+            assert grown.size == 0
+    # Guard against a fixture that never saturates, which would make the
+    # metal-location check above vacuous.
+    assert formed_any
