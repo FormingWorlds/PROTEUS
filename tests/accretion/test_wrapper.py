@@ -3013,12 +3013,13 @@ def test_restore_accretion_state_ignores_events_at_or_before_zero_on_resume(tmp_
     from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
     from proteus.utils.constants import AU
 
-    # Event A is before simulation start (t <= 0); event B is an init-stage impact at t = 5.
+    # Event A is before simulation start (t <= 0) with mass exceeding accreted rock;
+    # event B is an init-stage impact at t = 5.
     ev_a = _impact_event(
-        time=-100.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+        time=-100.0, M_target_before=5.972e24, M_impactor=2e23, M_merged_after=6.172e24
     )
     ev_b = _impact_event(
-        time=5.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+        time=5.0, M_target_before=6.172e24, M_impactor=1e23, M_merged_after=6.272e24
     )
     write_timeline([ev_a, ev_b], str(tmp_path / _RESOLVED_TIMELINE_FILE))
 
@@ -3047,6 +3048,8 @@ def test_restore_accretion_state_ignores_events_at_or_before_zero_on_resume(tmp_
 
     # Case 2: Legacy helpfile without n_impacts_applied (derived count).
     # ev_a at t <= 0 must not consume accreted rock; only ev_b at t > 0 is counted.
+    # Without the ev.time <= 0 guard, ev_a is tested first and its 2e23 mass exceeds
+    # 1e23 accreted, aborting with n_applied=0 and ev_b left pending.
     handler.hf_row = {
         'Time': 0.0,
         'M_accreted_rock': 1e23,
