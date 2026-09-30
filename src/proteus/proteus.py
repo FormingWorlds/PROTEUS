@@ -1017,13 +1017,8 @@ class Proteus:
             ############### / INTERIOR AND STRUCTURE
 
             ############### VOLATILE TRAPPING
-            # The solidification front has finished moving for this step and
-            # any structure re-solve is done, so M_mantle and Phi_global are
-            # final; escape and outgassing have not yet read the inventories.
-            # That makes this the one point where trapping can bury volatiles
-            # and have every downstream consumer see one consistent state.
-            # Inactive unless outgas.trap_mode is set, during the initialisation
-            # stage, and on the first step, which has no previous row to difference.
+            # The front has moved and any structure re-solve is done, and escape and
+            # outgassing have not read the inventories yet, so all of them see the burial.
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
             run_trapping(
                 self.config,

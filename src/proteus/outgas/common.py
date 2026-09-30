@@ -3,10 +3,9 @@ from __future__ import annotations
 
 from proteus.utils.constants import element_list, gas_list, noble_gases, vol_list
 
-# Atoms per formula unit for every volatile gas species. Used to split a
-# per-species mass into the per-element masses the whole-planet accounting is
-# kept in. Shared so the outgassing backends and the trapping step cannot drift
-# apart on the stoichiometry.
+# Atoms per formula unit of every species in constants.vol_list (SiO excluded,
+# as no backend outgasses it), splitting species masses into the element masses
+# the whole-planet accounting keeps. Checked against vol_list at import.
 VOLATILE_ELEMENT_STOICH: dict[str, dict[str, int]] = {
     'H2O': {'H': 2, 'O': 1},
     'CO2': {'C': 1, 'O': 2},

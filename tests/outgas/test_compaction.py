@@ -141,19 +141,15 @@ def test_mobility_reproduces_the_interior_solver_in_every_regime():
     f_rg = mobility_function(0.30, 1.0e-3)
     f_stokes = mobility_function(0.85, 1.0e-3)
     assert f_bkc < f_rg < f_stokes
-    # Scale guard: deep in the Stokes regime, where the blend has converged,
-    # the mobility is the grain-size limit a^2 * 2/9 = 2.2e-7 m2, five orders
-    # above the low-porosity branch. A collapsed blend would not span that.
-    # Probed at 0.95 rather than 0.85 because the tanh blend is only 2 percent
-    # short of the limit at the lower value.
+    # Scale guard: deep in the Stokes regime the mobility is a^2 * 2/9 = 2.2e-7 m2,
+    # five orders above the low-porosity branch; probed at 0.95 because the tanh
+    # blend is still 2 percent short of the limit at 0.85.
     assert mobility_function(0.95, 1.0e-3) == pytest.approx(1.0e-6 * 2.0 / 9.0, rel=2e-3)
     assert f_bkc < 1.0e-4 * f_stokes
 
-    # Edge case: at zero porosity the mobility is negligible rather than
-    # exactly zero. The smooth regime blend leaves a Stokes residue of order
-    # 1e-20 m2, which the interior solver carries too (the comparison above is
-    # exact there); it is twelve orders below the value at phi = 0.3, so no
-    # drainage can come of it.
+    # Edge case: at zero porosity the blend leaves a Stokes residue of order 1e-20
+    # m2, as the interior solver does, twelve orders below the value at phi = 0.3,
+    # so no drainage can come of it.
     solid = mobility_function(0.0, 1.0e-3)
     assert solid < 1.0e-18
     assert solid < 1.0e-9 * mobility_function(0.3, 1.0e-3)

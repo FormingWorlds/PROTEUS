@@ -69,11 +69,9 @@ from proteus.utils.helper import eval_gas_mmw
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Hand-built step. The mantle sheds 5% of its melt fraction over the step, so
-# dM_RM = 4e24 * 0.05 = 2e23 kg, and the chemistry last dissolved the volatiles
-# into 4e24 * 0.45 = 1.8e24 kg of melt. The dissolved masses are chosen so the
-# melt concentrations come out exactly 1e-3 (H2O) and 2e-3 (CO2), which keeps the
-# trapped mass a product of round numbers with no interpolation to reason about.
+# Hand-built step: the melt fraction falls from 0.45 to 0.40, so dM_RM = 4e24 *
+# 0.05 = 2e23 kg out of 1.8e24 kg of melt, and the dissolved masses give melt
+# concentrations of exactly 1e-3 (H2O) and 2e-3 (CO2).
 _M_MANTLE = 4.0e24
 _PHI_PREV = 0.45
 _PHI_NOW = 0.40
@@ -1053,10 +1051,9 @@ def test_every_step_on_the_upper_bound_reports_its_cause_and_the_mass_it_buried(
     assert 'split into 2 separate layers' in guard_logs[0]
     assert f'{step.total_trapped:.3e} kg' in guard_logs[0]
 
-    # The bound never exceeds the critical melt fraction. Densities implying
-    # porosity 0.6 at the top node, a mass fraction of 0.574, would claim more
-    # melt than the framework locks at the solver's transition; the step holds
-    # rfront_loc = 0.5 instead.
+    # The bound never exceeds the critical melt fraction: densities implying
+    # porosity 0.6 at the top node (mass fraction 0.574) claim more melt than the
+    # framework locks at the solver's transition, so rfront_loc = 0.5 holds.
     porous = phi_stag.copy()
     porous[11] = 0.6
     capped = run_trapping(
@@ -1145,10 +1142,9 @@ def test_the_front_drains_under_the_interior_solvers_per_node_gravity(caplog):
     assert uniform.tau_s * 9.8 == pytest.approx(deep.tau_s * g_front, rel=1e-9)
     assert uniform.tau_d * 9.8 == pytest.approx(deep.tau_d * g_front, rel=1e-9)
 
-    # Without the solver's values, the structure profile the solver was built
-    # from is interpolated onto the nodes: 12 - 4 (k + 0.5) / 40 at node k, a
-    # front mean of 11.4 m/s2. Also the error contract for a corrupt solver
-    # profile, which is passed over rather than used.
+    # Without the solver's values the structure profile is interpolated onto the
+    # nodes, 12 - 4 (k + 0.5) / 40 at node k, a front mean of 11.4 m/s2; a corrupt
+    # solver profile is passed over the same way.
     structure = (np.array([_R_CMB, _R_SURF]), np.array([12.0, 8.0]))
     for solver_values in (None, np.full(_N_STAG, np.nan)):
         fallback = matrix_time(

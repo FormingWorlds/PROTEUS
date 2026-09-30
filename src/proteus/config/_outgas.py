@@ -310,10 +310,9 @@ class Outgas:
     solver_rtol: float = field(default=1e-4, validator=validators.gt(0.0))
     solver_atol: float = field(default=1e-6, validator=validators.gt(0.0))
 
-    # Solid-phase volatile trapping. Backend-agnostic: the bracket runs before
-    # and independently of the chemistry solve, so these sit beside T_floor
-    # rather than under [outgas.calliope]. Default 'none' leaves every existing
-    # run unchanged.
+    # Solid-phase volatile trapping, run before and apart from the chemistry solve,
+    # so it sits beside T_floor rather than under [outgas.calliope]. The default
+    # 'none' leaves a run as it was without trapping.
     trap_mode: str = field(default='none', validator=validators.in_(('none', 'front')))
 
     # Drainage-integral parameters of the front scheme, which computes the
@@ -327,12 +326,9 @@ class Outgas:
         default=1.0, validator=[validators.gt(0.0), validators.le(1.0)]
     )
 
-    # Crystal/melt partition coefficients, D = w_solid / w_liquid, matching the
-    # per-phase mass fractions the structure side carries. Water is the only
-    # species with appreciable lattice incorporation (Hauri, Gaetani & Green
-    # 2006; Hirschmann et al. 2016); the rest are buried through the
-    # interstitial-melt term alone, which is a physical statement rather than a
-    # placeholder.
+    # Crystal/melt partition coefficients D = w_solid / w_liquid. Only water enters
+    # the lattice appreciably (Hauri, Gaetani & Green 2006; Hirschmann et al.
+    # 2016); the other species are buried with the interstitial melt alone.
     D_const_H2O: float = field(default=0.0017, validator=validators.ge(0.0))
     D_const_CO2: float = field(default=0.0, validator=validators.ge(0.0))
     D_const_O2: float = field(default=0.0, validator=validators.ge(0.0))

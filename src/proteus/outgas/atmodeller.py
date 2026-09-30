@@ -69,14 +69,8 @@ def _total_volatile_oxygen_kg(hf_row: dict, element_mmw: dict) -> float:
     return total
 
 
-# Atom counts per outgassing species, used to split the per-species reservoir
-# masses into per-element reservoir masses. Covers the volatile species the
-# atmodeller solver partitions (constants.vol_list); the SiO vapour species is
-# excluded because atmodeller does not outgas it, and tracking Si only on the
-# atmosphere side would make M_ele backend-dependent. Keyed-to-vol_list is
-# asserted at import so a new species cannot silently leak its element mass.
-# Shared with the trapping step, which splits the same species masses into the
-# same elements; a second copy here would let the two drift apart.
+# Atom counts per outgassing species, shared with the trapping step so the two
+# cannot drift apart; see ``outgas.common.VOLATILE_ELEMENT_STOICH``.
 _VOLATILE_ELEMENT_STOICH = VOLATILE_ELEMENT_STOICH
 
 # Cache of atmodeller EquilibriumModel instances. atmodeller compiles its JIT

@@ -74,10 +74,9 @@ import numpy as np
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Regime boundaries of the three-part permeability, Bower et al. (2018)
-# Eqs. 13a-c, matching the interior solver exactly. The upper crossing is
-# exact; the lower sits 1.7e-5 below the analytic Blake-Kozeny-Carman to
-# Rumpf-Gupte crossing. The blend widths are numerical smoothing, not physics.
+# Regime boundaries of the three-part permeability, Bower et al. (2018) Eqs.
+# 13a-c, as in the interior solver; the lower one sits 1.7e-5 below the analytic
+# crossing. The blend widths are numerical smoothing, not physics.
 MOBILITY_BOUND_LOW = 0.0769452
 MOBILITY_BOUND_HIGH = 0.771462
 MOBILITY_BLEND_LOW = 0.02

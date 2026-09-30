@@ -279,15 +279,11 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # CALLIOPE drives O_kg_total to near-zero once H/C/N/S vanish, so this
     # change rarely affects the desiccation timing, but it keeps the
     # semantics honest under whole-planet O accounting.
-    #
-    # The test is on the escapable inventory, not the whole-planet total. Mass
-    # trapped in the solid mantle cannot escape and cannot outgas, so a planet
-    # that has lost its entire atmosphere and melt would otherwise be held above
-    # the threshold forever by a reservoir nothing can reach, and would never
-    # desiccate.
     from proteus.outgas.trapping import escapable_inventory
 
     for e in vol_element_list + noble_gases:
+        # Mass trapped in the solid can neither escape nor outgas, so only the
+        # escapable inventory counts; otherwise it would block desiccation forever.
         reachable = escapable_inventory(hf_row, e)
         if reachable > config.outgas.mass_thresh:
             log.info('Not desiccated, %s = %.2e kg reachable' % (e, reachable))
@@ -350,12 +346,9 @@ def _solve_chemistry(dirs: dict, config: Config, hf_row: dict) -> None:
 
         calc_surface_pressures_dummy(dirs, config, hf_row)
 
-    # Apply binodal-controlled H2 partitioning.
-    # When global_miscibility is enabled, the binodal is handled radially
-    # by Zalmoxis (solve_miscible_interior), and the H2 partition was
-    # already set during the structure update. Skip the bulk binodal here.
-    # When global_miscibility is disabled but h2_binodal is on, use the
-    # original bulk binodal override from Rogers+2025.
+    # Binodal H2 partitioning: with global_miscibility Zalmoxis has already set it
+    # radially during the structure update; otherwise, with h2_binodal on, apply
+    # the bulk binodal override of Rogers+2025.
     if config.interior_struct.zalmoxis.global_miscibility:
         log.debug('Skipping apply_binodal_h2: handled by Zalmoxis (global_miscibility)')
     elif config.outgas.h2_binodal:
@@ -419,13 +412,9 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
     hf_row['O_res'] = 0.0
 
-    # Trapped mass is owned by the trapping step, not by the chemistry, which
-    # partitions a whole-planet inventory between melt and atmosphere and
-    # rewrites every `_kg_solid` column with its own condensate: a hard 0.0 in
-    # CALLIOPE (calliope/solve.py:784, 814, 1289, 1321) and in the binodal H2
-    # override, graphite in atmodeller. Hide the trapped mass for the duration
-    # of the solve, so that it is neither re-dissolved nor mistaken for
-    # condensate, and put it back afterwards.
+    # The chemistry partitions a whole-planet inventory and rewrites every
+    # `_kg_solid` column (0.0 in CALLIOPE, graphite in atmodeller), so the trapped
+    # mass is hidden for the solve and put back after it.
     with trapped_mass_withheld(hf_row):
         _solve_chemistry(dirs, config, hf_row)
 

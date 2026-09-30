@@ -610,11 +610,9 @@ def _drainage_fraction(
             mode='front', dm_rm=0.0, f_tl=0.0, melt_mass=0.0, branch=BRANCH_NONE
         )
 
-    # Front speed from the mass crystallised over the step rather than the
-    # reported front depth, which is snapped to the nearest node and whose
-    # difference is zero on most steps and a spike on the rest. It is the same
-    # increment the flux uses, so a step cannot freeze by one measure and melt
-    # by another; a remelting step moves the front back at the same speed.
+    # Front speed from the crystallised mass, the increment the flux uses, not from
+    # the node-snapped front depth, whose difference is zero on most steps and a
+    # spike on the rest.
     dt_s = (float(hf_row['Time']) - float(prev['Time'])) * SECS_PER_YEAR
     area = 4.0 * np.pi * geom.r_base**2 * geom.rho_solid_base
     v_f = abs(float(dm_rm)) / (area * dt_s) if (area > 0.0 and dt_s > 0.0) else 0.0
@@ -767,11 +765,9 @@ def run_trapping(
         True during the initialisation stage, which traps nothing.
     """
     mode = getattr(config.outgas, 'trap_mode', 'none')
-    # A config that never declared a mode leaves trapping inactive. The schema
-    # restricts the field to TRAPPING_MODES at load, so a non-string here means
-    # a programmatically built config that does not configure trapping at all,
-    # and running the bracket on whatever its other attributes return would
-    # bury mass from parameters nobody chose.
+    # A config that never declared a mode traps nothing: the schema restricts the
+    # field at load, so a non-string means a config built in code without trapping,
+    # whose other attributes nobody chose as trapping parameters.
     if not isinstance(mode, str):
         return None
     if mode not in TRAPPING_MODES:
