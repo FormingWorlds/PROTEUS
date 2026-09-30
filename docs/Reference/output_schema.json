@@ -640,6 +640,7 @@
       ],
       "consumers": [
         "interior_energetics",
+        "interior_struct",
         "main loop"
       ]
     },
