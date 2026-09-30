@@ -171,10 +171,13 @@ def restore_accretion_state(handler: Proteus) -> None:
     1. If ``n_impacts_applied`` is present in the helpfile and positive, that
        counter determines how many prior impacts were applied, and any
        remaining events up to that count are dropped from the pending list.
-    2. Otherwise, if the helpfile predates the counter but carries accreted
-       rock (``M_accreted_rock > 0``), a warning is logged stating that
-       impacts from the init stage cannot be recovered, and only events at or
-       before the resume time are dropped.
+    2. Otherwise, if the counter is corrupt (negative or non-finite), a warning
+       is logged and the counter is reset to the count of events up to the
+       resume time.
+    3. Otherwise, if the helpfile predates the counter but carries accreted
+       rock (``M_accreted_rock > 0``), a warning is logged stating that an
+       impact from the init stage remains pending and will apply again, and
+       the counter is assigned the count of events up to the resume time.
 
     Parameters
     ----------
@@ -196,37 +199,58 @@ def restore_accretion_state(handler: Proteus) -> None:
         # Drop any events preceding the resume time (idempotent with init_accretion).
         handler.impact_events = [ev for ev in handler.impact_events if ev.time > resume_time]
 
-        n_applied_raw = hf_row.get('n_impacts_applied')
-        if (
-            n_applied_raw is not None
-            and math.isfinite(float(n_applied_raw))
-            and float(n_applied_raw) > 0
-        ):
-            n_applied = int(float(n_applied_raw))
+        n_raw = hf_row.get('n_impacts_applied')
+        try:
+            n_num = float(n_raw or 0.0)
+        except (ValueError, TypeError):
+            n_num = float('nan')
+
+        resolved_path = os.path.join(
+            handler.directories.get('output', '.'), _RESOLVED_TIMELINE_FILE
+        )
+        all_events = None
+        if os.path.exists(resolved_path):
+            from proteus.accretion.common import read_timeline
+
+            all_events = read_timeline(resolved_path, time_offset=0.0)
+
+        if math.isfinite(n_num) and n_num > 0:
+            n_applied = int(n_num)
             hf_row['n_impacts_applied'] = n_applied
             if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
                 handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(
                     n_applied
                 )
 
-            resolved_path = os.path.join(
-                handler.directories.get('output', '.'), _RESOLVED_TIMELINE_FILE
-            )
-            if os.path.exists(resolved_path):
-                from proteus.accretion.common import read_timeline
-
-                all_events = read_timeline(resolved_path, time_offset=0.0)
+            if all_events is not None:
                 events_before = sum(1 for ev in all_events if 0.0 < ev.time <= resume_time)
                 remaining_to_drop = max(n_applied - events_before, 0)
                 if remaining_to_drop > 0:
                     handler.impact_events = handler.impact_events[remaining_to_drop:]
         else:
-            hf_row.setdefault('n_impacts_applied', 0)
-            if accreted > 0.0:
+            if all_events is not None:
+                n_applied = sum(1 for ev in all_events if 0.0 < ev.time <= resume_time)
+            else:
+                n_applied = 0
+
+            hf_row['n_impacts_applied'] = n_applied
+            if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
+                handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(
+                    n_applied
+                )
+
+            if n_raw is not None and (not math.isfinite(n_num) or n_num < 0):
                 log.warning(
-                    'helpfile predates the impact counter: impacts that landed during the '
-                    'init stage cannot be recovered; only events at or before the resume '
-                    'time are dropped'
+                    'Corrupt impact counter %r in helpfile: reset counter to %d '
+                    'events at or before resume time',
+                    n_raw,
+                    n_applied,
+                )
+            elif accreted > 0.0:
+                log.warning(
+                    'Helpfile predates the impact counter: an impact that landed during '
+                    'the init stage remains pending and will apply again, adding its '
+                    'rock a second time',
                 )
 
     if accreted <= 0.0:

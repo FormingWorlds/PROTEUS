@@ -2786,7 +2786,7 @@ def test_resume_from_old_helpfile_without_n_impacts_applied_does_not_reapply_pas
 
     assert len(handler.impact_events) == 1
     assert handler.impact_events[0].time == pytest.approx(200.0)
-    assert handler.hf_row['n_impacts_applied'] == 0
+    assert handler.hf_row['n_impacts_applied'] == 1
 
     landed_first = due_events(handler.impact_events, 100.0, 150.0)
     assert landed_first == []
@@ -3009,10 +3009,70 @@ def test_legacy_resume_missing_counter_logs_warning_and_preserves_future_events(
     """Resume with legacy helpfile without counter logs a warning and preserves future events."""
     import logging
 
-    from proteus.accretion.wrapper import (
-        _drop_events_before_start,
-        restore_accretion_state,
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev05 = _impact_event(
+        time=0.5, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
     )
+    ev50 = _impact_event(
+        time=50.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    ev500 = _impact_event(
+        time=500.0, M_target_before=6.172e24, M_impactor=1e23, M_merged_after=6.272e24
+    )
+
+    # Legacy resume at Time = 100.0 with resolved timeline file:
+    # ev05 and ev50 are <= 100.0, so counter is assigned 2.
+    handler = _resumed_handler(
+        tmp_path,
+        events=[ev05, ev50, ev500],
+        hf_row={
+            'Time': 100.0,
+            'M_accreted_rock': 2e23,
+            'semimajorax': AU,
+            'eccentricity': 0.0,
+        },
+        pending=[ev05, ev50, ev500],
+    )
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        restore_accretion_state(handler)
+
+    assert any('Helpfile predates the impact counter' in r.message for r in caplog.records)
+    assert any('remains pending and will apply again' in r.message for r in caplog.records)
+    assert handler.hf_row['n_impacts_applied'] == 2
+    assert handler.impact_events == [ev500]
+
+    # Legacy resume at Time = 0.0 with init-stage impact already credited to rock:
+    # ev05 is at t = 0.5 > 0.0, so it remains pending and will apply again.
+    caplog.clear()
+    handler_init = _resumed_handler(
+        tmp_path,
+        events=[ev05, ev50, ev500],
+        hf_row={
+            'Time': 0.0,
+            'M_accreted_rock': 1e23,
+            'semimajorax': AU,
+            'eccentricity': 0.0,
+        },
+        pending=[ev05, ev50, ev500],
+    )
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        restore_accretion_state(handler_init)
+
+    assert any('Helpfile predates the impact counter' in r.message for r in caplog.records)
+    assert handler_init.hf_row['n_impacts_applied'] == 0
+    assert handler_init.impact_events == [ev05, ev50, ev500]
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_handles_nan_or_negative_counter(tmp_path, caplog):
+    """Corrupt counter in helpfile is reset to finite value and logs warning."""
+    import logging
+    import math
+
+    from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import AU
 
     ev50 = _impact_event(
@@ -3021,28 +3081,26 @@ def test_legacy_resume_missing_counter_logs_warning_and_preserves_future_events(
     ev500 = _impact_event(
         time=500.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
     )
-    ev900 = _impact_event(
-        time=900.0, M_target_before=6.172e24, M_impactor=2e23, M_merged_after=6.372e24
-    )
 
-    resume_time = 100.0
-    pending = _drop_events_before_start([ev50, ev500, ev900], resume_time, resumed=True)
-    assert pending == [ev500, ev900]
+    for bad_counter in (float('nan'), -1, -1.0):
+        caplog.clear()
+        handler = _resumed_handler(
+            tmp_path,
+            events=[ev50, ev500],
+            hf_row={
+                'Time': 100.0,
+                'M_accreted_rock': 1e23,
+                'n_impacts_applied': bad_counter,
+                'semimajorax': AU,
+                'eccentricity': 0.0,
+            },
+            pending=[ev50, ev500],
+        )
 
-    handler = _resumed_handler(
-        tmp_path,
-        events=None,
-        hf_row={
-            'Time': resume_time,
-            'M_accreted_rock': 1e23,
-            'semimajorax': AU,
-            'eccentricity': 0.0,
-        },
-        pending=pending,
-    )
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+            restore_accretion_state(handler)
 
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
-        restore_accretion_state(handler)
-
-    assert any('helpfile predates the impact counter' in r.message for r in caplog.records)
-    assert handler.impact_events == [ev500, ev900]
+        assert any('Corrupt impact counter' in r.message for r in caplog.records)
+        assert math.isfinite(handler.hf_row['n_impacts_applied'])
+        assert handler.hf_row['n_impacts_applied'] == 1
+        assert handler.impact_events == [ev500]
