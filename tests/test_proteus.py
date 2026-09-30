@@ -2692,25 +2692,9 @@ def test_crystallization_not_rearmed_on_impact_step(tmp_path):
     p.crystallized = False
     p.hf_row = {'Phi_global': 0.5}
 
-    impact_this_iter = getattr(p.interior_o, 'impact_reset', False)
-    if (
-        p.config.params.stop.solid.freeze_volatiles
-        and not p.crystallized
-        and not impact_this_iter
-    ):
-        if p.hf_row.get('Phi_global', 1.0) <= p.config.params.stop.solid.phi_crit:
-            p.crystallized = True
-
+    p._check_crystallization()
     assert p.crystallized is False
 
     p.interior_o.impact_reset = False
-    impact_this_iter = getattr(p.interior_o, 'impact_reset', False)
-    if (
-        p.config.params.stop.solid.freeze_volatiles
-        and not p.crystallized
-        and not impact_this_iter
-    ):
-        if p.hf_row.get('Phi_global', 1.0) <= p.config.params.stop.solid.phi_crit:
-            p.crystallized = True
-
+    p._check_crystallization()
     assert p.crystallized is True

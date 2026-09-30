@@ -366,6 +366,23 @@ class Proteus:
         self.last_struct_Phi = new_Phi
         self._baseline_structure_done = True
 
+    def _check_crystallization(self) -> None:
+        """Check mantle crystallization and lock outgassing when threshold is crossed."""
+        log = logging.getLogger('fwl.' + __name__)
+        impact_this_iter = getattr(self.interior_o, 'impact_reset', False)
+        if (
+            self.config.params.stop.solid.freeze_volatiles
+            and not self.crystallized
+            and not impact_this_iter
+        ):
+            if self.hf_row.get('Phi_global', 1.0) <= self.config.params.stop.solid.phi_crit:
+                self.crystallized = True
+                log.info(
+                    'Mantle crystallized (Phi_global <= %.3f). '
+                    'Outgassing stopped. Dissolved volatiles trapped in solid mantle.',
+                    self.config.params.stop.solid.phi_crit,
+                )
+
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
 
@@ -1163,22 +1180,7 @@ class Proteus:
             else:
                 # Check crystallization under equilibrium melting curves.
                 # Defer evaluation on an impact step while the mantle relaxes.
-                impact_this_iter = getattr(self.interior_o, 'impact_reset', False)
-                if (
-                    self.config.params.stop.solid.freeze_volatiles
-                    and not self.crystallized
-                    and not impact_this_iter
-                ):
-                    if (
-                        self.hf_row.get('Phi_global', 1.0)
-                        <= self.config.params.stop.solid.phi_crit
-                    ):
-                        self.crystallized = True
-                        log.info(
-                            'Mantle crystallized (Phi_global <= %.3f). '
-                            'Outgassing stopped. Dissolved volatiles trapped in solid mantle.',
-                            self.config.params.stop.solid.phi_crit,
-                        )
+                self._check_crystallization()
 
                 # Check desiccation (can happen even if crystallized, via escape)
                 if not self.desiccated:
