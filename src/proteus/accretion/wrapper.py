@@ -215,11 +215,13 @@ def restore_accretion_state(handler: Proteus) -> None:
             n_applied = int(float(n_applied_raw))
         elif accreted > 0.0:
             # Fallback when helpfile lacks n_impacts_applied: derive from
-            # M_accreted_rock because Time resets to zero during init stage.
+            # M_accreted_rock for events up to the resume time.
             cum_rock = 0.0
             n_applied = 0
             timeline = all_events if all_events is not None else handler.impact_events
             for ev in timeline:
+                if resume_time > 0.0 and ev.time > resume_time:
+                    continue
                 content = _impactor_volatile_content(
                     config, getattr(handler, 'hf_all', None), ev, hf_row=hf_row
                 )
@@ -233,6 +235,8 @@ def restore_accretion_state(handler: Proteus) -> None:
             n_applied = 0
 
         hf_row['n_impacts_applied'] = n_applied
+        if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
+            handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(n_applied)
 
         if all_events is not None:
             events_before = sum(1 for ev in all_events if ev.time <= resume_time)

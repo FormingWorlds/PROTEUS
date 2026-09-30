@@ -2806,3 +2806,93 @@ def test_resume_from_old_helpfile_without_n_impacts_applied_does_not_reapply_pas
     assert len(landed_second) == 1
     assert landed_second[0].time == pytest.approx(200.0)
     assert landed_second[0].id_impactor == 3
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_persists_counter_to_hf_all_last_row(tmp_path):
+    """Restoring accretion state updates both hf_row and the last row of hf_all."""
+    import pandas as pd
+
+    from proteus.accretion.common import write_timeline
+    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = _impact_event(
+        time=50.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev2 = _impact_event(
+        time=200.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    write_timeline([ev1, ev2], str(tmp_path / _RESOLVED_TIMELINE_FILE))
+
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 100.0,
+                'M_accreted_rock': 1e23,
+                'n_impacts_applied': 0.0,
+                'semimajorax': 1.0 * AU,
+                'eccentricity': 0.0,
+            }
+        ]
+    )
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            accretion=SimpleNamespace(module='timeline', impactor_volatiles='dry'),
+            params=SimpleNamespace(resume=True),
+            planet=SimpleNamespace(mass_tot=1.0),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row=hf_all.iloc[-1].to_dict(),
+        hf_all=hf_all,
+        directories={'output': str(tmp_path)},
+        impact_events=[ev1, ev2],
+    )
+
+    restore_accretion_state(handler)
+    assert handler.hf_row['n_impacts_applied'] == 1
+    assert handler.hf_all['n_impacts_applied'].iloc[-1] == 1.0
+
+    # Simulating main loop step init: hf_row rebuilt from hf_all.iloc[-1]
+    new_hf_row = handler.hf_all.iloc[-1].to_dict()
+    assert new_hf_row['n_impacts_applied'] == 1.0
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_derived_count_never_drops_future_events(tmp_path):
+    """Legacy resume fallback derives counter only from events up to resume time."""
+    from proteus.accretion.common import write_timeline
+    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = _impact_event(
+        time=50.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev2 = _impact_event(
+        time=200.0, M_target_before=6.072e24, M_impactor=5e18, M_merged_after=6.072005e24
+    )
+    ev3 = _impact_event(
+        time=300.0, M_target_before=6.072005e24, M_impactor=1e23, M_merged_after=6.172005e24
+    )
+    write_timeline([ev1, ev2, ev3], str(tmp_path / _RESOLVED_TIMELINE_FILE))
+
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            accretion=SimpleNamespace(module='timeline', impactor_volatiles='dry'),
+            params=SimpleNamespace(resume=True),
+            planet=SimpleNamespace(mass_tot=1.0),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row={
+            'Time': 100.0,
+            'M_accreted_rock': 1e23,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        directories={'output': str(tmp_path)},
+        impact_events=[ev1, ev2, ev3],
+    )
+
+    restore_accretion_state(handler)
+    assert handler.hf_row['n_impacts_applied'] == 1
+    assert handler.impact_events == [ev2, ev3]
