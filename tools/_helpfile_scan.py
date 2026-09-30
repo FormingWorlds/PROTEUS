@@ -54,14 +54,19 @@ MERGE_SITES = [
     ('interior_energetics/dummy.py', 'run_dummy_int', {}),
 ]
 
-# Templated writes whose loop domain cannot be recovered statically, keyed by
-# (file, pattern with the unresolvable variable as <?>). Values name the
-# domain lists the template spans; unions over-approximate and are trimmed
-# against the schema downstream.
+# Templated access sites whose loop domain cannot be recovered statically.
+# Values name domain lists; downstream code trims them against the schema.
 TEMPLATE_OVERRIDES: dict[tuple[str, str], tuple[str, ...]] = {
     ('accretion/wrapper.py', '<?>_kg_total'): ('element_list',),
+    ('accretion/wrapper.py', '<?>_kg_atm'): ('element_list',),
+    ('atmos_chem/dummy.py', '<?>_vmr'): ('gas_list',),
+    ('escape/boreas.py', '<?>_vmr_xuv'): ('gas_list',),
     ('escape/wrapper.py', '<?>_kg_total'): ('element_list',),
     ('escape/common.py', 'esc_rate_<?>'): ('element_list',),
+    ('interior_energetics/wrapper.py', '<?>_kg_total'): ('element_list',),
+    ('interior_energetics/wrapper.py', '<?>_kg_liquid'): ('gas_list',),
+    ('interior_struct/zalmoxis.py', '<?>_kg_liquid'): ('gas_list',),
+    ('interior_struct/zalmoxis.py', '<?>_kg_solid'): ('gas_list',),
     ('outgas/calliope.py', '<?>_kg_total'): ('element_list',),
     ('outgas/atmodeller.py', '<?>_bar'): ('gas_list',),
     ('outgas/atmodeller.py', '<?>_vmr'): ('gas_list',),
@@ -73,7 +78,9 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str], tuple[str, ...]] = {
     ('outgas/atmodeller.py', '<?>_mol_liquid'): ('gas_list',),
     ('outgas/atmodeller.py', '<?>_mol_solid'): ('gas_list',),
     ('outgas/atmodeller.py', '<?>_mol_total'): ('gas_list',),
+    ('outgas/binodal.py', '<?>_bar'): ('gas_list',),
     ('outgas/dummy.py', '<?>_bar'): ('gas_list',),
+    ('outgas/dummy.py', '<?>_vmr'): ('gas_list',),
     ('outgas/dummy.py', '<?>_mol_atm'): ('gas_list',),
     ('outgas/dummy.py', '<?>_mol_liquid'): ('gas_list',),
     ('outgas/dummy.py', '<?>_mol_solid'): ('gas_list',),
@@ -82,6 +89,12 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str], tuple[str, ...]] = {
     ('outgas/dummy.py', '<?>_kg_liquid'): ('gas_list', 'element_list'),
     ('outgas/dummy.py', '<?>_kg_solid'): ('gas_list', 'element_list'),
     ('outgas/dummy.py', '<?>_kg_total'): ('gas_list', 'element_list'),
+    ('outgas/lavatmos.py', '<?>_kg_atm'): ('gas_list', 'element_list'),
+    ('outgas/lavatmos.py', '<?>_bar'): ('vap_list',),
+    ('outgas/lavatmos.py', '<?>_vmr'): ('vap_list',),
+    ('outgas/wrapper.py', '<?>_kg_total'): ('element_list',),
+    ('outgas/wrapper.py', '<?>_kg_atm'): ('gas_list', 'element_list'),
+    ('utils/coupler.py', '<?>_kg_atm'): ('gas_list', 'element_list'),
 }
 
 # Dynamic-key writes that are not producers: save/restore of overridden
@@ -194,7 +207,7 @@ class HfRowVisitor(ast.NodeVisitor):
         self.local_vars: dict[str, ast.AST] = {}
         self.writes: list[tuple[str, str]] = []  # (key, function)
         self.reads: list[str] = []
-        self.unresolved: list[tuple[int, str]] = []  # (lineno, reason)
+        self.unresolved: list[tuple[int, str, str]] = []  # (lineno, reason, kind)
 
     # -- context tracking ---------------------------------------------------
 
@@ -306,7 +319,9 @@ class HfRowVisitor(ast.NodeVisitor):
                 if func.attr == 'get' and node.args:
                     self._record(node.args[0], node.lineno, is_write=False, is_get=True)
                 elif func.attr == 'update' and owner in ROW_NAMES and not self._suppressed():
-                    self.unresolved.append((node.lineno, f'{owner}.update(...) bulk write'))
+                    self.unresolved.append(
+                        (node.lineno, f'{owner}.update(...) bulk write', 'write')
+                    )
         self.generic_visit(node)
 
     def _suppressed(self) -> bool:
@@ -335,6 +350,7 @@ class HfRowVisitor(ast.NodeVisitor):
             return [key_node.value] if isinstance(key_node.value, str) else []
         suppressed = self._suppressed()
         template = _template_of(key_node)
+        kind = 'write' if is_write else 'read'
         if template is not None:
             prefix, var, suffix = template
             domain = self.loop_domains.get(var)
@@ -345,17 +361,17 @@ class HfRowVisitor(ast.NodeVisitor):
                 values = {v for name in override for v in self.species[name]}
                 return [f'{prefix}{v}{suffix}' for v in sorted(values)]
             if (is_write or is_get) and not suppressed:
-                self.unresolved.append((lineno, f'template {prefix}<{var}>{suffix}'))
+                self.unresolved.append((lineno, f'template {prefix}<{var}>{suffix}', kind))
             return []
         if isinstance(key_node, ast.Name):
             domain = self.loop_domains.get(key_node.id)
             if domain is not None:
                 return self._expand_domain(domain)
             if (is_write or is_get) and not suppressed:
-                self.unresolved.append((lineno, f'dynamic key {key_node.id}'))
+                self.unresolved.append((lineno, f'dynamic key {key_node.id}', kind))
             return []
         if (is_write or is_get) and not suppressed:
-            self.unresolved.append((lineno, f'dynamic key {ast.unparse(key_node)}'))
+            self.unresolved.append((lineno, f'dynamic key {ast.unparse(key_node)}', kind))
         return []
 
     def _expand_domain(self, domain: str) -> list[str]:
@@ -455,13 +471,13 @@ def scan_tree() -> dict:
     """Scan src/proteus and return writes, reads, and unresolved events.
 
     Returns ``{'writes': [(rel_file, function, key)], 'reads':
-    [(rel_file, key)], 'unresolved': [(rel_file, lineno, reason)]}``.
+    [(rel_file, key)], 'unresolved': [(rel_file, lineno, reason, kind)]}``.
     """
     species = _species_lists()
     merge_functions = {(f, fn) for f, fn, _renames in MERGE_SITES}
     writes: list[tuple[str, str, str]] = []
     reads: list[tuple[str, str]] = []
-    unresolved: list[tuple[str, int, str]] = []
+    unresolved: list[tuple[str, int, str, str]] = []
 
     for path in sorted(SRC.rglob('*.py')):
         rel = str(path.relative_to(SRC))
@@ -471,8 +487,8 @@ def scan_tree() -> dict:
             writes.append((rel, func, key))
         for key in visitor.reads:
             reads.append((rel, key))
-        for lineno, reason in visitor.unresolved:
-            unresolved.append((rel, lineno, reason))
+        for lineno, reason, kind in visitor.unresolved:
+            unresolved.append((rel, lineno, reason, kind))
 
     for rel_file, function, renames in MERGE_SITES:
         for key in extract_backend_keys(rel_file, function, species):

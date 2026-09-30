@@ -123,8 +123,8 @@ def build_matrix() -> dict:
     return {
         'keys': keys,
         'unresolved_events': [
-            {'file': f'src/proteus/{f}', 'line': line, 'reason': reason}
-            for f, line, reason in scan['unresolved']
+            {'file': f'src/proteus/{f}', 'line': line, 'kind': kind, 'reason': reason}
+            for f, line, reason, kind in scan['unresolved']
         ],
     }
 
@@ -168,18 +168,18 @@ def render(matrix: dict) -> str:
                 f'| {condition} | {readers} |'
             )
     unresolved = [k for k in matrix['keys'] if not k['producers']]
-    lines += ['', '### Columns without a statically attributed producer', '']
     if unresolved:
+        lines += ['', '### Columns without a statically attributed producer', '']
         for key in unresolved:
             lines.append(f'- `{key["name"]}` ({key["unit"] or "no unit"})')
+    lines += ['', '### Reads with computed keys', '']
+    lines.append('These consumers are not attributed in the table.')
+    if matrix['unresolved_events']:
         lines.append('')
-        lines.append('Unattributed helpfile access sites:')
         for event in matrix['unresolved_events']:
-            lines.append(f'- `{event["file"]}:{event["line"]}`: {event["reason"]}')
-    else:
-        lines.append(
-            'None; every column above has at least one statically attributed producer.'
-        )
+            lines.append(
+                f'- `{event["file"]}:{event["line"]}` ({event["kind"]}): {event["reason"]}'
+            )
     return '\n'.join(lines)
 
 

@@ -3017,7 +3017,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -3045,6 +3046,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -3073,6 +3075,7 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
         "interior_struct",
         "outgas"
       ]
@@ -3204,7 +3207,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "CO2_mol_atm",
@@ -3356,7 +3361,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -3384,6 +3390,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -3412,6 +3419,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -3542,7 +3551,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "O2_mol_atm",
@@ -3694,7 +3705,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -3722,6 +3734,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -3750,6 +3763,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -3880,7 +3895,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "H2_mol_atm",
@@ -4053,7 +4070,8 @@
       ],
       "consumers": [
         "interior_struct",
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -4085,6 +4103,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -4117,6 +4136,7 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
         "interior_struct",
         "outgas"
       ]
@@ -4253,7 +4273,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "CH4_mol_atm",
@@ -4405,7 +4427,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -4433,6 +4456,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -4461,6 +4485,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -4591,7 +4617,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "CO_mol_atm",
@@ -4743,7 +4771,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -4771,6 +4800,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -4799,6 +4829,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -4929,7 +4961,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "N2_mol_atm",
@@ -5081,7 +5115,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -5109,6 +5144,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -5137,6 +5173,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -5267,7 +5305,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "NH3_mol_atm",
@@ -5419,7 +5459,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -5447,6 +5488,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -5475,6 +5517,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -5605,7 +5649,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "S2_mol_atm",
@@ -5757,7 +5803,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -5785,6 +5832,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -5813,6 +5861,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -5943,7 +5993,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "SO2_mol_atm",
@@ -6095,7 +6147,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -6123,6 +6176,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -6151,6 +6205,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -6281,7 +6337,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "H2S_mol_atm",
@@ -6433,7 +6491,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -6461,6 +6520,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -6489,6 +6549,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -6619,7 +6681,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "He_mol_atm",
@@ -6775,7 +6839,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -6803,6 +6868,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -6831,6 +6897,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -6873,6 +6941,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -6911,6 +6980,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -6972,7 +7042,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Ne_mol_atm",
@@ -7128,7 +7200,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -7156,6 +7229,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -7184,6 +7258,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -7226,6 +7302,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -7264,6 +7341,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -7325,7 +7403,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Ar_mol_atm",
@@ -7481,7 +7561,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -7509,6 +7590,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -7537,6 +7619,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -7579,6 +7663,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -7617,6 +7702,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -7678,7 +7764,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Kr_mol_atm",
@@ -7834,7 +7922,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -7862,6 +7951,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -7890,6 +7980,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -7932,6 +8024,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -7970,6 +8063,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -8031,7 +8125,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Xe_mol_atm",
@@ -8187,7 +8283,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -8215,6 +8312,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -8243,6 +8341,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -8285,6 +8385,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -8323,6 +8424,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -8384,7 +8486,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "SiO_mol_atm",
@@ -8536,7 +8640,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -8564,6 +8669,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -8592,6 +8698,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -8660,6 +8768,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -8721,7 +8830,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "SiO2_mol_atm",
@@ -8873,7 +8984,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -8901,6 +9013,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -8929,6 +9042,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -8997,6 +9112,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -9058,7 +9174,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Si_mol_atm",
@@ -9214,7 +9332,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -9242,6 +9361,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -9270,6 +9390,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -9312,6 +9434,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -9350,6 +9473,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -9411,7 +9535,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Na_mol_atm",
@@ -9567,7 +9693,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -9595,6 +9722,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -9623,6 +9751,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -9665,6 +9795,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -9703,6 +9834,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -9764,7 +9896,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "K_mol_atm",
@@ -9920,7 +10054,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -9948,6 +10083,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -9976,6 +10112,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -10018,6 +10156,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -10056,6 +10195,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -10117,7 +10257,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Ti_mol_atm",
@@ -10273,7 +10415,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -10301,6 +10444,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -10329,6 +10473,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -10371,6 +10517,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -10409,6 +10556,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -10470,7 +10618,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "TiO_mol_atm",
@@ -10622,7 +10772,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -10650,6 +10801,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -10678,6 +10830,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -10746,6 +10900,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -10807,7 +10962,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "TiO2_mol_atm",
@@ -10959,7 +11116,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -10987,6 +11145,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -11015,6 +11174,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -11083,6 +11244,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -11144,7 +11306,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Mg_mol_atm",
@@ -11300,7 +11464,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -11328,6 +11493,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -11356,6 +11522,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -11398,6 +11566,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -11436,6 +11605,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -11497,7 +11667,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "MgO_mol_atm",
@@ -11649,7 +11821,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -11677,6 +11850,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -11705,6 +11879,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -11773,6 +11949,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -11834,7 +12011,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Al_mol_atm",
@@ -11990,7 +12169,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -12018,6 +12198,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -12046,6 +12227,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -12088,6 +12271,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -12126,6 +12310,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -12187,7 +12372,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "HAlO2_mol_atm",
@@ -12339,7 +12526,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -12367,6 +12555,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -12395,6 +12584,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -12463,6 +12654,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -12524,7 +12716,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "SiH_mol_atm",
@@ -12676,7 +12870,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -12704,6 +12899,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -12732,6 +12928,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -12800,6 +12998,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -12861,7 +13060,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "SiH4_mol_atm",
@@ -13013,7 +13214,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -13041,6 +13243,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -13069,6 +13272,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -13137,6 +13342,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -13198,7 +13404,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Fe_mol_atm",
@@ -13354,7 +13562,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -13382,6 +13591,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -13410,6 +13620,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -13452,6 +13664,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -13490,6 +13703,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -13551,7 +13765,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "FeO_mol_atm",
@@ -13703,7 +13919,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -13731,6 +13948,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -13759,6 +13977,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -13827,6 +14047,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -13888,7 +14109,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "FeO2H2_mol_atm",
@@ -14040,7 +14263,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -14068,6 +14292,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -14096,6 +14321,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -14164,6 +14391,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -14225,7 +14453,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "CaO_mol_atm",
@@ -14377,7 +14607,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -14405,6 +14636,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -14433,6 +14665,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -14501,6 +14735,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -14562,7 +14797,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "NaOH_mol_atm",
@@ -14714,7 +14951,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -14742,6 +14980,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -14770,6 +15009,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -14838,6 +15079,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -14899,7 +15141,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Ca_mol_atm",
@@ -15055,7 +15299,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -15083,6 +15328,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -15111,6 +15357,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -15153,6 +15401,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -15191,6 +15440,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -15252,7 +15502,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "KOH_mol_atm",
@@ -15404,7 +15656,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -15432,6 +15685,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -15460,6 +15714,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -15528,6 +15784,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -15589,7 +15846,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "V_mol_atm",
@@ -15745,7 +16004,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -15773,6 +16033,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -15801,6 +16062,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -15843,6 +16106,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -15881,6 +16145,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -15942,7 +16207,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Mg2_mol_atm",
@@ -16094,7 +16361,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -16122,6 +16390,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -16150,6 +16419,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -16218,6 +16489,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -16279,7 +16551,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "VO_mol_atm",
@@ -16431,7 +16705,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -16459,6 +16734,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -16487,6 +16763,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -16555,6 +16833,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -16616,7 +16895,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "AlO_mol_atm",
@@ -16768,7 +17049,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -16796,6 +17078,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -16824,6 +17107,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -16892,6 +17177,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -16953,7 +17239,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "Na2_mol_atm",
@@ -17105,7 +17393,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -17133,6 +17422,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -17161,6 +17451,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -17229,6 +17521,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -17290,7 +17583,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "NaO_mol_atm",
@@ -17442,7 +17737,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ]
     },
     {
@@ -17470,6 +17766,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ]
     },
@@ -17498,6 +17795,8 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
+        "interior_struct",
         "outgas"
       ]
     },
@@ -17566,6 +17865,7 @@
         }
       ],
       "consumers": [
+        "atmos_chem",
         "atmos_clim",
         "outgas"
       ]
@@ -17627,7 +17927,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ]
     },
     {
       "name": "H_kg_atm",
@@ -17666,7 +17968,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -17764,6 +18067,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -17802,7 +18106,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -17896,6 +18201,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -17934,7 +18240,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -18028,6 +18335,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -18066,7 +18374,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -18160,6 +18469,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -18198,7 +18508,8 @@
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ]
     },
     {
@@ -18292,6 +18603,7 @@
       "consumers": [
         "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
@@ -23647,179 +23959,70 @@
   ],
   "unresolved_events": [
     {
-      "file": "src/proteus/accretion/wrapper.py",
-      "line": 662,
-      "reason": "template <e>_kg_atm"
-    },
-    {
-      "file": "src/proteus/accretion/wrapper.py",
-      "line": 671,
-      "reason": "template <e>_kg_atm"
-    },
-    {
-      "file": "src/proteus/accretion/wrapper.py",
-      "line": 722,
-      "reason": "template <e>_kg_atm"
-    },
-    {
-      "file": "src/proteus/accretion/wrapper.py",
-      "line": 807,
-      "reason": "template <e>_kg_atm"
-    },
-    {
-      "file": "src/proteus/atmos_chem/dummy.py",
-      "line": 120,
-      "reason": "template <sp>_vmr"
-    },
-    {
       "file": "src/proteus/atmos_clim/agni.py",
       "line": 882,
+      "kind": "read",
       "reason": "dynamic key name"
-    },
-    {
-      "file": "src/proteus/escape/boreas.py",
-      "line": 71,
-      "reason": "template <g>_vmr_xuv"
-    },
-    {
-      "file": "src/proteus/escape/boreas.py",
-      "line": 73,
-      "reason": "template <g>_vmr_xuv"
     },
     {
       "file": "src/proteus/escape/common.py",
       "line": 47,
+      "kind": "read",
       "reason": "dynamic key e + key"
     },
     {
       "file": "src/proteus/escape/wrapper.py",
       "line": 71,
+      "kind": "read",
       "reason": "dynamic key f'{e}{key}'"
     },
     {
       "file": "src/proteus/escape/wrapper.py",
       "line": 543,
+      "kind": "read",
       "reason": "dynamic key f'{e}{key}'"
-    },
-    {
-      "file": "src/proteus/interior_energetics/wrapper.py",
-      "line": 246,
-      "reason": "template <e>_kg_total"
-    },
-    {
-      "file": "src/proteus/interior_energetics/wrapper.py",
-      "line": 2607,
-      "reason": "template <species>_kg_liquid"
-    },
-    {
-      "file": "src/proteus/interior_struct/zalmoxis.py",
-      "line": 427,
-      "reason": "template <species>_kg_liquid"
-    },
-    {
-      "file": "src/proteus/interior_struct/zalmoxis.py",
-      "line": 428,
-      "reason": "template <species>_kg_solid"
     },
     {
       "file": "src/proteus/interior_struct/zalmoxis.py",
       "line": 3267,
+      "kind": "read",
       "reason": "dynamic key k"
     },
     {
       "file": "src/proteus/observe/petitRADTRANS.py",
       "line": 329,
+      "kind": "read",
       "reason": "dynamic key key"
     },
     {
       "file": "src/proteus/outgas/atmodeller.py",
       "line": 185,
+      "kind": "read",
       "reason": "dynamic key f'{sp}_kg_{r}'"
     },
     {
       "file": "src/proteus/outgas/atmodeller.py",
       "line": 335,
+      "kind": "read",
       "reason": "dynamic key key"
     },
     {
       "file": "src/proteus/outgas/atmodeller.py",
       "line": 473,
+      "kind": "read",
       "reason": "dynamic key key"
-    },
-    {
-      "file": "src/proteus/outgas/binodal.py",
-      "line": 123,
-      "reason": "template <s>_bar"
-    },
-    {
-      "file": "src/proteus/outgas/dummy.py",
-      "line": 126,
-      "reason": "template <s>_vmr"
-    },
-    {
-      "file": "src/proteus/outgas/lavatmos.py",
-      "line": 439,
-      "reason": "template <e>_kg_atm"
-    },
-    {
-      "file": "src/proteus/outgas/lavatmos.py",
-      "line": 633,
-      "reason": "template <s>_kg_atm"
-    },
-    {
-      "file": "src/proteus/outgas/lavatmos.py",
-      "line": 639,
-      "reason": "template <s>_vmr"
-    },
-    {
-      "file": "src/proteus/outgas/lavatmos.py",
-      "line": 642,
-      "reason": "template <s>_bar"
-    },
-    {
-      "file": "src/proteus/outgas/lavatmos.py",
-      "line": 643,
-      "reason": "template <s>_vmr"
-    },
-    {
-      "file": "src/proteus/outgas/wrapper.py",
-      "line": 131,
-      "reason": "template <e>_kg_total"
-    },
-    {
-      "file": "src/proteus/outgas/wrapper.py",
-      "line": 278,
-      "reason": "template <e>_kg_total"
-    },
-    {
-      "file": "src/proteus/outgas/wrapper.py",
-      "line": 280,
-      "reason": "template <e>_kg_total"
-    },
-    {
-      "file": "src/proteus/outgas/wrapper.py",
-      "line": 300,
-      "reason": "template <e>_kg_total"
-    },
-    {
-      "file": "src/proteus/outgas/wrapper.py",
-      "line": 567,
-      "reason": "template <s>_kg_atm"
     },
     {
       "file": "src/proteus/plot/cpl_orbit.py",
       "line": 230,
+      "kind": "read",
       "reason": "dynamic key sma_col"
     },
     {
       "file": "src/proteus/plot/cpl_orbit.py",
       "line": 231,
+      "kind": "read",
       "reason": "dynamic key ecc_col"
-    },
-    {
-      "file": "src/proteus/utils/coupler.py",
-      "line": 679,
-      "reason": "template <s>_kg_atm"
     }
   ]
 }

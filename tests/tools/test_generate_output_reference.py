@@ -109,17 +109,40 @@ def test_backend_extraction_missing_function_raises():
 
 def test_every_column_attributed_or_listed_unresolved(matrix):
     """Completeness: each schema column either has at least one producer or
-    appears in the unresolved section; on the current tree the unresolved
-    set is empty and every column is attributed."""
+    appears in the unresolved section; on the current tree every column is
+    attributed and unresolved events are read sites with computed keys."""
     assert len(matrix['keys']) > 700
     unattributed = [k['name'] for k in matrix['keys'] if not k['producers']]
     assert unattributed == []
-    assert matrix['unresolved_events'] == []
-    # The rendered page mirrors that state explicitly rather than omitting
-    # the section.
+    unresolved_writes = [e for e in matrix['unresolved_events'] if e['kind'] == 'write']
+    assert unresolved_writes == []
+    expected_unresolved_reads = [
+        'src/proteus/atmos_clim/agni.py:dynamic key name',
+        'src/proteus/escape/common.py:dynamic key e + key',
+        "src/proteus/escape/wrapper.py:dynamic key f'{e}{key}'",
+        "src/proteus/escape/wrapper.py:dynamic key f'{e}{key}'",
+        'src/proteus/interior_struct/zalmoxis.py:dynamic key k',
+        'src/proteus/observe/petitRADTRANS.py:dynamic key key',
+        "src/proteus/outgas/atmodeller.py:dynamic key f'{sp}_kg_{r}'",
+        'src/proteus/outgas/atmodeller.py:dynamic key key',
+        'src/proteus/outgas/atmodeller.py:dynamic key key',
+        'src/proteus/plot/cpl_orbit.py:dynamic key ecc_col',
+        'src/proteus/plot/cpl_orbit.py:dynamic key sma_col',
+    ]
+    actual_reads = sorted(f'{e["file"]}:{e["reason"]}' for e in matrix['unresolved_events'])
+    assert actual_reads == expected_unresolved_reads
+    for event in matrix['unresolved_events']:
+        assert event['kind'] == 'read'
+        path = _gor.REPO_ROOT / event['file']
+        assert path.is_file(), f'{event["file"]} does not exist'
+        lines = path.read_text().splitlines()
+        assert 1 <= event['line'] <= len(lines), (
+            f'Line {event["line"]} out of range in {event["file"]}'
+        )
+    # The rendered page mirrors that state explicitly.
     page = _gor.render(matrix)
-    assert 'Columns without a statically attributed producer' in page
-    assert 'None; every column above' in page
+    assert 'Reads with computed keys' in page
+    assert 'These consumers are not attributed in the table.' in page
 
 
 def test_backend_specific_columns_carry_their_condition(matrix):
@@ -200,7 +223,7 @@ def test_declared_scan_tables_are_all_live(monkeypatch):
     monkeypatch.setattr(_scan, 'SUPPRESSED_DYNAMIC_WRITES', set())
     events = _scan.scan_tree()['unresolved']
     by_file: dict[str, list[str]] = {}
-    for rel, _line, reason in events:
+    for rel, _line, reason, *_ in events:
         by_file.setdefault(rel, []).append(reason)
 
     for rel, pattern in overrides:
@@ -210,7 +233,7 @@ def test_declared_scan_tables_are_all_live(monkeypatch):
             reason.startswith(f'template {prefix}') and reason.endswith(suffix)
             for reason in by_file.get(rel, [])
         )
-        assert matched, f'TEMPLATE_OVERRIDES entry ({rel}, {pattern}) matches no write site'
+        assert matched, f'TEMPLATE_OVERRIDES entry ({rel}, {pattern}) matches no access site'
 
     for rel, _function in suppressed:
         assert by_file.get(rel), f'SUPPRESSED_DYNAMIC_WRITES names {rel} but no event arises'
@@ -228,7 +251,8 @@ def test_variable_key_get_reported_as_unresolved():
     visitor = _scan.HfRowVisitor('test_file.py', {})
     visitor.visit(tree)
     assert len(visitor.unresolved) == 1
-    assert any('dynamic key k' in reason for _line, reason in visitor.unresolved)
+    assert any('dynamic key k' in reason for _line, reason, *_ in visitor.unresolved)
+    assert visitor.unresolved[0][2] == 'read'
 
 
 def test_template_read_when_is_get_reported_as_unresolved():
@@ -239,7 +263,10 @@ def test_template_read_when_is_get_reported_as_unresolved():
     visitor = _scan.HfRowVisitor('test_file.py', {})
     visitor.visit(tree)
     assert len(visitor.unresolved) == 1
-    assert any('template <element>_unknown' in reason for _line, reason in visitor.unresolved)
+    assert any(
+        'template <element>_unknown' in reason for _line, reason, *_ in visitor.unresolved
+    )
+    assert visitor.unresolved[0][2] == 'read'
 
 
 def test_subscript_read_with_variable_reported_as_unresolved():
@@ -250,4 +277,5 @@ def test_subscript_read_with_variable_reported_as_unresolved():
     visitor = _scan.HfRowVisitor('test_file.py', {})
     visitor.visit(tree)
     assert len(visitor.unresolved) == 1
-    assert any('dynamic key k' in reason for _line, reason in visitor.unresolved)
+    assert any('dynamic key k' in reason for _line, reason, *_ in visitor.unresolved)
+    assert visitor.unresolved[0][2] == 'read'
