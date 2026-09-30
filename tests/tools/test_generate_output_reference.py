@@ -876,3 +876,27 @@ def test_augassign_keeps_the_nested_read_inside_its_key():
     visitor.visit(ast.parse('def f(hf_row):\n    hf_row[hf_row["k_name"]] += 1.0\n'))
     assert [k for k, _ in visitor.reads] == ['k_name']
     assert sorted(u[2] for u in visitor.unresolved) == ['read', 'write']
+
+
+@pytest.mark.parametrize(
+    'selector',
+    [
+        'hf_all[hf_all["Time"] > 0]',
+        'hf_all[~mask]',
+        'hf_all[a & b]',
+        'hf_all[1:3]',
+        'hf_all[i - 1]',
+        'hf_all.iloc[-1]',
+    ],
+    ids=['mask_compare', 'mask_invert', 'mask_boolop', 'slice', 'arithmetic', 'iloc'],
+)
+def test_augassign_on_frame_row_selector_is_not_a_column(selector):
+    """An augmented assignment on a frame row selection touches rows, not a
+    named column, so it records no column write and no unresolved event;
+    reads inside the selector are still recorded."""
+    visitor = _scan.HfRowVisitor('test_file.py', {})
+    visitor.visit(ast.parse(f'def f(hf_all, mask, a, b, i):\n    {selector} += 1\n'))
+    assert visitor.writes == []
+    assert visitor.unresolved == []
+    expected_reads = ['Time'] if '"Time"' in selector else []
+    assert [k for k, _ in visitor.reads] == expected_reads

@@ -773,3 +773,42 @@ def test_selector_value_none_sentinel_is_case_insensitive_and_refused_when_targe
     assert Morrigan(selector_value='earth').selector_value == 'earth'
     with pytest.raises(ValueError, match='non-negative integer'):
         Accretion(module='morrigan', morrigan=Morrigan(selector='id', selector_value='earth'))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('raw', 'expected', 'kind'),
+    [
+        (3, 3, int),
+        ('np_int64', 3, int),
+        (2**53 + 1, 2**53 + 1, int),  # exact above float precision
+        (2.5, 2.5, float),
+        ('np_float64', 2.5, float),
+        ('7', 7, int),
+        (' 7 ', 7, int),
+        (str(2**53 + 1), 2**53 + 1, int),
+        ('3.0', 3.0, float),
+        ('1e3', 1000.0, float),
+        ('earth', 'earth', str),
+        ('inf', 'inf', str),  # not finite: kept for the validator to refuse
+        ('nan', 'nan', str),
+        ('none', None, type(None)),
+        (' NONE ', None, type(None)),
+        (None, None, type(None)),
+        (True, True, bool),
+    ],
+)
+def test_selector_value_converter_contract(raw, expected, kind):
+    """Integers stay exact, other reals become float, numeric strings parse the
+    same way, any other string is kept, and 'none' in any case means unset."""
+    import numpy as np
+
+    from proteus.config._accretion import Morrigan
+
+    raw = {'np_int64': np.int64(3), 'np_float64': np.float64(2.5)}.get(raw, raw)
+    value = Morrigan(selector_value=raw).selector_value
+    assert type(value) is kind
+    if kind is float:
+        assert value == pytest.approx(expected, rel=0)
+    else:
+        assert value == expected

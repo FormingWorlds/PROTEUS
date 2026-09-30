@@ -3314,7 +3314,7 @@ def test_restore_accretion_state_refuses_counter_exceeding_total_events(tmp_path
         restore_accretion_state(handler)
     err = str(exc_info.value)
     assert 'runtime_helpfile.csv' in err
-    assert 'cannot have landed during the init stage' in err
+    assert 'holds only 1 impact' in err
     assert handler.hf_row == hf_row_orig
     assert handler.impact_events == events_orig
 
@@ -3468,8 +3468,11 @@ def test_restore_accretion_state_timeline_ignores_events_with_zero_or_negative_t
 
 def _counter_case(tmp_path, times, resume_time, counter, rock=1e23):
     """Resume handler for a dummy timeline at ``times`` [yr] and a row at
-    ``resume_time`` carrying ``counter``; the pending list is filtered by the
-    resume time, as init_accretion leaves it."""
+    ``resume_time``; hf_row is the last row of hf_all but carries the counter
+    as a string, so any write before a refusal changes it. The pending list is
+    filtered by the resume time, as init_accretion leaves it."""
+    import pandas as pd
+
     from proteus.utils.constants import AU
 
     events = [
@@ -3481,19 +3484,45 @@ def _counter_case(tmp_path, times, resume_time, counter, rock=1e23):
         )
         for i, t in enumerate(times)
     ]
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': resume_time,
+                'M_accreted_rock': rock,
+                'n_impacts_applied': float(counter),
+                'semimajorax': 1.0 * AU,
+                'eccentricity': 0.0,
+            }
+        ]
+    )
+    hf_row = hf_all.iloc[-1].to_dict()
+    hf_row['n_impacts_applied'] = str(counter)  # a type the frame does not hold
     handler = _resumed_handler(
         tmp_path,
         events,
-        hf_row={
-            'Time': resume_time,
-            'M_accreted_rock': rock,
-            'n_impacts_applied': counter,
-            'semimajorax': 1.0 * AU,
-            'eccentricity': 0.0,
-        },
+        hf_row=hf_row,
+        hf_all=hf_all,
         pending=[ev for ev in events if ev.time > resume_time],
     )
     return handler, events
+
+
+def _assert_refused_without_side_effects(handler, match):
+    """A refused resume raises and leaves hf_row, hf_all and the schedule as they were."""
+    from proteus.accretion.wrapper import restore_accretion_state
+
+    row, frame, pending = (
+        dict(handler.hf_row),
+        handler.hf_all.copy(),
+        list(handler.impact_events),
+    )
+    mass = handler.config.planet.mass_tot
+    with pytest.raises(RuntimeError, match=match):
+        restore_accretion_state(handler)
+    assert handler.hf_row == row
+    assert handler.hf_all.equals(frame)
+    assert handler.impact_events == pending
+    assert handler.config.planet.mass_tot == pytest.approx(mass, rel=0)
 
 
 @pytest.mark.unit
@@ -3511,17 +3540,14 @@ def test_counter_is_checked_after_the_last_scheduled_impact(tmp_path, counter, a
 
     handler, _ = _counter_case(tmp_path, [5.0, 8.0], 100.0, counter, rock=2e23)
     assert handler.impact_events == []
-    row_before = dict(handler.hf_row)
     mass_before = handler.config.planet.mass_tot
     if accepted:
         restore_accretion_state(handler)
         assert handler.hf_row['n_impacts_applied'] == 2
+        assert handler.hf_all['n_impacts_applied'].iloc[-1] == pytest.approx(2.0, rel=0)
         assert handler.config.planet.mass_tot > mass_before
     else:
-        with pytest.raises(RuntimeError, match='runtime_helpfile.csv'):
-            restore_accretion_state(handler)
-        assert handler.hf_row == row_before
-        assert handler.config.planet.mass_tot == pytest.approx(mass_before, rel=0)
+        _assert_refused_without_side_effects(handler, 'runtime_helpfile.csv')
 
 
 @pytest.mark.unit
@@ -3560,6 +3586,9 @@ def test_legacy_ledger_is_refused_with_a_module_and_accepted_without(tmp_path, c
         ([0.5, 0.8, 15.0], 0.0, 3, None),  # 15 yr cannot land in the init stage
         ([0.5, 200.0], 100.0, 2, None),  # surplus after the resume time
         ([0.5, 5.0], 2.0, 2, None),  # resumed past the init stage with a surplus
+        ([0.3, 0.8, 15.0], 0.5, 2, [15.0]),  # row of the last init step, 0 < Time <= 1
+        ([0.5, 1.0, 15.0], 1.0, 2, [15.0]),  # impact exactly at the resume time
+        ([0.5, 1.0, 15.0], 1.0, 3, None),  # surplus beyond it is past the horizon
     ],
     ids=[
         'two_init_impacts',
@@ -3570,6 +3599,9 @@ def test_legacy_ledger_is_refused_with_a_module_and_accepted_without(tmp_path, c
         'surplus_beyond_init',
         'surplus_after_resume',
         'surplus_after_init_stage',
+        'last_init_step_row',
+        'impact_at_resume_time',
+        'surplus_after_impact_at_resume_time',
     ],
 )
 def test_counter_surplus_must_lie_in_the_init_stage(
@@ -3583,12 +3615,34 @@ def test_counter_surplus_must_lie_in_the_init_stage(
 
     assert _INIT_STAGE_HORIZON_YR == pytest.approx(1.0, rel=0)
     handler, _ = _counter_case(tmp_path, times, resume_time, counter)
-    pending_before = list(handler.impact_events)
     if pending_after is None:
-        with pytest.raises(RuntimeError, match='Restart the simulation'):
-            restore_accretion_state(handler)
-        assert handler.impact_events == pending_before
+        _assert_refused_without_side_effects(handler, 'Restart the simulation')
     else:
         restore_accretion_state(handler)
         assert [ev.time for ev in handler.impact_events] == pytest.approx(pending_after)
         assert handler.hf_row['n_impacts_applied'] == counter
+
+
+@pytest.mark.unit
+def test_dropped_init_impacts_are_logged_and_an_oversized_counter_names_the_timeline(
+    tmp_path, caplog
+):
+    """Impacts skipped on resume as already applied are named in the log, and
+    a counter larger than the whole timeline is refused with the timeline size."""
+    import logging
+
+    from proteus.accretion.wrapper import restore_accretion_state
+
+    handler, _ = _counter_case(tmp_path, [0.5, 0.8, 15.0], 0.5, 2)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.accretion.wrapper'):
+        restore_accretion_state(handler)
+    dropped = [r.message for r in caplog.records if 'not applied again' in r.message]
+    assert dropped == [
+        'Resume: 1 impact(s) after the resume time landed during the init stage and are not applied again: 0.8 yr'
+    ]
+    assert [ev.time for ev in handler.impact_events] == pytest.approx([15.0])
+
+    big_dir = tmp_path / 'big'
+    big_dir.mkdir()
+    oversized, _ = _counter_case(big_dir, [5.0, 8.0], 100.0, 50)
+    _assert_refused_without_side_effects(oversized, 'holds only 2 impact')

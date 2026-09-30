@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 import numbers
 
-import numpy as np
 from attr.validators import ge, gt, in_, le, lt
 from attrs import define, field
 
@@ -21,7 +20,7 @@ def _convert_selector_value(val: object) -> float | int | str | None:
     strings are parsed the same way. Any other string is returned unchanged
     so that the validator refuses it by name when the selector needs a target.
     """
-    if val is None or isinstance(val, (bool, np.bool_)):
+    if val is None or isinstance(val, bool):
         return val
     if isinstance(val, numbers.Integral):
         return int(val)
@@ -45,7 +44,7 @@ def _convert_selector_value(val: object) -> float | int | str | None:
 
 def _as_finite_float(val: object) -> float | None:
     """Return a converted selector value as a finite float, else None."""
-    if isinstance(val, (bool, np.bool_)) or not isinstance(val, numbers.Real):
+    if isinstance(val, bool) or not isinstance(val, numbers.Real):
         return None
     try:
         num = float(val)

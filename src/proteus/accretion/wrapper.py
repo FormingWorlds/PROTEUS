@@ -30,8 +30,8 @@ _PPMW_ELEMENTS = ('H', 'C', 'N', 'S', 'O')
 # the module for a timeline again.
 _RESOLVED_TIMELINE_FILE = 'impact_timeline.csv'
 
-# Longest step of the init stage [yr]. Time stays at zero there, so every init
-# step is the static 1 yr step of the time-stepper, which only shrinks on retry.
+# Longest step of the init stage [yr]: the time-stepper's static 1 yr step, which
+# only shrinks on retry; the solver-derived dt (interior_energetics/wrapper.py) cannot exceed it.
 _INIT_STAGE_HORIZON_YR = 1.0
 
 # Ceiling on the planet's eccentricity after an impact applies its change. An
@@ -183,8 +183,9 @@ def restore_accretion_state(handler: Proteus) -> None:
     3. With a module selected, the counter is checked against the resolved
        timeline: it may not be below the number of impacts at or before the
        resume time, and any surplus must be the next impacts after the resume
-       time, each within the init stage (``t <= 1 yr``), where Time stays zero.
-       Those surplus impacts are dropped from the schedule.
+       time, each within the init stage (``t <= 1 yr``): only there can an
+       impact land after the row's Time, since the init steps restart from
+       zero. Those surplus impacts are dropped from the schedule.
 
     Parameters
     ----------
@@ -270,14 +271,25 @@ def restore_accretion_state(handler: Proteus) -> None:
         # init stage, whose steps never reach beyond _INIT_STAGE_HORIZON_YR.
         later = [ev for ev in all_events if ev.time > resume_time]
         n_drop = n_applied - events_before
-        if n_drop > len(later) or any(
-            ev.time > _INIT_STAGE_HORIZON_YR for ev in later[:n_drop]
-        ):
+        if n_drop > len(later):
+            raise RuntimeError(
+                f'Resume refused: {hf_name} records n_impacts_applied = {n_applied}, '
+                f'but the resolved timeline holds only {events_before + len(later)} '
+                'impact(s). Restart the simulation.'
+            )
+        if any(ev.time > _INIT_STAGE_HORIZON_YR for ev in later[:n_drop]):
             raise RuntimeError(
                 f'Resume refused: {hf_name} records n_impacts_applied = {n_applied}, '
                 f'but only {events_before} impact(s) precede the resume time {resume_time} yr '
                 f'and the next {n_drop} cannot have landed during the init stage '
                 f'(t <= {_INIT_STAGE_HORIZON_YR} yr). Restart the simulation.'
+            )
+        if n_drop > 0:
+            log.info(
+                'Resume: %d impact(s) after the resume time landed during the init stage '
+                'and are not applied again: %s',
+                n_drop,
+                ', '.join(f'{ev.time:g} yr' for ev in later[:n_drop]),
             )
 
     hf_row['n_impacts_applied'] = n_applied

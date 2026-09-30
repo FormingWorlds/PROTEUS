@@ -431,9 +431,10 @@ def test_group_lookup_returns_nothing_when_no_grouping_is_declared(monkeypatch):
 
 
 def _table_cells(row: str) -> int:
-    """Count the cells of one Markdown table row as a table parser splits it:
-    a pipe separates cells unless it is backslash-escaped or inside a code
-    span, which a run of N backticks opens and the next run of N closes."""
+    """Count the cells of one Markdown table row as the docs renderer
+    (Python-Markdown tables) splits it: a pipe separates cells unless it is
+    backslash-escaped or inside a code span, which a run of N backticks opens
+    and the next run of N closes."""
     cells, open_run, i = 1, 0, 0
     body = row.strip()[1:-1]
     while i < len(body):
