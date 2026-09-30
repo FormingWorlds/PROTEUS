@@ -3076,3 +3076,41 @@ def test_toi561b_config_structures_into_a_full_config_object():
     assert obj.orbit.star_planet_model == 'parameterized'
     assert obj.orbit.parameterized.sma_init == pytest.approx(0.029, rel=1e-12)
     assert obj.orbit.parameterized.migration in ('none', 'instant', 'sigmoid', 'high_ecc')
+
+
+@pytest.mark.unit
+def test_toi561b_config_structures_without_the_vulcan_backend(tmp_path):
+    """The gated round trip above is skipped wherever VULCAN is absent,
+    which is the PR image, so the shipped config's remaining sections were
+    never structured in CI. This copy selects no chemistry backend and so
+    needs no optional dependency, leaving the other sections to be
+    validated by the same schema a run uses.
+
+    Discriminating: it asserts fields from four separate sections, so a
+    schema break anywhere in the file fails here rather than only in the
+    orbit block the ungated endpoint test already covers.
+    """
+    raw = (PROTEUS_ROOT / 'input' / 'planets' / 'toi561b.toml').read_text()
+    head, marker, rest = raw.partition('[atmos_chem]')
+    assert marker, 'the shipped config no longer has an [atmos_chem] section'
+    section, nxt, tail = rest.partition('\n[')
+    assert 'module = "vulcan"' in section
+    patched = (
+        head + marker + section.replace('module = "vulcan"', 'module = "none"') + nxt + tail
+    )
+
+    path = tmp_path / 'toi561b_no_vulcan.toml'
+    path.write_text(patched)
+
+    obj = read_config_object(path)
+
+    assert obj.atmos_chem.module is None
+    assert obj.orbit.star_planet_model == 'parameterized'
+    assert obj.orbit.parameterized.migration == 'high_ecc'
+    assert obj.atmos_clim.module == 'agni'
+    assert obj.escape.module == 'zephyrus'
+    assert obj.interior_struct.module == 'spider'
+    assert obj.planet.mass_tot == pytest.approx(2.24, rel=1e-12)
+    # The endpoints the orbit track runs between, and the inward ordering
+    # the high_ecc law requires.
+    assert obj.orbit.parameterized.sma_final < obj.orbit.parameterized.sma_init

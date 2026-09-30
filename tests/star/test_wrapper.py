@@ -687,3 +687,62 @@ def test_update_instellation_spada_shares_one_average_for_bolometric_and_xuv():
     assert 0.01 < fluxes[0.0][1] < 1.0
     assert fluxes[0.8][0] > fluxes[0.0][0] > 0.0
     assert fluxes[0.8][1] > fluxes[0.0][1] > 0.0
+
+
+def test_update_instellation_baraffe_uses_the_flux_weighted_distance():
+    """The Baraffe branch must share the orbital average the other two
+    branches use. Probed at e = 0.8, where the flux-weighted distance
+    a (1 - e^2)^(1/4) = 0.7746 a and the time-averaged separation
+    a (1 + e^2 / 2) = 1.32 a differ by 70 per cent, so reverting this
+    branch to hf_row['separation'] changes the argument rather than
+    leaving it untouched as it would on a circular orbit.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.star.wrapper import update_instellation
+    from proteus.utils.constants import AU
+
+    config = _make_mors_config('baraffe')
+    track = MagicMock()
+    track.BaraffeSolarConstant.return_value = 1361.0
+
+    ecc = 0.8
+    sma = 1.0 * AU
+    hf_row = {
+        'age_star': 4.567e9,
+        'semimajorax': sma,
+        'eccentricity': ecc,
+        # Carried so a regression reverting to it yields a wrong number
+        # rather than a KeyError.
+        'separation': sma * (1.0 + 0.5 * ecc**2),
+    }
+
+    update_instellation(hf_row, config, stellar_track=track)
+
+    expected_au = (1.0 - ecc**2) ** 0.25
+    track.BaraffeSolarConstant.assert_called_once_with(
+        4.567e9, pytest.approx(expected_au, rel=1e-12)
+    )
+    # Competing value: the time-averaged separation would pass 1.32 au.
+    passed_au = track.BaraffeSolarConstant.call_args[0][1]
+    assert abs(passed_au - (1.0 + 0.5 * ecc**2)) > 0.5
+    assert hf_row['F_ins'] == pytest.approx(1361.0, rel=1e-12)
+
+
+def test_flux_weighted_distance_names_a_missing_semimajor_axis():
+    """A caller carrying only the time-averaged separation, as every caller
+    did before this function existed, gets a named error rather than a bare
+    KeyError raised deep inside the star module. The eccentricity bound is
+    already reported this way two lines above.
+    """
+    from proteus.star.wrapper import flux_weighted_distance
+    from proteus.utils.constants import AU
+
+    with pytest.raises(ValueError, match='semimajorax'):
+        flux_weighted_distance({'eccentricity': 0.0, 'separation': 1.0 * AU})
+
+    # Positive: the same row with the key present resolves normally, so the
+    # check is not rejecting every input.
+    assert flux_weighted_distance({'semimajorax': 1.0 * AU, 'eccentricity': 0.0}) == (
+        pytest.approx(1.0 * AU, rel=1e-12)
+    )

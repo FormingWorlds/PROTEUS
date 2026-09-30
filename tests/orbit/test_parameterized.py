@@ -853,3 +853,22 @@ def test_wrapper_refuses_an_outward_high_eccentricity_track():
     a, e = run_parameterized_orbital_migration({'Time': T_MIG}, _config('high_ecc'))
     assert a == pytest.approx(SMA_I * AU, rel=RTOL)
     assert e == pytest.approx(np.sqrt(1.0 - SMA_F / SMA_I), rel=RTOL)
+
+
+@pytest.mark.physics_invariant
+def test_high_ecc_passes_a_near_radial_input_eccentricity_through_untouched():
+    """Before the event the law returns the orbit it was handed, whatever
+    eccentricity that carries. Probed at 0.999, the bound the orbit guard
+    uses, so the limit input is exercised rather than only the circular
+    case, and the pair (a, e) still describes a bound orbit with a positive
+    semi-latus rectum."""
+    a, e = high_eccentricity_migration(T_MIG * 0.5, 0.999, SMA_I, SMA_F, T_MIG, TAU)
+
+    assert a == pytest.approx(SMA_I, rel=RTOL)
+    assert e == pytest.approx(0.999, rel=RTOL)
+    # Boundedness: still an ellipse, not a parabola or a hyperbola.
+    assert 0.0 <= e < 1.0
+    assert a * (1.0 - e**2) > 0.0
+    # The pre-event branch does not excite: the event value would be
+    # sqrt(1 - 0.8 / 2.0) = 0.7746, well below what was handed in.
+    assert e > np.sqrt(1.0 - SMA_F / SMA_I)

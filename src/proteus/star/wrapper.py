@@ -573,6 +573,9 @@ def flux_weighted_distance(hf_row: dict) -> float:
     if not 0.0 <= ecc < 1.0:
         raise ValueError(f'Eccentricity must be >= 0 and < 1, got {ecc}')
 
+    if 'semimajorax' not in hf_row:
+        raise ValueError("Flux-weighted distance requires hf_row['semimajorax']")
+
     return float(hf_row['semimajorax']) * (1.0 - ecc * ecc) ** 0.25
 
 
