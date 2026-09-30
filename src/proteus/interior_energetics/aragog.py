@@ -1343,11 +1343,9 @@ class AragogRunner:
                 # at install time would keep integrating the pre-change planet.
                 mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
                 n_stag = solver._n_stag
-                # Same for the EOS tables: regeneration raises their pressure
-                # ceiling with the planet's mass, and an install-time copy would
-                # clamp the deep mantle at the smaller planet's table edge. The
-                # loader is cached, so an unchanged table costs one small read.
-                eos_jax = _cached_entropy_eos_jax(str(interior_o._spider_eos_dir))
+                # Reload tables through the cached loader to pick up any
+                # regenerated pressure ceiling while reusing unchanged tables.
+                eos_jax = _cached_entropy_eos_jax(str(eos_dir))
                 # ``scales`` is an aragog.jax.nondim.NonDimScales single
                 # source of truth.
                 # Rebuild BoundaryParams from live solver state every

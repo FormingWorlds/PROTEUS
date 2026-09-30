@@ -425,12 +425,20 @@ def test_cvode_factory_reads_the_setup_solver_fallback_tables(tmp_path, spider_e
             'proteus.interior_energetics.aragog.build_jax_phase_params',
             return_value=MagicMock(),
         ),
+        patch(
+            'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
+            return_value=(MagicMock(), MagicMock(), MagicMock()),
+        ),
     ):
         AragogRunner._maybe_install_jax_cvode_factory(config, interior_o, str(tmp_path))
+        factory = interior_o.aragog_solver.set_jax_cvode_factory.call_args[0][0]
+        factory(MagicMock(), 'energy_balance')
 
-    mock_eos.assert_called_once_with(str(tmp_path / 'data' / 'spider_eos'))
-    # Discrimination: the configured directory is not what the EOS reads.
-    assert mock_eos.call_args.args[0] != eos_dir
+    # Both install-time verification and factory invocation read the fallback directory.
+    assert mock_eos.call_count == 2
+    for call in mock_eos.call_args_list:
+        assert call.args[0] == str(tmp_path / 'data' / 'spider_eos')
+        assert call.args[0] != eos_dir
 
 
 def test_numpy_setup_solver_site_delegates_to_the_shared_builder():
