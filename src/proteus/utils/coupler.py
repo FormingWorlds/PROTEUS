@@ -23,6 +23,7 @@ import pandas as pd
 from proteus.utils.constants import (
     element_list,
     gas_list,
+    noble_gases,
     secs_per_hour,
     secs_per_minute,
     vol_element_list,
@@ -1088,7 +1089,7 @@ def GetHelpfileKeys():
         'trap_F_tl',        # trapped melt fraction applied this step [1]
         'trap_kg_step',     # volatile mass buried this step, negative when remelting released it [kg]
         'trap_kg_cumulative',  # net volatile mass buried since the run began [kg]
-        'trap_branch',      # drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state [1]
+        'trap_branch',      # drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting [1]
         'trap_tau_D',       # percolation time at the top of the front [yr]
         'trap_tau_s',       # matrix deformation time [yr]
         'trap_t_res',       # parcel residence time in the front [yr]
@@ -1108,6 +1109,8 @@ def GetHelpfileKeys():
         keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
     for e in vol_element_list:
         keys.append(e + '_kg_trapped')  # mass trapped in the solid mantle [kg]
+    for s in noble_gases:
+        keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
 
     # gases from outgassing
     for s in gas_list:

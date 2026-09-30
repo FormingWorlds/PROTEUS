@@ -2841,7 +2841,7 @@
     {
       "name": "trap_branch",
       "unit": "1",
-      "description": "drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state",
+      "description": "drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3248,6 +3248,86 @@
     },
     {
       "name": "S_kg_trapped",
+      "unit": "kg",
+      "description": "mass trapped in the solid mantle",
+      "group": "Solid-phase volatile trapping",
+      "origin": "<element>_kg_trapped",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ]
+    },
+    {
+      "name": "He_kg_trapped",
+      "unit": "kg",
+      "description": "mass trapped in the solid mantle",
+      "group": "Solid-phase volatile trapping",
+      "origin": "<element>_kg_trapped",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ]
+    },
+    {
+      "name": "Ne_kg_trapped",
+      "unit": "kg",
+      "description": "mass trapped in the solid mantle",
+      "group": "Solid-phase volatile trapping",
+      "origin": "<element>_kg_trapped",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ]
+    },
+    {
+      "name": "Ar_kg_trapped",
+      "unit": "kg",
+      "description": "mass trapped in the solid mantle",
+      "group": "Solid-phase volatile trapping",
+      "origin": "<element>_kg_trapped",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ]
+    },
+    {
+      "name": "Kr_kg_trapped",
+      "unit": "kg",
+      "description": "mass trapped in the solid mantle",
+      "group": "Solid-phase volatile trapping",
+      "origin": "<element>_kg_trapped",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ]
+    },
+    {
+      "name": "Xe_kg_trapped",
       "unit": "kg",
       "description": "mass trapped in the solid mantle",
       "group": "Solid-phase volatile trapping",
@@ -7290,6 +7370,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -7348,6 +7432,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -7653,6 +7741,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -7711,6 +7803,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -8016,6 +8112,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -8074,6 +8174,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -8379,6 +8483,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -8437,6 +8545,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -8742,6 +8854,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -8800,6 +8916,10 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",

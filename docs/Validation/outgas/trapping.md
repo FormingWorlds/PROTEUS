@@ -13,12 +13,20 @@ the published mass balance and its analytic limits.
 The trapping tests also assert, without a published reference:
 
 - per-element closure `total = atm + liquid + solid` after every step,
-  including a remelting step, and a freeze followed by the matching remelt
-  returning every reservoir to its start;
+  including a remelting step;
+- remelting returning the trapped mass in proportion to the solid that
+  remelted, `(Phi(t) - Phi(t-1)) / (1 - Phi(t-1))`, so that a mantle frozen
+  from `Phi = 1` to 0.5, degassed a hundredfold and remelted to `Phi = 1`
+  gets back every buried kilogram;
+- dissolved noble gases buried with the interstitial melt at `F_tl C_Z dM_RM`;
+- the drained fraction set by the front speed alone, the same for a step five
+  times longer that moves the front beyond its own thickness;
 - the trapped share of the solid reservoirs surviving a chemistry solve that
   rewrites them, adding to condensed graphite rather than competing with it;
 - species totals rebuilt from each fresh partition rather than frozen;
-- desiccation keeping the trapped mass while the closure still holds.
+- desiccation keeping the trapped mass while the closure still holds, and
+  with `trap_mode = 'none'` keeping every element total as it did before
+  trapping existed.
 
 ## Scope
 

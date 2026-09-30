@@ -91,11 +91,12 @@ DEFAULT_MUSH_LOG10VISC = 20.0
 # Branch codes reported on every step, so a trajectory shows which regime it
 # was in and how often the guards fired.
 BRANCH_NONE = 0  # no trapping: mode off, warming, or no front
-BRANCH_DARCY = 1  # dynamic, percolation-limited at the top of the front
-BRANCH_MATRIX = 2  # dynamic, matrix-deformation-limited
+BRANCH_DARCY = 1  # drained, percolation-limited at the top of the front
+BRANCH_MATRIX = 2  # drained, matrix-deformation-limited
 BRANCH_GUARD = 3  # upper bound: front unresolved, doubled, too thick, or dense melt
 BRANCH_UNUSABLE = 4  # first iteration, zero-length step, or remesh
 BRANCH_FALLBACK = 6  # interior state unavailable: crystal partitioning alone
+BRANCH_REMELT = 7  # remelting: trapped mass released with the solid that remelted
 
 
 @dataclass

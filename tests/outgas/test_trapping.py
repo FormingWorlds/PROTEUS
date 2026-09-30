@@ -56,6 +56,7 @@ from proteus.outgas.trapping import (
     escapable_inventory,
     keep_only_trapped_mass,
     locked_solid_mass,
+    remelted_fraction,
     restore_trapped_mass,
     run_trapping,
     trapped_mass,
@@ -290,8 +291,8 @@ def test_incompatible_species_traps_through_the_interstitial_melt_alone():
     # The bracket is bounded below by F_tl and above by 1 for any physical D_Z,
     # so at equal concentration water can only ever outrun carbon.
     assert trapped_mass(0.0017, 0.02, 2.0e-3, _DM_RM, 3.6e21)[0] > carbon
-    # A remelting increment moves the same flux: only its magnitude enters.
-    assert trapped_mass(0.0017, 0.02, 1.0e-3, -_DM_RM, 1.8e21)[0] == pytest.approx(water)
+    # A remelting increment buries nothing; release is a separate path.
+    assert trapped_mass(0.0017, 0.02, 1.0e-3, -_DM_RM, 1.8e21)[0] == pytest.approx(0.0, abs=0.0)
 
     # Edge case: the supply cap binds when a long step asks for more than the
     # melt holds, so no step buries more of a species than exists.
@@ -943,6 +944,51 @@ def test_a_front_resting_on_the_core_mantle_boundary_is_drained_not_bounded(capl
 
 
 @pytest.mark.physics_invariant
+def test_the_drained_fraction_follows_the_front_speed_not_the_step_length():
+    """The residence time t_res = L / v_f is set by how fast the front moves,
+    so the same front crossed at the same speed drains the same F_tl however
+    long the step: a step five times longer that crystallises five times the
+    mass advances the front beyond its own thickness and is still integrated,
+    not sent to the no-drainage bound."""
+    phi_stag = np.linspace(0.30, 1.0, _N_STAG)
+    short = run_trapping(
+        _drainage_config(),
+        _hf_row(M_mantle_solid=2.4e24, gravity=9.8),
+        _hf_all(M_mantle_solid=2.2e24),
+        _aragog_interior(phi_stag),
+    )
+    # Phi 0.65 -> 0.40 over 5e4 yr: dM_RM = 1e24 kg, the same front speed.
+    long_row = _hf_row(Time=6.0e4, M_mantle_solid=2.4e24, gravity=9.8)
+    long = run_trapping(
+        _drainage_config(),
+        long_row,
+        _hf_all(Phi_global=0.65, M_mantle_solid=1.4e24),
+        _aragog_interior(phi_stag),
+    )
+    assert long.dm_rm == pytest.approx(5.0 * short.dm_rm, rel=1e-12)
+    assert long.v_front == pytest.approx(short.v_front, rel=1e-12)
+    assert long.front_courant == pytest.approx(5.0 * short.front_courant, rel=1e-12)
+    assert long.front_courant > 1.0
+    assert long.branch == short.branch == BRANCH_DARCY
+    assert long.t_res == pytest.approx(short.t_res, rel=1e-12)
+    assert long.f_tl == pytest.approx(short.f_tl, rel=1e-12)
+    # Discrimination: the no-drainage bound a step-length guard would take here
+    # is 0.471, some 0.13 above the drained fraction of 0.340.
+    bound = volume_to_mass_fraction(phi_stag[11], _RHO_MELT, _RHO_SOLID)
+    assert bound - long.f_tl > 0.1
+    # Edge case: a step of zero length has no front speed and takes the bound.
+    stalled = _hf_row(Time=1.0e4, M_mantle_solid=2.4e24, gravity=9.8)
+    zero = run_trapping(
+        _drainage_config(),
+        stalled,
+        _hf_all(Time=1.0e4, M_mantle_solid=2.2e24),
+        _aragog_interior(phi_stag),
+    )
+    assert zero.branch == BRANCH_GUARD
+    assert zero.f_tl == pytest.approx(bound, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
 def test_every_step_on_the_upper_bound_reports_its_cause_and_the_mass_it_buried(caplog):
     """A front the drainage integral cannot handle falls back to the
     no-drainage upper bound, which buries far more than drainage would. Every
@@ -1174,86 +1220,94 @@ def test_a_step_without_the_interior_profiles_buries_at_the_crystal_term_alone(c
     assert any('interior profiles' in r.getMessage() for r in caplog.records)
 
 
-def _remelting_row(**overrides) -> dict:
-    """Row on which the melt fraction rises back from 0.40 to 0.45.
+@pytest.mark.physics_invariant
+def test_remelting_returns_the_buried_mass_whatever_the_melt_has_done_since(fixed_front):
+    """A remelting step releases what trapping buried, in proportion to the
+    share of the solid mantle that remelted, (Phi(t) - Phi(t-1)) / (1 -
+    Phi(t-1)). The release is sized from the trapped reservoir, not from the
+    melt concentration, so a mantle that freezes, degasses and then remelts
+    completely gets every buried kilogram back."""
+    from proteus.outgas.compaction import BRANCH_REMELT
 
-    The previous solve dissolved 1.6e21 kg of water into 4e24 * 0.40 kg of
-    melt, a concentration of exactly 1e-3, and trapping holds 1e20 kg of it,
-    split into its elements, with every element total closing.
-    """
-    from proteus.outgas.common import element_masses_from_species
+    # Freeze from Phi = 1 to 0.5: dM_RM = 2e24 kg at C_Z = 1e-3 buries
+    # (0.98 * 0.0017 + 0.02) * 1e-3 * 2e24 kg of water.
+    start = _hf_row(Phi_global=0.5, H2O_kg_liquid=4.0e21, CO2_kg_liquid=8.0e21)
+    frozen_step = run_trapping(_config(), start, _hf_all(Phi_global=1.0))
+    buried = (0.98 * 0.0017 + 0.02) * 1.0e-3 * 2.0e24
+    assert start['H2O_kg_trapped'] == pytest.approx(buried, rel=1e-12)
+    assert frozen_step.trapped_kg['CO2'] > 0.0
 
-    row = _hf_row(Phi_global=_PHI_PREV, H2O_kg_liquid=1.6e21, CO2_kg_liquid=0.0)
-    row.update(H2O_kg_solid=1.0e20, H2O_kg_trapped=1.0e20, C_kg_liquid=0.0)
-    for element, mass in element_masses_from_species({'H2O': 1.0e20}).items():
-        row[f'{element}_kg_solid'] = mass
-        row[f'{element}_kg_trapped'] = mass
-    for element in ('H', 'O', 'C'):
-        row[f'{element}_kg_total'] = sum(
-            row[f'{element}_kg_{r}'] for r in ('atm', 'liquid', 'solid')
+    # The melt then degasses a hundredfold, so its concentration no longer
+    # says anything about what the solid holds.
+    degassed = dict(start, Time=3.0e4, H2O_kg_liquid=start['H2O_kg_liquid'] / 100.0)
+    degassed['CO2_kg_liquid'] = start['CO2_kg_liquid'] / 100.0
+    prev = pd.DataFrame([dict(degassed, Time=2.0e4)])
+
+    # Partial remelt, Phi 0.5 -> 0.75: half of the solid, so half of the
+    # trapped mass, of every species and element.
+    half = dict(degassed, Phi_global=0.75)
+    step = run_trapping(_config(), half, prev)
+    assert step.branch == BRANCH_REMELT
+    assert step.remelted
+    for name in ('H2O', 'CO2', 'H', 'C', 'O'):
+        assert half[f'{name}_kg_trapped'] == pytest.approx(
+            0.5 * start[f'{name}_kg_trapped'], rel=1e-12
         )
-    row.update(M_planet=6.0e24, M_atm=0.0, M_vol_atm=0.0)
-    row.update(overrides)
-    return row
+    assert half['H2O_kg_liquid'] == pytest.approx(
+        degassed['H2O_kg_liquid'] + 0.5 * buried, rel=1e-12
+    )
+    assert half['trap_kg_step'] < 0.0
+
+    # Full remelt, Phi 0.5 -> 1: everything comes back, although the degassed
+    # melt would have sized a release a hundred times too small.
+    full = dict(degassed, Phi_global=1.0)
+    run_trapping(_config(), full, prev)
+    for name in ('H2O', 'CO2', 'H', 'C', 'O'):
+        assert full[f'{name}_kg_trapped'] == pytest.approx(0.0, abs=0.0)
+        assert full[f'{name}_kg_solid'] == pytest.approx(0.0, abs=0.0)
+    assert full['H2O_kg_liquid'] == pytest.approx(degassed['H2O_kg_liquid'] + buried, rel=1e-12)
+    # Discrimination: sizing the release from the degassed melt, as burial is
+    # sized, would return 1.98% of what was buried and keep 98% trapped.
+    c_degassed = degassed['H2O_kg_liquid'] / (_M_MANTLE * 0.5)
+    from_melt = effective_partition(0.02, 0.0017) * c_degassed * 2.0e24
+    assert from_melt / buried == pytest.approx(0.0198, abs=1.0e-4)
+    # Conservation: moving mass back leaves every element total unchanged.
+    for element in ('H', 'O', 'C'):
+        parts = sum(full[f'{element}_kg_{r}'] for r in ('atm', 'liquid', 'solid'))
+        before = sum(degassed[f'{element}_kg_{r}'] for r in ('atm', 'liquid', 'solid'))
+        assert parts == pytest.approx(before, rel=1e-12)
+
+    # Edge case: remelting a fully solid mantle, with no melt to size anything
+    # from, still releases the share that remelted.
+    solid = dict(degassed, Phi_global=0.1, H2O_kg_liquid=0.0, CO2_kg_liquid=0.0)
+    run_trapping(_config(), solid, pd.DataFrame([dict(solid, Phi_global=0.0, Time=2.0e4)]))
+    assert solid['H2O_kg_trapped'] == pytest.approx(0.9 * start['H2O_kg_trapped'], rel=1e-12)
+    assert solid['H2O_kg_liquid'] == pytest.approx(0.1 * buried, rel=1e-12)
+
+    # Error contract: nothing trapped, nothing to release.
+    empty = _hf_row(Phi_global=0.45)
+    idle = run_trapping(_config(), empty, _hf_all(Phi_global=0.40))
+    assert idle.total_trapped == pytest.approx(0.0, abs=0.0)
+    assert remelted_fraction(0.5, 0.75) == pytest.approx(0.5, rel=1e-12)
+    assert remelted_fraction(0.5, 0.4) == pytest.approx(0.0, abs=0.0)
 
 
 @pytest.mark.physics_invariant
-def test_remelting_releases_trapped_mass_by_the_same_flux_it_was_buried_with(fixed_front):
-    """A step on which the mantle remelts moves the flux of a crystallising
-    step, [(1 - F_tl) D_Z + F_tl] C_Z |dM_RM|, the other way: out of the
-    trapped reservoir and back into the melt, capped at what trapping holds.
-    A freeze followed by the matching remelt returns every reservoir to where
-    it started."""
-    row = _remelting_row()
-    totals = {e: row[f'{e}_kg_total'] for e in ('H', 'O', 'C')}
-    step = run_trapping(_config(), row, _hf_all(Phi_global=_PHI_NOW))
-
-    # dM_RM = 4e24 * (0.40 - 0.45) = -2e23 kg, so the same 4.3332e18 kg of
-    # water a freezing step at C_Z = 1e-3 buries comes back out.
-    released = (0.98 * 0.0017 + 0.02) * 1.0e-3 * _DM_RM
-    assert step.dm_rm == pytest.approx(-_DM_RM, rel=1e-12)
-    assert step.trapped_kg['H2O'] == pytest.approx(-released, rel=1e-12)
-    assert row['H2O_kg_trapped'] == pytest.approx(1.0e20 - released, rel=1e-12)
-    assert row['H2O_kg_liquid'] == pytest.approx(1.6e21 + released, rel=1e-12)
-    assert row['trap_kg_step'] < 0.0
-    assert step.supply_capped == []
-    # Discrimination: remelting used to release nothing at all.
-    assert released > 1.0e18
-    # Conservation: the element totals are untouched by moving mass back.
-    for element, total in totals.items():
-        parts = sum(row[f'{element}_kg_{r}'] for r in ('atm', 'liquid', 'solid'))
-        assert parts == pytest.approx(total, rel=1e-12)
-    assert_mass_conservation(row, require_atm_le_planet=False)
-
-    # Cap: a small trapped inventory is released in full and no further.
-    small = _remelting_row(H2O_kg_trapped=1.0e18, H2O_kg_solid=1.0e18)
-    capped = run_trapping(_config(), small, _hf_all(Phi_global=_PHI_NOW))
-    assert 'H2O' in capped.supply_capped
-    assert small['H2O_kg_trapped'] == pytest.approx(0.0, abs=0.0)
-    assert small['H2O_kg_liquid'] == pytest.approx(1.6e21 + 1.0e18, rel=1e-12)
-
-    # Round trip: freeze from 0.45 to 0.40, then remelt back. With the melt
-    # concentration of the second step above the first, the release is capped
-    # at what the first step buried, and every reservoir returns to its start.
-    start = _hf_row()
-    for element in ('H', 'O', 'C'):
-        start[f'{element}_kg_total'] = sum(
-            start[f'{element}_kg_{r}'] for r in ('atm', 'liquid', 'solid')
-        )
-    frozen = dict(start)
-    run_trapping(_config(), frozen, _hf_all())
-    assert frozen['H2O_kg_trapped'] == pytest.approx(4.3332e18, rel=1e-12)
-    thawed = dict(frozen, Phi_global=_PHI_PREV, Time=3.0e4)
-    run_trapping(_config(), thawed, pd.DataFrame([dict(frozen)]))
-    for key in ('H2O_kg_liquid', 'CO2_kg_liquid', 'H_kg_liquid', 'C_kg_liquid'):
-        assert thawed[key] == pytest.approx(start[key], rel=1e-9)
-    assert thawed['H2O_kg_trapped'] == pytest.approx(0.0, abs=1.0e3)
-
-    # Edge case: nothing trapped, nothing to release.
-    empty = _remelting_row(H2O_kg_trapped=0.0, H2O_kg_solid=0.0)
-    idle = run_trapping(_config(), empty, _hf_all(Phi_global=_PHI_NOW))
-    assert idle.total_trapped == pytest.approx(0.0, abs=0.0)
-    assert empty['H2O_kg_liquid'] == pytest.approx(1.6e21, rel=1e-12)
+def test_dissolved_noble_gases_are_buried_with_the_interstitial_melt(fixed_front):
+    """Noble gases take no place in the crystal lattice, but the melt buried
+    between the crystals carries them down with everything else dissolved in
+    it, at F_tl C_Z dM_RM, and each is its own element."""
+    row = _hf_row(He_kg_liquid=1.8e18, He_kg_solid=0.0, He_kg_total=1.8e18, He_kg_atm=0.0)
+    run_trapping(_config(), row, _hf_all())
+    # C_Z = 1.8e18 / 1.8e24 = 1e-6, so 0.02 * 1e-6 * 2e23 kg of helium.
+    assert row['He_kg_trapped'] == pytest.approx(0.02 * 1.0e-6 * _DM_RM, rel=1e-12)
+    assert row['He_kg_liquid'] + row['He_kg_solid'] == pytest.approx(1.8e18, rel=1e-12)
+    assert row['He_kg_solid'] == pytest.approx(row['He_kg_trapped'], rel=1e-12)
+    # The chemistry sees the reachable helium alone, and gets it back after.
+    withhold_trapped_mass(row)
+    assert row['He_kg_total'] == pytest.approx(1.8e18 - 4.0e15, rel=1e-12)
+    restore_trapped_mass(row)
+    assert row['He_kg_total'] == pytest.approx(1.8e18, rel=1e-12)
 
 
 @pytest.mark.physics_invariant
