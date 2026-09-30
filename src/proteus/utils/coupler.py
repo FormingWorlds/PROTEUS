@@ -1647,6 +1647,8 @@ def _snapshot_time(path: str) -> float | None:
         if path.endswith('.json'):
             with open(path) as fh:
                 data = json.load(fh)
+            if not isinstance(data, dict):
+                return float('nan')
             if 'time_years' not in data or data['time_years'] is None:
                 return None
             try:
@@ -1658,9 +1660,12 @@ def _snapshot_time(path: str) -> float | None:
             if 'time' not in ds.variables:
                 return None
             try:
-                val = float(ds['time'][0])
+                var = ds.variables['time']
+                if var.size == 0:
+                    return float('nan')
+                val = float(var[0] if var.ndim > 0 else var[()])
                 return val if math.isfinite(val) else float('nan')
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, IndexError):
                 return float('nan')
     except Exception:
         # Unreadable is not this function's call to make: the readability

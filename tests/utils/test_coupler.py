@@ -4828,3 +4828,27 @@ def test_snapshot_belongs_to_rejects_non_numeric_time_years(tmp_path):
     assert _snapshot_belongs_to(str(stringy_bad), 100.0) is False
     assert _snapshot_belongs_to(str(list_bad), 100.0) is False
     assert _snapshot_belongs_to(str(nan_bad), 100.0) is False
+
+
+@pytest.mark.unit
+def test_snapshot_time_rejects_empty_nc_and_non_dict_json(tmp_path):
+    """An empty netCDF time variable or non-dict JSON returns NaN and is rejected."""
+    from netCDF4 import Dataset
+
+    # 1. Empty netCDF time variable
+    nc_empty = tmp_path / 'empty_time.nc'
+    with Dataset(str(nc_empty), 'w') as ds:
+        ds.createDimension('time', 0)
+        ds.createVariable('time', 'f8', ('time',))
+
+    time_empty = _snapshot_time(str(nc_empty))
+    assert time_empty is not None and math.isnan(time_empty)
+    assert _snapshot_belongs_to(str(nc_empty), 100.0) is False
+
+    # 2. JSON top level that is not a dict
+    json_list = tmp_path / 'not_a_dict.json'
+    json_list.write_text(json.dumps([1, 2, 3]))
+
+    time_json = _snapshot_time(str(json_list))
+    assert time_json is not None and math.isnan(time_json)
+    assert _snapshot_belongs_to(str(json_list), 100.0) is False
