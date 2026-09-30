@@ -171,13 +171,12 @@ def restore_accretion_state(handler: Proteus) -> None:
     1. If ``n_impacts_applied`` is present in the helpfile and positive, that
        counter determines how many prior impacts were applied, and any
        remaining events up to that count are dropped from the pending list.
-    2. Otherwise, if the counter is corrupt (negative or non-finite), a warning
-       is logged and the counter is reset to the count of events up to the
-       resume time.
-    3. Otherwise, if the helpfile predates the counter but carries accreted
-       rock (``M_accreted_rock > 0``), a warning is logged stating that an
-       impact from the init stage remains pending and will apply again, and
-       the counter is assigned the count of events up to the resume time.
+    2. If ``M_accreted_rock > 0`` but the counter is missing, zero, or corrupt
+       (NaN, negative, non-integer), resume is refused with an error because
+       the run predates the impact counter and cannot safely reconstruct prior
+       events.
+    3. If ``M_accreted_rock == 0`` and the counter is absent or zero, resume
+       continues from the configured mass without impacts.
 
     Parameters
     ----------
@@ -192,66 +191,66 @@ def restore_accretion_state(handler: Proteus) -> None:
         return
 
     hf_row = handler.hf_row
-    accreted = float(hf_row.get('M_accreted_rock') or 0.0)
+    out_dir = getattr(handler, 'directories', {}).get('output', '.')
+    hf_name = getattr(handler, 'helpfile_path', None) or os.path.join(out_dir, 'helpfile.csv')
+    m_raw = hf_row.get('M_accreted_rock')
+    try:
+        accreted = float(m_raw or 0.0)
+    except (ValueError, TypeError):
+        accreted = float('nan')
+    if not math.isfinite(accreted) or accreted < 0.0:
+        raise ValueError(
+            f'Helpfile {hf_name} contains invalid M_accreted_rock = {m_raw!r}: '
+            'must be a finite non-negative number'
+        )
+
+    n_raw = hf_row.get('n_impacts_applied')
+    try:
+        n_num = float(n_raw or 0.0)
+    except (ValueError, TypeError):
+        n_num = float('nan')
+
+    # Validate counter integrity: corrupt values are refused unconditionally.
+    if n_raw is not None and (
+        not math.isfinite(n_num) or n_num < 0.0 or not n_num.is_integer()
+    ):
+        raise RuntimeError(
+            f'Resume refused: {hf_name} contains corrupt n_impacts_applied = {n_raw!r}. '
+            'Restart the simulation.'
+        )
+
+    if accreted > 0.0:
+        if n_raw is None or n_num == 0.0:
+            raise RuntimeError(
+                f'Resume refused: {hf_name} records M_accreted_rock = {accreted:.6e} kg, '
+                f'but n_impacts_applied is {n_raw!r}. This run predates the impact counter '
+                'and cannot be resumed safely; restart the simulation.'
+            )
+        n_applied = int(n_num)
+    else:
+        n_applied = int(n_num) if n_raw is not None and n_num > 0.0 else 0
+
+    hf_row['n_impacts_applied'] = n_applied
+    if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
+        handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(n_applied)
 
     if getattr(handler, 'impact_events', None) is not None:
         resume_time = float(hf_row.get('Time') or 0.0)
         # Drop any events preceding the resume time (idempotent with init_accretion).
         handler.impact_events = [ev for ev in handler.impact_events if ev.time > resume_time]
 
-        n_raw = hf_row.get('n_impacts_applied')
-        try:
-            n_num = float(n_raw or 0.0)
-        except (ValueError, TypeError):
-            n_num = float('nan')
-
-        resolved_path = os.path.join(
-            handler.directories.get('output', '.'), _RESOLVED_TIMELINE_FILE
-        )
+        resolved_path = os.path.join(out_dir, _RESOLVED_TIMELINE_FILE)
         all_events = None
         if os.path.exists(resolved_path):
             from proteus.accretion.common import read_timeline
 
             all_events = read_timeline(resolved_path, time_offset=0.0)
 
-        if math.isfinite(n_num) and n_num > 0:
-            n_applied = int(n_num)
-            hf_row['n_impacts_applied'] = n_applied
-            if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
-                handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(
-                    n_applied
-                )
-
-            if all_events is not None:
-                events_before = sum(1 for ev in all_events if 0.0 < ev.time <= resume_time)
-                remaining_to_drop = max(n_applied - events_before, 0)
-                if remaining_to_drop > 0:
-                    handler.impact_events = handler.impact_events[remaining_to_drop:]
-        else:
-            if all_events is not None:
-                n_applied = sum(1 for ev in all_events if 0.0 < ev.time <= resume_time)
-            else:
-                n_applied = 0
-
-            hf_row['n_impacts_applied'] = n_applied
-            if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
-                handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(
-                    n_applied
-                )
-
-            if n_raw is not None and (not math.isfinite(n_num) or n_num < 0):
-                log.warning(
-                    'Corrupt impact counter %r in helpfile: reset counter to %d '
-                    'events at or before resume time',
-                    n_raw,
-                    n_applied,
-                )
-            elif accreted > 0.0:
-                log.warning(
-                    'Helpfile predates the impact counter: an impact that landed during '
-                    'the init stage remains pending and will apply again, adding its '
-                    'rock a second time',
-                )
+        if all_events is not None:
+            events_before = sum(1 for ev in all_events if 0.0 < ev.time <= resume_time)
+            remaining_to_drop = max(n_applied - events_before, 0)
+            if remaining_to_drop > 0:
+                handler.impact_events = handler.impact_events[remaining_to_drop:]
 
     if accreted <= 0.0:
         # Inform user when continuing from configured mass, which occurs either

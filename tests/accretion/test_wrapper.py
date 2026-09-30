@@ -1578,6 +1578,7 @@ def test_a_resumed_run_rebuilds_the_mass_and_orbit_the_impacts_moved():
             'M_planet': 2.5 * M_earth,  # carries volatiles too; must NOT be used
             'semimajorax': 1.25 * AU,
             'eccentricity': 0.04,
+            'n_impacts_applied': 1,
         },
     )
 
@@ -1609,6 +1610,7 @@ def test_restore_accretion_state_orbit_fallback():
         hf_row={
             'M_accreted_rock': 0.5 * M_earth,
             'semimajorax': 1.2 * AU,
+            'n_impacts_applied': 1,
         },
     )
     restore_accretion_state(handler)
@@ -1661,7 +1663,12 @@ def test_the_accretion_restore_is_inert_outside_a_resume():
                 planet=SimpleNamespace(mass_tot=1.0),
                 orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
             ),
-            hf_row={'M_accreted_rock': accreted, 'semimajorax': 9.9e11, 'eccentricity': 0.9},
+            hf_row={
+                'M_accreted_rock': accreted,
+                'semimajorax': 9.9e11,
+                'eccentricity': 0.9,
+                'n_impacts_applied': 1,
+            },
         )
 
     for resume, module, accreted in (
@@ -2700,19 +2707,11 @@ def test_multiple_impacts_in_one_step_applied_in_time_order(tmp_path):
 
 
 @pytest.mark.unit
-def test_resume_from_old_helpfile_without_n_impacts_applied_does_not_reapply_past_impacts(
+def test_resume_from_old_helpfile_without_counter_refuses_when_rock_positive(
     tmp_path,
 ):
-    """Resuming an old-format helpfile without n_impacts_applied does not re-apply past impacts.
-
-    Contract clause: helpfiles written by older PROTEUS versions lack n_impacts_applied
-    and are backfilled with 0.0 by ReadHelpfileFromCSV. When resuming past an impact,
-    the event is dropped as before the start (_drop_events_before_start and the resume
-    time filter in restore_accretion_state), and the applied count in hf_row is
-    reconstructed by the timeline fallback rather than leaving a stale zero that
-    would duplicate impacts.
-    """
-    from proteus.accretion.common import ImpactEvent, due_events, write_timeline
+    """Resuming an old-format helpfile without n_impacts_applied is refused when rock > 0."""
+    from proteus.accretion.common import ImpactEvent, write_timeline
     from proteus.accretion.wrapper import (
         _RESOLVED_TIMELINE_FILE,
         init_accretion,
@@ -2782,19 +2781,10 @@ def test_resume_from_old_helpfile_without_n_impacts_applied_does_not_reapply_pas
     handler.hf_all = None
 
     handler.impact_events = init_accretion(handler)
-    restore_accretion_state(handler)
+    with pytest.raises(RuntimeError, match='Resume refused') as excinfo:
+        restore_accretion_state(handler)
 
-    assert len(handler.impact_events) == 1
-    assert handler.impact_events[0].time == pytest.approx(200.0)
-    assert handler.hf_row['n_impacts_applied'] == 1
-
-    landed_first = due_events(handler.impact_events, 100.0, 150.0)
-    assert landed_first == []
-
-    landed_second = due_events(handler.impact_events, 150.0, 250.0)
-    assert len(landed_second) == 1
-    assert landed_second[0].time == pytest.approx(200.0)
-    assert landed_second[0].id_impactor == 3
+    assert 'restart' in str(excinfo.value)
 
 
 def _resumed_handler(tmp_path, events, hf_row, pending=None, hf_all=None):
@@ -2821,6 +2811,7 @@ def _resumed_handler(tmp_path, events, hf_row, pending=None, hf_all=None):
 @pytest.mark.unit
 def test_restore_accretion_state_persists_counter_to_hf_all_last_row(tmp_path):
     """Restoring accretion state updates both hf_row and the last row of hf_all."""
+    import numpy as np
     import pandas as pd
 
     from proteus.accretion.wrapper import restore_accretion_state
@@ -2838,16 +2829,18 @@ def test_restore_accretion_state_persists_counter_to_hf_all_last_row(tmp_path):
             {
                 'Time': 100.0,
                 'M_accreted_rock': 1e23,
-                'n_impacts_applied': 1.0,
+                'n_impacts_applied': np.float64(99.0),
                 'semimajorax': 1.0 * AU,
                 'eccentricity': 0.0,
             }
         ]
     )
+    hf_row = hf_all.iloc[-1].to_dict()
+    hf_row['n_impacts_applied'] = 1
     handler = _resumed_handler(
         tmp_path,
         [ev1, ev2],
-        hf_row=hf_all.iloc[-1].to_dict(),
+        hf_row=hf_row,
         hf_all=hf_all,
     )
 
@@ -3003,12 +2996,9 @@ def test_empty_user_timeline_logs_warning(tmp_path, caplog):
 
 
 @pytest.mark.unit
-def test_legacy_resume_missing_counter_logs_warning_and_preserves_future_events(
-    tmp_path, caplog
-):
-    """Resume with legacy helpfile without counter logs a warning and preserves future events."""
-    import logging
-
+@pytest.mark.parametrize('counter_key_val', [None, 0.0, float('nan'), -1.0, 1.5])
+def test_legacy_resume_missing_or_corrupt_counter_refuses(tmp_path, counter_key_val):
+    """Resume with positive rock and missing/zero/corrupt counter is refused."""
     from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import AU
 
@@ -3022,56 +3012,87 @@ def test_legacy_resume_missing_counter_logs_warning_and_preserves_future_events(
         time=500.0, M_target_before=6.172e24, M_impactor=1e23, M_merged_after=6.272e24
     )
 
-    # Legacy resume at Time = 100.0 with resolved timeline file:
-    # ev05 and ev50 are <= 100.0, so counter is assigned 2.
+    hf_row = {
+        'Time': 100.0,
+        'M_accreted_rock': 2e23,
+        'semimajorax': AU,
+        'eccentricity': 0.0,
+    }
+    if counter_key_val is not None:
+        hf_row['n_impacts_applied'] = counter_key_val
+
     handler = _resumed_handler(
         tmp_path,
         events=[ev05, ev50, ev500],
-        hf_row={
-            'Time': 100.0,
-            'M_accreted_rock': 2e23,
-            'semimajorax': AU,
-            'eccentricity': 0.0,
-        },
+        hf_row=hf_row,
         pending=[ev05, ev50, ev500],
     )
 
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+    with pytest.raises(RuntimeError, match='Resume refused') as excinfo:
         restore_accretion_state(handler)
 
-    assert any('Helpfile predates the impact counter' in r.message for r in caplog.records)
-    assert any('remains pending and will apply again' in r.message for r in caplog.records)
-    assert handler.hf_row['n_impacts_applied'] == 2
-    assert handler.impact_events == [ev500]
+    err = str(excinfo.value)
+    assert 'helpfile' in err or '.csv' in err
+    assert 'restart' in err.lower()
 
-    # Legacy resume at Time = 0.0 with init-stage impact already credited to rock:
-    # ev05 is at t = 0.5 > 0.0, so it remains pending and will apply again.
-    caplog.clear()
-    handler_init = _resumed_handler(
+    # Case with zero accreted rock:
+    hf_row_zero = {
+        'Time': 100.0,
+        'M_accreted_rock': 0.0,
+        'semimajorax': AU,
+        'eccentricity': 0.0,
+    }
+    if counter_key_val is not None:
+        hf_row_zero['n_impacts_applied'] = counter_key_val
+    handler_zero = _resumed_handler(
         tmp_path,
         events=[ev05, ev50, ev500],
-        hf_row={
-            'Time': 0.0,
-            'M_accreted_rock': 1e23,
-            'semimajorax': AU,
-            'eccentricity': 0.0,
-        },
+        hf_row=hf_row_zero,
         pending=[ev05, ev50, ev500],
     )
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
-        restore_accretion_state(handler_init)
 
-    assert any('Helpfile predates the impact counter' in r.message for r in caplog.records)
-    assert handler_init.hf_row['n_impacts_applied'] == 0
-    assert handler_init.impact_events == [ev05, ev50, ev500]
+    if counter_key_val in (None, 0.0):
+        # Rock 0 with absent or zero counter: accepted!
+        restore_accretion_state(handler_zero)
+        assert handler_zero.hf_row['n_impacts_applied'] == 0
+    else:
+        # Corrupt counter: refused even if rock is 0
+        with pytest.raises(RuntimeError, match='Resume refused'):
+            restore_accretion_state(handler_zero)
 
 
 @pytest.mark.unit
-def test_restore_accretion_state_handles_nan_or_negative_counter(tmp_path, caplog):
-    """Corrupt counter in helpfile is reset to finite value and logs warning."""
+def test_restore_accretion_state_no_warning_when_counter_positive(tmp_path, caplog):
+    """Positive valid counter restores cleanly without logging warnings."""
     import logging
-    import math
 
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev50 = _impact_event(
+        time=50.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    handler = _resumed_handler(
+        tmp_path,
+        events=[ev50],
+        hf_row={
+            'Time': 100.0,
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 1.0,
+            'semimajorax': AU,
+            'eccentricity': 0.0,
+        },
+        pending=[ev50],
+    )
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        restore_accretion_state(handler)
+    assert len(caplog.records) == 0
+    assert handler.hf_row['n_impacts_applied'] == 1
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_refuses_corrupt_counter(tmp_path):
+    """Corrupt counter in helpfile is refused unconditionally."""
     from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import AU
 
@@ -3082,8 +3103,7 @@ def test_restore_accretion_state_handles_nan_or_negative_counter(tmp_path, caplo
         time=500.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
     )
 
-    for bad_counter in (float('nan'), -1, -1.0):
-        caplog.clear()
+    for bad_counter in (float('nan'), -1, -1.0, 1.5, 'bad'):
         handler = _resumed_handler(
             tmp_path,
             events=[ev50, ev500],
@@ -3097,10 +3117,57 @@ def test_restore_accretion_state_handles_nan_or_negative_counter(tmp_path, caplo
             pending=[ev50, ev500],
         )
 
-        with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        with pytest.raises(RuntimeError, match='Resume refused') as excinfo:
             restore_accretion_state(handler)
 
-        assert any('Corrupt impact counter' in r.message for r in caplog.records)
-        assert math.isfinite(handler.hf_row['n_impacts_applied'])
-        assert handler.hf_row['n_impacts_applied'] == 1
-        assert handler.impact_events == [ev500]
+        assert 'restart' in str(excinfo.value).lower()
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_filters_events_by_resume_time(tmp_path):
+    """Calling restore_accretion_state with unfiltered impact_events drops events <= resume_time."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = _impact_event(
+        time=10.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev2 = _impact_event(
+        time=100.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    handler = _resumed_handler(
+        tmp_path,
+        events=[ev1, ev2],
+        hf_row={
+            'Time': 50.0,
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 1,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        pending=[ev1, ev2],
+    )
+    restore_accretion_state(handler)
+    assert handler.impact_events == [ev2]
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_refuses_invalid_m_accreted_rock(tmp_path):
+    """Non-finite or negative M_accreted_rock in helpfile row raises ValueError."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    for bad_rock in (float('nan'), 'nan', -1.0, -1e23):
+        handler = _resumed_handler(
+            tmp_path,
+            events=[],
+            hf_row={
+                'Time': 100.0,
+                'M_accreted_rock': bad_rock,
+                'semimajorax': 1.0 * AU,
+                'eccentricity': 0.0,
+            },
+            pending=[],
+        )
+        with pytest.raises(ValueError, match='invalid M_accreted_rock'):
+            restore_accretion_state(handler)
