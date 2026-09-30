@@ -157,19 +157,30 @@ def test_targeted_selectors_require_a_selector_value():
         with pytest.raises(ValueError, match='selector_value'):
             Accretion(module='morrigan', morrigan=Morrigan(selector=targeted))
 
-    for targeted, value in (('semimajoraxis', 1.0), ('id', 3), ('id', 0), ('id', 0.0)):
+    import numpy as np
+
+    for targeted, value in (
+        ('semimajoraxis', 1.0),
+        ('semimajoraxis', np.float64(1.0)),
+        ('semimajoraxis', '1.0'),
+        ('id', 3),
+        ('id', np.int64(3)),
+        ('id', '3'),
+        ('id', 0),
+        ('id', 0.0),
+    ):
         cfg = Accretion(
             module='morrigan', morrigan=Morrigan(selector=targeted, selector_value=value)
         )
         assert cfg.morrigan.selector_value == value
 
-    for bad_id in (-1, 1.9, float('nan'), 'earth'):
+    for bad_id in (-1, np.int64(-1), 1.9, float('nan'), 'earth'):
         with pytest.raises(ValueError, match='selector_value'):
             Accretion(
                 module='morrigan', morrigan=Morrigan(selector='id', selector_value=bad_id)
             )
 
-    for bad_sma in (0.0, -0.5, float('nan'), float('inf'), 'earth'):
+    for bad_sma in (0.0, -0.5, 1e300, float('nan'), float('inf'), 'earth'):
         with pytest.raises(ValueError, match='selector_value'):
             Accretion(
                 module='morrigan',

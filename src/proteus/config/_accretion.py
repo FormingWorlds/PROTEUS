@@ -1,13 +1,32 @@
 from __future__ import annotations
 
 import math
+import numbers
 
 from attr.validators import ge, gt, in_, le, lt
 from attrs import define, field
 
+from proteus.utils.constants import AU
+
 from ._converters import none_if_none
 
 SELECTORS = ('match_config', 'mass', 'semimajoraxis', 'id')
+
+
+def _parse_finite_number(x: object) -> float | None:
+    """Return finite float for a real number or numeric string, else None."""
+    if isinstance(x, bool):
+        return None
+    if isinstance(x, numbers.Real):
+        val = float(x)
+        return val if math.isfinite(val) else None
+    if isinstance(x, str):
+        try:
+            val = float(x)
+            return val if math.isfinite(val) else None
+        except ValueError:
+            return None
+    return None
 
 
 def valid_morrigan(instance, attribute, value):
@@ -32,12 +51,8 @@ def valid_morrigan(instance, attribute, value):
                 '`accretion.morrigan.selector_value` must be set (target orbit in AU) '
                 "when selector = 'semimajoraxis'"
             )
-        if (
-            not isinstance(mor.selector_value, (int, float))
-            or isinstance(mor.selector_value, bool)
-            or not math.isfinite(mor.selector_value)
-            or mor.selector_value <= 0
-        ):
+        val = _parse_finite_number(mor.selector_value)
+        if val is None or val <= 0 or not math.isfinite(val * AU):
             raise ValueError(
                 '`accretion.morrigan.selector_value` must be a finite positive number '
                 "when selector = 'semimajoraxis'"
@@ -48,13 +63,8 @@ def valid_morrigan(instance, attribute, value):
             raise ValueError(
                 "`accretion.morrigan.selector_value` must be set (planet id) when selector = 'id'"
             )
-        if (
-            not isinstance(mor.selector_value, (int, float))
-            or isinstance(mor.selector_value, bool)
-            or not math.isfinite(mor.selector_value)
-            or mor.selector_value < 0
-            or not float(mor.selector_value).is_integer()
-        ):
+        val = _parse_finite_number(mor.selector_value)
+        if val is None or val < 0 or not val.is_integer():
             raise ValueError(
                 '`accretion.morrigan.selector_value` must be a finite non-negative integer '
                 "when selector = 'id'"
