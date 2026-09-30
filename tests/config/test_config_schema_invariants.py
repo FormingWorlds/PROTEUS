@@ -1118,3 +1118,76 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
         f'validator is silent (dead-validator pattern) or the schema enums '
         f'in this test are too narrow.'
     )
+
+
+@pytest.mark.parametrize(
+    'migration',
+    ['instant', 'sigmoid', 'high_ecc'],
+    ids=['instant_step', 'sigmoid_ramp', 'high_eccentricity'],
+)
+@pytest.mark.parametrize(
+    'sma_init, sma_final',
+    [(None, 0.8), (2.0, None), (None, None)],
+    ids=['no_start', 'no_destination', 'neither'],
+)
+def test_parameterized_requires_both_endpoints_for_a_migrating_law(
+    migration, sma_init, sma_final
+):
+    """Negative: a law that moves the planet needs both endpoints, and the
+    schema says so at config time rather than at the first orbit step,
+    which is after the structure solve and the first interior step."""
+    from proteus.config._orbit import Parameterized
+
+    with pytest.raises(ValueError, match='requires both'):
+        Parameterized(migration=migration, sma_init=sma_init, sma_final=sma_final)
+
+
+@pytest.mark.parametrize(
+    'sma_init, sma_final',
+    [(None, None), (2.0, 0.8), (2.0, None)],
+    ids=['no_endpoints', 'both_endpoints', 'start_only'],
+)
+def test_parameterized_static_regime_needs_no_endpoints(sma_init, sma_final):
+    """Positive counterpart: the static regime never moves the planet, so
+    it accepts any combination of endpoints. Without this a blanket
+    requirement would break every non-migrating config."""
+    from proteus.config._orbit import Parameterized
+
+    params = Parameterized(migration='none', sma_init=sma_init, sma_final=sma_final)
+
+    assert params.migration == 'none'
+    assert params.sma_init == sma_init
+    assert params.sma_final == sma_final
+
+
+def test_parameterized_rejects_an_outward_high_eccentricity_track():
+    """Negative: high-eccentricity circularisation conserves orbital
+    angular momentum, so it can only shrink the orbit. Its inward
+    solution needs a non-negative 1 - sma_final / sma_init."""
+    from proteus.config._orbit import Parameterized
+
+    with pytest.raises(ValueError, match='inward only'):
+        Parameterized(migration='high_ecc', sma_init=0.8, sma_final=2.0)
+
+    # Positive: the mirrored inward track and the degenerate equal-endpoint
+    # case both validate, so the check is not rejecting every high_ecc config.
+    inward = Parameterized(migration='high_ecc', sma_init=2.0, sma_final=0.8)
+    assert inward.sma_final < inward.sma_init
+
+    equal = Parameterized(migration='high_ecc', sma_init=2.0, sma_final=2.0)
+    assert equal.sma_final == equal.sma_init
+
+
+@pytest.mark.parametrize(
+    'migration', ['instant', 'sigmoid'], ids=['instant_step', 'sigmoid_ramp']
+)
+def test_parameterized_allows_outward_migration_for_the_direction_free_laws(migration):
+    """The inward-only restriction belongs to high_ecc alone. Both the step
+    and the ramp are defined in either direction, so a config that migrates
+    a planet outward must validate rather than being caught by a rule
+    written for a different law."""
+    from proteus.config._orbit import Parameterized
+
+    params = Parameterized(migration=migration, sma_init=0.8, sma_final=2.0)
+
+    assert params.sma_final > params.sma_init

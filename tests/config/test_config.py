@@ -2929,8 +2929,11 @@ def test_orbit_parameterized_rejects_an_unknown_migration_regime():
     validator that rejected everything would also fail."""
     from proteus.config._orbit import Parameterized
 
+    # Endpoints are supplied because a migrating law now requires both at
+    # config time. The enum is what this test is about.
     for regime in ('none', 'instant', 'sigmoid', 'high_ecc'):
-        assert Parameterized(migration=regime).migration == regime
+        params = Parameterized(migration=regime, sma_init=2.0, sma_final=0.8)
+        assert params.migration == regime
 
     with pytest.raises(ValueError, match='migration'):
         Parameterized(migration='inward')
