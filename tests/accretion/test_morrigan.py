@@ -420,14 +420,27 @@ def test_a_missing_field_names_itself_rather_than_failing_obscurely(monkeypatch)
 
 @pytest.mark.unit
 def test_survivor_with_no_impacts_returns_empty_timeline(monkeypatch):
-    """A selected survivor body with no impacts returns an empty list."""
+    """An existing survivor key with an empty list returns an empty timeline."""
+    outcome = {
+        'survivors': _SURVIVORS,
+        'impacts': {1: []},
+    }
+    fake = SimpleNamespace(run_system=partial(_return_outcome, outcome))
+    monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
+    assert backend.get_timeline(_config(selector='mass')) == []
+
+
+@pytest.mark.unit
+def test_survivor_missing_from_impacts_raises_value_error(monkeypatch):
+    """A selected survivor body missing from the impacts mapping raises ValueError naming the id."""
     outcome = {
         'survivors': _SURVIVORS,
         'impacts': {},
     }
     fake = SimpleNamespace(run_system=partial(_return_outcome, outcome))
     monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
-    assert backend.get_timeline(_config(selector='mass')) == []
+    with pytest.raises(ValueError, match='1'):
+        backend.get_timeline(_config(selector='mass'))
 
 
 @pytest.mark.unit

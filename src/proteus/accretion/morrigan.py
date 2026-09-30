@@ -203,11 +203,9 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
     ------
     ImportError
         If the morrigan package is unavailable.
-    KeyError
-        If the run reports no impact history for the selected body.
     ValueError
-        If the model's outcome or its impact records do not carry the fields
-        the coupling requires.
+        If the model outcome lacks required fields, reports no impact history
+        for the selected body id, or carries malformed records.
     """
     package = require_morrigan()
 
@@ -226,7 +224,12 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
             )
 
     chosen = select_planet(outcome['survivors'], config)
-    records = outcome['impacts'].get(chosen['id'], [])
+    chosen_id = chosen['id']
+    if chosen_id not in outcome['impacts']:
+        raise ValueError(
+            f'The giant-impact model returned no impact history for chosen survivor id {chosen_id}.'
+        )
+    records = outcome['impacts'][chosen_id]
 
     offset = config.accretion.time_offset
     # Select fields explicitly rather than unpacking each record. This
