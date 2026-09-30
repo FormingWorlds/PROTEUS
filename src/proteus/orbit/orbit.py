@@ -86,6 +86,20 @@ def _state_is_valid_star(hf_row):
     return True
 
 
+def _prescribed_state_is_valid_star(hf_row):
+    """Reject an unphysical prescribed orbit. Extends the substep guard with
+    a periapsis test, since an eccentric orbit approaches its star at
+    ``a (1 - e)`` rather than at ``a``: a track can hold a comfortable
+    semi-major axis while grazing the star once per orbit.
+    """
+    if not _state_is_valid_star(hf_row):
+        return False
+
+    a = hf_row.get('semimajorax', np.nan)
+    e = hf_row.get('eccentricity', 0.0)
+    return a * (1.0 - e) > 1.05 * hf_row.get('R_star', 0.0)
+
+
 def evolve_orbit_star(
     hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interior_o: Interior_t
 ):
@@ -124,15 +138,16 @@ def evolve_orbit_star(
     elif model == 'parameterized':
         _warn_if_migration_window_unresolved(hf_row, config, interior_o.dt)
         run_parameterized_orbital_migration(hf_row, config)
-        # A prescribed track bypasses the substep controller, so the validity
-        # guard that normally rejects a spiral-in is applied here instead.
-        if not _state_is_valid_star(hf_row):
-            log.warning(
-                'Prescribed orbit is outside the validity range at Time = %.6e yr: '
-                'a = %.6e m, e = %.6f',
-                float(hf_row['Time']),
-                hf_row['semimajorax'],
-                hf_row['eccentricity'],
+        # A prescribed track bypasses the substep controller, so there is no
+        # step to reject and shrink. An unphysical orbit stops the run instead,
+        # rather than being carried into the flux and escape modules.
+        if not _prescribed_state_is_valid_star(hf_row):
+            UpdateStatusfile(dirs, 26)
+            periapsis = hf_row['semimajorax'] * (1.0 - hf_row['eccentricity'])
+            raise ValueError(
+                f'Prescribed orbit is unphysical at Time = {float(hf_row["Time"]):.6e} yr: '
+                f'a = {hf_row["semimajorax"]:.6e} m, e = {hf_row["eccentricity"]:.6f}, '
+                f'periapsis = {periapsis:.6e} m, R_star = {hf_row.get("R_star", 0.0):.6e} m'
             )
         return
 

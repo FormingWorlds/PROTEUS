@@ -909,86 +909,115 @@ def test_evolve_orbit_star_parameterized_writes_the_prescribed_track(monkeypatch
     assert 0.0 < ecc < 1.0
 
 
-def _run_parameterized_and_capture(
-    caplog, migration, sma_init_au, sma_final_au, r_star, time_yr=1.0e6
+def _run_parameterized_track(
+    monkeypatch, migration, sma_init_au, sma_final_au, r_star, time_yr=1.0e6
 ):
-    """Drive the prescribed-track branch and return the hf_row together
-    with the validity warnings it emitted."""
+    """Drive the prescribed-track branch with the status-file write stubbed
+    out, and return the hf_row it produced."""
+    from proteus.orbit import orbit as orbit_mod
+
+    monkeypatch.setattr(orbit_mod, 'UpdateStatusfile', MagicMock())
+
     hf_row = _make_hf_row(ecc=0.0)
     hf_row['Time'] = time_yr
     hf_row['R_star'] = r_star
     config = _make_parameterized_config(migration, sma_init_au, sma_final_au)
 
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.orbit.orbit'):
-        evolve_orbit_star(
-            hf_row, config, dirs={}, tides_o=object(), interior_o=SimpleNamespace(dt=1e7)
-        )
+    evolve_orbit_star(
+        hf_row,
+        config,
+        dirs={'output': '/tmp/unused'},
+        tides_o=object(),
+        interior_o=SimpleNamespace(dt=1e7),
+    )
+    return hf_row
 
-    warnings = [r.getMessage() for r in caplog.records if 'validity range' in r.getMessage()]
-    return hf_row, warnings
 
-
-def test_evolve_orbit_star_parameterized_brackets_the_spiral_in_threshold(caplog):
+def test_evolve_orbit_star_parameterized_brackets_the_spiral_in_threshold(monkeypatch):
     """Edge case: a prescribed track is not screened by the substep
-    controller, so an orbit inside 1.05 stellar radii is reported here
-    instead of passing silently. The two probes sit either side of that
+    controller, so there is no step to reject and shrink. An orbit inside
+    1.05 stellar radii stops the run rather than being carried into the
+    flux and escape modules. The two probes sit either side of that
     multiple rather than orders of magnitude away, so a regression that
-    moved the threshold would change the outcome of one of them. The
-    orbit is written in both cases, since the run's own termination
-    checks decide what to do with it. This is an error-contract test
-    rather than a physical invariant.
+    moved the threshold would change the outcome of one of them. This is
+    an error-contract test rather than a physical invariant.
     """
     r_star = 1.0e9
     inside_au = 1.04 * r_star / AU
     outside_au = 1.06 * r_star / AU
 
-    hf_inside, warned = _run_parameterized_and_capture(
-        caplog, 'instant', 2.0, inside_au, r_star
-    )
-    assert len(warned) == 1
+    with pytest.raises(ValueError, match='unphysical') as excinfo:
+        _run_parameterized_track(monkeypatch, 'instant', 2.0, inside_au, r_star)
+
     # The reported state, not just the phrase: a guard reading the wrong
     # key or dropping the eccentricity would not print these values.
-    assert '%.6e' % (1.04 * r_star) in warned[0]
-    assert 'e = 0.000000' in warned[0]
-    assert hf_inside['semimajorax'] == pytest.approx(1.04 * r_star, rel=1e-12)
+    assert '%.6e' % (1.04 * r_star) in str(excinfo.value)
+    assert 'e = 0.000000' in str(excinfo.value)
 
-    caplog.clear()
-    hf_outside, quiet = _run_parameterized_and_capture(
-        caplog, 'instant', 2.0, outside_au, r_star
-    )
-    assert quiet == []
+    hf_outside = _run_parameterized_track(monkeypatch, 'instant', 2.0, outside_au, r_star)
     assert hf_outside['semimajorax'] == pytest.approx(1.06 * r_star, rel=1e-12)
 
 
-def test_evolve_orbit_star_parameterized_reports_a_near_radial_orbit(caplog):
+def test_evolve_orbit_star_parameterized_brackets_the_periapsis_threshold(monkeypatch):
+    """An eccentric orbit approaches its star at ``a (1 - e)``, so a track
+    can hold a comfortable semi-major axis while grazing the star once per
+    orbit. Both probes keep ``a`` at 2 au, which is four thousand stellar
+    radii, and keep the excited eccentricity below the 0.999 bound, so the
+    semi-major-axis and eccentricity halves of the guard cannot fire and
+    only the periapsis test decides.
+
+    ``high_ecc`` excites ``e`` to ``sqrt(1 - a_f / a_0)`` at the epoch, so
+    the periapsis there is ``a_0 (1 - sqrt(1 - a_f / a_0))``. With
+    ``a_0 = 2`` au that is 0.00400 au for ``a_f = 0.008`` au and 0.00601 au
+    for ``a_f = 0.012`` au, bracketing ``1.05 R_star = 0.004883`` au.
+    """
+    r_star = 6.957e8
+    epoch = 1.0e5
+
+    # Periapsis 0.00400 au, inside 1.05 R_star; e = 0.99800, below 0.999.
+    with pytest.raises(ValueError, match='unphysical') as excinfo:
+        _run_parameterized_track(monkeypatch, 'high_ecc', 2.0, 8.0e-3, r_star, time_yr=epoch)
+
+    assert 'periapsis' in str(excinfo.value)
+    # The excited eccentricity is sqrt(1 - 0.008 / 2) = 0.997998, derived
+    # here rather than pinned as a literal.
+    assert 'e = %.6f' % np.sqrt(1.0 - 4.0e-3) in str(excinfo.value)
+    # A semi-major-axis-only guard would have passed this orbit: a is 2 au,
+    # which is four thousand stellar radii.
+    assert '%.6e' % (2.0 * AU) in str(excinfo.value)
+
+    # Periapsis 0.00601 au, outside it; e = 0.99700, also below 0.999.
+    hf_row = _run_parameterized_track(
+        monkeypatch, 'high_ecc', 2.0, 1.2e-2, r_star, time_yr=epoch
+    )
+    assert hf_row['semimajorax'] == pytest.approx(2.0 * AU, rel=1e-10)
+    assert hf_row['eccentricity'] == pytest.approx(np.sqrt(1.0 - 6.0e-3), rel=1e-10)
+    assert hf_row['semimajorax'] * (1.0 - hf_row['eccentricity']) > 1.05 * r_star
+
+
+def test_evolve_orbit_star_parameterized_rejects_a_near_radial_orbit(monkeypatch):
     """The validity guard has a second half, rejecting an eccentricity at
     or above 0.999. A high-eccentricity track reaches that whenever the
     destination is a thousandth of the starting orbit, since it excites
     the eccentricity to ``sqrt(1 - a_f / a_0)``. Probed just inside and
     just outside that bound so the test pins the threshold rather than
-    the fact that a warning exists at all, and at the migration epoch
-    itself, which is where that peak excitation occurs: by the default
-    probe time the track has long since circularised. The semi-major
-    axis stays at 2 au throughout, so only the eccentricity half of the
-    guard can fire.
+    the fact that the guard fires at all, and at the migration epoch
+    itself, which is where that peak excitation occurs.
     """
     r_star = 6.957e8
     epoch = 1.0e5
 
     # e_mig = sqrt(1 - 1e-3) = 0.99950, above the 0.999 bound.
-    hf_bad, warned = _run_parameterized_and_capture(
-        caplog, 'high_ecc', 2.0, 2.0e-3, r_star, time_yr=epoch
-    )
-    assert len(warned) == 1
-    assert 'e = 0.999500' in warned[0]
-    assert hf_bad['semimajorax'] > 1.05 * r_star
+    with pytest.raises(ValueError, match='unphysical') as excinfo:
+        _run_parameterized_track(monkeypatch, 'high_ecc', 2.0, 2.0e-3, r_star, time_yr=epoch)
 
-    caplog.clear()
-    # e_mig = sqrt(1 - 0.01) = 0.99499, below it.
-    hf_row, quiet = _run_parameterized_and_capture(
-        caplog, 'high_ecc', 2.0, 2.0e-2, r_star, time_yr=epoch
+    assert 'e = 0.999500' in str(excinfo.value)
+
+    # e_mig = sqrt(1 - 0.01) = 0.99499, below it, and its periapsis of
+    # 0.01002 au clears 1.05 R_star, so neither half of the guard fires.
+    hf_row = _run_parameterized_track(
+        monkeypatch, 'high_ecc', 2.0, 2.0e-2, r_star, time_yr=epoch
     )
-    assert quiet == []
     assert hf_row['eccentricity'] == pytest.approx(np.sqrt(1.0 - 0.01), rel=1e-10)
 
 
