@@ -1335,9 +1335,14 @@ class AragogRunner:
                 # at install time would keep integrating the pre-change planet.
                 mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
                 n_stag = solver._n_stag
-                # Reload tables through the cached loader to pick up any
-                # regenerated pressure ceiling while reusing unchanged tables.
-                eos_jax = _cached_entropy_eos_jax(str(eos_dir))
+                live_eos_dir = getattr(interior_o, '_spider_eos_dir', None)
+                if not (live_eos_dir and os.path.isdir(live_eos_dir)) and outdir is not None:
+                    live_eos_dir = Path(outdir) / 'data' / 'spider_eos'
+                if not live_eos_dir:
+                    live_eos_dir = eos_dir
+                # Reload tables from live directory to pick up regenerated
+                # tables while reusing unchanged cached instances.
+                eos_jax = _cached_entropy_eos_jax(str(live_eos_dir))
                 # ``scales`` is an aragog.jax.nondim.NonDimScales single
                 # source of truth.
                 # Rebuild BoundaryParams from live solver state every
