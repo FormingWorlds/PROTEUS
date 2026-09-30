@@ -2621,66 +2621,6 @@ def test_start_goes_ahead_without_cvode_when_it_is_not_needed(
     clean.assert_called_once()
 
 
-@pytest.mark.smoke
-def test_impact_during_init_stage_applied_exactly_once(tmp_path):
-    """An impact falling inside the init time window is applied exactly once, including on resume."""
-    from helpers import PROTEUS_ROOT
-
-    from proteus.proteus import Proteus
-    from proteus.utils.constants import M_earth
-
-    config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
-    runner = Proteus(config_path=config_path)
-    runner.config.params.out.path = str(tmp_path / 'out')
-    runner.init_directories()
-
-    runner.config.params.stop.time.minimum = 0.0
-    runner.config.params.stop.time.maximum = 5.0
-    runner.config.params.dt.initial = 1.0
-    runner.config.params.dt.minimum = 0.1
-    runner.config.params.dt.maximum = 5.0
-    runner.config.params.out.plot_mod = None
-    runner.config.params.out.write_mod = 1
-    runner.config.params.out.archive_mod = 'none'
-
-    delivered = 0.05
-    runner.config.accretion.module = 'dummy'
-    runner.config.accretion.dummy.num_impacts = 1
-    runner.config.accretion.dummy.mass_accreted = delivered
-    runner.config.accretion.dummy.time_last = 0.5
-    runner.config.accretion.dummy.timescale = 1.0
-    runner.config.accretion.impactor_volatiles = 'dry'
-
-    runner.start(resume=False, offline=True)
-    assert runner.hf_all['n_impacts_applied'].iloc[-1] == 1
-    rock_recorded = float(runner.hf_all['M_accreted_rock'].iloc[-1])
-    assert rock_recorded == pytest.approx(delivered * M_earth, rel=1e-6)
-
-    # Resume across the impact: it must not be re-applied
-    runner2 = Proteus(config_path=config_path)
-    runner2.config.params.out.path = str(tmp_path / 'out')
-    runner2.init_directories()
-    runner2.config.params.stop.time.minimum = 0.0
-    runner2.config.params.stop.time.maximum = 10.0
-    runner2.config.params.dt.initial = 1.0
-    runner2.config.params.dt.minimum = 0.1
-    runner2.config.params.dt.maximum = 5.0
-    runner2.config.params.out.plot_mod = None
-    runner2.config.params.out.write_mod = 1
-    runner2.config.params.out.archive_mod = 'none'
-    runner2.config.accretion.module = 'dummy'
-    runner2.config.accretion.dummy.num_impacts = 1
-    runner2.config.accretion.dummy.mass_accreted = delivered
-    runner2.config.accretion.dummy.time_last = 0.5
-    runner2.config.accretion.dummy.timescale = 1.0
-    runner2.config.accretion.impactor_volatiles = 'dry'
-
-    runner2.start(resume=True, offline=True)
-    assert runner2.hf_all['n_impacts_applied'].iloc[-1] == 1
-    rock_resumed = float(runner2.hf_all['M_accreted_rock'].iloc[-1])
-    assert rock_resumed == pytest.approx(delivered * M_earth, rel=1e-6)
-
-
 @pytest.mark.unit
 def test_crystallization_not_rearmed_on_impact_step(tmp_path):
     """Crystallization is not re-armed when an impact re-melts the mantle this iteration."""

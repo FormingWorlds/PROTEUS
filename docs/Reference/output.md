@@ -80,12 +80,12 @@ Each iteration carries the previous row forward and overwrites only the columns 
 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
-| `semimajorax` | `m` | semi-major axis | `accretion/wrapper.py`<br>`orbit/orbit.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true | accretion, escape, orbit, plot |
+| `semimajorax` | `m` | semi-major axis | `accretion/wrapper.py`<br>`orbit/orbit.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true | escape, orbit, plot |
 | `sma_dot_planet` | `m s-1` | semi-major axis derivative | `orbit/orbit.py`<br>`orbit/satellite.py` | orbit.evolve = true; orbit.satellite = true |   |
 | `separation` | `m` | time-averaged separation | `orbit/wrapper.py` | always | atmos_chem, atmos_clim, main loop, observe, orbit, plot, star, utils |
 | `perihelion` | `m` | lowest point in orbit | `orbit/wrapper.py` | always | orbit |
 | `orbital_period` | `s` | orbital duration | `orbit/wrapper.py` | always | orbit, plot |
-| `eccentricity` | `1` | orbital eccentricity | `accretion/wrapper.py`<br>`orbit/orbit.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true | accretion, escape, orbit, plot |
+| `eccentricity` | `1` | orbital eccentricity | `accretion/wrapper.py`<br>`orbit/orbit.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true | escape, orbit, plot |
 | `ecc_dot_planet` | `1 s-1` | eccentricity derivative | `orbit/orbit.py`<br>`orbit/satellite.py` | orbit.evolve = true; orbit.satellite = true |   |
 | `plan_star_am` | `kg m2 s-1` | angular momentum of star+planet | `orbit/orbit.py` | orbit.evolve = true |   |
 | `axial_period` | `s` | day length of planet around its axis | `orbit/orbit.py`<br>`orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true; orbit.satellite = true | atmos_clim, orbit, plot, utils |

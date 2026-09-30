@@ -47,7 +47,6 @@
         }
       ],
       "consumers": [
-        "accretion",
         "escape",
         "orbit",
         "plot"
@@ -148,7 +147,6 @@
         }
       ],
       "consumers": [
-        "accretion",
         "escape",
         "orbit",
         "plot"
