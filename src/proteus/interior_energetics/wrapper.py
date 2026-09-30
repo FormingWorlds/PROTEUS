@@ -1974,7 +1974,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     # _set_entropy_ic returns the staggered molten profile it just set. Take it
     # from the return value rather than from the solver's solution object, which
     # holds no valid trajectory now and would in any case lag the reset.
-    S_molten = AragogRunner._set_entropy_ic(config, interior_o, dirs.get('output', '.'), hf_row)
+    S_molten = AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
     S_molten = np.asarray(S_molten, dtype=float).ravel()
 
     # Book the injected heat over the cooled-to-molten entropy jump, in the
