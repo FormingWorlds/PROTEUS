@@ -131,8 +131,8 @@ dispatch in `evolve_orbit_star` are covered as well as the algebra.
 |---|---|---|
 | `none` | 0 | 0 |
 | `instant` | 0 | 0 |
-| `sigmoid` | 3.7e-11 | 0 |
-| `high_ecc` | 3.8e-11 | 1.5e-11 |
+| `sigmoid` | 3.6e-11 | 0 |
+| `high_ecc` | 4.3e-11 | 2.8e-09 |
 
 The figure and the run settings are in
 [Star-planet models](../../Explanations/orbit.md#visualizing-the-four-parameterized-regimes).
