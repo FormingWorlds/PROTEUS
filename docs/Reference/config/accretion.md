@@ -74,15 +74,15 @@ about it.
 | `num_planets` | int | `10` | Number of embryos the system starts with. Must be >= 2. |
 | `masses` | list | `[]` | Initial embryo masses \[M_earth\], one per embryo. An empty list starts every embryo at ``mass_equal``. |
 | `mass_equal` | float | `0.5` | Initial mass of every embryo \[M_earth\], used when ``masses`` is empty. Must be > 0. |
-| `eccentricity_init` | float | `0.01` | Initial eccentricity shared by all embryos. Must be >= 0. |
+| `eccentricity_init` | float | `0.01` | Initial eccentricity shared by all embryos. |
 | `inner_edge` | float | `0.1` | Semi-major axis of the innermost embryo \[AU\]. Must be > 0. |
 | `spacing` | float | `10.0` | Initial separation between adjacent embryos, in mutual Hill radii. Typical values are 5 to 15; beyond roughly 30 the system does not go unstable within any useful evolution time, so the run finishes with no impacts. Capped at 50 purely to catch an order-of-magnitude mistake at configuration load. The cap is not the physical limit and does not track it. The layout condition has a pole where the requested gap approaches the span it is measured across, and its position scales with the embryo masses and with the cube root of the stellar mass: near 74 mutual Hill radii for a pair of ten-Earth-mass embryos around a solar-mass star, but near 34 for the same pair around a 0.1-solar-mass host. A spacing this validator accepts can therefore still be too wide for a compact, low-mass-host system. The dynamical model applies the exact condition and refuses such a layout by name, so that check, not this cap, is what guarantees a valid layout. Must be > 0 and <= 50.0. |
 | `density` | float | `5500.0` | Uniform bulk density used to convert embryo mass to radius \[kg m-3\]. Must be > 0. |
-| `impact_angle` | float | `45.0` | Impact angle \[deg\]. The impact parameter is its sine. Must be >= 0. |
+| `impact_angle` | float | `45.0` | Impact angle \[deg\]. The impact parameter is its sine. |
 | `evolution_time` | float | `1.0` | Duration of the dynamical evolution \[Gyr\]. Must be > 0. |
 | `inner_cutoff` | float | `0.005` | Perihelion inside which an embryo counts as lost to the star \[AU\]. Must be > 0. |
 | `selector` | str | `"match_config"` | Which survivor's impact history PROTEUS follows. 'match_config' picks the survivor whose initial mass and orbit are closest to the PROTEUS configuration, 'mass' the most massive survivor, 'semimajoraxis' the survivor whose final orbit is nearest ``selector_value`` \[AU\], and 'id' the embryo with index ``selector_value``. Choices: `"match_config"`, `"mass"`, `"semimajoraxis"`, `"id"`. |
-| `selector_value` | float or none | `none` | Target value for the 'semimajoraxis' and 'id' selectors. Ignored otherwise. |
+| `selector_value` | int | float or none | `none` | Target value for the 'semimajoraxis' and 'id' selectors. Ignored otherwise. |
 <!-- END GENERATED: config-table [accretion.morrigan] -->
 
 Typical `spacing` values are 5 to 15 mutual Hill radii; beyond roughly 30 the

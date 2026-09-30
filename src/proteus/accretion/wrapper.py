@@ -211,7 +211,21 @@ def restore_accretion_state(handler: Proteus) -> None:
     accreted = float(hf_row.get('M_accreted_rock') or 0.0)
 
     if getattr(handler, 'impact_events', None) is not None:
+        resume_time = float(hf_row.get('Time') or 0.0)
+        # Drop any events preceding the resume time (idempotent with init_accretion).
+        handler.impact_events = [ev for ev in handler.impact_events if ev.time > resume_time]
+
         n_applied_raw = hf_row.get('n_impacts_applied')
+        resolved_path = os.path.join(
+            handler.directories.get('output', '.'), _RESOLVED_TIMELINE_FILE
+        )
+        has_resolved = os.path.exists(resolved_path)
+        all_events = None
+        if has_resolved:
+            from proteus.accretion.common import read_timeline
+
+            all_events = read_timeline(resolved_path, time_offset=0.0)
+
         if (
             n_applied_raw is not None
             and math.isfinite(float(n_applied_raw))
@@ -223,7 +237,8 @@ def restore_accretion_state(handler: Proteus) -> None:
             # M_accreted_rock because Time resets to zero during init stage.
             cum_rock = 0.0
             n_applied = 0
-            for ev in handler.impact_events:
+            timeline = all_events if all_events is not None else handler.impact_events
+            for ev in timeline:
                 content = _impactor_volatile_content(
                     config, getattr(handler, 'hf_all', None), ev, hf_row=hf_row
                 )
@@ -236,9 +251,13 @@ def restore_accretion_state(handler: Proteus) -> None:
         else:
             n_applied = 0
 
-        if n_applied > 0:
-            handler.impact_events = handler.impact_events[n_applied:]
-            hf_row['n_impacts_applied'] = n_applied
+        hf_row['n_impacts_applied'] = n_applied
+
+        if all_events is not None:
+            events_before = sum(1 for ev in all_events if ev.time <= resume_time)
+            remaining_to_drop = max(n_applied - events_before, 0)
+            if remaining_to_drop > 0:
+                handler.impact_events = handler.impact_events[remaining_to_drop:]
 
     if accreted <= 0.0:
         # Say so rather than returning in silence. A ledger of zero means either

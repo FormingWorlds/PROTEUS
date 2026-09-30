@@ -2724,3 +2724,101 @@ def test_multiple_impacts_in_one_step_applied_in_time_order(tmp_path):
     assert hf_row['M_accreted_rock'] == pytest.approx(expected_rock, rel=1e-12)
     assert hf_row['n_impacts_applied'] == 2
     assert len(handler.impact_events) == 0
+
+
+@pytest.mark.unit
+def test_resume_from_old_helpfile_without_n_impacts_applied_does_not_reapply_past_impacts(
+    tmp_path,
+):
+    """Resuming an old-format helpfile without n_impacts_applied does not re-apply past impacts.
+
+    Contract clause: helpfiles written by older PROTEUS versions lack n_impacts_applied
+    and are backfilled with 0.0 by ReadHelpfileFromCSV. When resuming past an impact,
+    the event is dropped as before the start (_drop_events_before_start and the resume
+    time filter in restore_accretion_state), and the applied count in hf_row is
+    reconstructed by the timeline fallback rather than leaving a stale zero that
+    would duplicate impacts.
+    """
+    from proteus.accretion.common import ImpactEvent, due_events, write_timeline
+    from proteus.accretion.wrapper import (
+        _RESOLVED_TIMELINE_FILE,
+        init_accretion,
+        restore_accretion_state,
+    )
+
+    ev1 = ImpactEvent(
+        time=50.0,
+        M_target_before=6.0e24,
+        M_impactor=1.0e23,
+        M_merged_after=6.1e24,
+        v_impact=1.2e4,
+        v_esc=1.1e4,
+        impact_parameter=0.3,
+        R_target_before=6.4e6,
+        R_impactor=2.0e6,
+        rho_target=5510.0,
+        rho_impactor=3930.0,
+        a_before=1.4e11,
+        a_after=1.4e11,
+        e_before=0.03,
+        e_after=0.03,
+        id_target=1,
+        id_impactor=2,
+    )
+    ev2 = ImpactEvent(
+        time=200.0,
+        M_target_before=6.1e24,
+        M_impactor=2.0e23,
+        M_merged_after=6.3e24,
+        v_impact=1.2e4,
+        v_esc=1.1e4,
+        impact_parameter=0.3,
+        R_target_before=6.4e6,
+        R_impactor=2.5e6,
+        rho_target=5510.0,
+        rho_impactor=3930.0,
+        a_before=1.4e11,
+        a_after=1.4e11,
+        e_before=0.03,
+        e_after=0.03,
+        id_target=1,
+        id_impactor=3,
+    )
+
+    resolved_path = tmp_path / _RESOLVED_TIMELINE_FILE
+    write_timeline([ev1, ev2], str(resolved_path))
+
+    hf_row = {
+        'Time': 100.0,
+        'M_accreted_rock': ev1.mass_delta,
+        'n_impacts_applied': 0.0,
+        'semimajorax': 1.4e11,
+        'eccentricity': 0.03,
+    }
+
+    handler = _handler(
+        module='timeline',
+        timeline_path=str(resolved_path),
+        output_dir=tmp_path,
+        resume=True,
+    )
+    handler.config.accretion.impactor_volatiles = 'dry'
+    handler.config.planet.mass_tot = 1.0
+    handler.config.orbit = SimpleNamespace(semimajoraxis=1.0, eccentricity=0.01)
+    handler.hf_row = hf_row
+    handler.hf_all = None
+
+    handler.impact_events = init_accretion(handler)
+    restore_accretion_state(handler)
+
+    assert len(handler.impact_events) == 1
+    assert handler.impact_events[0].time == 200.0
+    assert handler.hf_row['n_impacts_applied'] == 1
+
+    landed_first = due_events(handler.impact_events, 100.0, 150.0)
+    assert landed_first == []
+
+    landed_second = due_events(handler.impact_events, 150.0, 250.0)
+    assert len(landed_second) == 1
+    assert landed_second[0].time == pytest.approx(200.0)
+    assert landed_second[0].id_impactor == 3

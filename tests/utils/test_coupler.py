@@ -4147,7 +4147,12 @@ def test_a_helpfile_predating_a_schema_column_still_resumes(tmp_path):
         ZeroHelpfileRow,
     )
 
-    absent = ('M_accreted_rock', 'esc_kg_cumulative', 'step_dE_impact_J')
+    absent = (
+        'M_accreted_rock',
+        'esc_kg_cumulative',
+        'n_impacts_applied',
+        'step_dE_impact_J',
+    )
     row = ZeroHelpfileRow()
     for key in absent:
         assert key in row, f'{key} must be in the current schema for this test to mean anything'
@@ -4223,6 +4228,33 @@ def test_a_helpfile_missing_physical_state_is_refused_not_zero_filled():
 
         loaded = ReadHelpfileFromCSV(tmpdir)
         assert loaded['M_accreted_rock'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+
+
+@pytest.mark.unit
+def test_read_helpfile_from_csv_loads_257d1604_golden_run_with_zero_filled_columns(tmp_path):
+    """Helpfile written at commit 257d1604 lacks n_impacts_applied and loads with zero backfill."""
+    import subprocess
+
+    from _trajectory import read_reference
+
+    from proteus.utils.coupler import ReadHelpfileFromCSV
+
+    tsv_content = subprocess.check_output(
+        ['git', 'show', '257d1604:tests/integration/golden_run.tsv'], text=True
+    )
+    tsv_path = tmp_path / 'golden_257d1604.tsv'
+    tsv_path.write_text(tsv_content)
+
+    ref = read_reference(tsv_path)
+    assert 'n_impacts_applied' not in ref.frame.columns
+
+    frame = ref.frame.copy()
+    frame['runtime'] = 0.0
+    frame.to_csv(tmp_path / 'runtime_helpfile.csv', sep=' ', index=False)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert 'n_impacts_applied' in loaded.columns
+    assert (loaded['n_impacts_applied'] == 0.0).all()
 
 
 def _write_timed_nc(path: str, time: float | None) -> str:
