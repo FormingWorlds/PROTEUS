@@ -365,7 +365,10 @@ class Proteus:
 
     def _save_zalmoxis_output(self):
         """Copy ``zalmoxis_output.dat`` next to the snapshot of the row being written."""
-        if self.config.interior_struct.module == 'zalmoxis':
+        if (
+            self.config.interior_struct.module == 'zalmoxis'
+            and self.config.interior_energetics.module == 'aragog'
+        ):
             from proteus.interior_struct.zalmoxis import save_zalmoxis_output_snapshot
 
             save_zalmoxis_output_snapshot(self.directories['output'], self.hf_row['Time'])
@@ -422,7 +425,10 @@ class Proteus:
             raise RuntimeError(
                 f'Resume: no Zalmoxis structure file matches the helpfile row at '
                 f't = {time:.6e} yr within max(1 m, 1e-9 of the mantle thickness); '
-                f'{"; ".join(tried)}. Aragog would reject {path} at its next reset().'
+                f'{"; ".join(tried)}. The structure of this row is not on disk '
+                f'({os.path.basename(saved)} is missing or differs), so Aragog '
+                f'would reject {path} at a reset() or run on a structure off by '
+                f'these gaps.'
             )
 
     def start(self, *, resume: bool = False, offline: bool = False):

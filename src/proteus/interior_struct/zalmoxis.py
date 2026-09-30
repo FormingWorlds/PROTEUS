@@ -369,13 +369,10 @@ def validate_zalmoxis_output_schema(
 def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, float] | None:
     """Compare a mesh file's radial bounds with a helpfile row.
 
-    Aragog's ``EntropySolver.reset()`` rejects a mesh file whose radii leave
-    ``[R_core, R_int]`` by more than ``max(1 m, 1e-9 * (R_int - R_core))``. The
-    same tolerance is returned here, applied to both bounds in both directions,
-    since a file written for the row holds exactly ``R_core`` and ``R_int``. The
-    1 m floor absorbs the helpfile's ``%.10e`` rounding (about 1e-3 m at
-    1e7 m) and the run-to-run scatter of the structure solve (about 1e-8
-    relative, 0.1 m at 1e7 m).
+    The tolerance is that of Aragog's ``EntropySolver.reset()``,
+    ``max(1 m, 1e-9 * (R_int - R_core))``, applied here to both bounds in both
+    directions. Its 1 m floor absorbs the helpfile rounding and the scatter of
+    repeated structure solves.
 
     Parameters
     ----------
@@ -391,7 +388,7 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
         None when the file is missing, unreadable or has fewer than two rows.
     """
     try:
-        r = np.atleast_1d(np.loadtxt(output_path, usecols=0))
+        r = np.loadtxt(output_path, usecols=0, ndmin=1)
     except (OSError, ValueError):
         return None
     if r.size < 2:

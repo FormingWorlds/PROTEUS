@@ -273,12 +273,7 @@ def _resync_instance(tmp_path, *, dat=None, prev=None):
         _write_mesh(data / 'zalmoxis_output.dat', *dat)
     if prev is not None:
         _write_mesh(data / 'zalmoxis_output.dat.prev', *prev)
-    p.hf_all = pd.DataFrame([_ROW] * 5)
     p.hf_row = dict(_ROW)
-    p.interior_o = MagicMock()
-    p.interior_o.radius = np.array([-1.0])
-    p.interior_o.temp = np.array([-2.0])
-    p.last_struct_time, p.last_struct_Tmagma, p.last_struct_Phi = 50.0, 3000.0, 0.9
     return p, data / 'zalmoxis_output.dat'
 
 
@@ -344,6 +339,19 @@ def test_resync_restores_the_copy_saved_with_the_row(tmp_path):
 
 
 @pytest.mark.unit
+def test_resync_prefers_the_saved_copy_over_a_matching_file(tmp_path):
+    """Both match the row; the copy saved with the row is the one kept."""
+    p, path = _resync_instance(tmp_path, dat=(3.4e6 + 0.5, 6.4e6 - 0.5))
+    _write_mesh(_saved_copy(tmp_path), 3.4e6, 6.4e6)
+    live = path.read_bytes()
+
+    p._resync_zalmoxis_mesh()
+
+    assert path.read_bytes() == _saved_copy(tmp_path).read_bytes()
+    assert path.read_bytes() != live
+
+
+@pytest.mark.unit
 def test_resync_checks_the_saved_copy_before_using_it(tmp_path):
     """A saved copy off the row is skipped; the matching .prev is restored."""
     p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.5e6), prev=(3.4e6, 6.4e6))
@@ -395,6 +403,25 @@ def test_resync_without_a_mesh_file_does_nothing(tmp_path):
 
     assert not path.exists()
     assert list((tmp_path / 'data').iterdir()) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('struct', 'energetics', 'saved'),
+    [('zalmoxis', 'aragog', True), ('zalmoxis', 'spider', False), ('dummy', 'aragog', False)],
+)
+def test_structure_copy_is_saved_only_where_the_resume_reads_it(
+    tmp_path, struct, energetics, saved
+):
+    """Only Zalmoxis + Aragog runs keep a copy per snapshot."""
+    p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.4e6))
+    p.config.interior_struct.module = struct
+    p.config.interior_energetics.module = energetics
+
+    p._save_zalmoxis_output()
+
+    assert _saved_copy(tmp_path).exists() is saved
+    assert path.exists()
 
 
 @pytest.mark.unit
@@ -462,8 +489,6 @@ def test_resumed_loop_reaches_a_second_reset_on_a_stale_mesh(tmp_path, case):
     the main loop hands it. Every iteration writes a snapshot here, so the copy
     saved with the first resumed row is checked too.
     """
-    from proteus.utils.helper import format_subyear_time
-
     p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog')
     p.config.interior_struct.module = 'zalmoxis'
     p.config.params.out.write_mod = 1
@@ -484,8 +509,44 @@ def test_resumed_loop_reaches_a_second_reset_on_a_stale_mesh(tmp_path, case):
     )
 
     assert calls == pytest.approx([(3.4e6, 6.4e6), (3.4e6, 6.4e6)])
-    first_row = data / (format_subyear_time(p.hf_all['Time'].iloc[-1]) + '_zalmoxis.dat')
-    assert first_row.read_bytes() == mesh.read_bytes()
+    assert _saved_copy(tmp_path, p.hf_all['Time'].iloc[-1]).read_bytes() == mesh.read_bytes()
+
+
+@pytest.mark.unit
+def test_snapshot_copy_holds_the_structure_of_its_row_after_a_resolve(tmp_path):
+    """An in-loop re-solve before the snapshot write is in the saved copy.
+
+    The fake re-solve moves R_int by 50 m and rewrites the file, as an accepted
+    Zalmoxis update does; the copy written with that row must carry it.
+    """
+    from proteus.interior_struct.zalmoxis import zalmoxis_mesh_gaps
+
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog')
+    p.config.interior_struct.module = 'zalmoxis'
+    p.config.interior_struct.zalmoxis.update_interval = 1.0
+    p.config.params.out.write_mod = 1
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['R_core'], hf_df['R_int'] = 3.4e6, 6.4e6
+    mesh = tmp_path / 'data' / 'zalmoxis_output.dat'
+    _write_mesh(mesh, 3.4e6, 6.4e6)
+
+    def resolve(dirs, config, hf_row, interior_o, t, T, phi, force=False):
+        hf_row['R_int'] += 50.0
+        _write_mesh(mesh, hf_row['R_core'], hf_row['R_int'])
+        return t, T, phi
+
+    with patch(
+        'proteus.interior_energetics.wrapper.update_structure_from_interior',
+        side_effect=resolve,
+    ):
+        _run_resumed_loop_until_stop(
+            p, hf_df, _aragog_like_interior(mesh, []), _stop_on_second_atmosphere_call()
+        )
+
+    row = p.hf_all.iloc[-1].to_dict()
+    gaps = zalmoxis_mesh_gaps(str(_saved_copy(tmp_path, row['Time'])), row)
+    assert row['R_int'] == pytest.approx(6.4e6 + 50.0)
+    assert gaps[:2] == pytest.approx((0.0, 0.0), abs=1e-6)
 
 
 @pytest.mark.unit
@@ -503,7 +564,9 @@ def test_resume_runs_the_resync_for_zalmoxis_and_aragog_only(
     with patch.object(type(p), '_resync_zalmoxis_mesh', autospec=True) as resync:
         _resume_with_patches(p, _make_hf_df())
 
+    # _resume_with_patches stops at init_star, so a recorded call came before it.
     assert resync.called is called
+    assert p.directories['_resume_struct_settle_loops'] > 0
 
 
 # ---------------------------------------------------------------------------

@@ -753,6 +753,7 @@ def test_zalmoxis_mesh_gaps_tolerance_scales_with_span(tmp_path):
     gaps = zalmoxis_mesh_gaps(str(path), {'R_core': 1.0e9, 'R_int': 5.0e9})
 
     assert gaps[2] == pytest.approx(4.0)
+    assert gaps[:2] == pytest.approx((0.0, 0.0), abs=1e-6)
 
 
 @pytest.mark.unit

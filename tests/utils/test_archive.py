@@ -307,6 +307,7 @@ def test_remove_old_prunes_the_zalmoxis_copy_with_its_snapshot(tmp_path):
         '1000_zalmoxis.dat',
         'zalmoxis_output.dat',
     ]
+    assert (tmp_path / '1000_zalmoxis.dat').read_text(encoding='utf-8') == '1000_zalmoxis.dat'
 
 
 def test_remove_old_keeps_non_timestamped_nc_and_json_names(tmp_path):

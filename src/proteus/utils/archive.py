@@ -23,10 +23,9 @@ def _snapshot_time(name: str) -> float | None:
 
     A timestamped snapshot is a file ending in ``.nc``, ``.json`` or
     ``_zalmoxis.dat`` whose leading token is the simulated time in years, e.g.
-    ``1000p000_int.nc``, ``1000p000_atm.nc``, ``1000p000_zalmoxis.dat``,
-    ``0p200_int.nc``, or ``5000.json``. Whole-year
-    names without a fractional part (``1000_int.nc``) parse to the same
-    value.
+    ``1000p000_int.nc``, ``1000p000_atm.nc``, ``0p200_int.nc``, or
+    ``5000.json``. Whole-year names without a fractional part
+    (``1000_int.nc``) parse to the same value.
 
     Arguments
     ---------
@@ -288,8 +287,8 @@ def remove_old(dir: str, before: float) -> None:
     """
     Prune archived snapshot files older than a cutoff time.
 
-    Only timestamped snapshot files are removed: names ending in ``.nc``
-    or ``.json`` whose leading token parses as a simulated time (e.g.
+    Only timestamped snapshot files are removed: names ending in ``.nc``,
+    ``.json`` or ``_zalmoxis.dat`` whose leading token parses as a simulated time (e.g.
     ``1000p000_int.nc``), and only when that time is below `before`.
     Every other entry is kept, notably the tar
     archive itself and the fixed-name runtime files that the interior
