@@ -6911,6 +6911,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
             'Phi_global': 0.73,
             'Phi_global_vol': 0.73,
             'T_pot': 3750.0,
+            'RF_depth': 250000.0,
         },
     )
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
@@ -6919,6 +6920,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     assert hf_row['Phi_global'] == pytest.approx(0.73, rel=1e-12)
     assert hf_row['Phi_global_vol'] == pytest.approx(0.73, rel=1e-12)
     assert hf_row['T_pot'] == pytest.approx(3750.0, rel=1e-12)
+    assert hf_row['RF_depth'] == pytest.approx(250000.0, rel=1e-12)
     assert hf_row['M_mantle_liquid'] == pytest.approx(0.73 * 4.2e24, rel=1e-12)
     assert hf_row['M_mantle_solid'] == pytest.approx(0.27 * 4.2e24, rel=1e-12)
     assert hf_row['M_mantle_liquid'] + hf_row['M_mantle_solid'] == pytest.approx(
@@ -6926,8 +6928,26 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     )
     assert solver._solution is None
 
-    # 3. Solver without get_state returns None
+    # 3. Solver without get_state returns None; liquid/solid split runs from Phi_global with clamping
     class NoGetStateSolver:
-        pass
+        _S0 = np.array([4000.0])
+        _solution = None
+        parameters = SimpleNamespace()
+
+        def _step_heat_content(self, s1, s2):
+            return 0.0
 
     assert evaluate_molten_state(NoGetStateSolver(), hf_row) is None
+
+    hf_row_noget = {'Time': 250.0, 'M_mantle': 4.2e24, 'Phi_global': 1.2}
+    _remelt_aragog(
+        config,
+        {'output': str(tmp_path), 'spider_eos_dir': ''},
+        hf_row_noget,
+        SimpleNamespace(aragog_solver=NoGetStateSolver(), impact_reset=False),
+    )
+    assert hf_row_noget['M_mantle_liquid'] == pytest.approx(4.2e24, rel=1e-12)
+    assert hf_row_noget['M_mantle_solid'] == pytest.approx(0.0, rel=1e-12)
+    assert hf_row_noget['M_mantle_liquid'] + hf_row_noget['M_mantle_solid'] == pytest.approx(
+        4.2e24, rel=1e-12
+    )

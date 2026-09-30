@@ -1977,7 +1977,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     itself can validate.
 
     The melt-state keys in ``hf_row`` (``T_magma``, ``Phi_global``,
-    ``Phi_global_vol``, ``T_pot``, ``M_mantle_liquid``, ``M_mantle_solid``)
+    ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``)
     are updated to reflect the molten profile evaluated without time
     integration, ensuring downstream modules on the impact iteration
     read the post-impact melt state.
@@ -2084,15 +2084,15 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
             'Phi_global',
             'Phi_global_vol',
             'T_pot',
+            'RF_depth',
         ):
-            if key in output:
-                hf_row[key] = output[key]
+            hf_row[key] = output[key]
 
-        if 'Phi_global' in hf_row and 'M_mantle' in hf_row:
-            phi_g = float(hf_row['Phi_global'])
-            m_mantle = float(hf_row['M_mantle'])
-            hf_row['M_mantle_liquid'] = phi_g * m_mantle
-            hf_row['M_mantle_solid'] = (1.0 - phi_g) * m_mantle
+    if 'Phi_global' in hf_row and 'M_mantle' in hf_row:
+        phi_g = min(max(float(hf_row['Phi_global']), 0.0), 1.0)
+        m_mantle = float(hf_row['M_mantle'])
+        hf_row['M_mantle_liquid'] = phi_g * m_mantle
+        hf_row['M_mantle_solid'] = (1.0 - phi_g) * m_mantle
 
 
 def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:
