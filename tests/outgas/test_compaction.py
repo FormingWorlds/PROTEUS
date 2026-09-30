@@ -19,7 +19,8 @@ than thermal. These tests exercise:
 * the matrix deformation time and its independence of porosity,
 * that the slower process controls, which is the sign of the combination and
   the one place an inverted comparison changes every answer,
-* the trapped fractions of the published scaling table,
+* the timescales and trapped fractions of five martian fronts, against
+  closed forms and a quadrature independent of the ODE solver,
 * boundedness in ``[0, phi_top]`` without a clamp,
 * the front-location guards: a doubled front, one too thin to resolve, one
   spanning too much of the mantle, one reaching the surface, and one holding
@@ -38,8 +39,8 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from scipy.optimize import brentq
 
-import proteus.outgas.compaction as compaction
 from proteus.outgas.compaction import (
     BRANCH_DARCY,
     BRANCH_GUARD,
@@ -56,7 +57,7 @@ from proteus.outgas.compaction import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Martian front of the published scaling table: a 60 km front at a density
+# Martian front of the five-case test: a 60 km front at a density
 # contrast of 330 kg/m3 and martian gravity, entered at the disaggregation
 # melt fraction. The fast front crosses it in 86 kyr, the slow one in 1.2 Myr.
 _L = 60.0e3
@@ -200,8 +201,8 @@ def test_matrix_time_is_independent_of_porosity_and_linear_in_viscosity():
     tau = matrix_time(1.0e18, _DRHO, _G, _L)
     expected = 1.0e18 / (_DRHO * _G * _L)
     assert tau == pytest.approx(expected, rel=1e-12)
-    # 430 yr for a soft mush under a 60 km martian front, the published value.
-    assert tau / _SECS_PER_YEAR == pytest.approx(430.0, rel=0.02)
+    # 431 yr for a soft mush under a 60 km martian front.
+    assert tau / _SECS_PER_YEAR == pytest.approx(431.2, rel=1.0e-3)
     # Scale guard: ~1e10 s, not ~1e13 (a years-for-seconds slip).
     assert 1.0e10 < tau < 1.0e11
 
@@ -254,70 +255,120 @@ def test_drainage_is_limited_by_the_slower_of_the_two_processes():
     assert np.all(np.diff(retained) >= -1e-12)
 
 
+def _residence_time_grid(grain, melt_visc, mush_visc, matrix_fraction=True):
+    """Time a parcel takes to drain from phi_c down to each porosity on a grid.
+
+    The drainage equation is separable, so t(phi) = int_phi^phi_c tau(p) dp / p
+    with tau = max(L / w_D, tau_s), a quadrature rather than an ODE solve.
+    Trapezoid rule in ln(phi) on 20001 nodes down to phi = 1e-4, accurate to
+    about 2e-7 in the porosity it returns. ``matrix_fraction=False`` drops the
+    (1 - phi) of w_D, the most plausible slip in the percolation speed.
+    """
+    u = np.linspace(np.log(_PHI_C), np.log(1.0e-4), 20001)
+    phi = np.exp(u)
+    w = darcy_velocity(phi, grain, _DRHO, _G, melt_visc)
+    if not matrix_fraction:
+        w = w / (1.0 - phi)
+    tau = np.maximum(_L / w, matrix_time(mush_visc, _DRHO, _G, _L))
+    t = np.concatenate([[0.0], np.cumsum(0.5 * (tau[1:] + tau[:-1]) * -np.diff(u))])
+    return phi, t
+
+
+def _retained_by_quadrature(t_res, grain, melt_visc, mush_visc, matrix_fraction=True):
+    """Porosity left after ``t_res``, by inverting :func:`_residence_time_grid`."""
+    phi, t = _residence_time_grid(grain, melt_visc, mush_visc, matrix_fraction)
+    return float(np.exp(np.interp(t_res, t, np.log(phi))))
+
+
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_drainage_reproduces_the_published_scaling_table(monkeypatch):
-    """Trapped melt fractions and timescales for a 60 km martian front,
-    against the five cases of Table 2 of the PROTEUS compaction note
-    (Lichtenberg, 21 September 2026), which evaluates the same drainage
-    equation with the same permeability model.
+def test_drainage_matches_an_independent_quadrature_over_five_martian_fronts():
+    """Trapped melt fractions and timescales for a 60 km martian front, entered
+    at phi_c = 0.3 under drho = 330 kg/m3 and g = 3.711 m/s2, crossed at 70 and
+    5 cm/yr (t_res = L / v_f = 85.7 kyr and 1.2 Myr), for five sets of grain
+    size a, melt viscosity eta_m and mush viscosity mu_s.
 
-    The table omits the (1 - phi) matrix fraction in the percolation speed,
-    which this module applies. With that factor removed, the integral
-    reproduces every entry to the table's printed precision; with it, the
-    percolation time is longer by exactly 1 / (1 - phi_c) and the parcel keeps
-    slightly more melt.
+    The model is the one shipped: w_D = (1 - phi) drho g F(phi) / eta_m with the
+    three-regime F of Bower et al. (2018), tau_s = mu_s / (drho g L), and
+    dphi/dt = -phi / max(L / w_D, tau_s). Its two timescales at the entry
+    porosity have closed forms, and since the equation is separable the
+    retained porosity F_vol solves t_res = int_F^phi_c max(L / w_D, tau_s) dphi
+    / phi, a quadrature independent of the ODE solver. In the Rumpf-Gupte
+    regime, F = (5/7) a^2 phi^4.5, that integral also has a series closed form.
+
+    Expected, tau_D / t_res and tau_s / t_res at 70 cm/yr, then F_vol at 70
+    and at 5 cm/yr:
+
+    a [m]   eta_m [Pa s]  mu_s [Pa s]  tau_D/t    tau_s/t    F_70      F_5
+    1e-4    10            1e20         8.1653     0.50314    0.27165   0.18134
+    1e-3    100           1e22         0.81653    50.314     0.29410   0.22713
+    1e-3    100           1e18         0.81653    0.0050314  0.19422   0.10897
+    1e-3    1             1e18         0.0081653  0.0050314  0.069535  0.024485
+    1e-2    1             1e18         8.1653e-5  0.0050314  0.0094342 0.0025379
     """
-    # grain [m], melt visc [Pa s], mush visc [Pa s], then the printed
-    # tau_D / t_res, tau_s / t_res, F_vol at 70 cm/yr and at 5 cm/yr.
     cases = (
-        (100.0e-6, 10.0, 1.0e20, 5.7, 0.50, 0.26, 0.17),
-        (1.0e-3, 100.0, 1.0e22, 0.57, 50.0, 0.29, 0.23),
-        (1.0e-3, 100.0, 1.0e18, 0.57, 0.005, 0.19, 0.11),
-        (1.0e-3, 1.0, 1.0e18, 0.006, 0.005, 0.07, 0.02),
-        (1.0e-2, 1.0, 1.0e18, 6.0e-5, 0.005, 0.009, 0.003),
+        (100.0e-6, 10.0, 1.0e20, 8.1653, 0.50314, 0.27165, 0.18134),
+        (1.0e-3, 100.0, 1.0e22, 0.81653, 50.314, 0.29410, 0.22713),
+        (1.0e-3, 100.0, 1.0e18, 0.81653, 0.0050314, 0.19422, 0.10897),
+        (1.0e-3, 1.0, 1.0e18, 0.0081653, 0.0050314, 0.069535, 0.024485),
+        (1.0e-2, 1.0, 1.0e18, 8.1653e-5, 0.0050314, 0.0094342, 0.0025379),
     )
-
-    def printed(value):
-        """Half a unit in the last digit the table prints for ``value``."""
-        return 0.5 * 10.0 ** (np.floor(np.log10(abs(value))) - (1 if abs(value) >= 0.01 else 0))
-
-    module = [
-        (drainage_integral(_PHI_C, t, _L, a, _DRHO, _G, eta_m, eta_s))
-        for a, eta_m, eta_s, *_ in cases
-        for t in (_T_RES_FAST, _T_RES_SLOW)
-    ]
-    # The note's percolation speed: the module's without the matrix fraction.
-    darcy = compaction.darcy_velocity
-    monkeypatch.setattr(
-        compaction,
-        'darcy_velocity',
-        lambda phi, *args: darcy(phi, *args) / (1.0 - np.asarray(phi, dtype=float)),
-    )
-    for i, (a, eta_m, eta_s, tau_d_tab, tau_s_tab, fast_tab, slow_tab) in enumerate(cases):
+    retained = {}
+    for a, eta_m, eta_s, tau_d_pin, tau_s_pin, fast_pin, slow_pin in cases:
         fast, tau_d, tau_s = drainage_integral(
             _PHI_C, _T_RES_FAST, _L, a, _DRHO, _G, eta_m, eta_s
         )
         slow, _, _ = drainage_integral(_PHI_C, _T_RES_SLOW, _L, a, _DRHO, _G, eta_m, eta_s)
-        assert tau_d / _T_RES_FAST == pytest.approx(tau_d_tab, abs=printed(tau_d_tab))
-        assert tau_s / _T_RES_FAST == pytest.approx(tau_s_tab, abs=printed(tau_s_tab))
-        # Two-decimal entries within 0.006: the soft-mush case sits at 0.1847
-        # against a printed 0.19, just past half a unit.
-        for value, tab in ((fast, fast_tab), (slow, slow_tab)):
-            tol = 0.006 if tab >= 0.01 else printed(tab)
-            assert value == pytest.approx(tab, abs=tol)
-        # A slower front always drains further, for every parameter set.
-        assert slow <= fast + 1e-12
-        # The module's matrix fraction slows percolation by exactly 1/(1 - phi_c)
-        # at the entry porosity and never lets the parcel keep less melt.
-        mod_fast, mod_tau_d, mod_tau_s = module[2 * i]
-        assert mod_tau_d == pytest.approx(tau_d / (1.0 - _PHI_C), rel=1e-12)
-        assert mod_tau_s == pytest.approx(tau_s, rel=1e-12)
-        assert fast - 1e-12 <= mod_fast <= fast + 0.01
+        retained[a, eta_m, eta_s] = (fast, slow)
 
-    # The table spans a factor of thirty across its rows, so a stub returning a
-    # constant could not pass the loop above.
-    assert module[2][0] / module[8][0] > 20.0
+        # Timescales in closed form. At phi = 0.3 the Stokes tanh weight adds
+        # 4.5e-7 to the Rumpf-Gupte mobility, hence rel = 1e-6 on tau_D.
+        w_top = (1.0 - _PHI_C) * _DRHO * _G * (5.0 / 7.0) * a**2 * _PHI_C**4.5 / eta_m
+        assert tau_d == pytest.approx(_L / w_top, rel=1.0e-6)
+        assert tau_s == pytest.approx(eta_s / (_DRHO * _G * _L), rel=1.0e-12)
+        assert tau_d / _T_RES_FAST == pytest.approx(tau_d_pin, rel=1.0e-4)
+        assert tau_s / _T_RES_FAST == pytest.approx(tau_s_pin, rel=1.0e-4)
+
+        # Retained porosity against the quadrature, which is accurate to 2e-7;
+        # the solver's rtol of 1e-8 leaves it within 1e-6.
+        for t_res, value, pin in ((_T_RES_FAST, fast, fast_pin), (_T_RES_SLOW, slow, slow_pin)):
+            reference = _retained_by_quadrature(t_res, a, eta_m, eta_s)
+            assert value == pytest.approx(reference, rel=1.0e-6)
+            assert value == pytest.approx(pin, rel=1.0e-4)
+        # A slower front always drains further.
+        assert slow < fast
+
+    # Series closed form in the Rumpf-Gupte regime, dphi/dt = -(C/L)(1-phi) phi^5.5:
+    # H(phi) = sum_k phi^(k-4.5) / (k-4.5) falls by C t_res / L. Held to 1e-5, as
+    # near phi = 0.18 the lower tanh blend still adds about 1e-6.
+    k = np.arange(200)
+
+    def series(phi):
+        return float(np.sum(phi ** (k - 4.5) / (k - 4.5)))
+
+    for (a, eta_m, eta_s), t_res, index in (
+        ((100.0e-6, 10.0, 1.0e20), _T_RES_FAST, 0),
+        ((100.0e-6, 10.0, 1.0e20), _T_RES_SLOW, 1),
+        ((1.0e-3, 100.0, 1.0e18), _T_RES_FAST, 0),
+    ):
+        c = _DRHO * _G * (5.0 / 7.0) * a**2 / eta_m
+        drop = series(_PHI_C) - c * t_res / _L
+        closed = brentq(lambda phi, drop=drop: series(phi) - drop, 0.1, _PHI_C, xtol=1e-14)
+        assert retained[a, eta_m, eta_s][index] == pytest.approx(closed, rel=1.0e-5)
+
+    # Discrimination: without the (1 - phi) of w_D the percolation-limited
+    # cases drain further, by 0.008 to 0.0095 at 70 cm/yr, some 50 times the
+    # pinning tolerance; the matrix-limited case is unaffected.
+    for a, eta_m, eta_s in ((100.0e-6, 10.0, 1.0e20), (1.0e-3, 100.0, 1.0e18)):
+        slip = _retained_by_quadrature(_T_RES_FAST, a, eta_m, eta_s, matrix_fraction=False)
+        assert retained[a, eta_m, eta_s][0] - slip > 0.007
+    stiff = retained[1.0e-3, 100.0, 1.0e22][0]
+    assert _retained_by_quadrature(_T_RES_FAST, 1.0e-3, 100.0, 1.0e22, False) == pytest.approx(
+        stiff, rel=1.0e-6
+    )
+    # The retained fraction spans a factor of thirty across the cases, so no
+    # constant could pass the loop above.
+    assert retained[100.0e-6, 10.0, 1.0e20][0] / retained[1.0e-2, 1.0, 1.0e18][0] > 20.0
 
 
 @pytest.mark.physics_invariant
@@ -325,7 +376,7 @@ def test_drainage_is_bounded_without_a_clamp_and_decays_with_residence():
     """The integral is bounded in [0, phi_top] by construction, because the
     porosity decays but never reaches zero: the percolation speed falls as
     phi^2 or steeper, so the last melt leaves ever more slowly. That is what
-    lets the dynamic mode run without the clamp the linear law needs."""
+    lets the front scheme run without the clamp the linear law needs."""
     grain, eta_m, eta_s = 1.0e-3, 1.0, 1.0e18
     previous = _PHI_C
     for t_res in (0.0, 1.0e10, 1.0e12, 1.0e14, 1.0e16):
@@ -622,7 +673,7 @@ def test_branch_codes_are_distinct_and_cover_the_reported_regimes():
     codes = (BRANCH_NONE, BRANCH_DARCY, BRANCH_MATRIX, BRANCH_GUARD)
     assert len(set(codes)) == len(codes)
     assert BRANCH_NONE == 0
-    # The two dynamic branches are adjacent and distinct from the guard, which
+    # The two drainage branches are adjacent and distinct from the guard, which
     # is what lets a run be summarised by the fraction of mass on each.
     assert BRANCH_MATRIX != BRANCH_DARCY
     assert BRANCH_GUARD not in (BRANCH_DARCY, BRANCH_MATRIX)
