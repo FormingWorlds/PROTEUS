@@ -182,14 +182,13 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config) -> tuple[f
         raise ValueError('Parameterized migration requires orbit.parameterized.sma_init')
     sma_i = config.orbit.parameterized.sma_init * AU
 
+    sma_f = None
     if migration in ('instant', 'sigmoid', 'high_ecc'):
         if config.orbit.parameterized.sma_final is None:
             raise ValueError(
                 f'Migration option {migration!r} requires orbit.parameterized.sma_final'
             )
         sma_f = config.orbit.parameterized.sma_final * AU
-    else:
-        sma_f = sma_i
 
     # Time step
     current_time = float(hf_row['Time'])
@@ -206,31 +205,26 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config) -> tuple[f
         )
         hf_row['eccentricity'] = eccentricity
     elif migration == 'sigmoid':  # sigmoid migration
-        if tau_mig is None:
-            raise ValueError('Sigmoid migration requires timescale tau_mig')
-        else:
-            hf_row['semimajorax'] = sigmoid_migration(
-                t=current_time,
-                sma_init=sma_i,
-                sma_final=sma_f,
-                time_migration=t_mig,
-                tau_mig=tau_mig,
-            )
-            hf_row['eccentricity'] = eccentricity
-
+        hf_row['semimajorax'] = sigmoid_migration(
+            t=current_time,
+            sma_init=sma_i,
+            sma_final=sma_f,
+            time_migration=t_mig,
+            tau_mig=tau_mig,
+        )
+        hf_row['eccentricity'] = eccentricity
     elif migration == 'high_ecc':  # high-eccentricity migration
-        if tau_mig is None:
-            raise ValueError('High-eccentricity migration requires timescale tau_mig')
-        else:
-            hf_row['semimajorax'], hf_row['eccentricity'] = high_eccentricity_migration(
-                t=current_time,
-                ecc=eccentricity,
-                sma_init=sma_i,
-                sma_final=sma_f,
-                time_migration=t_mig,
-                tau_mig=tau_mig,
-            )
+        hf_row['semimajorax'], hf_row['eccentricity'] = high_eccentricity_migration(
+            t=current_time,
+            ecc=eccentricity,
+            sma_init=sma_i,
+            sma_final=sma_f,
+            time_migration=t_mig,
+            tau_mig=tau_mig,
+        )
     else:
+        # Defensive: the config validator already restricts migration to the
+        # four names above, so this is reachable only through a stub config.
         raise ValueError(
             f'Unknown migration option: {migration!r}. '
             'Expected "none", "instant", "sigmoid" or "high_ecc".'

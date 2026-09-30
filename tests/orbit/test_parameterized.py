@@ -687,34 +687,6 @@ def test_wrapper_rejects_an_unrecognised_migration_setting():
 @pytest.mark.parametrize('time_yr', [1.0, T_MIG], ids=['first_recorded_step', 'mid_evolution'])
 @pytest.mark.parametrize(
     'migration',
-    ['sigmoid', 'high_ecc'],
-    ids=['sigmoid_ramp', 'high_eccentricity'],
-)
-def test_wrapper_requires_a_migration_timescale(migration, time_yr):
-    """Both smooth laws need a transition width, and the wrapper names
-    the missing timescale instead of passing None into the exponential.
-    The schema gives tau_migration a positive default and no null, so
-    this path is reachable only by calling the function directly.
-
-    Probed at the first recorded step as well as mid-evolution, because
-    that early step is where a config-independent write could slip in
-    ahead of the validation. This is an error-contract test, so it
-    asserts the contract and the absence of a side effect rather than a
-    physical invariant."""
-    hf_row = {'Time': time_yr}
-
-    with pytest.raises(ValueError) as excinfo:
-        run_parameterized_orbital_migration(hf_row, _config(migration, tau_migration=None))
-
-    assert 'tau_mig' in str(excinfo.value)
-    # No side effect: the orbit keys were never written.
-    assert 'semimajorax' not in hf_row
-    assert 'eccentricity' not in hf_row
-
-
-@pytest.mark.parametrize('time_yr', [1.0, T_MIG], ids=['first_recorded_step', 'mid_evolution'])
-@pytest.mark.parametrize(
-    'migration',
     ['instant', 'sigmoid', 'high_ecc'],
     ids=['instant_jump', 'sigmoid_ramp', 'high_eccentricity'],
 )
