@@ -229,11 +229,9 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
     records = outcome['impacts'].get(chosen['id'], [])
 
     offset = config.accretion.time_offset
-    # Select the fields explicitly rather than splatting each record, the same
-    # way the file reader does. The dependency is pinned by a version floor, so
-    # a later release may add fields to its records; ignoring the ones the
-    # coupling does not consume keeps that from becoming a fatal argument error,
-    # and a missing field still reports which one by name.
+    # Select fields explicitly rather than unpacking each record. This
+    # allows upstream releases to add unconsumed fields while reporting
+    # missing required fields by name.
     events = []
     for index, record in enumerate(records):
         missing = [column for column in TIMELINE_COLUMNS if column not in record]

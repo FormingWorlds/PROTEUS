@@ -851,10 +851,8 @@ def test_impact_mass_closure_counts_each_volatile_channel_once(monkeypatch):
     expected = m_planet_0 + rock + delivered - stripped
     assert m_planet_after == pytest.approx(expected, rel=1e-9)
 
-    # Discrimination: both double-counting failure modes sit far outside
-    # tolerance. Growing the anchor by the full merger mass over-counts the
-    # delivery (~1e21 kg); also subtracting the strip from the anchor
-    # under-counts it by another 1e22 kg.
+    # Verify double-counting failure modes sit outside tolerance. Full merger mass
+    # over-counts delivery; subtracting stripped volatile under-counts it.
     assert abs(m_planet_after - (expected + delivered)) > 0.5 * delivered
     assert abs(m_planet_after - (expected - stripped)) > 0.5 * stripped
 
@@ -951,10 +949,8 @@ def test_match_planet_partition_mirror_and_fallback(monkeypatch):
             }
         ]
     )
-    # Today: H half atmospheric, N fully dissolved, C fully escaped (no
-    # budget left to mirror). Bulk atm fraction = 2e21/6e21 = 1/3. The
-    # half-strength collision also strips half the target atmosphere, which
-    # the H expectation below accounts for.
+    # Set target state: H half atmospheric, N fully dissolved, C fully escaped.
+    # The half-strength collision strips half of target atmosphere.
     _atm_state(handler.hf_row, H=(2.0e21, 4.0e21), N=(0.0, 2.0e21))
     handler.hf_row['C_kg_total'] = 0.0
     m_imp = 0.5 * M_earth
@@ -1277,10 +1273,8 @@ def test_zephyrus_loss_module_evaluates_the_kegerreis_law(monkeypatch):
         rho_impactor=rho_e,
     )
     f_swapped = _impact_loss_fraction(cfg, hf_row, swapped)
-    # Absolute pins on both sides of the mass assignment: a dispatch with
-    # the target and impactor masses interchanged returns these two values
-    # permuted, failing both pins, where a difference-only check would
-    # survive the permutation unchanged.
+    # Absolute pins detect parameter swapping between target and impactor.
+    # An interchanged dispatch permutes the values and fails both checks.
     assert f_asym == pytest.approx(0.2675, rel=2e-3)
     assert f_swapped == pytest.approx(0.5258, rel=2e-3)
     assert f_asym < f_swapped  # the lighter impactor erodes less
@@ -2283,10 +2277,8 @@ def test_the_rock_and_volatile_element_sets_partition_the_registry():
     )
 
     conserved = set(_VOLATILE_ELEMENTS)
-    # Rock is whatever the conserved set leaves behind. Taking the complement
-    # here rather than reading a second list is the point: an element cannot
-    # then be counted in both channels or in neither, whatever the registry
-    # grows next.
+    # Rock is the complement of the conserved volatile set. Taking the complement
+    # prevents elements from double counting or omission.
     rock = set(element_list) - conserved
 
     assert conserved == set(vol_element_list) | set(noble_gases)
@@ -2295,10 +2287,8 @@ def test_the_rock_and_volatile_element_sets_partition_the_registry():
     # tracks cannot fall outside both channels.
     assert conserved <= set(element_list)
 
-    # Discrimination: the rock-forming set is not a subset of some smaller
-    # hard-coded group. Al, Ti, Ca and K are rock-forming and were added to the
-    # registry after the accretion module was written; a copied four-element
-    # tuple would conserve them as volatile budgets.
+    # Verify rock-forming set includes elements beyond core species.
+    # Al, Ti, Ca, and K are rock-forming and must not be treated as volatile budgets.
     assert {'Al', 'Ti', 'Ca', 'K'} <= rock
     for element in vap_element_list:
         assert element not in conserved, (
@@ -2384,14 +2374,8 @@ def test_the_row_an_impact_leaves_satisfies_the_runtime_mass_invariants(monkeypa
     assert_mass_conservation(hf_row, require_atm_le_planet=True)
     assert_surface_pressure_consistency(config, hf_row)
 
-    # Discrimination: the checks above ran against a row both channels moved,
-    # not a copy of the starting one. Hydrogen closes as
-    #   4.0e20 - 0.4 * 3.0e19        (the strip, 40% of the atmospheric H)
-    #   + 3.2e20 - 0.4 * 0.075 * 3.2e20   (delivery, less the impactor's own
-    #                                      atmospheric part lost in the
-    #                                      collision at the target's 7.5%
-    #                                      atmospheric fraction)
-    # = 6.984e20 kg. A run that skipped either channel lands elsewhere.
+    # Confirm both delivery and stripping updated the row. Total H closes
+    # to 6.984e20 kg accounting for atmospheric loss and retained delivery.
     assert hf_row['H_kg_total'] == pytest.approx(6.984e20, rel=1e-12)
     # Both strips are booked as loss: 40% of the H and of the O atmosphere.
     assert hf_row['esc_kg_cumulative'] == pytest.approx(2.0e19, rel=1e-12)

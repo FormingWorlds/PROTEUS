@@ -78,11 +78,8 @@ _DROP_PREFIXES = (
 # decision: pin it (OVERRIDES) or certify it neutral (add it here).
 _REVIEWED_NEUTRAL = frozenset(
     {
-        # Accretion is off by default and every impactor budget starts at
-        # zero, so a migrated config experiences no impacts, no delivery,
-        # and no impact atmosphere loss (atmloss_module is off and its
-        # fraction is zero). The morrigan and dummy sub-blocks are only
-        # read once their backend is selected, which migration never does.
+        # Accretion defaults to inactive with zero impactor budgets, zero
+        # loss fractions, and unread dummy/morrigan sub-blocks.
         'accretion.atmloss_frac',
         'accretion.atmloss_module',
         'accretion.dummy.eccentricity',

@@ -476,11 +476,8 @@ def next_step(
                 )
                 dtswitch = dt_capped
 
-    # Land exactly on the next scheduled giant impact, since it remelts the
-    # mantle and grows the planet: the state must match the timeline, not
-    # whatever a step that overshot it produced. The clamp only shortens
-    # dt and floors at the minimum step; impact_maximum further bounds the
-    # landing step independent of how coarse dt had grown beforehand.
+    # Align step with the next scheduled giant impact, bounded by dtfloor
+    # and optional impact_maximum to prevent overshooting the impact time.
     if interior_o is not None and np.isfinite(interior_o.t_next_impact):
         dt_to_impact = interior_o.t_next_impact - hf_row['Time']
         impact_ceiling = float(config.params.dt.impact_maximum)

@@ -20,17 +20,12 @@ log = logging.getLogger('fwl.' + __name__)
 _RHO_IRON = 7870.0
 _RHO_SILICATE = 3300.0
 
-# Smallest impact worth applying, as a fraction of the total accreted mass. The
-# growth law's increments decay geometrically, so a timescale far shorter than
-# the impact spacing drives the later ones toward zero; each would still re-melt
-# the whole mantle and reset the orbit, which a boulder cannot do. Rejecting
-# them names the configuration error rather than letting the run apply it.
+# Smallest impact mass fraction relative to total accreted mass, rejecting
+# geometrically decaying increments that are too small to justify mantle remelting.
 _MIN_IMPACT_MASS_FRAC = 1.0e-4
 
-# Smallest impactor worth applying, as a fraction of the target it strikes. Every
-# impact re-melts the whole mantle, strips atmosphere and moves the orbit, so a
-# body far below this cannot be one: the Moon-forming impactor is of order a
-# tenth of Earth, and a thousandth is already three orders below that.
+# Minimum impactor mass ratio relative to target mass required to qualify as
+# a giant impact that alters mantle structure and orbit.
 _MIN_IMPACTOR_TARGET_RATIO = 1.0e-3
 
 
@@ -109,13 +104,9 @@ def _impact_masses(config: Config) -> list[float]:
         math.exp(-edges[k] / tau) - math.exp(-edges[k + 1] / tau) for k in range(n_impacts)
     ]
 
-    # A timescale far from the impact spacing makes the law unusable. Too short
-    # and it completes inside the first interval, leaving the later impacts with
-    # a vanishing share; too long and the accreted fraction over the whole
-    # timeline underflows, leaving all of them with one. The test is on the
-    # delivered masses rather than on the weights, because a weight can be
-    # positive and still describe an impact too small to be a giant impact,
-    # which would nonetheless re-melt the mantle and reset the orbit.
+    # Validate that timescale delivers non-negligible mass shares across
+    # all impacts, rejecting configurations where late impacts decay below
+    # the minimum giant-impact mass fraction.
     total = sum(weights)
     if total <= 0.0:
         smallest = 0.0
@@ -194,10 +185,8 @@ def _merged_orbit(
     mu = const_G * m_star
     v_kep = math.sqrt(mu / a_target)
 
-    # Velocity components at the crossing radius, (radial, tangential). A body
-    # sharing the semi-major axis shares the speed, but an eccentric one carries
-    # less angular momentum and makes up the difference radially. The two cross
-    # in opposite radial senses, so their radial components have opposite signs.
+    # Radial and tangential velocity components at crossing radius,
+    # with opposite signs representing opposing radial senses.
     v_target = (-v_kep * e_target, v_kep * math.sqrt(1.0 - e_target**2))
     v_impactor = (v_kep * e_impactor, v_kep * math.sqrt(1.0 - e_impactor**2))
 
@@ -212,11 +201,8 @@ def _merged_orbit(
         (m_target * v_target[1] + m_impactor * v_impactor[1]) / m_merged,
     )
 
-    # Vis-viva at the collision radius, then the angular momentum fixes the
-    # eccentricity. Averaging two velocities of equal magnitude can only lower
-    # the speed, so under this co-orbital geometry the merged orbit is always
-    # bound and never wider than the one the bodies shared. That is a property
-    # of the shared semi-major axis, not a general result for mergers.
+    # Determine post-collision semi-major axis and eccentricity from
+    # vis-viva equation and angular momentum conservation at collision radius.
     speed_sq = v_merged[0] ** 2 + v_merged[1] ** 2
     a_after = 1.0 / (2.0 / a_target - speed_sq / mu)
 
@@ -272,11 +258,8 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
                 'raise planet.mass_tot.'
             )
 
-        # Whether an impact is a giant impact is a statement about the two bodies,
-        # not about how the delivered mass happens to be divided up. The share of
-        # the budget is bounded elsewhere, but a large budget spread over many
-        # impacts onto a heavy planet can still schedule collisions far too small
-        # to melt a mantle or reset an orbit, which is what each one goes on to do.
+        # Enforce minimum impactor-to-target mass ratio to ensure scheduled
+        # collisions are sufficiently large to warrant mantle remelting.
         if m_impactor < _MIN_IMPACTOR_TARGET_RATIO * m_target:
             raise ValueError(
                 f'Impact {index} carries {m_impactor / m_target:.3e} of its target '
@@ -294,10 +277,8 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
             m_target, m_impactor, a_target, e_target, eccentricity, m_star
         )
 
-        # Contact speed: the encounter velocity, focused by the pair's mutual
-        # gravity. This is the convention the collision erosion law expects and
-        # it puts the collision velocity at or above the escape velocity for
-        # any encounter, including a strictly circular one.
+        # Contact speed: encounter velocity gravitationally focused by the pair's
+        # mutual escape velocity, meeting the collision erosion convention.
         v_esc = math.sqrt(2.0 * const_G * m_merged / (r_target + r_impactor))
         v_impact = math.hypot(v_encounter, v_esc)
 

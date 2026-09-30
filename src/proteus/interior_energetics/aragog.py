@@ -156,16 +156,8 @@ _RHO_CORE_MIN = 1000.0
 _RHO_CORE_MAX = 30000.0
 
 
-# How much of the time the interior is given it has to actually cover, and
-# over how many steps that is judged. A step the phase-change event cuts short
-# is fine on its own; a run that covers under a percent of everything it asks
-# for is not going anywhere, however healthy each individual solve is. The
-# share is read over a window rather than per step, and over a run of steps
-# rather than consecutive ones, because a run can alternate between stopping
-# at the front and stepping normally and still be stalled: what matters is the
-# ground covered, not how the short steps are spaced. Twenty steps is long
-# enough that an ordinary step or two cannot hide a stall and short enough to
-# catch one within seconds rather than after a night of wall time.
+# Minimum fraction of requested time the interior solver must advance across
+# a rolling window of steps before raising an unrecoverable stall error.
 _STEP_PROGRESS_MIN_SHARE = 0.01
 _STEP_PROGRESS_WINDOW = 20
 
@@ -2173,10 +2165,8 @@ class AragogRunner:
         sanity_dT_core = max(
             3000.0, 1500.0 * mass_tot
         )  # max plausible T_core change per retry [K]
-        # A giant impact re-melts the mantle between solves, so the T_core jump
-        # it produces is real and is identical at every step size. Retrying
-        # cannot shrink it, so the guard would spend the whole ladder and kill
-        # the run. Skip it on that one step; every other step keeps it.
+        # Giant impacts cause real T_core jumps that retries cannot reduce.
+        # Skip the sanity check on impact steps to prevent false ladder exhaustion.
         impact_step = bool(getattr(interior_o, 'impact_reset_this_step', False))
 
         # Immediately before the solve, so the state-heat integral this step
@@ -2268,13 +2258,9 @@ class AragogRunner:
                         float(hf_row.get('Time', 0.0)),
                     )
 
-                # Status check: did the solver accept the step? Status 0 is a
-                # full step. Status 1 is a terminal event (melt-fraction cap or
-                # liquidus crossing) with valid partial state; the scipy
-                # fallback reports it while CVODE maps the same cap to status 0.
-                # Accept it when it advanced (dt_actual > 0): retrying refires
-                # the event at the same place, and a zero-advance step would
-                # stall the loop, so only that case is rejected.
+                # Accept full steps (status 0) and terminal events with advance
+                # (status 1 with dt_actual > 0). Zero-advance events stall the
+                # loop and are rejected.
                 stopped_on_event = out.status == 1 and float(out.dt_actual) > 0.0
                 if out.status == 0 or stopped_on_event:
                     # Post-solve sanity guard on the CMB temperature. It must
@@ -2283,16 +2269,9 @@ class AragogRunner:
                     # exhaustion message.
                     sanity_reject_reason = None
 
-                    # Reject a solve with a non-finite or implausibly large
-                    # CMB temperature jump. The finiteness check always runs,
-                    # so a corrupted relaxed-rtol solve never passes even on
-                    # the first solve. The jump-magnitude check needs a
-                    # pre-solve reference, so it is inactive when T_core_pre
-                    # <= 0 (a row missing both T_cmb and T_core, which
-                    # includes solve one). A giant impact re-melts the mantle
-                    # between solves, so the jump it produces is real and
-                    # identical at every step size; retrying cannot shrink
-                    # it, so the magnitude check is skipped on that step.
+                    # Reject non-finite CMB temperatures and implausibly large jumps.
+                    # The jump-magnitude check is inactive when T_core_pre <= 0
+                    # or during an impact step.
                     tcore_endpoint = float(out.T_core)
                     # tcore_change_max is the intra-solve maximum change,
                     # >= the endpoint change by construction; on an older
@@ -2344,13 +2323,8 @@ class AragogRunner:
                                 float(out.dt_actual),
                                 attempted_dt,
                             )
-                        # Weighed against what the coupling asked for, not
-                        # against this attempt's interval. The ladder halves
-                        # the interval on every rejected attempt, so a step
-                        # accepted on a retry would otherwise be scored
-                        # against an interval already cut down by up to a
-                        # factor of thirty-two, and the steps that needed a
-                        # retry are exactly the ones a stall is made of.
+                        # Score progress against dt_requested rather than the halved
+                        # retry interval to prevent false progress during stalls.
                         self._track_step_progress(
                             interior_o, float(out.dt_actual), dt_requested, hf_row
                         )
@@ -2788,11 +2762,8 @@ class AragogRunner:
             # the table-vs-phase density difference); machine-precision
             # conservation is the separate solver-residual column.
             'step_dE_state_heat_J': out.step_dE_state_heat_J,
-            # Giant-impact re-melt heat [J]. Zeroed on every solve call so
-            # ordinary rows carry no impact energy; the accretion handler,
-            # which runs after this call on the iteration an impact lands,
-            # overwrites it with the heat the re-melt injects. The coupler
-            # adds it to both sides of the conservation budget.
+            # Giant-impact re-melt heat [J]. Initialized to zero and populated
+            # by the accretion handler on impact iterations.
             'step_dE_impact_J': 0.0,
             # Boundary layer thickness, taken straight from the atmosphere
             # config. Surfaced here so the helpfile carries a single

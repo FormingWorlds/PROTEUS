@@ -1,15 +1,7 @@
 #!/bin/bash
-# Download and setup Morrigan (optional giant-impact accretion module) as
-# an editable sibling checkout.
-#
-# Clones FormingWorlds/Morrigan into ./Morrigan/ inside the PROTEUS root,
-# checks out the git tag matching the fwl-morrigan version floor pinned in
-# pyproject.toml ([project.optional-dependencies].morrigan), and installs it
-# editable. Pinning to the floor tag keeps the editable checkout and the PyPI
-# fwl-morrigan release in lock-step instead of tracking the default branch.
-#
-# For a plain (non-editable) install, `pip install "fwl-proteus[morrigan]"`
-# is enough; this script is for developing against a Morrigan checkout.
+# Clone and configure Morrigan as an editable module inside ./Morrigan/.
+# Checks out the git tag matching the fwl-morrigan floor in pyproject.toml.
+# For standard installations, use `pip install "fwl-proteus[morrigan]"`.
 
 set -euo pipefail
 
@@ -30,9 +22,7 @@ root=$(dirname "$(portable_realpath "$0")")
 root=$(portable_realpath "$root/..")
 
 # Refuse to delete a checkout holding local work unless --force is given.
-# Keep this guard in sync across the get_* scripts that refresh checkouts.
-# Guarded states: modified tracked files, and commits not on any remote.
-# Untracked files (build artifacts, egg-info) do not block the refresh.
+# Guards against overwriting uncommitted changes or unpushed commits.
 force=false
 for arg in "$@"; do
     [ "$arg" = "--force" ] && force=true
@@ -55,10 +45,8 @@ tmp_clone="${workpath%/}.tmp.$$"
 rm -rf "$tmp_clone"
 trap 'rm -rf "$tmp_clone"' EXIT
 
-# Detect SSH access to GitHub. `ssh -T git@github.com` exits 1 when
-# authentication succeeds (GitHub refuses the shell), so a plain call
-# would trip `set -e`; keeping it as the `if` condition keeps it in
-# scope where a non-zero exit is expected rather than fatal.
+# Detect SSH access to GitHub. Exit code 1 from ssh -T git@github.com
+# indicates authentication succeeded without shell access.
 if ssh -T git@github.com; then
     use_ssh=false
 else
@@ -78,17 +66,8 @@ fi
 echo "    $uri -> $tmp_clone"
 git clone "$uri" "$tmp_clone" || { echo "ERROR: git clone failed" >&2; exit 1; }
 
-# Pin the checkout to the fwl-morrigan version floor declared in PROTEUS's
-# pyproject.toml, so the editable install matches the PyPI release across
-# machines and CI instead of tracking whatever the default branch points at.
-# The floor is written zero-padded (26.07.25) to match the release tag; PEP
-# 440 treats that as equal to the normalised PyPI version (26.7.25), so the
-# same string serves both the dependency resolver and this checkout.
-# Comments are stripped before matching: the pin carries a rationale comment
-# above it, and a future comment naming a different version would otherwise be
-# picked up first and checked out instead of the real floor. The `|| true`
-# keeps a missing pin from aborting under `set -e` before the warning below
-# can explain what went wrong.
+# Pin checkout to the fwl-morrigan version floor from pyproject.toml.
+# Strip comments before extracting to match the active dependency specification.
 floor=$(sed 's/#.*//' "$root/pyproject.toml" \
     | grep -oE 'fwl-morrigan>=[0-9][0-9.]*' | head -1 | sed 's/.*>=//' || true)
 if [ -n "$floor" ]; then

@@ -15,19 +15,12 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Elements whose whole-planet budget is conserved across an impact's mass
-# growth, and which the strip and the delivery are sized from. This is the set
-# ``update_planet_mass`` sums into M_ele, so what an impact conserves and what
-# the whole-planet mass is built from are the same elements by construction.
-# The noble gases are in it, so a planet-matching impactor carries them in
-# proportion like every other volatile.
+# Volatile elements whose whole-planet budgets are conserved across impact mass
+# growth. This set matches what update_planet_mass sums into M_ele.
 _VOLATILE_ELEMENTS = tuple(e for e in element_list if e in vol_element_list or e in noble_gases)
 
-# Every other element in the registry is rock-forming. Its mass grows through
-# the structure solve (mass_tot and the equation of state) rather than through a
-# budget, which is why M_ele leaves it out and why nothing here iterates over it:
-# rock is the complement of the set above, never a list of its own, so an element
-# cannot be counted in both channels or in neither.
+# Rock-forming elements are the complement of _VOLATILE_ELEMENTS. Their mass
+# grows through structure solves rather than individual volatile budgets.
 
 # Elements configurable through the per-element ppmw fields. The ppmw mode
 # can only deliver these; the planet-matching mode covers the full volatile
@@ -72,14 +65,8 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
 
     log.info('Preparing accretion model')
 
-    # Advise when the Aragog re-melt initial condition is not guaranteed molten.
-    # The re-melt re-applies the run's temperature-mode initial condition, and
-    # only 'liquidus_super' guarantees it is fully molten for any planet mass and
-    # melting curve; every other mode is only as molten as the user's temperature
-    # or entropy value makes it. 'adiabatic_from_cmb' is commonly chosen to force
-    # a molten state, but whether it reaches one depends on tcmb_init, so it draws
-    # the advisory too. Emitted here, after the file logger exists, rather than in
-    # the config validator, which runs before it.
+    # Advise when the Aragog re-melt temperature mode does not guarantee a molten
+    # state. Only 'liquidus_super' guarantees a fully molten mantle.
     _GUARANTEED_MOLTEN_MODES = ('liquidus_super',)
     if (
         config.interior_energetics.module == 'aragog'
@@ -98,12 +85,8 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
 
     resolved_path = os.path.join(handler.directories['output'], _RESOLVED_TIMELINE_FILE)
 
-    # A resumed run replays the timeline the first session resolved rather than
-    # deriving it again. Re-deriving would repeat a dynamical model's whole
-    # evolution at every restart, and would only reproduce the original history
-    # if that model is bit-reproducible at a fixed seed, which is not something
-    # PROTEUS can check. Reading the file makes the impact history a property of
-    # the run rather than of the model's determinism.
+    # Resumed runs replay the previously resolved timeline to ensure consistent
+    # impact history across restarts.
     if config.params.resume and os.path.exists(resolved_path):
         # Written on the PROTEUS axis with the offset already applied, so it
         # must not be offset a second time.
@@ -200,10 +183,8 @@ def restore_accretion_state(handler: Proteus) -> None:
     """
     config = handler.config
 
-    # Driven by the ledger, not by the module setting. Turning accretion off to
-    # continue a run whose impacts are done is a reasonable thing to do, and it
-    # must not silently revert the planet to its configured mass: what the
-    # helpfile records is what happened, whatever the module is set to now.
+    # Restore accretion state from the helpfile ledger rather than config settings,
+    # ensuring mass history persists even if accretion is later disabled.
     if not config.params.resume:
         return
 
@@ -260,12 +241,8 @@ def restore_accretion_state(handler: Proteus) -> None:
                 handler.impact_events = handler.impact_events[remaining_to_drop:]
 
     if accreted <= 0.0:
-        # Say so rather than returning in silence. A ledger of zero means either
-        # that no impact has landed yet, which is ordinary, or that the helpfile
-        # predates the ledger and the reader filled it in, in which case the
-        # growth of every impact before this restart is not recoverable and the
-        # run continues from the configured mass. The reader warns when it fills
-        # the column; this line is what connects that warning to its consequence.
+        # Inform user when continuing from configured mass, which occurs either
+        # prior to any impacts or when resuming from an older helpfile format.
         if config.accretion.module is not None:
             log.info(
                 'No accreted rock recorded before this resume: continuing from the '
@@ -395,10 +372,8 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         event.mass_delta / M_earth,
     )
 
-    # Size every volatile consequence from the pre-impact state, before any of
-    # it is applied: what the impact strips from the target's atmosphere, and
-    # what the impactor carries, split into the part delivered into the planet
-    # and the part its own atmosphere loses with the collision.
+    # Calculate volatile stripping and delivery from the pre-impact state
+    # before applying any mass updates.
     log.info(
         '    impactor volatiles: %s; atmosphere loss: %s',
         config.accretion.impactor_volatiles,
@@ -411,39 +386,17 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     )
     delivered, impactor_lost = _partition_impactor_content(config, hf_row, content, f_loss)
 
-    # Snapshot the whole-planet volatile budgets before the structure re-solve.
-    # solve_structure recomputes the ppmw-mode budgets against the grown mass,
-    # which would let even a dry impactor inflate the volatile inventory as if
-    # the added rock carried the planet's volatile content. Volatiles are
-    # conserved across the mass growth and change only through the strip and
-    # delivery below; the rock mass grows through the structure solve itself.
+    # Snapshot volatile budgets before the structure solve to prevent ppmw
+    # recomputation from artificially inflating volatile inventories.
     volatile_budgets = _snapshot_volatile_budgets(hf_row)
 
-    # Grow the interior anchor by the impactor's rock alone: the merger mass
-    # minus the impactor's full volatile content. The anchor and the volatile
-    # budgets are the two halves of the whole-planet mass, so each impact
-    # channel must land in exactly one of them; the delivered volatiles and
-    # the target strip move the budgets below, and the impactor's lost
-    # atmosphere never enters the planet at all. The whole-planet mass then
-    # closes to before + rock + delivered - stripped, which can be a net
-    # shrink when a small impactor blows off a heavier atmosphere.
-    # mass_tot is in Earth masses; the amounts are in kg.
+    # Increase the interior anchor by the impactor's rock mass alone. Volatile
+    # budgets and target stripping are applied separately below.
     from proteus.accretion.common import MASS_CLOSURE_RTOL
 
     impactor_rock = event.mass_delta - sum(content.values())
-    # A volatile content larger than the impactor is not a collision: the anchor
-    # would go backwards while the planet still keeps the volatiles, and because
-    # both halves move together the whole-planet mass stays self-consistent and
-    # nothing downstream notices. The ppmw budgets are bounded at config load,
-    # but 'match_planet' composes the content at the moment of impact and is not.
-    #
-    # The content is a fraction of M_impactor while the remainder is taken from
-    # mass_delta, and a timeline is accepted when the merged mass closes to
-    # MASS_CLOSURE_RTOL, so a budget approaching the whole impactor can leave a
-    # remainder that is negative by that rounding alone. The closure is measured
-    # against the merged mass, so the tolerance is too, which for a small
-    # impactor is far wider than the same fraction of mass_delta would be. Only
-    # a deficit beyond it is real; within it the rock is zero.
+    # Validate that volatile mass does not exceed impactor mass beyond numerical
+    # closure tolerance. Small negative remainders within tolerance clamp to zero.
     rock_tol = MASS_CLOSURE_RTOL * (event.M_target_before + event.M_impactor)
     if impactor_rock < -rock_tol:
         raise ValueError(
@@ -462,12 +415,8 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     impactor_rock = max(impactor_rock, 0.0)
     config.planet.mass_tot += impactor_rock / M_earth
 
-    # Record the growth in the helpfile as well as in the configuration. The
-    # configuration is rebuilt from the TOML on every start, so it cannot carry
-    # state across a resume; this column is what lets a resumed run rebuild the
-    # anchor. It holds rock only, matching what the anchor accumulates, so it
-    # must not be confused with the whole-planet mass, which also carries the
-    # volatile budgets.
+    # Record accreted rock and impact counts in the helpfile so resumed runs
+    # can restore the accumulated mass and event state.
     hf_row['M_accreted_rock'] = float(hf_row.get('M_accreted_rock') or 0.0) + impactor_rock
     hf_row['n_impacts_applied'] = int(float(hf_row.get('n_impacts_applied') or 0.0)) + 1
     solve_structure(
@@ -498,13 +447,8 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         handler.crystallized = False
         log.info('    solidification latch cleared: the mantle is molten again')
 
-    # An impactor that brought volatiles to a planet that had run dry gives it
-    # an inventory again, so lift the one-way desiccation latch too. The
-    # desiccated path zeroes every volatile column it is given, so leaving the
-    # latch set would erase the delivery on the next outgassing call and the
-    # planet would stay dry no matter how wet the impactors were. The latch is
-    # only lifted, not re-decided: the desiccation check runs again on the next
-    # iteration and re-sets it if the delivery was too small to matter.
+    # Clear the desiccation latch if volatiles were delivered to allow
+    # outgassing to resume. The latch will re-evaluate on the next step.
     if delivered and getattr(handler, 'desiccated', False):
         handler.desiccated = False
         log.info('    desiccation latch cleared: the impact delivered volatiles')
@@ -589,12 +533,8 @@ def _apply_volatile_consequences(
             sum(impactor_lost.values()),
         )
 
-    # Refresh the tracked-element total AND the whole-planet mass from the
-    # conserved budgets plus the strip and delivery. solve_structure set both
-    # from the mass-scaled values it computed, which the updates above have
-    # overridden; refreshing M_ele alone would leave M_planet disagreeing with
-    # M_int + M_ele for the rest of the iteration, and escape runs inside that
-    # window and reads M_planet.
+    # Refresh tracked-element total and whole-planet mass from updated budgets
+    # so M_planet remains consistent with M_int + M_ele for subsequent modules.
     from proteus.interior_energetics.wrapper import update_planet_mass
 
     update_planet_mass(hf_row)

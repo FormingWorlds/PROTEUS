@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # Rebuild the code-architecture diagram in docs/assets from its model.
-#
-# Requirements: a TeX distribution providing pdflatex with the standalone, tikz,
-# helvet and sansmath packages; poppler's pdftocairo; Python with Pillow.
-#
+# Requires pdflatex (standalone, tikz, helvet, sansmath), pdftocairo, and Pillow.
 # Usage: bash tools/figures/build_architecture.sh
 set -euo pipefail
 

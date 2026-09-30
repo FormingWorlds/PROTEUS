@@ -41,10 +41,8 @@ from proteus.utils.constants import M_earth
 
 pytestmark = [pytest.mark.smoke, pytest.mark.timeout(120)]
 
-# Iteration count above which "once per impact" and "once per data write"
-# are unambiguously different outcomes. The runs below write on every
-# iteration, so a discard wired to the write alone would fire this many
-# times against the single impact that actually lands.
+# Iteration threshold distinguishing once-per-impact discards from
+# once-per-data-write operations across snapshot writes.
 MIN_WRITE_ITERATIONS = 5
 
 
@@ -76,10 +74,8 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
 
         runner.config.planet.tsurf_init = 2000.0
 
-        # A window that comfortably brackets the single impact below. The
-        # timestep floor is far smaller than the shortening the clamp needs, so
-        # a step can land exactly on the impact time; leaving the floor above
-        # that shortening would let the run overshoot and still look correct.
+        # Configure simulation window and time-step bounds so the clamp
+        # can land exactly on the scheduled impact time.
         runner.config.params.stop.time.minimum = 1e2
         runner.config.params.stop.time.maximum = 1e5
         runner.config.params.dt.initial = 1e3
@@ -90,11 +86,8 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
         runner.config.params.out.write_mod = 1
         runner.config.params.out.archive_mod = 'none'
 
-        # One impact delivering 0.1 M_earth. num_impacts = 1 puts the whole
-        # budget in that single impact, so the expected growth is exact rather
-        # than a share of an exponential. The time sits early in the run: the
-        # all-dummy planet solidifies and stops the run within about 1e4 yr, so
-        # a later impact would never be reached.
+        # Single 0.1 M_earth impact scheduled early in the run before
+        # the dummy mantle cools and solidifies.
         delivered = 0.1
         impact_time = 4.0e3
         runner.config.accretion.module = 'dummy'
@@ -127,10 +120,8 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
             f'{impact_time:.3e} yr; the test would not have exercised anything'
         )
 
-        # A step lands exactly on the impact time. The adaptive controller would
-        # not choose that time on its own, so this is the timestep clamp doing
-        # its job: without it the impact fires on whichever step first overshoots
-        # and the planet grows at the wrong moment.
+        # Timestep clamp ensures a step lands exactly on the impact time
+        # without overshooting.
         times = hf['Time'].values
         assert np.any(np.isclose(times, impact_time, rtol=0, atol=1e-6)), (
             f'no step landed on the impact time {impact_time:.4e} yr; '
@@ -174,10 +165,8 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
         m_int = hf['M_int'].values
         assert m_int[-1] > m_int[0], 'the interior mass must grow across the impact'
 
-        # The atmospheric strip ran and was booked into the loss ledger the
-        # desiccation criterion audits. Without this the ordering claim in this
-        # file's docstring would be untested, because a strip of zero exercises
-        # nothing about where the strip sits relative to escape and outgassing.
+        # Verify impact atmospheric stripping is executed and recorded
+        # in the cumulative loss ledger.
         assert 'esc_kg_cumulative' in hf.columns
         ledger = hf['esc_kg_cumulative'].fillna(0.0).values
         assert np.all(np.diff(ledger) >= 0.0), 'the loss ledger must not decrease'
@@ -221,10 +210,8 @@ def _impact_runner(output_dir, *, write_mod, impact_time, delivered):
 
     runner.config.planet.tsurf_init = 2000.0
 
-    # The step ceiling is well below the impact time, so the run takes a
-    # double-figure number of steps to reach it rather than jumping over it in
-    # two. That is what makes "once per impact" and "once per write" tell
-    # apart below.
+    # Cap step size below impact time to require multiple iterations,
+    # distinguishing per-impact operations from per-write events.
     runner.config.params.stop.time.minimum = 1e2
     runner.config.params.stop.time.maximum = 1e5
     runner.config.params.dt.initial = 1e3
@@ -336,10 +323,8 @@ def test_the_snapshot_discard_fires_once_per_impact_and_only_on_a_write_step(
         f'the discard fired at {landed["time"]:.6e} yr against an impact at '
         f'{impact_time:.6e} yr; it is not firing on the impact step'
     )
-    # The ledger already carries the impactor's rock, so the impact was
-    # applied before the discard ran. A discard placed ahead of the impact
-    # would see zero here and would be dropping a snapshot that is still
-    # current.
+    # Accreted rock ledger verifies the impact was applied before the
+    # pre-impact snapshot was discarded.
     assert landed['accreted'] == pytest.approx(delivered * M_earth, rel=1e-6), (
         f'the accreted-rock ledger read {landed["accreted"]:.6e} kg when the '
         f'discard ran, not the {delivered * M_earth:.6e} kg the impact adds; '

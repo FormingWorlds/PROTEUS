@@ -776,10 +776,9 @@ config_version = "3.0"
     module                    = "none"       # none | dummy | timeline | morrigan
     time_offset               = 0.0          # shift of impact times onto the PROTEUS time axis [yr]
 
-    # Impactor volatile content source: dry impactors add silicate and iron
-    # mass only; match_planet impactors carry the planet's own formation
-    # composition scaled to their mass; ppmw impactors carry the per-element
-    # budgets below (read only in ppmw mode).
+    # Impactor volatile source: dry impactors add silicate and iron only;
+    # match_planet scales formation composition to impactor mass;
+    # ppmw sets explicit volatile budgets per element.
     impactor_volatiles        = "dry"        # dry | match_planet | ppmw
     impactor_H_ppmw           = 0.0          # hydrogen per impactor [ppmw of impactor mass]
     impactor_C_ppmw           = 0.0          # carbon per impactor [ppmw of impactor mass]
@@ -787,12 +786,9 @@ config_version = "3.0"
     impactor_S_ppmw           = 0.0          # sulfur per impactor [ppmw of impactor mass]
     impactor_O_ppmw           = 0.0          # oxygen per impactor [ppmw of impactor mass]
 
-    # Impact atmosphere loss. One fraction governs both bodies at each impact:
-    # the target loses that fraction of its atmosphere, and a volatile-bearing
-    # impactor loses the same fraction of its atmospheric part and delivers the
-    # remainder. The constant module applies the fixed fraction below; the
-    # zephyrus module evaluates the Kegerreis et al. (2020) erosion law from
-    # each impact's collision parameters.
+    # Impact atmosphere loss: the fraction stripped from target and impactor.
+    # The constant module applies atmloss_frac directly; zephyrus evaluates
+    # the Kegerreis et al. (2020) collision erosion scaling.
     atmloss_module            = "none"       # none | constant | zephyrus
     atmloss_frac              = 0.0          # atmosphere fraction removed per impact (constant module) [0-1]
 
@@ -812,12 +808,9 @@ config_version = "3.0"
         selector_value        = "none"       # target orbit [AU] or embryo id, per selector
 
     [accretion.dummy]
-        # Analytical accretion: the planet approaches an asymptotic mass
-        # exponentially, impacts are placed at evenly spaced times, and each
-        # delivers the mass the law accretes over its interval, so the
-        # increments decay and the first impact is the largest. Radii follow
-        # the Noack & Lasbleis (2020) scaling and each merged orbit follows
-        # from conserving momentum through the collision.
+        # Analytical accretion: exponential mass growth with evenly spaced
+        # impacts, Noack & Lasbleis (2020) radii, and post-impact orbits
+        # determined by angular momentum conservation.
         mass_accreted         = 0.1          # total mass delivered over the timeline [M_earth]
         num_impacts           = 3            # number of impacts
         timescale             = 1.0e6        # e-folding time of the accretion law [yr]

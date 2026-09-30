@@ -152,10 +152,8 @@ def test_collision_velocity_cannot_fall_below_mutual_escape_velocity():
     assert any(v == pytest.approx(1.15e4, rel=1e-6) for v in quoted)
     assert any(v == pytest.approx(1.30e4, rel=1e-6) for v in quoted)
 
-    # The floor carries a relative tolerance for round-trip formatting only.
-    # A velocity a hair under the escape velocity is absorbed, one clearly
-    # under it is not, which discriminates the tolerance from an exact
-    # comparison and from a tolerance wide enough to swallow real errors.
+    # The escape velocity floor absorbs round-trip formatting deviations
+    # while rejecting velocities clearly below the mutual escape speed.
     validate_timeline([_event(v_impact=1.15e4 * (1.0 - 1.0e-7), v_esc=1.15e4)])
     with pytest.raises(ValueError, match='below the mutual escape velocity'):
         validate_timeline([_event(v_impact=1.15e4 * (1.0 - 1.0e-3), v_esc=1.15e4)])
@@ -532,10 +530,8 @@ def test_validator_accepts_the_analytic_two_body_collision():
     v_inf = 5.0e3
     v_impact = np.sqrt(v_inf**2 + v_esc**2)
 
-    # Pin the analytic escape velocity itself, so a change in the
-    # constants or the pair convention shows up here. Hand value:
-    # 2 G (M_t + M_i) = 8.8635e14, over R_t + R_i = 9.761e6 m, gives
-    # 9.0805e7 m2/s2 and a root of 9.5292e3 m/s.
+    # Pin analytic mutual escape velocity for the two-body collision pair
+    # (root of 2 G (M_t + M_i) / (R_t + R_i) = 9.5292e3 m/s).
     assert v_esc == pytest.approx(9.5292e3, rel=1e-4)
     # The single-body escape velocity is 1.1212e4 m/s, 18% higher and far
     # outside the tolerance, so the pair convention is discriminated

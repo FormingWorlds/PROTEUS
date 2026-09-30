@@ -919,12 +919,8 @@ def test_morrigan_guard_protects_its_own_checkout(tmp_path):
     assert res.returncode == 0
     assert 'GUARD_PASSED' in res.stdout
 
-    # Every installer that wipes a sibling git checkout carries the guard.
-    # Discovered from the shipped scripts so a newly added installer is
-    # covered without editing a list here. Scripts that unpack a download
-    # into the same variable (the PETSc archive) hold no local work and
-    # are correctly outside the sweep, which is why cloning is part of the
-    # predicate rather than deletion alone.
+    # Discover all installers that wipe sibling git checkouts and verify
+    # they include the unpushed/uncommitted change guard.
     tools_dir = Path(__file__).resolve().parents[2] / 'tools'
     sources = {p: p.read_text() for p in sorted(tools_dir.glob('get_*.sh'))}
     refreshing = [
@@ -999,14 +995,8 @@ def test_pyproject_keeps_morrigan_out_of_mandatory_dependencies():
         'tools/get_morrigan.sh must pin the checkout to the fwl-morrigan floor tag'
     )
 
-    # The extraction must read the pin, not a comment mentioning the package.
-    # The pin already carries a rationale comment above it, and the repo's
-    # house style puts such comments on the preceding lines, so a plain
-    # first-match grep would take a version named in prose. Run the script's
-    # own pipeline against a poisoned copy and require it to still pick the
-    # real floor.
-    # Run the script's OWN assignment, lifted verbatim, so a regression in the
-    # script is what fails here rather than a copy of it kept in the test.
+    # Verify the pin extractor strips comments before parsing, ensuring
+    # version numbers mentioned in preceding comments are not selected.
     assignment = re.search(r'^floor=\$\(.*?\)$', script, re.MULTILINE | re.DOTALL)
     assert assignment, 'could not find the floor assignment in tools/get_morrigan.sh'
 

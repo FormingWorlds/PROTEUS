@@ -1031,11 +1031,8 @@ class TestImpactAndBolscaleClampsTogether:
 
         # The step ends on the impact, not on the scaling edge.
         assert hf_row['Time'] + dt == pytest.approx(t_impact, rel=1e-12)
-        # Discrimination: an inert impact cap lands the step on the edge at
-        # 6e3, and the controller left alone chooses 8e3, so neither produces
-        # 3e3. This case says nothing about the scaling cap, which the next
-        # case pins: with the scaling cap inert the impact cap alone still
-        # returns 3e3 here.
+        # Neither an inert impact cap (landing at 6e3) nor the unconstrained
+        # controller (8e3) produces the 3e3 step target.
         assert dt < dt_to_edge
         assert dt < self.CONTROLLER_DT
         # The invariant the impact cap exists for: never step past the impact.
@@ -1085,10 +1082,8 @@ class TestImpactAndBolscaleClampsTogether:
         next_step(config, {}, hf_row, hf_all, 1.0, interior_o=interior_o)
         assert interior_o.timestep_clamped is True
 
-        # Same impact, but the window opens 4e8 yr out, far beyond any step.
-        # The impact still decides dt, and the flag must stay down: this is
-        # what separates "the scaling edge bound the step" from "something
-        # bound the step".
+        # With a distant scaling edge, the impact sets dt while the
+        # clamp flag remains False since the scaling edge was not reached.
         config, hf_all, hf_row, interior_o = self._setup(4.0e8, t_impact)
         dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=interior_o)
         assert interior_o.timestep_clamped is False

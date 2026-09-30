@@ -912,54 +912,9 @@ def GetHelpfileKeys():
         'T_pot',            # characteristic mantle potential temperature [K]
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
-        # Energy-conservation columns: per-call integrals plus their
-        # cumulative residual. The residual pairs the entropy-transported
-        # heat (state side) against the boundary-flux and source prediction
-        # (predicted side), both in the live EOS density frame ``ρ(P,S)``:
-        #   E_state_heat_cons_J = Σ (step_dE_state_heat_J + step_dE_impact_J)
-        #   dE_predicted_cons_J = Σ (step_dE_F_int_J + step_dE_F_cmb_J
-        #                            + step_dE_Q_radio_J + step_dE_Q_tidal_J
-        #                            + step_dE_impact_J)
-        #   E_residual_cons_J   = E_state_heat_cons_J - dE_predicted_cons_J
-        # ``step_dE_impact_J`` is the heat a giant-impact mantle re-melt
-        # injects, evaluated in the same ρ(P,S)·T·dS frame over the
-        # entropy jump from the cooled to the molten profile on the
-        # pre-impact solver mesh. It enters BOTH cumulatives: the state
-        # side because the jump falls between solver calls so no per-call
-        # state integral carries it, and the predicted side because the
-        # impact is an energy source. The residual is invariant across an
-        # impact for any booked value; the column is a defined convention,
-        # not a residual-checked quantity.
-        #   E_residual_cons_frac = E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J)
-        # This closes to about a percent of the cumulative cooling (largest
-        # near full melt and at crystallisation-front / structure-remesh
-        # steps), not to machine precision; that floor is the lever-rule
-        # vs tanh-blended phase density difference. The ``_cons`` suffix on
-        # these column names pairs them for readability and does not mean
-        # they use the frozen-mass ``step_dE_Q_*_cons_J`` variants.
-        # ``E_state_cons_J`` (frozen-mass enthalpy) and ``E_state_J``
-        # (state-mass enthalpy) are diagnostic snapshots only; do NOT build a
-        # residual on either. ``E_state_cons_J`` also indicates whether an
-        # EOS-aware interior module ran (non-zero), which populates the
-        # residual columns.
-        # ``solver_residual_J`` is the entropy-equation self-consistency
-        # check: the discrete flux divergence telescopes to the boundary
-        # fluxes, so it is machine-zero by construction and a non-zero
-        # value flags a divergence-assembly bug; it carries the
-        # machine-precision conservation guarantee. ``E_th_mantle`` is the
-        # ``m × Cp_apparent × T`` proxy with phase-dependent jumps in the
-        # mushy zone, not for conservation use. ``Q_radio_W`` / ``Q_tidal_W``
-        # are instantaneous mantle-integrated source powers in watts (do NOT
-        # integrate trapezoidally; spike-prone at CVODE phase-boundary
-        # moments). ``F_cmb`` is the analogous instantaneous CMB heat flux.
-        # The conservation primitive is the per-call integral set computed by
-        # Aragog over its CVODE sub-step trajectory:
-        #   step_dE_F_int_J        = -∫ F_int * A_int dt   [J]
-        #   step_dE_F_cmb_J        = +∫ F_cmb * A_cmb dt   [J]
-        #   step_dE_Q_*_J          = +∫ Q_* dt             [J] (live-density)
-        #   step_dE_Q_*_cons_J     = +∫ Q_* dt             [J] (frozen-mass)
-        #   step_dE_state_heat_J   = ∫ Σ ρ T dS            [J]
-        #   step_solver_residual_J = ∫ (LHS - RHS) dt      [J]
+        # Energy-conservation columns: cumulative integrals of entropy-transported
+        # heat against boundary-flux and source predictions in the live EOS frame,
+        # closed to within phase-boundary discretization tolerances.
         'E_th_mantle',      # thermal-energy proxy [J] (do not use for conservation)
         'E_state_J',         # state-mass integrated mantle enthalpy [J] (diagnostic only)
         'E_state_cons_J',    # frozen-mass integrated mantle enthalpy [J] (diagnostic only)
@@ -1034,13 +989,8 @@ def GetHelpfileKeys():
         'O_res',                 # O mass-balance residual [kg]
         'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
-        # Desiccation escape-balance gate, read by `check_desiccation`.
-        # M_vol_initial is the sum over all elements (oxygen included) of
-        # *_kg_total captured on the first escape call, the reference point for
-        # the "is the loss accounted for by escape?" check. esc_kg_cumulative is
-        # the whole-run atmospheric-loss ledger: continuous escape plus the mass
-        # each giant impact strips. Both persist to the CSV so a resume keeps the
-        # gate's state.
+        # Desiccation escape-balance baseline (M_vol_initial) and cumulative
+        # loss ledger (esc_kg_cumulative) across escape and impact stripping.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
         'esc_kg_cumulative', # cumulative mass lost to space [kg] (escape + impact stripping)
 
@@ -1051,12 +1001,8 @@ def GetHelpfileKeys():
         'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
         'esc_step_kg',      # loss applied on this step, after the cap [kg]
 
-        # Giant-impact accretion ledger. The rock each impact adds to the
-        # interior mass anchor, summed over the run. The anchor itself lives in
-        # the configuration, which is rebuilt from file on every start, so this
-        # column is what lets a resumed run reconstruct how far the planet had
-        # already grown. Rock only: the volatile budgets are tracked separately
-        # in the per-element columns, so this is not the whole-planet mass.
+        # Cumulative rock mass from giant impacts added to the interior mass
+        # anchor across the run, enabling resumed runs to reconstruct growth.
         'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
         'n_impacts_applied',  # count of giant impacts applied [1]
     ]
@@ -1231,17 +1177,8 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
             new_row.setdefault(k, 0.0)
         return
 
-    # Predicted (boundary + source) increment from Aragog [J]. Sign is
-    # already baked into each step delta (positive = energy added to the
-    # mantle). The heating sources use the live-density (state-mass) Q
-    # variants so they share the same mass frame as the entropy-transported
-    # heat on the state side, which integrates rho(P,S). Surface and CMB
-    # fluxes are area-weighted and frame-independent. The compression term
-    # is informational and is deliberately excluded: the state side carries
-    # the full thermodynamic content via Σ rho T dS.
-    # Giant-impact re-melt heat [J], zero on rows without an impact. Enters
-    # both increments below so the residual stays closed across an impact
-    # while the injection is booked on both sides of the budget.
+    # Predicted energy increment from boundary fluxes, volumetric heating sources,
+    # and giant-impact re-melt heat in the live-density frame.
     dE_impact_inc = float(new_row.get('step_dE_impact_J', 0.0))
 
     dE_inc_cons = (

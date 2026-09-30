@@ -188,10 +188,8 @@ def test_impactor_composition_drives_the_delivery_flag():
     assert Accretion().impactor_volatiles == 'dry'
     assert Accretion().delivers_volatiles is False
 
-    # A ppmw budget under a mode that would ignore it is a configuration
-    # contradiction and is rejected at load rather than silently dropped:
-    # the identical config delivered hydrogen before the mode selector
-    # existed, so a silent dry run would invert the user's intent.
+    # Nonzero ppmw budgets under modes other than 'ppmw' are contradictory
+    # and rejected at configuration load rather than silently ignored.
     with pytest.raises(ValueError, match='ppmw'):
         Accretion(impactor_H_ppmw=250.0)
     with pytest.raises(ValueError, match='ppmw'):
@@ -500,12 +498,9 @@ def test_embryo_spacing_is_bounded_on_both_sides():
     assert pole(10.0, 1.0) > 50.0
     assert pole(10.0, 1.0) < pole(1.0, 1.0)
 
-    # But the ceiling is NOT universally conservative: the pole scales as
-    # the cube root of the stellar mass, so a compact system around a
-    # 0.1-solar-mass host reaches it below 50 and the model, not this
-    # validator, is what refuses the layout. Guarding this keeps the
-    # docstring honest if someone later raises the ceiling on the
-    # assumption that it bounds the pole.
+    # The pole scales with stellar mass M_star^(1/3); for low-mass hosts
+    # (0.1 M_sun), the singularity occurs below 50 where the dynamical
+    # model rejects the layout directly.
     assert pole(10.0, 0.1) == pytest.approx(34.2, rel=1e-2)
     assert pole(10.0, 0.1) < 50.0
     # The scaling itself: an eighth of the stellar mass halves the pole.
@@ -561,10 +556,8 @@ def test_impactor_volatile_budgets_cannot_exceed_the_impactor_mass():
     with pytest.raises(ValueError, match='no rock'):
         Accretion(impactor_volatiles='ppmw', impactor_H_ppmw=1.0e6)
 
-    # The check is on the SUM, not on any single field: five budgets that each
-    # load happily on their own still total more than the impactor. That the
-    # same values are individually accepted is what makes the summed form the
-    # only one that catches this, and it is asserted rather than asserted about.
+    # Validation enforces the sum of all volatile budgets, catching combinations
+    # exceeding 1e6 ppmw where individual element budgets are valid in isolation.
     for element in ('H', 'C', 'N', 'S', 'O'):
         alone = Accretion(impactor_volatiles='ppmw', **{f'impactor_{element}_ppmw': 3.0e5})
         assert getattr(alone, f'impactor_{element}_ppmw') == pytest.approx(3.0e5)

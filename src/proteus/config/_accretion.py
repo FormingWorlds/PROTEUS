@@ -386,10 +386,9 @@ class Accretion:
 
     time_offset: float = field(default=0.0)
 
-    # Impactor volatile content source. 'dry' impactors add silicate and
-    # iron mass only, so the planet's bulk volatile concentration falls by
-    # dilution as it grows; 'match_planet' scales the planet's initial
-    # fractional abundances to the impactor; 'ppmw' uses the fields below.
+    # Impactor volatile source: 'dry' delivers silicates and iron only;
+    # 'match_planet' scales target formation composition to impactor mass;
+    # 'ppmw' reads per-element budgets directly.
     impactor_volatiles: str = field(
         default='dry',
         validator=in_(('dry', 'match_planet', 'ppmw')),

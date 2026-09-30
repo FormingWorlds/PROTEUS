@@ -215,10 +215,8 @@ def test_element_budget_survives_outgas_reservoir_escape():
     assert (h_budget - tgt['H']) > 0.01 * h_budget  # a real, resolvable debit
     assert tgt['H'] == pytest.approx(expected_h, rel=1e-9)
 
-    # Boundary: an empty atmospheric reservoir gives escape nothing to
-    # partition the loss over, so the whole-planet budget is preserved rather
-    # than debited. A collapse to zero here is the failure mode, so the
-    # assertions pin the budget and floor it well above zero.
+    # An empty atmospheric reservoir provides no escape losses,
+    # preserving the planet-level budget without collapsing to zero.
     empty_row = dict(hf_row)
     for e in element_mmw:
         empty_row[f'{e}_kg_atm'] = 0.0
@@ -266,10 +264,8 @@ def test_o2_endpoint_keeps_live_budget_no_false_desiccation():
     # the O2 endpoint.
     assert tgt['O'] > 0.99 * 9.0e21
 
-    # Boundary: with no O in the atmospheric reservoir escape has nothing to
-    # draw on, so the O budget is preserved. A collapse to zero here is the
-    # false-refusal failure mode. The empty-reservoir totals are pinned and
-    # the non-empty debit is checked against the full escape mass.
+    # With no atmospheric oxygen, escape draws nothing and preserves
+    # the total oxygen budget against false refusal.
     o_budget = hf_row['O_kg_total']
     empty_row = dict(hf_row)
     for e in element_mmw:

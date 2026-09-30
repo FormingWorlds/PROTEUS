@@ -45,13 +45,9 @@ MASS_CLOSURE_RTOL = 1e-6
 # sqrt(v_inf^2 + v_esc^2). The tolerance absorbs round-trip formatting only.
 VELOCITY_FLOOR_RTOL = 1e-6
 
-# Largest fraction of its mass a body may shed between two consecutive impacts.
-# The timeline reports the perfect-merger mass M_target + M_impactor, while the
-# dynamical model may hand the next impact a lighter body because the collision
-# stripped atmosphere. Only the atmosphere is available to lose, so the drop is
-# bounded by the envelope mass fraction, of order a percent for the embryos
-# these models follow. Ten percent leaves room for envelope-rich bodies while
-# still rejecting the discontinuity that means the rows describe two planets.
+# Maximum fraction of mass a body can shed between consecutive impacts.
+# Accommodates envelope mass loss from collision stripping while rejecting
+# discontinuities that indicate mismatched planet tracks.
 MAX_INTERIMPACT_MASS_LOSS_FRAC = 0.1
 
 

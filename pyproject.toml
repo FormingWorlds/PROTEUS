@@ -112,10 +112,9 @@ atmodeller = ["atmodeller>=1.0.2"]
 # atmos_chem.module = "vulcan". Also installable editable via
 # tools/get_vulcan.sh.
 vulcan = ["fwl-vulcan>=26.04.22"]
-# morrigan: protoplanet accretion module, selected via
-# accretion.module = "morrigan". Supplies the giant-impact timeline the
-# accretion coupling replays. Also installable editable via
-# tools/get_morrigan.sh.
+# morrigan: protoplanet accretion module for giant-impact timelines,
+# selected via accretion.module = "morrigan". Also installable editable
+# via tools/get_morrigan.sh.
 morrigan = ["fwl-morrigan>=26.07.27"]
 
 # inference: the Bayesian-optimisation parameter inference run by
@@ -305,11 +304,9 @@ ref = "c9a3fd4301c7008291d4f4921506d36b6288f8ca"
 url = "https://github.com/ExoInteriors/BOREAS.git"
 ref = "0174edb04558a92a8f0b47cbd994964787f495aa"
 
-# Morrigan has no entry here on purpose: like fwl-vulcan, fwl-aragog and
-# fwl-zalmoxis, it is a single-source PyPI package. tools/get_morrigan.sh
-# checks out the git tag matching the fwl-morrigan floor in
-# [project.optional-dependencies], so the editable checkout and the PyPI
-# release cannot diverge.
+# Morrigan is omitted here: tools/get_morrigan.sh checks out the git tag
+# matching the fwl-morrigan floor in [project.optional-dependencies] to
+# keep the editable checkout and PyPI release aligned.
 
 [tool.proteus.modules.lovepy]
 # Solid-phase tidal heating module (Julia). Installed via Julia

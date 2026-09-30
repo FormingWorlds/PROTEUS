@@ -54,10 +54,8 @@ from proteus import Proteus
 from proteus.utils.constants import M_earth
 from proteus.utils.data import download_sufficient_data
 
-# Slow tier. Two real Aragog legs, about 90 s locally. A CI runner takes
-# roughly twenty times that on this kind of work, measured against the other
-# Aragog tests in the same nightly shard, which puts the file around half an
-# hour there and well inside the 3600 s ceiling.
+# Slow integration tier: two consecutive Aragog simulation legs testing
+# accretion resume behavior within the 3600 s timeout.
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 CONFIG = PROTEUS_ROOT / 'input' / 'dummy.toml'
@@ -151,21 +149,13 @@ def _make_runner(output_dir, stop_time):
 
     runner.config.interior_energetics.module = 'aragog'
     runner.config.interior_struct.melting_dir = MELTING_DIR
-    # The re-melt re-applies the interior initial condition, so it only adds
-    # heat while that condition is hotter than the mantle it replaces. A flat
-    # profile at TSURF_INIT is, for this planet, and the test asserts the
-    # mantle it produces is fully molten rather than assuming it. The mode
-    # that guarantees a molten condition at any mass instead solves for it,
-    # which costs a root-find over the melting curve on every mass change and
-    # is what makes it too slow to run here.
+    # Use isothermal initial temperature profile at TSURF_INIT to ensure
+    # the mantle is fully molten upon impact remelt without iterative root-finding.
     runner.config.planet.temperature_mode = 'isothermal'
     runner.config.planet.tsurf_init = TSURF_INIT
 
-    # The interior EOS table is generated per planet mass, so the impact pays
-    # for a second one. This test is about which snapshot a resume reads, not
-    # about EOS fidelity, and the coarse table costs a third of the wall time
-    # while leaving the trajectory's shape and every quantity asserted below
-    # unchanged.
+    # Use coarse EOS lookup grid to accelerate interior table generation across
+    # post-impact planet mass changes while preserving trajectory invariants.
     runner.config.interior_struct.zalmoxis.lookup_nP = LOOKUP_NP
     runner.config.interior_struct.zalmoxis.lookup_nS = LOOKUP_NS
 
@@ -283,10 +273,8 @@ def test_a_run_stopped_on_an_impact_resumes_from_before_it(tmp_path):
         f'first leg produced only {len(stored)} rows, too short to resume from'
     )
 
-    # The impact step left no snapshot, and an older one survived it. The 1 yr
-    # timestep floor (issue #676) can land the step past IMPACT_TIME, so the
-    # key a snapshot would be filed under is the step's own rounded time, not
-    # int(IMPACT_TIME).
+    # Ensure no snapshot was retained on the impact step and an earlier
+    # pre-impact snapshot remains available for resume.
     impact_step_key = round(float(stored.iloc[-1]['Time']))
     snapshots = _snapshot_times(outdir)
     assert impact_step_key not in snapshots, (
@@ -298,22 +286,16 @@ def test_a_run_stopped_on_an_impact_resumes_from_before_it(tmp_path):
         f'{snapshots}); the run has nothing to walk back to'
     )
 
-    # The initial condition has to be molten for the re-melt to add heat, and
-    # the run says whether it is rather than the configuration being trusted:
-    # a flat profile is only molten for a planet whose melting curve it clears,
-    # and this is the planet it was chosen for.
+    # Verify the initial condition starts with a fully molten mantle (Phi_global = 1)
+    # so the subsequent impact remelt injects heat.
     assert float(stored.iloc[0]['Phi_global']) == pytest.approx(1.0, rel=1e-9), (
         f'the mantle starts at melt fraction {float(stored.iloc[0]["Phi_global"]):.4f}, '
         f'so {TSURF_INIT:.0f} K is not molten for this planet and the impact would '
         'reset it to a state that is not a magma ocean'
     )
 
-    # The mantle cools into the impact and the impact warms it. That contrast
-    # is what makes the discarded snapshot stale rather than merely redundant,
-    # and it is the signal the resume checks below read. Only the three rows
-    # before the impact are taken: the opening step settles the solver against
-    # the coupled surface flux and can move either way before the cooling
-    # trend sets in.
+    # Verify the mantle cools prior to the impact and experiences a temperature
+    # jump upon impact remelt across the last pre-impact steps.
     t_magma = stored['T_magma'].to_numpy()
     cooling_before = t_magma[len(stored) - 4 : len(stored) - 1]
     assert np.all(np.diff(cooling_before) < 0.0), (
@@ -398,11 +380,8 @@ def test_a_run_stopped_on_an_impact_resumes_from_before_it(tmp_path):
         'the mantle from before the re-melt instead of the one the impact melted'
     )
 
-    # The resumed leg discarded its own impact-step snapshot in turn, so the
-    # discard is a property of any step that lands an impact rather than of
-    # the first run. The row the ledger first carries the delivered mass on
-    # is the impact step; its own rounded time is the key a stale snapshot
-    # would be filed under, for the same reason as the first leg above.
+    # Verify the resumed run discards its own impact-step snapshot when landing
+    # an impact during the resumed leg.
     resumed_impact_row = int(np.argmax(np.diff(ledger) > 0.0)) + 1
     resumed_impact_key = round(float(times[resumed_impact_row]))
     resumed_snapshots = _snapshot_times(outdir)

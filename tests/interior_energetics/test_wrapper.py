@@ -6323,10 +6323,8 @@ def test_aragog_remelt_carries_the_molten_profile_past_the_next_restore():
     assert solver._solution is None
     assert solver._dSdr_cmb_init is None
 
-    # The next step's restore re-applies the carrier: because the trajectory is
-    # cleared, update_solver leaves _last_entropy alone, and set_initial_entropy
-    # writes the molten profile onto _S0. A regression reading entropy_staggered
-    # here would raise (no _solution), which is the point of the faithful fake.
+    # Restore re-applies the molten carrier to _S0 via set_initial_entropy
+    # while the trajectory remains cleared.
     solver.set_initial_entropy(interior_o._last_entropy)
     np.testing.assert_allclose(solver._S0, molten)
     assert interior_o.impact_reset is True
@@ -6702,14 +6700,8 @@ def test_a_stalled_interior_ends_the_run_instead_of_being_absorbed():
     assert absorbed_interior.aragog_fail_count == 1
 
 
-# ----------------------------------------------------------------------------
-# Closed-form magnitude of the impact heat.
-#
-# The re-melt injection is added to both sides of the coupler's energy budget,
-# so E_residual_cons_frac is invariant to its value and cannot detect a wrong
-# magnitude. These tests pin the quadrature that produces it against an
-# analytic integral instead.
-# ----------------------------------------------------------------------------
+# Pin numerical impact heat quadrature against closed-form analytic integrals
+# using an idealized linear-capacitance EOS.
 
 
 class _LinearCapacitanceEOS:

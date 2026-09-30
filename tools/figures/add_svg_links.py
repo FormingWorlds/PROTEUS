@@ -46,10 +46,8 @@ def main(svg_path, links_path, out_path, fig_w=1412.0, fig_h=1415.0):
         raise SystemExit('malformed SVG')
     svg = svg.replace('</svg>', overlay + '</svg>')
 
-    # An SVG loaded as its own document is painted on the user agent's default
-    # canvas, which would box the figure in white on a dark page.  Declaring the
-    # background transparent and naming the scheme the colours were built for
-    # lets the page show through in both schemes.
+    # Declare transparent background and color scheme so standalone SVGs
+    # blend with both light and dark document pages.
     scheme = 'dark' if 'dark' in Path(out_path).stem else 'light'
     style = f'background: transparent; background-color: transparent; color-scheme: {scheme};'
     if 'background: transparent' not in svg:

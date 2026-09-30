@@ -412,10 +412,8 @@ def test_a_small_impactor_is_not_less_dense_than_its_own_minerals():
     uncapped_rho = tiny / (4.0 / 3.0 * math.pi * uncapped_r**3)
     assert uncapped_rho < 0.5 * floor
 
-    # An Earth-mass body is inside the scaling's range, so the cap is inactive
-    # there and the scaling still governs. The iron fraction is mass-dependent
-    # under the radius-mode core fraction, so it is evaluated at this body's own
-    # mass rather than reused from the small one above.
+    # An Earth-mass body lies within the scaling range with an inactive cap.
+    # The radius-mode iron fraction is evaluated at this body's mass.
     _, x_fe_earth, _ = iron_fractions(0.55, 'radius', mass_tot_M_earth=1.0)
     earth_r = _body_radius(config, M_earth)
     assert earth_r == pytest.approx(nl20_planet_radius_km(x_fe_earth, 1.0) * 1.0e3, rel=1e-9)

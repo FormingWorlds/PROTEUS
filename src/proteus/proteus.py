@@ -776,32 +776,9 @@ class Proteus:
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
 
-            # Restore the crystallization flag. Without this it returns as
-            # False on every restart, so the first resumed iteration runs
-            # escape over the whole volatile inventory of a mantle that has
-            # already crystallized, drawing from dissolved reservoirs that are
-            # meant to be trapped. The main loop only re-derives the flag
-            # after escape has run, so the error lands on the first step of
-            # every restart.
-            #
-            # The flag latches within a run: the loop sets it once the melt
-            # fraction drops to the threshold and does not clear it, so a
-            # mantle that crystallized and later remelted by cooling alone
-            # stays frozen. Reading only the resumed row would clear it in
-            # exactly that case and diverge from an uninterrupted run, so the
-            # stored history is searched instead. Rows with no melt fraction
-            # recorded compare False and so leave the flag clear, which is the
-            # behaviour a helpfile written before the column existed had
-            # already.
-            #
-            # A giant impact is the one event that does clear the latch, since
-            # it remelts the mantle to a magma ocean. Only the history after
-            # the last impact can re-establish the flag; searching across an
-            # impact would restore a latch the run itself had lifted. The
-            # impact's own row is excluded because it records the melt
-            # fraction from before the remelt. Runs without accretion carry
-            # no accreted rock, so the search covers the whole history and
-            # matches the behaviour of a run that never had an impact.
+            # Restore crystallization flag: mantle freeze latches once reached,
+            # but clears after giant impacts that remelt the mantle.
+            # Evaluated over post-impact history to match continuous run state.
             if self.config.params.stop.solid.freeze_volatiles:
                 phi_history = self.hf_all.get('Phi_global')
                 if phi_history is not None:
@@ -964,12 +941,8 @@ class Proteus:
                 #    overwritten by the routines below.
                 self.hf_row = self.hf_all.iloc[-1].to_dict()
 
-                # Per-step impact heat starts at zero on every row. The column
-                # accumulates within a step, because several impacts can land
-                # in one, so carrying the previous row's value forward would
-                # book an earlier impact's heat again. Cleared here rather than
-                # in a solver's success branch so it holds for every interior
-                # module and for the paths that return before that branch.
+                # Reset per-step impact heat at each row to prevent carrying forward
+                # previous step heat terms across iterations.
                 self.hf_row['step_dE_impact_J'] = 0.0
             log.info(' ')
             PrintSeparator()

@@ -93,13 +93,8 @@ _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 # counter resets on each successful Aragog call.
 _ARAGOG_MAX_CONSECUTIVE_FAILS = 3
 
-# Band the giant-impact re-melt injection is expected to occupy as a fraction
-# of the collision's kinetic energy. Giant-impact studies retain of order tens
-# of percent of the impact energy as mantle heat, the rest leaving as ejecta
-# and radiation, so a value spanning a percent to unity covers the physical
-# range with margin. Outside it the re-melt is being set by the initial
-# condition rather than by the collision, which the energy residual cannot
-# reveal because the injection enters both of its sides.
+# Physical band for retained impact kinetic energy in giant-impact re-melts.
+# Values outside this range indicate initial conditions dominate collision energy.
 _REMELT_RETAINED_BAND = (0.01, 1.0)
 
 # Resume-settling guard for the dynamic structure re-solve. After a resume the
@@ -1999,12 +1994,8 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     if S_cooled is not None:
         S_cooled = np.asarray(S_cooled, dtype=float).ravel().copy()
 
-    # Drop the cooled trajectory and its cached CMB gradient BEFORE rebuilding
-    # the initial condition. This has to come first: _set_entropy_ic hot-starts
-    # the boundary gradient from the solution when one is present, so clearing
-    # it first forces a cold-start derived from the molten profile. Clearing the
-    # trajectory also stops the next step's restore from re-deriving the cooled
-    # field over the molten one.
+    # Drop cooled trajectory and CMB gradient before rebuilding initial conditions.
+    # This prevents hot-starting from obsolete profiles or restoring cooled fields.
     solver._solution = None
     if hasattr(solver, '_dSdr_cmb_init'):
         solver._dSdr_cmb_init = None
@@ -2015,27 +2006,13 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     S_molten = AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
     S_molten = np.asarray(S_molten, dtype=float).ravel()
 
-    # Book the injected heat over the cooled-to-molten entropy jump, in the
-    # residual's own frame: the solver's Σ V_i ∫ rho(P_i,S) T(P_i,S) dS
-    # quadrature evaluated between the two profiles. Positive when the re-melt
-    # heats the mantle. The jump falls between solver calls, so no per-call
-    # state integral carries it; this column is how it enters the budget.
+    # Calculate injected heat from the entropy jump between cooled and molten
+    # profiles using volume-weighted quadrature.
     if S_cooled is not None and S_cooled.size > 0:
         dE_impact = float(solver._step_heat_content(S_cooled, S_molten))
 
-        # An impact deposits energy, so the re-melt cannot book a heat loss. The
-        # test is on the booked quantity itself rather than on a summary of the
-        # entropy profiles: the quadrature weights each cell by its volume and
-        # by rho*T, and those weightings pull in opposite directions with depth,
-        # so a profile that rises on average can still integrate to a loss.
-        #
-        # A negative value means the mantle is already above the state this
-        # impact resets it to, which happens when two impacts fall close
-        # together, when the initial condition shifts with the grown planet, or
-        # when the temperature mode is anchored below the current state. None of
-        # those is an energy source, so nothing is booked; clamping rather than
-        # aborting keeps a long run alive, and the warning carries the size of
-        # the discrepancy so it can be judged from the log.
+        # Re-melts cannot remove energy. Clamp negative heat changes to zero
+        # when the current mantle temperature exceeds the re-melt profile.
         if dE_impact < 0.0:
             log.warning(
                 '    re-melt would remove %.3e J rather than add heat: the mantle is '
@@ -2050,19 +2027,14 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
 
         interior_o._last_entropy = S_molten.copy()
 
-        # Accumulate rather than assign: when two impacts fall inside one
-        # timestep the second re-melt measures an already-molten mantle and
-        # contributes almost nothing, and assigning would discard the first
-        # impact's injection from the row. The row is zeroed when it is created,
-        # so the column cannot accumulate across steps.
+        # Accumulate heat across multiple impacts within the same timestep
+        # rather than overwriting previous impact energy.
         hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0) + dE_impact
         log.info('    re-melt heat injection %.3e J booked into the energy budget', dE_impact)
     else:
         interior_o._last_entropy = S_molten.copy()
-        # No prior profile to measure the jump from (no completed solve has
-        # stored one). The injection cannot be quantified, so it is left
-        # unbooked and said so, rather than booking a silent zero. An earlier
-        # impact in the same step may already have booked one; leave it.
+        # Preserve existing step impact energy if no pre-impact profile is
+        # available to quantify the entropy jump.
         hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0)
         log.warning(
             '    re-melt heat injection not booked: no pre-impact entropy '
@@ -2170,15 +2142,8 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
     # deliberate impact re-melt, not a solver anomaly to be clipped away.
     interior_o.impact_reset = True
 
-    # Weigh the booked injection against the energy the collision actually
-    # carried. The re-melt is a thermodynamic reset: it re-applies the run's
-    # initial condition to the whole mantle, so the enthalpy it injects scales
-    # with the mantle, not with the impactor, and the coupler adds it to both
-    # sides of the energy budget. The residual is therefore invariant across an
-    # impact for any booked value and cannot detect a wrong magnitude. This
-    # ratio is the only diagnostic that can, so it is always reported, and a
-    # value outside the physical band is called out rather than left for a
-    # reader to notice in a log they may never open.
+    # Compare booked heat injection against impact kinetic energy. The ratio
+    # checks physical plausibility since energy residuals cannot detect scaling errors.
     if event is not None:
         reduced = (
             event.M_target_before
@@ -2320,10 +2285,8 @@ def run_interior(
         log.debug('Evolve interior...')
     log.debug('Using %s module to evolve interior' % config.interior_energetics.module)
 
-    # Consume the one-shot giant-impact re-melt flag up front, so the step after
-    # a re-melt skips the temperature-jump clip below, and so the flag is cleared
-    # even on an early return further down (e.g. a solver retry-ladder exit) and
-    # cannot wrongly suppress the clip on a later, ordinary step.
+    # Consume one-shot giant-impact re-melt flag up front to avoid suppressing
+    # temperature-jump clipping on subsequent ordinary steps.
     impact_reset = getattr(interior_o, 'impact_reset', False)
     interior_o.impact_reset = False
     # The interior solvers run below, after the flag is cleared, so keep the
@@ -2404,12 +2367,8 @@ def run_interior(
             )
             interior_o.aragog_fail_count = 0
         except InteriorStalledError:
-            # Not absorbed like the failures below. The fallback there keeps
-            # the previous interior state for one step, on the expectation
-            # that the run steps past what caused it, and clears the failure
-            # streak as soon as one step succeeds. A stall is made of steps
-            # that do succeed, so it would clear that streak every time and
-            # the run would keep writing rows that go nowhere.
+            # InteriorStalledError indicates zero progress across successful steps.
+            # Do not absorb it under the consecutive retry failure counter.
             UpdateStatusfile(dirs, 21)
             raise
         except RuntimeError as e:
@@ -2504,10 +2463,8 @@ def run_interior(
     # Update planet mass
     update_planet_mass(hf_row)
 
-    # Apply step limiters. The F_int positivity floor is applied unconditionally
-    # (below); the warming clamp and the large-increase clips are skipped on the
-    # single step after a giant-impact re-melt, whose deliberate temperature jump
-    # must not be treated as a solver anomaly.
+    # Apply step limiters. The warming clamp and large-increase clips are skipped
+    # after giant-impact re-melts so temperature jumps are preserved.
     if hf_row['Time'] > 0:
         # Prevent increasing surface temperature, if enabled. Gated by
         # _prevent_warming_clamp_active(); the runaway-T fallback below
@@ -2522,22 +2479,13 @@ def run_interior(
             hf_row['T_surf'] = min(hf_row['T_surf'], T_surf_prev)
             hf_row['F_int'] = min(hf_row['F_int'], F_int_prev)
 
-        # F_int positivity floor under prevent_warming, applied for all
-        # ic values (not just ic == 2), and NOT skipped on the impact-reset
-        # step: a negative flux must never reach the helpfile or the atmosphere
-        # BC. SPIDER's JSON output can produce a slightly-negative F_int on the
-        # first post-restart step (ic = 1) because the thermal state is read from
-        # the previous solver epoch; the floor is what stopped a negative flux
-        # from propagating before this floor was relocated out of ReadSPIDER.
+        # Enforce positive F_int floor under prevent_warming for all ic values.
+        # This floor remains active during impact steps to prevent negative fluxes.
         if _prevent_warming_clamp_active(config):
             hf_row['F_int'] = max(1.0e-8, hf_row['F_int'])
 
-        # Do not allow massive increases to T_magma or T_surf. Skipped on the
-        # impact-reset step so the re-melt's jump survives.
-        #
-        # T_magma uses the SPIDER/Aragog/dummy tolerance formula for
-        # every backend. For all backends T_surf shares the
-        # T_magma budget.
+        # Limit large increases to T_magma and T_surf. Skipped on impact steps.
+        # T_surf shares the T_magma tolerance budget across all backends.
         dT_delta_magma = config.interior_energetics.tmagma_atol
         dT_delta_magma += config.interior_energetics.tmagma_rtol * T_magma_prev
 
@@ -3506,20 +3454,8 @@ def update_structure_from_interior(
     del r_stag, _r_unsorted, _T_unsorted
     gc.collect()
 
-    # Regenerate SPIDER-format P-S EOS tables when composition changed
-    # substantially. For dry 1 M_Earth CHILI this never fires: pure
-    # MgSiO3 is a planet-state-invariant material EOS, so the pre-built
-    # tables are stable for the entire evolution. The comp_changed path
-    # is reached in wet runs where binodal redistribution or degassing
-    # shifts mantle volatile fractions by > 5%. SPIDER reads the fresh file on
-    # its next call. Aragog's JAX right-hand side reloads the tables per solve
-    # through a loader cached on the table parameters, so it follows them here
-    # and at the ungated regeneration a giant impact triggers.
-    #
-    # REMAINING GAP: the cached _last_entropy is not bounds-checked against the
-    # regenerated [S_min, S_max]. Both a composition change and a raised
-    # pressure ceiling can move that range (it is scanned up to the ceiling),
-    # so out-of-range carried entropy clamps at the table edge in the solve.
+    # Regenerate P-S EOS tables when volatile shifts exceed 5%.
+    # SPIDER and Aragog reload tables on subsequent solver steps.
     if comp_changed and config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
