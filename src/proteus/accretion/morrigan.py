@@ -112,6 +112,7 @@ def select_planet(survivors: Sequence[dict], config: Config) -> dict:
             chosen = min(survivors, key=lambda s: abs(s['a_final'] - target))
 
         case 'id':
+            # The config accepts an integral float such as 3.0 as an id.
             wanted = int(mor.selector_value)
             matches = [s for s in survivors if int(s['id']) == wanted]
             if not matches:
