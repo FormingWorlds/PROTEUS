@@ -2879,12 +2879,12 @@ def test_restore_accretion_state_ignores_events_at_or_before_zero_on_resume(tmp_
     from proteus.utils.constants import AU
 
     # Event A is before simulation start (t <= 0) with mass exceeding accreted rock;
-    # event B is an init-stage impact at t = 5.
+    # event B is an init-stage impact at t = 0.5 yr, inside the 1 yr init step.
     ev_a = _impact_event(
         time=-100.0, M_target_before=5.972e24, M_impactor=2e23, M_merged_after=6.172e24
     )
     ev_b = _impact_event(
-        time=5.0, M_target_before=6.172e24, M_impactor=1e23, M_merged_after=6.272e24
+        time=0.5, M_target_before=6.172e24, M_impactor=1e23, M_merged_after=6.272e24
     )
 
     # n_impacts_applied = 1 recorded in helpfile for the init-stage impact.
@@ -3314,7 +3314,7 @@ def test_restore_accretion_state_refuses_counter_exceeding_total_events(tmp_path
         restore_accretion_state(handler)
     err = str(exc_info.value)
     assert 'runtime_helpfile.csv' in err
-    assert 'exceeding the total' in err
+    assert 'cannot have landed during the init stage' in err
     assert handler.hf_row == hf_row_orig
     assert handler.impact_events == events_orig
 
@@ -3466,139 +3466,129 @@ def test_restore_accretion_state_timeline_ignores_events_with_zero_or_negative_t
     assert handler.impact_events == [ev_pos]
 
 
-@pytest.mark.unit
-def test_restore_accretion_state_excess_counter_within_init_window_accepted(tmp_path):
-    """Excess counter over preceding events within the initialization window is accepted."""
-    import pandas as pd
-
-    from proteus.accretion.wrapper import restore_accretion_state
+def _counter_case(tmp_path, times, resume_time, counter, rock=1e23):
+    """Resume handler for a dummy timeline at ``times`` [yr] and a row at
+    ``resume_time`` carrying ``counter``; the pending list is filtered by the
+    resume time, as init_accretion leaves it."""
     from proteus.utils.constants import AU
 
-    ev1 = _impact_event(
-        time=5.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
-    )
-    ev2 = _impact_event(
-        time=8.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
-    )
-    ev3 = _impact_event(
-        time=15.0, M_target_before=6.172e24, M_impactor=1e23, M_merged_after=6.272e24
-    )
-    hf_all = pd.DataFrame(
-        [
-            {'Time': 0.0, 'M_accreted_rock': 0.0, 'semimajorax': 1.0 * AU, 'eccentricity': 0.0},
-            {
-                'Time': 10.0,
-                'M_accreted_rock': 2e23,
-                'semimajorax': 1.0 * AU,
-                'eccentricity': 0.0,
-            },
-        ]
-    )
+    events = [
+        _impact_event(
+            time=t,
+            M_target_before=5.972e24 + i * 1e23,
+            M_impactor=1e23,
+            M_merged_after=6.072e24 + i * 1e23,
+        )
+        for i, t in enumerate(times)
+    ]
     handler = _resumed_handler(
         tmp_path,
-        events=[ev1, ev2, ev3],
+        events,
         hf_row={
-            'Time': 0.0,
-            'M_accreted_rock': 2e23,
-            'n_impacts_applied': 2,
+            'Time': resume_time,
+            'M_accreted_rock': rock,
+            'n_impacts_applied': counter,
             'semimajorax': 1.0 * AU,
             'eccentricity': 0.0,
         },
-        hf_all=hf_all,
-        pending=[ev1, ev2, ev3],
+        pending=[ev for ev in events if ev.time > resume_time],
     )
-    restore_accretion_state(handler)
-    assert handler.hf_row['n_impacts_applied'] == 2
-    assert handler.impact_events == [ev3]
+    return handler, events
 
 
 @pytest.mark.unit
-def test_restore_accretion_state_excess_counter_exceeding_init_window_refused(tmp_path):
-    """Excess counter greater than initialization window events raises RuntimeError."""
-    import pandas as pd
-
+@pytest.mark.parametrize(
+    ('counter', 'accepted'),
+    [(0, False), (1, False), (2, True), (3, False)],
+    ids=['no_counter', 'one_impact_lost', 'consistent', 'one_impact_too_many'],
+)
+def test_counter_is_checked_after_the_last_scheduled_impact(tmp_path, counter, accepted):
+    """After the last impact the pending list is empty, which is the normal
+    state late in every accreting run; the counter must still agree with the
+    timeline. Impacts at 5 and 8 yr, resume at 100 yr: only a counter of 2 is
+    consistent, and a refusal leaves the row and schedule untouched."""
     from proteus.accretion.wrapper import restore_accretion_state
-    from proteus.utils.constants import AU
 
-    ev1 = _impact_event(
-        time=5.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
-    )
-    ev2 = _impact_event(
-        time=8.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
-    )
-    ev3 = _impact_event(
-        time=15.0, M_target_before=6.172e24, M_impactor=1e23, M_merged_after=6.272e24
-    )
-    hf_all = pd.DataFrame(
-        [
-            {'Time': 0.0, 'M_accreted_rock': 0.0, 'semimajorax': 1.0 * AU, 'eccentricity': 0.0},
-            {
-                'Time': 10.0,
-                'M_accreted_rock': 2e23,
-                'semimajorax': 1.0 * AU,
-                'eccentricity': 0.0,
-            },
-        ]
-    )
-    handler = _resumed_handler(
-        tmp_path,
-        events=[ev1, ev2, ev3],
-        hf_row={
-            'Time': 0.0,
-            'M_accreted_rock': 3e23,
-            'n_impacts_applied': 3,
-            'semimajorax': 1.0 * AU,
-            'eccentricity': 0.0,
-        },
-        hf_all=hf_all,
-        pending=[ev1, ev2, ev3],
-    )
-    with pytest.raises(RuntimeError) as exc_info:
+    handler, _ = _counter_case(tmp_path, [5.0, 8.0], 100.0, counter, rock=2e23)
+    assert handler.impact_events == []
+    row_before = dict(handler.hf_row)
+    mass_before = handler.config.planet.mass_tot
+    if accepted:
         restore_accretion_state(handler)
-    err = str(exc_info.value)
-    assert 'initialization window' in err
-    assert 'Restart the simulation' in err
+        assert handler.hf_row['n_impacts_applied'] == 2
+        assert handler.config.planet.mass_tot > mass_before
+    else:
+        with pytest.raises(RuntimeError, match='runtime_helpfile.csv'):
+            restore_accretion_state(handler)
+        assert handler.hf_row == row_before
+        assert handler.config.planet.mass_tot == pytest.approx(mass_before, rel=0)
 
 
 @pytest.mark.unit
-def test_restore_accretion_state_excess_counter_without_positive_time_in_hf_all_warns(
-    tmp_path, caplog
-):
-    """Without positive time rows in hf_all, excess counter logs a warning with event details."""
+def test_legacy_ledger_is_refused_with_a_module_and_accepted_without(tmp_path, caplog):
+    """Rock with no counter means the run predates the counter: refused
+    whenever a module is selected, even with nothing left to schedule, and
+    accepted with a warning only when accretion is off."""
     import logging
 
-    import pandas as pd
-
     from proteus.accretion.wrapper import restore_accretion_state
-    from proteus.utils.constants import AU
 
-    ev1 = _impact_event(
-        time=5.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
-    )
-    hf_all = pd.DataFrame(
-        [
-            {
-                'Time': 0.0,
-                'M_accreted_rock': 1e23,
-                'semimajorax': 1.0 * AU,
-                'eccentricity': 0.0,
-            },
-        ]
-    )
-    handler = _resumed_handler(
-        tmp_path,
-        events=[ev1],
-        hf_row={
-            'Time': 0.0,
-            'M_accreted_rock': 1e23,
-            'n_impacts_applied': 1,
-            'semimajorax': 1.0 * AU,
-            'eccentricity': 0.0,
-        },
-        hf_all=hf_all,
-        pending=[ev1],
-    )
-    with caplog.at_level(logging.WARNING):
+    handler, _ = _counter_case(tmp_path, [5.0], 100.0, 0.0, rock=1e23)
+    with pytest.raises(RuntimeError, match='predates the impact counter'):
         restore_accretion_state(handler)
-    assert handler.hf_row['n_impacts_applied'] == 1
-    assert 'initialization-stage impacts' in caplog.text
+
+    off_dir = tmp_path / 'off'
+    off_dir.mkdir()
+    handler_off, _ = _counter_case(off_dir, [5.0], 100.0, 0.0, rock=1e23)
+    handler_off.config.accretion.module = None
+    handler_off.impact_events = []
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        restore_accretion_state(handler_off)
+    assert any('Accretion is disabled' in r.message for r in caplog.records)
+    assert handler_off.config.planet.mass_tot > 1.0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('times', 'resume_time', 'counter', 'pending_after'),
+    [
+        ([0.5, 0.8, 15.0], 0.0, 2, [15.0]),  # two init-stage impacts, row still at Time 0
+        ([0.5, 1.0, 15.0], 0.0, 2, [15.0]),  # an impact exactly at the horizon counts
+        ([0.5, 15.0], 0.0, 1, [15.0]),
+        ([0.5, 15.0], 0.0, 0, None),  # rock recorded, counter 0: refused
+        ([0.5, 1.0 + 1e-9, 15.0], 0.0, 2, None),  # just past the horizon
+        ([0.5, 0.8, 15.0], 0.0, 3, None),  # 15 yr cannot land in the init stage
+        ([0.5, 200.0], 100.0, 2, None),  # surplus after the resume time
+        ([0.5, 5.0], 2.0, 2, None),  # resumed past the init stage with a surplus
+    ],
+    ids=[
+        'two_init_impacts',
+        'impact_at_horizon',
+        'one_init_impact',
+        'no_counter',
+        'past_horizon',
+        'surplus_beyond_init',
+        'surplus_after_resume',
+        'surplus_after_init_stage',
+    ],
+)
+def test_counter_surplus_must_lie_in_the_init_stage(
+    tmp_path, times, resume_time, counter, pending_after
+):
+    """A counter above the impacts at or before the resume time is only
+    possible for impacts that landed during the init stage, where Time stays
+    zero and every step is at most _INIT_STAGE_HORIZON_YR. Any other surplus
+    would silently delete a future impact, so it is refused."""
+    from proteus.accretion.wrapper import _INIT_STAGE_HORIZON_YR, restore_accretion_state
+
+    assert _INIT_STAGE_HORIZON_YR == pytest.approx(1.0, rel=0)
+    handler, _ = _counter_case(tmp_path, times, resume_time, counter)
+    pending_before = list(handler.impact_events)
+    if pending_after is None:
+        with pytest.raises(RuntimeError, match='Restart the simulation'):
+            restore_accretion_state(handler)
+        assert handler.impact_events == pending_before
+    else:
+        restore_accretion_state(handler)
+        assert [ev.time for ev in handler.impact_events] == pytest.approx(pending_after)
+        assert handler.hf_row['n_impacts_applied'] == counter

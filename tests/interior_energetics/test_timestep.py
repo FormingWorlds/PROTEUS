@@ -1268,3 +1268,35 @@ class TestEscapeStepLimit:
         skipped = src.split('run_escape(')[1]
         for field in ('escape_dt_limit', 'esc_clamp_frac', 'esc_step_kg'):
             assert field in skipped, f'{field} is never cleared when escape is skipped'
+
+
+@pytest.mark.unit
+def test_init_stage_step_never_exceeds_the_accretion_resume_horizon():
+    """Time stays at zero through the init stage, so every init step comes
+    from the static branch. The accretion resume check assumes such a step
+    never exceeds its init-stage horizon; this pins the two together.
+
+    The static branch is not floored to dt.minimum, so a minimum far above
+    1 yr must leave the init step unchanged, and a pending impact inside the
+    step must not lengthen it.
+    """
+    from proteus.accretion.wrapper import _INIT_STAGE_HORIZON_YR
+    from proteus.interior_energetics.timestep import next_step
+
+    config = _make_config()
+    config.params.dt.minimum = 50.0  # far above the static step
+    step = next_step(config, {}, {'Time': 0.0, 'Phi_global': 1.0}, None, 1.0)
+    assert step == pytest.approx(_INIT_STAGE_HORIZON_YR, rel=1e-12)
+
+    with_impact = next_step(
+        config,
+        {},
+        {'Time': 0.0, 'Phi_global': 1.0},
+        None,
+        1.0,
+        interior_o=_make_interior_o(t_next_impact=0.5),
+    )
+    assert 0.0 < with_impact <= _INIT_STAGE_HORIZON_YR
+    # A retry shrinks the step; it never grows beyond the horizon.
+    retried = next_step(config, {}, {'Time': 0.0, 'Phi_global': 1.0}, None, 0.5)
+    assert retried == pytest.approx(0.5 * _INIT_STAGE_HORIZON_YR, rel=1e-12)

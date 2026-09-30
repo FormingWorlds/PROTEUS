@@ -30,6 +30,10 @@ _PPMW_ELEMENTS = ('H', 'C', 'N', 'S', 'O')
 # the module for a timeline again.
 _RESOLVED_TIMELINE_FILE = 'impact_timeline.csv'
 
+# Longest step of the init stage [yr]. Time stays at zero there, so every init
+# step is the static 1 yr step of the time-stepper, which only shrinks on retry.
+_INIT_STAGE_HORIZON_YR = 1.0
+
 # Ceiling on the planet's eccentricity after an impact applies its change. An
 # impact excites a bound orbit; it cannot unbind one, and the rest of the model
 # assumes a closed orbit throughout.
@@ -169,25 +173,18 @@ def restore_accretion_state(handler: Proteus) -> None:
     against the configured mass and orbit and a re-run dynamical model selects
     the same body it selected originally.
 
-    When restoring the pending impact schedule on resume, precedence is:
-    1. Validate ``Time``: must be a finite non-negative number; otherwise
-       ``RuntimeError`` is raised.
-    2. Validate ``M_accreted_rock``: must be a finite non-negative number;
-       otherwise ``RuntimeError`` is raised.
-    3. Validate ``n_impacts_applied``: corrupt values (non-numeric, negative,
-       non-finite, or non-integer) are refused with ``RuntimeError``
-       regardless of rock mass.
-    4. If ``M_accreted_rock > 0`` with an absent or zero counter:
-       - If accretion is active (module configured with pending events),
-         ``RuntimeError`` is raised because the run predates the counter.
-       - If accretion is inactive (module is None or pending list is empty),
-         a warning is logged and mass is restored from the ledger.
-    5. If an impact timeline is present, validate ``n_impacts_applied``:
-       refuse if fewer than events before resume time, more than total
-       events, or if excess exceeds the initialization window when helpfile
-       history is available. Prior events are dropped from the schedule.
-    6. If ``M_accreted_rock == 0`` and no prior timeline events are missing,
-       resume continues from the configured mass without impacts.
+    On resume the helpfile row is checked in this order:
+
+    1. ``Time``, ``M_accreted_rock`` and ``n_impacts_applied`` must be finite
+       and non-negative, and the counter must be an integer.
+    2. Rock with a zero or absent counter is refused when an accretion module
+       is selected, since that run predates the counter. With accretion off it
+       is accepted with a warning and the mass is rebuilt from the ledger.
+    3. With a module selected, the counter is checked against the resolved
+       timeline: it may not be below the number of impacts at or before the
+       resume time, and any surplus must be the next impacts after the resume
+       time, each within the init stage (``t <= 1 yr``), where Time stays zero.
+       Those surplus impacts are dropped from the schedule.
 
     Parameters
     ----------
@@ -197,10 +194,10 @@ def restore_accretion_state(handler: Proteus) -> None:
     Raises
     ------
     RuntimeError
-        If ``Time``, ``M_accreted_rock``, or ``n_impacts_applied`` is corrupt,
-        negative, non-numeric, or non-finite; if ``M_accreted_rock > 0`` with
-        absent or zero counter while accretion is active; or if
-        ``n_impacts_applied`` is inconsistent with the impact timeline.
+        If ``Time``, ``M_accreted_rock`` or ``n_impacts_applied`` is not a
+        finite non-negative number, the counter is not an integer, rock is
+        recorded with no counter while a module is selected, or the counter
+        disagrees with the resolved timeline.
     """
     config = handler.config
 
@@ -238,12 +235,10 @@ def restore_accretion_state(handler: Proteus) -> None:
             'Restart the simulation.'
         )
 
-    accretion_active = getattr(
-        getattr(config, 'accretion', None), 'module', None
-    ) is not None and bool(getattr(handler, 'impact_events', None))
+    module_on = config.accretion.module is not None
 
     if accreted > 0.0 and n_num == 0.0:
-        if accretion_active:
+        if module_on:
             raise RuntimeError(
                 f'Resume refused: {hf_name} records M_accreted_rock = {accreted:.6e} kg, '
                 f'but n_impacts_applied is {n_raw!r}. This run predates the impact counter '
@@ -258,68 +253,40 @@ def restore_accretion_state(handler: Proteus) -> None:
         )
 
     n_applied = int(n_num)
+    resolved_path = os.path.join(out_dir, _RESOLVED_TIMELINE_FILE)
     n_drop = 0
-    if accretion_active:
-        resolved_path = os.path.join(out_dir, _RESOLVED_TIMELINE_FILE)
-        all_events = None
-        if os.path.exists(resolved_path):
-            from proteus.accretion.common import read_timeline
+    if module_on and os.path.exists(resolved_path):
+        from proteus.accretion.common import read_timeline
 
-            all_events = read_timeline(resolved_path, time_offset=0.0)
-
-        if all_events is not None:
-            events_before = sum(1 for ev in all_events if 0.0 < ev.time <= resume_time)
-            total_events = sum(1 for ev in all_events if ev.time > 0.0)
-            if n_applied < events_before:
-                raise RuntimeError(
-                    f'Resume refused: {hf_name} records n_impacts_applied = {n_applied}, '
-                    f'but {events_before} impact(s) precede the resume time {resume_time} yr. '
-                    'This inconsistent counter would lose prior impacts; restart the simulation.'
-                )
-            if n_applied > total_events:
-                raise RuntimeError(
-                    f'Resume refused: {hf_name} records n_impacts_applied = {n_applied}, '
-                    f'exceeding the total {total_events} impact(s) in the timeline. '
-                    'Restart the simulation.'
-                )
-            excess = n_applied - events_before
-            if excess > 0:
-                hf_all = getattr(handler, 'hf_all', None)
-                if (
-                    hf_all is not None
-                    and len(hf_all) > 0
-                    and 'Time' in hf_all.columns
-                    and (hf_all['Time'] > 0.0).any()
-                ):
-                    t_first = float(hf_all.loc[hf_all['Time'] > 0.0, 'Time'].iloc[0])
-                    max_init_events = sum(1 for ev in all_events if 0.0 < ev.time <= t_first)
-                    if excess > max_init_events:
-                        raise RuntimeError(
-                            f'Resume refused: {hf_name} records n_impacts_applied = {n_applied}, '
-                            f'exceeding {events_before} preceding impact(s) by {excess}, '
-                            f'which is more than the {max_init_events} event(s) in the '
-                            f'initialization window (t <= {t_first} yr). Restart the simulation.'
-                        )
-                else:
-                    excess_evs = [ev for ev in all_events if ev.time > resume_time][:excess]
-                    log.warning(
-                        'Helpfile %s: treating %d impact(s) exceeding resume time %s yr '
-                        'as initialization-stage impacts: %s',
-                        hf_name,
-                        excess,
-                        resume_time,
-                        excess_evs,
-                    )
-            n_drop = excess
+        all_events = read_timeline(resolved_path, time_offset=0.0)
+        events_before = sum(1 for ev in all_events if 0.0 < ev.time <= resume_time)
+        if n_applied < events_before:
+            raise RuntimeError(
+                f'Resume refused: {hf_name} records n_impacts_applied = {n_applied}, '
+                f'but {events_before} impact(s) precede the resume time {resume_time} yr. '
+                'Restart the simulation.'
+            )
+        # A counted impact after the resume time can only have landed during the
+        # init stage, whose steps never reach beyond _INIT_STAGE_HORIZON_YR.
+        later = [ev for ev in all_events if ev.time > resume_time]
+        n_drop = n_applied - events_before
+        if n_drop > len(later) or any(
+            ev.time > _INIT_STAGE_HORIZON_YR for ev in later[:n_drop]
+        ):
+            raise RuntimeError(
+                f'Resume refused: {hf_name} records n_impacts_applied = {n_applied}, '
+                f'but only {events_before} impact(s) precede the resume time {resume_time} yr '
+                f'and the next {n_drop} cannot have landed during the init stage '
+                f'(t <= {_INIT_STAGE_HORIZON_YR} yr). Restart the simulation.'
+            )
 
     hf_row['n_impacts_applied'] = n_applied
     if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
         handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(n_applied)
 
-    if accretion_active:
-        handler.impact_events = [ev for ev in handler.impact_events if ev.time > resume_time][
-            n_drop:
-        ]
+    pending = getattr(handler, 'impact_events', None)
+    if module_on and pending:
+        handler.impact_events = [ev for ev in pending if ev.time > resume_time][n_drop:]
 
     if accreted <= 0.0:
         # Inform user when continuing from configured mass, which occurs either
