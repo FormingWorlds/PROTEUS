@@ -97,7 +97,7 @@ class Morrigan:
         ``selector_value``.
     selector_value: float or None
         Target value for the 'semimajoraxis' and 'id' selectors. Ignored
-        otherwise.
+        otherwise. The 'id' selector applies int() to the value.
     """
 
     seed: int = field(default=1, validator=ge(0))
