@@ -3097,3 +3097,73 @@ def test_empty_user_timeline_logs_warning(tmp_path, caplog):
 
     assert events == []
     assert any('0 impacts' in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_legacy_resume_init_stage_impact_counted_and_not_reapplied(tmp_path):
+    """Resume with init impact at small time derives count and drops past event."""
+    from proteus.accretion.common import write_timeline
+    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev05 = _impact_event(
+        time=0.5, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev500 = _impact_event(
+        time=500.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    write_timeline([ev05, ev500], str(tmp_path / _RESOLVED_TIMELINE_FILE))
+
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            accretion=SimpleNamespace(module='timeline', impactor_volatiles='dry'),
+            params=SimpleNamespace(resume=True),
+            planet=SimpleNamespace(mass_tot=1.0),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row={
+            'Time': 0.1,
+            'M_accreted_rock': 1e23,
+            'semimajorax': AU,
+            'eccentricity': 0.0,
+        },
+        directories={'output': str(tmp_path)},
+        impact_events=[ev05, ev500],
+    )
+    restore_accretion_state(handler)
+    assert handler.hf_row['n_impacts_applied'] == 1
+    assert [e.time for e in handler.impact_events] == [500.0]
+
+
+@pytest.mark.unit
+def test_legacy_resume_missing_resolved_file_derives_count(tmp_path):
+    """Resume without resolved timeline derives count from raw events."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev05 = _impact_event(
+        time=0.5, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev500 = _impact_event(
+        time=500.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            accretion=SimpleNamespace(module='timeline', impactor_volatiles='dry'),
+            params=SimpleNamespace(resume=True),
+            planet=SimpleNamespace(mass_tot=1.0),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row={
+            'Time': 100.0,
+            'M_accreted_rock': 1e23,
+            'semimajorax': AU,
+            'eccentricity': 0.0,
+        },
+        directories={'output': str(tmp_path)},
+        impact_events=[ev05, ev500],
+    )
+    restore_accretion_state(handler)
+    assert handler.hf_row['n_impacts_applied'] == 1
+    assert [e.time for e in handler.impact_events] == [500.0]
