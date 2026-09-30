@@ -308,6 +308,25 @@ def run_orbit(
 
             hf_row['semimajorax'] = np.sqrt(Lbol / (4 * np.pi * S_0))
 
+        # A prescribed track defines the orbit at every time, including this
+        # first recorded step, so it supersedes the seeds above. Without this
+        # the run starts one step at config.orbit.semimajoraxis and then jumps
+        # to sma_init.
+        if config.orbit.star_planet_model == 'parameterized':
+            from proteus.orbit.parameterized import run_parameterized_orbital_migration
+
+            sma_init = config.orbit.parameterized.sma_init
+            if sma_init is not None and not np.isclose(
+                sma_init, config.orbit.semimajoraxis, rtol=1e-9
+            ):
+                log.warning(
+                    'orbit.semimajoraxis = %.6g AU is unused under the parameterized '
+                    'star-planet model, which starts the track at sma_init = %.6g AU',
+                    config.orbit.semimajoraxis,
+                    sma_init,
+                )
+            run_parameterized_orbital_migration(hf_row, config)
+
         # Update orbital period (dependent)
         update_period(hf_row)
 

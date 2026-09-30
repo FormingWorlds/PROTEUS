@@ -163,7 +163,8 @@ instellation_method = "distance"
 instellationflux = 1.0
 module = "none"
 s0_factor = 0.375
-semimajoraxis = 0.0106  # [AU] Patel et al. 2023
+semimajoraxis = 0.029  # [AU] start of the migration track, see [orbit.parameterized]
+# Present-day observed value is 0.0106 AU (Patel et al. 2023), which the track ends at.
 zenith_angle = 48.19
 
 [orbit.dummy]
