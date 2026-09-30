@@ -434,6 +434,20 @@ def test_frame_subscripts_reported_consistently_with_row_subscripts():
     visitor_mask.visit(ast.parse(code_mask))
     assert visitor_mask.unresolved == []
 
+    # BinOp templated keys on frames: expanded inside loop, unresolved outside
+    code_loop = 'def f(hf_all):\n    for e in element_list:\n        _ = hf_all[e + "_kg"]\n'
+    visitor_loop = _scan.HfRowVisitor('test.py', {'element_list': ['H', 'O', 'C']})
+    visitor_loop.visit(ast.parse(code_loop))
+    assert visitor_loop.unresolved == []
+    assert visitor_loop.reads == [('H_kg', False), ('O_kg', False), ('C_kg', False)]
+
+    code_tmpl = 'def f(hf_all, e):\n    return hf_all[e + "_kg"]\n'
+    visitor_tmpl = _scan.HfRowVisitor('test.py', {})
+    visitor_tmpl.visit(ast.parse(code_tmpl))
+    assert len(visitor_tmpl.unresolved) == 1
+    assert visitor_tmpl.unresolved[0][1:3] == ('template <e>_kg', 'read')
+    assert visitor_tmpl.reads == []
+
 
 def test_template_overrides_are_valid_and_consumed():
     """Each template override names valid species lists and is consumed in the scan."""

@@ -465,7 +465,14 @@ class HfRowVisitor(ast.NodeVisitor):
             self.generic_visit(node)
             return
         if name in FRAME_NAMES and isinstance(
-            node.slice, (ast.Compare, ast.Slice, ast.UnaryOp, ast.BinOp)
+            node.slice, (ast.Compare, ast.Slice, ast.UnaryOp, ast.BoolOp)
+        ):
+            self.generic_visit(node)
+            return
+        if (
+            name in FRAME_NAMES
+            and isinstance(node.slice, ast.BinOp)
+            and not isinstance(node.slice.op, ast.Add)
         ):
             self.generic_visit(node)
             return
