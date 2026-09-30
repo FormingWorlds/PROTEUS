@@ -2706,87 +2706,6 @@ def test_multiple_impacts_in_one_step_applied_in_time_order(tmp_path):
     assert len(handler.impact_events) == 0
 
 
-@pytest.mark.unit
-def test_resume_from_old_helpfile_without_counter_refuses_when_rock_positive(
-    tmp_path,
-):
-    """Resuming an old-format helpfile without n_impacts_applied is refused when rock > 0."""
-    from proteus.accretion.common import ImpactEvent, write_timeline
-    from proteus.accretion.wrapper import (
-        _RESOLVED_TIMELINE_FILE,
-        init_accretion,
-        restore_accretion_state,
-    )
-
-    ev1 = ImpactEvent(
-        time=50.0,
-        M_target_before=6.0e24,
-        M_impactor=1.0e23,
-        M_merged_after=6.1e24,
-        v_impact=1.2e4,
-        v_esc=1.1e4,
-        impact_parameter=0.3,
-        R_target_before=6.4e6,
-        R_impactor=2.0e6,
-        rho_target=5510.0,
-        rho_impactor=3930.0,
-        a_before=1.4e11,
-        a_after=1.4e11,
-        e_before=0.03,
-        e_after=0.03,
-        id_target=1,
-        id_impactor=2,
-    )
-    ev2 = ImpactEvent(
-        time=200.0,
-        M_target_before=6.1e24,
-        M_impactor=2.0e23,
-        M_merged_after=6.3e24,
-        v_impact=1.2e4,
-        v_esc=1.1e4,
-        impact_parameter=0.3,
-        R_target_before=6.4e6,
-        R_impactor=2.5e6,
-        rho_target=5510.0,
-        rho_impactor=3930.0,
-        a_before=1.4e11,
-        a_after=1.4e11,
-        e_before=0.03,
-        e_after=0.03,
-        id_target=1,
-        id_impactor=3,
-    )
-
-    resolved_path = tmp_path / _RESOLVED_TIMELINE_FILE
-    write_timeline([ev1, ev2], str(resolved_path))
-
-    hf_row = {
-        'Time': 100.0,
-        'M_accreted_rock': ev1.mass_delta,
-        'n_impacts_applied': 0.0,
-        'semimajorax': 1.4e11,
-        'eccentricity': 0.03,
-    }
-
-    handler = _handler(
-        module='timeline',
-        timeline_path=str(resolved_path),
-        output_dir=tmp_path,
-        resume=True,
-    )
-    handler.config.accretion.impactor_volatiles = 'dry'
-    handler.config.planet.mass_tot = 1.0
-    handler.config.orbit = SimpleNamespace(semimajoraxis=1.0, eccentricity=0.01)
-    handler.hf_row = hf_row
-    handler.hf_all = None
-
-    handler.impact_events = init_accretion(handler)
-    with pytest.raises(RuntimeError, match='Resume refused') as excinfo:
-        restore_accretion_state(handler)
-
-    assert 'restart' in str(excinfo.value)
-
-
 def _resumed_handler(tmp_path, events, hf_row, pending=None, hf_all=None):
     """Build a minimal Proteus handler for resume accretion tests."""
     from proteus.accretion.common import write_timeline
@@ -3029,7 +2948,9 @@ def test_empty_user_timeline_logs_warning(tmp_path, caplog):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('counter_key_val', [None, 0.0, float('nan'), -1.0, 1.5])
+@pytest.mark.parametrize(
+    'counter_key_val', [None, 0.0, float('nan'), -1, -1.0, 1.5, 'bad', [], {}]
+)
 def test_legacy_resume_missing_or_corrupt_counter_refuses(tmp_path, counter_key_val):
     """Resume with positive rock and missing/zero/corrupt counter is refused."""
     from proteus.accretion.wrapper import restore_accretion_state
@@ -3065,7 +2986,6 @@ def test_legacy_resume_missing_or_corrupt_counter_refuses(tmp_path, counter_key_
         restore_accretion_state(handler)
 
     err = str(excinfo.value)
-    assert 'helpfile' in err or '.csv' in err
     assert 'restart' in err.lower()
     assert err.split()[2].endswith('runtime_helpfile.csv')
 
@@ -3122,59 +3042,6 @@ def test_restore_accretion_state_no_warning_when_counter_positive(tmp_path, capl
         restore_accretion_state(handler)
     assert len(caplog.records) == 0
     assert handler.hf_row['n_impacts_applied'] == 1
-
-
-@pytest.mark.unit
-def test_restore_accretion_state_refuses_corrupt_counter(tmp_path):
-    """Corrupt counter in helpfile is refused unconditionally without state mutation."""
-    from proteus.accretion.wrapper import restore_accretion_state
-    from proteus.utils.constants import AU
-
-    ev50 = _impact_event(
-        time=50.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
-    )
-    ev500 = _impact_event(
-        time=500.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
-    )
-
-    import pandas as pd
-
-    for bad_counter in (float('nan'), -1, -1.0, 1.5, 'bad', [], {}):
-        hf_all = pd.DataFrame(
-            [
-                {
-                    'Time': 100.0,
-                    'M_accreted_rock': 1e23,
-                    'n_impacts_applied': bad_counter,
-                    'semimajorax': AU,
-                    'eccentricity': 0.0,
-                }
-            ]
-        )
-        row = {
-            'Time': 100.0,
-            'M_accreted_rock': 1e23,
-            'n_impacts_applied': bad_counter,
-            'semimajorax': AU,
-            'eccentricity': 0.0,
-        }
-        handler = _resumed_handler(
-            tmp_path,
-            events=[ev50, ev500],
-            hf_row=dict(row),
-            hf_all=hf_all.copy(),
-            pending=[ev50, ev500],
-        )
-
-        with pytest.raises(RuntimeError, match='Resume refused') as excinfo:
-            restore_accretion_state(handler)
-
-        err = str(excinfo.value)
-        assert 'restart' in err.lower()
-        assert 'runtime_helpfile.csv' in err
-        assert handler.hf_row == row
-        assert handler.hf_all.equals(hf_all)
-        assert handler.impact_events == [ev50, ev500]
 
 
 @pytest.mark.unit

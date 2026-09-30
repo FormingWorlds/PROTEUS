@@ -112,6 +112,14 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
     )
 
 
+def _as_float(val: object) -> float:
+    """Convert value to float, returning NaN on ValueError or TypeError."""
+    try:
+        return float(val)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        return float('nan')
+
+
 def _current_orbit(hf_row: dict, config: Config) -> tuple[float, float]:
     """Return the current planetary orbit (semi-major axis [m] and eccentricity [1]).
 
@@ -131,13 +139,6 @@ def _current_orbit(hf_row: dict, config: Config) -> tuple[float, float]:
     tuple of float
         Current semi-major axis in metres [m] and eccentricity [1].
     """
-
-    def _as_float(val: object) -> float:
-        try:
-            return float(val)  # type: ignore[arg-type]
-        except (ValueError, TypeError):
-            return float('nan')
-
     a = _as_float(hf_row.get('semimajorax'))
     e = _as_float(hf_row.get('eccentricity'))
     e_cfg = float(config.orbit.eccentricity)
@@ -212,51 +213,39 @@ def restore_accretion_state(handler: Proteus) -> None:
 
     hf_row = handler.hf_row
     out_dir = getattr(handler, 'directories', {}).get('output', '.')
-    hf_name = getattr(handler, 'helpfile_path', None) or helpfile_path(out_dir)
+    hf_name = helpfile_path(out_dir)
     m_raw = hf_row.get('M_accreted_rock')
-    try:
-        accreted = float(0.0 if m_raw is None else m_raw)
-    except (ValueError, TypeError):
-        accreted = float('nan')
-    if not math.isfinite(accreted) or accreted < 0.0:
+    accreted = _as_float(0.0 if m_raw is None else m_raw)
+    if not 0.0 <= accreted < math.inf:
         raise ValueError(
             f'Helpfile {hf_name} contains invalid M_accreted_rock = {m_raw!r}: '
             'must be a finite non-negative number'
         )
 
     n_raw = hf_row.get('n_impacts_applied')
-    try:
-        n_num = float(0.0 if n_raw is None else n_raw)
-    except (ValueError, TypeError):
-        n_num = float('nan')
-
-    # Validate counter integrity: corrupt values are refused unconditionally.
-    if n_raw is not None and (
-        not math.isfinite(n_num) or n_num < 0.0 or not n_num.is_integer()
-    ):
+    n_num = _as_float(0.0 if n_raw is None else n_raw)
+    if not (n_num >= 0.0 and n_num.is_integer()):
         raise RuntimeError(
             f'Resume refused: {hf_name} contains corrupt n_impacts_applied = {n_raw!r}. '
             'Restart the simulation.'
         )
 
-    if accreted > 0.0:
-        if n_raw is None or n_num == 0.0:
-            if getattr(handler, 'impact_events', None) is not None:
-                raise RuntimeError(
-                    f'Resume refused: {hf_name} records M_accreted_rock = {accreted:.6e} kg, '
-                    f'but n_impacts_applied is {n_raw!r}. This run predates the impact counter '
-                    'and cannot be resumed safely; restart the simulation.'
-                )
-            log.warning(
-                'Helpfile %s records M_accreted_rock = %.6e kg but n_impacts_applied is %r. '
-                'Accretion is disabled for this resume; restoring mass and orbit from the ledger.',
-                hf_name,
-                accreted,
-                n_raw,
+    if accreted > 0.0 and n_num == 0.0:
+        if getattr(handler, 'impact_events', None) is not None:
+            raise RuntimeError(
+                f'Resume refused: {hf_name} records M_accreted_rock = {accreted:.6e} kg, '
+                f'but n_impacts_applied is {n_raw!r}. This run predates the impact counter '
+                'and cannot be resumed safely; restart the simulation.'
             )
-        n_applied = int(n_num)
-    else:
-        n_applied = int(n_num) if n_raw is not None and n_num > 0.0 else 0
+        log.warning(
+            'Helpfile %s records M_accreted_rock = %.6e kg but n_impacts_applied is %r. '
+            'Accretion is disabled for this resume; restoring mass and orbit from the ledger.',
+            hf_name,
+            accreted,
+            n_raw,
+        )
+
+    n_applied = int(n_num)
 
     all_events = None
     events_before = 0

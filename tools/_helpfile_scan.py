@@ -451,18 +451,6 @@ class HfRowVisitor(ast.NodeVisitor):
         elif isinstance(target, (ast.Tuple, ast.List)):
             for elt in target.elts:
                 self._invalidate(elt)
-        elif isinstance(target, ast.MatchAs):
-            if target.name:
-                self.local_vars[target.name] = None
-                self.loop_domains.pop(target.name, None)
-        elif isinstance(target, ast.MatchStar):
-            if target.name:
-                self.local_vars[target.name] = None
-                self.loop_domains.pop(target.name, None)
-        elif isinstance(target, ast.MatchMapping):
-            if target.rest:
-                self.local_vars[target.rest] = None
-                self.loop_domains.pop(target.rest, None)
 
     def visit_Assign(self, node):
         for target in node.targets:
@@ -534,20 +522,11 @@ class HfRowVisitor(ast.NodeVisitor):
                 continue
             self._invalidate(target)
 
-    def visit_MatchAs(self, node):
-        if node.name:
-            self.local_vars[node.name] = None
+    def _visit_match_capture(self, node):
+        self._invalidate(getattr(node, 'name', None) or getattr(node, 'rest', None))
         self.generic_visit(node)
 
-    def visit_MatchStar(self, node):
-        if node.name:
-            self.local_vars[node.name] = None
-        self.generic_visit(node)
-
-    def visit_MatchMapping(self, node):
-        if node.rest:
-            self.local_vars[node.rest] = None
-        self.generic_visit(node)
+    visit_MatchAs = visit_MatchStar = visit_MatchMapping = _visit_match_capture
 
     def _visit_comp(self, node):
         old_locals = dict(self.local_vars)
@@ -693,7 +672,7 @@ class HfRowVisitor(ast.NodeVisitor):
 
     def _record(self, key_node, lineno: int, is_write: bool, is_get: bool = False) -> None:
         func = self.func_stack[-1] if self.func_stack else '<module>'
-        keys, is_possible = self._resolve_keys(key_node, lineno, is_write, is_get)
+        keys, is_possible = self._resolve_keys(key_node, lineno, func, is_write, is_get)
         for key in keys:
             if is_write:
                 self.writes.append((key, func))
@@ -701,9 +680,8 @@ class HfRowVisitor(ast.NodeVisitor):
                 self.reads.append((key, is_possible))
 
     def _resolve_keys(
-        self, key_node, lineno: int, is_write: bool, is_get: bool = False
+        self, key_node, lineno: int, func: str, is_write: bool, is_get: bool = False
     ) -> tuple[list[str], bool]:
-        func = self.func_stack[-1] if self.func_stack else '<module>'
         if is_get and isinstance(key_node, ast.Name):
             for s in reversed(self.scopes):
                 if key_node.id in s:
