@@ -10243,7 +10243,7 @@
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Target value for the 'semimajoraxis' and 'id' selectors. Ignored otherwise. The 'id' selector applies int() to the value.",
+      "description": "Target value for the 'semimajoraxis' and 'id' selectors. Ignored otherwise. The validator parses numeric strings and normalizes the value to float for 'semimajoraxis' and int for 'id'.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
