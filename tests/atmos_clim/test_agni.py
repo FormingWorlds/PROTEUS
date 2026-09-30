@@ -5,6 +5,9 @@ This module tests the AGNI atmosphere interface including:
 - Aerosol discovery (_determine_aerosols)
 - Condensate species determination (_determine_condensates)
 - AGNI atmosphere initialization (init_agni_atmos)
+- Reuse of prepared spectral files across runs, covering the folder AGNI builds
+  them in, the hit path that skips the stellar insertion, and the contract that
+  an unusable cache slows a run down without changing its result
 - Temperature-profile carry-over between iterations (_validate_stored_profile,
   update_agni_atmos), covering pressure and temperature positivity, profile
   monotonicity under interpolation, and the atmosphere-failure contract when
@@ -18,6 +21,7 @@ See also:
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -33,6 +37,7 @@ from proteus.atmos_clim.agni import (
     init_agni_atmos,
     write_atmos_ncdf,
 )
+from proteus.atmos_clim.spectral_cache import cache_key
 from proteus.utils.constants import noble_gases
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -511,6 +516,328 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     # grey_opacity_lw/sw should be forwarded as the Greek-named AGNI kwargs.
     assert fake_agni.last_setup_kwargs['κ_grey_lw'] == pytest.approx(0.1)
     assert fake_agni.last_setup_kwargs['κ_grey_sw'] == pytest.approx(0.2)
+
+
+class _SpectralWritingAGNI(_FakeAGNI):
+    """Fake AGNI that writes the runtime spectral pair where the real one does.
+
+    AGNI builds `<IO_DIR>/runtime.sf` and its `_k` companion inside `allocate!`,
+    and only when a stellar spectrum is supplied; an empty spectrum means the
+    spectral file it was handed is already prepared and is used untouched. As
+    in AGNI, a prepared file is refused when an enabled aerosol uses Mie theory,
+    whose properties are computed from the stellar spectrum.
+    """
+
+    def _allocate_b(self, atmos, input_star, **kwargs):
+        setup = self.last_setup_kwargs
+        aerosols = setup.get('aerosol_species', {})
+        if not input_star and setup.get('flag_aerosol'):
+            if any(entry['method'] == 'mie' for entry in aerosols.values()):
+                return False
+        if input_star:
+            io_dir = Path(self.last_setup_kwargs['IO_DIR'])
+            io_dir.mkdir(parents=True, exist_ok=True)
+            star_name = Path(input_star).name
+            (io_dir / 'runtime.sf').write_text(f'prepared from {star_name}', encoding='utf-8')
+            (io_dir / 'runtime.sf_k').write_text(f'ktable from {star_name}', encoding='utf-8')
+        return super()._allocate_b(atmos, input_star, **kwargs)
+
+
+def _setup_cached_spectral_run(monkeypatch, tmp_path, cache_dir, verbosity=1, log_level='INFO'):
+    """Wire up an init_agni_atmos call that goes through the spectral-file cache.
+
+    The base spectral file and the stellar spectrum are real files, because the
+    cache key fingerprints both. `verbosity` and `log_level` select which folder
+    AGNI works in: the output folder only when verbose or debug-logged.
+    """
+    fake_agni = _SpectralWritingAGNI()
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    sflux = data_dir / '100.sflux'
+    sflux.write_text('400.0 1.0\n500.0 2.0\n', encoding='utf-8')
+
+    fwl_dir = tmp_path / 'fwl'
+    fwl_dir.mkdir(parents=True, exist_ok=True)
+    base_sf = fwl_dir / 'Honeyside.sf'
+    base_sf.write_text('base spectral file, no star inserted', encoding='utf-8')
+
+    scratch = tmp_path / 'scratch'
+
+    def _fake_tmp_folder():
+        scratch.mkdir(parents=True, exist_ok=True)
+        return str(scratch)
+
+    config = _build_greygas_config()
+    config.atmos_clim.agni.spectral_file = None
+    config.atmos_clim.agni.verbosity = verbosity
+    config.atmos_clim.spectral_group = 'Honeyside'
+    config.atmos_clim.spectral_bands = '16'
+    config.atmos_clim.spectral_cache = str(cache_dir)
+    config.params.out.logging = log_level
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    monkeypatch.setattr(agni_mod, 'get_spfile_path', lambda *_a, **_k: str(base_sf))
+    monkeypatch.setattr(agni_mod, 'create_tmp_folder', _fake_tmp_folder)
+
+    return SimpleNamespace(
+        fake_agni=fake_agni,
+        dirs={'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(fwl_dir)},
+        config=config,
+        hf_row={
+            'F_ins': 1000.0,
+            'albedo_pl': 0.2,
+            'T_surf': 900.0,
+            'gravity': 9.8,
+            'R_int': 6.4e6,
+            'P_surf': 1.0,
+            'axial_period': 86400.0,
+            'longitude': 0.0,
+            'latitude': 0.0,
+            'hill_radius': 6.4e8,
+        },
+        output_dir=output_dir,
+        scratch=scratch,
+        base_sf=base_sf,
+        sflux=sflux,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('verbosity', 'log_level', 'work_dir'),
+    [(1, 'INFO', 'scratch'), (2, 'INFO', 'output')],
+    ids=['quiet-run-works-in-scratch', 'verbose-run-works-in-output'],
+)
+def test_spectral_cache_is_filled_from_the_folder_agni_wrote_in(
+    monkeypatch, tmp_path, verbosity, log_level, work_dir
+):
+    """A run that builds a spectral file leaves a cache entry, in either work folder.
+
+    AGNI writes the prepared file into its own working folder, which is the run's
+    output folder only when the run is verbose or debug-logged. A quiet run, the
+    default and the one inference workers use, works in a scratch folder instead;
+    harvesting the entry from the output folder there stores nothing at all, so
+    the cache stays empty and every later run repeats the insertion.
+    """
+    cache = tmp_path / 'cache'
+    ctx = _setup_cached_spectral_run(
+        monkeypatch, tmp_path, cache, verbosity=verbosity, log_level=log_level
+    )
+
+    atmos = init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row)
+    assert atmos is not None
+
+    # Cache miss: this run did the insertion itself, so allocate saw the spectrum.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+
+    built_in = ctx.scratch if work_dir == 'scratch' else ctx.output_dir
+    assert (built_in / 'runtime.sf').is_file()
+
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
+    assert sorted(p.name for p in cache.iterdir()) == [f'{key}.sf', f'{key}.sf_k']
+    assert (cache / f'{key}.sf').read_text() == (built_in / 'runtime.sf').read_text()
+    assert (cache / f'{key}.sf_k').read_text() == (built_in / 'runtime.sf_k').read_text()
+
+    # Discriminating guard: in the quiet run the output folder holds no prepared
+    # file, so a harvest pointed there would find nothing and cache nothing.
+    quiet_output_is_empty = not (ctx.output_dir / 'runtime.sf').is_file()
+    assert quiet_output_is_empty == (work_dir == 'scratch')
+
+
+@pytest.mark.unit
+def test_a_cached_spectral_file_is_reused_without_reinserting_the_spectrum(
+    monkeypatch, tmp_path
+):
+    """A cache hit hands AGNI the prepared file and skips the stellar insertion.
+
+    The seeded pair has to land in the folder AGNI reads from, and the path
+    handed to setup has to be that copy: pointing at the output folder in a quiet
+    run names a file that was never created there.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
+    (cache / f'{key}.sf').write_text('cached prepared file', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('cached ktable', encoding='utf-8')
+
+    atmos = init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row)
+    assert atmos is not None
+
+    # Empty spectrum: AGNI takes the file as already prepared and does not rebuild.
+    assert ctx.fake_agni.last_allocate_input_star == ''
+
+    # setup_b positional args: [dirs['agni'], dirs['output'], input_sf, ...]
+    assert ctx.fake_agni.last_setup_args[2] == str(ctx.scratch / 'runtime.sf')
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'cached prepared file'
+    assert (ctx.scratch / 'runtime.sf_k').read_text() == 'cached ktable'
+
+    # Guard: the companion must travel with its file. A seeded pair that AGNI
+    # cannot find is the failure mode the path-choice above exists to avoid.
+    assert not (ctx.output_dir / 'runtime.sf').exists()
+
+
+@pytest.mark.unit
+def test_a_rebuild_after_a_spectrum_update_bypasses_the_spectral_cache(monkeypatch, tmp_path):
+    """A rebuild after a stellar-spectrum update neither reads nor fills the
+    cache: its spectrum depends on the run's own timestep, so an entry stored
+    for it would never be reused, and a study would accumulate one per update.
+    The first build of the same run, with the same entry present, does use it.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
+    (cache / f'{key}.sf').write_text('cached prepared file', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('cached ktable', encoding='utf-8')
+    before = sorted(p.name for p in cache.iterdir())
+
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, use_cache=False) is not None
+    # Built from the spectrum, not seeded, and nothing added to the cache.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (ctx.scratch / 'runtime.sf').read_text() != 'cached prepared file'
+    assert sorted(p.name for p in cache.iterdir()) == before
+
+    # Discrimination: the first build reads the same entry, so the bypass above
+    # comes from the flag and not from a cache that could not be read.
+    for suffix in ('', '_k'):
+        (ctx.scratch / f'runtime.sf{suffix}').unlink()
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert ctx.fake_agni.last_allocate_input_star == ''
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'cached prepared file'
+
+
+@pytest.mark.unit
+def test_a_cached_spectral_file_is_not_reused_across_rayleigh_settings(monkeypatch, tmp_path):
+    """A cache folder shared by runs that differ only in `atmos_clim.rayleigh`
+    must not hand one the other's file, because AGNI writes the Rayleigh block
+    into it. The entry built without Rayleigh scattering is left alone, and the
+    run with it builds and stores its own.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    without = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None
+    )
+    (cache / f'{without}.sf').write_text('built without rayleigh', encoding='utf-8')
+    (cache / f'{without}.sf_k').write_text('ktable without rayleigh', encoding='utf-8')
+    ctx.config.atmos_clim.rayleigh = True
+
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+
+    # A miss: the spectrum was handed to AGNI for insertion, not a seeded file.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (ctx.scratch / 'runtime.sf').read_text() != 'built without rayleigh'
+    with_rayleigh = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=True, aerosols=None
+    )
+    assert sorted(p.name for p in cache.iterdir()) == sorted(
+        [f'{without}.sf', f'{without}.sf_k', f'{with_rayleigh}.sf', f'{with_rayleigh}.sf_k']
+    )
+    assert (cache / f'{without}.sf').read_text() == 'built without rayleigh'
+
+
+@pytest.mark.unit
+def test_a_cached_spectral_file_is_keyed_on_the_aerosols_agni_receives(monkeypatch, tmp_path):
+    """The cache key names the aerosols tied to a condensate, not all available ones.
+
+    AGNI only receives aerosols tied to a condensate, and writes their blocks
+    into the prepared file. A run without condensates therefore passes no
+    aerosols even when SiO2 data exist, and must not reuse an entry built by a
+    run whose rainout tied SiO2 in. Keying on every available species would
+    give both runs the same key and hand the first the wrong file.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    ctx.config.atmos_clim.aerosols_enabled = True
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda _d: {'SiO2': 'mon'})
+    monkeypatch.setattr(agni_mod, '_determine_condensates', lambda _v: ['SiO2'])
+
+    tied = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=['SiO2']
+    )
+    untied = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=[])
+    # Discrimination guard: the two runs must map to different entries.
+    assert tied != untied
+    (cache / f'{tied}.sf').write_text('built with SiO2 block', encoding='utf-8')
+    (cache / f'{tied}.sf_k').write_text('ktable with SiO2 block', encoding='utf-8')
+
+    # Edge case: SiO2 data available, but no condensates, so nothing is tied.
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert ctx.fake_agni.last_setup_kwargs['aerosol_species'] == {}
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (cache / f'{untied}.sf').read_text() == 'prepared from 100.sflux'
+    assert (cache / f'{tied}.sf').read_text() == 'built with SiO2 block'
+
+    # With rainout on, SiO2 is tied and the matching entry is reused as is.
+    ctx.config.atmos_clim.agni.rainout = True
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert list(ctx.fake_agni.last_setup_kwargs['aerosol_species']) == ['SiO2']
+    assert ctx.fake_agni.last_allocate_input_star == ''
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'built with SiO2 block'
+
+
+@pytest.mark.unit
+def test_a_run_with_a_mie_aerosol_builds_its_own_spectral_file(monkeypatch, tmp_path):
+    """A Mie aerosol skips the cache: AGNI refuses a prepared file for it."""
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    ctx.config.atmos_clim.aerosols_enabled = True
+    ctx.config.atmos_clim.agni.rainout = True
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda _d: {'SiO2': 'mie'})
+    monkeypatch.setattr(agni_mod, '_determine_condensates', lambda _v: ['SiO2'])
+    key = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=['SiO2']
+    )
+    (cache / f'{key}.sf').write_text('built with SiO2 block', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('ktable with SiO2 block', encoding='utf-8')
+
+    # A hit would reach the fake's refusal and raise; the run builds instead.
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert sorted(p.name for p in cache.iterdir()) == [f'{key}.sf', f'{key}.sf_k']
+    assert (cache / f'{key}.sf').read_text() == 'built with SiO2 block'
+
+
+@pytest.mark.unit
+def test_a_cache_that_cannot_be_written_costs_time_and_not_correctness(
+    monkeypatch, tmp_path, caplog
+):
+    """An unusable cache folder degrades to a normal build instead of failing.
+
+    A cache path occupied by a regular file cannot hold entries. The run must
+    still initialise, still insert the spectrum itself, and leave the occupying
+    file untouched.
+    """
+    blocked = tmp_path / 'blocked'
+    blocked.write_text('not a folder', encoding='utf-8')
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, blocked)
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.spectral_cache'):
+        atmos = init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row)
+
+    assert atmos is not None
+    assert 'Could not store spectral file in cache' in caplog.text
+
+    # The run built its own file, exactly as it would with the cache switched off.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (ctx.scratch / 'runtime.sf').is_file()
+
+    # Nothing was written over the occupying file.
+    assert blocked.is_file()
+    assert blocked.read_text() == 'not a folder'
 
 
 @pytest.mark.unit

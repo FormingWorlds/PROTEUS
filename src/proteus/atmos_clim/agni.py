@@ -12,6 +12,7 @@ from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import clip_radius_to_hill, get_oarr_from_parr, get_spfile_path
+from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
@@ -470,7 +471,7 @@ def _determine_aerosols(dirs: dict) -> dict:
     return aerosols
 
 
-def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
+def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = True):
     """Initialise atmosphere struct for use by AGNI.
 
     Does not set the temperature profile.
@@ -483,6 +484,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
+        use_cache : bool
+            Whether to read from and store into `atmos_clim.spectral_cache`.
 
     Returns
     ----------
@@ -500,6 +503,19 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     # the spectral file from FWL_DATA). Grey-gas and user-provided paths
     # bypass the glob entirely so a missing or empty `data/*.sflux` directory
     # is not a precondition for those modes.
+
+    # Fast I/O folder. Decided before the spectral file, because AGNI writes the
+    # prepared runtime.sf pair here and so this is where the cache reads from.
+    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
+        io_dir = dirs['output']
+    else:
+        io_dir = create_tmp_folder()
+    log.info(f'Temporary-file working dir: {io_dir}')
+
+    # Set when this run built a prepared spectral file that the cache does not
+    # yet hold, so it can be stored once the build is known to have succeeded.
+    cache_store_key = None
+    cache_candidate = False
 
     # Spectral file path provided?
     if config.atmos_clim.agni.spectral_file is not None:
@@ -544,12 +560,9 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         input_sf = get_spfile_path(dirs['fwl'], config)
         input_star = sflux_path
 
-    # Fast I/O folder
-    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
-        io_dir = dirs['output']
-    else:
-        io_dir = create_tmp_folder()
-    log.info(f'Temporary-file working dir: {io_dir}')
+        # The cache is consulted once the aerosol species are known, because they
+        # are part of the cache key.
+        cache_candidate = bool(config.atmos_clim.spectral_cache and use_cache)
 
     # composition
     vol_dict = _construct_voldict(config, hf_row, dirs)
@@ -616,6 +629,31 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     # Warn if no aerosol species were found
     if len(aerosol_species) == 0:
         log.warning('    No aerosols mapped or data unavailable')
+
+    # AGNI computes Mie aerosol properties from the stellar spectrum while it
+    # builds the file, so a run with a Mie aerosol always refuses the cache.
+    if cache_candidate and config.atmos_clim.aerosols_enabled:
+        if any(entry['method'] == 'mie' for entry in aerosol_species.values()):
+            log.debug('Mie aerosols present; not using the spectral-file cache')
+            cache_candidate = False
+
+    # Reuse a cached file built earlier from this base file and this stellar
+    # spectrum, and skip the insertion.
+    if cache_candidate:
+        key = cache_key(
+            input_sf,
+            sflux_path,
+            config.atmos_clim.spectral_group,
+            config.atmos_clim.spectral_bands,
+            rayleigh=config.atmos_clim.rayleigh,
+            aerosols=list(aerosol_species) if config.atmos_clim.aerosols_enabled else None,
+        )
+        if seed_from_cache(config.atmos_clim.spectral_cache, key, io_dir):
+            log.debug('Reusing prepared spectral file from cache')
+            input_sf = os.path.join(io_dir, 'runtime.sf')
+            input_star = ''
+        else:
+            cache_store_key = key
 
     # Build the AGNI setup! kwargs.
     setup_kwargs = dict(
@@ -711,6 +749,10 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
 
     # Confirm the live Atmos_t contains every field that PROTEUS expects
     _check_agni_schema(atmos, dirs)
+
+    # Stored spectral file is now valid, so store it in the cache if requested.
+    if cache_store_key:
+        store_in_cache(config.atmos_clim.spectral_cache, cache_store_key, io_dir)
 
     # Set temperature profile from old NetCDF if it exists
     nc_files = glob.glob(os.path.join(dirs['output'], 'data', '*_atm.nc'))
