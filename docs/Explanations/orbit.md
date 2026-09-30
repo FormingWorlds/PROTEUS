@@ -177,8 +177,10 @@ closed form in `src/proteus/orbit/parameterized.py`:
 
 Semi-major axis (top) and eccentricity (bottom) for the four regimes, with
 `sma_init = 2.0` au, `sma_final = 0.8` au, `time_migration = 1e3` yr and
-`tau_migration = 1e4` yr. The dashed line marks the migration epoch and the
-shaded band spans one `tau_migration` after it.
+`tau_migration = 1e4` yr. The dashed vertical line marks the migration epoch
+and the shaded band spans one `tau_migration` after it. The dotted horizontal
+lines in the top panel mark the starting and final orbits, `a_0 = sma_init` and
+`a_f = sma_final`.
 
 ## Planet-satellite models (`orbit.planet_satellite_model`)
 

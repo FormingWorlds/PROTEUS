@@ -175,7 +175,7 @@ Phi_tide = "<0.3"
 visc_thresh = 1000000000.0
 
 [orbit.parameterized]
-migration = "none"
+migration = "high_ecc"
 sma_init = 0.029
 sma_final = 0.0106
 time_migration = 1e6
@@ -215,13 +215,13 @@ starspec = 1000000.0
 maximum_rel = 0.0
 
 [params.out]
-archive_mod = 100
+archive_mod = 30
 logging = "INFO"
 path = "scratch/toi561b"
 plot_fmt = "pdf"
-plot_mod = 50
+plot_mod = 20
 remove_sf = true
-write_mod = 50
+write_mod = 20
 
 [params.stop]
 strict = false
