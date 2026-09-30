@@ -715,6 +715,59 @@ def test_validate_zalmoxis_output_schema_skips_when_hf_row_unset(tmp_path):
     assert hf_row_no_mass['M_int'] == pytest.approx(0.0, abs=1e-12)
 
 
+def _write_mesh_bounds(path, r_first, r_last, n=6):
+    """Write a 5-column mesh file whose radius runs from r_first to r_last."""
+    r = np.linspace(r_first, r_last, n)
+    np.savetxt(path, np.column_stack([r, r, r, r, r]), fmt='%.17e')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('r_first', 'r_last', 'expected'),
+    [
+        (3.4e6, 6.4e6, (0.0, 0.0)),
+        (3.4e6, 6.4e6 + 300.0, (0.0, 300.0)),
+        (3.4e6 - 2.0, 6.4e6, (-2.0, 0.0)),
+    ],
+    ids=['match', 'R_int above', 'R_core below'],
+)
+def test_zalmoxis_mesh_gaps_reports_signed_gaps(tmp_path, r_first, r_last, expected):
+    """Each bound's gap is file minus row, with the 1 m floor as tolerance."""
+    from proteus.interior_struct.zalmoxis import zalmoxis_mesh_gaps
+
+    path = tmp_path / 'zalmoxis_output.dat'
+    _write_mesh_bounds(path, r_first, r_last)
+    dR_core, dR_int, atol = zalmoxis_mesh_gaps(str(path), {'R_core': 3.4e6, 'R_int': 6.4e6})
+
+    assert (dR_core, dR_int) == pytest.approx(expected, abs=1e-6)
+    assert atol == 1.0  # span 3e6 m: 1e-9 * span = 3e-3 m, below the floor
+
+
+@pytest.mark.unit
+def test_zalmoxis_mesh_gaps_tolerance_scales_with_span(tmp_path):
+    """Above 1e9 m of mantle the tolerance is 1e-9 of the span, as in reset()."""
+    from proteus.interior_struct.zalmoxis import zalmoxis_mesh_gaps
+
+    path = tmp_path / 'zalmoxis_output.dat'
+    _write_mesh_bounds(path, 1.0e9, 5.0e9)
+    gaps = zalmoxis_mesh_gaps(str(path), {'R_core': 1.0e9, 'R_int': 5.0e9})
+
+    assert gaps[2] == pytest.approx(4.0)
+
+
+@pytest.mark.unit
+def test_zalmoxis_mesh_gaps_none_without_a_usable_file(tmp_path):
+    """A missing file and a single-row file give None, not a gap."""
+    from proteus.interior_struct.zalmoxis import zalmoxis_mesh_gaps
+
+    row = {'R_core': 3.4e6, 'R_int': 6.4e6}
+    one_row = tmp_path / 'one.dat'
+    one_row.write_text('6.4e6 1 2 3 4\n')
+
+    assert zalmoxis_mesh_gaps(str(tmp_path / 'absent.dat'), row) is None
+    assert zalmoxis_mesh_gaps(str(one_row), row) is None
+
+
 # ---------------------------------------------------------------------------
 # check_zalmoxis_eos_files: missing-table fail-fast
 # ---------------------------------------------------------------------------

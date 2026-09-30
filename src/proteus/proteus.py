@@ -363,6 +363,122 @@ class Proteus:
         self.last_struct_Phi = new_Phi
         self._baseline_structure_done = True
 
+    def _resync_zalmoxis_mesh(self):
+        """Make ``zalmoxis_output.dat`` match the resumed row before Aragog reads it.
+
+        An accepted structure re-solve rewrites the mesh file at once, while the
+        helpfile reaches disk only on snapshot iterations, so a run stopped in
+        between resumes on a row older than the file. Aragog accepts such a file
+        at setup and rejects it at the next ``reset()``. A file that matches the
+        row is kept. Otherwise its ``.prev`` backup, taken before each re-solve,
+        is restored when it matches. Otherwise the structure is re-solved for the
+        row, with the row's mass and composition and the temperature profile of
+        the resumed interior snapshot.
+
+        Raises
+        ------
+        RuntimeError
+            When the re-solved file still disagrees with the row, or when the
+            re-solve moves ``R_core`` or ``R_int`` by more than 5 % of the
+            mantle thickness, the tolerance of Aragog's setup check.
+        """
+        import shutil
+
+        import netCDF4 as nc
+
+        from proteus.interior_energetics.wrapper import update_structure_from_interior
+        from proteus.interior_struct.zalmoxis import (
+            get_zalmoxis_output_filepath,
+            zalmoxis_mesh_gaps,
+        )
+        from proteus.utils.coupler import UpdateStatusfile
+        from proteus.utils.helper import snapshot_path_for_time
+
+        log = logging.getLogger('fwl.' + __name__)
+        path = get_zalmoxis_output_filepath(self.directories['output'])
+        if not os.path.isfile(path):
+            return
+
+        def check(file):
+            gaps = zalmoxis_mesh_gaps(file, self.hf_row)
+            ok = gaps is not None and max(abs(gaps[0]), abs(gaps[1])) <= gaps[2]
+            text = 'unreadable' if gaps is None else 'R_core %+.3e m, R_int %+.3e m' % gaps[:2]
+            return ok, text, gaps
+
+        ok, text, _ = check(path)
+        if ok:
+            return
+        row = len(self.hf_all)
+        ok_prev, text_prev, gaps = check(path + '.prev')
+        if ok_prev:
+            shutil.copy2(path + '.prev', path)
+            log.warning(
+                'Resume: %s differs from helpfile row %d (%s, tolerance %.3e m); '
+                'restored its .prev backup, which matches (%s).',
+                path,
+                row,
+                text,
+                gaps[2],
+                text_prev,
+            )
+            return
+
+        log.warning(
+            'Resume: neither %s (%s) nor its .prev backup (%s) matches helpfile '
+            'row %d; re-solving the structure for the row.',
+            path,
+            text,
+            text_prev,
+            row,
+        )
+        R_core0, R_int0 = float(self.hf_row['R_core']), float(self.hf_row['R_int'])
+        snap = snapshot_path_for_time(
+            os.path.join(self.directories['output'], 'data'), self.hf_row['Time'], '_int.nc'
+        )
+        with nc.Dataset(snap) as ds:
+            radius = np.array(ds['radius_b'][:]) * 1e3  # km -> m
+            temp = np.array(ds['temp_s'][:])
+        saved = self.interior_o.radius, self.interior_o.temp
+        self.interior_o.radius, self.interior_o.temp = radius, temp
+        try:
+            self.last_struct_time, self.last_struct_Tmagma, self.last_struct_Phi = (
+                update_structure_from_interior(
+                    self.directories,
+                    self.config,
+                    self.hf_row,
+                    self.interior_o,
+                    self.last_struct_time,
+                    self.last_struct_Tmagma,
+                    self.last_struct_Phi,
+                    force=True,
+                )
+            )
+        finally:
+            self.interior_o.radius, self.interior_o.temp = saved
+
+        ok, text, gaps = check(path)
+        dR_core = float(self.hf_row['R_core']) - R_core0
+        dR_int = float(self.hf_row['R_int']) - R_int0
+        limit = 0.05 * (R_int0 - R_core0)
+        if ok and max(abs(dR_core), abs(dR_int)) <= limit:
+            log.info(
+                'Resume: re-solved structure moved R_core by %+.3e m and R_int by '
+                '%+.3e m from helpfile row %d; %s now matches.',
+                dR_core,
+                dR_int,
+                row,
+                path,
+            )
+            return
+        UpdateStatusfile(self.directories, 20)
+        raise RuntimeError(
+            f'Resume: {path} cannot be made consistent with helpfile row {row}. '
+            f'After the re-solve the file differs by {text} '
+            f'(tolerance {"n/a" if gaps is None else "%.3e m" % gaps[2]}), and the '
+            f're-solve moved R_core by {dR_core:+.3e} m and R_int by {dR_int:+.3e} m '
+            f'(limit {limit:.3e} m, 5 % of the mantle thickness).'
+        )
+
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
 
@@ -875,6 +991,12 @@ class Proteus:
             self.last_struct_time = self.hf_row.get('Time', 0.0)
             self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
             self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
+
+            if (
+                self.config.interior_struct.module == 'zalmoxis'
+                and self.config.interior_energetics.module == 'aragog'
+            ):
+                self._resync_zalmoxis_mesh()
 
             # Arm the resume-settling structure-re-solve guard. The resumed
             # interior relaxes thermally over the first loops and would

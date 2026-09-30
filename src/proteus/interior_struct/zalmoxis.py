@@ -365,6 +365,42 @@ def validate_zalmoxis_output_schema(
             )
 
 
+def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, float] | None:
+    """Compare a mesh file's radial bounds with a helpfile row.
+
+    Aragog's ``EntropySolver.reset()`` rejects a mesh file whose radii leave
+    ``[R_core, R_int]`` by more than ``max(1 m, 1e-9 * (R_int - R_core))``. The
+    same tolerance is returned here, applied to both bounds in both directions,
+    since a file written for the row holds exactly ``R_core`` and ``R_int``. The
+    1 m floor absorbs the helpfile's ``%.10e`` rounding (about 1e-3 m at
+    1e7 m) and the run-to-run scatter of the structure solve (about 1e-8
+    relative, 0.1 m at 1e7 m).
+
+    Parameters
+    ----------
+    output_path : str
+        Path to ``zalmoxis_output.dat`` or its ``.prev`` backup.
+    hf_row : dict
+        Helpfile row holding ``R_core`` and ``R_int`` [m].
+
+    Returns
+    -------
+    tuple of float or None
+        ``(file r[0] - R_core, file r[-1] - R_int, tolerance)`` in metres, or
+        None when the file is missing, unreadable or has fewer than two rows.
+    """
+    try:
+        r = np.atleast_1d(np.loadtxt(output_path, usecols=0))
+    except (OSError, ValueError):
+        return None
+    if r.size < 2:
+        return None
+    R_core = float(hf_row['R_core'])
+    R_int = float(hf_row['R_int'])
+    atol = max(1.0, 1.0e-9 * max(R_int - R_core, 1.0))
+    return float(r[0]) - R_core, float(r[-1]) - R_int, atol
+
+
 def build_volatile_profile(hf_row: dict, mantle_eos: str):
     """Build a VolatileProfile from helpfile volatile masses.
 

@@ -22,6 +22,7 @@ Functions tested:
 
 from __future__ import annotations
 
+import re
 import sys
 from contextlib import ExitStack
 from pathlib import Path
@@ -249,6 +250,173 @@ def test_proteus_resume_mesh_no_prev(tmp_path):
     assert p.directories.get('spider_mesh') == str(mesh_file)
     assert 'spider_mesh_prev' not in p.directories
     assert p.directories.get('mesh_shift_active') is False
+
+
+# ---------------------------------------------------------------------------
+# Proteus._resync_zalmoxis_mesh: zalmoxis_output.dat vs the resumed row
+# ---------------------------------------------------------------------------
+
+_ROW = {'Time': 100.0, 'R_core': 3.4e6, 'R_int': 6.4e6}
+
+
+def _write_mesh(path, r_first, r_last):
+    """Write a 5-column Zalmoxis mesh file spanning [r_first, r_last]."""
+    r = np.linspace(r_first, r_last, 6)
+    np.savetxt(path, np.column_stack([r, r, r, r, r]), fmt='%.17e')
+
+
+def _resync_instance(tmp_path, *, dat=None, prev=None):
+    """Proteus object at the resume point, with mesh files of given bounds."""
+    p = _make_proteus_instance(tmp_path, interior_module='aragog')
+    data = tmp_path / 'data'
+    data.mkdir(exist_ok=True)
+    if dat is not None:
+        _write_mesh(data / 'zalmoxis_output.dat', *dat)
+    if prev is not None:
+        _write_mesh(data / 'zalmoxis_output.dat.prev', *prev)
+    p.hf_all = pd.DataFrame([_ROW] * 5)
+    p.hf_row = dict(_ROW)
+    p.interior_o = MagicMock()
+    p.interior_o.radius = np.array([-1.0])
+    p.interior_o.temp = np.array([-2.0])
+    p.last_struct_time, p.last_struct_Tmagma, p.last_struct_Phi = 50.0, 3000.0, 0.9
+    return p, data / 'zalmoxis_output.dat'
+
+
+def _write_int_snapshot(data, time, radius_km, temp):
+    """Write the two variables the re-solve reads from an Aragog snapshot."""
+    import netCDF4 as nc
+
+    from proteus.utils.helper import format_subyear_time
+
+    with nc.Dataset(data / (format_subyear_time(time) + '_int.nc'), 'w') as ds:
+        ds.createDimension('basic', len(radius_km))
+        ds.createDimension('staggered', len(temp))
+        ds.createVariable('radius_b', 'f8', ('basic',))[:] = radius_km
+        ds.createVariable('temp_s', 'f8', ('staggered',))[:] = temp
+
+
+@pytest.mark.unit
+def test_resync_keeps_a_matching_mesh_file(tmp_path):
+    """A file within the tolerance is left byte for byte; nothing is re-solved."""
+    p, dat = _resync_instance(tmp_path, dat=(3.4e6 + 0.5, 6.4e6 - 0.5), prev=(3.0e6, 6.0e6))
+    before = dat.read_bytes()
+
+    with patch('proteus.interior_energetics.wrapper.update_structure_from_interior') as solve:
+        p._resync_zalmoxis_mesh()
+
+    assert dat.read_bytes() == before
+    solve.assert_not_called()
+
+
+@pytest.mark.unit
+def test_resync_restores_prev_when_it_matches_the_row(tmp_path):
+    """A file 300 m beyond R_int is replaced by the matching .prev backup."""
+    p, dat = _resync_instance(tmp_path, dat=(3.4e6, 6.4e6 + 300.0), prev=(3.4e6, 6.4e6))
+    prev_bytes = (tmp_path / 'data' / 'zalmoxis_output.dat.prev').read_bytes()
+
+    with patch('proteus.interior_energetics.wrapper.update_structure_from_interior') as solve:
+        p._resync_zalmoxis_mesh()
+
+    assert dat.read_bytes() == prev_bytes
+    solve.assert_not_called()
+
+
+@pytest.mark.unit
+def test_resync_rejects_a_mesh_inside_the_bounds(tmp_path):
+    """A file 300 m short of R_int is a mismatch too, though reset() lets it pass."""
+    p, dat = _resync_instance(tmp_path, dat=(3.4e6, 6.4e6 - 300.0), prev=(3.4e6, 6.4e6))
+
+    p._resync_zalmoxis_mesh()
+
+    assert np.loadtxt(dat)[-1, 0] == 6.4e6
+
+
+def _fake_resolve(dat, dR_int, seen):
+    """Stand-in for update_structure_from_interior: write a mesh R_int + dR_int."""
+
+    def solve(dirs, config, hf_row, interior_o, t, T, phi, force=False):
+        seen.update(radius=interior_o.radius.copy(), temp=interior_o.temp.copy(), force=force)
+        hf_row['R_int'] += dR_int
+        _write_mesh(dat, hf_row['R_core'], hf_row['R_int'])
+        return 100.0, 2500.0, 0.8
+
+    return solve
+
+
+@pytest.mark.unit
+def test_resync_resolves_from_the_snapshot_when_no_file_matches(tmp_path):
+    """Neither file matches: the structure is re-solved from the snapshot T(r)."""
+    p, dat = _resync_instance(tmp_path, dat=(3.4e6, 6.5e6), prev=(3.4e6, 6.3e6))
+    _write_int_snapshot(tmp_path / 'data', 100.0, [3400.0, 5000.0, 6400.0], [4000.0, 3000.0])
+    seen = {}
+
+    with patch(
+        'proteus.interior_energetics.wrapper.update_structure_from_interior',
+        side_effect=_fake_resolve(dat, 1.0e4, seen),
+    ):
+        p._resync_zalmoxis_mesh()
+
+    assert seen['force'] is True
+    np.testing.assert_array_equal(seen['radius'], [3.4e6, 5.0e6, 6.4e6])
+    np.testing.assert_array_equal(seen['temp'], [4000.0, 3000.0])
+    # The pre-step arrays are put back for the first interior step.
+    np.testing.assert_array_equal(p.interior_o.radius, [-1.0])
+    assert (p.last_struct_time, p.last_struct_Tmagma, p.last_struct_Phi) == (100.0, 2500.0, 0.8)
+    assert np.loadtxt(dat)[-1, 0] == p.hf_row['R_int'] == 6.41e6
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('dR_int', 'rewrite', 'message'),
+    [(1.0e4, False, 'differs by R_core'), (2.0e5, True, 'limit 1.500e+05 m')],
+    ids=['file still stale', 'radius moved beyond setup tolerance'],
+)
+def test_resync_stops_at_resume(tmp_path, dR_int, rewrite, message):
+    """A re-solve that leaves a mismatch, or moves R_int > 5 %, stops with status 20."""
+    p, dat = _resync_instance(tmp_path, dat=(3.4e6, 6.5e6), prev=(3.4e6, 6.3e6))
+    _write_int_snapshot(tmp_path / 'data', 100.0, [3400.0, 6400.0], [4000.0])
+    solve = _fake_resolve(dat, dR_int, {})
+    if not rewrite:
+        solve = MagicMock(return_value=(100.0, 2500.0, 0.8))
+
+    with (
+        patch('proteus.interior_energetics.wrapper.update_structure_from_interior', solve),
+        patch('proteus.utils.coupler.UpdateStatusfile') as status,
+        pytest.raises(RuntimeError, match=re.escape(message)) as err,
+    ):
+        p._resync_zalmoxis_mesh()
+
+    assert str(dat) in str(err.value) and 'helpfile row 5' in str(err.value)
+    status.assert_called_once_with(p.directories, 20)
+
+
+@pytest.mark.unit
+def test_resync_without_a_mesh_file_does_nothing(tmp_path):
+    """No zalmoxis_output.dat: nothing to compare, nothing written."""
+    p, dat = _resync_instance(tmp_path)
+
+    p._resync_zalmoxis_mesh()
+
+    assert not dat.exists()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('struct', 'energetics', 'called'),
+    [('zalmoxis', 'aragog', True), ('zalmoxis', 'spider', False), ('dummy', 'aragog', False)],
+)
+def test_resume_runs_the_resync_for_zalmoxis_and_aragog_only(
+    tmp_path, struct, energetics, called
+):
+    """start(resume=True) calls the resync before the star setup, for Zalmoxis + Aragog."""
+    p = _make_proteus_instance(tmp_path, struct_module=struct, interior_module=energetics)
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    with patch.object(type(p), '_resync_zalmoxis_mesh', autospec=True) as resync:
+        _resume_with_patches(p, _make_hf_df())
+
+    assert resync.called is called
 
 
 # ---------------------------------------------------------------------------
