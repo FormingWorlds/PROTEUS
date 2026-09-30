@@ -1,5 +1,5 @@
 {
-  "note": "The consumers field names modules that consume each column, and can over-approximate when consumers read keys through variable or template loops, or under-approximate when consumers read keys dynamically at runtime through computed keys.",
+  "note": "The consumers field names modules that consume each column, and can over-approximate when consumers read keys through variable or template loops, or under-approximate when consumers read keys dynamically at runtime through computed keys. The consumers_possible field lists the subset of consumers that read columns only conditionally, such as for specific species.",
   "keys": [
     {
       "name": "Time",
@@ -203,6 +203,10 @@
       "group": "Orbital and spin parameters of planet",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/orbit/common.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/orbit/orbit.py",
           "condition": "orbit.evolve = true"
@@ -2574,7 +2578,8 @@
         }
       ],
       "consumers": [
-        "interior_energetics"
+        "interior_energetics",
+        "outgas"
       ],
       "consumers_possible": []
     },
@@ -18810,7 +18815,9 @@
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "outgas"
+      ],
       "consumers_possible": []
     },
     {
@@ -18941,7 +18948,9 @@
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "outgas"
+      ],
       "consumers_possible": []
     },
     {
@@ -19072,7 +19081,9 @@
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "outgas"
+      ],
       "consumers_possible": []
     },
     {

@@ -486,17 +486,17 @@ def test_template_overrides_are_valid_and_consumed():
     species = _scan._species_lists()
 
     # 1. Structural validity: 3-tuple keys, valid species domains
-    for key, domains in _scan.TEMPLATE_OVERRIDES.items():
+    for key, override in _scan.TEMPLATE_OVERRIDES.items():
         assert len(key) == 3, f'Expected 3-tuple key, got {key}'
         rel, func, pattern = key
         assert pattern.count('<?>') == 1, f'Invalid pattern {pattern}'
-        for d in domains:
+        for d in override.domains:
             assert d in species, f'Domain {d} not in species lists for {key}'
 
     atmod_solid = _scan.TEMPLATE_OVERRIDES[
         ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_kg_solid')
     ]
-    assert 'element_list' in atmod_solid.domains
+    assert 'vol_element_list' in atmod_solid.domains
 
     # 2. Consumption: every single declared override must be matched and consumed
     class TrackingDict(dict):
@@ -533,6 +533,17 @@ def test_comprehension_element_transform():
     assert visitor_transformed.reads == []
     assert len(visitor_transformed.unresolved) == 1
     assert visitor_transformed.unresolved[0][1:3] == ('dynamic key k', 'read')
+
+    code_direct = (
+        'def f(hf_row):\n'
+        '    for k in [g + "_vmr_xuv" for g in gas_list]:\n'
+        '        hf_row.get(k)\n'
+    )
+    visitor_direct = _scan.HfRowVisitor('test.py', {'gas_list': ['H2O', 'CO2']})
+    visitor_direct.visit(ast.parse(code_direct))
+    assert visitor_direct.reads == []
+    assert len(visitor_direct.unresolved) == 1
+    assert visitor_direct.unresolved[0][1:3] == ('dynamic key k', 'read')
 
     code_bare = (
         'X = tuple(g for g in gas_list)\n'
@@ -597,6 +608,55 @@ def test_module_constants_shadowing_and_invalidation():
     assert visitor_mutated.reads == []
     assert len(visitor_mutated.unresolved) == 1
 
+    code_aug = (
+        'NAMES = ("a",)\n'
+        'NAMES += ("b",)\n'
+        'def f(hf_row):\n'
+        '    for k in NAMES:\n'
+        '        hf_row.get(k)\n'
+    )
+    visitor_aug = _scan.HfRowVisitor('test.py', {})
+    visitor_aug.visit(ast.parse(code_aug))
+    assert visitor_aug.reads == []
+    assert len(visitor_aug.unresolved) == 1
+
+    code_ann = (
+        'NAMES = ("a",)\n'
+        'NAMES: tuple = ("b",)\n'
+        'def f(hf_row):\n'
+        '    for k in NAMES:\n'
+        '        hf_row.get(k)\n'
+    )
+    visitor_ann = _scan.HfRowVisitor('test.py', {})
+    visitor_ann.visit(ast.parse(code_ann))
+    assert visitor_ann.reads == []
+    assert len(visitor_ann.unresolved) == 1
+
+    code_def = (
+        'NAMES = ("a",)\n'
+        'def NAMES():\n'
+        '    pass\n'
+        'def f(hf_row):\n'
+        '    for k in NAMES:\n'
+        '        hf_row.get(k)\n'
+    )
+    visitor_def = _scan.HfRowVisitor('test.py', {})
+    visitor_def.visit(ast.parse(code_def))
+    assert visitor_def.reads == []
+    assert len(visitor_def.unresolved) == 1
+
+    code_import = (
+        'NAMES = ("a",)\n'
+        'import NAMES\n'
+        'def f(hf_row):\n'
+        '    for k in NAMES:\n'
+        '        hf_row.get(k)\n'
+    )
+    visitor_import = _scan.HfRowVisitor('test.py', {})
+    visitor_import.visit(ast.parse(code_import))
+    assert visitor_import.reads == []
+    assert len(visitor_import.unresolved) == 1
+
 
 def test_loop_domain_shadowing_and_invalidation():
     """Rebinding loop variable clears domain, and inner scopes restore outer domain."""
@@ -624,13 +684,158 @@ def test_loop_domain_shadowing_and_invalidation():
 
 
 def test_frame_store_subscript_not_recorded_as_read():
-    """Store subscripts on frames (e.g. hf_all['X'] = 1) are neither reads nor writes."""
+    """Store subscripts on frames (e.g. hf_all['X'] = 1) are recorded as writes."""
     code = 'def f(hf_all):\n    hf_all["X"] = 1\n'
     visitor = _scan.HfRowVisitor('test.py', {})
     visitor.visit(ast.parse(code))
     assert visitor.reads == []
-    assert visitor.writes == []
+    assert visitor.writes == [('X', 'f')]
     assert visitor.unresolved == []
+
+
+def test_augassign_on_subscript_records_both_read_and_write():
+    """AugAssign on row or frame subscript records both a read and a write."""
+    code_row = 'def f(hf_row):\n    hf_row["X"] += 1\n'
+    visitor_row = _scan.HfRowVisitor('test.py', {})
+    visitor_row.visit(ast.parse(code_row))
+    assert visitor_row.reads == [('X', False)]
+    assert visitor_row.writes == [('X', 'f')]
+    assert visitor_row.unresolved == []
+
+    code_frame = 'def f(hf_all):\n    hf_all["Y"] += 2\n'
+    visitor_frame = _scan.HfRowVisitor('test.py', {})
+    visitor_frame.visit(ast.parse(code_frame))
+    assert visitor_frame.reads == [('Y', False)]
+    assert visitor_frame.writes == [('Y', 'f')]
+    assert visitor_frame.unresolved == []
+
+
+def test_domain_list_shadowed_by_param_or_local():
+    """Parameters or locals shadowing domain list names prevent domain expansion."""
+    code_param = (
+        'def f(hf_row, gas_list):\n    for g in gas_list:\n        hf_row.get(g + "_bar")\n'
+    )
+    visitor_param = _scan.HfRowVisitor('test.py', {'gas_list': ['H2O', 'CO2']})
+    visitor_param.visit(ast.parse(code_param))
+    assert visitor_param.reads == []
+    assert len(visitor_param.unresolved) == 1
+    assert visitor_param.unresolved[0][1:3] == ('template <g>_bar', 'read')
+
+    code_local = (
+        'def f(hf_row):\n'
+        '    gas_list = dyn()\n'
+        '    for g in gas_list:\n'
+        '        hf_row.get(g + "_bar")\n'
+    )
+    visitor_local = _scan.HfRowVisitor('test.py', {'gas_list': ['H2O', 'CO2']})
+    visitor_local.visit(ast.parse(code_local))
+    assert visitor_local.reads == []
+    assert len(visitor_local.unresolved) == 1
+    assert visitor_local.unresolved[0][1:3] == ('template <g>_bar', 'read')
+
+
+def test_loop_variable_rebinding_clears_domain():
+    """Rebinding loop variable via with/except/import/match/del clears loop domain."""
+    for stmt in [
+        'with ctx as e: pass',
+        'try: pass\n        except Exception as e: pass',
+        'import e',
+        'match val:\n            case e: pass',
+        'del e',
+    ]:
+        code = (
+            f'def f(hf_row, ctx, val):\n'
+            f'    for e in element_list:\n'
+            f'        {stmt}\n'
+            f'        hf_row.get(e + "_kg")\n'
+        )
+        visitor = _scan.HfRowVisitor('test.py', {'element_list': ['H', 'O']})
+        visitor.visit(ast.parse(code))
+        assert visitor.reads == [], f'Failed for {stmt}'
+        assert len(visitor.unresolved) == 1, f'Failed for {stmt}'
+
+
+def test_reads_inside_comprehension_if_clauses_recorded():
+    """Reads inside comprehension if clauses are detected and attributed or unresolved."""
+    code = 'def f(hf_row):\n    _ = [g for g in gas_list if hf_row.get(g + "_bar")]\n'
+    visitor = _scan.HfRowVisitor('test.py', {'gas_list': ['H2O', 'CO2']})
+    visitor.visit(ast.parse(code))
+    assert visitor.reads == [('H2O_bar', False), ('CO2_bar', False)]
+    assert visitor.unresolved == []
+
+
+def test_global_in_later_function_clears_module_constant():
+    """Global declaration in a later function invalidates constant in earlier function."""
+    code = (
+        'k = "a"\n'
+        'def f(hf_row):\n'
+        '    return hf_row.get(k)\n'
+        'def g():\n'
+        '    global k\n'
+        '    k = dyn()\n'
+    )
+    visitor = _scan.HfRowVisitor('test.py', {})
+    visitor.visit(ast.parse(code))
+    assert visitor.reads == []
+    assert len(visitor.unresolved) == 1
+    assert visitor.unresolved[0][1:3] == ('dynamic key k', 'read')
+
+
+def test_module_constant_defined_after_use_resolves():
+    """Module-level constant defined after function resolves order-independently."""
+    code = 'def f(hf_row):\n    return hf_row.get(k)\nk = "a"\n'
+    visitor = _scan.HfRowVisitor('test.py', {})
+    visitor.visit(ast.parse(code))
+    assert visitor.reads == [('a', False)]
+    assert visitor.unresolved == []
+
+
+def test_scan_error_raised_for_unknown_override_domain(monkeypatch):
+    """ScanError is raised when an override names an unknown domain."""
+    monkeypatch.setitem(
+        _scan.TEMPLATE_OVERRIDES,
+        ('test.py', 'f', '<?>_unknown'),
+        _scan.TemplateOverride(('nonexistent_domain',)),
+    )
+    code = 'def f(hf_row, x):\n    return hf_row[f"{x}_unknown"]\n'
+    visitor = _scan.HfRowVisitor('test.py', {})
+    with pytest.raises(_scan.ScanError, match='unknown domain name "nonexistent_domain"'):
+        visitor.visit(ast.parse(code))
+
+
+def test_key_lookup_from_enclosing_scope():
+    """Key lookup resolves constant from enclosing function scope."""
+    code = (
+        'def outer():\n    k = "T_surf"\n    def inner(hf_row):\n        return hf_row.get(k)\n'
+    )
+    visitor = _scan.HfRowVisitor('test.py', {})
+    visitor.visit(ast.parse(code))
+    assert visitor.reads == [('T_surf', False)]
+    assert visitor.unresolved == []
+
+
+def test_scope_restore_in_comprehension():
+    """Scope restore in comprehension preserves subsequent bindings and resolution."""
+    code_a = (
+        'def f(hf_row, it):\n'
+        '    k = "a"\n'
+        '    _ = [x for x in it]\n'
+        '    k = dyn()\n'
+        '    return hf_row.get(k)\n'
+    )
+    visitor_a = _scan.HfRowVisitor('test.py', {})
+    visitor_a.visit(ast.parse(code_a))
+    assert visitor_a.reads == []
+    assert len(visitor_a.unresolved) == 1
+    assert visitor_a.unresolved[0][1:3] == ('dynamic key k', 'read')
+
+    code_c = (
+        'def f(hf_row, it):\n    _ = [x for x in it]\n    k = "a"\n    return hf_row.get(k)\n'
+    )
+    visitor_c = _scan.HfRowVisitor('test.py', {})
+    visitor_c.visit(ast.parse(code_c))
+    assert visitor_c.reads == [('a', False)]
+    assert visitor_c.unresolved == []
 
 
 def test_template_overrides_possible_flag_and_separation():

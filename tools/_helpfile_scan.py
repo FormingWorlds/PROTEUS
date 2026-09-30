@@ -63,9 +63,6 @@ class TemplateOverride:
     domains: tuple[str, ...]
     possible: bool = False
 
-    def __iter__(self):
-        return iter(self.domains)
-
 
 # Templated access sites whose loop domain cannot be recovered statically.
 # Values name domain lists; downstream code trims them against the schema.
@@ -136,7 +133,7 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
         'outgas/atmodeller.py',
         'calc_surface_pressures_atmodeller',
         '<?>_kg_solid',
-    ): TemplateOverride(('gas_list', 'element_list')),
+    ): TemplateOverride(('gas_list', 'vol_element_list')),
     (
         'outgas/atmodeller.py',
         'calc_surface_pressures_atmodeller',
@@ -337,10 +334,13 @@ class HfRowVisitor(ast.NodeVisitor):
         self.loop_domains: dict[str, str] = {}  # loop var -> domain-list name
         self.module_constants: dict[str, list[str]] = {}
         self.scopes: list[dict[str, ast.AST | None]] = [{}]
-        self.local_vars: dict[str, ast.AST | None] = self.scopes[0]
         self.writes: list[tuple[str, str]] = []  # (key, function)
         self.reads: list[tuple[str, bool]] = []  # (key, is_possible)
         self.unresolved: list[tuple[int, str, str, str]] = []  # (lineno, reason, kind, func)
+
+    @property
+    def local_vars(self) -> dict[str, ast.AST | None]:
+        return self.scopes[-1]
 
     # -- context tracking ---------------------------------------------------
 
@@ -348,32 +348,60 @@ class HfRowVisitor(ast.NodeVisitor):
         assigned: dict[str, int] = {}
         mutated: set[str] = set()
         candidates: dict[str, list[str]] = {}
+        module_const_strings: dict[str, ast.Constant] = {}
 
         for stmt in node.body:
-            if isinstance(stmt, ast.Assign):
-                for t in stmt.targets:
+            if (
+                isinstance(stmt, ast.Assign)
+                and len(stmt.targets) == 1
+                and isinstance(stmt.targets[0], ast.Name)
+            ):
+                target_name = stmt.targets[0].id
+                dom = self._domain_of_iter(stmt.value)
+                if dom:
+                    candidates[target_name] = self._expand_domain(dom)
+                elif isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
+                    module_const_strings[target_name] = stmt.value
+
+        for sub in ast.walk(node):
+            if sub is node:
+                continue
+            if isinstance(sub, ast.Assign):
+                for t in sub.targets:
+                    if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name):
+                        mutated.add(t.value.id)
                     for name in _collect_bound_names(t):
                         assigned[name] = assigned.get(name, 0) + 1
-                if len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
-                    target_name = stmt.targets[0].id
-                    if assigned[target_name] == 1:
-                        dom = self._domain_of_iter(stmt.value)
-                        if dom:
-                            candidates[target_name] = self._expand_domain(dom)
-            elif isinstance(stmt, ast.AnnAssign):
-                for name in _collect_bound_names(stmt.target):
+            elif isinstance(sub, (ast.AnnAssign, ast.AugAssign)):
+                if isinstance(sub.target, ast.Subscript) and isinstance(
+                    sub.target.value, ast.Name
+                ):
+                    mutated.add(sub.target.value.id)
+                for name in _collect_bound_names(sub.target):
                     assigned[name] = assigned.get(name, 0) + 1
-            elif isinstance(stmt, ast.AugAssign):
-                for name in _collect_bound_names(stmt.target):
+            elif isinstance(sub, ast.NamedExpr):
+                for name in _collect_bound_names(sub.target):
                     assigned[name] = assigned.get(name, 0) + 1
-            elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                assigned[stmt.name] = assigned.get(stmt.name, 0) + 1
-            elif isinstance(stmt, (ast.Import, ast.ImportFrom)):
-                for alias in stmt.names:
+            elif isinstance(sub, (ast.For, ast.AsyncFor)):
+                for name in _collect_bound_names(sub.target):
+                    assigned[name] = assigned.get(name, 0) + 1
+            elif isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                assigned[sub.name] = assigned.get(sub.name, 0) + 1
+            elif isinstance(sub, (ast.Import, ast.ImportFrom)):
+                for alias in sub.names:
                     name = alias.asname or alias.name.split('.')[0]
                     assigned[name] = assigned.get(name, 0) + 1
-            elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
-                func = stmt.value.func
+            elif isinstance(sub, (ast.Global, ast.Nonlocal)):
+                for name in sub.names:
+                    mutated.add(name)
+            elif isinstance(sub, ast.Delete):
+                for t in sub.targets:
+                    for name in _collect_bound_names(t):
+                        mutated.add(name)
+                    if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name):
+                        mutated.add(t.value.id)
+            elif isinstance(sub, ast.Call):
+                func = sub.func
                 if (
                     isinstance(func, ast.Attribute)
                     and isinstance(func.value, ast.Name)
@@ -395,6 +423,13 @@ class HfRowVisitor(ast.NodeVisitor):
             if assigned.get(name, 0) == 1 and name not in mutated:
                 self.module_constants[name] = vals
 
+        for name, const_node in module_const_strings.items():
+            if assigned.get(name, 0) == 1 and name not in mutated:
+                self.scopes[0][name] = const_node
+            else:
+                self.scopes[0][name] = None
+
+        self._module_scanned = True
         self.generic_visit(node)
 
     def _invalidate_args(self, args: ast.arguments) -> None:
@@ -407,12 +442,10 @@ class HfRowVisitor(ast.NodeVisitor):
         self.func_stack.append(node.name)
         new_scope: dict[str, ast.AST | None] = {}
         self.scopes.append(new_scope)
-        self.local_vars = new_scope
         self._invalidate_args(node.args)
         self.generic_visit(node)
         self.func_stack.pop()
         self.scopes.pop()
-        self.local_vars = self.scopes[-1]
 
     visit_FunctionDef = _visit_func
     visit_AsyncFunctionDef = _visit_func
@@ -420,11 +453,9 @@ class HfRowVisitor(ast.NodeVisitor):
     def visit_Lambda(self, node):
         new_scope: dict[str, ast.AST | None] = {}
         self.scopes.append(new_scope)
-        self.local_vars = new_scope
         self._invalidate_args(node.args)
         self.generic_visit(node)
         self.scopes.pop()
-        self.local_vars = self.scopes[-1]
 
     def visit_ClassDef(self, node):
         self._invalidate(node.name)
@@ -433,6 +464,11 @@ class HfRowVisitor(ast.NodeVisitor):
     def _bind(self, name: str, value: ast.AST | None) -> None:
         """Track ``name`` as a constant string only on its first binding in scope."""
         is_str = isinstance(value, ast.Constant) and isinstance(value.value, str)
+        if len(self.scopes) == 1 and getattr(self, '_module_scanned', False):
+            if name not in self.scopes[0]:
+                self.scopes[0][name] = None
+            self.loop_domains.pop(name, None)
+            return
         self.local_vars[name] = value if is_str and name not in self.local_vars else None
         self.loop_domains.pop(name, None)
 
@@ -471,7 +507,17 @@ class HfRowVisitor(ast.NodeVisitor):
         self._invalidate(node.target)
         self.generic_visit(node)
 
-    visit_AugAssign = _visit_target
+    def visit_AugAssign(self, node):
+        self._invalidate(node.target)
+        if isinstance(node.target, ast.Subscript):
+            name = _row_name(node.target)
+            if name in ROW_NAMES | FRAME_NAMES:
+                self._record(node.target.slice, node.lineno, is_write=False, is_get=True)
+                self._record(node.target.slice, node.lineno, is_write=True, is_get=False)
+                self.visit(node.value)
+                return
+        self.generic_visit(node)
+
     visit_NamedExpr = _visit_target
     visit_comprehension = _visit_target
 
@@ -534,18 +580,19 @@ class HfRowVisitor(ast.NodeVisitor):
         for gen in node.generators:
             self._invalidate(gen.target)
             self.visit(gen.iter)
-            for if_expr in gen.ifs:
-                self.visit(if_expr)
             domain = self._domain_of_iter(gen.iter)
             target_name = _target_name(gen.target)
             if domain and target_name:
                 self.loop_domains[target_name] = domain
+            for if_expr in gen.ifs:
+                self.visit(if_expr)
         if isinstance(node, ast.DictComp):
             self.visit(node.key)
             self.visit(node.value)
         else:
             self.visit(node.elt)
-        self.local_vars = old_locals
+        self.local_vars.clear()
+        self.local_vars.update(old_locals)
         self.loop_domains = old_domains
 
         # Walrus operator bindings escape comprehension into enclosing scope
@@ -640,7 +687,9 @@ class HfRowVisitor(ast.NodeVisitor):
         ):
             self.generic_visit(node)
             return
-        is_write = isinstance(node.ctx, (ast.Store, ast.AugStore)) and name in ROW_NAMES
+        is_write = (
+            isinstance(node.ctx, (ast.Store, ast.AugStore)) and name in ROW_NAMES | FRAME_NAMES
+        )
         is_get = isinstance(node.ctx, ast.Load) and name in ROW_NAMES | FRAME_NAMES
         if not is_write and not is_get:
             self.generic_visit(node)
@@ -700,16 +749,14 @@ class HfRowVisitor(ast.NodeVisitor):
             override = TEMPLATE_OVERRIDES.get((self.rel_file, func, f'{prefix}<?>{suffix}'))
             if override is not None:
                 values = set()
-                domains = override.domains if hasattr(override, 'domains') else override
-                for item in domains:
+                for item in override.domains:
                     if item not in self.species:
                         raise ScanError(
                             f'{self.rel_file}::{func}: unknown domain name "{item}" '
                             f'in TEMPLATE_OVERRIDES'
                         )
                     values.update(self.species[item])
-                is_possible = getattr(override, 'possible', False)
-                return [f'{prefix}{v}{suffix}' for v in sorted(values)], is_possible
+                return [f'{prefix}{v}{suffix}' for v in sorted(values)], override.possible
             reason = f'template {prefix}<{var}>{suffix}'
         elif isinstance(key_node, ast.Name) and key_node.id in self.loop_domains:
             return self._expand_domain(self.loop_domains[key_node.id]), False

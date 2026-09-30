@@ -47,7 +47,8 @@ HEADER_NOTE = (
     'names modules that consume each column, and can over-approximate when '
     'consumers read keys through variable or template loops, or under-approximate '
     'when consumers read keys dynamically at runtime through computed keys. '
-    'The "(possible)" label marks consumers that read columns only for specific species.'
+    'The "(possible)" label marks consumers in consumers_possible that read '
+    'columns only conditionally, such as for specific species.'
 )
 
 TOUCHED_PATTERNS: dict[tuple[str, str], str] = {
@@ -167,7 +168,9 @@ def build_matrix() -> dict:
             'The consumers field names modules that consume each column, '
             'and can over-approximate when consumers read keys through '
             'variable or template loops, or under-approximate when consumers '
-            'read keys dynamically at runtime through computed keys.'
+            'read keys dynamically at runtime through computed keys. '
+            'The consumers_possible field lists the subset of consumers that '
+            'read columns only conditionally, such as for specific species.'
         ),
         'keys': keys,
         'unresolved_events': [
