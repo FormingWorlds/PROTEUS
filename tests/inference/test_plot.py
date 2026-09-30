@@ -585,6 +585,112 @@ def test_plot_result_correlation_multi_par_multi_obs(monkeypatch, tmp_path, capl
     assert 'Missing helpfile for' in caplog.text
 
 
+@pytest.mark.unit
+def test_plot_result_correlation_ignores_stray_console_log_file(monkeypatch, tmp_path):
+    """A worker's console-log capture file must not be treated as a case dir.
+
+    Regression for a crash where a stray file such as ``i_0_console.log``,
+    sitting beside the real ``i_0`` case directory in a worker folder, matched
+    the ``i_*`` glob used to find cases. ``toml.load`` then received a file
+    path, not a directory, and raised ``NotADirectoryError`` when the code
+    appended ``init_coupler.toml`` to it.
+    """
+    workers = tmp_path / 'workers'
+    case_ok = workers / 'w_-1' / 'i_0'
+    case_ok.mkdir(parents=True)
+    (case_ok / 'init_coupler.toml').write_text(
+        toml.dumps({'planet': {'mass_tot': 1.5}}),
+        encoding='utf-8',
+    )
+    pd.DataFrame([{'P_surf': 1.0}]).to_csv(
+        case_ok / 'runtime_helpfile.csv', sep=' ', index=False
+    )
+
+    # Sibling capture file that matches the `i_*` glob but is not a case dir.
+    (workers / 'w_-1' / 'i_0_console.log').write_text('log output\n', encoding='utf-8')
+
+    axis = MagicMock()
+    axis.__getitem__.return_value = axis
+    fig = MagicMock()
+    mock_plt = MagicMock()
+    mock_plt.subplots.return_value = (fig, axis)
+    monkeypatch.setattr(plot_mod, 'plt', mock_plt)
+    monkeypatch.setattr(plot_mod, 'variable_is_logarithmic', lambda _k: False)
+
+    # Must not raise NotADirectoryError from treating the log file as a case.
+    plot_mod.plot_result_correlation(
+        pars={'planet.mass_tot': [0.7, 3.0]},
+        obs={'P_surf': 1.0},
+        directory=str(tmp_path),
+    )
+
+    fig.savefig.assert_called_once()
+
+
+def test_plot_result_correlation_skips_a_case_that_died_during_start_up(
+    monkeypatch, tmp_path, caplog
+):
+    """A case that died before writing its resolved config has a folder but no
+    ``init_coupler.toml``. It is skipped with a warning naming it, and the
+    finished cases are still plotted. A study in which every case died still
+    produces a figure, with no points on it, rather than failing on an empty
+    array.
+    """
+    workers = tmp_path / 'workers'
+    case_ok = workers / 'w_0' / 'i_0'
+    case_ok.mkdir(parents=True)
+    (case_ok / 'init_coupler.toml').write_text(
+        toml.dumps({'planet': {'mass_tot': 1.5}}),
+        encoding='utf-8',
+    )
+    pd.DataFrame([{'P_surf': 2.0}]).to_csv(
+        case_ok / 'runtime_helpfile.csv', sep=' ', index=False
+    )
+    # What `run_proteus` leaves for a child that exits before PROTEUS writes
+    # anything of its own: the folder and the config it was handed.
+    case_dead = workers / 'w_1' / 'i_0'
+    case_dead.mkdir(parents=True)
+    (case_dead / 'input.toml').write_text(
+        toml.dumps({'planet': {'mass_tot': 2.5}}), encoding='utf-8'
+    )
+
+    axis = MagicMock()
+    axis.__getitem__.return_value = axis
+    fig = MagicMock()
+    mock_plt = MagicMock()
+    mock_plt.subplots.return_value = (fig, axis)
+    monkeypatch.setattr(plot_mod, 'plt', mock_plt)
+    monkeypatch.setattr(plot_mod, 'variable_is_logarithmic', lambda _k: False)
+
+    def _plot():
+        plot_mod.plot_result_correlation(
+            pars={'planet.mass_tot': [0.7, 3.0]},
+            obs={'P_surf': 1.0},
+            directory=str(tmp_path),
+        )
+
+    with caplog.at_level('WARNING'):
+        _plot()
+
+    fig.savefig.assert_called_once()
+    # Only the finished case is plotted: its parameter against its observable.
+    xx, yy = axis.scatter.call_args.args[:2]
+    assert list(xx) == pytest.approx([1.5])
+    assert list(yy) == pytest.approx([2.0])
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == 'WARNING']
+    assert warnings == [f'Missing init_coupler.toml for {case_dead}']
+
+    # Edge case: no case produced output. The figure is still written, with
+    # empty data of the right width rather than an IndexError on X[:, 0].
+    (case_ok / 'init_coupler.toml').unlink()
+    axis.reset_mock()
+    fig.reset_mock()
+    _plot()
+    fig.savefig.assert_called_once()
+    xx, yy = axis.scatter.call_args.args[:2]
+    assert (len(xx), len(yy)) == (0, 0)
+
+
 def test_plot_result_correlation_two_par_two_obs_uses_2d_axes(monkeypatch, tmp_path):
     """n_par > 1 and n_obs > 1 takes the ``axs[j, i]`` 2D indexing branch.
 
@@ -638,11 +744,8 @@ def test_plot_result_correlation_two_par_two_obs_uses_2d_axes(monkeypatch, tmp_p
     # Legend lands on axs[0, 0] in the 2D branch.
     cells[(0, 0)].legend.assert_called_once()
     fig.savefig.assert_called_once()
-    # Outer rim x-labels go on axs[-1, i]: the test grid is 2x2 so [-1, 0]
-    # and [-1, 1] both get set_xlabel. With our mock, [-1, 0] resolves
-    # the same way [1, 0] does only if __getitem__ supports negative keys.
-    # Skip that exact assertion and instead pin: at least 4 set_xticklabels
-    # calls happened across the bottom row and right column hiders.
+    # The mock does not resolve negative keys like axs[-1, i], so instead of
+    # the outer-rim labels, pin the set_xticklabels calls across the grid.
     total_xtick_hide = sum(c.set_xticklabels.call_count for c in cells.values())
     # Top row hides x-tick labels: j=0 for both i=0 and i=1.
     assert total_xtick_hide >= 2
