@@ -355,16 +355,14 @@ def test_the_snapshot_discard_fires_once_per_impact_and_only_on_a_write_step(
     )
 
 
-@pytest.mark.smoke
-def test_impact_during_init_stage_applied_exactly_once(tmp_path):
-    """An impact falling inside the init time window is applied exactly once, including on resume."""
+def _init_stage_runner(tmp_path: Path, t_max: float, delivered: float) -> Proteus:
     config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
     runner = Proteus(config_path=config_path)
     runner.config.params.out.path = str(tmp_path / 'out')
     runner.init_directories()
 
     runner.config.params.stop.time.minimum = 0.0
-    runner.config.params.stop.time.maximum = 5.0
+    runner.config.params.stop.time.maximum = t_max
     runner.config.params.dt.initial = 1.0
     runner.config.params.dt.minimum = 0.1
     runner.config.params.dt.maximum = 5.0
@@ -372,38 +370,30 @@ def test_impact_during_init_stage_applied_exactly_once(tmp_path):
     runner.config.params.out.write_mod = 1
     runner.config.params.out.archive_mod = 'none'
 
-    delivered = 0.05
     runner.config.accretion.module = 'dummy'
     runner.config.accretion.dummy.num_impacts = 1
     runner.config.accretion.dummy.mass_accreted = delivered
     runner.config.accretion.dummy.time_last = 0.5
     runner.config.accretion.dummy.timescale = 1.0
     runner.config.accretion.impactor_volatiles = 'dry'
+    return runner
 
+
+@pytest.mark.smoke
+def test_impact_during_init_stage_applied_exactly_once(tmp_path):
+    """An impact falling inside the init time window is applied exactly once."""
+    delivered = 0.05
+    runner = _init_stage_runner(tmp_path, t_max=5.0, delivered=delivered)
     runner.start(resume=False, offline=True)
     assert runner.hf_all['n_impacts_applied'].iloc[-1] == 1
     rock_recorded = float(runner.hf_all['M_accreted_rock'].iloc[-1])
     assert rock_recorded == pytest.approx(delivered * M_earth, rel=1e-6)
+    jump_rows = np.where(runner.hf_all['M_accreted_rock'].to_numpy() > 0.0)[0]
+    assert len(jump_rows) > 0
+    assert jump_rows[0] <= runner.loops['init_loops']
 
     # Resume across the impact: it must not be re-applied
-    runner2 = Proteus(config_path=config_path)
-    runner2.config.params.out.path = str(tmp_path / 'out')
-    runner2.init_directories()
-    runner2.config.params.stop.time.minimum = 0.0
-    runner2.config.params.stop.time.maximum = 10.0
-    runner2.config.params.dt.initial = 1.0
-    runner2.config.params.dt.minimum = 0.1
-    runner2.config.params.dt.maximum = 5.0
-    runner2.config.params.out.plot_mod = None
-    runner2.config.params.out.write_mod = 1
-    runner2.config.params.out.archive_mod = 'none'
-    runner2.config.accretion.module = 'dummy'
-    runner2.config.accretion.dummy.num_impacts = 1
-    runner2.config.accretion.dummy.mass_accreted = delivered
-    runner2.config.accretion.dummy.time_last = 0.5
-    runner2.config.accretion.dummy.timescale = 1.0
-    runner2.config.accretion.impactor_volatiles = 'dry'
-
+    runner2 = _init_stage_runner(tmp_path, t_max=10.0, delivered=delivered)
     runner2.start(resume=True, offline=True)
     assert runner2.hf_all['n_impacts_applied'].iloc[-1] == 1
     rock_resumed = float(runner2.hf_all['M_accreted_rock'].iloc[-1])
