@@ -15,7 +15,6 @@ def valid_morrigan(instance, attribute, value):
     if instance.module != 'morrigan':
         return
 
-
     mor = instance.morrigan
 
     if mor.masses and len(mor.masses) != mor.num_planets:
