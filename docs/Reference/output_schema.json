@@ -1,5 +1,5 @@
 {
-  "note": "The consumers field names modules that consume each column, and can over-approximate when consumers read keys through variable or template loops.",
+  "note": "The consumers field names modules that consume each column, and can over-approximate when consumers read keys through variable or template loops, or under-approximate when consumers read keys dynamically at runtime through computed keys.",
   "keys": [
     {
       "name": "Time",
@@ -3212,7 +3212,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "CO2_mol_atm",
@@ -3547,7 +3549,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "O2_mol_atm",
@@ -3882,7 +3886,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "H2_mol_atm",
@@ -4254,7 +4260,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "CH4_mol_atm",
@@ -4589,7 +4597,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "CO_mol_atm",
@@ -4924,7 +4934,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "N2_mol_atm",
@@ -5259,7 +5271,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "NH3_mol_atm",
@@ -5594,7 +5608,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "S2_mol_atm",
@@ -5929,7 +5945,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "SO2_mol_atm",
@@ -6264,7 +6282,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "H2S_mol_atm",
@@ -6599,7 +6619,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "He_mol_atm",
@@ -6949,7 +6971,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Ne_mol_atm",
@@ -7299,7 +7323,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Ar_mol_atm",
@@ -7649,7 +7675,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Kr_mol_atm",
@@ -7999,7 +8027,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Xe_mol_atm",
@@ -8349,7 +8379,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "SiO_mol_atm",
@@ -8682,7 +8714,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "SiO2_mol_atm",
@@ -9015,7 +9049,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Si_mol_atm",
@@ -9363,7 +9399,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Na_mol_atm",
@@ -9711,7 +9749,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "K_mol_atm",
@@ -10059,7 +10099,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Ti_mol_atm",
@@ -10407,7 +10449,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "TiO_mol_atm",
@@ -10740,7 +10784,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "TiO2_mol_atm",
@@ -11073,7 +11119,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Mg_mol_atm",
@@ -11421,7 +11469,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "MgO_mol_atm",
@@ -11754,7 +11804,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Al_mol_atm",
@@ -12102,7 +12154,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "HAlO2_mol_atm",
@@ -12435,7 +12489,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "SiH_mol_atm",
@@ -12768,7 +12824,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "SiH4_mol_atm",
@@ -13101,7 +13159,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Fe_mol_atm",
@@ -13449,7 +13509,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "FeO_mol_atm",
@@ -13782,7 +13844,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "FeO2H2_mol_atm",
@@ -14115,7 +14179,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "CaO_mol_atm",
@@ -14448,7 +14514,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "NaOH_mol_atm",
@@ -14781,7 +14849,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Ca_mol_atm",
@@ -15129,7 +15199,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "KOH_mol_atm",
@@ -15462,7 +15534,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "V_mol_atm",
@@ -15810,7 +15884,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Mg2_mol_atm",
@@ -16143,7 +16219,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "VO_mol_atm",
@@ -16476,7 +16554,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "AlO_mol_atm",
@@ -16809,7 +16889,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "Na2_mol_atm",
@@ -17142,7 +17224,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "NaO_mol_atm",
@@ -17475,7 +17559,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape (possible)"
+      ]
     },
     {
       "name": "H_kg_atm",
@@ -23472,20 +23558,6 @@
       "kind": "read",
       "reason": "dynamic key name",
       "function": "_validate_surface_state"
-    },
-    {
-      "file": "src/proteus/escape/boreas.py",
-      "line": 71,
-      "kind": "read",
-      "reason": "template <g>_vmr_xuv",
-      "function": "_set_boreas_params"
-    },
-    {
-      "file": "src/proteus/escape/boreas.py",
-      "line": 73,
-      "kind": "read",
-      "reason": "template <g>_vmr_xuv",
-      "function": "_set_boreas_params"
     },
     {
       "file": "src/proteus/escape/common.py",

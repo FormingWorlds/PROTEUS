@@ -64,6 +64,7 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], tuple[str, ...]] = {
     ('escape/wrapper.py', 'calc_new_elements', '<?>_kg_total'): ('element_list',),
     ('escape/wrapper.py', 'run_escape', '<?>_kg_total'): ('element_list',),
     ('escape/common.py', 'calc_unfract_fluxes', 'esc_rate_<?>'): ('element_list',),
+    ('escape/boreas.py', '_set_boreas_params', '<?>_vmr_xuv'): ('gas_list',),
     ('outgas/calliope.py', 'calc_target_masses', '<?>_kg_total'): ('element_list',),
     ('outgas/atmodeller.py', '_populate_volatile_element_reservoirs', '<?>_kg_atm'): (
         'element_list',
@@ -247,7 +248,7 @@ class HfRowVisitor(ast.NodeVisitor):
         self.module_constants: dict[str, list[str]] = {}
         self.local_vars: dict[str, ast.AST] = {}
         self.writes: list[tuple[str, str]] = []  # (key, function)
-        self.reads: list[str] = []
+        self.reads: list[tuple[str, bool]] = []  # (key, is_possible)
         self.unresolved: list[tuple[int, str, str, str]] = []  # (lineno, reason, kind, func)
 
     # -- context tracking ---------------------------------------------------
@@ -497,16 +498,16 @@ class HfRowVisitor(ast.NodeVisitor):
 
     def _record(self, key_node, lineno: int, is_write: bool, is_get: bool = False) -> None:
         func = self.func_stack[-1] if self.func_stack else '<module>'
-        keys = self._resolve_keys(key_node, lineno, is_write, is_get)
+        keys, is_possible = self._resolve_keys(key_node, lineno, is_write, is_get)
         for key in keys:
             if is_write:
                 self.writes.append((key, func))
             else:
-                self.reads.append(key)
+                self.reads.append((key, is_possible))
 
     def _resolve_keys(
         self, key_node, lineno: int, is_write: bool, is_get: bool = False
-    ) -> list[str]:
+    ) -> tuple[list[str], bool]:
         func = self.func_stack[-1] if self.func_stack else '<module>'
         if (
             is_get
@@ -515,13 +516,13 @@ class HfRowVisitor(ast.NodeVisitor):
         ):
             key_node = self.local_vars[key_node.id]
         if isinstance(key_node, ast.Constant):
-            return [key_node.value] if isinstance(key_node.value, str) else []
+            return ([key_node.value] if isinstance(key_node.value, str) else []), False
         template = _template_of(key_node)
         if template is not None:
             prefix, var, suffix = template
             domain = self.loop_domains.get(var)
             if domain is not None:
-                return [f'{prefix}{v}{suffix}' for v in self._expand_domain(domain)]
+                return [f'{prefix}{v}{suffix}' for v in self._expand_domain(domain)], False
             override = TEMPLATE_OVERRIDES.get((self.rel_file, func, f'{prefix}<?>{suffix}'))
             if override is not None:
                 values = set()
@@ -532,16 +533,17 @@ class HfRowVisitor(ast.NodeVisitor):
                             f'in TEMPLATE_OVERRIDES'
                         )
                     values.update(self.species[item])
-                return [f'{prefix}{v}{suffix}' for v in sorted(values)]
+                is_possible = self.rel_file == 'escape/boreas.py'
+                return [f'{prefix}{v}{suffix}' for v in sorted(values)], is_possible
             reason = f'template {prefix}<{var}>{suffix}'
         elif isinstance(key_node, ast.Name) and key_node.id in self.loop_domains:
-            return self._expand_domain(self.loop_domains[key_node.id])
+            return self._expand_domain(self.loop_domains[key_node.id]), False
         else:
             reason = f'dynamic key {ast.unparse(key_node)}'
 
         if (is_write or is_get) and not self._suppressed():
             self.unresolved.append((lineno, reason, 'write' if is_write else 'read', func))
-        return []
+        return [], False
 
     def _expand_domain(self, domain: str) -> list[str]:
         if domain.startswith('literal:'):
@@ -640,12 +642,12 @@ def scan_tree() -> dict:
     """Scan src/proteus and return writes, reads, and unresolved events.
 
     Returns ``{'writes': [(rel_file, function, key)], 'reads':
-    [(rel_file, key)], 'unresolved': [(rel_file, lineno, reason, kind, func)]}``.
+    [(rel_file, key, is_possible)], 'unresolved': [(rel_file, lineno, reason, kind, func)]}``.
     """
     species = _species_lists()
     merge_functions = {(f, fn) for f, fn, _renames in MERGE_SITES}
     writes: list[tuple[str, str, str]] = []
-    reads: list[tuple[str, str]] = []
+    reads: list[tuple[str, str, bool]] = []
     unresolved: list[tuple[str, int, str, str, str]] = []
 
     for path in sorted(SRC.rglob('*.py')):
@@ -654,8 +656,8 @@ def scan_tree() -> dict:
         visitor.visit(ast.parse(path.read_text()))
         for key, func in visitor.writes:
             writes.append((rel, func, key))
-        for key in visitor.reads:
-            reads.append((rel, key))
+        for key, possible in visitor.reads:
+            reads.append((rel, key, possible))
         for lineno, reason, kind, func in visitor.unresolved:
             unresolved.append((rel, lineno, reason, kind, func))
 

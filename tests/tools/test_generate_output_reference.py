@@ -116,8 +116,6 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
     assert unattributed == []
     expected_unresolved_reads = [
         'src/proteus/atmos_clim/agni.py::_validate_surface_state:dynamic key name',
-        'src/proteus/escape/boreas.py::_set_boreas_params:template <g>_vmr_xuv',
-        'src/proteus/escape/boreas.py::_set_boreas_params:template <g>_vmr_xuv',
         'src/proteus/escape/common.py::calc_unfract_fluxes:dynamic key e + key',
         "src/proteus/escape/wrapper.py::calc_new_elements:dynamic key f'{e}{key}'",
         "src/proteus/escape/wrapper.py::escapable_mass:dynamic key f'{e}{key}'",
@@ -133,6 +131,9 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
         f'{e["file"]}::{e["function"]}:{e["reason"]}' for e in matrix['unresolved_events']
     )
     assert actual_reads == expected_unresolved_reads
+    by_name = {k['name']: k for k in matrix['keys']}
+    assert by_name['H2O_vmr_xuv']['consumers'] == ['escape (possible)']
+    assert by_name['T_obs']['consumers'] == ['atmos_clim', 'escape']
     for event in matrix['unresolved_events']:
         assert event['kind'] == 'read'
         path = _gor.REPO_ROOT / event['file']

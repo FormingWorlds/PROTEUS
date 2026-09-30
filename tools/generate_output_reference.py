@@ -45,8 +45,34 @@ HEADER_NOTE = (
     'zero) for the whole run. The "written when" column names the '
     'configuration that actually writes each column. The "Read by" column '
     'names modules that consume each column, and can over-approximate when '
-    'consumers read keys through variable or template loops.'
+    'consumers read keys through variable or template loops, or under-approximate '
+    'when consumers read keys dynamically at runtime through computed keys.'
 )
+
+TOUCHED_PATTERNS: dict[tuple[str, str], str] = {
+    ('src/proteus/atmos_clim/agni.py', '_validate_surface_state'): 'T_surf, T_magma, P_surf',
+    ('src/proteus/escape/boreas.py', '_set_boreas_params'): '<gas>_vmr_xuv',
+    (
+        'src/proteus/escape/common.py',
+        'calc_unfract_fluxes',
+    ): '<element>_kg_total, <element>_kg_atm',
+    ('src/proteus/escape/wrapper.py', 'escapable_mass'): '<element>_kg_total, <element>_kg_atm',
+    (
+        'src/proteus/escape/wrapper.py',
+        'calc_new_elements',
+    ): '<element>_kg_total, <element>_kg_atm',
+    ('src/proteus/observe/petitRADTRANS.py', '_get_mix'): '<gas>_vmr',
+    ('src/proteus/outgas/atmodeller.py', '_populate_volatile_element_reservoirs'): (
+        '<species>_kg_<reservoir>'
+    ),
+    ('src/proteus/outgas/atmodeller.py', 'calc_surface_pressures_atmodeller'): (
+        '<element>_kg_total'
+    ),
+    ('src/proteus/plot/cpl_global.py', 'plot_global'): 'F_int, F_atm, F_olr, F_tidal, F_radio',
+    ('src/proteus/plot/cpl_orbit.py', '_plot_orbit_snapshot'): (
+        'semimajorax, semimajorax_sat, eccentricity, eccentricity_sat'
+    ),
+}
 
 # Conditions for backend files reached through a dispatch layer that the
 # module map's entry table does not name directly.
@@ -107,8 +133,15 @@ def build_matrix() -> dict:
             bucket.append(entry)
 
     consumers: dict[str, set[str]] = {}
-    for rel_file, key in scan['reads']:
-        consumers.setdefault(key, set()).add(_consumer_module(rel_file))
+    for rel_file, key, is_possible in scan['reads']:
+        module = _consumer_module(rel_file)
+        tag = f'{module} (possible)' if is_possible else module
+        consumers.setdefault(key, set()).add(tag)
+
+    for key, mods in consumers.items():
+        for mod in list(mods):
+            if mod.endswith(' (possible)') and mod.removesuffix(' (possible)') in mods:
+                mods.remove(mod)
 
     keys = []
     for record in schema:
@@ -126,7 +159,8 @@ def build_matrix() -> dict:
         'note': (
             'The consumers field names modules that consume each column, '
             'and can over-approximate when consumers read keys through '
-            'variable or template loops.'
+            'variable or template loops, or under-approximate when consumers '
+            'read keys dynamically at runtime through computed keys.'
         ),
         'keys': keys,
         'unresolved_events': [
@@ -200,7 +234,9 @@ def render(matrix: dict) -> str:
         )
         lines.append('')
         for event in by_kind['read']:
-            lines.append(f'- `{event["file"]}::{event["function"]}`: {event["reason"]}')
+            pattern = TOUCHED_PATTERNS.get((event['file'], event['function']))
+            suffix = f' (touches {pattern})' if pattern else ''
+            lines.append(f'- `{event["file"]}::{event["function"]}`: {event["reason"]}{suffix}')
 
     if by_kind.get('write'):
         lines += ['', '### Writes with computed keys', '']
@@ -212,7 +248,9 @@ def render(matrix: dict) -> str:
         )
         lines.append('')
         for event in by_kind['write']:
-            lines.append(f'- `{event["file"]}::{event["function"]}`: {event["reason"]}')
+            pattern = TOUCHED_PATTERNS.get((event['file'], event['function']))
+            suffix = f' (touches {pattern})' if pattern else ''
+            lines.append(f'- `{event["file"]}::{event["function"]}`: {event["reason"]}{suffix}')
 
     return '\n'.join(lines)
 
