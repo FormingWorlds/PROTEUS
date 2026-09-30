@@ -2043,10 +2043,6 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
 
     log.info('    mantle re-melted: Aragog entropy reset to the molten initial condition')
 
-    if 'F_atm' not in hf_row or hf_row['F_atm'] is None:
-        log.warning('F_atm missing in hf_row during mantle remelting; defaulting to 0.0 W/m^2')
-        hf_row['F_atm'] = 0.0
-
     molten_out = evaluate_molten_state(solver, hf_row)
     if molten_out is not None:
         output = AragogRunner._build_helpfile_output(

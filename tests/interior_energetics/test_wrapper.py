@@ -6873,7 +6873,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
             )
 
     solver = FakeSolver(n_nodes=80)
-    hf_row = {'Time': 250.0, 'M_mantle': 4.2e24}
+    hf_row = {'Time': 250.0, 'M_mantle': 4.2e24, 'F_atm': 100.0}
 
     # 1. evaluate_molten_state direct evaluation
     out = evaluate_molten_state(solver, hf_row)
@@ -6903,7 +6903,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
             'Phi_global': 0.73,
             'Phi_global_vol': 0.73,
             'T_pot': 3750.0,
-            'RF_depth': 250000.0,
+            'RF_depth': 0.05,
         },
     )
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
@@ -6912,13 +6912,14 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     assert hf_row['Phi_global'] == pytest.approx(0.73, rel=1e-12)
     assert hf_row['Phi_global_vol'] == pytest.approx(0.73, rel=1e-12)
     assert hf_row['T_pot'] == pytest.approx(3750.0, rel=1e-12)
-    assert hf_row['RF_depth'] == pytest.approx(250000.0, rel=1e-12)
+    assert 0.0 < hf_row['RF_depth'] < 1.0
+    assert hf_row['RF_depth'] == pytest.approx(0.05, rel=1e-12)
     assert hf_row['M_mantle_liquid'] == pytest.approx(0.73 * 4.2e24, rel=1e-12)
     assert hf_row['M_mantle_solid'] == pytest.approx(0.27 * 4.2e24, rel=1e-12)
     assert hf_row['M_mantle_liquid'] + hf_row['M_mantle_solid'] == pytest.approx(
         hf_row['M_mantle'], rel=1e-12
     )
-    assert hf_row['F_atm'] == pytest.approx(0.0, rel=1e-12)
+    assert hf_row['F_atm'] == pytest.approx(100.0, rel=1e-12)
     assert solver._solution is None
 
     # 3. Solver without get_state returns None; liquid/solid split runs from Phi_global with clamping
@@ -6932,7 +6933,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
 
     assert evaluate_molten_state(NoGetStateSolver(), hf_row) is None
 
-    hf_row_noget = {'Time': 250.0, 'M_mantle': 4.2e24, 'Phi_global': 1.2}
+    hf_row_noget = {'Time': 250.0, 'M_mantle': 4.2e24, 'Phi_global': 1.2, 'F_atm': 100.0}
     _remelt_aragog(
         config,
         {'output': str(tmp_path), 'spider_eos_dir': ''},
@@ -6944,4 +6945,26 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     assert hf_row_noget['M_mantle_liquid'] + hf_row_noget['M_mantle_solid'] == pytest.approx(
         4.2e24, rel=1e-12
     )
-    assert hf_row_noget['F_atm'] == pytest.approx(0.0, rel=1e-12)
+    assert hf_row_noget['F_atm'] == pytest.approx(100.0, rel=1e-12)
+
+    # 4. _remelt_aragog does not inject F_atm when not provided in hf_row
+    hf_row_no_fatm = {'Time': 250.0, 'M_mantle': 4.2e24, 'Phi_global': 0.5}
+    _remelt_aragog(
+        config,
+        {'output': str(tmp_path), 'spider_eos_dir': ''},
+        hf_row_no_fatm,
+        SimpleNamespace(aragog_solver=NoGetStateSolver(), impact_reset=False),
+    )
+    assert 'F_atm' not in hf_row_no_fatm
+
+
+@pytest.mark.unit
+def test_f_atm_is_not_produced_by_interior_energetics_wrapper():
+    """Interior energetics remelt must not register as an F_atm producer."""
+    import json
+
+    with open(PROTEUS_ROOT / 'docs' / 'Reference' / 'output_schema.json') as f:
+        schema = json.load(f)
+    f_atm_entry = next(k for k in schema['keys'] if k['name'] == 'F_atm')
+    producer_files = [p['file'] for p in f_atm_entry.get('producers', [])]
+    assert 'src/proteus/interior_energetics/wrapper.py' not in producer_files

@@ -1194,10 +1194,6 @@
           "condition": "atmos_clim.module = \"janus\""
         },
         {
-          "file": "src/proteus/interior_energetics/wrapper.py",
-          "condition": "always"
-        },
-        {
           "file": "src/proteus/proteus.py",
           "condition": "always"
         }
