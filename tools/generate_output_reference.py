@@ -130,8 +130,14 @@ def build_matrix() -> dict:
         ),
         'keys': keys,
         'unresolved_events': [
-            {'file': f'src/proteus/{f}', 'line': line, 'kind': kind, 'reason': reason}
-            for f, line, reason, kind in scan['unresolved']
+            {
+                'file': f'src/proteus/{f}',
+                'line': line,
+                'kind': kind,
+                'reason': reason,
+                'function': func,
+            }
+            for f, line, reason, kind, func in scan['unresolved']
         ],
     }
 
@@ -179,14 +185,35 @@ def render(matrix: dict) -> str:
         lines += ['', '### Columns without a statically attributed producer', '']
         for key in unresolved:
             lines.append(f'- `{key["name"]}` ({key["unit"] or "no unit"})')
-    lines += ['', '### Reads with computed keys', '']
-    lines.append('These consumers are not attributed in the table.')
-    if matrix['unresolved_events']:
+
+    by_kind: dict[str, list[dict]] = {}
+    for event in matrix.get('unresolved_events', []):
+        by_kind.setdefault(event['kind'], []).append(event)
+
+    if by_kind.get('read'):
+        lines += ['', '### Reads with computed keys', '']
+        lines.append(
+            'A computed key is a helpfile column name constructed dynamically at '
+            'runtime through variable lookups or formatted strings. Because static '
+            'analysis cannot determine the accessed column names in advance, these '
+            'read sites are not attributed to specific columns in the table above.'
+        )
         lines.append('')
-        for event in matrix['unresolved_events']:
-            lines.append(
-                f'- `{event["file"]}:{event["line"]}` ({event["kind"]}): {event["reason"]}'
-            )
+        for event in by_kind['read']:
+            lines.append(f'- `{event["file"]}::{event["function"]}`: {event["reason"]}')
+
+    if by_kind.get('write'):
+        lines += ['', '### Writes with computed keys', '']
+        lines.append(
+            'A computed key is a helpfile column name constructed dynamically at '
+            'runtime through variable lookups or formatted strings. Because static '
+            'analysis cannot determine the modified column names in advance, these '
+            'write sites are not attributed to specific columns in the table above.'
+        )
+        lines.append('')
+        for event in by_kind['write']:
+            lines.append(f'- `{event["file"]}::{event["function"]}`: {event["reason"]}')
+
     return '\n'.join(lines)
 
 

@@ -346,8 +346,9 @@ class HfRowVisitor(ast.NodeVisitor):
                 if func.attr == 'get' and node.args:
                     self._record(node.args[0], node.lineno, is_write=False, is_get=True)
                 elif func.attr == 'update' and owner in ROW_NAMES and not self._suppressed():
+                    caller = self.func_stack[-1] if self.func_stack else '<module>'
                     self.unresolved.append(
-                        (node.lineno, f'{owner}.update(...) bulk write', 'write')
+                        (node.lineno, f'{owner}.update(...) bulk write', 'write', caller)
                     )
         self.generic_visit(node)
 
@@ -397,7 +398,8 @@ class HfRowVisitor(ast.NodeVisitor):
             reason = f'dynamic key {ast.unparse(key_node)}'
 
         if (is_write or is_get) and not self._suppressed():
-            self.unresolved.append((lineno, reason, 'write' if is_write else 'read'))
+            func = self.func_stack[-1] if self.func_stack else '<module>'
+            self.unresolved.append((lineno, reason, 'write' if is_write else 'read', func))
         return []
 
     def _expand_domain(self, domain: str) -> list[str]:
@@ -513,8 +515,8 @@ def scan_tree() -> dict:
             writes.append((rel, func, key))
         for key in visitor.reads:
             reads.append((rel, key))
-        for lineno, reason, kind in visitor.unresolved:
-            unresolved.append((rel, lineno, reason, kind))
+        for lineno, reason, kind, func in visitor.unresolved:
+            unresolved.append((rel, lineno, reason, kind, func))
 
     for rel_file, function, renames in MERGE_SITES:
         for key in extract_backend_keys(rel_file, function, species):

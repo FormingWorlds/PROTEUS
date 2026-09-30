@@ -114,24 +114,24 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
     assert len(matrix['keys']) > 700
     unattributed = [k['name'] for k in matrix['keys'] if not k['producers']]
     assert unattributed == []
-    unresolved_writes = [e for e in matrix['unresolved_events'] if e['kind'] == 'write']
-    assert unresolved_writes == []
     expected_unresolved_reads = [
-        'src/proteus/atmos_clim/agni.py:dynamic key name',
-        'src/proteus/escape/boreas.py:template <g>_vmr_xuv',
-        'src/proteus/escape/boreas.py:template <g>_vmr_xuv',
-        'src/proteus/escape/common.py:dynamic key e + key',
-        "src/proteus/escape/wrapper.py:dynamic key f'{e}{key}'",
-        "src/proteus/escape/wrapper.py:dynamic key f'{e}{key}'",
-        'src/proteus/interior_struct/zalmoxis.py:dynamic key k',
-        'src/proteus/observe/petitRADTRANS.py:dynamic key key',
-        "src/proteus/outgas/atmodeller.py:dynamic key f'{sp}_kg_{r}'",
-        'src/proteus/outgas/atmodeller.py:dynamic key key',
-        'src/proteus/outgas/atmodeller.py:dynamic key key',
-        'src/proteus/plot/cpl_orbit.py:dynamic key ecc_col',
-        'src/proteus/plot/cpl_orbit.py:dynamic key sma_col',
+        'src/proteus/atmos_clim/agni.py::_validate_surface_state:dynamic key name',
+        'src/proteus/escape/boreas.py::_set_boreas_params:template <g>_vmr_xuv',
+        'src/proteus/escape/boreas.py::_set_boreas_params:template <g>_vmr_xuv',
+        'src/proteus/escape/common.py::calc_unfract_fluxes:dynamic key e + key',
+        "src/proteus/escape/wrapper.py::calc_new_elements:dynamic key f'{e}{key}'",
+        "src/proteus/escape/wrapper.py::escapable_mass:dynamic key f'{e}{key}'",
+        'src/proteus/interior_struct/zalmoxis.py::zalmoxis_solver:dynamic key k',
+        'src/proteus/observe/petitRADTRANS.py::_get_mix:dynamic key key',
+        "src/proteus/outgas/atmodeller.py::_populate_volatile_element_reservoirs:dynamic key f'{sp}_kg_{r}'",
+        'src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller:dynamic key key',
+        'src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller:dynamic key key',
+        'src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot:dynamic key ecc_col',
+        'src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot:dynamic key sma_col',
     ]
-    actual_reads = sorted(f'{e["file"]}:{e["reason"]}' for e in matrix['unresolved_events'])
+    actual_reads = sorted(
+        f'{e["file"]}::{e["function"]}:{e["reason"]}' for e in matrix['unresolved_events']
+    )
     assert actual_reads == expected_unresolved_reads
     for event in matrix['unresolved_events']:
         assert event['kind'] == 'read'
@@ -144,7 +144,9 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
     # The rendered page mirrors that state explicitly.
     page = _gor.render(matrix)
     assert 'Reads with computed keys' in page
-    assert 'These consumers are not attributed in the table.' in page
+    assert 'A computed key is a helpfile column name constructed dynamically at runtime' in page
+    assert 'these read sites are not attributed to specific columns' in page
+    assert 'Writes with computed keys' not in page
 
 
 def test_backend_specific_columns_carry_their_condition(matrix):
@@ -245,42 +247,32 @@ def test_declared_scan_tables_are_all_live(monkeypatch):
         assert by_file.get(rel), f'EXTRA_PRODUCERS names {rel} but no event arises'
 
 
-def test_variable_key_get_reported_as_unresolved():
-    """A variable key passed to hf_row.get() cannot be attributed statically
-    and must be recorded as an unresolved event rather than silently dropped."""
-    code = 'def f(hf_row, k):\n    return hf_row.get(k)\n'
+@pytest.mark.parametrize(
+    ('code', 'reason'),
+    [
+        (
+            'def f(hf_row, k):\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row, element):\n    return hf_row.get(f"{element}_unknown")\n',
+            'template <element>_unknown',
+        ),
+        (
+            'def f(hf_row, k):\n    return hf_row[k]\n',
+            'dynamic key k',
+        ),
+    ],
+    ids=['get_var', 'get_template', 'subscript_var'],
+)
+def test_computed_key_reads_reported_as_unresolved(code, reason):
+    """Variable and unexpanded template reads cannot be attributed statically
+    and must be recorded as unresolved read events."""
     tree = ast.parse(code)
     visitor = _scan.HfRowVisitor('test_file.py', {})
     visitor.visit(tree)
     assert len(visitor.unresolved) == 1
-    assert any('dynamic key k' in reason for _line, reason, *_ in visitor.unresolved)
-    assert visitor.unresolved[0][2] == 'read'
-
-
-def test_template_read_when_is_get_reported_as_unresolved():
-    """A templated key passed to hf_row.get() without a domain or override
-    must be recorded as an unresolved event rather than silently dropped."""
-    code = 'def f(hf_row, element):\n    return hf_row.get(f"{element}_unknown")\n'
-    tree = ast.parse(code)
-    visitor = _scan.HfRowVisitor('test_file.py', {})
-    visitor.visit(tree)
-    assert len(visitor.unresolved) == 1
-    assert any(
-        'template <element>_unknown' in reason for _line, reason, *_ in visitor.unresolved
-    )
-    assert visitor.unresolved[0][2] == 'read'
-
-
-def test_subscript_read_with_variable_reported_as_unresolved():
-    """A variable key used in an hf_row subscript read cannot be attributed statically
-    and must be recorded as an unresolved event rather than silently dropped."""
-    code = 'def f(hf_row, k):\n    return hf_row[k]\n'
-    tree = ast.parse(code)
-    visitor = _scan.HfRowVisitor('test_file.py', {})
-    visitor.visit(tree)
-    assert len(visitor.unresolved) == 1
-    assert any('dynamic key k' in reason for _line, reason, *_ in visitor.unresolved)
-    assert visitor.unresolved[0][2] == 'read'
+    assert visitor.unresolved[0][1:3] == (reason, 'read')
 
 
 def test_constant_binding_invalidated_by_augassign():
@@ -290,7 +282,7 @@ def test_constant_binding_invalidated_by_augassign():
     visitor = _scan.HfRowVisitor('test_file.py', {})
     visitor.visit(tree)
     assert len(visitor.unresolved) == 1
-    assert visitor.unresolved[0][1:] == ('dynamic key k', 'read')
+    assert visitor.unresolved[0][1:3] == ('dynamic key k', 'read')
     assert visitor.reads == []
 
 
@@ -301,7 +293,7 @@ def test_constant_binding_invalidated_by_walrus():
     visitor = _scan.HfRowVisitor('test_file.py', {})
     visitor.visit(tree)
     assert len(visitor.unresolved) == 1
-    assert visitor.unresolved[0][1:] == ('dynamic key k', 'read')
+    assert visitor.unresolved[0][1:3] == ('dynamic key k', 'read')
     assert visitor.reads == []
 
 

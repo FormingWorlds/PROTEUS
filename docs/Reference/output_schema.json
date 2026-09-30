@@ -23681,79 +23681,92 @@
       "file": "src/proteus/atmos_clim/agni.py",
       "line": 882,
       "kind": "read",
-      "reason": "dynamic key name"
+      "reason": "dynamic key name",
+      "function": "_validate_surface_state"
     },
     {
       "file": "src/proteus/escape/boreas.py",
       "line": 71,
       "kind": "read",
-      "reason": "template <g>_vmr_xuv"
+      "reason": "template <g>_vmr_xuv",
+      "function": "_set_boreas_params"
     },
     {
       "file": "src/proteus/escape/boreas.py",
       "line": 73,
       "kind": "read",
-      "reason": "template <g>_vmr_xuv"
+      "reason": "template <g>_vmr_xuv",
+      "function": "_set_boreas_params"
     },
     {
       "file": "src/proteus/escape/common.py",
       "line": 47,
       "kind": "read",
-      "reason": "dynamic key e + key"
+      "reason": "dynamic key e + key",
+      "function": "calc_unfract_fluxes"
     },
     {
       "file": "src/proteus/escape/wrapper.py",
       "line": 71,
       "kind": "read",
-      "reason": "dynamic key f'{e}{key}'"
+      "reason": "dynamic key f'{e}{key}'",
+      "function": "escapable_mass"
     },
     {
       "file": "src/proteus/escape/wrapper.py",
       "line": 543,
       "kind": "read",
-      "reason": "dynamic key f'{e}{key}'"
+      "reason": "dynamic key f'{e}{key}'",
+      "function": "calc_new_elements"
     },
     {
       "file": "src/proteus/interior_struct/zalmoxis.py",
       "line": 3267,
       "kind": "read",
-      "reason": "dynamic key k"
+      "reason": "dynamic key k",
+      "function": "zalmoxis_solver"
     },
     {
       "file": "src/proteus/observe/petitRADTRANS.py",
       "line": 329,
       "kind": "read",
-      "reason": "dynamic key key"
+      "reason": "dynamic key key",
+      "function": "_get_mix"
     },
     {
       "file": "src/proteus/outgas/atmodeller.py",
       "line": 185,
       "kind": "read",
-      "reason": "dynamic key f'{sp}_kg_{r}'"
+      "reason": "dynamic key f'{sp}_kg_{r}'",
+      "function": "_populate_volatile_element_reservoirs"
     },
     {
       "file": "src/proteus/outgas/atmodeller.py",
       "line": 335,
       "kind": "read",
-      "reason": "dynamic key key"
+      "reason": "dynamic key key",
+      "function": "calc_surface_pressures_atmodeller"
     },
     {
       "file": "src/proteus/outgas/atmodeller.py",
       "line": 473,
       "kind": "read",
-      "reason": "dynamic key key"
+      "reason": "dynamic key key",
+      "function": "calc_surface_pressures_atmodeller"
     },
     {
       "file": "src/proteus/plot/cpl_orbit.py",
       "line": 230,
       "kind": "read",
-      "reason": "dynamic key sma_col"
+      "reason": "dynamic key sma_col",
+      "function": "_plot_orbit_snapshot"
     },
     {
       "file": "src/proteus/plot/cpl_orbit.py",
       "line": 231,
       "kind": "read",
-      "reason": "dynamic key ecc_col"
+      "reason": "dynamic key ecc_col",
+      "function": "_plot_orbit_snapshot"
     }
   ]
 }

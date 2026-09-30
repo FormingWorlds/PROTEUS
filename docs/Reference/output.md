@@ -1043,21 +1043,21 @@ Each iteration carries the previous row forward and overwrites only the columns 
 
 ### Reads with computed keys
 
-These consumers are not attributed in the table.
+A computed key is a helpfile column name constructed dynamically at runtime through variable lookups or formatted strings. Because static analysis cannot determine the accessed column names in advance, these read sites are not attributed to specific columns in the table above.
 
-- `src/proteus/atmos_clim/agni.py:882` (read): dynamic key name
-- `src/proteus/escape/boreas.py:71` (read): template <g>_vmr_xuv
-- `src/proteus/escape/boreas.py:73` (read): template <g>_vmr_xuv
-- `src/proteus/escape/common.py:47` (read): dynamic key e + key
-- `src/proteus/escape/wrapper.py:71` (read): dynamic key f'{e}{key}'
-- `src/proteus/escape/wrapper.py:543` (read): dynamic key f'{e}{key}'
-- `src/proteus/interior_struct/zalmoxis.py:3267` (read): dynamic key k
-- `src/proteus/observe/petitRADTRANS.py:329` (read): dynamic key key
-- `src/proteus/outgas/atmodeller.py:185` (read): dynamic key f'{sp}_kg_{r}'
-- `src/proteus/outgas/atmodeller.py:335` (read): dynamic key key
-- `src/proteus/outgas/atmodeller.py:473` (read): dynamic key key
-- `src/proteus/plot/cpl_orbit.py:230` (read): dynamic key sma_col
-- `src/proteus/plot/cpl_orbit.py:231` (read): dynamic key ecc_col
+- `src/proteus/atmos_clim/agni.py::_validate_surface_state`: dynamic key name
+- `src/proteus/escape/boreas.py::_set_boreas_params`: template <g>_vmr_xuv
+- `src/proteus/escape/boreas.py::_set_boreas_params`: template <g>_vmr_xuv
+- `src/proteus/escape/common.py::calc_unfract_fluxes`: dynamic key e + key
+- `src/proteus/escape/wrapper.py::escapable_mass`: dynamic key f'{e}{key}'
+- `src/proteus/escape/wrapper.py::calc_new_elements`: dynamic key f'{e}{key}'
+- `src/proteus/interior_struct/zalmoxis.py::zalmoxis_solver`: dynamic key k
+- `src/proteus/observe/petitRADTRANS.py::_get_mix`: dynamic key key
+- `src/proteus/outgas/atmodeller.py::_populate_volatile_element_reservoirs`: dynamic key f'{sp}_kg_{r}'
+- `src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller`: dynamic key key
+- `src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller`: dynamic key key
+- `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: dynamic key sma_col
+- `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: dynamic key ecc_col
 <!-- END GENERATED: helpfile-matrix -->
 
 ## Synthetic observation CSV columns
