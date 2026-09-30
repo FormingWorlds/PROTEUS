@@ -913,8 +913,8 @@ def GetHelpfileKeys():
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
         # Energy-conservation columns: cumulative integrals of entropy-transported
-        # heat against boundary-flux and source predictions in the live EOS frame,
-        # closed to within phase-boundary discretization tolerances.
+        # heat against boundary-flux and source predictions in the live EOS frame.
+        # Booked impact heat is symmetric on both sides, not closed by residual.
         'E_th_mantle',      # thermal-energy proxy [J] (do not use for conservation)
         'E_state_J',         # state-mass integrated mantle enthalpy [J] (diagnostic only)
         'E_state_cons_J',    # frozen-mass integrated mantle enthalpy [J] (diagnostic only)
@@ -1177,8 +1177,8 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
             new_row.setdefault(k, 0.0)
         return
 
-    # Predicted energy increment from boundary fluxes, volumetric heating sources,
-    # and giant-impact re-melt heat in the live-density frame.
+    # Predicted energy increment [J]: boundary fluxes, sources, and booked
+    # impact heat (symmetric entry, not a residual closure check).
     dE_impact_inc = float(new_row.get('step_dE_impact_J', 0.0))
 
     dE_inc_cons = (
@@ -1188,9 +1188,8 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
         + float(new_row.get('step_dE_Q_tidal_J', 0.0))
         + dE_impact_inc
     )
-    # State increment [J]: the entropy-transported heat content change over
-    # the call, Σ rho T dS by EOS quadrature (step_dE_state_heat_J), plus
-    # the impact re-melt jump the per-call integral cannot see.
+    # State increment [J]: entropy-transported heat (Σ rho T dS) plus
+    # symmetric booked impact heat (not checked for closure).
     dE_state_heat_inc = float(new_row.get('step_dE_state_heat_J', 0.0)) + dE_impact_inc
     solver_inc = float(new_row.get('step_solver_residual_J', 0.0))
 
@@ -1636,8 +1635,8 @@ def _snapshot_time(path: str) -> float | None:
     Returns
     -------
     float or None
-        The recorded time, or None when the file records none, which is what
-        a directory written before the field existed looks like.
+        The recorded time [yr], None when the file records no time variable,
+        or NaN when the recorded time is malformed or non-finite.
     """
     # Imported outside the try for the same reason as the readability probe:
     # a missing netCDF4 must raise rather than read as "no file records a

@@ -650,12 +650,12 @@ class AragogRunner:
             else:
                 AragogRunner.update_structure(config, hf_row, interior_o)
                 AragogRunner.update_solver(dt, hf_row, interior_o)
-            # Refresh before reset(): the compression-work diagnostic inside
-            # reset() evaluates the new mesh pressures against the installed
-            # table, which clamps at a stale ceiling on impact steps.
+            # Refresh before reset() to evaluate new mesh pressures against
+            # the updated table ceiling on impact steps.
             AragogRunner._refresh_entropy_eos(config, interior_o)
             interior_o.aragog_solver.reset()
-            # Restore entropy IC from previous solve
+            # Restore entropy from previous solve. Known gap: cached _last_entropy
+            # is not bounds-checked against the regenerated [S_min, S_max].
             if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
                 interior_o.aragog_solver.set_initial_entropy(interior_o._last_entropy)
 
@@ -2714,44 +2714,25 @@ class AragogRunner:
             'Cp_eff': out.Cp_eff,
             'F_radio': F_radio,
             'F_tidal': F_tidal,
-            # Energy-conservation diagnostic columns.
-            # E_state is the EOS-consistent integrated mantle enthalpy
-            # from the precomputed h(P,S) table; F_cmb is the CMB heat
-            # flux signed positive-out-of-core; Q_*_W are mantle-mass-
-            # integrated source powers in watts (not surface-equivalent
-            # fluxes). Cumulative dE_predicted / E_residual columns are
-            # filled later in coupler.ExtendHelpfile from these inputs.
+            # E_state_J and E_state_cons_J are diagnostic enthalpy snapshots;
+            # do not build a residual on either.
             'E_state_J': out.E_state,
             'E_state_cons_J': out.E_state_cons,
             'F_cmb': out.F_cmb,
             'Q_radio_W': out.Q_radio_total,
             'Q_tidal_W': out.Q_tidal_total,
-            # Per-call energy contributions [J] integrated over the CVODE
-            # sub-step trajectory (rather than from end-of-step F_cmb
-            # snapshots, which spike at phase boundaries). The cumulative
-            # ``dE_predicted_cons_J`` in the coupler sums the boundary fluxes
-            # and the live-density (state-mass) ``step_dE_Q_radio_J`` and
-            # ``step_dE_Q_tidal_J`` below, so the predicted side shares the
-            # ``rho(P,S)`` frame the entropy-transported state side integrates.
+            # Per-call energy increments [J] integrated over the CVODE trajectory
+            # in the live-density frame shared with state-side entropy heat.
             'step_dE_F_int_J': out.step_dE_F_int_J,
             'step_dE_F_cmb_J': out.step_dE_F_cmb_J,
             'step_dE_Q_radio_J': out.step_dE_Q_radio_J,
             'step_dE_Q_tidal_J': out.step_dE_Q_tidal_J,
-            # Frozen-mass variants of the per-call source integrals, retained
-            # as a Lagrangian-frame comparison diagnostic. They are NOT summed
-            # into the conservation residual (which uses the live-density
-            # variants above); ``E_state_cons_J`` is likewise an enthalpy
-            # diagnostic, not the conservation-grade quantity. Machine-precision
-            # conservation is tracked by the solver-residual column below.
+            # Frozen-mass source integrals retained as Lagrangian diagnostic.
+            # Not summed into conservation residual; solver_residual_J tracks residual.
             'step_dE_Q_radio_cons_J': out.step_dE_Q_radio_cons_J,
             'step_dE_Q_tidal_cons_J': out.step_dE_Q_tidal_cons_J,
-            # Per-call entropy-equation self-consistency residual [J].
-            # Sums to a cumulative ``solver_residual_J`` in the coupler.
-            # The discrete flux divergence telescopes to the boundary
-            # fluxes, so it is machine-zero by construction; a non-zero
-            # value flags a divergence-assembly bug, not time-integration
-            # quality (that is recorded in ``E_residual_cons_frac``, a
-            # write-only diagnostic column that is not asserted per run).
+            # Per-call entropy-equation residual [J]. Telescoping discrete flux
+            # divergence makes this machine-zero by construction.
             'step_solver_residual_J': out.step_solver_residual_J,
             # Per-call adiabatic compression work [J] from the structure
             # re-solve that preceded this step. Informational only: the

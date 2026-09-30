@@ -19,9 +19,6 @@ log = logging.getLogger('fwl.' + __name__)
 # growth. This set matches what update_planet_mass sums into M_ele.
 _VOLATILE_ELEMENTS = tuple(e for e in element_list if e in vol_element_list or e in noble_gases)
 
-# Rock-forming elements are the complement of _VOLATILE_ELEMENTS. Their mass
-# grows through structure solves rather than individual volatile budgets.
-
 # Elements configurable through the per-element ppmw fields. The ppmw mode
 # can only deliver these; the planet-matching mode covers the full volatile
 # set above, noble gases included.
