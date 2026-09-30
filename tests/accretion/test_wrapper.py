@@ -2435,3 +2435,89 @@ def test_the_rock_remainder_tolerates_closure_rounding_but_not_a_real_overrun():
     # the latter is ~100x smaller here and would refuse the rounding case.
     assert tol > abs(rounding)
     assert MASS_CLOSURE_RTOL * mass_delta < abs(rounding)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_dummy_structure_in_apply_impact_preserves_rock_elements_and_user_ic(tmp_path):
+    """Dummy structure solve under apply_impact preserves rock elements and user IC.
+
+    When thermal_solve is False, dummy structure solve determines R_int and
+    updates gravity and planet mass without resetting elemental inventories.
+    Pre-impact rock vapor inventory and user initial conditions survive,
+    while volatile delivery and atmospheric loss update H_kg_total according to
+    before + delivered - stripped.
+    """
+    from types import SimpleNamespace
+
+    from proteus.accretion.common import ImpactEvent
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.config import Config
+    from proteus.utils.constants import AU
+
+    config = Config()
+    config.interior_struct.module = 'dummy'
+    config.interior_energetics.module = 'dummy'
+    config.planet.mass_tot = 1.0
+    config.planet.elements.H_mode = 'ppmw'
+    config.planet.elements.H_budget = 10000.0
+    config.accretion.impactor_volatiles = 'ppmw'
+    config.accretion.impactor_H_ppmw = 1000.0
+    config.accretion.atmloss_module = 'constant'
+    config.accretion.atmloss_frac = 0.5
+
+    hf_row = {
+        'Time': 100.0,
+        'semimajorax': 0.5 * AU,
+        'eccentricity': 0.1,
+        'T_magma': 2000.0,
+        'Phi_global': 1.0,
+        'M_int': 5.972e24,
+        'M_core': 0.3 * 5.972e24,
+        'M_mantle': 0.7 * 5.972e24,
+        'R_int': 6.4e6,
+        'R_core': 3.5e6,
+        'gravity': 9.8,
+        'H_kg_total': 3.0e20,
+        'H_kg_atm': 1.0e20,
+        'Si_kg_total': 1.0e21,
+        'O_kg_user_ic': 42.0,
+        'F_atm': 0.0,
+    }
+
+    handler = SimpleNamespace(
+        config=config,
+        hf_row=hf_row,
+        hf_all=None,
+        interior_o=SimpleNamespace(impact_reset=False),
+        crystallized=False,
+        desiccated=False,
+        directories={'output': str(tmp_path)},
+    )
+
+    event = ImpactEvent(
+        time=100.0,
+        M_target_before=5.972e24,
+        M_impactor=1.0e23,
+        M_merged_after=6.072e24,
+        v_impact=1.2e4,
+        v_esc=1.1e4,
+        impact_parameter=0.3,
+        R_target_before=6.4e6,
+        R_impactor=2.0e6,
+        rho_target=5510.0,
+        rho_impactor=3930.0,
+        a_before=1.4e11,
+        a_after=1.4e11,
+        e_before=0.03,
+        e_after=0.03,
+        id_target=1,
+        id_impactor=7,
+    )
+
+    apply_impact(handler, event)
+
+    assert hf_row['Si_kg_total'] == pytest.approx(1.0e21, rel=1e-12)
+    assert hf_row['O_kg_user_ic'] == pytest.approx(42.0, rel=1e-12)
+    # H_kg_total: before (3.0e20) + delivered (8.333333e19) - stripped (5.0e19)
+    assert hf_row['H_kg_total'] == pytest.approx(3.333333333333333e20, rel=1e-12)

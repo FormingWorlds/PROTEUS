@@ -6926,6 +6926,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     assert hf_row['M_mantle_liquid'] + hf_row['M_mantle_solid'] == pytest.approx(
         hf_row['M_mantle'], rel=1e-12
     )
+    assert hf_row['F_atm'] == pytest.approx(0.0, rel=1e-12)
     assert solver._solution is None
 
     # 3. Solver without get_state returns None; liquid/solid split runs from Phi_global with clamping
@@ -6951,3 +6952,4 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     assert hf_row_noget['M_mantle_liquid'] + hf_row_noget['M_mantle_solid'] == pytest.approx(
         4.2e24, rel=1e-12
     )
+    assert hf_row_noget['F_atm'] == pytest.approx(0.0, rel=1e-12)

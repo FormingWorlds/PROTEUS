@@ -1106,7 +1106,8 @@ def determine_interior_radius_with_dummy(
         run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
     update_gravity(hf_row)
 
-    calc_target_elemental_inventories(dirs, config, hf_row)
+    if thermal_solve:
+        calc_target_elemental_inventories(dirs, config, hf_row)
     update_planet_mass(hf_row)
 
     log.info('Dummy structure solve complete')
@@ -2069,6 +2070,10 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         )
 
     log.info('    mantle re-melted: Aragog entropy reset to the molten initial condition')
+
+    if 'F_atm' not in hf_row or hf_row['F_atm'] is None:
+        log.warning('F_atm missing in hf_row during mantle remelting; defaulting to 0.0 W/m^2')
+        hf_row['F_atm'] = 0.0
 
     molten_out = evaluate_molten_state(solver, hf_row)
     if molten_out is not None:
