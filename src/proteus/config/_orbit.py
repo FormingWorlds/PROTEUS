@@ -270,9 +270,11 @@ class Parameterized:
     sma_final: float | None
         Final semi-major axis [AU].
     time_migration: float
-        Time at which migration occurs [yr].
+        Time at which migration begins [yr].
     tau_migration: float
-        Timescale of migration (for sigmoid and high_ecc migration) [yr].
+        Timescale of migration, used by the sigmoid and high_ecc laws. For
+        sigmoid it is the length of the migration window, for high_ecc the
+        eccentricity decay timescale after the event [yr].
     """
 
     sma_init = field(default=None, validator=optional(gt(0)), converter=none_if_none)

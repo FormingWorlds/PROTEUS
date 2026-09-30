@@ -166,7 +166,24 @@ track and the instellation the atmosphere sees never steps.
 
 `high_ecc` circularises at constant orbital angular momentum: it excites the
 eccentricity to `sqrt(1 - sma_final / sma_init)` at the migration epoch and
-then decays it, until the orbit reach `sma_final`. 
+then decays it, until the orbit reaches `sma_final`.
+
+Unlike `sigmoid`, the onset is a step. `tau_migration` sets the decay after
+the event, not its onset, so the eccentricity jumps discontinuously at
+`time_migration` from `orbit.eccentricity` to its excited value. That step is
+physical, since a scattering or Kozai event is fast compared with the orbital
+evolution that follows, but it is visible downstream and in opposite senses.
+The orbit-averaged stellar flux uses `a (1 - e^2)^(1/4)`, which shrinks, while
+the time-averaged separation `a (1 + e^2 / 2)` grows. For a track from
+0.029 au to 0.0106 au the excited eccentricity is 0.797, so instellation and
+XUV flux rise by a factor 1.65 in a single step while the separation rises by
+32 per cent.
+
+The migration window must also be resolved by the timestep. `sigmoid` and
+`high_ecc` are sampled wherever the coupled loop happens to step, and nothing
+aligns a step to `time_migration`. If `tau_migration` spans fewer than three
+timesteps the track is sampled at little more than its endpoints and silently
+degenerates to `instant`; the orbit module logs a warning when that happens.
 
 ### Visualizing the four parameterized regimes
 

@@ -23,13 +23,13 @@ def instant_migration(
     Parameters
     ----------
     t : float
-        Current simulation time.
+        Current simulation time [yr].
     sma_init : float
         Initial semi-major axis before migration [m].
     sma_final : float
         Final semi-major axis after migration [m].
     time_migration : float
-        Time of orbital migration.
+        Time of orbital migration [yr].
 
     Returns
     -------
@@ -58,7 +58,7 @@ def sigmoid_migration(
     Parameters
     ----------
     t : float
-        Current simulation time.
+        Current simulation time [yr].
     sma_init : float
         Initial semi-major axis [m].
     sma_final : float
@@ -75,7 +75,7 @@ def sigmoid_migration(
     """
 
     if tau_mig <= 0:
-        raise ValueError(f'Migration speed tau_mig must be > 0, got {tau_mig}')
+        raise ValueError(f'Migration timescale tau_mig must be > 0, got {tau_mig}')
 
     if t <= time_migration:
         return sma_init
@@ -95,35 +95,46 @@ def high_eccentricity_migration(
     sma_final: float,
     time_migration: float,
     tau_mig: float,
-) -> float:
+) -> tuple[float, float]:
     """
-    Orbital migration triggered by a high-eccentricity event, with a time transition.
+    Orbital migration driven by a high-eccentricity event.
+
+    Before ``time_migration`` the orbit is untouched. At that time the
+    eccentricity steps discontinuously from the configured value to
+    ``sqrt(1 - sma_final / sma_init)``, which is the eccentricity that
+    carries the orbital angular momentum of the final circular orbit at
+    the initial semi-major axis. It then decays towards zero while the
+    semi-major axis falls to ``sma_final``, conserving ``a (1 - e^2)``.
+
+    ``tau_mig`` sets the decay after the event, not the onset, which is a
+    step. Downstream that step is visible: the orbit-averaged stellar
+    flux rises while the time-averaged separation ``a (1 + e^2 / 2)``
+    rises too, so instellation and separation move in opposite
+    directions across the epoch.
 
     Parameters
     ----------
     t : float
-        Current simulation time.
+        Current simulation time [yr].
     ecc : float
-        Initial eccentricity.
+        Eccentricity before the event [].
     sma_init : float
         Initial semi-major axis [m].
     sma_final : float
         Final semi-major axis [m].
     time_migration : float
-        Midpoint time of migration.
+        Time at which the high-eccentricity event occurs [yr].
     tau_mig : float
-        Migration speed parameter (must be positive) [yr-1].
+        Eccentricity decay timescale, must be positive [yr].
 
     Returns
     -------
-    float
-        Semi-major axis [m].
-    float
-        Eccentricity [].
+    tuple[float, float]
+        Semi-major axis [m] and eccentricity [].
     """
 
     if tau_mig <= 0:
-        raise ValueError(f'Migration speed tau_mig must be > 0, got {tau_mig}')
+        raise ValueError(f'Migration timescale tau_mig must be > 0, got {tau_mig}')
 
     if sma_final > sma_init:
         raise ValueError(
@@ -140,7 +151,7 @@ def high_eccentricity_migration(
         return sma, ecc
 
 
-def run_parameterized_orbital_migration(hf_row: dict, config: Config):
+def run_parameterized_orbital_migration(hf_row: dict, config: Config) -> tuple[float, float]:
     """
     Run the parameterized orbital migration module.
 
@@ -155,10 +166,8 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config):
 
     Returns
     -------
-    float
-        Semi-major axis [m].
-    float
-        Eccentricity [].
+    tuple[float, float]
+        Semi-major axis [m] and eccentricity [].
     """
 
     # Initial parameters from config
