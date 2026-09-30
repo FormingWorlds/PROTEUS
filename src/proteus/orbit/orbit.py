@@ -19,6 +19,54 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
+# Fewest timesteps that can carry a smooth migration window. Below this the
+# track is sampled at little more than its endpoints.
+MIN_MIGRATION_SAMPLES = 3.0
+
+
+def _warn_if_migration_window_unresolved(hf_row: dict, config: Config, dt: float):
+    """Warn when the timestep cannot resolve a smooth prescribed migration.
+
+    The sigmoid and high-eccentricity laws carry the orbit over a window of
+    length ``tau_migration``. A timestep comparable to that window samples the
+    track at little more than its endpoints, so the run silently reduces to the
+    instant regime while still reporting the smooth one. Fires only while the
+    step sits inside the window, so it cannot spam a whole run.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        config : Config
+            Configuration options
+        dt : float
+            Requested timestep [yr]
+    """
+    params = config.orbit.parameterized
+    if params.migration not in ('sigmoid', 'high_ecc'):
+        return
+
+    tau = float(params.tau_migration)
+    t_mig = float(params.time_migration)
+    time = float(hf_row['Time'])
+    dt = float(dt)
+
+    if dt <= 0.0 or tau <= 0.0 or not t_mig <= time <= t_mig + tau:
+        return
+
+    samples = tau / dt
+    if samples < MIN_MIGRATION_SAMPLES:
+        log.warning(
+            'Migration window is undersampled at Time = %.6e yr: tau_migration = %.3e yr '
+            'spans only %.1f timesteps of %.3e yr, so the %r track is degenerating '
+            'towards an instant step. Increase tau_migration or reduce the timestep.',
+            time,
+            tau,
+            samples,
+            dt,
+            params.migration,
+        )
+
 
 def _state_is_valid_star(hf_row):
     """Reject a substep whose resulting state is unphysical or non-finite:
@@ -74,6 +122,7 @@ def evolve_orbit_star(
         needs_c_planet = True
 
     elif model == 'parameterized':
+        _warn_if_migration_window_unresolved(hf_row, config, interior_o.dt)
         run_parameterized_orbital_migration(hf_row, config)
         # A prescribed track bypasses the substep controller, so the validity
         # guard that normally rejects a spiral-in is applied here instead.

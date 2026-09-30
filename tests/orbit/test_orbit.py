@@ -842,7 +842,9 @@ def test_evolve_orbit_star_sp1d_model_calls_get_c_planet_and_evolves_hf_row(
 # ---------------------------------------------------------------------------
 
 
-def _make_parameterized_config(migration, sma_init_au, sma_final_au, ecc=0.0) -> Any:
+def _make_parameterized_config(
+    migration, sma_init_au, sma_final_au, ecc=0.0, time_migration=1.0e5, tau_migration=1.0e4
+) -> Any:
     """Config stand-in carrying only what the prescribed-track branch of
     the dispatch reads."""
     return cast(
@@ -856,8 +858,8 @@ def _make_parameterized_config(migration, sma_init_au, sma_final_au, ecc=0.0) ->
                     migration=migration,
                     sma_init=sma_init_au,
                     sma_final=sma_final_au,
-                    time_migration=1.0e5,
-                    tau_migration=1.0e4,
+                    time_migration=time_migration,
+                    tau_migration=tau_migration,
                 ),
             )
         ),
@@ -988,3 +990,83 @@ def test_evolve_orbit_star_parameterized_reports_a_near_radial_orbit(caplog):
     )
     assert quiet == []
     assert hf_row['eccentricity'] == pytest.approx(np.sqrt(1.0 - 0.01), rel=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# evolve_orbit_star: undersampled migration window
+# ---------------------------------------------------------------------------
+
+
+def _capture_undersampling_warnings(caplog, migration, dt_yr, time_yr, tau_yr=1.0e4):
+    """Drive the prescribed-track branch and return the undersampling
+    warnings it emitted."""
+    hf_row = _make_hf_row(ecc=0.0)
+    hf_row['Time'] = time_yr
+    hf_row['R_star'] = 6.957e8
+    config = _make_parameterized_config(
+        migration, 2.0, 0.8, time_migration=1.0e5, tau_migration=tau_yr
+    )
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.orbit.orbit'):
+        evolve_orbit_star(
+            hf_row, config, dirs={}, tides_o=object(), interior_o=SimpleNamespace(dt=dt_yr)
+        )
+
+    return [r.getMessage() for r in caplog.records if 'undersampled' in r.getMessage()]
+
+
+@pytest.mark.parametrize(
+    'migration, dt_yr, expect_warning',
+    [
+        ('sigmoid', 1.0e4, True),
+        ('sigmoid', 3.4e3, True),
+        ('sigmoid', 1.0e4 / 3.0, False),
+        ('sigmoid', 1.0e3, False),
+        ('high_ecc', 1.0e4, True),
+        ('instant', 1.0e4, False),
+        ('none', 1.0e4, False),
+    ],
+    ids=[
+        'sigmoid_one_sample_warns',
+        'sigmoid_just_under_three_samples_warns',
+        'sigmoid_exactly_three_samples_silent',
+        'sigmoid_ten_samples_silent',
+        'high_ecc_one_sample_warns',
+        'instant_step_is_abrupt_by_design',
+        'static_track_has_no_window',
+    ],
+)
+def test_parameterized_warns_when_the_migration_window_is_undersampled(
+    caplog, migration, dt_yr, expect_warning
+):
+    """A smooth migration law sampled at little more than its endpoints
+    silently degenerates to an instant step, so the run reports a track
+    it did not take.
+
+    The threshold is three samples across the window. The boundary is
+    bracketed rather than probed on one side: dt = tau / 3 gives exactly
+    three samples and stays silent, while dt = 3400 yr gives 2.94 and
+    warns. The instant and static regimes are asserted silent alongside,
+    so a check that warned unconditionally would also fail.
+    """
+    warnings = _capture_undersampling_warnings(caplog, migration, dt_yr, time_yr=1.0e5)
+
+    assert bool(warnings) is expect_warning
+    if expect_warning:
+        assert len(warnings) == 1
+        assert migration in warnings[0]
+
+
+@pytest.mark.parametrize(
+    'time_yr',
+    [1.0e5 - 1.0, 1.0e5 + 1.0e4 + 1.0],
+    ids=['before_the_window', 'after_the_window'],
+)
+def test_parameterized_undersampling_warning_is_confined_to_the_window(caplog, time_yr):
+    """The warning fires only while the step sits inside the migration
+    window, so a coarse timestep cannot spam a whole run. The same
+    timestep inside the window does warn, which is asserted by the
+    bracketing test above."""
+    warnings = _capture_undersampling_warnings(caplog, 'sigmoid', dt_yr=1.0e4, time_yr=time_yr)
+
+    assert warnings == []
