@@ -1001,8 +1001,8 @@ def GetHelpfileKeys():
         'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
         'esc_step_kg',      # loss applied on this step, after the cap [kg]
 
-        # Cumulative rock mass from giant impacts added to the interior mass
-        # anchor across the run, enabling resumed runs to reconstruct growth.
+        # Giant-impact accretion ledger: cumulative rock mass added to interior
+        # mass anchor to enable reconstruction on resume.
         'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
         'n_impacts_applied',  # count of giant impacts applied [1]
     ]
