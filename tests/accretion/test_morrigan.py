@@ -429,7 +429,6 @@ def test_survivor_with_no_impacts_returns_empty_timeline(monkeypatch):
     monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
     timeline = backend.get_timeline(_config(selector='mass'))
     assert isinstance(timeline, list)
-    assert len(timeline) == 0
     assert timeline == []
 
 
@@ -444,7 +443,6 @@ def test_survivor_missing_from_impacts_raises_value_error(monkeypatch):
     monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
     with pytest.raises(ValueError, match=r'survivor id 1\b') as exc_info:
         backend.get_timeline(_config(selector='mass'))
-    assert 'survivor id 1' in str(exc_info.value)
     assert 'no impact history' in str(exc_info.value)
 
 

@@ -1177,7 +1177,7 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
             new_row.setdefault(k, 0.0)
         return
 
-    # Predicted energy increment [J]: boundary fluxes, sources, and booked impact heat.
+    # Booked impact heat is symmetric on both sides, not checked for closure.
     dE_impact_inc = float(new_row.get('step_dE_impact_J', 0.0))
 
     dE_inc_cons = (
