@@ -2521,3 +2521,206 @@ def test_dummy_structure_in_apply_impact_preserves_rock_elements_and_user_ic(tmp
     assert hf_row['O_kg_user_ic'] == pytest.approx(42.0, rel=1e-12)
     # H_kg_total: before (3.0e20) + delivered (8.333333e19) - stripped (5.0e19)
     assert hf_row['H_kg_total'] == pytest.approx(3.333333333333333e20, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_apply_impact_rock_remainder_value_error_and_tolerance_clamp(tmp_path):
+    """apply_impact raises ValueError on overrun and clamps rounding to zero.
+
+    When impactor volatile content exceeds mass_delta beyond the closure tolerance,
+    apply_impact raises ValueError. When the remainder is slightly negative within
+    the closure tolerance, it is clamped to zero, avoiding unphysical rock subtraction.
+    """
+    from types import SimpleNamespace
+
+    from proteus.accretion.common import MASS_CLOSURE_RTOL, ImpactEvent
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.config import Config
+    from proteus.utils.constants import AU
+
+    # 1. Overrun beyond tolerance: raises ValueError
+    config = Config()
+    config.accretion.impactor_volatiles = 'ppmw'
+    config.accretion.impactor_H_ppmw = 1.2e6
+    config.accretion.atmloss_module = None
+    config.interior_struct.module = 'dummy'
+    config.interior_energetics.module = 'dummy'
+    config.planet.mass_tot = 1.0
+
+    hf_row = {
+        'Time': 100.0,
+        'semimajorax': 0.5 * AU,
+        'eccentricity': 0.1,
+        'T_magma': 2000.0,
+        'Phi_global': 1.0,
+        'M_int': 5.972e24,
+        'M_core': 0.3 * 5.972e24,
+        'M_mantle': 0.7 * 5.972e24,
+        'R_int': 6.4e6,
+        'R_core': 3.5e6,
+        'gravity': 9.8,
+        'M_accreted_rock': 0.0,
+        'F_atm': 0.0,
+    }
+    handler = SimpleNamespace(
+        config=config,
+        hf_row=hf_row,
+        hf_all=None,
+        interior_o=SimpleNamespace(impact_reset=False),
+        crystallized=False,
+        desiccated=False,
+        directories={'output': str(tmp_path)},
+    )
+    event_overrun = ImpactEvent(
+        time=100.0,
+        M_target_before=6.0e24,
+        M_impactor=6.0e22,
+        M_merged_after=6.06e24,
+        v_impact=1.2e4,
+        v_esc=1.1e4,
+        impact_parameter=0.3,
+        R_target_before=6.4e6,
+        R_impactor=2.0e6,
+        rho_target=5510.0,
+        rho_impactor=3930.0,
+        a_before=1.4e11,
+        a_after=1.4e11,
+        e_before=0.03,
+        e_after=0.03,
+        id_target=1,
+        id_impactor=7,
+    )
+    with pytest.raises(ValueError, match='Impactor volatile content'):
+        apply_impact(handler, event_overrun)
+
+    # 2. Closure rounding within tolerance: clamped to 0.0 without error
+    config.accretion.impactor_H_ppmw = 1.0e6
+    m_merged_rounded = (6.0e24 + 6.0e22) * (1.0 - 0.5 * MASS_CLOSURE_RTOL)
+    event_rounding = ImpactEvent(
+        time=100.0,
+        M_target_before=6.0e24,
+        M_impactor=6.0e22,
+        M_merged_after=m_merged_rounded,
+        v_impact=1.2e4,
+        v_esc=1.1e4,
+        impact_parameter=0.3,
+        R_target_before=6.4e6,
+        R_impactor=2.0e6,
+        rho_target=5510.0,
+        rho_impactor=3930.0,
+        a_before=1.4e11,
+        a_after=1.4e11,
+        e_before=0.03,
+        e_after=0.03,
+        id_target=1,
+        id_impactor=7,
+    )
+    mass_tot_before = handler.config.planet.mass_tot
+    apply_impact(handler, event_rounding)
+    assert handler.hf_row['M_accreted_rock'] == pytest.approx(0.0, abs=1e-12)
+    assert handler.config.planet.mass_tot == pytest.approx(mass_tot_before, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_multiple_impacts_in_one_step_applied_in_time_order(tmp_path):
+    """When multiple impacts occur in one step, both apply in time order.
+
+    The due_events helper sorts impacts in time order, and the main loop applies
+    each sequentially. Accreted rock accumulates from both impacts, applied
+    event count increments for each, and all applied events are consumed.
+    """
+    from types import SimpleNamespace
+
+    from proteus.accretion.common import ImpactEvent, due_events
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.config import Config
+    from proteus.utils.constants import AU
+
+    config = Config()
+    config.interior_struct.module = 'dummy'
+    config.interior_energetics.module = 'dummy'
+    config.planet.mass_tot = 1.0
+    config.accretion.impactor_volatiles = 'dry'
+
+    hf_row = {
+        'Time': 200.0,
+        'semimajorax': 0.5 * AU,
+        'eccentricity': 0.1,
+        'T_magma': 2000.0,
+        'Phi_global': 1.0,
+        'M_int': 5.972e24,
+        'M_core': 0.3 * 5.972e24,
+        'M_mantle': 0.7 * 5.972e24,
+        'R_int': 6.4e6,
+        'R_core': 3.5e6,
+        'gravity': 9.8,
+        'M_accreted_rock': 0.0,
+        'n_impacts_applied': 0,
+        'F_atm': 0.0,
+    }
+
+    handler = SimpleNamespace(
+        config=config,
+        hf_row=hf_row,
+        hf_all=None,
+        interior_o=SimpleNamespace(impact_reset=False, dt=100.0),
+        crystallized=False,
+        desiccated=False,
+        directories={'output': str(tmp_path)},
+    )
+
+    ev1 = ImpactEvent(
+        time=120.0,
+        M_target_before=6.0e24,
+        M_impactor=1.0e23,
+        M_merged_after=6.1e24,
+        v_impact=1.2e4,
+        v_esc=1.1e4,
+        impact_parameter=0.3,
+        R_target_before=6.4e6,
+        R_impactor=2.0e6,
+        rho_target=5510.0,
+        rho_impactor=3930.0,
+        a_before=1.4e11,
+        a_after=1.4e11,
+        e_before=0.03,
+        e_after=0.03,
+        id_target=1,
+        id_impactor=2,
+    )
+    ev2 = ImpactEvent(
+        time=180.0,
+        M_target_before=6.1e24,
+        M_impactor=2.0e23,
+        M_merged_after=6.3e24,
+        v_impact=1.2e4,
+        v_esc=1.1e4,
+        impact_parameter=0.3,
+        R_target_before=6.4e6,
+        R_impactor=2.5e6,
+        rho_target=5510.0,
+        rho_impactor=3930.0,
+        a_before=1.4e11,
+        a_after=1.4e11,
+        e_before=0.03,
+        e_after=0.03,
+        id_target=1,
+        id_impactor=3,
+    )
+
+    handler.impact_events = [ev1, ev2]
+    landed = due_events(handler.impact_events, 100.0, 200.0)
+
+    applied_times = []
+    for ev in landed:
+        applied_times.append(ev.time)
+        apply_impact(handler, ev)
+        handler.impact_events.remove(ev)
+
+    assert applied_times == [120.0, 180.0]
+    expected_rock = ev1.mass_delta + ev2.mass_delta
+    assert hf_row['M_accreted_rock'] == pytest.approx(expected_rock, rel=1e-12)
+    assert hf_row['n_impacts_applied'] == 2
+    assert len(handler.impact_events) == 0

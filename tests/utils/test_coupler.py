@@ -4782,3 +4782,25 @@ def test_select_resumable_snapshot_resolves_sub_year_rows_to_distinct_files(tmp_
     )
     assert none_dropped == []
     assert kept.iloc[-1]['Time'] == pytest.approx(30.2)
+
+
+@pytest.mark.unit
+def test_snapshot_belongs_to_rejects_non_numeric_time_years(tmp_path):
+    """A snapshot recording a non-numeric time is rejected by _snapshot_belongs_to.
+
+    When time_years is present but non-numeric (string, list, or non-finite),
+    _snapshot_time returns NaN and _snapshot_belongs_to rejects the file rather
+    than treating it as an unversioned legacy file.
+    """
+    stringy_bad = tmp_path / 'bad_str.json'
+    stringy_bad.write_text(json.dumps({'time_years': 'non_numeric_garbage'}))
+
+    list_bad = tmp_path / 'bad_list.json'
+    list_bad.write_text(json.dumps({'time_years': [100.0, 200.0]}))
+
+    nan_bad = tmp_path / 'bad_nan.json'
+    nan_bad.write_text(json.dumps({'time_years': 'nan'}))
+
+    assert _snapshot_belongs_to(str(stringy_bad), 100.0) is False
+    assert _snapshot_belongs_to(str(list_bad), 100.0) is False
+    assert _snapshot_belongs_to(str(nan_bad), 100.0) is False

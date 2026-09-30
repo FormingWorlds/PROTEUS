@@ -6,6 +6,7 @@ from __future__ import annotations
 import glob
 import json
 import logging
+import math
 import os
 import subprocess
 from datetime import datetime
@@ -1709,12 +1710,22 @@ def _snapshot_time(path: str) -> float | None:
     try:
         if path.endswith('.json'):
             with open(path) as fh:
-                recorded = json.load(fh).get('time_years')
-            return None if recorded is None else float(recorded)
+                data = json.load(fh)
+            if 'time_years' not in data or data['time_years'] is None:
+                return None
+            try:
+                val = float(data['time_years'])
+                return val if math.isfinite(val) else float('nan')
+            except (ValueError, TypeError):
+                return float('nan')
         with Dataset(path) as ds:
             if 'time' not in ds.variables:
                 return None
-            return float(ds['time'][0])
+            try:
+                val = float(ds['time'][0])
+                return val if math.isfinite(val) else float('nan')
+            except (ValueError, TypeError):
+                return float('nan')
     except Exception:
         # Unreadable is not this function's call to make: the readability
         # probe reports that, and reporting it here as well would turn a
@@ -1747,6 +1758,8 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
     recorded = _snapshot_time(path)
     if recorded is None:
         return True
+    if not math.isfinite(recorded):
+        return False
 
     # The row's time has been through the helpfile, which serialises at
     # '%.10e' and so holds eleven significant digits: a round trip moves it by
