@@ -214,15 +214,10 @@ class HfRowVisitor(ast.NodeVisitor):
     def _visit_func(self, node):
         old_locals = dict(self.local_vars)
         self.func_stack.append(node.name)
-        params = [
-            arg.arg for arg in node.args.posonlyargs + node.args.args + node.args.kwonlyargs
-        ]
-        if node.args.vararg:
-            params.append(node.args.vararg.arg)
-        if node.args.kwarg:
-            params.append(node.args.kwarg.arg)
-        for p in params:
-            self.local_vars[p] = None
+        a = node.args
+        for arg in (*a.posonlyargs, *a.args, *a.kwonlyargs, a.vararg, a.kwarg):
+            if arg:
+                self.local_vars[arg.arg] = None
         self.generic_visit(node)
         self.func_stack.pop()
         self.local_vars = old_locals
@@ -230,33 +225,54 @@ class HfRowVisitor(ast.NodeVisitor):
     visit_FunctionDef = _visit_func
     visit_AsyncFunctionDef = _visit_func
 
+    def _bind(self, name: str, value: ast.AST | None) -> None:
+        """Track ``name`` as a constant string only on its first binding in scope."""
+        is_str = isinstance(value, ast.Constant) and isinstance(value.value, str)
+        self.local_vars[name] = value if is_str and name not in self.local_vars else None
+
+    def _invalidate(self, target: ast.AST | str | None) -> None:
+        """Clear any constant binding for target variables."""
+        if target is None:
+            return
+        if isinstance(target, str):
+            self.local_vars[target] = None
+        elif isinstance(target, ast.Name):
+            self.local_vars[target.id] = None
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for elt in target.elts:
+                self._invalidate(elt)
+
     def visit_Assign(self, node):
         for target in node.targets:
             if isinstance(target, ast.Name):
-                if target.id in self.local_vars:
-                    self.local_vars[target.id] = None
-                elif isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-                    self.local_vars[target.id] = node.value
-                else:
-                    self.local_vars[target.id] = None
+                self._bind(target.id, node.value)
             elif isinstance(target, (ast.Tuple, ast.List)):
-                for elt in target.elts:
-                    if isinstance(elt, ast.Name):
-                        self.local_vars[elt.id] = None
+                self._invalidate(target)
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node):
         if isinstance(node.target, ast.Name):
-            if node.target.id in self.local_vars:
-                self.local_vars[node.target.id] = None
-            elif (
-                node.value
-                and isinstance(node.value, ast.Constant)
-                and isinstance(node.value.value, str)
-            ):
-                self.local_vars[node.target.id] = node.value
-            else:
-                self.local_vars[node.target.id] = None
+            self._bind(node.target.id, node.value)
+        self.generic_visit(node)
+
+    def visit_AugAssign(self, node):
+        self._invalidate(node.target)
+        self.generic_visit(node)
+
+    def visit_NamedExpr(self, node):
+        self._invalidate(node.target)
+        self.generic_visit(node)
+
+    def visit_withitem(self, node):
+        self._invalidate(node.optional_vars)
+        self.generic_visit(node)
+
+    def visit_ExceptHandler(self, node):
+        self._invalidate(node.name)
+        self.generic_visit(node)
+
+    def visit_comprehension(self, node):
+        self._invalidate(node.target)
         self.generic_visit(node)
 
     def visit_For(self, node):
@@ -348,9 +364,8 @@ class HfRowVisitor(ast.NodeVisitor):
             key_node = self.local_vars[key_node.id]
         if isinstance(key_node, ast.Constant):
             return [key_node.value] if isinstance(key_node.value, str) else []
-        suppressed = self._suppressed()
         template = _template_of(key_node)
-        kind = 'write' if is_write else 'read'
+        reason = None
         if template is not None:
             prefix, var, suffix = template
             domain = self.loop_domains.get(var)
@@ -360,18 +375,14 @@ class HfRowVisitor(ast.NodeVisitor):
             if override is not None:
                 values = {v for name in override for v in self.species[name]}
                 return [f'{prefix}{v}{suffix}' for v in sorted(values)]
-            if (is_write or is_get) and not suppressed:
-                self.unresolved.append((lineno, f'template {prefix}<{var}>{suffix}', kind))
-            return []
-        if isinstance(key_node, ast.Name):
-            domain = self.loop_domains.get(key_node.id)
-            if domain is not None:
-                return self._expand_domain(domain)
-            if (is_write or is_get) and not suppressed:
-                self.unresolved.append((lineno, f'dynamic key {key_node.id}', kind))
-            return []
-        if (is_write or is_get) and not suppressed:
-            self.unresolved.append((lineno, f'dynamic key {ast.unparse(key_node)}', kind))
+            reason = f'template {prefix}<{var}>{suffix}'
+        elif isinstance(key_node, ast.Name) and key_node.id in self.loop_domains:
+            return self._expand_domain(self.loop_domains[key_node.id])
+        else:
+            reason = f'dynamic key {ast.unparse(key_node)}'
+
+        if (is_write or is_get) and not self._suppressed():
+            self.unresolved.append((lineno, reason, 'write' if is_write else 'read'))
         return []
 
     def _expand_domain(self, domain: str) -> list[str]:

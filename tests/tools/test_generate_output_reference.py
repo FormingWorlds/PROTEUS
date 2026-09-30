@@ -279,3 +279,25 @@ def test_subscript_read_with_variable_reported_as_unresolved():
     assert len(visitor.unresolved) == 1
     assert any('dynamic key k' in reason for _line, reason, *_ in visitor.unresolved)
     assert visitor.unresolved[0][2] == 'read'
+
+
+def test_constant_binding_invalidated_by_augassign():
+    """An augmented assignment invalidates a constant binding in the helpfile scanner."""
+    code = 'def f(hf_row):\n    k = "a"\n    k += "b"\n    return hf_row.get(k)\n'
+    tree = ast.parse(code)
+    visitor = _scan.HfRowVisitor('test_file.py', {})
+    visitor.visit(tree)
+    assert len(visitor.unresolved) == 1
+    assert visitor.unresolved[0][1:] == ('dynamic key k', 'read')
+    assert visitor.reads == []
+
+
+def test_constant_binding_invalidated_by_walrus():
+    """A walrus expression invalidates a constant binding in the helpfile scanner."""
+    code = 'def f(hf_row):\n    k = "a"\n    if (k := func()):\n        return hf_row.get(k)\n'
+    tree = ast.parse(code)
+    visitor = _scan.HfRowVisitor('test_file.py', {})
+    visitor.visit(tree)
+    assert len(visitor.unresolved) == 1
+    assert visitor.unresolved[0][1:] == ('dynamic key k', 'read')
+    assert visitor.reads == []
