@@ -419,6 +419,18 @@ def test_a_missing_field_names_itself_rather_than_failing_obscurely(monkeypatch)
 
 
 @pytest.mark.unit
+def test_survivor_with_no_impacts_returns_empty_timeline(monkeypatch):
+    """A selected survivor body with no impacts returns an empty list."""
+    outcome = {
+        'survivors': _SURVIVORS,
+        'impacts': {},
+    }
+    fake = SimpleNamespace(run_system=partial(_return_outcome, outcome))
+    monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
+    assert backend.get_timeline(_config(selector='mass')) == []
+
+
+@pytest.mark.unit
 def test_an_outcome_missing_its_top_level_entries_is_refused(monkeypatch):
     """A model result without survivors or impacts fails with a named cause.
 

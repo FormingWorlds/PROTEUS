@@ -226,7 +226,7 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
             )
 
     chosen = select_planet(outcome['survivors'], config)
-    records = outcome['impacts'][chosen['id']]
+    records = outcome['impacts'].get(chosen['id'], [])
 
     offset = config.accretion.time_offset
     # Select the fields explicitly rather than splatting each record, the same

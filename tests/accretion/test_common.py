@@ -29,6 +29,7 @@ from proteus.accretion.common import (
     next_event,
     read_timeline,
     validate_timeline,
+    write_timeline,
 )
 from proteus.utils.constants import const_G
 
@@ -442,10 +443,9 @@ def test_read_timeline_rejects_unusable_files(tmp_path):
         )
     )
 
-    # Empty: header present, no impacts.
+    # Empty: header present, no impacts returns empty list.
     empty = _write_timeline(tmp_path / 'empty.csv', [])
-    with pytest.raises(ValueError, match='contains no impacts'):
-        read_timeline(str(empty))
+    assert read_timeline(str(empty)) == []
 
     # Missing a column the impact handler needs.
     trimmed = tmp_path / 'partial.csv'
@@ -458,6 +458,15 @@ def test_read_timeline_rejects_unusable_files(tmp_path):
     broken = _write_timeline(tmp_path / 'broken.csv', [{**full, 'M_merged_after': 9.9e24}])
     with pytest.raises(ValueError, match='does not close'):
         read_timeline(str(broken))
+
+
+@pytest.mark.unit
+def test_empty_timeline_round_trip(tmp_path):
+    """Writing an empty timeline and reading it back returns an empty list."""
+    path = tmp_path / 'empty_timeline.tsv'
+    write_timeline([], str(path))
+    assert path.exists()
+    assert read_timeline(str(path)) == []
 
 
 @pytest.mark.unit

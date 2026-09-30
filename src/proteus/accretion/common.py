@@ -316,8 +316,7 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
     FileNotFoundError
         If the timeline file does not exist.
     ValueError
-        If required columns are missing, if the file holds no impacts, or
-        if the timeline fails validation.
+        If required columns are missing or if the timeline fails validation.
     """
     resolved = os.path.expandvars(os.path.expanduser(path))
     if not os.path.exists(resolved):
@@ -334,10 +333,7 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
         )
 
     if len(table) == 0:
-        raise ValueError(
-            f'Impact timeline {resolved} contains no impacts. Disable the accretion '
-            'module instead of supplying an empty timeline.'
-        )
+        return []
 
     table = table.sort_values('time', kind='stable')
 
