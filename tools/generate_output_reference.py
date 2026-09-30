@@ -43,7 +43,9 @@ HEADER_NOTE = (
     'columns the active modules produce, so a column whose producer is not '
     'part of the current configuration keeps its previous value (initially '
     'zero) for the whole run. The "written when" column names the '
-    'configuration that actually writes each column.'
+    'configuration that actually writes each column. The "Read by" column '
+    'names modules that consume each column, and can over-approximate when '
+    'consumers read keys through variable or template loops.'
 )
 
 # Conditions for backend files reached through a dispatch layer that the
@@ -121,6 +123,11 @@ def build_matrix() -> dict:
             }
         )
     return {
+        'note': (
+            'The consumers field names modules that consume each column, '
+            'and can over-approximate when consumers read keys through '
+            'variable or template loops.'
+        ),
         'keys': keys,
         'unresolved_events': [
             {'file': f'src/proteus/{f}', 'line': line, 'kind': kind, 'reason': reason}

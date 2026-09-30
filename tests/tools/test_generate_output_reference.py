@@ -118,6 +118,8 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
     assert unresolved_writes == []
     expected_unresolved_reads = [
         'src/proteus/atmos_clim/agni.py:dynamic key name',
+        'src/proteus/escape/boreas.py:template <g>_vmr_xuv',
+        'src/proteus/escape/boreas.py:template <g>_vmr_xuv',
         'src/proteus/escape/common.py:dynamic key e + key',
         "src/proteus/escape/wrapper.py:dynamic key f'{e}{key}'",
         "src/proteus/escape/wrapper.py:dynamic key f'{e}{key}'",
@@ -301,3 +303,35 @@ def test_constant_binding_invalidated_by_walrus():
     assert len(visitor.unresolved) == 1
     assert visitor.unresolved[0][1:] == ('dynamic key k', 'read')
     assert visitor.reads == []
+
+
+def test_template_overrides_match_imported_loop_constants():
+    """Each template override expansion equals the exact imported loop domain."""
+    from proteus.atmos_chem.dummy import _PARENT_SPECIES
+    from proteus.interior_energetics.wrapper import _COMPOSITION_SENTINEL_SPECIES
+    from proteus.interior_struct.zalmoxis import _VOLATILE_EOS_MAP
+    from proteus.utils.constants import noble_gases, vol_element_list, vol_gas_list
+
+    species = _scan._species_lists()
+
+    def expand(override):
+        return {v for item in override for v in (species[item] if item in species else [item])}
+
+    zal_liq = _scan.TEMPLATE_OVERRIDES[('interior_struct/zalmoxis.py', '<?>_kg_liquid')]
+    zal_sol = _scan.TEMPLATE_OVERRIDES[('interior_struct/zalmoxis.py', '<?>_kg_solid')]
+    assert expand(zal_liq) == set(_VOLATILE_EOS_MAP.keys())
+    assert expand(zal_sol) == set(_VOLATILE_EOS_MAP.keys())
+
+    sentinel = _scan.TEMPLATE_OVERRIDES[('interior_energetics/wrapper.py', '<?>_kg_liquid')]
+    assert expand(sentinel) == set(_COMPOSITION_SENTINEL_SPECIES)
+
+    inte_ele = _scan.TEMPLATE_OVERRIDES[('interior_energetics/wrapper.py', '<?>_kg_total')]
+    assert expand(inte_ele) == set(vol_element_list) | set(noble_gases)
+
+    dummy_parent = _scan.TEMPLATE_OVERRIDES[('atmos_chem/dummy.py', '<?>_vmr')]
+    assert expand(dummy_parent) == set(_PARENT_SPECIES)
+
+    coupler_gas = _scan.TEMPLATE_OVERRIDES[('utils/coupler.py', '<?>_kg_atm')]
+    assert expand(coupler_gas) == set(vol_gas_list)
+
+    assert ('escape/boreas.py', '<?>_vmr_xuv') not in _scan.TEMPLATE_OVERRIDES

@@ -59,14 +59,25 @@ MERGE_SITES = [
 TEMPLATE_OVERRIDES: dict[tuple[str, str], tuple[str, ...]] = {
     ('accretion/wrapper.py', '<?>_kg_total'): ('element_list',),
     ('accretion/wrapper.py', '<?>_kg_atm'): ('element_list',),
-    ('atmos_chem/dummy.py', '<?>_vmr'): ('gas_list',),
-    ('escape/boreas.py', '<?>_vmr_xuv'): ('gas_list',),
+    ('atmos_chem/dummy.py', '<?>_vmr'): (
+        'H2O',
+        'CO2',
+        'N2',
+        'H2',
+        'CO',
+        'CH4',
+        'SO2',
+        'S2',
+        'H2S',
+        'NH3',
+        'O2',
+    ),
     ('escape/wrapper.py', '<?>_kg_total'): ('element_list',),
     ('escape/common.py', 'esc_rate_<?>'): ('element_list',),
-    ('interior_energetics/wrapper.py', '<?>_kg_total'): ('element_list',),
-    ('interior_energetics/wrapper.py', '<?>_kg_liquid'): ('gas_list',),
-    ('interior_struct/zalmoxis.py', '<?>_kg_liquid'): ('gas_list',),
-    ('interior_struct/zalmoxis.py', '<?>_kg_solid'): ('gas_list',),
+    ('interior_energetics/wrapper.py', '<?>_kg_total'): ('vol_element_list', 'noble_gases'),
+    ('interior_energetics/wrapper.py', '<?>_kg_liquid'): ('H2O', 'H2'),
+    ('interior_struct/zalmoxis.py', '<?>_kg_liquid'): ('H2O', 'H2'),
+    ('interior_struct/zalmoxis.py', '<?>_kg_solid'): ('H2O', 'H2'),
     ('outgas/calliope.py', '<?>_kg_total'): ('element_list',),
     ('outgas/atmodeller.py', '<?>_bar'): ('gas_list',),
     ('outgas/atmodeller.py', '<?>_vmr'): ('gas_list',),
@@ -94,7 +105,7 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str], tuple[str, ...]] = {
     ('outgas/lavatmos.py', '<?>_vmr'): ('vap_list',),
     ('outgas/wrapper.py', '<?>_kg_total'): ('element_list',),
     ('outgas/wrapper.py', '<?>_kg_atm'): ('gas_list', 'element_list'),
-    ('utils/coupler.py', '<?>_kg_atm'): ('gas_list', 'element_list'),
+    ('utils/coupler.py', '<?>_kg_atm'): ('vol_gas_list',),
 }
 
 # Dynamic-key writes that are not producers: save/restore of overridden
@@ -373,7 +384,11 @@ class HfRowVisitor(ast.NodeVisitor):
                 return [f'{prefix}{v}{suffix}' for v in self._expand_domain(domain)]
             override = TEMPLATE_OVERRIDES.get((self.rel_file, f'{prefix}<?>{suffix}'))
             if override is not None:
-                values = {v for name in override for v in self.species[name]}
+                values = {
+                    v
+                    for item in override
+                    for v in (self.species[item] if item in self.species else [item])
+                }
                 return [f'{prefix}{v}{suffix}' for v in sorted(values)]
             reason = f'template {prefix}<{var}>{suffix}'
         elif isinstance(key_node, ast.Name) and key_node.id in self.loop_domains:
