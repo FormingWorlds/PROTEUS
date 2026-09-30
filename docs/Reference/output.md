@@ -1045,17 +1045,16 @@ Each iteration carries the previous row forward and overwrites only the columns 
 
 A computed key is a helpfile column name constructed dynamically at runtime through variable lookups or formatted strings. Because static analysis cannot determine the accessed column names in advance, these read sites are not attributed to specific columns in the table above.
 
-- `src/proteus/atmos_clim/agni.py::_validate_surface_state`: dynamic key name (touches T_surf, T_magma, P_surf)
-- `src/proteus/escape/common.py::calc_unfract_fluxes`: dynamic key e + key (touches <element>_kg_total, <element>_kg_atm)
-- `src/proteus/escape/wrapper.py::escapable_mass`: dynamic key f'{e}{key}' (touches <element>_kg_total, <element>_kg_atm)
-- `src/proteus/escape/wrapper.py::calc_new_elements`: dynamic key f'{e}{key}' (touches <element>_kg_total, <element>_kg_atm)
-- `src/proteus/observe/petitRADTRANS.py::_get_mix`: dynamic key key (touches <gas>_vmr)
-- `src/proteus/outgas/atmodeller.py::_populate_volatile_element_reservoirs`: dynamic key f'{sp}_kg_{r}' (touches <species>_kg_<reservoir>)
-- `src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller`: dynamic key key (touches <element>_kg_total)
-- `src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller`: dynamic key key (touches <element>_kg_total)
-- `src/proteus/plot/cpl_global.py::plot_global`: dynamic key k (touches F_int, F_atm, F_olr, F_tidal, F_radio)
-- `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: dynamic key sma_col (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
-- `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: dynamic key ecc_col (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
+- `src/proteus/atmos_clim/agni.py::_validate_surface_state`: `dynamic key name` (touches T_surf, T_magma, P_surf)
+- `src/proteus/escape/common.py::calc_unfract_fluxes`: `dynamic key e + key` (touches <element>_kg_total, <element>_kg_atm)
+- `src/proteus/escape/wrapper.py::escapable_mass`: `dynamic key f'{e}{key}'` (touches <element>_kg_total, <element>_kg_atm)
+- `src/proteus/escape/wrapper.py::calc_new_elements`: `dynamic key f'{e}{key}'` (touches <element>_kg_total, <element>_kg_atm)
+- `src/proteus/observe/petitRADTRANS.py::_get_mix`: `dynamic key key` (touches <gas>_vmr)
+- `src/proteus/outgas/atmodeller.py::_populate_volatile_element_reservoirs`: `dynamic key f'{sp}_kg_{r}'` (touches <species>_kg_<reservoir>)
+- `src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller` (2 sites): `dynamic key key` (touches <element>_kg_total)
+- `src/proteus/plot/cpl_global.py::plot_global`: `dynamic key k` (touches F_int, F_atm, F_olr, F_tidal, F_radio)
+- `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key sma_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
+- `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key ecc_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
 <!-- END GENERATED: helpfile-matrix -->
 
 ## Synthetic observation CSV columns

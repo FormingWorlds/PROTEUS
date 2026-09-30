@@ -2854,6 +2854,39 @@ def test_restore_accretion_state_persists_counter_to_hf_all_last_row(tmp_path):
 
 
 @pytest.mark.unit
+def test_restore_accretion_state_zero_rock_missing_counter_normalizes_hf_all(tmp_path):
+    """When M_accreted_rock is zero and counter is absent, restore_accretion_state
+    normalizes n_impacts_applied to 0 in hf_row and 0.0 in the last row of hf_all."""
+    import pandas as pd
+
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 0.0,
+                'M_accreted_rock': 0.0,
+                'semimajorax': 1.0 * AU,
+                'eccentricity': 0.0,
+            }
+        ]
+    )
+    hf_row = hf_all.iloc[-1].to_dict()
+    assert 'n_impacts_applied' not in hf_row
+
+    handler = _resumed_handler(
+        tmp_path,
+        [],
+        hf_row=hf_row,
+        hf_all=hf_all,
+    )
+    restore_accretion_state(handler)
+    assert handler.hf_row['n_impacts_applied'] == 0
+    assert handler.hf_all['n_impacts_applied'].iloc[-1] == pytest.approx(0.0)
+
+
+@pytest.mark.unit
 def test_legacy_resume_then_impact_records_k_plus_one_in_hf_all(tmp_path):
     """Resume with k prior impacts records k+1 in hf_all after next impact."""
     import pandas as pd
@@ -3103,7 +3136,20 @@ def test_restore_accretion_state_refuses_corrupt_counter(tmp_path):
         time=500.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
     )
 
+    import pandas as pd
+
     for bad_counter in (float('nan'), -1, -1.0, 1.5, 'bad'):
+        hf_all = pd.DataFrame(
+            [
+                {
+                    'Time': 100.0,
+                    'M_accreted_rock': 1e23,
+                    'n_impacts_applied': bad_counter,
+                    'semimajorax': AU,
+                    'eccentricity': 0.0,
+                }
+            ]
+        )
         handler = _resumed_handler(
             tmp_path,
             events=[ev50, ev500],
@@ -3114,6 +3160,7 @@ def test_restore_accretion_state_refuses_corrupt_counter(tmp_path):
                 'semimajorax': AU,
                 'eccentricity': 0.0,
             },
+            hf_all=hf_all,
             pending=[ev50, ev500],
         )
 

@@ -166,12 +166,11 @@ def build_matrix() -> dict:
         'unresolved_events': [
             {
                 'file': f'src/proteus/{f}',
-                'line': line,
                 'kind': kind,
                 'reason': reason,
                 'function': func,
             }
-            for f, line, reason, kind, func in scan['unresolved']
+            for f, _line, reason, kind, func in scan['unresolved']
         ],
     }
 
@@ -220,37 +219,27 @@ def render(matrix: dict) -> str:
         for key in unresolved:
             lines.append(f'- `{key["name"]}` ({key["unit"] or "no unit"})')
 
-    by_kind: dict[str, list[dict]] = {}
-    for event in matrix.get('unresolved_events', []):
-        by_kind.setdefault(event['kind'], []).append(event)
-
-    if by_kind.get('read'):
-        lines += ['', '### Reads with computed keys', '']
+    for kind, action in (('read', 'accessed'), ('write', 'modified')):
+        events = [e for e in matrix.get('unresolved_events', []) if e['kind'] == kind]
+        if not events:
+            continue
+        lines += ['', f'### {kind.capitalize()}s with computed keys', '']
         lines.append(
-            'A computed key is a helpfile column name constructed dynamically at '
-            'runtime through variable lookups or formatted strings. Because static '
-            'analysis cannot determine the accessed column names in advance, these '
-            'read sites are not attributed to specific columns in the table above.'
+            f'A computed key is a helpfile column name constructed dynamically at '
+            f'runtime through variable lookups or formatted strings. Because static '
+            f'analysis cannot determine the {action} column names in advance, these '
+            f'{kind} sites are not attributed to specific columns in the table above.'
         )
         lines.append('')
-        for event in by_kind['read']:
-            pattern = TOUCHED_PATTERNS.get((event['file'], event['function']))
-            suffix = f' (touches {pattern})' if pattern else ''
-            lines.append(f'- `{event["file"]}::{event["function"]}`: {event["reason"]}{suffix}')
-
-    if by_kind.get('write'):
-        lines += ['', '### Writes with computed keys', '']
-        lines.append(
-            'A computed key is a helpfile column name constructed dynamically at '
-            'runtime through variable lookups or formatted strings. Because static '
-            'analysis cannot determine the modified column names in advance, these '
-            'write sites are not attributed to specific columns in the table above.'
-        )
-        lines.append('')
-        for event in by_kind['write']:
-            pattern = TOUCHED_PATTERNS.get((event['file'], event['function']))
-            suffix = f' (touches {pattern})' if pattern else ''
-            lines.append(f'- `{event["file"]}::{event["function"]}`: {event["reason"]}{suffix}')
+        counts: dict[tuple[str, str, str], int] = {}
+        for event in events:
+            evt_key = (event['file'], event['function'], event['reason'])
+            counts[evt_key] = counts.get(evt_key, 0) + 1
+        for (file, func, reason), count in counts.items():
+            pattern = TOUCHED_PATTERNS.get((file, func))
+            pattern_str = f' (touches {pattern})' if pattern else ''
+            sites_str = f' ({count} sites)' if count > 1 else ''
+            lines.append(f'- `{file}::{func}`{sites_str}: `{reason}`{pattern_str}')
 
     return '\n'.join(lines)
 

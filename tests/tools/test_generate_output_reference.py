@@ -135,20 +135,18 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
     assert by_name['H2O_vmr_xuv']['consumers'] == ['escape (possible)']
     assert by_name['T_obs']['consumers'] == ['atmos_clim', 'escape']
     for event in matrix['unresolved_events']:
+        assert 'line' not in event
         assert event['kind'] == 'read'
-        path = _gor.REPO_ROOT / event['file']
-        assert path.is_file(), f'{event["file"]} does not exist'
+    for f, line, reason_text, kind, _func in _scan.scan_tree()['unresolved']:
+        assert kind == 'read'
+        path = _gor.REPO_ROOT / f'src/proteus/{f}'
+        assert path.is_file(), f'{f} does not exist'
         source = path.read_text()
         lines = source.splitlines()
-        assert 1 <= event['line'] <= len(lines), (
-            f'Line {event["line"]} out of range in {event["file"]}'
-        )
+        assert 1 <= line <= len(lines), f'Line {line} out of range in {f}'
         tree = ast.parse(source)
-        nodes_at_line = [
-            n for n in ast.walk(tree) if getattr(n, 'lineno', None) == event['line']
-        ]
+        nodes_at_line = [n for n in ast.walk(tree) if getattr(n, 'lineno', None) == line]
         assert len(nodes_at_line) > 0
-        reason_text = event['reason']
         if reason_text.startswith('template <'):
             core = reason_text.removeprefix('template <')
             var_part, _, suffix_part = core.partition('>')
@@ -165,6 +163,52 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
     assert 'A computed key is a helpfile column name constructed dynamically at runtime' in page
     assert 'these read sites are not attributed to specific columns' in page
     assert 'Writes with computed keys' not in page
+
+
+def test_render_computed_keys_sections():
+    """Render includes own sections for read and write computed keys when present,
+    omits empty sections, merges duplicate sites with a count, and formats
+    reasons inside backticks."""
+    matrix_empty = {'keys': [], 'unresolved_events': []}
+    out_empty = _gor.render(matrix_empty)
+    assert 'Reads with computed keys' not in out_empty
+    assert 'Writes with computed keys' not in out_empty
+
+    matrix_both = {
+        'keys': [],
+        'unresolved_events': [
+            {
+                'file': 'src/proteus/outgas/atmodeller.py',
+                'kind': 'read',
+                'reason': 'dynamic key key',
+                'function': 'calc_surface_pressures_atmodeller',
+            },
+            {
+                'file': 'src/proteus/outgas/atmodeller.py',
+                'kind': 'read',
+                'reason': 'dynamic key key',
+                'function': 'calc_surface_pressures_atmodeller',
+            },
+            {
+                'file': 'src/proteus/escape/wrapper.py',
+                'kind': 'write',
+                'reason': 'dynamic key f"{e}{key}"',
+                'function': 'run_escape',
+            },
+        ],
+    }
+    out_both = _gor.render(matrix_both)
+    assert '### Reads with computed keys' in out_both
+    assert 'accessed column names' in out_both
+    assert '### Writes with computed keys' in out_both
+    assert 'modified column names' in out_both
+    assert (
+        '- `src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller` (2 sites): '
+        '`dynamic key key` (touches <element>_kg_total)'
+    ) in out_both
+    assert (
+        '- `src/proteus/escape/wrapper.py::run_escape`: `dynamic key f"{e}{key}"`'
+    ) in out_both
 
 
 def test_backend_specific_columns_carry_their_condition(matrix):
