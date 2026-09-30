@@ -3323,3 +3323,90 @@ def test_restore_accretion_state_event_at_exact_resume_time_boundary(tmp_path):
     with pytest.raises(RuntimeError) as exc_info:
         restore_accretion_state(handler_bad)
     assert 'precede the resume time' in str(exc_info.value)
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_legacy_ledger_accepted_when_accretion_disabled(
+    tmp_path, caplog
+):
+    """When accretion is disabled, a positive ledger with absent/zero counter restores mass with a warning."""
+    import logging
+    from types import SimpleNamespace
+
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            params=SimpleNamespace(resume=True),
+            accretion=SimpleNamespace(module='none'),
+            planet=SimpleNamespace(mass_tot=0.5),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row={
+            'Time': 100.0,
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 0,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        hf_all=None,
+        directories={'output': str(tmp_path)},
+        impact_events=None,
+    )
+    with caplog.at_level(logging.WARNING):
+        restore_accretion_state(handler)
+
+    assert handler.config.planet.mass_tot > 0.5
+    assert 'Accretion is disabled for this resume' in caplog.text
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_legacy_ledger_refused_when_impacts_active(tmp_path):
+    """When impacts are scheduled, positive rock with zero counter raises RuntimeError."""
+    from types import SimpleNamespace
+
+    from proteus.accretion.common import ImpactEvent
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = ImpactEvent(
+        time=10.0,
+        M_target_before=1e24,
+        M_impactor=1e23,
+        M_merged_after=1.1e24,
+        v_impact=1e4,
+        v_esc=1e4,
+        impact_parameter=0.5,
+        R_target_before=1e6,
+        R_impactor=1e5,
+        rho_target=3000,
+        rho_impactor=3000,
+        a_before=1.5e11,
+        a_after=1.5e11,
+        e_before=0.0,
+        e_after=0.0,
+    )
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            params=SimpleNamespace(resume=True),
+            accretion=SimpleNamespace(module='dummy'),
+            planet=SimpleNamespace(mass_tot=0.5),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row={
+            'Time': 100.0,
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 0,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        hf_all=None,
+        directories={'output': str(tmp_path)},
+        impact_events=[ev1],
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        restore_accretion_state(handler)
+    err = str(exc_info.value)
+    assert 'runtime_helpfile.csv' in err
+    assert 'predates the impact counter' in err

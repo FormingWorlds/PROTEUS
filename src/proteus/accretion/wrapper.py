@@ -222,10 +222,18 @@ def restore_accretion_state(handler: Proteus) -> None:
 
     if accreted > 0.0:
         if n_raw is None or n_num == 0.0:
-            raise RuntimeError(
-                f'Resume refused: {hf_name} records M_accreted_rock = {accreted:.6e} kg, '
-                f'but n_impacts_applied is {n_raw!r}. This run predates the impact counter '
-                'and cannot be resumed safely; restart the simulation.'
+            if getattr(handler, 'impact_events', None) is not None:
+                raise RuntimeError(
+                    f'Resume refused: {hf_name} records M_accreted_rock = {accreted:.6e} kg, '
+                    f'but n_impacts_applied is {n_raw!r}. This run predates the impact counter '
+                    'and cannot be resumed safely; restart the simulation.'
+                )
+            log.warning(
+                'Helpfile %s records M_accreted_rock = %.6e kg but n_impacts_applied is %r. '
+                'Accretion is disabled for this resume; restoring mass and orbit from the ledger.',
+                hf_name,
+                accreted,
+                n_raw,
             )
         n_applied = int(n_num)
     else:
