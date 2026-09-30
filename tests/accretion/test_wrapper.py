@@ -1716,17 +1716,6 @@ def test_restore_accretion_state_drops_already_applied_events_on_resume(tmp_path
     )
     restore_accretion_state(handler)
     assert handler.impact_events == [ev2]
-
-    # Case 2: helpfile predates n_impacts_applied; derived from M_accreted_rock
-    handler.hf_row = {
-        'Time': 0.0,
-        'M_accreted_rock': 1e23,
-        'semimajorax': 1.0 * AU,
-        'eccentricity': 0.0,
-    }
-    handler.impact_events = [ev1, ev2]
-    restore_accretion_state(handler)
-    assert handler.impact_events == [ev2]
     assert handler.hf_row['n_impacts_applied'] == 1
 
 
@@ -2797,7 +2786,7 @@ def test_resume_from_old_helpfile_without_n_impacts_applied_does_not_reapply_pas
 
     assert len(handler.impact_events) == 1
     assert handler.impact_events[0].time == pytest.approx(200.0)
-    assert handler.hf_row['n_impacts_applied'] == 1
+    assert handler.hf_row['n_impacts_applied'] == 0
 
     landed_first = due_events(handler.impact_events, 100.0, 150.0)
     assert landed_first == []
@@ -2849,7 +2838,7 @@ def test_restore_accretion_state_persists_counter_to_hf_all_last_row(tmp_path):
             {
                 'Time': 100.0,
                 'M_accreted_rock': 1e23,
-                'n_impacts_applied': 0.0,
+                'n_impacts_applied': 1.0,
                 'semimajorax': 1.0 * AU,
                 'eccentricity': 0.0,
             }
@@ -2873,57 +2862,19 @@ def test_restore_accretion_state_persists_counter_to_hf_all_last_row(tmp_path):
 
 @pytest.mark.unit
 def test_legacy_resume_then_impact_records_k_plus_one_in_hf_all(tmp_path):
-    """Resuming legacy helpfile with k impacts then applying one more records k+1 in hf_all."""
+    """Resume with k prior impacts records k+1 in hf_all after next impact."""
     import pandas as pd
 
-    from proteus.accretion.common import ImpactEvent, write_timeline
-    from proteus.accretion.wrapper import (
-        _RESOLVED_TIMELINE_FILE,
-        apply_impact,
-        restore_accretion_state,
-    )
+    from proteus.accretion.wrapper import apply_impact, restore_accretion_state
     from proteus.config import Config
     from proteus.utils.constants import AU
 
-    ev1 = ImpactEvent(
-        time=50.0,
-        M_target_before=5.972e24,
-        M_impactor=1e23,
-        M_merged_after=6.072e24,
-        v_impact=1.2e4,
-        v_esc=1.1e4,
-        impact_parameter=0.3,
-        R_target_before=6.4e6,
-        R_impactor=2.0e6,
-        rho_target=5510.0,
-        rho_impactor=3930.0,
-        a_before=1.4e11,
-        a_after=1.4e11,
-        e_before=0.03,
-        e_after=0.03,
-        id_target=1,
-        id_impactor=2,
+    ev1 = _impact_event(
+        time=50.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
     )
-    ev2 = ImpactEvent(
-        time=200.0,
-        M_target_before=6.072e24,
-        M_impactor=1e23,
-        M_merged_after=6.172e24,
-        v_impact=1.2e4,
-        v_esc=1.1e4,
-        impact_parameter=0.3,
-        R_target_before=6.4e6,
-        R_impactor=2.0e6,
-        rho_target=5510.0,
-        rho_impactor=3930.0,
-        a_before=1.4e11,
-        a_after=1.4e11,
-        e_before=0.03,
-        e_after=0.03,
-        id_target=1,
-        id_impactor=3,
+    ev2 = _impact_event(
+        time=200.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
     )
-    write_timeline([ev1, ev2], str(tmp_path / _RESOLVED_TIMELINE_FILE))
 
     config = Config()
     config.interior_struct.module = 'dummy'
@@ -2933,13 +2884,12 @@ def test_legacy_resume_then_impact_records_k_plus_one_in_hf_all(tmp_path):
     config.accretion.impactor_volatiles = 'dry'
     config.params.resume = True
 
-    # Legacy helpfile has k=1 prior impact and backfilled 0.0 counter.
     hf_all = pd.DataFrame(
         [
             {
                 'Time': 100.0,
                 'M_accreted_rock': 1e23,
-                'n_impacts_applied': 0.0,
+                'n_impacts_applied': 1.0,
                 'semimajorax': 1.0 * AU,
                 'eccentricity': 0.0,
                 'T_magma': 2000.0,
@@ -2954,16 +2904,12 @@ def test_legacy_resume_then_impact_records_k_plus_one_in_hf_all(tmp_path):
             }
         ]
     )
-    handler = SimpleNamespace(
-        config=config,
-        hf_row=hf_all.iloc[-1].to_dict(),
-        hf_all=hf_all,
-        interior_o=SimpleNamespace(impact_reset=False, dt=100.0),
-        crystallized=False,
-        desiccated=False,
-        directories={'output': str(tmp_path)},
-        impact_events=[ev1, ev2],
+    handler = _resumed_handler(
+        tmp_path, [ev1, ev2], hf_row=hf_all.iloc[-1].to_dict(), hf_all=hf_all
     )
+    handler.config = config
+    handler.interior_o = SimpleNamespace(impact_reset=False, dt=100.0)
+    handler.crystallized = handler.desiccated = False
 
     restore_accretion_state(handler)
 
@@ -2982,40 +2928,8 @@ def test_legacy_resume_then_impact_records_k_plus_one_in_hf_all(tmp_path):
 
 
 @pytest.mark.unit
-def test_restore_accretion_state_derived_count_never_drops_future_events(tmp_path):
-    """Legacy resume fallback derives counter only from events up to resume time."""
-    from proteus.accretion.wrapper import restore_accretion_state
-    from proteus.utils.constants import AU
-
-    ev1 = _impact_event(
-        time=50.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
-    )
-    ev2 = _impact_event(
-        time=200.0, M_target_before=6.072e24, M_impactor=5e18, M_merged_after=6.072005e24
-    )
-    ev3 = _impact_event(
-        time=300.0, M_target_before=6.072005e24, M_impactor=1e23, M_merged_after=6.172005e24
-    )
-
-    handler = _resumed_handler(
-        tmp_path,
-        [ev1, ev2, ev3],
-        hf_row={
-            'Time': 100.0,
-            'M_accreted_rock': 1e23,
-            'semimajorax': 1.0 * AU,
-            'eccentricity': 0.0,
-        },
-    )
-
-    restore_accretion_state(handler)
-    assert handler.hf_row['n_impacts_applied'] == 1
-    assert handler.impact_events == [ev2, ev3]
-
-
-@pytest.mark.unit
 def test_restore_accretion_state_ignores_events_at_or_before_zero_on_resume(tmp_path):
-    """Events at t <= 0 must not be counted in events_before or the derived count."""
+    """Events at t <= 0 must not be counted in events_before."""
     from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import AU
 
@@ -3028,7 +2942,7 @@ def test_restore_accretion_state_ignores_events_at_or_before_zero_on_resume(tmp_
         time=5.0, M_target_before=6.172e24, M_impactor=1e23, M_merged_after=6.272e24
     )
 
-    # Case 1: n_impacts_applied = 1 recorded in helpfile for the init-stage impact.
+    # n_impacts_applied = 1 recorded in helpfile for the init-stage impact.
     # On fresh run ev_a was dropped by _drop_events_before_start, so impact_events has [ev_b].
     # On resume at Time = 0.0, ev_b was already applied and must be dropped from impact_events.
     handler = _resumed_handler(
@@ -3045,19 +2959,7 @@ def test_restore_accretion_state_ignores_events_at_or_before_zero_on_resume(tmp_
     )
     restore_accretion_state(handler)
     assert handler.impact_events == []
-
-    # Case 2: Legacy helpfile without n_impacts_applied (derived count).
-    # ev_a at t <= 0 must not consume accreted rock; ev_b at t > 0 is counted.
-    handler.hf_row = {
-        'Time': 0.0,
-        'M_accreted_rock': 1e23,
-        'semimajorax': 1.0 * AU,
-        'eccentricity': 0.0,
-    }
-    handler.impact_events = [ev_b]
-    restore_accretion_state(handler)
     assert handler.hf_row['n_impacts_applied'] == 1
-    assert handler.impact_events == []
 
 
 @pytest.mark.unit
@@ -3101,57 +3003,46 @@ def test_empty_user_timeline_logs_warning(tmp_path, caplog):
 
 
 @pytest.mark.unit
-def test_legacy_resume_init_stage_impact_counted_and_not_reapplied(tmp_path):
-    """Resume with init impact at small time derives count and drops past event."""
-    from proteus.accretion.wrapper import restore_accretion_state
+def test_legacy_resume_missing_counter_logs_warning_and_preserves_future_events(
+    tmp_path, caplog
+):
+    """Resume with legacy helpfile without counter logs a warning and preserves future events."""
+    import logging
+
+    from proteus.accretion.wrapper import (
+        _drop_events_before_start,
+        restore_accretion_state,
+    )
     from proteus.utils.constants import AU
 
-    ev05 = _impact_event(
-        time=0.5, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    ev50 = _impact_event(
+        time=50.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
     )
     ev500 = _impact_event(
         time=500.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
     )
-
-    handler = _resumed_handler(
-        tmp_path,
-        [ev05, ev500],
-        hf_row={
-            'Time': 0.1,
-            'M_accreted_rock': 1e23,
-            'semimajorax': AU,
-            'eccentricity': 0.0,
-        },
+    ev900 = _impact_event(
+        time=900.0, M_target_before=6.172e24, M_impactor=2e23, M_merged_after=6.372e24
     )
-    restore_accretion_state(handler)
-    assert handler.hf_row['n_impacts_applied'] == 1
-    assert [e.time for e in handler.impact_events] == [500.0]
 
-
-@pytest.mark.unit
-def test_legacy_resume_missing_resolved_file_derives_count(tmp_path):
-    """Resume without resolved timeline derives count from raw events."""
-    from proteus.accretion.wrapper import restore_accretion_state
-    from proteus.utils.constants import AU
-
-    ev05 = _impact_event(
-        time=0.5, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
-    )
-    ev500 = _impact_event(
-        time=500.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
-    )
+    resume_time = 100.0
+    pending = _drop_events_before_start([ev50, ev500, ev900], resume_time, resumed=True)
+    assert pending == [ev500, ev900]
 
     handler = _resumed_handler(
         tmp_path,
         events=None,
         hf_row={
-            'Time': 100.0,
+            'Time': resume_time,
             'M_accreted_rock': 1e23,
             'semimajorax': AU,
             'eccentricity': 0.0,
         },
-        pending=[ev05, ev500],
+        pending=pending,
     )
-    restore_accretion_state(handler)
-    assert handler.hf_row['n_impacts_applied'] == 1
-    assert [e.time for e in handler.impact_events] == [500.0]
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        restore_accretion_state(handler)
+
+    assert any('helpfile predates the impact counter' in r.message for r in caplog.records)
+    assert handler.impact_events == [ev500, ev900]

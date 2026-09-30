@@ -167,6 +167,15 @@ def restore_accretion_state(handler: Proteus) -> None:
     against the configured mass and orbit and a re-run dynamical model selects
     the same body it selected originally.
 
+    When restoring the pending impact schedule on resume, precedence is:
+    1. If ``n_impacts_applied`` is present in the helpfile and positive, that
+       counter determines how many prior impacts were applied, and any
+       remaining events up to that count are dropped from the pending list.
+    2. Otherwise, if the helpfile predates the counter but carries accreted
+       rock (``M_accreted_rock > 0``), a warning is logged stating that
+       impacts from the init stage cannot be recovered, and only events at or
+       before the resume time are dropped.
+
     Parameters
     ----------
     handler : Proteus
@@ -184,61 +193,41 @@ def restore_accretion_state(handler: Proteus) -> None:
 
     if getattr(handler, 'impact_events', None) is not None:
         resume_time = float(hf_row.get('Time') or 0.0)
-        raw_events = list(handler.impact_events)
         # Drop any events preceding the resume time (idempotent with init_accretion).
         handler.impact_events = [ev for ev in handler.impact_events if ev.time > resume_time]
 
         n_applied_raw = hf_row.get('n_impacts_applied')
-        resolved_path = os.path.join(
-            handler.directories.get('output', '.'), _RESOLVED_TIMELINE_FILE
-        )
-        has_resolved = os.path.exists(resolved_path)
-        all_events = None
-        if has_resolved:
-            from proteus.accretion.common import read_timeline
-
-            all_events = read_timeline(resolved_path, time_offset=0.0)
-        else:
-            all_events = raw_events
-
         if (
             n_applied_raw is not None
             and math.isfinite(float(n_applied_raw))
             and float(n_applied_raw) > 0
         ):
             n_applied = int(float(n_applied_raw))
-        elif accreted > 0.0:
-            # Fallback when helpfile lacks n_impacts_applied: derive from
-            # M_accreted_rock up to matching the accreted mass.
-            cum_rock = 0.0
-            n_applied = 0
-            timeline = all_events if all_events is not None else raw_events
-            for ev in timeline:
-                if ev.time <= 0.0:
-                    continue
-                if (accreted - cum_rock) <= accreted * 1e-4:
-                    break
-                content = _impactor_volatile_content(
-                    config, getattr(handler, 'hf_all', None), ev, hf_row=hf_row
+            hf_row['n_impacts_applied'] = n_applied
+            if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
+                handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(
+                    n_applied
                 )
-                rock_ev = max(ev.mass_delta - sum(content.values()), 0.0)
-                if (cum_rock + rock_ev) <= accreted * (1.0 + 1e-4):
-                    n_applied += 1
-                    cum_rock += rock_ev
-                else:
-                    break
+
+            resolved_path = os.path.join(
+                handler.directories.get('output', '.'), _RESOLVED_TIMELINE_FILE
+            )
+            if os.path.exists(resolved_path):
+                from proteus.accretion.common import read_timeline
+
+                all_events = read_timeline(resolved_path, time_offset=0.0)
+                events_before = sum(1 for ev in all_events if 0.0 < ev.time <= resume_time)
+                remaining_to_drop = max(n_applied - events_before, 0)
+                if remaining_to_drop > 0:
+                    handler.impact_events = handler.impact_events[remaining_to_drop:]
         else:
-            n_applied = 0
-
-        hf_row['n_impacts_applied'] = n_applied
-        if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
-            handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(n_applied)
-
-        if all_events is not None:
-            events_before = sum(1 for ev in all_events if 0.0 < ev.time <= resume_time)
-            remaining_to_drop = max(n_applied - events_before, 0)
-            if remaining_to_drop > 0:
-                handler.impact_events = handler.impact_events[remaining_to_drop:]
+            hf_row.setdefault('n_impacts_applied', 0)
+            if accreted > 0.0:
+                log.warning(
+                    'helpfile predates the impact counter: impacts that landed during the '
+                    'init stage cannot be recovered; only events at or before the resume '
+                    'time are dropped'
+                )
 
     if accreted <= 0.0:
         # Inform user when continuing from configured mass, which occurs either
