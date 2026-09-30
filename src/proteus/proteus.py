@@ -373,7 +373,8 @@ class Proteus:
         row is kept. Otherwise its ``.prev`` backup, taken before each re-solve,
         is restored when it matches. Otherwise the structure is re-solved for the
         row, with the row's mass and composition and the temperature profile of
-        the resumed interior snapshot.
+        the resumed interior snapshot, and the re-solved values replace those of
+        the resumed row in ``hf_all``.
 
         Raises
         ------
@@ -461,6 +462,10 @@ class Proteus:
         dR_int = float(self.hf_row['R_int']) - R_int0
         limit = 0.05 * (R_int0 - R_core0)
         if ok and max(abs(dR_core), abs(dR_int)) <= limit:
+            # Each loop iteration starts from the last stored row, so the
+            # re-solved structure must be written there too.
+            cols = [k for k in self.hf_row if k in self.hf_all.columns]
+            self.hf_all.loc[self.hf_all.index[-1], cols] = [self.hf_row[k] for k in cols]
             log.info(
                 'Resume: re-solved structure moved R_core by %+.3e m and R_int by '
                 '%+.3e m from helpfile row %d; %s now matches.',

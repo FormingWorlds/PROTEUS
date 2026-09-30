@@ -401,6 +401,78 @@ def test_resync_without_a_mesh_file_does_nothing(tmp_path):
     assert not dat.exists()
 
 
+def _aragog_like_interior(mesh_path, calls):
+    """Fake run_interior that checks the mesh file as Aragog does.
+
+    The first call is solver setup, which allows 5 % of the mantle thickness;
+    every later call is ``reset()``, which runs Aragog's own radius validator.
+    """
+    from types import SimpleNamespace
+
+    from aragog.solver.entropy_solver import _validate_eos_radius_range
+
+    def run(*args, **kwargs):
+        hf_row = args[3]
+        r = np.loadtxt(mesh_path)[:, 0]
+        inner, outer = hf_row['R_core'], hf_row['R_int']
+        if calls:
+            _validate_eos_radius_range(
+                SimpleNamespace(eos_radius=r, inner_radius=inner, outer_radius=outer)
+            )
+        else:
+            assert abs(r[0] - inner) <= 0.05 * (outer - inner)
+            assert abs(r[-1] - outer) <= 0.05 * (outer - inner)
+        calls.append((inner, outer))
+
+    return run
+
+
+def _stop_on_second_atmosphere_call(seen):
+    def run(*args, **kwargs):
+        seen.append(1)
+        if len(seen) == 2:
+            raise _StopAfterAtmosphereCall
+
+    return run
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('case', ['prev matches', 're-solve'])
+def test_resumed_loop_reaches_a_second_reset_on_a_stale_mesh(tmp_path, case):
+    """Through start(resume=True), a stale mesh file no longer fails reset() at step 2.
+
+    The fake interior applies Aragog's setup and reset() checks against the row
+    the main loop hands it, so the loop-start copy of the last helpfile row is
+    part of what is tested.
+    """
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog')
+    p.config.interior_struct.module = 'zalmoxis'
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['R_core'], hf_df['R_int'] = 3.4e6, 6.4e6
+    data = tmp_path / 'data'
+    mesh = data / 'zalmoxis_output.dat'
+    _write_mesh(mesh, 3.4e6, 6.4e6 + 300.0)
+    prev = (3.4e6, 6.4e6) if case == 'prev matches' else (3.4e6, 6.4e6 - 300.0)
+    _write_mesh(data / 'zalmoxis_output.dat.prev', *prev)
+    _write_int_snapshot(data, 400.0, [3400.0, 6400.0], [4000.0])
+    calls = []
+
+    with patch(
+        'proteus.interior_energetics.wrapper.update_structure_from_interior',
+        side_effect=_fake_resolve(mesh, 21.0, {}),
+    ):
+        _run_resumed_loop_until_stop(
+            p,
+            hf_df,
+            _aragog_like_interior(mesh, calls),
+            _stop_on_second_atmosphere_call([]),
+        )
+
+    assert len(calls) == 2
+    expected_R_int = 6.4e6 if case == 'prev matches' else 6.4e6 + 21.0
+    assert calls[1] == (3.4e6, expected_R_int)
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize(
     ('struct', 'energetics', 'called'),
