@@ -220,6 +220,8 @@ def restore_accretion_state(handler: Proteus) -> None:
             n_applied = 0
             timeline = all_events if all_events is not None else handler.impact_events
             for ev in timeline:
+                if ev.time <= 0.0:
+                    continue
                 if resume_time > 0.0 and ev.time > resume_time:
                     continue
                 content = _impactor_volatile_content(
@@ -239,7 +241,7 @@ def restore_accretion_state(handler: Proteus) -> None:
             handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(n_applied)
 
         if all_events is not None:
-            events_before = sum(1 for ev in all_events if ev.time <= resume_time)
+            events_before = sum(1 for ev in all_events if 0.0 < ev.time <= resume_time)
             remaining_to_drop = max(n_applied - events_before, 0)
             if remaining_to_drop > 0:
                 handler.impact_events = handler.impact_events[remaining_to_drop:]

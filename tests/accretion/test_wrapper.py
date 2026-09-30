@@ -2896,3 +2896,56 @@ def test_restore_accretion_state_derived_count_never_drops_future_events(tmp_pat
     restore_accretion_state(handler)
     assert handler.hf_row['n_impacts_applied'] == 1
     assert handler.impact_events == [ev2, ev3]
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_ignores_events_at_or_before_zero_on_resume(tmp_path):
+    """Events at t <= 0 must not be counted in events_before or the derived count."""
+    from proteus.accretion.common import write_timeline
+    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
+    from proteus.utils.constants import AU
+
+    # Event A is before simulation start (t <= 0); event B is an init-stage impact at t = 5.
+    ev_a = _impact_event(
+        time=-100.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev_b = _impact_event(
+        time=5.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    write_timeline([ev_a, ev_b], str(tmp_path / _RESOLVED_TIMELINE_FILE))
+
+    # Case 1: n_impacts_applied = 1 recorded in helpfile for the init-stage impact.
+    # On fresh run ev_a was dropped by _drop_events_before_start, so impact_events has [ev_b].
+    # On resume at Time = 0.0, ev_b was already applied and must be dropped from impact_events.
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            accretion=SimpleNamespace(module='timeline', impactor_volatiles='dry'),
+            params=SimpleNamespace(resume=True),
+            planet=SimpleNamespace(mass_tot=1.0),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row={
+            'Time': 0.0,
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 1,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        directories={'output': str(tmp_path)},
+        impact_events=[ev_b],
+    )
+    restore_accretion_state(handler)
+    assert handler.impact_events == []
+
+    # Case 2: Legacy helpfile without n_impacts_applied (derived count).
+    # ev_a at t <= 0 must not consume accreted rock; only ev_b at t > 0 is counted.
+    handler.hf_row = {
+        'Time': 0.0,
+        'M_accreted_rock': 1e23,
+        'semimajorax': 1.0 * AU,
+        'eccentricity': 0.0,
+    }
+    handler.impact_events = [ev_b]
+    restore_accretion_state(handler)
+    assert handler.hf_row['n_impacts_applied'] == 1
+    assert handler.impact_events == []
