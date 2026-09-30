@@ -749,6 +749,8 @@ def test_shipped_configs_load_selector_value_none_as_unset(toml_name):
     with open(path, 'rb') as f:
         raw = tomllib.load(f)
     assert raw['accretion']['morrigan']['selector_value'] == 'none'
+    if raw['outgas']['module'] == 'atmodeller':
+        pytest.importorskip('atmodeller')  # loading the file imports the outgas module
 
     cfg = read_config_object(path)
     assert cfg.accretion.morrigan.selector_value is None

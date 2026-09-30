@@ -1857,8 +1857,6 @@ def test_cvode_factory_installs_with_empty_mesh_mock(caplog):
     mesh array without raising IndexError, allowing the JAX CVODE factory
     to remain installed and recording the fallback geometry label in logs.
     """
-    import logging
-
     pytest.importorskip('jax')
     pytest.importorskip('aragog.jax.phase')
     from proteus.interior_energetics.aragog import AragogRunner
