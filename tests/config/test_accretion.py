@@ -174,10 +174,31 @@ def test_targeted_selectors_require_a_selector_value():
         )
         if targeted == 'id':
             assert cfg.morrigan.selector_value == int(float(value))
-            assert isinstance(cfg.morrigan.selector_value, int)
+            if isinstance(value, float) or (isinstance(value, str) and '.' in value):
+                assert isinstance(cfg.morrigan.selector_value, float)
+            else:
+                assert isinstance(cfg.morrigan.selector_value, int)
         else:
             assert cfg.morrigan.selector_value == float(value)
             assert isinstance(cfg.morrigan.selector_value, float)
+
+    # Field converter parses numeric strings to numbers directly on Morrigan
+    m_id = Morrigan(selector='id', selector_value='3')
+    assert m_id.selector_value == 3
+    assert isinstance(m_id.selector_value, int)
+
+    m_id_np = Morrigan(selector='id', selector_value=np.int64(3))
+    assert m_id_np.selector_value == 3
+    assert isinstance(m_id_np.selector_value, int)
+
+    m_sma = Morrigan(selector='semimajoraxis', selector_value='1.5')
+    assert m_sma.selector_value == 1.5
+    assert isinstance(m_sma.selector_value, float)
+
+    # In-place assignment after construction runs converter
+    m_id.selector_value = '7'
+    assert m_id.selector_value == 7
+    assert isinstance(m_id.selector_value, int)
 
     for bad_id in (
         -1,
@@ -691,3 +712,19 @@ def test_morrigan_declarative_bounds_and_selector_value_behaviour():
     for bad_angle in (-0.01, -1.0, 90.01):
         with pytest.raises(ValueError, match='impact_angle'):
             Accretion(module='morrigan', morrigan=Morrigan(impact_angle=bad_angle))
+
+
+@pytest.mark.unit
+def test_morrigan_rendered_config_reference_contains_constraint_text():
+    """Rendered accretion config reference page contains the Morrigan constraint row."""
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[2]
+    page = repo_root / 'docs' / 'Reference' / 'config' / 'accretion.md'
+    assert page.exists()
+    content = page.read_text()
+    expected = (
+        'The Morrigan module requires as many embryo masses as planets, all positive, '
+        'and a valid selector value when the selector is a semi-major axis or planet id.'
+    )
+    assert expected in content

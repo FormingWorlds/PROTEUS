@@ -112,7 +112,7 @@ def select_planet(survivors: Sequence[dict], config: Config) -> dict:
             chosen = min(survivors, key=lambda s: abs(s['a_final'] - target))
 
         case 'id':
-            wanted = mor.selector_value
+            wanted = int(mor.selector_value)
             matches = [s for s in survivors if int(s['id']) == wanted]
             if not matches:
                 available = sorted(int(s['id']) for s in survivors)

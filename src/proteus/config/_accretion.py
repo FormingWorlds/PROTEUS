@@ -24,13 +24,51 @@ def _parse_finite_number(x: object) -> float | None:
     return val if math.isfinite(val) else None
 
 
-def valid_morrigan(instance, attribute, value):
-    """Validate and normalize Morrigan configuration.
+def _convert_selector_value(val: object) -> float | int | str | None:
+    """Convert numeric strings and numeric types to int or float."""
+    if val is None or isinstance(val, bool):
+        return val
+    if isinstance(val, numbers.Integral):
+        return int(val)
+    if isinstance(val, numbers.Real):
+        return float(val)
+    if isinstance(val, str):
+        try:
+            return int(val)
+        except ValueError:
+            try:
+                v = float(val)
+                return v if math.isfinite(v) else val
+            except ValueError:
+                return val
+    return val
 
-    The Morrigan module requires as many embryo masses as planets, all
-    positive, and a valid selector value when the selector is a semi-major
-    axis or planet id. Note: this validator mutates ``selector_value`` on
-    ``value`` in place to normalize its representation.
+
+def _parse_id(raw: object) -> int | None:
+    """Parse raw value as a finite non-negative integer id, else None."""
+    if isinstance(raw, bool) or not isinstance(raw, (numbers.Integral, numbers.Real, str)):
+        return None
+    if isinstance(raw, numbers.Integral):
+        try:
+            return int(raw) if math.isfinite(float(raw)) else None
+        except OverflowError:
+            return None
+    val_f = _parse_finite_number(raw)
+    if val_f is not None and val_f.is_integer():
+        return int(val_f)
+    if isinstance(raw, str):
+        try:
+            v = int(raw)
+            return v if math.isfinite(float(v)) else None
+        except (ValueError, OverflowError):
+            return None
+    return None
+
+
+def valid_morrigan(instance, attribute, value):
+    """The Morrigan module requires as many embryo masses as planets, all positive, and a valid selector value when the selector is a semi-major axis or planet id.
+
+    Validate Morrigan configuration and check selector constraints.
     """
     if instance.module != 'morrigan':
         return
@@ -58,41 +96,18 @@ def valid_morrigan(instance, attribute, value):
                 '`accretion.morrigan.selector_value` must be a finite positive number '
                 "when selector = 'semimajoraxis'"
             )
-        mor.selector_value = val
 
     if mor.selector == 'id':
         if mor.selector_value is None:
             raise ValueError(
                 "`accretion.morrigan.selector_value` must be set (planet id) when selector = 'id'"
             )
-        raw = mor.selector_value
-        val_int: int | None = None
-        if isinstance(raw, bool) or not isinstance(raw, (numbers.Integral, numbers.Real, str)):
-            val_int = None
-        elif isinstance(raw, numbers.Integral):
-            try:
-                val_int = int(raw) if math.isfinite(float(raw)) else None
-            except OverflowError:
-                val_int = None
-        elif isinstance(raw, str):
-            try:
-                v = int(raw)
-                val_int = v if math.isfinite(float(v)) else None
-            except OverflowError:
-                val_int = None
-            except ValueError:
-                val_f = _parse_finite_number(raw)
-                val_int = int(val_f) if val_f is not None and val_f.is_integer() else None
-        elif isinstance(raw, numbers.Real):
-            val_f = _parse_finite_number(raw)
-            val_int = int(val_f) if val_f is not None and val_f.is_integer() else None
-
+        val_int = _parse_id(mor.selector_value)
         if val_int is None or val_int < 0:
             raise ValueError(
                 '`accretion.morrigan.selector_value` must be a finite non-negative integer '
                 "when selector = 'id'"
             )
-        mor.selector_value = val_int
 
 
 @define
@@ -156,8 +171,7 @@ class Morrigan:
         ``selector_value``.
     selector_value: float or int or str or None
         Target value for the 'semimajoraxis' and 'id' selectors. Ignored
-        otherwise. The validator parses numeric strings and normalizes
-        the value to float for 'semimajoraxis' and int for 'id'.
+        otherwise. The field converter parses numeric strings to numbers.
     """
 
     seed: int = field(default=1, validator=ge(0))
@@ -177,7 +191,9 @@ class Morrigan:
     inner_cutoff: float = field(default=0.005, validator=gt(0))
 
     selector: str = field(default='match_config', validator=in_(SELECTORS))
-    selector_value: float | str | None = field(default=None, converter=none_if_none)
+    selector_value: float | int | str | None = field(
+        default=None, converter=_convert_selector_value
+    )
 
 
 def valid_accretiondummy(instance, attribute, value):

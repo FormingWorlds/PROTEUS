@@ -82,7 +82,7 @@ about it.
 | `evolution_time` | float | `1.0` | Duration of the dynamical evolution \[Gyr\]. Must be > 0. |
 | `inner_cutoff` | float | `0.005` | Perihelion inside which an embryo counts as lost to the star \[AU\]. Must be > 0. |
 | `selector` | str | `"match_config"` | Which survivor's impact history PROTEUS follows. 'match_config' picks the survivor whose initial mass and orbit are closest to the PROTEUS configuration, 'mass' the most massive survivor, 'semimajoraxis' the survivor whose final orbit is nearest ``selector_value`` \[AU\], and 'id' the embryo with index ``selector_value``. Choices: `"match_config"`, `"mass"`, `"semimajoraxis"`, `"id"`. |
-| `selector_value` | float or none | `none` | Target value for the 'semimajoraxis' and 'id' selectors. Ignored otherwise. The validator parses numeric strings and normalizes the value to float for 'semimajoraxis' and int for 'id'. |
+| `selector_value` | float | int | str or none | `none` | Target value for the 'semimajoraxis' and 'id' selectors. Ignored otherwise. The field converter parses numeric strings to numbers. |
 <!-- END GENERATED: config-table [accretion.morrigan] -->
 
 Typical `spacing` values are 5 to 15 mutual Hill radii; beyond roughly 30 the
@@ -164,7 +164,7 @@ Cross-field constraints enforced when the config file loads:
 - The timeline accretion module requires a path to an impact timeline file.
 - Refuse a volatile budget that exceeds the impactor's own mass.
 - Refuse ppmw budgets that the selected content mode would ignore.
-- Validate and normalize Morrigan configuration.
+- The Morrigan module requires as many embryo masses as planets, all positive, and a valid selector value when the selector is a semi-major axis or planet id.
 <!-- END GENERATED: config-constraints accretion -->
 
  [^cite-kimura2025]: Kimura, T., Hoshino, H., Kokubo, E., Matsumoto, Y. & Ikoma, M., *[Semi-analytical model for the dynamical evolution of planetary systems via giant impacts](https://doi.org/10.3847/1538-4357/ade992)*, The Astrophysical Journal, 989, 109, 2025.

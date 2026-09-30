@@ -10238,12 +10238,12 @@
       "path": "accretion.morrigan.selector_value",
       "toml_section": "accretion.morrigan",
       "class": "Morrigan",
-      "type": "float or none",
-      "accepts_none": true,
+      "type": "float | int | str or none",
+      "accepts_none": false,
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Target value for the 'semimajoraxis' and 'id' selectors. Ignored otherwise. The validator parses numeric strings and normalizes the value to float for 'semimajoraxis' and int for 'id'.",
+      "description": "Target value for the 'semimajoraxis' and 'id' selectors. Ignored otherwise. The field converter parses numeric strings to numbers.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -10863,7 +10863,7 @@
       "touches": [
         "module"
       ],
-      "doc": "Validate and normalize Morrigan configuration."
+      "doc": "The Morrigan module requires as many embryo masses as planets, all positive, and a valid selector value when the selector is a semi-major axis or planet id."
     },
     {
       "validator": "valid_aerosols_enabled",
