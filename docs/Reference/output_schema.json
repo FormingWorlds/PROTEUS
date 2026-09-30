@@ -1623,6 +1623,10 @@
         {
           "file": "src/proteus/interior_energetics/spider.py",
           "condition": "interior_energetics.module = \"spider\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
         }
       ],
       "consumers": [
@@ -2845,6 +2849,22 @@
       "consumers": [
         "accretion",
         "main loop"
+      ]
+    },
+    {
+      "name": "n_impacts_applied",
+      "unit": "1",
+      "description": "count of giant impacts applied",
+      "group": "Giant-impact accretion ledger",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "accretion"
       ]
     },
     {

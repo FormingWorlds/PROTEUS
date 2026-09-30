@@ -208,8 +208,38 @@ def restore_accretion_state(handler: Proteus) -> None:
         return
 
     hf_row = handler.hf_row
-
     accreted = float(hf_row.get('M_accreted_rock') or 0.0)
+
+    if getattr(handler, 'impact_events', None) is not None:
+        n_applied_raw = hf_row.get('n_impacts_applied')
+        if (
+            n_applied_raw is not None
+            and math.isfinite(float(n_applied_raw))
+            and float(n_applied_raw) > 0
+        ):
+            n_applied = int(float(n_applied_raw))
+        elif accreted > 0.0:
+            # Fallback when helpfile lacks n_impacts_applied: derive from
+            # M_accreted_rock because Time resets to zero during init stage.
+            cum_rock = 0.0
+            n_applied = 0
+            for ev in handler.impact_events:
+                content = _impactor_volatile_content(
+                    config, getattr(handler, 'hf_all', None), ev, hf_row=hf_row
+                )
+                rock_ev = max(ev.mass_delta - sum(content.values()), 0.0)
+                if (cum_rock + rock_ev) <= accreted * (1.0 + 1e-4):
+                    n_applied += 1
+                    cum_rock += rock_ev
+                else:
+                    break
+        else:
+            n_applied = 0
+
+        if n_applied > 0:
+            handler.impact_events = handler.impact_events[n_applied:]
+            hf_row['n_impacts_applied'] = n_applied
+
     if accreted <= 0.0:
         # Say so rather than returning in silence. A ledger of zero means either
         # that no impact has landed yet, which is ordinary, or that the helpfile
@@ -357,7 +387,9 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     )
     f_loss = _impact_loss_fraction(config, hf_row, event)
     strip = _target_strip_amounts(config, hf_row, f_loss)
-    content = _impactor_volatile_content(config, handler.hf_all, event)
+    content = _impactor_volatile_content(
+        config, handler.hf_all, event, hf_row=getattr(handler, 'hf_row', None)
+    )
     delivered, impactor_lost = _partition_impactor_content(config, hf_row, content, f_loss)
 
     # Snapshot the whole-planet volatile budgets before the structure re-solve.
@@ -418,6 +450,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # must not be confused with the whole-planet mass, which also carries the
     # volatile budgets.
     hf_row['M_accreted_rock'] = float(hf_row.get('M_accreted_rock') or 0.0) + impactor_rock
+    hf_row['n_impacts_applied'] = int(float(hf_row.get('n_impacts_applied') or 0.0)) + 1
     solve_structure(
         handler.directories,
         config,
@@ -548,19 +581,20 @@ def _apply_volatile_consequences(
     update_planet_mass(hf_row)
 
 
-def _primordial_mass_fractions(hf_all) -> dict:
+def _primordial_mass_fractions(hf_all, hf_row=None) -> dict:
     """Volatile mass fractions of the planet at formation [kg/kg].
 
     Reads the settled initial state from the run's own history: the last row
     of the init epoch (``Time < 1`` yr, the same discriminator the outgassing
-    warm start uses), or the first row when no init row exists. The helpfile
-    is persisted, so a resumed run recovers the same formation composition
-    without any extra state.
+    warm start uses), or the first row when no init row exists. When no history
+    is available yet (step 0), falls back to the current step row.
 
     Parameters
     ----------
-    hf_all : pd.DataFrame
+    hf_all : pd.DataFrame or None
         Full helpfile history of the run.
+    hf_row : dict or None, optional
+        Current step row, consulted when ``hf_all`` is None or empty.
 
     Returns
     -------
@@ -571,17 +605,19 @@ def _primordial_mass_fractions(hf_all) -> dict:
     Raises
     ------
     RuntimeError
-        If no history is available or the formation row carries no positive
-        planet mass; the impactor composition would be undefined.
+        If neither history nor step row is available, or the formation row
+        carries no positive planet mass.
     """
-    if hf_all is None or len(hf_all) == 0:
+    if hf_all is not None and len(hf_all) > 0:
+        init_rows = hf_all[hf_all['Time'] < 1.0]
+        t0 = init_rows.iloc[-1] if len(init_rows) else hf_all.iloc[0]
+    elif hf_row is not None:
+        t0 = hf_row
+    else:
         raise RuntimeError(
             'Cannot scale impactor volatiles to the planet: no helpfile history '
             'is available to read the formation composition from.'
         )
-
-    init_rows = hf_all[hf_all['Time'] < 1.0]
-    t0 = init_rows.iloc[-1] if len(init_rows) else hf_all.iloc[0]
 
     m_planet = float(t0.get('M_planet', 0.0))
     if m_planet <= 0.0:
@@ -600,7 +636,7 @@ def _primordial_mass_fractions(hf_all) -> dict:
     return fractions
 
 
-def _impactor_volatile_content(config, hf_all, event: ImpactEvent) -> dict:
+def _impactor_volatile_content(config, hf_all, event: ImpactEvent, hf_row=None) -> dict:
     """Total volatile mass the impactor carries, per element [kg].
 
     Dispatches on ``accretion.impactor_volatiles``: a dry impactor carries
@@ -620,7 +656,7 @@ def _impactor_volatile_content(config, hf_all, event: ImpactEvent) -> dict:
     content: dict[str, float] = {}
 
     if mode == 'match_planet':
-        fractions = _primordial_mass_fractions(hf_all)
+        fractions = _primordial_mass_fractions(hf_all, hf_row=hf_row)
         for e, x0 in fractions.items():
             if x0 > 0.0:
                 content[e] = x0 * event.M_impactor

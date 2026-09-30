@@ -1049,6 +1049,36 @@ def test_match_planet_without_history_fails_loudly():
 
 
 @pytest.mark.unit
+def test_match_planet_step_zero_without_history_falls_back_to_hf_row():
+    """match_planet on step 0 reads formation composition from hf_row when history is None."""
+    from proteus.accretion.wrapper import _impactor_volatile_content
+
+    cfg = SimpleNamespace(
+        accretion=_impact_accretion(impactor_volatiles='match_planet'),
+        planet=SimpleNamespace(elements=SimpleNamespace(O_mode=None)),
+    )
+    hf_row = {'Time': 0.0, 'M_planet': 6.0e24, 'H_kg_total': 6.0e20, 'O_kg_total': 1.2e21}
+    event = _impact_event(M_impactor=1.0e23)
+    content = _impactor_volatile_content(cfg, None, event, hf_row=hf_row)
+    assert content['H'] == pytest.approx(1.0e23 * (6.0e20 / 6.0e24))
+    assert content['O'] == pytest.approx(1.0e23 * (1.2e21 / 6.0e24))
+
+
+@pytest.mark.unit
+def test_impactor_volatile_content_excludes_oxygen_under_ic_chemistry():
+    """Under O_mode = 'ic_chemistry', oxygen is excluded from impactor volatiles."""
+    from proteus.accretion.wrapper import _impactor_volatile_content
+
+    cfg = SimpleNamespace(
+        accretion=_impact_accretion(H=1000.0, O=5000.0),
+        planet=SimpleNamespace(elements=SimpleNamespace(O_mode='ic_chemistry')),
+    )
+    content = _impactor_volatile_content(cfg, None, _impact_event())
+    assert 'H' in content
+    assert 'O' not in content
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
     """Each impact conserves and delivers against the state it finds.
@@ -1658,6 +1688,55 @@ def test_the_accretion_restore_is_inert_outside_a_resume():
 
 
 @pytest.mark.unit
+def test_restore_accretion_state_drops_already_applied_events_on_resume(tmp_path):
+    """Resume rebuilds impact_events, dropping impacts already recorded in helpfile."""
+    from proteus.accretion.common import write_timeline
+    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = _impact_event(
+        time=0.5, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev2 = _impact_event(
+        time=100.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    write_timeline([ev1, ev2], str(tmp_path / _RESOLVED_TIMELINE_FILE))
+
+    # Case 1: n_impacts_applied is present in helpfile row
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            accretion=SimpleNamespace(module='dummy', impactor_volatiles='dry'),
+            params=SimpleNamespace(resume=True),
+            planet=SimpleNamespace(mass_tot=1.0),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row={
+            'Time': 0.0,
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 1,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        directories={'output': str(tmp_path)},
+        impact_events=[ev1, ev2],
+    )
+    restore_accretion_state(handler)
+    assert handler.impact_events == [ev2]
+
+    # Case 2: helpfile predates n_impacts_applied; derived from M_accreted_rock
+    handler.hf_row = {
+        'Time': 0.0,
+        'M_accreted_rock': 1e23,
+        'semimajorax': 1.0 * AU,
+        'eccentricity': 0.0,
+    }
+    handler.impact_events = [ev1, ev2]
+    restore_accretion_state(handler)
+    assert handler.impact_events == [ev2]
+    assert handler.hf_row['n_impacts_applied'] == 1
+
+
+@pytest.mark.unit
 def test_a_resumed_run_replays_the_timeline_the_first_session_resolved(tmp_path):
     """The impact history is a property of the run, not of model determinism.
 
@@ -2089,9 +2168,9 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
     runner.config.interior_energetics.module = 'aragog'
     runner.config.atmos_chem.module = None
     runner.config.params.stop.time.minimum = 0.0
-    runner.config.params.stop.time.maximum = 1.0
+    runner.config.params.stop.time.maximum = 2.0
     runner.config.params.stop.iters.minimum = 0
-    runner.config.params.stop.iters.maximum = 1
+    runner.config.params.stop.iters.maximum = 10
     runner.config.params.dt.initial = 1.0
     runner.config.params.dt.minimum = 0.1
     runner.config.params.dt.maximum = 1.0
@@ -2103,7 +2182,7 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
     runner.config.accretion.module = 'dummy'
     runner.config.accretion.dummy.num_impacts = 1
     runner.config.accretion.dummy.mass_accreted = 0.1
-    runner.config.accretion.dummy.time_last = 1.0
+    runner.config.accretion.dummy.time_last = 2.0
     runner.config.accretion.dummy.timescale = 1000.0
     runner.config.accretion.dummy.eccentricity = 0.05
     runner.config.accretion.impactor_volatiles = 'dry'
@@ -2149,7 +2228,7 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
 
     runner.start(resume=False, offline=True)
 
-    expected_impact_snap = data_dir / f'{format_subyear_time(1.0)}_int.nc'
+    expected_impact_snap = data_dir / f'{format_subyear_time(2.0)}_int.nc'
     # Positive controls: the interior wrote the snapshot during the step, and the impact landed
     assert expected_impact_snap in written_snapshots, (
         'the interior must have written the impact step snapshot'

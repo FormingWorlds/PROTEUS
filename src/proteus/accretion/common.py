@@ -163,11 +163,14 @@ def _check_event_physics(event: ImpactEvent, index: int) -> None:
     Raises
     ------
     ValueError
-        If any mass, radius, density, or velocity is non-positive, if the
-        merged mass does not close, if the collision velocity is below the
-        mutual escape velocity, or if the impact parameter or eccentricity
-        falls outside its range.
+        If event time is non-finite, if any mass, radius, density, or velocity
+        is non-positive, if the merged mass does not close, if the collision
+        velocity is below the mutual escape velocity, or if the impact
+        parameter or eccentricity falls outside its range.
     """
+    if not np.isfinite(event.time):
+        raise ValueError(f'impact {index}: time must be finite, got {event.time!r}')
+
     where = f'impact {index} at t = {event.time:.4e} yr'
 
     for name in (

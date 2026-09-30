@@ -791,6 +791,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'esc_kg_cumulative',
         'M_accreted_rock',
+        'n_impacts_applied',
         'step_dE_impact_J',
     }
 )
@@ -1056,6 +1057,7 @@ def GetHelpfileKeys():
         # already grown. Rock only: the volatile budgets are tracked separately
         # in the per-element columns, so this is not the whole-planet mass.
         'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
+        'n_impacts_applied',  # count of giant impacts applied [1]
     ]
 
     # gases from outgassing

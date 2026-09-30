@@ -1016,12 +1016,8 @@ class Proteus:
             self.hf_row['Time'] += self.interior_o.dt  # in years
             self.hf_row['age_star'] += self.interior_o.dt  # in years
 
-            # Apply any giant impacts falling in this step. The time-stepper
-            # lands the step on the next impact time, and the window is
-            # half-open, so each impact fires exactly once no matter how the
-            # step straddles it. Applied after the time advance, so this step's
-            # orbit and structure use the grown planet and the next interior
-            # solve evolves it. Empty when no accretion module is selected.
+            # Apply giant impacts due in this step. Remove applied events
+            # so each fires exactly once, including across init iterations.
             if self.impact_events:
                 from proteus.accretion.common import due_events
                 from proteus.accretion.wrapper import (
@@ -1034,11 +1030,10 @@ class Proteus:
                 landed = due_events(self.impact_events, time_previous, time_now)
                 for event in landed:
                     apply_impact(self, event)
+                    self.impact_events.remove(event)
 
-                # The interior wrote this step's snapshot before the re-melt
-                # above, so it no longer describes the state the step ended in.
-                # Drop it, or a resume would load a mantle the impact melted
-                # while treating the impact as already applied.
+                # Discard snapshot taken before remelting so resume does not
+                # load an un-melted mantle while keeping post-impact mass.
                 if landed and is_snapshot:
                     discard_preimpact_snapshot(self)
 

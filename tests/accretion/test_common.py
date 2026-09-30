@@ -222,6 +222,16 @@ def test_semimajoraxis_ratio_must_be_finite_and_positive():
 
 
 @pytest.mark.unit
+def test_event_time_must_be_finite():
+    """Event time must be finite; negative finite times are permitted."""
+    for bad in (np.nan, np.inf, -np.inf):
+        with pytest.raises(ValueError, match='time must be finite'):
+            validate_timeline([_event(time=bad)])
+
+    validate_timeline([_event(time=-10.0)])
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_timeline_must_advance_in_time_and_carry_mass_forward():
     """Consecutive impacts describe one body growing, in order.
