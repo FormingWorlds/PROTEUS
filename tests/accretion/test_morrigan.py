@@ -476,3 +476,35 @@ def test_an_outcome_missing_its_top_level_entries_is_refused(monkeypatch):
         # a partly-shaped outcome from one that is empty.
         present = 'impacts' if absent == 'survivors' else 'survivors'
         assert present in message
+
+
+@pytest.mark.unit
+def test_select_planet_accepts_all_valid_id_selector_value_representations():
+    """Accepted selector_value types and formats for selector='id' select the planet."""
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from proteus.config._accretion import Accretion, Morrigan
+
+    for val in (3, np.int64(3), '3', '3.0', '3e0', '3.', '1e3', 0, 0.0, '0'):
+        cfg = Accretion(module='morrigan', morrigan=Morrigan(selector='id', selector_value=val))
+        wanted = cfg.morrigan.selector_value
+        survivors = [
+            {
+                'id': wanted,
+                'mass_final': 1.0,
+                'a_final': 1.0,
+                'mass_initial': 1.0,
+                'a_initial': 1.0,
+            },
+            {
+                'id': wanted + 1,
+                'mass_final': 2.0,
+                'a_final': 2.0,
+                'mass_initial': 2.0,
+                'a_initial': 2.0,
+            },
+        ]
+        chosen = backend.select_planet(survivors, SimpleNamespace(accretion=cfg))
+        assert chosen['id'] == wanted

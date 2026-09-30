@@ -15,18 +15,13 @@ SELECTORS = ('match_config', 'mass', 'semimajoraxis', 'id')
 
 def _parse_finite_number(x: object) -> float | None:
     """Return finite float for a real number or numeric string, else None."""
-    if isinstance(x, bool):
+    if isinstance(x, bool) or not isinstance(x, (numbers.Real, str)):
         return None
-    if isinstance(x, numbers.Real):
+    try:
         val = float(x)
-        return val if math.isfinite(val) else None
-    if isinstance(x, str):
-        try:
-            val = float(x)
-            return val if math.isfinite(val) else None
-        except ValueError:
-            return None
-    return None
+    except (ValueError, OverflowError):
+        return None
+    return val if math.isfinite(val) else None
 
 
 def valid_morrigan(instance, attribute, value):
@@ -57,6 +52,7 @@ def valid_morrigan(instance, attribute, value):
                 '`accretion.morrigan.selector_value` must be a finite positive number '
                 "when selector = 'semimajoraxis'"
             )
+        mor.selector_value = float(val)
 
     if mor.selector == 'id':
         if mor.selector_value is None:
@@ -69,6 +65,7 @@ def valid_morrigan(instance, attribute, value):
                 '`accretion.morrigan.selector_value` must be a finite non-negative integer '
                 "when selector = 'id'"
             )
+        mor.selector_value = int(val)
 
 
 @define
@@ -130,9 +127,10 @@ class Morrigan:
         'semimajoraxis' the survivor whose final orbit is nearest
         ``selector_value`` [AU], and 'id' the embryo with index
         ``selector_value``.
-    selector_value: float or None
+    selector_value: float or int or str or None
         Target value for the 'semimajoraxis' and 'id' selectors. Ignored
-        otherwise. The 'id' selector applies int() to the value.
+        otherwise. The validator parses numeric strings and normalizes
+        the value to float for 'semimajoraxis' and int for 'id'.
     """
 
     seed: int = field(default=1, validator=ge(0))

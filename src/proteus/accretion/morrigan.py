@@ -108,11 +108,11 @@ def select_planet(survivors: Sequence[dict], config: Config) -> dict:
             chosen = max(survivors, key=lambda s: s['mass_final'])
 
         case 'semimajoraxis':
-            target = float(mor.selector_value) * AU
+            target = mor.selector_value * AU
             chosen = min(survivors, key=lambda s: abs(s['a_final'] - target))
 
         case 'id':
-            wanted = int(mor.selector_value)
+            wanted = mor.selector_value
             matches = [s for s in survivors if int(s['id']) == wanted]
             if not matches:
                 available = sorted(int(s['id']) for s in survivors)
