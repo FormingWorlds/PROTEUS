@@ -173,7 +173,7 @@ def render(matrix: dict) -> str:
         for key in unresolved:
             lines.append(f'- `{key["name"]}` ({key["unit"] or "no unit"})')
         lines.append('')
-        lines.append('Unattributed write sites:')
+        lines.append('Unattributed helpfile access sites:')
         for event in matrix['unresolved_events']:
             lines.append(f'- `{event["file"]}:{event["line"]}`: {event["reason"]}')
     else:

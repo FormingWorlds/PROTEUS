@@ -201,6 +201,15 @@ class HfRowVisitor(ast.NodeVisitor):
     def _visit_func(self, node):
         old_locals = dict(self.local_vars)
         self.func_stack.append(node.name)
+        params = [
+            arg.arg for arg in node.args.posonlyargs + node.args.args + node.args.kwonlyargs
+        ]
+        if node.args.vararg:
+            params.append(node.args.vararg.arg)
+        if node.args.kwarg:
+            params.append(node.args.kwarg.arg)
+        for p in params:
+            self.local_vars[p] = None
         self.generic_visit(node)
         self.func_stack.pop()
         self.local_vars = old_locals
@@ -211,7 +220,30 @@ class HfRowVisitor(ast.NodeVisitor):
     def visit_Assign(self, node):
         for target in node.targets:
             if isinstance(target, ast.Name):
-                self.local_vars[target.id] = node.value
+                if target.id in self.local_vars:
+                    self.local_vars[target.id] = None
+                elif isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                    self.local_vars[target.id] = node.value
+                else:
+                    self.local_vars[target.id] = None
+            elif isinstance(target, (ast.Tuple, ast.List)):
+                for elt in target.elts:
+                    if isinstance(elt, ast.Name):
+                        self.local_vars[elt.id] = None
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node):
+        if isinstance(node.target, ast.Name):
+            if node.target.id in self.local_vars:
+                self.local_vars[node.target.id] = None
+            elif (
+                node.value
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                self.local_vars[node.target.id] = node.value
+            else:
+                self.local_vars[node.target.id] = None
         self.generic_visit(node)
 
     def visit_For(self, node):
@@ -221,6 +253,8 @@ class HfRowVisitor(ast.NodeVisitor):
             target_names = [node.target.id]
         elif isinstance(node.target, ast.Tuple):
             target_names = [e.id for e in node.target.elts if isinstance(e, ast.Name)]
+        for name in target_names:
+            self.local_vars[name] = None
         domain = self._domain_of_iter(node.iter)
         if domain and target_names:
             # For tuple targets (e.g. `for e, mass in x.items()`) the first
@@ -256,7 +290,8 @@ class HfRowVisitor(ast.NodeVisitor):
             self.generic_visit(node)
             return
         is_write = isinstance(node.ctx, (ast.Store, ast.AugStore)) and name in ROW_NAMES
-        self._record(node.slice, node.lineno, is_write)
+        is_get = isinstance(node.ctx, ast.Load) and name in ROW_NAMES
+        self._record(node.slice, node.lineno, is_write, is_get=is_get)
         self.generic_visit(node)
 
     def visit_Call(self, node):
@@ -290,7 +325,11 @@ class HfRowVisitor(ast.NodeVisitor):
     def _resolve_keys(
         self, key_node, lineno: int, is_write: bool, is_get: bool = False
     ) -> list[str]:
-        if is_get and isinstance(key_node, ast.Name) and key_node.id in self.local_vars:
+        if (
+            is_get
+            and isinstance(key_node, ast.Name)
+            and isinstance(self.local_vars.get(key_node.id), ast.Constant)
+        ):
             key_node = self.local_vars[key_node.id]
         if isinstance(key_node, ast.Constant):
             return [key_node.value] if isinstance(key_node.value, str) else []
@@ -305,7 +344,7 @@ class HfRowVisitor(ast.NodeVisitor):
             if override is not None:
                 values = {v for name in override for v in self.species[name]}
                 return [f'{prefix}{v}{suffix}' for v in sorted(values)]
-            if is_write and not suppressed:
+            if (is_write or is_get) and not suppressed:
                 self.unresolved.append((lineno, f'template {prefix}<{var}>{suffix}'))
             return []
         if isinstance(key_node, ast.Name):
@@ -315,8 +354,8 @@ class HfRowVisitor(ast.NodeVisitor):
             if (is_write or is_get) and not suppressed:
                 self.unresolved.append((lineno, f'dynamic key {key_node.id}'))
             return []
-        # Slices, tuples, and computed expressions are frame operations
-        # (column subsets, row slicing), not single-column access.
+        if (is_write or is_get) and not suppressed:
+            self.unresolved.append((lineno, f'dynamic key {ast.unparse(key_node)}'))
         return []
 
     def _expand_domain(self, domain: str) -> list[str]:

@@ -23645,5 +23645,181 @@
       ]
     }
   ],
-  "unresolved_events": []
+  "unresolved_events": [
+    {
+      "file": "src/proteus/accretion/wrapper.py",
+      "line": 662,
+      "reason": "template <e>_kg_atm"
+    },
+    {
+      "file": "src/proteus/accretion/wrapper.py",
+      "line": 671,
+      "reason": "template <e>_kg_atm"
+    },
+    {
+      "file": "src/proteus/accretion/wrapper.py",
+      "line": 722,
+      "reason": "template <e>_kg_atm"
+    },
+    {
+      "file": "src/proteus/accretion/wrapper.py",
+      "line": 807,
+      "reason": "template <e>_kg_atm"
+    },
+    {
+      "file": "src/proteus/atmos_chem/dummy.py",
+      "line": 120,
+      "reason": "template <sp>_vmr"
+    },
+    {
+      "file": "src/proteus/atmos_clim/agni.py",
+      "line": 882,
+      "reason": "dynamic key name"
+    },
+    {
+      "file": "src/proteus/escape/boreas.py",
+      "line": 71,
+      "reason": "template <g>_vmr_xuv"
+    },
+    {
+      "file": "src/proteus/escape/boreas.py",
+      "line": 73,
+      "reason": "template <g>_vmr_xuv"
+    },
+    {
+      "file": "src/proteus/escape/common.py",
+      "line": 47,
+      "reason": "dynamic key e + key"
+    },
+    {
+      "file": "src/proteus/escape/wrapper.py",
+      "line": 71,
+      "reason": "dynamic key f'{e}{key}'"
+    },
+    {
+      "file": "src/proteus/escape/wrapper.py",
+      "line": 543,
+      "reason": "dynamic key f'{e}{key}'"
+    },
+    {
+      "file": "src/proteus/interior_energetics/wrapper.py",
+      "line": 246,
+      "reason": "template <e>_kg_total"
+    },
+    {
+      "file": "src/proteus/interior_energetics/wrapper.py",
+      "line": 2607,
+      "reason": "template <species>_kg_liquid"
+    },
+    {
+      "file": "src/proteus/interior_struct/zalmoxis.py",
+      "line": 427,
+      "reason": "template <species>_kg_liquid"
+    },
+    {
+      "file": "src/proteus/interior_struct/zalmoxis.py",
+      "line": 428,
+      "reason": "template <species>_kg_solid"
+    },
+    {
+      "file": "src/proteus/interior_struct/zalmoxis.py",
+      "line": 3267,
+      "reason": "dynamic key k"
+    },
+    {
+      "file": "src/proteus/observe/petitRADTRANS.py",
+      "line": 329,
+      "reason": "dynamic key key"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 185,
+      "reason": "dynamic key f'{sp}_kg_{r}'"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 335,
+      "reason": "dynamic key key"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "line": 473,
+      "reason": "dynamic key key"
+    },
+    {
+      "file": "src/proteus/outgas/binodal.py",
+      "line": 123,
+      "reason": "template <s>_bar"
+    },
+    {
+      "file": "src/proteus/outgas/dummy.py",
+      "line": 126,
+      "reason": "template <s>_vmr"
+    },
+    {
+      "file": "src/proteus/outgas/lavatmos.py",
+      "line": 439,
+      "reason": "template <e>_kg_atm"
+    },
+    {
+      "file": "src/proteus/outgas/lavatmos.py",
+      "line": 633,
+      "reason": "template <s>_kg_atm"
+    },
+    {
+      "file": "src/proteus/outgas/lavatmos.py",
+      "line": 639,
+      "reason": "template <s>_vmr"
+    },
+    {
+      "file": "src/proteus/outgas/lavatmos.py",
+      "line": 642,
+      "reason": "template <s>_bar"
+    },
+    {
+      "file": "src/proteus/outgas/lavatmos.py",
+      "line": 643,
+      "reason": "template <s>_vmr"
+    },
+    {
+      "file": "src/proteus/outgas/wrapper.py",
+      "line": 131,
+      "reason": "template <e>_kg_total"
+    },
+    {
+      "file": "src/proteus/outgas/wrapper.py",
+      "line": 278,
+      "reason": "template <e>_kg_total"
+    },
+    {
+      "file": "src/proteus/outgas/wrapper.py",
+      "line": 280,
+      "reason": "template <e>_kg_total"
+    },
+    {
+      "file": "src/proteus/outgas/wrapper.py",
+      "line": 300,
+      "reason": "template <e>_kg_total"
+    },
+    {
+      "file": "src/proteus/outgas/wrapper.py",
+      "line": 567,
+      "reason": "template <s>_kg_atm"
+    },
+    {
+      "file": "src/proteus/plot/cpl_orbit.py",
+      "line": 230,
+      "reason": "dynamic key sma_col"
+    },
+    {
+      "file": "src/proteus/plot/cpl_orbit.py",
+      "line": 231,
+      "reason": "dynamic key ecc_col"
+    },
+    {
+      "file": "src/proteus/utils/coupler.py",
+      "line": 679,
+      "reason": "template <s>_kg_atm"
+    }
+  ]
 }

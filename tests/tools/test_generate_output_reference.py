@@ -229,3 +229,25 @@ def test_variable_key_get_reported_as_unresolved():
     visitor.visit(tree)
     assert len(visitor.unresolved) == 1
     assert any('dynamic key k' in reason for _line, reason in visitor.unresolved)
+
+
+def test_template_read_when_is_get_reported_as_unresolved():
+    """A templated key passed to hf_row.get() without a domain or override
+    must be recorded as an unresolved event rather than silently dropped."""
+    code = 'def f(hf_row, element):\n    return hf_row.get(f"{element}_unknown")\n'
+    tree = ast.parse(code)
+    visitor = _scan.HfRowVisitor('test_file.py', {})
+    visitor.visit(tree)
+    assert len(visitor.unresolved) == 1
+    assert any('template <element>_unknown' in reason for _line, reason in visitor.unresolved)
+
+
+def test_subscript_read_with_variable_reported_as_unresolved():
+    """A variable key used in an hf_row subscript read cannot be attributed statically
+    and must be recorded as an unresolved event rather than silently dropped."""
+    code = 'def f(hf_row, k):\n    return hf_row[k]\n'
+    tree = ast.parse(code)
+    visitor = _scan.HfRowVisitor('test_file.py', {})
+    visitor.visit(tree)
+    assert len(visitor.unresolved) == 1
+    assert any('dynamic key k' in reason for _line, reason in visitor.unresolved)
