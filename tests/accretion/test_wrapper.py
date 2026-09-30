@@ -2887,7 +2887,7 @@ def test_restore_accretion_state_zero_rock_missing_counter_normalizes_hf_all(tmp
 
 
 @pytest.mark.unit
-def test_legacy_resume_then_impact_records_k_plus_one_in_hf_all(tmp_path):
+def test_resume_then_impact_records_k_plus_one_in_hf_all(tmp_path):
     """Resume with k prior impacts records k+1 in hf_all after next impact."""
     import pandas as pd
 

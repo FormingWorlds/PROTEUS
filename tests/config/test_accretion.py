@@ -179,13 +179,34 @@ def test_targeted_selectors_require_a_selector_value():
             assert cfg.morrigan.selector_value == float(value)
             assert isinstance(cfg.morrigan.selector_value, float)
 
-    for bad_id in (-1, np.int64(-1), 1.9, float('nan'), 'earth', 10**400):
+    for bad_id in (
+        -1,
+        np.int64(-1),
+        1.9,
+        float('nan'),
+        'earth',
+        10**400,
+        True,
+        False,
+        np.True_,
+    ):
         with pytest.raises(ValueError, match='selector_value'):
             Accretion(
                 module='morrigan', morrigan=Morrigan(selector='id', selector_value=bad_id)
             )
 
-    for bad_sma in (0.0, -0.5, 1e300, float('nan'), float('inf'), 'earth', 10**400):
+    for bad_sma in (
+        0.0,
+        -0.5,
+        1e300,
+        float('nan'),
+        float('inf'),
+        'earth',
+        10**400,
+        True,
+        False,
+        np.True_,
+    ):
         with pytest.raises(ValueError, match='selector_value'):
             Accretion(
                 module='morrigan',

@@ -381,7 +381,11 @@ def _init_stage_runner(tmp_path: Path, t_max: float, delivered: float) -> Proteu
 
 @pytest.mark.smoke
 def test_impact_during_init_stage_applied_exactly_once(tmp_path):
-    """An impact falling inside the init time window is applied exactly once."""
+    """An impact falling inside the init time window is applied exactly once.
+
+    Verification that resume counting operates correctly under diverse
+    event timelines is isolated to unit tests in tests/accretion/test_wrapper.py.
+    """
     delivered = 0.05
     runner = _init_stage_runner(tmp_path, t_max=5.0, delivered=delivered)
     runner.start(resume=False, offline=True)
@@ -389,6 +393,7 @@ def test_impact_during_init_stage_applied_exactly_once(tmp_path):
     rock_recorded = float(runner.hf_all['M_accreted_rock'].iloc[-1])
     assert rock_recorded == pytest.approx(delivered * M_earth, rel=1e-6)
     jump_rows = np.where(runner.hf_all['M_accreted_rock'].to_numpy() > 0.0)[0]
+    assert len(jump_rows) > 0
     assert jump_rows[0] < runner.loops['init_loops']
     assert runner.hf_all['Time'].iloc[jump_rows[0]] == pytest.approx(0.0)
 
