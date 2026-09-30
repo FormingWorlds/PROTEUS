@@ -511,7 +511,7 @@ def build(src: Path, out: Path, mode: str, *, subscripts: bool, links: bool):
 if __name__ == '__main__':
     src = Path(sys.argv[1])
     out = Path(sys.argv[2])
-    mode = sys.argv[3] if len(sys.argv) > 3 else 'light'
+    mode = sys.argv[3] if len(sys.argv) > 3 and not sys.argv[3].startswith('--') else 'light'
     subs = '--no-subscripts' not in sys.argv
     links = '--no-links' not in sys.argv
     build(src, out, mode, subscripts=subs, links=links)

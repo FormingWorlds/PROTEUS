@@ -49,8 +49,11 @@ if [ -d "$workpath/.git" ] && [ "$force" != true ]; then
     fi
 fi
 
-# Make room
-rm -rf "$workpath"
+# Clone to a temporary directory first so a failed clone does not destroy
+# the existing checkout.
+tmp_clone="${workpath%/}.tmp.$$"
+rm -rf "$tmp_clone"
+trap 'rm -rf "$tmp_clone"' EXIT
 
 # Detect SSH access to GitHub. `ssh -T git@github.com` exits 1 when
 # authentication succeeds (GitHub refuses the shell), so a plain call
@@ -72,8 +75,8 @@ if [ "$use_ssh" = true ]; then
 else
     uri="https://github.com/FormingWorlds/Morrigan.git"
 fi
-echo "    $uri -> $workpath"
-git clone "$uri" "$workpath" || { echo "ERROR: git clone failed" >&2; exit 1; }
+echo "    $uri -> $tmp_clone"
+git clone "$uri" "$tmp_clone" || { echo "ERROR: git clone failed" >&2; exit 1; }
 
 # Pin the checkout to the fwl-morrigan version floor declared in PROTEUS's
 # pyproject.toml, so the editable install matches the PyPI release across
@@ -90,11 +93,16 @@ floor=$(sed 's/#.*//' "$root/pyproject.toml" \
     | grep -oE 'fwl-morrigan>=[0-9][0-9.]*' | head -1 | sed 's/.*>=//' || true)
 if [ -n "$floor" ]; then
     echo "Pinning to fwl-morrigan floor: $floor"
-    git -C "$workpath" checkout --quiet "tags/$floor" \
+    git -C "$tmp_clone" checkout --quiet "tags/$floor" \
         || { echo "ERROR: cannot checkout tag $floor" >&2; exit 1; }
 else
     echo "WARNING: could not read fwl-morrigan floor from pyproject.toml; using HEAD" >&2
 fi
+
+# Replace existing checkout only after clone and tag checkout succeed
+rm -rf "$workpath"
+mv "$tmp_clone" "$workpath"
+trap - EXIT
 
 # Install morrigan package as editable
 pip install -U -e "$workpath" || { echo "ERROR: editable install failed" >&2; exit 1; }

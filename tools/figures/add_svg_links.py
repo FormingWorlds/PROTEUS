@@ -23,7 +23,7 @@ def main(svg_path, links_path, out_path, fig_w=1412.0, fig_h=1415.0):
     if not m:
         raise SystemExit('no viewBox in the exported SVG')
     vw, vh = float(m.group(1)), float(m.group(2))
-    sx, sy = vw / fig_w, vh / fig_h
+    sx, sy = vw / float(fig_w), vh / float(fig_h)
 
     seen = set()
     rows = []

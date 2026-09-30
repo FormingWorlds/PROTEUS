@@ -583,3 +583,35 @@ def test_impactor_volatile_budgets_cannot_exceed_the_impactor_mass():
     # names the mode rather than the rock, so the two guards stay distinct.
     with pytest.raises(ValueError, match='ppmw budgets are read only'):
         Accretion(impactor_volatiles='match_planet', impactor_H_ppmw=3.0e5)
+
+
+@pytest.mark.unit
+def test_morrigan_eccentricity_init_bounds():
+    """Initial eccentricity must be in [0, 1)."""
+    from proteus.config._accretion import Accretion, Morrigan
+
+    # Physical bound orbits in [0, 1) are accepted.
+    for valid_e in (0.0, 0.01, 0.5, 0.99):
+        cfg = Accretion(module='morrigan', morrigan=Morrigan(eccentricity_init=valid_e))
+        assert cfg.morrigan.eccentricity_init == pytest.approx(valid_e)
+
+    # Parabolic (1.0), hyperbolic (>1.0), and negative eccentricities are rejected.
+    for invalid_e in (-0.1, 1.0, 1.5):
+        with pytest.raises(ValueError, match='eccentricity_init'):
+            Accretion(module='morrigan', morrigan=Morrigan(eccentricity_init=invalid_e))
+
+
+@pytest.mark.unit
+def test_morrigan_impact_angle_bounds():
+    """Impact angle must be in [0, 90] degrees per Morrigan convention."""
+    from proteus.config._accretion import Accretion, Morrigan
+
+    # Angles in [0, 90] degrees are accepted.
+    for valid_angle in (0.0, 30.0, 45.0, 90.0):
+        cfg = Accretion(module='morrigan', morrigan=Morrigan(impact_angle=valid_angle))
+        assert cfg.morrigan.impact_angle == pytest.approx(valid_angle)
+
+    # Angles outside [0, 90] degrees are rejected with Morrigan driver.py:236 cited.
+    for invalid_angle in (-5.0, 90.1, 120.0):
+        with pytest.raises(ValueError, match=r'Morrigan driver\.py:236'):
+            Accretion(module='morrigan', morrigan=Morrigan(impact_angle=invalid_angle))

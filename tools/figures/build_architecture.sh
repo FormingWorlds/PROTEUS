@@ -15,7 +15,7 @@ if [ -d /Library/TeX/texbin ]; then
   export PATH="/Library/TeX/texbin:$PATH"
 fi
 
-for tool in pdflatex pdftocairo python; do
+for tool in pdflatex pdftocairo python3; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "error: $tool not found on PATH" >&2
     exit 1
@@ -29,7 +29,7 @@ trap '[ "$keep" = 1 ] && echo "build files kept in $work" >&2 || rm -rf "$work"'
 cp -r "$here/img" "$work/"
 
 for mode in light dark; do
-  python "$here/gen_tikz.py" "$here/arch_final.json" "$work/arch_$mode.tex" "$mode"
+  python3 "$here/gen_tikz.py" "$here/arch_final.json" "$work/arch_$mode.tex" "$mode"
   if ! (cd "$work" && pdflatex -interaction=nonstopmode -halt-on-error "arch_$mode.tex" \
         > "arch_$mode.build.log" 2>&1); then
     keep=1
@@ -38,7 +38,7 @@ for mode in light dark; do
     exit 1
   fi
   pdftocairo -svg "$work/arch_$mode.pdf" "$work/arch_$mode.svg"
-  python "$here/add_svg_links.py" \
+  python3 "$here/add_svg_links.py" \
     "$work/arch_$mode.svg" "$work/arch_$mode.links.json" "$work/final_$mode.svg"
 done
 
