@@ -4231,26 +4231,18 @@ def test_a_helpfile_missing_physical_state_is_refused_not_zero_filled():
 
 
 @pytest.mark.unit
-def test_read_helpfile_from_csv_loads_257d1604_golden_run_with_zero_filled_columns(tmp_path):
-    """Helpfile written at commit 257d1604 lacks n_impacts_applied and loads with zero backfill."""
-    import subprocess
-
-    from _trajectory import read_reference
+def test_read_helpfile_from_csv_loads_legacy_helpfile_with_zero_filled_columns(tmp_path):
+    """A legacy helpfile without n_impacts_applied loads successfully with zero backfill."""
+    import shutil
+    from pathlib import Path
 
     from proteus.utils.coupler import ReadHelpfileFromCSV
 
-    tsv_content = subprocess.check_output(
-        ['git', 'show', '257d1604:tests/integration/golden_run.tsv'], text=True
+    fixture_path = (
+        Path(__file__).parent / 'fixtures' / 'legacy_helpfile_without_impact_counter.csv'
     )
-    tsv_path = tmp_path / 'golden_257d1604.tsv'
-    tsv_path.write_text(tsv_content)
-
-    ref = read_reference(tsv_path)
-    assert 'n_impacts_applied' not in ref.frame.columns
-
-    frame = ref.frame.copy()
-    frame['runtime'] = 0.0
-    frame.to_csv(tmp_path / 'runtime_helpfile.csv', sep=' ', index=False)
+    dest_path = tmp_path / 'runtime_helpfile.csv'
+    shutil.copyfile(fixture_path, dest_path)
 
     loaded = ReadHelpfileFromCSV(str(tmp_path))
     assert 'n_impacts_applied' in loaded.columns
