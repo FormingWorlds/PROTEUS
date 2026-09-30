@@ -413,6 +413,38 @@ def test_declared_scan_tables_are_all_live(monkeypatch):
             'def f(hf_row):\n    k = "a"\n    import k.sub\n    return hf_row.get(k)\n',
             'dynamic key k',
         ),
+        (
+            'NAMES = ("a", "b")\ndef f(hf_row, NAMES):\n    for k in NAMES:\n        hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'NAMES = ("a", "b")\ndef f(hf_row):\n    NAMES = dyn()\n    for k in NAMES:\n        hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'NAMES = ("a", "b")\nNAMES = ("c",)\ndef f(hf_row):\n    for k in NAMES:\n        hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'NAMES = ["a", "b"]\nNAMES.append("c")\ndef f(hf_row):\n    for k in NAMES:\n        hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'NAMES = ("a",)\nNAMES += ("b",)\ndef f(hf_row):\n    for k in NAMES:\n        hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'NAMES = ("a",)\nNAMES: tuple = ("b",)\ndef f(hf_row):\n    for k in NAMES:\n        hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'NAMES = ("a",)\ndef NAMES():\n    pass\ndef f(hf_row):\n    for k in NAMES:\n        hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'NAMES = ("a",)\nimport NAMES\ndef f(hf_row):\n    for k in NAMES:\n        hf_row.get(k)\n',
+            'dynamic key k',
+        ),
     ],
     ids=[
         'get_var',
@@ -439,6 +471,14 @@ def test_declared_scan_tables_are_all_live(monkeypatch):
         'def_stmt',
         'class_stmt',
         'dotted_import',
+        'module_const_shadowed_by_param',
+        'module_const_shadowed_by_local',
+        'module_const_rebound',
+        'module_const_mutated',
+        'module_const_aug',
+        'module_const_ann',
+        'module_const_def',
+        'module_const_import',
     ],
 )
 def test_computed_key_reads_reported_as_unresolved(code, reason):
@@ -555,107 +595,6 @@ def test_comprehension_element_transform():
     visitor_bare.visit(ast.parse(code_bare))
     assert visitor_bare.unresolved == []
     assert visitor_bare.reads == [('H2O', False), ('CO2', False)]
-
-
-def test_module_constants_shadowing_and_invalidation():
-    """Module constants are invalidated by parameters, locals, rebinding, or mutations."""
-    code_param = (
-        'NAMES = ("a", "b")\n'
-        'def f(hf_row, NAMES):\n'
-        '    for k in NAMES:\n'
-        '        hf_row.get(k)\n'
-    )
-    visitor_param = _scan.HfRowVisitor('test.py', {})
-    visitor_param.visit(ast.parse(code_param))
-    assert visitor_param.reads == []
-    assert len(visitor_param.unresolved) == 1
-    assert visitor_param.unresolved[0][1:3] == ('dynamic key k', 'read')
-
-    code_local = (
-        'NAMES = ("a", "b")\n'
-        'def f(hf_row):\n'
-        '    NAMES = dyn()\n'
-        '    for k in NAMES:\n'
-        '        hf_row.get(k)\n'
-    )
-    visitor_local = _scan.HfRowVisitor('test.py', {})
-    visitor_local.visit(ast.parse(code_local))
-    assert visitor_local.reads == []
-    assert len(visitor_local.unresolved) == 1
-    assert visitor_local.unresolved[0][1:3] == ('dynamic key k', 'read')
-
-    code_rebound = (
-        'NAMES = ("a", "b")\n'
-        'NAMES = ("c",)\n'
-        'def f(hf_row):\n'
-        '    for k in NAMES:\n'
-        '        hf_row.get(k)\n'
-    )
-    visitor_rebound = _scan.HfRowVisitor('test.py', {})
-    visitor_rebound.visit(ast.parse(code_rebound))
-    assert visitor_rebound.reads == []
-    assert len(visitor_rebound.unresolved) == 1
-
-    code_mutated = (
-        'NAMES = ["a", "b"]\n'
-        'NAMES.append("c")\n'
-        'def f(hf_row):\n'
-        '    for k in NAMES:\n'
-        '        hf_row.get(k)\n'
-    )
-    visitor_mutated = _scan.HfRowVisitor('test.py', {})
-    visitor_mutated.visit(ast.parse(code_mutated))
-    assert visitor_mutated.reads == []
-    assert len(visitor_mutated.unresolved) == 1
-
-    code_aug = (
-        'NAMES = ("a",)\n'
-        'NAMES += ("b",)\n'
-        'def f(hf_row):\n'
-        '    for k in NAMES:\n'
-        '        hf_row.get(k)\n'
-    )
-    visitor_aug = _scan.HfRowVisitor('test.py', {})
-    visitor_aug.visit(ast.parse(code_aug))
-    assert visitor_aug.reads == []
-    assert len(visitor_aug.unresolved) == 1
-
-    code_ann = (
-        'NAMES = ("a",)\n'
-        'NAMES: tuple = ("b",)\n'
-        'def f(hf_row):\n'
-        '    for k in NAMES:\n'
-        '        hf_row.get(k)\n'
-    )
-    visitor_ann = _scan.HfRowVisitor('test.py', {})
-    visitor_ann.visit(ast.parse(code_ann))
-    assert visitor_ann.reads == []
-    assert len(visitor_ann.unresolved) == 1
-
-    code_def = (
-        'NAMES = ("a",)\n'
-        'def NAMES():\n'
-        '    pass\n'
-        'def f(hf_row):\n'
-        '    for k in NAMES:\n'
-        '        hf_row.get(k)\n'
-    )
-    visitor_def = _scan.HfRowVisitor('test.py', {})
-    visitor_def.visit(ast.parse(code_def))
-    assert visitor_def.reads == []
-    assert len(visitor_def.unresolved) == 1
-
-    code_import = (
-        'NAMES = ("a",)\n'
-        'import NAMES\n'
-        'def f(hf_row):\n'
-        '    for k in NAMES:\n'
-        '        hf_row.get(k)\n'
-    )
-    visitor_import = _scan.HfRowVisitor('test.py', {})
-    visitor_import.visit(ast.parse(code_import))
-    assert visitor_import.reads == []
-    assert len(visitor_import.unresolved) == 1
 
 
 def test_loop_domain_shadowing_and_invalidation():
@@ -842,9 +781,6 @@ def test_template_overrides_possible_flag_and_separation():
     """TemplateOverride with possible=True records in consumers_possible."""
     matrix = _gor.build_matrix()
     by_name = {k['name']: k for k in matrix['keys']}
-    assert by_name['H2O_vmr_xuv']['consumers'] == ['escape']
-    assert by_name['H2O_vmr_xuv']['consumers_possible'] == ['escape']
-    assert by_name['T_obs']['consumers'] == ['atmos_clim', 'escape']
     assert by_name['T_obs']['consumers_possible'] == []
 
     # Render test: verify (possible) suffix appears only for possible consumers

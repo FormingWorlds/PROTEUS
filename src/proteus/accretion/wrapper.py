@@ -258,12 +258,10 @@ def restore_accretion_state(handler: Proteus) -> None:
         )
 
     n_applied = int(n_num)
-
-    all_events = None
-    events_before = 0
-    total_events = 0
+    n_drop = 0
     if accretion_active:
         resolved_path = os.path.join(out_dir, _RESOLVED_TIMELINE_FILE)
+        all_events = None
         if os.path.exists(resolved_path):
             from proteus.accretion.common import read_timeline
 
@@ -312,18 +310,16 @@ def restore_accretion_state(handler: Proteus) -> None:
                         resume_time,
                         excess_evs,
                     )
+            n_drop = excess
 
     hf_row['n_impacts_applied'] = n_applied
     if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
         handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(n_applied)
 
     if accretion_active:
-        # Drop any events preceding the resume time (idempotent with init_accretion).
-        handler.impact_events = [ev for ev in handler.impact_events if ev.time > resume_time]
-        if all_events is not None:
-            remaining_to_drop = max(n_applied - events_before, 0)
-            if remaining_to_drop > 0:
-                handler.impact_events = handler.impact_events[remaining_to_drop:]
+        handler.impact_events = [ev for ev in handler.impact_events if ev.time > resume_time][
+            n_drop:
+        ]
 
     if accreted <= 0.0:
         # Inform user when continuing from configured mass, which occurs either

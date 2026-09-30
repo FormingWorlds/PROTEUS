@@ -137,11 +137,8 @@ def build_matrix() -> dict:
     consumers_definite: dict[str, set[str]] = {}
     consumers_possible: dict[str, set[str]] = {}
     for rel_file, key, is_possible in scan['reads']:
-        module = _consumer_module(rel_file)
-        if is_possible:
-            consumers_possible.setdefault(key, set()).add(module)
-        else:
-            consumers_definite.setdefault(key, set()).add(module)
+        bucket = consumers_possible if is_possible else consumers_definite
+        bucket.setdefault(key, set()).add(_consumer_module(rel_file))
 
     for key, poss in consumers_possible.items():
         poss -= consumers_definite.get(key, set())
@@ -149,18 +146,16 @@ def build_matrix() -> dict:
     keys = []
     for record in schema:
         name = record['name']
-        all_consumers = sorted(
-            consumers_definite.get(name, set()) | consumers_possible.get(name, set())
-        )
-        possible_for_key = sorted(consumers_possible.get(name, set()))
+        definite = consumers_definite.get(name, set())
+        possible = consumers_possible.get(name, set())
         keys.append(
             {
                 **record,
                 'producers': sorted(
                     producers.get(name, []), key=lambda p: (p['file'], p['condition'])
                 ),
-                'consumers': all_consumers,
-                'consumers_possible': possible_for_key,
+                'consumers': sorted(definite | possible),
+                'consumers_possible': sorted(possible),
             }
         )
     return {
@@ -205,13 +200,8 @@ def _producer_cells(producers: list[dict]) -> tuple[str, str]:
 
 def _consumer_cells(key: dict) -> str:
     """Format consumers with (possible) annotations where applicable."""
-    mods = []
-    possible = set(key.get('consumers_possible', []))
-    for mod in key.get('consumers', []):
-        if mod in possible:
-            mods.append(f'{mod} (possible)')
-        else:
-            mods.append(mod)
+    possible = set(key['consumers_possible'])
+    mods = [f'{mod} (possible)' if mod in possible else mod for mod in key['consumers']]
     return ', '.join(mods) if mods else ' '
 
 

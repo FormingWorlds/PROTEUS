@@ -17,6 +17,7 @@ from __future__ import annotations
 import ast
 import importlib
 import importlib.util
+from collections import Counter
 from dataclasses import dataclass
 
 import _docgen
@@ -64,133 +65,60 @@ class TemplateOverride:
     possible: bool = False
 
 
+_ELEMENTS = TemplateOverride(('element_list',))
+_GASES = TemplateOverride(('gas_list',))
+_BOTH = TemplateOverride(('gas_list', 'element_list'))
+_VAPS = TemplateOverride(('vap_list',))
+_GASES_POSSIBLE = TemplateOverride(('gas_list',), possible=True)
+_GASES_VOL = TemplateOverride(('gas_list', 'vol_element_list'))
+
 # Templated access sites whose loop domain cannot be recovered statically.
 # Values name domain lists; downstream code trims them against the schema.
 TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
-    ('accretion/wrapper.py', '_partition_impactor_content', '<?>_kg_atm'): TemplateOverride(
-        ('element_list',)
-    ),
-    ('accretion/wrapper.py', '_partition_impactor_content', '<?>_kg_total'): TemplateOverride(
-        ('element_list',)
-    ),
-    ('accretion/wrapper.py', '_apply_volatile_consequences', '<?>_kg_total'): TemplateOverride(
-        ('element_list',)
-    ),
-    ('accretion/wrapper.py', '_restore_volatile_budgets', '<?>_kg_total'): TemplateOverride(
-        ('element_list',)
-    ),
-    ('escape/wrapper.py', 'calc_new_elements', '<?>_kg_total'): TemplateOverride(
-        ('element_list',)
-    ),
-    ('escape/wrapper.py', 'run_escape', '<?>_kg_total'): TemplateOverride(('element_list',)),
-    ('escape/common.py', 'calc_unfract_fluxes', 'esc_rate_<?>'): TemplateOverride(
-        ('element_list',)
-    ),
-    ('escape/boreas.py', '_set_boreas_params', '<?>_vmr_xuv'): TemplateOverride(
-        ('gas_list',), possible=True
-    ),
-    ('outgas/calliope.py', 'calc_target_masses', '<?>_kg_total'): TemplateOverride(
-        ('element_list',)
-    ),
-    (
-        'outgas/atmodeller.py',
-        '_populate_volatile_element_reservoirs',
-        '<?>_kg_atm',
-    ): TemplateOverride(('element_list',)),
+    ('accretion/wrapper.py', '_partition_impactor_content', '<?>_kg_atm'): _ELEMENTS,
+    ('accretion/wrapper.py', '_partition_impactor_content', '<?>_kg_total'): _ELEMENTS,
+    ('accretion/wrapper.py', '_apply_volatile_consequences', '<?>_kg_total'): _ELEMENTS,
+    ('accretion/wrapper.py', '_restore_volatile_budgets', '<?>_kg_total'): _ELEMENTS,
+    ('escape/wrapper.py', 'calc_new_elements', '<?>_kg_total'): _ELEMENTS,
+    ('escape/wrapper.py', 'run_escape', '<?>_kg_total'): _ELEMENTS,
+    ('escape/common.py', 'calc_unfract_fluxes', 'esc_rate_<?>'): _ELEMENTS,
+    ('escape/boreas.py', '_set_boreas_params', '<?>_vmr_xuv'): _GASES_POSSIBLE,
+    ('outgas/calliope.py', 'calc_target_masses', '<?>_kg_total'): _ELEMENTS,
+    ('outgas/atmodeller.py', '_populate_volatile_element_reservoirs', '<?>_kg_atm'): _ELEMENTS,
     (
         'outgas/atmodeller.py',
         '_populate_volatile_element_reservoirs',
         '<?>_kg_liquid',
-    ): TemplateOverride(('element_list',)),
+    ): _ELEMENTS,
     (
         'outgas/atmodeller.py',
         '_populate_volatile_element_reservoirs',
         '<?>_kg_solid',
-    ): TemplateOverride(('element_list',)),
-    ('outgas/atmodeller.py', '_total_volatile_oxygen_kg', '<?>_kg_atm'): TemplateOverride(
-        ('gas_list',), possible=True
-    ),
-    ('outgas/atmodeller.py', '_total_volatile_oxygen_kg', '<?>_kg_liquid'): TemplateOverride(
-        ('gas_list',), possible=True
-    ),
-    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_bar'): TemplateOverride(
-        ('gas_list',)
-    ),
-    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_vmr'): TemplateOverride(
-        ('gas_list',)
-    ),
-    (
-        'outgas/atmodeller.py',
-        'calc_surface_pressures_atmodeller',
-        '<?>_kg_atm',
-    ): TemplateOverride(('gas_list',)),
-    (
-        'outgas/atmodeller.py',
-        'calc_surface_pressures_atmodeller',
-        '<?>_kg_liquid',
-    ): TemplateOverride(('gas_list',)),
-    (
-        'outgas/atmodeller.py',
-        'calc_surface_pressures_atmodeller',
-        '<?>_kg_solid',
-    ): TemplateOverride(('gas_list', 'vol_element_list')),
-    (
-        'outgas/atmodeller.py',
-        'calc_surface_pressures_atmodeller',
-        '<?>_kg_total',
-    ): TemplateOverride(('gas_list',)),
-    (
-        'outgas/atmodeller.py',
-        'calc_surface_pressures_atmodeller',
-        '<?>_mol_atm',
-    ): TemplateOverride(('gas_list',)),
-    (
-        'outgas/atmodeller.py',
-        'calc_surface_pressures_atmodeller',
-        '<?>_mol_liquid',
-    ): TemplateOverride(('gas_list',)),
-    (
-        'outgas/atmodeller.py',
-        'calc_surface_pressures_atmodeller',
-        '<?>_mol_solid',
-    ): TemplateOverride(('gas_list',)),
-    (
-        'outgas/atmodeller.py',
-        'calc_surface_pressures_atmodeller',
-        '<?>_mol_total',
-    ): TemplateOverride(('gas_list',)),
-    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_bar'): TemplateOverride(
-        ('gas_list',)
-    ),
-    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_kg_atm'): TemplateOverride(
-        ('gas_list', 'element_list')
-    ),
-    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_kg_liquid'): TemplateOverride(
-        ('gas_list', 'element_list')
-    ),
-    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_kg_solid'): TemplateOverride(
-        ('gas_list', 'element_list')
-    ),
-    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_kg_total'): TemplateOverride(
-        ('gas_list', 'element_list')
-    ),
-    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_mol_atm'): TemplateOverride(
-        ('gas_list',)
-    ),
-    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_mol_liquid'): TemplateOverride(
-        ('gas_list',)
-    ),
-    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_mol_solid'): TemplateOverride(
-        ('gas_list',)
-    ),
-    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_mol_total'): TemplateOverride(
-        ('gas_list',)
-    ),
-    ('outgas/lavatmos.py', 'run_vapourisation', '<?>_bar'): TemplateOverride(('vap_list',)),
-    ('outgas/lavatmos.py', 'run_vapourisation', '<?>_vmr'): TemplateOverride(('vap_list',)),
-    ('outgas/lavatmos.py', 'run_vapourisation', '<?>_kg_atm'): TemplateOverride(
-        ('element_list',)
-    ),
+    ): _ELEMENTS,
+    ('outgas/atmodeller.py', '_total_volatile_oxygen_kg', '<?>_kg_atm'): _GASES_POSSIBLE,
+    ('outgas/atmodeller.py', '_total_volatile_oxygen_kg', '<?>_kg_liquid'): _GASES_POSSIBLE,
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_bar'): _GASES,
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_vmr'): _GASES,
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_kg_atm'): _GASES,
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_kg_liquid'): _GASES,
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_kg_solid'): _GASES_VOL,
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_kg_total'): _GASES,
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_mol_atm'): _GASES,
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_mol_liquid'): _GASES,
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_mol_solid'): _GASES,
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_mol_total'): _GASES,
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_bar'): _GASES,
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_kg_atm'): _BOTH,
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_kg_liquid'): _BOTH,
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_kg_solid'): _BOTH,
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_kg_total'): _BOTH,
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_mol_atm'): _GASES,
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_mol_liquid'): _GASES,
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_mol_solid'): _GASES,
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_mol_total'): _GASES,
+    ('outgas/lavatmos.py', 'run_vapourisation', '<?>_bar'): _VAPS,
+    ('outgas/lavatmos.py', 'run_vapourisation', '<?>_vmr'): _VAPS,
+    ('outgas/lavatmos.py', 'run_vapourisation', '<?>_kg_atm'): _ELEMENTS,
 }
 
 # Dynamic-key writes that are not producers: save/restore of overridden
@@ -324,6 +252,10 @@ def _collect_bound_names(target: ast.AST) -> list[str]:
     return []
 
 
+_MUTATORS = ('append', 'extend', 'insert', 'update', 'add', 'remove', 'pop', 'clear')
+_COMPS = (ast.GeneratorExp, ast.ListComp, ast.SetComp)
+
+
 class HfRowVisitor(ast.NodeVisitor):
     """Collect helpfile reads/writes in one file, tracking loop domains."""
 
@@ -345,7 +277,7 @@ class HfRowVisitor(ast.NodeVisitor):
     # -- context tracking ---------------------------------------------------
 
     def visit_Module(self, node):
-        assigned: dict[str, int] = {}
+        assigned: Counter[str] = Counter()
         mutated: set[str] = set()
         candidates: dict[str, list[str]] = {}
         module_const_strings: dict[str, ast.Constant] = {}
@@ -370,34 +302,24 @@ class HfRowVisitor(ast.NodeVisitor):
                 for t in sub.targets:
                     if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name):
                         mutated.add(t.value.id)
-                    for name in _collect_bound_names(t):
-                        assigned[name] = assigned.get(name, 0) + 1
+                    assigned.update(_collect_bound_names(t))
             elif isinstance(sub, (ast.AnnAssign, ast.AugAssign)):
                 if isinstance(sub.target, ast.Subscript) and isinstance(
                     sub.target.value, ast.Name
                 ):
                     mutated.add(sub.target.value.id)
-                for name in _collect_bound_names(sub.target):
-                    assigned[name] = assigned.get(name, 0) + 1
-            elif isinstance(sub, ast.NamedExpr):
-                for name in _collect_bound_names(sub.target):
-                    assigned[name] = assigned.get(name, 0) + 1
-            elif isinstance(sub, (ast.For, ast.AsyncFor)):
-                for name in _collect_bound_names(sub.target):
-                    assigned[name] = assigned.get(name, 0) + 1
+                assigned.update(_collect_bound_names(sub.target))
+            elif isinstance(sub, (ast.NamedExpr, ast.For, ast.AsyncFor)):
+                assigned.update(_collect_bound_names(sub.target))
             elif isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                assigned[sub.name] = assigned.get(sub.name, 0) + 1
+                assigned[sub.name] += 1
             elif isinstance(sub, (ast.Import, ast.ImportFrom)):
-                for alias in sub.names:
-                    name = alias.asname or alias.name.split('.')[0]
-                    assigned[name] = assigned.get(name, 0) + 1
+                assigned.update(alias.asname or alias.name.split('.')[0] for alias in sub.names)
             elif isinstance(sub, (ast.Global, ast.Nonlocal)):
-                for name in sub.names:
-                    mutated.add(name)
+                mutated.update(sub.names)
             elif isinstance(sub, ast.Delete):
                 for t in sub.targets:
-                    for name in _collect_bound_names(t):
-                        mutated.add(name)
+                    mutated.update(_collect_bound_names(t))
                     if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name):
                         mutated.add(t.value.id)
             elif isinstance(sub, ast.Call):
@@ -405,26 +327,16 @@ class HfRowVisitor(ast.NodeVisitor):
                 if (
                     isinstance(func, ast.Attribute)
                     and isinstance(func.value, ast.Name)
-                    and func.attr
-                    in (
-                        'append',
-                        'extend',
-                        'insert',
-                        'update',
-                        'add',
-                        'remove',
-                        'pop',
-                        'clear',
-                    )
+                    and func.attr in _MUTATORS
                 ):
                     mutated.add(func.value.id)
 
         for name, vals in candidates.items():
-            if assigned.get(name, 0) == 1 and name not in mutated:
+            if assigned[name] == 1 and name not in mutated:
                 self.module_constants[name] = vals
 
         for name, const_node in module_const_strings.items():
-            if assigned.get(name, 0) == 1 and name not in mutated:
+            if assigned[name] == 1 and name not in mutated:
                 self.scopes[0][name] = const_node
             else:
                 self.scopes[0][name] = None
@@ -437,25 +349,23 @@ class HfRowVisitor(ast.NodeVisitor):
             if arg:
                 self.local_vars[arg.arg] = None
 
+    def _visit_scope(self, node):
+        new_scope: dict[str, ast.AST | None] = {}
+        self.scopes.append(new_scope)
+        self._invalidate_args(node.args)
+        self.generic_visit(node)
+        self.scopes.pop()
+
+    visit_Lambda = _visit_scope
+
     def _visit_func(self, node):
         self._invalidate(node.name)
         self.func_stack.append(node.name)
-        new_scope: dict[str, ast.AST | None] = {}
-        self.scopes.append(new_scope)
-        self._invalidate_args(node.args)
-        self.generic_visit(node)
+        self._visit_scope(node)
         self.func_stack.pop()
-        self.scopes.pop()
 
     visit_FunctionDef = _visit_func
     visit_AsyncFunctionDef = _visit_func
-
-    def visit_Lambda(self, node):
-        new_scope: dict[str, ast.AST | None] = {}
-        self.scopes.append(new_scope)
-        self._invalidate_args(node.args)
-        self.generic_visit(node)
-        self.scopes.pop()
 
     def visit_ClassDef(self, node):
         self._invalidate(node.name)
@@ -474,19 +384,9 @@ class HfRowVisitor(ast.NodeVisitor):
 
     def _invalidate(self, target: ast.AST | str | None) -> None:
         """Clear any constant binding or loop domain for target variables."""
-        if target is None:
-            return
-        if isinstance(target, str):
-            self.local_vars[target] = None
-            self.loop_domains.pop(target, None)
-        elif isinstance(target, ast.Name):
-            self.local_vars[target.id] = None
-            self.loop_domains.pop(target.id, None)
-        elif isinstance(target, ast.Starred):
-            self._invalidate(target.value)
-        elif isinstance(target, (ast.Tuple, ast.List)):
-            for elt in target.elts:
-                self._invalidate(elt)
+        for name in [target] if isinstance(target, str) else _collect_bound_names(target):
+            self.local_vars[name] = None
+            self.loop_domains.pop(name, None)
 
     def visit_Assign(self, node):
         for target in node.targets:
@@ -538,8 +438,7 @@ class HfRowVisitor(ast.NodeVisitor):
         for name in node.names:
             self.scopes[0][name] = None
             self.module_constants.pop(name, None)
-            self.local_vars[name] = None
-            self.loop_domains.pop(name, None)
+            self._invalidate(name)
 
     def visit_Nonlocal(self, node):
         for name in node.names:
@@ -547,8 +446,7 @@ class HfRowVisitor(ast.NodeVisitor):
                 if name in s:
                     s[name] = None
                     break
-            self.local_vars[name] = None
-            self.loop_domains.pop(name, None)
+            self._invalidate(name)
 
     def visit_Import(self, node):
         for alias in node.names:
@@ -650,12 +548,9 @@ class HfRowVisitor(ast.NodeVisitor):
                 and iter_node.args
             ):
                 arg = iter_node.args[0]
-                if isinstance(arg, (ast.GeneratorExp, ast.ListComp, ast.SetComp)):
-                    gen = arg.generators[0]
-                    if not _is_bare_target(arg.elt, gen.target):
-                        return None
-                    return self._domain_of_iter(gen.iter)
-        if isinstance(iter_node, (ast.GeneratorExp, ast.ListComp, ast.SetComp)):
+                if isinstance(arg, _COMPS):
+                    return self._domain_of_iter(arg)
+        if isinstance(iter_node, _COMPS):
             gen = iter_node.generators[0]
             if not _is_bare_target(iter_node.elt, gen.target):
                 return None

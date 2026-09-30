@@ -2982,9 +2982,11 @@ def test_legacy_resume_missing_or_corrupt_counter_refuses(tmp_path, counter_key_
         pending=[ev05, ev50, ev500],
     )
 
+    before = (dict(handler.hf_row), list(handler.impact_events))
     with pytest.raises(RuntimeError, match='Resume refused') as excinfo:
         restore_accretion_state(handler)
 
+    assert (dict(handler.hf_row), list(handler.impact_events)) == before
     err = str(excinfo.value)
     assert 'restart' in err.lower()
     assert err.split()[2].endswith('runtime_helpfile.csv')
@@ -3368,91 +3370,30 @@ def test_restore_accretion_state_legacy_ledger_accepted_when_accretion_disabled(
 ):
     """When accretion is disabled, a positive ledger with absent/zero counter restores mass with a warning."""
     import logging
-    from types import SimpleNamespace
 
     from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import AU, M_earth
 
-    handler = SimpleNamespace(
-        config=SimpleNamespace(
-            params=SimpleNamespace(resume=True),
-            accretion=SimpleNamespace(module=None),
-            planet=SimpleNamespace(mass_tot=0.5),
-            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
-        ),
+    handler = _resumed_handler(
+        tmp_path,
+        events=[],
         hf_row={
             'Time': 100.0,
             'M_accreted_rock': 1e23,
             'semimajorax': 1.0 * AU,
             'eccentricity': 0.0,
         },
-        hf_all=None,
-        directories={'output': str(tmp_path)},
-        impact_events=None,
     )
+    handler.config.accretion.module = None
+    handler.impact_events = None
+
     with caplog.at_level(logging.WARNING):
         restore_accretion_state(handler)
 
-    assert handler.config.planet.mass_tot == pytest.approx(0.5 + 1e23 / M_earth)
+    assert handler.config.planet.mass_tot == pytest.approx(1.0 + 1e23 / M_earth)
     assert handler.config.orbit.semimajoraxis == pytest.approx(1.0)
     assert handler.hf_row['n_impacts_applied'] == 0
     assert 'Accretion is disabled for this resume' in caplog.text
-
-
-@pytest.mark.unit
-def test_restore_accretion_state_legacy_ledger_refused_when_impacts_active(tmp_path):
-    """When impacts are scheduled, positive rock with zero or absent counter raises RuntimeError."""
-    from types import SimpleNamespace
-
-    from proteus.accretion.common import ImpactEvent
-    from proteus.accretion.wrapper import restore_accretion_state
-    from proteus.utils.constants import AU
-
-    ev1 = ImpactEvent(
-        time=10.0,
-        M_target_before=1e24,
-        M_impactor=1e23,
-        M_merged_after=1.1e24,
-        v_impact=1e4,
-        v_esc=1e4,
-        impact_parameter=0.5,
-        R_target_before=1e6,
-        R_impactor=1e5,
-        rho_target=3000,
-        rho_impactor=3000,
-        a_before=1.5e11,
-        a_after=1.5e11,
-        e_before=0.0,
-        e_after=0.0,
-    )
-    handler = SimpleNamespace(
-        config=SimpleNamespace(
-            params=SimpleNamespace(resume=True),
-            accretion=SimpleNamespace(module='dummy'),
-            planet=SimpleNamespace(mass_tot=0.5),
-            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
-        ),
-        hf_row={
-            'Time': 100.0,
-            'M_accreted_rock': 1e23,
-            'semimajorax': 1.0 * AU,
-            'eccentricity': 0.0,
-        },
-        hf_all=None,
-        directories={'output': str(tmp_path)},
-        impact_events=[ev1],
-    )
-    hf_row_orig = dict(handler.hf_row)
-    events_orig = list(handler.impact_events)
-    with pytest.raises(RuntimeError) as exc_info:
-        restore_accretion_state(handler)
-    err = str(exc_info.value)
-    assert 'runtime_helpfile.csv' in err
-    assert 'predates the impact counter' in err
-    assert 'Restart the simulation' in err
-    assert 'n_impacts_applied' not in handler.hf_row
-    assert handler.hf_row == hf_row_orig
-    assert handler.impact_events == events_orig
 
 
 @pytest.mark.unit
