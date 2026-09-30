@@ -2621,7 +2621,7 @@ def test_start_goes_ahead_without_cvode_when_it_is_not_needed(
     clean.assert_called_once()
 
 
-@pytest.mark.unit
+@pytest.mark.smoke
 def test_impact_during_init_stage_applied_exactly_once(tmp_path):
     """An impact falling inside the init time window is applied exactly once, including on resume."""
     from helpers import PROTEUS_ROOT
