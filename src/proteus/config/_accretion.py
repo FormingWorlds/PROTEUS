@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import numbers
 
+import numpy as np
 from attr.validators import ge, gt, in_, le, lt
 from attrs import define, field
 
@@ -13,56 +14,44 @@ from ._converters import none_if_none
 SELECTORS = ('match_config', 'mass', 'semimajoraxis', 'id')
 
 
-def _parse_finite_number(x: object) -> float | None:
-    """Return finite float for a real number or numeric string, else None."""
-    if isinstance(x, bool) or not isinstance(x, (numbers.Real, str)):
-        return None
-    try:
-        val = float(x)
-    except (ValueError, OverflowError):
-        return None
-    return val if math.isfinite(val) else None
-
-
 def _convert_selector_value(val: object) -> float | int | str | None:
-    """Convert numeric strings and numeric types to int or float."""
-    if val is None or isinstance(val, bool):
+    """Map the TOML sentinel 'none' to None and numeric input to a number.
+
+    Integers keep their exact value, other reals become float, and numeric
+    strings are parsed the same way. Any other string is returned unchanged
+    so that the validator refuses it by name when the selector needs a target.
+    """
+    if val is None or isinstance(val, (bool, np.bool_)):
         return val
     if isinstance(val, numbers.Integral):
         return int(val)
     if isinstance(val, numbers.Real):
         return float(val)
     if isinstance(val, str):
+        text = val.strip()
+        if text.lower() == 'none':
+            return None
         try:
-            return int(val)
+            return int(text)
         except ValueError:
-            try:
-                v = float(val)
-                return v if math.isfinite(v) else val
-            except ValueError:
-                return val
+            pass
+        try:
+            num = float(text)
+        except (ValueError, OverflowError):
+            return val
+        return num if math.isfinite(num) else val
     return val
 
 
-def _parse_id(raw: object) -> int | None:
-    """Parse raw value as a finite non-negative integer id, else None."""
-    if isinstance(raw, bool) or not isinstance(raw, (numbers.Integral, numbers.Real, str)):
+def _as_finite_float(val: object) -> float | None:
+    """Return a converted selector value as a finite float, else None."""
+    if isinstance(val, (bool, np.bool_)) or not isinstance(val, numbers.Real):
         return None
-    if isinstance(raw, numbers.Integral):
-        try:
-            return int(raw) if math.isfinite(float(raw)) else None
-        except OverflowError:
-            return None
-    val_f = _parse_finite_number(raw)
-    if val_f is not None and val_f.is_integer():
-        return int(val_f)
-    if isinstance(raw, str):
-        try:
-            v = int(raw)
-            return v if math.isfinite(float(v)) else None
-        except (ValueError, OverflowError):
-            return None
-    return None
+    try:
+        num = float(val)
+    except OverflowError:
+        return None
+    return num if math.isfinite(num) else None
 
 
 def valid_morrigan(instance, attribute, value):
@@ -90,7 +79,7 @@ def valid_morrigan(instance, attribute, value):
                 '`accretion.morrigan.selector_value` must be set (target orbit in AU) '
                 "when selector = 'semimajoraxis'"
             )
-        val = _parse_finite_number(mor.selector_value)
+        val = _as_finite_float(mor.selector_value)
         if val is None or val <= 0 or not math.isfinite(val * AU):
             raise ValueError(
                 '`accretion.morrigan.selector_value` must be a finite positive number '
@@ -102,8 +91,8 @@ def valid_morrigan(instance, attribute, value):
             raise ValueError(
                 "`accretion.morrigan.selector_value` must be set (planet id) when selector = 'id'"
             )
-        val_int = _parse_id(mor.selector_value)
-        if val_int is None or val_int < 0:
+        val = _as_finite_float(mor.selector_value)
+        if val is None or val < 0 or not val.is_integer():
             raise ValueError(
                 '`accretion.morrigan.selector_value` must be a finite non-negative integer '
                 "when selector = 'id'"

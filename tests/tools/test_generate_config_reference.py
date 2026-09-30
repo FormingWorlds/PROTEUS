@@ -428,3 +428,54 @@ def test_group_lookup_returns_nothing_when_no_grouping_is_declared(monkeypatch):
     # helper that always returns nothing.
     _with_groups(monkeypatch, ((None, None, ('alpha', 'beta', 'gamma')),))
     assert len(_cs._group_lookup(_GroupedSection, _FIELDS)) == 3
+
+
+def _table_cells(row: str) -> int:
+    """Count the cells of one Markdown table row as a table parser splits it:
+    a pipe separates cells unless it is backslash-escaped or inside a code
+    span, which a run of N backticks opens and the next run of N closes."""
+    cells, open_run, i = 1, 0, 0
+    body = row.strip()[1:-1]
+    while i < len(body):
+        ch = body[i]
+        if ch == '\\' and not open_run:
+            i += 2
+            continue
+        if ch == '`':
+            run = len(body[i:]) - len(body[i:].lstrip('`'))
+            if not open_run:
+                open_run = run
+            elif run == open_run:
+                open_run = 0
+            i += run
+            continue
+        if ch == '|' and not open_run:
+            cells += 1
+        i += 1
+    return cells
+
+
+def test_every_table_row_has_the_header_cell_count(schema):
+    """A union type or a free-text pipe that leaks into a cell shifts the
+    Default and Description columns; every rendered row must match its
+    header's cell count, and the union types read with 'or', never '|'."""
+    targets = _gcr.build_targets(schema)
+    rows_checked = 0
+    for path, content in targets:
+        if path.suffix != '.md':
+            continue
+        header_cells = None
+        for line in content.splitlines():
+            if not line.startswith('|'):
+                header_cells = None
+                continue
+            if header_cells is None:
+                header_cells = _table_cells(line)
+                continue
+            assert _table_cells(line) == header_cells, f'{path.name}: {line[:80]}'
+            rows_checked += 1
+    assert rows_checked > 300  # the sweep covers every option row, not a vacuous subset
+    by_path = {f['path']: f for f in schema['fields']}
+    assert by_path['accretion.morrigan.selector_value']['type'] == 'float or int or none'
+    assert by_path['interior_struct.core_density']['type'] == 'float or str'
+    assert '|' not in ''.join(f['type'] for f in schema['fields'])

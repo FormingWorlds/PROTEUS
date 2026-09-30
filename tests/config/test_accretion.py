@@ -192,7 +192,7 @@ def test_targeted_selectors_require_a_selector_value():
     assert isinstance(m_id_np.selector_value, int)
 
     m_sma = Morrigan(selector='semimajoraxis', selector_value='1.5')
-    assert m_sma.selector_value == 1.5
+    assert m_sma.selector_value == pytest.approx(1.5, rel=1e-15)
     assert isinstance(m_sma.selector_value, float)
 
     # In-place assignment after construction runs converter
@@ -728,3 +728,48 @@ def test_morrigan_rendered_config_reference_contains_constraint_text():
         'and a valid selector value when the selector is a semi-major axis or planet id.'
     )
     assert expected in content
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('toml_name', ['all_options.toml', 'cmb_regression_singleimpact.toml'])
+def test_shipped_configs_load_selector_value_none_as_unset(toml_name):
+    """The TOML sentinel "none" for selector_value means unset.
+
+    Both shipped files write selector_value = "none". It must load as the
+    None singleton, not the string 'none': a surviving string would make a
+    targeted selector fail on a value the user never meant to set.
+    """
+    import tomllib
+
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    path = PROTEUS_ROOT / 'input' / toml_name
+    with open(path, 'rb') as f:
+        raw = tomllib.load(f)
+    assert raw['accretion']['morrigan']['selector_value'] == 'none'
+
+    cfg = read_config_object(path)
+    assert cfg.accretion.morrigan.selector_value is None
+    assert cfg.accretion.morrigan.selector in ('match_config', 'mass')
+
+
+@pytest.mark.unit
+def test_selector_value_none_sentinel_is_case_insensitive_and_refused_when_targeted():
+    """Every spelling of the sentinel means unset, and a targeted selector
+    then refuses with the 'must be set' message, not a type complaint."""
+    from proteus.config._accretion import Accretion, Morrigan
+
+    for spelling in ('none', 'None', 'NONE', ' none '):
+        assert Morrigan(selector_value=spelling).selector_value is None
+        for targeted in ('semimajoraxis', 'id'):
+            with pytest.raises(ValueError, match='must be set'):
+                Accretion(
+                    module='morrigan',
+                    morrigan=Morrigan(selector=targeted, selector_value=spelling),
+                )
+    # A non-numeric string that is not the sentinel stays a string and is refused.
+    assert Morrigan(selector_value='earth').selector_value == 'earth'
+    with pytest.raises(ValueError, match='non-negative integer'):
+        Accretion(module='morrigan', morrigan=Morrigan(selector='id', selector_value='earth'))

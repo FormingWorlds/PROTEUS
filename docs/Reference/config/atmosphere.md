@@ -27,7 +27,7 @@ parameter selects the surface energy balance scheme (`mixed_layer`,
 | `spectral_bands` | str | `"48"` | Number of wavenumber bands in k-table. |
 | `num_levels` | int | `50` | Number of vertical atmosphere levels. Must be >= 15. |
 | `p_top` | float | `1e-06` | Top-of-atmosphere pressure \[bar\]. Must be > 0. |
-| `p_obs` | float | Literal or none | `0.02` | Observation pressure level \[bar\] (transit radius). Set to 'none' (-> None) to instead let AGNI determine this pressure level self-consistently from the optical depth (see `agni.tau_obs`, `agni.wl_obs`); AGNI only. |
+| `p_obs` | float or Literal or none | `0.02` | Observation pressure level \[bar\] (transit radius). Set to 'none' (-> None) to instead let AGNI determine this pressure level self-consistently from the optical depth (see `agni.tau_obs`, `agni.wl_obs`); AGNI only. |
 | `overlap_method` | str | `"ee"` | Gas overlap method. Choices: 'ro', 'rorr', 'ee'. |
 
 **Radiative properties**

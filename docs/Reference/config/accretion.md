@@ -82,7 +82,7 @@ about it.
 | `evolution_time` | float | `1.0` | Duration of the dynamical evolution \[Gyr\]. Must be > 0. |
 | `inner_cutoff` | float | `0.005` | Perihelion inside which an embryo counts as lost to the star \[AU\]. Must be > 0. |
 | `selector` | str | `"match_config"` | Which survivor's impact history PROTEUS follows. 'match_config' picks the survivor whose initial mass and orbit are closest to the PROTEUS configuration, 'mass' the most massive survivor, 'semimajoraxis' the survivor whose final orbit is nearest ``selector_value`` \[AU\], and 'id' the embryo with index ``selector_value``. Choices: `"match_config"`, `"mass"`, `"semimajoraxis"`, `"id"`. |
-| `selector_value` | float | int | str or none | `none` | Target value for the 'semimajoraxis' and 'id' selectors. Ignored otherwise. The field converter parses numeric strings to numbers. |
+| `selector_value` | float or int or none | `none` | Target value for the 'semimajoraxis' and 'id' selectors. Ignored otherwise. The field converter parses numeric strings to numbers. |
 <!-- END GENERATED: config-table [accretion.morrigan] -->
 
 Typical `spacing` values are 5 to 15 mutual Hill radii; beyond roughly 30 the
