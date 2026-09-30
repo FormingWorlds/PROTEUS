@@ -3126,7 +3126,7 @@ def test_restore_accretion_state_no_warning_when_counter_positive(tmp_path, capl
 
 @pytest.mark.unit
 def test_restore_accretion_state_refuses_corrupt_counter(tmp_path):
-    """Corrupt counter in helpfile is refused unconditionally."""
+    """Corrupt counter in helpfile is refused unconditionally without state mutation."""
     from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import AU
 
@@ -3139,7 +3139,7 @@ def test_restore_accretion_state_refuses_corrupt_counter(tmp_path):
 
     import pandas as pd
 
-    for bad_counter in (float('nan'), -1, -1.0, 1.5, 'bad'):
+    for bad_counter in (float('nan'), -1, -1.0, 1.5, 'bad', [], {}):
         hf_all = pd.DataFrame(
             [
                 {
@@ -3151,24 +3151,30 @@ def test_restore_accretion_state_refuses_corrupt_counter(tmp_path):
                 }
             ]
         )
+        row = {
+            'Time': 100.0,
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': bad_counter,
+            'semimajorax': AU,
+            'eccentricity': 0.0,
+        }
         handler = _resumed_handler(
             tmp_path,
             events=[ev50, ev500],
-            hf_row={
-                'Time': 100.0,
-                'M_accreted_rock': 1e23,
-                'n_impacts_applied': bad_counter,
-                'semimajorax': AU,
-                'eccentricity': 0.0,
-            },
-            hf_all=hf_all,
+            hf_row=dict(row),
+            hf_all=hf_all.copy(),
             pending=[ev50, ev500],
         )
 
         with pytest.raises(RuntimeError, match='Resume refused') as excinfo:
             restore_accretion_state(handler)
 
-        assert 'restart' in str(excinfo.value).lower()
+        err = str(excinfo.value)
+        assert 'restart' in err.lower()
+        assert 'runtime_helpfile.csv' in err
+        assert handler.hf_row == row
+        assert handler.hf_all.equals(hf_all)
+        assert handler.impact_events == [ev50, ev500]
 
 
 @pytest.mark.unit
@@ -3201,24 +3207,116 @@ def test_restore_accretion_state_filters_events_by_resume_time(tmp_path):
 
 @pytest.mark.unit
 def test_restore_accretion_state_refuses_invalid_m_accreted_rock(tmp_path):
-    """Non-finite or negative M_accreted_rock in helpfile row raises ValueError."""
+    """Non-finite, negative, or non-numeric M_accreted_rock raises ValueError without mutating state."""
     from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import AU
 
-    for bad_rock in (float('nan'), 'nan', -1.0, -1e23):
+    bad_values = (
+        float('nan'),
+        'nan',
+        -1.0,
+        -1e23,
+        float('inf'),
+        float('-inf'),
+        'inf',
+        '-inf',
+        [],
+        {},
+    )
+    for bad_rock in bad_values:
+        row = {
+            'Time': 100.0,
+            'M_accreted_rock': bad_rock,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        }
         handler = _resumed_handler(
             tmp_path,
             events=[],
-            hf_row={
-                'Time': 100.0,
-                'M_accreted_rock': bad_rock,
-                'semimajorax': 1.0 * AU,
-                'eccentricity': 0.0,
-            },
+            hf_row=dict(row),
             pending=[],
         )
-        with pytest.raises(ValueError, match='invalid M_accreted_rock'):
+        with pytest.raises(ValueError, match='invalid M_accreted_rock') as excinfo:
             restore_accretion_state(handler)
+
+        err = str(excinfo.value)
+        assert 'runtime_helpfile.csv' in err
+        assert handler.hf_row == row
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_empty_hf_all(tmp_path):
+    """An empty hf_all DataFrame is handled gracefully without index error."""
+    import pandas as pd
+
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = _impact_event(
+        time=10.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    handler = _resumed_handler(
+        tmp_path,
+        events=[ev1],
+        hf_row={
+            'Time': 100.0,
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 1,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        hf_all=pd.DataFrame(),
+        pending=[ev1],
+    )
+    restore_accretion_state(handler)
+    assert handler.hf_row['n_impacts_applied'] == 1
+
+
+@pytest.mark.unit
+def test_restore_accretion_state_zero_rock_with_positive_counter(tmp_path):
+    """Zero rock with positive counter preserves counter and drops prior events."""
+    import pandas as pd
+
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+
+    ev1 = _impact_event(
+        time=10.0, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    ev2 = _impact_event(
+        time=20.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    ev3 = _impact_event(
+        time=30.0, M_target_before=6.172e24, M_impactor=1e23, M_merged_after=6.272e24
+    )
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 25.0,
+                'M_accreted_rock': 0.0,
+                'n_impacts_applied': 2,
+                'semimajorax': 1.0 * AU,
+                'eccentricity': 0.0,
+            }
+        ]
+    )
+    handler = _resumed_handler(
+        tmp_path,
+        events=[ev1, ev2, ev3],
+        hf_row={
+            'Time': 25.0,
+            'M_accreted_rock': 0.0,
+            'n_impacts_applied': 2,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        hf_all=hf_all,
+        pending=[ev1, ev2, ev3],
+    )
+    restore_accretion_state(handler)
+    assert handler.hf_row['n_impacts_applied'] == 2
+    assert handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] == 2.0
+    assert handler.impact_events == [ev3]
 
 
 @pytest.mark.unit
@@ -3233,6 +3331,18 @@ def test_restore_accretion_state_refuses_counter_smaller_than_events_before(tmp_
     ev2 = _impact_event(
         time=20.0, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
     )
+    import pandas as pd
+
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 25.0,
+                'M_accreted_rock': 1e23,
+                'semimajorax': 1.0 * AU,
+                'eccentricity': 0.0,
+            }
+        ]
+    )
     handler = _resumed_handler(
         tmp_path,
         events=[ev1, ev2],
@@ -3243,13 +3353,20 @@ def test_restore_accretion_state_refuses_counter_smaller_than_events_before(tmp_
             'semimajorax': 1.0 * AU,
             'eccentricity': 0.0,
         },
+        hf_all=hf_all,
         pending=[ev1, ev2],
     )
+    hf_row_orig = dict(handler.hf_row)
+    hf_all_orig = handler.hf_all.copy()
+    events_orig = list(handler.impact_events)
     with pytest.raises(RuntimeError) as exc_info:
         restore_accretion_state(handler)
     err = str(exc_info.value)
     assert 'runtime_helpfile.csv' in err
     assert 'precede the resume time' in err
+    assert handler.hf_row == hf_row_orig
+    assert handler.hf_all.equals(hf_all_orig)
+    assert handler.impact_events == events_orig
 
 
 @pytest.mark.unit
@@ -3273,11 +3390,15 @@ def test_restore_accretion_state_refuses_counter_exceeding_total_events(tmp_path
         },
         pending=[ev1],
     )
+    hf_row_orig = dict(handler.hf_row)
+    events_orig = list(handler.impact_events)
     with pytest.raises(RuntimeError) as exc_info:
         restore_accretion_state(handler)
     err = str(exc_info.value)
     assert 'runtime_helpfile.csv' in err
     assert 'exceeding the total' in err
+    assert handler.hf_row == hf_row_orig
+    assert handler.impact_events == events_orig
 
 
 @pytest.mark.unit
@@ -3405,8 +3526,12 @@ def test_restore_accretion_state_legacy_ledger_refused_when_impacts_active(tmp_p
         directories={'output': str(tmp_path)},
         impact_events=[ev1],
     )
+    hf_row_orig = dict(handler.hf_row)
+    events_orig = list(handler.impact_events)
     with pytest.raises(RuntimeError) as exc_info:
         restore_accretion_state(handler)
     err = str(exc_info.value)
     assert 'runtime_helpfile.csv' in err
     assert 'predates the impact counter' in err
+    assert handler.hf_row == hf_row_orig
+    assert handler.impact_events == events_orig

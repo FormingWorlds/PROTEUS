@@ -169,20 +169,39 @@ def restore_accretion_state(handler: Proteus) -> None:
     the same body it selected originally.
 
     When restoring the pending impact schedule on resume, precedence is:
-    1. If ``n_impacts_applied`` is present in the helpfile and positive, that
-       counter determines how many prior impacts were applied, and any
-       remaining events up to that count are dropped from the pending list.
-    2. If ``M_accreted_rock > 0`` but the counter is missing, zero, or corrupt
-       (NaN, negative, non-integer), resume is refused with an error because
-       the run predates the impact counter and cannot safely reconstruct prior
-       events.
-    3. If ``M_accreted_rock == 0`` and the counter is absent or zero, resume
+    1. Validate ``M_accreted_rock``: must be a finite non-negative number;
+       otherwise ``ValueError`` is raised.
+    2. Validate ``n_impacts_applied``: corrupt values (non-numeric, negative,
+       non-finite, or non-integer) are refused with ``RuntimeError``
+       regardless of rock mass.
+    3. If ``M_accreted_rock > 0`` with an absent or zero counter:
+       - If accretion is enabled (``impact_events`` is not None),
+         ``RuntimeError`` is raised because the run predates the counter.
+       - If accretion is disabled (``impact_events`` is None), a warning is
+         logged and mass is restored from the ledger without pending impacts.
+    4. If ``n_impacts_applied`` is positive (with zero or positive rock), the
+       counter determines how many prior impacts were applied. If an impact
+       timeline is present, the counter is validated against the timeline
+       events (refusing if fewer than events before the resume point or greater
+       than total events), and prior events are dropped from the schedule.
+    5. If ``M_accreted_rock == 0`` and counter is absent or zero, resume
        continues from the configured mass without impacts.
 
     Parameters
     ----------
     handler : Proteus
         Proteus object instance, whose configuration is updated in place.
+
+    Raises
+    ------
+    ValueError
+        If ``M_accreted_rock`` is non-numeric, negative, or non-finite.
+    RuntimeError
+        If ``n_impacts_applied`` is non-numeric, negative, non-finite, or
+        non-integer; if ``M_accreted_rock > 0`` with absent or zero counter while
+        accretion is enabled; or if ``n_impacts_applied`` is inconsistent with
+        the impact timeline (fewer than the events preceding the resume time,
+        or more than the total timeline events).
     """
     config = handler.config
 
@@ -196,7 +215,7 @@ def restore_accretion_state(handler: Proteus) -> None:
     hf_name = getattr(handler, 'helpfile_path', None) or helpfile_path(out_dir)
     m_raw = hf_row.get('M_accreted_rock')
     try:
-        accreted = float(m_raw or 0.0)
+        accreted = float(0.0 if m_raw is None else m_raw)
     except (ValueError, TypeError):
         accreted = float('nan')
     if not math.isfinite(accreted) or accreted < 0.0:
@@ -207,7 +226,7 @@ def restore_accretion_state(handler: Proteus) -> None:
 
     n_raw = hf_row.get('n_impacts_applied')
     try:
-        n_num = float(n_raw or 0.0)
+        n_num = float(0.0 if n_raw is None else n_raw)
     except (ValueError, TypeError):
         n_num = float('nan')
 
@@ -239,17 +258,12 @@ def restore_accretion_state(handler: Proteus) -> None:
     else:
         n_applied = int(n_num) if n_raw is not None and n_num > 0.0 else 0
 
-    hf_row['n_impacts_applied'] = n_applied
-    if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
-        handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(n_applied)
-
+    all_events = None
+    events_before = 0
+    total_events = 0
+    resume_time = float(hf_row.get('Time') or 0.0)
     if getattr(handler, 'impact_events', None) is not None:
-        resume_time = float(hf_row.get('Time') or 0.0)
-        # Drop any events preceding the resume time (idempotent with init_accretion).
-        handler.impact_events = [ev for ev in handler.impact_events if ev.time > resume_time]
-
         resolved_path = os.path.join(out_dir, _RESOLVED_TIMELINE_FILE)
-        all_events = None
         if os.path.exists(resolved_path):
             from proteus.accretion.common import read_timeline
 
@@ -270,6 +284,15 @@ def restore_accretion_state(handler: Proteus) -> None:
                     f'exceeding the total {total_events} impact(s) in the timeline. '
                     'Restart the simulation.'
                 )
+
+    hf_row['n_impacts_applied'] = n_applied
+    if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
+        handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] = float(n_applied)
+
+    if getattr(handler, 'impact_events', None) is not None:
+        # Drop any events preceding the resume time (idempotent with init_accretion).
+        handler.impact_events = [ev for ev in handler.impact_events if ev.time > resume_time]
+        if all_events is not None:
             remaining_to_drop = max(n_applied - events_before, 0)
             if remaining_to_drop > 0:
                 handler.impact_events = handler.impact_events[remaining_to_drop:]

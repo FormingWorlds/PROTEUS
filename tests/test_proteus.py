@@ -2652,3 +2652,72 @@ def test_crystallization_not_rearmed_on_impact_step(tmp_path):
     p.hf_row = {'Phi_global': 0.8}
     p._check_crystallization()
     assert p.crystallized is True
+
+
+@pytest.mark.unit
+def test_proteus_start_resume_refuses_legacy_accretion_ledger(tmp_path):
+    """Proteus.start(resume=True) refuses legacy helpfile when impacts are active."""
+    from proteus.accretion.common import ImpactEvent
+
+    p = _make_proteus_instance(tmp_path)
+    p.config.accretion.module = 'dummy'
+
+    ev1 = ImpactEvent(
+        time=10.0,
+        M_target_before=1e24,
+        M_impactor=1e23,
+        M_merged_after=1.1e24,
+        v_impact=1e4,
+        v_esc=1e4,
+        impact_parameter=0.5,
+        R_target_before=1e6,
+        R_impactor=1e5,
+        rho_target=3000,
+        rho_impactor=3000,
+        a_before=1.5e11,
+        a_after=1.5e11,
+        e_before=0.0,
+        e_after=0.0,
+    )
+
+    hf_df = _make_hf_df()
+    hf_df['M_accreted_rock'] = 1.0e23
+    hf_df['n_impacts_applied'] = 0.0
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                return_value=(hf_df, []),
+            )
+        )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.ZeroHelpfileRow', return_value={}))
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_int = MagicMock()
+        mock_int.ic = 1
+        mock_interior_t.return_value = mock_int
+        stack.enter_context(
+            patch('proteus.accretion.wrapper.init_accretion', return_value=[ev1])
+        )
+        stack.enter_context(patch('proteus.star.wrapper.init_star'))
+        stack.enter_context(patch('proteus.orbit.wrapper.init_orbit'))
+
+        with pytest.raises(RuntimeError, match='Resume refused') as excinfo:
+            p.start(resume=True, offline=True)
+
+        err = str(excinfo.value)
+        assert 'predates the impact counter' in err
+        assert 'runtime_helpfile.csv' in err
