@@ -25,11 +25,17 @@ def _parse_finite_number(x: object) -> float | None:
 
 
 def valid_morrigan(instance, attribute, value):
-    """The Morrigan module requires as many embryo masses as planets, all positive, and a selector value when the selector is a semi-major axis or planet id."""
+    """Validate and normalize Morrigan configuration.
+
+    The Morrigan module requires as many embryo masses as planets, all
+    positive, and a valid selector value when the selector is a semi-major
+    axis or planet id. Note: this validator mutates ``selector_value`` on
+    ``value`` in place to normalize its representation.
+    """
     if instance.module != 'morrigan':
         return
 
-    mor = instance.morrigan
+    mor = value
 
     if mor.masses and len(mor.masses) != mor.num_planets:
         raise ValueError(
@@ -52,20 +58,41 @@ def valid_morrigan(instance, attribute, value):
                 '`accretion.morrigan.selector_value` must be a finite positive number '
                 "when selector = 'semimajoraxis'"
             )
-        mor.selector_value = float(val)
+        mor.selector_value = val
 
     if mor.selector == 'id':
         if mor.selector_value is None:
             raise ValueError(
                 "`accretion.morrigan.selector_value` must be set (planet id) when selector = 'id'"
             )
-        val = _parse_finite_number(mor.selector_value)
-        if val is None or val < 0 or not val.is_integer():
+        raw = mor.selector_value
+        val_int: int | None = None
+        if isinstance(raw, bool) or not isinstance(raw, (numbers.Integral, numbers.Real, str)):
+            val_int = None
+        elif isinstance(raw, numbers.Integral):
+            try:
+                val_int = int(raw) if math.isfinite(float(raw)) else None
+            except OverflowError:
+                val_int = None
+        elif isinstance(raw, str):
+            try:
+                v = int(raw)
+                val_int = v if math.isfinite(float(v)) else None
+            except OverflowError:
+                val_int = None
+            except ValueError:
+                val_f = _parse_finite_number(raw)
+                val_int = int(val_f) if val_f is not None and val_f.is_integer() else None
+        elif isinstance(raw, numbers.Real):
+            val_f = _parse_finite_number(raw)
+            val_int = int(val_f) if val_f is not None and val_f.is_integer() else None
+
+        if val_int is None or val_int < 0:
             raise ValueError(
                 '`accretion.morrigan.selector_value` must be a finite non-negative integer '
                 "when selector = 'id'"
             )
-        mor.selector_value = int(val)
+        mor.selector_value = val_int
 
 
 @define

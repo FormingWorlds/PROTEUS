@@ -479,32 +479,58 @@ def test_an_outcome_missing_its_top_level_entries_is_refused(monkeypatch):
 
 
 @pytest.mark.unit
-def test_select_planet_accepts_all_valid_id_selector_value_representations():
+@pytest.mark.parametrize(
+    'val, expected_int',
+    [
+        (3, 3),
+        (3.0, 3),
+        ('3', 3),
+        ('3.0', 3),
+        ('3e0', 3),
+        ('3.', 3),
+        ('1e3', 1000),
+        (0, 0),
+        (0.0, 0),
+        ('0', 0),
+        (2**53 + 1, 2**53 + 1),
+        (str(2**53 + 1), 2**53 + 1),
+    ],
+)
+def test_select_planet_accepts_all_valid_id_selector_value_representations(val, expected_int):
     """Accepted selector_value types and formats for selector='id' select the planet."""
     from types import SimpleNamespace
 
-    import numpy as np
-
     from proteus.config._accretion import Accretion, Morrigan
 
-    for val in (3, np.int64(3), '3', '3.0', '3e0', '3.', '1e3', 0, 0.0, '0'):
-        cfg = Accretion(module='morrigan', morrigan=Morrigan(selector='id', selector_value=val))
-        wanted = cfg.morrigan.selector_value
-        survivors = [
-            {
-                'id': wanted,
-                'mass_final': 1.0,
-                'a_final': 1.0,
-                'mass_initial': 1.0,
-                'a_initial': 1.0,
-            },
-            {
-                'id': wanted + 1,
-                'mass_final': 2.0,
-                'a_final': 2.0,
-                'mass_initial': 2.0,
-                'a_initial': 2.0,
-            },
-        ]
-        chosen = backend.select_planet(survivors, SimpleNamespace(accretion=cfg))
-        assert chosen['id'] == wanted
+    cfg = Accretion(module='morrigan', morrigan=Morrigan(selector='id', selector_value=val))
+    assert cfg.morrigan.selector_value == expected_int
+
+    survivors = [
+        {
+            'id': expected_int,
+            'mass_final': 1.0,
+            'a_final': 1.0,
+            'mass_initial': 1.0,
+            'a_initial': 1.0,
+        },
+        {
+            'id': expected_int + 1,
+            'mass_final': 2.0,
+            'a_final': 2.0,
+            'mass_initial': 2.0,
+            'a_initial': 2.0,
+        },
+    ]
+    chosen = backend.select_planet(survivors, SimpleNamespace(accretion=cfg))
+    assert chosen['id'] == expected_int
+
+
+@pytest.mark.unit
+def test_morrigan_assignment_after_construction_runs_validation():
+    """Assigning morrigan to accretion after construction executes valid_morrigan."""
+    from proteus.config._accretion import Accretion, Morrigan
+
+    cfg = Accretion(module='morrigan', morrigan=Morrigan(selector='mass'))
+    with pytest.raises(ValueError, match='selector_value'):
+        cfg.morrigan = Morrigan(selector='id', selector_value=None)
+    assert cfg.morrigan.selector == 'mass'

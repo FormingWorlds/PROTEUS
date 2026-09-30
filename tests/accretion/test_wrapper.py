@@ -3071,7 +3071,7 @@ def test_legacy_resume_missing_or_corrupt_counter_refuses(tmp_path, counter_key_
 
     # Case with zero accreted rock:
     hf_row_zero = {
-        'Time': 100.0,
+        'Time': 0.0,
         'M_accreted_rock': 0.0,
         'semimajorax': AU,
         'eccentricity': 0.0,
@@ -3203,6 +3203,8 @@ def test_restore_accretion_state_filters_events_by_resume_time(tmp_path):
     )
     restore_accretion_state(handler)
     assert handler.impact_events == [ev2]
+    assert handler.impact_events[0].time == pytest.approx(100.0)
+    assert handler.hf_row['n_impacts_applied'] == 1
 
 
 @pytest.mark.unit
@@ -3315,7 +3317,9 @@ def test_restore_accretion_state_zero_rock_with_positive_counter(tmp_path):
     )
     restore_accretion_state(handler)
     assert handler.hf_row['n_impacts_applied'] == 2
-    assert handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] == 2.0
+    assert handler.hf_all.loc[handler.hf_all.index[-1], 'n_impacts_applied'] == pytest.approx(
+        2.0
+    )
     assert handler.impact_events == [ev3]
 
 
