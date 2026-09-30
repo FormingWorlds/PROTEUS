@@ -56,56 +56,72 @@ MERGE_SITES = [
 
 # Templated access sites whose loop domain cannot be recovered statically.
 # Values name domain lists; downstream code trims them against the schema.
-TEMPLATE_OVERRIDES: dict[tuple[str, str], tuple[str, ...]] = {
-    ('accretion/wrapper.py', '<?>_kg_total'): ('element_list',),
-    ('accretion/wrapper.py', '<?>_kg_atm'): ('element_list',),
-    ('atmos_chem/dummy.py', '<?>_vmr'): (
-        'H2O',
-        'CO2',
-        'N2',
-        'H2',
-        'CO',
-        'CH4',
-        'SO2',
-        'S2',
-        'H2S',
-        'NH3',
-        'O2',
+TEMPLATE_OVERRIDES: dict[tuple[str, str, str], tuple[str, ...]] = {
+    ('accretion/wrapper.py', '_partition_impactor_content', '<?>_kg_atm'): ('element_list',),
+    ('accretion/wrapper.py', '_partition_impactor_content', '<?>_kg_total'): ('element_list',),
+    ('accretion/wrapper.py', '_apply_volatile_consequences', '<?>_kg_total'): ('element_list',),
+    ('accretion/wrapper.py', '_restore_volatile_budgets', '<?>_kg_total'): ('element_list',),
+    ('escape/wrapper.py', 'calc_new_elements', '<?>_kg_total'): ('element_list',),
+    ('escape/wrapper.py', 'run_escape', '<?>_kg_total'): ('element_list',),
+    ('escape/common.py', 'calc_unfract_fluxes', 'esc_rate_<?>'): ('element_list',),
+    ('outgas/calliope.py', 'calc_target_masses', '<?>_kg_total'): ('element_list',),
+    ('outgas/atmodeller.py', '_populate_volatile_element_reservoirs', '<?>_kg_atm'): (
+        'element_list',
     ),
-    ('escape/wrapper.py', '<?>_kg_total'): ('element_list',),
-    ('escape/common.py', 'esc_rate_<?>'): ('element_list',),
-    ('interior_energetics/wrapper.py', '<?>_kg_total'): ('vol_element_list', 'noble_gases'),
-    ('interior_energetics/wrapper.py', '<?>_kg_liquid'): ('H2O', 'H2'),
-    ('interior_struct/zalmoxis.py', '<?>_kg_liquid'): ('H2O', 'H2'),
-    ('interior_struct/zalmoxis.py', '<?>_kg_solid'): ('H2O', 'H2'),
-    ('outgas/calliope.py', '<?>_kg_total'): ('element_list',),
-    ('outgas/atmodeller.py', '<?>_bar'): ('gas_list',),
-    ('outgas/atmodeller.py', '<?>_vmr'): ('gas_list',),
-    ('outgas/atmodeller.py', '<?>_kg_atm'): ('gas_list', 'element_list'),
-    ('outgas/atmodeller.py', '<?>_kg_liquid'): ('gas_list', 'element_list'),
-    ('outgas/atmodeller.py', '<?>_kg_solid'): ('gas_list', 'element_list'),
-    ('outgas/atmodeller.py', '<?>_kg_total'): ('gas_list', 'element_list'),
-    ('outgas/atmodeller.py', '<?>_mol_atm'): ('gas_list',),
-    ('outgas/atmodeller.py', '<?>_mol_liquid'): ('gas_list',),
-    ('outgas/atmodeller.py', '<?>_mol_solid'): ('gas_list',),
-    ('outgas/atmodeller.py', '<?>_mol_total'): ('gas_list',),
-    ('outgas/binodal.py', '<?>_bar'): ('gas_list',),
-    ('outgas/dummy.py', '<?>_bar'): ('gas_list',),
-    ('outgas/dummy.py', '<?>_vmr'): ('gas_list',),
-    ('outgas/dummy.py', '<?>_mol_atm'): ('gas_list',),
-    ('outgas/dummy.py', '<?>_mol_liquid'): ('gas_list',),
-    ('outgas/dummy.py', '<?>_mol_solid'): ('gas_list',),
-    ('outgas/dummy.py', '<?>_mol_total'): ('gas_list',),
-    ('outgas/dummy.py', '<?>_kg_atm'): ('gas_list', 'element_list'),
-    ('outgas/dummy.py', '<?>_kg_liquid'): ('gas_list', 'element_list'),
-    ('outgas/dummy.py', '<?>_kg_solid'): ('gas_list', 'element_list'),
-    ('outgas/dummy.py', '<?>_kg_total'): ('gas_list', 'element_list'),
-    ('outgas/lavatmos.py', '<?>_kg_atm'): ('gas_list', 'element_list'),
-    ('outgas/lavatmos.py', '<?>_bar'): ('vap_list',),
-    ('outgas/lavatmos.py', '<?>_vmr'): ('vap_list',),
-    ('outgas/wrapper.py', '<?>_kg_total'): ('element_list',),
-    ('outgas/wrapper.py', '<?>_kg_atm'): ('gas_list', 'element_list'),
-    ('utils/coupler.py', '<?>_kg_atm'): ('vol_gas_list',),
+    ('outgas/atmodeller.py', '_populate_volatile_element_reservoirs', '<?>_kg_liquid'): (
+        'element_list',
+    ),
+    ('outgas/atmodeller.py', '_populate_volatile_element_reservoirs', '<?>_kg_solid'): (
+        'element_list',
+    ),
+    ('outgas/atmodeller.py', '_total_volatile_oxygen_kg', '<?>_kg_atm'): ('gas_list',),
+    ('outgas/atmodeller.py', '_total_volatile_oxygen_kg', '<?>_kg_liquid'): ('gas_list',),
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_bar'): ('gas_list',),
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_vmr'): ('gas_list',),
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_kg_atm'): ('gas_list',),
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_kg_liquid'): (
+        'gas_list',
+    ),
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_kg_solid'): (
+        'gas_list',
+    ),
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_kg_total'): (
+        'gas_list',
+    ),
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_mol_atm'): ('gas_list',),
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_mol_liquid'): (
+        'gas_list',
+    ),
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_mol_solid'): (
+        'gas_list',
+    ),
+    ('outgas/atmodeller.py', 'calc_surface_pressures_atmodeller', '<?>_mol_total'): (
+        'gas_list',
+    ),
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_bar'): ('gas_list',),
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_kg_atm'): (
+        'gas_list',
+        'element_list',
+    ),
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_kg_liquid'): (
+        'gas_list',
+        'element_list',
+    ),
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_kg_solid'): (
+        'gas_list',
+        'element_list',
+    ),
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_kg_total'): (
+        'gas_list',
+        'element_list',
+    ),
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_mol_atm'): ('gas_list',),
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_mol_liquid'): ('gas_list',),
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_mol_solid'): ('gas_list',),
+    ('outgas/dummy.py', 'calc_surface_pressures_dummy', '<?>_mol_total'): ('gas_list',),
+    ('outgas/lavatmos.py', 'run_vapourisation', '<?>_bar'): ('vap_list',),
+    ('outgas/lavatmos.py', 'run_vapourisation', '<?>_vmr'): ('vap_list',),
+    ('outgas/lavatmos.py', 'run_vapourisation', '<?>_kg_atm'): ('element_list',),
 }
 
 # Dynamic-key writes that are not producers: save/restore of overridden
@@ -207,6 +223,19 @@ def _template_of(key_node) -> tuple[str, str, str] | None:
     return None
 
 
+def _target_name(target) -> str | None:
+    """The key-carrying variable name in a loop or comprehension target."""
+    if isinstance(target, ast.Name):
+        return target.id
+    if (
+        isinstance(target, (ast.Tuple, ast.List))
+        and target.elts
+        and isinstance(target.elts[0], ast.Name)
+    ):
+        return target.elts[0].id
+    return None
+
+
 class HfRowVisitor(ast.NodeVisitor):
     """Collect helpfile reads/writes in one file, tracking loop domains."""
 
@@ -215,26 +244,45 @@ class HfRowVisitor(ast.NodeVisitor):
         self.species = species
         self.func_stack: list[str] = []
         self.loop_domains: dict[str, str] = {}  # loop var -> domain-list name
+        self.module_constants: dict[str, list[str]] = {}
         self.local_vars: dict[str, ast.AST] = {}
         self.writes: list[tuple[str, str]] = []  # (key, function)
         self.reads: list[str] = []
-        self.unresolved: list[tuple[int, str, str]] = []  # (lineno, reason, kind)
+        self.unresolved: list[tuple[int, str, str, str]] = []  # (lineno, reason, kind, func)
 
     # -- context tracking ---------------------------------------------------
+
+    def visit_Module(self, node):
+        for stmt in node.body:
+            if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
+                target = stmt.targets[0]
+                if isinstance(target, ast.Name):
+                    dom = self._domain_of_iter(stmt.value)
+                    if dom:
+                        self.module_constants[target.id] = self._expand_domain(dom)
+        self.generic_visit(node)
+
+    def _invalidate_args(self, args: ast.arguments) -> None:
+        for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg):
+            if arg:
+                self.local_vars[arg.arg] = None
 
     def _visit_func(self, node):
         old_locals = dict(self.local_vars)
         self.func_stack.append(node.name)
-        a = node.args
-        for arg in (*a.posonlyargs, *a.args, *a.kwonlyargs, a.vararg, a.kwarg):
-            if arg:
-                self.local_vars[arg.arg] = None
+        self._invalidate_args(node.args)
         self.generic_visit(node)
         self.func_stack.pop()
         self.local_vars = old_locals
 
     visit_FunctionDef = _visit_func
     visit_AsyncFunctionDef = _visit_func
+
+    def visit_Lambda(self, node):
+        old_locals = dict(self.local_vars)
+        self._invalidate_args(node.args)
+        self.generic_visit(node)
+        self.local_vars = old_locals
 
     def _bind(self, name: str, value: ast.AST | None) -> None:
         """Track ``name`` as a constant string only on its first binding in scope."""
@@ -249,30 +297,43 @@ class HfRowVisitor(ast.NodeVisitor):
             self.local_vars[target] = None
         elif isinstance(target, ast.Name):
             self.local_vars[target.id] = None
+        elif isinstance(target, ast.Starred):
+            self._invalidate(target.value)
         elif isinstance(target, (ast.Tuple, ast.List)):
             for elt in target.elts:
                 self._invalidate(elt)
+        elif isinstance(target, ast.MatchAs):
+            if target.name:
+                self.local_vars[target.name] = None
+        elif isinstance(target, ast.MatchStar):
+            if target.name:
+                self.local_vars[target.name] = None
+        elif isinstance(target, ast.MatchMapping):
+            if target.rest:
+                self.local_vars[target.rest] = None
 
     def visit_Assign(self, node):
         for target in node.targets:
             if isinstance(target, ast.Name):
                 self._bind(target.id, node.value)
-            elif isinstance(target, (ast.Tuple, ast.List)):
+            else:
                 self._invalidate(target)
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node):
         if isinstance(node.target, ast.Name):
             self._bind(node.target.id, node.value)
+        else:
+            self._invalidate(node.target)
         self.generic_visit(node)
 
-    def visit_AugAssign(self, node):
+    def _visit_target(self, node):
         self._invalidate(node.target)
         self.generic_visit(node)
 
-    def visit_NamedExpr(self, node):
-        self._invalidate(node.target)
-        self.generic_visit(node)
+    visit_AugAssign = _visit_target
+    visit_NamedExpr = _visit_target
+    visit_comprehension = _visit_target
 
     def visit_withitem(self, node):
         self._invalidate(node.optional_vars)
@@ -282,44 +343,117 @@ class HfRowVisitor(ast.NodeVisitor):
         self._invalidate(node.name)
         self.generic_visit(node)
 
-    def visit_comprehension(self, node):
-        self._invalidate(node.target)
+    def visit_Delete(self, node):
+        for target in node.targets:
+            self._invalidate(target)
         self.generic_visit(node)
 
-    def visit_For(self, node):
-        added = []
-        target_names = []
-        if isinstance(node.target, ast.Name):
-            target_names = [node.target.id]
-        elif isinstance(node.target, ast.Tuple):
-            target_names = [e.id for e in node.target.elts if isinstance(e, ast.Name)]
-        for name in target_names:
-            self.local_vars[name] = None
-        domain = self._domain_of_iter(node.iter)
-        if domain and target_names:
-            # For tuple targets (e.g. `for e, mass in x.items()`) the first
-            # name carries the key.
-            self.loop_domains[target_names[0]] = domain
-            added.append(target_names[0])
+    def _visit_scope_directive(self, node):
+        for name in node.names:
+            self._invalidate(name)
+
+    visit_Global = _visit_scope_directive
+    visit_Nonlocal = _visit_scope_directive
+
+    def _visit_import(self, node):
+        for alias in node.names:
+            self._invalidate(alias.asname or alias.name)
+
+    visit_Import = _visit_import
+    visit_ImportFrom = _visit_import
+
+    def visit_MatchAs(self, node):
+        if node.name:
+            self.local_vars[node.name] = None
         self.generic_visit(node)
-        for name in added:
+
+    def visit_MatchStar(self, node):
+        if node.name:
+            self.local_vars[node.name] = None
+        self.generic_visit(node)
+
+    def visit_MatchMapping(self, node):
+        if node.rest:
+            self.local_vars[node.rest] = None
+        self.generic_visit(node)
+
+    def _visit_comp(self, node):
+        old_locals = dict(self.local_vars)
+        added_domains = []
+        for gen in node.generators:
+            domain = self._domain_of_iter(gen.iter)
+            target_name = _target_name(gen.target)
+            if domain and target_name:
+                self.loop_domains[target_name] = domain
+                added_domains.append(target_name)
+            self.visit(gen)
+        if isinstance(node, ast.DictComp):
+            self.visit(node.key)
+            self.visit(node.value)
+        else:
+            self.visit(node.elt)
+        for name in added_domains:
             self.loop_domains.pop(name, None)
+        self.local_vars = old_locals
+
+    visit_ListComp = _visit_comp
+    visit_SetComp = _visit_comp
+    visit_GeneratorExp = _visit_comp
+    visit_DictComp = _visit_comp
+
+    def _visit_for(self, node):
+        self._invalidate(node.target)
+        target_name = _target_name(node.target)
+        domain = self._domain_of_iter(node.iter)
+        added = False
+        if domain and target_name:
+            self.loop_domains[target_name] = domain
+            added = True
+        self.generic_visit(node)
+        if added:
+            self.loop_domains.pop(target_name, None)
+
+    visit_For = _visit_for
+    visit_AsyncFor = _visit_for
 
     def _domain_of_iter(self, iter_node) -> str | None:
-        if isinstance(iter_node, ast.Name) and iter_node.id in DOMAIN_LISTS:
-            return iter_node.id
+        if isinstance(iter_node, ast.Name):
+            if iter_node.id in DOMAIN_LISTS:
+                return iter_node.id
+            if iter_node.id in self.module_constants:
+                return 'literal:' + ','.join(self.module_constants[iter_node.id])
         if isinstance(iter_node, (ast.Tuple, ast.List)) and all(
             isinstance(e, ast.Constant) and isinstance(e.value, str) for e in iter_node.elts
         ):
             return 'literal:' + ','.join(e.value for e in iter_node.elts)
+        if isinstance(iter_node, ast.Dict) and all(
+            isinstance(k, ast.Constant) and isinstance(k.value, str) for k in iter_node.keys
+        ):
+            return 'literal:' + ','.join(k.value for k in iter_node.keys)
         if isinstance(iter_node, ast.Call):
             func = iter_node.func
             if isinstance(func, ast.Name) and func.id == 'expected_keys':
                 return 'registry:expected_keys'
             if isinstance(func, ast.Attribute) and func.attr in ('keys', 'items'):
-                inner = func.value
-                if isinstance(inner, ast.Name) and inner.id in DOMAIN_LISTS:
-                    return inner.id
+                inner_domain = self._domain_of_iter(func.value)
+                if inner_domain:
+                    return inner_domain
+            if (
+                isinstance(func, ast.Name)
+                and func.id in ('tuple', 'list', 'set')
+                and iter_node.args
+            ):
+                arg = iter_node.args[0]
+                if isinstance(arg, (ast.GeneratorExp, ast.ListComp, ast.SetComp)):
+                    return self._domain_of_iter(arg.generators[0].iter)
+        if isinstance(iter_node, (ast.GeneratorExp, ast.ListComp, ast.SetComp)):
+            return self._domain_of_iter(iter_node.generators[0].iter)
+        if isinstance(iter_node, ast.BinOp) and isinstance(iter_node.op, ast.Add):
+            left = self._domain_of_iter(iter_node.left)
+            right = self._domain_of_iter(iter_node.right)
+            if left and right:
+                vals = self._expand_domain(left) + self._expand_domain(right)
+                return 'literal:' + ','.join(vals)
         return None
 
     # -- subscripts ---------------------------------------------------------
@@ -329,8 +463,13 @@ class HfRowVisitor(ast.NodeVisitor):
         if name is None:
             self.generic_visit(node)
             return
+        if name in FRAME_NAMES and isinstance(
+            node.slice, (ast.Compare, ast.Slice, ast.UnaryOp, ast.BinOp)
+        ):
+            self.generic_visit(node)
+            return
         is_write = isinstance(node.ctx, (ast.Store, ast.AugStore)) and name in ROW_NAMES
-        is_get = isinstance(node.ctx, ast.Load) and name in ROW_NAMES
+        is_get = isinstance(node.ctx, ast.Load) and name in ROW_NAMES | FRAME_NAMES
         self._record(node.slice, node.lineno, is_write, is_get=is_get)
         self.generic_visit(node)
 
@@ -368,6 +507,7 @@ class HfRowVisitor(ast.NodeVisitor):
     def _resolve_keys(
         self, key_node, lineno: int, is_write: bool, is_get: bool = False
     ) -> list[str]:
+        func = self.func_stack[-1] if self.func_stack else '<module>'
         if (
             is_get
             and isinstance(key_node, ast.Name)
@@ -377,19 +517,21 @@ class HfRowVisitor(ast.NodeVisitor):
         if isinstance(key_node, ast.Constant):
             return [key_node.value] if isinstance(key_node.value, str) else []
         template = _template_of(key_node)
-        reason = None
         if template is not None:
             prefix, var, suffix = template
             domain = self.loop_domains.get(var)
             if domain is not None:
                 return [f'{prefix}{v}{suffix}' for v in self._expand_domain(domain)]
-            override = TEMPLATE_OVERRIDES.get((self.rel_file, f'{prefix}<?>{suffix}'))
+            override = TEMPLATE_OVERRIDES.get((self.rel_file, func, f'{prefix}<?>{suffix}'))
             if override is not None:
-                values = {
-                    v
-                    for item in override
-                    for v in (self.species[item] if item in self.species else [item])
-                }
+                values = set()
+                for item in override:
+                    if item not in self.species:
+                        raise ScanError(
+                            f'{self.rel_file}::{func}: unknown domain name "{item}" '
+                            f'in TEMPLATE_OVERRIDES'
+                        )
+                    values.update(self.species[item])
                 return [f'{prefix}{v}{suffix}' for v in sorted(values)]
             reason = f'template {prefix}<{var}>{suffix}'
         elif isinstance(key_node, ast.Name) and key_node.id in self.loop_domains:
@@ -398,7 +540,6 @@ class HfRowVisitor(ast.NodeVisitor):
             reason = f'dynamic key {ast.unparse(key_node)}'
 
         if (is_write or is_get) and not self._suppressed():
-            func = self.func_stack[-1] if self.func_stack else '<module>'
             self.unresolved.append((lineno, reason, 'write' if is_write else 'read', func))
         return []
 
@@ -499,13 +640,13 @@ def scan_tree() -> dict:
     """Scan src/proteus and return writes, reads, and unresolved events.
 
     Returns ``{'writes': [(rel_file, function, key)], 'reads':
-    [(rel_file, key)], 'unresolved': [(rel_file, lineno, reason, kind)]}``.
+    [(rel_file, key)], 'unresolved': [(rel_file, lineno, reason, kind, func)]}``.
     """
     species = _species_lists()
     merge_functions = {(f, fn) for f, fn, _renames in MERGE_SITES}
     writes: list[tuple[str, str, str]] = []
     reads: list[tuple[str, str]] = []
-    unresolved: list[tuple[str, int, str, str]] = []
+    unresolved: list[tuple[str, int, str, str, str]] = []
 
     for path in sorted(SRC.rglob('*.py')):
         rel = str(path.relative_to(SRC))

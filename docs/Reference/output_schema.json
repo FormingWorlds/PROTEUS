@@ -741,6 +741,7 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
         "interior_struct"
       ]
     },
@@ -894,6 +895,7 @@
         "atmos_chem",
         "atmos_clim",
         "interior_energetics",
+        "interior_struct",
         "main loop",
         "plot",
         "utils"
@@ -942,6 +944,7 @@
       "consumers": [
         "atmos_clim",
         "interior_energetics",
+        "interior_struct",
         "main loop",
         "outgas",
         "plot",
@@ -2266,7 +2269,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "atmos_clim"
+      ]
     },
     {
       "name": "R_obs",
@@ -2316,6 +2321,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "escape"
       ]
     },
@@ -2339,7 +2345,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "atmos_clim"
+      ]
     },
     {
       "name": "rho_obs",
@@ -2897,8 +2905,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -2985,9 +2992,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "H2O_kg_atm",
@@ -3184,8 +3189,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -3239,8 +3243,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -3327,9 +3330,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "CO2_kg_atm",
@@ -3523,8 +3524,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -3578,8 +3578,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -3666,9 +3665,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "O2_kg_atm",
@@ -3862,8 +3859,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -3921,8 +3917,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -4021,9 +4016,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "H2_kg_atm",
@@ -4238,8 +4231,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -4293,8 +4285,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -4381,9 +4372,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "CH4_kg_atm",
@@ -4577,8 +4566,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -4632,8 +4620,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -4720,9 +4707,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "CO_kg_atm",
@@ -4916,8 +4901,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -4971,8 +4955,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -5059,9 +5042,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "N2_kg_atm",
@@ -5255,8 +5236,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -5310,8 +5290,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -5398,9 +5377,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "NH3_kg_atm",
@@ -5594,8 +5571,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -5649,8 +5625,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -5737,9 +5712,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "S2_kg_atm",
@@ -5933,8 +5906,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -5988,8 +5960,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -6076,9 +6047,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "SO2_kg_atm",
@@ -6272,8 +6241,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -6327,8 +6295,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -6415,9 +6382,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "H2S_kg_atm",
@@ -6611,8 +6576,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -6666,8 +6630,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -6754,9 +6717,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "He_kg_atm",
@@ -6892,8 +6853,7 @@
         "escape",
         "interior_energetics",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -6966,8 +6926,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -7021,8 +6980,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -7109,9 +7067,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Ne_kg_atm",
@@ -7247,8 +7203,7 @@
         "escape",
         "interior_energetics",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -7321,8 +7276,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -7376,8 +7330,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -7464,9 +7417,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Ar_kg_atm",
@@ -7602,8 +7553,7 @@
         "escape",
         "interior_energetics",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -7676,8 +7626,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -7731,8 +7680,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -7819,9 +7767,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Kr_kg_atm",
@@ -7957,8 +7903,7 @@
         "escape",
         "interior_energetics",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -8031,8 +7976,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -8086,8 +8030,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -8174,9 +8117,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Xe_kg_atm",
@@ -8312,8 +8253,7 @@
         "escape",
         "interior_energetics",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -8386,8 +8326,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -8441,8 +8380,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -8529,9 +8467,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "SiO_kg_atm",
@@ -8723,8 +8659,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -8778,8 +8713,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -8866,9 +8800,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "SiO2_kg_atm",
@@ -9060,8 +8992,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -9115,8 +9046,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -9203,9 +9133,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Si_kg_atm",
@@ -9339,8 +9267,7 @@
         "accretion",
         "escape",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -9413,8 +9340,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -9468,8 +9394,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -9556,9 +9481,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Na_kg_atm",
@@ -9692,8 +9615,7 @@
         "accretion",
         "escape",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -9766,8 +9688,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -9821,8 +9742,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -9909,9 +9829,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "K_kg_atm",
@@ -10045,8 +9963,7 @@
         "accretion",
         "escape",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -10119,8 +10036,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -10174,8 +10090,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -10262,9 +10177,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Ti_kg_atm",
@@ -10398,8 +10311,7 @@
         "accretion",
         "escape",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -10472,8 +10384,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -10527,8 +10438,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -10615,9 +10525,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "TiO_kg_atm",
@@ -10809,8 +10717,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -10864,8 +10771,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -10952,9 +10858,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "TiO2_kg_atm",
@@ -11146,8 +11050,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -11201,8 +11104,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -11289,9 +11191,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Mg_kg_atm",
@@ -11425,8 +11325,7 @@
         "accretion",
         "escape",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -11499,8 +11398,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -11554,8 +11452,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -11642,9 +11539,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "MgO_kg_atm",
@@ -11836,8 +11731,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -11891,8 +11785,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -11979,9 +11872,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Al_kg_atm",
@@ -12115,8 +12006,7 @@
         "accretion",
         "escape",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -12189,8 +12079,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -12244,8 +12133,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -12332,9 +12220,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "HAlO2_kg_atm",
@@ -12526,8 +12412,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -12581,8 +12466,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -12669,9 +12553,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "SiH_kg_atm",
@@ -12863,8 +12745,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -12918,8 +12799,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -13006,9 +12886,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "SiH4_kg_atm",
@@ -13200,8 +13078,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -13255,8 +13132,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -13343,9 +13219,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Fe_kg_atm",
@@ -13479,8 +13353,7 @@
         "accretion",
         "escape",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -13553,8 +13426,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -13608,8 +13480,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -13696,9 +13567,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "FeO_kg_atm",
@@ -13890,8 +13759,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -13945,8 +13813,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -14033,9 +13900,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "FeO2H2_kg_atm",
@@ -14227,8 +14092,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -14282,8 +14146,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -14370,9 +14233,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "CaO_kg_atm",
@@ -14564,8 +14425,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -14619,8 +14479,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -14707,9 +14566,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "NaOH_kg_atm",
@@ -14901,8 +14758,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -14956,8 +14812,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -15044,9 +14899,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Ca_kg_atm",
@@ -15180,8 +15033,7 @@
         "accretion",
         "escape",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -15254,8 +15106,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -15309,8 +15160,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -15397,9 +15247,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "KOH_kg_atm",
@@ -15591,8 +15439,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -15646,8 +15493,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -15734,9 +15580,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "V_kg_atm",
@@ -15870,8 +15714,7 @@
         "accretion",
         "escape",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -15944,8 +15787,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -15999,8 +15841,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -16087,9 +15928,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Mg2_kg_atm",
@@ -16281,8 +16120,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -16336,8 +16174,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -16424,9 +16261,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "VO_kg_atm",
@@ -16618,8 +16453,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -16673,8 +16507,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -16761,9 +16594,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "AlO_kg_atm",
@@ -16955,8 +16786,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -17010,8 +16840,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -17098,9 +16927,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "Na2_kg_atm",
@@ -17292,8 +17119,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -17347,8 +17173,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -17435,9 +17260,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "plot"
-      ]
+      "consumers": []
     },
     {
       "name": "NaO_kg_atm",
@@ -17629,8 +17452,7 @@
         }
       ],
       "consumers": [
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -17719,9 +17541,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "outgas"
-      ]
+      "consumers": []
     },
     {
       "name": "H_kg_liquid",
@@ -17771,10 +17591,6 @@
           "condition": "always"
         },
         {
-          "file": "src/proteus/outgas/atmodeller.py",
-          "condition": "outgas.module = \"atmodeller\""
-        },
-        {
           "file": "src/proteus/outgas/calliope.py",
           "condition": "outgas.module = \"calliope\""
         },
@@ -17792,8 +17608,7 @@
         "escape",
         "interior_energetics",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -17856,9 +17671,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "outgas"
-      ]
+      "consumers": []
     },
     {
       "name": "O_kg_liquid",
@@ -17925,8 +17738,7 @@
         "escape",
         "interior_energetics",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -17989,9 +17801,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "outgas"
-      ]
+      "consumers": []
     },
     {
       "name": "C_kg_liquid",
@@ -18017,9 +17827,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "outgas"
-      ]
+      "consumers": []
     },
     {
       "name": "C_kg_total",
@@ -18035,10 +17843,6 @@
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/atmodeller.py",
-          "condition": "outgas.module = \"atmodeller\""
         },
         {
           "file": "src/proteus/outgas/calliope.py",
@@ -18058,8 +17862,7 @@
         "escape",
         "interior_energetics",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -18122,9 +17925,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "outgas"
-      ]
+      "consumers": []
     },
     {
       "name": "N_kg_liquid",
@@ -18150,9 +17951,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "outgas"
-      ]
+      "consumers": []
     },
     {
       "name": "N_kg_total",
@@ -18168,10 +17967,6 @@
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/atmodeller.py",
-          "condition": "outgas.module = \"atmodeller\""
         },
         {
           "file": "src/proteus/outgas/calliope.py",
@@ -18191,8 +17986,7 @@
         "escape",
         "interior_energetics",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -18255,9 +18049,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "outgas"
-      ]
+      "consumers": []
     },
     {
       "name": "S_kg_liquid",
@@ -18283,9 +18075,7 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "outgas"
-      ]
+      "consumers": []
     },
     {
       "name": "S_kg_total",
@@ -18301,10 +18091,6 @@
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
-        },
-        {
-          "file": "src/proteus/outgas/atmodeller.py",
-          "condition": "outgas.module = \"atmodeller\""
         },
         {
           "file": "src/proteus/outgas/calliope.py",
@@ -18324,8 +18110,7 @@
         "escape",
         "interior_energetics",
         "interior_struct",
-        "outgas",
-        "plot"
+        "outgas"
       ]
     },
     {
@@ -22189,7 +21974,9 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "atmos_clim"
+      ]
     },
     {
       "name": "g_xuv",
@@ -22215,7 +22002,9 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [
+        "atmos_clim"
+      ]
     },
     {
       "name": "cs_xuv",
@@ -23720,13 +23509,6 @@
       "function": "calc_new_elements"
     },
     {
-      "file": "src/proteus/interior_struct/zalmoxis.py",
-      "line": 3267,
-      "kind": "read",
-      "reason": "dynamic key k",
-      "function": "zalmoxis_solver"
-    },
-    {
       "file": "src/proteus/observe/petitRADTRANS.py",
       "line": 329,
       "kind": "read",
@@ -23753,6 +23535,13 @@
       "kind": "read",
       "reason": "dynamic key key",
       "function": "calc_surface_pressures_atmodeller"
+    },
+    {
+      "file": "src/proteus/plot/cpl_global.py",
+      "line": 207,
+      "kind": "read",
+      "reason": "dynamic key k",
+      "function": "plot_global"
     },
     {
       "file": "src/proteus/plot/cpl_orbit.py",

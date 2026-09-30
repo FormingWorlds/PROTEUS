@@ -121,11 +121,11 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
         'src/proteus/escape/common.py::calc_unfract_fluxes:dynamic key e + key',
         "src/proteus/escape/wrapper.py::calc_new_elements:dynamic key f'{e}{key}'",
         "src/proteus/escape/wrapper.py::escapable_mass:dynamic key f'{e}{key}'",
-        'src/proteus/interior_struct/zalmoxis.py::zalmoxis_solver:dynamic key k',
         'src/proteus/observe/petitRADTRANS.py::_get_mix:dynamic key key',
         "src/proteus/outgas/atmodeller.py::_populate_volatile_element_reservoirs:dynamic key f'{sp}_kg_{r}'",
         'src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller:dynamic key key',
         'src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller:dynamic key key',
+        'src/proteus/plot/cpl_global.py::plot_global:dynamic key k',
         'src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot:dynamic key ecc_col',
         'src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot:dynamic key sma_col',
     ]
@@ -137,10 +137,27 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
         assert event['kind'] == 'read'
         path = _gor.REPO_ROOT / event['file']
         assert path.is_file(), f'{event["file"]} does not exist'
-        lines = path.read_text().splitlines()
+        source = path.read_text()
+        lines = source.splitlines()
         assert 1 <= event['line'] <= len(lines), (
             f'Line {event["line"]} out of range in {event["file"]}'
         )
+        tree = ast.parse(source)
+        nodes_at_line = [
+            n for n in ast.walk(tree) if getattr(n, 'lineno', None) == event['line']
+        ]
+        assert len(nodes_at_line) > 0
+        reason_text = event['reason']
+        if reason_text.startswith('template <'):
+            core = reason_text.removeprefix('template <')
+            var_part, _, suffix_part = core.partition('>')
+            assert any(
+                var_part in ast.unparse(n) and suffix_part in ast.unparse(n)
+                for n in nodes_at_line
+            )
+        elif reason_text.startswith('dynamic key '):
+            expr_str = reason_text.removeprefix('dynamic key ')
+            assert any(expr_str in ast.unparse(n) for n in nodes_at_line)
     # The rendered page mirrors that state explicitly.
     page = _gor.render(matrix)
     assert 'Reads with computed keys' in page
@@ -230,14 +247,17 @@ def test_declared_scan_tables_are_all_live(monkeypatch):
     for rel, _line, reason, *_ in events:
         by_file.setdefault(rel, []).append(reason)
 
-    for rel, pattern in overrides:
+    for rel, func, pattern in overrides:
         needle = pattern.replace('<?>', '<')  # events name the real variable
         prefix, _sep, suffix = needle.partition('<')
         matched = any(
             reason.startswith(f'template {prefix}') and reason.endswith(suffix)
-            for reason in by_file.get(rel, [])
+            for r_rel, _line, reason, _kind, r_func in events
+            if r_rel == rel and r_func == func
         )
-        assert matched, f'TEMPLATE_OVERRIDES entry ({rel}, {pattern}) matches no access site'
+        assert matched, (
+            f'TEMPLATE_OVERRIDES entry ({rel}, {func}, {pattern}) matches no access site'
+        )
 
     for rel, _function in suppressed:
         assert by_file.get(rel), f'SUPPRESSED_DYNAMIC_WRITES names {rel} but no event arises'
@@ -262,8 +282,87 @@ def test_declared_scan_tables_are_all_live(monkeypatch):
             'def f(hf_row, k):\n    return hf_row[k]\n',
             'dynamic key k',
         ),
+        (
+            'def f(hf_row):\n    k = "a"\n    k = dyn()\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row):\n    k = "a"\n    k += "b"\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row):\n    k = "a"\n    if (k := dyn()):\n        pass\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row):\n    k = "a"\n    k: int = 1\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row, it):\n    k = "a"\n    for k in it:\n        pass\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'async def f(hf_row, it):\n    k = "a"\n    async for k in it:\n        pass\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row, ctx):\n    k = "a"\n    with ctx as k:\n        pass\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'async def f(hf_row, ctx):\n    k = "a"\n    async with ctx as k:\n        pass\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row):\n    k = "a"\n    try:\n        pass\n    except Exception as k:\n        pass\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row, it):\n    k = "a"\n    _ = [hf_row.get(k) for k in it]\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row, val):\n    k = "a"\n    match val:\n        case k:\n            pass\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row, val):\n    k = "a"\n    match val:\n        case [*k]:\n            pass\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row, val):\n    k = "a"\n    match val:\n        case {1: k}:\n            pass\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row, pair):\n    k = "a"\n    k, *other = pair\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
+        (
+            'def f(hf_row):\n    k = "a"\n    del k\n    return hf_row.get(k)\n',
+            'dynamic key k',
+        ),
     ],
-    ids=['get_var', 'get_template', 'subscript_var'],
+    ids=[
+        'get_var',
+        'get_template',
+        'subscript_var',
+        'assign',
+        'augassign',
+        'walrus',
+        'annassign',
+        'for',
+        'async_for',
+        'with',
+        'async_with',
+        'except',
+        'comprehension',
+        'match_as',
+        'match_star',
+        'match_mapping',
+        'unpack_starred',
+        'del',
+    ],
 )
 def test_computed_key_reads_reported_as_unresolved(code, reason):
     """Variable and unexpanded template reads cannot be attributed statically
@@ -275,55 +374,51 @@ def test_computed_key_reads_reported_as_unresolved(code, reason):
     assert visitor.unresolved[0][1:3] == (reason, 'read')
 
 
-def test_constant_binding_invalidated_by_augassign():
-    """An augmented assignment invalidates a constant binding in the helpfile scanner."""
-    code = 'def f(hf_row):\n    k = "a"\n    k += "b"\n    return hf_row.get(k)\n'
-    tree = ast.parse(code)
-    visitor = _scan.HfRowVisitor('test_file.py', {})
-    visitor.visit(tree)
+def test_frame_subscripts_reported_consistently_with_row_subscripts():
+    """Frame subscripts report dynamic column keys and ignore row filters and slices."""
+    code_dyn = 'def f(hf, k):\n    return hf[k]\n'
+    visitor = _scan.HfRowVisitor('test.py', {})
+    visitor.visit(ast.parse(code_dyn))
     assert len(visitor.unresolved) == 1
     assert visitor.unresolved[0][1:3] == ('dynamic key k', 'read')
-    assert visitor.reads == []
+
+    code_mask = (
+        'def f(hf):\n    _ = hf[hf["Time"] > 0]\n    _ = hf[~hf["flag"]]\n    _ = hf[1:5]\n'
+    )
+    visitor_mask = _scan.HfRowVisitor('test.py', {})
+    visitor_mask.visit(ast.parse(code_mask))
+    assert visitor_mask.unresolved == []
 
 
-def test_constant_binding_invalidated_by_walrus():
-    """A walrus expression invalidates a constant binding in the helpfile scanner."""
-    code = 'def f(hf_row):\n    k = "a"\n    if (k := func()):\n        return hf_row.get(k)\n'
-    tree = ast.parse(code)
-    visitor = _scan.HfRowVisitor('test_file.py', {})
-    visitor.visit(tree)
-    assert len(visitor.unresolved) == 1
-    assert visitor.unresolved[0][1:3] == ('dynamic key k', 'read')
-    assert visitor.reads == []
-
-
-def test_template_overrides_match_imported_loop_constants():
-    """Each template override expansion equals the exact imported loop domain."""
-    from proteus.atmos_chem.dummy import _PARENT_SPECIES
-    from proteus.interior_energetics.wrapper import _COMPOSITION_SENTINEL_SPECIES
-    from proteus.interior_struct.zalmoxis import _VOLATILE_EOS_MAP
-    from proteus.utils.constants import noble_gases, vol_element_list, vol_gas_list
-
+def test_template_overrides_are_valid_and_consumed():
+    """Each template override names valid species lists and is consumed in the scan."""
     species = _scan._species_lists()
 
-    def expand(override):
-        return {v for item in override for v in (species[item] if item in species else [item])}
+    # 1. Structural validity: 3-tuple keys, valid species domains
+    for key, domains in _scan.TEMPLATE_OVERRIDES.items():
+        assert len(key) == 3, f'Expected 3-tuple key, got {key}'
+        rel, func, pattern = key
+        assert pattern.count('<?>') == 1, f'Invalid pattern {pattern}'
+        for d in domains:
+            assert d in species, f'Domain {d} not in species lists for {key}'
 
-    zal_liq = _scan.TEMPLATE_OVERRIDES[('interior_struct/zalmoxis.py', '<?>_kg_liquid')]
-    zal_sol = _scan.TEMPLATE_OVERRIDES[('interior_struct/zalmoxis.py', '<?>_kg_solid')]
-    assert expand(zal_liq) == set(_VOLATILE_EOS_MAP.keys())
-    assert expand(zal_sol) == set(_VOLATILE_EOS_MAP.keys())
+    # 2. Consumption: every single declared override must be matched and consumed
+    class TrackingDict(dict):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.used = {k: 0 for k in self}
 
-    sentinel = _scan.TEMPLATE_OVERRIDES[('interior_energetics/wrapper.py', '<?>_kg_liquid')]
-    assert expand(sentinel) == set(_COMPOSITION_SENTINEL_SPECIES)
+        def get(self, key, default=None):
+            if key in self.used:
+                self.used[key] += 1
+            return super().get(key, default)
 
-    inte_ele = _scan.TEMPLATE_OVERRIDES[('interior_energetics/wrapper.py', '<?>_kg_total')]
-    assert expand(inte_ele) == set(vol_element_list) | set(noble_gases)
-
-    dummy_parent = _scan.TEMPLATE_OVERRIDES[('atmos_chem/dummy.py', '<?>_vmr')]
-    assert expand(dummy_parent) == set(_PARENT_SPECIES)
-
-    coupler_gas = _scan.TEMPLATE_OVERRIDES[('utils/coupler.py', '<?>_kg_atm')]
-    assert expand(coupler_gas) == set(vol_gas_list)
-
-    assert ('escape/boreas.py', '<?>_vmr_xuv') not in _scan.TEMPLATE_OVERRIDES
+    t_dict = TrackingDict(_scan.TEMPLATE_OVERRIDES)
+    orig_overrides = _scan.TEMPLATE_OVERRIDES
+    try:
+        _scan.TEMPLATE_OVERRIDES = t_dict
+        _scan.scan_tree()
+        unconsumed = [k for k, count in t_dict.used.items() if count == 0]
+        assert unconsumed == [], f'Unconsumed TEMPLATE_OVERRIDES entries: {unconsumed}'
+    finally:
+        _scan.TEMPLATE_OVERRIDES = orig_overrides
