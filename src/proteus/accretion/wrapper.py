@@ -130,28 +130,18 @@ def _current_orbit(hf_row: dict, config: Config) -> tuple[float, float]:
     tuple of float
         Current semi-major axis in metres [m] and eccentricity [1].
     """
-    raw_a = hf_row.get('semimajorax')
-    try:
-        val_a = float(raw_a) if raw_a is not None else None
-    except (ValueError, TypeError):
-        val_a = None
 
-    if val_a is None or not math.isfinite(val_a) or val_a <= 0.0:
-        base_a = float(config.orbit.semimajoraxis) * AU
-        base_e = float(config.orbit.eccentricity)
-    else:
-        base_a = val_a
-        raw_e = hf_row.get('eccentricity')
+    def _num(key: str) -> float:
         try:
-            val_e = float(raw_e) if raw_e is not None else None
+            return float(hf_row.get(key))  # type: ignore[arg-type]
         except (ValueError, TypeError):
-            val_e = None
-        if val_e is None or not math.isfinite(val_e) or val_e < 0.0:
-            base_e = float(config.orbit.eccentricity)
-        else:
-            base_e = val_e
+            return float('nan')
 
-    return base_a, base_e
+    a, e = _num('semimajorax'), _num('eccentricity')
+    e_cfg = float(config.orbit.eccentricity)
+    if not (math.isfinite(a) and a > 0.0):
+        return float(config.orbit.semimajoraxis) * AU, e_cfg
+    return a, (e if math.isfinite(e) and e >= 0.0 else e_cfg)
 
 
 def restore_accretion_state(handler: Proteus) -> None:
@@ -387,9 +377,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     )
     f_loss = _impact_loss_fraction(config, hf_row, event)
     strip = _target_strip_amounts(config, hf_row, f_loss)
-    content = _impactor_volatile_content(
-        config, handler.hf_all, event, hf_row=getattr(handler, 'hf_row', None)
-    )
+    content = _impactor_volatile_content(config, handler.hf_all, event, hf_row=hf_row)
     delivered, impactor_lost = _partition_impactor_content(config, hf_row, content, f_loss)
 
     # Snapshot volatile budgets before the structure solve to prevent ppmw
