@@ -164,7 +164,7 @@ Cross-field constraints enforced when the config file loads:
 - The timeline accretion module requires a path to an impact timeline file.
 - Refuse a volatile budget that exceeds the impactor's own mass.
 - Refuse ppmw budgets that the selected content mode would ignore.
-- The Morrigan module requires as many embryo masses as planets, all positive, and a selector value when the selector is a semi-major axis or planet id.
+- Validate and normalize Morrigan configuration.
 <!-- END GENERATED: config-constraints accretion -->
 
  [^cite-kimura2025]: Kimura, T., Hoshino, H., Kokubo, E., Matsumoto, Y. & Ikoma, M., *[Semi-analytical model for the dynamical evolution of planetary systems via giant impacts](https://doi.org/10.3847/1538-4357/ade992)*, The Astrophysical Journal, 989, 109, 2025.

@@ -10861,10 +10861,9 @@
         "accretion.morrigan"
       ],
       "touches": [
-        "module",
-        "morrigan"
+        "module"
       ],
-      "doc": "The Morrigan module requires as many embryo masses as planets, all positive, and a selector value when the selector is a semi-major axis or planet id."
+      "doc": "Validate and normalize Morrigan configuration."
     },
     {
       "validator": "valid_aerosols_enabled",

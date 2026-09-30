@@ -46,7 +46,8 @@ HEADER_NOTE = (
     'configuration that actually writes each column. The "Read by" column '
     'names modules that consume each column, and can over-approximate when '
     'consumers read keys through variable or template loops, or under-approximate '
-    'when consumers read keys dynamically at runtime through computed keys.'
+    'when consumers read keys dynamically at runtime through computed keys. '
+    'The "(possible)" label marks consumers that read columns only for specific species.'
 )
 
 TOUCHED_PATTERNS: dict[tuple[str, str], str] = {
@@ -132,27 +133,33 @@ def build_matrix() -> dict:
         if entry not in bucket:
             bucket.append(entry)
 
-    consumers: dict[str, set[str]] = {}
+    consumers_definite: dict[str, set[str]] = {}
+    consumers_possible: dict[str, set[str]] = {}
     for rel_file, key, is_possible in scan['reads']:
         module = _consumer_module(rel_file)
-        tag = f'{module} (possible)' if is_possible else module
-        consumers.setdefault(key, set()).add(tag)
+        if is_possible:
+            consumers_possible.setdefault(key, set()).add(module)
+        else:
+            consumers_definite.setdefault(key, set()).add(module)
 
-    for key, mods in consumers.items():
-        for mod in list(mods):
-            if mod.endswith(' (possible)') and mod.removesuffix(' (possible)') in mods:
-                mods.remove(mod)
+    for key, poss in consumers_possible.items():
+        poss -= consumers_definite.get(key, set())
 
     keys = []
     for record in schema:
         name = record['name']
+        all_consumers = sorted(
+            consumers_definite.get(name, set()) | consumers_possible.get(name, set())
+        )
+        possible_for_key = sorted(consumers_possible.get(name, set()))
         keys.append(
             {
                 **record,
                 'producers': sorted(
                     producers.get(name, []), key=lambda p: (p['file'], p['condition'])
                 ),
-                'consumers': sorted(consumers.get(name, set())),
+                'consumers': all_consumers,
+                'consumers_possible': possible_for_key,
             }
         )
     return {
@@ -193,6 +200,18 @@ def _producer_cells(producers: list[dict]) -> tuple[str, str]:
     return '<br>'.join(f'`{f}`' for f in files), '; '.join(conditions)
 
 
+def _consumer_cells(key: dict) -> str:
+    """Format consumers with (possible) annotations where applicable."""
+    mods = []
+    possible = set(key.get('consumers_possible', []))
+    for mod in key.get('consumers', []):
+        if mod in possible:
+            mods.append(f'{mod} (possible)')
+        else:
+            mods.append(mod)
+    return ', '.join(mods) if mods else ' '
+
+
 def render(matrix: dict) -> str:
     lines = [GENERATED_NOTE, HEADER_NOTE]
     groups: dict[str, list[dict]] = {}
@@ -207,7 +226,7 @@ def render(matrix: dict) -> str:
         for key in keys:
             producer, condition = _producer_cells(key['producers'])
             unit = f'`{key["unit"]}`' if key['unit'] else ' '
-            readers = ', '.join(key['consumers']) if key['consumers'] else ' '
+            readers = _consumer_cells(key)
             description = key['description'].replace('|', '\\|')
             lines.append(
                 f'| `{key["name"]}` | {unit} | {description} | {producer} '
