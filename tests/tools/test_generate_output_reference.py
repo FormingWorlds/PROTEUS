@@ -445,6 +445,42 @@ def test_declared_scan_tables_are_all_live(monkeypatch):
             'NAMES = ("a",)\nimport NAMES\ndef f(hf_row):\n    for k in NAMES:\n        hf_row.get(k)\n',
             'dynamic key k',
         ),
+        (
+            'K = "a"\ndef f(hf_row):\n    return hf_row.get(K)\nfor K in it:\n    pass\n',
+            'dynamic key K',
+        ),
+        (
+            'K = "a"\ndef f(hf_row):\n    return hf_row.get(K)\nif (K := dyn()):\n    pass\n',
+            'dynamic key K',
+        ),
+        (
+            'K = "a"\ndef f(hf_row):\n    return hf_row.get(K)\ndef g():\n    global K\n',
+            'dynamic key K',
+        ),
+        (
+            'K = "a"\ndef f(hf_row):\n    return hf_row.get(K)\ndel K\n',
+            'dynamic key K',
+        ),
+        (
+            'NAMES = ["a", "b"]\ndef f(hf_row):\n    for k in NAMES:\n        hf_row.get(k)\nNAMES[0] = "c"\n',
+            'dynamic key k',
+        ),
+        (
+            'K = "a"\ndef f(hf_row):\n    return hf_row.get(K)\nwith ctx as K:\n    pass\n',
+            'dynamic key K',
+        ),
+        (
+            'K = "a"\ndef f(hf_row):\n    return hf_row.get(K)\ntry:\n    pass\nexcept ValueError as K:\n    pass\n',
+            'dynamic key K',
+        ),
+        (
+            'K = "a"\ndef f(hf_row):\n    return hf_row.get(K)\nmatch v:\n    case K:\n        pass\n',
+            'dynamic key K',
+        ),
+        (
+            'K = "a"\nf = lambda hf_row, K: hf_row.get(K)\n',
+            'dynamic key K',
+        ),
     ],
     ids=[
         'get_var',
@@ -479,6 +515,15 @@ def test_declared_scan_tables_are_all_live(monkeypatch):
         'module_const_ann',
         'module_const_def',
         'module_const_import',
+        'late_module_for',
+        'late_module_walrus',
+        'late_global_in_function',
+        'late_module_del',
+        'late_subscript_assign',
+        'late_module_with',
+        'late_module_except',
+        'late_module_match',
+        'lambda_param',
     ],
 )
 def test_computed_key_reads_reported_as_unresolved(code, reason):
@@ -740,6 +785,8 @@ def test_scan_error_raised_for_unknown_override_domain(monkeypatch):
     visitor = _scan.HfRowVisitor('test.py', {})
     with pytest.raises(_scan.ScanError, match='unknown domain name "nonexistent_domain"'):
         visitor.visit(ast.parse(code))
+    # The error fires before any key is recorded, so no partial attribution survives.
+    assert visitor.reads == []
 
 
 def test_key_lookup_from_enclosing_scope():
@@ -781,9 +828,51 @@ def test_template_overrides_possible_flag_and_separation():
     """TemplateOverride with possible=True records in consumers_possible."""
     matrix = _gor.build_matrix()
     by_name = {k['name']: k for k in matrix['keys']}
+    assert by_name['H2O_vmr_xuv']['consumers'] == ['escape']
+    assert by_name['H2O_vmr_xuv']['consumers_possible'] == ['escape']
+    assert by_name['T_obs']['consumers'] == ['atmos_clim', 'escape']
     assert by_name['T_obs']['consumers_possible'] == []
 
     # Render test: verify (possible) suffix appears only for possible consumers
     rendered = _gor.render(matrix)
     assert '| `H2O_vmr_xuv` | `1` | volume mixing ratio at XUV level |' in rendered
     assert 'escape (possible)' in rendered
+
+
+@pytest.mark.parametrize(
+    ('code', 'reads'),
+    [
+        ('K = "a"\ndef f(hf_row):\n    return hf_row.get(K)\n', ['a']),
+        (
+            'def f(hf_row, it):\n    k = "a"\n    _ = [0 for k in it]\n    return hf_row.get(k)\n',
+            ['a'],
+        ),
+        ('def f(hf_row):\n    hf_row["a"] += hf_row["b"]\n', ['a', 'b']),
+        ('def f(hf_all):\n    hf_all[1:3] += 1\n', []),
+        ('def f(hf_all):\n    hf_all[hf_all["Time"] > 0] += 1\n', ['Time']),
+    ],
+    ids=[
+        'module_constant_single_binding',
+        'comprehension_target_does_not_leak',
+        'augassign_reads_target_and_value',
+        'augassign_frame_slice',
+        'augassign_frame_mask',
+    ],
+)
+def test_bindings_that_must_resolve_or_stay_silent(code, reads):
+    """A key bound once to a string resolves, a comprehension target stays in
+    its own scope, and an augmented assignment on a row is a read and a write
+    whose nested reads are kept; a row selector on a frame is no column at all."""
+    visitor = _scan.HfRowVisitor('test_file.py', {})
+    visitor.visit(ast.parse(code))
+    assert sorted(k for k, _ in visitor.reads) == reads
+    assert visitor.unresolved == [], visitor.unresolved
+
+
+def test_augassign_keeps_the_nested_read_inside_its_key():
+    """The key of an augmented assignment can itself read the row; that read
+    is recorded, while the computed outer key is reported as unresolved."""
+    visitor = _scan.HfRowVisitor('test_file.py', {})
+    visitor.visit(ast.parse('def f(hf_row):\n    hf_row[hf_row["k_name"]] += 1.0\n'))
+    assert [k for k, _ in visitor.reads] == ['k_name']
+    assert sorted(u[2] for u in visitor.unresolved) == ['read', 'write']

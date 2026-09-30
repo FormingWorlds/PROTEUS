@@ -220,6 +220,16 @@ def _template_of(key_node) -> tuple[str, str, str] | None:
     return None
 
 
+def _selects_frame_rows(node: ast.Subscript) -> bool:
+    """Whether a frame subscript selects rows (mask, slice, arithmetic), not a column."""
+    if _row_name(node) not in FRAME_NAMES:
+        return False
+    sl = node.slice
+    if isinstance(sl, (ast.Compare, ast.Slice, ast.UnaryOp, ast.BoolOp)):
+        return True
+    return isinstance(sl, ast.BinOp) and not isinstance(sl.op, ast.Add)
+
+
 def _target_name(target) -> str | None:
     """The key-carrying variable name in a loop or comprehension target."""
     if isinstance(target, ast.Name):
@@ -315,6 +325,12 @@ class HfRowVisitor(ast.NodeVisitor):
                 assigned[sub.name] += 1
             elif isinstance(sub, (ast.Import, ast.ImportFrom)):
                 assigned.update(alias.asname or alias.name.split('.')[0] for alias in sub.names)
+            elif isinstance(sub, ast.withitem) and sub.optional_vars is not None:
+                assigned.update(_collect_bound_names(sub.optional_vars))
+            elif isinstance(sub, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and sub.name:
+                assigned[sub.name] += 1
+            elif isinstance(sub, ast.MatchMapping) and sub.rest:
+                assigned[sub.rest] += 1
             elif isinstance(sub, (ast.Global, ast.Nonlocal)):
                 mutated.update(sub.names)
             elif isinstance(sub, ast.Delete):
@@ -409,13 +425,17 @@ class HfRowVisitor(ast.NodeVisitor):
 
     def visit_AugAssign(self, node):
         self._invalidate(node.target)
-        if isinstance(node.target, ast.Subscript):
-            name = _row_name(node.target)
-            if name in ROW_NAMES | FRAME_NAMES:
-                self._record(node.target.slice, node.lineno, is_write=False, is_get=True)
-                self._record(node.target.slice, node.lineno, is_write=True, is_get=False)
-                self.visit(node.value)
-                return
+        target = node.target
+        if (
+            isinstance(target, ast.Subscript)
+            and _row_name(target) is not None
+            and not _selects_frame_rows(target)
+        ):
+            self._record(target.slice, node.lineno, is_write=False, is_get=True)
+            self._record(target.slice, node.lineno, is_write=True, is_get=False)
+            self.visit(target.slice)
+            self.visit(node.value)
+            return
         self.generic_visit(node)
 
     visit_NamedExpr = _visit_target
@@ -570,16 +590,7 @@ class HfRowVisitor(ast.NodeVisitor):
         if name is None:
             self.generic_visit(node)
             return
-        if name in FRAME_NAMES and isinstance(
-            node.slice, (ast.Compare, ast.Slice, ast.UnaryOp, ast.BoolOp)
-        ):
-            self.generic_visit(node)
-            return
-        if (
-            name in FRAME_NAMES
-            and isinstance(node.slice, ast.BinOp)
-            and not isinstance(node.slice.op, ast.Add)
-        ):
+        if _selects_frame_rows(node):
             self.generic_visit(node)
             return
         is_write = (
