@@ -10,6 +10,7 @@ import numpy as np
 
 from proteus.star.phoenix import get_phoenix_modern_spectrum
 from proteus.utils.constants import AU, M_sun, R_sun, const_sigma, ergcm2stoWm2
+from proteus.utils.data import RELOCATE_HINT
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger('fwl.' + __name__)
@@ -65,7 +66,8 @@ def init_star(handler: Proteus):
             # may be None there; for the file-based sources an empty name falls
             # through to the not-found handling below.
             starname_input = (mors_cfg.star_name or '').strip()
-            star_file = starname_input.lower().replace(' ', '-').replace('gj-', 'gj') + '.txt'
+            star_id = starname_input.lower().replace(' ', '-').replace('gj-', 'gj')
+            star_file = star_id + '.txt'
 
             # Solar special cases
             solar_key = starname_input.lower().replace(' ', '')
@@ -82,18 +84,29 @@ def init_star(handler: Proteus):
                 'sunmodern': 'SunModern.txt',
             }
 
+            from proteus.data import (
+                STELLAR_SPECTRA_MUSCLES,
+                STELLAR_SPECTRA_SOLAR,
+                dataset_dir,
+            )
+
             # Paths to MUSCLES spectra
-            muscles_path = os.path.join(fwl_dir, 'stellar_spectra/MUSCLES', star_file)
+            muscles_dir = dataset_dir(STELLAR_SPECTRA_MUSCLES, data_root=fwl_dir)
+            solar_dir = dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=fwl_dir)
+            muscles_path = os.path.join(muscles_dir, star_file)
 
             # Pick the intended solar_path:
             if solar_key in solar_map:
-                solar_path = os.path.join(
-                    fwl_dir, 'stellar_spectra/solar', solar_map[solar_key]
-                )
+                solar_path = os.path.join(solar_dir, solar_map[solar_key])
             else:
-                solar_path = os.path.join(fwl_dir, 'stellar_spectra/solar', star_file)
+                solar_path = os.path.join(solar_dir, star_file)
 
             src = mors_cfg.spectrum_source
+            fetch = (
+                '`proteus get solar`'
+                if solar_key in solar_map
+                else f'`proteus get muscles --star {star_id or "<name>"}`'
+            )
 
             # spectrum_source = None -> try MUSCLES, then solar
             if src is None:
@@ -110,7 +123,8 @@ def init_star(handler: Proteus):
                     )
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
-                        f"No solar or MUSCLES spectrum found in reference data for '{mors_cfg.star_name}'."
+                        f"No solar or MUSCLES spectrum found in reference data for '{mors_cfg.star_name}'. "
+                        f'Fetch it with {fetch}. {RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'solar'
@@ -135,7 +149,8 @@ def init_star(handler: Proteus):
                     )
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
-                        f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'."
+                        f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'. "
+                        f'Fetch it with {fetch}. {RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'muscles'
@@ -160,15 +175,15 @@ def init_star(handler: Proteus):
                     log.error(
                         'Check the available MUSCLES spectra at https://proteus-framework.org/proteus/data.html#stellar-spectra'
                     )
-                    log.error(
-                        f'If available, MUSCLES spectra can be downloaded via the command line: proteus get muscles --star {mors_cfg.star_name}'
-                    )
                     log.error('To download all MUSCLES spectra: proteus get muscles --all')
                     log.error(
                         "If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'."
                     )
                     UpdateStatusfile(handler.directories, 23)
-                    raise FileNotFoundError(f"No MUSCLES spectrum for '{mors_cfg.star_name}'.")
+                    raise FileNotFoundError(
+                        f"No MUSCLES spectrum for '{mors_cfg.star_name}'. "
+                        f'Fetch it with {fetch}. {RELOCATE_HINT}'
+                    )
 
             # spectrum_source = 'phoenix'
             elif src == 'phoenix':
