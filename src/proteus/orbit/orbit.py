@@ -51,7 +51,7 @@ def _warn_if_migration_window_unresolved(hf_row: dict, config: Config, dt: float
     time = float(hf_row['Time'])
     dt = float(dt)
 
-    if dt <= 0.0 or tau <= 0.0 or not t_mig <= time <= t_mig + tau:
+    if dt <= 0.0 or tau <= 0.0 or not (time >= t_mig and time - dt <= t_mig + tau):
         return
 
     samples = tau / dt
