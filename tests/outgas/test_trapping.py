@@ -1296,19 +1296,25 @@ def test_a_step_without_the_interior_profiles_buries_at_the_crystal_term_alone(c
 
 @pytest.mark.physics_invariant
 def test_remelting_returns_the_buried_mass_whatever_the_melt_has_done_since(fixed_front):
-    """A remelting step releases what trapping buried, in proportion to the
-    share of the solid mantle that remelted, (Phi(t) - Phi(t-1)) / (1 -
-    Phi(t-1)). The release is sized from the trapped reservoir, not from the
-    melt concentration, so a mantle that freezes, degasses and then remelts
-    completely gets every buried kilogram back."""
+    """A remelting step releases what trapping buried, sized from the trapped
+    reservoir and not from the melt concentration, so a mantle that freezes,
+    degasses and then remelts completely gets every buried kilogram back. With
+    a single previous row the ledger has no burial to replay, so the step
+    releases the share of the solid that remelted, (Phi(t) - Phi(t-1)) / (1 -
+    Phi(t-1)), of every species and element, helium included."""
     from proteus.outgas.compaction import BRANCH_REMELT
 
+    he_mmw = eval_gas_mmw('He')
     # Freeze from Phi = 1 to 0.5: dM_RM = 2e24 kg at C_Z = 1e-3 buries
-    # (0.98 * 0.0017 + 0.02) * 1e-3 * 2e24 kg of water.
+    # (0.98 * 0.0017 + 0.02) * 1e-3 * 2e24 kg of water, and 1.8e16 kg of He.
     start = _hf_row(Phi_global=0.5, H2O_kg_liquid=4.0e21, CO2_kg_liquid=8.0e21)
+    start.update(He_kg_liquid=1.8e18, He_kg_total=1.8e18, He_kg_atm=0.0, He_kg_solid=0.0)
+    start.update(He_mol_solid=0.0, He_mol_total=1.8e18 / he_mmw)
     frozen_step = run_trapping(_config(), start, _hf_all(Phi_global=1.0))
     buried = (0.98 * 0.0017 + 0.02) * 1.0e-3 * 2.0e24
+    he_buried = 0.02 * (1.8e18 / 4.0e24) * 2.0e24
     assert start['H2O_kg_trapped'] == pytest.approx(buried, rel=1e-12)
+    assert start['He_kg_trapped'] == pytest.approx(he_buried, rel=1e-12)
     assert frozen_step.trapped_kg['CO2'] > 0.0
 
     # The melt then degasses a hundredfold, so its concentration no longer
@@ -1331,6 +1337,15 @@ def test_remelting_returns_the_buried_mass_whatever_the_melt_has_done_since(fixe
         degassed['H2O_kg_liquid'] + 0.5 * buried, rel=1e-12
     )
     assert half['trap_kg_step'] < 0.0
+    # Helium comes back once, half of it, and its moles follow the masses
+    # once the chemistry solve has had the trapped share withheld and restored.
+    assert half['He_kg_trapped'] == pytest.approx(0.5 * he_buried, rel=1e-12)
+    assert half['He_kg_liquid'] == pytest.approx(1.8e18 - 0.5 * he_buried, rel=1e-12)
+    with trapped_mass_withheld(half):
+        assert half['He_kg_total'] == pytest.approx(1.8e18 - 0.5 * he_buried, rel=1e-12)
+    assert half['He_kg_total'] == pytest.approx(1.8e18, rel=1e-12)
+    assert half['He_mol_solid'] == pytest.approx(0.5 * he_buried / he_mmw, rel=1e-12)
+    assert half['He_mol_total'] == pytest.approx(1.8e18 / he_mmw, rel=1e-12)
 
     # Full remelt, Phi 0.5 -> 1: everything comes back, although the degassed
     # melt would have sized a release a hundred times too small.
@@ -1340,6 +1355,8 @@ def test_remelting_returns_the_buried_mass_whatever_the_melt_has_done_since(fixe
         assert full[f'{name}_kg_trapped'] == pytest.approx(0.0, abs=0.0)
         assert full[f'{name}_kg_solid'] == pytest.approx(0.0, abs=0.0)
     assert full['H2O_kg_liquid'] == pytest.approx(degassed['H2O_kg_liquid'] + buried, rel=1e-12)
+    assert full['He_kg_trapped'] == pytest.approx(0.0, abs=0.0)
+    assert full['He_kg_liquid'] == pytest.approx(1.8e18, rel=1e-12)
     # Discrimination: sizing the release from the degassed melt, as burial is
     # sized, would return 1.98% of what was buried and keep 98% trapped.
     c_degassed = degassed['H2O_kg_liquid'] / (_M_MANTLE * 0.5)
