@@ -9,10 +9,12 @@ pip install -e ".[develop,vulcan,atmodeller,inference]"
 pytest -m "unit and not skip and not slow and not integration" --ignore=tests/examples
 ruff check src/ tests/ tools/ && ruff format --check src/ tests/ tools/
 bash tools/validate_test_structure.sh
-python tools/check_test_quality.py --check  # no rule's Current count may exceed the same run on origin/main
+python tools/check_test_quality.py --check  # exits 1 on origin/main too; see below
 python tools/agents/check_agents_md.py && python tools/agents/sync_core.py --check .
 proteus start -c <config.toml> --offline
 ```
+
+The committed `tools/test_quality_baseline.json` lags the tree, so `python tools/check_test_quality.py --check` exits 1 on `origin/main` as well: run it on `origin/main` and on the branch and compare the per-rule Current counts; no count may rise.
 
 ## Review checklist
 

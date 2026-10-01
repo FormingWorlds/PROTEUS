@@ -12,9 +12,13 @@ PROTEUS couples interior, atmosphere, star, orbit, escape and giant-impact accre
 pytest -m "unit and not skip and not slow and not integration" --ignore=tests/examples
 ruff check src/ tests/ tools/ && ruff format --check src/ tests/ tools/
 bash tools/validate_test_structure.sh
-python tools/check_test_quality.py --check  # no rule's Current count may exceed the same run on origin/main
+python tools/check_test_quality.py --check  # exits 1 on origin/main too; see below
 python tools/agents/check_agents_md.py && python tools/agents/sync_core.py --check .
 ```
+
+The committed `tools/test_quality_baseline.json` lags the tree, so `python tools/check_test_quality.py --check` exits 1 on `origin/main` as well: run it on `origin/main` and on the branch and compare the per-rule Current counts; no count may rise.
+
+The shared blocks (`<!-- fwl-<name>:begin ... -->`) come from `tools/agents/`. To change one, edit it there, run `python tools/agents/sync_core.py <repo>` on PROTEUS and on every module repository that carries the block, and land them in the same window: the daily AGENTS.md sync workflow (`.github/workflows/agents-md-sync.yml`) checks the modules it lists and stays red until each of them is synced.
 
 PR CI also runs `generate_config_reference.py`, `generate_module_map.py`, `generate_output_reference.py` and `generate_version_badges.py` in `tools/` with `--check`: a new config field, module or helpfile column fails CI until you rerun the generator without `--check` and commit its output.
 
@@ -72,7 +76,8 @@ Commit messages, pull-request text, code comments, docstrings, test names, test 
 ## Running PROTEUS
 
 - `proteus start -c <config.toml> --offline`. Detach long runs (`nohup ... &`, output redirected into the run directory); a foreground run dies with the shell.
-- Resume a stopped run with `proteus start -r -c <config.toml>`. It needs more than `init_loops + 1` helpfile rows and, under the run's `data/`, an interior snapshot (the dummy and boundary interiors write none) plus the matching atmosphere snapshot unless `atmos_clim.module = 'dummy'`; the files are named by simulation time in a form that depends on the module (`select_resumable_snapshot` in `src/proteus/utils/coupler.py`). Shorter runs refuse to resume. With an accretion module selected, resume refuses a last row that records accreted rock (`M_accreted_rock > 0`) but no `n_impacts_applied`, and, when the run directory holds `impact_timeline.csv`, a counter that disagrees with that resolved timeline (`restore_accretion_state` in `src/proteus/accretion/wrapper.py`).
+- Add `--deterministic` to `proteus start` when a coupled run fails on floating-point noise (for example Aragog T_core jump-guard exhaustion): PROTEUS re-executes itself once with `JAX_ENABLE_X64=1` and `XLA_FLAGS=--xla_cpu_enable_fast_math=false`.
+- Resume a stopped run with `proteus start -r -c <config.toml>`. It needs more than `init_loops + 1` helpfile rows and, under the run's `data/`, an interior snapshot (the dummy and boundary interiors write none) plus the matching atmosphere snapshot unless `atmos_clim.module = 'dummy'`; the files are named by simulation time in a form that depends on the module (`select_resumable_snapshot` in `src/proteus/utils/coupler.py`). Shorter runs refuse to resume. With an accretion module selected, resume refuses a last row that records accreted rock (`M_accreted_rock > 0`) but no `n_impacts_applied`, and, when the run directory holds the resolved `impact_timeline.csv`, a counter below the number of impacts at or before the resume time, or above it unless every surplus impact is one of the next impacts after the resume time and lies in the init stage (`t <= 1 yr`) (`restore_accretion_state` in `src/proteus/accretion/wrapper.py`).
 - A new helpfile column goes in `GetHelpfileKeys` with its unit. When a run written before the column existed resumes, `ReadHelpfileFromCSV` reads the column as zero if it is in `_DIAGNOSTIC_KEYS` or `RESUMABLE_ZERO_FILL_KEYS` (an accumulating column then loses its earlier history) and raises `HelpfileSchemaDriftError` for any other missing column.
 
 ## Physics and coupling contract
@@ -89,7 +94,7 @@ Commit messages, pull-request text, code comments, docstrings, test names, test 
 
 ## Review
 
-Check each change against these points and against `.github/agent-rules/code-review.md`. `.github/copilot-instructions.md` repeats this checklist for tools that read only that file; change it together with this section.
+Check each change against these points and against `.github/agent-rules/code-review.md`. `.github/copilot-instructions.md` repeats this section and the physics and coupling rules above for tools that read only that file; change them together.
 
 - Physics: T > 0 K; P > 0 and increasing with depth; mass fractions sum to 1; the mass escaped in one step stays within its reservoir (`limit_escape_step` caps it at `ESCAPE_STEP_MAX_FRAC`); outgassing >= 0; radiative flux uses `sigma * T**4`.
 - EOS tables: SPIDER and the Aragog entropy solver read P-S tables (complete rectangles, uniform P spacing); each Aragog P-T table is a full rectangular grid, because a grid filtered by phase makes scipy fall back to slow unstructured interpolation.

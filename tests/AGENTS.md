@@ -40,7 +40,7 @@ Structure: `src/proteus/<module>/<file>.py` is tested in `tests/<module>/test_<f
 
 Integration tests live in `tests/integration/`, because the nightly runs `pytest tests/integration -m "integration and not slow"`. A slow test file can sit in any test directory, but it runs only when a shard of the slow-tier matrix in `.github/workflows/ci-nightly.yml` lists it.
 
-CI: pull requests run the unit tier only (`pytest -m "unit and not skip and not slow and not integration"`); smoke, integration and slow run nightly. `tools/check_test_quality.py --check` runs in the PR job with `continue-on-error` and compares against `tools/test_quality_baseline.json`; a new violation shows in the log. Regenerate the baseline (`--baseline`) only after a sweep that removed violations.
+CI: pull requests run the unit tier only (`pytest -m "unit and not skip and not slow and not integration"`); smoke, integration and slow run nightly. `tools/check_test_quality.py --check` runs in the PR job with `continue-on-error`, so a violation shows in the log without failing the job. The committed `tools/test_quality_baseline.json` lags the tree, so `python tools/check_test_quality.py --check` exits 1 on `origin/main` as well: run it on `origin/main` and on the branch and compare the per-rule Current counts; no count may rise. Regenerate the baseline (`--baseline`) only after a sweep that removed violations; it refuses a higher total unless `PROTEUS_TEST_QUALITY_ALLOW_REGRESS=1` is set.
 
 ### Physics modules
 
