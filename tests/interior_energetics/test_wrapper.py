@@ -7021,6 +7021,8 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
             self.recorded_t = None
 
         def get_state(self):
+            # Aragog's get_state reads attributes and calls .get on its solution.
+            self.recorded_integrals = self._solution.get('energy_integrals')
             self.recorded_y = self._solution.y
             self.recorded_t = self._solution.t
             return SimpleNamespace(
@@ -7049,6 +7051,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     assert solver._solution is solver._prev_solution
     assert solver.recorded_y.shape == (len(solver._S0), 1)
     assert solver.recorded_t[0] == pytest.approx(250.0)
+    assert solver.recorded_integrals is None
 
     # 2. Key write in _remelt_aragog with non-unity melt fraction (0.73)
     config = read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml')
