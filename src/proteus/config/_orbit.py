@@ -272,16 +272,9 @@ class Parameterized:
     time_migration: float
         Time at which migration begins [yr].
     tau_migration: float
-        Timescale of migration, used by the sigmoid and high_ecc laws. For
-        sigmoid it is the length of the migration window, for high_ecc the
-        eccentricity decay timescale after the event [yr].
+        Timescale of migration, used by the sigmoid and high_ecc laws [yr].
     """
 
-    # Left unannotated on purpose, like every other none_if_none field in
-    # this package. An annotation makes cattrs coerce to the annotated type
-    # before the converter runs, so a config carrying the literal "none"
-    # fails with a float conversion error. tools/_config_schema.py restores
-    # the type for the generated reference.
     sma_init = field(default=None, validator=optional(gt(0)), converter=none_if_none)
     sma_final = field(default=None, validator=optional(gt(0)), converter=none_if_none)
 
