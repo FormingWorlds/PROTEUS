@@ -5051,7 +5051,7 @@
       "default": "-1.0",
       "choices": null,
       "bounds": null,
-      "description": "Relative numerical tolerance for the interior ODE solver. SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling). Aragog: scipy solve_ivp rtol. The deprecated aliases num_tolerance and [interior_energetics.spider].tolerance_rel copy into this field. Resolves to 1e-8 for Aragog and 1e-10 for SPIDER when left unset.",
+      "description": "Relative numerical tolerance for the interior ODE solver. SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling). Aragog: scipy solve_ivp rtol. The deprecated aliases num_tolerance and [interior_energetics.spider].tolerance_rel copy into this field. Resolves to 1e-8 for Aragog and 1e-10 for SPIDER when left unset. With interior_struct.module = 'spider' it also sets the relative tolerance of the secant solve for the interior radius.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 2,
