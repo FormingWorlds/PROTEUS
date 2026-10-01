@@ -364,7 +364,8 @@ def run_atmosphere(
                 deallocate_atmos(atmos_o._atm)
 
             # allocate new
-            atmos_o._atm = init_agni_atmos(dirs, config, hf_row)
+            # Only the first build can match another run's spectral file.
+            atmos_o._atm = init_agni_atmos(dirs, config, hf_row, use_cache=no_atm)
 
             # Check allocation was ok
             if not bool(atmos_o._atm.is_alloc):

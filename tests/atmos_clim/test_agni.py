@@ -5,6 +5,9 @@ This module tests the AGNI atmosphere interface including:
 - Aerosol discovery (_determine_aerosols)
 - Condensate species determination (_determine_condensates)
 - AGNI atmosphere initialization (init_agni_atmos)
+- Reuse of prepared spectral files across runs, covering the folder AGNI builds
+  them in, the hit path that skips the stellar insertion, and the contract that
+  an unusable cache slows a run down without changing its result
 - Temperature-profile carry-over between iterations (_validate_stored_profile,
   update_agni_atmos), covering pressure and temperature positivity, profile
   monotonicity under interpolation, and the atmosphere-failure contract when
@@ -18,6 +21,7 @@ See also:
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -33,21 +37,31 @@ from proteus.atmos_clim.agni import (
     init_agni_atmos,
     write_atmos_ncdf,
 )
+from proteus.atmos_clim.spectral_cache import cache_key
 from proteus.utils.constants import noble_gases
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
+def _fake_jl_with_mie_materials(*names):
+    """A stand-in for `agni_mod.jl` exposing only `aerosol_optics.list_materials`."""
+    return SimpleNamespace(
+        AGNI=SimpleNamespace(aerosol_optics=SimpleNamespace(list_materials=lambda: list(names)))
+    )
+
+
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_success(mock_isdir, mock_listdir):
+def test_determine_aerosols_success(mock_isdir, mock_listdir, monkeypatch):
     """
     Test aerosol discovery when scattering data directory exists.
 
     Physical scenario: Scattering data for aerosols (e.g., sulfate, silicate)
-    is available in FWL_DATA/scattering/scattering/*.mon files.
+    is available in FWL_DATA/scattering/scattering/*.mon files, and AGNI has
+    no Mie-capable materials for any of them.
     """
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
     mock_isdir.return_value = True
     mock_listdir.return_value = [
         'Sulfate.mon',
@@ -60,9 +74,9 @@ def test_determine_aerosols_success(mock_isdir, mock_listdir):
     dirs = {'fwl': '/fake/fwl/path'}
     aerosols = _determine_aerosols(dirs)
 
-    # Verify correct aerosols found and sorted
-    assert len(aerosols) == 3
-    assert aerosols == ['Haze', 'Silicate', 'Sulfate']  # alphabetically sorted
+    # Verify correct aerosols found, each via the 'mon' method, keeping the
+    # on-disk casing (condensate matching lowercases separately downstream).
+    assert aerosols == {'Haze': 'mon', 'Silicate': 'mon', 'Sulfate': 'mon'}
 
     # Verify correct directory was checked
     mock_isdir.assert_called_once_with('/fake/fwl/path/scattering/scattering')
@@ -70,70 +84,130 @@ def test_determine_aerosols_success(mock_isdir, mock_listdir):
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_missing_directory(mock_isdir):
+def test_determine_aerosols_missing_directory(mock_isdir, monkeypatch):
     """
     Test aerosol discovery when scattering directory doesn't exist.
 
     Physical scenario: FWL_DATA not properly downloaded or scattering
-    data not installed. Should return empty list and warn.
+    data not installed, and AGNI has no Mie-capable materials either.
+    Should return an empty mapping and warn.
     """
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
     mock_isdir.return_value = False
 
     dirs = {'fwl': '/nonexistent/path'}
     aerosols = _determine_aerosols(dirs)
 
-    # Should return empty list without crashing
-    assert aerosols == []
+    # Should return an empty mapping without crashing
+    assert aerosols == {}
     mock_isdir.assert_called_once()
 
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir):
+def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir, monkeypatch):
     """
     Test aerosol discovery when directory exists but has no .mon files.
 
     Physical scenario: Scattering directory present but empty or only
-    contains non-aerosol files.
+    contains non-aerosol files, and no Mie-capable materials are available.
     """
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
     mock_isdir.return_value = True
     mock_listdir.return_value = ['readme.txt', 'config.yaml']
 
     dirs = {'fwl': '/path/to/fwl'}
     aerosols = _determine_aerosols(dirs)
 
-    # Should return empty list
-    assert aerosols == []
+    # Should return an empty mapping
+    assert aerosols == {}
     # Discrimination guard: the directory existed, so isdir must have
     # been queried AND listdir must have been called to inspect the
-    # contents. A regression that returned [] without inspecting (e.g.
+    # contents. A regression that returned {} without inspecting (e.g.
     # always short-circuited) would still pass the assertion above.
     mock_isdir.assert_called_once_with('/path/to/fwl/scattering/scattering')
     mock_listdir.assert_called_once()
-    # Type guard: returning None or a non-list would also satisfy
-    # `== []` against another empty container, so pin the type.
-    assert isinstance(aerosols, list)
+    # Type guard: returning None or a non-dict would also satisfy
+    # `== {}` against another empty container, so pin the type.
+    assert isinstance(aerosols, dict)
 
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_single_species(mock_isdir, mock_listdir):
+def test_determine_aerosols_single_species(mock_isdir, mock_listdir, monkeypatch):
     """
     Test aerosol discovery with only one aerosol type.
 
     Physical scenario: Limited scattering data with only one aerosol species
-    available (e.g., only sulfate aerosols).
+    available (e.g., only sulfate aerosols), and no Mie support for it.
     """
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
     mock_isdir.return_value = True
     mock_listdir.return_value = ['Sulfate.mon']
 
     dirs = {'fwl': '/path/to/fwl'}
     aerosols = _determine_aerosols(dirs)
 
-    assert len(aerosols) == 1
-    assert aerosols == ['Sulfate']
+    assert aerosols == {'Sulfate': 'mon'}
+    # Type guard: a bare string return (e.g. 'Sulfate') would also satisfy a
+    # naive membership check, so pin the mapping type and its method value.
+    assert isinstance(aerosols, dict)
+    assert aerosols['Sulfate'] == 'mon'
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.agni.os.path.isdir')
+def test_determine_aerosols_mie_only_species(mock_isdir, monkeypatch):
+    """
+    Test aerosol discovery when AGNI has Mie-capable materials but there is
+    no FWL_DATA scattering directory at all.
+
+    Physical scenario: a fresh install that has only run
+    `./src/get_data.sh refractive` (bundled with the AGNI checkout itself,
+    not FWL_DATA), so 'mie' aerosols are discoverable even without any
+    'mon' scattering data on disk.
+    """
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials('SiO2_amorph', 'VO'))
+    mock_isdir.return_value = False
+
+    dirs = {'fwl': '/nonexistent/path'}
+    aerosols = _determine_aerosols(dirs)
+
+    assert aerosols == {'SiO2_amorph': 'mie', 'VO': 'mie'}
+    # Discrimination guard: a regression that only merged Mie names in when
+    # the scattering directory also existed would return {} here instead.
+    mock_isdir.assert_called_once_with('/nonexistent/path/scattering/scattering')
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.agni.os.listdir')
+@patch('proteus.atmos_clim.agni.os.path.isdir')
+def test_determine_aerosols_prefers_mie_over_mon(mock_isdir, mock_listdir, monkeypatch):
+    """
+    A species with both a 'mon' file and Mie support uses 'mie'.
+
+    Physical scenario: AGNI can compute a species' optical properties from
+    refractive-index data at runtime (more accurate, tied to the actual
+    particle size) instead of the pre-tabulated monochromatic data; the two
+    are not combined; the run-time method wins.
+
+    Discrimination: a regression that iterated 'mon' after 'mie' (or built a
+    set union without an override order) would leave this species at 'mon'.
+    """
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials('Sulfate'))
+    mock_isdir.return_value = True
+    mock_listdir.return_value = ['Sulfate.mon', 'Haze.mon']
+
+    dirs = {'fwl': '/path/to/fwl'}
+    aerosols = _determine_aerosols(dirs)
+
+    assert aerosols == {'Sulfate': 'mie', 'Haze': 'mon'}
+    # Explicit per-key checks, matching the discrimination case in the
+    # docstring: the overlapping species must resolve to 'mie', not 'mon'.
+    assert aerosols['Sulfate'] == 'mie'
+    assert aerosols['Sulfate'] != 'mon'
 
 
 @pytest.mark.unit
@@ -245,6 +319,8 @@ class _FakeAtmosphere:
         self.tmp_magma = 1500.0
         # Cell-centre gravity, read at the XUV level
         self.g = [9.8]
+        # Hill radius, used by hydrostatic integration to mark unbound layers
+        self.hill_radius = 6.4e8
         # Solver flags
         self.is_converged = True
         # Allocation flag, gating write_atmos_ncdf
@@ -280,6 +356,20 @@ class _FakeAtmosphere:
         self.col_lat = 0.0
 
 
+class _FakeJlArray:
+    """Stand-in for Julia's `Array` type, supporting the `Array[T, N]`
+    subscript syntax `init_agni_atmos` uses to build a conversion target for
+    `condensates`. `convert` itself is monkeypatched to an identity function
+    in these tests, so the subscript result only needs to not raise.
+    """
+
+    def __getitem__(self, key):
+        return None
+
+
+_FAKE_JL_ARRAY = _FakeJlArray()
+
+
 class _FakeAGNI:
     def __init__(self):
         self.last_setup_args = None
@@ -290,6 +380,9 @@ class _FakeAGNI:
             setup_b=self._setup_b,
             allocate_b=self._allocate_b,
         )
+        # No Mie-capable materials by default; tests that need some
+        # override this attribute directly.
+        self.aerosol_optics = SimpleNamespace(list_materials=lambda: [])
         # setpt routines: record-only stubs
         self.setpt = SimpleNamespace(
             fromncdf_b=lambda *_a, **_k: None,
@@ -349,10 +442,15 @@ def _build_greygas_config():
                 check_safe_gas=False,
                 hydrograv_steps=2000,
                 hydrograv_maxdr=1e8,
+                hydrograv_hilldr=1e2,
                 hydrograv_mindr=1e-5,
                 hydrograv_ming=1e-4,
                 hydrograv_constg=False,
                 hydrograv_selfg=True,
+                aerosol_r_eff=1.0e-6,
+                aerosol_sigma_g=1.65,
+                tau_obs=0.02,
+                wl_obs=1.125e-6,
             ),
         ),
         orbit=SimpleNamespace(s0_factor=1.0, zenith_angle=48.0),
@@ -369,7 +467,9 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     the runtime directory.
     """
     fake_agni = _FakeAGNI()
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -388,6 +488,7 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -417,6 +518,328 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     assert fake_agni.last_setup_kwargs['κ_grey_sw'] == pytest.approx(0.2)
 
 
+class _SpectralWritingAGNI(_FakeAGNI):
+    """Fake AGNI that writes the runtime spectral pair where the real one does.
+
+    AGNI builds `<IO_DIR>/runtime.sf` and its `_k` companion inside `allocate!`,
+    and only when a stellar spectrum is supplied; an empty spectrum means the
+    spectral file it was handed is already prepared and is used untouched. As
+    in AGNI, a prepared file is refused when an enabled aerosol uses Mie theory,
+    whose properties are computed from the stellar spectrum.
+    """
+
+    def _allocate_b(self, atmos, input_star, **kwargs):
+        setup = self.last_setup_kwargs
+        aerosols = setup.get('aerosol_species', {})
+        if not input_star and setup.get('flag_aerosol'):
+            if any(entry['method'] == 'mie' for entry in aerosols.values()):
+                return False
+        if input_star:
+            io_dir = Path(self.last_setup_kwargs['IO_DIR'])
+            io_dir.mkdir(parents=True, exist_ok=True)
+            star_name = Path(input_star).name
+            (io_dir / 'runtime.sf').write_text(f'prepared from {star_name}', encoding='utf-8')
+            (io_dir / 'runtime.sf_k').write_text(f'ktable from {star_name}', encoding='utf-8')
+        return super()._allocate_b(atmos, input_star, **kwargs)
+
+
+def _setup_cached_spectral_run(monkeypatch, tmp_path, cache_dir, verbosity=1, log_level='INFO'):
+    """Wire up an init_agni_atmos call that goes through the spectral-file cache.
+
+    The base spectral file and the stellar spectrum are real files, because the
+    cache key fingerprints both. `verbosity` and `log_level` select which folder
+    AGNI works in: the output folder only when verbose or debug-logged.
+    """
+    fake_agni = _SpectralWritingAGNI()
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    sflux = data_dir / '100.sflux'
+    sflux.write_text('400.0 1.0\n500.0 2.0\n', encoding='utf-8')
+
+    fwl_dir = tmp_path / 'fwl'
+    fwl_dir.mkdir(parents=True, exist_ok=True)
+    base_sf = fwl_dir / 'Honeyside.sf'
+    base_sf.write_text('base spectral file, no star inserted', encoding='utf-8')
+
+    scratch = tmp_path / 'scratch'
+
+    def _fake_tmp_folder():
+        scratch.mkdir(parents=True, exist_ok=True)
+        return str(scratch)
+
+    config = _build_greygas_config()
+    config.atmos_clim.agni.spectral_file = None
+    config.atmos_clim.agni.verbosity = verbosity
+    config.atmos_clim.spectral_group = 'Honeyside'
+    config.atmos_clim.spectral_bands = '16'
+    config.atmos_clim.spectral_cache = str(cache_dir)
+    config.params.out.logging = log_level
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    monkeypatch.setattr(agni_mod, 'get_spfile_path', lambda *_a, **_k: str(base_sf))
+    monkeypatch.setattr(agni_mod, 'create_tmp_folder', _fake_tmp_folder)
+
+    return SimpleNamespace(
+        fake_agni=fake_agni,
+        dirs={'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(fwl_dir)},
+        config=config,
+        hf_row={
+            'F_ins': 1000.0,
+            'albedo_pl': 0.2,
+            'T_surf': 900.0,
+            'gravity': 9.8,
+            'R_int': 6.4e6,
+            'P_surf': 1.0,
+            'axial_period': 86400.0,
+            'longitude': 0.0,
+            'latitude': 0.0,
+            'hill_radius': 6.4e8,
+        },
+        output_dir=output_dir,
+        scratch=scratch,
+        base_sf=base_sf,
+        sflux=sflux,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('verbosity', 'log_level', 'work_dir'),
+    [(1, 'INFO', 'scratch'), (2, 'INFO', 'output')],
+    ids=['quiet-run-works-in-scratch', 'verbose-run-works-in-output'],
+)
+def test_spectral_cache_is_filled_from_the_folder_agni_wrote_in(
+    monkeypatch, tmp_path, verbosity, log_level, work_dir
+):
+    """A run that builds a spectral file leaves a cache entry, in either work folder.
+
+    AGNI writes the prepared file into its own working folder, which is the run's
+    output folder only when the run is verbose or debug-logged. A quiet run, the
+    default and the one inference workers use, works in a scratch folder instead;
+    harvesting the entry from the output folder there stores nothing at all, so
+    the cache stays empty and every later run repeats the insertion.
+    """
+    cache = tmp_path / 'cache'
+    ctx = _setup_cached_spectral_run(
+        monkeypatch, tmp_path, cache, verbosity=verbosity, log_level=log_level
+    )
+
+    atmos = init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row)
+    assert atmos is not None
+
+    # Cache miss: this run did the insertion itself, so allocate saw the spectrum.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+
+    built_in = ctx.scratch if work_dir == 'scratch' else ctx.output_dir
+    assert (built_in / 'runtime.sf').is_file()
+
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
+    assert sorted(p.name for p in cache.iterdir()) == [f'{key}.sf', f'{key}.sf_k']
+    assert (cache / f'{key}.sf').read_text() == (built_in / 'runtime.sf').read_text()
+    assert (cache / f'{key}.sf_k').read_text() == (built_in / 'runtime.sf_k').read_text()
+
+    # Discriminating guard: in the quiet run the output folder holds no prepared
+    # file, so a harvest pointed there would find nothing and cache nothing.
+    quiet_output_is_empty = not (ctx.output_dir / 'runtime.sf').is_file()
+    assert quiet_output_is_empty == (work_dir == 'scratch')
+
+
+@pytest.mark.unit
+def test_a_cached_spectral_file_is_reused_without_reinserting_the_spectrum(
+    monkeypatch, tmp_path
+):
+    """A cache hit hands AGNI the prepared file and skips the stellar insertion.
+
+    The seeded pair has to land in the folder AGNI reads from, and the path
+    handed to setup has to be that copy: pointing at the output folder in a quiet
+    run names a file that was never created there.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
+    (cache / f'{key}.sf').write_text('cached prepared file', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('cached ktable', encoding='utf-8')
+
+    atmos = init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row)
+    assert atmos is not None
+
+    # Empty spectrum: AGNI takes the file as already prepared and does not rebuild.
+    assert ctx.fake_agni.last_allocate_input_star == ''
+
+    # setup_b positional args: [dirs['agni'], dirs['output'], input_sf, ...]
+    assert ctx.fake_agni.last_setup_args[2] == str(ctx.scratch / 'runtime.sf')
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'cached prepared file'
+    assert (ctx.scratch / 'runtime.sf_k').read_text() == 'cached ktable'
+
+    # Guard: the companion must travel with its file. A seeded pair that AGNI
+    # cannot find is the failure mode the path-choice above exists to avoid.
+    assert not (ctx.output_dir / 'runtime.sf').exists()
+
+
+@pytest.mark.unit
+def test_a_rebuild_after_a_spectrum_update_bypasses_the_spectral_cache(monkeypatch, tmp_path):
+    """A rebuild after a stellar-spectrum update neither reads nor fills the
+    cache: its spectrum depends on the run's own timestep, so an entry stored
+    for it would never be reused, and a study would accumulate one per update.
+    The first build of the same run, with the same entry present, does use it.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
+    (cache / f'{key}.sf').write_text('cached prepared file', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('cached ktable', encoding='utf-8')
+    before = sorted(p.name for p in cache.iterdir())
+
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, use_cache=False) is not None
+    # Built from the spectrum, not seeded, and nothing added to the cache.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (ctx.scratch / 'runtime.sf').read_text() != 'cached prepared file'
+    assert sorted(p.name for p in cache.iterdir()) == before
+
+    # Discrimination: the first build reads the same entry, so the bypass above
+    # comes from the flag and not from a cache that could not be read.
+    for suffix in ('', '_k'):
+        (ctx.scratch / f'runtime.sf{suffix}').unlink()
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert ctx.fake_agni.last_allocate_input_star == ''
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'cached prepared file'
+
+
+@pytest.mark.unit
+def test_a_cached_spectral_file_is_not_reused_across_rayleigh_settings(monkeypatch, tmp_path):
+    """A cache folder shared by runs that differ only in `atmos_clim.rayleigh`
+    must not hand one the other's file, because AGNI writes the Rayleigh block
+    into it. The entry built without Rayleigh scattering is left alone, and the
+    run with it builds and stores its own.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    without = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None
+    )
+    (cache / f'{without}.sf').write_text('built without rayleigh', encoding='utf-8')
+    (cache / f'{without}.sf_k').write_text('ktable without rayleigh', encoding='utf-8')
+    ctx.config.atmos_clim.rayleigh = True
+
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+
+    # A miss: the spectrum was handed to AGNI for insertion, not a seeded file.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (ctx.scratch / 'runtime.sf').read_text() != 'built without rayleigh'
+    with_rayleigh = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=True, aerosols=None
+    )
+    assert sorted(p.name for p in cache.iterdir()) == sorted(
+        [f'{without}.sf', f'{without}.sf_k', f'{with_rayleigh}.sf', f'{with_rayleigh}.sf_k']
+    )
+    assert (cache / f'{without}.sf').read_text() == 'built without rayleigh'
+
+
+@pytest.mark.unit
+def test_a_cached_spectral_file_is_keyed_on_the_aerosols_agni_receives(monkeypatch, tmp_path):
+    """The cache key names the aerosols tied to a condensate, not all available ones.
+
+    AGNI only receives aerosols tied to a condensate, and writes their blocks
+    into the prepared file. A run without condensates therefore passes no
+    aerosols even when SiO2 data exist, and must not reuse an entry built by a
+    run whose rainout tied SiO2 in. Keying on every available species would
+    give both runs the same key and hand the first the wrong file.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    ctx.config.atmos_clim.aerosols_enabled = True
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda _d: {'SiO2': 'mon'})
+    monkeypatch.setattr(agni_mod, '_determine_condensates', lambda _v: ['SiO2'])
+
+    tied = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=['SiO2']
+    )
+    untied = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=[])
+    # Discrimination guard: the two runs must map to different entries.
+    assert tied != untied
+    (cache / f'{tied}.sf').write_text('built with SiO2 block', encoding='utf-8')
+    (cache / f'{tied}.sf_k').write_text('ktable with SiO2 block', encoding='utf-8')
+
+    # Edge case: SiO2 data available, but no condensates, so nothing is tied.
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert ctx.fake_agni.last_setup_kwargs['aerosol_species'] == {}
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (cache / f'{untied}.sf').read_text() == 'prepared from 100.sflux'
+    assert (cache / f'{tied}.sf').read_text() == 'built with SiO2 block'
+
+    # With rainout on, SiO2 is tied and the matching entry is reused as is.
+    ctx.config.atmos_clim.agni.rainout = True
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert list(ctx.fake_agni.last_setup_kwargs['aerosol_species']) == ['SiO2']
+    assert ctx.fake_agni.last_allocate_input_star == ''
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'built with SiO2 block'
+
+
+@pytest.mark.unit
+def test_a_run_with_a_mie_aerosol_builds_its_own_spectral_file(monkeypatch, tmp_path):
+    """A Mie aerosol skips the cache: AGNI refuses a prepared file for it."""
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    ctx.config.atmos_clim.aerosols_enabled = True
+    ctx.config.atmos_clim.agni.rainout = True
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda _d: {'SiO2': 'mie'})
+    monkeypatch.setattr(agni_mod, '_determine_condensates', lambda _v: ['SiO2'])
+    key = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=['SiO2']
+    )
+    (cache / f'{key}.sf').write_text('built with SiO2 block', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('ktable with SiO2 block', encoding='utf-8')
+
+    # A hit would reach the fake's refusal and raise; the run builds instead.
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert sorted(p.name for p in cache.iterdir()) == [f'{key}.sf', f'{key}.sf_k']
+    assert (cache / f'{key}.sf').read_text() == 'built with SiO2 block'
+
+
+@pytest.mark.unit
+def test_a_cache_that_cannot_be_written_costs_time_and_not_correctness(
+    monkeypatch, tmp_path, caplog
+):
+    """An unusable cache folder degrades to a normal build instead of failing.
+
+    A cache path occupied by a regular file cannot hold entries. The run must
+    still initialise, still insert the spectrum itself, and leave the occupying
+    file untouched.
+    """
+    blocked = tmp_path / 'blocked'
+    blocked.write_text('not a folder', encoding='utf-8')
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, blocked)
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.spectral_cache'):
+        atmos = init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row)
+
+    assert atmos is not None
+    assert 'Could not store spectral file in cache' in caplog.text
+
+    # The run built its own file, exactly as it would with the cache switched off.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (ctx.scratch / 'runtime.sf').is_file()
+
+    # Nothing was written over the occupying file.
+    assert blocked.is_file()
+    assert blocked.read_text() == 'not a folder'
+
+
 @pytest.mark.unit
 def test_init_agni_atmos_loads_the_row_matched_profile(monkeypatch, tmp_path):
     """init_agni_atmos seeds AGNI from the atmosphere written for this row.
@@ -429,7 +852,9 @@ def test_init_agni_atmos_loads_the_row_matched_profile(monkeypatch, tmp_path):
     fake_agni = _FakeAGNI()
     loaded_paths = []
     fake_agni.setpt.fromncdf_b = lambda _atmos, path, *_a, **_k: loaded_paths.append(path)
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -452,6 +877,7 @@ def test_init_agni_atmos_loads_the_row_matched_profile(monkeypatch, tmp_path):
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -480,7 +906,9 @@ def test_init_agni_atmos_falls_back_to_latest_profile_mid_run(monkeypatch, tmp_p
     fake_agni = _FakeAGNI()
     loaded_paths = []
     fake_agni.setpt.fromncdf_b = lambda _atmos, path, *_a, **_k: loaded_paths.append(path)
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -503,6 +931,7 @@ def test_init_agni_atmos_falls_back_to_latest_profile_mid_run(monkeypatch, tmp_p
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -530,7 +959,9 @@ def test_init_agni_atmos_passes_unscaled_surface_pressure(monkeypatch, tmp_path)
     0.9 * P_surf, differing from the correct value by 10% of the column.
     """
     fake_agni = _FakeAGNI()
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -550,6 +981,7 @@ def test_init_agni_atmos_passes_unscaled_surface_pressure(monkeypatch, tmp_path)
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -579,7 +1011,9 @@ def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
     grey-gas dispatch.
     """
     fake_agni = _FakeAGNI()
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -598,6 +1032,7 @@ def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -627,7 +1062,9 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
     A missing *.sflux in that branch should raise FileNotFoundError
     instead of IndexError, so the caller sees a clear diagnostic."""
     fake_agni = _FakeAGNI()
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
 
     output_dir = tmp_path / 'out'
     data_dir = output_dir / 'data'
@@ -649,6 +1086,7 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
@@ -674,6 +1112,199 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
     assert fake_agni.last_allocate_input_star == ''
 
 
+@pytest.mark.unit
+def test_init_agni_atmos_forwards_hill_radius_and_hydrograv_hilldr(monkeypatch, tmp_path):
+    """setup_b receives the orbit-derived Hill radius and the new
+    hydrograv_hilldr config field, not just the pre-existing hydrograv kwargs.
+
+    Physical scenario: AGNI's hydrostatic integration marks layers beyond the
+    Hill radius as gravitationally unbound; PROTEUS must forward the
+    per-iteration Hill radius it already computes in orbit/wrapper.py rather
+    than leaving AGNI on its own internal default.
+    """
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    config = _build_greygas_config()
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 7.123e8,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+
+    atmos = init_agni_atmos(dirs, config, hf_row)
+    assert atmos is not None
+
+    assert fake_agni.last_setup_kwargs['hill_radius'] == pytest.approx(7.123e8)
+    assert fake_agni.last_setup_kwargs['hydrograv_hilldr'] == pytest.approx(1e2)
+    # Discrimination guard: the Hill radius is not the interior radius, and a
+    # regression that accidentally forwarded R_int instead would pass a
+    # value orders of magnitude smaller.
+    assert fake_agni.last_setup_kwargs['hill_radius'] != pytest.approx(hf_row['R_int'])
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_path):
+    """A discovered aerosol whose name matches a condensate (case-insensitive)
+    tracks that condensate's mixing ratio; a non-matching aerosol is skipped
+    entirely (never sent to AGNI), since it would always read zero anyway.
+
+    Physical scenario: AGNI's `set_aerosols!` recomputes an aerosol's mass
+    mixing ratio from its tied condensate's condensation yield every step, so
+    an aerosol species tied to an active condensate has a mixing ratio that
+    tracks condensation; one with no matching condensate can never have a
+    non-zero mixing ratio, so configuring it would only cost extra Mie/optics
+    computation for no effect.
+    """
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    config = _build_greygas_config()
+    config.atmos_clim.aerosols_enabled = True
+    config.atmos_clim.agni.rainout = True
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 6.4e8,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    # Two condensable gases (H2O is excluded from ALWAYS_DRY, SiO2 too), so
+    # _determine_condensates returns both rather than short-circuiting on a
+    # single-gas dry-atmosphere warning.
+    monkeypatch.setattr(
+        agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 0.5, 'SiO2': 0.5}
+    )
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    # 'sio2' (lower case) must still match the condensate 'SiO2' from
+    # _construct_voldict above; 'Soot' matches nothing and must be dropped.
+    monkeypatch.setattr(
+        agni_mod, '_determine_aerosols', lambda *_a, **_k: {'sio2': 'mon', 'Soot': 'mon'}
+    )
+
+    atmos = init_agni_atmos(dirs, config, hf_row)
+    assert atmos is not None
+
+    aerosol_species = fake_agni.last_setup_kwargs['aerosol_species']
+    assert aerosol_species == {'sio2': {'method': 'mon', 'species': 'SiO2'}}
+    # Discrimination guard: the untied aerosol must be absent entirely, not
+    # merely stripped of its species/mmr key.
+    assert 'Soot' not in aerosol_species
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_init_agni_atmos_mie_aerosol_carries_size_distribution(monkeypatch, tmp_path):
+    """A Mie-method aerosol carries the nk_file/r_eff/sigma_g keys AGNI's
+    parser requires for that method, in addition to the tie/override key.
+
+    Physical scenario: AGNI computes Mie-theory optical properties from a
+    log-normal particle-size distribution at runtime, so a Mie aerosol
+    without a size (r_eff, sigma_g) or refractive-index reference (nk_file)
+    is not a valid AGNI configuration and would be rejected by
+    `parse_aerosol_entry`.
+    """
+    fake_agni = _FakeAGNI()
+    fake_agni.aerosol_optics = SimpleNamespace(list_materials=lambda: ['SiO2'])
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    config = _build_greygas_config()
+    config.atmos_clim.aerosols_enabled = True
+    config.atmos_clim.agni.rainout = True
+    # Non-default values, so the test also proves these come from config
+    # rather than happening to match a hardcoded default.
+    config.atmos_clim.agni.aerosol_r_eff = 2.0e-6
+    config.atmos_clim.agni.aerosol_sigma_g = 1.4
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 6.4e8,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(
+        agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 0.5, 'SiO2': 0.5}
+    )
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    # Discovery key deliberately lower case, while the on-disk material name
+    # (as reported by AGNI's own list_materials(), mocked above as 'SiO2')
+    # is mixed case -- nk_file must resolve to the latter.
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda *_a, **_k: {'sio2': 'mie'})
+
+    atmos = init_agni_atmos(dirs, config, hf_row)
+    assert atmos is not None
+
+    entry = fake_agni.last_setup_kwargs['aerosol_species']['sio2']
+    assert entry == {
+        'method': 'mie',
+        'nk_file': 'SiO2',
+        'r_eff': 2.0e-6,
+        'sigma_g': 1.4,
+        'species': 'SiO2',
+    }
+    # Discrimination guard: nk_file must be the on-disk (mixed-case) name,
+    # not the lowercased discovery key -- 'sio2.txt' does not exist on disk.
+    assert entry['nk_file'] != 'sio2'
+    # Discrimination guard: r_eff and sigma_g must be within AGNI's accepted
+    # ranges (1e-10 <= r_eff <= 1.0 m; 1.0 <= sigma_g <= 100.0), not just any
+    # positive numbers that happen to satisfy the dict-equality check above.
+    assert 1e-10 < entry['r_eff'] < 1.0
+    assert 1.0 <= entry['sigma_g'] < 100.0
+
+
 # ---------------------------------------------------------------------------
 # _check_agni_schema: lightweight Atmos_t field-list check at allocate
 # ---------------------------------------------------------------------------
@@ -695,6 +1326,7 @@ def _build_complete_atmos_stub() -> SimpleNamespace:
         tmp_surf=1500.0,
         tmp_magma=1500.0,
         g=[9.8],
+        hill_radius=6.4e8,
         is_converged=True,
         transparent=False,
         flux_d_sw=[100.0],
@@ -904,7 +1536,9 @@ def test_init_agni_spectral_file_path_not_found_raises(monkeypatch, tmp_path):
     a non-greygas path that points to a missing file.
     """
     fake_agni = _FakeAGNI()
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
 
     config = _build_greygas_config()
@@ -1087,6 +1721,7 @@ def _make_run_agni_atmos(*, transparent=False):
     atmos.tmp_magma = 1500.0
     atmos.p_boa = 1.0e5
     atmos.transspec_p = 1.0e4
+    atmos.transspec_ref_p = 1.0e4  # always present on the real struct post-setup
     atmos.transspec_r = 6.4e6
     atmos.transspec_tmp = 280.0
     atmos.flux_tot = [150.0, 200.0, 100.0]
@@ -1121,12 +1756,17 @@ def _make_run_agni_config(
     oceans=False,
     xuv_defined_by_radius=False,
     hill_clamp=False,
+    p_obs=1e-3,
+    cloud_enabled=False,
+    aerosols_enabled=False,
 ):
     """Build the config namespace run_agni reads."""
     return SimpleNamespace(
         atmos_clim=SimpleNamespace(
-            p_obs=1e-3,
+            p_obs=p_obs,
             p_top=1e-5,
+            cloud_enabled=cloud_enabled,
+            aerosols_enabled=aerosols_enabled,
             agni=SimpleNamespace(
                 solve_energy=solve_energy,
                 oceans=oceans,
@@ -1249,6 +1889,67 @@ def test_run_agni_prevent_warming_clamps_negative_flux(monkeypatch):
     assert output['F_atm'] == pytest.approx(1e-8, rel=1e-6)
     # Without prevent_warming, F_atm would be -50.0
     assert output['F_atm'] > 0
+
+
+@pytest.mark.physics_invariant
+def test_run_agni_p_obs_none_determines_photosphere_from_tau(monkeypatch):
+    """p_obs=None ('none' in the config file) lets AGNI find the photosphere
+    from optical depth instead of a fixed pressure level (issue #694).
+
+    Physical scenario: AGNI can locate the pressure level where the vertical
+    optical depth reaches a reference value at a reference wavelength, which
+    is self-consistent with the atmosphere's actual composition and opacity,
+    rather than an arbitrary fixed pressure the user must otherwise guess.
+
+    Discrimination: a regression that always passes setby='prs' (the fixed-
+    pressure legacy contract) would still return successfully here (opaque,
+    non-transparent atmosphere), so the test pins the `setby` value itself
+    rather than only checking that the call did not raise.
+    """
+    photosphere_calls = []
+    atmos = _make_run_agni_atmos(transparent=False)
+    config = _make_run_agni_config(solve_energy=False, p_obs=None)
+    hf_row = {
+        'P_surf': 100.0,
+        'p_xuv': 1e-3,
+        'R_xuv': 6.5e6,
+        'gravity': 9.8,
+        'Time': 100.0,
+    }
+    for g in ['H2O', 'CO2']:
+        hf_row[g + '_vmr'] = 0.5
+
+    dirs = {'output': '/tmp/fake', 'output/plots': '/tmp/fake_plots'}
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(
+            atmosphere=SimpleNamespace(
+                estimate_photosphere_b=lambda *a, **kw: photosphere_calls.append(kw)
+            ),
+            save=SimpleNamespace(write_ncdf=lambda a, p: None),
+            plotting=SimpleNamespace(plot_contfunc1=lambda a, p: None),
+            chemistry=SimpleNamespace(calc_composition_b=lambda *a: False),
+            setpt=SimpleNamespace(
+                dry_adiabat_b=lambda a: None,
+                saturation_b=lambda a, g: None,
+                stratosphere_b=lambda a, v: None,
+            ),
+            energy=SimpleNamespace(
+                calc_fluxes_b=lambda a, **kw: None,
+                fill_Kzz_b=lambda a: None,
+            ),
+        ),
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *a: [])
+    monkeypatch.setattr(agni_mod, 'get_oarr_from_parr', lambda p_arr, r_arr, val: (0, val))
+
+    agni_mod.run_agni(atmos, 1, dirs, config, hf_row)
+
+    assert len(photosphere_calls) == 1
+    assert photosphere_calls[0]['setby'] == 'tau'
+    # Discrimination guard: the legacy fixed-pressure contract uses 'prs',
+    # not 'tau'; a regression that ignored p_obs=None would report this.
+    assert photosphere_calls[0]['setby'] != 'prs'
 
 
 def test_run_agni_ocean_output_keys_populated(monkeypatch):
@@ -2265,6 +2966,7 @@ def test_update_agni_atmos_interpolates_a_usable_profile(monkeypatch):
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     out = agni_mod.update_agni_atmos(
@@ -2292,6 +2994,42 @@ def test_update_agni_atmos_interpolates_a_usable_profile(monkeypatch):
     # Discrimination against a guess-profile regression: an isothermal
     # rebuild would have left a single repeated value.
     assert max(atmos.tmp) - min(atmos.tmp) > 100.0
+
+
+@pytest.mark.unit
+def test_update_agni_atmos_sets_hill_radius_from_hf_row(monkeypatch):
+    """Every iteration re-reads the orbit-derived Hill radius onto the struct.
+
+    Physical scenario: the Hill radius shifts as the orbit and planet mass
+    evolve, so AGNI's hydrostatic integration must see the current value
+    each step, not just the one supplied at setup.
+    """
+    fake_agni = _ProfileAGNI()
+    _install_profile_fakes(monkeypatch, fake_agni)
+
+    atmos = _ProfileAtmosphere([1.0e1, 1.0e3, 1.0e5, 1.0e7], [200.0, 500.0, 1100.0, 1900.0])
+    atmos.hill_radius = 1.0e3  # stale value from a previous, closer orbit
+    hf_row = {
+        'F_ins': 1361.0,
+        'albedo_pl': 0.1,
+        'T_surf': 1900.0,
+        'T_magma': 2000.0,
+        'P_surf': 200.0,  # bar
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'M_int': 6.0e24,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 9.876e8,
+    }
+
+    agni_mod.update_agni_atmos(atmos, hf_row, {'output': '/tmp/run'}, _build_profile_config())
+
+    assert atmos.hill_radius == pytest.approx(9.876e8, rel=1e-12)
+    # Discrimination guard: the stale pre-call value must actually have been
+    # overwritten, not just coincidentally already correct.
+    assert atmos.hill_radius != pytest.approx(1.0e3)
 
 
 @pytest.mark.unit
@@ -2325,6 +3063,7 @@ def test_update_agni_atmos_rebuilds_profile_left_non_finite(monkeypatch, caplog)
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.agni'):
@@ -2386,6 +3125,7 @@ def test_update_agni_atmos_rebuilds_when_only_temperatures_are_poisoned(monkeypa
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.agni'):
@@ -2433,6 +3173,7 @@ def test_update_agni_atmos_honours_the_configured_guess_on_rebuild(monkeypatch):
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     agni_mod.update_agni_atmos(
@@ -2495,6 +3236,7 @@ def test_update_agni_atmos_fails_as_atmosphere_error_without_a_usable_bc(monkeyp
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
     atmos = _ProfileAtmosphere([1.0e2, 1.0e5], [float('nan'), 1200.0])
     with pytest.raises(RuntimeError, match='T_surf'):
@@ -2566,6 +3308,7 @@ def test_update_agni_atmos_rejects_a_bad_surface_state_behind_a_good_profile(mon
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     # The same profile with a usable surface state goes through, so each
@@ -2652,6 +3395,7 @@ def test_a_lost_atmosphere_goes_to_transparent_mode_not_the_pressure_grid(monkey
         'axial_period': 86400.0,
         'longitude': 0.0,
         'latitude': 0.0,
+        'hill_radius': 6.4e8,
     }
 
     agni_mod.update_agni_atmos(

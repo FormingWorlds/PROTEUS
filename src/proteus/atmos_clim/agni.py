@@ -12,6 +12,7 @@ from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import clip_radius_to_hill, get_oarr_from_parr, get_spfile_path
+from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
@@ -52,6 +53,8 @@ _REQUIRED_ATMOS_FIELDS = (
     'tmp_magma',
     # Cell-centre gravity, read at the XUV level
     'g',
+    # Hill radius, used by the hydrostatic integration to mark unbound layers
+    'hill_radius',
     # Solver flags
     'is_converged',
     'transparent',
@@ -423,9 +426,14 @@ def _determine_condensates(vol_list: list):
     return [v for v in vol_list if v not in ALWAYS_DRY]
 
 
-def _determine_aerosols(dirs: dict) -> list:
+def _determine_aerosols(dirs: dict) -> dict:
     """
-    Determine which aerosols are available.
+    Determine which aerosols are available, and which method to use for each.
+
+    AGNI can compute aerosol optical properties two ways:
+     - Pre-computed monochromatic scattering data
+     - Mie theory at runtime from refractive-index data bundled with AGNI
+    Mie is preferred when both are available for the same species.
 
     Parameters
     ----------
@@ -434,26 +442,36 @@ def _determine_aerosols(dirs: dict) -> list:
 
     Returns
     ----------
-        aerosols : list
-            List of available aerosols
+        aerosols : dict
+            Mapping of aerosol species name to the optical properties method.
     """
 
+    aerosols = {}
+
+    # Pre-computed monochromatic scattering data (FWL_DATA)
     scattering_dir = os.path.join(dirs['fwl'], 'scattering', 'scattering')
-    if not os.path.isdir(scattering_dir):
+    if os.path.isdir(scattering_dir):
+        for f in os.listdir(scattering_dir):
+            if f.endswith('.mon'):
+                aerosols[f.replace('.mon', '')] = 'mon'
+    else:
         log.warning(f'Scattering data directory not found: {scattering_dir}')
-        return []
 
-    aerosols = []
-    for f in os.listdir(scattering_dir):
-        if f.endswith('.mon'):
-            aerosols.append(f.replace('.mon', ''))
-    aerosols = sorted(aerosols)
+    # Materials AGNI can compute via Mie theory at runtime.
+    # Overrides 'mon' when a species has both.
+    for name in jl.AGNI.aerosol_optics.list_materials():
+        aerosols[name] = 'mie'
 
-    log.debug(f'Available aerosols: {aerosols}')
+    # Remove H2O from aerosols list
+    if 'H2O' in aerosols:
+        del aerosols['H2O']
+        log.debug('Removed H2O from aerosols list')
+
+    log.debug(f'Available aerosols: {sorted(aerosols)}')
     return aerosols
 
 
-def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
+def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = True):
     """Initialise atmosphere struct for use by AGNI.
 
     Does not set the temperature profile.
@@ -466,6 +484,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
+        use_cache : bool
+            Whether to read from and store into `atmos_clim.spectral_cache`.
 
     Returns
     ----------
@@ -483,6 +503,19 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     # the spectral file from FWL_DATA). Grey-gas and user-provided paths
     # bypass the glob entirely so a missing or empty `data/*.sflux` directory
     # is not a precondition for those modes.
+
+    # Fast I/O folder. Decided before the spectral file, because AGNI writes the
+    # prepared runtime.sf pair here and so this is where the cache reads from.
+    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
+        io_dir = dirs['output']
+    else:
+        io_dir = create_tmp_folder()
+    log.info(f'Temporary-file working dir: {io_dir}')
+
+    # Set when this run built a prepared spectral file that the cache does not
+    # yet hold, so it can be stored once the build is known to have succeeded.
+    cache_store_key = None
+    cache_candidate = False
 
     # Spectral file path provided?
     if config.atmos_clim.agni.spectral_file is not None:
@@ -527,12 +560,9 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         input_sf = get_spfile_path(dirs['fwl'], config)
         input_star = sflux_path
 
-    # Fast I/O folder
-    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
-        io_dir = dirs['output']
-    else:
-        io_dir = create_tmp_folder()
-    log.info(f'Temporary-file working dir: {io_dir}')
+        # The cache is consulted once the aerosol species are known, because they
+        # are part of the cache key.
+        cache_candidate = bool(config.atmos_clim.spectral_cache and use_cache)
 
     # composition
     vol_dict = _construct_voldict(config, hf_row, dirs)
@@ -565,17 +595,67 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     p_top = config.atmos_clim.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
-    # Aerosol species dictionary (set MMR to zero initially)
-    aerosol_species = {}
-    if config.atmos_clim.aerosols_enabled:
-        aerosol_species = {a: 0.0 for a in _determine_aerosols(dirs)}
-        if len(aerosol_species) == 0:
-            log.warning('No data found for aerosol species')
+    # Aerosol species dictionary which maps names to properties files
+    mie_materials_by_lower = {
+        str(m).lower(): str(m) for m in jl.AGNI.aerosol_optics.list_materials()
+    }
+    condensate_by_lower = {c.lower(): c for c in condensates}
 
-    # Build the AGNI setup! kwargs. The ``aerosol_species`` parameter is
-    # only present on newer AGNI installs; if the installed AGNI predates
-    # that addition, sending the kwarg raises a Julia MethodError. Detect
-    # the kwarg at module load and only pass it when AGNI accepts it.
+    # Dictionary of aerosol species and properties
+    aerosol_species = {}
+
+    # Loop through each potential aerosol and determine which method to use
+    log.info('Aerosol species:')
+    for name, method in _determine_aerosols(dirs).items():
+        entry = {'method': method}
+
+        # Try mie
+        if method == 'mie':
+            entry['nk_file'] = mie_materials_by_lower.get(name, name)
+            entry['r_eff'] = config.atmos_clim.agni.aerosol_r_eff
+            entry['sigma_g'] = config.atmos_clim.agni.aerosol_sigma_g
+
+        # Associate this with a condensate
+        tied = condensate_by_lower.get(name.lower())
+        if tied is not None:
+            # tied to a species by name
+            entry['species'] = tied
+            aerosol_species[name] = entry
+            log.info(f'    {name:8s} ({method}) tied to condensate {tied}')
+        else:
+            # skip otherwise
+            log.debug(f'    {name:8s} ({method}) not tied to any condensate; skipping')
+
+    # Warn if no aerosol species were found
+    if len(aerosol_species) == 0:
+        log.warning('    No aerosols mapped or data unavailable')
+
+    # AGNI computes Mie aerosol properties from the stellar spectrum while it
+    # builds the file, so a run with a Mie aerosol always refuses the cache.
+    if cache_candidate and config.atmos_clim.aerosols_enabled:
+        if any(entry['method'] == 'mie' for entry in aerosol_species.values()):
+            log.debug('Mie aerosols present; not using the spectral-file cache')
+            cache_candidate = False
+
+    # Reuse a cached file built earlier from this base file and this stellar
+    # spectrum, and skip the insertion.
+    if cache_candidate:
+        key = cache_key(
+            input_sf,
+            sflux_path,
+            config.atmos_clim.spectral_group,
+            config.atmos_clim.spectral_bands,
+            rayleigh=config.atmos_clim.rayleigh,
+            aerosols=list(aerosol_species) if config.atmos_clim.aerosols_enabled else None,
+        )
+        if seed_from_cache(config.atmos_clim.spectral_cache, key, io_dir):
+            log.debug('Reusing prepared spectral file from cache')
+            input_sf = os.path.join(io_dir, 'runtime.sf')
+            input_star = ''
+        else:
+            cache_store_key = key
+
+    # Build the AGNI setup! kwargs.
     setup_kwargs = dict(
         IO_DIR=io_dir,
         # radtrans
@@ -589,7 +669,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         surf_roughness=config.atmos_clim.agni.surf_roughness,
         surf_windspeed=config.atmos_clim.agni.surf_windspeed,
         # phase change
-        condensates=condensates,
+        condensates=convert(jl.Array[jl.String, 1], condensates),
         phs_timescale=config.atmos_clim.agni.phs_timescale,
         evap_efficiency=config.atmos_clim.agni.evap_efficiency,
         # eqm chemistry
@@ -621,10 +701,15 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         # hydrostatic integration parameters
         hydrograv_steps=config.atmos_clim.agni.hydrograv_steps,
         hydrograv_maxdr=config.atmos_clim.agni.hydrograv_maxdr,
+        hydrograv_hilldr=config.atmos_clim.agni.hydrograv_hilldr,
         hydrograv_mindr=config.atmos_clim.agni.hydrograv_mindr,
         hydrograv_ming=config.atmos_clim.agni.hydrograv_ming,
         hydrograv_constg=config.atmos_clim.agni.hydrograv_constg,
         hydrograv_selfg=config.atmos_clim.agni.hydrograv_selfg,
+        hill_radius=max(float(hf_row['hill_radius']), float(hf_row['R_int'])),
+        # photosphere from optical depth, used when atmos_clim.p_obs='none'
+        transspec_ref_tau=config.atmos_clim.agni.tau_obs,
+        transspec_ref_wl=config.atmos_clim.agni.wl_obs,
     )
     setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
 
@@ -664,6 +749,10 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
 
     # Confirm the live Atmos_t contains every field that PROTEUS expects
     _check_agni_schema(atmos, dirs)
+
+    # Stored spectral file is now valid, so store it in the cache if requested.
+    if cache_store_key:
+        store_in_cache(config.atmos_clim.spectral_cache, cache_store_key, io_dir)
 
     # Set temperature profile from old NetCDF if it exists
     nc_files = glob.glob(os.path.join(dirs['output'], 'data', '*_atm.nc'))
@@ -945,10 +1034,11 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
         atmos.gas_ovmr[g][:] = vol_dict[g]
 
     # ---------------------
-    # Update interior geometry and spin rate
+    # Update interior geometry, spin rate, and hill radius
     atmos.grav_surf = float(hf_row['gravity'])
     atmos.rp = float(hf_row['R_int'])
     atmos.interior_mass = float(hf_row['M_int'])
+    atmos.hill_radius = max(float(hf_row['hill_radius']), float(hf_row['R_int']))
     atmos.axial_period = float(hf_row['axial_period'])
     atmos.col_lon = float(hf_row['longitude'])
     atmos.col_lat = float(hf_row['latitude'])
@@ -1223,6 +1313,14 @@ def _solve_once(atmos, config: Config):
         config.atmos_clim.agni.rainout,
     )
 
+    # set clouds
+    if config.atmos_clim.cloud_enabled:
+        jl.AGNI.atmosphere.set_cloud_b(atmos)
+
+    # set aerosols
+    if config.atmos_clim.aerosols_enabled:
+        jl.AGNI.atmosphere.set_aerosols_b(atmos)
+
     # solve fluxes
     jl.AGNI.energy.calc_fluxes_b(atmos, radiative=True, convective=True, calc_cf=True)
 
@@ -1323,15 +1421,19 @@ def run_agni(
 
     # Transparent case
     if bool(atmos.transparent):
-        # no opacity
         log.info('Using transparent solver')
         atmos.transspec_ref_p = float(atmos.p_boa)
+        photosphere_setby = 'prs'  # set photosphere as surface pressure
         atmos = _solve_transparent(atmos, config)
 
     # Opaque case
     else:
-        # Set observed pressure
-        atmos.transspec_ref_p = float(config.atmos_clim.p_obs * 1e5)  # converted to Pa
+        # p_obs=None means photosphere set from optical depth
+        if config.atmos_clim.p_obs is None:
+            photosphere_setby = 'tau'
+        else:
+            atmos.transspec_ref_p = float(config.atmos_clim.p_obs * 1e5)  # converted to Pa
+            photosphere_setby = 'prs'
 
         # full solver
         if config.atmos_clim.agni.solve_energy:
@@ -1347,7 +1449,7 @@ def run_agni(
     atmos.transspec_p = atmos.transspec_ref_p
 
     # Calculate planet transit radius and other photospheric properties
-    jl.AGNI.atmosphere.estimate_photosphere_b(atmos, setby=str('prs'))
+    jl.AGNI.atmosphere.estimate_photosphere_b(atmos, setby=str(photosphere_setby))
 
     # Write output data
     if write_data:
