@@ -55,24 +55,22 @@ this was validated against):
             envelope (T > 5000 K or P > 136 GPa) are excluded from the
             check. See interior_chem/disproportionation.py for the
             derivation.
-  Step 10   radial fO2 profile via Hirschmann (2022) GCA 313 Eq 21
-            (= Schaefer et al. 2024 Eq 13), evaluated in every melt cell at
-            that cell's T and P, including the pressure term
-            int(dV dP) / (R T ln10) for the oxidation reaction
-            FeO + 1/4 O2 = FeO1.5 (Schaefer Eq 10-11, Deng et al. 2020 EOS,
-            interior_chem/eos_deng.int_dV_dP_oxidation). Note this is the
-            oxidation dV, not the disproportionation dV of Step 9c. The
-            composition (and so Fe3+/Fe2+) is uniform by Step 4, so the
-            profile varies only through T(r) and P(r). The value in the
-            uppermost melt cell (lowest pressure) is converted to Delta-IW
-            and handed to the outgassing. Reads the redox ratio AFTER
-            Step 9a-9h, so any metal that formed is reflected. Delta-IW
-            uses the O'Neill & Eggins (2002) buffer as given in Bower
-            et al. (2022) PSJ 3, 93, Eq 7-8 (T-only, 1 bar), evaluated at
-            the outgassing temperature max(T_magma, outgas.T_floor), so
-            that IW(T_out) + Delta-IW, which is what the outgassing
-            rebuilds, equals the top cell's fO2. The cell's pressure term
-            is carried in that fO2.
+  Step 10   surface fO2 via Hirschmann (2022) GCA 313 Eq 21 (= Schaefer
+            et al. 2024 Eq 13) at 1 bar, with the pressure/EOS term
+            (integral of Delta V dP) zero, using the single melt
+            Fe3+/Fe2+ after Step 9a-9h, at the outgassing temperature
+            max(T_magma, outgas.T_floor). This is Schaefer's surface
+            calculation (fO2lowP_H22.m, "without the high pressure term",
+            P = 0.0001 GPa), while the disproportionation in Step 9 always
+            carries the pressure term. Delta-IW uses the O'Neill & Eggins
+            (2002) buffer as given in Bower et al. (2022) PSJ 3, 93,
+            Eq 7-8, at the same temperature. Separately, a radial fO2
+            profile is evaluated in every melt cell at that cell's T and P
+            WITH int(dV dP) for FeO + 1/4 O2 = FeO1.5 (Schaefer Eq 10-11,
+            interior_chem/eos_deng.int_dV_dP_oxidation; the oxidation dV,
+            not the disproportionation dV of Step 9c) and stored in the
+            interior snapshot as a diagnostic; it does not feed the
+            outgassing.
 
 BSE starting composition and partition coefficients are the same
 literature values used in tools/redox_step.py (McDonough 2003 via
@@ -252,14 +250,13 @@ class MeltRedoxState:
     # Initial FeO1.5 mass fraction of the melt, set from f_0 in Step 2 and held
     # fixed; enters the non-iron melt mass in the metal step.
     w_feo15: float = 0.0
-    # Per-cell log10(fO2) from Eq 13 (Step 10), NaN outside the melt or the
-    # EOS envelope. Overwritten each step. Diagnostic; the outgassing only
-    # sees the uppermost melt cell, fO2_cell.
+    # Per-cell log10(fO2) from Eq 13 with int(dV dP) (Step 10a), NaN outside
+    # the melt or the EOS envelope. Overwritten each step. Diagnostic only;
+    # fO2_cell is the uppermost melt cell, the shallowest point of it.
     log10_fO2_cell: np.ndarray | None = None
     fO2_cell: int = -1
     melt_exhausted: bool = False
     eos_coverage_logged: bool = False
-    top_eos_logged: bool = False
     X: dict = field(default_factory=_compute_mole_fractions)
 
 
@@ -433,8 +430,8 @@ def write_fO2_profile_ncdf(fpath: str, state: MeltRedoxState | None) -> bool:
     Adds (or overwrites) ``log10_fO2_s`` on the snapshot's ``staggered``
     dimension -- absolute log10(fO2/bar) from Eq 13 at each cell's (T, P),
     NaN in solid cells and outside the Deng EOS envelope -- and the scalar
-    ``fO2_top_index``, the staggered index of the cell whose value set
-    ``fO2_shift_IW_mantle``. Returns True if written.
+    ``fO2_top_index``, the staggered index of the uppermost melt cell
+    (diagnostic: ``fO2_shift_IW_mantle`` is evaluated at 1 bar). Returns True if written.
 
     The snapshot is written by the interior backend before the redox step
     runs, so this is called afterwards on the same file. Skips, with a log
@@ -518,20 +515,21 @@ def _put_fO2_profile(ds, state: MeltRedoxState) -> None:
     else:
         t = ds.createVariable('fO2_top_index', np.int32)
     t.assignValue(int(state.fO2_cell))
-    t.comment = 'staggered index of the cell whose fO2 sets fO2_shift_IW_mantle'
+    t.comment = ('staggered index of the uppermost melt cell (diagnostic; '
+                 'fO2_shift_IW_mantle is evaluated at 1 bar, not here)')
 
 
 def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> None:
     """Advance the melt Fe3+/Fe2+ tracking by one coupling-loop timestep,
-    compute the radial Eq 13 fO2 profile, and write the Delta-IW of the
-    uppermost melt cell into hf_row.
+    compute the radial Eq 13 fO2 profile (diagnostic), and write the
+    surface (1 bar) Delta-IW into hf_row.
 
     No-op unless config.planet.fO2_source == 'from_mantle_redox'. Call
     once per run_interior invocation, after interior_o.phi/mass/pres/temp
     are finalised for this step.
 
     Writes:
-        hf_row['fO2_shift_IW_mantle'] - Delta-IW of the uppermost melt cell
+        hf_row['fO2_shift_IW_mantle'] - surface (1 bar) Delta-IW this step
         hf_row['ferric_frac_mantle']  - global melt Fe3+/FeT this step
     """
     if config.planet.fO2_source != 'from_mantle_redox':
@@ -613,66 +611,41 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
         if xi != 0.0:
             _update_ratios(state)
 
-    # Step 10: radial fO2 profile from Eq 13 at each cell's (T, P), then
-    # Delta-IW from the uppermost melt cell (lowest pressure). Once the melt
-    # is gone the ratio is frozen and the uppermost cell overall is used.
+    # Step 10a: radial fO2 profile from Eq 13 at each cell's (T, P),
+    # including int(dV dP). Diagnostic only (written to the interior
+    # snapshot, cf. Schaefer et al. 2024 Fig S4); it does not set Delta-IW.
     temp = np.asarray(interior_o.temp, dtype=float)
     P_gpa = pres / 1e9
     melt = phi > 0.0
     prof, _ = _log10_fO2_profile(state.redox_ratio, temp, P_gpa, state.X)
     state.log10_fO2_cell = np.where(melt, prof, np.nan)
     candidates = melt if np.any(melt) else np.ones_like(melt, dtype=bool)
-    top = int(np.argmin(np.where(candidates, pres, np.inf)))
-    state.fO2_cell = top
+    state.fO2_cell = int(np.argmin(np.where(candidates, pres, np.inf)))
 
-    # Two temperatures enter Delta-IW, and they are deliberately different:
-    #   T_top - the uppermost melt cell's own temperature, at which Eq 13
-    #           gives that cell's absolute fO2;
-    #   T_out - the temperature the outgassing solves at. CALLIOPE and
-    #           atmodeller both use max(T_magma, outgas.T_floor) and rebuild
-    #           the absolute fO2 as IW(T_out) + Delta-IW.
-    # Evaluating the buffer at T_out makes that rebuilt fO2 equal the top
-    # cell's fO2 exactly, whatever T_magma is.
+    # Step 10b: surface Delta-IW handed to the outgassing, as Schaefer et al.
+    # (2024) compute the fO2 of the outgassing atmosphere (fO2lowP_H22.m):
+    # Eq 13 at the surface, 1 bar, int(dV dP) = 0, with the single melt
+    # Fe3+/Fe2+ (homogeneous by Step 4). The depth physics reaches the
+    # surface only through that ratio (crystallization and the Step 9
+    # metal step, which do carry the pressure term). Evaluating a cell at
+    # depth instead would add its pressure term against a 1-bar buffer,
+    # tens of log units once the shallow melt has frozen.
+    # Both Eq 13 and the buffer are taken at the temperature the outgassing
+    # solves at: CALLIOPE and atmodeller raise T_magma to outgas.T_floor,
+    # and below the floor the relation gives offsets of -10 or lower that
+    # the chemistry cannot solve.
     T_floor = float(config.outgas.T_floor)
     T_magma = float(hf_row['T_magma'])
     T_out = max(T_magma, T_floor)
     if T_out > T_magma:
         log.warning(
             'Melt redox: T_magma = %.1f K is below outgas.T_floor = %.1f K; '
-            'the IW buffer is evaluated at %.1f K, the temperature the '
-            'outgassing uses',
+            'surface fO2 and Delta-IW are evaluated at %.1f K, the temperature '
+            'the outgassing uses',
             T_magma, T_floor, T_out,
         )
-    # Guard only: a melt cell is above the solidus, so this binds only once
-    # the mantle has frozen and the top cell overall is a cold solid, where
-    # Eq 13 (with a 1/T pressure term) would give unsolvable offsets.
-    T_cell = float(temp[top])
-    T_top = max(T_cell, T_floor)
-    if T_top > T_cell:
-        log.warning(
-            'Melt redox: uppermost cell T = %.1f K is below outgas.T_floor = '
-            '%.1f K; its fO2 is evaluated at %.1f K',
-            T_cell, T_floor, T_top,
-        )
-    # The pressure term at the top cell. Above T_CEILING the table is read
-    # at T_CEILING; below p_splice(T_CEILING) (~2.6 GPa) that is the
-    # uncompressed-dV splice, which is the same value the splice gives at
-    # any higher T, so the clamp only extrapolates deeper than that.
-    T_eos = min(T_top, eos_deng.T_CEILING)
-    I_top, _ = eos_deng.int_dV_dP_oxidation(T_eos, float(P_gpa[top]))
-    if T_top > eos_deng.T_CEILING and not state.top_eos_logged:
-        state.top_eos_logged = True
-        level = (logging.WARNING if P_gpa[top] > eos_deng.p_splice(eos_deng.T_CEILING)
-                 else logging.INFO)
-        log.log(
-            level,
-            'Melt redox: uppermost melt cell T = %.0f K exceeds the Deng EOS '
-            'ceiling %.0f K; its fO2 pressure term (P = %.3f GPa) is read at '
-            'the ceiling',
-            T_top, eos_deng.T_CEILING, float(P_gpa[top]),
-        )
-    log10_fO2_top = float(_log10_fO2(state.redox_ratio, T_top, state.X, float(I_top)))
-    dIW = log10_fO2_top - _iw_buffer_bower2022(T_out)
+    log10_fO2_surf = _log10_fO2_surface(state.redox_ratio, T_out, state.X)
+    dIW = log10_fO2_surf - _iw_buffer_bower2022(T_out)
 
     hf_row['fO2_shift_IW_mantle'] = dIW
     hf_row['ferric_frac_mantle'] = state.ferric_frac
@@ -689,10 +662,8 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
         metal_msg = 'no metal formed'
     log.info(
         'Metal redox state: %s; cumulative metal=%.3e mol, '
-        'Fe3+/FeT=%.4f, dIW=%+.3f (fO2 at uppermost melt cell %d, '
-        'P=%.3f GPa, T=%.0f K; IW at T_out=%.0f K)',
-        metal_msg, n_metal_total, state.ferric_frac, dIW,
-        top, float(P_gpa[top]), T_top, T_out,
+        'Fe3+/FeT=%.4f, surface dIW=%+.3f (1 bar, T=%.0f K)',
+        metal_msg, n_metal_total, state.ferric_frac, dIW, T_out,
     )
 
     # Step 11: metal-saturation diagnostics. Written unconditionally so the

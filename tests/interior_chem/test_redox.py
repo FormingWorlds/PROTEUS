@@ -397,64 +397,76 @@ def test_metal_diagnostics_reach_the_helpfile_csv(tmp_path, caplog):
 
 
 @pytest.mark.physics_invariant
-def test_iw_buffer_is_evaluated_at_the_outgassing_temperature(caplog):
-    """The outgassing rebuilds fO2 as IW(T_out) + Delta-IW with
-    T_out = max(T_magma, outgas.T_floor). Evaluating the buffer at that same
-    T_out must make the rebuilt fO2 equal the top cell's Eq 13 fO2, for any
-    T_magma, including below the floor (302 K is a surface temperature an
-    interior step can return).
+def test_surface_delta_iw_is_eq13_at_1_bar_and_the_outgassing_temperature(caplog):
+    """The offset handed to the outgassing is Schaefer et al.'s surface fO2
+    (fO2lowP_H22.m): Eq 13 at 1 bar, int(dV dP) = 0, with the melt ratio,
+    minus IW, both at T_out = max(T_magma, outgas.T_floor) -- the
+    temperature CALLIOPE and atmodeller solve at. 302 K is a surface
+    temperature an interior step can return; at that temperature the
+    relation gives an offset near -11 that the chemistry cannot solve.
     """
-    from proteus.interior_chem.eos_deng import int_dV_dP_oxidation
-    from proteus.interior_chem.redox import _iw_buffer_bower2022, _log10_fO2
+    from proteus.interior_chem.redox import _iw_buffer_bower2022, _log10_fO2_surface
 
-    T_cell, P_cell = _TEMP[0], _PRES[0] / 1e9
+    def diw_at(T, state):
+        return _log10_fO2_surface(state.redox_ratio, T, state.X) - _iw_buffer_bower2022(T)
+
     config = _make_config(0.1344)
-    rebuilt, offsets = {}, {}
-    for T_magma in (302.342, 700.0, 1500.0, 2200.0, 3500.0):
+    results = {}
+    for T in (302.342, 700.0, 2200.0, 3500.0):
         interior = _make_interior()
-        hf_row = {'T_magma': T_magma}
+        hf_row = {'T_magma': T}
         caplog.clear()
         with caplog.at_level('WARNING'):
             update_melt_redox(interior, hf_row, config)
         warned = any('below outgas.T_floor' in r.message for r in caplog.records)
-        assert warned == (T_magma < 700.0)
-        T_out = max(T_magma, 700.0)
-        offsets[T_magma] = hf_row['fO2_shift_IW_mantle']
-        rebuilt[T_magma] = offsets[T_magma] + _iw_buffer_bower2022(T_out)
-        state = interior.redox_state
+        results[T] = (hf_row['fO2_shift_IW_mantle'], interior.redox_state, warned)
 
-    I_ox, _ = int_dV_dP_oxidation(T_cell, P_cell)
-    log10_fO2_cell = float(_log10_fO2(state.redox_ratio, T_cell, state.X, float(I_ox)))
-    for T_magma, value in rebuilt.items():
-        assert value == pytest.approx(log10_fO2_cell, abs=1e-9), T_magma
-    # Below the floor T_magma itself must not be used for the buffer.
-    assert offsets[302.342] == pytest.approx(offsets[700.0], abs=1e-12)
-    # Discrimination guard: the offset genuinely changes with T_out (the IW
-    # buffer moves ~ several log units between 700 and 3500 K), so a buffer
-    # evaluated at the cell temperature could not pass the checks above.
-    assert offsets[700.0] - offsets[3500.0] > 3.0
+    for T, (diw, state, warned) in results.items():
+        T_out = max(T, 700.0)
+        assert diw == pytest.approx(diw_at(T_out, state), rel=1e-12), T
+        assert warned == (T < 700.0)
+    # Discrimination guard: at the raw 302 K the offset is far lower, so a
+    # value evaluated at T_magma itself could not pass the check above.
+    cold, cold_state, _ = results[302.342]
+    assert diw_at(302.342, cold_state) < cold - 10.0
+    # The temperature genuinely enters: at a fixed ratio the offset differs
+    # between 700, 2200 and 3500 K (it is not monotonic in T, so only
+    # distinctness is asserted).
+    vals = [results[T][0] for T in (700.0, 2200.0, 3500.0)]
+    assert min(abs(x - y) for i, x in enumerate(vals) for y in vals[i + 1:]) > 0.5
 
 
 @pytest.mark.physics_invariant
-def test_a_cold_frozen_top_cell_is_floored_for_eq13(caplog):
-    """Guard for a fully solidified mantle whose uppermost cell is cold: Eq 13
-    is evaluated at outgas.T_floor rather than the raw cell temperature."""
-    from proteus.interior_chem.eos_deng import int_dV_dP_oxidation
-    from proteus.interior_chem.redox import _iw_buffer_bower2022, _log10_fO2
-
+def test_freezing_the_shallow_melt_does_not_shift_the_surface_delta_iw():
+    """Regression for the uppermost-melt-cell convention, which jumped by
+    tens of log units once the shallow cells froze: the deepest remaining
+    melt cell then carried a large int(dV dP) against a 1-bar buffer. The
+    melt is homogeneous, so the surface offset may depend only on its
+    Fe3+/Fe2+ and T_out, not on where melt remains. On the first call the
+    ratio is exactly f_0 whatever phi is, so the two meshes below carry the
+    same melt redox state.
+    """
     config = _make_config(0.1)
-    interior = _make_interior()
-    interior.temp = np.array([302.342, 2800.0, 3400.0])
-    interior.pres = np.array([0.01e9, 30.0e9, 50.0e9])
-    hf_row = {'T_magma': 2000.0}
-    with caplog.at_level('WARNING'):
+    pres = np.array([0.3e9, 30.0e9, 80.0e9])
+    temp = np.array([2000.0, 3200.0, 3900.0])
+    mass = np.array([1.0e21, 3.0e21, 5.0e21])
+    out = {}
+    for name, phi in (('molten', np.array([1.0, 1.0, 1.0])),
+                      ('shallow frozen', np.array([0.0, 0.0, 1.0]))):
+        interior = _make_interior()
+        interior.phi, interior.pres, interior.temp, interior.mass = phi, pres, temp, mass
+        hf_row = {'T_magma': 2500.0}
         update_melt_redox(interior, hf_row, config)
-    assert any('uppermost cell T' in r.message for r in caplog.records)
-    st = interior.redox_state
-    I_ox, _ = int_dV_dP_oxidation(700.0, 0.01)
-    expected = float(_log10_fO2(st.redox_ratio, 700.0, st.X, float(I_ox))) \
-        - _iw_buffer_bower2022(2000.0)
-    assert hf_row['fO2_shift_IW_mantle'] == pytest.approx(expected, rel=1e-12)
+        out[name] = (hf_row['fO2_shift_IW_mantle'], interior.redox_state)
+
+    (d_m, s_m), (d_f, s_f) = out['molten'], out['shallow frozen']
+    assert s_m.redox_ratio == pytest.approx(s_f.redox_ratio, rel=1e-15)
+    assert d_f == pytest.approx(d_m, rel=1e-12)
+    # Discrimination guard: the diagnostic profile does see the deep cell,
+    # whose fO2 sits many log units above the 1-bar value at the same ratio,
+    # so evaluating Delta-IW there would have failed the check above.
+    assert s_f.fO2_cell == 2
+    assert s_f.log10_fO2_cell[2] - s_m.log10_fO2_cell[0] > 5.0
 
 
 @pytest.mark.physics_invariant
@@ -513,16 +525,13 @@ def test_fo2_profile_is_resolved_per_melt_cell_and_nan_in_solid():
 
 
 @pytest.mark.physics_invariant
-def test_delta_iw_comes_from_the_uppermost_melt_cell_whatever_the_grid_order():
-    """The reported offset is the lowest-pressure melt cell's, so it must not
-    depend on whether the backend orders cells surface-first or CMB-first,
-    and a solid cell above the melt is skipped."""
-    from proteus.interior_chem.eos_deng import int_dV_dP_oxidation
-    from proteus.interior_chem.redox import _iw_buffer_bower2022, _log10_fO2
-
+def test_uppermost_melt_cell_index_is_found_whatever_the_grid_order():
+    """fO2_top_index (diagnostic) is the lowest-pressure melt cell whether
+    the backend orders cells surface-first (SPIDER) or CMB-first (Aragog),
+    and a solid lid is skipped; the surface offset does not depend on the
+    order either."""
     config = _make_config(0.1)
-    # Solid lid on top (index 0), melt below it.
-    phi = np.array([0.0, 1.0, 0.5])
+    phi = np.array([0.0, 1.0, 0.5])            # solid lid on top
     pres = np.array([0.5e9, 3.0e9, 30.0e9])
     temp = np.array([1600.0, 2500.0, 3300.0])
     mass = np.array([1.0e21, 3.0e21, 5.0e21])
@@ -534,15 +543,9 @@ def test_delta_iw_comes_from_the_uppermost_melt_cell_whatever_the_grid_order():
         interior.temp, interior.mass = temp[order], mass[order]
         hf_row = {'T_magma': 2000.0}
         update_melt_redox(interior, hf_row, config)
-        st = interior.redox_state
-        assert interior.pres[st.fO2_cell] == pytest.approx(3.0e9)
+        assert interior.pres[interior.redox_state.fO2_cell] == pytest.approx(3.0e9)
         offsets.append(hf_row['fO2_shift_IW_mantle'])
-
     assert offsets[0] == pytest.approx(offsets[1], rel=1e-12)
-    I_ox, _ = int_dV_dP_oxidation(2500.0, 3.0)
-    expected = float(_log10_fO2(st.redox_ratio, 2500.0, st.X, float(I_ox))) \
-        - _iw_buffer_bower2022(2000.0)   # buffer at T_out = T_magma
-    assert offsets[0] == pytest.approx(expected, rel=1e-12)
 
 
 def test_oxidised_melt_stays_below_metal_saturation():
