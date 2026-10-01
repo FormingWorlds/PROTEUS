@@ -1268,6 +1268,7 @@ class Proteus:
                 check_element_closure=trapping_active(self.config),
                 derived_elements=derived_total_elements(self.config),
                 closure_rtol=self.config.outgas.solver_rtol,
+                closure_floor_kg=self.config.outgas.mass_thresh,
             )
 
             # P_surf = P_vol + P_vap, and P_vap == 0 when rock

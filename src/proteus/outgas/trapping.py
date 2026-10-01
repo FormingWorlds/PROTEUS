@@ -90,7 +90,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.outgas.common import element_masses_from_species
+from proteus.outgas.common import VOLATILE_ELEMENT_STOICH, element_masses_from_species
 from proteus.outgas.compaction import (
     BRANCH_DARCY,
     BRANCH_FALLBACK,
@@ -434,6 +434,16 @@ def keep_only_trapped_mass(hf_row: dict) -> None:
             mol = mass / eval_gas_mmw(element)
             hf_row[f'{element}_mol_solid'] = mol
             hf_row[f'{element}_mol_total'] = mol
+
+
+def _carried(hf_row: dict, species: str) -> bool:
+    """Whether every element of ``species`` has a positive whole-planet total.
+
+    An element the run does not carry can still show trace melt mass from the
+    chemistry solve; burying it would create mass its total never held.
+    """
+    elements = VOLATILE_ELEMENT_STOICH.get(species, {species: 1})
+    return all(float(hf_row.get(f'{e}_kg_total', 0.0)) > 0.0 for e in elements)
 
 
 def _apply_to_reservoirs(hf_row: dict, moved: dict[str, float]) -> None:
@@ -813,7 +823,7 @@ def run_trapping(
     d_z = partition_coefficients(config)
     for species in TRAPPED_SPECIES:
         kg_liquid = float(hf_row.get(f'{species}_kg_liquid', 0.0))
-        if kg_liquid <= 0.0:
+        if kg_liquid <= 0.0 or not _carried(hf_row, species):
             continue
         c_z = melt_concentration(kg_liquid, melt_mass)
         mass, capped = trapped_mass(d_z[species], step.f_tl, c_z, dm_rm, kg_liquid)

@@ -580,6 +580,7 @@ def assert_mass_conservation(
     check_element_closure: bool = False,
     derived_elements: tuple[str, ...] = (),
     closure_rtol: float | None = None,
+    closure_floor_kg: float = 0.0,
 ) -> None:
     """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, and
     M_atm <= M_planet unless the caller disables that half.
@@ -627,6 +628,11 @@ def assert_mass_conservation(
         ``max(atol_frac, closure_rtol)``; the main loop supplies
         ``config.outgas.solver_rtol``. ``atol_frac`` itself, and with it the
         atmosphere-mass and species-sum invariants, is unchanged.
+    closure_floor_kg : float
+        Mass below which an element counts as absent [kg]. The closure is not
+        checked for an element whose total and reservoir sum both fall below
+        it: the chemistry can leave trace melt mass of an element the run does
+        not carry. The main loop supplies ``config.outgas.mass_thresh``.
 
     Raises
     ------
@@ -729,7 +735,7 @@ def assert_mass_conservation(
         if not np.isfinite(total) or total <= 0.0:
             continue
         parts = sum(float(hf_row.get(f'{e}_kg_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
-        if not np.isfinite(parts):
+        if not np.isfinite(parts) or max(total, parts) < closure_floor_kg:
             continue
         rel = abs(parts - total) / total
         if rel > closure_tol:
