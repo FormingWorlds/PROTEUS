@@ -1679,7 +1679,8 @@ def needs_spider_ps_tables(config) -> bool:
     """Return whether a run reads the Wolf and Bower P-S lookup set.
 
     SPIDER and Aragog read it unless Zalmoxis generates a PALEOS table set
-    (:func:`proteus.utils.helper.generates_paleos_tables`). A set
+    (:func:`proteus.utils.helper.generates_paleos_tables`). Under the dummy structure
+    Aragog reads its P-T property tables from it even with a PALEOS P-S set. A set
     interior_struct.eos_dir asks for it whenever SPIDER or Aragog run.
 
     Parameters
@@ -1775,9 +1776,10 @@ def download_zalmoxis_eos_for_config(config) -> None:
     the start-of-run data check and ``proteus get interiordata``. The
     ``'none'`` ice-layer sentinel maps to ``''`` (no ice EOS). With
     ``dry_mantle = false`` it also fetches the tables of the dissolved
-    volatiles that the structure solve adds to the mantle EOS. Under the
-    dummy structure with SPIDER or Aragog it fetches only the PALEOS mantle
-    tables the P-S table set is built from; other structures need nothing.
+    volatiles that the structure solve adds to the mantle EOS. When the dummy
+    structure builds a PALEOS P-S set it fetches the tables of every mantle
+    component (the table check requires them) and the 2-phase pair, but no
+    core tables; other dummy runs and structures need nothing.
     """
     struct_cfg = getattr(config, 'interior_struct', None)
     module = getattr(struct_cfg, 'module', None)
@@ -1787,11 +1789,11 @@ def download_zalmoxis_eos_for_config(config) -> None:
     )
     if module == 'dummy':
         energetics = getattr(getattr(config, 'interior_energetics', None), 'module', None)
-        mantle = getattr(getattr(struct_cfg, 'zalmoxis', None), 'mantle_eos', '') or ''
+        mantle = getattr(getattr(struct_cfg, 'zalmoxis', None), 'mantle_eos', None)
         if energetics in ('spider', 'aragog') and energetics_eos_key(mantle) in (
             PALEOS_REGISTRY_KEYS
         ):
-            download_zalmoxis_eos(mantle_eos=mantle, anchor_pair=anchor_pair)
+            download_zalmoxis_eos(mantle_eos=mantle, with_core=False)
         return
     if module != 'zalmoxis':
         return
@@ -2049,6 +2051,7 @@ def download_zalmoxis_eos(
     ice_layer_eos: str = '',
     volatile_eos: str = '',
     anchor_pair: bool = False,
+    with_core: bool = True,
 ):
     """Download Zalmoxis EOS data required for the given EOS configuration.
 
@@ -2070,6 +2073,9 @@ def download_zalmoxis_eos(
     anchor_pair : bool
         Also fetch the MgSiO3 2-phase pair for any mantle, which the
         liquidus_super initial adiabat and the adiabatic_from_cmb entropy fallback read.
+    with_core : bool
+        Whether a structure solve reads a core EOS. False skips the Seager 2007
+        iron core default and fallback; a Seager component is still fetched.
     """
     from proteus.data import (
         EOS_CHABRIER_2021,
@@ -2106,10 +2112,9 @@ def download_zalmoxis_eos(
     # directly, when no core EOS is given (Seager iron is the default
     # core), and for every mantle family whose registry entry carries
     # the Seager iron core fallback (SEAGER_FALLBACK_FAMILIES above).
-    if (
-        any(c.startswith('Seager2007') for c in components)
-        or any(c.startswith(SEAGER_FALLBACK_FAMILIES) for c in components)
-        or not core_eos
+    if any(c.startswith('Seager2007') for c in components) or (
+        with_core
+        and (any(c.startswith(SEAGER_FALLBACK_FAMILIES) for c in components) or not core_eos)
     ):
         attempt('the Seager 2007 tables', download_eos_static)
 
