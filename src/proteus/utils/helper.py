@@ -122,7 +122,7 @@ def generates_paleos_tables(interior_struct) -> bool:
     registry. SPIDER, Aragog and the table fetch then use the PALEOS-derived
     curves instead of interior_struct.melting_dir. The table files are not checked.
     The dummy structure builds the same P-S set for a PALEOS mantle EOS, but Aragog
-    keeps melting_dir there, so it is not covered here.
+    still requires melting_dir there, so it is not covered here.
 
     Parameters
     ----------

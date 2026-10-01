@@ -4977,7 +4977,7 @@
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Melting curve name in FWL_DATA. Required for the SPIDER structure module and for any run without a PALEOS table set; not read with module = 'zalmoxis' and a single PALEOS mantle EOS. With module = 'dummy' and a PALEOS mantle EOS, Aragog still reads it for its P-T curves.",
+      "description": "Melting curve name in FWL_DATA. Required for the SPIDER structure module and for any run without a PALEOS table set; not read with module = 'zalmoxis' and a single PALEOS mantle EOS. With module = 'dummy' and a PALEOS mantle EOS, Aragog requires it but the solve uses the PALEOS set.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11036,6 +11036,17 @@
         "outgas.module"
       ],
       "doc": "Check that required external packages are importable for the selected modules."
+    },
+    {
+      "validator": "dummy_struct_mantle_eos",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct"
+      ],
+      "doc": "Check the mantle EOS that the dummy structure hands to SPIDER or Aragog."
     },
     {
       "validator": "energetics_needs_a_thermal_mantle_eos",

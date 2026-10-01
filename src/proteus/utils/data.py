@@ -1680,7 +1680,7 @@ def needs_spider_ps_tables(config) -> bool:
 
     SPIDER and Aragog read it unless Zalmoxis generates a PALEOS table set
     (:func:`proteus.utils.helper.generates_paleos_tables`). Under the dummy structure
-    Aragog reads its phase-property lookup tables from it even with a PALEOS P-S set. A set
+    Aragog requires its phase-property lookup tables even with a PALEOS P-S set. A set
     interior_struct.eos_dir asks for it whenever SPIDER or Aragog run.
 
     Parameters

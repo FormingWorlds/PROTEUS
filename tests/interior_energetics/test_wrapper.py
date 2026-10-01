@@ -3705,6 +3705,35 @@ class _PaleosRoute(Exception):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('energetics', ['dummy', 'boundary'])
+def test_dummy_structure_builds_no_ps_tables_for_other_energetics(tmp_path, energetics):
+    """Energetics other than SPIDER and Aragog read no P-S tables: the dummy structure neither
+    builds the PALEOS set nor provides the FWL_DATA/SPIDER set, whatever the mantle EOS."""
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
+
+    config = MagicMock()
+    config.interior_energetics.module = energetics
+    config.interior_energetics.num_levels = 50
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
+    with (
+        _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables') as generate,
+        _patch('proteus.interior_energetics.wrapper._provide_spider_eos_tables') as provide,
+        _patch('proteus.interior_energetics.wrapper.Interior_t'),
+        _patch('proteus.interior_energetics.wrapper.run_interior'),
+        _patch('proteus.interior_energetics.wrapper.update_gravity'),
+        _patch('proteus.interior_energetics.wrapper.calc_target_elemental_inventories'),
+        _patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
+    generate.assert_not_called()
+    provide.assert_not_called()
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ('mantle_eos', 'paleos'),
     [
