@@ -223,7 +223,7 @@ def resume_runs(tmp_path_factory):
 @pytest.mark.physics_invariant
 def test_resume_restores_the_cmb_entropy_gradient(resume_runs, record_property):
     """A resumed Aragog run hands the stored CMB gradient to the solver, and
-    its energy-conservation residual and first-step CMB flux are closer to the
+    its first-step CMB flux and mantle heat release are closer to the
     uninterrupted control than a finite-difference restart.
 
     Physical scenario: a molten 1 M_Earth mantle on the real Aragog solver
@@ -247,15 +247,17 @@ def test_resume_restores_the_cmb_entropy_gradient(resume_runs, record_property):
         k: abs(D['F_cmb'].iloc[first] / ctrl['F_cmb'].iloc[first] - 1)
         for k, D in (('res', res), ('fd', fd))
     }
-    d_res = {
-        k: abs(D['E_residual_cons_frac'].iloc[first] - ctrl['E_residual_cons_frac'].iloc[first])
+    d_heat = {
+        k: abs(
+            D['step_dE_state_heat_J'].iloc[first] / ctrl['step_dE_state_heat_J'].iloc[first] - 1
+        )
         for k, D in (('res', res), ('fd', fd))
     }
-    for name, d in (('d_flux', d_flux), ('d_res', d_res)):
+    for name, d in (('d_flux', d_flux), ('d_heat', d_heat)):
         for k in ('res', 'fd'):
             record_property(f'{name}_{k}', float(d[k]))
     assert d_flux['res'] < 0.5 * d_flux['fd'], d_flux
-    assert d_res['res'] < 0.5 * d_res['fd'], d_res
+    assert d_heat['res'] < 0.5 * d_heat['fd'], d_heat
 
     after = (res['Time'] > r['t_seam']).to_numpy()
     assert (res['T_magma'][after] > 0).all() and (res['T_cmb'][after] > 0).all()
