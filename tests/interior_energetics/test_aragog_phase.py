@@ -37,6 +37,7 @@ pytest.importorskip('aragog.jax')
 
 from aragog.jax.phase import PhaseParams  # noqa: E402
 
+from proteus.config import read_config_object  # noqa: E402
 from proteus.interior_energetics.aragog import AragogRunner  # noqa: E402
 from proteus.interior_energetics.aragog_jax import AragogJAXRunner  # noqa: E402
 from proteus.interior_energetics.aragog_phase import (  # noqa: E402
@@ -166,6 +167,23 @@ def test_shared_quantities_match_across_numpy_and_jax():
     assert jax_params.grain_size == pytest.approx(ie.grain_size)
     assert numpy_params.matprop_smooth_width == pytest.approx(ie.spider.matprop_smooth_width)
     assert jax_params.matprop_smooth_width == pytest.approx(ie.spider.matprop_smooth_width)
+
+
+def test_default_rfront_loc_reaches_both_phase_types(config_minimal):
+    """The rfront_loc default reaches the numpy and JAX aragog phase parameters.
+
+    input/minimal.toml sets no rfront_loc, so the parsed value is the Interior default
+    (0.4). Both phase types carry it as the rheological transition, an explicit value
+    still overrides it, and a value of 1 is rejected before it reaches a builder.
+    """
+    config = read_config_object(config_minimal)
+    mixed = build_mixed_phase_params(config, 'solidus.dat', 'liquidus.dat')
+    assert mixed.rheological_transition_melt_fraction == pytest.approx(0.4, abs=1e-12)
+    assert build_jax_phase_params(config).phi_rheo == pytest.approx(0.4, abs=1e-12)
+    config.interior_energetics.rfront_loc = 0.3
+    assert build_jax_phase_params(config).phi_rheo == pytest.approx(0.3, abs=1e-12)
+    with pytest.raises(ValueError, match='rfront_loc'):
+        config.interior_energetics.rfront_loc = 1.0
 
 
 @pytest.mark.parametrize(
@@ -407,12 +425,59 @@ def test_cvode_factory_reads_the_setup_solver_fallback_tables(tmp_path, spider_e
             'proteus.interior_energetics.aragog.build_jax_phase_params',
             return_value=MagicMock(),
         ),
+        patch(
+            'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
+            return_value=(MagicMock(), MagicMock(), MagicMock()),
+        ),
     ):
         AragogRunner._maybe_install_jax_cvode_factory(config, interior_o, str(tmp_path))
+        factory = interior_o.aragog_solver.set_jax_cvode_factory.call_args[0][0]
+        factory(MagicMock(), 'energy_balance')
 
-    mock_eos.assert_called_once_with(str(tmp_path / 'data' / 'spider_eos'))
-    # Discrimination: the configured directory is not what the EOS reads.
-    assert mock_eos.call_args.args[0] != eos_dir
+    # Both install-time verification and factory invocation read the fallback directory.
+    assert mock_eos.call_count == 2
+    for call in mock_eos.call_args_list:
+        assert call.args[0] == str(tmp_path / 'data' / 'spider_eos')
+        assert call.args[0] != eos_dir
+
+
+def test_cvode_factory_reads_live_spider_eos_dir_on_each_call(tmp_path):
+    """When _spider_eos_dir updates after install, factory invocations resolve
+    the live directory rather than the install-time directory.
+    """
+    config = _make_full_config()
+    config.interior_energetics.aragog.backend = 'jax'
+    dir1 = tmp_path / 'eos_initial'
+    dir2 = tmp_path / 'eos_regenerated'
+    dir1.mkdir()
+    dir2.mkdir()
+    interior_o = _make_runner_interior_o(spider_eos_dir=str(dir1))
+
+    with (
+        patch(
+            'proteus.interior_energetics.aragog._cached_entropy_eos_jax',
+            return_value=MagicMock(),
+        ) as mock_eos,
+        patch('aragog.jax.phase.MeshArrays.from_numpy_mesh', return_value=MagicMock()),
+        patch(
+            'proteus.interior_energetics.aragog.build_jax_phase_params',
+            return_value=MagicMock(),
+        ),
+        patch(
+            'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
+            return_value=(MagicMock(), MagicMock(), MagicMock()),
+        ),
+    ):
+        AragogRunner._maybe_install_jax_cvode_factory(config, interior_o, str(tmp_path))
+        factory = interior_o.aragog_solver.set_jax_cvode_factory.call_args[0][0]
+        # Point to the regenerated directory after install
+        interior_o._spider_eos_dir = str(dir2)
+        factory(MagicMock(), 'energy_balance')
+
+    # Install read initial dir1; subsequent invocation read regenerated dir2.
+    assert mock_eos.call_count == 2
+    assert mock_eos.call_args_list[0].args[0] == str(dir1)
+    assert mock_eos.call_args_list[1].args[0] == str(dir2)
 
 
 def test_numpy_setup_solver_site_delegates_to_the_shared_builder():

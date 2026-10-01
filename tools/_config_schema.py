@@ -266,7 +266,7 @@ def _display_type(field, hint, path: str, accepts_none: bool) -> str:
     'or none' is appended when the converter maps 'none' to None.
     """
     if path in ANNOTATION_OVERRIDES:
-        base_names = [ANNOTATION_OVERRIDES[path]]
+        base_names = [n.strip() for n in ANNOTATION_OVERRIDES[path].split('|')]
         saw_none = False
     elif hint is not None:
         origin = typing.get_origin(hint)
@@ -289,7 +289,7 @@ def _display_type(field, hint, path: str, accepts_none: bool) -> str:
         base_names = parts
     else:
         raise _docgen.DocgenError(f'field "{path}" has no recoverable type annotation')
-    base = ' | '.join(base_names)
+    base = ' or '.join(base_names)
     if accepts_none or saw_none:
         base += ' or none'
     return base

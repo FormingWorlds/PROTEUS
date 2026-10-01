@@ -62,6 +62,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -1173,9 +1174,14 @@ def test_ci_setup_installs_every_declared_extra():
 
 
 def _run_guard(
-    tmp_path, *args: str, pathspec: str = '', strict: bool = False
+    tmp_path,
+    *args: str,
+    pathspec: str = '',
+    strict: bool = False,
+    checkout: str = 'aragog',
+    script_name: str = 'get_aragog.sh',
 ) -> subprocess.CompletedProcess:
-    """Run the shipped guard against the ``aragog`` checkout in ``tmp_path``.
+    """Run the shipped guard against the ``checkout`` directory in ``tmp_path``.
 
     ``pathspec`` appends a git pathspec, as ``get_socrates.sh`` does for its
     regenerable build config. ``strict`` selects the shell the callers
@@ -1184,7 +1190,7 @@ def _run_guard(
     """
     body = (
         'get_parse_args "$@"\n'
-        f'guard_dirty_checkout "$GUARD_ROOT/aragog" get_aragog.sh {pathspec}\n'
+        f'guard_dirty_checkout "$GUARD_ROOT/{checkout}" {script_name} {pathspec}\n'
         'echo GUARD_PASSED\n'
     )
     return subprocess.run(
@@ -1357,6 +1363,54 @@ def test_guard_keeps_unpushed_work_on_a_branch_that_is_not_checked_out(tmp_path,
 
     assert res.returncode == 1, res.stdout
     assert 'not on a remote' in res.stderr
+    assert 'GUARD_PASSED' not in res.stdout
+
+
+@pytest.mark.unit
+def test_morrigan_guard_protects_its_own_checkout(tmp_path):
+    """The accretion installer guards the ``Morrigan/`` checkout it deletes.
+
+    ``tools/get_morrigan.sh`` refreshes a sibling clone a developer may also
+    be working in. It calls the shared guard, so what has to be right here is
+    what it passes: the Morrigan path and its own name for the recovery hint.
+    A call copied from another installer would still guard, but would inspect
+    the wrong tree and pass silently on a dirty Morrigan checkout.
+    """
+    call = next(
+        ln
+        for ln in (TOOLS_DIR / 'get_morrigan.sh').read_text().splitlines()
+        if ln.startswith('guard_dirty_checkout')
+    )
+    assert '"$workpath"' in call and 'get_morrigan.sh' in call, call
+    # Discrimination: a call lifted from another installer names its tree.
+    assert 'BOREAS' not in call and 'aragog' not in call
+    assert 'workpath="$root/Morrigan/"' in (TOOLS_DIR / 'get_morrigan.sh').read_text()
+
+    upstream = tmp_path / 'upstream'
+    upstream.mkdir()
+    _git(upstream, 'init', '-q')
+    (upstream / 'f.py').write_text('a = 1\n')
+    _git(upstream, 'add', 'f.py')
+    _git(upstream, 'commit', '-q', '-m', 'c1')
+
+    workdir = tmp_path / 'Morrigan'
+    _git(tmp_path, 'clone', '-q', str(upstream), str(workdir))
+    _git(workdir, 'checkout', '-q', '--detach', 'HEAD')
+    (workdir / 'morrigan.egg-info').write_text('')  # untracked: must not block
+
+    res = _run_guard(tmp_path, checkout='Morrigan', script_name='get_morrigan.sh')
+    assert res.returncode == 0, res.stderr
+    assert 'GUARD_PASSED' in res.stdout
+
+    # A local-only commit is exactly the state of a developer branch that
+    # has not been pushed; refreshing would destroy it.
+    (workdir / 'f.py').write_text('a = 2\n')
+    _git(workdir, 'add', 'f.py')
+    _git(workdir, 'commit', '-q', '-m', 'local work')
+    res = _run_guard(tmp_path, checkout='Morrigan', script_name='get_morrigan.sh')
+    assert res.returncode == 1
+    assert 'not on a remote' in res.stderr
+    assert 'get_morrigan.sh --force' in res.stderr
     assert 'GUARD_PASSED' not in res.stdout
 
 
@@ -2238,3 +2292,106 @@ def test_install_sh_goes_on_when_cvode_works(tmp_path, marker):
     assert res.returncode == 0, res.stderr
     assert 'WARN' not in res.stderr
     assert 'REACHED' in res.stdout
+
+
+@pytest.mark.unit
+def test_pyproject_keeps_morrigan_out_of_mandatory_dependencies():
+    """Morrigan is an optional extra, pinned once by version.
+
+    The giant-impact model is needed only by ``accretion.module =
+    "morrigan"`` runs, so it must not be a mandatory dependency of
+    fwl-proteus. It lives in ``[project.optional-dependencies]`` under its
+    own extra, carrying a published version floor, and must NOT also carry
+    a ``[tool.proteus.modules]`` SHA pin: a second pin can drift from the
+    PyPI release, which is the dual-pin trap fwl-vulcan, fwl-aragog and
+    fwl-zalmoxis are all kept out of.
+
+    The floor is written zero-padded to match the release tag, because
+    tools/get_morrigan.sh checks out ``tags/<floor>`` for an editable
+    checkout. PEP 440 treats the padded and normalised forms as the same
+    version, so one string serves the resolver and the tag lookup.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+
+    deps = data['project']['dependencies']
+    morrigan_deps = [d for d in deps if 'morrigan' in d.lower()]
+    assert morrigan_deps == [], (
+        f'morrigan must not be a mandatory dependency of fwl-proteus: {morrigan_deps!r}'
+    )
+    # Discrimination: an empty dependencies list would also pass the check
+    # above; pin a known-mandatory package as evidence the list is intact.
+    assert any('fwl-calliope' in d for d in deps), 'mandatory dependency list is intact'
+
+    extras = data['project']['optional-dependencies']
+    morrigan_extra = extras.get('morrigan', [])
+    assert any(r.startswith('fwl-morrigan>=') for r in morrigan_extra), (
+        f'morrigan extra must keep its version floor, got {morrigan_extra!r}'
+    )
+
+    # Single pin: a git SHA alongside the version floor could drift from the
+    # published release, so the module table must not carry morrigan.
+    git_modules = data['tool']['proteus']['modules']
+    assert 'morrigan' not in git_modules, (
+        'morrigan must not have a [tool.proteus.modules] git pin; it is pinned '
+        'once via the fwl-morrigan extra and the matching git tag, like '
+        f'fwl-vulcan/fwl-aragog/fwl-zalmoxis. Found: {sorted(git_modules)}'
+    )
+
+    # The floor must be tag-shaped (zero-padded CalVer), because the installer
+    # checks out `tags/<floor>`. A normalised floor such as 26.7.25 resolves
+    # against PyPI but names no tag, so the editable install would break.
+    floor = next(r for r in morrigan_extra if r.startswith('fwl-morrigan>=')).split('>=')[1]
+    assert re.fullmatch(r'\d{2}\.\d{2}\.\d{2}', floor), (
+        f'morrigan floor must be zero-padded CalVer to match the release tag, got {floor!r}'
+    )
+
+    # The installer reads the floor with this exact pattern; keep the two in
+    # step so a reformatted pin cannot silently fall back to HEAD.
+    script = (repo_root / 'tools' / 'get_morrigan.sh').read_text(encoding='utf-8')
+    assert 'fwl-morrigan>=' in script and 'tags/$floor' in script, (
+        'tools/get_morrigan.sh must pin the checkout to the fwl-morrigan floor tag'
+    )
+
+    # Verify the pin extractor strips comments before parsing, ensuring
+    # version numbers mentioned in preceding comments are not selected.
+    assignment = re.search(r'^floor=\$\(.*?\)$', script, re.MULTILINE | re.DOTALL)
+    assert assignment, 'could not find the floor assignment in tools/get_morrigan.sh'
+
+    poisoned = (
+        (repo_root / 'pyproject.toml')
+        .read_text(encoding='utf-8')
+        .replace(
+            f'morrigan = ["fwl-morrigan>={floor}"]',
+            f'# later: needs fwl-morrigan>=99.99.99\nmorrigan = ["fwl-morrigan>={floor}"]',
+        )
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = Path(tmp) / 'pyproject.toml'
+        probe.write_text(poisoned, encoding='utf-8')
+        extracted = subprocess.run(
+            [
+                'bash',
+                '-c',
+                f'set -euo pipefail; root={tmp}\n{assignment.group(0)}\necho "$floor"',
+            ],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    assert extracted == floor, (
+        f'floor extraction picked {extracted!r} from a commented version instead of '
+        f'the pin {floor!r}; get_morrigan.sh would check out a tag that does not exist'
+    )
+
+    # A missing pin must reach the warning branch rather than aborting the
+    # script under `set -e`, which would leave an uninstalled clone behind
+    # with no diagnostic.
+    assert '|| true' in script, (
+        'floor extraction must not abort the script; the warning branch is the '
+        'documented behaviour when the pin cannot be read'
+    )
+
+
+# ---------------------------------------------------------------------------
+# Portable-flag rewrite and guards (tools/get_socrates.sh)
+# ---------------------------------------------------------------------------

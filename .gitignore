@@ -100,6 +100,9 @@ Love.jl/
 BOREAS
 boreas
 Boreas
+morrigan
+Morrigan
+MORRIGAN
 
 # misc
 ######
@@ -328,10 +331,7 @@ src/proteus/_version.py
 .julia
 .juliaup
 
-# Note: the repo-root CLAUDE.md is a tracked symlink to .github/copilot-instructions.md;
-# the .github/.claude/rules/ directory is tracked and shared across collaborators.
-# Personal session state (anything under the top-level .claude/ that is not the tracked
-# rules tree) stays out of git.
+# Personal agent session state under a top-level .claude/ stays out of git.
 /.claude/
 .mcp.json
 
@@ -343,5 +343,13 @@ src/proteus/_version.py
 /.playwright-mcp/
 /platon/
 
+# Diagnostic dumps written by `proteus update` into the repo root.
+/proteus_update_*.log
+# output logs
+*.out
+
+# test inference tomls
+input/test_infer_proteus/
+input/inference/test_infer
 # Resolved at install time from the current package set
 pixi.lock

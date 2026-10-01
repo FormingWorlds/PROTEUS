@@ -129,7 +129,7 @@ def _install_zalmoxis_deps(monkeypatch, s_ceiling=S_MAX, invalid_bands=(), super
     monkeypatch.setattr(
         zmod,
         'resolve_2phase_mgsio3_paths',
-        lambda mantle_eos, mat_dicts: ('solid.eos', 'liquid.eos'),
+        lambda mantle_eos, mat_dicts, **_: ('solid.eos', 'liquid.eos'),
     )
     monkeypatch.setattr(
         zmod,

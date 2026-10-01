@@ -43,8 +43,38 @@ HEADER_NOTE = (
     'columns the active modules produce, so a column whose producer is not '
     'part of the current configuration keeps its previous value (initially '
     'zero) for the whole run. The "written when" column names the '
-    'configuration that actually writes each column.'
+    'configuration that actually writes each column. The "Read by" column '
+    'names modules that consume each column, and can over-approximate when '
+    'consumers read keys through variable or template loops, or under-approximate '
+    'when consumers read keys dynamically at runtime through computed keys. '
+    'The "(possible)" label marks consumers in consumers_possible that read '
+    'columns only conditionally, such as for specific species.'
 )
+
+TOUCHED_PATTERNS: dict[tuple[str, str], str] = {
+    ('src/proteus/atmos_clim/agni.py', '_validate_surface_state'): 'T_surf, T_magma, P_surf',
+    ('src/proteus/escape/boreas.py', '_set_boreas_params'): '<gas>_vmr_xuv',
+    (
+        'src/proteus/escape/common.py',
+        'calc_unfract_fluxes',
+    ): '<element>_kg_total, <element>_kg_atm',
+    ('src/proteus/escape/wrapper.py', 'escapable_mass'): '<element>_kg_total, <element>_kg_atm',
+    (
+        'src/proteus/escape/wrapper.py',
+        'calc_new_elements',
+    ): '<element>_kg_total, <element>_kg_atm',
+    ('src/proteus/observe/petitRADTRANS.py', '_get_mix'): '<gas>_vmr',
+    ('src/proteus/outgas/atmodeller.py', '_populate_volatile_element_reservoirs'): (
+        '<species>_kg_<reservoir>'
+    ),
+    ('src/proteus/outgas/atmodeller.py', 'calc_surface_pressures_atmodeller'): (
+        '<element>_kg_total'
+    ),
+    ('src/proteus/plot/cpl_global.py', 'plot_global'): 'F_int, F_atm, F_olr, F_tidal, F_radio',
+    ('src/proteus/plot/cpl_orbit.py', '_plot_orbit_snapshot'): (
+        'semimajorax, semimajorax_sat, eccentricity, eccentricity_sat'
+    ),
+}
 
 # Conditions for backend files reached through a dispatch layer that the
 # module map's entry table does not name directly.
@@ -104,27 +134,48 @@ def build_matrix() -> dict:
         if entry not in bucket:
             bucket.append(entry)
 
-    consumers: dict[str, set[str]] = {}
-    for rel_file, key in scan['reads']:
-        consumers.setdefault(key, set()).add(_consumer_module(rel_file))
+    consumers_definite: dict[str, set[str]] = {}
+    consumers_possible: dict[str, set[str]] = {}
+    for rel_file, key, is_possible in scan['reads']:
+        bucket = consumers_possible if is_possible else consumers_definite
+        bucket.setdefault(key, set()).add(_consumer_module(rel_file))
+
+    for key, poss in consumers_possible.items():
+        poss -= consumers_definite.get(key, set())
 
     keys = []
     for record in schema:
         name = record['name']
+        definite = consumers_definite.get(name, set())
+        possible = consumers_possible.get(name, set())
         keys.append(
             {
                 **record,
                 'producers': sorted(
                     producers.get(name, []), key=lambda p: (p['file'], p['condition'])
                 ),
-                'consumers': sorted(consumers.get(name, set())),
+                'consumers': sorted(definite | possible),
+                'consumers_possible': sorted(possible),
             }
         )
     return {
+        'note': (
+            'The consumers field names modules that consume each column, '
+            'and can over-approximate when consumers read keys through '
+            'variable or template loops, or under-approximate when consumers '
+            'read keys dynamically at runtime through computed keys. '
+            'The consumers_possible field lists the subset of consumers that '
+            'read columns only conditionally, such as for specific species.'
+        ),
         'keys': keys,
         'unresolved_events': [
-            {'file': f'src/proteus/{f}', 'line': line, 'reason': reason}
-            for f, line, reason in scan['unresolved']
+            {
+                'file': f'src/proteus/{f}',
+                'kind': kind,
+                'reason': reason,
+                'function': func,
+            }
+            for f, _line, reason, kind, func in scan['unresolved']
         ],
     }
 
@@ -147,6 +198,13 @@ def _producer_cells(producers: list[dict]) -> tuple[str, str]:
     return '<br>'.join(f'`{f}`' for f in files), '; '.join(conditions)
 
 
+def _consumer_cells(key: dict) -> str:
+    """Format consumers with (possible) annotations where applicable."""
+    possible = set(key['consumers_possible'])
+    mods = [f'{mod} (possible)' if mod in possible else mod for mod in key['consumers']]
+    return ', '.join(mods) if mods else ' '
+
+
 def render(matrix: dict) -> str:
     lines = [GENERATED_NOTE, HEADER_NOTE]
     groups: dict[str, list[dict]] = {}
@@ -161,25 +219,40 @@ def render(matrix: dict) -> str:
         for key in keys:
             producer, condition = _producer_cells(key['producers'])
             unit = f'`{key["unit"]}`' if key['unit'] else ' '
-            readers = ', '.join(key['consumers']) if key['consumers'] else ' '
+            readers = _consumer_cells(key)
             description = key['description'].replace('|', '\\|')
             lines.append(
                 f'| `{key["name"]}` | {unit} | {description} | {producer} '
                 f'| {condition} | {readers} |'
             )
     unresolved = [k for k in matrix['keys'] if not k['producers']]
-    lines += ['', '### Columns without a statically attributed producer', '']
     if unresolved:
+        lines += ['', '### Columns without a statically attributed producer', '']
         for key in unresolved:
             lines.append(f'- `{key["name"]}` ({key["unit"] or "no unit"})')
-        lines.append('')
-        lines.append('Unattributed write sites:')
-        for event in matrix['unresolved_events']:
-            lines.append(f'- `{event["file"]}:{event["line"]}`: {event["reason"]}')
-    else:
+
+    for kind, action in (('read', 'accessed'), ('write', 'modified')):
+        events = [e for e in matrix.get('unresolved_events', []) if e['kind'] == kind]
+        if not events:
+            continue
+        lines += ['', f'### {kind.capitalize()}s with computed keys', '']
         lines.append(
-            'None; every column above has at least one statically attributed producer.'
+            f'A computed key is a helpfile column name constructed dynamically at '
+            f'runtime through variable lookups or formatted strings. Because static '
+            f'analysis cannot determine the {action} column names in advance, these '
+            f'{kind} sites are not attributed to specific columns in the table above.'
         )
+        lines.append('')
+        counts: dict[tuple[str, str, str], int] = {}
+        for event in events:
+            evt_key = (event['file'], event['function'], event['reason'])
+            counts[evt_key] = counts.get(evt_key, 0) + 1
+        for (file, func, reason), count in counts.items():
+            pattern = TOUCHED_PATTERNS.get((file, func))
+            pattern_str = f' (touches {pattern})' if pattern else ''
+            sites_str = f' ({count} sites)' if count > 1 else ''
+            lines.append(f'- `{file}::{func}`{sites_str}: `{reason}`{pattern_str}')
+
     return '\n'.join(lines)
 
 

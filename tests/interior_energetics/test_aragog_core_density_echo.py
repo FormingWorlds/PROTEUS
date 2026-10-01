@@ -373,7 +373,7 @@ def test_update_structure_handles_missing_eos_file(tmp_path):
     # to hf_row before bailing on the missing file would propagate
     # into the helpfile and corrupt the next iteration's BC.
     assert hf_row['core_density'] == pytest.approx(init_rho)
-    # Sign / positivity invariant (Section 3): core density must
+    # Sign / positivity invariant (tests/AGENTS.md, Physics modules): core density must
     # remain strictly positive after the fallback. A regression
     # that zeroed the field on the exception path would land here.
     assert solver.parameters.mesh.core_density > 0.0
@@ -413,7 +413,7 @@ def test_update_structure_skips_when_M_core_is_zero(tmp_path):
     # baseline. A divide-by-zero regression would have written NaN to
     # both the solver and hf_row.
     assert hf_row['core_density'] == pytest.approx(init_rho)
-    # Section 3 positivity: even on the skip path the live core
+    # Positivity (tests/AGENTS.md, Physics modules): even on the skip path the live core
     # density must remain strictly positive (the BC depends on it).
     assert solver.parameters.mesh.core_density > 0.0
 
@@ -470,7 +470,7 @@ def test_round_trip_setup_then_update_consistent(tmp_path):
     # produce a value ~6.1x lower, well outside rel=1e-12.
     expected = M_core / (4.0 / 3.0 * math.pi * 3.495e6**3)
     assert rho_setup == pytest.approx(expected, rel=1e-12)
-    # Positivity invariant (Section 3): core density is a physical
+    # Positivity invariant (tests/AGENTS.md, Physics modules): core density is a physical
     # density and must be strictly positive.
     assert rho_setup > 0.0
 
@@ -644,6 +644,6 @@ def test_echo_back_formula_correct(tmp_path):
     # give 1.10e-2 kg/m^3 (1e6x too low). The bracket below
     # discriminates both.
     assert 8000.0 < aragog_rho < 14000.0
-    # Sign / positivity invariant (Section 3): mass and volume are
+    # Sign / positivity invariant (tests/AGENTS.md, Physics modules): mass and volume are
     # both strictly positive so the density must be strictly positive.
     assert aragog_rho > 0.0
