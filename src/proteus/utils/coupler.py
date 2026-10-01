@@ -1516,7 +1516,8 @@ def GetHelpfileTrappingKeys():
 
     A run that never trapped holds zero in every one of them, which is also
     what a run written before they existed has trapped. `ReadHelpfileFromCSV`
-    therefore zero-fills them on load, and such a run resumes.
+    therefore reads them as zero, like `RESUMABLE_ZERO_FILL_KEYS`, and such a
+    run resumes.
 
     Returns
     -------
@@ -1533,11 +1534,10 @@ def GetHelpfileCoreKeys():
     Returns
     -------
     list of str
-        Every column of `GetHelpfileKeys()` except the diagnostic and the
-        trapping ones.
+        Every column of `GetHelpfileKeys()` except the diagnostic ones.
     """
-    optional = set(_DIAGNOSTIC_KEYS) | set(GetHelpfileTrappingKeys())
-    return [k for k in GetHelpfileKeys() if k not in optional]
+    diagnostic = set(_DIAGNOSTIC_KEYS)
+    return [k for k in GetHelpfileKeys() if k not in diagnostic]
 
 
 # Columns the observation and offline-chemistry pipelines index without a
@@ -1595,11 +1595,9 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     function and are not covered.
 
     A shortfall in the core columns is reported rather than filled. The
-    diagnostic columns of `GetHelpfileDiagnosticKeys()` are one exception:
+    diagnostic columns of `GetHelpfileDiagnosticKeys()` are the exception:
     nothing reads them back, so a file without them is completed with zeros
-    and a line in the log. The trapping columns of `GetHelpfileTrappingKeys()`
-    are the other: a run written before them trapped nothing, which is what a
-    zero in each of them records. Seeding a core value would make the key present,
+    and a line in the log. Seeding a core value would make the key present,
     and several modules decide what to do by testing whether a key is there
     at all: CALLIOPE refuses a run whose oxygen budget is
     absent, the dummy and boundary interiors fall back to a configured core
@@ -1622,7 +1620,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     -------
     pandas.DataFrame
         Helpfile contents as stored, carrying at least ``required_columns``
-        and every diagnostic and trapping column.
+        and every diagnostic column.
 
     Raises
     ------
@@ -1639,7 +1637,8 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     hf_all = pd.read_csv(fpath, sep=r'\s+')
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
-    fillable = [key for key in missing if key in RESUMABLE_ZERO_FILL_KEYS]
+    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys())
+    fillable = [key for key in missing if key in zero_fill]
     unfillable = sorted(set(missing) - set(fillable))
 
     if unfillable:
@@ -1670,17 +1669,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
             fpath,
             ', '.join(backfill),
         )
-    trapping = [k for k in GetHelpfileTrappingKeys() if k not in hf_all.columns]
-    if trapping:
-        log.info(
-            "Helpfile '%s' predates %d solid-phase trapping column(s) (%s); the run "
-            'trapped nothing, so they are filled with zeros.',
-            fpath,
-            len(trapping),
-            _describe_missing_columns(trapping),
-        )
-    if backfill or trapping:
-        zeros = pd.DataFrame(0.0, index=hf_all.index, columns=backfill + trapping)
+        zeros = pd.DataFrame(0.0, index=hf_all.index, columns=backfill)
         hf_all = pd.concat([hf_all, zeros], axis=1)
     return hf_all
 
