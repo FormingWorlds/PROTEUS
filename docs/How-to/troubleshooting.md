@@ -76,6 +76,8 @@ Either run the configuration again from `t = 0`, or check out the PROTEUS versio
 
 `proteus observe` and `proteus offchem` are held to a smaller set of columns, because reading a stored run to synthesise an observation or run offline chemistry touches only a small part of the schema. An archived run stays postprocessable after a schema addition it never used, and stops only when a column those commands actually read is absent. When that happens, the practical remedy for a run that is expensive or no longer possible to reproduce is the second one: check out the PROTEUS version the run was launched with and postprocess it under that version. Re-running from `t = 0` under current code does not reproduce the archived run, it produces a different one.
 
+A Zalmoxis + Aragog run also stops at resume, with status 20, when neither the structure copy saved with its last row (`data/<time>_zalmoxis.dat`) nor `zalmoxis_output.dat` matches the radii of that row; a run written without those copies resumes only after a clean stop, and otherwise must be run again from `t = 0`.
+
 To keep a long run resumable across an upgrade, note the PROTEUS version it was launched with and stay on it until the run finishes.
 
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}

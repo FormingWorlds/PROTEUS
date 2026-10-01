@@ -503,24 +503,55 @@ def test_resync_checks_the_saved_copy_before_using_it(tmp_path, caplog):
     assert len(skipped) == 1 and '100p000_zalmoxis.dat: R_core +0.000e+00 m' in skipped[0]
 
 
+def _torn(path):
+    path.write_bytes(path.read_bytes()[:-30])
+
+
+def _nan_entry(path):
+    data = np.loadtxt(path)
+    data[2, 3] = np.nan
+    np.savetxt(path, data, fmt='%.17e')
+
+
+def _flat_radii(path):
+    data = np.loadtxt(path)
+    data[3, 0] = data[2, 0]
+    np.savetxt(path, data, fmt='%.17e')
+
+
+def _four_columns(path):
+    np.savetxt(path, np.loadtxt(path)[:, :4], fmt='%.17e')
+
+
 @pytest.mark.unit
-def test_resync_skips_an_unreadable_saved_copy(tmp_path, caplog):
-    """A truncated saved copy is skipped as unreadable and the matching file kept."""
-    p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.4e6))
-    _saved_copy(tmp_path).write_text('3.4e6 3.4e6\n6.4e')
+@pytest.mark.parametrize('spoil', [_torn, _nan_entry, _flat_radii, _four_columns])
+@pytest.mark.parametrize('live_matches', [True, False])
+def test_resync_never_restores_a_malformed_saved_copy(tmp_path, caplog, spoil, live_matches):
+    """A copy with matching bounds but a torn last line, a NaN entry, a repeated
+    radius or 4 columns is skipped as invalid; the live file is kept, or the resume stops."""
+    p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.4e6 if live_matches else 6.5e6))
+    _write_mesh(_saved_copy(tmp_path), 3.4e6, 6.4e6)
+    spoil(_saved_copy(tmp_path))
     before = path.read_bytes()
 
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.proteus'):
+    with (
+        caplog.at_level(logging.WARNING, logger='fwl.proteus.proteus'),
+        nullcontext() if live_matches else pytest.raises(RuntimeError, match='invalid'),
+    ):
         p._resync_zalmoxis_mesh()
 
     assert path.read_bytes() == before
-    assert '100p000_zalmoxis.dat: unreadable' in caplog.text
+    assert ('100p000_zalmoxis.dat: invalid' in caplog.text) is live_matches
 
 
 @pytest.mark.unit
-def test_resync_stops_when_no_file_matches_the_row(tmp_path):
-    """A legacy run with a stale file and a stale .prev stops with one message."""
+@pytest.mark.parametrize('copies', [False, True])
+def test_resync_stops_when_no_file_matches_the_row(tmp_path, copies):
+    """A stale file and a stale .prev stop the resume with one message, which
+    names the remedy when the run directory holds no saved copies."""
     p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.5e6), prev=(3.4e6 - 2.0e3, 6.3e6))
+    if copies:
+        _write_mesh(_saved_copy(tmp_path, 50.0), 3.4e6, 6.4e6)
     before = path.read_bytes()
 
     with pytest.raises(RuntimeError) as err:
@@ -530,6 +561,7 @@ def test_resync_stops_when_no_file_matches_the_row(tmp_path):
     assert 't = 1.000000e+02 yr' in msg and str(path) in msg
     assert 'zalmoxis_output.dat: R_core +0.000e+00 m, R_int +1.000e+05 m' in msg
     assert 'zalmoxis_output.dat.prev: R_core -2.000e+03 m, R_int -1.000e+05 m' in msg
+    assert ('no saved structure copies' in msg and 'restart the run' in msg) is not copies
     assert path.read_bytes() == before
 
 
@@ -601,6 +633,7 @@ def test_save_zalmoxis_output_snapshot_copies_under_the_row_time(tmp_path):
         _saved_copy(tmp_path).read_bytes()
         == (tmp_path / 'data' / 'zalmoxis_output.dat').read_bytes()
     )
+    assert not list((tmp_path / 'data').glob('*.tmp'))
 
 
 def _aragog_like_interior(mesh_path, calls):
@@ -649,7 +682,7 @@ def _stop_on_second_atmosphere_call():
 @pytest.mark.unit
 @pytest.mark.parametrize('case', ['saved copy', 'prev matches'])
 def test_resumed_loop_reaches_a_second_reset_on_a_stale_mesh(tmp_path, case):
-    """Through start(resume=True), a stale mesh file no longer fails reset() at step 2.
+    """Through start(resume=True), a stale mesh file is replaced before reset() at step 2.
 
     The fake interior applies Aragog's setup and reset() checks against the row
     the main loop hands it. Every iteration writes a snapshot here, so the copy
@@ -738,6 +771,7 @@ def test_finished_run_saves_the_final_copy_after_the_final_snapshot(tmp_path):
         name = format_subyear_time(hf_row['Time'])
         seen.append(_saved_copy(tmp_path, hf_row['Time']).exists())
         (tmp_path / 'data' / f'{name}_int.nc').touch()
+        return True
 
     with patch(
         'proteus.interior_energetics.aragog.write_final_snapshot', side_effect=final_snapshot
@@ -748,6 +782,36 @@ def test_finished_run_saves_the_final_copy_after_the_final_snapshot(tmp_path):
 
     assert seen == [False], 'the copy must not exist before the final snapshot'
     assert _saved_copy(tmp_path, p.hf_row['Time']).read_bytes() == mesh.read_bytes()
+
+
+@pytest.mark.unit
+def test_impact_on_the_last_step_saves_no_final_copy(tmp_path):
+    """Without a final snapshot of its own, the last row gets no copy, even when
+    an earlier row's _int.nc carries the same name."""
+    from proteus.utils.helper import format_subyear_time
+
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog')
+    p.config.interior_struct.module = 'zalmoxis'
+    p.config.params.out.plot_mod = None
+    p.config.params.out.archive_mod = None
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['R_core'], hf_df['R_int'] = 3.4e6, 6.4e6
+    mesh = tmp_path / 'data' / 'zalmoxis_output.dat'
+    _write_mesh(mesh, 3.4e6, 6.4e6)
+    aragog = _aragog_like_interior(mesh, [])
+
+    def impact(*args, **kwargs):
+        aragog(*args, **kwargs)
+        args[4].aragog_solver.solution = None
+        t_new = args[3]['Time'] + args[4].dt
+        (tmp_path / 'data' / f'{format_subyear_time(t_new)}_int.nc').touch()
+
+    with patch('proteus.interior_energetics.aragog.write_final_snapshot') as final:
+        _run_resumed_loop_until_stop(p, hf_df, impact, lambda *a, **k: None, terminate_after=2)
+
+    assert not final.called
+    assert (tmp_path / 'data' / f'{format_subyear_time(p.hf_row["Time"])}_int.nc').exists()
+    assert not _saved_copy(tmp_path, p.hf_row['Time']).exists()
 
 
 @pytest.mark.unit
@@ -885,7 +949,7 @@ def test_resume_walks_back_past_an_impact_step_to_its_own_structure(tmp_path):
     data = tmp_path / 'data'
     data.mkdir(exist_ok=True)
     for t in times[1:]:
-        halves = ('atm',) if t == 600.0 else ('int', 'atm')
+        halves = ('atm',) if t == times[-1] else ('int', 'atm')
         for half in halves:
             with Dataset(str(data / f'{format_subyear_time(t)}_{half}.nc'), 'w') as ds:
                 ds.createDimension('x', 1)
@@ -2970,7 +3034,7 @@ def _run_resumed_loop_until_stop(
 
     def _terminate(handler):
         checks.append(1)
-        handler.finished_both = terminate_after is not None and len(checks) >= terminate_after
+        handler.finished_both = len(checks) == terminate_after
         return handler.finished_both
 
     with ExitStack() as stack:

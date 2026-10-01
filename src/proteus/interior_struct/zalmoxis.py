@@ -388,14 +388,13 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
     """Compare a mesh file's radial bounds with a helpfile row.
 
     The tolerance is that of Aragog's ``EntropySolver.reset()``,
-    ``max(1 m, 1e-9 * (R_int - R_core))``, applied here to both bounds in both
-    directions. For planetary sizes it is the 1 m floor, far above the helpfile
-    rounding of the radii (about 3e-4 m at 6.4e6 m).
+    ``max(1 m, 1e-9 * (R_int - R_core))``, applied to both bounds in both
+    directions; the helpfile rounding of the radii is about 5e-5 m.
 
     Parameters
     ----------
     output_path : str
-        Path to ``zalmoxis_output.dat`` or its ``.prev`` backup.
+        Path to ``zalmoxis_output.dat``, its ``.prev`` backup or a saved copy.
     hf_row : dict
         Helpfile row holding ``R_core`` and ``R_int`` [m].
 
@@ -403,28 +402,36 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
     -------
     tuple of float or None
         ``(file r[0] - R_core, file r[-1] - R_int, tolerance)`` in metres, or
-        None when the file is missing, unreadable or has fewer than two rows.
+        None unless the file holds at least two finite 5-column rows with
+        strictly increasing radii.
     """
     try:
-        r = np.loadtxt(output_path, usecols=0, ndmin=1)
+        data = np.loadtxt(output_path, ndmin=2)
     except (OSError, ValueError):
         return None
-    if r.size < 2:
+    r = data[:, 0]
+    if (
+        data.shape[1] != 5
+        or r.size < 2
+        or not np.isfinite(data).all()
+        or (np.diff(r) <= 0).any()
+    ):
         return None
-    R_core = float(hf_row['R_core'])
-    R_int = float(hf_row['R_int'])
-    atol = max(1.0, 1.0e-9 * (R_int - R_core))
-    return float(r[0]) - R_core, float(r[-1]) - R_int, atol
+    atol = max(1.0, 1.0e-9 * (hf_row['R_int'] - hf_row['R_core']))
+    return r[0] - hf_row['R_core'], r[-1] - hf_row['R_int'], atol
+
+
+def copy_zalmoxis_output(src: str, dst: str) -> None:
+    """Copy a structure file through a temporary file, so ``dst`` is never partial."""
+    shutil.copy2(src, dst + '.tmp')
+    os.replace(dst + '.tmp', dst)
 
 
 def save_zalmoxis_output_snapshot(outdir: str, time: float) -> None:
     """Copy ``zalmoxis_output.dat`` to ``data/<time>_zalmoxis.dat``.
 
-    The copy carries the snapshot time naming of ``<time>_int.nc``, so the
-    archive and pruning treat it as part of the same snapshot and a resume can
-    restore the structure its row was computed with. It is written only next to
-    that interior snapshot: a row whose snapshot was discarded (an impact step)
-    cannot back a resume and gets no copy.
+    The copy is written only next to the row's ``<time>_int.nc``, so archiving
+    and pruning treat it as part of that snapshot.
 
     Parameters
     ----------
@@ -436,7 +443,9 @@ def save_zalmoxis_output_snapshot(outdir: str, time: float) -> None:
     src = get_zalmoxis_output_filepath(outdir)
     data = os.path.join(outdir, 'data')
     if os.path.isfile(src) and os.path.isfile(snapshot_path_for_time(data, time, '_int.nc')):
-        shutil.copy2(src, os.path.join(data, format_subyear_time(time) + '_zalmoxis.dat'))
+        copy_zalmoxis_output(
+            src, os.path.join(data, format_subyear_time(time) + '_zalmoxis.dat')
+        )
 
 
 def build_volatile_profile(hf_row: dict, mantle_eos: str):

@@ -3772,16 +3772,17 @@ def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
         _write_valid_nc(str(data / f'{t}_atm.nc'))
     _write_corrupt_nc(str(data / '30_int.nc'))
     _write_valid_nc(str(data / '30_atm.nc'))
-    for t in (20, 30):
+    for t in (10, 20, 30):
         (data / f'{t}p000_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
 
     out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
 
     assert dropped == [30]
     assert int(out.iloc[-1]['Time']) == 20
-    # The dropped row's structure copy goes with its snapshot; the kept row's stays.
+    # Only the dropped row's structure copy goes; the kept and earlier rows keep theirs.
     assert not (data / '30p000_zalmoxis.dat').exists()
     assert (data / '20p000_zalmoxis.dat').exists()
+    assert (data / '10p000_zalmoxis.dat').exists()
     # Both halves of the incomplete pair are deleted (symmetry with the
     # corrupt-atm case): a stray valid 30_atm.nc must not be left for the
     # atmosphere module's latest-file glob to pick up against a missing 30_int.

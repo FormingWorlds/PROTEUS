@@ -395,12 +395,9 @@ class Proteus:
     def _resync_zalmoxis_mesh(self):
         """Make ``zalmoxis_output.dat`` match the resumed row before Aragog reads it.
 
-        An accepted structure re-solve rewrites the file at once, while the
-        helpfile reaches disk only on snapshot iterations, so a run stopped in
-        between resumes on a row older than the file. The copy saved with the
-        row (``<time>_zalmoxis.dat``) is restored. A run written without those
-        copies keeps the file when it matches the row, or else restores the
-        ``.prev`` backup taken before each re-solve when that one matches.
+        A structure re-solve rewrites the file at once, while the helpfile
+        reaches disk only on snapshot iterations. The first match of the copy
+        saved with the row, the live file and its ``.prev`` backup is used.
 
         Raises
         ------
@@ -408,9 +405,10 @@ class Proteus:
             When no candidate matches the row within Aragog's ``reset()``
             tolerance.
         """
-        import shutil
+        import glob
 
         from proteus.interior_struct.zalmoxis import (
+            copy_zalmoxis_output,
             get_zalmoxis_output_filepath,
             zalmoxis_mesh_gaps,
         )
@@ -429,7 +427,7 @@ class Proteus:
                 if tried:
                     log.warning('Resume: skipped %s.', '; '.join(tried))
                 if file != path:
-                    shutil.copy2(file, path)
+                    copy_zalmoxis_output(file, path)
                     log.log(
                         logging.INFO if file == saved else logging.WARNING,
                         'Resume: restored %s from %s for the row at t = %.6e yr.',
@@ -440,16 +438,24 @@ class Proteus:
                 return
             tried.append(
                 f'{os.path.basename(file)}: '
-                + ('unreadable' if gaps is None else 'R_core %+.3e m, R_int %+.3e m' % gaps[:2])
+                + ('invalid' if gaps is None else 'R_core %+.3e m, R_int %+.3e m' % gaps[:2])
             )
         if tried:
+            data = os.path.dirname(path)
+            remedy = (
+                ''
+                if glob.glob(os.path.join(data, '*_zalmoxis.dat'))
+                else f' {data} holds no saved structure copies (*_zalmoxis.dat): such a '
+                'run resumes only when the live structure file matches its last row, as '
+                'after a clean stop; otherwise restart the run.'
+            )
             raise RuntimeError(
                 f'Resume: no Zalmoxis structure file matches the helpfile row at '
                 f't = {time:.6e} yr within max(1 m, 1e-9 of the mantle thickness); '
                 f'{"; ".join(tried)}. The structure of this row is not on disk '
                 f'({os.path.basename(saved)} is missing or differs), so Aragog '
                 f'would reject {path} at a reset() or run on a structure off by '
-                f'these gaps.'
+                f'these gaps.{remedy}'
             )
 
     def _check_crystallization(self) -> None:
@@ -1542,8 +1548,10 @@ class Proteus:
         ):
             from proteus.interior_energetics.aragog import write_final_snapshot
 
-            write_final_snapshot(self.config, self.interior_o, self.directories, self.hf_row)
-        self._save_zalmoxis_output()
+            if write_final_snapshot(
+                self.config, self.interior_o, self.directories, self.hf_row
+            ):
+                self._save_zalmoxis_output()
 
         # Ensure the final atmosphere state is on disk, since it won't always happen to
         # be written on the last iteration of the model.
