@@ -3131,6 +3131,8 @@ def test_toi561b_config_structures_without_the_vulcan_backend(tmp_path):
     # The endpoints the orbit track runs between, and the inward ordering
     # the high_ecc law requires.
     assert obj.orbit.parameterized.sma_final < obj.orbit.parameterized.sma_init
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize(
     'energetics, mantle, stops',

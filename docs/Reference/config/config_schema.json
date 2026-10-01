@@ -2473,7 +2473,7 @@
           "value": 0
         }
       ],
-      "description": "Timescale of migration, used by the sigmoid and high_ecc regimes [yr].",
+      "description": "Timescale of migration, used by the sigmoid and high_ecc laws [yr].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
