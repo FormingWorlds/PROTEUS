@@ -6428,12 +6428,11 @@ def test_download_zenodo_file_log_read_failure_after_nonzero(
         ('dummy', 'PALEOS:MgSiO3', None),
     ],
 )
-@pytest.mark.parametrize('temperature_mode', ['adiabatic', 'liquidus_super'])
 @patch('proteus.data.fetch_dataset_file')
 @patch('proteus.data.fetch_dataset')
 @patch('proteus.utils.data.download_eos_static')
 def test_download_zalmoxis_eos_for_config_fetches_the_paleos_mantle_of_a_dummy_structure(
-    mock_static, mock_fetch, mock_file, temperature_mode, energetics, mantle, files
+    mock_static, mock_fetch, mock_file, energetics, mantle, files
 ):
     """Under the dummy structure, SPIDER and Aragog with a PALEOS mantle EOS (a mixture
     follows its MgSiO3 component) fetch every mantle table and the 2-phase pair, and no
@@ -6448,7 +6447,6 @@ def test_download_zalmoxis_eos_for_config_fetches_the_paleos_mantle_of_a_dummy_s
                 module='dummy', zalmoxis=SimpleNamespace(mantle_eos=mantle)
             ),
             interior_energetics=SimpleNamespace(module=energetics),
-            planet=SimpleNamespace(temperature_mode=temperature_mode),
         )
     )
     mock_static.assert_not_called()

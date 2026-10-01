@@ -45,8 +45,8 @@ equilibrium solver. With a PALEOS `interior_struct.zalmoxis.mantle_eos` (a
 mixture follows its MgSiO3 component), SPIDER and Aragog read P-S tables and
 P-S melting curves generated from PALEOS; with any other mantle EOS they read
 the P-S tables from FWL_DATA or the SPIDER lookup data and the melting curves
-named by `interior_struct.melting_dir`. In both cases Aragog reads its P-T
-property tables from the Wolf and Bower lookup set (or `interior_struct.eos_dir`)
+named by `interior_struct.melting_dir`. In both cases Aragog reads its
+phase-property lookup tables from the Wolf and Bower set (or `interior_struct.eos_dir`)
 and its P-T melting curves from `melting_dir`. When paired with the dummy
 energetics module, the entire interior is analytically specified.
 

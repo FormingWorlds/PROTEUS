@@ -1680,7 +1680,7 @@ def needs_spider_ps_tables(config) -> bool:
 
     SPIDER and Aragog read it unless Zalmoxis generates a PALEOS table set
     (:func:`proteus.utils.helper.generates_paleos_tables`). Under the dummy structure
-    Aragog reads its P-T property tables from it even with a PALEOS P-S set. A set
+    Aragog reads its phase-property lookup tables from it even with a PALEOS P-S set. A set
     interior_struct.eos_dir asks for it whenever SPIDER or Aragog run.
 
     Parameters
@@ -2108,10 +2108,8 @@ def download_zalmoxis_eos(
     # Multi-component EOS strings: "PALEOS:MgSiO3:0.98+Chabrier:H:0.01"
     components = {c for eos_str in all_eos for c in eos_components(eos_str)}
 
-    # Seager2007 static EOS. Needed when a Seager component is selected
-    # directly, when no core EOS is given (Seager iron is the default
-    # core), and for every mantle family whose registry entry carries
-    # the Seager iron core fallback (SEAGER_FALLBACK_FAMILIES above).
+    # Seager2007 static EOS: for a Seager component, and with a core solve for the
+    # default Seager iron core (no core EOS) or a SEAGER_FALLBACK_FAMILIES mantle.
     if any(c.startswith('Seager2007') for c in components) or (
         with_core
         and (any(c.startswith(SEAGER_FALLBACK_FAMILIES) for c in components) or not core_eos)
