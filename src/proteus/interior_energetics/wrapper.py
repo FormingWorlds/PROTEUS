@@ -700,8 +700,9 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     source. When melting_dir is unset and case 1 does not apply, the helper
     raises ``MissingMeltingCurveError`` rather than take the curves of the
     source; a SPIDER run with constant properties reads no curves and is
-    exempt. This helper is not called when Zalmoxis generates a PALEOS table
-    set; those runs use the PALEOS-derived curves and do not read melting_dir.
+    exempt. This helper is not called when a PALEOS table set is generated (the
+    Zalmoxis structure, or the dummy structure with a PALEOS mantle EOS); those
+    runs take their P-S curves from PALEOS.
 
     Side effects: sets ``dirs['spider_eos_dir']``,
     ``dirs['spider_solidus_ps']``, ``dirs['spider_liquidus_ps']``.

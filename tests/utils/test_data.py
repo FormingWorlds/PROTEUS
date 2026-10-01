@@ -6409,3 +6409,38 @@ def test_download_zenodo_file_log_read_failure_after_nonzero(
     # (so the log-readback branch on line 234 fired).
     download_calls = [c for c in mock_run.call_args_list if '--version' not in c[0][0]]
     assert len(download_calls) == 3
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('energetics', 'mantle', 'fetched'),
+    [
+        ('aragog', 'PALEOS:MgSiO3', True),
+        ('spider', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', True),
+        ('aragog', 'WolfBower2018:MgSiO3', False),
+        ('aragog', 'PALEOS:H2O:0.1+WolfBower2018:MgSiO3:0.9', False),
+        ('dummy', 'PALEOS:MgSiO3', False),
+    ],
+)
+def test_download_zalmoxis_eos_for_config_fetches_the_paleos_mantle_of_a_dummy_structure(
+    monkeypatch, energetics, mantle, fetched
+):
+    """Under the dummy structure, SPIDER and Aragog with a PALEOS mantle EOS (a mixture
+    follows its MgSiO3 component) fetch the mantle tables their P-S set is built from;
+    other mantles and the dummy energetics fetch nothing."""
+    from types import SimpleNamespace
+
+    from proteus.utils import data as dmod
+
+    calls = []
+    monkeypatch.setattr(dmod, 'download_zalmoxis_eos', lambda **kw: calls.append(kw))
+    dmod.download_zalmoxis_eos_for_config(
+        SimpleNamespace(
+            interior_struct=SimpleNamespace(
+                module='dummy', zalmoxis=SimpleNamespace(mantle_eos=mantle)
+            ),
+            interior_energetics=SimpleNamespace(module=energetics),
+            planet=SimpleNamespace(temperature_mode='adiabatic'),
+        )
+    )
+    assert calls == ([dict(mantle_eos=mantle, anchor_pair=False)] if fetched else [])

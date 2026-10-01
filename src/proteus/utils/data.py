@@ -18,9 +18,10 @@ from scipy.interpolate import interp1d
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.utils.constants import VOLATILE_EOS_MAP
+from proteus.utils.constants import PALEOS_REGISTRY_KEYS, VOLATILE_EOS_MAP
 from proteus.utils.helper import (
     MissingDataError,
+    energetics_eos_key,
     eos_components,
     paleos_companion_keys,
     resolve_fwl_data_dir,
@@ -1771,14 +1772,28 @@ def download_zalmoxis_eos_for_config(config) -> None:
     """Download the structure EOS tables that a config's Zalmoxis setup needs.
 
     Single extraction point for the per-layer EOS identifiers, shared by
-    the start-of-run data check and ``proteus get interiordata``. No-op
-    when the config does not select the zalmoxis structure module. The
+    the start-of-run data check and ``proteus get interiordata``. The
     ``'none'`` ice-layer sentinel maps to ``''`` (no ice EOS). With
     ``dry_mantle = false`` it also fetches the tables of the dissolved
-    volatiles that the structure solve adds to the mantle EOS.
+    volatiles that the structure solve adds to the mantle EOS. Under the
+    dummy structure with SPIDER or Aragog it fetches only the PALEOS mantle
+    tables the P-S table set is built from; other structures need nothing.
     """
     struct_cfg = getattr(config, 'interior_struct', None)
-    if getattr(struct_cfg, 'module', None) != 'zalmoxis':
+    module = getattr(struct_cfg, 'module', None)
+    anchor_pair = getattr(getattr(config, 'planet', None), 'temperature_mode', None) in (
+        'liquidus_super',
+        'adiabatic_from_cmb',
+    )
+    if module == 'dummy':
+        energetics = getattr(getattr(config, 'interior_energetics', None), 'module', None)
+        mantle = getattr(getattr(struct_cfg, 'zalmoxis', None), 'mantle_eos', '') or ''
+        if energetics in ('spider', 'aragog') and energetics_eos_key(mantle) in (
+            PALEOS_REGISTRY_KEYS
+        ):
+            download_zalmoxis_eos(mantle_eos=mantle, anchor_pair=anchor_pair)
+        return
+    if module != 'zalmoxis':
         return
     zconf = struct_cfg.zalmoxis
     ice = getattr(zconf, 'ice_layer_eos', None)
@@ -1789,8 +1804,7 @@ def download_zalmoxis_eos_for_config(config) -> None:
         volatile_eos=''
         if getattr(zconf, 'dry_mantle', True)
         else '+'.join(VOLATILE_EOS_MAP.values()),
-        anchor_pair=getattr(getattr(config, 'planet', None), 'temperature_mode', None)
-        in ('liquidus_super', 'adiabatic_from_cmb'),
+        anchor_pair=anchor_pair,
     )
 
 

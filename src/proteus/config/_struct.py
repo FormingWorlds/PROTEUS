@@ -349,7 +349,8 @@ class Struct:
     melting_dir: str
         Melting curve name in FWL_DATA. Required for the SPIDER structure
         module and for any run without a PALEOS table set; not read with
-        module = 'zalmoxis' and a single PALEOS mantle EOS.
+        module = 'zalmoxis' and a single PALEOS mantle EOS. With module =
+        'dummy' and a PALEOS mantle EOS, Aragog still reads it for its P-T curves.
     eos_dir: str
         EOS folder name in FWL_DATA, for the SPIDER structure module.
     """
@@ -398,7 +399,7 @@ class Struct:
         # curves from PALEOS; energetics_eos_key rejects two MgSiO3 sources.
         from proteus.utils.helper import energetics_eos_key, generates_paleos_tables
 
-        if self.module == 'zalmoxis' and self.zalmoxis is not None:
+        if self.module in ('zalmoxis', 'dummy') and self.zalmoxis is not None:
             energetics_eos_key(self.zalmoxis.mantle_eos)
         if self.melting_dir is not None and generates_paleos_tables(self):
             import logging as _logging
