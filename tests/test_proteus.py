@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import warnings
 from contextlib import ExitStack, nullcontext
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -562,7 +563,7 @@ def test_resync_never_restores_a_malformed_saved_copy(tmp_path, caplog, spoil, l
 )
 def test_resync_stops_when_no_file_matches_the_row(tmp_path, copies):
     """A stale file and a stale .prev stop the resume with one message, which asks
-    for a run from t = 0 when the row has no saved copy; brackets in the path are literal."""
+    for a run from t = 0 and names a missing row copy; brackets in the path are literal."""
     run = tmp_path / 'run[1]'
     run.mkdir()
     p, path = _resync_instance(run, dat=(3.4e6, 6.5e6), prev=(3.4e6 - 2.0e3, 6.3e6))
@@ -577,7 +578,8 @@ def test_resync_stops_when_no_file_matches_the_row(tmp_path, copies):
     assert 't = 1.000000e+02 yr' in msg and str(path) in msg
     assert 'zalmoxis_output.dat: R_core +0.000e+00 m, R_int +1.000e+05 m' in msg
     assert 'zalmoxis_output.dat.prev: R_core -2.000e+03 m, R_int -1.000e+05 m' in msg
-    assert ('again from t = 0' in msg) is (100.0 not in copies)
+    assert msg.endswith('Run the configuration again from t = 0.')
+    assert ('100p000_zalmoxis.dat does not exist' in msg) is (100.0 not in copies)
     assert path.read_bytes() == before
 
 
@@ -601,10 +603,31 @@ def test_resync_stops_without_a_structure_file(tmp_path):
     """No saved copy, no zalmoxis_output.dat and no .prev: the resume stops."""
     p, path = _resync_instance(tmp_path)
 
-    with pytest.raises(RuntimeError, match='none of .* exists. Run the configuration again'):
+    with pytest.raises(
+        RuntimeError,
+        match='^Resume: no Zalmoxis structure file matches the helpfile row .*: none of .* '
+        'exists. Run the configuration again from t = 0.$',
+    ):
         p._resync_zalmoxis_mesh()
 
     assert list((tmp_path / 'data').iterdir()) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('text', ['', '\n'])
+def test_an_empty_structure_file_is_invalid_without_a_warning(tmp_path, text):
+    """An empty or newline-only file, as right after it is opened for writing, gives None."""
+    from proteus.interior_struct.zalmoxis import zalmoxis_mesh_gaps
+
+    path = tmp_path / 'zalmoxis_output.dat'
+    path.write_text(text)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        gaps = zalmoxis_mesh_gaps(str(path), _ROW)
+
+    assert gaps is None
+    assert path.read_text() == text
 
 
 @pytest.mark.unit

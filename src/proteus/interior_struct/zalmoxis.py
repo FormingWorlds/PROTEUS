@@ -407,10 +407,11 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
         5-column rows with strictly increasing radii.
     """
     try:
-        with open(output_path) as f:
-            text = f.read()
-        data = np.loadtxt(text.splitlines(), ndmin=2)
+        text = Path(output_path).read_text()
+        data = np.loadtxt(text.splitlines(), ndmin=2) if text.strip() else None
     except (OSError, ValueError):
+        return None
+    if data is None:
         return None
     r = data[:, 0]
     if (
@@ -426,14 +427,13 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
 
 
 def copy_zalmoxis_output(src: str, dst: str) -> None:
-    """Copy a structure file through a temporary file, so ``dst`` is never partial."""
+    """Copy through a temporary file, so ``dst`` is never partial if the process stops."""
     tmp = dst + '.tmp'
     try:
         shutil.copy2(src, tmp)
         os.replace(tmp, dst)
     except BaseException:
-        if os.path.exists(tmp):
-            os.remove(tmp)
+        Path(tmp).unlink(missing_ok=True)
         raise
 
 

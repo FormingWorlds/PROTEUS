@@ -404,6 +404,8 @@ class Proteus:
         RuntimeError
             When no candidate exists or none matches the row within Aragog's
             ``reset()`` tolerance.
+        OSError
+            When restoring a matching candidate fails.
         """
         from proteus.interior_struct.zalmoxis import (
             copy_zalmoxis_output,
@@ -438,19 +440,20 @@ class Proteus:
                 f'{os.path.basename(file)}: '
                 + ('invalid' if gaps is None else 'R_core %+.3e m, R_int %+.3e m' % gaps[:2])
             )
+        stop = (
+            f'Resume: no Zalmoxis structure file matches the helpfile row at t = {time:.6e} yr'
+        )
         rerun = 'Run the configuration again from t = 0.'
         if not tried:
             raise RuntimeError(
-                f'Resume: no Zalmoxis structure file for the helpfile row at t = {time:.6e} yr; '
-                f'none of {saved}, {path} and {path}.prev exists. {rerun}'
+                f'{stop}: none of {saved}, {path} and {path}.prev exists. {rerun}'
             )
         raise RuntimeError(
-            f'Resume: no Zalmoxis structure file matches the helpfile row at '
-            f't = {time:.6e} yr within max(1 m, 1e-9 of the mantle thickness); '
-            f'{"; ".join(tried)}. A resume needs the copy saved with the row, '
-            f'{os.path.basename(path)} or its .prev to match the resumed row; otherwise Aragog '
-            f'would reject {path} at a reset() or run on a structure off by these gaps.'
-            + ('' if os.path.isfile(saved) else f' {saved} does not exist. {rerun}')
+            f'{stop} within max(1 m, 1e-9 of the mantle thickness); {"; ".join(tried)}. '
+            'A resume needs one of these files to match the row; otherwise Aragog would '
+            f'reject {path} at a reset() or run on a structure off by these gaps.'
+            + ('' if os.path.isfile(saved) else f' {saved} does not exist.')
+            + f' {rerun}'
         )
 
     def _check_crystallization(self) -> None:
