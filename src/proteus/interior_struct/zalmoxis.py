@@ -28,7 +28,7 @@ from proteus.utils.constants import (
     element_list,
 )
 from proteus.utils.data import get_zalmoxis_eos_dir, get_zalmoxis_melting_curves
-from proteus.utils.helper import format_subyear_time
+from proteus.utils.helper import format_subyear_time, snapshot_path_for_time
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
@@ -371,8 +371,8 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
 
     The tolerance is that of Aragog's ``EntropySolver.reset()``,
     ``max(1 m, 1e-9 * (R_int - R_core))``, applied here to both bounds in both
-    directions. Its 1 m floor absorbs the helpfile rounding and the scatter of
-    repeated structure solves.
+    directions. For planetary sizes it is the 1 m floor, far above the helpfile
+    rounding of the radii (about 3e-4 m at 6.4e6 m).
 
     Parameters
     ----------
@@ -404,7 +404,9 @@ def save_zalmoxis_output_snapshot(outdir: str, time: float) -> None:
 
     The copy carries the snapshot time naming of ``<time>_int.nc``, so the
     archive and pruning treat it as part of the same snapshot and a resume can
-    restore the structure its row was computed with.
+    restore the structure its row was computed with. It is written only next to
+    that interior snapshot: a row whose snapshot was discarded (an impact step)
+    cannot back a resume and gets no copy.
 
     Parameters
     ----------
@@ -414,9 +416,9 @@ def save_zalmoxis_output_snapshot(outdir: str, time: float) -> None:
         Simulated time of the helpfile row being written [yr].
     """
     src = get_zalmoxis_output_filepath(outdir)
-    if os.path.isfile(src):
-        dst = os.path.join(outdir, 'data', format_subyear_time(time) + '_zalmoxis.dat')
-        shutil.copy2(src, dst)
+    data = os.path.join(outdir, 'data')
+    if os.path.isfile(src) and os.path.isfile(snapshot_path_for_time(data, time, '_int.nc')):
+        shutil.copy2(src, os.path.join(data, format_subyear_time(time) + '_zalmoxis.dat'))
 
 
 def build_volatile_profile(hf_row: dict, mantle_eos: str):

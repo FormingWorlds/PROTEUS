@@ -23,7 +23,7 @@ output/<run_name>/
         <iter>_atm.nc       # Atmosphere profiles (NetCDF, per snapshot)
         <iter>_int.nc       # Interior profiles (NetCDF, per snapshot)
         zalmoxis_output.dat # Zalmoxis structure profile (latest)
-        <iter>_zalmoxis.dat # Zalmoxis structure profile saved with each snapshot, restored on resume
+        <iter>_zalmoxis.dat # Zalmoxis structure profile saved with each snapshot of a Zalmoxis + Aragog run, restored on resume
         spider_eos/         # Cached EOS lookup tables (if Aragog/SPIDER)
         ...
     observe/                # Synthetic observations (if enabled)

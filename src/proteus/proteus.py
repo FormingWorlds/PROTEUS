@@ -410,6 +410,8 @@ class Proteus:
                 continue
             gaps = zalmoxis_mesh_gaps(file, self.hf_row)
             if gaps is not None and abs(gaps[0]) <= gaps[2] and abs(gaps[1]) <= gaps[2]:
+                if tried:
+                    log.warning('Resume: skipped %s.', '; '.join(tried))
                 if file != path:
                     shutil.copy2(file, path)
                     log.log(
@@ -1506,7 +1508,6 @@ class Proteus:
 
         # Write conditions at the end of simulation
         log.info('Writing data')
-        self._save_zalmoxis_output()
         WriteHelpfileToCSV(self.directories['output'], self.hf_all)
 
         # Ensure the final interior state is on disk so resume can find it.
@@ -1520,6 +1521,7 @@ class Proteus:
             from proteus.interior_energetics.aragog import write_final_snapshot
 
             write_final_snapshot(self.config, self.interior_o, self.directories, self.hf_row)
+        self._save_zalmoxis_output()
 
         # Ensure the final atmosphere state is on disk, since it won't always happen to
         # be written on the last iteration of the model.

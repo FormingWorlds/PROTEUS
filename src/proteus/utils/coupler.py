@@ -36,6 +36,7 @@ from proteus.utils.helper import (
     get_proteus_dir,
     parse_subyear_time,
     safe_rm,
+    snapshot_path_for_time,
 )
 from proteus.utils.plot import sample_times
 
@@ -1887,6 +1888,9 @@ def select_resumable_snapshot(
             if os.path.exists(dst):
                 os.remove(dst)
         log.info('Deleted %d quarantined snapshot file(s)', len(quarantined))
+    for t in times[keep_idx + 1 :]:
+        # A dropped row's structure copy (Zalmoxis + Aragog) goes with its snapshot.
+        safe_rm(snapshot_path_for_time(data_dir, t, '_zalmoxis.dat'))
     if not dropped:
         return hf_all, []
     return hf_all.iloc[: keep_idx + 1].reset_index(drop=True), sorted(dropped)

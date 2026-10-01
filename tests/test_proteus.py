@@ -22,6 +22,7 @@ Functions tested:
 
 from __future__ import annotations
 
+import logging
 import sys
 from contextlib import ExitStack
 from pathlib import Path
@@ -298,6 +299,8 @@ def _saved_copy(tmp_path, time=100.0):
     ('dat', 'kept'),
     [
         ((3.4e6 + 0.5, 6.4e6 - 0.5), 'dat'),
+        ((3.4e6 + 1.0, 6.4e6 + 1.0), 'dat'),
+        ((3.4e6, 6.4e6 + 1.5), 'prev'),
         ((3.4e6, 6.4e6 + 300.0), 'prev'),
         ((3.4e6, 6.4e6 - 300.0), 'prev'),
         ((3.4e6 - 300.0, 6.4e6), 'prev'),
@@ -306,6 +309,8 @@ def _saved_copy(tmp_path, time=100.0):
     ],
     ids=[
         'within tolerance',
+        'at the 1 m tolerance',
+        'just past it',
         'R_int above',
         'R_int inside',
         'R_core below',
@@ -353,15 +358,19 @@ def test_resync_prefers_the_saved_copy_over_a_matching_file(tmp_path):
 
 
 @pytest.mark.unit
-def test_resync_checks_the_saved_copy_before_using_it(tmp_path):
-    """A saved copy off the row is skipped; the matching .prev is restored."""
+def test_resync_checks_the_saved_copy_before_using_it(tmp_path, caplog):
+    """A saved copy off the row is skipped and named in a warning; the matching
+    .prev is restored."""
     p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.5e6), prev=(3.4e6, 6.4e6))
     _write_mesh(_saved_copy(tmp_path), 3.4e6, 6.3e6)
 
-    p._resync_zalmoxis_mesh()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.proteus'):
+        p._resync_zalmoxis_mesh()
 
     assert np.loadtxt(path)[-1, 0] == pytest.approx(6.4e6)
     assert np.loadtxt(_saved_copy(tmp_path))[-1, 0] == pytest.approx(6.3e6)
+    skipped = [r.getMessage() for r in caplog.records if 'skipped' in r.getMessage()]
+    assert len(skipped) == 1 and '100p000_zalmoxis.dat: R_core +0.000e+00 m' in skipped[0]
 
 
 @pytest.mark.unit
@@ -418,6 +427,7 @@ def test_structure_copy_is_saved_only_where_the_resume_reads_it(
     p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.4e6))
     p.config.interior_struct.module = struct
     p.config.interior_energetics.module = energetics
+    (tmp_path / 'data' / '100p000_int.nc').touch()
 
     p._save_zalmoxis_output()
 
@@ -427,7 +437,8 @@ def test_structure_copy_is_saved_only_where_the_resume_reads_it(
 
 @pytest.mark.unit
 def test_save_zalmoxis_output_snapshot_copies_under_the_row_time(tmp_path):
-    """The copy is named like the interior snapshot of the same time."""
+    """The copy is named like the interior snapshot of the same time, and only
+    written next to it."""
     from proteus.interior_struct.zalmoxis import save_zalmoxis_output_snapshot
 
     (tmp_path / 'data').mkdir()
@@ -435,6 +446,10 @@ def test_save_zalmoxis_output_snapshot_copies_under_the_row_time(tmp_path):
     assert list((tmp_path / 'data').iterdir()) == []
 
     _write_mesh(tmp_path / 'data' / 'zalmoxis_output.dat', 3.4e6, 6.4e6)
+    save_zalmoxis_output_snapshot(str(tmp_path), 100.0)
+    assert not _saved_copy(tmp_path).exists(), 'a row without its _int.nc gets no copy'
+
+    (tmp_path / 'data' / '100p000_int.nc').touch()
     save_zalmoxis_output_snapshot(str(tmp_path), 100.0)
 
     assert _saved_copy(tmp_path).name == '100p000_zalmoxis.dat'
@@ -452,10 +467,16 @@ def _aragog_like_interior(mesh_path, calls):
     """
     from types import SimpleNamespace
 
-    from aragog.solver.entropy_solver import _validate_eos_radius_range
+    from proteus.utils.helper import format_subyear_time
+
+    entropy_solver = pytest.importorskip('aragog.solver.entropy_solver')
+    _validate_eos_radius_range = entropy_solver._validate_eos_radius_range
 
     def run(*args, **kwargs):
         hf_row = args[3]
+        if kwargs.get('write_data'):
+            t_new = hf_row['Time'] + args[4].dt
+            (Path(args[0]['output']) / 'data' / f'{format_subyear_time(t_new)}_int.nc').touch()
         r = np.loadtxt(mesh_path)[:, 0]
         inner, outer = hf_row['R_core'], hf_row['R_int']
         if calls:
@@ -568,6 +589,70 @@ def test_resume_runs_the_resync_for_zalmoxis_and_aragog_only(
     # _resume_with_patches stops at init_star, so a recorded call came before it.
     assert resync.called is called
     assert p.directories['_resume_struct_settle_loops'] > 0
+
+
+class _StopAtRunningStatus(Exception):
+    """Sentinel raised when start() reports the run as running."""
+
+
+@pytest.mark.unit
+def test_resume_after_an_impact_restores_the_row_structure_and_the_accreted_mass(tmp_path):
+    """Both resume steps act on a Zalmoxis + Aragog row written after an impact.
+
+    The resync puts back the structure copy saved with that row, the accretion
+    restore rebuilds the planet mass from the ledger, and neither moves the
+    other's state: the row keeps the radii it was read with.
+    """
+    from proteus.utils.constants import M_earth
+
+    p = _make_proteus_instance(tmp_path, struct_module='zalmoxis', interior_module='aragog')
+    p.config.accretion.module = 'dummy'
+    p.config.planet.mass_tot = 1.0
+    hf_df = _make_hf_df()
+    hf_df['R_core'], hf_df['R_int'] = 3.4e6, 6.5e6
+    hf_df['M_accreted_rock'] = 0.05 * M_earth
+    hf_df['n_impacts_applied'] = 1.0
+    data = tmp_path / 'data'
+    data.mkdir(exist_ok=True)
+    _write_mesh(data / 'zalmoxis_output.dat', 3.4e6, 6.5e6 + 2.0e4)
+    _write_mesh(_saved_copy(tmp_path, 400.0), 3.4e6, 6.5e6)
+
+    def status(dirs, code):
+        if code == 1:
+            raise _StopAtRunningStatus
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.select_resumable_snapshot', return_value=(hf_df, []))
+        )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.ZeroHelpfileRow', return_value={}))
+        interior_t = stack.enter_context(patch('proteus.interior_energetics.common.Interior_t'))
+        interior_t.return_value = MagicMock(ic=1)
+        stack.enter_context(patch('proteus.accretion.wrapper.init_accretion', return_value=[]))
+        stack.enter_context(patch('proteus.star.wrapper.init_star'))
+        stack.enter_context(patch('proteus.orbit.wrapper.init_orbit'))
+        stack.enter_context(patch('proteus.proteus.UpdateStatusfile', side_effect=status))
+
+        with pytest.raises(_StopAtRunningStatus):
+            p.start(resume=True, offline=True)
+
+    assert (data / 'zalmoxis_output.dat').read_bytes() == _saved_copy(
+        tmp_path, 400.0
+    ).read_bytes()
+    assert p.config.planet.mass_tot == pytest.approx(1.05, rel=1e-12)
+    assert (p.hf_row['R_core'], p.hf_row['R_int']) == (3.4e6, 6.5e6)
+    assert p.hf_row['n_impacts_applied'] == 1
 
 
 # ---------------------------------------------------------------------------
