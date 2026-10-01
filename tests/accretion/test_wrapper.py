@@ -2120,22 +2120,8 @@ def test_discard_preimpact_snapshot_drops_only_the_impact_steps_own_snapshot(tmp
     )
 
 
-@pytest.mark.unit
-@pytest.mark.physics_invariant
-def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypatch):
-    """The main loop discards the pre-impact snapshot when an impact occurs.
-
-    Contract clause: when an impact occurs during a step, the interior
-    snapshot written at the start of that step predates the mantle remelt.
-    The main loop must call discard_preimpact_snapshot to remove the stale
-    snapshot while preserving earlier valid snapshots.
-
-    Verifies:
-    - The snapshot written on the impact step was initially created.
-    - The impact landed and delivered rock mass.
-    - The snapshot written on the impact step is removed from disk.
-    - Earlier valid snapshots remain intact for resuming.
-    """
+def _impact_loop_runner(tmp_path, monkeypatch, provide_tables):
+    """Build a 2-step aragog run on the dummy structure with one dummy impact at 2 yr."""
     from pathlib import Path
 
     import numpy as np
@@ -2156,6 +2142,7 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
 
     runner = Proteus(config_path=cfg)
     runner.config.interior_energetics.module = 'aragog'
+    runner.config.interior_struct.melting_dir = 'Monteux-600'
     runner.config.atmos_chem.module = None
     runner.config.params.stop.time.minimum = 0.0
     runner.config.params.stop.time.maximum = 2.0
@@ -2211,12 +2198,37 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
         staticmethod(lambda config, interior_o, outdir, hf_row=None: np.array([6000.0])),
     )
     monkeypatch.setattr(zalmoxis, 'generate_spider_tables', lambda config, outdir: None)
-    monkeypatch.setattr(interior_wrapper, '_provide_spider_eos_tables', lambda *_a: None)
+    monkeypatch.setattr(interior_wrapper, '_provide_spider_eos_tables', provide_tables)
 
     data_dir.mkdir(parents=True, exist_ok=True)
     earlier_snap = data_dir / '0p000_int.nc'
     earlier_snap.write_text('initial snapshot')
+    return runner, data_dir, written_snapshots, earlier_snap
 
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypatch):
+    """The main loop discards the pre-impact snapshot when an impact occurs.
+
+    Contract clause: when an impact occurs during a step, the interior
+    snapshot written at the start of that step predates the mantle remelt.
+    The main loop must call discard_preimpact_snapshot to remove the stale
+    snapshot while preserving earlier valid snapshots.
+
+    Verifies:
+    - The snapshot written on the impact step was initially created.
+    - The impact landed and delivered rock mass.
+    - The snapshot written on the impact step is removed from disk.
+    - Earlier valid snapshots remain intact for resuming.
+    - The P-S tables are provided at setup and again at the impact re-solve.
+    """
+    from proteus.utils.helper import format_subyear_time
+
+    calls = []
+    runner, data_dir, written_snapshots, earlier_snap = _impact_loop_runner(
+        tmp_path, monkeypatch, lambda *a: calls.append(a)
+    )
     runner.start(resume=False, offline=True)
 
     expected_impact_snap = data_dir / f'{format_subyear_time(2.0)}_int.nc'
@@ -2231,6 +2243,63 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
     assert not expected_impact_snap.exists(), (
         'impact step snapshot must be discarded by main loop'
     )
+    assert len(calls) == 2, 'tables are provided at setup and at the impact re-solve'
+
+
+@pytest.mark.unit
+def test_main_loop_checks_crystallization_only_after_the_init_stage(tmp_path, monkeypatch):
+    """start() calls _check_crystallization on every step after the init stage and never
+    during it, where the init stage recalculates the volatile targets instead."""
+    import proteus.outgas.wrapper as outgas_wrapper
+    from proteus import Proteus
+
+    runner, *_ = _impact_loop_runner(tmp_path, monkeypatch, lambda *a: None)
+    targets, checks = [], []
+    real_targets, real_check = (
+        outgas_wrapper.calc_target_elemental_inventories,
+        Proteus._check_crystallization,
+    )
+
+    def count_targets(*args):
+        targets.append(runner.init_stage)
+        return real_targets(*args)
+
+    def spy_check(self):
+        checks.append(self.init_stage)
+        return real_check(self)
+
+    monkeypatch.setattr(outgas_wrapper, 'calc_target_elemental_inventories', count_targets)
+    monkeypatch.setattr(Proteus, '_check_crystallization', spy_check)
+    runner.start(resume=False, offline=True)
+
+    assert any(targets), 'the init stage must run first'
+    assert len(checks) >= 1 and not any(checks)
+
+
+@pytest.mark.unit
+def test_missing_melting_curves_at_the_impact_stop_the_run_with_status_20(
+    tmp_path, monkeypatch
+):
+    """A melting curve missing at the impact's structure re-solve stops start()
+    with status 20, before the impact step reaches the helpfile."""
+    from proteus.interior_energetics.common import MissingMeltingCurveError
+
+    calls = []
+
+    def provide_tables(*args):
+        calls.append(args)
+        if len(calls) == 2:
+            raise MissingMeltingCurveError('melting curves missing at the impact')
+
+    runner, *_ = _impact_loop_runner(tmp_path, monkeypatch, provide_tables)
+    with pytest.raises(MissingMeltingCurveError, match='at the impact'):
+        runner.start(resume=False, offline=True)
+
+    assert len(calls) == 2
+    status = (tmp_path / 'run' / 'status').read_text().splitlines()[0]
+    assert status == '20'
+    assert (runner.hf_all['M_accreted_rock'] == 0.0).all(), 'no impact row is written'
+    assert runner.hf_row['n_impacts_applied'] == 1
 
 
 @pytest.mark.unit
