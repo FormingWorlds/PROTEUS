@@ -33,9 +33,10 @@ fugacity.
 
 Because the integral depends only on (P, T) -- never on composition, the
 initial ferric fraction, or the timestep -- it is tabulated once per process
-and interpolated thereafter. A 150 x 40 grid reproduces a direct 400-point
+and interpolated thereafter. A 150 x 40 grid over 1500-4175 K (68.6 K spacing) reproduces a direct 400-point
 integration to ~0.1% median / 1.2% max; a 60 x 40 grid is NOT sufficient
-(10% worst case).
+(10% worst case). The default
+52 temperature nodes over 1500-5000 K keep that 68.6 K spacing.
 
 VALIDITY
 --------
@@ -56,10 +57,15 @@ flag that every public call returns:
    Commun. 11, 2007 should be consulted for the V/V0 range they actually
    sampled, and the splice point set from that.
 
-2. Above T ~ 4175 K the BM4 equation has no root at all at 1 bar (the rising
-   thermal term overtakes the falling Birch-Murnaghan term), and Deng's fit
-   was calibrated around T0 = 3000 K with a thermal pressure linear in
-   (T - T0). We mark T above ``T_CEILING`` invalid rather than extrapolate.
+2. Temperature. Deng et al. (2020) ran FPMD at 2000-4000 K (T0 = 3000 K,
+   thermal pressure linear in T - T0) and state that their thermodynamic
+   modelling extends to 5000 K; Schaefer et al. (2024) evaluate the EOS at
+   their solidus, which reaches ~4570 K at the core-mantle boundary.
+   ``T_CEILING`` = 5000 K follows Deng's stated range; above it the fit is
+   treated as invalid rather than extrapolated. Above T ~ 3000 K the BM4 has
+   no root at 1 bar, but that is the V > V0 branch removed by the splice in
+   (1), so it does not limit the temperature: above p_splice(T) the EOS
+   solves up to 140 GPa at every T tested (3000-6000 K).
 
 Pressures above ``P_EXERCISED`` (136 GPa, roughly Earth's core-mantle
 boundary and the deepest Schaefer et al. ran) are flagged but not refused.
@@ -93,7 +99,7 @@ _T0 = 3000.0        # K,   Deng reference temperature
 # so the per-FeO volume difference is half the endmember difference.
 _DV0 = 0.5 * (_V0[1] - _V0[0])
 
-T_CEILING = 4175.0      # K,   above this the BM4 has no root at 1 bar
+T_CEILING = 5000.0      # K,   upper limit of Deng et al. (2020) modelling
 P_EXERCISED = 136.0     # GPa, deepest pressure Schaefer et al. (2024) ran
 
 # ── Lange & Carmichael (1987) FeO liquid + Kress & Carmichael (1993) K ──────
@@ -260,7 +266,7 @@ _TABLE: _Table | None = None
 
 
 def build_table(P_max: float = P_EXERCISED * 1.05, T_min: float = 1500.0,
-                T_max: float = T_CEILING, nP: int = 150, nT: int = 40) -> None:
+                T_max: float = T_CEILING, nP: int = 150, nT: int = 52) -> None:
     """Build and cache the (P, T) table. ~0.15 s; call once at init."""
     global _TABLE
     _TABLE = _Table(P_max, T_min, T_max, nP, nT)

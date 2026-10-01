@@ -52,7 +52,7 @@ this was validated against):
             the Deng et al. (2020) EOS (interior_chem/eos_deng.py): at depth
             2*V(FeO1.5) + V(Fe) < 3*V(FeO), and that volume change is what
             makes disproportionation favourable there. Cells outside the EOS
-            envelope (T > 4175 K or P > 136 GPa) are excluded from the
+            envelope (T > 5000 K or P > 136 GPa) are excluded from the
             check. See interior_chem/disproportionation.py for the
             derivation.
   Step 10   radial fO2 profile via Hirschmann (2022) GCA 313 Eq 21
@@ -389,7 +389,7 @@ def _metal_saturation_step(
     # of Schaefer evaluating at the base of the magma ocean.
     usable = melt & eos_valid
     if not np.any(usable):
-        # Every melt cell is outside the Deng EOS envelope (T above 4175 K or
+        # Every melt cell is outside the Deng EOS envelope (T above 5000 K or
         # P above 136 GPa), so the melt cannot be tested this step. Common
         # early in a hot deep magma ocean, which is also when metal is most
         # likely to form, so say it once rather than pass silently.
@@ -655,7 +655,7 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
             T_cell, T_floor, T_top,
         )
     # The pressure term at the top cell. Above T_CEILING the table is read
-    # at T_CEILING; below p_splice(T_CEILING) (~1.5 GPa) that is the
+    # at T_CEILING; below p_splice(T_CEILING) (~2.6 GPa) that is the
     # uncompressed-dV splice, which is the same value the splice gives at
     # any higher T, so the clamp only extrapolates deeper than that.
     T_eos = min(T_top, eos_deng.T_CEILING)
