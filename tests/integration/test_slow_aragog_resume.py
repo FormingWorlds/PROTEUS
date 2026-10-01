@@ -48,6 +48,7 @@ import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
+from proteus.config._interior import default_rtol
 
 # resume_runs setup counts against the first test: 2613-2898 s on CI, over 3600 s on a slow runner.
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(7200)]
@@ -59,8 +60,9 @@ CONFIG = PROTEUS_ROOT / 'input' / 'dummy.toml'
 N_ITERS = 12
 SEAM_ITERS = 6
 
-# Parity tolerances: above the resumed-run difference (5e-6 in F_cmb, 1e-8 in
-# T_magma) and well below the 1e-2 and 5e-3 of a mesh built from P_surf.
+# Resumed-run differences at rtol 1e-8, PALEOS / Wolf and Bower set: F_cmb 6.4e-5 / 8.8e-9,
+# T_magma 3.9e-7 / 6.1e-11, state-heat ledger 5.8e-6 / 9.8e-10 (1.7x below STATE_RTOL);
+# a mesh built from P_surf moves F_cmb and T_magma by 1e-2 and 5e-3.
 FLUX_RTOL = 2.0e-3
 STATE_RTOL = 1.0e-5
 
@@ -80,6 +82,7 @@ def _make_runner(output_dir, iters_max):
     runner = Proteus(config_path=_config_with_output_path(output_dir))
     cfg = runner.config
     cfg.interior_energetics.module = 'aragog'
+    cfg.interior_energetics.rtol = default_rtol('aragog')  # dummy.toml resolved it for 'dummy'
     cfg.interior_struct.melting_dir = 'Monteux-600'
     assert cfg.interior_energetics.aragog.core_bc == 'energy_balance'
     cfg.params.dt.initial = 1.0e2
@@ -257,7 +260,7 @@ def test_resume_restores_the_cmb_entropy_gradient(resume_runs, record_property):
     for name, d in (('d_flux', d_flux), ('d_heat', d_heat)):
         for k in ('res', 'fd'):
             record_property(f'{name}_{k}', float(d[k]))
-    # The restart moves both by at least 4e-6 on the PALEOS and the Wolf and Bower sets.
+    # At rtol 1e-8 the restart moves both by at least 4.8e-6 (heat, Wolf and Bower set).
     assert d_flux['fd'] > 1e-6 and d_heat['fd'] > 1e-6, (d_flux, d_heat)
     assert d_flux['res'] < 0.5 * d_flux['fd'], d_flux
     assert d_heat['res'] < 0.5 * d_heat['fd'], d_heat

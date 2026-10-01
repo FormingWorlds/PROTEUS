@@ -839,7 +839,8 @@ def test_setup_solver_drops_phase_boundary_cap_on_old_aragog(tmp_path, requested
 
 
 @pytest.mark.unit
-def test_setup_solver_drops_only_active_caps_on_old_aragog(tmp_path):
+@pytest.mark.parametrize('active', ['temperature_step_cap', 'entropy_step_cap'])
+def test_setup_solver_drops_only_active_caps_on_old_aragog(tmp_path, active):
     """On an Aragog without any optional field, the warning names only the controls the
     config sets away from their Aragog default."""
 
@@ -847,13 +848,29 @@ def test_setup_solver_drops_only_active_caps_on_old_aragog(tmp_path):
         return MagicMock()
 
     config = _make_aragog_config(struct_module='spider')
-    config.interior_energetics.aragog.temperature_step_cap = 50.0
-    config.interior_energetics.aragog.entropy_step_cap = 0.0
+    for name in ('temperature_step_cap', 'entropy_step_cap'):
+        setattr(config.interior_energetics.aragog, name, 50.0 if name == active else 0.0)
     _, mock_log = _run_setup_solver(tmp_path, config, _no_caps_stub)
 
-    assert _warned(mock_log, 'temperature_step_cap')
-    for name in ('entropy_step_cap', 'phase_boundary_entropy_margin', 'phase_boundary_cap'):
+    assert _warned(mock_log, active)
+    others = {'temperature_step_cap', 'entropy_step_cap'} - {active}
+    for name in (*others, 'phase_boundary_entropy_margin', 'phase_boundary_cap'):
         assert not _warned(mock_log, name)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('rtol', [None, 3e-9])
+def test_setup_solver_passes_the_interior_rtol_to_aragog(tmp_path, rtol):
+    """The interior rtol reaches Aragog's solver parameters: the unset default 1e-8 and an
+    explicit value."""
+    from proteus.config._interior import Interior
+
+    config = _make_aragog_config(struct_module='spider')
+    kw = {} if rtol is None else {'rtol': rtol}
+    config.interior_energetics.rtol = Interior(module='aragog', **kw).rtol
+    with patch('proteus.interior_energetics.aragog._SolverParameters') as sp:
+        _run_setup_solver(tmp_path, config, lambda **rest: MagicMock())
+    assert sp.call_args.kwargs['rtol'] == pytest.approx(1e-8 if rtol is None else rtol)
 
 
 def test_setup_or_update_solver_tracks_stale_structure_steps():

@@ -7111,6 +7111,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         def get_state(self):
             # Aragog's get_state reads attributes and calls .get on its solution.
             self._solution.get('energy_integrals')
+            assert self._solution.status == 0  # aragog's get_state reads it
             self.recorded_y = self._solution.y
             self.recorded_t = self._solution.t
             return SimpleNamespace(

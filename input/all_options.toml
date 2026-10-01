@@ -426,7 +426,7 @@ config_version = "3.0"
 
     # Grid and solver tolerances (shared by Aragog + SPIDER; ignored for dummy)
     num_levels                = 80           # radial grid levels (energetics domain only)
-    rtol                      = 1.0e-8       # relative ODE solver tolerance; unset: 1e-8 Aragog, 1e-10 SPIDER
+    rtol                      = -1.0         # relative ODE solver tolerance; unset: 1e-8 Aragog, 1e-10 SPIDER
     atol                      = 1.0e-10      # absolute ODE solver tolerance
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
     num_tolerance             = -1           # deprecated alias for rtol; leave at -1 (unset)

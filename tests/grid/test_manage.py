@@ -1297,6 +1297,28 @@ def test_write_config_files_gives_each_module_its_default_rtol(
     assert loaded == pytest.approx(expected, rel=1e-12)
 
 
+def test_all_options_grid_over_the_module_gives_each_its_default_rtol(
+    fake_proteus_dir, monkeypatch
+):
+    """input/all_options.toml leaves rtol unset, so a grid over the interior module writes
+    1e-8 for Aragog and 1e-10 for SPIDER."""
+    from helpers import PROTEUS_ROOT
+
+    g = Grid(
+        name='opts_grid', base_config_path=str(PROTEUS_ROOT / 'input' / 'all_options.toml')
+    )
+    g.add_dimension('d0', 'interior_energetics.module')
+    g.set_dimension_direct('d0', ['aragog', 'spider'])
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    g.write_config_files()
+    got = {
+        c['interior_energetics']['module']: c['interior_energetics']['rtol']
+        for c in (toml.load(g._get_tmpcfg(i)) for i in range(2))
+    }
+    assert got == pytest.approx({'aragog': 1e-8, 'spider': 1e-10}, rel=1e-12)
+
+
 @pytest.mark.parametrize(
     'alias', ['interior_energetics.num_tolerance', 'interior_energetics.spider.tolerance_rel']
 )

@@ -316,7 +316,8 @@ def test_aragog_phase_boundary_cap_defaults_to_rate_and_rejects_other_values():
 
 
 @pytest.mark.parametrize(
-    ('module', 'expected'), [('aragog', 1e-8), ('spider', 1e-10), ('dummy', 1e-10)]
+    ('module', 'expected'),
+    [('aragog', 1e-8), ('spider', 1e-10), ('dummy', 1e-10), ('boundary', 1e-10)],
 )
 def test_unset_interior_rtol_resolves_per_module(module, expected):
     """An unset rtol resolves to 1e-8 for Aragog and 1e-10 otherwise; an explicit value is kept."""
