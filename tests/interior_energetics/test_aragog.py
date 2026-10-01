@@ -1969,6 +1969,52 @@ def test_setup_or_update_solver_builds_with_explicit_radau_without_cvode(cvode_m
     interior_o.aragog_solver.initialize.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    ('solver_method', 'recorded'),
+    [('bdf', 'bdf'), ('radau', 'radau'), ('lsoda', 'radau')],
+    ids=['bdf', 'radau', 'other_scipy_method_runs_radau'],
+)
+def test_first_solver_build_records_the_integrator_in_timing(
+    tmp_path, cvode_missing, solver_method, recorded
+):
+    """Building the solver writes the integrator that runs as a timing backend line.
+
+    Aragog runs Radau for any scipy method other than BDF, so that is what is
+    recorded, not the configured name.
+    """
+    import json
+
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.utils import timing
+
+    interior_o = MagicMock()
+    interior_o.aragog_solver = None
+    config = _cvode_config(solver_method=solver_method)
+    config.params.resume = False
+
+    def _build(cfg, hf_row, interior, outdir):
+        interior.aragog_solver = MagicMock()
+
+    timing.start(tmp_path, MagicMock())
+    with (
+        patch.object(AragogRunner, 'setup_solver', side_effect=_build),
+        patch.object(AragogRunner, '_maybe_install_jax_cvode_factory'),
+        patch.object(AragogRunner, '_set_entropy_ic'),
+        patch.object(AragogRunner, '_verify_entropy_ic'),
+    ):
+        AragogRunner.setup_or_update_solver(
+            config, {'R_int': 1.0e6}, interior_o, 1.0, {'output': str(tmp_path)}
+        )
+    timing.end('ok')
+
+    lines = (tmp_path / timing.FILENAME).read_text().splitlines()
+    backends = [e for e in map(json.loads, lines) if e['ev'] == 'backend']
+    assert [(b['submodule'], b['key'], b['value']) for b in backends] == [
+        ('aragog', 'solver', recorded)
+    ]
+    assert backends[0]['t0'] >= 0.0
+
+
 # --- Failure-mode-branched retry ladder ------------------------------------
 #
 # _solve_with_retry branches its recovery on the CVODE failure mode. A

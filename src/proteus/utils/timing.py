@@ -110,6 +110,18 @@ def step(component: str, start_time: float) -> float:
     return _write(next(_ids), component, start_time, fields)
 
 
+def backend(submodule: str, key: str, value: str) -> None:
+    """Record a choice made once per run, such as the integrator a module uses."""
+    if _fh is not None:
+        _emit(
+            ev='backend',
+            t0=round(perf_counter() - _origin, 6),
+            submodule=submodule,
+            key=key,
+            value=value,
+        )
+
+
 def end(status: str, **fields) -> None:
     """Close every open span, write ``run_end`` and close the file."""
     global _fh

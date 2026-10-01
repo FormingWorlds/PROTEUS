@@ -52,6 +52,7 @@ def _events(path):
 def test_nothing_is_written_without_a_started_run(tmp_path, clock):
     """Without start every call is a no-op, and step still returns the duration."""
     timing.mark('loop')
+    timing.backend('aragog', 'solver', 'cvode')
     clock.now = 103.5
     assert timing.step('interior', 100.0) == pytest.approx(3.5)
     timing.end('ok')

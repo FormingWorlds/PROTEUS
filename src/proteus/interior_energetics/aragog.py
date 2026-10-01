@@ -37,6 +37,7 @@ from proteus.interior_energetics.common import Interior_t
 from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, TDEP_EOS_PREFIXES
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
+from proteus.utils import timing
 from proteus.utils.constants import radnuc_data
 from proteus.utils.data import (
     RELOCATE_HINT,
@@ -361,6 +362,16 @@ def require_cvode(config: Config) -> None:
     log.info('CVODE (scikits_odes_sundials) is available for Aragog')
 
 
+def ode_solver_name(config: Config) -> str:
+    """Name the integrator Aragog runs: 'CVODE', 'BDF' or 'Radau'.
+
+    ``require_cvode`` stops a run that asks for CVODE when it cannot be
+    imported, so the configured ``solver_method`` is the one that runs.
+    """
+    method = str(config.interior_energetics.aragog.solver_method or '')
+    return {'cvode': 'CVODE', 'bdf': 'BDF'}.get(method, 'Radau')
+
+
 def _maybe_log_solver_environment(config: Config) -> None:
     """One-shot diagnostic log of the host + JAX + solver configuration.
 
@@ -593,6 +604,7 @@ class AragogRunner:
     ):
         if interior_o.aragog_solver is None:
             require_cvode(config)
+            timing.backend('aragog', 'solver', ode_solver_name(config).lower())
             _maybe_log_solver_environment(config)
             _t_setup = time.perf_counter()
             AragogRunner.setup_solver(config, hf_row, interior_o, dirs['output'])
@@ -2050,22 +2062,6 @@ class AragogRunner:
 
         return sim_time, output
 
-    def _active_solver_name(self) -> str:
-        """Name the integrator that is running, for the retry-ladder failure message.
-
-        ``require_cvode`` has already stopped the run when ``solver_method`` is
-        ``'cvode'`` and CVODE cannot be imported, so the configured name is the
-        one that runs.
-
-        Returns
-        -------
-        str
-            'CVODE', 'BDF' or 'Radau' for ``solver_method`` ``'cvode'``,
-            ``'bdf'`` or ``'radau'``.
-        """
-        method = str(self._config.interior_energetics.aragog.solver_method or '')
-        return {'cvode': 'CVODE', 'bdf': 'BDF'}.get(method, 'Radau')
-
     def _solve_with_retry(self, hf_row, interior_o) -> SolverOutput:
         """Run aragog_solver.solve() with a failure-mode-branched retry ladder.
 
@@ -2354,7 +2350,7 @@ class AragogRunner:
                             'advancing the state on any attempt'
                         )
                     else:
-                        reason = f'{self._active_solver_name()} status={out.status}'
+                        reason = f'{ode_solver_name(self._config)} status={out.status}'
                         if flag_name:
                             reason += f' (cvode_flag={cvode_flag}, {flag_name})'
                     log.error(
