@@ -17,6 +17,7 @@ import numpy as np
 from juliacall import Main  # noqa: F401
 
 import proteus.utils.archive as archive
+import proteus.utils.timing as timing
 from proteus.config import (
     UnknownConfigKeyError,
     find_key_problems,
@@ -43,10 +44,9 @@ from proteus.utils.logs import (
 )
 
 # Opt-in per-iter module wall-time breakdown. Emits one `[IT_TIMING]` log
-# line per main-loop iter with wall-time shares per module. Enable by
-# exporting `PROTEUS_TIMING=1` before launching `proteus start`.
-# Overhead when disabled: one os.environ lookup at import time, nothing
-# in the loop body.
+# line per main-loop iter with wall-time shares per module, and writes the run's
+# spans to `timing.jsonl` (proteus.utils.timing). Enable by exporting
+# `PROTEUS_TIMING=1` before launching `proteus start`.
 _IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
 
 # Consecutive iterations without a converged atmosphere after which a run ends,
@@ -400,6 +400,7 @@ class Proteus:
                 )
 
     @_status_on_missing_eos
+    @timing.record_run
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
 
@@ -514,6 +515,8 @@ class Proteus:
             CleanDir(self.directories['output/observe'])
             CleanDir(self.directories['output/offchem'])
             CleanDir(self.directories['output/plots'])
+        if _IT_TIMING_ENABLED:
+            timing.start(self.directories['output'], self.config)
 
         # Get next logfile path
         logindex = 1 + GetCurrentLogfileIndex(self.directories['output'])
@@ -588,6 +591,7 @@ class Proteus:
 
         # Download basic data
         download_sufficient_data(self.config)
+        timing.mark('init')
 
         # Initialise interior object
         if self.config.interior_energetics.module == 'spider':
@@ -959,7 +963,9 @@ class Proteus:
         # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
         vulcan_completed_loops = set()
         UpdateStatusfile(self.directories, 1)
+        timing.mark('loop')
         while not self.finished_both:
+            timing.mark('iter', iter=self.loops['total'] + 1)
             # Determine whether this iteration is a data-write snapshot.
             # Conditions that are individually sufficient:
             #   1. iteration count matches write_mod, or
@@ -1019,7 +1025,7 @@ class Proteus:
                 write_data=is_snapshot,
             )
             if _IT_TIMING_ENABLED:
-                _t_mod['interior'] = time.perf_counter() - _t0
+                _t_mod['interior'] = timing.step('interior', _t0)
 
             # Advance current time in main loop according to interior step
             self.hf_row['Time'] += self.interior_o.dt  # in years
@@ -1075,7 +1081,7 @@ class Proteus:
                     self.last_struct_Phi,
                 )
                 if _IT_TIMING_ENABLED:
-                    _t_mod['structure'] = time.perf_counter() - _t0
+                    _t_mod['structure'] = timing.step('structure', _t0)
                 # gc.collect() already called inside update_structure_from_interior()
 
                 # Count down the resume-settling structure-re-solve window once
@@ -1092,7 +1098,7 @@ class Proteus:
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
             run_orbit(self.hf_row, self.config, self.directories, self.tides_o, self.interior_o)
             if _IT_TIMING_ENABLED:
-                _t_mod['orbit'] = time.perf_counter() - _t0
+                _t_mod['orbit'] = timing.step('orbit', _t0)
 
             ############### / ORBIT AND TIDES
 
@@ -1149,7 +1155,7 @@ class Proteus:
                 log.info('Updated spectrum not required')
 
             if _IT_TIMING_ENABLED:
-                _t_mod['stellar'] = time.perf_counter() - _t0_stellar
+                _t_mod['stellar'] = timing.step('stellar', _t0_stellar)
 
             ############### / STELLAR FLUX MANAGEMENT
 
@@ -1176,7 +1182,7 @@ class Proteus:
                     interior_o=self.interior_o,
                 )
                 if _IT_TIMING_ENABLED:
-                    _t_mod['escape'] = time.perf_counter() - _t0
+                    _t_mod['escape'] = timing.step('escape', _t0)
             else:
                 # No escape step this loop, so nothing justifies holding the
                 # step short on account of one, and last step's request would
@@ -1253,7 +1259,7 @@ class Proteus:
             assert_surface_pressure_consistency(self.config, self.hf_row)
 
             if _IT_TIMING_ENABLED:
-                _t_mod['outgas'] = time.perf_counter() - _t0_outgas
+                _t_mod['outgas'] = timing.step('outgas', _t0_outgas)
 
             ############### / OUTGASSING
 
@@ -1331,7 +1337,7 @@ class Proteus:
             self._check_atmosphere_deadlock()
 
             if _IT_TIMING_ENABLED:
-                _t_mod['atmos'] = time.perf_counter() - _t0_atmos
+                _t_mod['atmos'] = timing.step('atmos', _t0_atmos)
 
             ############### / ATMOSPHERE CLIMATE
 
@@ -1346,7 +1352,7 @@ class Proteus:
                         _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
                         run_chemistry(self.directories, self.config, self.hf_row)
                         if _IT_TIMING_ENABLED:
-                            _t_mod['chem'] = time.perf_counter() - _t0
+                            _t_mod['chem'] = timing.step('chem', _t0)
                         vulcan_completed_loops.add(
                             self.loops['total']
                         )  # adds it to the completed loops/snapshots
@@ -1387,7 +1393,7 @@ class Proteus:
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
                 WriteHelpfileToCSV(self.directories['output'], self.hf_all)
                 if _IT_TIMING_ENABLED:
-                    _t_mod['write'] = time.perf_counter() - _t0
+                    _t_mod['write'] = timing.step('write', _t0)
                 self.last_write_time = self.hf_row.get('Time', 0.0)
 
             # Print info to terminal and log file
@@ -1407,7 +1413,7 @@ class Proteus:
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
                 UpdatePlots(self.hf_all, self.directories, self.config)
                 if _IT_TIMING_ENABLED:
-                    _t_mod['plots'] = time.perf_counter() - _t0
+                    _t_mod['plots'] = timing.step('plots', _t0)
 
             # Update or create data archive
             if (
@@ -1429,7 +1435,7 @@ class Proteus:
                 # hand-off files) stay in place
                 archive.remove_old(self.directories['output/data'], self.hf_row['Time'] * 0.99)
                 if _IT_TIMING_ENABLED:
-                    _t_mod['archive'] = time.perf_counter() - _t0
+                    _t_mod['archive'] = timing.step('archive', _t0)
 
             # Emit one line per iter with the module wall-time breakdown.
             # The "other" bucket captures un-instrumented slices (helpfile
@@ -1445,6 +1451,7 @@ class Proteus:
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
         # Write conditions at the end of simulation
+        timing.mark('shutdown')
         log.info('Writing data')
         WriteHelpfileToCSV(self.directories['output'], self.hf_all)
 

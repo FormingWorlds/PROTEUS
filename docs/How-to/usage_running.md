@@ -110,6 +110,10 @@ export PROTEUS_OUTPUT_PATH=/scratch/$USER/proteus_output
 
 With that set, a run whose `params.out.path` is `trial1` lands in `/scratch/$USER/proteus_output/trial1/`, and its `data/`, `observe/`, `offchem/`, and `plots/` subfolders follow. Use an absolute path; `~` and `$VAR` references are expanded. Leaving the variable unset (or empty) keeps the default `<PROTEUS>/output/` location, so existing setups are unaffected. Only the run output moves: input files and the code tree are unchanged. When resuming or plotting a relocated run, keep the same `PROTEUS_OUTPUT_PATH` in the environment so PROTEUS looks in the right place.
 
+## Timing a run
+
+Set `PROTEUS_TIMING=1` to log one `[IT_TIMING]` line per iteration with the seconds spent in each module, and to write `timing.jsonl` to the output directory: the phases, iterations and module calls of the run as nested spans, in the [proteus-bench format](https://github.com/egpbos/proteus-bench/blob/main/docs/interface.md). A resumed run replaces the file.
+
 ## Archiving output files
 
 A simulation can generate a large number of files, which becomes a problem when running large [parameter grids](usage_grids.md). The `params.out.archive_mod` configuration option tells PROTEUS when to gather a run's output files into `.tar` archives.

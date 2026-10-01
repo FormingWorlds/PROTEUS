@@ -1956,9 +1956,13 @@ def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog)
     read from the environment once at import time), the main loop must
     record the orbit stage's wall-time in ``_t_mod`` and surface it in
     the per-iteration ``[IT_TIMING]`` log line -- not just the other
-    instrumented stages.
+    instrumented stages. The same measurements go to ``timing.jsonl``: one
+    ``iter`` span per logged iteration under ``loop``, between the setup,
+    init and shutdown phases, closed by a ``run_end`` with status ok.
     """
+    import json
     import logging
+    import re
 
     monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
     p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
@@ -1969,6 +1973,22 @@ def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog)
     timing_records = [rec.message for rec in caplog.records if '[IT_TIMING]' in rec.message]
     assert len(timing_records) > 0, 'no [IT_TIMING] log line was emitted'
     assert any('orbit=' in msg for msg in timing_records)
+
+    events = [json.loads(line) for line in (tmp_path / 'timing.jsonl').read_text().splitlines()]
+    spans = [e for e in events if e['ev'] == 'span']
+    assert [s['name'] for s in spans if s['parent'] is None] == [
+        'setup',
+        'init',
+        'loop',
+        'shutdown',
+    ]
+    logged = [int(re.search(r'iter=(\d+)', m).group(1)) for m in timing_records]
+    assert [s['iter'] for s in spans if s['name'] == 'iter'] == logged == [1, 2, 3, 4]
+    # The logged orbit time is the orbit span's duration, rounded to ms
+    orbit_logged = [float(re.search(r'orbit=([\d.]+)', m).group(1)) for m in timing_records]
+    orbit_spans = [s['dur'] for s in spans if s['name'] == 'orbit']
+    assert orbit_spans == pytest.approx(orbit_logged, abs=5e-4)
+    assert events[-1] == {'v': 1, 'ev': 'run_end', 't0': events[-1]['t0'], 'status': 'ok'}
 
 
 # =======================================================================================
