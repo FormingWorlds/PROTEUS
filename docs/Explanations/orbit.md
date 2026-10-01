@@ -132,7 +132,7 @@ spectrum in `tides_o`).
 
 `sp0d` and `sp1d` integrate with `scipy.solve_ivp` (`orbit.solver.*` controls
 method and tolerances). `parameterized` solves nothing: it updates the semi-major 
-axis and eccentricity throughout the simualtion based on input parameters chosen 
+axis and eccentricity throughout the simulation based on input parameters chosen
 by the user.
 
 ??? note "parameterized in a nutshell"
