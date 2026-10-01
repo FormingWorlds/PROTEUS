@@ -1089,22 +1089,30 @@ def determine_interior_radius_with_dummy(
         dirs['spider_mesh'] = spider_mesh_file
         dirs['spider_mesh_prev'] = spider_mesh_file + '.prev'
 
-    # P-S EOS tables and melting curves for SPIDER/Aragog. The dummy structure
-    # never uses PALEOS tables: it reads the FWL_DATA or SPIDER set and melting_dir.
+    # P-S EOS tables for SPIDER/Aragog: the PALEOS set when mantle_eos is PALEOS (a
+    # mixture follows its MgSiO3 component), else the FWL_DATA or SPIDER set and melting_dir.
     if config.interior_energetics.module in ('spider', 'aragog'):
-        try:
-            _provide_spider_eos_tables(config, outdir, dirs)
-        except MissingMeltingCurveError:
-            raise
-        except FileNotFoundError as exc:
-            raise MissingDataError(
-                "interior_struct.module='dummy' with interior_energetics.module="
-                f'{config.interior_energetics.module!r} needs the SPIDER/Aragog P-S EOS '
-                'tables from FWL_DATA or the SPIDER lookup_data, and neither is '
-                "available. Fetch them with 'proteus get interiordata --config-path "
-                "<your config>'. "
-                f'Cause: {exc}'
-            ) from exc
+        from proteus.interior_struct.zalmoxis import generate_spider_tables
+
+        spider_tables = generate_spider_tables(config, outdir)
+        if spider_tables is not None:
+            dirs['spider_eos_dir'] = spider_tables['eos_dir']
+            dirs['spider_solidus_ps'] = spider_tables['solidus_path']
+            dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
+        else:
+            try:
+                _provide_spider_eos_tables(config, outdir, dirs)
+            except MissingMeltingCurveError:
+                raise
+            except FileNotFoundError as exc:
+                raise MissingDataError(
+                    "interior_struct.module='dummy' with interior_energetics.module="
+                    f'{config.interior_energetics.module!r} needs the SPIDER/Aragog P-S EOS '
+                    'tables from FWL_DATA or the SPIDER lookup_data, and neither is '
+                    "available. Fetch them with 'proteus get interiordata --config-path "
+                    "<your config>'. "
+                    f'Cause: {exc}'
+                ) from exc
 
     # Derived quantities
     hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']

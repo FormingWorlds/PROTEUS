@@ -3641,7 +3641,9 @@ def test_determine_interior_radius_with_dummy_sets_mesh_paths_for_spider(tmp_pat
             'proteus.interior_struct.dummy.solve_dummy_structure',
             return_value=mesh_file,
         ),
-        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables') as generate,
+        _patch(
+            'proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None
+        ) as generate,
         _patch(
             'proteus.interior_energetics.wrapper._provide_spider_eos_tables',
             side_effect=lambda cfg, out, d: d.update(spider_eos_dir=str(tmp_path / 'eos')),
@@ -3658,15 +3660,16 @@ def test_determine_interior_radius_with_dummy_sets_mesh_paths_for_spider(tmp_pat
     assert dirs['spider_mesh_prev'] == mesh_file + '.prev'
     # M_mantle = M_int - M_core
     assert hf_row['M_mantle'] == pytest.approx(5.972e24 - 2.0e24, rel=1e-12)
-    # The dummy structure never uses PALEOS tables; the FWL_DATA/SPIDER set is provided.
-    generate.assert_not_called()
+    # No PALEOS table set for this mantle EOS, so the FWL_DATA/SPIDER set is provided.
+    generate.assert_called_once()
     assert dirs['spider_eos_dir'] == str(tmp_path / 'eos')
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize('temperature_mode', ['liquidus_super', 'adiabatic'])
 def test_dummy_structure_provides_tables_in_every_temperature_mode(tmp_path, temperature_mode):
-    """The dummy structure takes the FWL_DATA/SPIDER tables in every temperature mode."""
+    """Without a PALEOS table set the dummy structure takes the FWL_DATA/SPIDER tables in
+    every temperature mode."""
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
@@ -3680,7 +3683,9 @@ def test_dummy_structure_provides_tables_in_every_temperature_mode(tmp_path, tem
 
     with (
         _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
-        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables') as generate,
+        _patch(
+            'proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None
+        ) as generate,
         _patch('proteus.interior_energetics.wrapper._provide_spider_eos_tables') as provide,
         _patch('proteus.interior_energetics.wrapper.Interior_t'),
         _patch('proteus.interior_energetics.wrapper.run_interior'),
@@ -3690,9 +3695,57 @@ def test_dummy_structure_provides_tables_in_every_temperature_mode(tmp_path, tem
     ):
         determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
 
-    generate.assert_not_called()
+    generate.assert_called_once()
     assert provide.call_count == 1
     assert provide.call_args.args[1] == str(tmp_path)
+
+
+class _PaleosRoute(Exception):
+    """Raised where generate_spider_tables starts building a PALEOS table set."""
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('mantle_eos', 'paleos'),
+    [
+        ('PALEOS:MgSiO3', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', True),
+        ('WolfBower2018:MgSiO3', False),
+        ('PALEOS:H2O:0.1+WolfBower2018:MgSiO3:0.9', False),
+    ],
+)
+def test_dummy_structure_follows_the_mantle_eos(tmp_path, mantle_eos, paleos):
+    """The dummy structure builds the PALEOS P-S tables when the mantle EOS (for a mixture,
+    its MgSiO3 component) is PALEOS, and takes the FWL_DATA/SPIDER set otherwise."""
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_energetics.num_levels = 50
+    config.interior_struct.zalmoxis.mantle_eos = mantle_eos
+    config.params.resume = False
+    hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
+
+    with (
+        _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
+        _patch('proteus.interior_struct.zalmoxis._ps_table_inputs', side_effect=_PaleosRoute),
+        _patch('proteus.interior_struct.zalmoxis.check_zalmoxis_eos_files'),
+        _patch('proteus.interior_energetics.wrapper._provide_spider_eos_tables') as provide,
+        _patch('proteus.interior_energetics.wrapper.Interior_t'),
+        _patch('proteus.interior_energetics.wrapper.run_interior'),
+        _patch('proteus.interior_energetics.wrapper.update_gravity'),
+        _patch('proteus.interior_energetics.wrapper.calc_target_elemental_inventories'),
+        _patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        if paleos:
+            with pytest.raises(_PaleosRoute):
+                determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
+            provide.assert_not_called()
+        else:
+            determine_interior_radius_with_dummy({}, config, None, hf_row, str(tmp_path))
+            provide.assert_called_once()
 
 
 @pytest.mark.unit
