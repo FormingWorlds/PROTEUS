@@ -97,9 +97,10 @@ def _melting_curve_files(config, outdir):
         return _write_paleos_melting_curves(outdir, config)
     if config.interior_struct.melting_dir is None:
         raise ValueError(
-            'interior_struct.melting_dir must be set without a generated PALEOS '
-            'table set (a PALEOS mantle EOS under the Zalmoxis structure). '
-            'Provide a melting curve folder name (e.g. "Monteux-600").'
+            'interior_struct.melting_dir must be set unless Zalmoxis generates a PALEOS '
+            'table set (a PALEOS mantle EOS under the Zalmoxis structure); the dummy '
+            'structure requires it with any mantle EOS. Provide a melting curve folder '
+            'name (e.g. "Monteux-600").'
         )
     return resolve_melting_curve_files(
         config.interior_struct.melting_dir, data_root=FWL_DATA_DIR

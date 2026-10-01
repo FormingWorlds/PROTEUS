@@ -3008,3 +3008,55 @@ def test_aragog_needs_melting_curves(energetics, mantle, melting_dir, stops):
             aragog_needs_melting_curves(instance, None, value)
     else:
         assert aragog_needs_melting_curves(instance, None, value) is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('energetics', 'mantle', 'melting_dir', 'outcome'),
+    [
+        ('aragog', 'PALEOS:MgSiO3:0.5+WolfBower2018:MgSiO3:0.5', 'Monteux-600', 'rejected'),
+        ('spider', 'PALEOS:MgSiO3:0.5+PALEOS-2phase:MgSiO3:0.5', None, 'rejected'),
+        ('dummy', 'PALEOS:MgSiO3:0.5+WolfBower2018:MgSiO3:0.5', 'Monteux-600', 'quiet'),
+        ('aragog', 'PALEOS:MgSiO3', 'Monteux-600', 'warned'),
+        ('spider', 'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'Monteux-600', 'warned'),
+        ('aragog', 'PALEOS:MgSiO3', None, 'quiet'),
+        ('aragog', 'WolfBower2018:MgSiO3', 'Monteux-600', 'quiet'),
+    ],
+)
+def test_dummy_struct_mantle_eos(caplog, energetics, mantle, melting_dir, outcome):
+    """Under the dummy structure SPIDER and Aragog reject two MgSiO3 sources and warn that a
+    set melting_dir does not change a PALEOS solve; other energetics are not checked."""
+    from proteus.config._config import dummy_struct_mantle_eos
+
+    struct = SimpleNamespace(
+        module='dummy', melting_dir=melting_dir, zalmoxis=SimpleNamespace(mantle_eos=mantle)
+    )
+    value = SimpleNamespace(module=energetics)
+    instance = SimpleNamespace(interior_struct=struct, interior_energetics=value)
+    caplog.set_level('WARNING', logger='fwl.proteus.config._config')
+    if outcome == 'rejected':
+        with pytest.raises(ValueError, match='MgSiO3 components from different sources'):
+            dummy_struct_mantle_eos(instance, None, value)
+        return
+    assert dummy_struct_mantle_eos(instance, None, value) is None
+    warned = [r for r in caplog.records if 'does not change the solve' in r.getMessage()]
+    assert len(warned) == (outcome == 'warned')
+    struct.module = 'zalmoxis'
+    caplog.clear()
+    assert dummy_struct_mantle_eos(instance, None, value) is None and not caplog.records
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('mantle', ['PALEOS:MgSiO3', 'WolfBower2018:MgSiO3'])
+def test_aragog_under_the_dummy_structure_needs_melting_dir(mantle):
+    """The dummy structure generates no table set for the check, so Aragog needs melting_dir
+    with a PALEOS mantle EOS too."""
+    from proteus.config._config import aragog_needs_melting_curves
+
+    struct = SimpleNamespace(
+        module='dummy', melting_dir=None, zalmoxis=SimpleNamespace(mantle_eos=mantle)
+    )
+    value = SimpleNamespace(module='aragog')
+    instance = SimpleNamespace(interior_struct=struct, interior_energetics=value)
+    with pytest.raises(ValueError, match='The dummy structure requires it with any mantle EOS'):
+        aragog_needs_melting_curves(instance, None, value)
