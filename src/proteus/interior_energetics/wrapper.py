@@ -5,6 +5,7 @@ import gc
 import logging
 import os
 import shutil
+from time import perf_counter
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -22,6 +23,7 @@ from proteus.interior_energetics.common import (
 )
 from proteus.interior_struct.common import solvus_radius
 from proteus.outgas.wrapper import calc_target_elemental_inventories
+from proteus.utils import timing
 from proteus.utils.constants import (
     TDEP_EOS_PREFIXES,
     M_earth,
@@ -1777,8 +1779,10 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
 
         # 1. Volatile partitioning: recompute elemental targets and
         #    run CALLIOPE to get atmosphere/melt distribution
+        t0 = perf_counter()
         calc_target_elemental_inventories(dirs, config, hf_row)
         run_outgassing(dirs, config, hf_row)
+        timing.step('outgas', t0)
 
         # 2. Re-compute structure with updated composition (volatile_profile is
         #    built inside zalmoxis_solver from hf_row). When the super-liquidus
@@ -1787,6 +1791,7 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
         #    to the linear-guess solve so init never aborts where the linear
         #    path would have converged. SPIDER and non-liquidus_super runs take
         #    the linear-guess solve unchanged.
+        t0 = perf_counter()
         if adiabat_tfunc is not None:
             spider_mesh_file, ok = _solve_structure_with_adiabat_or_rollback(
                 config,
@@ -1817,6 +1822,7 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
                 num_spider_nodes=num_spider_nodes,
                 temperature_function=None,
             )
+        timing.step('structure', t0)
 
         # Update M_mantle from Zalmoxis results (M_int and M_core are set
         # by zalmoxis_solver, but M_mantle is not). run_outgassing needs

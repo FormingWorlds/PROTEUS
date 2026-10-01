@@ -1982,11 +1982,20 @@ def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog)
         'loop',
         'shutdown',
     ]
+    roots = {s['name']: s['id'] for s in spans if s['parent'] is None}
+    children = {r: [s['name'] for s in spans if s['parent'] == i] for r, i in roots.items()}
+    assert children['setup'] == ['data']
+    assert children['init'] == [
+        'structure',
+        'stellar',
+        'orbit',
+    ]  # dummy structure: no equilibration
     logged = [int(re.search(r'iter=(\d+)', m).group(1)) for m in timing_records]
     assert [s['iter'] for s in spans if s['name'] == 'iter'] == logged == [1, 2, 3, 4]
     # The logged orbit time is the orbit span's duration, rounded to ms
     orbit_logged = [float(re.search(r'orbit=([\d.]+)', m).group(1)) for m in timing_records]
-    orbit_spans = [s['dur'] for s in spans if s['name'] == 'orbit']
+    iters = {s['id'] for s in spans if s['name'] == 'iter'}
+    orbit_spans = [s['dur'] for s in spans if s['name'] == 'orbit' and s['parent'] in iters]
     assert orbit_spans == pytest.approx(orbit_logged, abs=5e-4)
     assert events[-1] == {'v': 1, 'ev': 'run_end', 't0': events[-1]['t0'], 'status': 'ok'}
 

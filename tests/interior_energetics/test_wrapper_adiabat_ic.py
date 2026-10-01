@@ -23,7 +23,8 @@ internal linear-in-r temperature guess:
 - ``equilibrate_initial_state``: the equilibration loop hands the adiabat T(P) to
   every iteration's solver, falls back to the linear-guess solve for any
   iteration whose adiabat re-solve fails, and rebuilds the adiabat grid when a
-  converged P_cmb outgrows it.
+  converged P_cmb outgrows it, and times each iteration's outgassing and
+  structure calls in timing.jsonl.
 - ``determine_interior_radius_with_zalmoxis``: gates the re-solve on the
   zalmoxis structure module + liquidus_super + non-SPIDER energetics; SPIDER and
   other temperature modes keep the linear-guess solve untouched.
@@ -1592,3 +1593,51 @@ def test_adiabat_tp_passes_a_missing_table_stop_through():
         side_effect=RuntimeError('numerical'),
     ):
         assert _build_superliquidus_adiabat_tp(_config(), {}, P_cmb_target=1.4e12) is None
+
+
+@pytest.mark.parametrize(
+    'fail_on_solve', [None, 2], ids=['runs_to_max_iter', 'second_solve_raises']
+)
+def test_equilibration_records_an_outgas_then_a_structure_call_per_iteration(
+    tmp_path, fail_on_solve
+):
+    """Each equilibration iteration writes an outgas span and then a structure span.
+
+    A structure solve that raises writes no span of its own; the outgas call of
+    its iteration, which finished, is still recorded.
+    """
+    import json
+
+    from proteus.interior_energetics import wrapper as wmod
+    from proteus.utils import timing
+
+    config = _equilibrate_config(temperature_mode='isothermal', max_iter=2, tol=1e-9)
+    hf_row = _linear_hf_row()
+    calls = []
+
+    def fake_solver(cfg, outdir, row, num_spider_nodes=0, temperature_function=None, **kw):
+        calls.append(1)
+        if len(calls) == fail_on_solve:
+            raise RuntimeError('Zalmoxis did not converge')
+        row['R_int'] = 1.27e7 if len(calls) % 2 else 1.28e7  # never converges
+        row['P_surf'] = 1.0e5
+        row['M_int'] = row['M_int_target']
+        return 6.0e6, None
+
+    timing.start(tmp_path, MagicMock())  # module names are not under test here
+    raises = pytest.raises(RuntimeError) if fail_on_solve else contextlib.nullcontext()
+    with (
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=fake_solver),
+        _patch_equilibrate_io(),
+        raises,
+    ):
+        wmod.equilibrate_initial_state({'output': str(tmp_path)}, config, hf_row, '/x')
+    timing.end('ok')
+
+    lines = (tmp_path / timing.FILENAME).read_text().splitlines()
+    spans = [e for e in map(json.loads, lines) if e['ev'] == 'span']
+    calls_timed = ['outgas', 'structure'] * 2
+    if fail_on_solve:
+        calls_timed = calls_timed[:3]
+    assert [s['name'] for s in spans] == [*calls_timed, 'setup']
+    assert all(s['component'] == s['name'] for s in spans[:-1])

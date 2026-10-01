@@ -139,3 +139,36 @@ def test_a_run_that_raises_ends_with_its_status_and_failed_spans(tmp_path, exc, 
     # A later call outside a run writes nothing more
     timing.mark('loop')
     assert len(_events(tmp_path)) == len(events)
+
+
+def test_group_span_holds_its_calls_and_fails_with_them(tmp_path, clock):
+    """A group span contains the calls made inside it and is ok false when left by an exception.
+
+    Outside a started run the group is a plain block: no file is written.
+    """
+    with timing.span('equilibrate'):
+        pass
+    assert not (tmp_path / timing.FILENAME).exists()
+
+    timing.start(tmp_path, _config(outgas='calliope'))
+    timing.mark('init')
+    with timing.span('resume'):
+        pass
+    with pytest.raises(RuntimeError, match='structure'):
+        with timing.span('equilibrate'):
+            t0 = clock.now
+            clock.now += 1.0
+            timing.step('outgas', t0)
+            clock.now += 420.0
+            raise RuntimeError('structure solve failed')
+    timing.end('error')
+
+    spans = {e['name']: e for e in _events(tmp_path) if e['ev'] == 'span'}
+    assert spans['outgas']['parent'] == spans['equilibrate']['id']
+    assert spans['equilibrate']['parent'] == spans['init']['id']
+    assert (spans['equilibrate']['ok'], 'ok' in spans['outgas']) == (False, False)
+    assert spans['equilibrate']['dur'] == pytest.approx(421.0)
+    assert 'ok' not in spans['resume']  # a group left normally
+    assert (
+        spans['outgas']['submodule'] == 'calliope' and 'component' not in spans['equilibrate']
+    )

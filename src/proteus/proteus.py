@@ -590,7 +590,9 @@ class Proteus:
         self.lockfile = CreateLockFile(self.directories['output'])
 
         # Download basic data
+        _t0 = time.perf_counter()
         download_sufficient_data(self.config)
+        timing.step('data', _t0)
         timing.mark('init')
 
         # Initialise interior object
@@ -660,6 +662,7 @@ class Proteus:
                 )
 
             # Solve interior structure
+            _t0 = time.perf_counter()
             solve_structure(
                 self.directories,
                 self.config,
@@ -667,6 +670,7 @@ class Proteus:
                 self.hf_row,
                 self.directories['output'],
             )
+            timing.step('structure', _t0)
 
             # Initialize structure-update sentinels so the first dynamic
             # update uses the post-init state as its baseline
@@ -726,12 +730,13 @@ class Proteus:
             ):
                 from proteus.interior_energetics.wrapper import equilibrate_initial_state
 
-                equilibrate_initial_state(
-                    self.directories,
-                    self.config,
-                    self.hf_row,
-                    self.directories['output'],
-                )
+                with timing.span('equilibrate'):
+                    equilibrate_initial_state(
+                        self.directories,
+                        self.config,
+                        self.hf_row,
+                        self.directories['output'],
+                    )
                 # Update sentinels with post-equilibration state
                 self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
                 self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
@@ -931,10 +936,14 @@ class Proteus:
         log.info(' ')
 
         # Prepare star stuff
+        _t0 = time.perf_counter()
         init_star(self)
+        timing.step('stellar', _t0)
 
         # Prepare orbit stuff
+        _t0 = time.perf_counter()
         init_orbit(self)
+        timing.step('orbit', _t0)
 
         # Prepare the giant-impact timeline. Fixed at initialisation and
         # consulted on every step, like the stellar evolution track.

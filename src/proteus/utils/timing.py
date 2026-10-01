@@ -12,6 +12,7 @@ import datetime as dt
 import functools
 import json
 import os
+from contextlib import contextmanager
 from itertools import count
 from pathlib import Path
 from time import perf_counter
@@ -84,6 +85,21 @@ def mark(name: str, **fields) -> None:
     while len(_stack) > (name == 'iter'):
         _close()
     _open(name, fields)
+
+
+@contextmanager
+def span(name: str):
+    """Time the block as a span that groups the calls inside it."""
+    if _fh is None:
+        yield
+        return
+    _open(name, {})
+    ok = False
+    try:
+        yield
+        ok = True
+    finally:
+        _close(ok)
 
 
 def step(component: str, start_time: float) -> float:
