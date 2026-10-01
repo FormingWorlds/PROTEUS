@@ -14,11 +14,18 @@ The trapping tests also assert, without a published reference:
 
 - per-element closure `total = atm + liquid + solid` after every step,
   including a remelting step;
-- remelting returning the trapped mass in proportion to the solid that
-  remelted, `(Phi(t) - Phi(t-1)) / (1 - Phi(t-1))`, so that a mantle frozen
-  from `Phi = 1` to 0.5, degassed a hundredfold and remelted to `Phi = 1`
-  gets back every buried kilogram;
-- dissolved noble gases buried with the interstitial melt at `F_tl C_Z dM_RM`;
+- remelting returning the most recently buried mass first, from the burial
+  ledger, so that freezing and remelting the same interval cancel: a closed
+  melt cycled a hundred times between `Phi = 0.41` and 0.40 keeps its
+  trapped water (see `burial_ledger.md`);
+- a mantle frozen from `Phi = 1` to 0.5, degassed a hundredfold and remelted
+  to `Phi = 1` getting back every buried kilogram, helium included, and the
+  history-free fallback releasing `(Phi(t) - Phi(t-1)) / (1 - Phi(t-1))` of
+  each trapped reservoir;
+- dissolved noble gases buried with the interstitial melt at `F_tl C_Z dM_RM`,
+  with their moles following the masses after the chemistry solve;
+- no burial of a species whose element the run does not carry, and a remelt
+  after desiccation returning the planet its volatiles;
 - the drained fraction set by the front speed alone, the same for a step five
   times longer that moves the front beyond its own thickness;
 - the trapped share of the solid reservoirs surviving a chemistry solve that

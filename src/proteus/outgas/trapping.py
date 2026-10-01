@@ -53,12 +53,15 @@ Trapped-melt fraction
 Remelting
 ---------
 A step on which the global melt fraction rises remelts part of the solid
-mantle and releases what trapping buried in it. The global scheme keeps no
-record of where in the solid a species was buried, so the trapped inventory is
-taken as spread through the solid mantle: remelting the fraction
-``(Phi(t) - Phi(t-1)) / (1 - Phi(t-1))`` of the solid returns that fraction of
-every trapped species to the melt, and a mantle that remelts completely
-returns all of it, whatever the melt has done in between.
+mantle and releases what trapping buried in it. The solid that remelts first is
+the solid that froze last, so the step returns the mass buried while the melt
+fraction fell through the interval it now rises back through, read from the
+burial ledger of :mod:`proteus.outgas.burial_ledger`. Freezing and remelting
+the same interval therefore cancel, and a mantle that remelts completely
+returns everything trapped, whatever the melt has done in between. Trapped mass
+the history does not account for, as in a run resumed from a helpfile written
+before trapping, returns in proportion to the solid that remelted,
+``(Phi(t) - Phi(t-1)) / (1 - Phi(t-1))``.
 
 Reservoir bookkeeping
 ---------------------
@@ -90,6 +93,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from proteus.outgas.burial_ledger import build_ledger, ledger_total, remelt_to
 from proteus.outgas.common import VOLATILE_ELEMENT_STOICH, element_masses_from_species
 from proteus.outgas.compaction import (
     BRANCH_DARCY,
@@ -117,6 +121,8 @@ TRAPPING_MODES = ('none', 'front')
 
 # Dissolved species the step can bury: the volatiles and the noble gases.
 TRAPPED_SPECIES = tuple(vol_list) + tuple(noble_gases)
+# Every trapped reservoir once: the species, then the volatile elements.
+TRAPPED_COLUMNS = (*TRAPPED_SPECIES, *vol_element_list)
 
 
 @dataclass
@@ -804,7 +810,8 @@ def run_trapping(
     m_mantle_prev = float(prev.get('M_mantle', m_mantle))
     melt_mass = m_mantle_prev * max(0.0, min(1.0, phi_prev)) if np.isfinite(phi_prev) else 0.0
     if dm_rm < 0.0:
-        return _release(hf_row, mode, dm_rm, melt_mass, remelted_fraction(phi_prev, phi_now))
+        released = released_mass(hf_row, hf_all, phi_prev, phi_now)
+        return _release(hf_row, mode, dm_rm, melt_mass, released)
     if dm_rm == 0.0 or melt_mass <= 0.0:
         step = TrappingStep(mode=mode, dm_rm=dm_rm, f_tl=0.0, melt_mass=melt_mass)
         _record(hf_row, step)
@@ -838,24 +845,45 @@ def run_trapping(
     return step
 
 
-def _release(
-    hf_row: dict, mode: str, dm_rm: float, melt_mass: float, share: float
-) -> TrappingStep:
-    """Return trapped mass to the melt over a remelting step.
+def released_mass(hf_row: dict, hf_all, phi_prev: float, phi_now: float) -> dict[str, float]:
+    """Mass each trapped species and element returns to the melt on a remelt [kg].
 
-    Every trapped species and element gives up ``share`` of its trapped mass,
-    the fraction of the solid mantle that remelted; see :func:`remelted_fraction`.
+    The mass the burial ledger holds below ``phi_now``, rebuilt from the
+    completed rows in ``hf_all``. Trapped mass the ledger does not hold returns
+    in proportion to the solid that remelted; a complete remelt returns all of
+    it. Each release is capped at what is trapped.
     """
+    current = np.array([_trapped(hf_row, name) for name in TRAPPED_COLUMNS])
+    share = remelted_fraction(phi_prev, phi_now)
+    if share >= 1.0:
+        return dict(zip(TRAPPED_COLUMNS, current))
+    history = np.column_stack(
+        [
+            hf_all[f'{name}_kg_trapped'].to_numpy(dtype=float)
+            if f'{name}_kg_trapped' in hf_all
+            else np.zeros(len(hf_all))
+            for name in TRAPPED_COLUMNS
+        ]
+    )
+    layers = build_ledger(hf_all['Phi_global'].to_numpy(dtype=float), history)
+    held = ledger_total(layers, len(TRAPPED_COLUMNS))
+    from_ledger = remelt_to(layers, phi_now) if layers else np.zeros(len(TRAPPED_COLUMNS))
+    unledgered = np.maximum(current - held, 0.0)
+    release = np.minimum(from_ledger + share * unledgered, current)
+    return dict(zip(TRAPPED_COLUMNS, release))
+
+
+def _release(
+    hf_row: dict, mode: str, dm_rm: float, melt_mass: float, released: dict[str, float]
+) -> TrappingStep:
+    """Return the ``released`` mass of each trapped species and element to the melt."""
     step = TrappingStep(mode=mode, dm_rm=dm_rm, f_tl=0.0, melt_mass=melt_mass, remelted=True)
     step.branch = BRANCH_REMELT
-    for species in TRAPPED_SPECIES:
-        mass = share * _trapped(hf_row, species)
-        if mass > 0.0:
-            step.trapped_kg[species] = -mass
-            _move(hf_row, species, -mass)
-    for element in vol_element_list:
-        mass = share * _trapped(hf_row, element)
-        if mass > 0.0:
-            _move(hf_row, element, -mass)
+    for name, mass in released.items():
+        if mass <= 0.0:
+            continue
+        if name in TRAPPED_SPECIES:
+            step.trapped_kg[name] = -mass
+        _move(hf_row, name, -mass)
     _record(hf_row, step)
     return step

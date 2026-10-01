@@ -1366,6 +1366,61 @@ def test_remelting_returns_the_buried_mass_whatever_the_melt_has_done_since(fixe
     assert remelted_fraction(0.5, 0.4) == pytest.approx(0.0, abs=0.0)
 
 
+def _cycle(rows: list[dict], phis: list[float], history: bool) -> list[dict]:
+    """Step a closed melt through ``phis``, appending each finished row.
+
+    With ``history`` the trapping step sees every completed row, as in a run;
+    without it only the last one, which leaves the burial ledger nothing to
+    replay and falls back to releasing the mean of the solid.
+    """
+    for phi in phis:
+        row = dict(rows[-1], Time=rows[-1]['Time'] + 1.0e3, Phi_global=phi)
+        done = pd.DataFrame(rows if history else rows[-1:])
+        run_trapping(_config(), row, done)
+        rows.append(row)
+    return rows
+
+
+@pytest.mark.physics_invariant
+def test_freezing_and_remelting_the_same_interval_cancel(fixed_front):
+    """A closed melt frozen from Phi = 0.6 to 0.4 and then cycled a hundred
+    times between 0.41 and 0.40 ends where it started the cycles: each remelt
+    returns what the freeze before it buried, from the solid that froze last.
+    Releasing the mean of the solid instead moves the solid towards the
+    present melt on every cycle, which here raises the trapped water by 4.4%
+    a cycle and triples it in a hundred."""
+    freeze = [round(0.6 - 0.01 * k, 10) for k in range(1, 21)]
+    cycles = [0.41, 0.40] * 100
+    start = _hf_row(Time=1.0e3, Phi_global=0.6, H2O_kg_liquid=2.4e21, CO2_kg_liquid=0.0)
+    start.update(C_kg_liquid=0.0, C_kg_total=0.0, H_kg_liquid=2.4e21 * 2 * 1.008 / 18.015)
+    start['O_kg_liquid'] = 2.4e21 - start['H_kg_liquid']
+    for element in ('H', 'O'):
+        start[f'{element}_kg_total'] = start[f'{element}_kg_liquid']
+    rows = _cycle([start], freeze, history=True)
+    at_041 = rows[-2]['H2O_kg_trapped']
+    frozen_in = rows[-1]['H2O_kg_trapped']
+    melt_in = rows[-1]['H2O_kg_liquid']
+    rows = _cycle(rows, cycles, history=True)
+    at_bottom = [r['H2O_kg_trapped'] for r in rows[-len(cycles) :] if r['Phi_global'] == 0.40]
+    assert len(at_bottom) == 100
+    np.testing.assert_allclose(at_bottom, frozen_in, rtol=1e-12)
+    assert rows[-1]['H2O_kg_liquid'] == pytest.approx(melt_in, rel=1e-12)
+    # Each remelt to 0.41 returns the solid to its state at 0.41 on the way down.
+    assert rows[-2]['Phi_global'] == pytest.approx(0.41, abs=0.0)
+    assert rows[-2]['H2O_kg_trapped'] == pytest.approx(at_041, rel=1e-12)
+    # Conservation: every element only moved between melt and solid.
+    for element in ('H', 'O'):
+        parts = sum(rows[-1][f'{element}_kg_{r}'] for r in ('atm', 'liquid', 'solid'))
+        assert parts == pytest.approx(start[f'{element}_kg_total'], rel=1e-12)
+
+    # Discrimination: the mean-of-the-solid release triples it in 100 cycles.
+    drift = _cycle(_cycle([start], freeze, history=True), cycles, history=False)
+    assert drift[-1]['H2O_kg_trapped'] / frozen_in > 2.5
+    # Edge case: one cycle already separates the two.
+    one = _cycle(_cycle([start], freeze, history=True), [0.41, 0.40], history=False)
+    assert one[-1]['H2O_kg_trapped'] / frozen_in - 1.0 > 0.04
+
+
 @pytest.mark.physics_invariant
 def test_dissolved_noble_gases_are_buried_with_the_interstitial_melt(fixed_front):
     """Noble gases take no place in the crystal lattice, but the melt buried
