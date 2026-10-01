@@ -1958,11 +1958,10 @@ def evaluate_molten_state(solver, hf_row: dict):
     if not hasattr(solver, 'get_state'):
         return None
 
-    from types import SimpleNamespace
-
     prev_solution = getattr(solver, '_solution', None)
     t_curr = float(hf_row.get('Time', 0.0))
-    sol = SimpleNamespace(
+    # Aragog reads its solution by attribute and by .get, as on an OptimizeResult.
+    sol = optimise.OptimizeResult(
         y=solver._S0.reshape(-1, 1),
         t=np.array([t_curr]),
         status=0,

@@ -578,6 +578,9 @@ class Proteus:
                     step_cap_overrides[key] = _STEP_CAP_OFF
                 else:
                     step_cap_overrides[key] = resolved
+            if 'phase_boundary_cap' in unsupported:
+                # The dropped cap falls back to Aragog's fixed 1 yr policy.
+                step_cap_overrides['interior_energetics.aragog.phase_boundary_cap'] = 'fixed'
         self.config.write(
             os.path.join(self.directories['output'], 'init_coupler.toml'),
             overrides=step_cap_overrides,

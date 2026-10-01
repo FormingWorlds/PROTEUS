@@ -294,6 +294,7 @@ _OPTIONAL_ENERGY_FIELDS = frozenset(
         'temperature_step_cap',
         'entropy_step_cap',
         'phase_boundary_entropy_margin',
+        'phase_boundary_cap',
     }
 )
 
@@ -301,14 +302,13 @@ _OPTIONAL_ENERGY_FIELDS = frozenset(
 def _unsupported_energy_fields() -> set[str]:
     """Return the optional energy fields the installed Aragog does not accept.
 
-    The temperature/entropy step caps and the phase-boundary entropy margin need
-    a paired Aragog. An older Aragog omits them from ``_EnergyParameters``, so
-    ``setup_solver`` drops them and the solver degrades to Aragog defaults. The
-    config snapshot calls this too, so it records a not-applied marker for a
-    dropped step cap rather than a resolved value the run never received. The
-    margin has no such marker because its positive-only validator forbids the
-    sentinel, so a dropped non-default margin is reported through a solve-time
-    warning instead.
+    The temperature/entropy step caps, the phase-boundary entropy margin and the
+    phase-boundary cap need a paired Aragog. An older Aragog omits them from
+    ``_EnergyParameters``, so ``setup_solver`` drops them and the solver degrades
+    to Aragog defaults. The config snapshot calls this too, so it records a
+    not-applied marker for a dropped step cap and the fixed policy for a dropped
+    phase-boundary cap. The margin has no such marker, so a dropped non-default
+    margin is reported through a setup warning instead.
     """
     accepted = set(inspect.signature(_EnergyParameters).parameters)
     return set(_OPTIONAL_ENERGY_FIELDS) - accepted
@@ -868,24 +868,26 @@ class AragogRunner:
             temperature_step_cap=temperature_step_cap,
             entropy_step_cap=entropy_step_cap,
             phase_boundary_entropy_margin=float(ar.phase_boundary_entropy_margin),
+            # 'rate' is Aragog's default; passing it unset keeps its fallback notes at INFO.
+            phase_boundary_cap='fixed' if ar.phase_boundary_cap == 'fixed' else None,
         )
-        # The temperature/entropy step caps and the phase-boundary entropy
-        # margin require a paired Aragog. Pass them only when the installed
-        # Aragog accepts them, so an older Aragog degrades gracefully (no caps,
-        # its built-in 200 J/kg/K margin) with a clear warning instead of
-        # crashing on an unexpected keyword.
+        # The optional stepping controls need a paired Aragog. An older Aragog drops them and
+        # falls back to its defaults (no caps, 200 J/kg/K margin, fixed cap); a warning names
+        # each dropped step cap or margin the config sets away from that default.
         _unsupported = _unsupported_energy_fields()
-        _caps_requested = temperature_step_cap > 0.0 or entropy_step_cap > 0.0
-        _nondefault_margin_dropped = (
-            'phase_boundary_entropy_margin' in _unsupported
-            and float(ar.phase_boundary_entropy_margin) != _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN
-        )
-        if _unsupported and (_caps_requested or _nondefault_margin_dropped):
+        _active = {
+            'temperature_step_cap': temperature_step_cap > 0.0,
+            'entropy_step_cap': entropy_step_cap > 0.0,
+            'phase_boundary_entropy_margin': float(ar.phase_boundary_entropy_margin)
+            != _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN,
+        }
+        _dropped_active = {k for k in _unsupported if _active.get(k)}
+        if _dropped_active:
             log.warning(
                 'Installed Aragog does not support %s; the affected interior '
                 'stepping control(s) fall back to Aragog defaults. Update '
                 'Aragog to enable them.',
-                ', '.join(sorted(_unsupported)),
+                ', '.join(sorted(_dropped_active)),
             )
         for _key in _unsupported:
             energy_kwargs.pop(_key, None)
