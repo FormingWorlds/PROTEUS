@@ -1780,7 +1780,9 @@ def select_resumable_snapshot(
     truncated to that row. Once a resumable row is found, the quarantined
     files are deleted: the helpfile is truncated below their rows, so they
     can never back a resume and would otherwise be swept into the final
-    data archive.
+    data archive. The Zalmoxis structure copies of the dropped rows
+    (``<time>_zalmoxis.dat``) are deleted with them, except a name the kept row
+    shares.
 
     Each half is probed with the candidate names for its writer. The interior
     name depends on the module: Aragog uses the sub-year form ``'884p700_int.nc'``

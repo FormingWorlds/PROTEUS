@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -746,9 +746,8 @@ def test_finished_run_saves_the_final_copy_after_the_final_snapshot(tmp_path):
             p, hf_df, _aragog_like_interior(mesh, []), lambda *a, **k: None, terminate_after=2
         )
 
-    final = _saved_copy(tmp_path, p.hf_row['Time'])
     assert seen == [False], 'the copy must not exist before the final snapshot'
-    assert final.read_bytes() == mesh.read_bytes()
+    assert _saved_copy(tmp_path, p.hf_row['Time']).read_bytes() == mesh.read_bytes()
 
 
 @pytest.mark.unit
@@ -775,12 +774,12 @@ class _StopAtRunningStatus(Exception):
     """Sentinel raised when start() reports the run as running."""
 
 
-def _resume_to_running_status(p, hf_df, *, events, select):
+def _resume_to_running_status(p, hf_df, *, events, stub_selection):
     """Resume ``p`` from ``hf_df`` with accretion on, up to the running status.
 
     The star and orbit setup are no-ops, ``init_accretion`` returns ``events``,
-    and ``select=True`` passes the helpfile through snapshot selection unchanged;
-    ``select=False`` runs the real selection on the files in ``data/``.
+    and ``stub_selection=True`` passes the helpfile through snapshot selection
+    unchanged; ``stub_selection=False`` runs the real selection on ``data/``.
     """
 
     def status(dirs, code):
@@ -796,7 +795,7 @@ def _resume_to_running_status(p, hf_df, *, events, select):
         stack.enter_context(
             patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
         )
-        if select:
+        if stub_selection:
             stack.enter_context(
                 patch(
                     'proteus.utils.coupler.select_resumable_snapshot',
@@ -842,7 +841,7 @@ def test_resume_after_an_impact_restores_the_row_structure_and_the_accreted_mass
     _write_mesh(data / 'zalmoxis_output.dat', 3.4e6, 6.5e6 + 2.0e4)
     _write_mesh(_saved_copy(tmp_path, 400.0), 3.4e6, 6.5e6)
 
-    _resume_to_running_status(p, hf_df, events=[], select=True)
+    _resume_to_running_status(p, hf_df, events=[], stub_selection=True)
 
     assert (data / 'zalmoxis_output.dat').read_bytes() == _saved_copy(
         tmp_path, 400.0
@@ -894,7 +893,7 @@ def test_resume_walks_back_past_an_impact_step_to_its_own_structure(tmp_path):
     _write_mesh(_saved_copy(tmp_path, 500.0), 3.4e6, 6.4e6)
     impact = SimpleNamespace(time=550.0)
 
-    _resume_to_running_status(p, hf_df, events=[impact], select=False)
+    _resume_to_running_status(p, hf_df, events=[impact], stub_selection=False)
 
     assert p.hf_row['Time'] == pytest.approx(500.0)
     assert (data / 'zalmoxis_output.dat').read_bytes() == _saved_copy(
@@ -3014,10 +3013,8 @@ def _run_resumed_loop_until_stop(
         mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
         mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
 
-        if terminate_after is not None:
-            p.start(resume=True, offline=True)
-            return
-        with pytest.raises(_StopAfterAtmosphereCall):
+        expect = nullcontext() if terminate_after else pytest.raises(_StopAfterAtmosphereCall)
+        with expect:
             p.start(resume=True, offline=True)
 
 
