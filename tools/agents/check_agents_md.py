@@ -40,7 +40,7 @@ BLOCK_RE = re.compile(
     r'^<!-- fwl-(?P=name):end -->$',
     re.MULTILINE | re.DOTALL,
 )
-MARKER_RE = re.compile(r'^<!-- fwl-', re.MULTILINE)
+MARKER_RE = re.compile(r'^\s*<!--\s*fwl', re.MULTILINE | re.IGNORECASE)
 
 
 def block_hash(body: str) -> str:
@@ -59,11 +59,6 @@ def block_hash(body: str) -> str:
     return hashlib.sha256(body.strip('\n').encode()).hexdigest()[:16]
 
 
-def find_blocks(text: str) -> list[re.Match]:
-    """Return the shared blocks of a markdown file, in file order."""
-    return list(BLOCK_RE.finditer(text))
-
-
 def agents_files(root: Path) -> list[Path]:
     """Return the ``AGENTS.md`` files under ``root`` that git tracks or would add.
 
@@ -73,16 +68,7 @@ def agents_files(root: Path) -> list[Path]:
     """
     try:
         out = subprocess.run(
-            [
-                'git',
-                'ls-files',
-                '--cached',
-                '--others',
-                '--exclude-standard',
-                '--',
-                'AGENTS.md',
-                '*/AGENTS.md',
-            ],
+            ['git', 'ls-files', '-co', '--exclude-standard', '--', 'AGENTS.md', '*/AGENTS.md'],
             cwd=root,
             capture_output=True,
             text=True,
@@ -110,7 +96,7 @@ def check(root: Path) -> list[str]:
         if len(data) > cap:
             errors.append(f'{rel}: {len(data)} B exceeds the {cap} B cap')
         text = data.decode()
-        blocks = find_blocks(text)
+        blocks = list(BLOCK_RE.finditer(text))
         required = REQUIRED_BLOCKS.get(rel)
         if required and required not in {m['name'] for m in blocks}:
             errors.append(f'{rel}: missing the shared fwl-{required} block')
