@@ -10,7 +10,7 @@ pytest -m "unit and not skip and not slow and not integration" --ignore=tests/ex
 ruff check src/ tests/ tools/ && ruff format --check src/ tests/ tools/
 bash tools/validate_test_structure.sh
 python tools/check_test_quality.py --check  # no rule's Current count may exceed the same run on origin/main
-python tools/agents/check_agents_md.py
+python tools/agents/check_agents_md.py && python tools/agents/sync_core.py --check .
 proteus start -c <config.toml> --offline
 ```
 
@@ -18,7 +18,7 @@ proteus start -c <config.toml> --offline
 
 - Physics: T > 0 K; P > 0 and increasing with depth; mass fractions sum to 1; the mass escaped in one step stays within its reservoir (`limit_escape_step`, `ESCAPE_STEP_MAX_FRAC`); outgassing >= 0; radiative flux uses `sigma * T**4`.
 - Units at each boundary: `GetHelpfileKeys` in `src/proteus/utils/coupler.py` states each `hf_row` unit (atmospheric pressures in bar, interior pressures such as `P_cmb` in Pa, model time in years, orbital periods in s); each config key states its unit in `docs/Reference/config/` (stellar mass in M_sun, planet mass in M_earth).
-- `Config` is not changed during a run except inside `try`/`finally` that restores it; temporary `hf_row` overrides are restored in `finally`.
+- `Config` is not changed during a run except inside `try`/`finally` that restores it, and by a giant impact, which sets planet mass and orbit (`src/proteus/accretion/wrapper.py`); temporary `hf_row` overrides are restored in `finally`.
 - Every site that sums element masses includes oxygen, and `M_ele` and `M_planet` leave rock-vapour elements out; `assert_mass_conservation` is not weakened and `atol_frac` not widened (the `outgas.vapourise` relaxation is the one exception).
 - A user value that a solver derives again gets a one-time check at the initial condition.
 - Physical constants come from one definition.

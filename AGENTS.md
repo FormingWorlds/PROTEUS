@@ -1,9 +1,9 @@
 # PROTEUS agent instructions
 
-PROTEUS couples interior, atmosphere, star, orbit and escape modules into one planet evolution model. Before a first edit:
+PROTEUS couples interior, atmosphere, star, orbit, escape and giant-impact accretion modules into one planet evolution model. Before a first edit:
 
 - Tests for `src/proteus/<module>/<file>.py` go in `tests/<module>/test_<file>.py`; the test rules are in `tests/AGENTS.md`.
-- Whole-planet element mass is conserved with oxygen included: after the outgassing step of every iteration, `assert_mass_conservation` checks `M_atm <= M_planet` and that `M_vol_atm` equals the summed mass of the volatile and noble-gas species (rock vapour excluded). The only relaxation is `outgas.vapourise = true` (see Oxygen and mass accounting).
+- Whole-planet element mass is conserved with oxygen included: after the outgassing step of every iteration, `assert_mass_conservation` checks `M_atm <= M_planet` and that `M_vol_atm` equals the summed mass of the volatile and noble-gas species (rock vapour excluded). The only relaxation is `outgas.vapourise = true` (see Oxygen and mass accounting). A giant impact changes the planet on purpose: it adds the impactor rock (`M_accreted_rock`) and the delivered volatiles to the element totals, and books the stripped atmosphere in `esc_kg_cumulative` (`src/proteus/accretion/wrapper.py`).
 - Every site that sums element masses includes oxygen; a new `if e == 'O': continue` in one of them breaks the mass budget. The sites differ on purpose in the rock-vapour elements (see `.github/agent-rules/code-review.md`).
 - Energy fluxes at the interior-atmosphere boundary agree between the two modules that compute them.
 - These commands decide whether a change is ready (CI runs the same; its test-quality step reports without blocking, and a change must add no finding over `origin/main`):
@@ -61,22 +61,23 @@ Commit messages, pull-request text, code comments, docstrings, test names, test 
 
 ## Environment
 
-- Install with `bash install.sh` (`docs/How-to/installation.md`); `docs/How-to/manual_installation.md` gives the manual developer steps. Install every Python module editable (`pip install -e`), and PROTEUS with `pip install -e ".[develop,vulcan,atmodeller,inference]"`: with `[develop]` alone the optional modules are absent and their tests skip.
+- Install with `bash install.sh` (`docs/How-to/installation.md`); `docs/How-to/manual_installation.md` gives the manual developer steps. Install every Python module editable (`pip install -e`), and PROTEUS with `pip install -e ".[develop,vulcan,atmodeller,inference]"`: with `[develop]` alone the optional modules are absent and their tests skip. Morrigan (`accretion.module = 'morrigan'`) comes from the `morrigan` extra or, editable, from `bash tools/get_morrigan.sh`; its unit tests mock it.
 - Python 3.12: PETSc and SPIDER do not support a later version. Linux and macOS only.
 - `FWL_DATA` and `RAD_DIR` must point at populated directories before a run. Reference data downloads on first use unless `--offline` is given.
 - Use one conda env per git worktree. `conda create --clone` hardlinks the editable-install pointers, so a `pip install -e .` in one env can repoint `import proteus` in another. Before an A/B comparison run `python -c "import proteus; print(proteus.__file__)"`.
 - The pre-commit hook runs `ruff check --fix` but not the formatter; run `ruff format` on the files you change, because CI checks `ruff format --check`.
-- A PROTEUS change that needs a new module version bumps that module's pin in the same pull request: in `pyproject.toml`, `[project] dependencies` for the required `fwl-*` packages, `[project.optional-dependencies]` for the optional modules (`fwl-vulcan`, `atmodeller`), `[tool.proteus.modules]` for the modules cloned outside pip (AGNI, SOCRATES, SPIDER and others), which CI and `tools/get_*.sh` read.
+- A PROTEUS change that needs a new module version bumps that module's pin in the same pull request: in `pyproject.toml`, `[project] dependencies` for the required `fwl-*` packages, `[project.optional-dependencies]` for the optional modules (`fwl-vulcan`, `atmodeller`, `fwl-morrigan`, whose floor also sets the tag `tools/get_morrigan.sh` checks out), `[tool.proteus.modules]` for the modules cloned outside pip (AGNI, SOCRATES, SPIDER and others), which CI and `tools/get_*.sh` read.
 - SOCRATES builds with `-Ofast -march=native`, so a built tree is tied to its CPU and not bit-reproducible; `SOCRATES_PORTABLE_FLAGS=1` switches to `-O2 -fno-fast-math`. Read `.github/agent-rules/socrates-build.md` before you change `tools/get_socrates.sh` or need bit-reproducible numbers.
 
 ## Running PROTEUS
 
 - `proteus start -c <config.toml> --offline`. Detach long runs (`nohup ... &`, output redirected into the run directory); a foreground run dies with the shell.
-- Resume a stopped run with `proteus start -r -c <config.toml>`. It needs more than `init_loops + 1` helpfile rows and, under the run's `data/`, an interior snapshot (the dummy and boundary interiors write none) plus the matching atmosphere snapshot unless `atmos_clim.module = 'dummy'`; the files are named by simulation time in a form that depends on the module (`select_resumable_snapshot` in `src/proteus/utils/coupler.py`). Shorter runs refuse to resume.
+- Resume a stopped run with `proteus start -r -c <config.toml>`. It needs more than `init_loops + 1` helpfile rows and, under the run's `data/`, an interior snapshot (the dummy and boundary interiors write none) plus the matching atmosphere snapshot unless `atmos_clim.module = 'dummy'`; the files are named by simulation time in a form that depends on the module (`select_resumable_snapshot` in `src/proteus/utils/coupler.py`). Shorter runs refuse to resume. With an accretion module selected, resume refuses a last row that records accreted rock (`M_accreted_rock > 0`) but no `n_impacts_applied`, and, when the run directory holds `impact_timeline.csv`, a counter that disagrees with that resolved timeline (`restore_accretion_state` in `src/proteus/accretion/wrapper.py`).
+- A new helpfile column goes in `GetHelpfileKeys` with its unit. When a run written before the column existed resumes, `ReadHelpfileFromCSV` reads the column as zero if it is in `_DIAGNOSTIC_KEYS` or `RESUMABLE_ZERO_FILL_KEYS` (an accumulating column then loses its earlier history) and raises `HelpfileSchemaDriftError` for any other missing column.
 
 ## Physics and coupling contract
 
-- Do not change `Config` during a run. `Proteus.start()` sets `config.params.resume` and `config.params.offline` once at the start; a module call that needs a different setting changes it for that call and restores it in a `finally` block, as the Zalmoxis structure call does with `config.orbit.module`.
+- Do not change `Config` during a run. The one exception is a giant impact: `apply_impact`, and `restore_accretion_state` on resume, set `config.planet.mass_tot`, `config.orbit.semimajoraxis` and `config.orbit.eccentricity` to the grown planet and its new orbit. `Proteus.start()` sets `config.params.resume` and `config.params.offline` once at the start; a module call that needs a different setting changes it for that call and restores it in a `finally` block, as the Zalmoxis structure call does with `config.orbit.module`.
 - A temporary override of `hf_row` values for a module call is restored in a `finally` block; without it the helpfile records the override instead of the planet state.
 - An `hf_row` key that two modules both write keeps one source: with a Zalmoxis mesh, SPIDER derives `rho_core` from the Zalmoxis `M_core` (`spider.py`), so the `M_core` it returns matches. A new module that returns a key another module sets derives it the same way or does not write it.
 - The main loop advances `Time` before the atmosphere step, so a comparison of `hf_row` with `hf_all.iloc[-1]` compares the new step with the previous one.
