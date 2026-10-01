@@ -1096,6 +1096,11 @@ def test_parameterized_undersampling_warning_is_confined_to_the_window(caplog, t
     window, so a coarse timestep cannot spam a whole run. The same
     timestep inside the window does warn, which is asserted by the
     bracketing test above."""
-    warnings = _capture_undersampling_warnings(caplog, 'sigmoid', dt_yr=1.0e4, time_yr=time_yr)
-
+    warnings = _capture_undersampling_warnings(
+        caplog, 'sigmoid', dt_yr=1.0e4, time_yr=time_yr
+    )
     assert warnings == []
+    inside = _capture_undersampling_warnings(
+        caplog, 'sigmoid', dt_yr=1.0e4, time_yr=1.0e5
+    )
+    assert len(inside) == 1
