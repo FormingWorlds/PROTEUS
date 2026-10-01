@@ -1427,7 +1427,9 @@ def test_guard_refreshes_a_clone_carrying_an_upstream_tag(tmp_path, strict):
     """
     upstream = tmp_path / 'upstream'
     upstream.mkdir()
-    _git(upstream, 'init', '-q')
+    # -b: the initial branch is named by the host's init.defaultBranch, and
+    # this fixture returns to it by name.
+    _git(upstream, 'init', '-q', '-b', 'main')
     (upstream / 'f.py').write_text('a = 1\n')
     _git(upstream, 'add', 'f.py')
     _git(upstream, 'commit', '-q', '-m', 'c1')
