@@ -37,6 +37,10 @@ def _make_config(
     dt_max: float = 1.0e7,
     phi_crit: float = 0.05,
     max_growth_factor: float = 0.0,
+    bol_scale: float = 1.0,
+    bol_scale_start: float | None = None,
+    bol_scale_duration: float = 0.0,
+    impact_maximum: float = 0.0,
     escape_dt_floor_frac: float = 1.0e-3,
 ):
     """Build a minimal duck-typed config that ``next_step`` reads from.
@@ -65,6 +69,7 @@ def _make_config(
         hysteresis_iters=hysteresis_iters,
         hysteresis_sfinc=hysteresis_sfinc,
         max_growth_factor=max_growth_factor,
+        impact_maximum=impact_maximum,
     )
     stop_solid = SimpleNamespace(enabled=True, phi_crit=phi_crit)
     stop_radeqm = SimpleNamespace(enabled=False)
@@ -77,14 +82,25 @@ def _make_config(
         time=stop_time,
     )
     params = SimpleNamespace(dt=dt, stop=stop)
-    star = SimpleNamespace(bol_scale=1.0, bol_scale_start=None, bol_scale_duration=0.0)
+    star = SimpleNamespace(
+        bol_scale=bol_scale,
+        bol_scale_start=bol_scale_start,
+        bol_scale_duration=bol_scale_duration,
+    )
     escape = SimpleNamespace(step_dt_floor_frac=escape_dt_floor_frac)
     return SimpleNamespace(params=params, star=star, escape=escape)
 
 
-def _make_hf_all(n_rows: int = 10, dt_prev: float = 1.0e3, phi: float = 1.0):
+def _make_hf_all(
+    n_rows: int = 10, dt_prev: float = 1.0e3, phi: float = 1.0, age_star: float = 0.0
+):
     """Build a minimal ``hf_all`` DataFrame long enough that ``next_step``
-    enters the adaptive branch (``LBAVG + 5 = 8`` rows required)."""
+    enters the adaptive branch (``LBAVG + 5 = 8`` rows required).
+
+    ``age_star`` is the stellar age the bolometric-scaling clamp measures its
+    window against. It is constant down the column because the clamp reads only
+    the last row.
+    """
     times = np.arange(n_rows, dtype=float) * dt_prev
     f_atm = np.full(n_rows, 1.0e4)
     phi_col = np.full(n_rows, float(phi))
@@ -95,14 +111,16 @@ def _make_hf_all(n_rows: int = 10, dt_prev: float = 1.0e3, phi: float = 1.0):
             'Phi_global': phi_col,
             'esc_rate_total': np.zeros(n_rows),
             'F_int': f_atm.copy(),
+            'age_star': np.full(n_rows, float(age_star)),
         }
     )
 
 
-def _make_interior_o():
+def _make_interior_o(t_next_impact=float('inf')):
     """Minimal stand-in for Interior_t that exposes the fields the
-    controller reads/writes."""
-    return SimpleNamespace(dt_hysteresis_remaining=0)
+    controller reads/writes. The default impact time is infinite, which
+    is what a run with accretion switched off carries."""
+    return SimpleNamespace(dt_hysteresis_remaining=0, t_next_impact=t_next_impact)
 
 
 # ---------------------------------------------------------------------------
@@ -136,8 +154,8 @@ class TestMushyCap:
         # SFINC * dt_prev = 1.6 * 5e3 = 8e3. No cap applied since
         # mushy_maximum = 0 disables the feature.
         assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3, got {dt}'
-        # Section 3 positivity: time-step must be > 0. A regression that
-        # returned a non-positive dt would silently freeze the simulation.
+        # Positivity (tests/AGENTS.md, Physics modules): time-step must be > 0. A
+        # regression that returned a non-positive dt would silently freeze the simulation.
         assert dt > 0.0
 
     @pytest.mark.physics_invariant
@@ -231,7 +249,7 @@ class TestMushyCap:
         assert dt == pytest.approx(dt_no_cap, rel=1e-6), (
             f'Cap should be inactive below phi_crit, but dt={dt} vs dt_no_cap={dt_no_cap}'
         )
-        # Section 3 positivity: dt must remain strictly positive in the
+        # Positivity (tests/AGENTS.md, Physics modules): dt must remain strictly positive in the
         # solidified branch (Phi < phi_crit).
         assert dt > 0.0
 
@@ -494,10 +512,8 @@ class TestHysteresis:
         dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=None)
         # Without interior_o the hysteresis machinery is fully skipped.
         assert dt == pytest.approx(1.6e3, rel=1e-6)
-        # Section 3 positivity: timestep stays positive even on the
-        # legacy code path. Combined with the equality above this
-        # rules out a regression that returned 0 or NaN when
-        # interior_o is None.
+        # Positivity (tests/AGENTS.md, Physics modules) on the legacy path: with the equality
+        # above this rules out 0 or NaN when interior_o is None.
         assert dt > 0.0
 
 
@@ -665,8 +681,8 @@ def test_next_step_maximum_rel_additive_is_binding_when_dt_max_smaller():
     # formula would give the same answer here, so this asserts the
     # arithmetic identity rather than the formula shape.
     assert dt == pytest.approx(10.0)
-    # Section 3 positivity guard: any time-step must be strictly positive
-    # (a zero or negative dt would freeze or reverse the integration).
+    # Positivity guard (tests/AGENTS.md, Physics modules): any time-step must be strictly
+    # positive (a zero or negative dt would freeze or reverse the integration).
     assert dt > 0.0
 
 
@@ -732,6 +748,344 @@ def test_next_step_maximum_rel_default_widens_cap_proportional_to_Time():
     # maximum_rel would land at 10 here; the gap of 40 is well above
     # any reasonable rounding error.
     assert dt > 10.0
+
+
+# ---------------------------------------------------------------------------
+# Landing on scheduled giant impacts
+# ---------------------------------------------------------------------------
+
+
+class TestImpactClamp:
+    """Verify dt is shortened to land on the next scheduled impact.
+
+    An impact grows the planet and re-melts its mantle, so it has to be
+    applied at the state the timeline places it at. The clamp is one-way:
+    it may only shorten the step, and it is floored at the minimum step so
+    that an imminent impact cannot drive dt to zero.
+    """
+
+    @pytest.mark.physics_invariant
+    def test_no_pending_impact_leaves_the_step_untouched(self):
+        """A run with accretion off carries an infinite impact time.
+
+        This is the path every existing run takes, so it must return the
+        controller's own choice unchanged.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+
+        dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o())
+
+        # SFINC * dt_prev = 1.6 * 5e3 = 8e3, the uncapped controller step.
+        assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3, got {dt}'
+        assert dt > 0.0
+
+    @pytest.mark.physics_invariant
+    def test_step_lands_exactly_on_an_impact_inside_the_step(self):
+        """An impact closer than the controller's step pulls dt back to it."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        time_now = 1.0e5
+        hf_row = {'Time': time_now, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        t_impact = time_now + 3.0e3
+
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=t_impact),
+        )
+
+        # The step ends on the impact, to the precision of the time axis.
+        assert hf_row['Time'] + dt == pytest.approx(t_impact, rel=1e-12)
+        # Discrimination: the uncapped controller would have chosen 8e3
+        # and stepped 5e3 past the impact, so an inactive clamp cannot
+        # pass the equality above.
+        assert dt < 8.0e3
+
+    def test_a_distant_impact_does_not_lengthen_the_step(self):
+        """The clamp is one-way; it must never grow dt.
+
+        A timeline whose next impact is far away has to leave the
+        stiffness-aware controller in charge.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=1.0e5 + 2.0e4),
+        )
+
+        assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3, got {dt}'
+
+        # The controller's own step, with no impact scheduled at all. A
+        # distant impact must return exactly this, which is what makes the
+        # clamp one-way rather than a step the timeline gets to set.
+        unclamped = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=float('inf')),
+        )
+        assert dt == pytest.approx(unclamped, rel=1e-12), (
+            f'a distant impact moved the step from {unclamped} to {dt}, so the '
+            'timeline is steering the controller instead of only shortening it'
+        )
+
+        # It also stops short of the impact, the property the clamp exists for.
+        assert dt <= 2.0e4
+
+    @pytest.mark.physics_invariant
+    def test_an_imminent_impact_is_floored_at_the_minimum_step(self):
+        """An impact inside the minimum step must not collapse dt.
+
+        The event handler applies impacts on a half-open time window, so
+        overshooting an impact by less than one minimum step still fires
+        it exactly once. Shrinking dt towards zero to reach it, on the
+        other hand, would stall the run.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        time_now = 1.0e5
+        hf_row = {'Time': time_now, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        t_impact = time_now + 10.0
+
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=t_impact),
+        )
+
+        # dt.minimum + dt.minimum_rel * Time = 100 + 0.005 * 1e5 = 600.
+        assert dt == pytest.approx(600.0, rel=1e-6), f'Expected the 600 yr floor, got {dt}'
+        # Positivity, and the deliberate overshoot that the floor implies.
+        assert dt > 0.0
+        assert hf_row['Time'] + dt > t_impact
+
+    @pytest.mark.physics_invariant
+    def test_impact_maximum_bounds_the_landing_step_below_the_remaining_time(self):
+        """A positive ceiling cuts the landing step further than the time
+        remaining to the impact would on its own.
+
+        This is the case the ceiling exists for: a coarse phase leaves a
+        lot of time remaining when the impact clamp first engages, and
+        without a ceiling that whole remaining time becomes the landing
+        step.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(impact_maximum=3.0e3)
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        time_now = 1.0e5
+        hf_row = {'Time': time_now, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        t_impact = time_now + 6.0e3
+
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=t_impact),
+        )
+
+        assert dt == pytest.approx(3.0e3, rel=1e-9), f'Expected the 3e3 ceiling, got {dt}'
+        # Discrimination: the remaining-time clamp alone would land the step
+        # at 6e3 (the impact is nearer than the controller's 8e3 choice), so
+        # only an active ceiling can produce 3e3 here.
+        assert hf_row['Time'] + dt < t_impact
+
+    def test_impact_maximum_does_not_shorten_a_step_already_below_it(self):
+        """The ceiling never lengthens the step and stays inert once the
+        remaining-time clamp has already produced something smaller."""
+        from proteus.interior_energetics.timestep import next_step
+
+        time_now = 1.0e5
+        hf_row = {'Time': time_now, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        t_impact = time_now + 2.0e3
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+
+        dt_with_ceiling = next_step(
+            _make_config(impact_maximum=5.0e3),
+            {},
+            dict(hf_row),
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=t_impact),
+        )
+        dt_without_ceiling = next_step(
+            _make_config(impact_maximum=0.0),
+            {},
+            dict(hf_row),
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=t_impact),
+        )
+
+        assert dt_with_ceiling == pytest.approx(dt_without_ceiling, rel=1e-12)
+        assert dt_with_ceiling == pytest.approx(2.0e3, rel=1e-9)
+
+    @pytest.mark.physics_invariant
+    def test_impact_maximum_never_beats_the_minimum_floor(self):
+        """A ceiling set below the minimum-step floor must not win.
+
+        The floor exists so an imminent impact cannot collapse dt to zero;
+        a misconfigured ceiling smaller than the floor must not reopen
+        that hazard.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(impact_maximum=50.0)
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        time_now = 1.0e5
+        hf_row = {'Time': time_now, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        t_impact = time_now + 10.0
+
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=t_impact),
+        )
+
+        # The 600 yr floor wins over the 50 yr ceiling.
+        assert dt == pytest.approx(600.0, rel=1e-6), f'Expected the 600 yr floor, got {dt}'
+        assert dt > 0.0
+
+
+class TestImpactAndBolscaleClampsTogether:
+    """Verify the step when a giant impact and a stellar-scaling edge compete.
+
+    Two independent events can shorten the same step: a scheduled impact,
+    and the moment the bolometric scaling of the stellar flux switches on or
+    off. Both caps only ever shorten dt, so the nearer event decides where
+    the step lands, and the run reaches the further one on a later step.
+
+    The controller's own choice throughout is 1.6 * 5e3 = 8e3 yr, so every
+    value asserted below is well clear of it and of the other event's time.
+    """
+
+    # Window start in Gyr; the clamp reads it as 5.0e8 yr of stellar age.
+    BOL_START_GYR = 0.5
+    AGE_INI_YR = 5.0e8
+    TIME_NOW = 1.0e5
+    CONTROLLER_DT = 8.0e3
+
+    def _setup(self, dt_to_edge, t_next_impact):
+        """Place the scaling edge ``dt_to_edge`` years ahead and schedule an
+        impact, returning everything ``next_step`` needs."""
+        config = _make_config(
+            bol_scale=2.0,
+            bol_scale_start=self.BOL_START_GYR,
+            bol_scale_duration=0.5,
+        )
+        hf_all = _make_hf_all(
+            n_rows=12, dt_prev=5.0e3, phi=1.0, age_star=self.AGE_INI_YR - dt_to_edge
+        )
+        hf_row = {'Time': self.TIME_NOW, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        interior_o = _make_interior_o(t_next_impact=t_next_impact)
+        return config, hf_all, hf_row, interior_o
+
+    @pytest.mark.physics_invariant
+    def test_the_nearer_impact_wins_and_the_step_stops_on_it(self):
+        """An impact closer than the scaling edge decides the step.
+
+        The impact has to be applied at the state the timeline places it at,
+        because it grows the planet and re-melts its mantle. The scaling edge
+        carries no such requirement: it is a property of stellar age alone and
+        is recovered on the following step.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        dt_to_edge = 6.0e3
+        t_impact = self.TIME_NOW + 3.0e3
+        config, hf_all, hf_row, interior_o = self._setup(dt_to_edge, t_impact)
+
+        dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=interior_o)
+
+        # The step ends on the impact, not on the scaling edge.
+        assert hf_row['Time'] + dt == pytest.approx(t_impact, rel=1e-12)
+        # Neither an inert impact cap (landing at 6e3) nor the unconstrained
+        # controller (8e3) produces the 3e3 step target.
+        assert dt < dt_to_edge
+        assert dt < self.CONTROLLER_DT
+        # The invariant the impact cap exists for: never step past the impact.
+        assert hf_row['Time'] + dt <= t_impact
+
+    @pytest.mark.physics_invariant
+    def test_the_nearer_scaling_edge_wins_without_overshooting_the_impact(self):
+        """A scaling edge closer than the impact decides the step instead.
+
+        The step lands on the edge, and because the impact is further away it
+        is still ahead of the run rather than stepped over, which is what the
+        one-way nature of both caps guarantees.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        dt_to_edge = 4.0e3
+        t_impact = self.TIME_NOW + 6.0e3
+        config, hf_all, hf_row, interior_o = self._setup(dt_to_edge, t_impact)
+
+        dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=interior_o)
+
+        assert dt == pytest.approx(dt_to_edge, rel=1e-9)
+        # The impact is still pending, which is the property that fails if the
+        # controller's 8e3 step were to survive: it would overshoot by 2e3.
+        assert hf_row['Time'] + dt < t_impact
+        assert dt < self.CONTROLLER_DT
+
+    def test_the_clamp_flag_tracks_the_scaling_edge_and_not_the_impact(self):
+        """The flag the main loop reads reports the scaling edge alone.
+
+        The main loop forces an off-cadence stellar refresh whenever the flag
+        is raised. It must therefore follow the bolometric window and not any
+        other cap, or every impact would defeat the refresh cadence.
+
+        When the impact cap then pulls the step short of the edge the flag
+        stays raised, and the extra refresh that causes is harmless: the
+        scaling factor is a function of stellar age, so recomputing it early
+        returns the same pre-edge value the run already had.
+        """
+        from proteus.interior_energetics.timestep import next_step
+
+        t_impact = self.TIME_NOW + 3.0e3
+
+        # Edge near, impact nearer: the edge bound the step before the impact
+        # cap moved it, so the flag is raised.
+        config, hf_all, hf_row, interior_o = self._setup(6.0e3, t_impact)
+        next_step(config, {}, hf_row, hf_all, 1.0, interior_o=interior_o)
+        assert interior_o.timestep_clamped is True
+
+        # With a distant scaling edge, the impact sets dt while the
+        # clamp flag remains False since the scaling edge was not reached.
+        config, hf_all, hf_row, interior_o = self._setup(4.0e8, t_impact)
+        dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=interior_o)
+        assert interior_o.timestep_clamped is False
+        assert hf_row['Time'] + dt == pytest.approx(t_impact, rel=1e-12)
 
 
 class TestEscapeStepLimit:
@@ -912,3 +1266,35 @@ class TestEscapeStepLimit:
         skipped = src.split('run_escape(')[1]
         for field in ('escape_dt_limit', 'esc_clamp_frac', 'esc_step_kg'):
             assert field in skipped, f'{field} is never cleared when escape is skipped'
+
+
+@pytest.mark.unit
+def test_init_stage_step_never_exceeds_the_accretion_resume_horizon():
+    """Time stays at zero through the init stage, so every init step comes
+    from the static branch. The accretion resume check assumes such a step
+    never exceeds its init-stage horizon; this pins the two together.
+
+    The static branch is not floored to dt.minimum, so a minimum far above
+    1 yr must leave the init step unchanged, and a pending impact inside the
+    step must not lengthen it.
+    """
+    from proteus.accretion.wrapper import _INIT_STAGE_HORIZON_YR
+    from proteus.interior_energetics.timestep import next_step
+
+    config = _make_config()
+    config.params.dt.minimum = 50.0  # far above the static step
+    step = next_step(config, {}, {'Time': 0.0, 'Phi_global': 1.0}, None, 1.0)
+    assert step == pytest.approx(_INIT_STAGE_HORIZON_YR, rel=1e-12)
+
+    with_impact = next_step(
+        config,
+        {},
+        {'Time': 0.0, 'Phi_global': 1.0},
+        None,
+        1.0,
+        interior_o=_make_interior_o(t_next_impact=0.5),
+    )
+    assert 0.0 < with_impact <= _INIT_STAGE_HORIZON_YR
+    # A retry shrinks the step; it never grows beyond the horizon.
+    retried = next_step(config, {}, {'Time': 0.0, 'Phi_global': 1.0}, None, 0.5)
+    assert retried == pytest.approx(0.5 * _INIT_STAGE_HORIZON_YR, rel=1e-12)

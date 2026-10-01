@@ -249,3 +249,115 @@ class TestZalmoxisMushyZoneWarning:
         # Paired positive: the same EOS at 0.8 fires, so silence at 1.0 is the
         # factor guard rather than the EOS being exempt.
         assert self._warns(caplog, 'WolfBower2018:MgSiO3', mzf=0.8)
+
+
+class TestMeltingDirWithPaleos:
+    """melting_dir is not read with Zalmoxis and a PALEOS mantle EOS."""
+
+    @staticmethod
+    def _warned(caplog, **kwargs):
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.config._struct'):
+            Struct(**kwargs)
+        return any('is not read' in r.getMessage() for r in caplog.records)
+
+    def test_warning_for_melting_dir_with_paleos_mantle(self, caplog):
+        """The PALEOS curves are used, so a configured melting_dir gives one warning."""
+        assert self._warned(caplog, module='zalmoxis', melting_dir='Monteux-600')
+        assert sum('is not read' in r.getMessage() for r in caplog.records) == 1
+
+    def test_no_warning_where_melting_dir_is_read(self, caplog):
+        """Discrimination: a file-curve mantle EOS or an unset melting_dir stays silent."""
+        wb = Zalmoxis(mantle_eos='WolfBower2018:MgSiO3')
+        assert not self._warned(
+            caplog, module='zalmoxis', zalmoxis=wb, melting_dir='Monteux-600'
+        )
+        assert not self._warned(caplog, module='zalmoxis', melting_dir=None)
+
+    def test_warning_follows_the_mgsio3_component_of_a_mixture(self, caplog):
+        """A PALEOS mixture gets the generated set, so melting_dir is not read; a
+        mixture with a Wolf and Bower MgSiO3 component reads it."""
+        mix = Zalmoxis(mantle_eos='PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1')
+        assert self._warned(caplog, module='zalmoxis', zalmoxis=mix, melting_dir='Monteux-600')
+        wb = Zalmoxis(mantle_eos='WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1')
+        assert not self._warned(
+            caplog, module='zalmoxis', zalmoxis=wb, melting_dir='Monteux-600'
+        )
+        single = Zalmoxis(mantle_eos='PALEOS-2phase:MgSiO3')
+        assert self._warned(
+            caplog, module='zalmoxis', zalmoxis=single, melting_dir='Monteux-600'
+        )
+
+
+@pytest.mark.parametrize(
+    'mantle, rejected',
+    [
+        ('PALEOS:MgSiO3:0.5+WolfBower2018:MgSiO3:0.5', True),
+        ('PALEOS:MgSiO3:0.5+PALEOS-2phase:MgSiO3:0.5', True),
+        ('PALEOS:MgSiO3:0.5+PALEOS:MgSiO3:0.5', False),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+    ],
+)
+def test_two_mgsio3_sources_are_rejected_at_load(mantle, rejected):
+    """A mixture with MgSiO3 components of different keys has no single melting curve,
+    so it is rejected, naming both; one key repeated is one material."""
+    kwargs = dict(module='zalmoxis', zalmoxis=Zalmoxis(mantle_eos=mantle))
+    if rejected:
+        with pytest.raises(ValueError, match='MgSiO3 components from different sources') as exc:
+            Struct(**kwargs)
+        for key in mantle.replace(':0.5', '').split('+'):
+            assert key in str(exc.value)
+    else:
+        Struct(**kwargs)
+
+
+@pytest.mark.parametrize(
+    'mantle, rejected',
+    [
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:inf', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:-Infinity', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS: H2O', True),
+        ('PALEOS:MgSiO3:0.9+H2O:0.1', True),
+        ('PALEOS:MgSiO3:0.9+:H2O:0.1', True),
+        ('PALEOS:MgSiO3:0.9+PALEOS::0.1', True),
+        ('PALEOS:MgSiO3:1.1+PALEOS:H2O:-0.1', True),
+        ('PALEOS:MgSiO3:', True),
+        ('PALEOS::MgSiO3', True),
+        ('PALEOS:MgSiO3:foo', True),
+        ('PALEOS:MgSiO3:bar:0.5', True),
+        ('PALEOS:MgSiO3:0.5:0.5', True),
+        ('PALEOS:MgSiO3: 0.9', True),
+        ('PALEOS:nan', True),
+        ('PALEOS:MgSiO3:nan', True),
+        ('0.5:MgSiO3', True),
+        ('PALEOS:MgSiO3:0.9+', True),
+        ('PALEOS:MgSiO3:0.9++PALEOS:H2O:0.1', True),
+        ('PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1', False),
+        ('PALEOS:MgSiO3:0', True),
+        ('PALEOS:MgSiO3:0+PALEOS:H2O:0.1', True),
+        ('PALEOS:MgSiO3', False),
+    ],
+)
+def test_an_eos_component_with_a_space_or_a_non_finite_fraction_is_rejected(mantle, rejected):
+    """A component that is not '<source>:<material>' with at most one positive finite
+    fraction, or that has an inner space, names no registry key or no valid mass fraction for
+    Zalmoxis, so it is rejected at load; a zero fraction would leave a mixture member out of
+    the structure while the energetics still follow it. Spaces around '+' are fine."""
+    kwargs = dict(module='zalmoxis', zalmoxis=Zalmoxis(mantle_eos=mantle))
+    if rejected:
+        with pytest.raises(ValueError, match='with a positive finite fraction and no spaces'):
+            Struct(**kwargs)
+    else:
+        assert Struct(**kwargs).zalmoxis.mantle_eos == mantle
+
+
+@pytest.mark.parametrize('layer', ['core_eos', 'ice_layer_eos'])
+def test_a_core_or_ice_component_is_checked_like_a_mantle_component(layer):
+    """The core and ice layer EOS components follow the same format rule as the mantle."""
+    with pytest.raises(ValueError, match=f'`interior_struct.zalmoxis.{layer}` component'):
+        Struct(module='zalmoxis', zalmoxis=Zalmoxis(**{layer: 'PALEOS:H2O:foo'}))
+
+
+def test_zalmoxis_structure_without_its_section_loads():
+    """The MgSiO3-source check needs the Zalmoxis section and skips when it is absent."""
+    assert Struct(module='zalmoxis', zalmoxis=None).zalmoxis is None

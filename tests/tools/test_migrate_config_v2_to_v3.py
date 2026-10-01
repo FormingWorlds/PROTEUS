@@ -78,6 +78,38 @@ _DROP_PREFIXES = (
 # decision: pin it (OVERRIDES) or certify it neutral (add it here).
 _REVIEWED_NEUTRAL = frozenset(
     {
+        # Accretion defaults to inactive with zero impactor budgets, zero
+        # loss fractions, and unread dummy/morrigan sub-blocks.
+        'accretion.atmloss_frac',
+        'accretion.atmloss_module',
+        'accretion.dummy.eccentricity',
+        'accretion.dummy.timeline_path',
+        'accretion.dummy.impact_parameter',
+        'accretion.dummy.mass_accreted',
+        'accretion.dummy.num_impacts',
+        'accretion.dummy.time_last',
+        'accretion.dummy.timescale',
+        'accretion.timeline.timeline_path',
+        'accretion.impactor_volatiles',
+        'accretion.impactor_C_ppmw',
+        'accretion.impactor_H_ppmw',
+        'accretion.impactor_N_ppmw',
+        'accretion.impactor_O_ppmw',
+        'accretion.impactor_S_ppmw',
+        'accretion.morrigan.density',
+        'accretion.morrigan.eccentricity_init',
+        'accretion.morrigan.evolution_time',
+        'accretion.morrigan.impact_angle',
+        'accretion.morrigan.inner_cutoff',
+        'accretion.morrigan.inner_edge',
+        'accretion.morrigan.mass_equal',
+        'accretion.morrigan.masses',
+        'accretion.morrigan.num_planets',
+        'accretion.morrigan.seed',
+        'accretion.morrigan.selector',
+        'accretion.morrigan.selector_value',
+        'accretion.morrigan.spacing',
+        'accretion.time_offset',
         'atmos_clim.aerosols_enabled',
         'atmos_clim.agni.aerosol_r_eff',
         'atmos_clim.agni.aerosol_sigma_g',
@@ -308,6 +340,9 @@ _REVIEWED_NEUTRAL = frozenset(
         'outgas.vapourise',
         'params.dt.hysteresis_iters',
         'params.dt.hysteresis_sfinc',
+        # The giant-impact landing-step cap defaults to 0 (disabled), and a
+        # migrated config schedules no impacts, so it never engages.
+        'params.dt.impact_maximum',
         'params.dt.max_growth_factor',
         'params.dt.mushy_maximum',
         'params.dt.mushy_upper',

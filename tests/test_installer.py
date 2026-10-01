@@ -24,6 +24,16 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 INSTALL_SH = PROTEUS_ROOT / 'install.sh'
 
 
+@pytest.fixture(autouse=True)
+def stub_conda(tmp_path_factory, monkeypatch):
+    """Put a no-op conda first on PATH, so the failure diagnostics do not wait on a cold conda."""
+    bindir = tmp_path_factory.mktemp('stub_conda')
+    stub = bindir / 'conda'
+    stub.write_text('#!/bin/sh\nexit 0\n')
+    stub.chmod(0o755)
+    monkeypatch.setenv('PATH', f'{bindir}{os.pathsep}{os.environ["PATH"]}')
+
+
 class TestInstallerArgParsing:
     """Verify argument parsing and help output."""
 
