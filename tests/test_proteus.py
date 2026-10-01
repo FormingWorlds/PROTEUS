@@ -504,6 +504,20 @@ def test_resync_checks_the_saved_copy_before_using_it(tmp_path, caplog):
 
 
 @pytest.mark.unit
+def test_resync_skips_an_unreadable_saved_copy(tmp_path, caplog):
+    """A truncated saved copy is skipped as unreadable and the matching file kept."""
+    p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.4e6))
+    _saved_copy(tmp_path).write_text('3.4e6 3.4e6\n6.4e')
+    before = path.read_bytes()
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.proteus'):
+        p._resync_zalmoxis_mesh()
+
+    assert path.read_bytes() == before
+    assert '100p000_zalmoxis.dat: unreadable' in caplog.text
+
+
+@pytest.mark.unit
 def test_resync_stops_when_no_file_matches_the_row(tmp_path):
     """A legacy run with a stale file and a stale .prev stops with one message."""
     p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.5e6), prev=(3.4e6 - 2.0e3, 6.3e6))
@@ -702,6 +716,42 @@ def test_snapshot_copy_holds_the_structure_of_its_row_after_a_resolve(tmp_path):
 
 
 @pytest.mark.unit
+def test_finished_run_saves_the_final_copy_after_the_final_snapshot(tmp_path):
+    """The last row of a finished run gets its copy once its _int.nc is on disk.
+
+    The last loop is not a snapshot step here, so the final interior snapshot is
+    written after the loop; the copy must follow it, not precede it.
+    """
+    from proteus.utils.helper import format_subyear_time
+
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog')
+    p.config.interior_struct.module = 'zalmoxis'
+    p.config.params.out.plot_mod = None
+    p.config.params.out.archive_mod = None
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['R_core'], hf_df['R_int'] = 3.4e6, 6.4e6
+    mesh = tmp_path / 'data' / 'zalmoxis_output.dat'
+    _write_mesh(mesh, 3.4e6, 6.4e6)
+    seen = []
+
+    def final_snapshot(config, interior_o, dirs, hf_row):
+        name = format_subyear_time(hf_row['Time'])
+        seen.append(_saved_copy(tmp_path, hf_row['Time']).exists())
+        (tmp_path / 'data' / f'{name}_int.nc').touch()
+
+    with patch(
+        'proteus.interior_energetics.aragog.write_final_snapshot', side_effect=final_snapshot
+    ):
+        _run_resumed_loop_until_stop(
+            p, hf_df, _aragog_like_interior(mesh, []), lambda *a, **k: None, terminate_after=2
+        )
+
+    final = _saved_copy(tmp_path, p.hf_row['Time'])
+    assert seen == [False], 'the copy must not exist before the final snapshot'
+    assert final.read_bytes() == mesh.read_bytes()
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ('struct', 'energetics', 'called'),
     [('zalmoxis', 'aragog', True), ('zalmoxis', 'spider', False), ('dummy', 'aragog', False)],
@@ -723,6 +773,51 @@ def test_resume_runs_the_resync_for_zalmoxis_and_aragog_only(
 
 class _StopAtRunningStatus(Exception):
     """Sentinel raised when start() reports the run as running."""
+
+
+def _resume_to_running_status(p, hf_df, *, events, select):
+    """Resume ``p`` from ``hf_df`` with accretion on, up to the running status.
+
+    The star and orbit setup are no-ops, ``init_accretion`` returns ``events``,
+    and ``select=True`` passes the helpfile through snapshot selection unchanged;
+    ``select=False`` runs the real selection on the files in ``data/``.
+    """
+
+    def status(dirs, code):
+        if code == 1:
+            raise _StopAtRunningStatus
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
+        )
+        if select:
+            stack.enter_context(
+                patch(
+                    'proteus.utils.coupler.select_resumable_snapshot',
+                    return_value=(hf_df, []),
+                )
+            )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.ZeroHelpfileRow', return_value={}))
+        interior_t = stack.enter_context(patch('proteus.interior_energetics.common.Interior_t'))
+        interior_t.return_value = MagicMock(ic=1)
+        stack.enter_context(
+            patch('proteus.accretion.wrapper.init_accretion', return_value=events)
+        )
+        stack.enter_context(patch('proteus.star.wrapper.init_star'))
+        stack.enter_context(patch('proteus.orbit.wrapper.init_orbit'))
+        stack.enter_context(patch('proteus.proteus.UpdateStatusfile', side_effect=status))
+
+        with pytest.raises(_StopAtRunningStatus):
+            p.start(resume=True, offline=True)
 
 
 @pytest.mark.unit
@@ -747,35 +842,7 @@ def test_resume_after_an_impact_restores_the_row_structure_and_the_accreted_mass
     _write_mesh(data / 'zalmoxis_output.dat', 3.4e6, 6.5e6 + 2.0e4)
     _write_mesh(_saved_copy(tmp_path, 400.0), 3.4e6, 6.5e6)
 
-    def status(dirs, code):
-        if code == 1:
-            raise _StopAtRunningStatus
-
-    with ExitStack() as stack:
-        for target in _START_PATCHES:
-            stack.enter_context(patch(target))
-        stack.enter_context(
-            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
-        )
-        stack.enter_context(
-            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
-        )
-        stack.enter_context(
-            patch('proteus.utils.coupler.select_resumable_snapshot', return_value=(hf_df, []))
-        )
-        stack.enter_context(
-            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
-        )
-        stack.enter_context(patch('proteus.utils.coupler.ZeroHelpfileRow', return_value={}))
-        interior_t = stack.enter_context(patch('proteus.interior_energetics.common.Interior_t'))
-        interior_t.return_value = MagicMock(ic=1)
-        stack.enter_context(patch('proteus.accretion.wrapper.init_accretion', return_value=[]))
-        stack.enter_context(patch('proteus.star.wrapper.init_star'))
-        stack.enter_context(patch('proteus.orbit.wrapper.init_orbit'))
-        stack.enter_context(patch('proteus.proteus.UpdateStatusfile', side_effect=status))
-
-        with pytest.raises(_StopAtRunningStatus):
-            p.start(resume=True, offline=True)
+    _resume_to_running_status(p, hf_df, events=[], select=True)
 
     assert (data / 'zalmoxis_output.dat').read_bytes() == _saved_copy(
         tmp_path, 400.0
@@ -783,6 +850,58 @@ def test_resume_after_an_impact_restores_the_row_structure_and_the_accreted_mass
     assert p.config.planet.mass_tot == pytest.approx(1.05, rel=1e-12)
     assert (p.hf_row['R_core'], p.hf_row['R_int']) == (3.4e6, 6.5e6)
     assert p.hf_row['n_impacts_applied'] == 1
+
+
+@pytest.mark.unit
+def test_resume_walks_back_past_an_impact_step_to_its_own_structure(tmp_path):
+    """An impact on a snapshot step discards that step's _int.nc, so the step has
+    no structure copy. The resume walks back to the previous complete row,
+    restores that row's own copy, keeps the configured mass, and leaves the
+    impact to be applied again.
+    """
+    from types import SimpleNamespace
+
+    from netCDF4 import Dataset
+
+    from proteus.utils.constants import M_earth
+    from proteus.utils.helper import format_subyear_time
+
+    p = _make_proteus_instance(tmp_path, struct_module='zalmoxis', interior_module='aragog')
+    p.config.accretion.module = 'dummy'
+    p.config.planet.mass_tot = 1.0
+    times = [0.0, 100.0, 200.0, 300.0, 400.0, 500.0, 600.0]
+    hf_df = pd.DataFrame(
+        {
+            'Time': times,
+            'R_core': 3.4e6,
+            'R_int': [6.4e6] * 6 + [6.5e6],
+            'gravity': 9.81,
+            'T_magma': 3000.0,
+            'T_eqm': 255.0,
+            'F_atm': 100.0,
+            'M_accreted_rock': [0.0] * 6 + [0.05 * M_earth],
+            'n_impacts_applied': [0.0] * 6 + [1.0],
+        }
+    )
+    data = tmp_path / 'data'
+    data.mkdir(exist_ok=True)
+    for t in times[1:]:
+        halves = ('atm',) if t == 600.0 else ('int', 'atm')
+        for half in halves:
+            with Dataset(str(data / f'{format_subyear_time(t)}_{half}.nc'), 'w') as ds:
+                ds.createDimension('x', 1)
+    _write_mesh(data / 'zalmoxis_output.dat', 3.4e6, 6.5e6)
+    _write_mesh(_saved_copy(tmp_path, 500.0), 3.4e6, 6.4e6)
+    impact = SimpleNamespace(time=550.0)
+
+    _resume_to_running_status(p, hf_df, events=[impact], select=False)
+
+    assert p.hf_row['Time'] == pytest.approx(500.0)
+    assert (data / 'zalmoxis_output.dat').read_bytes() == _saved_copy(
+        tmp_path, 500.0
+    ).read_bytes()
+    assert p.config.planet.mass_tot == pytest.approx(1.0, rel=1e-12)
+    assert p.impact_events == [impact]
 
 
 # ---------------------------------------------------------------------------
@@ -2840,10 +2959,20 @@ def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path, interior_m
     assert captured['T_magma'] == pytest.approx(interior_t_magma, rel=1e-12)
 
 
-def _run_resumed_loop_until_stop(p, hf_df, fake_interior, fake_atmosphere):
+def _run_resumed_loop_until_stop(
+    p, hf_df, fake_interior, fake_atmosphere, terminate_after=None
+):
     """Resume ``p`` from ``hf_df`` with the given interior and atmosphere fakes
-    until the atmosphere fake raises ``_StopAfterAtmosphereCall``."""
+    until the atmosphere fake raises ``_StopAfterAtmosphereCall``, or, with
+    ``terminate_after``, until the run ends normally after that many loops."""
     from types import SimpleNamespace
+
+    checks = []
+
+    def _terminate(handler):
+        checks.append(1)
+        handler.finished_both = terminate_after is not None and len(checks) >= terminate_after
+        return handler.finished_both
 
     with ExitStack() as stack:
         for target in _MAIN_LOOP_NOOP_PATCHES:
@@ -2862,7 +2991,7 @@ def _run_resumed_loop_until_stop(p, hf_df, fake_interior, fake_atmosphere):
         )
         stack.enter_context(patch('proteus.utils.coupler.assert_mass_conservation'))
         stack.enter_context(
-            patch('proteus.utils.terminate.check_termination', return_value=False)
+            patch('proteus.utils.terminate.check_termination', side_effect=_terminate)
         )
         stack.enter_context(
             patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
@@ -2885,6 +3014,9 @@ def _run_resumed_loop_until_stop(p, hf_df, fake_interior, fake_atmosphere):
         mock_spectrum = stack.enter_context(patch('proteus.star.wrapper.get_new_spectrum'))
         mock_spectrum.return_value = (np.array([1.0]), np.array([1.0]))
 
+        if terminate_after is not None:
+            p.start(resume=True, offline=True)
+            return
         with pytest.raises(_StopAfterAtmosphereCall):
             p.start(resume=True, offline=True)
 

@@ -3792,6 +3792,31 @@ def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
 
 
 @pytest.mark.unit
+def test_dropped_row_sharing_the_kept_rows_name_keeps_the_structure_copy(tmp_path):
+    """Two rows under 1e-3 yr apart share one copy name. Dropping the later row
+    must leave the copy of the earlier, kept row, while a dropped row with a
+    name of its own loses its copy."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for half in ('int', 'atm'):
+        _write_valid_nc(str(data / f'10_{half}.nc'))
+        _write_timed_nc(str(data / f'20p000_{half}.nc'), 20.0002)
+    _write_corrupt_nc(str(data / '30_int.nc'))
+    _write_valid_nc(str(data / '30_atm.nc'))
+    for name in ('20p000', '30p000'):
+        (data / f'{name}_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20.0002, 20.0004, 30])
+    )
+
+    assert out.iloc[-1]['Time'] == pytest.approx(20.0002, rel=1e-12)
+    assert dropped == [20, 30]
+    assert (data / '20p000_zalmoxis.dat').exists()
+    assert not (data / '30p000_zalmoxis.dat').exists()
+
+
+@pytest.mark.unit
 def test_select_resumable_snapshot_matches_writer_filename_conventions(tmp_path):
     """Interior and atmosphere (rounded %.0f) names match."""
     data = tmp_path / 'data'
