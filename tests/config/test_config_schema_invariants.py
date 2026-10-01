@@ -44,6 +44,7 @@ from proteus.config._config import (
     check_module_dependencies,
     instmethod_evolve,
     orbit_requires_tides,
+    parameterized_excludes_tides,
     planet_fO2_source_compat,
     planet_mass_valid,
     planet_oxygen_mode_explicit,
@@ -892,6 +893,54 @@ def test_orbit_requires_tides_passes_for_0d_models_regardless_of_module(model, m
         }
     )
     orbit_requires_tides(instance, None, None)
+
+
+# ---------------------------------------------------------------------------
+# parameterized_excludes_tides: a prescribed track computes no tides, so no
+# tides module may run alongside it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('module', ['dummy', 'lovepy', 'obliqua'])
+def test_parameterized_excludes_tides_rejects_every_tides_module(module):
+    """Pairing the prescribed track with any tides module must raise, since
+    the tidal dispatch in run_orbit would otherwise compute a tidal response
+    the model documents it never produces. The message names the offending
+    module and the required setting, so the user knows what to change."""
+    instance = _make_config_instance(
+        **{'orbit.module': module, 'orbit.star_planet_model': 'parameterized'}
+    )
+    with pytest.raises(ValueError, match='parameterized') as excinfo:
+        parameterized_excludes_tides(instance, None, None)
+    msg = str(excinfo.value)
+    assert repr(module) in msg
+    assert "orbit.module = 'none'" in msg
+
+
+@pytest.mark.unit
+def test_parameterized_excludes_tides_passes_without_a_tides_module():
+    """With tides disabled (``'none'`` converts to ``None`` on load) the
+    prescribed track is valid, and the validator leaves the config as is."""
+    instance = _make_config_instance(
+        **{'orbit.module': None, 'orbit.star_planet_model': 'parameterized'}
+    )
+    parameterized_excludes_tides(instance, None, None)
+    assert instance.orbit.module is None
+    assert instance.orbit.star_planet_model == 'parameterized'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('model', ['sp0d', 'sp1d'])
+def test_parameterized_excludes_tides_ignores_tidal_orbit_models(model):
+    """The restriction is specific to the prescribed track: the tidal orbit
+    models need a tides module, so the validator must not fire for them."""
+    instance = _make_config_instance(
+        **{'orbit.module': 'lovepy', 'orbit.star_planet_model': model}
+    )
+    parameterized_excludes_tides(instance, None, None)
+    assert instance.orbit.module == 'lovepy'
+    assert instance.orbit.star_planet_model == model
 
 
 # ---------------------------------------------------------------------------

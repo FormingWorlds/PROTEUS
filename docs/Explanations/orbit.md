@@ -253,6 +253,7 @@ model reads the scalar path, a `1d` model reads `tides_o` directly.
 |---|---|---|
 | `sp0d` | `hf_row['Imk2']` | `dummy`, `lovepy`, `obliqua` (requires `orbit.obliqua.n == [2]`) |
 | `sp1d` | `tides_o`, (`primary='planet', perturber='star'`) | `lovepy`, `obliqua` |
+| `parameterized` | -- | none (`orbit.module = 'none'` is required) |
 | `ps0d` | `hf_row['F_tidal']` | `dummy`, `lovepy`, `obliqua` |
 | `ps1d` | `tides_o`, (both `primary='planet', perturber='satellite'` and `primary='satellite', perturber='planet'`) | `lovepy`, `obliqua` |
 | `ps1d_evec` | Same as `ps1d`, plus `evection_angle` | `lovepy`, `obliqua` (Note that `lovepy` breaks down at high eccentricities, so it is not recommended for this case) |

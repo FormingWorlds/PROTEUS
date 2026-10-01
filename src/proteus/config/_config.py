@@ -111,6 +111,21 @@ def orbit_requires_tides(instance, attribute, value):
         )
 
 
+def parameterized_excludes_tides(instance, attribute, value):
+    """The parameterized model prescribes the orbit as a closed-form track
+    and exchanges no energy with the interior, so no tides module can run
+    alongside it; see "Star-planet models" in docs/Explanations/orbit.md.
+    """
+    if (
+        instance.orbit.star_planet_model == 'parameterized'
+        and instance.orbit.module is not None
+    ):
+        raise ValueError(
+            "orbit.star_planet_model = 'parameterized' requires orbit.module = 'none' "
+            f'(got {instance.orbit.module!r}): a prescribed migration track computes no tides'
+        )
+
+
 CURRENT_CONFIG_VERSION = '3.0'
 
 
@@ -532,6 +547,7 @@ class Config:
             obliqua_requires_perturber,
             sp0d_obliqua_degree_mismatch,
             orbit_requires_tides,
+            parameterized_excludes_tides,
         ),
     )
     planet: Planet = field(
