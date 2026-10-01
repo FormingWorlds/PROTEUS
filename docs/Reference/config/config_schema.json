@@ -4977,7 +4977,7 @@
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Melting curve folder name in FWL_DATA, for the SPIDER structure module.",
+      "description": "Melting curve name in FWL_DATA. Required for the SPIDER structure module and for any run without a PALEOS table set; not read with module = 'zalmoxis' and a single PALEOS mantle EOS. With module = 'dummy' and a PALEOS mantle EOS, Aragog requires it but the solve uses the PALEOS set.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5051,7 +5051,7 @@
       "default": "-1.0",
       "choices": null,
       "bounds": null,
-      "description": "Relative numerical tolerance for the interior ODE solver. SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling). Aragog: scipy solve_ivp rtol. The deprecated aliases num_tolerance and [interior_energetics.spider].tolerance_rel copy into this field. Resolves to 1e-10 when left unset.",
+      "description": "Relative numerical tolerance for the interior ODE solver. SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling). Aragog: scipy solve_ivp rtol. The deprecated aliases num_tolerance and [interior_energetics.spider].tolerance_rel copy into this field. Resolves to 1e-8 for Aragog and 1e-10 for SPIDER when left unset. With interior_struct.module = 'spider' it also sets the relative tolerance of the secant solve for the interior radius.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 2,
@@ -5501,7 +5501,26 @@
           "value": 0
         }
       ],
-      "description": "Phase-boundary proximity band [J/kg/K] within which a staggered cell counts as near a solidus or liquidus crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase RHS across the boundary. This is a solver-accuracy control, not a cosmetic step-size setting: at the default it reproduces the fixed band and the converged trajectory is unchanged, but lowering it below the default can under-resolve a real phase crossing and shift the converged state, because CVODE's local error control can accept an over-large step across the near-discontinuous RHS. Keeping the default reproduces current behaviour, and modestly widening the band does not move a converged result because tighter steps only refine an adaptive integrator; but a value orders of magnitude above the default makes every cell count as near a boundary at all times, clamping the integrator to 1 yr steps (max_step = 1 yr, versus 100 yr otherwise) for the whole run and stalling it, so keep the band of order a few hundred J/kg/K. Default 200.0, matching Aragog's own default; a positive value is required (0 or negative is not a valid disabled state for a proximity band).",
+      "description": "Phase-boundary proximity band [J/kg/K] within which a staggered cell counts as near a solidus or liquidus crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase RHS across the boundary. This is a solver-accuracy control, not a cosmetic step-size setting: at the default it reproduces the fixed band and the converged trajectory is unchanged, but lowering it below the default can under-resolve a real phase crossing and shift the converged state, because CVODE's local error control can accept an over-large step across the near-discontinuous RHS. Keeping the default reproduces current behaviour, and modestly widening the band does not move a converged result because tighter steps only refine an adaptive integrator; but a value orders of magnitude above the default makes every cell count as near a boundary at all times, so every call runs under the phase-boundary step control: with phase_boundary_cap = 'fixed' that clamps the integrator to 1 yr steps (versus 100 yr otherwise) and stalls the run, and with 'rate' every call runs as CVODE segments with max_step between 1 and 100 yr. Keep the band of order a few hundred J/kg/K. Default 200.0, matching Aragog's own default; a positive value is required (0 or negative is not a valid disabled state for a proximity band).",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.phase_boundary_cap",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"rate\"",
+      "choices": [
+        "fixed",
+        "rate"
+      ],
+      "bounds": null,
+      "description": "Phase-boundary step-size policy: 'fixed' tightens max_step to 1 yr whenever any cell is near or inside the two-phase band; 'rate' (default) uses event-driven CVODE segments with max_step scaled by approach time to the nearest phase boundary, clipped to [1, 100] yr. 'rate' needs the CVODE solver and a core_bc other than 'gradient'; otherwise Aragog logs it and uses 1 yr. Its accuracy is verified at rtol 1e-8; Aragog warns once per solver at an rtol above 1e-7.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -7741,7 +7760,7 @@
       "default": "\"greybody\"",
       "choices": null,
       "bounds": null,
-      "description": "Surface scattering material file. Set to 'greybody' to use surf_greyalbedo.",
+      "description": "Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.",
       "doc_source": "attributes",
       "group_order": 1,
       "group_position": 0,
@@ -10965,6 +10984,17 @@
       "doc": "Reject enabling this option when the dummy atmos_clim module is selected."
     },
     {
+      "validator": "aragog_needs_melting_curves",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct.melting_dir"
+      ],
+      "doc": "Require ``interior_struct.melting_dir`` for Aragog without a PALEOS table set."
+    },
+    {
       "validator": "boreas_requires_atmosphere",
       "module": "_config.py",
       "attached_to": [
@@ -11025,6 +11055,28 @@
         "outgas.module"
       ],
       "doc": "Check that required external packages are importable for the selected modules."
+    },
+    {
+      "validator": "dummy_struct_mantle_eos",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct"
+      ],
+      "doc": "Check the mantle EOS that the dummy structure hands to SPIDER or Aragog."
+    },
+    {
+      "validator": "energetics_needs_a_thermal_mantle_eos",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct"
+      ],
+      "doc": "Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog."
     },
     {
       "validator": "instmethod_dummy",

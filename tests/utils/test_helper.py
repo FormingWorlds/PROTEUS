@@ -820,3 +820,128 @@ def test_parse_subyear_time_rejects_multiple_p():
         parse_subyear_time('1p2p3')
     with pytest.raises(ValueError, match="multiple 'p' characters"):
         parse_subyear_time('884pp700')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('mantle_eos', 'expected'),
+    [
+        ('PALEOS:MgSiO3', True),
+        ('PALEOS-2phase:MgSiO3-highres', True),
+        ('PALEOS-API:MgSiO3', True),
+        # One component with a fraction token or spaces is the same registry key.
+        ('PALEOS:MgSiO3:1.0', True),
+        ('PALEOS:MgSiO3 ', True),
+        ('PALEOS:Olivine', False),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', True),
+        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', True),
+        ('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+        ('WolfBower2018:MgSiO3', False),
+        (None, False),
+    ],
+)
+def test_generates_paleos_tables_follows_the_energetics_key(mantle_eos, expected):
+    """Under the Zalmoxis structure, a PALEOS energetics key counts: a single PALEOS
+    key, or a mixture whose MgSiO3 component is PALEOS or that has no MgSiO3
+    component but a PALEOS one; an unknown material does not."""
+    from types import SimpleNamespace
+
+    from proteus.utils.helper import generates_paleos_tables
+
+    struct = SimpleNamespace(module='zalmoxis', zalmoxis=SimpleNamespace(mantle_eos=mantle_eos))
+    assert generates_paleos_tables(struct) is expected
+    struct.module = 'dummy'
+    assert generates_paleos_tables(struct) is False
+
+
+@pytest.mark.unit
+def test_paleos_registry_keys_match_the_zalmoxis_registry():
+    """The static key set equals the PALEOS keys that generate_spider_tables can find."""
+    pytest.importorskip('zalmoxis')
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
+    from proteus.utils.constants import PALEOS_EOS_PREFIXES, PALEOS_REGISTRY_KEYS
+
+    registry = load_zalmoxis_material_dictionaries()
+    paleos = {k for k in registry if k.startswith(PALEOS_EOS_PREFIXES)}
+    assert paleos == PALEOS_REGISTRY_KEYS
+    assert all(k.startswith(PALEOS_EOS_PREFIXES) for k in PALEOS_REGISTRY_KEYS)
+
+
+@pytest.mark.unit
+def test_paleos_companion_keys_follow_the_mantle_family():
+    """A mantle with any PALEOS component reads the MgSiO3 2-phase pair of its family
+    and no MgSiO3 unified table; a mantle without one reads neither."""
+    from proteus.utils.helper import paleos_companion_keys
+
+    shipped = ['PALEOS-2phase:MgSiO3']
+    assert paleos_companion_keys('PALEOS:MgSiO3') == shipped
+    assert paleos_companion_keys('PALEOS:H2O:1.0') == shipped
+    assert paleos_companion_keys('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1') == shipped
+    assert paleos_companion_keys('PALEOS-2phase:MgSiO3-highres') == [
+        'PALEOS-2phase:MgSiO3-highres'
+    ]
+    assert paleos_companion_keys('PALEOS-API:iron') == ['PALEOS-API-2phase:MgSiO3']
+    assert paleos_companion_keys('WolfBower2018:MgSiO3') == []
+    assert paleos_companion_keys('Seager2007:H2O') == []
+    assert paleos_companion_keys('') == []
+
+
+@pytest.mark.parametrize(
+    'mantle_eos, key',
+    [
+        ('PALEOS-2phase:MgSiO3-highres:1.0', 'PALEOS-2phase:MgSiO3-highres'),
+        ('PALEOS-2phase:MgSiO3-highres:0.9+PALEOS:H2O:0.1', 'PALEOS-2phase:MgSiO3-highres'),
+        ('Chabrier:H:0.03+PALEOS-API:MgSiO3:0.97', 'PALEOS-API-2phase:MgSiO3'),
+        (' PALEOS:H2O:0.1 + PALEOS-API:MgSiO3:0.9 ', 'PALEOS-API-2phase:MgSiO3'),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:MgSiO3:0.9+PALEOS-API:H2O:0.1', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:H2O:0.5+PALEOS-API:iron:0.5', 'PALEOS-API-2phase:MgSiO3'),
+    ],
+)
+def test_twophase_registry_key_uses_every_component(mantle_eos, key):
+    """The pair family comes from the PALEOS MgSiO3 component when there is one, else from
+    any component, with fraction tokens and spaces stripped."""
+    from proteus.utils.helper import paleos_companion_keys, twophase_registry_key
+
+    assert twophase_registry_key(mantle_eos) == key
+    assert paleos_companion_keys(mantle_eos) == [key]
+
+
+def test_eos_components_strip_spaces_and_fractions():
+    """Each component becomes its registry key."""
+    from proteus.utils.helper import eos_components
+
+    assert eos_components(' PALEOS:MgSiO3:0.9 + Chabrier:H:0.1 ') == [
+        'PALEOS:MgSiO3',
+        'Chabrier:H',
+    ]
+    assert eos_components('PALEOS:MgSiO3:0.9 + 0.1') == ['PALEOS:MgSiO3']
+    assert eos_components('') == eos_components(None) == []
+
+
+def test_energetics_eos_key_treats_a_repeated_key_as_one_material():
+    """One key written as several components is that key, not a mixture."""
+    from proteus.utils.helper import energetics_eos_key
+
+    assert energetics_eos_key('PALEOS:MgSiO3:0.5+PALEOS:MgSiO3:0.5') == 'PALEOS:MgSiO3'
+    assert energetics_eos_key('Seager2007:iron:0.5+Seager2007:iron:0.5') == 'Seager2007:iron'
+    assert energetics_eos_key(None) is None
+
+
+@pytest.mark.parametrize(
+    'mantle, key',
+    [
+        ('PALEOS:H2O', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:iron:1.0', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS-API:H2O', 'PALEOS-API-2phase:MgSiO3'),
+        ('PALEOS:Olivine', 'PALEOS:Olivine'),
+        ('WolfBower2018:MgSiO3', 'WolfBower2018:MgSiO3'),
+    ],
+)
+def test_energetics_eos_key_gives_a_non_mgsio3_paleos_mantle_the_mgsio3_pair(mantle, key):
+    """A PALEOS H2O or iron mantle, single or mixed, uses the MgSiO3 pair of its family;
+    a key that is not a PALEOS registry key is kept."""
+    from proteus.utils.helper import energetics_eos_key
+
+    assert energetics_eos_key(mantle) == key

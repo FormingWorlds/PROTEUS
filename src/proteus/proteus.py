@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import sys
@@ -28,6 +29,7 @@ from proteus.interior_struct.common import solvus_radius
 from proteus.utils.constants import noble_gases, vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
+    MissingReferenceData,
     PrintHalfSeparator,
     PrintSeparator,
     UpdateStatusfile,
@@ -58,6 +60,20 @@ ATMOS_STALL_MAX = 150
 # not moved, after which a run ends. Much shorter than the cap above, because
 # neither side of the coupling can leave that state on its own.
 AGNI_DEADLOCK_MAX = 3
+
+
+def _status_on_missing_eos(start):
+    """Write status 20 when missing reference data stops ``start``, wherever it is raised."""
+
+    @functools.wraps(start)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return start(self, *args, **kwargs)
+        except MissingReferenceData:
+            UpdateStatusfile(self.directories, 20)
+            raise
+
+    return wrapper
 
 
 class Proteus:
@@ -453,6 +469,7 @@ class Proteus:
                     self.config.params.stop.solid.phi_crit,
                 )
 
+    @_status_on_missing_eos
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
 
@@ -631,6 +648,9 @@ class Proteus:
                     step_cap_overrides[key] = _STEP_CAP_OFF
                 else:
                     step_cap_overrides[key] = resolved
+            if 'phase_boundary_cap' in unsupported:
+                # The dropped cap falls back to Aragog's fixed 1 yr policy.
+                step_cap_overrides['interior_energetics.aragog.phase_boundary_cap'] = 'fixed'
         self.config.write(
             os.path.join(self.directories['output'], 'init_coupler.toml'),
             overrides=step_cap_overrides,
@@ -662,6 +682,7 @@ class Proteus:
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
             # New simulation
+            self._require_paleos_tables()
 
             # SPIDER initial condition
             self.interior_o.ic = 1
@@ -819,6 +840,7 @@ class Proteus:
             # the loose per-iteration snapshots are present on disk.
             log.debug('Extracting archived data files')
             self.extract_archives()
+            self._require_paleos_tables()
 
             # Resume from the latest snapshot pair that is complete and belongs
             # to its helpfile row. This drops rows whose _int.nc or _atm.nc a
@@ -1572,6 +1594,13 @@ class Proteus:
 
         # Print citation
         print_citation(self.config)
+
+    def _require_paleos_tables(self):
+        """Stop before any solve when a table of the Zalmoxis EOS set is missing."""
+        if self.config.interior_struct.module == 'zalmoxis':
+            from proteus.interior_struct.zalmoxis import require_paleos_tables
+
+            require_paleos_tables(self.config, self.directories['output'])
 
     def extract_archives(self):
         """
