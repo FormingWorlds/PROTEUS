@@ -1361,6 +1361,71 @@ def test_guard_keeps_unpushed_work_on_a_branch_that_is_not_checked_out(tmp_path,
 
 
 @pytest.mark.parametrize('strict', [False, True], ids=['plain shell', 'errexit shell'])
+def test_guard_refreshes_a_clone_carrying_an_upstream_tag(tmp_path, strict):
+    """An upstream tag outside every branch is not local work.
+
+    A clone fetches the upstream's tags, and a repository that has rewritten
+    history keeps the old commits alive under an archive tag: aragog carries
+    ten such commits. Counting them as unpushed stops `get_aragog.sh` on a
+    clean checkout, and install.sh runs it under `set -e` with no `--force`,
+    so every re-install would stop there telling the user to push work that
+    is not theirs.
+    """
+    upstream = tmp_path / 'upstream'
+    upstream.mkdir()
+    _git(upstream, 'init', '-q')
+    (upstream / 'f.py').write_text('a = 1\n')
+    _git(upstream, 'add', 'f.py')
+    _git(upstream, 'commit', '-q', '-m', 'c1')
+    # Archived work: committed on a branch, tagged, and the branch deleted,
+    # so the tag is the only ref holding it.
+    _git(upstream, 'checkout', '-q', '-b', 'archived')
+    (upstream / 'old.py').write_text('legacy = 1\n')
+    _git(upstream, 'add', 'old.py')
+    _git(upstream, 'commit', '-q', '-m', 'archived work')
+    _git(upstream, 'tag', '-a', 'archive/pre-rewrite', '-m', 'archived')
+    _git(upstream, 'checkout', '-q', 'main')
+    _git(upstream, 'branch', '-qD', 'archived')
+
+    _git(tmp_path, 'clone', '-q', str(upstream), str(tmp_path / 'aragog'))
+
+    res = _run_guard(tmp_path, strict=strict)
+
+    assert res.returncode == 0, res.stderr
+    assert 'GUARD_PASSED' in res.stdout
+    assert 'not on a remote' not in res.stderr
+
+
+@pytest.mark.parametrize('strict', [False, True], ids=['plain shell', 'errexit shell'])
+def test_guard_keeps_local_work_that_carries_a_tag(tmp_path, strict):
+    """A tag on the user's own unpushed commit does not excuse deleting it.
+
+    This is why the tags are not simply excluded from the comparison: doing
+    so clears the upstream archive tag above, but it also clears a commit the
+    user made and tagged, which is exactly the work the guard exists to keep.
+    """
+    upstream = tmp_path / 'upstream'
+    upstream.mkdir()
+    _git(upstream, 'init', '-q')
+    (upstream / 'f.py').write_text('a = 1\n')
+    _git(upstream, 'add', 'f.py')
+    _git(upstream, 'commit', '-q', '-m', 'c1')
+
+    workdir = tmp_path / 'aragog'
+    _git(tmp_path, 'clone', '-q', str(upstream), str(workdir))
+    (workdir / 'f.py').write_text('a = 2\n')
+    _git(workdir, 'add', 'f.py')
+    _git(workdir, 'commit', '-q', '-m', 'my work')
+    _git(workdir, 'tag', '-a', 'my-wip', '-m', 'wip')
+
+    res = _run_guard(tmp_path, strict=strict)
+
+    assert res.returncode == 1, res.stdout
+    assert 'not on a remote' in res.stderr
+    assert 'GUARD_PASSED' not in res.stdout
+
+
+@pytest.mark.parametrize('strict', [False, True], ids=['plain shell', 'errexit shell'])
 def test_guard_keeps_a_checkout_git_cannot_report_on(tmp_path, strict):
     """A checkout git cannot inspect at all is kept, in either shell.
 

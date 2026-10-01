@@ -103,14 +103,16 @@ guard_dirty_checkout() {
         return 0
     fi
 
-    # --all rather than HEAD: commits can sit on a branch that is not checked
-    # out, and HEAD does not resolve at all in a clone killed before its first
-    # commit. --all reports the first and exits 0 on the second, so such a
-    # clone is refreshed rather than stalling an install that cannot pass
-    # --force.
-    local dirty unpushed rc=0
+    # Branches, and HEAD when it resolves: commits can sit on a branch that is
+    # not checked out or on a detached HEAD, while a clone killed before its
+    # first commit has no HEAD to read. Tags stay out of it, since a clone
+    # carries the upstream's tags and the commits they hold are not local work.
+    local dirty unpushed refs='--branches' rc=0
     dirty=$(git -C "$workpath" status --porcelain --untracked-files=no "$@" 2>/dev/null) || rc=$?
-    unpushed=$(git -C "$workpath" log --all --not --remotes --oneline -1 2>/dev/null) || rc=$?
+    if git -C "$workpath" rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
+        refs='--branches HEAD'
+    fi
+    unpushed=$(git -C "$workpath" log $refs --not --remotes --oneline -1 2>/dev/null) || rc=$?
     if [ "$rc" -ne 0 ]; then
         # An incomplete .git, or no git at all. Whether the checkout holds
         # local work is then unknown, so keep it.
