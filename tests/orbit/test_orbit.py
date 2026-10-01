@@ -1088,15 +1088,41 @@ def test_parameterized_warns_when_the_migration_window_is_undersampled(
 
 @pytest.mark.parametrize(
     'time_yr',
-    [1.0e5 - 1.0, 1.0e5 + 1.0e4 + 1.0],
-    ids=['before_the_window', 'after_the_window'],
+    [1.0e5, 1.05e5, 1.0e5 + 1.0e4 + 1.0, 1.0e5 + 2.0e4],
+    ids=[
+        'step_ends_at_the_window_start',
+        'step_ends_inside_the_window',
+        'step_crosses_the_window_end',
+        'step_starts_exactly_at_the_window_end',
+    ],
+)
+def test_parameterized_undersampling_warning_fires_for_steps_overlapping_the_window(
+    caplog, time_yr
+):
+    """With the window [1e5, 1.1e5] yr and dt = 1e4 yr, every step whose
+    interval [Time - dt, Time] overlaps the window warns once. That
+    includes the step that ends past the window but started inside it,
+    since it jumps over the last part of the track, and the step that
+    starts exactly on the window end, where the overlap is a single
+    point and the closed comparison still counts it."""
+    warnings = _capture_undersampling_warnings(caplog, 'sigmoid', dt_yr=1.0e4, time_yr=time_yr)
+    assert len(warnings) == 1
+    assert f'Time = {time_yr:.6e} yr' in warnings[0]
+
+
+@pytest.mark.parametrize(
+    'time_yr',
+    [1.0e5 - 1.0, 1.0e5 + 2.0e4 + 1.0],
+    ids=['step_ends_before_the_window', 'step_starts_after_the_window'],
 )
 def test_parameterized_undersampling_warning_is_confined_to_the_window(caplog, time_yr):
-    """The warning fires only while the step sits inside the migration
-    window, so a coarse timestep cannot spam a whole run. The same
-    timestep inside the window does warn, which is asserted by the
-    bracketing test above."""
+    """A step that does not overlap the migration window stays silent, so
+    a coarse timestep cannot spam a whole run. Each case sits one year
+    beyond an edge that warns in the overlap test above, and the same
+    timestep is then driven inside the window to show the check is live
+    rather than disabled."""
     warnings = _capture_undersampling_warnings(caplog, 'sigmoid', dt_yr=1.0e4, time_yr=time_yr)
     assert warnings == []
-    inside = _capture_undersampling_warnings(caplog, 'sigmoid', dt_yr=1.0e4, time_yr=1.0e5)
+    caplog.clear()
+    inside = _capture_undersampling_warnings(caplog, 'sigmoid', dt_yr=1.0e4, time_yr=1.05e5)
     assert len(inside) == 1

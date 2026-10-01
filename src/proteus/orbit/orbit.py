@@ -30,8 +30,11 @@ def _warn_if_migration_window_unresolved(hf_row: dict, config: Config, dt: float
     The sigmoid and high-eccentricity laws carry the orbit over a window of
     length ``tau_migration``. A timestep comparable to that window samples the
     track at little more than its endpoints, so the run silently reduces to the
-    instant regime while still reporting the smooth one. Fires only while the
-    step sits inside the window, so it cannot spam a whole run.
+    instant regime while still reporting the smooth one. Fires only for a step
+    that overlaps the window, ``[Time - dt, Time]`` against
+    ``[time_migration, time_migration + tau_migration]``, so it cannot spam a
+    whole run. That includes the step that carries the run past the end of the
+    window, since it jumps over the last part of the track.
 
     Parameters
     ----------
@@ -40,7 +43,7 @@ def _warn_if_migration_window_unresolved(hf_row: dict, config: Config, dt: float
         config : Config
             Configuration options
         dt : float
-            Requested timestep [yr]
+            Length of the step that ended at ``hf_row['Time']`` [yr]
     """
     params = config.orbit.parameterized
     if params.migration not in ('sigmoid', 'high_ecc'):
