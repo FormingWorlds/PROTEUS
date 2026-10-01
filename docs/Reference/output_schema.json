@@ -1,4 +1,5 @@
 {
+  "note": "The consumers field names modules that consume each column, and can over-approximate when consumers read keys through variable or template loops, or under-approximate when consumers read keys dynamically at runtime through computed keys. The consumers_possible field lists the subset of consumers that read columns only conditionally, such as for specific species.",
   "keys": [
     {
       "name": "Time",
@@ -13,6 +14,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "atmos_clim",
         "interior_energetics",
@@ -23,7 +25,8 @@
         "plot",
         "star",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "semimajorax",
@@ -32,6 +35,10 @@
       "group": "Orbital and spin parameters of planet",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/orbit/orbit.py",
           "condition": "orbit.evolve = true"
@@ -46,11 +53,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "orbit",
         "plot",
         "star"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "sma_dot_planet",
@@ -68,7 +77,8 @@
           "condition": "orbit.satellite = true"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "separation",
@@ -89,7 +99,8 @@
         "orbit",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "perihelion",
@@ -105,7 +116,8 @@
       ],
       "consumers": [
         "orbit"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "orbital_period",
@@ -122,7 +134,8 @@
       "consumers": [
         "orbit",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "eccentricity",
@@ -131,6 +144,10 @@
       "group": "Orbital and spin parameters of planet",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/orbit/orbit.py",
           "condition": "orbit.evolve = true"
@@ -145,11 +162,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "orbit",
         "plot",
         "star"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "ecc_dot_planet",
@@ -167,7 +186,8 @@
           "condition": "orbit.satellite = true"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "plan_star_am",
@@ -181,7 +201,8 @@
           "condition": "orbit.evolve = true"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "axial_period",
@@ -190,6 +211,10 @@
       "group": "Orbital and spin parameters of planet",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/orbit/common.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/orbit/orbit.py",
           "condition": "orbit.evolve = true"
@@ -208,7 +233,8 @@
         "orbit",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Imk2",
@@ -224,7 +250,8 @@
       ],
       "consumers": [
         "orbit"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "longitude",
@@ -244,7 +271,8 @@
       ],
       "consumers": [
         "atmos_clim"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "latitude",
@@ -264,7 +292,8 @@
       ],
       "consumers": [
         "atmos_clim"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "semimajorax_sat",
@@ -286,7 +315,8 @@
         "orbit",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "sma_dot_sat",
@@ -300,7 +330,8 @@
           "condition": "orbit.satellite = true"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "separation_sat",
@@ -316,7 +347,8 @@
       ],
       "consumers": [
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "perigee",
@@ -332,7 +364,8 @@
       ],
       "consumers": [
         "orbit"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "orbital_period_sat",
@@ -349,7 +382,8 @@
       "consumers": [
         "orbit",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "eccentricity_sat",
@@ -370,7 +404,8 @@
       "consumers": [
         "orbit",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "ecc_dot_sat",
@@ -384,7 +419,8 @@
           "condition": "orbit.satellite = true"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "plan_sat_am",
@@ -401,7 +437,8 @@
       "consumers": [
         "orbit",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "axial_period_sat",
@@ -423,7 +460,8 @@
         "orbit",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "R_sat",
@@ -439,7 +477,8 @@
       ],
       "consumers": [
         "orbit"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "M_sat",
@@ -455,7 +494,8 @@
       ],
       "consumers": [
         "orbit"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "C_sat",
@@ -471,7 +511,8 @@
       ],
       "consumers": [
         "orbit"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "evection_angle",
@@ -492,7 +533,8 @@
       "consumers": [
         "orbit",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "evection_dt_cap_yr",
@@ -508,7 +550,8 @@
       ],
       "consumers": [
         "interior_energetics"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "R_int",
@@ -545,7 +588,8 @@
         "orbit",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "M_int",
@@ -573,7 +617,8 @@
         "interior_struct",
         "orbit",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "M_planet",
@@ -588,6 +633,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_clim",
         "escape",
         "interior_energetics",
@@ -595,7 +641,8 @@
         "outgas",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "M_vaps",
@@ -624,7 +671,8 @@
       "consumers": [
         "outgas",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "R_core",
@@ -649,7 +697,8 @@
       "consumers": [
         "interior_energetics",
         "main loop"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "C_int",
@@ -669,7 +718,8 @@
       ],
       "consumers": [
         "orbit"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "R_solvus",
@@ -687,7 +737,8 @@
         "interior_energetics",
         "interior_struct",
         "main loop"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "P_solvus",
@@ -704,7 +755,8 @@
       "consumers": [
         "interior_struct",
         "main loop"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "T_solvus",
@@ -721,7 +773,8 @@
       "consumers": [
         "interior_struct",
         "main loop"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "P_center",
@@ -736,8 +789,10 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
         "interior_struct"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "P_cmb",
@@ -758,7 +813,8 @@
       "consumers": [
         "interior_energetics",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "core_density",
@@ -787,7 +843,8 @@
       "consumers": [
         "interior_energetics",
         "orbit"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "core_heatcap",
@@ -811,7 +868,8 @@
       ],
       "consumers": [
         "interior_energetics"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "X_H2_int",
@@ -827,7 +885,8 @@
       ],
       "consumers": [
         "interior_struct"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "struct_mass_desync_frac",
@@ -843,7 +902,8 @@
       ],
       "consumers": [
         "interior_struct"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "T_surf",
@@ -889,10 +949,12 @@
         "atmos_chem",
         "atmos_clim",
         "interior_energetics",
+        "interior_struct",
         "main loop",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "T_magma",
@@ -937,11 +999,13 @@
       "consumers": [
         "atmos_clim",
         "interior_energetics",
+        "interior_struct",
         "main loop",
         "outgas",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "T_cmb",
@@ -965,7 +1029,8 @@
       ],
       "consumers": [
         "interior_energetics"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "T_cmb_node",
@@ -987,7 +1052,8 @@
           "condition": "interior_energetics.module = \"spider\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "T_eqm",
@@ -1009,7 +1075,8 @@
         "interior_energetics",
         "interior_struct",
         "star"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "T_skin",
@@ -1025,7 +1092,8 @@
       ],
       "consumers": [
         "atmos_clim"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "T_surface_initial",
@@ -1041,7 +1109,8 @@
       ],
       "consumers": [
         "interior_energetics"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "T_surf_accr",
@@ -1055,7 +1124,8 @@
           "condition": "interior_struct.module = \"zalmoxis\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "DeltaT_accretion",
@@ -1069,7 +1139,8 @@
           "condition": "interior_struct.module = \"zalmoxis\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "DeltaT_adiabat",
@@ -1083,7 +1154,8 @@
           "condition": "interior_struct.module = \"zalmoxis\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "DeltaT_differentiation",
@@ -1097,7 +1169,8 @@
           "condition": "interior_struct.module = \"zalmoxis\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "U_grav_diff",
@@ -1111,7 +1184,8 @@
           "condition": "interior_struct.module = \"zalmoxis\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "U_grav_undiff",
@@ -1125,7 +1199,8 @@
           "condition": "interior_struct.module = \"zalmoxis\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "F_int",
@@ -1168,7 +1243,8 @@
         "interior_energetics",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "F_atm",
@@ -1200,7 +1276,8 @@
         "main loop",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "F_net",
@@ -1214,7 +1291,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "F_olr",
@@ -1239,7 +1317,8 @@
       "consumers": [
         "atmos_clim",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "F_sct",
@@ -1264,7 +1343,8 @@
       "consumers": [
         "atmos_clim",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "F_ins",
@@ -1282,7 +1362,8 @@
         "atmos_clim",
         "plot",
         "star"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "F_xuv",
@@ -1299,7 +1380,8 @@
       "consumers": [
         "escape",
         "star"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "bol_scale",
@@ -1315,7 +1397,8 @@
       ],
       "consumers": [
         "star"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "tau_atm_TOA",
@@ -1329,7 +1412,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "tau_atm_surface",
@@ -1343,7 +1427,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "atm_Ra_max",
@@ -1357,7 +1442,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "atm_t_conv_over_t_rad",
@@ -1371,7 +1457,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "atm_converged",
@@ -1385,7 +1472,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "atm_levels_stale",
@@ -1401,7 +1489,8 @@
       ],
       "consumers": [
         "main loop"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "F_tidal",
@@ -1436,7 +1525,8 @@
         "orbit",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "F_radio",
@@ -1470,7 +1560,8 @@
         "interior_energetics",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "F_cmb",
@@ -1488,7 +1579,8 @@
           "condition": "interior_energetics.module = \"spider\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "gravity",
@@ -1516,7 +1608,8 @@
         "interior_energetics",
         "interior_struct",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Phi_global",
@@ -1557,7 +1650,8 @@
         "outgas",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Phi_global_vol",
@@ -1585,9 +1679,14 @@
         {
           "file": "src/proteus/interior_energetics/spider.py",
           "condition": "interior_energetics.module = \"spider\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "RF_depth",
@@ -1615,12 +1714,17 @@
         {
           "file": "src/proteus/interior_energetics/spider.py",
           "condition": "interior_energetics.module = \"spider\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
         }
       ],
       "consumers": [
         "interior_energetics",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "M_core",
@@ -1653,7 +1757,8 @@
       "consumers": [
         "interior_energetics",
         "interior_struct"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "M_mantle",
@@ -1691,7 +1796,8 @@
         "interior_energetics",
         "interior_struct",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "M_mantle_solid",
@@ -1728,7 +1834,8 @@
       "consumers": [
         "interior_energetics",
         "interior_struct"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "M_mantle_liquid",
@@ -1765,7 +1872,8 @@
       "consumers": [
         "interior_energetics",
         "interior_struct"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "T_pot",
@@ -1793,9 +1901,14 @@
         {
           "file": "src/proteus/interior_energetics/spider.py",
           "condition": "interior_energetics.module = \"spider\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "boundary_layer_thickness",
@@ -1821,7 +1934,8 @@
           "condition": "interior_energetics.module = \"spider\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "E_th_mantle",
@@ -1843,7 +1957,8 @@
           "condition": "interior_energetics.module = \"spider\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "E_state_J",
@@ -1857,7 +1972,8 @@
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "E_state_cons_J",
@@ -1873,7 +1989,8 @@
       ],
       "consumers": [
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Q_radio_W",
@@ -1887,7 +2004,8 @@
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Q_tidal_W",
@@ -1901,7 +2019,8 @@
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "step_dE_F_int_J",
@@ -1917,7 +2036,8 @@
       ],
       "consumers": [
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "step_dE_F_cmb_J",
@@ -1933,7 +2053,8 @@
       ],
       "consumers": [
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "step_dE_Q_radio_J",
@@ -1949,7 +2070,8 @@
       ],
       "consumers": [
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "step_dE_Q_tidal_J",
@@ -1965,7 +2087,8 @@
       ],
       "consumers": [
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "step_dE_Q_radio_cons_J",
@@ -1979,7 +2102,8 @@
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "step_dE_Q_tidal_cons_J",
@@ -1993,7 +2117,8 @@
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "step_solver_residual_J",
@@ -2009,7 +2134,8 @@
       ],
       "consumers": [
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "step_dE_compression_J",
@@ -2023,7 +2149,8 @@
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "step_dE_state_heat_J",
@@ -2039,7 +2166,34 @@
       ],
       "consumers": [
         "utils"
-      ]
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "step_dE_impact_J",
+      "unit": "J",
+      "description": "giant-impact re-melt heat injection (both residual sides)",
+      "group": "Energy-conservation columns",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_energetics",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "E_state_heat_cons_J",
@@ -2053,7 +2207,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "dE_predicted_cons_J",
@@ -2067,7 +2222,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "E_residual_cons_J",
@@ -2081,7 +2237,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "E_residual_cons_frac",
@@ -2095,7 +2252,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "solver_residual_J",
@@ -2109,7 +2267,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Cp_eff",
@@ -2131,7 +2290,8 @@
           "condition": "interior_energetics.module = \"spider\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "M_star",
@@ -2147,7 +2307,8 @@
       ],
       "consumers": [
         "orbit"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "R_star",
@@ -2168,7 +2329,8 @@
         "orbit",
         "plot",
         "star"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "age_star",
@@ -2185,7 +2347,8 @@
       "consumers": [
         "main loop",
         "star"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "T_star",
@@ -2202,7 +2365,8 @@
       "consumers": [
         "observe",
         "star"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "p_obs",
@@ -2224,7 +2388,10 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "atmos_clim"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "R_obs",
@@ -2251,7 +2418,8 @@
         "escape",
         "orbit",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "T_obs",
@@ -2274,8 +2442,10 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "escape"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "g_obs",
@@ -2297,7 +2467,10 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "atmos_clim"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "rho_obs",
@@ -2311,7 +2484,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "transit_depth",
@@ -2327,7 +2501,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "eclipse_depth",
@@ -2343,7 +2518,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "albedo_pl",
@@ -2361,7 +2537,8 @@
         "atmos_clim",
         "plot",
         "star"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "bond_albedo",
@@ -2389,7 +2566,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "M_ele",
@@ -2408,8 +2586,10 @@
         }
       ],
       "consumers": [
-        "interior_energetics"
-      ]
+        "interior_energetics",
+        "outgas"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "M_atm",
@@ -2440,7 +2620,8 @@
         "outgas",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "P_surf",
@@ -2488,7 +2669,8 @@
         "outgas",
         "plot",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "P_vap",
@@ -2517,7 +2699,8 @@
       "consumers": [
         "outgas",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "P_vol",
@@ -2546,7 +2729,8 @@
       "consumers": [
         "outgas",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "atm_kg_per_mol",
@@ -2584,7 +2768,8 @@
         "atmos_chem",
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "M_vol_atm",
@@ -2612,7 +2797,8 @@
       ],
       "consumers": [
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "fO2_shift_IW_derived",
@@ -2640,7 +2826,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "fO2_vapourise_derived",
@@ -2656,7 +2843,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "fO2_vapourise_shift_IW_derived",
@@ -2672,7 +2860,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O_res",
@@ -2698,7 +2887,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "O_vapourised_kg",
@@ -2712,13 +2902,14 @@
           "condition": "outgas.vapourise = true"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "M_vol_initial",
       "unit": "kg",
       "description": "bulk volatile inventory baseline",
-      "group": "Desiccation escape balance",
+      "group": "Atmospheric composition from outgassing",
       "origin": "literal",
       "producers": [
         {
@@ -2729,30 +2920,37 @@
       "consumers": [
         "escape",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_kg_cumulative",
       "unit": "kg",
-      "description": "cumulative escaped mass",
-      "group": "Desiccation escape balance",
+      "description": "cumulative mass lost to space (escape + impact stripping)",
+      "group": "Atmospheric composition from outgassing",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_clamp_frac",
       "unit": "1",
       "description": "requested per-step loss / escapable reservoir",
-      "group": "Desiccation escape balance",
+      "group": "Atmospheric composition from outgassing",
       "origin": "literal",
       "producers": [
         {
@@ -2766,13 +2964,14 @@
       ],
       "consumers": [
         "escape"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_step_kg",
       "unit": "kg",
       "description": "loss applied on this step, after the cap",
-      "group": "Desiccation escape balance",
+      "group": "Atmospheric composition from outgassing",
       "origin": "literal",
       "producers": [
         {
@@ -2786,7 +2985,43 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "M_accreted_rock",
+      "unit": "kg",
+      "description": "cumulative rock mass added by giant impacts",
+      "group": "Giant-impact accretion ledger",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "accretion",
+        "main loop"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "n_impacts_applied",
+      "unit": "1",
+      "description": "count of giant impacts applied",
+      "group": "Giant-impact accretion ledger",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "accretion"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2O_mol_atm",
@@ -2819,7 +3054,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2O_mol_solid",
@@ -2847,7 +3083,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2O_mol_liquid",
@@ -2875,7 +3112,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2O_mol_total",
@@ -2907,7 +3145,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2O_kg_atm",
@@ -2938,8 +3177,10 @@
         }
       ],
       "consumers": [
-        "outgas"
-      ]
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2O_kg_solid",
@@ -2966,8 +3207,10 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2O_kg_liquid",
@@ -2994,9 +3237,11 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
         "interior_struct",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2O_kg_total",
@@ -3028,7 +3273,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2O_vmr",
@@ -3066,7 +3312,8 @@
         "atmos_chem",
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2O_bar",
@@ -3103,7 +3350,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2O_vmr_xuv",
@@ -3125,7 +3373,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "CO2_mol_atm",
@@ -3158,7 +3411,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO2_mol_solid",
@@ -3186,7 +3440,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO2_mol_liquid",
@@ -3214,7 +3469,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO2_mol_total",
@@ -3246,7 +3502,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO2_kg_atm",
@@ -3277,8 +3534,10 @@
         }
       ],
       "consumers": [
-        "outgas"
-      ]
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO2_kg_solid",
@@ -3306,7 +3565,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO2_kg_liquid",
@@ -3334,7 +3594,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO2_kg_total",
@@ -3366,7 +3627,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO2_vmr",
@@ -3404,7 +3666,8 @@
         "atmos_chem",
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO2_bar",
@@ -3441,7 +3704,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO2_vmr_xuv",
@@ -3463,7 +3727,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "O2_mol_atm",
@@ -3496,7 +3765,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O2_mol_solid",
@@ -3524,7 +3794,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O2_mol_liquid",
@@ -3552,7 +3823,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O2_mol_total",
@@ -3584,7 +3856,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O2_kg_atm",
@@ -3615,8 +3888,10 @@
         }
       ],
       "consumers": [
-        "outgas"
-      ]
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O2_kg_solid",
@@ -3644,7 +3919,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O2_kg_liquid",
@@ -3672,7 +3948,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O2_kg_total",
@@ -3704,7 +3981,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O2_vmr",
@@ -3742,7 +4020,8 @@
         "atmos_chem",
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O2_bar",
@@ -3779,7 +4058,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O2_vmr_xuv",
@@ -3801,7 +4081,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "H2_mol_atm",
@@ -3838,7 +4123,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2_mol_solid",
@@ -3870,7 +4156,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2_mol_liquid",
@@ -3902,7 +4189,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2_mol_total",
@@ -3938,7 +4226,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2_kg_atm",
@@ -3974,8 +4263,10 @@
       ],
       "consumers": [
         "interior_struct",
-        "outgas"
-      ]
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2_kg_solid",
@@ -4006,8 +4297,10 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2_kg_liquid",
@@ -4038,9 +4331,11 @@
         }
       ],
       "consumers": [
+        "interior_energetics",
         "interior_struct",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2_kg_total",
@@ -4073,7 +4368,8 @@
       "consumers": [
         "interior_struct",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2_vmr",
@@ -4111,7 +4407,8 @@
         "atmos_chem",
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2_bar",
@@ -4152,7 +4449,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2_vmr_xuv",
@@ -4174,7 +4472,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "CH4_mol_atm",
@@ -4207,7 +4510,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CH4_mol_solid",
@@ -4235,7 +4539,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CH4_mol_liquid",
@@ -4263,7 +4568,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CH4_mol_total",
@@ -4295,7 +4601,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CH4_kg_atm",
@@ -4326,8 +4633,10 @@
         }
       ],
       "consumers": [
-        "outgas"
-      ]
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CH4_kg_solid",
@@ -4355,7 +4664,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CH4_kg_liquid",
@@ -4383,7 +4693,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CH4_kg_total",
@@ -4415,7 +4726,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CH4_vmr",
@@ -4453,7 +4765,8 @@
         "atmos_chem",
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CH4_bar",
@@ -4490,7 +4803,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CH4_vmr_xuv",
@@ -4512,7 +4826,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "CO_mol_atm",
@@ -4545,7 +4864,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO_mol_solid",
@@ -4573,7 +4893,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO_mol_liquid",
@@ -4601,7 +4922,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO_mol_total",
@@ -4633,7 +4955,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO_kg_atm",
@@ -4664,8 +4987,10 @@
         }
       ],
       "consumers": [
-        "outgas"
-      ]
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO_kg_solid",
@@ -4693,7 +5018,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO_kg_liquid",
@@ -4721,7 +5047,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO_kg_total",
@@ -4753,7 +5080,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO_vmr",
@@ -4791,7 +5119,8 @@
         "atmos_chem",
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO_bar",
@@ -4828,7 +5157,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CO_vmr_xuv",
@@ -4850,7 +5180,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "N2_mol_atm",
@@ -4883,7 +5218,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N2_mol_solid",
@@ -4911,7 +5247,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N2_mol_liquid",
@@ -4939,7 +5276,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N2_mol_total",
@@ -4971,7 +5309,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N2_kg_atm",
@@ -5002,8 +5341,10 @@
         }
       ],
       "consumers": [
-        "outgas"
-      ]
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N2_kg_solid",
@@ -5031,7 +5372,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N2_kg_liquid",
@@ -5059,7 +5401,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N2_kg_total",
@@ -5091,7 +5434,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N2_vmr",
@@ -5129,7 +5473,8 @@
         "atmos_chem",
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N2_bar",
@@ -5166,7 +5511,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N2_vmr_xuv",
@@ -5188,7 +5534,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "NH3_mol_atm",
@@ -5221,7 +5572,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NH3_mol_solid",
@@ -5249,7 +5601,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NH3_mol_liquid",
@@ -5277,7 +5630,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NH3_mol_total",
@@ -5309,7 +5663,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NH3_kg_atm",
@@ -5340,8 +5695,10 @@
         }
       ],
       "consumers": [
-        "outgas"
-      ]
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NH3_kg_solid",
@@ -5369,7 +5726,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NH3_kg_liquid",
@@ -5397,7 +5755,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NH3_kg_total",
@@ -5429,7 +5788,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NH3_vmr",
@@ -5467,7 +5827,8 @@
         "atmos_chem",
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NH3_bar",
@@ -5504,7 +5865,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NH3_vmr_xuv",
@@ -5526,7 +5888,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "S2_mol_atm",
@@ -5559,7 +5926,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S2_mol_solid",
@@ -5587,7 +5955,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S2_mol_liquid",
@@ -5615,7 +5984,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S2_mol_total",
@@ -5647,7 +6017,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S2_kg_atm",
@@ -5678,8 +6049,10 @@
         }
       ],
       "consumers": [
-        "outgas"
-      ]
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S2_kg_solid",
@@ -5707,7 +6080,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S2_kg_liquid",
@@ -5735,7 +6109,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S2_kg_total",
@@ -5767,7 +6142,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S2_vmr",
@@ -5805,7 +6181,8 @@
         "atmos_chem",
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S2_bar",
@@ -5842,7 +6219,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S2_vmr_xuv",
@@ -5864,7 +6242,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "SO2_mol_atm",
@@ -5897,7 +6280,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SO2_mol_solid",
@@ -5925,7 +6309,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SO2_mol_liquid",
@@ -5953,7 +6338,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SO2_mol_total",
@@ -5985,7 +6371,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SO2_kg_atm",
@@ -6016,8 +6403,10 @@
         }
       ],
       "consumers": [
-        "outgas"
-      ]
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SO2_kg_solid",
@@ -6045,7 +6434,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SO2_kg_liquid",
@@ -6073,7 +6463,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SO2_kg_total",
@@ -6105,7 +6496,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SO2_vmr",
@@ -6143,7 +6535,8 @@
         "atmos_chem",
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SO2_bar",
@@ -6180,7 +6573,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SO2_vmr_xuv",
@@ -6202,7 +6596,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "H2S_mol_atm",
@@ -6235,7 +6634,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2S_mol_solid",
@@ -6263,7 +6663,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2S_mol_liquid",
@@ -6291,7 +6692,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2S_mol_total",
@@ -6323,7 +6725,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2S_kg_atm",
@@ -6354,8 +6757,10 @@
         }
       ],
       "consumers": [
-        "outgas"
-      ]
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2S_kg_solid",
@@ -6383,7 +6788,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2S_kg_liquid",
@@ -6411,7 +6817,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2S_kg_total",
@@ -6443,7 +6850,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2S_vmr",
@@ -6481,7 +6889,8 @@
         "atmos_chem",
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2S_bar",
@@ -6518,7 +6927,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H2S_vmr_xuv",
@@ -6540,7 +6950,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "He_mol_atm",
@@ -6573,7 +6988,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "He_mol_solid",
@@ -6601,7 +7017,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "He_mol_liquid",
@@ -6629,7 +7046,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "He_mol_total",
@@ -6661,7 +7079,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "He_kg_atm",
@@ -6692,11 +7111,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
-      ]
+        "plot",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "He_kg_solid",
@@ -6724,7 +7146,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "He_kg_liquid",
@@ -6752,7 +7175,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "He_kg_total",
@@ -6761,6 +7185,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -6787,11 +7215,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "He_vmr",
@@ -6828,7 +7259,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "He_bar",
@@ -6865,7 +7297,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "He_vmr_xuv",
@@ -6887,7 +7320,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Ne_mol_atm",
@@ -6920,7 +7358,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ne_mol_solid",
@@ -6948,7 +7387,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ne_mol_liquid",
@@ -6976,7 +7416,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ne_mol_total",
@@ -7008,7 +7449,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ne_kg_atm",
@@ -7039,11 +7481,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
-      ]
+        "plot",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ne_kg_solid",
@@ -7071,7 +7516,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ne_kg_liquid",
@@ -7099,7 +7545,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ne_kg_total",
@@ -7108,6 +7555,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -7134,11 +7585,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ne_vmr",
@@ -7175,7 +7629,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ne_bar",
@@ -7212,7 +7667,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ne_vmr_xuv",
@@ -7234,7 +7690,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Ar_mol_atm",
@@ -7267,7 +7728,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ar_mol_solid",
@@ -7295,7 +7757,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ar_mol_liquid",
@@ -7323,7 +7786,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ar_mol_total",
@@ -7355,7 +7819,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ar_kg_atm",
@@ -7386,11 +7851,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
-      ]
+        "plot",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ar_kg_solid",
@@ -7418,7 +7886,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ar_kg_liquid",
@@ -7446,7 +7915,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ar_kg_total",
@@ -7455,6 +7925,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -7481,11 +7955,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ar_vmr",
@@ -7522,7 +7999,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ar_bar",
@@ -7559,7 +8037,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ar_vmr_xuv",
@@ -7581,7 +8060,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Kr_mol_atm",
@@ -7614,7 +8098,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Kr_mol_solid",
@@ -7642,7 +8127,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Kr_mol_liquid",
@@ -7670,7 +8156,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Kr_mol_total",
@@ -7702,7 +8189,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Kr_kg_atm",
@@ -7733,11 +8221,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
-      ]
+        "plot",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Kr_kg_solid",
@@ -7765,7 +8256,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Kr_kg_liquid",
@@ -7793,7 +8285,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Kr_kg_total",
@@ -7802,6 +8295,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -7828,11 +8325,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Kr_vmr",
@@ -7869,7 +8369,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Kr_bar",
@@ -7906,7 +8407,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Kr_vmr_xuv",
@@ -7928,7 +8430,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Xe_mol_atm",
@@ -7961,7 +8468,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Xe_mol_solid",
@@ -7989,7 +8497,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Xe_mol_liquid",
@@ -8017,7 +8526,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Xe_mol_total",
@@ -8049,7 +8559,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Xe_kg_atm",
@@ -8080,11 +8591,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
-        "plot"
-      ]
+        "plot",
+        "utils"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Xe_kg_solid",
@@ -8112,7 +8626,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Xe_kg_liquid",
@@ -8140,7 +8655,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Xe_kg_total",
@@ -8149,6 +8665,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -8175,11 +8695,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Xe_vmr",
@@ -8216,7 +8739,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Xe_bar",
@@ -8253,7 +8777,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Xe_vmr_xuv",
@@ -8275,7 +8800,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "SiO_mol_atm",
@@ -8308,7 +8838,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO_mol_solid",
@@ -8336,7 +8867,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO_mol_liquid",
@@ -8364,7 +8896,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO_mol_total",
@@ -8396,7 +8929,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO_kg_atm",
@@ -8428,7 +8962,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO_kg_solid",
@@ -8456,7 +8991,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO_kg_liquid",
@@ -8484,7 +9020,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO_kg_total",
@@ -8516,7 +9053,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO_vmr",
@@ -8553,7 +9091,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO_bar",
@@ -8590,7 +9129,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO_vmr_xuv",
@@ -8612,7 +9152,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "SiO2_mol_atm",
@@ -8645,7 +9190,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO2_mol_solid",
@@ -8673,7 +9219,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO2_mol_liquid",
@@ -8701,7 +9248,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO2_mol_total",
@@ -8733,7 +9281,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO2_kg_atm",
@@ -8765,7 +9314,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO2_kg_solid",
@@ -8793,7 +9343,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO2_kg_liquid",
@@ -8821,7 +9372,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO2_kg_total",
@@ -8853,7 +9405,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO2_vmr",
@@ -8890,7 +9443,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO2_bar",
@@ -8927,7 +9481,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiO2_vmr_xuv",
@@ -8949,7 +9504,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Si_mol_atm",
@@ -8982,7 +9542,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Si_mol_solid",
@@ -9010,7 +9571,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Si_mol_liquid",
@@ -9038,7 +9600,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Si_mol_total",
@@ -9070,7 +9633,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Si_kg_atm",
@@ -9101,11 +9665,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Si_kg_solid",
@@ -9133,7 +9699,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Si_kg_liquid",
@@ -9161,7 +9728,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Si_kg_total",
@@ -9170,6 +9738,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -9196,11 +9768,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Si_vmr",
@@ -9237,7 +9811,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Si_bar",
@@ -9274,7 +9849,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Si_vmr_xuv",
@@ -9296,7 +9872,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Na_mol_atm",
@@ -9329,7 +9910,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na_mol_solid",
@@ -9357,7 +9939,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na_mol_liquid",
@@ -9385,7 +9968,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na_mol_total",
@@ -9417,7 +10001,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na_kg_atm",
@@ -9448,11 +10033,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na_kg_solid",
@@ -9480,7 +10067,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na_kg_liquid",
@@ -9508,7 +10096,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na_kg_total",
@@ -9517,6 +10106,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -9543,11 +10136,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na_vmr",
@@ -9584,7 +10179,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na_bar",
@@ -9621,7 +10217,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na_vmr_xuv",
@@ -9643,7 +10240,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "K_mol_atm",
@@ -9676,7 +10278,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "K_mol_solid",
@@ -9704,7 +10307,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "K_mol_liquid",
@@ -9732,7 +10336,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "K_mol_total",
@@ -9764,7 +10369,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "K_kg_atm",
@@ -9795,11 +10401,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "K_kg_solid",
@@ -9827,7 +10435,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "K_kg_liquid",
@@ -9855,7 +10464,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "K_kg_total",
@@ -9864,6 +10474,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -9890,11 +10504,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "K_vmr",
@@ -9931,7 +10547,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "K_bar",
@@ -9968,7 +10585,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "K_vmr_xuv",
@@ -9990,7 +10608,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Ti_mol_atm",
@@ -10023,7 +10646,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ti_mol_solid",
@@ -10051,7 +10675,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ti_mol_liquid",
@@ -10079,7 +10704,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ti_mol_total",
@@ -10111,7 +10737,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ti_kg_atm",
@@ -10142,11 +10769,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ti_kg_solid",
@@ -10174,7 +10803,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ti_kg_liquid",
@@ -10202,7 +10832,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ti_kg_total",
@@ -10211,6 +10842,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -10237,11 +10872,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ti_vmr",
@@ -10278,7 +10915,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ti_bar",
@@ -10315,7 +10953,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ti_vmr_xuv",
@@ -10337,7 +10976,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "TiO_mol_atm",
@@ -10370,7 +11014,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO_mol_solid",
@@ -10398,7 +11043,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO_mol_liquid",
@@ -10426,7 +11072,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO_mol_total",
@@ -10458,7 +11105,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO_kg_atm",
@@ -10490,7 +11138,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO_kg_solid",
@@ -10518,7 +11167,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO_kg_liquid",
@@ -10546,7 +11196,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO_kg_total",
@@ -10578,7 +11229,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO_vmr",
@@ -10615,7 +11267,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO_bar",
@@ -10652,7 +11305,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO_vmr_xuv",
@@ -10674,7 +11328,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "TiO2_mol_atm",
@@ -10707,7 +11366,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO2_mol_solid",
@@ -10735,7 +11395,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO2_mol_liquid",
@@ -10763,7 +11424,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO2_mol_total",
@@ -10795,7 +11457,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO2_kg_atm",
@@ -10827,7 +11490,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO2_kg_solid",
@@ -10855,7 +11519,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO2_kg_liquid",
@@ -10883,7 +11548,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO2_kg_total",
@@ -10915,7 +11581,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO2_vmr",
@@ -10952,7 +11619,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO2_bar",
@@ -10989,7 +11657,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "TiO2_vmr_xuv",
@@ -11011,7 +11680,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Mg_mol_atm",
@@ -11044,7 +11718,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg_mol_solid",
@@ -11072,7 +11747,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg_mol_liquid",
@@ -11100,7 +11776,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg_mol_total",
@@ -11132,7 +11809,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg_kg_atm",
@@ -11163,11 +11841,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg_kg_solid",
@@ -11195,7 +11875,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg_kg_liquid",
@@ -11223,7 +11904,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg_kg_total",
@@ -11232,6 +11914,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -11258,11 +11944,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg_vmr",
@@ -11299,7 +11987,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg_bar",
@@ -11336,7 +12025,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg_vmr_xuv",
@@ -11358,7 +12048,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "MgO_mol_atm",
@@ -11391,7 +12086,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "MgO_mol_solid",
@@ -11419,7 +12115,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "MgO_mol_liquid",
@@ -11447,7 +12144,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "MgO_mol_total",
@@ -11479,7 +12177,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "MgO_kg_atm",
@@ -11511,7 +12210,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "MgO_kg_solid",
@@ -11539,7 +12239,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "MgO_kg_liquid",
@@ -11567,7 +12268,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "MgO_kg_total",
@@ -11599,7 +12301,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "MgO_vmr",
@@ -11636,7 +12339,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "MgO_bar",
@@ -11673,7 +12377,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "MgO_vmr_xuv",
@@ -11695,7 +12400,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Al_mol_atm",
@@ -11728,7 +12438,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Al_mol_solid",
@@ -11756,7 +12467,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Al_mol_liquid",
@@ -11784,7 +12496,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Al_mol_total",
@@ -11816,7 +12529,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Al_kg_atm",
@@ -11847,11 +12561,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Al_kg_solid",
@@ -11879,7 +12595,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Al_kg_liquid",
@@ -11907,7 +12624,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Al_kg_total",
@@ -11916,6 +12634,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -11942,11 +12664,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Al_vmr",
@@ -11983,7 +12707,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Al_bar",
@@ -12020,7 +12745,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Al_vmr_xuv",
@@ -12042,7 +12768,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "HAlO2_mol_atm",
@@ -12075,7 +12806,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "HAlO2_mol_solid",
@@ -12103,7 +12835,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "HAlO2_mol_liquid",
@@ -12131,7 +12864,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "HAlO2_mol_total",
@@ -12163,7 +12897,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "HAlO2_kg_atm",
@@ -12195,7 +12930,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "HAlO2_kg_solid",
@@ -12223,7 +12959,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "HAlO2_kg_liquid",
@@ -12251,7 +12988,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "HAlO2_kg_total",
@@ -12283,7 +13021,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "HAlO2_vmr",
@@ -12320,7 +13059,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "HAlO2_bar",
@@ -12357,7 +13097,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "HAlO2_vmr_xuv",
@@ -12379,7 +13120,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "SiH_mol_atm",
@@ -12412,7 +13158,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH_mol_solid",
@@ -12440,7 +13187,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH_mol_liquid",
@@ -12468,7 +13216,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH_mol_total",
@@ -12500,7 +13249,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH_kg_atm",
@@ -12532,7 +13282,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH_kg_solid",
@@ -12560,7 +13311,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH_kg_liquid",
@@ -12588,7 +13340,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH_kg_total",
@@ -12620,7 +13373,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH_vmr",
@@ -12657,7 +13411,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH_bar",
@@ -12694,7 +13449,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH_vmr_xuv",
@@ -12716,7 +13472,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "SiH4_mol_atm",
@@ -12749,7 +13510,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH4_mol_solid",
@@ -12777,7 +13539,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH4_mol_liquid",
@@ -12805,7 +13568,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH4_mol_total",
@@ -12837,7 +13601,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH4_kg_atm",
@@ -12869,7 +13634,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH4_kg_solid",
@@ -12897,7 +13663,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH4_kg_liquid",
@@ -12925,7 +13692,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH4_kg_total",
@@ -12957,7 +13725,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH4_vmr",
@@ -12994,7 +13763,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH4_bar",
@@ -13031,7 +13801,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "SiH4_vmr_xuv",
@@ -13053,7 +13824,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Fe_mol_atm",
@@ -13086,7 +13862,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Fe_mol_solid",
@@ -13114,7 +13891,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Fe_mol_liquid",
@@ -13142,7 +13920,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Fe_mol_total",
@@ -13174,7 +13953,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Fe_kg_atm",
@@ -13205,11 +13985,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Fe_kg_solid",
@@ -13237,7 +14019,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Fe_kg_liquid",
@@ -13265,7 +14048,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Fe_kg_total",
@@ -13274,6 +14058,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -13300,11 +14088,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Fe_vmr",
@@ -13341,7 +14131,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Fe_bar",
@@ -13378,7 +14169,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Fe_vmr_xuv",
@@ -13400,7 +14192,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "FeO_mol_atm",
@@ -13433,7 +14230,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO_mol_solid",
@@ -13461,7 +14259,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO_mol_liquid",
@@ -13489,7 +14288,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO_mol_total",
@@ -13521,7 +14321,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO_kg_atm",
@@ -13553,7 +14354,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO_kg_solid",
@@ -13581,7 +14383,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO_kg_liquid",
@@ -13609,7 +14412,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO_kg_total",
@@ -13641,7 +14445,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO_vmr",
@@ -13678,7 +14483,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO_bar",
@@ -13715,7 +14521,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO_vmr_xuv",
@@ -13737,7 +14544,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "FeO2H2_mol_atm",
@@ -13770,7 +14582,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO2H2_mol_solid",
@@ -13798,7 +14611,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO2H2_mol_liquid",
@@ -13826,7 +14640,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO2H2_mol_total",
@@ -13858,7 +14673,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO2H2_kg_atm",
@@ -13890,7 +14706,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO2H2_kg_solid",
@@ -13918,7 +14735,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO2H2_kg_liquid",
@@ -13946,7 +14764,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO2H2_kg_total",
@@ -13978,7 +14797,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO2H2_vmr",
@@ -14015,7 +14835,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO2H2_bar",
@@ -14052,7 +14873,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "FeO2H2_vmr_xuv",
@@ -14074,7 +14896,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "CaO_mol_atm",
@@ -14107,7 +14934,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CaO_mol_solid",
@@ -14135,7 +14963,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CaO_mol_liquid",
@@ -14163,7 +14992,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CaO_mol_total",
@@ -14195,7 +15025,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CaO_kg_atm",
@@ -14227,7 +15058,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CaO_kg_solid",
@@ -14255,7 +15087,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CaO_kg_liquid",
@@ -14283,7 +15116,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CaO_kg_total",
@@ -14315,7 +15149,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CaO_vmr",
@@ -14352,7 +15187,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CaO_bar",
@@ -14389,7 +15225,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "CaO_vmr_xuv",
@@ -14411,7 +15248,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "NaOH_mol_atm",
@@ -14444,7 +15286,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaOH_mol_solid",
@@ -14472,7 +15315,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaOH_mol_liquid",
@@ -14500,7 +15344,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaOH_mol_total",
@@ -14532,7 +15377,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaOH_kg_atm",
@@ -14564,7 +15410,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaOH_kg_solid",
@@ -14592,7 +15439,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaOH_kg_liquid",
@@ -14620,7 +15468,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaOH_kg_total",
@@ -14652,7 +15501,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaOH_vmr",
@@ -14689,7 +15539,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaOH_bar",
@@ -14726,7 +15577,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaOH_vmr_xuv",
@@ -14748,7 +15600,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Ca_mol_atm",
@@ -14781,7 +15638,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ca_mol_solid",
@@ -14809,7 +15667,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ca_mol_liquid",
@@ -14837,7 +15696,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ca_mol_total",
@@ -14869,7 +15729,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ca_kg_atm",
@@ -14900,11 +15761,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ca_kg_solid",
@@ -14932,7 +15795,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ca_kg_liquid",
@@ -14960,7 +15824,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ca_kg_total",
@@ -14969,6 +15834,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -14995,11 +15864,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ca_vmr",
@@ -15036,7 +15907,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ca_bar",
@@ -15073,7 +15945,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Ca_vmr_xuv",
@@ -15095,7 +15968,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "KOH_mol_atm",
@@ -15128,7 +16006,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "KOH_mol_solid",
@@ -15156,7 +16035,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "KOH_mol_liquid",
@@ -15184,7 +16064,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "KOH_mol_total",
@@ -15216,7 +16097,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "KOH_kg_atm",
@@ -15248,7 +16130,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "KOH_kg_solid",
@@ -15276,7 +16159,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "KOH_kg_liquid",
@@ -15304,7 +16188,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "KOH_kg_total",
@@ -15336,7 +16221,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "KOH_vmr",
@@ -15373,7 +16259,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "KOH_bar",
@@ -15410,7 +16297,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "KOH_vmr_xuv",
@@ -15432,7 +16320,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "V_mol_atm",
@@ -15465,7 +16358,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "V_mol_solid",
@@ -15493,7 +16387,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "V_mol_liquid",
@@ -15521,7 +16416,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "V_mol_total",
@@ -15553,7 +16449,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "V_kg_atm",
@@ -15584,11 +16481,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "V_kg_solid",
@@ -15616,7 +16515,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "V_kg_liquid",
@@ -15644,7 +16544,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "V_kg_total",
@@ -15653,6 +16554,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -15679,11 +16584,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "V_vmr",
@@ -15720,7 +16627,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "V_bar",
@@ -15757,7 +16665,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "V_vmr_xuv",
@@ -15779,7 +16688,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Mg2_mol_atm",
@@ -15812,7 +16726,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg2_mol_solid",
@@ -15840,7 +16755,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg2_mol_liquid",
@@ -15868,7 +16784,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg2_mol_total",
@@ -15900,7 +16817,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg2_kg_atm",
@@ -15932,7 +16850,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg2_kg_solid",
@@ -15960,7 +16879,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg2_kg_liquid",
@@ -15988,7 +16908,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg2_kg_total",
@@ -16020,7 +16941,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg2_vmr",
@@ -16057,7 +16979,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg2_bar",
@@ -16094,7 +17017,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Mg2_vmr_xuv",
@@ -16116,7 +17040,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "VO_mol_atm",
@@ -16149,7 +17078,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "VO_mol_solid",
@@ -16177,7 +17107,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "VO_mol_liquid",
@@ -16205,7 +17136,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "VO_mol_total",
@@ -16237,7 +17169,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "VO_kg_atm",
@@ -16269,7 +17202,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "VO_kg_solid",
@@ -16297,7 +17231,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "VO_kg_liquid",
@@ -16325,7 +17260,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "VO_kg_total",
@@ -16357,7 +17293,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "VO_vmr",
@@ -16394,7 +17331,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "VO_bar",
@@ -16431,7 +17369,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "VO_vmr_xuv",
@@ -16453,7 +17392,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "AlO_mol_atm",
@@ -16486,7 +17430,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "AlO_mol_solid",
@@ -16514,7 +17459,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "AlO_mol_liquid",
@@ -16542,7 +17488,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "AlO_mol_total",
@@ -16574,7 +17521,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "AlO_kg_atm",
@@ -16606,7 +17554,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "AlO_kg_solid",
@@ -16634,7 +17583,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "AlO_kg_liquid",
@@ -16662,7 +17612,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "AlO_kg_total",
@@ -16694,7 +17645,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "AlO_vmr",
@@ -16731,7 +17683,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "AlO_bar",
@@ -16768,7 +17721,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "AlO_vmr_xuv",
@@ -16790,7 +17744,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "Na2_mol_atm",
@@ -16823,7 +17782,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na2_mol_solid",
@@ -16851,7 +17811,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na2_mol_liquid",
@@ -16879,7 +17840,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na2_mol_total",
@@ -16911,7 +17873,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na2_kg_atm",
@@ -16943,7 +17906,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na2_kg_solid",
@@ -16971,7 +17935,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na2_kg_liquid",
@@ -16999,7 +17964,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na2_kg_total",
@@ -17031,7 +17997,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na2_vmr",
@@ -17068,7 +18035,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na2_bar",
@@ -17105,7 +18073,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "Na2_vmr_xuv",
@@ -17127,7 +18096,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "NaO_mol_atm",
@@ -17160,7 +18134,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaO_mol_solid",
@@ -17188,7 +18163,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaO_mol_liquid",
@@ -17216,7 +18192,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaO_mol_total",
@@ -17248,7 +18225,8 @@
       ],
       "consumers": [
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaO_kg_atm",
@@ -17280,7 +18258,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaO_kg_solid",
@@ -17308,7 +18287,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaO_kg_liquid",
@@ -17336,7 +18316,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaO_kg_total",
@@ -17368,7 +18349,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaO_vmr",
@@ -17405,7 +18387,8 @@
       "consumers": [
         "atmos_clim",
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaO_bar",
@@ -17442,7 +18425,8 @@
       "consumers": [
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "NaO_vmr_xuv",
@@ -17464,7 +18448,12 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "escape"
+      ],
+      "consumers_possible": [
+        "escape"
+      ]
     },
     {
       "name": "H_kg_atm",
@@ -17499,11 +18488,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H_kg_solid",
@@ -17531,7 +18522,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H_kg_liquid",
@@ -17563,7 +18555,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "H_kg_total",
@@ -17573,12 +18566,12 @@
       "origin": "<element>_kg_total",
       "producers": [
         {
-          "file": "src/proteus/escape/wrapper.py",
+          "file": "src/proteus/accretion/wrapper.py",
           "condition": "always"
         },
         {
-          "file": "src/proteus/outgas/atmodeller.py",
-          "condition": "outgas.module = \"atmodeller\""
+          "file": "src/proteus/escape/wrapper.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/calliope.py",
@@ -17594,11 +18587,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O_kg_atm",
@@ -17629,11 +18625,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O_kg_solid",
@@ -17661,7 +18659,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O_kg_liquid",
@@ -17689,7 +18688,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O_kg_total",
@@ -17698,6 +18698,10 @@
       "group": "Quantities for each element",
       "origin": "<element>_kg_total",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
@@ -17720,11 +18724,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "C_kg_atm",
@@ -17755,11 +18762,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "C_kg_solid",
@@ -17787,7 +18796,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "C_kg_liquid",
@@ -17815,7 +18825,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "C_kg_total",
@@ -17825,12 +18836,12 @@
       "origin": "<element>_kg_total",
       "producers": [
         {
-          "file": "src/proteus/escape/wrapper.py",
+          "file": "src/proteus/accretion/wrapper.py",
           "condition": "always"
         },
         {
-          "file": "src/proteus/outgas/atmodeller.py",
-          "condition": "outgas.module = \"atmodeller\""
+          "file": "src/proteus/escape/wrapper.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/calliope.py",
@@ -17846,11 +18857,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N_kg_atm",
@@ -17881,11 +18895,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N_kg_solid",
@@ -17913,7 +18929,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N_kg_liquid",
@@ -17941,7 +18958,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "N_kg_total",
@@ -17951,12 +18969,12 @@
       "origin": "<element>_kg_total",
       "producers": [
         {
-          "file": "src/proteus/escape/wrapper.py",
+          "file": "src/proteus/accretion/wrapper.py",
           "condition": "always"
         },
         {
-          "file": "src/proteus/outgas/atmodeller.py",
-          "condition": "outgas.module = \"atmodeller\""
+          "file": "src/proteus/escape/wrapper.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/calliope.py",
@@ -17972,11 +18990,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S_kg_atm",
@@ -18007,11 +19028,13 @@
         }
       ],
       "consumers": [
+        "accretion",
         "atmos_chem",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S_kg_solid",
@@ -18039,7 +19062,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S_kg_liquid",
@@ -18067,7 +19091,8 @@
       ],
       "consumers": [
         "outgas"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "S_kg_total",
@@ -18077,12 +19102,12 @@
       "origin": "<element>_kg_total",
       "producers": [
         {
-          "file": "src/proteus/escape/wrapper.py",
+          "file": "src/proteus/accretion/wrapper.py",
           "condition": "always"
         },
         {
-          "file": "src/proteus/outgas/atmodeller.py",
-          "condition": "outgas.module = \"atmodeller\""
+          "file": "src/proteus/escape/wrapper.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/calliope.py",
@@ -18098,11 +19123,14 @@
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
+        "interior_energetics",
         "interior_struct",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "O/H_atm",
@@ -18124,7 +19152,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "C/H_atm",
@@ -18146,7 +19175,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "N/H_atm",
@@ -18168,7 +19198,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "S/H_atm",
@@ -18190,7 +19221,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Si/H_atm",
@@ -18212,7 +19244,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Mg/H_atm",
@@ -18234,7 +19267,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Fe/H_atm",
@@ -18256,7 +19290,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Na/H_atm",
@@ -18278,7 +19313,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Al/H_atm",
@@ -18300,7 +19336,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ti/H_atm",
@@ -18322,7 +19359,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ca/H_atm",
@@ -18344,7 +19382,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K/H_atm",
@@ -18366,7 +19405,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/H_atm",
@@ -18388,7 +19428,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/H_atm",
@@ -18410,7 +19451,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/H_atm",
@@ -18432,7 +19474,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/H_atm",
@@ -18454,7 +19497,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/H_atm",
@@ -18476,7 +19520,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/H_atm",
@@ -18498,7 +19543,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "C/O_atm",
@@ -18520,7 +19566,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "N/O_atm",
@@ -18542,7 +19589,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "S/O_atm",
@@ -18564,7 +19612,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Si/O_atm",
@@ -18586,7 +19635,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Mg/O_atm",
@@ -18608,7 +19658,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Fe/O_atm",
@@ -18630,7 +19681,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Na/O_atm",
@@ -18652,7 +19704,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Al/O_atm",
@@ -18674,7 +19727,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ti/O_atm",
@@ -18696,7 +19750,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ca/O_atm",
@@ -18718,7 +19773,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K/O_atm",
@@ -18740,7 +19796,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/O_atm",
@@ -18762,7 +19819,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/O_atm",
@@ -18784,7 +19842,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/O_atm",
@@ -18806,7 +19865,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/O_atm",
@@ -18828,7 +19888,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/O_atm",
@@ -18850,7 +19911,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/O_atm",
@@ -18872,7 +19934,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "N/C_atm",
@@ -18894,7 +19957,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "S/C_atm",
@@ -18916,7 +19980,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Si/C_atm",
@@ -18938,7 +20003,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Mg/C_atm",
@@ -18960,7 +20026,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Fe/C_atm",
@@ -18982,7 +20049,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Na/C_atm",
@@ -19004,7 +20072,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Al/C_atm",
@@ -19026,7 +20095,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ti/C_atm",
@@ -19048,7 +20118,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ca/C_atm",
@@ -19070,7 +20141,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K/C_atm",
@@ -19092,7 +20164,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/C_atm",
@@ -19114,7 +20187,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/C_atm",
@@ -19136,7 +20210,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/C_atm",
@@ -19158,7 +20233,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/C_atm",
@@ -19180,7 +20256,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/C_atm",
@@ -19202,7 +20279,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/C_atm",
@@ -19224,7 +20302,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "S/N_atm",
@@ -19246,7 +20325,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Si/N_atm",
@@ -19268,7 +20348,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Mg/N_atm",
@@ -19290,7 +20371,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Fe/N_atm",
@@ -19312,7 +20394,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Na/N_atm",
@@ -19334,7 +20417,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Al/N_atm",
@@ -19356,7 +20440,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ti/N_atm",
@@ -19378,7 +20463,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ca/N_atm",
@@ -19400,7 +20486,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K/N_atm",
@@ -19422,7 +20509,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/N_atm",
@@ -19444,7 +20532,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/N_atm",
@@ -19466,7 +20555,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/N_atm",
@@ -19488,7 +20578,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/N_atm",
@@ -19510,7 +20601,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/N_atm",
@@ -19532,7 +20624,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/N_atm",
@@ -19554,7 +20647,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Si/S_atm",
@@ -19576,7 +20670,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Mg/S_atm",
@@ -19598,7 +20693,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Fe/S_atm",
@@ -19620,7 +20716,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Na/S_atm",
@@ -19642,7 +20739,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Al/S_atm",
@@ -19664,7 +20762,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ti/S_atm",
@@ -19686,7 +20785,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ca/S_atm",
@@ -19708,7 +20808,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K/S_atm",
@@ -19730,7 +20831,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/S_atm",
@@ -19752,7 +20854,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/S_atm",
@@ -19774,7 +20877,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/S_atm",
@@ -19796,7 +20900,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/S_atm",
@@ -19818,7 +20923,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/S_atm",
@@ -19840,7 +20946,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/S_atm",
@@ -19862,7 +20969,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Mg/Si_atm",
@@ -19884,7 +20992,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Fe/Si_atm",
@@ -19906,7 +21015,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Na/Si_atm",
@@ -19928,7 +21038,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Al/Si_atm",
@@ -19950,7 +21061,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ti/Si_atm",
@@ -19972,7 +21084,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ca/Si_atm",
@@ -19994,7 +21107,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K/Si_atm",
@@ -20016,7 +21130,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/Si_atm",
@@ -20038,7 +21153,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/Si_atm",
@@ -20060,7 +21176,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/Si_atm",
@@ -20082,7 +21199,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/Si_atm",
@@ -20104,7 +21222,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/Si_atm",
@@ -20126,7 +21245,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/Si_atm",
@@ -20148,7 +21268,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Fe/Mg_atm",
@@ -20170,7 +21291,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Na/Mg_atm",
@@ -20192,7 +21314,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Al/Mg_atm",
@@ -20214,7 +21337,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ti/Mg_atm",
@@ -20236,7 +21360,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ca/Mg_atm",
@@ -20258,7 +21383,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K/Mg_atm",
@@ -20280,7 +21406,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/Mg_atm",
@@ -20302,7 +21429,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/Mg_atm",
@@ -20324,7 +21452,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/Mg_atm",
@@ -20346,7 +21475,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/Mg_atm",
@@ -20368,7 +21498,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/Mg_atm",
@@ -20390,7 +21521,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/Mg_atm",
@@ -20412,7 +21544,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Na/Fe_atm",
@@ -20434,7 +21567,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Al/Fe_atm",
@@ -20456,7 +21590,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ti/Fe_atm",
@@ -20478,7 +21613,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ca/Fe_atm",
@@ -20500,7 +21636,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K/Fe_atm",
@@ -20522,7 +21659,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/Fe_atm",
@@ -20544,7 +21682,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/Fe_atm",
@@ -20566,7 +21705,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/Fe_atm",
@@ -20588,7 +21728,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/Fe_atm",
@@ -20610,7 +21751,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/Fe_atm",
@@ -20632,7 +21774,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/Fe_atm",
@@ -20654,7 +21797,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Al/Na_atm",
@@ -20676,7 +21820,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ti/Na_atm",
@@ -20698,7 +21843,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ca/Na_atm",
@@ -20720,7 +21866,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K/Na_atm",
@@ -20742,7 +21889,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/Na_atm",
@@ -20764,7 +21912,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/Na_atm",
@@ -20786,7 +21935,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/Na_atm",
@@ -20808,7 +21958,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/Na_atm",
@@ -20830,7 +21981,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/Na_atm",
@@ -20852,7 +22004,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/Na_atm",
@@ -20874,7 +22027,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ti/Al_atm",
@@ -20896,7 +22050,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ca/Al_atm",
@@ -20918,7 +22073,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K/Al_atm",
@@ -20940,7 +22096,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/Al_atm",
@@ -20962,7 +22119,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/Al_atm",
@@ -20984,7 +22142,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/Al_atm",
@@ -21006,7 +22165,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/Al_atm",
@@ -21028,7 +22188,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/Al_atm",
@@ -21050,7 +22211,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/Al_atm",
@@ -21072,7 +22234,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ca/Ti_atm",
@@ -21094,7 +22257,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K/Ti_atm",
@@ -21116,7 +22280,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/Ti_atm",
@@ -21138,7 +22303,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/Ti_atm",
@@ -21160,7 +22326,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/Ti_atm",
@@ -21182,7 +22349,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/Ti_atm",
@@ -21204,7 +22372,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/Ti_atm",
@@ -21226,7 +22395,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/Ti_atm",
@@ -21248,7 +22418,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K/Ca_atm",
@@ -21270,7 +22441,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/Ca_atm",
@@ -21292,7 +22464,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/Ca_atm",
@@ -21314,7 +22487,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/Ca_atm",
@@ -21336,7 +22510,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/Ca_atm",
@@ -21358,7 +22533,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/Ca_atm",
@@ -21380,7 +22556,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/Ca_atm",
@@ -21402,7 +22579,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V/K_atm",
@@ -21424,7 +22602,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/K_atm",
@@ -21446,7 +22625,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/K_atm",
@@ -21468,7 +22648,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/K_atm",
@@ -21490,7 +22671,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/K_atm",
@@ -21512,7 +22694,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/K_atm",
@@ -21534,7 +22717,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He/V_atm",
@@ -21556,7 +22740,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/V_atm",
@@ -21578,7 +22763,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/V_atm",
@@ -21600,7 +22786,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/V_atm",
@@ -21622,7 +22809,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/V_atm",
@@ -21644,7 +22832,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne/He_atm",
@@ -21666,7 +22855,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/He_atm",
@@ -21688,7 +22878,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/He_atm",
@@ -21710,7 +22901,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/He_atm",
@@ -21732,7 +22924,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar/Ne_atm",
@@ -21754,7 +22947,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/Ne_atm",
@@ -21776,7 +22970,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/Ne_atm",
@@ -21798,7 +22993,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr/Ar_atm",
@@ -21820,7 +23016,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/Ar_atm",
@@ -21842,7 +23039,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe/Kr_atm",
@@ -21864,7 +23062,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "p_xuv",
@@ -21900,7 +23099,8 @@
       ],
       "consumers": [
         "atmos_clim"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "R_xuv",
@@ -21943,7 +23143,8 @@
         "escape",
         "orbit",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "T_xuv",
@@ -21965,7 +23166,10 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [
+        "atmos_clim"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "g_xuv",
@@ -21991,7 +23195,10 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [
+        "atmos_clim"
+      ],
+      "consumers_possible": []
     },
     {
       "name": "cs_xuv",
@@ -22009,7 +23216,8 @@
           "condition": "escape.module = \"dummy\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_total",
@@ -22039,7 +23247,8 @@
         "escape",
         "outgas",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_H",
@@ -22072,7 +23281,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_O",
@@ -22105,7 +23315,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_C",
@@ -22138,7 +23349,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_N",
@@ -22171,7 +23383,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_S",
@@ -22204,7 +23417,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_Si",
@@ -22237,7 +23451,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_Mg",
@@ -22270,7 +23485,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_Fe",
@@ -22303,7 +23519,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_Na",
@@ -22336,7 +23553,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_Al",
@@ -22369,7 +23587,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_Ti",
@@ -22402,7 +23621,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_Ca",
@@ -22435,7 +23655,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_K",
@@ -22468,7 +23689,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_V",
@@ -22501,7 +23723,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_He",
@@ -22534,7 +23757,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_Ne",
@@ -22567,7 +23791,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_Ar",
@@ -22600,7 +23825,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_Kr",
@@ -22633,7 +23859,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "esc_rate_Xe",
@@ -22666,7 +23893,8 @@
       "consumers": [
         "escape",
         "plot"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "P_surf_clim",
@@ -22688,7 +23916,8 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "ocean_areacov",
@@ -22710,7 +23939,8 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "ocean_maxdepth",
@@ -22732,7 +23962,8 @@
           "condition": "atmos_clim.module = \"janus\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "H2O_ocean",
@@ -22746,7 +23977,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "CO2_ocean",
@@ -22760,7 +23992,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "O2_ocean",
@@ -22774,7 +24007,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "H2_ocean",
@@ -22788,7 +24022,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "CH4_ocean",
@@ -22802,7 +24037,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "CO_ocean",
@@ -22816,7 +24052,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "N2_ocean",
@@ -22830,7 +24067,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "NH3_ocean",
@@ -22844,7 +24082,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "S2_ocean",
@@ -22858,7 +24097,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "SO2_ocean",
@@ -22872,7 +24112,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "H2S_ocean",
@@ -22886,7 +24127,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "He_ocean",
@@ -22900,7 +24142,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ne_ocean",
@@ -22914,7 +24157,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ar_ocean",
@@ -22928,7 +24172,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Kr_ocean",
@@ -22942,7 +24187,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Xe_ocean",
@@ -22956,7 +24202,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "SiO_ocean",
@@ -22970,7 +24217,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "SiO2_ocean",
@@ -22984,7 +24232,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Si_ocean",
@@ -22998,7 +24247,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Na_ocean",
@@ -23012,7 +24262,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "K_ocean",
@@ -23026,7 +24277,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ti_ocean",
@@ -23040,7 +24292,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "TiO_ocean",
@@ -23054,7 +24307,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "TiO2_ocean",
@@ -23068,7 +24322,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Mg_ocean",
@@ -23082,7 +24337,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "MgO_ocean",
@@ -23096,7 +24352,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Al_ocean",
@@ -23110,7 +24367,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "HAlO2_ocean",
@@ -23124,7 +24382,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "SiH_ocean",
@@ -23138,7 +24397,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "SiH4_ocean",
@@ -23152,7 +24412,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Fe_ocean",
@@ -23166,7 +24427,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "FeO_ocean",
@@ -23180,7 +24442,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "FeO2H2_ocean",
@@ -23194,7 +24457,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "CaO_ocean",
@@ -23208,7 +24472,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "NaOH_ocean",
@@ -23222,7 +24487,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Ca_ocean",
@@ -23236,7 +24502,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "KOH_ocean",
@@ -23250,7 +24517,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "V_ocean",
@@ -23264,7 +24532,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Mg2_ocean",
@@ -23278,7 +24547,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "VO_ocean",
@@ -23292,7 +24562,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "AlO_ocean",
@@ -23306,7 +24577,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "Na2_ocean",
@@ -23320,7 +24592,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "NaO_ocean",
@@ -23334,7 +24607,8 @@
           "condition": "atmos_clim.module = \"agni\""
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "wtg_surf",
@@ -23348,7 +24622,8 @@
           "condition": "always"
         }
       ],
-      "consumers": []
+      "consumers": [],
+      "consumers_possible": []
     },
     {
       "name": "roche_limit",
@@ -23365,7 +24640,8 @@
       "consumers": [
         "orbit",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "breakup_period",
@@ -23382,7 +24658,8 @@
       "consumers": [
         "orbit",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "hill_radius",
@@ -23399,7 +24676,8 @@
       "consumers": [
         "atmos_clim",
         "orbit"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "roche_limit_sat",
@@ -23416,7 +24694,8 @@
       "consumers": [
         "orbit",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "breakup_period_sat",
@@ -23433,7 +24712,8 @@
       "consumers": [
         "orbit",
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     },
     {
       "name": "runtime",
@@ -23449,8 +24729,76 @@
       ],
       "consumers": [
         "utils"
-      ]
+      ],
+      "consumers_possible": []
     }
   ],
-  "unresolved_events": []
+  "unresolved_events": [
+    {
+      "file": "src/proteus/atmos_clim/agni.py",
+      "kind": "read",
+      "reason": "dynamic key name",
+      "function": "_validate_surface_state"
+    },
+    {
+      "file": "src/proteus/escape/common.py",
+      "kind": "read",
+      "reason": "dynamic key e + key",
+      "function": "calc_unfract_fluxes"
+    },
+    {
+      "file": "src/proteus/escape/wrapper.py",
+      "kind": "read",
+      "reason": "dynamic key f'{e}{key}'",
+      "function": "escapable_mass"
+    },
+    {
+      "file": "src/proteus/escape/wrapper.py",
+      "kind": "read",
+      "reason": "dynamic key f'{e}{key}'",
+      "function": "calc_new_elements"
+    },
+    {
+      "file": "src/proteus/observe/petitRADTRANS.py",
+      "kind": "read",
+      "reason": "dynamic key key",
+      "function": "_get_mix"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "kind": "read",
+      "reason": "dynamic key f'{sp}_kg_{r}'",
+      "function": "_populate_volatile_element_reservoirs"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "kind": "read",
+      "reason": "dynamic key key",
+      "function": "calc_surface_pressures_atmodeller"
+    },
+    {
+      "file": "src/proteus/outgas/atmodeller.py",
+      "kind": "read",
+      "reason": "dynamic key key",
+      "function": "calc_surface_pressures_atmodeller"
+    },
+    {
+      "file": "src/proteus/plot/cpl_global.py",
+      "kind": "read",
+      "reason": "dynamic key k",
+      "function": "plot_global"
+    },
+    {
+      "file": "src/proteus/plot/cpl_orbit.py",
+      "kind": "read",
+      "reason": "dynamic key sma_col",
+      "function": "_plot_orbit_snapshot"
+    },
+    {
+      "file": "src/proteus/plot/cpl_orbit.py",
+      "kind": "read",
+      "reason": "dynamic key ecc_col",
+      "function": "_plot_orbit_snapshot"
+    }
+  ]
 }

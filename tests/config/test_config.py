@@ -718,6 +718,12 @@ def test_proteus_init(path):
         # different from the standard PROTEUS Config (no planet.mass_tot, etc.) and
         # they are loaded by their own CLI handlers, not by Proteus(config_path=...).
         return
+    import tomllib
+
+    with open(path, 'rb') as f:
+        outgas = tomllib.load(f).get('outgas', {})
+    if outgas.get('module') == 'atmodeller':
+        pytest.importorskip('atmodeller')  # loading the config imports the outgas module
     print(f'Testing config at {path}')
     runner = Proteus(config_path=path)
     assert isinstance(runner.config, Config)

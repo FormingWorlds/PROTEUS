@@ -192,8 +192,8 @@ for arbitrary eccentricity and tidal mode.
 | `visc_sus` | float | `500000.0` | Solidus viscosity \[Pa s\]. Must be > 0. |
 | `n` | list | `[2]` | Power of the radial factor (r/a)^n. |
 | `m` | list | `[0, 2]` | Tidal harmonic (m=2 semidiurnal, m=1 diurnal). |
-| `k_min` | int | Literal | `"none"` | Minimum Fourier index in mean anomaly (adaptive spectrum). |
-| `k_max` | int | Literal | `"none"` | Maximum Fourier index in mean anomaly (adaptive spectrum). |
+| `k_min` | int or Literal | `"none"` | Minimum Fourier index in mean anomaly (adaptive spectrum). |
+| `k_max` | int or Literal | `"none"` | Maximum Fourier index in mean anomaly (adaptive spectrum). |
 | `evection_padding_factor` | float | `2.0` | Safety multiplier on the linear look-ahead eccentricity padding applied to Obliqua's own adaptive k-range selection. Must be >= 0. |
 | `material_mu` | str | `"andrade"` | Rheology model for complex shear modulus ("andrade" or "maxwell"). Choices: `"andrade"`, `"maxwell"`, `"elastic"`. |
 | `material_k` | str | `"andrade"` | Rheology model for complex bulk modulus ("andrade" or "maxwell"). Choices: `"andrade"`, `"maxwell"`, `"elastic"`. |
