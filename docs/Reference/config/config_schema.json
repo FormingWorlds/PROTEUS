@@ -8403,7 +8403,7 @@
       "class": "Agni",
       "type": "int",
       "accepts_none": false,
-      "default": "2000",
+      "default": "2048",
       "choices": null,
       "bounds": [
         {
@@ -8424,7 +8424,7 @@
       "class": "Agni",
       "type": "float",
       "accepts_none": false,
-      "default": "100000000.0",
+      "default": "6335439.0",
       "choices": null,
       "bounds": [
         {
@@ -8436,6 +8436,27 @@
       "doc_source": "attributes",
       "group_order": 6,
       "group_position": 1,
+      "group": "Hydrostatic integration",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.hydrograv_hilldr",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "6335.439",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum step size to use beyond the Hill radius [m]",
+      "doc_source": "attributes",
+      "group_order": 6,
+      "group_position": 2,
       "group": "Hydrostatic integration",
       "group_qualifier": null
     },
@@ -8456,7 +8477,7 @@
       "description": "Minimum step size to use when calculating heights [m]",
       "doc_source": "attributes",
       "group_order": 6,
-      "group_position": 2,
+      "group_position": 3,
       "group": "Hydrostatic integration",
       "group_qualifier": null
     },
@@ -8477,7 +8498,7 @@
       "description": "Minimum allowed gravity in the atmosphere [m/s^2]",
       "doc_source": "attributes",
       "group_order": 6,
-      "group_position": 3,
+      "group_position": 4,
       "group": "Hydrostatic integration",
       "group_qualifier": null
     },
@@ -8493,7 +8514,7 @@
       "description": "Constant gravity with height?",
       "doc_source": "attributes",
       "group_order": 6,
-      "group_position": 4,
+      "group_position": 5,
       "group": "Hydrostatic integration",
       "group_qualifier": null
     },
@@ -8509,9 +8530,109 @@
       "description": "Include self-gravity of the atmosphere?",
       "doc_source": "attributes",
       "group_order": 6,
-      "group_position": 5,
+      "group_position": 6,
       "group": "Hydrostatic integration",
       "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.aerosol_r_eff",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-06",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 1e-10
+        },
+        {
+          "op": "<=",
+          "value": 1.0
+        }
+      ],
+      "description": "Effective radius of log-normal size distribution for Mie aerosols [m].",
+      "doc_source": "attributes",
+      "group_order": 7,
+      "group_position": 0,
+      "group": "Aerosol optics",
+      "group_qualifier": "used for auto-discovered Mie-theory aerosols"
+    },
+    {
+      "path": "atmos_clim.agni.aerosol_sigma_g",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.65",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 1.0
+        },
+        {
+          "op": "<=",
+          "value": 100.0
+        }
+      ],
+      "description": "Standard deviation of log-normal particle-size distribution for Mie aerosols.",
+      "doc_source": "attributes",
+      "group_order": 7,
+      "group_position": 1,
+      "group": "Aerosol optics",
+      "group_qualifier": "used for auto-discovered Mie-theory aerosols"
+    },
+    {
+      "path": "atmos_clim.agni.tau_obs",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.02",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 1e-10
+        },
+        {
+          "op": "<=",
+          "value": 10000000000.0
+        }
+      ],
+      "description": "Reference vertical optical depth defining the photosphere, used when `atmos_clim.p_obs='none'`.",
+      "doc_source": "attributes",
+      "group_order": 8,
+      "group_position": 0,
+      "group": "Photosphere from optical depth",
+      "group_qualifier": "used when `atmos_clim.p_obs='none'`"
+    },
+    {
+      "path": "atmos_clim.agni.wl_obs",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.125e-06",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 1e-10
+        },
+        {
+          "op": "<=",
+          "value": 1.0
+        }
+      ],
+      "description": "Reference wavelength [m] at which `tau_obs` is evaluated, used when `atmos_clim.p_obs='none'`.",
+      "doc_source": "attributes",
+      "group_order": 8,
+      "group_position": 1,
+      "group": "Photosphere from optical depth",
+      "group_qualifier": "used when `atmos_clim.p_obs='none'`"
     },
     {
       "path": "atmos_clim.janus.F_atm_bc",
@@ -8693,6 +8814,22 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_clim.spectral_cache",
+      "toml_section": "atmos_clim",
+      "class": "AtmosClim",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Folder in which to reuse prepared spectral files across runs that share a stellar spectrum. None disables the cache and every run builds its own.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 3,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_clim.num_levels",
       "toml_section": "atmos_clim",
       "class": "AtmosClim",
@@ -8709,7 +8846,7 @@
       "description": "Number of vertical atmosphere levels.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 3,
+      "group_position": 4,
       "group": null,
       "group_qualifier": null
     },
@@ -8730,7 +8867,7 @@
       "description": "Top-of-atmosphere pressure [bar].",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 4,
+      "group_position": 5,
       "group": null,
       "group_qualifier": null
     },
@@ -8738,20 +8875,15 @@
       "path": "atmos_clim.p_obs",
       "toml_section": "atmos_clim",
       "class": "AtmosClim",
-      "type": "float",
-      "accepts_none": false,
+      "type": "float | Literal or none",
+      "accepts_none": true,
       "default": "0.02",
       "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Observation pressure level [bar] (transit radius).",
+      "bounds": null,
+      "description": "Observation pressure level [bar] (transit radius). Set to 'none' (-> None) to instead let AGNI determine this pressure level self-consistently from the optical depth (see `agni.tau_obs`, `agni.wl_obs`); AGNI only.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 5,
+      "group_position": 6,
       "group": null,
       "group_qualifier": null
     },
@@ -8767,7 +8899,7 @@
       "description": "Gas overlap method. Choices: 'ro', 'rorr', 'ee'.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 6,
+      "group_position": 7,
       "group": null,
       "group_qualifier": null
     },
@@ -10109,6 +10241,17 @@
         "tmp_minimum"
       ],
       "doc": "Validate JANUS settings: spectral file selection and temperature-bound ordering."
+    },
+    {
+      "validator": "valid_p_obs",
+      "module": "_atmos_clim.py",
+      "attached_to": [
+        "atmos_clim.p_obs"
+      ],
+      "touches": [
+        "module"
+      ],
+      "doc": "p_obs is either a positive pressure [bar], or None ('none' in the config file), which lets AGNI determine the photosphere self-consistently from optical depth instead. The latter is only meaningful for AGNI."
     },
     {
       "validator": "valid_rayleigh",

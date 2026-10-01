@@ -5,14 +5,16 @@ control each step, follow the manual procedure below. These steps cover the
 same ground as the installer script.
 
 !!! info "Prerequisites"
-    - macOS (Intel or Apple Silicon) or Linux
+    - Tested in CI: Linux x86_64 (Ubuntu) and macOS on Apple Silicon. Intel macOS and
+      Linux ARM64 are not tested; the Linux Miniconda commands below download the
+      x86_64 installer.
     - ~20 GB disk space (conda, Julia, reference data, submodules)
-    - Standard command-line tools: `curl`, `wget`
+    - Standard command-line tools: `curl`, `wget`, `make`
     - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
     - Internet connection for initial setup and data downloads
     - Allow ~60 minutes for a full installation including all submodules
 
-PROTEUS runs on macOS and Linux. Windows users should install via
+On Windows, install PROTEUS under
 [WSL2](local_machine_guide.md#microsoft-windows). Depending on your system
 configuration, some steps may differ. If you run into problems, check the
 [Troubleshooting](troubleshooting.md) page or
@@ -42,7 +44,8 @@ Install the required system packages for your platform before proceeding.
 !!! tip "Using pixi instead of conda"
     PROTEUS can also be installed into a [pixi](https://pixi.sh) environment,
     which replaces the conda steps below. See [Install with pixi](pixi.md)
-    (experimental).
+    (experimental). With pixi, skip the `conda activate proteus` lines in the
+    steps below.
 
 Python **3.12** is required, and is installed via
 [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
@@ -107,11 +110,17 @@ juliaup default 1.13
 
 Set the Julia environment variable:
 
+!!! note "Reactivate the environment after `source`"
+    With conda's default settings, sourcing your shell configuration re-runs
+    conda's initialisation, which switches back to the `base` environment.
+    Run `conda activate proteus` after each `source` command on this page.
+
 === "bash"
 
     ```console
     echo "export PYTHON_JULIAPKG_EXE=$(which julia)" >> ~/.bashrc
     source ~/.bashrc
+    conda activate proteus
     ```
 
 === "zsh"
@@ -119,6 +128,7 @@ Set the Julia environment variable:
     ```console
     echo "export PYTHON_JULIAPKG_EXE=$(which julia)" >> ~/.zshrc
     source ~/.zshrc
+    conda activate proteus
     ```
 
 ## 4. Create environment variables and clone PROTEUS
@@ -132,6 +142,7 @@ reference data. This variable must always be set.
     mkdir -p /your/local/path/FWL_DATA
     echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.bashrc"
     source "$HOME/.bashrc"
+    conda activate proteus
     ```
 
 === "zsh"
@@ -140,6 +151,7 @@ reference data. This variable must always be set.
     mkdir -p /your/local/path/FWL_DATA
     echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.zshrc"
     source "$HOME/.zshrc"
+    conda activate proteus
     ```
 
 Clone the repository:
@@ -153,12 +165,14 @@ cd PROTEUS
 
 [SOCRATES](https://github.com/FormingWorlds/SOCRATES) is a Fortran spectral radiative transfer code used by [AGNI](https://www.h-nicholls.space/AGNI/) and [JANUS](https://proteus-framework.org/JANUS/).
 
-!!! note "Fortran compiler and NetCDF"
-    SOCRATES requires `gfortran` (version 9+) and the NetCDF Fortran
-    development libraries. Verify they are available:
+!!! note "Fortran compiler, NetCDF, and make"
+    SOCRATES requires `gfortran` (version 9+), the NetCDF Fortran
+    development libraries, and `make`. Verify they are available:
 
     ```console
+    which make
     which gfortran
+    which nc-config
     which nf-config
     nf-config --version
     ```
@@ -174,6 +188,7 @@ Set `RAD_DIR` to point to the SOCRATES installation:
     ```console
     echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.bashrc"
     source "$HOME/.bashrc"
+    conda activate proteus
     ```
 
 === "zsh"
@@ -181,6 +196,7 @@ Set `RAD_DIR` to point to the SOCRATES installation:
     ```console
     echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.zshrc"
     source "$HOME/.zshrc"
+    conda activate proteus
     ```
 
 ## 6. Install AGNI and FastChem
@@ -213,6 +229,7 @@ Set the FastChem environment variable:
     ```console
     echo "export FC_DIR=$PWD/AGNI/fastchem/" >> "$HOME/.bashrc"
     source "$HOME/.bashrc"
+    conda activate proteus
     ```
 
 === "zsh"
@@ -220,6 +237,7 @@ Set the FastChem environment variable:
     ```console
     echo "export FC_DIR=$PWD/AGNI/fastchem/" >> "$HOME/.zshrc"
     source "$HOME/.zshrc"
+    conda activate proteus
     ```
 
 ## 7. Install Python submodules
