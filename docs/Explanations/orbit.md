@@ -180,7 +180,8 @@ degenerates to `instant`; the orbit module logs a warning when that happens.
 Each regime was run as a dummy PROTEUS simulation and compared against the
 closed form in `src/proteus/orbit/parameterized.py`:
 
-![Parameterized orbital migration regimes](../assets/orbit/orbit_parameterized_migration.avif){ width="100%" }
+![Parameterized orbital migration regimes](../assets/orbit/orbit_parameterized_migration.avif#only-light){ width="100%" }
+![Parameterized orbital migration regimes](../assets/orbit/orbit_parameterized_migration_dark.avif#only-dark){ width="100%" }
 
 Semi-major axis (top) and eccentricity (bottom) for the four regimes, with
 `sma_init = 2.0` au, `sma_final = 0.8` au, `time_migration = 1e3` yr and
