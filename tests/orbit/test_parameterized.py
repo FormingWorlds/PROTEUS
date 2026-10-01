@@ -629,7 +629,7 @@ def test_wrapper_preserves_angular_momentum_after_unit_conversion():
 
     assert a * (1.0 - e**2) == pytest.approx(SMA_F * AU, rel=1e-10)
     assert e > 0.0
-    assert 0.0 <= e < 1.0
+    assert e < 1.0
 
 
 @pytest.mark.parametrize('time_yr', [1.0, T_MIG], ids=['first_recorded_step', 'mid_evolution'])
