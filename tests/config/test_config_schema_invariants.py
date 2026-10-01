@@ -2,7 +2,7 @@
 Schema invariant tests: every validator catches its target invalid input,
 and every default backend is importable on a stock CI runner.
 
-Anti-happy-path discipline (per .github/.claude/rules/proteus-tests.md):
+Anti-happy-path discipline (per tests/AGENTS.md):
 
 - Every validator under test gets a positive AND negative test. The negative
   test asserts a specific exception type AND a specific error-message regex,
@@ -214,6 +214,7 @@ def _make_config_instance(**overrides):
     that is the cross-product test's job.
     """
     base = SimpleNamespace(
+        accretion=SimpleNamespace(module=None),
         outgas=SimpleNamespace(module='calliope', fO2_shift_IW=0.0),
         escape=SimpleNamespace(module='zephyrus'),
         atmos_chem=SimpleNamespace(module=None),

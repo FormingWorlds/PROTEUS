@@ -139,7 +139,7 @@ class Agni:
     verbosity: int
         Logging and output verbosity for agni (0:none, 1:info, 2:debug).
     surf_material: str
-        Surface scattering material file. Set to 'greybody' to use surf_greyalbedo.
+        Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.
     chemistry: str | None
         Atmospheric chemistry treatment. Choices: 'none', 'eq' (FastChem).
     solve_energy: bool
@@ -397,6 +397,9 @@ class AtmosClim:
         Spectral file group defining gas opacities. See https://proteus-framework.org/SOCRATES/Reference/proteus_spectral_file_reference.html
     spectral_bands: str
         Number of wavenumber bands in k-table.
+    spectral_cache: str | None
+        Folder in which to reuse prepared spectral files across runs that share
+        a stellar spectrum. None disables the cache and every run builds its own.
     num_levels: int
         Number of vertical atmosphere levels.
     p_top: float
@@ -445,6 +448,7 @@ class AtmosClim:
     # Grid and spectral setup (shared by agni + janus)
     spectral_group: str = field(default='Honeyside')
     spectral_bands: str = field(default='48')
+    spectral_cache: str | None = field(default=None, converter=none_if_none)
     num_levels: int = field(default=50, validator=ge(15))
     p_top: float = field(default=1e-6, validator=gt(0))
     p_obs: Union[float, Literal['none']] = field(
@@ -494,6 +498,7 @@ DOC_GROUPS = {
                 'module',
                 'spectral_group',
                 'spectral_bands',
+                'spectral_cache',
                 'num_levels',
                 'p_top',
                 'p_obs',

@@ -25,9 +25,10 @@ parameter selects the surface energy balance scheme (`mixed_layer`,
 | `module` | str | `"agni"` | Which atmosphere module to use. Choices: `"dummy"`, `"agni"`, `"janus"`. |
 | `spectral_group` | str | `"Honeyside"` | Spectral file group defining gas opacities. See https://proteus-framework.org/SOCRATES/Reference/proteus_spectral_file_reference.html. |
 | `spectral_bands` | str | `"48"` | Number of wavenumber bands in k-table. |
+| `spectral_cache` | str or none | `none` | Folder in which to reuse prepared spectral files across runs that share a stellar spectrum. None disables the cache and every run builds its own. |
 | `num_levels` | int | `50` | Number of vertical atmosphere levels. Must be >= 15. |
 | `p_top` | float | `1e-06` | Top-of-atmosphere pressure \[bar\]. Must be > 0. |
-| `p_obs` | float | Literal or none | `0.02` | Observation pressure level \[bar\] (transit radius). Set to 'none' (-> None) to instead let AGNI determine this pressure level self-consistently from the optical depth (see `agni.tau_obs`, `agni.wl_obs`); AGNI only. |
+| `p_obs` | float or Literal or none | `0.02` | Observation pressure level \[bar\] (transit radius). Set to 'none' (-> None) to instead let AGNI determine this pressure level self-consistently from the optical depth (see `agni.tau_obs`, `agni.wl_obs`); AGNI only. |
 | `overlap_method` | str | `"ee"` | Gas overlap method. Choices: 'ro', 'rorr', 'ee'. |
 
 **Radiative properties**
@@ -87,7 +88,7 @@ interior heat flux. The `fastchem_*` parameters apply when
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `surf_material` | str | `"greybody"` | Surface scattering material file. Set to 'greybody' to use surf_greyalbedo. |
+| `surf_material` | str | `"greybody"` | Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo. |
 | `surf_roughness` | float | `0.001` | Characteristic surface roughness scale \[metres\]. Must be > 0. |
 | `surf_windspeed` | float | `2.0` | Characteristic surface wind speed \[m/s\]. Must be > 0. |
 

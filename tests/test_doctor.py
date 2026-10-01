@@ -43,6 +43,7 @@ from proteus.doctor import (
     _run_fix_command,
     _Tee,
     _write_failure_log,
+    check_cvode,
     check_env_var,
     check_fwl_data,
     check_git_module,
@@ -240,15 +241,15 @@ class TestCheckFwlData:
 
     def test_reports_present_subdirs(self, tmp_path):
         """Populated subdirectories report as present."""
-        (tmp_path / 'spectral_files').mkdir()
-        (tmp_path / 'spectral_files' / 'data.bin').touch()
-        (tmp_path / 'stellar_spectra').mkdir()
-        (tmp_path / 'stellar_spectra' / 'sun.txt').touch()
+        (tmp_path / 'atmos_clim' / 'spectral_files').mkdir(parents=True)
+        (tmp_path / 'atmos_clim' / 'spectral_files' / 'data.bin').touch()
+        (tmp_path / 'star' / 'spectra' / 'solar').mkdir(parents=True)
+        (tmp_path / 'star' / 'spectra' / 'solar' / 'sun.txt').touch()
         with patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}):
             results = check_fwl_data()
         statuses = {r.name: r.status for r in results}
-        assert statuses['FWL_DATA/spectral_files'] == PASS
-        assert statuses['FWL_DATA/stellar_spectra'] == PASS
+        assert statuses['FWL_DATA/atmos_clim/spectral_files'] == PASS
+        assert statuses['FWL_DATA/star/spectra'] == PASS
 
     def test_reports_missing_subdirs(self, tmp_path):
         """Missing subdirectories warn with a fix command."""
@@ -257,6 +258,57 @@ class TestCheckFwlData:
         for r in results:
             assert r.status == WARN
             assert r.fix_cmd is not None
+
+    @pytest.mark.parametrize('movable', [True, False])
+    def test_an_older_layout_is_fixed_by_relocate(self, tmp_path, movable):
+        """A data set in the older layout is fixed by moving it only when a relocate dry
+        run would move it; otherwise, e.g. with wrong checksums, by its download."""
+        from types import SimpleNamespace
+
+        legacy = tmp_path / 'spectral_files' / 'Dayspring' / '48'
+        legacy.mkdir(parents=True)
+        (legacy / 'Dayspring.sf').touch()
+        plan = SimpleNamespace(ready=[SimpleNamespace(legacy_dir=legacy)] if movable else [])
+        with (
+            patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}),
+            patch('fwl_io.relocate.plan_relocations', return_value=plan) as planned,
+        ):
+            fixes = {r.name: r.fix_cmd for r in check_fwl_data()}
+        planned.assert_called_once_with(str(tmp_path))
+        want = 'fwl-io relocate' if movable else 'proteus get spectral'
+        assert fixes['FWL_DATA/atmos_clim/spectral_files'] == want
+        assert fixes['FWL_DATA/star/spectra'] == 'proteus get stellar'
+
+    def test_the_relocate_dry_run_runs_only_for_a_missing_set_with_older_data(self, tmp_path):
+        """The dry run hashes the whole tree, so it runs only when a data set is missing
+        and its older-layout folder holds files."""
+        (tmp_path / 'atmos_clim' / 'spectral_files' / 'Dayspring').mkdir(parents=True)
+        (tmp_path / 'spectral_files' / 'Dayspring').mkdir(parents=True)
+        (tmp_path / 'spectral_files' / 'Dayspring' / 'old.sf').touch()
+        with (
+            patch.dict(os.environ, {'FWL_DATA': str(tmp_path)}),
+            patch('fwl_io.relocate.plan_relocations') as planned,
+        ):
+            check_fwl_data()
+        planned.assert_not_called()
+
+    def test_relocate_is_proposed_through_a_symlinked_data_root(self, tmp_path):
+        """FWL_DATA reached through a symlink still matches the resolved legacy folders a
+        relocate dry run reports."""
+        from types import SimpleNamespace
+
+        real = tmp_path / 'real'
+        (real / 'spectral_files' / 'Dayspring' / '48').mkdir(parents=True)
+        (tmp_path / 'link').symlink_to(real)
+        plan = SimpleNamespace(
+            ready=[SimpleNamespace(legacy_dir=real / 'spectral_files' / 'Dayspring' / '48')]
+        )
+        with (
+            patch.dict(os.environ, {'FWL_DATA': str(tmp_path / 'link')}),
+            patch('fwl_io.relocate.plan_relocations', return_value=plan),
+        ):
+            fixes = {r.name: r.fix_cmd for r in check_fwl_data()}
+        assert fixes['FWL_DATA/atmos_clim/spectral_files'] == 'fwl-io relocate'
 
     def test_skips_when_fwl_data_unset(self):
         """No checks when FWL_DATA is not set."""
@@ -1292,7 +1344,7 @@ class TestUpdateEntry:
         """A warning with no fix is surfaced but does not mark the install
         unhealthy: warnings are not failures."""
         results = [
-            CheckResult('FWL_DATA/spectral_files', 'data', WARN, 'empty', None),
+            CheckResult('FWL_DATA/atmos_clim/spectral_files', 'data', WARN, 'empty', None),
         ]
         with patch('proteus.doctor.run_all_checks', return_value=results):
             result = update_entry(dry_run=False)
@@ -1835,3 +1887,77 @@ class TestSupportPromptAndCliExit:
         assert result.exit_code == 0
         # Discrimination: no failure exit means no support prompt was printed.
         assert 'dev@proteus-framework.org' not in result.output
+
+
+class TestCheckCvode:
+    """check_cvode reports whether Aragog can use its production integrator."""
+
+    def test_pass_when_the_wrapper_imports(self):
+        """An importable wrapper passes and suggests nothing.
+
+        Contract clause: the check exists to surface a silent fallback, so on
+        a healthy install it must be quiet. A fix command on a passing check
+        would put an unnecessary conda build in front of `proteus update`.
+        """
+        with (
+            patch('proteus.doctor.importlib.util.find_spec', return_value=object()),
+            patch('proteus.doctor.importlib.import_module', return_value=object()),
+        ):
+            r = check_cvode()
+        assert r.status == PASS
+        assert r.fix_cmd is None
+        assert r.category == 'environment'
+
+    def test_warn_when_the_wrapper_is_absent(self):
+        """A missing wrapper warns and names the script that installs it.
+
+        Contract clause: without the wrapper Aragog integrates with scipy
+        Radau, which is a different solver, so the operator has to be told
+        before a long coupled run rather than only in the per-solve log line.
+        """
+        with patch('proteus.doctor.importlib.util.find_spec', return_value=None):
+            r = check_cvode()
+        assert r.status == WARN
+        assert r.fix_cmd == 'bash tools/get_cvode.sh'
+        # Runnable from the repo root, so `proteus update` can apply it
+        # rather than only printing it.
+        assert r.auto_fixable is True
+        # The message says what the run does instead, not just that something
+        # is missing.
+        assert 'Radau' in r.message
+
+    def test_warn_when_the_wrapper_is_installed_but_does_not_load(self):
+        """A wrapper that imports and then fails warns, naming the failure.
+
+        Physical scenario for the operator: the wrapper is compiled against
+        the SUNDIALS C library, so an ABI or version mismatch leaves the
+        package importable by name while the extension fails to load. That
+        state passes a presence check and still falls back to Radau, so it
+        has to be caught here.
+        """
+        with (
+            patch('proteus.doctor.importlib.util.find_spec', return_value=object()),
+            patch(
+                'proteus.doctor.importlib.import_module',
+                side_effect=ImportError('libsundials_cvode.so: cannot open'),
+            ),
+        ):
+            r = check_cvode()
+        assert r.status == WARN
+        assert 'ImportError' in r.message
+        assert r.fix_cmd == 'bash tools/get_cvode.sh'
+
+    def test_the_check_is_wired_into_the_diagnose_run(self):
+        """`proteus doctor` runs the check rather than only defining it.
+
+        A check that is never called is the failure mode this guards: the
+        function can be correct and the operator still never sees it.
+        """
+        with (
+            patch('proteus.doctor._dependency_specs', return_value={}),
+            patch('proteus.doctor._module_pins', return_value={}),
+        ):
+            results = run_all_checks()
+        cvode = [r for r in results if r.name == 'cvode']
+        assert len(cvode) == 1, f'expected one cvode check, found {len(cvode)}'
+        assert cvode[0].category == 'environment'
