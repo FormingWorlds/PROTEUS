@@ -2342,6 +2342,11 @@ def test_a_remelt_after_desiccation_returns_the_planet_its_volatiles():
     run_desiccated({}, config, row, False)
     totals = {e: row[f'{e}_kg_total'] for e in ('H', 'O', 'Ar')}
     assert totals['H'] == pytest.approx(4.0e19, rel=1e-12)
+    # Argon is its own element: its moles follow the mass the solid keeps.
+    from proteus.utils.helper import eval_gas_mmw
+
+    assert row['Ar_mol_solid'] == pytest.approx(1.0e18 / eval_gas_mmw('Ar'), rel=1e-12)
+    assert row['Ar_mol_total'] == pytest.approx(1.0e18 / eval_gas_mmw('Ar'), rel=1e-12)
 
     # Phi 0.30 -> 0.65 remelts half of the solid mantle.
     row.update(Time=2.0e4, M_mantle=4.0e24, Phi_global=0.65)
