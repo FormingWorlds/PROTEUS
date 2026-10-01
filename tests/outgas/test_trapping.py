@@ -1418,7 +1418,9 @@ def test_freezing_and_remelting_the_same_interval_cancel(fixed_front):
     frozen_in = rows[-1]['H2O_kg_trapped']
     melt_in = rows[-1]['H2O_kg_liquid']
     rows = _cycle(rows, cycles, history=True)
-    at_bottom = [r['H2O_kg_trapped'] for r in rows[-len(cycles) :] if r['Phi_global'] == 0.40]
+    at_bottom = [
+        r['H2O_kg_trapped'] for r in rows[-len(cycles) :] if abs(r['Phi_global'] - 0.40) < 1e-12
+    ]
     assert len(at_bottom) == 100
     np.testing.assert_allclose(at_bottom, frozen_in, rtol=1e-12)
     assert rows[-1]['H2O_kg_liquid'] == pytest.approx(melt_in, rel=1e-12)
