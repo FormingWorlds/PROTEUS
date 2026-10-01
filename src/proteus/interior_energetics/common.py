@@ -1166,6 +1166,10 @@ class Interior_t:
         self.spider_fail_count = 0
         self.aragog_fail_count = 0
 
+        # Rolling record of interior step progress as (advanced, requested)
+        # pairs in years, tracking phase-change stalls across valid solves.
+        self.aragog_step_progress: list[tuple[float, float]] = []
+
         # True when the interior is running on a fallback (previous-step)
         # structure because the last Zalmoxis re-solve did not converge; set on
         # that fall-back and cleared on the next successful re-solve. Downstream
@@ -1192,6 +1196,19 @@ class Interior_t:
         # cannot ramp dt straight back into the stiff cliff it just
         # escaped from.
         self.dt_hysteresis_remaining = 0
+
+        # Time of the next scheduled giant impact [yr] from the accretion
+        # timeline used by the time-stepper to clamp dt; infinity if none.
+        self.t_next_impact = float('inf')
+
+        # Raised by a giant-impact re-melt so the next interior solve does
+        # not clip the deliberate temperature jump back out as if it were a
+        # solver anomaly. Consumed and cleared on that one step.
+        self.impact_reset = False
+
+        # Snapshot of ``impact_reset`` at step start, allowing interior solvers
+        # to distinguish deliberate impact heating jumps from corrupted solves.
+        self.impact_reset_this_step = False
 
         # True when the most recent call to next_step() had its step size
         # clamped. For example, by `_estimate_bolscale()`.

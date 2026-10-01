@@ -7,10 +7,11 @@
 #   below `atmos_clim.agni.psurf_thresh`.
 # - `run_agni` reports the top-of-atmosphere upward longwave flux as
 #   `F_olr`, and the net upward flux as `F_atm`.
-# - Transparent mode holds the column isothermal at the surface
-#   temperature, so with no instellation a black surface emits the
-#   analytical limit `F_olr = sigma * T_surf**4` and a surface of albedo a
-#   emits `sigma * T_surf**4 * (1 - a * exp(-tau))`.
+# - Transparent mode collapses the column to zero opacity (AGNI forces
+#   tau = 0 for the grey-gas scheme whenever atmos.transparent), so with no
+#   instellation a black surface emits the analytical limit
+#   `F_olr = sigma * T_surf**4` and a surface of albedo a emits
+#   `sigma * T_surf**4 * (1 - a)`, unattenuated between surface and TOA.
 #
 # Invariants asserted: analytical limit (Stefan-Boltzmann), positivity,
 # monotonicity in T_surf, and radiative energy balance at zero
@@ -318,19 +319,21 @@ def test_transparent_greygas_olr_equals_blackbody_emission():
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
 )
 def test_transparent_greygas_olr_scales_with_surface_emissivity():
-    """A grey surface emits the black-body flux reduced by its emissivity.
+    """A grey surface emits exactly the black-body flux reduced by its emissivity.
 
     Physical scenario: the same bare surface, now with a grey albedo of 0.3.
     Kirchhoff's law fixes the emissivity at 1 minus the albedo, so the
-    surface emits 70 per cent of the black-body flux. Transparent mode holds
-    the column isothermal at the surface temperature, so the closed form of
-    the Schwarzschild solution for an isothermal slab of optical depth tau
-    over that surface is `sigma T**4 [1 - a exp(-tau)]`: the attenuated
-    surface beam plus the slab's own emission.
+    surface emits 70 per cent of the black-body flux. Transparent mode
+    collapses the column to zero opacity: AGNI's grey-gas scheme forces
+    `tau = 0` whenever `atmos.transparent` (and uses constant gravity in the
+    hydrostatic profile, since the near-vacuum, near-zero-thickness column
+    that `make_transparent!` builds has no meaningful self-gravity
+    structure to integrate). With zero optical depth the surface's own
+    emission reaches the top of atmosphere completely unattenuated -- there
+    is no slab above it to add or subtract flux.
 
-    Analytical limit: the isothermal-slab solution, which reduces to the
-    grey-body flux as tau goes to zero and to the black-body flux as tau
-    grows.
+    Analytical limit: `F_olr = sigma * T_surf**4 * (1 - albedo)`, the
+    Stefan-Boltzmann grey-body limit with unit transmission.
     """
     albedo = 0.3
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -341,30 +344,40 @@ def test_transparent_greygas_olr_scales_with_surface_emissivity():
             blackbody = SIGMA_SB * t_surf**4
             greybody = (1.0 - albedo) * blackbody
 
-            # Column optical depth accumulated down to the surface
+            # Column optical depth accumulated down to the surface: a
+            # transparent atmosphere is opacity-free by construction, not
+            # merely thin.
             tau = float(state['tau_band'][-1, 0])
-            expected = blackbody * (1.0 - albedo * np.exp(-tau))
+            assert tau == pytest.approx(0.0, abs=1.0e-12), (
+                f'transparent column at T_surf={t_surf} K must carry zero '
+                f'optical depth, got tau={tau:.4e}'
+            )
 
-            assert output['F_olr'] == pytest.approx(expected, rel=1.0e-4), (
-                f'grey surface at T_surf={t_surf} K under an isothermal slab '
-                f'of tau={tau:.4e} must emit {expected:.6e} W m-2'
+            assert output['F_olr'] == pytest.approx(greybody, rel=1.0e-9), (
+                f'grey surface at T_surf={t_surf} K must emit exactly the '
+                f'grey-body flux {greybody:.6e} W m-2 through a zero-opacity column'
             )
 
             # The surface boundary condition itself is the exact grey-body
-            # emission, with no contribution from the slab above it.
+            # emission, and it reaches the top of atmosphere unattenuated.
             assert state['flux_u_lw'][-1] == pytest.approx(greybody, rel=1.0e-9)
+            assert output['F_olr'] == pytest.approx(state['flux_u_lw'][-1], rel=1.0e-12)
 
             # Guard against a dropped emissivity: the black-body flux is 43
-            # per cent above the value measured here.
+            # per cent above the value measured here. (This is the failure
+            # mode of the bug this test was written to catch: a divergent
+            # hydrostatic profile floored the layer gravity, which spuriously
+            # inflated tau and pulled F_olr up to the pure black-body limit.)
             assert abs(output['F_olr'] - blackbody) > 0.25 * output['F_olr']
 
-            # Guard against a neglected slab: the bare grey-body flux lies
-            # below the emitted flux by far more than the tolerance.
-            assert output['F_olr'] - greybody > 1.0e-3 * greybody
+            # Guard against a sign-flipped emissivity (using `albedo` in place
+            # of `1 - albedo`): that wrong formula gives ~30% of black-body,
+            # far outside tolerance of the correct ~70%.
+            assert output['F_olr'] != pytest.approx(albedo * blackbody, rel=1.0e-2)
 
-            # Sign and ordering: emission leaves the planet, and the slab can
-            # only add to the attenuated surface beam.
-            assert greybody < output['F_olr'] < blackbody
+            # Sign and ordering: emission leaves the planet, strictly below
+            # the unit-emissivity black-body limit.
+            assert 0.0 < output['F_olr'] < blackbody
 
 
 @pytest.mark.reference_pinned

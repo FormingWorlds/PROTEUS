@@ -57,6 +57,7 @@ def _make_proteus_instance(
     config.interior_energetics.module = interior_module
     config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
     config.orbit.module = None
+    config.accretion.module = None
     # Attributes used during start() setup
     config.params.out.logging = 'WARNING'
     config.params.stop.iters.minimum = 10
@@ -1420,6 +1421,55 @@ def test_structure_baseline_skipped_for_superliquidus_adiabat(tmp_path):
     assert p._baseline_structure_done is True  # latched so it is not re-checked
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_per_step_impact_heat_starts_each_row_at_zero(tmp_path):
+    """The impact-heat column is cleared when a row is created, on every path.
+
+    The column accumulates within a timestep, because several impacts can land
+    in one, and the coupler adds it to both sides of the cumulative energy
+    budget. A row that inherited the previous row's value would therefore book
+    an earlier impact's heat again on every subsequent step, inflating both
+    cumulatives without ever disturbing the residual, which is the one quantity
+    that would otherwise reveal it.
+
+    Clearing it where the row is created in Proteus.start (loop > 0), rather
+    than in an interior solver's success branch, ensures each step begins clean.
+    """
+    from proteus.utils.constants import vol_gas_list
+
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+    rows = []
+    incoming_impact_heat = []
+
+    def _writer(hf_row, step):
+        incoming_impact_heat.append(hf_row.get('step_dE_impact_J'))
+        for s in vol_gas_list:
+            hf_row[s + '_kg_atm'] = 1.0e18
+            hf_row[s + '_kg_total'] = 1.0e18
+        hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+        hf_row['M_vaps'] = 0.0
+        hf_row['M_atm'] = hf_row['M_vol_atm']
+        hf_row['M_planet'] = _MASS_PLANET_KG
+        hf_row['P_vol'] = 260.0
+        hf_row['P_vap'] = 0.0
+        hf_row['P_surf'] = 260.0
+        if step == 0:
+            hf_row['step_dE_impact_J'] = 6.1e30
+        return hf_row
+
+    _run_main_loop_recording_mass(p, stop_at_loop=2, rows=rows, row_writer=_writer)
+
+    # Initial step 0 started with zero impact heat before booking 6.1e30 J
+    assert incoming_impact_heat[0] == pytest.approx(0.0)
+    # Step 1 received a fresh row reset to 0.0 rather than inheriting 6.1e30 J
+    assert incoming_impact_heat[1] == pytest.approx(0.0)
+    # Discrimination: the previous step actually set non-zero impact heat
+    assert rows[0]['step_dE_impact_J'] == pytest.approx(6.1e30)
+
+
 # ---------------------------------------------------------------------------
 # Resume path: crystallization flag restoration (proteus.py, resume branch)
 # ---------------------------------------------------------------------------
@@ -1547,6 +1597,92 @@ def test_proteus_resume_keeps_crystallized_after_remelting(tmp_path):
     )
 
 
+def _make_hf_df_with_impact(phi_history, accreted_rock):
+    """Helpfile frame carrying a melt-fraction history and an impact ledger.
+
+    ``accreted_rock`` is the cumulative rock mass [kg] recorded on each row,
+    so a row where it rises above the previous one is a row on which a giant
+    impact landed.
+    """
+    df = _make_hf_df()
+    df['Phi_global'] = phi_history
+    df['M_accreted_rock'] = accreted_rock
+    return df
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_proteus_resume_lifts_the_crystallization_latch_across_an_impact(tmp_path):
+    """A giant impact that remelts a crystallized mantle stays lifted on resume.
+
+    Physical scenario: the mantle solidifies to the crystallization threshold,
+    a giant impact then remelts it to a magma ocean, and the run continues
+    molten until it is stopped. The impact clears the solidification latch,
+    so the uninterrupted run has outgassing running again from the impact
+    onwards.
+
+    Contract clause: a resumed run must behave as the uninterrupted one would.
+    Searching the whole melt-fraction history would find the pre-impact dip
+    and restore a latch the run itself had lifted, freezing outgassing for the
+    rest of a run whose mantle is molten.
+
+    Verifies:
+    - A dip before the impact does not resume frozen, because the impact
+      remelted the mantle.
+    - A dip after the impact does resume frozen, so the search is not simply
+      always clearing the flag.
+    - The impact's own row is excluded: it records the melt fraction from
+      before the remelt, so a threshold value there must not relatch.
+    - Without accreted rock the whole history is searched, so a run with no
+      accretion is unaffected.
+    """
+    phi_crit = 0.01
+    impact_on_row_3 = [0.0, 0.0, 0.0, 1.0e21, 1.0e21]
+
+    def _resume(hf_df):
+        p = _make_proteus_instance(tmp_path)
+        p.config.params.stop.solid.freeze_volatiles = True
+        p.config.params.stop.solid.phi_crit = phi_crit
+        (tmp_path / 'data').mkdir(exist_ok=True)
+        _resume_with_patches(p, hf_df)
+        return p
+
+    # Crystallized at row 2, impact at row 3, molten afterwards.
+    lifted = _resume(_make_hf_df_with_impact([1.0, 0.5, 0.005, 0.300, 0.900], impact_on_row_3))
+    assert lifted.crystallized is False, (
+        'a mantle remelted by a giant impact resumed as crystallized, so '
+        'outgassing would stay stopped where the uninterrupted run has it '
+        'running again'
+    )
+
+    # Discrimination: the same impact, but the mantle solidifies again after
+    # it. The latch must be restored, or the check would be always False.
+    relatched = _resume(
+        _make_hf_df_with_impact([1.0, 0.5, 0.005, 0.300, 0.008], impact_on_row_3)
+    )
+    assert relatched.crystallized is True, (
+        'a mantle that solidified again after the impact resumed as molten, so '
+        'the post-impact history is not being searched at all'
+    )
+
+    # Boundary: the impact row carries the melt fraction from before the
+    # remelt, so a threshold value on that row must not restore the latch.
+    on_impact_row = _resume(
+        _make_hf_df_with_impact([1.0, 0.5, 0.900, 0.005, 0.900], impact_on_row_3)
+    )
+    assert on_impact_row.crystallized is False, (
+        "the impact row's own pre-remelt melt fraction restored the latch; the "
+        'search must start after the impact, not on it'
+    )
+
+    # A run with no accretion searches the whole history, unchanged.
+    no_accretion = _resume(_make_hf_df_with_impact([1.0, 0.5, 0.005, 0.300, 0.900], [0.0] * 5))
+    assert no_accretion.crystallized is True, (
+        'a run that never had an impact stopped seeing its own crystallization '
+        'history; the impact search must not affect non-accretion runs'
+    )
+
+
 # ---------------------------------------------------------------------------
 # Proteus.start() main loop: plot-cadence gating (proteus.py ~1200-1207).
 #
@@ -1589,9 +1725,10 @@ def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel, vapo
 
     `interior_energetics.module` / `interior_struct.module` are set to
     'dummy' so the Zalmoxis structure-update and SPIDER-specific branches
-    are no-ops; `observe.module=None` and a non-'online'/'offline'
-    atmos_chem.when skip the postprocessing branches. None of these
-    short-circuits touch the plot-gating condition under test.
+    are no-ops; `observe.module=None`, `accretion.module=None` and a
+    non-'online'/'offline' atmos_chem.when skip the postprocessing and
+    impact branches. None of these short-circuits touch the plot-gating
+    condition under test.
 
     `vapourise` selects which half of the mass-conservation invariant the loop
     enforces: with it True the M_atm <= M_planet half is replaced by a warning,
@@ -1610,6 +1747,7 @@ def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel, vapo
     config.interior_energetics.flux_guess = 100.0  # >=0: skips sigma*T^4 branch
     config.orbit.module = None
     config.observe.module = None
+    config.accretion.module = None
     config.atmos_chem.when = 'never'
     config.outgas.vapourise = vapourise
     config.planet.temperature_mode = 'isothermal'
@@ -2225,6 +2363,7 @@ def _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibili
     config.interior_energetics.flux_guess = 100.0
     config.orbit.module = None
     config.observe.module = None
+    config.accretion.module = None
     config.atmos_chem.when = 'never'
     config.outgas.vapourise = True
     config.planet.temperature_mode = 'isothermal'
@@ -2611,3 +2750,151 @@ def test_start_goes_ahead_without_cvode_when_it_is_not_needed(
             p.start(resume=False, offline=True)
 
     clean.assert_called_once()
+
+
+@pytest.mark.unit
+def test_crystallization_not_rearmed_on_impact_step(tmp_path):
+    """Crystallization helper respects impact_reset, freeze_volatiles, and boundary condition."""
+    p = _make_proteus_instance(tmp_path)
+    p.interior_o = MagicMock()
+    p.interior_o.impact_reset = True
+    p.config.params.stop.solid.freeze_volatiles = True
+    p.config.params.stop.solid.phi_crit = 0.8
+    p.crystallized = False
+    p.hf_row = {'Phi_global': 0.5}
+
+    # 1. impact_reset=True prevents re-arming crystallization
+    p._check_crystallization()
+    assert p.crystallized is False
+
+    # 2. freeze_volatiles=False keeps crystallization disabled even without impact_reset
+    p.interior_o.impact_reset = False
+    p.config.params.stop.solid.freeze_volatiles = False
+    p._check_crystallization()
+    assert p.crystallized is False
+
+    # 3. Phi_global strictly above threshold does not trigger crystallization
+    p.config.params.stop.solid.freeze_volatiles = True
+    p.hf_row = {'Phi_global': 0.81}
+    p._check_crystallization()
+    assert p.crystallized is False
+
+    # 4. Exact boundary Phi_global == phi_crit triggers crystallization (tests <= condition)
+    p.hf_row = {'Phi_global': 0.8}
+    p._check_crystallization()
+    assert p.crystallized is True
+
+
+@pytest.mark.unit
+def test_proteus_start_resume_refuses_legacy_accretion_ledger(tmp_path):
+    """Proteus.start(resume=True) refuses legacy helpfile when impacts are active."""
+    p = _make_proteus_instance(tmp_path)
+    p.config.accretion.module = 'dummy'
+
+    mock_ev = MagicMock()
+    hf_df = _make_hf_df()
+    hf_df['M_accreted_rock'] = 1.0e23
+    hf_df['n_impacts_applied'] = 0.0
+
+    initial_mass = p.config.planet.mass_tot
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                return_value=(hf_df, []),
+            )
+        )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.ZeroHelpfileRow', return_value={}))
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_int = MagicMock()
+        mock_int.ic = 1
+        mock_interior_t.return_value = mock_int
+        stack.enter_context(
+            patch('proteus.accretion.wrapper.init_accretion', return_value=[mock_ev])
+        )
+        stack.enter_context(patch('proteus.star.wrapper.init_star'))
+        stack.enter_context(patch('proteus.orbit.wrapper.init_orbit'))
+
+        with pytest.raises(RuntimeError, match='Resume refused') as excinfo:
+            p.start(resume=True, offline=True)
+
+        err = str(excinfo.value)
+        assert 'predates the impact counter' in err
+        assert 'runtime_helpfile.csv' in err
+
+    assert p.config.planet.mass_tot == initial_mass
+    assert p.impact_events == [mock_ev]
+
+
+@pytest.mark.unit
+def test_proteus_start_resume_accepts_legacy_accretion_ledger_when_disabled(tmp_path, caplog):
+    """Proteus.start(resume=True) accepts legacy helpfile when accretion module is None."""
+    from proteus.utils.constants import M_earth
+
+    p = _make_proteus_instance(tmp_path)
+    p.config.accretion.module = None
+    p.config.planet.mass_tot = 1.0
+    initial_mass = 1.0
+
+    hf_df = _make_hf_df()
+    hf_df['M_accreted_rock'] = 1.0e23
+    hf_df['n_impacts_applied'] = 0.0
+
+    class _StopAfterResume(Exception):
+        pass
+
+    def _status_hook(dirs, status):
+        if status == 1:
+            raise _StopAfterResume()
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
+        )
+        stack.enter_context(
+            patch(
+                'proteus.utils.coupler.select_resumable_snapshot',
+                return_value=(hf_df, []),
+            )
+        )
+        stack.enter_context(
+            patch('proteus.outgas.wrapper.check_desiccation', return_value=False)
+        )
+        stack.enter_context(patch('proteus.utils.coupler.ZeroHelpfileRow', return_value={}))
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
+        mock_int = MagicMock()
+        mock_int.ic = 1
+        mock_interior_t.return_value = mock_int
+        stack.enter_context(patch('proteus.star.wrapper.init_star'))
+        stack.enter_context(patch('proteus.orbit.wrapper.init_orbit'))
+        stack.enter_context(patch('proteus.proteus.UpdateStatusfile', side_effect=_status_hook))
+
+        with pytest.raises(_StopAfterResume):
+            p.start(resume=True, offline=True)
+
+    assert p.config.planet.mass_tot == pytest.approx(initial_mass + 1.0e23 / M_earth)
+    assert p.impact_events == []
+    log_files = list(tmp_path.glob('proteus_*.log'))
+    log_text = '\n'.join(f.read_text() for f in log_files) if log_files else caplog.text
+    assert 'Accretion is disabled for this resume' in log_text

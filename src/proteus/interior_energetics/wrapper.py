@@ -102,6 +102,10 @@ _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 # counter resets on each successful Aragog call.
 _ARAGOG_MAX_CONSECUTIVE_FAILS = 3
 
+# Physical band for retained impact kinetic energy in giant-impact re-melts.
+# Values outside this range indicate initial conditions dominate collision energy.
+_REMELT_RETAINED_BAND = (0.01, 1.0)
+
 # Resume-settling guard for the dynamic structure re-solve. After a resume the
 # interior relaxes thermally over the first loops, swinging T_magma enough to
 # fire the dT/T structure-re-solve trigger every loop. The structure radius,
@@ -1041,12 +1045,33 @@ def determine_interior_radius(
 
 
 def determine_interior_radius_with_dummy(
-    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
+    dirs: dict,
+    config: Config,
+    hf_all: pd.DataFrame,
+    hf_row: dict,
+    outdir: str,
+    thermal_solve: bool = True,
 ):
     """Determine interior structure using Noack & Lasbleis (2020) scaling laws.
 
     Ultra-fast analytical parameterization replacing Zalmoxis. Fills all
     hf_row keys and writes output files needed by SPIDER/Aragog.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_all : pd.DataFrame
+        Historical helpfile dataframe.
+    hf_row : dict
+        Current step helpfile row.
+    outdir : str
+        Output directory path.
+    thermal_solve : bool, optional
+        Whether to run an interior thermal solve or update mechanical mass and
+        structure only (default is True).
     """
     from proteus.interior_struct.dummy import solve_dummy_structure
 
@@ -1085,14 +1110,16 @@ def determine_interior_radius_with_dummy(
     hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']
 
     # Run first interior step
-    int_o = Interior_t(
-        nlev_b, spider_dir=dirs.get('spider'), eos_dir=config.interior_struct.eos_dir
-    )
-    int_o.ic = 1
-    run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
+    if thermal_solve:
+        int_o = Interior_t(
+            nlev_b, spider_dir=dirs.get('spider'), eos_dir=config.interior_struct.eos_dir
+        )
+        int_o.ic = 1
+        run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
     update_gravity(hf_row)
 
-    calc_target_elemental_inventories(dirs, config, hf_row)
+    if thermal_solve:
+        calc_target_elemental_inventories(dirs, config, hf_row)
     update_planet_mass(hf_row)
 
     log.info('Dummy structure solve complete')
@@ -1559,14 +1586,34 @@ def _resolve_adiabatic_ic_structure(
 
 
 def determine_interior_radius_with_zalmoxis(
-    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
+    dirs: dict,
+    config: Config,
+    hf_all: pd.DataFrame,
+    hf_row: dict,
+    outdir: str,
+    thermal_solve: bool = True,
 ):
-    """
-    Determine the interior radius (R_int) of the planet using Zalmoxis.
+    """Determine the interior radius (R_int) of the planet using Zalmoxis.
 
     When the interior module is SPIDER, also writes a SPIDER-format mesh
     file from the Zalmoxis structure solution and stores the path in
     ``dirs['spider_mesh']`` for subsequent calls.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_all : pd.DataFrame
+        Historical helpfile dataframe.
+    hf_row : dict
+        Current step helpfile row.
+    outdir : str
+        Output directory path.
+    thermal_solve : bool, optional
+        Whether to run an interior thermal solve or update mechanical mass and
+        structure only (default is True).
     """
 
     log.info('Using Zalmoxis to solve for interior structure')
@@ -1656,7 +1703,11 @@ def determine_interior_radius_with_zalmoxis(
     # by the finally block above), not the overridden 'adiabatic'.  This is
     # correct: the Zalmoxis solver already used the adiabatic mode to compute
     # the structure, and run_interior (SPIDER/ARAGOG) manages its own T(r).
-    run_interior(dirs, config, hf_all, hf_row, int_o)
+    if thermal_solve:
+        run_interior(dirs, config, hf_all, hf_row, int_o)
+    else:
+        hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']
+        update_planet_mass(hf_row)
 
 
 def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: str):
@@ -1838,26 +1889,350 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
 
 
-def solve_structure(
-    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
-):
+def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
+    """Re-melt a temperature-state backend (dummy or boundary) in place.
+
+    These backends carry the mantle thermal state as a surface magma
+    temperature they cool from the configured initial value. Resetting that
+    temperature, and every melt quantity derived from it, returns the mantle
+    to its molten start. Writing the derived quantities as well, and the melt
+    fraction and temperature onto the interior arrays the same-iteration tidal
+    call reads, keeps the impact iteration self-consistent rather than leaving
+    those quantities a step behind the reset temperature.
     """
-    Solve for the planet structure based on the method set in the configuration file.
+    import numpy as np
+
+    from proteus.interior_energetics.dummy import melt_state_from_temperature
+
+    t_reset = config.planet.tsurf_init
+    state = melt_state_from_temperature(config, hf_row, t_reset)
+    hf_row.update(state)
+    # The boundary backend also cools a surface temperature that the atmosphere
+    # reads, so keep it in step with the magma temperature.
+    if config.interior_energetics.module == 'boundary':
+        hf_row['T_surf'] = t_reset
+
+    # Refresh the single-cell interior arrays the orbit/tides block reads later
+    # in this same iteration, so tidal heating uses the re-melted melt fraction.
+    interior_o.phi = np.array([state['Phi_global']])
+    interior_o.temp = np.array([t_reset])
+
+    if state['Phi_global'] < 1.0:
+        log.warning(
+            '    mantle re-melt left it only %.0f%% molten: tsurf_init=%.0f K is below '
+            'the liquidus. Raise planet.tsurf_init for a full re-melt.',
+            100.0 * state['Phi_global'],
+            t_reset,
+        )
+    log.info(
+        '    mantle re-melted: T_magma reset to %.0f K (melt fraction %.2f)',
+        t_reset,
+        state['Phi_global'],
+    )
+
+
+def evaluate_molten_state(solver, hf_row: dict):
+    """Evaluate Aragog molten initial condition state without time integration.
+
+    Parameters
+    ----------
+    solver : EntropySolver
+        Aragog solver instance.
+    hf_row : dict
+        Current helpfile row.
+
+    Returns
+    -------
+    SolverOutput or None
+        State evaluated at the molten entropy profile with no time step.
+    """
+    if not hasattr(solver, 'get_state'):
+        return None
+
+    from types import SimpleNamespace
+
+    prev_solution = getattr(solver, '_solution', None)
+    t_curr = float(hf_row.get('Time', 0.0))
+    sol = SimpleNamespace(
+        y=solver._S0.reshape(-1, 1),
+        t=np.array([t_curr]),
+        status=0,
+        cvode_flag=0,
+        cvode_flag_name='SUCCESS',
+        message='',
+    )
+    try:
+        solver._solution = sol
+        return solver.get_state()
+    finally:
+        solver._solution = prev_solution
+
+
+def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None:
+    """Re-melt the Aragog mantle so the reset survives to the next solve.
+
+    ``_set_entropy_ic`` alone only rewrites the solver's initial-state vector,
+    which the next coupling step overwrites when it restores the entropy from
+    the previous (cooled) solution. To make the re-melt stick, the restored
+    profile carrier ``interior_o._last_entropy`` is set to the molten profile,
+    the stale trajectory is cleared so the restore path cannot resurrect it,
+    and the cached CMB-gradient state is cleared so it is re-derived from the
+    molten profile rather than inherited from the cooled one.
+
+    The heat the re-melt injects is booked into ``hf_row['step_dE_impact_J']``
+    using the solver's own entropy-transported heat quadrature over the jump
+    from the cooled to the molten profile, the same ``rho(P,S) T dS`` frame the
+    conservation residual integrates. The quadrature runs on the solver's
+    current, pre-impact mesh (the solver is rebuilt for the grown planet only
+    at its next solve), so the booked value is the heat that re-melts the
+    mantle the planet had when the impact struck; the impactor's own heat
+    content arrives as part of the new initial condition and is not booked,
+    the same way the run's t=0 heat content is not. The coupler adds the
+    column to both sides of the energy budget, which keeps the residual closed
+    across the impact for any booked value; the magnitude is therefore a
+    defined convention quantified in the helpfile, not a quantity the residual
+    itself can validate.
+
+    The melt-state keys in ``hf_row`` (``T_magma``, ``Phi_global``,
+    ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``)
+    are updated to reflect the molten profile evaluated without time
+    integration, ensuring downstream modules on the impact iteration
+    read the post-impact melt state.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    if interior_o.aragog_solver is None:
+        raise RuntimeError(
+            'Cannot re-melt the mantle: the Aragog solver is not yet initialised. '
+            'An impact cannot precede the first interior solve.'
+        )
+
+    solver = interior_o.aragog_solver
+
+    # Capture the cooled entropy profile before the reset replaces it; it is
+    # the start state of the heat-injection quadrature below.
+    S_cooled = getattr(interior_o, '_last_entropy', None)
+    if S_cooled is not None:
+        S_cooled = np.asarray(S_cooled, dtype=float).ravel().copy()
+
+    # Drop cooled trajectory and CMB gradient before rebuilding initial conditions.
+    # This prevents hot-starting from obsolete profiles or restoring cooled fields.
+    solver._solution = None
+    if hasattr(solver, '_dSdr_cmb_init'):
+        solver._dSdr_cmb_init = None
+
+    # _set_entropy_ic returns the staggered molten profile it just set. Take it
+    # from the return value rather than from the solver's solution object, which
+    # holds no valid trajectory now and would in any case lag the reset.
+    S_molten = AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
+    S_molten = np.asarray(S_molten, dtype=float).ravel()
+
+    # Calculate injected heat from the entropy jump between cooled and molten
+    # profiles using volume-weighted quadrature.
+    if S_cooled is not None and S_cooled.size > 0:
+        dE_impact = float(solver._step_heat_content(S_cooled, S_molten))
+
+        # Re-melts cannot remove energy. Clamp negative heat changes to zero
+        # when the current mantle temperature exceeds the re-melt profile.
+        if dE_impact < 0.0:
+            log.warning(
+                '    re-melt would remove %.3e J rather than add heat: the mantle is '
+                "above the temperature_mode='%s' state this impact resets it to. "
+                'Nothing is booked. If this is not a pair of impacts landing together, '
+                'the initial condition is too cool for this planet; temperature_mode='
+                "'liquidus_super' is molten for any mass and melting curve.",
+                abs(dE_impact),
+                config.planet.temperature_mode,
+            )
+            dE_impact = 0.0
+
+        interior_o._last_entropy = S_molten.copy()
+
+        # Accumulate heat across multiple impacts within the same timestep
+        # rather than overwriting previous impact energy.
+        hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0) + dE_impact
+        log.info('    re-melt heat injection %.3e J booked into the energy budget', dE_impact)
+    else:
+        interior_o._last_entropy = S_molten.copy()
+        # Preserve existing step impact energy if no pre-impact profile is
+        # available to quantify the entropy jump.
+        hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0)
+        log.warning(
+            '    re-melt heat injection not booked: no pre-impact entropy '
+            'profile is available to measure the jump from'
+        )
+
+    log.info('    mantle re-melted: Aragog entropy reset to the molten initial condition')
+
+    molten_out = evaluate_molten_state(solver, hf_row)
+    if molten_out is not None:
+        output = AragogRunner._build_helpfile_output(
+            molten_out,
+            hf_row,
+            interior_o=interior_o,
+            surface_d=config.atmos_clim.surface_d,
+            surface_bc_mode=config.interior_energetics.surface_bc_mode,
+        )
+        for key in (
+            'T_magma',
+            'Phi_global',
+            'Phi_global_vol',
+            'T_pot',
+            'RF_depth',
+        ):
+            hf_row[key] = output[key]
+
+    if 'Phi_global' in hf_row and 'M_mantle' in hf_row:
+        phi_g = min(max(float(hf_row['Phi_global']), 0.0), 1.0)
+        m_mantle = float(hf_row['M_mantle'])
+        hf_row['M_mantle_liquid'] = phi_g * m_mantle
+        hf_row['M_mantle_solid'] = (1.0 - phi_g) * m_mantle
+
+
+def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:
+    """Reset the mantle to its molten initial condition after a giant impact.
+
+    A giant impact re-melts the mantle in full (no energy threshold), so the
+    interior is returned to a molten initial condition recomputed for the
+    current, grown planet. The reset is applied to the running interior state,
+    and an ``impact_reset`` flag is raised on ``interior_o`` so the next
+    interior solve does not clip the resulting temperature jump as if it were
+    a solver glitch.
+
+    The backends carry their state differently, so each is reset in its own
+    terms: the dummy and boundary backends cool a surface temperature and are
+    reset to the configured initial value together with every quantity derived
+    from it; Aragog re-applies its entropy initial condition and carries the
+    molten profile through the reset the coupling performs on the next step.
+    SPIDER keeps its state in a restart file written by the external binary and
+    has no validated re-melt path; an accretion run on SPIDER is refused at
+    configuration load, and this backstop refuses it at the first impact.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_row : dict
+        Current helpfile row, mutated in place for the scalar backends.
+    interior_o : Interior_t
+        Interior state, reset in place; its ``impact_reset`` flag is raised.
+    event : ImpactEvent, optional
+        The impact being applied, used only to log the impact energy against
+        the enthalpy the re-melt injects.
+
+    Raises
+    ------
+    NotImplementedError
+        If the interior module has no supported re-melt path (SPIDER).
+    ValueError
+        If the interior module is unrecognised.
+    RuntimeError
+        If the Aragog solver has not been initialised.
+    """
+    module = config.interior_energetics.module
+
+    # The column accumulates over a step, so a second impact inside one
+    # timestep would otherwise be weighed against the running total instead of
+    # against its own injection.
+    booked_before = float(hf_row.get('step_dE_impact_J') or 0.0)
+
+    match module:
+        case 'dummy' | 'boundary':
+            _remelt_scalar_backend(config, hf_row, interior_o)
+        case 'aragog':
+            _remelt_aragog(config, dirs, hf_row, interior_o)
+        case 'spider':
+            UpdateStatusfile(dirs, 20)
+            raise NotImplementedError(
+                'Giant-impact mantle re-melt is not supported with the SPIDER '
+                'interior. SPIDER holds its state in a restart file written by the '
+                'external binary, and no validated re-melt path exists yet. Use '
+                "interior_energetics.module = 'aragog' for accretion runs."
+            )
+        case _:
+            UpdateStatusfile(dirs, 20)
+            raise ValueError(f'Cannot re-melt the mantle: unknown interior module {module!r}')
+
+    # Tell the time-stepper's limiter the coming temperature jump is a
+    # deliberate impact re-melt, not a solver anomaly to be clipped away.
+    interior_o.impact_reset = True
+
+    # Compare booked heat injection against impact kinetic energy. The ratio
+    # checks physical plausibility since energy residuals cannot detect scaling errors.
+    if event is not None:
+        reduced = (
+            event.M_target_before
+            * event.M_impactor
+            / (event.M_target_before + event.M_impactor)
+        )
+        e_impact = 0.5 * reduced * event.v_impact**2
+        dE_impact = float(hf_row.get('step_dE_impact_J') or 0.0) - booked_before
+        log.info('    impact kinetic energy %.3e J', e_impact)
+
+        if e_impact > 0.0 and dE_impact != 0.0:
+            retained = dE_impact / e_impact
+            log.info('    re-melt injection is %.3f of the impact kinetic energy', retained)
+            if not _REMELT_RETAINED_BAND[0] <= retained <= _REMELT_RETAINED_BAND[1]:
+                log.warning(
+                    '    re-melt injection is %.3g of the impact kinetic energy, outside '
+                    'the physically expected band [%.2g, %.2g]. The re-melt re-applies the '
+                    'temperature-mode initial condition to the whole mantle, so its cost '
+                    'is set by the mantle rather than by this collision: a cool mantle '
+                    'struck by a small impactor absorbs far more than the impact carried, '
+                    'and a mantle already near the initial condition absorbs far less. '
+                    'Treat the thermal response to this impact as a property of the '
+                    'initial condition, not of the collision.',
+                    retained,
+                    _REMELT_RETAINED_BAND[0],
+                    _REMELT_RETAINED_BAND[1],
+                )
+
+
+def solve_structure(
+    dirs: dict,
+    config: Config,
+    hf_all: pd.DataFrame,
+    hf_row: dict,
+    outdir: str,
+    thermal_solve: bool = True,
+):
+    """Solve for the planet structure based on the method set in the configuration file.
 
     If the structure is set by the radius, then this is trivial because the radius is used
     as an input to the interior modules anyway. If the structure is set by mass, then it is
     solved as an inverse problem for now.
-    """
 
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_all : pd.DataFrame
+        Historical helpfile dataframe.
+    hf_row : dict
+        Current step helpfile row.
+    outdir : str
+        Output directory path.
+    thermal_solve : bool, optional
+        Whether to run an interior thermal solve or update mechanical mass and
+        structure only (default is True).
+    """
     # Set by total mass (mantle + core + volatiles)
     if config.planet.mass_tot is not None:
         # Choose the method to determine the interior radius
         match config.interior_struct.module:
             case 'dummy':
                 return determine_interior_radius_with_dummy(
-                    dirs, config, hf_all, hf_row, outdir
+                    dirs, config, hf_all, hf_row, outdir, thermal_solve=thermal_solve
                 )
             case 'spider':
+                if not thermal_solve:
+                    raise ValueError(
+                        "interior_struct.module = 'spider' does not support thermal_solve=False"
+                    )
                 return determine_interior_radius(dirs, config, hf_all, hf_row, outdir)
             case 'zalmoxis':
                 # Zalmoxis computes its own radius; temporarily disable orbital
@@ -1873,7 +2248,7 @@ def solve_structure(
                             config.params.stop.solid.phi_crit,
                         )
                     return determine_interior_radius_with_zalmoxis(
-                        dirs, config, hf_all, hf_row, outdir
+                        dirs, config, hf_all, hf_row, outdir, thermal_solve=thermal_solve
                     )
                 finally:
                     config.orbit.module = _orig_orbit_module
@@ -1926,6 +2301,14 @@ def run_interior(
     if verbose:
         log.debug('Evolve interior...')
     log.debug('Using %s module to evolve interior' % config.interior_energetics.module)
+
+    # Consume one-shot giant-impact re-melt flag up front to avoid suppressing
+    # temperature-jump clipping on subsequent ordinary steps.
+    impact_reset = getattr(interior_o, 'impact_reset', False)
+    interior_o.impact_reset = False
+    # The interior solvers run below, after the flag is cleared, so keep the
+    # value readable for the rest of this step.
+    interior_o.impact_reset_this_step = impact_reset
 
     # Write tidal heating file
     if config.interior_energetics.heat_tidal:
@@ -1989,7 +2372,7 @@ def run_interior(
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
 
     elif config.interior_energetics.module == 'aragog':
-        from proteus.interior_energetics.aragog import AragogRunner
+        from proteus.interior_energetics.aragog import AragogRunner, InteriorStalledError
 
         runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
         try:
@@ -2000,6 +2383,11 @@ def run_interior(
                 write_data=write_data,
             )
             interior_o.aragog_fail_count = 0
+        except InteriorStalledError:
+            # InteriorStalledError indicates zero progress across successful steps.
+            # Do not absorb it under the consecutive retry failure counter.
+            UpdateStatusfile(dirs, 21)
+            raise
         except RuntimeError as e:
             interior_o.aragog_fail_count += 1
             log.warning(
@@ -2092,7 +2480,8 @@ def run_interior(
     # Update planet mass
     update_planet_mass(hf_row)
 
-    # Apply step limiters
+    # Apply step limiters. The warming clamp and large-increase clips are skipped
+    # after giant-impact re-melts so temperature jumps are preserved.
     if hf_row['Time'] > 0:
         # Prevent increasing surface temperature, if enabled. Gated by
         # _prevent_warming_clamp_active(); the runaway-T fallback below
@@ -2101,39 +2490,31 @@ def run_interior(
         T_surf_prev = float(hf_all.iloc[-1]['T_surf'])
         Phi_global_prev = float(hf_all.iloc[-1]['Phi_global'])
         F_int_prev = float(hf_all.iloc[-1]['F_int'])
-        if _prevent_warming_clamp_active(config) and (interior_o.ic == 2):
+        if _prevent_warming_clamp_active(config) and (interior_o.ic == 2) and not impact_reset:
             hf_row['Phi_global'] = min(hf_row['Phi_global'], Phi_global_prev)
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
             hf_row['T_surf'] = min(hf_row['T_surf'], T_surf_prev)
             hf_row['F_int'] = min(hf_row['F_int'], F_int_prev)
 
-        # F_int positivity floor under prevent_warming, applied for all
-        # ic values (not just ic == 2). SPIDER's JSON output can produce
-        # a slightly-negative F_int on the first post-restart step (ic
-        # = 1) because the thermal state is read from the previous
-        # solver epoch; the floor is what stopped a negative flux from
-        # propagating to the helpfile + atmosphere BC before this floor
-        # was relocated out of ReadSPIDER in the 7g commit.
+        # Enforce positive F_int floor under prevent_warming for all ic values.
+        # This floor remains active during impact steps to prevent negative fluxes.
         if _prevent_warming_clamp_active(config):
             hf_row['F_int'] = max(1.0e-8, hf_row['F_int'])
 
-        # Do not allow massive increases to T_magma or T_surf.
-        #
-        # T_magma uses the SPIDER/Aragog/dummy tolerance formula for
-        # every backend. For all backends T_surf shares the
-        # T_magma budget.
+        # Limit large increases to T_magma and T_surf. Skipped on impact steps.
+        # T_surf shares the T_magma tolerance budget across all backends.
         dT_delta_magma = config.interior_energetics.tmagma_atol
         dT_delta_magma += config.interior_energetics.tmagma_rtol * T_magma_prev
 
         dT_delta_surf = dT_delta_magma
 
-        if hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
+        if (not impact_reset) and hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
             log.warning('Prevented large increase to T_magma!')
             log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
             hf_row['T_magma'] = T_magma_prev + dT_delta_magma
             hf_row['Phi_global'] = Phi_global_prev
 
-        if hf_row['T_surf'] > T_surf_prev + dT_delta_surf:
+        if (not impact_reset) and hf_row['T_surf'] > T_surf_prev + dT_delta_surf:
             log.warning('Prevented large increase to T_surf!')
             log.warning('   Clipped from %.2f K' % hf_row['T_surf'])
             hf_row['T_surf'] = T_surf_prev + dT_delta_surf
@@ -3090,22 +3471,8 @@ def update_structure_from_interior(
     del r_stag, _r_unsorted, _T_unsorted
     gc.collect()
 
-    # Regenerate SPIDER-format P-S EOS tables when composition changed
-    # substantially. For dry 1 M_Earth CHILI this never fires: pure
-    # MgSiO3 is a planet-state-invariant material EOS, so the pre-built
-    # tables are stable for the entire evolution. The comp_changed path
-    # is reached in wet runs where binodal redistribution or degassing
-    # shifts mantle volatile fractions by > 5% (SPIDER reads the fresh
-    # file on next call; Aragog's in-memory EntropyEOS, built once during
-    # AragogRunner.setup_solver, is NOT invalidated here, so Aragog would
-    # silently use the stale in-memory tables).
-    #
-    # KNOWN GAP: for Aragog + wet runs we would need to (i) reload
-    # EntropyEOS from the regenerated files, (ii) re-install the JAX
-    # CVODE factory so its captured eos_jax pytree matches the new
-    # tables, (iii) bounds-check the cached _last_entropy against the
-    # new [S_min, S_max] range. Dry runs do not need this; it is a
-    # precondition for quantitative wet-run work.
+    # Regenerate P-S EOS tables when volatile shifts exceed 5%.
+    # SPIDER and Aragog reload tables on subsequent solver steps.
     if comp_changed and config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
@@ -3116,10 +3483,10 @@ def update_structure_from_interior(
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
             log.info('Regenerated SPIDER EOS tables (composition change)')
             if config.interior_energetics.module == 'aragog':
-                log.warning(
-                    'Aragog: regenerated P-S tables on composition change, '
-                    'but Aragog in-memory EntropyEOS is not refreshed. '
-                    'Known gap for wet runs. Dry runs are not affected.'
+                log.info(
+                    'Aragog reloads the regenerated tables on its next solve; '
+                    'the entropy carried over from the previous step is not '
+                    'bounds-checked against their new range.'
                 )
 
     # Update composition sentinels for next trigger check

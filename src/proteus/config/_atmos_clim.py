@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
+from typing import Literal, Union
 
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le
+
+from proteus.utils.constants import R_earth
 
 from ._converters import lowercase, none_if_none
 
@@ -48,6 +51,20 @@ def valid_aerosols_enabled(instance, attribute, value):
         )
 
 
+def valid_p_obs(instance, attribute, value):
+    """p_obs is either a positive pressure [bar], or None ('none' in the
+    config file), which lets AGNI determine the photosphere self-consistently
+    from optical depth instead. The latter is only meaningful for AGNI.
+    """
+    if value is None:
+        if instance.module != 'agni':
+            raise ValueError("`p_obs='none'` requires atmos_clim.module='agni'")
+        return
+
+    if value <= 0:
+        raise ValueError('`p_obs` must be > 0')
+
+
 def check_overlap(instance, attribute, value):
     _overlaps = ('ro', 'ee', 'rorr')
     if value not in _overlaps:
@@ -64,7 +81,7 @@ def valid_agni(instance, attribute, value):
         raise ValueError('Must set `p_top` to be less than `agni.psurf_thresh`')
 
     # ensure p_obs is greater than p_top
-    if instance.p_top > instance.p_obs:
+    if instance.p_obs is not None and instance.p_top > instance.p_obs:
         raise ValueError('Must set `p_top` to be less than `p_obs`')
 
     # agni does not support mixed_layer surface state
@@ -194,6 +211,8 @@ class Agni:
         Number of steps to use when calculating heights and gravity.
     hydrograv_maxdr: float
         Maximum step size to use when calculating heights [m]
+    hydrograv_hilldr: float
+        Maximum step size to use beyond the Hill radius [m]
     hydrograv_mindr: float
         Minimum step size to use when calculating heights [m]
     hydrograv_ming: float
@@ -202,6 +221,16 @@ class Agni:
         Constant gravity with height?
     hydrograv_selfg: bool
         Include self-gravity of the atmosphere?
+    aerosol_r_eff: float
+        Effective radius of log-normal size distribution for Mie aerosols [m].
+    aerosol_sigma_g: float
+        Standard deviation of log-normal particle-size distribution for Mie aerosols.
+    tau_obs: float
+        Reference vertical optical depth defining the photosphere, used when
+        `atmos_clim.p_obs='none'`.
+    wl_obs: float
+        Reference wavelength [m] at which `tau_obs` is evaluated, used when
+        `atmos_clim.p_obs='none'`.
     """
 
     verbosity: int = field(
@@ -270,12 +299,17 @@ class Agni:
     spectral_file: str | None = field(default=None, converter=none_if_none)
     grey_opacity_lw: float = field(default=1e1, validator=gt(0))
     grey_opacity_sw: float = field(default=1e-4, validator=gt(0))
-    hydrograv_steps: int = field(default=2000, validator=gt(0))
-    hydrograv_maxdr: float = field(default=1e8, validator=gt(0))
+    hydrograv_steps: int = field(default=2048, validator=gt(0))
+    hydrograv_maxdr: float = field(default=R_earth, validator=gt(0))
+    hydrograv_hilldr: float = field(default=R_earth * 1e-3, validator=gt(0))
     hydrograv_mindr: float = field(default=1e-5, validator=gt(0))
     hydrograv_ming: float = field(default=1e-4, validator=gt(0))
     hydrograv_constg: bool = field(default=False)
     hydrograv_selfg: bool = field(default=True)
+    aerosol_r_eff: float = field(default=1.0e-6, validator=(gt(1e-10), le(1.0)))
+    aerosol_sigma_g: float = field(default=1.65, validator=(ge(1.0), le(100.0)))
+    tau_obs: float = field(default=0.02, validator=(gt(1e-10), le(1e10)))
+    wl_obs: float = field(default=1.125e-6, validator=(gt(1e-10), le(1.0)))
 
 
 def valid_janus(instance, attribute, value):
@@ -363,12 +397,18 @@ class AtmosClim:
         Spectral file group defining gas opacities. See https://proteus-framework.org/SOCRATES/Reference/proteus_spectral_file_reference.html
     spectral_bands: str
         Number of wavenumber bands in k-table.
+    spectral_cache: str | None
+        Folder in which to reuse prepared spectral files across runs that share
+        a stellar spectrum. None disables the cache and every run builds its own.
     num_levels: int
         Number of vertical atmosphere levels.
     p_top: float
         Top-of-atmosphere pressure [bar].
-    p_obs: float
-        Observation pressure level [bar] (transit radius).
+    p_obs: float | Literal['none']
+        Observation pressure level [bar] (transit radius). Set to 'none'
+        (-> None) to instead let AGNI determine this pressure level
+        self-consistently from the optical depth (see `agni.tau_obs`,
+        `agni.wl_obs`); AGNI only.
     overlap_method: str
         Gas overlap method. Choices: 'ro', 'rorr', 'ee'.
     surface_d: float
@@ -408,9 +448,12 @@ class AtmosClim:
     # Grid and spectral setup (shared by agni + janus)
     spectral_group: str = field(default='Honeyside')
     spectral_bands: str = field(default='48')
+    spectral_cache: str | None = field(default=None, converter=none_if_none)
     num_levels: int = field(default=50, validator=ge(15))
     p_top: float = field(default=1e-6, validator=gt(0))
-    p_obs: float = field(default=20e-3, validator=gt(0))
+    p_obs: Union[float, Literal['none']] = field(
+        default=20e-3, validator=valid_p_obs, converter=none_if_none
+    )
     overlap_method: str = field(default='ee', validator=check_overlap)
 
     # Radiative and surface properties
@@ -455,6 +498,7 @@ DOC_GROUPS = {
                 'module',
                 'spectral_group',
                 'spectral_bands',
+                'spectral_cache',
                 'num_levels',
                 'p_top',
                 'p_obs',
@@ -535,11 +579,22 @@ DOC_GROUPS = {
             (
                 'hydrograv_steps',
                 'hydrograv_maxdr',
+                'hydrograv_hilldr',
                 'hydrograv_mindr',
                 'hydrograv_ming',
                 'hydrograv_constg',
                 'hydrograv_selfg',
             ),
+        ),
+        (
+            'Aerosol optics',
+            'used for auto-discovered Mie-theory aerosols',
+            ('aerosol_r_eff', 'aerosol_sigma_g'),
+        ),
+        (
+            'Photosphere from optical depth',
+            "used when `atmos_clim.p_obs='none'`",
+            ('tau_obs', 'wl_obs'),
         ),
     ),
 }
