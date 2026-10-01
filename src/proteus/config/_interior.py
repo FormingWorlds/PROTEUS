@@ -300,9 +300,11 @@ class Aragog:
     Keeping the default reproduces current behaviour, and modestly widening the
     band does not move a converged result because tighter steps only refine an
     adaptive integrator; but a value orders of magnitude above the default makes
-    every cell count as near a boundary at all times, clamping the integrator to
-    1 yr steps (max_step = 1 yr, versus 100 yr otherwise) for the whole run and
-    stalling it, so keep the band of order a few hundred J/kg/K. Default 200.0,
+    every cell count as near a boundary at all times, so every call runs under
+    the phase-boundary step control: with phase_boundary_cap = 'fixed' that clamps
+    the integrator to 1 yr steps (versus 100 yr otherwise) and stalls the run, and
+    with 'rate' every call runs as CVODE segments with max_step between 1 and
+    100 yr. Keep the band of order a few hundred J/kg/K. Default 200.0,
     matching Aragog's own default;
     a positive value is required (0 or negative is not a valid disabled state
     for a proximity band)."""
