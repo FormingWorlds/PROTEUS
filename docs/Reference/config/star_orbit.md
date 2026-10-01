@@ -143,7 +143,7 @@ Prescribed migration track used by the `parameterized` star-planet model.
 | `sma_final` | float or none | `none` | Final semi-major axis \[AU\]. Must be > 0. |
 | `migration` | str | `"none"` | Type of orbital migration to apply. Choices: `"none"`, `"instant"`, `"sigmoid"`, `"high_ecc"`. |
 | `time_migration` | float | `1000000.0` | Time at which migration begins \[yr\]. Must be > 0. |
-| `tau_migration` | float | `1000000000.0` | Timescale of migration, used by the sigmoid and high_ecc laws. For sigmoid it is the length of the migration window, for high_ecc the eccentricity decay timescale after the event \[yr\]. Must be > 0. |
+| `tau_migration` | float | `1000000000.0` | Timescale of migration, used by the sigmoid and high_ecc laws \[yr\]. Must be > 0. |
 <!-- END GENERATED: config-table [orbit.parameterized] -->
 
 ### Dummy tides `[orbit.dummy]`
