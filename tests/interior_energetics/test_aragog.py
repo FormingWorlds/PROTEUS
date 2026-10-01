@@ -137,7 +137,7 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
     # require the gap to be smaller than that.
     R_core_fallback = 0.55 * 6.371e6
     assert abs(mesh_arg.inner_radius - R_core_expected) < abs(R_core_fallback - R_core_expected)
-    # Bounded mesh discriminator (Section 3 boundedness): inner_radius
+    # Bounded mesh discriminator (boundedness, tests/AGENTS.md, Physics modules): inner_radius
     # must lie strictly inside (0, R_int) regardless of source field.
     assert 0.0 < mesh_arg.inner_radius < 6.371e6
 
@@ -346,10 +346,8 @@ class TestUpdateStructureZalmoxisRefresh:
         }
         AragogRunner.update_structure(config, hf_row, interior_o)
         assert solver.parameters.mesh.inner_radius == pytest.approx(2.56e6)
-        # Positivity discriminator (Section 3): the fallback exists
-        # precisely so a nonsensical negative R_core never reaches the
-        # mesh. A regression that propagated -1.0 verbatim would land
-        # at a negative inner_radius and trigger this guard.
+        # Positivity (tests/AGENTS.md, Physics modules): the fallback keeps a negative R_core
+        # out of the mesh; propagating -1.0 verbatim would give a negative inner_radius.
         assert solver.parameters.mesh.inner_radius > 0.0
         # Bounded discriminator: 2.56e6 = 0.40 * 6.4e6 must lie strictly
         # inside (0, R_int) and must differ from R_int.

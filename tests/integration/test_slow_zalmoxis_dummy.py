@@ -17,7 +17,7 @@ Invariants asserted:
 - ``R_int`` is consistent with the Earth-like scale (5.5e6-6.5e6 m
   for 1 M_Earth at a typical mantle density).
 - ``M_int`` mass closure: ``M_int + M_atm`` matches ``M_planet``
-  within rel=1e-3 (conservation invariant, §2 carve-out).
+  within rel=1e-3 (conservation invariant; tests/AGENTS.md, Discriminating values).
 - ``R_core / R_int`` lands in [0.55, 0.75] for cmf=0.55 under
   PALEOS:MgSiO3 mantle + PALEOS:iron core. Zalmoxis treats the
   configured ``core_frac`` as mass fraction regardless of

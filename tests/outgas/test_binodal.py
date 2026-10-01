@@ -254,10 +254,8 @@ def test_h2_partial_pressure_uses_g_over_area_in_pa_to_bar():
     area = 4.0 * math.pi * 6.371e6**2
     expected_bar = 1e18 * 9.81 / area / 1e5
     assert hf_row['H2_bar'] == pytest.approx(expected_bar, rel=1e-12)
-    # Sign / positivity guard (Section 3): atmospheric partial pressure
-    # must be strictly positive when H2 sits entirely in the atmosphere.
-    # A regression that swapped the sign on g (a recurring source of
-    # column-mass-vs-weight confusion) would emit a negative bar.
+    # Positivity (tests/AGENTS.md, Physics modules): with all H2 in the atmosphere its
+    # partial pressure is positive; a sign error on g would give a negative bar.
     assert hf_row['H2_bar'] > 0.0
     # Unit-scale guard: the /1e5 Pa-to-bar conversion is the
     # off-by-five-orders-of-magnitude failure mode that has bitten the
@@ -276,10 +274,8 @@ def test_vmr_closure_after_partition():
         apply_binodal_h2(hf_row, cfg)
     vmr_sum = sum(hf_row[s + '_vmr'] for s in gas_list)
     assert vmr_sum == pytest.approx(1.0, rel=1e-12)
-    # Boundedness invariant (Section 3): every individual VMR must lie
-    # in [0, 1]. A regression that emitted a negative VMR for an absent
-    # species (sign error in the normalisation) would still let the sum
-    # round to 1.0 if a positive companion compensated.
+    # Boundedness (tests/AGENTS.md, Physics modules): each VMR lies in [0, 1]; a negative
+    # VMR for an absent species can still sum to 1.0 when a positive one compensates.
     for s in gas_list:
         assert 0.0 <= hf_row[s + '_vmr'] <= 1.0
 
@@ -305,11 +301,8 @@ def test_atmospheric_mmw_recomputed_when_h2_mass_changes():
     # With H2 dissolved (sigma=1), only H2O remains in the atmosphere
     # → MMW should be heavier (closer to 18 g/mol vs 2 g/mol).
     assert mmw_h2_dissolved > mmw_h2_heavy
-    # Bounded discriminator (Section 3 boundedness): MMW in kg/mol
-    # must remain bounded by the range spanned by the two contributing
-    # species (H2 ~ 2e-3, H2O ~ 18e-3) regardless of partition. A
-    # regression that emitted MMW in g/mol would land at ~18 here,
-    # roughly 1000x above the upper bound below.
+    # Boundedness (tests/AGENTS.md, Physics modules): MMW in kg/mol stays within H2 ~ 2e-3
+    # and H2O ~ 18e-3 for any partition; MMW in g/mol would land near 18, 1000x too high.
     assert 1.0e-3 < mmw_h2_dissolved < 2.0e-2
     assert 1.0e-3 < mmw_h2_heavy < 2.0e-2
     # H2O-saturation discriminator: with sigma=1 every H2 atom is

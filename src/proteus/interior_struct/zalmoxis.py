@@ -2882,7 +2882,7 @@ def zalmoxis_solver(
     temperature_mode_override : str or None, optional
         Local override for ``config.planet.temperature_mode``. Lets callers
         force a different structure-solve mode without mutating the shared
-        Config object (see proteus rules §"Config mutability"). When None,
+        Config object (see AGENTS.md, "Physics and coupling contract"). When None,
         the Config value is used. Currently used by
         ``determine_interior_radius_with_zalmoxis`` to force ``adiabatic``
         for SPIDER coupling with a T-dependent mantle EOS.
