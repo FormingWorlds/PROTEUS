@@ -221,7 +221,7 @@ def resume_runs(tmp_path_factory):
 
 @pytest.mark.slow
 @pytest.mark.physics_invariant
-def test_resume_restores_the_cmb_entropy_gradient(resume_runs):
+def test_resume_restores_the_cmb_entropy_gradient(resume_runs, record_property):
     """A resumed Aragog run hands the stored CMB gradient to the solver, and
     its energy-conservation residual and first-step CMB flux are closer to the
     uninterrupted control than a finite-difference restart.
@@ -251,6 +251,9 @@ def test_resume_restores_the_cmb_entropy_gradient(resume_runs):
         k: abs(D['E_residual_cons_frac'].iloc[first] - ctrl['E_residual_cons_frac'].iloc[first])
         for k, D in (('res', res), ('fd', fd))
     }
+    for name, d in (('d_flux', d_flux), ('d_res', d_res)):
+        for k in ('res', 'fd'):
+            record_property(f'{name}_{k}', float(d[k]))
     assert d_flux['res'] < 0.5 * d_flux['fd'], d_flux
     assert d_res['res'] < 0.5 * d_res['fd'], d_res
 
