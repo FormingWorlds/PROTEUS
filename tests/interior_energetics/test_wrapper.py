@@ -7191,3 +7191,42 @@ def test_f_atm_is_not_produced_by_interior_energetics_wrapper():
     assert len(producer_files) >= 4
     assert 'src/proteus/atmos_clim/dummy.py' in producer_files
     assert 'src/proteus/interior_energetics/wrapper.py' not in producer_files
+
+
+@pytest.mark.unit
+def test_dummy_structure_takes_the_generated_paleos_set(tmp_path):
+    """A generated PALEOS set gives the P-S EOS directory and both melting curves; the
+    FWL_DATA/SPIDER set is not provided."""
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_dummy
+
+    config = MagicMock()
+    config.interior_energetics.module = 'spider'
+    config.interior_energetics.num_levels = 50
+    tables = {
+        'eos_dir': str(tmp_path / 'eos'),
+        'solidus_path': str(tmp_path / 'sol.dat'),
+        'liquidus_path': str(tmp_path / 'liq.dat'),
+    }
+    dirs = {}
+    hf_row = {'M_int': 5.972e24, 'M_core': 2.0e24, 'R_int': 6.371e6, 'gravity': 9.81}
+
+    with (
+        _patch('proteus.interior_struct.dummy.solve_dummy_structure', return_value=None),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=tables),
+        _patch('proteus.interior_energetics.wrapper._provide_spider_eos_tables') as provide,
+        _patch('proteus.interior_energetics.wrapper.Interior_t'),
+        _patch('proteus.interior_energetics.wrapper.run_interior'),
+        _patch('proteus.interior_energetics.wrapper.update_gravity'),
+        _patch('proteus.interior_energetics.wrapper.calc_target_elemental_inventories'),
+        _patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        determine_interior_radius_with_dummy(dirs, config, None, hf_row, str(tmp_path))
+
+    provide.assert_not_called()
+    assert (dirs['spider_eos_dir'], dirs['spider_solidus_ps'], dirs['spider_liquidus_ps']) == (
+        tables['eos_dir'],
+        tables['solidus_path'],
+        tables['liquidus_path'],
+    )
