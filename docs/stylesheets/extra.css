@@ -40,6 +40,43 @@
   --pt-basalt: #0E131B;
   --pt-line-d: #1A2230;
 
+  /* accents: sporadic highlight and extra data-series range. Solar is the
+     bright tone for dark surfaces; the light block below swaps in the deep
+     one, which is also available by name for a mark that must stay deep. */
+  --pt-solar: #E0A32E;
+  --pt-solar-deep: #C8860F;
+  --pt-verdant: #57A05C;
+
+  /* module domains: one hue per physical domain, identical in every artifact
+     of the ecosystem, so a reader who learns the mapping on one page carries
+     it to the next. A module takes the colour of the domain it acts on. */
+  --pt-dom-interior: #E23D28;   /* SPIDER, Aragog, Zalmoxis */
+  --pt-dom-outgassing: #A03123; /* CALLIOPE, Atmodeller */
+  --pt-dom-tidal: #593E74;      /* LovePy, Obliqua */
+  --pt-dom-chem: #1B6FA8;       /* VULCAN, ZEPHYRUS */
+  --pt-dom-atmos: #4FA3D9;      /* AGNI, JANUS */
+  --pt-dom-stellar: #E0A32E;    /* MORS; deepens on light, see the light block */
+  --pt-dom-accretion: #A38F7A;  /* Morrigan */
+
+  /* phase ramp, magma through void to ocean, for data running molten to
+     frozen. Ordered, so an index maps to a position along the ramp. */
+  --pt-p1: #E23D28;
+  --pt-p2: #8E1F12;
+  --pt-p3: #3A120C;
+  --pt-p4: #05070B;
+  --pt-p5: #0E2A45;
+  --pt-p6: #14406B;
+  --pt-p7: #1B6FA8;
+  --pt-p8: #4FA3D9;
+  --pt-p9: #A8D4E8;
+
+  /* status, held apart from the domain hues so a red module and a failure
+     never have to be told apart by colour alone */
+  --pt-positive: #2E8B57;
+  --pt-warning: #C77726;
+  --pt-danger: #C2362B;
+  --pt-info: #1B6FA8;
+
   --md-text-font: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --md-code-font: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
@@ -94,6 +131,11 @@
   --md-code-hl-string-color: var(--pt-abyss);
   --md-code-hl-number-color: var(--pt-ocean);
   --md-code-hl-comment-color: #7A8894;
+
+  /* the one domain colour that differs by scheme: the bright tone reaches
+     only 2.0:1 on Paper, and deepening lifts it to 2.8:1 */
+  --pt-solar: #C8860F;
+  --pt-dom-stellar: #C8860F;
 }
 
 /* ---------- typography ---------- */

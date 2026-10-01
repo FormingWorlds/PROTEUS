@@ -24,8 +24,8 @@ with an equation of state (EOS).
 | `core_frac` | float | `0.325` | Fraction of the planet's interior radius corresponding to the core. Must be > 0 and < 1. |
 | `core_frac_mode` | str | `"mass"` | How core_frac is interpreted. 'radius': fraction of planet radius. 'mass': fraction of total planet mass. Only 'radius' is supported when module = 'spider'. The zalmoxis module always interprets core_frac as a mass fraction and ignores this flag (a warning is emitted at runtime if 'radius' is set with module = 'zalmoxis'). Choices: `"radius"`, `"mass"`. |
 | `module` | str or none | `"zalmoxis"` | Module for solving the planet's interior structure. Choices: `none`, `"dummy"`, `"spider"`, `"zalmoxis"`. |
-| `core_density` | float | str | `"self"` | Density of the planet's core \[kg m-3\]. Set to 'self' for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis'). |
-| `core_heatcap` | float | str | `"self"` | Specific heat capacity of the planet's core \[J kg-1 K-1\]. Set to 'self' for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis'). |
+| `core_density` | float or str | `"self"` | Density of the planet's core \[kg m-3\]. Set to 'self' for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis'). |
+| `core_heatcap` | float or str | `"self"` | Specific heat capacity of the planet's core \[J kg-1 K-1\]. Set to 'self' for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis'). |
 | `melting_dir` | str or none | `none` | Melting curve folder name in FWL_DATA, for the SPIDER structure module. |
 | `eos_dir` | str or none | `none` | EOS folder name in FWL_DATA, for the SPIDER structure module. |
 <!-- END GENERATED: config-table [interior_struct] -->
