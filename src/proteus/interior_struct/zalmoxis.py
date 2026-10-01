@@ -389,7 +389,8 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
 
     The tolerance is that of Aragog's ``EntropySolver.reset()``,
     ``max(1 m, 1e-9 * (R_int - R_core))``, applied to both bounds in both
-    directions; the helpfile rounding of the radii is about 5e-5 m.
+    directions; the helpfile rounding of the radii is at most 5e-5 m below
+    1e7 m and 5e-4 m up to 1e8 m.
 
     Parameters
     ----------
@@ -402,16 +403,19 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
     -------
     tuple of float or None
         ``(file r[0] - R_core, file r[-1] - R_int, tolerance)`` in metres, or
-        None unless the file holds at least two finite 5-column rows with
-        strictly increasing radii.
+        None unless the file ends with a newline and holds at least two finite
+        5-column rows with strictly increasing radii.
     """
     try:
-        data = np.loadtxt(output_path, ndmin=2)
+        with open(output_path) as f:
+            text = f.read()
+        data = np.loadtxt(text.splitlines(), ndmin=2)
     except (OSError, ValueError):
         return None
     r = data[:, 0]
     if (
-        data.shape[1] != 5
+        not text.endswith('\n')
+        or data.shape[1] != 5
         or r.size < 2
         or not np.isfinite(data).all()
         or (np.diff(r) <= 0).any()
@@ -423,8 +427,14 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
 
 def copy_zalmoxis_output(src: str, dst: str) -> None:
     """Copy a structure file through a temporary file, so ``dst`` is never partial."""
-    shutil.copy2(src, dst + '.tmp')
-    os.replace(dst + '.tmp', dst)
+    tmp = dst + '.tmp'
+    try:
+        shutil.copy2(src, tmp)
+        os.replace(tmp, dst)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
 
 
 def save_zalmoxis_output_snapshot(outdir: str, time: float) -> None:

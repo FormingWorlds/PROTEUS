@@ -503,8 +503,18 @@ def test_resync_checks_the_saved_copy_before_using_it(tmp_path, caplog):
     assert len(skipped) == 1 and '100p000_zalmoxis.dat: R_core +0.000e+00 m' in skipped[0]
 
 
-def _torn(path):
-    path.write_bytes(path.read_bytes()[:-30])
+def _cut(n):
+    def spoil(path):
+        path.write_bytes(path.read_bytes()[:-n])
+
+    spoil.__name__ = f'cut_{n}_bytes'
+    return spoil
+
+
+def _nan_radius(path):
+    data = np.loadtxt(path)
+    data[2, 0] = np.nan
+    np.savetxt(path, data, fmt='%.17e')
 
 
 def _nan_entry(path):
@@ -524,10 +534,12 @@ def _four_columns(path):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('spoil', [_torn, _nan_entry, _flat_radii, _four_columns])
+@pytest.mark.parametrize(
+    'spoil', [*map(_cut, (2, 5, 10, 30)), _nan_radius, _nan_entry, _flat_radii, _four_columns]
+)
 @pytest.mark.parametrize('live_matches', [True, False])
 def test_resync_never_restores_a_malformed_saved_copy(tmp_path, caplog, spoil, live_matches):
-    """A copy with matching bounds but a torn last line, a NaN entry, a repeated
+    """A copy with matching bounds but a cut last line, a NaN entry, a repeated
     radius or 4 columns is skipped as invalid; the live file is kept, or the resume stops."""
     p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.4e6 if live_matches else 6.5e6))
     _write_mesh(_saved_copy(tmp_path), 3.4e6, 6.4e6)
@@ -545,13 +557,17 @@ def test_resync_never_restores_a_malformed_saved_copy(tmp_path, caplog, spoil, l
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('copies', [False, True])
+@pytest.mark.parametrize(
+    'copies', [(), (50.0,), (100.0,)], ids=['none', 'other row', 'this row']
+)
 def test_resync_stops_when_no_file_matches_the_row(tmp_path, copies):
-    """A stale file and a stale .prev stop the resume with one message, which
-    names the remedy when the run directory holds no saved copies."""
-    p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.5e6), prev=(3.4e6 - 2.0e3, 6.3e6))
-    if copies:
-        _write_mesh(_saved_copy(tmp_path, 50.0), 3.4e6, 6.4e6)
+    """A stale file and a stale .prev stop the resume with one message, which asks
+    for a run from t = 0 when the row has no saved copy; brackets in the path are literal."""
+    run = tmp_path / 'run[1]'
+    run.mkdir()
+    p, path = _resync_instance(run, dat=(3.4e6, 6.5e6), prev=(3.4e6 - 2.0e3, 6.3e6))
+    for t in copies:
+        _write_mesh(_saved_copy(run, t), 3.4e6, 6.3e6)
     before = path.read_bytes()
 
     with pytest.raises(RuntimeError) as err:
@@ -561,7 +577,7 @@ def test_resync_stops_when_no_file_matches_the_row(tmp_path, copies):
     assert 't = 1.000000e+02 yr' in msg and str(path) in msg
     assert 'zalmoxis_output.dat: R_core +0.000e+00 m, R_int +1.000e+05 m' in msg
     assert 'zalmoxis_output.dat.prev: R_core -2.000e+03 m, R_int -1.000e+05 m' in msg
-    assert ('no saved structure copies' in msg and 'restart the run' in msg) is not copies
+    assert ('again from t = 0' in msg) is (100.0 not in copies)
     assert path.read_bytes() == before
 
 
@@ -581,14 +597,43 @@ def test_resume_records_error_status_when_the_resync_raises(tmp_path):
 
 
 @pytest.mark.unit
-def test_resync_without_a_mesh_file_does_nothing(tmp_path):
-    """No zalmoxis_output.dat and no saved copy: nothing to compare or write."""
+def test_resync_stops_without_a_structure_file(tmp_path):
+    """No saved copy, no zalmoxis_output.dat and no .prev: the resume stops."""
     p, path = _resync_instance(tmp_path)
 
-    p._resync_zalmoxis_mesh()
+    with pytest.raises(RuntimeError, match='none of .* exists. Run the configuration again'):
+        p._resync_zalmoxis_mesh()
 
-    assert not path.exists()
     assert list((tmp_path / 'data').iterdir()) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('where', ['snapshot save', 'resume restore'])
+def test_a_failed_copy_leaves_the_target_and_no_temporary_file(tmp_path, where):
+    """A copy that fails after writing part of the file changes neither target."""
+    p, path = _resync_instance(tmp_path, dat=(3.4e6, 6.5e6))
+    p.config.interior_struct.module = 'zalmoxis'
+    _write_mesh(_saved_copy(tmp_path), 3.4e6, 6.4e6 + 0.5)
+    (tmp_path / 'data' / '100p000_int.nc').touch()
+    target, run = (
+        (_saved_copy(tmp_path), p._save_zalmoxis_output)
+        if where == 'snapshot save'
+        else (path, p._resync_zalmoxis_mesh)
+    )
+    before = target.read_bytes()
+
+    def partial_copy(src, dst):
+        Path(dst).write_bytes(Path(src).read_bytes()[:50])
+        raise OSError('disk full')
+
+    with (
+        patch('proteus.interior_struct.zalmoxis.shutil.copy2', side_effect=partial_copy),
+        pytest.raises(OSError, match='disk full'),
+    ):
+        run()
+
+    assert target.read_bytes() == before
+    assert not list((tmp_path / 'data').glob('*.tmp'))
 
 
 @pytest.mark.unit
@@ -771,7 +816,6 @@ def test_finished_run_saves_the_final_copy_after_the_final_snapshot(tmp_path):
         name = format_subyear_time(hf_row['Time'])
         seen.append(_saved_copy(tmp_path, hf_row['Time']).exists())
         (tmp_path / 'data' / f'{name}_int.nc').touch()
-        return True
 
     with patch(
         'proteus.interior_energetics.aragog.write_final_snapshot', side_effect=final_snapshot

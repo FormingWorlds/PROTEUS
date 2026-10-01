@@ -2948,9 +2948,7 @@ def mesh_surface_pressure_state(solver) -> float | None:
         return None
 
 
-def write_final_snapshot(
-    config: Config, interior_o: Interior_t, dirs: dict, hf_row: dict
-) -> bool:
+def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_row: dict):
     """Write the Aragog state at the end of a run so a resume can find it.
 
     The file name comes from ``hf_row['Time']``, so this rewrites the last
@@ -2969,15 +2967,10 @@ def write_final_snapshot(
         Run directories; ``dirs['output']`` is the run output directory.
     hf_row : dict
         Final helpfile row.
-
-    Returns
-    -------
-    bool
-        True when the snapshot of ``hf_row`` was written.
     """
     if _DIFFRAX_RESEARCH_ONLY:
         # The diffrax runner writes its own snapshots; the numpy solver is stale.
-        return False
+        return
     solver = interior_o.aragog_solver
     AragogRunner._write_output_ncdf(
         dirs['output'],
@@ -2988,7 +2981,6 @@ def write_final_snapshot(
         dSdr_cmb=cmb_gradient_state(solver, config.interior_energetics.aragog.core_bc),
         mesh_surface_pressure=mesh_surface_pressure_state(solver),
     )
-    return True
 
 
 def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | None:

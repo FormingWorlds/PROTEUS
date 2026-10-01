@@ -3428,10 +3428,10 @@ def test_final_snapshot_skipped_on_the_diffrax_path(tmp_path, monkeypatch):
     interior_o.aragog_solver = _StateSolver(-2.2e-11)
     dirs, row = {'output': str(tmp_path)}, {'Time': 282.0, 'T_surf': 3000.0}
     monkeypatch.setattr(flag, True)
-    assert write_final_snapshot(config, interior_o, dirs, row) is False
+    write_final_snapshot(config, interior_o, dirs, row)
     assert list((tmp_path / 'data').glob('*_int.nc')) == []
     monkeypatch.setattr(flag, False)
-    assert write_final_snapshot(config, interior_o, dirs, row) is True
+    write_final_snapshot(config, interior_o, dirs, row)
     assert len(list((tmp_path / 'data').glob('*_int.nc'))) == 1
 
 

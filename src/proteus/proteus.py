@@ -402,11 +402,9 @@ class Proteus:
         Raises
         ------
         RuntimeError
-            When no candidate matches the row within Aragog's ``reset()``
-            tolerance.
+            When no candidate exists or none matches the row within Aragog's
+            ``reset()`` tolerance.
         """
-        import glob
-
         from proteus.interior_struct.zalmoxis import (
             copy_zalmoxis_output,
             get_zalmoxis_output_filepath,
@@ -440,23 +438,20 @@ class Proteus:
                 f'{os.path.basename(file)}: '
                 + ('invalid' if gaps is None else 'R_core %+.3e m, R_int %+.3e m' % gaps[:2])
             )
-        if tried:
-            data = os.path.dirname(path)
-            remedy = (
-                ''
-                if glob.glob(os.path.join(data, '*_zalmoxis.dat'))
-                else f' {data} holds no saved structure copies (*_zalmoxis.dat): such a '
-                'run resumes only when the live structure file matches its last row, as '
-                'after a clean stop; otherwise restart the run.'
-            )
+        rerun = 'Run the configuration again from t = 0.'
+        if not tried:
             raise RuntimeError(
-                f'Resume: no Zalmoxis structure file matches the helpfile row at '
-                f't = {time:.6e} yr within max(1 m, 1e-9 of the mantle thickness); '
-                f'{"; ".join(tried)}. The structure of this row is not on disk '
-                f'({os.path.basename(saved)} is missing or differs), so Aragog '
-                f'would reject {path} at a reset() or run on a structure off by '
-                f'these gaps.{remedy}'
+                f'Resume: no Zalmoxis structure file for the helpfile row at t = {time:.6e} yr; '
+                f'none of {saved}, {path} and {path}.prev exists. {rerun}'
             )
+        raise RuntimeError(
+            f'Resume: no Zalmoxis structure file matches the helpfile row at '
+            f't = {time:.6e} yr within max(1 m, 1e-9 of the mantle thickness); '
+            f'{"; ".join(tried)}. A resume needs the copy saved with the row, '
+            f'{os.path.basename(path)} or its .prev to match the resumed row; otherwise Aragog '
+            f'would reject {path} at a reset() or run on a structure off by these gaps.'
+            + ('' if os.path.isfile(saved) else f' {saved} does not exist. {rerun}')
+        )
 
     def _check_crystallization(self) -> None:
         """Check mantle crystallization and lock outgassing when threshold is crossed."""
@@ -1548,10 +1543,8 @@ class Proteus:
         ):
             from proteus.interior_energetics.aragog import write_final_snapshot
 
-            if write_final_snapshot(
-                self.config, self.interior_o, self.directories, self.hf_row
-            ):
-                self._save_zalmoxis_output()
+            write_final_snapshot(self.config, self.interior_o, self.directories, self.hf_row)
+            self._save_zalmoxis_output()
 
         # Ensure the final atmosphere state is on disk, since it won't always happen to
         # be written on the last iteration of the model.
