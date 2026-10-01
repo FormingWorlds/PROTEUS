@@ -154,8 +154,8 @@ class TestMushyCap:
         # SFINC * dt_prev = 1.6 * 5e3 = 8e3. No cap applied since
         # mushy_maximum = 0 disables the feature.
         assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3, got {dt}'
-        # Section 3 positivity: time-step must be > 0. A regression that
-        # returned a non-positive dt would silently freeze the simulation.
+        # Positivity (tests/AGENTS.md, Physics modules): time-step must be > 0. A
+        # regression that returned a non-positive dt would silently freeze the simulation.
         assert dt > 0.0
 
     @pytest.mark.physics_invariant
@@ -249,7 +249,7 @@ class TestMushyCap:
         assert dt == pytest.approx(dt_no_cap, rel=1e-6), (
             f'Cap should be inactive below phi_crit, but dt={dt} vs dt_no_cap={dt_no_cap}'
         )
-        # Section 3 positivity: dt must remain strictly positive in the
+        # Positivity (tests/AGENTS.md, Physics modules): dt must remain strictly positive in the
         # solidified branch (Phi < phi_crit).
         assert dt > 0.0
 
@@ -512,10 +512,8 @@ class TestHysteresis:
         dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=None)
         # Without interior_o the hysteresis machinery is fully skipped.
         assert dt == pytest.approx(1.6e3, rel=1e-6)
-        # Section 3 positivity: timestep stays positive even on the
-        # legacy code path. Combined with the equality above this
-        # rules out a regression that returned 0 or NaN when
-        # interior_o is None.
+        # Positivity (tests/AGENTS.md, Physics modules) on the legacy path: with the equality
+        # above this rules out 0 or NaN when interior_o is None.
         assert dt > 0.0
 
 
@@ -683,8 +681,8 @@ def test_next_step_maximum_rel_additive_is_binding_when_dt_max_smaller():
     # formula would give the same answer here, so this asserts the
     # arithmetic identity rather than the formula shape.
     assert dt == pytest.approx(10.0)
-    # Section 3 positivity guard: any time-step must be strictly positive
-    # (a zero or negative dt would freeze or reverse the integration).
+    # Positivity guard (tests/AGENTS.md, Physics modules): any time-step must be strictly
+    # positive (a zero or negative dt would freeze or reverse the integration).
     assert dt > 0.0
 
 

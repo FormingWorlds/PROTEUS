@@ -64,7 +64,7 @@ def test_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
     Verifies:
     - At least 2 helpfile rows.
     - Per-element mass closure for H, C, N, S, O at the final row within
-      rel=1e-2 (conservation invariant, §2 carve-out).
+      rel=1e-2 (conservation invariant; tests/AGENTS.md, Discriminating values).
     - Sign guard on every reservoir mass (catches a negative-value
       regression that the closure tolerance might swallow).
     - Positivity of T_magma, P_surf, R_int, M_int, gravity at every row.
@@ -119,8 +119,8 @@ def test_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
 
     final = hf.iloc[-1]
 
-    # Per-element mass closure: the conservation invariant. The equality
-    # form discriminates exponent / factor errors by construction (§2).
+    # Per-element mass closure: the conservation invariant. The equality form discriminates
+    # exponent / factor errors by construction (tests/AGENTS.md, Discriminating values).
     for elt in ('H', 'C', 'N', 'S', 'O'):
         atm_key = f'{elt}_kg_atm'
         liq_key = f'{elt}_kg_liquid'

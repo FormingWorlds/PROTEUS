@@ -30,7 +30,7 @@ Invariants asserted per scenario:
 - Escape rate non-negative, finite, bounded above by a physically plausible
   ceiling (rejects per-area-vs-per-volume swap).
 - Per-element mass closure ``atm + liq + sol == total`` for H/C/N/S/O at
-  the final row (conservation invariant carve-out, §2).
+  the final row (conservation invariant; tests/AGENTS.md, Discriminating values).
 
 See also:
 - docs/How-to/testing.md
