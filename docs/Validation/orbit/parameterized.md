@@ -2,14 +2,15 @@
 
 This page tracks the `@pytest.mark.reference_pinned` tests that anchor the
 prescribed migration laws in `proteus.orbit.parameterized`. The module is
-closed-form, so both anchors are analytical limits rather than published
-benchmarks: there is no external data set to compare against, and the
-contract is the mathematics the laws are defined by.
+closed-form, so the sigmoid anchor is an analytical limit and the
+high-eccentricity anchor is the published law of Postolec et al. (2026):
+there is no external data set to compare against, and the contract is the
+mathematics the laws are defined by.
 
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|
 | `tests/orbit/test_parameterized.py::test_sigmoid_matches_the_cubic_smoothstep_across_the_window` | Analytical limit: the cubic Hermite interpolant with zero slope at both ends, `S(u) = 3u^2 - 2u^3`, at `u = 1/4`, `1/2` and `3/4` | Standard | Pins `sigmoid_migration` across its migration window. Separates the cubic from a linear ramp and from the quintic smootherstep, and catches a swapped `sma_init`/`sma_final`. |
-| `tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity` | Analytical limit: specific orbital angular momentum of a two-body orbit, `h = sqrt(G M a (1 - e^2))`, and the exponential decay it implies for `e(t)` | Standard | Pins `e(t) = e_mig exp(-(t - t_mig) / tau)`, a form the source never evaluates, plus the one-tau e-folding. The semi-latus-rectum equality `a (1 - e^2) = a_f` is kept as a sanity check only: it is an identity of the implementation, not an emergent conservation law. Also asserts the pericentre `a (1 - e)` is not conserved. |
+| `tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity` | Postolec et al. (2026), submitted to ApJ, arXiv:2609.03144 (doi:10.48550/arXiv.2609.03144) | Sect. 2.2, Eqs. 1-4 | Pins `e(t) = e_mig exp(-(t - t_mig) / tau)`, a form the source never evaluates, plus the one-tau e-folding. The semi-latus-rectum equality `a (1 - e^2) = a_f` is kept as a sanity check only: it is an identity of the implementation, not an emergent conservation law. Also asserts the pericentre `a (1 - e)` is not conserved. |
 
 ## Re-derivation notes
 
@@ -55,7 +56,7 @@ closed-form algebra with no solver or lookup in the path.
 
 ### High-eccentricity migration
 
-The law is
+The law (Postolec et al. 2026, Sect. 2.2, Eqs. 1-4) is
 
 ```
 e_mig = sqrt(1 - a_f / a_0)

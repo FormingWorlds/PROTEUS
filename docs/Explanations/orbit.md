@@ -111,7 +111,7 @@ spectrum in `tides_o`).
 |---|---|---|---|
 | `sp0d` | `semimajorax`, `eccentricity` | Driscoll & Barnes (2015)[^cite-driscoll2015], Eq. 15-16 | Closed-form two-ODE system in `(a, e)` only; no spin dynamics, so it is **not** angular-momentum-conserving by construction. |
 | `sp1d` | `axial_period`, `semimajorax`, `eccentricity`, `plan_star_am` | Correia & Valente (2022)[^cite-correia2022] | Vectorial, Hansen-coefficient formulation restricted to planetary tides (star assumed non-dissipative). Genuinely angular-momentum-conserving; verified by dedicated tests. |
-| `parameterized` | `semimajorax`, `eccentricity` | -- | Prescribed migration track, not a tidal model: the orbit is a closed-form function of time, no tidal force is computed, and no angular momentum is exchanged with the interior (no tidal heating). Use it to impose a migration history, not to derive one. |
+| `parameterized` | `semimajorax`, `eccentricity` | `high_ecc`: Postolec et al. (2026)[^cite-postolec2026], Eq. 1-4 | Prescribed migration track, not a tidal model: the orbit is a closed-form function of time, no tidal force is computed, and no angular momentum is exchanged with the interior (no tidal heating). Use it to impose a migration history, not to derive one. |
 
 ??? note "sp0d in a nutshell - Driscoll & Barnes (2015)"
     Written for rocky planets around M dwarfs, where the habitable zone
@@ -162,7 +162,7 @@ hold it at `orbit.eccentricity` throughout.
 over the following `tau_migration` along the cubic `3u^2 - 2u^3`, and holds
 it there afterwards.
 
-`high_ecc` circularises at constant orbital angular momentum: it excites the
+`high_ecc` circularises at constant orbital angular momentum (Postolec et al. 2026)[^cite-postolec2026]: it excites the
 eccentricity to `sqrt(1 - sma_final / sma_init)` at the migration epoch and
 then decays it, until the orbit reaches `sma_final`. The eccentricity jumps discontinuously at
 `time_migration` from `orbit.eccentricity` to its excited value. That step is
@@ -459,3 +459,5 @@ Orbital and rotational state feed three physical stopping conditions
  [^cite-korenaga2023]: Korenaga, J., *[Rapid tidal dissipation explains the extended lunar magma ocean](https://doi.org/10.1016/j.icarus.2023.115564)*, Icarus, 400, 115564, 2023.
 
  [^cite-rufu2020]: Rufu, R. & Canup, R.M., *[Evection resonance as a possible cause for lunar inclination](https://doi.org/10.1029/2019JE006312)*, Journal of Geophysical Research: Planets, 125, e2019JE006312, 2020.
+
+[^cite-postolec2026]: Postolec, E., Lichtenberg, T., Teske, J.K., Nicholls, H., Attia, M., Piette, A., Dang, L., Wallack, N.L., Plotnykov, M., McGinty, A., Boucher, S., Peng, B. & Valencia, D., *[Evolutionary pathways toward survival of a thick CO2- or SO2-rich atmosphere on the lava world TOI-561 b](https://doi.org/10.48550/arXiv.2609.03144)*, submitted to The Astrophysical Journal, arXiv:2609.03144, 2026.
