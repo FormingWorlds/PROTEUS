@@ -138,7 +138,7 @@ by the user.
 ??? note "parameterized in a nutshell"
     The other two star-planet models derive the orbit from a tidal
     torque. This parameterized one imposes one instead, and does not compute 
-    any physics. The user choose where the planet starts, where it ends up, 
+    any physics. The user chooses where the planet starts, where it ends up, 
     when the migration happens and how long it takes. The orbit is evaluated 
     at each time step from that closed form. It is the right tool to use when 
     testing the influence of a migration history in a simulation without 
