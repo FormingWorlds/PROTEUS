@@ -35,6 +35,7 @@ from proteus.outgas.wrapper import (
     calc_target_elemental_inventories,
     check_desiccation,
     check_ic_oxygen_budget,
+    desiccated_after_trapping,
     run_desiccated,
     run_outgassing,
     run_outgassing_and_vapourisation,
@@ -2312,3 +2313,63 @@ def test_desiccation_without_trapping_keeps_every_total_as_before():
     assert_mass_conservation(row)
     with pytest.raises(RuntimeError, match='closure failed for'):
         assert_mass_conservation(row, check_element_closure=True)
+
+
+@pytest.mark.physics_invariant
+def test_a_remelt_after_desiccation_returns_the_planet_its_volatiles():
+    """A desiccated planet keeps its trapped H, O and Ar in the solid. When the
+    mantle then remelts, the released mass is in the melt again, so the planet
+    is no longer desiccated: escape and outgassing must take it from there. A
+    planet left flagged would hand the row back to run_desiccated, which
+    empties the melt and deletes the released mass without escape booking it."""
+    import pandas as pd
+
+    from proteus.outgas.trapping import run_trapping
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1e16
+    config.outgas.trap_mode = 'front'
+    config.planet.fO2_source = 'from_O_budget'
+
+    # 4e19 kg H, 3.2e20 kg O (as 3.6e20 kg H2O) and 1e18 kg Ar trapped.
+    row = _nearly_dry_row(H_kg_total=4.0e19, O_kg_total=3.2e20, Ar_kg_total=1.0e18)
+    trapped = {'H': 4.0e19, 'O': 3.2e20, 'H2O': 3.6e20, 'Ar': 1.0e18}
+    for name, mass in trapped.items():
+        row.update({f'{name}_kg_solid': mass, f'{name}_kg_trapped': mass})
+    row['H2O_kg_total'] = 3.6e20
+    assert check_desiccation(config, row)
+    run_desiccated({}, config, row, False)
+    totals = {e: row[f'{e}_kg_total'] for e in ('H', 'O', 'Ar')}
+    assert totals['H'] == pytest.approx(4.0e19, rel=1e-12)
+
+    # Phi 0.30 -> 0.65 remelts half of the solid mantle.
+    row.update(Time=2.0e4, M_mantle=4.0e24, Phi_global=0.65)
+    prev = pd.DataFrame([{'Time': 1.0e4, 'M_mantle': 4.0e24, 'Phi_global': 0.30}])
+    step = run_trapping(config, row, prev)
+    assert step.remelted
+    assert row['Ar_kg_liquid'] == pytest.approx(5.0e17, rel=1e-12)
+    assert not desiccated_after_trapping(config, row, True, step)
+
+    # Discrimination: left flagged, the next desiccated step deletes the
+    # released half of every element.
+    flagged = dict(row)
+    run_desiccated({}, config, flagged, False)
+    for element, total in totals.items():
+        assert row[f'{element}_kg_total'] == pytest.approx(total, rel=1e-12)
+        assert flagged[f'{element}_kg_total'] == pytest.approx(0.5 * total, rel=1e-12)
+
+    # Edge cases: a freezing step, a planet that was not desiccated, and no
+    # trapping step at all leave the flag as it was.
+    assert desiccated_after_trapping(config, row, False, step) is False
+    assert desiccated_after_trapping(config, row, True, None) is True
+    frozen = MagicMock(remelted=False, total_trapped=1.0e18)
+    assert desiccated_after_trapping(config, row, True, frozen) is True
+    # Error contract: a release too small to clear mass_thresh stays desiccated.
+    tiny = _nearly_dry_row(H_kg_total=4.0e15, H_kg_solid=4.0e15, H_kg_trapped=4.0e15)
+    tiny['He_kg_total'] = 0.0
+    run_desiccated({}, config, tiny, False)
+    tiny.update(Time=2.0e4, M_mantle=4.0e24, Phi_global=0.65)
+    small = run_trapping(config, tiny, prev)
+    assert small.remelted
+    assert desiccated_after_trapping(config, tiny, True, small) is True

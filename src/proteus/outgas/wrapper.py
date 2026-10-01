@@ -327,6 +327,40 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     return True
 
 
+def desiccated_after_trapping(config: Config, hf_row: dict, desiccated: bool, step) -> bool:
+    """Whether a desiccated planet is still desiccated after this step's trapping.
+
+    A remelting step returns buried mass to the melt. When that brings an
+    element back above ``mass_thresh`` the planet holds volatiles again; keeping
+    the flag would hand the row to :func:`run_desiccated`, which empties the
+    melt and would delete the released mass without escape having taken it.
+
+    Parameters
+    ----------
+        config : Config
+            Configuration object
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+        desiccated : bool
+            Whether the planet was desiccated before this step
+        step : TrappingStep or None
+            What this step's trapping did, as returned by ``run_trapping``
+
+    Returns
+    -------
+        bool
+            Whether the planet is desiccated now.
+    """
+    if not desiccated or step is None or not step.remelted or step.total_trapped >= 0.0:
+        return desiccated
+    still = check_desiccation(config, hf_row)
+    if not still:
+        log.info(
+            'Remelting returned %.3e kg to the melt; no longer desiccated', -step.total_trapped
+        )
+    return still
+
+
 def _solve_chemistry(dirs: dict, config: Config, hf_row: dict) -> None:
     """Partition the volatile inventory between melt and atmosphere.
 
