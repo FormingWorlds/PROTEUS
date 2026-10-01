@@ -41,6 +41,7 @@ DOMAIN_LISTS = {
     'vol_gas_list',
     'vol_element_list',
     'vap_element_list',
+    'VOLATILE_EOS_MAP',
 }
 
 # Backend functions whose returned dict the area wrapper merges into hf_row.

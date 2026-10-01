@@ -3199,6 +3199,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ],
       "consumers_possible": []
@@ -4288,6 +4289,7 @@
         }
       ],
       "consumers": [
+        "interior_struct",
         "outgas"
       ],
       "consumers_possible": []
@@ -24747,18 +24749,6 @@
       "kind": "read",
       "reason": "dynamic key f'{e}{key}'",
       "function": "calc_new_elements"
-    },
-    {
-      "file": "src/proteus/interior_struct/zalmoxis.py",
-      "kind": "read",
-      "reason": "template <species>_kg_liquid",
-      "function": "build_volatile_profile"
-    },
-    {
-      "file": "src/proteus/interior_struct/zalmoxis.py",
-      "kind": "read",
-      "reason": "template <species>_kg_solid",
-      "function": "build_volatile_profile"
     },
     {
       "file": "src/proteus/observe/petitRADTRANS.py",

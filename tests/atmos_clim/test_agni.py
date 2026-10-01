@@ -586,7 +586,7 @@ def _setup_cached_spectral_run(monkeypatch, tmp_path, cache_dir, verbosity=1, lo
     monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
     monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
-    monkeypatch.setattr(agni_mod, 'get_spfile_path', lambda *_a, **_k: str(base_sf))
+    monkeypatch.setattr(agni_mod, 'require_spfile_path', lambda *_a, **_k: str(base_sf))
     monkeypatch.setattr(agni_mod, 'create_tmp_folder', _fake_tmp_folder)
 
     return SimpleNamespace(

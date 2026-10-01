@@ -2211,6 +2211,7 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
         staticmethod(lambda config, interior_o, outdir, hf_row=None: np.array([6000.0])),
     )
     monkeypatch.setattr(zalmoxis, 'generate_spider_tables', lambda config, outdir: None)
+    monkeypatch.setattr(interior_wrapper, '_provide_spider_eos_tables', lambda *_a: None)
 
     data_dir.mkdir(parents=True, exist_ok=True)
     earlier_snap = data_dir / '0p000_int.nc'
