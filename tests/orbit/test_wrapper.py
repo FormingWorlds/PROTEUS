@@ -1305,3 +1305,72 @@ def test_run_orbit_seeds_the_first_step_from_the_prescribed_track(migration):
     # Scale and bounds: SI metres on a physical orbit.
     assert 1.0e9 < hf_row['semimajorax'] < 1.0e13
     assert 0.0 <= hf_row['eccentricity'] < 1.0
+
+
+def _parameterized_seed_hf_row():
+    """Minimal runtime row for a prescribed-track run through run_orbit."""
+    return {
+        'M_star': M_sun,
+        'M_planet': M_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+        'R_obs': R_earth,
+        'R_xuv': R_earth,
+        'R_star': 6.957e8,
+        'semimajorax_sat': 1.0e8,
+        'Time': 0.0,
+        'plan_sat_am': 0.0,
+        'plan_star_am': 0.0,
+    }
+
+
+@pytest.mark.parametrize(
+    'sma_init_au, expect_warning',
+    [(0.0106, False), (0.029, True)],
+    ids=['agrees_with_semimajoraxis_silent', 'differs_from_semimajoraxis_warns'],
+)
+def test_run_orbit_warns_only_when_semimajoraxis_disagrees_with_sma_init(
+    caplog, sma_init_au, expect_warning
+):
+    """orbit.semimajoraxis is unused under the prescribed track, so the run
+    warns when it disagrees with sma_init and stays silent when the two
+    agree. The config stand-in carries semimajoraxis = 0.0106 au, so the
+    agreeing case would warn if the comparison were dropped and the
+    disagreeing one would stay silent if it were inverted. Either way the
+    first step is seeded from sma_init."""
+    import logging
+
+    config = _make_parameterized_orbit_config('none', sma_init_au, None)
+    hf_row = _parameterized_seed_hf_row()
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(5)
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.orbit.wrapper'):
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    unused = [r.getMessage() for r in caplog.records if 'is unused under' in r.getMessage()]
+    assert len(unused) == int(expect_warning)
+    if expect_warning:
+        # The message names both values, so the user can see which one wins.
+        assert '0.0106' in unused[0]
+        assert '0.029' in unused[0]
+    assert hf_row['semimajorax'] == pytest.approx(sma_init_au * AU, rel=1e-12)
+
+
+def test_run_orbit_without_sma_init_raises_the_named_error():
+    """A missing sma_init must surface as the ValueError that names the key,
+    not as a TypeError from comparing None against orbit.semimajoraxis,
+    which is what the None guard on the comparison prevents. The row keeps
+    the config seed, since the prescribed track never wrote to it."""
+    config = _make_parameterized_orbit_config('none', None, None)
+    hf_row = _parameterized_seed_hf_row()
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(5)
+
+    with pytest.raises(ValueError, match='sma_init') as excinfo:
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    assert excinfo.type is ValueError
+    assert hf_row['semimajorax'] == pytest.approx(0.0106 * AU, rel=1e-12)
