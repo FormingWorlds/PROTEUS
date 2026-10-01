@@ -2734,6 +2734,15 @@ def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_
         dSdr_cmb=cmb_gradient_state(solver, config.interior_energetics.aragog.core_bc),
         mesh_surface_pressure=mesh_surface_pressure_state(solver),
     )
+    # The rewrite above replaces the file, so restore the fO2 profile that
+    # the in-loop step appended to it.
+    if config.planet.fO2_source == 'from_mantle_redox':
+        from proteus.interior_chem.redox import write_fO2_profile_ncdf
+
+        write_fO2_profile_ncdf(
+            os.path.join(dirs['output'], 'data', format_subyear_time(hf_row['Time']) + '_int.nc'),
+            interior_o.redox_state,
+        )
 
 
 def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | None:

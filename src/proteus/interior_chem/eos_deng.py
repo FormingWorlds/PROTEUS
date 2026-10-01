@@ -21,6 +21,16 @@ exactly one oxygen; the Mg-silicate part cancels), V_FeO is the Lange &
 Carmichael (1987) liquid volume with a Murnaghan compression, and V_Fe is
 liquid iron on the Komabayashi (2014) Vinet EOS.
 
+``int_dV_dP_oxidation(T, P)`` returns the first of those terms on its own,
+int(dV_Deng) dP, i.e. the volume integral of the oxidation reaction
+
+    FeO(silicate liq) + 1/4 O2(g) = FeO1.5(silicate liq)
+
+(Schaefer et al. 2024 Eq 10). That is the pressure term of Hirschmann (2022)
+Eq 21 / Schaefer et al. (2024) Eq 13, used for the radial fO2 profile. The
+O2 gas is not part of the condensed-phase volume change, as fO2 is a
+fugacity.
+
 Because the integral depends only on (P, T) -- never on composition, the
 initial ferric fraction, or the timestep -- it is tabulated once per process
 and interpolated thereafter. A 150 x 40 grid reproduces a direct 400-point
@@ -182,7 +192,8 @@ def _int_V_Fe_grid(T: float, Pgrid: np.ndarray) -> np.ndarray:
 
 
 class _Table:
-    """Cached (P, T) grid of int dV dP for the disproportionation reaction."""
+    """Cached (P, T) grids of int dV dP: the disproportionation reaction
+    (``I``) and the FeO -> FeO1.5 oxidation reaction (``I_ox``)."""
 
     def __init__(self, P_max: float, T_min: float, T_max: float,
                  nP: int, nT: int):
@@ -195,6 +206,7 @@ class _Table:
         self.P = np.concatenate(([_P0], np.linspace(_P0, P_max, nP)[1:]))
         self.T = np.linspace(T_min, min(T_max, T_CEILING), nT)
         self.I = np.zeros((nP, nT))
+        self.I_ox = np.zeros((nP, nT))
 
         for j, T in enumerate(self.T):
             Psp = p_splice(T)
@@ -226,19 +238,22 @@ class _Table:
             int_FeO = int_FeO - int_FeO[0]
             int_Fe = _int_V_Fe_grid(T, self.P)
             self.I[:, j] = 2.0 * int_dV - int_FeO + int_Fe
+            self.I_ox[:, j] = int_dV
 
-    def __call__(self, T, P):
-        """Bilinear interpolation, clamped at the grid edges."""
+    def __call__(self, T, P, grid=None):
+        """Bilinear interpolation of ``grid`` (default ``I``), clamped at the
+        grid edges."""
+        G = self.I if grid is None else grid
         Pc = np.clip(P, self.P[0], self.P[-1])
         Tc = np.clip(T, self.T[0], self.T[-1])
         ip = np.clip(np.searchsorted(self.P, Pc) - 1, 0, len(self.P) - 2)
         it = np.clip(np.searchsorted(self.T, Tc) - 1, 0, len(self.T) - 2)
         wp = (Pc - self.P[ip]) / (self.P[ip + 1] - self.P[ip])
         wt = (Tc - self.T[it]) / (self.T[it + 1] - self.T[it])
-        return ((1 - wp) * (1 - wt) * self.I[ip, it]
-                + wp * (1 - wt) * self.I[ip + 1, it]
-                + (1 - wp) * wt * self.I[ip, it + 1]
-                + wp * wt * self.I[ip + 1, it + 1])
+        return ((1 - wp) * (1 - wt) * G[ip, it]
+                + wp * (1 - wt) * G[ip + 1, it]
+                + (1 - wp) * wt * G[ip, it + 1]
+                + wp * wt * G[ip + 1, it + 1])
 
 
 _TABLE: _Table | None = None
@@ -293,4 +308,30 @@ def int_dV_dP(T, P):
         build_table(P_max=P_EXERCISED * 1.05)
     valid = (T <= T_CEILING) & (P <= P_EXERCISED) & np.isfinite(T) & np.isfinite(P)
     out = np.where(valid, _TABLE(T, P), 0.0)
+    return out, valid
+
+
+def int_dV_dP_oxidation(T, P):
+    """int dV dP for FeO + 1/4 O2 = FeO1.5, from 1 bar to P at T. J/mol.
+
+    dV = V(FeO1.5) - V(FeO) per Fe, from the two Deng et al. (2020) melt
+    endmembers (Schaefer et al. 2024 Eq 10-11), with the same splice and
+    validity limits as ``int_dV_dP``. This is the pressure term of
+    Hirschmann (2022) Eq 21 / Schaefer et al. (2024) Eq 13.
+
+    Parameters
+    ----------
+    T : array_like, K
+    P : array_like, GPa
+
+    Returns
+    -------
+    (I, valid) : as for ``int_dV_dP``.
+    """
+    T = np.asarray(T, dtype=float)
+    P = np.asarray(P, dtype=float)
+    if _TABLE is None:
+        build_table(P_max=P_EXERCISED * 1.05)
+    valid = (T <= T_CEILING) & (P <= P_EXERCISED) & np.isfinite(T) & np.isfinite(P)
+    out = np.where(valid, _TABLE(T, P, _TABLE.I_ox), 0.0)
     return out, valid

@@ -397,48 +397,152 @@ def test_metal_diagnostics_reach_the_helpfile_csv(tmp_path, caplog):
 
 
 @pytest.mark.physics_invariant
-def test_surface_delta_iw_is_evaluated_at_the_outgassing_temperature_floor(caplog):
-    """Below outgas.T_floor the outgassing solves at T_floor, so the offset
-    handed to it is evaluated at T_floor too, not at the colder T_magma.
-
-    T_magma = 302 K reproduces a surface temperature an interior step can
-    return; at that temperature the fO2 relation gives an offset near -11,
-    which the chemistry cannot solve at 700 K.
+def test_iw_buffer_is_evaluated_at_the_outgassing_temperature(caplog):
+    """The outgassing rebuilds fO2 as IW(T_out) + Delta-IW with
+    T_out = max(T_magma, outgas.T_floor). Evaluating the buffer at that same
+    T_out must make the rebuilt fO2 equal the top cell's Eq 13 fO2, for any
+    T_magma, including below the floor (302 K is a surface temperature an
+    interior step can return).
     """
-    from proteus.interior_chem.redox import _iw_buffer_bower2022, _log10_fO2_surface
+    from proteus.interior_chem.eos_deng import int_dV_dP_oxidation
+    from proteus.interior_chem.redox import _iw_buffer_bower2022, _log10_fO2
 
-    def diw_at(T, state):
-        return _log10_fO2_surface(state.redox_ratio, T, state.X) - _iw_buffer_bower2022(T)
-
+    T_cell, P_cell = _TEMP[0], _PRES[0] / 1e9
     config = _make_config(0.1344)
-    results = {}
-    for T in (302.342, 700.0, 2200.0):
+    rebuilt, offsets = {}, {}
+    for T_magma in (302.342, 700.0, 1500.0, 2200.0, 3500.0):
         interior = _make_interior()
-        hf_row = {'T_magma': T}
+        hf_row = {'T_magma': T_magma}
         caplog.clear()
         with caplog.at_level('WARNING'):
             update_melt_redox(interior, hf_row, config)
         warned = any('below outgas.T_floor' in r.message for r in caplog.records)
-        results[T] = (hf_row['fO2_shift_IW_mantle'], interior.redox_state, warned)
+        assert warned == (T_magma < 700.0)
+        T_out = max(T_magma, 700.0)
+        offsets[T_magma] = hf_row['fO2_shift_IW_mantle']
+        rebuilt[T_magma] = offsets[T_magma] + _iw_buffer_bower2022(T_out)
+        state = interior.redox_state
 
-    cold, cold_state, cold_warned = results[302.342]
-    # Below the floor the offset is the one at 700 K, and the clamp is logged.
-    assert cold == pytest.approx(diw_at(700.0, cold_state), rel=1e-12)
-    assert cold_warned
-    # Discrimination guard: the offset at the raw 302 K is about 12 log units
-    # lower, so evaluating at T_magma could not pass the check above.
-    assert diw_at(302.342, cold_state) < cold - 10.0
-    # Edge case: exactly at the floor there is nothing to clamp.
-    at_floor, floor_state, floor_warned = results[700.0]
-    assert at_floor == pytest.approx(diw_at(700.0, floor_state), rel=1e-12)
-    assert not floor_warned
-    # Above the floor the offset is evaluated at T_magma itself, unchanged.
-    hot, hot_state, hot_warned = results[2200.0]
-    assert hot == pytest.approx(diw_at(2200.0, hot_state), rel=1e-12)
-    assert not hot_warned
-    # The same melt is more oxidised relative to IW at 2200 K than at 700 K,
-    # so the clamp changes the value rather than coinciding with it.
-    assert hot > at_floor
+    I_ox, _ = int_dV_dP_oxidation(T_cell, P_cell)
+    log10_fO2_cell = float(_log10_fO2(state.redox_ratio, T_cell, state.X, float(I_ox)))
+    for T_magma, value in rebuilt.items():
+        assert value == pytest.approx(log10_fO2_cell, abs=1e-9), T_magma
+    # Below the floor T_magma itself must not be used for the buffer.
+    assert offsets[302.342] == pytest.approx(offsets[700.0], abs=1e-12)
+    # Discrimination guard: the offset genuinely changes with T_out (the IW
+    # buffer moves ~ several log units between 700 and 3500 K), so a buffer
+    # evaluated at the cell temperature could not pass the checks above.
+    assert offsets[700.0] - offsets[3500.0] > 3.0
+
+
+@pytest.mark.physics_invariant
+def test_a_cold_frozen_top_cell_is_floored_for_eq13(caplog):
+    """Guard for a fully solidified mantle whose uppermost cell is cold: Eq 13
+    is evaluated at outgas.T_floor rather than the raw cell temperature."""
+    from proteus.interior_chem.eos_deng import int_dV_dP_oxidation
+    from proteus.interior_chem.redox import _iw_buffer_bower2022, _log10_fO2
+
+    config = _make_config(0.1)
+    interior = _make_interior()
+    interior.temp = np.array([302.342, 2800.0, 3400.0])
+    interior.pres = np.array([0.01e9, 30.0e9, 50.0e9])
+    hf_row = {'T_magma': 2000.0}
+    with caplog.at_level('WARNING'):
+        update_melt_redox(interior, hf_row, config)
+    assert any('uppermost cell T' in r.message for r in caplog.records)
+    st = interior.redox_state
+    I_ox, _ = int_dV_dP_oxidation(700.0, 0.01)
+    expected = float(_log10_fO2(st.redox_ratio, 700.0, st.X, float(I_ox))) \
+        - _iw_buffer_bower2022(2000.0)
+    assert hf_row['fO2_shift_IW_mantle'] == pytest.approx(expected, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_eq13_pressure_term_matches_the_uncompressed_volume_analytic_limit():
+    """Below the Deng splice pressure dV(FeO1.5 - FeO) is the constant
+    uncompressed value, so int dV dP = dV0 (P - P0) exactly and Eq 13
+    shifts log10 fO2 by dV0 (P - P0) / (a R T ln10) relative to 1 bar.
+    The expectation is built by hand from that closed form, not from the
+    interpolation table.
+    """
+    import math
+
+    from proteus.interior_chem import eos_deng
+    from proteus.interior_chem.redox import _A, _R, _log10_fO2_profile, _log10_fO2_surface
+
+    T = 4000.0                       # p_splice(4000 K) ~ 1.29 GPa
+    P = np.array([1.0e-4, 0.3, 0.9])  # all below the splice
+    assert np.all(P < eos_deng.p_splice(T))
+    ratio = 0.1 / 0.9
+    state = _init_state(_PHI, _MASS, _PRES, 0.1)
+    prof, valid = _log10_fO2_profile(ratio, np.full(3, T), P, state.X)
+    assert np.all(valid)
+    expected = _log10_fO2_surface(ratio, T, state.X) \
+        + eos_deng._DV0 * (P - 1.0e-4) / (_A * _R * T * math.log(10))
+    np.testing.assert_allclose(prof, expected, rtol=0, atol=1e-9)
+    # P -> 1 bar recovers the surface relation (pressure term vanishes).
+    assert prof[0] == pytest.approx(_log10_fO2_surface(ratio, T, state.X), abs=1e-12)
+    # Order of magnitude guard: ~0.25 log units per 0.5 GPa here.
+    assert 0.1 < prof[1] - prof[0] < 0.3
+
+
+@pytest.mark.physics_invariant
+def test_fo2_profile_is_resolved_per_melt_cell_and_nan_in_solid():
+    """The Step 10 profile covers every melt cell at its own (T, P); solid
+    cells carry NaN. At a uniform ratio and fixed T, fO2 rises with P
+    because dV(FeO1.5 - FeO) > 0 over the mantle range."""
+    from proteus.interior_chem.redox import _log10_fO2_profile
+
+    config = _make_config(0.1)
+    interior = _make_interior()
+    update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    prof = interior.redox_state.log10_fO2_cell
+    assert prof.shape == _PHI.shape
+    assert np.all(np.isfinite(prof[_PHI > 0]))
+    assert np.all(np.isnan(prof[_PHI == 0]))
+    # Same (T, P) per cell as a direct call.
+    direct, _ = _log10_fO2_profile(
+        interior.redox_state.redox_ratio, _TEMP, _PRES / 1e9, interior.redox_state.X
+    )
+    np.testing.assert_allclose(prof[_PHI > 0], direct[_PHI > 0], rtol=1e-12)
+
+    flat, _ = _log10_fO2_profile(0.1 / 0.9, np.full(4, 3000.0),
+                                 np.array([0.1, 5.0, 25.0, 100.0]),
+                                 interior.redox_state.X)
+    assert np.all(np.diff(flat) > 0)
+
+
+@pytest.mark.physics_invariant
+def test_delta_iw_comes_from_the_uppermost_melt_cell_whatever_the_grid_order():
+    """The reported offset is the lowest-pressure melt cell's, so it must not
+    depend on whether the backend orders cells surface-first or CMB-first,
+    and a solid cell above the melt is skipped."""
+    from proteus.interior_chem.eos_deng import int_dV_dP_oxidation
+    from proteus.interior_chem.redox import _iw_buffer_bower2022, _log10_fO2
+
+    config = _make_config(0.1)
+    # Solid lid on top (index 0), melt below it.
+    phi = np.array([0.0, 1.0, 0.5])
+    pres = np.array([0.5e9, 3.0e9, 30.0e9])
+    temp = np.array([1600.0, 2500.0, 3300.0])
+    mass = np.array([1.0e21, 3.0e21, 5.0e21])
+
+    offsets = []
+    for order in (slice(None), slice(None, None, -1)):
+        interior = _make_interior()
+        interior.phi, interior.pres = phi[order], pres[order]
+        interior.temp, interior.mass = temp[order], mass[order]
+        hf_row = {'T_magma': 2000.0}
+        update_melt_redox(interior, hf_row, config)
+        st = interior.redox_state
+        assert interior.pres[st.fO2_cell] == pytest.approx(3.0e9)
+        offsets.append(hf_row['fO2_shift_IW_mantle'])
+
+    assert offsets[0] == pytest.approx(offsets[1], rel=1e-12)
+    I_ox, _ = int_dV_dP_oxidation(2500.0, 3.0)
+    expected = float(_log10_fO2(st.redox_ratio, 2500.0, st.X, float(I_ox))) \
+        - _iw_buffer_bower2022(2000.0)   # buffer at T_out = T_magma
+    assert offsets[0] == pytest.approx(expected, rel=1e-12)
 
 
 def test_oxidised_melt_stays_below_metal_saturation():
@@ -570,3 +674,97 @@ def test_a_fe_max_cell_is_the_cell_that_receives_the_metal():
     # Guard against a fixture that never saturates, which would make the
     # metal-location check above vacuous.
     assert formed_any
+
+
+def _make_int_snapshot(path, n_stag):
+    """Minimal Aragog-style _int.nc: a staggered dimension and one field."""
+    import netCDF4 as nc
+
+    with nc.Dataset(path, mode='w') as ds:
+        ds.createDimension('staggered', n_stag)
+        v = ds.createVariable('temp_s', np.float64, ('staggered',))
+        v[:] = np.arange(n_stag, dtype=float)
+
+
+def test_fo2_profile_round_trips_through_the_interior_snapshot(tmp_path):
+    """The Step 10 profile appended to an _int.nc reads back cell for cell,
+    NaN (solid) included, with the top-cell index; the backend's own fields
+    are untouched, and a second append overwrites rather than failing."""
+    import netCDF4 as nc
+
+    from proteus.interior_chem.redox import write_fO2_profile_ncdf
+
+    fpath = str(tmp_path / '1000_int.nc')
+    _make_int_snapshot(fpath, _PHI.size)
+    interior = _make_interior()
+    update_melt_redox(interior, {'T_magma': 2200.0}, _make_config(0.1))
+    state = interior.redox_state
+
+    assert write_fO2_profile_ncdf(fpath, state)
+    with nc.Dataset(fpath) as ds:
+        got = np.asarray(ds['log10_fO2_s'][:], dtype=float)
+        assert ds['log10_fO2_s'].units == 'log10(bar)'
+        assert int(ds['fO2_top_index'][...]) == state.fO2_cell
+        np.testing.assert_array_equal(ds['temp_s'][:], np.arange(_PHI.size))
+    np.testing.assert_array_equal(np.isnan(got), _PHI == 0)
+    np.testing.assert_allclose(got[_PHI > 0], state.log10_fO2_cell[_PHI > 0], rtol=0, atol=0)
+
+    # Second step on the same file: values replaced, no duplicate-variable error.
+    state.log10_fO2_cell = state.log10_fO2_cell + 1.0
+    assert write_fO2_profile_ncdf(fpath, state)
+    with nc.Dataset(fpath) as ds:
+        again = np.asarray(ds['log10_fO2_s'][:], dtype=float)
+    np.testing.assert_allclose(again[_PHI > 0], got[_PHI > 0] + 1.0, rtol=0, atol=1e-12)
+
+
+def test_fo2_profile_is_not_written_to_a_missing_or_mismatched_snapshot(tmp_path):
+    import netCDF4 as nc
+
+    from proteus.interior_chem.redox import write_fO2_profile_ncdf
+
+    interior = _make_interior()
+    update_melt_redox(interior, {'T_magma': 2200.0}, _make_config(0.1))
+    state = interior.redox_state
+
+    assert not write_fO2_profile_ncdf(str(tmp_path / 'absent_int.nc'), state)
+    assert not write_fO2_profile_ncdf(str(tmp_path / 'x_int.nc'), None)
+
+    fpath = str(tmp_path / 'wrong_int.nc')
+    _make_int_snapshot(fpath, _PHI.size + 2)
+    assert not write_fO2_profile_ncdf(fpath, state)
+    with nc.Dataset(fpath) as ds:
+        assert 'log10_fO2_s' not in ds.variables
+
+
+def test_standalone_redox_snapshot_is_self_contained(tmp_path):
+    """SPIDER has no _int.nc, so its <time>_redox.nc must carry the profile
+    together with the P, T, phi it was computed on and the step's scalars,
+    so the file alone can reproduce the reported offset's input cell."""
+    import netCDF4 as nc
+
+    from proteus.interior_chem.redox import write_redox_ncdf
+
+    interior = _make_interior()
+    hf_row = {'T_magma': 2200.0}
+    update_melt_redox(interior, hf_row, _make_config(0.1))
+    state = interior.redox_state
+
+    fpath = str(tmp_path / '884p700_redox.nc')
+    assert write_redox_ncdf(fpath, state, 884.7, interior, hf_row)
+    with nc.Dataset(fpath) as ds:
+        assert len(ds.dimensions['staggered']) == _PHI.size
+        np.testing.assert_allclose(ds['pres_s'][:], _PRES / 1e9, rtol=1e-15)
+        assert ds['pres_s'].units == 'GPa'
+        np.testing.assert_array_equal(ds['temp_s'][:], _TEMP)
+        np.testing.assert_array_equal(ds['phi_s'][:], _PHI)
+        got = np.asarray(ds['log10_fO2_s'][:], dtype=float)
+        top = int(ds['fO2_top_index'][...])
+        assert float(ds['time'][...]) == pytest.approx(884.7)
+        assert float(ds['fO2_shift_IW_mantle'][...]) == hf_row['fO2_shift_IW_mantle']
+        assert float(ds['ferric_frac_mantle'][...]) == hf_row['ferric_frac_mantle']
+        P_top = float(ds['pres_s'][top])
+    np.testing.assert_array_equal(np.isnan(got), _PHI == 0)
+    np.testing.assert_allclose(got[_PHI > 0], state.log10_fO2_cell[_PHI > 0], rtol=0, atol=0)
+    # The stored top index points at the lowest-pressure melt cell.
+    assert P_top == pytest.approx(np.min(_PRES[_PHI > 0]) / 1e9)
+    assert not write_redox_ncdf(str(tmp_path / 'none_redox.nc'), None, 0.0, interior, hf_row)
