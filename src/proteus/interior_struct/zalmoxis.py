@@ -47,9 +47,11 @@ from proteus.utils.helper import (
     _strip_fraction_tokens,
     energetics_eos_key,
     eos_components,
+    format_subyear_time,
     generates_paleos_tables,
     is_mgsio3,
     paleos_companion_keys,
+    snapshot_path_for_time,
     twophase_registry_key,
 )
 
@@ -380,6 +382,80 @@ def validate_zalmoxis_output_schema(
                 f'{expected_mantle:.6e} kg '
                 f'(rel={m_rel:.3e} > {rtol_mass:.1e})'
             )
+
+
+def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, float] | None:
+    """Compare a mesh file's radial bounds with a helpfile row.
+
+    The tolerance is that of Aragog's ``EntropySolver.reset()``,
+    ``max(1 m, 1e-9 * (R_int - R_core))``, applied to both bounds in both
+    directions; the helpfile rounding of the radii is at most 5e-5 m below
+    1e7 m and 5e-4 m up to 1e8 m.
+
+    Parameters
+    ----------
+    output_path : str
+        Path to ``zalmoxis_output.dat``, its ``.prev`` backup or a saved copy.
+    hf_row : dict
+        Helpfile row holding ``R_core`` and ``R_int`` [m].
+
+    Returns
+    -------
+    tuple of float or None
+        ``(file r[0] - R_core, file r[-1] - R_int, tolerance)`` in metres, or
+        None unless the file ends with a newline and holds at least two finite
+        5-column rows with strictly increasing radii.
+    """
+    try:
+        text = Path(output_path).read_text()
+        data = np.loadtxt(text.splitlines(), ndmin=2) if text.strip() else None
+    except (OSError, ValueError):
+        return None
+    if data is None:
+        return None
+    r = data[:, 0]
+    if (
+        not text.endswith('\n')
+        or data.shape[1] != 5
+        or r.size < 2
+        or not np.isfinite(data).all()
+        or (np.diff(r) <= 0).any()
+    ):
+        return None
+    atol = max(1.0, 1.0e-9 * (hf_row['R_int'] - hf_row['R_core']))
+    return r[0] - hf_row['R_core'], r[-1] - hf_row['R_int'], atol
+
+
+def copy_zalmoxis_output(src: str, dst: str) -> None:
+    """Copy through a temporary file, so ``dst`` is never partial if the process stops."""
+    tmp = dst + '.tmp'
+    try:
+        shutil.copy2(src, tmp)
+        os.replace(tmp, dst)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def save_zalmoxis_output_snapshot(outdir: str, time: float) -> None:
+    """Copy ``zalmoxis_output.dat`` to ``data/<time>_zalmoxis.dat``.
+
+    The copy is written only next to the row's ``<time>_int.nc``, so archiving
+    and pruning treat it as part of that snapshot.
+
+    Parameters
+    ----------
+    outdir : str
+        Run output directory.
+    time : float
+        Simulated time of the helpfile row being written [yr].
+    """
+    src = get_zalmoxis_output_filepath(outdir)
+    data = os.path.join(outdir, 'data')
+    if os.path.isfile(src) and os.path.isfile(snapshot_path_for_time(data, time, '_int.nc')):
+        copy_zalmoxis_output(
+            src, os.path.join(data, format_subyear_time(time) + '_zalmoxis.dat')
+        )
 
 
 def build_volatile_profile(hf_row: dict, mantle_eos: str):

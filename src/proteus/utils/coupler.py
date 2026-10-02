@@ -1780,7 +1780,9 @@ def select_resumable_snapshot(
     truncated to that row. Once a resumable row is found, the quarantined
     files are deleted: the helpfile is truncated below their rows, so they
     can never back a resume and would otherwise be swept into the final
-    data archive.
+    data archive. The Zalmoxis structure copies of the dropped rows
+    (``<time>_zalmoxis.dat``) are deleted with them, except a name the kept row
+    shares.
 
     Each half is probed with the candidate names for its writer. The interior
     name depends on the module: Aragog uses the sub-year form ``'884p700_int.nc'``
@@ -1887,6 +1889,11 @@ def select_resumable_snapshot(
             if os.path.exists(dst):
                 os.remove(dst)
         log.info('Deleted %d quarantined snapshot file(s)', len(quarantined))
+    kept = format_subyear_time(times[keep_idx])
+    for name in {format_subyear_time(t) for t in times[keep_idx + 1 :]} - {kept}:
+        # A dropped row's structure copy (Zalmoxis + Aragog) goes with its snapshot,
+        # unless it shares the kept row's name (rows under 1e-3 yr apart).
+        safe_rm(os.path.join(data_dir, name + '_zalmoxis.dat'))
     if not dropped:
         return hf_all, []
     return hf_all.iloc[: keep_idx + 1].reset_index(drop=True), sorted(dropped)
