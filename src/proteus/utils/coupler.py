@@ -1388,7 +1388,8 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
     Raises
     ------
     HelpfileFormatError
-        For a file with no header, fewer rows than ``min_rows``, a row whose field
+        For a file with no header, a last line without its newline, a NUL byte or a
+        lone carriage return, fewer rows than ``min_rows``, a row whose field
         count differs from the header, bytes that are not UTF-8, text pandas cannot
         tokenise, a table pandas reads with other row or column counts than the
         lines hold, or a column of text. In a space-separated file an empty field,
@@ -1399,6 +1400,13 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
         data = f.read()
     sep, n_columns, n_rows = None, 0, 0
     n_lines = data.count(b'\n') + (not data.endswith(b'\n'))
+    unix = data.replace(b'\r\n', b'\n')
+    bad = min((i for i in (unix.find(b'\x00'), unix.find(b'\r')) if i >= 0), default=-1)
+    if bad >= 0:
+        bad_line = unix.count(b'\n', 0, bad) + 1
+        raise HelpfileFormatError(
+            f'{path}, line {bad_line}: a NUL byte or a lone carriage return'
+        )
     if data and not data.endswith(b'\n'):
         raise HelpfileFormatError(
             f'{path}, line {n_lines}: no newline at the end, so the row is cut'
@@ -1572,7 +1580,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     caller. How much of the schema a caller needs differs, which is what
     ``required_columns`` sets. The inference readers and the scripts in ``tools/``
     read the file through ``read_helpfile_table`` as well; the plot readers under
-    ``proteus.plot`` and two plotting tools read it with pandas directly.
+    ``proteus.plot`` and three plotting tools read it with pandas directly.
 
     A shortfall in the core columns is reported rather than filled. The
     diagnostic columns of `GetHelpfileDiagnosticKeys()` are the exception:

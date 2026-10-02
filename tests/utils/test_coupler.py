@@ -704,6 +704,8 @@ def test_tab_only_line_reads_as_a_row_of_nan(tmp_path):
         (b'a\tb\n"1\t2\n3\t4"\t5\n', 0),  # a quoted field across lines
         (b'a\tb\n1\t2\n3\t4\n', 3),  # two data rows, three needed
         (b'a\tb\r1\t2\r', 0),  # lone CR line ends, which pandas splits and the scan does not
+        (b'a\tb\tc\n\r\t2\t3\n4\t5\t6\n', 0),  # a lone CR that pandas would read as a line end
+        (b'a\tb\n2.5\x007\t1\n', 0),  # a NUL byte inside a number
     ],
     ids=[
         'empty',
@@ -716,6 +718,8 @@ def test_tab_only_line_reads_as_a_row_of_nan(tmp_path):
         'quoted-lines',
         'too-few-rows',
         'lone-cr',
+        'lone-cr-in-row',
+        'nul-byte',
     ],
 )
 def test_unreadable_helpfile_raises_one_error_naming_file_and_line(tmp_path, data, min_rows):

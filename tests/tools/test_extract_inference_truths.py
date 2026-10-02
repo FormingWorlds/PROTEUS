@@ -35,9 +35,12 @@ def _write_configs(tmp_path, helpfile_text):
 def test_extract_prints_the_observable_at_the_row_nearest_the_target_time(
     tmp_path, monkeypatch, capsys
 ):
-    """The value comes from the row whose time is nearest the stop time, read exactly."""
+    """The value comes from the row whose time is nearest the stop time, read in its own
+    column although an empty field (an older NaN) precedes it."""
     tool = _load_tool()
-    infer = _write_configs(tmp_path, 'Time\tR_obs\n100.0\t1.25\n190.0\t6.371008437289124e6\n')
+    infer = _write_configs(
+        tmp_path, 'Time\tR_xuv\tR_obs\n100.0\t\t1.25\n190.0\t\t6.371008437289124e6\n'
+    )
     monkeypatch.setattr(sys, 'argv', ['extract_inference_truths.py', str(infer)])
 
     assert tool.main() == 0
