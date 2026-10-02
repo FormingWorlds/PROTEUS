@@ -446,6 +446,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     strip = _target_strip_amounts(config, hf_row, f_loss)
     content = _impactor_volatile_content(config, handler.hf_all, event, hf_row=hf_row)
     delivered, impactor_lost = _partition_impactor_content(config, hf_row, content, f_loss)
+    o_rock = delivered.pop('O', 0.0) if _o_budget_is_solver_output(config) else 0.0
     # Refuse a corrupt ledger or a non-finite volatile sum before anything moves.
     volatile_mass_change(hf_row)
     net_volatiles = sum(delivered.values()) - sum(strip.values())
@@ -458,13 +459,14 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
     from proteus.accretion.common import MASS_CLOSURE_RTOL
 
-    impactor_rock = event.mass_delta - sum(content.values())
+    impactor_volatiles = sum(content.values()) - o_rock
+    impactor_rock = event.mass_delta - impactor_volatiles
     # Validate that volatile mass does not exceed impactor mass beyond numerical
     # closure tolerance. Small negative remainders within tolerance clamp to zero.
     rock_tol = MASS_CLOSURE_RTOL * (event.M_target_before + event.M_impactor)
     if impactor_rock < -rock_tol:
         raise ValueError(
-            f'Impactor volatile content {sum(content.values()):.6e} kg exceeds the '
+            f'Impactor volatile content {impactor_volatiles:.6e} kg exceeds the '
             f'{event.mass_delta:.6e} kg it adds to the planet, so the impact would '
             f'remove {-impactor_rock:.4e} kg of rock from the interior. With '
             f'accretion.impactor_volatiles = {config.accretion.impactor_volatiles!r}, '
@@ -683,12 +685,6 @@ def _impactor_volatile_content(config, hf_all, event: ImpactEvent, hf_row=None) 
     the impactor mass, on the assumption that every embryo in the dynamical
     model co-formed from the same disk material; ``ppmw`` uses the configured
     per-element budgets. Only positive contributions are returned.
-
-    Oxygen is excluded from the content whenever the volatile O budget is a
-    solver output (``O_mode = 'ic_chemistry'``, or ``planet.fO2_source =
-    'user_constant'`` with any O_mode): O set by the melt fO2 is part of the
-    silicate budget, so delivered O counts as rock. The next outgassing call
-    rewrites the O budget, so delivered O would otherwise leave the planet.
     """
     mode = config.accretion.impactor_volatiles
     content: dict[str, float] = {}
@@ -704,14 +700,23 @@ def _impactor_volatile_content(config, hf_all, event: ImpactEvent, hf_row=None) 
             if ppmw > 0.0:
                 content[e] = event.M_impactor * ppmw / 1.0e6
 
-    o_mode = getattr(getattr(config.planet, 'elements', None), 'O_mode', None)
-    if (
-        o_mode == 'ic_chemistry'
-        or getattr(config.planet, 'fO2_source', None) == 'user_constant'
-    ):
-        content.pop('O', None)
-
     return content
+
+
+def _o_budget_is_solver_output(config) -> bool:
+    """Whether the outgassing rewrites the O budget from the melt fO2.
+
+    True under ``O_mode = 'ic_chemistry'``, or under ``planet.fO2_source =
+    'user_constant'`` with an outgassing solver; the dummy outgassing keeps a
+    positive O budget as given. Delivered O is then part of the silicate
+    budget and counts as rock, since the next outgassing call would otherwise
+    drop it from the planet. Impactor O lost with its atmosphere still leaves.
+    """
+    o_mode = getattr(getattr(config.planet, 'elements', None), 'O_mode', None)
+    solver = getattr(getattr(config, 'outgas', None), 'module', None) != 'dummy'
+    return o_mode == 'ic_chemistry' or (
+        solver and getattr(config.planet, 'fO2_source', None) == 'user_constant'
+    )
 
 
 def _partition_impactor_content(

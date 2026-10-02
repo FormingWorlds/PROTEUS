@@ -1251,7 +1251,7 @@ class TestEscapeStepLimit:
 
         src = inspect.getsource(Proteus.start)
         step = inspect.getsource(Proteus._run_escape_step)
-        assert '_run_escape_step(' in src  # the anchors below depend on these
+        assert 'self._run_escape_step(frozen)' in src  # the anchors below depend on it
         assert 'run_escape(' in step
         call = step.split('run_escape(')[1].split(')')[0]
         assert 'interior_o=self.interior_o' in call
