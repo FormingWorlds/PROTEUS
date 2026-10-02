@@ -250,6 +250,7 @@ def _impact_handler(
     crystallized=False,
     desiccated=False,
     accretion=None,
+    structure='zalmoxis',
 ):
     """Build the minimal handler shape apply_impact reads and mutates.
 
@@ -266,7 +267,7 @@ def _impact_handler(
                 module='dummy',
                 dummy=SimpleNamespace(mantle_tliq=2700.0, mantle_tsol=1700.0),
             ),
-            interior_struct=SimpleNamespace(core_frac=0.55),
+            interior_struct=SimpleNamespace(core_frac=0.55, module=structure),
             accretion=accretion if accretion is not None else _impact_accretion(),
         ),
         hf_row={
@@ -1694,20 +1695,29 @@ def test_a_resumed_run_rebuilds_the_mass_and_orbit_the_impacts_moved():
 
 
 @pytest.mark.unit
-def test_debit_escaped_mass_lowers_the_anchor_only_with_accretion():
-    """Escape lowers mass_tot and the ledger with a module on, never otherwise."""
+def test_debit_escaped_mass_lowers_only_a_whole_planet_anchor_with_accretion():
+    """Escape lowers mass_tot and the ledger with an accretion module and a
+    whole-planet structure; never with the dummy structure or accretion off."""
     from proteus.accretion.wrapper import debit_escaped_mass
     from proteus.utils.constants import M_earth
 
-    def cfg(module):
+    def cfg(module, structure='zalmoxis'):
         return SimpleNamespace(
-            accretion=SimpleNamespace(module=module), planet=SimpleNamespace(mass_tot=1.0)
+            accretion=SimpleNamespace(module=module),
+            interior_struct=SimpleNamespace(module=structure),
+            planet=SimpleNamespace(mass_tot=1.0),
         )
 
     on, row = cfg('dummy'), {'M_accreted_net': 1.0e22}
     debit_escaped_mass(on, row, 3.0e21)
     assert on.planet.mass_tot == pytest.approx(1.0 - 3.0e21 / M_earth, rel=1e-15)
     assert row['M_accreted_net'] == pytest.approx(7.0e21, rel=1e-15)
+
+    # The dummy structure's mass_tot is the dry mass, so escape leaves it alone.
+    dry, row = cfg('dummy', structure='dummy'), {'M_accreted_net': 0.0}
+    debit_escaped_mass(dry, row, 3.0e21)
+    assert dry.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+    assert row['M_accreted_net'] == pytest.approx(0.0, abs=0.0)
 
     off, row = cfg(None), {'M_accreted_net': 0.0}
     debit_escaped_mass(off, row, 3.0e21)
@@ -1806,6 +1816,62 @@ def test_resume_of_a_helpfile_without_the_net_column_uses_the_rock():
     )
     restore_accretion_state(handler)
     assert handler.config.planet.mass_tot == pytest.approx(1.4, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_resume_after_a_legacy_resume_keeps_the_rock(monkeypatch):
+    """The legacy fallback stores the rock in the ledger, so a later escape
+    debit and a second resume give the uninterrupted mass."""
+    import pandas as pd
+
+    from proteus.accretion.wrapper import debit_escaped_mass, restore_accretion_state
+    from proteus.utils.constants import M_earth
+
+    row = {'M_accreted_rock': 0.5 * M_earth, 'M_accreted_net': 0.0, 'n_impacts_applied': 1}
+    first = _restore_handler(1.0, row)
+    first.config.interior_struct = SimpleNamespace(module='zalmoxis')
+    first.hf_all = pd.DataFrame([dict(row)])
+    restore_accretion_state(first)
+    assert row['M_accreted_net'] == pytest.approx(0.5 * M_earth, rel=1e-15)
+    assert first.hf_all['M_accreted_net'].iloc[-1] == pytest.approx(0.5 * M_earth, rel=1e-15)
+
+    debit_escaped_mass(first.config, row, 1.0e21)
+    uninterrupted = first.config.planet.mass_tot
+    second = _restore_handler(1.0, dict(row))
+    restore_accretion_state(second)
+    assert second.config.planet.mass_tot == pytest.approx(uninterrupted, rel=1e-14)
+    assert uninterrupted == pytest.approx(1.5 - 1.0e21 / M_earth, rel=1e-14)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_dummy_structure_anchor_takes_the_rock_only(monkeypatch):
+    """With the dummy structure mass_tot is the dry mass, so a wet, stripping
+    impact grows it by the rock alone and the volatiles stay in the budgets."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0),
+        structure='dummy',
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    _atm_state(handler.hf_row, H=(4.0e21, 5.0e21))
+    event = _impact_event()
+    apply_impact(handler, event)
+
+    content = 6.4e23 * 1000.0 / 1.0e6
+    rock = event.mass_delta - content
+    assert handler.config.planet.mass_tot == pytest.approx(1.0 + rock / M_earth, rel=1e-12)
+    assert handler.hf_row['M_accreted_net'] == pytest.approx(rock, rel=1e-12)
+    # The volatiles moved in the budgets: half the atmosphere stripped, the
+    # unexposed part of the content delivered.
+    delivered = content * (1.0 - 0.8 * 0.5)
+    assert handler.hf_row['H_kg_total'] == pytest.approx(5.0e21 - 2.0e21 + delivered, rel=1e-9)
 
 
 @pytest.mark.unit
@@ -2818,7 +2884,7 @@ def test_apply_impact_rock_remainder_value_error_and_tolerance_clamp(tmp_path):
     from proteus.accretion.common import MASS_CLOSURE_RTOL, ImpactEvent
     from proteus.accretion.wrapper import apply_impact
     from proteus.config import Config
-    from proteus.utils.constants import AU, M_earth
+    from proteus.utils.constants import AU
 
     # 1. Overrun beyond tolerance: raises ValueError
     config = Config()
@@ -2900,10 +2966,8 @@ def test_apply_impact_rock_remainder_value_error_and_tolerance_clamp(tmp_path):
     mass_tot_before = handler.config.planet.mass_tot
     apply_impact(handler, event_rounding)
     assert handler.hf_row['M_accreted_rock'] == pytest.approx(0.0, abs=1e-12)
-    # No rock is added; the anchor grows by the delivered hydrogen alone.
-    assert handler.config.planet.mass_tot == pytest.approx(
-        mass_tot_before + 6.0e22 / M_earth, rel=1e-12
-    )
+    # No rock is added, and the dummy structure's dry anchor takes no volatiles.
+    assert handler.config.planet.mass_tot == pytest.approx(mass_tot_before, rel=1e-12)
 
 
 @pytest.mark.unit

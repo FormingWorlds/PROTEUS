@@ -25,6 +25,10 @@ _VOLATILE_ELEMENTS = tuple(e for e in element_list if e in vol_element_list or e
 # set above, noble gases included.
 _PPMW_ELEMENTS = ('H', 'C', 'N', 'S', 'O')
 
+# Structure modules whose mass_tot is the whole-planet mass (the solve subtracts
+# the volatile budgets); the dummy structure takes mass_tot as the dry mass.
+_TOTAL_MASS_STRUCTURES = ('spider', 'zalmoxis')
+
 # Where the run records the impact timeline it resolved at initialisation, in
 # its own output directory. A resumed run replays this file instead of asking
 # the module for a timeline again.
@@ -237,7 +241,8 @@ def restore_accretion_state(handler: Proteus) -> None:
             f'Resume refused: {hf_name} contains invalid M_accreted_net = {net_raw!r}. '
             'Restart the simulation.'
         )
-    if net == 0.0 and accreted > 0.0:
+    legacy = net == 0.0 and accreted > 0.0
+    if legacy:
         log.info('Helpfile %s has no M_accreted_net: restoring the mass from the rock', hf_name)
         net = accreted
 
@@ -313,6 +318,11 @@ def restore_accretion_state(handler: Proteus) -> None:
     if module_on and pending:
         handler.impact_events = [ev for ev in pending if ev.time > resume_time][n_drop:]
 
+    if legacy:
+        # Store it, or later steps add to zero and a second resume loses the rock.
+        hf_row['M_accreted_net'] = net
+        if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
+            handler.hf_all.loc[handler.hf_all.index[-1], 'M_accreted_net'] = net
     config.planet.mass_tot += net / M_earth
     if accreted <= 0.0:
         # Inform user when continuing from configured mass, which occurs either
@@ -413,9 +423,10 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
     The impactor's rock is added to the planet's total mass and the interior
     structure is re-solved, so the radius, gravity and the core/mantle split
-    follow the new mass at the configured core fraction. The delivered
-    volatiles minus the stripped atmosphere are then added to the total mass
-    as well, and ``M_accreted_net`` records the cumulative change. The orbit change
+    follow the new mass at the configured core fraction. With a whole-planet
+    structure (Zalmoxis, SPIDER) the delivered volatiles minus the stripped
+    atmosphere are then added to ``mass_tot`` as well. ``M_accreted_net``
+    records the cumulative change of ``mass_tot``. The orbit change
     updates the running row base (which tides evolve) and the configuration
     reflects the current post-impact orbit.
 
@@ -462,8 +473,6 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # recomputation from artificially inflating volatile inventories.
     volatile_budgets = _snapshot_volatile_budgets(hf_row)
 
-    # Grow the anchor by the rock first; the volatile change follows the
-    # structure solve below.
     from proteus.accretion.common import MASS_CLOSURE_RTOL
 
     impactor_rock = event.mass_delta - sum(content.values())
@@ -508,10 +517,12 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # the tracked-element total the budgets aggregate into.
     _apply_volatile_consequences(hf_row, strip, delivered, impactor_lost, f_loss)
 
-    # The anchor follows the real total from here on: after the structure
+    # A whole-planet anchor follows the volatiles too, after the structure
     # solve above, so that solve's dry target still holds the rock alone.
-    net_volatiles = sum(delivered.values()) - sum(strip.values())
-    config.planet.mass_tot += net_volatiles / M_earth
+    net_volatiles = 0.0
+    if config.interior_struct.module in _TOTAL_MASS_STRUCTURES:
+        net_volatiles = sum(delivered.values()) - sum(strip.values())
+        config.planet.mass_tot += net_volatiles / M_earth
     hf_row['M_accreted_net'] = (
         float(hf_row.get('M_accreted_net') or 0.0) + impactor_rock + net_volatiles
     )
@@ -568,9 +579,12 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
     """Lower the planet's total mass by the volatile mass escape removed.
 
-    The interior structure solves for ``mass_tot`` minus the volatile budgets,
-    so escaped volatiles left in ``mass_tot`` come back as rock at the next
-    structure solve. Applied only with an accretion module selected.
+    A whole-planet structure (Zalmoxis, SPIDER) solves for ``mass_tot`` minus
+    the volatile budgets, so escaped volatiles left in ``mass_tot`` come back as
+    rock at the next structure solve. Applied only with an accretion module
+    selected and such a structure; the dummy structure takes ``mass_tot`` as the
+    dry mass. The debit includes any element the escape step set to zero below
+    the outgassing threshold, which ``esc_kg_cumulative`` does not count.
 
     Parameters
     ----------
@@ -581,7 +595,12 @@ def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
     escaped : float
         Volatile mass the escape step removed from the element budgets [kg].
     """
-    if config.accretion.module is None or not math.isfinite(escaped) or escaped <= 0.0:
+    if (
+        config.accretion.module is None
+        or config.interior_struct.module not in _TOTAL_MASS_STRUCTURES
+        or not math.isfinite(escaped)
+        or escaped <= 0.0
+    ):
         return
     config.planet.mass_tot -= escaped / M_earth
     hf_row['M_accreted_net'] = float(hf_row.get('M_accreted_net') or 0.0) - escaped
@@ -632,9 +651,8 @@ def _apply_volatile_consequences(
         hf_row[f'{e}_kg_total'] = float(hf_row.get(f'{e}_kg_total', 0.0)) + added
     # Credit the escape-balance baseline, or the desiccation gate reads the
     # delivered mass as loss it may accept without escape.
-    m_vol_initial = float(hf_row.get('M_vol_initial') or 0.0)
-    if delivered and math.isfinite(m_vol_initial) and m_vol_initial > 0.0:
-        hf_row['M_vol_initial'] = m_vol_initial + sum(delivered.values())
+    if (hf_row.get('M_vol_initial') or 0.0) > 0.0:
+        hf_row['M_vol_initial'] += sum(delivered.values())
     if delivered:
         log.info(
             '    delivered impactor volatiles [kg]: %s',
