@@ -551,6 +551,7 @@ def test_helpfile_from_an_11_digit_writer_still_reads(tmp_path):
         ('1 2\n', True),  # one field fewer
         ('\t2\t3\n', True),  # an empty first field
         ('1 2 3\n4 5\n', True),  # a short second row
+        ('1 2 3\n4 5 6 7\n', True),  # a long second row
         ('1 2 3\n\n4 5 6\n', False),  # a blank line between rows
         ('1 2 3\r\n4 5 6\r\n', False),  # CRLF line ends
     ],
@@ -559,7 +560,7 @@ def test_helpfile_table_checks_each_row_against_the_header(tmp_path, body, refus
     """A row with a field count other than the header's is refused; blank lines and
     CRLF line ends read normally."""
     path = tmp_path / 'runtime_helpfile.csv'
-    path.write_text('a b c\n' + body, encoding='utf-8', newline='')
+    path.write_text('\na b c\n' + body, encoding='utf-8', newline='')
 
     if refused:
         with pytest.raises(HelpfileFormatError, match='fields against 3 columns'):

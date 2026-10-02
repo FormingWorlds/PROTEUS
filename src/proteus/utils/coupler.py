@@ -1389,11 +1389,11 @@ def read_helpfile_table(path: str) -> pd.DataFrame:
         some files hold for a NaN, vanishes in the whitespace split and would
         move every later value one column to the left.
     """
-    table = pd.read_csv(path, sep=r'\s+', float_precision='round_trip')
-    n_columns = len(table.columns)
     with open(path) as f:
-        next(f, None)
-        for line_number, line in enumerate(f, start=2):
+        lines = enumerate(f, start=1)
+        header = next((line for _, line in lines if line.split()), '')
+        n_columns = len(header.split())
+        for line_number, line in lines:
             n_fields = len(line.split())
             if n_fields and n_fields != n_columns:
                 raise HelpfileFormatError(
@@ -1401,7 +1401,7 @@ def read_helpfile_table(path: str) -> pd.DataFrame:
                     'columns; an empty field would shift the later values, so the row '
                     'cannot be read'
                 )
-    return table
+    return pd.read_csv(path, sep=r'\s+', float_precision='round_trip')
 
 
 class HelpfileRow(dict):

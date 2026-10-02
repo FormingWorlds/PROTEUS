@@ -173,7 +173,7 @@ def test_sample_from_grid_skips_a_case_whose_helpfile_row_is_ragged(
     grid_dir = tmp_path / 'grid'
     output_dir = tmp_path / 'output'
     output_dir.mkdir(parents=True)
-    rows = ['R_obs\n1.5\n', 'R_obs\n2.5\n', 'R_obs\n3.5 9.0\n']
+    rows = ['R_obs\n1.5\n', 'R_obs\n2.5\n', 'R_obs\n3.5\n4.5 9.0\n']
     for i, (mass, text) in enumerate(zip([1.0, 2.0, 3.0], rows)):
         case = grid_dir / f'case_{i}'
         case.mkdir(parents=True)

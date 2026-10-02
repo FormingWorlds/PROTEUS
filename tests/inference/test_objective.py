@@ -656,7 +656,7 @@ def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, t
 
     # Edge case: a row with more fields than the header would be read one column off.
     (out_abs / 'runtime_helpfile.csv').write_text(
-        'Time P_surf\n1.0 2.0 3.0\n', encoding='utf-8'
+        'Time P_surf\n1.0 2.0\n3.0 4.0 5.0\n', encoding='utf-8'
     )
     with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
         objective_mod.run_proteus(
