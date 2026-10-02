@@ -211,12 +211,13 @@ def test_resume_matches_the_ps_tables_after_restoring_the_accreted_mass(tmp_path
         patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
         patch(
             'proteus.accretion.wrapper.restore_accretion_state',
-            side_effect=lambda handler: calls.append('restore'),
+            side_effect=lambda handler: calls.append(('restore', handler is p)),
         ),
         patch.object(type(p), '_match_ps_tables_to_mass', match),
     )
 
-    assert calls == ['restore', 'match']
+    assert calls[0] == ('restore', True)
+    assert calls[1:] == ['match']
 
 
 @pytest.mark.unit
