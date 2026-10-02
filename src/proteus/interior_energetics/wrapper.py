@@ -17,11 +17,20 @@ from proteus.interior_energetics.common import (
     ANCHOR_PASSTHROUGH_ERRORS,
     InitialConditionError,
     Interior_t,
+    MissingMeltingCurveError,
+    _mantle_note,
 )
 from proteus.interior_struct.common import solvus_radius
 from proteus.outgas.wrapper import calc_target_elemental_inventories
-from proteus.utils.constants import M_earth, R_earth, const_G, noble_gases, vol_element_list
-from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.constants import (
+    TDEP_EOS_PREFIXES,
+    M_earth,
+    R_earth,
+    const_G,
+    noble_gases,
+    vol_element_list,
+)
+from proteus.utils.helper import MissingDataError, UpdateStatusfile, energetics_eos_key
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -92,6 +101,10 @@ _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 # Abort threshold for consecutive Aragog retry-ladder exhaustions; the
 # counter resets on each successful Aragog call.
 _ARAGOG_MAX_CONSECUTIVE_FAILS = 3
+
+# Physical band for retained impact kinetic energy in giant-impact re-melts.
+# Values outside this range indicate initial conditions dominate collision energy.
+_REMELT_RETAINED_BAND = (0.01, 1.0)
 
 # Resume-settling guard for the dynamic structure re-solve. After a resume the
 # interior relaxes thermally over the first loops, swinging T_magma enough to
@@ -664,7 +677,8 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     2. **FWL_DATA (Zenodo 19473625)**: if the canonical Zenodo download
        target exists and is complete, copy the 12 files into the output
        directory. This is the self-sufficient path: once the user runs
-       ``proteus get all`` (or any non-offline start), the Zenodo record
+       ``proteus get interiordata --config-path <config>`` (or any non-offline
+       start), the Zenodo record
        populates FWL_DATA and subsequent runs find the complete set
        here.
 
@@ -678,7 +692,17 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
 
     4. **Hard failure**: if neither source yields a complete set, raise
        ``FileNotFoundError`` with a clear message pointing the user at
-       ``proteus get all`` or the Zenodo record.
+       ``proteus get interiordata --config-path <config>``.
+
+    When ``interior_struct.melting_dir`` is set, the two P-S melting curves
+    are derived from its P-T files in every case above, and missing P-T files
+    raise ``MissingMeltingCurveError`` instead of leaving the curves of the
+    source. When melting_dir is unset and case 1 does not apply, the helper
+    raises ``MissingMeltingCurveError`` rather than take the curves of the
+    source; a SPIDER run with constant properties reads no curves and is
+    exempt. This helper is not called when a PALEOS table set is generated (the
+    Zalmoxis structure, or the dummy structure with a PALEOS mantle EOS); those
+    runs take their P-S curves from PALEOS.
 
     Side effects: sets ``dirs['spider_eos_dir']``,
     ``dirs['spider_solidus_ps']``, ``dirs['spider_liquidus_ps']``.
@@ -696,19 +720,20 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     melting_dir = getattr(config.interior_struct, 'melting_dir', None)
     derive_melting = melting_dir is not None
     if derive_melting:
-        from proteus.utils.data import GetFWLData as _GetFWL
+        from proteus.utils.data import resolve_melting_curve_files
 
-        melting_pt_dir = _GetFWL() / 'interior_lookup_tables' / 'Melting_curves' / melting_dir
-        sol_pt_path = melting_pt_dir / 'solidus_P-T.dat'
-        liq_pt_path = melting_pt_dir / 'liquidus_P-T.dat'
-        if not (sol_pt_path.is_file() and liq_pt_path.is_file()):
-            log.warning(
-                'melting_dir=%s configured but P-T files missing at %s; '
-                'falling back to byte-copy from upstream EoS distribution',
-                melting_dir,
-                melting_pt_dir,
+        sol_pt_path, liq_pt_path = resolve_melting_curve_files(melting_dir)
+        missing_pt = [str(p) for p in (sol_pt_path, liq_pt_path) if not p.is_file()]
+        if missing_pt:
+            from proteus.utils.data import RELOCATE_HINT
+
+            # Other curves would change the physics of the run, so stop here.
+            raise MissingMeltingCurveError(
+                f'interior_struct.melting_dir={melting_dir!r} is configured but its P-T '
+                f'melting curves are missing: {", ".join(missing_pt)}. Fetch them with '
+                "'proteus get interiordata --config-path <your config>', or set "
+                f'melting_dir to an available curve. {RELOCATE_HINT}'
             )
-            derive_melting = False
 
     # Case 1: already populated (e.g. by an earlier call this session or
     # by Zalmoxis's generate_spider_tables in a prior structure solve).
@@ -737,19 +762,26 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
             len(missing),
         )
 
+    energetics = getattr(config, 'interior_energetics', None)
+    const_spider = (
+        getattr(energetics, 'module', None) == 'spider'
+        and getattr(energetics, 'const_properties', False) is True
+    )
+    if not derive_melting and not const_spider:
+        # Without melting_dir the curves would be whatever set is on disk.
+        raise MissingMeltingCurveError(
+            'interior_struct.melting_dir is not set and no PALEOS table set was '
+            f'generated{_mantle_note(config)}. Set melting_dir to a melting curve name '
+            '(e.g. "Monteux-600").'
+        )
+
     os.makedirs(target_dir, exist_ok=True)
 
     # Import lazily so the helper is usable outside of a full PROTEUS
     # install (e.g. unit tests that stub out FWL_DATA).
-    from proteus.utils.data import GetFWLData
+    from proteus.utils.data import resolve_lookup_table_dir
 
-    fwl_data = GetFWLData()
-    zenodo_root = (
-        fwl_data
-        / 'interior_lookup_tables'
-        / '1TPa-dK09-elec-free'
-        / 'MgSiO3_Wolf_Bower_2018_1TPa'
-    )
+    zenodo_root = resolve_lookup_table_dir()
 
     # Case 2: FWL_DATA (Zenodo 19473625) complete set.
     # We check BOTH that all 12 files exist AND that density_melt.dat
@@ -770,7 +802,7 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
             'in SPIDER P-S format. This usually means the directory was '
             'populated by the Zenodo 17417017 record (P-T format). '
             'Falling through to the SPIDER submodule. Refresh FWL_DATA '
-            'with `proteus get all` to fetch Zenodo 19473625.',
+            'with `proteus get interiordata --config-path <your config>`.',
             zenodo_root,
         )
     if zenodo_format_ok:
@@ -858,16 +890,18 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
         )
 
     # Case 4: neither source yielded a complete set.
-    raise FileNotFoundError(
+    from proteus.utils.data import RELOCATE_HINT
+
+    raise MissingDataError(
         'Could not provide SPIDER/Aragog P-S EOS tables at '
         f'{target_dir}. FWL_DATA source '
         f'{zenodo_root} is missing {len(zenodo_missing)} of '
         f'{len(zenodo_files)} required files '
         f'({zenodo_missing[:3]}...), and the SPIDER submodule fallback '
         f'was unavailable at {dirs.get("spider", "<no spider dir set>")}'
-        '/lookup_data/1TPa-dK09-elec-free/. Run `proteus get all` to '
+        '/lookup_data/1TPa-dK09-elec-free/. Run `proteus get interiordata --config-path <your config>` to '
         'fetch Zenodo record 19473625, or ensure the SPIDER submodule '
-        'is cloned.'
+        f'is cloned. {RELOCATE_HINT}'
     )
 
 
@@ -884,11 +918,8 @@ def determine_interior_radius(
 
     log.info('Using %s interior module to solve structure' % config.interior_energetics.module)
 
-    # Provide P-S lookup tables for Aragog's entropy solver (and SPIDER
-    # when it runs under this structure path). Mirrors the
-    # generate_spider_tables() call at the top of the zalmoxis and dummy
-    # structure paths. The helper resolves from FWL_DATA/Zenodo first,
-    # then the SPIDER submodule as a fallback.
+    # P-S lookup tables for the SPIDER or Aragog energetics, as in the
+    # zalmoxis and dummy structure paths.
     if config.interior_energetics.module in ('spider', 'aragog'):
         _provide_spider_eos_tables(config, outdir, dirs)
 
@@ -1015,12 +1046,33 @@ def determine_interior_radius(
 
 
 def determine_interior_radius_with_dummy(
-    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
+    dirs: dict,
+    config: Config,
+    hf_all: pd.DataFrame,
+    hf_row: dict,
+    outdir: str,
+    thermal_solve: bool = True,
 ):
     """Determine interior structure using Noack & Lasbleis (2020) scaling laws.
 
     Ultra-fast analytical parameterization replacing Zalmoxis. Fills all
     hf_row keys and writes output files needed by SPIDER/Aragog.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_all : pd.DataFrame
+        Historical helpfile dataframe.
+    hf_row : dict
+        Current step helpfile row.
+    outdir : str
+        Output directory path.
+    thermal_solve : bool, optional
+        Whether to run an interior thermal solve or update mechanical mass and
+        structure only (default is True).
     """
     from proteus.interior_struct.dummy import solve_dummy_structure
 
@@ -1038,7 +1090,8 @@ def determine_interior_radius_with_dummy(
         dirs['spider_mesh'] = spider_mesh_file
         dirs['spider_mesh_prev'] = spider_mesh_file + '.prev'
 
-    # Generate P-S EOS tables for SPIDER/Aragog (if PALEOS)
+    # P-S EOS tables for SPIDER/Aragog: the PALEOS set when mantle_eos is PALEOS (a
+    # mixture follows its MgSiO3 component), else the FWL_DATA or SPIDER set and melting_dir.
     if config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
@@ -1047,20 +1100,18 @@ def determine_interior_radius_with_dummy(
             dirs['spider_eos_dir'] = spider_tables['eos_dir']
             dirs['spider_solidus_ps'] = spider_tables['solidus_path']
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
-        elif config.planet.temperature_mode == 'liquidus_super':
-            # The liquidus_super initial entropy solves on these tables.
+        else:
             try:
                 _provide_spider_eos_tables(config, outdir, dirs)
+            except MissingMeltingCurveError:
+                raise
             except FileNotFoundError as exc:
-                raise RuntimeError(
-                    "planet.temperature_mode='liquidus_super' with "
-                    f"interior_struct.module='dummy' needs SPIDER/Aragog P-S EOS "
-                    'tables, but interior_struct.zalmoxis.mantle_eos='
-                    f'{config.interior_struct.zalmoxis.mantle_eos!r} gave no generated '
-                    'PALEOS table set and no FWL_DATA or SPIDER lookup_data set is '
-                    'available. '
-                    'Provide the tables, or set planet.temperature_mode to '
-                    "'adiabatic' or another mode. "
+                raise MissingDataError(
+                    "interior_struct.module='dummy' with interior_energetics.module="
+                    f'{config.interior_energetics.module!r} needs the SPIDER/Aragog P-S EOS '
+                    'tables from FWL_DATA or the SPIDER lookup_data, and neither is '
+                    "available. Fetch them with 'proteus get interiordata --config-path "
+                    "<your config>'. "
                     f'Cause: {exc}'
                 ) from exc
 
@@ -1068,14 +1119,16 @@ def determine_interior_radius_with_dummy(
     hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']
 
     # Run first interior step
-    int_o = Interior_t(
-        nlev_b, spider_dir=dirs.get('spider'), eos_dir=config.interior_struct.eos_dir
-    )
-    int_o.ic = 1
-    run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
+    if thermal_solve:
+        int_o = Interior_t(
+            nlev_b, spider_dir=dirs.get('spider'), eos_dir=config.interior_struct.eos_dir
+        )
+        int_o.ic = 1
+        run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
     update_gravity(hf_row)
 
-    calc_target_elemental_inventories(dirs, config, hf_row)
+    if thermal_solve:
+        calc_target_elemental_inventories(dirs, config, hf_row)
     update_planet_mass(hf_row)
 
     log.info('Dummy structure solve complete')
@@ -1134,6 +1187,7 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         from zalmoxis.eos_export import compute_entropy_adiabat
 
         from proteus.interior_struct.zalmoxis import (
+            energetics_entry,
             load_zalmoxis_material_dictionaries,
             load_zalmoxis_solidus_liquidus_functions,
             resolve_2phase_mgsio3_paths,
@@ -1144,8 +1198,10 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
 
         zcfg = config.interior_struct.zalmoxis
         mat_dicts = load_zalmoxis_material_dictionaries()
-        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zcfg.mantle_eos, mat_dicts)
-        eos_entry = mat_dicts.get(zcfg.mantle_eos, {})
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
+            zcfg.mantle_eos, mat_dicts, required=True
+        )
+        eos_entry = energetics_entry(zcfg.mantle_eos, mat_dicts)[1]
         eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
         if not eos_file or not os.path.isfile(eos_file):
             log.warning(
@@ -1197,6 +1253,10 @@ def _build_superliquidus_adiabat_tp(config: Config, hf_row: dict, P_cmb_target: 
         ValueError,
         KeyError,
     ) as exc:
+        from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+        if isinstance(exc, ZalmoxisMissingEOSFilesError):
+            raise
         log.warning(
             'liquidus_super IC adiabat construction failed (%s); falling back '
             'to the linear-guess structure.',
@@ -1535,14 +1595,34 @@ def _resolve_adiabatic_ic_structure(
 
 
 def determine_interior_radius_with_zalmoxis(
-    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
+    dirs: dict,
+    config: Config,
+    hf_all: pd.DataFrame,
+    hf_row: dict,
+    outdir: str,
+    thermal_solve: bool = True,
 ):
-    """
-    Determine the interior radius (R_int) of the planet using Zalmoxis.
+    """Determine the interior radius (R_int) of the planet using Zalmoxis.
 
     When the interior module is SPIDER, also writes a SPIDER-format mesh
     file from the Zalmoxis structure solution and stores the path in
     ``dirs['spider_mesh']`` for subsequent calls.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_all : pd.DataFrame
+        Historical helpfile dataframe.
+    hf_row : dict
+        Current step helpfile row.
+    outdir : str
+        Output directory path.
+    thermal_solve : bool, optional
+        Whether to run an interior thermal solve or update mechanical mass and
+        structure only (default is True).
     """
 
     log.info('Using Zalmoxis to solve for interior structure')
@@ -1553,19 +1633,16 @@ def determine_interior_radius_with_zalmoxis(
     int_o = Interior_t(nlev_b, spider_dir=spider_dir, eos_dir=config.interior_struct.eos_dir)
     int_o.ic = 1
 
-    # Set Zalmoxis to 'adiabatic' mode for T-dependent mantle EOS.
-    # NOTE: In practice, Zalmoxis converges the structure using a linear T
-    # guess and breaks on mass convergence BEFORE the adiabat gate activates.
-    # The adiabat flag is still set so that (a) the correct EOS code paths
-    # are selected inside Zalmoxis, and (b) standalone Zalmoxis can use the
-    # adiabat if the gate is ever fixed.  SPIDER provides its own T(r)
-    # through entropy evolution, so the linear T initial guess is fine.
-    _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+    # A T-dependent mantle EOS runs Zalmoxis in 'adiabatic' mode to select its EOS code
+    # paths; the structure converges on the linear T guess before the adiabat gate, and
+    # SPIDER supplies its own T(r) through entropy evolution.
     _temp_mode_override: str | None = None
     if (
         config.interior_energetics.module == 'spider'
         and config.planet.temperature_mode == 'isothermal'
-        and config.interior_struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES)
+        and (energetics_eos_key(config.interior_struct.zalmoxis.mantle_eos) or '').startswith(
+            TDEP_EOS_PREFIXES
+        )
     ):
         log.info(
             'Overriding Zalmoxis temperature_mode from isothermal to adiabatic '
@@ -1635,7 +1712,11 @@ def determine_interior_radius_with_zalmoxis(
     # by the finally block above), not the overridden 'adiabatic'.  This is
     # correct: the Zalmoxis solver already used the adiabatic mode to compute
     # the structure, and run_interior (SPIDER/ARAGOG) manages its own T(r).
-    run_interior(dirs, config, hf_all, hf_row, int_o)
+    if thermal_solve:
+        run_interior(dirs, config, hf_all, hf_row, int_o)
+    else:
+        hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']
+        update_planet_mass(hf_row)
 
 
 def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: str):
@@ -1817,26 +1898,360 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
 
 
-def solve_structure(
-    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
-):
+def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
+    """Re-melt a temperature-state backend (dummy or boundary) in place.
+
+    These backends carry the mantle thermal state as a surface magma
+    temperature they cool from the configured initial value. The re-melt raises
+    that temperature to the initial value, or keeps it when it is higher, and
+    rewrites every melt quantity derived from it together with the melt
+    fraction and temperature on the interior arrays the same-iteration tidal
+    call reads, so the impact iteration stays self-consistent.
     """
-    Solve for the planet structure based on the method set in the configuration file.
+    import numpy as np
+
+    from proteus.interior_energetics.dummy import melt_state_from_temperature
+
+    t_reset = max(config.planet.tsurf_init, float(hf_row.get('T_magma', 0.0)))
+    state = melt_state_from_temperature(config, hf_row, t_reset)
+    hf_row.update(state)
+    # The boundary backend starts with the surface at the magma temperature.
+    if config.interior_energetics.module == 'boundary':
+        hf_row['T_surf'] = t_reset
+
+    # Refresh the single-cell interior arrays the orbit/tides block reads later
+    # in this same iteration, so tidal heating uses the re-melted melt fraction.
+    interior_o.phi = np.array([state['Phi_global']])
+    interior_o.temp = np.array([t_reset])
+
+    if state['Phi_global'] < 1.0:
+        log.warning(
+            '    mantle re-melt left it only %.0f%% molten at %.0f K: planet.tsurf_init=%.0f K '
+            'is below the liquidus. Raise planet.tsurf_init for a full re-melt.',
+            100.0 * state['Phi_global'],
+            t_reset,
+            config.planet.tsurf_init,
+        )
+    log.info(
+        '    mantle re-melted: T_magma %s %.0f K (melt fraction %.2f)',
+        'reset to' if t_reset == config.planet.tsurf_init else 'kept at',
+        t_reset,
+        state['Phi_global'],
+    )
+
+
+def evaluate_molten_state(solver, hf_row: dict):
+    """Evaluate Aragog molten initial condition state without time integration.
+
+    Parameters
+    ----------
+    solver : EntropySolver
+        Aragog solver instance.
+    hf_row : dict
+        Current helpfile row.
+
+    Returns
+    -------
+    SolverOutput or None
+        State evaluated at the molten entropy profile with no time step.
+    """
+    if not hasattr(solver, 'get_state'):
+        return None
+
+    prev_solution = getattr(solver, '_solution', None)
+    t_curr = float(hf_row.get('Time', 0.0))
+    # Aragog reads its solution by attribute and by .get, as on an OptimizeResult.
+    sol = optimise.OptimizeResult(
+        y=solver._S0.reshape(-1, 1),
+        t=np.array([t_curr]),
+        status=0,
+        cvode_flag=0,
+        cvode_flag_name='SUCCESS',
+        message='',
+    )
+    try:
+        solver._solution = sol
+        return solver.get_state()
+    finally:
+        solver._solution = prev_solution
+
+
+def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None:
+    """Re-melt the Aragog mantle so the reset survives to the next solve.
+
+    ``_set_entropy_ic`` alone only rewrites the solver's initial-state vector,
+    which the next coupling step overwrites when it restores the entropy from
+    the previous (cooled) solution. To make the re-melt stick, the restored
+    profile carrier ``interior_o._last_entropy`` is set to the re-melted profile,
+    the stale trajectory is cleared so the restore path cannot resurrect it,
+    and the cached CMB-gradient state is cleared so it is re-derived from the
+    re-melted profile rather than inherited from the cooled one. The re-melted
+    profile is the molten initial condition in each cell, or the end-of-step
+    entropy where that is higher, so the re-melt never cools the mantle. The
+    solver first switches to the P-S tables the structure solve of this step
+    built for the grown planet.
+
+    The heat the re-melt injects is booked into ``hf_row['step_dE_impact_J']``
+    using the solver's own entropy-transported heat quadrature over the jump
+    from the end-of-step profile to the re-melted one, the same
+    ``rho(P,S) T dS`` frame the conservation residual integrates. The quadrature runs on the solver's
+    current, pre-impact mesh (the solver is rebuilt for the grown planet only
+    at its next solve), so the booked value is the heat that re-melts the
+    mantle the planet had when the impact struck; the impactor's own heat
+    content arrives as part of the new initial condition and is not booked,
+    the same way the run's t=0 heat content is not. The coupler adds the
+    column to both sides of the energy budget, which keeps the residual closed
+    across the impact for any booked value; the magnitude is therefore a
+    defined convention quantified in the helpfile, not a quantity the residual
+    itself can validate.
+
+    The melt-state keys in ``hf_row`` (``T_magma``, ``Phi_global``,
+    ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``)
+    and the profile arrays on ``interior_o`` are updated to the re-melted
+    profile evaluated without time integration, so downstream modules on the
+    impact iteration read the post-impact melt state.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    if interior_o.aragog_solver is None:
+        raise RuntimeError(
+            'Cannot re-melt the mantle: the Aragog solver is not yet initialised. '
+            'An impact cannot precede the first interior solve.'
+        )
+
+    solver = interior_o.aragog_solver
+
+    # The structure solve of this step rebuilt the tables for the grown planet.
+    if dirs.get('spider_eos_dir'):
+        interior_o._spider_eos_dir = dirs['spider_eos_dir']
+    AragogRunner._refresh_entropy_eos(config, interior_o)
+
+    # The impact re-melts the state at the end of the landing step.
+    sol = getattr(solver, 'solution', None)
+    if sol is not None and sol.y.size > 0:
+        S_block = solver.entropy_staggered
+        S_end = S_block[:, -1] if S_block.ndim > 1 else S_block
+    else:
+        S_end = getattr(interior_o, '_last_entropy', None)
+    if S_end is not None:
+        S_end = np.asarray(S_end, dtype=float).ravel().copy()
+
+    # Drop cooled trajectory and CMB gradient before rebuilding initial conditions.
+    # This prevents hot-starting from obsolete profiles or restoring cooled fields.
+    solver._solution = None
+    if hasattr(solver, '_dSdr_cmb_init'):
+        solver._dSdr_cmb_init = None
+
+    # _set_entropy_ic returns the staggered molten profile it just set. Take it
+    # from the return value rather than from the solver's solution object, which
+    # holds no valid trajectory now and would in any case lag the reset.
+    S_molten = AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
+    S_molten = np.asarray(S_molten, dtype=float).ravel()
+
+    if S_end is None or S_end.size == 0:
+        unbooked = 'no pre-impact entropy profile is available to measure the jump from'
+    elif S_end.shape != S_molten.shape or not np.isfinite(S_end).all():
+        unbooked = 'the end-of-step entropy profile is non-finite or not on the re-melt mesh'
+    else:
+        unbooked = None
+    # An impact cannot cool the mantle: cells above the molten profile keep their entropy.
+    if unbooked is None:
+        S_new = np.maximum(S_end, S_molten)
+        n_hot = np.count_nonzero(S_new > S_molten)
+        if n_hot:
+            solver.set_initial_entropy(S_new)
+            log.info(
+                "    re-melt keeps %d of %d cells above the temperature_mode='%s' profile",
+                n_hot,
+                S_new.size,
+                config.planet.temperature_mode,
+            )
+        dE_impact = float(solver._step_heat_content(S_end, S_new))
+        interior_o._last_entropy = S_new.copy()
+
+        # Accumulate heat across multiple impacts within the same timestep
+        # rather than overwriting previous impact energy.
+        hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0) + dE_impact
+        log.info('    re-melt heat injection %.3e J booked into the energy budget', dE_impact)
+    else:
+        interior_o._last_entropy = S_molten.copy()
+        hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0)
+        log.warning('    re-melt heat injection not booked: %s', unbooked)
+
+    log.info('    mantle re-melted: Aragog restarts from the re-melted entropy profile')
+
+    molten_out = evaluate_molten_state(solver, hf_row)
+    if molten_out is not None:
+        AragogRunner._store_profiles(interior_o, molten_out)
+        output = AragogRunner._build_helpfile_output(
+            molten_out,
+            hf_row,
+            interior_o=interior_o,
+            surface_d=config.atmos_clim.surface_d,
+            surface_bc_mode=config.interior_energetics.surface_bc_mode,
+        )
+        for key in (
+            'T_magma',
+            'Phi_global',
+            'Phi_global_vol',
+            'T_pot',
+            'RF_depth',
+        ):
+            hf_row[key] = output[key]
+
+    if 'Phi_global' in hf_row and 'M_mantle' in hf_row:
+        phi_g = min(max(float(hf_row['Phi_global']), 0.0), 1.0)
+        m_mantle = float(hf_row['M_mantle'])
+        hf_row['M_mantle_liquid'] = phi_g * m_mantle
+        hf_row['M_mantle_solid'] = (1.0 - phi_g) * m_mantle
+
+
+def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:
+    """Raise the mantle to its initial condition after a giant impact.
+
+    A giant impact re-melts the mantle (no energy threshold), so the interior
+    is raised to the initial condition recomputed for the current, grown
+    planet; parts that are already hotter keep their state. The reset is applied to the running interior state,
+    and an ``impact_reset`` flag is raised on ``interior_o`` so the next
+    interior solve does not clip the resulting temperature jump as if it were
+    a solver glitch.
+
+    The backends carry their state differently, so each is reset in its own
+    terms: the dummy and boundary backends cool a surface temperature, which is
+    raised to the configured initial value (or kept when higher) together with
+    every quantity derived from it; Aragog raises each cell to its entropy
+    initial condition (or keeps a higher entropy) and carries that profile
+    through the reset the coupling performs on the next step. The re-melt
+    never cools the mantle.
+    SPIDER keeps its state in a restart file written by the external binary and
+    has no validated re-melt path; an accretion run on SPIDER is refused at
+    configuration load, and this backstop refuses it at the first impact.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_row : dict
+        Current helpfile row, mutated in place for the scalar backends.
+    interior_o : Interior_t
+        Interior state, reset in place; its ``impact_reset`` flag is raised.
+    event : ImpactEvent, optional
+        The impact being applied, used only to log the impact energy against
+        the enthalpy the re-melt injects.
+
+    Raises
+    ------
+    NotImplementedError
+        If the interior module has no supported re-melt path (SPIDER).
+    ValueError
+        If the interior module is unrecognised.
+    RuntimeError
+        If the Aragog solver has not been initialised.
+    """
+    module = config.interior_energetics.module
+
+    # The column accumulates over a step, so a second impact inside one
+    # timestep would otherwise be weighed against the running total instead of
+    # against its own injection.
+    booked_before = float(hf_row.get('step_dE_impact_J') or 0.0)
+
+    match module:
+        case 'dummy' | 'boundary':
+            _remelt_scalar_backend(config, hf_row, interior_o)
+        case 'aragog':
+            _remelt_aragog(config, dirs, hf_row, interior_o)
+        case 'spider':
+            UpdateStatusfile(dirs, 20)
+            raise NotImplementedError(
+                'Giant-impact mantle re-melt is not supported with the SPIDER '
+                'interior. SPIDER holds its state in a restart file written by the '
+                'external binary, and no validated re-melt path exists yet. Use '
+                "interior_energetics.module = 'aragog' for accretion runs."
+            )
+        case _:
+            UpdateStatusfile(dirs, 20)
+            raise ValueError(f'Cannot re-melt the mantle: unknown interior module {module!r}')
+
+    # Tell the time-stepper's limiter the coming temperature jump is a
+    # deliberate impact re-melt, not a solver anomaly to be clipped away.
+    interior_o.impact_reset = True
+
+    # Compare booked heat injection against impact kinetic energy. The ratio
+    # checks physical plausibility since energy residuals cannot detect scaling errors.
+    if event is not None:
+        reduced = (
+            event.M_target_before
+            * event.M_impactor
+            / (event.M_target_before + event.M_impactor)
+        )
+        e_impact = 0.5 * reduced * event.v_impact**2
+        dE_impact = float(hf_row.get('step_dE_impact_J') or 0.0) - booked_before
+        log.info('    impact kinetic energy %.3e J', e_impact)
+
+        if e_impact > 0.0 and dE_impact != 0.0:
+            retained = dE_impact / e_impact
+            log.info('    re-melt injection is %.3f of the impact kinetic energy', retained)
+            if not _REMELT_RETAINED_BAND[0] <= retained <= _REMELT_RETAINED_BAND[1]:
+                log.warning(
+                    '    re-melt injection is %.3g of the impact kinetic energy, outside '
+                    'the physically expected band [%.2g, %.2g]. The re-melt raises the mantle '
+                    'to the temperature-mode initial condition (hotter parts keep their '
+                    'state), so its cost is set by the mantle rather than by this collision: a cool mantle '
+                    'struck by a small impactor absorbs far more than the impact carried, '
+                    'and a mantle already near the initial condition absorbs far less. '
+                    'Treat the thermal response to this impact as a property of the '
+                    'initial condition, not of the collision.',
+                    retained,
+                    _REMELT_RETAINED_BAND[0],
+                    _REMELT_RETAINED_BAND[1],
+                )
+
+
+def solve_structure(
+    dirs: dict,
+    config: Config,
+    hf_all: pd.DataFrame,
+    hf_row: dict,
+    outdir: str,
+    thermal_solve: bool = True,
+):
+    """Solve for the planet structure based on the method set in the configuration file.
 
     If the structure is set by the radius, then this is trivial because the radius is used
     as an input to the interior modules anyway. If the structure is set by mass, then it is
     solved as an inverse problem for now.
-    """
 
+    Parameters
+    ----------
+    dirs : dict
+        Directories dictionary.
+    config : Config
+        Model configuration.
+    hf_all : pd.DataFrame
+        Historical helpfile dataframe.
+    hf_row : dict
+        Current step helpfile row.
+    outdir : str
+        Output directory path.
+    thermal_solve : bool, optional
+        Whether to run an interior thermal solve or update mechanical mass and
+        structure only (default is True).
+    """
     # Set by total mass (mantle + core + volatiles)
     if config.planet.mass_tot is not None:
         # Choose the method to determine the interior radius
         match config.interior_struct.module:
             case 'dummy':
                 return determine_interior_radius_with_dummy(
-                    dirs, config, hf_all, hf_row, outdir
+                    dirs, config, hf_all, hf_row, outdir, thermal_solve=thermal_solve
                 )
             case 'spider':
+                if not thermal_solve:
+                    raise ValueError(
+                        "interior_struct.module = 'spider' does not support thermal_solve=False"
+                    )
                 return determine_interior_radius(dirs, config, hf_all, hf_row, outdir)
             case 'zalmoxis':
                 # Zalmoxis computes its own radius; temporarily disable orbital
@@ -1852,7 +2267,7 @@ def solve_structure(
                             config.params.stop.solid.phi_crit,
                         )
                     return determine_interior_radius_with_zalmoxis(
-                        dirs, config, hf_all, hf_row, outdir
+                        dirs, config, hf_all, hf_row, outdir, thermal_solve=thermal_solve
                     )
                 finally:
                     config.orbit.module = _orig_orbit_module
@@ -1905,6 +2320,14 @@ def run_interior(
     if verbose:
         log.debug('Evolve interior...')
     log.debug('Using %s module to evolve interior' % config.interior_energetics.module)
+
+    # Consume one-shot giant-impact re-melt flag up front to avoid suppressing
+    # temperature-jump clipping on subsequent ordinary steps.
+    impact_reset = getattr(interior_o, 'impact_reset', False)
+    interior_o.impact_reset = False
+    # The interior solvers run below, after the flag is cleared, so keep the
+    # value readable for the rest of this step.
+    interior_o.impact_reset_this_step = impact_reset
 
     # Write tidal heating file
     if config.interior_energetics.heat_tidal:
@@ -1968,7 +2391,7 @@ def run_interior(
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
 
     elif config.interior_energetics.module == 'aragog':
-        from proteus.interior_energetics.aragog import AragogRunner
+        from proteus.interior_energetics.aragog import AragogRunner, InteriorStalledError
 
         runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
         try:
@@ -1979,6 +2402,11 @@ def run_interior(
                 write_data=write_data,
             )
             interior_o.aragog_fail_count = 0
+        except InteriorStalledError:
+            # InteriorStalledError indicates zero progress across successful steps.
+            # Do not absorb it under the consecutive retry failure counter.
+            UpdateStatusfile(dirs, 21)
+            raise
         except RuntimeError as e:
             interior_o.aragog_fail_count += 1
             log.warning(
@@ -2071,7 +2499,8 @@ def run_interior(
     # Update planet mass
     update_planet_mass(hf_row)
 
-    # Apply step limiters
+    # Apply step limiters. The warming clamp and large-increase clips are skipped
+    # after giant-impact re-melts so temperature jumps are preserved.
     if hf_row['Time'] > 0:
         # Prevent increasing surface temperature, if enabled. Gated by
         # _prevent_warming_clamp_active(); the runaway-T fallback below
@@ -2080,39 +2509,31 @@ def run_interior(
         T_surf_prev = float(hf_all.iloc[-1]['T_surf'])
         Phi_global_prev = float(hf_all.iloc[-1]['Phi_global'])
         F_int_prev = float(hf_all.iloc[-1]['F_int'])
-        if _prevent_warming_clamp_active(config) and (interior_o.ic == 2):
+        if _prevent_warming_clamp_active(config) and (interior_o.ic == 2) and not impact_reset:
             hf_row['Phi_global'] = min(hf_row['Phi_global'], Phi_global_prev)
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
             hf_row['T_surf'] = min(hf_row['T_surf'], T_surf_prev)
             hf_row['F_int'] = min(hf_row['F_int'], F_int_prev)
 
-        # F_int positivity floor under prevent_warming, applied for all
-        # ic values (not just ic == 2). SPIDER's JSON output can produce
-        # a slightly-negative F_int on the first post-restart step (ic
-        # = 1) because the thermal state is read from the previous
-        # solver epoch; the floor is what stopped a negative flux from
-        # propagating to the helpfile + atmosphere BC before this floor
-        # was relocated out of ReadSPIDER in the 7g commit.
+        # Enforce positive F_int floor under prevent_warming for all ic values.
+        # This floor remains active during impact steps to prevent negative fluxes.
         if _prevent_warming_clamp_active(config):
             hf_row['F_int'] = max(1.0e-8, hf_row['F_int'])
 
-        # Do not allow massive increases to T_magma or T_surf.
-        #
-        # T_magma uses the SPIDER/Aragog/dummy tolerance formula for
-        # every backend. For all backends T_surf shares the
-        # T_magma budget.
+        # Limit large increases to T_magma and T_surf. Skipped on impact steps.
+        # T_surf shares the T_magma tolerance budget across all backends.
         dT_delta_magma = config.interior_energetics.tmagma_atol
         dT_delta_magma += config.interior_energetics.tmagma_rtol * T_magma_prev
 
         dT_delta_surf = dT_delta_magma
 
-        if hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
+        if (not impact_reset) and hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
             log.warning('Prevented large increase to T_magma!')
             log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
             hf_row['T_magma'] = T_magma_prev + dT_delta_magma
             hf_row['Phi_global'] = Phi_global_prev
 
-        if hf_row['T_surf'] > T_surf_prev + dT_delta_surf:
+        if (not impact_reset) and hf_row['T_surf'] > T_surf_prev + dT_delta_surf:
             log.warning('Prevented large increase to T_surf!')
             log.warning('   Clipped from %.2f K' % hf_row['T_surf'])
             hf_row['T_surf'] = T_surf_prev + dT_delta_surf
@@ -3097,22 +3518,8 @@ def update_structure_from_interior(
     del r_stag, _r_unsorted, _T_unsorted
     gc.collect()
 
-    # Regenerate SPIDER-format P-S EOS tables when composition changed
-    # substantially. For dry 1 M_Earth CHILI this never fires: pure
-    # MgSiO3 is a planet-state-invariant material EOS, so the pre-built
-    # tables are stable for the entire evolution. The comp_changed path
-    # is reached in wet runs where binodal redistribution or degassing
-    # shifts mantle volatile fractions by > 5% (SPIDER reads the fresh
-    # file on next call; Aragog's in-memory EntropyEOS, built once during
-    # AragogRunner.setup_solver, is NOT invalidated here, so Aragog would
-    # silently use the stale in-memory tables).
-    #
-    # KNOWN GAP: for Aragog + wet runs we would need to (i) reload
-    # EntropyEOS from the regenerated files, (ii) re-install the JAX
-    # CVODE factory so its captured eos_jax pytree matches the new
-    # tables, (iii) bounds-check the cached _last_entropy against the
-    # new [S_min, S_max] range. Dry runs do not need this; it is a
-    # precondition for quantitative wet-run work.
+    # Regenerate P-S EOS tables when volatile shifts exceed 5%.
+    # SPIDER and Aragog reload tables on subsequent solver steps.
     if comp_changed and config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
@@ -3123,10 +3530,10 @@ def update_structure_from_interior(
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
             log.info('Regenerated SPIDER EOS tables (composition change)')
             if config.interior_energetics.module == 'aragog':
-                log.warning(
-                    'Aragog: regenerated P-S tables on composition change, '
-                    'but Aragog in-memory EntropyEOS is not refreshed. '
-                    'Known gap for wet runs. Dry runs are not affected.'
+                log.info(
+                    'Aragog reloads the regenerated tables on its next solve; '
+                    'the entropy carried over from the previous step is not '
+                    'bounds-checked against their new range.'
                 )
 
     # Update composition sentinels for next trigger check

@@ -65,7 +65,7 @@ branch scales a bulk-averaged tidal power by ``sum(mass)`` purely for
 a ``log.debug`` line; the scaled value has no other observable
 effect, so it is not independently pinned here (log-line-only
 assertions are an explicitly discouraged pattern -- see
-``.github/.claude/rules/proteus-tests.md`` section 16). The test for
+``tests/AGENTS.md``, "Patterns that passed CI and were wrong"). The test for
 that branch only confirms the division executes without raising and
 that the unflipped profile is written to ``interior_o.tides``.
 

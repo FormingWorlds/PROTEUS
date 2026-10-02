@@ -71,6 +71,8 @@ from proteus.utils.data import download_sufficient_data  # noqa: E402
 from proteus.utils.helper import get_proteus_dir, resolve_fwl_data_dir  # noqa: E402
 from proteus.utils.logs import bootstrap_logger, setup_logger  # noqa: E402
 
+log = logging.getLogger('fwl.' + __name__)
+
 config_option = click.option(
     '-c',
     '--config',
@@ -90,6 +92,20 @@ output_option = click.option(
 )
 
 
+class ConfigRejectedError(click.ClickException):
+    """A refused configuration, reported at error level on the 'fwl' logger.
+
+    click prints a ClickException as a bare ``Error: ...`` line that carries no
+    level, so a refusal arrived untagged among the level-tagged lines around
+    it. Overriding how it is shown keeps everything click gives the caller (no
+    traceback, exit code 1) while routing the text through the same logger and
+    formatter as the rest of the run, where it is marked ERROR.
+    """
+
+    def show(self, file=None) -> None:
+        log.error(self.format_message())
+
+
 class ConfigAwareGroup(click.Group):
     """Command group that presents a refused configuration as a CLI error.
 
@@ -104,7 +120,7 @@ class ConfigAwareGroup(click.Group):
         try:
             return super().invoke(ctx)
         except UnknownConfigKeyError as exc:
-            raise click.ClickException(str(exc)) from exc
+            raise ConfigRejectedError(str(exc)) from exc
 
 
 @click.group(cls=ConfigAwareGroup)
@@ -477,10 +493,11 @@ def phoenix(FeH: float, alpha: float, teff: float | None):
 @click.command()
 def solar():
     """Download the available solar spectra."""
+    from .data import STELLAR_SPECTRA_SOLAR, dataset_dir
     from .utils.data import GetFWLData, download_stellar_spectra
 
     # Where the data should end up
-    solar_dir = GetFWLData() / 'stellar_spectra' / 'solar'
+    solar_dir = dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=GetFWLData())
 
     try:
         download_stellar_spectra(folders=('solar',))
@@ -545,9 +562,11 @@ def reference():
 def interiordata(config_path: Path):
     """Get interior lookup tables, melting curves, and structure EOS tables"""
     from .utils.data import (
+        download_eos_dynamic,
         download_interior_lookuptables,
         download_melting_curves,
         download_zalmoxis_eos_for_config,
+        needs_spider_ps_tables,
     )
 
     download_interior_lookuptables(clean=True)
@@ -559,6 +578,10 @@ def interiordata(config_path: Path):
     # Zalmoxis setup. Without these on disk, an offline run fails inside
     # the structure solver.
     download_zalmoxis_eos_for_config(configuration)
+
+    # The P-S lookup set SPIDER and Aragog read without a PALEOS table set.
+    if needs_spider_ps_tables(configuration):
+        download_eos_dynamic()
 
 
 @click.command()

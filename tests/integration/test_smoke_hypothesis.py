@@ -21,8 +21,8 @@ Why this matters:
 
 Test-only exemption to the Config-mutability rule:
 
-The project rule (`.github/.claude/rules/proteus-code-review.md`, "Config
-mutability") forbids mutating `Config` attrs at runtime in source code.
+The project rule (`AGENTS.md`, "Physics and coupling contract")
+forbids mutating `Config` attrs at runtime in source code.
 This test deliberately violates that rule by overriding fields after
 `Proteus(...)` initialisation; the alternative would be to render a
 fresh TOML per example, which costs ~50 ms of file IO per run. Because

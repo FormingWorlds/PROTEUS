@@ -464,7 +464,7 @@ def test_run_solver_includes_heating_when_radiogenic_enabled(tmp_path):
 
     The captured-kwarg pattern asserts on the VALUE passed to the
     solver, not on a log line; per the failure-modes table in
-    proteus-tests.md §16, log-only assertions can drift while the
+    tests/AGENTS.md, "Patterns that passed CI and were wrong", log-only assertions can drift while the
     underlying call kwarg changes silently.
     """
     config = _make_config(heat_radiogenic=True, heat_tidal=False)

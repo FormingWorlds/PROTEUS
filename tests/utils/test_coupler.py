@@ -1768,6 +1768,7 @@ def _aragog_row(
     step_dE_Q_tidal_J: float = 0.0,
     step_solver_residual_J: float = 0.0,
     step_dE_state_heat_J: float = 0.0,
+    step_dE_impact_J: float = 0.0,
     F_cmb: float = 0.0,
     R_int: float = 6.371e6,
     R_core: float = 3.481e6,
@@ -1791,6 +1792,7 @@ def _aragog_row(
     row['step_dE_Q_tidal_J'] = step_dE_Q_tidal_J
     row['step_solver_residual_J'] = step_solver_residual_J
     row['step_dE_state_heat_J'] = step_dE_state_heat_J
+    row['step_dE_impact_J'] = step_dE_impact_J
     row['F_cmb'] = F_cmb
     row['R_int'] = R_int
     row['R_core'] = R_core
@@ -1814,6 +1816,8 @@ def test_helpfile_keys_include_energy_conservation_columns():
         'step_solver_residual_J',
         # State-side primitive: the entropy-transported heat content change.
         'step_dE_state_heat_J',
+        # Giant-impact re-melt heat injection (enters both residual sides).
+        'step_dE_impact_J',
         # Cumulative columns derived from the primitives above.
         'E_state_heat_cons_J',
         'dE_predicted_cons_J',
@@ -2151,6 +2155,72 @@ def test_populate_energy_residual_predicted_uses_live_mass_heating():
     # Frozen-mass variant would have given +4e29; guard the gap.
     assert abs(row1['dE_predicted_cons_J'] - frozen_radio) > 1e29
     assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(live_radio)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_populate_energy_residual_is_invariant_across_a_giant_impact():
+    """A giant-impact re-melt is booked on both sides, leaving the residual closed.
+
+    The re-melt injects mantle-scale heat as an entropy jump between solver
+    calls, so no per-call state integral carries it. The booking enters the
+    impact heat on BOTH cumulatives: the state side gains the heat that was
+    actually added, the predicted side gains the impact as an energy source,
+    and the residual is unchanged across the impact. A one-sided booking would
+    shift the residual by the full injection, which dwarfs every physical
+    increment here, so closure is the discriminating signature.
+    """
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    # Ordinary cooling step before the impact.
+    cool = -2.0e29
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_cons_J=E0 + cool,
+        step_dE_F_int_J=cool,
+        step_dE_state_heat_J=cool,
+    )
+    _populate_energy_residual(hf, row1)
+    hf = ExtendHelpfile(hf, row1)
+    residual_before = row1['E_residual_cons_J']
+
+    # Impact row: the solve itself cooled a little more, then the re-melt
+    # injected mantle-scale heat (two orders above the step increments).
+    dE_impact = +5.0e30
+    row2 = _aragog_row(
+        time_yr=20.0,
+        E_state_cons_J=E0 + 2 * cool + dE_impact,
+        step_dE_F_int_J=cool,
+        step_dE_state_heat_J=cool,
+        step_dE_impact_J=dE_impact,
+    )
+    _populate_energy_residual(hf, row2)
+
+    # Both cumulatives carry the injection.
+    assert row2['dE_predicted_cons_J'] == pytest.approx(2 * cool + dE_impact, rel=1e-12)
+    assert row2['E_state_heat_cons_J'] == pytest.approx(2 * cool + dE_impact, rel=1e-12)
+    # The residual is invariant across the impact: booked, not leaked.
+    assert row2['E_residual_cons_J'] == pytest.approx(residual_before, abs=1e-3 * abs(cool))
+    # Discrimination: booking on only one side would shift the residual by the
+    # full 5e30 J injection, twenty-five times the physical step increment.
+    assert abs(dE_impact) > 20 * abs(cool)
+
+    # Boundary case: a zero-impact row must reduce to the ordinary bookkeeping,
+    # so the column's default cannot perturb quiet steps.
+    row3 = _aragog_row(
+        time_yr=30.0,
+        E_state_cons_J=E0 + 3 * cool + dE_impact,
+        step_dE_F_int_J=cool,
+        step_dE_state_heat_J=cool,
+        step_dE_impact_J=0.0,
+    )
+    hf = ExtendHelpfile(hf, row2)
+    _populate_energy_residual(hf, row3)
+    assert row3['E_residual_cons_J'] == pytest.approx(
+        row2['E_residual_cons_J'], abs=1e-3 * abs(cool)
+    )
 
 
 @pytest.mark.unit
@@ -3702,11 +3772,17 @@ def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
         _write_valid_nc(str(data / f'{t}_atm.nc'))
     _write_corrupt_nc(str(data / '30_int.nc'))
     _write_valid_nc(str(data / '30_atm.nc'))
+    for t in (10, 20, 30):
+        (data / f'{t}p000_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
 
     out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
 
     assert dropped == [30]
     assert int(out.iloc[-1]['Time']) == 20
+    # Only the dropped row's structure copy goes; the kept and earlier rows keep theirs.
+    assert not (data / '30p000_zalmoxis.dat').exists()
+    assert (data / '20p000_zalmoxis.dat').exists()
+    assert (data / '10p000_zalmoxis.dat').exists()
     # Both halves of the incomplete pair are deleted (symmetry with the
     # corrupt-atm case): a stray valid 30_atm.nc must not be left for the
     # atmosphere module's latest-file glob to pick up against a missing 30_int.
@@ -3714,6 +3790,56 @@ def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
     assert not (data / '30_atm.nc.incomplete').exists()
     assert not (data / '30_int.nc').exists()
     assert not (data / '30_atm.nc').exists()
+
+
+@pytest.mark.unit
+def test_dropped_row_sharing_the_kept_rows_name_keeps_the_structure_copy(tmp_path):
+    """Two rows under 1e-3 yr apart share one copy name. Without an atmosphere
+    half, dropping the later row leaves the copy of the earlier, kept row, while a
+    dropped row with a name of its own loses its copy."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    _write_valid_nc(str(data / '10_int.nc'))
+    _write_timed_nc(str(data / '20p000_int.nc'), 20.0002)
+    _write_corrupt_nc(str(data / '30_int.nc'))
+    for name in ('20p000', '30p000'):
+        (data / f'{name}_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20.0002, 20.0004, 30]), require_atm=False
+    )
+
+    assert out.iloc[-1]['Time'] == pytest.approx(20.0002, rel=1e-12)
+    assert dropped == [20, 30]
+    assert (data / '20p000_zalmoxis.dat').exists()
+    assert not (data / '30p000_zalmoxis.dat').exists()
+
+
+@pytest.mark.unit
+def test_rows_dropped_with_their_shared_atmosphere_lose_every_copy(tmp_path):
+    """An atmosphere file records no time, so a dropped row takes the shared
+    _atm.nc down with it and the earlier row of that name is dropped too; every
+    dropped name, not only one, loses its structure copy."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for half in ('int', 'atm'):
+        _write_valid_nc(str(data / f'10_{half}.nc'))
+    _write_timed_nc(str(data / '20p000_int.nc'), 20.0002)
+    _write_valid_nc(str(data / '20p000_atm.nc'))
+    _write_corrupt_nc(str(data / '30_int.nc'))
+    _write_valid_nc(str(data / '30_atm.nc'))
+    for name in ('10p000', '20p000', '30p000'):
+        (data / f'{name}_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20.0002, 20.0004, 30])
+    )
+
+    assert out.iloc[-1]['Time'] == pytest.approx(10.0)
+    assert dropped == [20, 20, 30]
+    assert (data / '10p000_zalmoxis.dat').exists()
+    assert not (data / '20p000_zalmoxis.dat').exists()
+    assert not (data / '30p000_zalmoxis.dat').exists()
 
 
 @pytest.mark.unit
@@ -3768,9 +3894,11 @@ def test_select_resumable_snapshot_raises_when_no_complete_pair(tmp_path):
     for t in (10, 20):
         _write_corrupt_nc(str(data / f'{t}_int.nc'))
         _write_corrupt_nc(str(data / f'{t}_atm.nc'))
+    (data / '20p000_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
 
     with pytest.raises(RuntimeError, match='No complete'):
         select_resumable_snapshot(str(tmp_path), _hf_times([10, 20]))
+    assert (data / '20p000_zalmoxis.dat').exists(), 'a failed selection deletes nothing'
 
     # Boundary: a helpfile with no rows has nothing to resume from either.
     with pytest.raises(RuntimeError, match='No complete'):
@@ -4057,114 +4185,126 @@ def test_select_resumable_snapshot_rejects_cross_row_atm_collision(tmp_path):
     assert not (data / '31.json').exists()
 
 
-# =============================================================================
-# Test: select_profile_plot_times() - atmosphere/interior profile-time selection
-# =============================================================================
-
-
-def test_select_profile_plot_times_boundary_uses_atmosphere_times():
-    """When the interior writes no snapshots (dummy/boundary), the atmosphere
-    NetCDF times are used directly rather than intersected away.
-
-    Regression guard: the previous logic special-cased only 'dummy', so a
-    'boundary' interior produced an empty interior time list and the
-    intersection wiped out every atmosphere time (empty plot). Here the
-    interior list is empty but atmosphere times survive.
-    """
-    result = select_profile_plot_times([], [10, 30, 20], no_int_snapshots=True)
-    assert result == [10, 20, 30]
-    # A regression that intersected against the empty interior list would
-    # return [] here; assert non-empty and the full atmosphere set.
-    assert result != []
-    assert set(result) == {10, 20, 30}
-
-
-def test_select_profile_plot_times_intersects_for_snapshot_interiors():
-    """For spider/aragog, profiles are plotted only at times present in BOTH
-    the interior and atmosphere outputs (the intersection).
-
-    Discrimination: an atmosphere-only time (30) must be excluded AND a shared
-    time (10) must be included - a discriminating pair, not a single check. An
-    interior-only time (5) must also be excluded.
-    """
-    result = select_profile_plot_times([5, 10, 20], [10, 20, 30], no_int_snapshots=False)
-    assert result == [10, 20]
-    assert 30 not in result  # atmosphere-only time excluded
-    assert 5 not in result  # interior-only time excluded
-    assert 10 in result  # shared time included
-
-
-def test_select_profile_plot_times_empty_atmosphere_returns_empty():
-    """With no atmosphere NetCDF times, no profiles can be plotted regardless
-    of interior module.
-
-    Edge case: empty atmosphere list under both branches yields an empty
-    result (and never raises).
-    """
-    assert select_profile_plot_times([1, 2, 3], [], no_int_snapshots=False) == []
-    assert select_profile_plot_times([], [], no_int_snapshots=True) == []
-
-
 @pytest.mark.unit
-@pytest.mark.physics_invariant
-def test_assert_mass_conservation_refuses_a_non_finite_mass():
-    """A non-finite mass is refused rather than silently reported as clean.
+def test_a_helpfile_predating_a_schema_column_still_resumes(tmp_path):
+    """A run in flight when a column is added must survive its own resume.
 
-    Both comparisons the invariant relies on are False for NaN, so without an
-    explicit check a row carrying an atmosphere five times its own interior
-    passes, which is the opposite of what the invariant exists to say.
+    The helpfile a run writes carries the schema in force when it started.
+    Adding a column and resuming feeds that file's last row straight back into
+    ExtendHelpfile, which rejects a row missing any schema key, so without a
+    backfill every in-flight run in the fleet dies on its next restart, whether
+    or not it uses the feature the column belongs to. The backfill is zero:
+    exact for a column that resets every step, and the best available value,
+    though not lossless, for one that accumulates over the whole run. See
+    ReadHelpfileFromCSV for which of the three columns below is which.
     """
-    from proteus.utils.coupler import assert_mass_conservation
-
-    # Textbook violation: 5e23 kg of atmosphere over a 1e23 kg interior.
-    broken = {
-        'M_atm': 5.0e23,
-        'M_int': 1.0e23,
-        'M_ele': float('nan'),
-        'M_planet': float('nan'),
-        'M_vol_atm': 0.0,
-        'M_vaps': 0.0,
-    }
-    with pytest.raises(RuntimeError, match='not finite'):
-        assert_mass_conservation(broken)
-
-    # The mechanism the check replaces: neither comparison fires on NaN.
-    assert not (float('nan') <= 0.0)
-    assert not (float('nan') > float('nan') * 1.000001)
-
-    # Each mass is covered, not just the one that happened to be checked first.
-    for key in ('M_atm', 'M_planet', 'M_vol_atm'):
-        row = {'M_atm': 1.0e20, 'M_planet': 6.0e24, 'M_vol_atm': 1.0e20, 'M_vaps': 0.0}
-        row[key] = float('inf')
-        with pytest.raises(RuntimeError, match=key):
-            assert_mass_conservation(row)
-
-
-@pytest.mark.unit
-@pytest.mark.physics_invariant
-def test_assert_mass_conservation_still_passes_a_finite_row():
-    """Finite rows are unaffected, including the pre-IC row of zeros.
-
-    A guard that refused ordinary rows would stop every run, so the healthy
-    paths are pinned alongside the rejection above.
-    """
-    from proteus.utils.coupler import assert_mass_conservation
-
-    # Ordinary row: a thin atmosphere on an Earth-mass planet.
-    assert (
-        assert_mass_conservation(
-            {'M_atm': 5.0e18, 'M_planet': 5.97e24, 'M_vol_atm': 0.0, 'M_vaps': 0.0}
-        )
-        is None
+    from proteus.utils.coupler import (
+        ExtendHelpfile,
+        GetHelpfileKeys,
+        ReadHelpfileFromCSV,
+        ZeroHelpfileRow,
     )
-    # Pre-IC row, before the structure solve has written a planet mass.
-    assert assert_mass_conservation({'M_atm': 0.0, 'M_planet': 0.0, 'M_vol_atm': 0.0}) is None
-    # Discrimination: a genuine breach on finite values must still raise, so
-    # the two passes above reflect healthy rows and not a disabled check.
-    with pytest.raises(RuntimeError, match='exceeds M_planet'):
-        assert_mass_conservation(
-            {'M_atm': 9.0e24, 'M_planet': 5.97e24, 'M_vol_atm': 0.0, 'M_vaps': 0.0}
+
+    absent = (
+        'M_accreted_rock',
+        'esc_kg_cumulative',
+        'n_impacts_applied',
+        'step_dE_impact_J',
+    )
+    row = ZeroHelpfileRow()
+    for key in absent:
+        assert key in row, f'{key} must be in the current schema for this test to mean anything'
+        del row[key]
+
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+
+    # Every schema column is present, and the ones that were absent read zero
+    # rather than NaN, which would poison any later arithmetic on them.
+    for key in GetHelpfileKeys():
+        assert key in loaded.columns, f'{key} missing after backfill'
+    for key in absent:
+        assert loaded[key].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+        assert np.isfinite(loaded[key].iloc[-1])
+
+    # The resume path itself: the restored row is accepted.
+    ExtendHelpfile(loaded, loaded.iloc[-1].to_dict())
+
+    # Columns the file did carry are untouched, so the backfill does not
+    # overwrite real data with zeros.
+    original = ZeroHelpfileRow()
+    original['T_surf'] = 1234.5
+    for key in absent:
+        del original[key]
+    pd.DataFrame([original]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+    reloaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert reloaded['T_surf'].iloc[-1] == pytest.approx(1234.5, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_a_helpfile_missing_physical_state_is_refused_not_zero_filled():
+    """Only declared zero-fill columns may be read as zero; state columns must fail.
+
+    The declared columns are safe to zero-fill for the two reasons explained in
+    ReadHelpfileFromCSV. Every other column holds instantaneous physical state,
+    where zero is a specific and wrong value, not an unknown one. A zero-filled
+    surface temperature or planet mass would be read as real by everything
+    downstream and would quietly poison a resumed run, which is worse than the
+    loud failure this function gave before the backfill existed. So the backfill
+    is scoped to a declared set, and anything outside it still stops the run.
+    """
+    from proteus.utils.coupler import (
+        RESUMABLE_ZERO_FILL_KEYS,
+        GetHelpfileKeys,
+        ReadHelpfileFromCSV,
+    )
+
+    # Every fillable key is in the schema, so the set cannot drift into naming
+    # columns that no longer exist.
+    assert RESUMABLE_ZERO_FILL_KEYS <= set(GetHelpfileKeys())
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        row['T_surf'] = 1500.0
+        del row['T_surf']  # a state column, not a ledger
+        pd.DataFrame([row]).to_csv(
+            os.path.join(tmpdir, 'runtime_helpfile.csv'), sep='\t', index=False
         )
+
+        with pytest.raises(Exception, match='physical state'):
+            ReadHelpfileFromCSV(tmpdir)
+
+    # The same function still fills a ledger column, so the guard discriminates
+    # between the two rather than refusing every schema change.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        del row['M_accreted_rock']
+        pd.DataFrame([row]).to_csv(
+            os.path.join(tmpdir, 'runtime_helpfile.csv'), sep='\t', index=False
+        )
+
+        loaded = ReadHelpfileFromCSV(tmpdir)
+        assert loaded['M_accreted_rock'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+
+
+@pytest.mark.unit
+def test_read_helpfile_from_csv_loads_legacy_helpfile_with_zero_filled_columns(tmp_path):
+    """A legacy helpfile without n_impacts_applied loads successfully with zero backfill."""
+    import shutil
+    from pathlib import Path
+
+    from proteus.utils.coupler import ReadHelpfileFromCSV
+
+    fixture_path = (
+        Path(__file__).parent / 'fixtures' / 'legacy_helpfile_without_impact_counter.csv'
+    )
+    dest_path = tmp_path / 'runtime_helpfile.csv'
+    shutil.copyfile(fixture_path, dest_path)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert 'n_impacts_applied' in loaded.columns
+    assert (loaded['n_impacts_applied'] == 0.0).all()
 
 
 def _write_timed_nc(path: str, time: float | None) -> str:
@@ -4352,6 +4492,247 @@ def test_select_resumable_snapshot_leaves_another_steps_file_in_place(tmp_path):
     assert _snapshot_time(str(data / '70_int.nc')) == pytest.approx(70.8, rel=1e-12)
 
 
+def _write_spider_json(path: str, time: float | str | None) -> str:
+    """Create a SPIDER-shaped interior snapshot recording ``time_years``.
+
+    SPIDER writes the achieved time at the top level of its JSON, which is
+    what ``ReadSPIDER`` reads back in place of the rounded filename. Passing
+    None omits the field, which is what an older output directory looks like.
+    """
+    payload: dict = {'step': 7, 'data': {'S': [1.0, 2.0]}}
+    if time is not None:
+        payload['time_years'] = time
+    with open(path, 'w') as fh:
+        json.dump(payload, fh)
+    return path
+
+
+@pytest.mark.unit
+def test_snapshot_time_reads_a_spider_json_however_it_stores_the_number(tmp_path):
+    """SPIDER's recorded time is read whether it is a number or a string.
+
+    Contract clause: the interior half of a SPIDER resume is a JSON file, and
+    the field the resume matches on is the same one ``ReadSPIDER`` uses for
+    the coupling clock, where it is read through a ``float`` for the same
+    reason. SPIDER writes it as a JSON number today; the surrounding file
+    carries other quantities as strings, so the reader takes either and a run
+    does not fall back to matching on the filename if that ever changes.
+
+    Verifies:
+    - A numeric and a string ``time_years`` both read back as the same float.
+    - A file without the field reports None, so it is accepted on its name
+      rather than being read as a snapshot from time zero.
+    """
+    numeric = _write_spider_json(str(tmp_path / 'a.json'), 70.2)
+    stringy = _write_spider_json(str(tmp_path / 'b.json'), '70.2')
+    legacy = _write_spider_json(str(tmp_path / 'c.json'), None)
+
+    assert _snapshot_time(numeric) == pytest.approx(70.2, rel=1e-12)
+    assert _snapshot_time(stringy) == pytest.approx(70.2, rel=1e-12)
+    assert _snapshot_time(legacy) is None
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_matches_a_spider_row_to_its_own_json(tmp_path):
+    """A SPIDER row resumes from the JSON written for it, not a neighbour's.
+
+    Physical scenario: SPIDER names its snapshot for the time rounded to a
+    whole year and records the time it achieved inside, so two steps rounding
+    into the same year land on one file and the later one overwrites it. A
+    run killed between a write and the helpfile row it belongs to leaves that
+    file under a row whose state it does not hold, and resuming on the name
+    alone hands the run a mantle from a step the helpfile has no row for.
+
+    Verifies:
+    - A JSON recording another step's time is not accepted for this row, and
+      the walk continues to a row whose own snapshot is there.
+    - The same directory with the JSON recording the row's own time resumes at
+      that row, so the rejection is the recorded time and not the row being
+      unusable.
+    - A JSON with no recorded time is accepted on its name, so output written
+      before the field was read still resumes.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_spider_json(str(data / f'{t}.json'), float(t))
+    # Named for the 70.2 row, holding the step SPIDER achieved at 70.4.
+    _write_spider_json(str(data / '70.json'), 70.4)
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0), (
+        f'resumed at {out.iloc[-1]["Time"]} from a JSON recording 70.4, so SPIDER '
+        'would restart from a state the helpfile has no row for'
+    )
+
+    _write_spider_json(str(data / '70.json'), 70.2)
+    kept, none_dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert none_dropped == []
+    assert kept.iloc[-1]['Time'] == pytest.approx(70.2)
+
+    _write_spider_json(str(data / '70.json'), None)
+    legacy, legacy_dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert legacy_dropped == []
+    assert legacy.iloc[-1]['Time'] == pytest.approx(70.2)
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_leaves_another_spider_steps_json_in_place(tmp_path):
+    """Dropping a SPIDER row does not take a JSON written for another step.
+
+    Contract clause: a row without a complete pair has its own halves moved
+    aside so the module's latest-file glob cannot pick them up. A JSON that
+    records a different time is another step's, however closely its rounded
+    name fits this row, and removing it would destroy the only copy of that
+    step's interior state.
+
+    Verifies:
+    - The row is dropped and its own atmosphere half is swept.
+    - The JSON recording another step's time is still on disk afterwards and
+      still records that step.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_spider_json(str(data / f'{t}.json'), float(t))
+        _write_timed_nc(str(data / f'{t}_atm.nc'), float(t))
+    _write_spider_json(str(data / '70.json'), 70.4)  # another step's interior
+    _write_timed_nc(str(data / '70_atm.nc'), 70.2)  # the dropped row's own half
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path),
+        _hf_times([0, 1, 2, 70.2]),
+        require_atm=True,
+        interior_module='spider',
+    )
+
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0)
+    assert not (data / '70_atm.nc').exists()
+    assert (data / '70.json').is_file(), (
+        'dropping the row deleted a SPIDER snapshot belonging to a different '
+        'step, which is state no other file carries'
+    )
+    assert _snapshot_time(str(data / '70.json')) == pytest.approx(70.4, rel=1e-12)
+
+
+# =============================================================================
+# Test: select_profile_plot_times() - atmosphere/interior profile-time selection
+# =============================================================================
+
+
+def test_select_profile_plot_times_boundary_uses_atmosphere_times():
+    """When the interior writes no snapshots (dummy/boundary), the atmosphere
+    NetCDF times are used directly rather than intersected away.
+
+    Regression guard: the previous logic special-cased only 'dummy', so a
+    'boundary' interior produced an empty interior time list and the
+    intersection wiped out every atmosphere time (empty plot). Here the
+    interior list is empty but atmosphere times survive.
+    """
+    result = select_profile_plot_times([], [10, 30, 20], no_int_snapshots=True)
+    assert result == [10, 20, 30]
+    # A regression that intersected against the empty interior list would
+    # return [] here; assert non-empty and the full atmosphere set.
+    assert result != []
+    assert set(result) == {10, 20, 30}
+
+
+def test_select_profile_plot_times_intersects_for_snapshot_interiors():
+    """For spider/aragog, profiles are plotted only at times present in BOTH
+    the interior and atmosphere outputs (the intersection).
+
+    Discrimination: an atmosphere-only time (30) must be excluded AND a shared
+    time (10) must be included - a discriminating pair, not a single check. An
+    interior-only time (5) must also be excluded.
+    """
+    result = select_profile_plot_times([5, 10, 20], [10, 20, 30], no_int_snapshots=False)
+    assert result == [10, 20]
+    assert 30 not in result  # atmosphere-only time excluded
+    assert 5 not in result  # interior-only time excluded
+    assert 10 in result  # shared time included
+
+
+def test_select_profile_plot_times_empty_atmosphere_returns_empty():
+    """With no atmosphere NetCDF times, no profiles can be plotted regardless
+    of interior module.
+
+    Edge case: empty atmosphere list under both branches yields an empty
+    result (and never raises).
+    """
+    assert select_profile_plot_times([1, 2, 3], [], no_int_snapshots=False) == []
+    assert select_profile_plot_times([], [], no_int_snapshots=True) == []
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_mass_conservation_refuses_a_non_finite_mass():
+    """A non-finite mass is refused rather than silently reported as clean.
+
+    Both comparisons the invariant relies on are False for NaN, so without an
+    explicit check a row carrying an atmosphere five times its own interior
+    passes, which is the opposite of what the invariant exists to say.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    # Textbook violation: 5e23 kg of atmosphere over a 1e23 kg interior.
+    broken = {
+        'M_atm': 5.0e23,
+        'M_int': 1.0e23,
+        'M_ele': float('nan'),
+        'M_planet': float('nan'),
+        'M_vol_atm': 0.0,
+        'M_vaps': 0.0,
+    }
+    with pytest.raises(RuntimeError, match='not finite'):
+        assert_mass_conservation(broken)
+
+    # The mechanism the check replaces: neither comparison fires on NaN.
+    assert not (float('nan') <= 0.0)
+    assert not (float('nan') > float('nan') * 1.000001)
+
+    # Each mass is covered, not just the one that happened to be checked first.
+    for key in ('M_atm', 'M_planet', 'M_vol_atm'):
+        row = {'M_atm': 1.0e20, 'M_planet': 6.0e24, 'M_vol_atm': 1.0e20, 'M_vaps': 0.0}
+        row[key] = float('inf')
+        with pytest.raises(RuntimeError, match=key):
+            assert_mass_conservation(row)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_assert_mass_conservation_still_passes_a_finite_row():
+    """Finite rows are unaffected, including the pre-IC row of zeros.
+
+    A guard that refused ordinary rows would stop every run, so the healthy
+    paths are pinned alongside the rejection above.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    # Ordinary row: a thin atmosphere on an Earth-mass planet.
+    assert (
+        assert_mass_conservation(
+            {'M_atm': 5.0e18, 'M_planet': 5.97e24, 'M_vol_atm': 0.0, 'M_vaps': 0.0}
+        )
+        is None
+    )
+    # Pre-IC row, before the structure solve has written a planet mass.
+    assert assert_mass_conservation({'M_atm': 0.0, 'M_planet': 0.0, 'M_vol_atm': 0.0}) is None
+    # Discrimination: a genuine breach on finite values must still raise, so
+    # the two passes above reflect healthy rows and not a disabled check.
+    with pytest.raises(RuntimeError, match='exceeds M_planet'):
+        assert_mass_conservation(
+            {'M_atm': 9.0e24, 'M_planet': 5.97e24, 'M_vol_atm': 0.0, 'M_vaps': 0.0}
+        )
+
+
 @pytest.mark.unit
 def test_select_resumable_snapshot_rejects_a_mismatched_spider_json(tmp_path):
     """A SPIDER row whose JSON records another step's time is not resumed from.
@@ -4483,3 +4864,49 @@ def test_select_resumable_snapshot_resolves_sub_year_rows_to_distinct_files(tmp_
     )
     assert none_dropped == []
     assert kept.iloc[-1]['Time'] == pytest.approx(30.2)
+
+
+@pytest.mark.unit
+def test_snapshot_belongs_to_rejects_non_numeric_time_years(tmp_path):
+    """A snapshot recording a non-numeric time is rejected by _snapshot_belongs_to.
+
+    When time_years is present but non-numeric (string, list, or non-finite),
+    _snapshot_time returns NaN and _snapshot_belongs_to rejects the file rather
+    than treating it as an unversioned legacy file.
+    """
+    stringy_bad = tmp_path / 'bad_str.json'
+    stringy_bad.write_text(json.dumps({'time_years': 'non_numeric_garbage'}))
+
+    list_bad = tmp_path / 'bad_list.json'
+    list_bad.write_text(json.dumps({'time_years': [100.0, 200.0]}))
+
+    nan_bad = tmp_path / 'bad_nan.json'
+    nan_bad.write_text(json.dumps({'time_years': 'nan'}))
+
+    assert _snapshot_belongs_to(str(stringy_bad), 100.0) is False
+    assert _snapshot_belongs_to(str(list_bad), 100.0) is False
+    assert _snapshot_belongs_to(str(nan_bad), 100.0) is False
+
+
+@pytest.mark.unit
+def test_snapshot_time_rejects_empty_nc_and_non_dict_json(tmp_path):
+    """An empty netCDF time variable or non-dict JSON returns NaN and is rejected."""
+    from netCDF4 import Dataset
+
+    # 1. Empty netCDF time variable
+    nc_empty = tmp_path / 'empty_time.nc'
+    with Dataset(str(nc_empty), 'w') as ds:
+        ds.createDimension('time', 0)
+        ds.createVariable('time', 'f8', ('time',))
+
+    time_empty = _snapshot_time(str(nc_empty))
+    assert time_empty is not None and math.isnan(time_empty)
+    assert _snapshot_belongs_to(str(nc_empty), 100.0) is False
+
+    # 2. JSON top level that is not a dict
+    json_list = tmp_path / 'not_a_dict.json'
+    json_list.write_text(json.dumps([1, 2, 3]))
+
+    time_json = _snapshot_time(str(json_list))
+    assert time_json is not None and math.isnan(time_json)
+    assert _snapshot_belongs_to(str(json_list), 100.0) is False

@@ -10,6 +10,7 @@ For topic-specific parameter guides, see the **configuration reference** pages:
 - [Interior structure and energetics](../Reference/config/interior.md)
 - [Atmosphere and chemistry](../Reference/config/atmosphere.md)
 - [Escape and outgassing](../Reference/config/escape_outgas.md)
+- [Accretion](../Reference/config/accretion.md)
 - [Synthetic observations](../Reference/config/observe.md)
 
 For worked examples, see the [Tutorials](../Tutorials/quick_start_dummy.md).

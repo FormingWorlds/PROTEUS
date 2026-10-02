@@ -141,15 +141,13 @@ def test_load_ps_table_both_missing(tmp_path):
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv('FWL_DATA', str(tmp_path / 'nonexistent'))
         mp.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path / 'nonexistent', raising=False)
+        mp.setattr('proteus.interior_energetics.common.find_lookup_table_dir', lambda: None)
         result = interior_o._load_ps_table(
             str(tmp_path / 'also_nonexistent'),
             'SomeEOS',
             'density_melt.dat',
         )
-    assert result is None  # both-missing branch must yield None silently
-    # Discriminating check: neither candidate path exists on disk; only the
-    # both-missing branch can have produced the None return on this row.
-    assert not (tmp_path / 'nonexistent').exists()
+    assert result is None  # all three sources are missing: None, no exception
     assert not (tmp_path / 'also_nonexistent').exists()
 
 
@@ -1118,6 +1116,43 @@ def test_compute_initial_entropy_paleos_failure_logs_warning_and_falls_back(
     assert S != pytest.approx(3200.0, rel=1e-4)
     # Warning fired with a PALEOS-failure phrasing.
     assert any('Could not compute entropy from PALEOS' in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'mode, mantle',
+    [
+        ('adiabatic', 'PALEOS:MgSiO3'),
+        ('adiabatic_from_cmb', 'PALEOS:MgSiO3'),
+        ('adiabatic_from_cmb', 'WolfBower2018:MgSiO3'),
+    ],
+)
+def test_compute_initial_entropy_stops_on_a_missing_pair_with_a_paleos_set(mode, mantle):
+    """A missing MgSiO3 pair stops the initial entropy, from the surface with a generated
+    PALEOS set and from the CMB anchor for any mantle, instead of a fallback entropy."""
+    pytest.importorskip('zalmoxis')
+    from types import SimpleNamespace
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.common import compute_initial_entropy
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    config = SimpleNamespace(
+        planet=SimpleNamespace(
+            temperature_mode=mode, tsurf_init=2400.0, tcmb_init=4000.0, mass_tot=1.0
+        ),
+        interior_struct=SimpleNamespace(
+            module='zalmoxis', zalmoxis=SimpleNamespace(mantle_eos=mantle)
+        ),
+    )
+    with (
+        _patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value={'PALEOS-2phase:MgSiO3': {}},
+        ),
+        pytest.raises(ZalmoxisMissingEOSFilesError, match='PALEOS-2phase:MgSiO3'),
+    ):
+        compute_initial_entropy(config, {'P_cmb': 1.2e11}, fallback=3175.0)
 
 
 # ============================================================================

@@ -264,7 +264,14 @@ function postproc(output_dir::String, nsamples::Int, spfile::String)
 
     # use high resolution file
     if isempty(spfile)
-        spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files", "Honeyside", "4096", "Honeyside.sf")
+        sf_matches = glob("r*/Honeyside.sf",
+                          joinpath(ENV["FWL_DATA"], "atmos_clim", "spectral_files", "honeyside", "4096"))
+        isempty(sf_matches) && error("Honeyside 4096 spectral file not found; run `proteus get spectral`")
+        # Version directories are r<record-id>; take the highest record id, numerically.
+        record_ids = [something(tryparse(Int, splitpath(f)[end-1][2:end]), -1) for f in sf_matches]
+        maximum(record_ids) < 0 && error("No r<record-id> directory holds Honeyside.sf")
+        spectral_file = sf_matches[argmax(record_ids)]
+        count(>=(0), record_ids) > 1 && @warn "Several Honeyside 4096 versions found; using $spectral_file"
         star_file = joinpath(output_dir, "data", "$(star_years[1]).sflux")
         @info "Spectral file not provided. Will use $spectral_file"
     else

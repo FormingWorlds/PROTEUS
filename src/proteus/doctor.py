@@ -9,6 +9,7 @@ commands and offers to run them.
 from __future__ import annotations
 
 import datetime
+import functools
 import importlib.metadata
 import importlib.util
 import io
@@ -342,19 +343,39 @@ def check_env_var(
 
 
 def check_fwl_data() -> list[CheckResult]:
-    """Check FWL_DATA contents for required data sets."""
+    """Check FWL_DATA contents for required data sets.
+
+    A data set found only in the older layout is fixed with ``fwl-io relocate``,
+    which moves it in place, rather than with a new download, but only when a
+    relocate dry run would move something there. The dry run hashes the whole
+    tree, so it runs only for a missing data set with an older-layout folder.
+    """
     results = []
     fwl = os.environ.get('FWL_DATA')
-    if not fwl or not os.path.isdir(fwl):
+    if not fwl or not os.path.isdir(fwl := os.path.expanduser(fwl)):
         return results
 
+    @functools.cache
+    def movable():
+        try:
+            from fwl_io.relocate import plan_relocations
+
+            return [Path(e.legacy_dir).resolve() for e in plan_relocations(fwl).ready]
+        except Exception:
+            return []
+
     expected = {
-        'spectral_files': 'proteus get spectral',
-        'stellar_spectra': 'proteus get stellar',
+        'atmos_clim/spectral_files': ('proteus get spectral', 'spectral_files'),
+        'star/spectra': ('proteus get stellar', 'stellar_spectra'),
     }
-    for subdir, fix in expected.items():
+    for subdir, (fix, legacy) in expected.items():
         path = os.path.join(fwl, subdir)
-        if os.path.isdir(path) and os.listdir(path):
+        old = os.path.join(fwl, legacy)
+        present = os.path.isdir(path) and os.listdir(path)
+        if not present and os.path.isdir(old) and os.listdir(old):
+            if any(p.is_relative_to(Path(old).resolve()) for p in movable()):
+                fix = 'fwl-io relocate'
+        if present:
             results.append(
                 CheckResult(
                     name=f'FWL_DATA/{subdir}',
@@ -413,6 +434,50 @@ def check_julia() -> CheckResult:
         status=WARN,
         message=f'{ver} (1.11.x, 1.12.x or 1.13.x required)',
         fix_cmd='juliaup add 1.13 && juliaup default 1.13',
+    )
+
+
+def check_cvode() -> CheckResult:
+    """Check that the SUNDIALS CVODE solver is available to Aragog.
+
+    Aragog integrates the interior with CVODE when
+    ``interior_energetics.aragog.solver_method = "cvode"``, the production
+    setting and the same solver SPIDER uses. Without the wrapper it falls
+    back to scipy Radau, which stops on its own melt-fraction cap at the
+    crystallization front and so takes far shorter steps through it. The
+    fallback is reported here rather than only in the run log, where it is
+    a per-solve warning that is easy to miss until a long coupled run has
+    already spent hours on it.
+    """
+    if importlib.util.find_spec('scikits_odes_sundials') is None:
+        return CheckResult(
+            name='cvode',
+            category='environment',
+            status=WARN,
+            message='not installed; Aragog integrates with scipy Radau instead',
+            fix_cmd='bash tools/get_cvode.sh',
+        )
+    try:
+        importlib.import_module('scikits_odes_sundials.cvode')
+    except Exception as exc:
+        # Installed but not loadable is its own failure: the wrapper is
+        # compiled against the SUNDIALS C library, so a version or ABI
+        # mismatch imports the package and then fails on the extension.
+        return CheckResult(
+            name='cvode',
+            category='environment',
+            status=WARN,
+            message=(
+                f'installed but does not load ({type(exc).__name__}); '
+                'Aragog integrates with scipy Radau instead'
+            ),
+            fix_cmd='bash tools/get_cvode.sh',
+        )
+    return CheckResult(
+        name='cvode',
+        category='environment',
+        status=PASS,
+        message='available for the Aragog interior',
     )
 
 
@@ -668,6 +733,17 @@ def run_all_checks() -> list[CheckResult]:
         results.append(
             CheckResult(
                 name='julia',
+                category='environment',
+                status=FAIL,
+                message=f'check error: {exc}',
+            )
+        )
+    try:
+        results.append(check_cvode())
+    except Exception as exc:
+        results.append(
+            CheckResult(
+                name='cvode',
                 category='environment',
                 status=FAIL,
                 message=f'check error: {exc}',

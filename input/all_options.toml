@@ -49,6 +49,7 @@ config_version = "3.0"
         maximum               = 1e7          # maximum time step [yr]
         initial               = 3e1          # initial step size [yr]
         maximum_rel           = 1.0          # time-fraction allowance added to the maximum step; 0 disables
+        impact_maximum        = 0.0          # max dt [yr] for the step landing on a scheduled giant impact; 0 = disabled
         starspec              = 1e8          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
         method                = "adaptive"   # proportional | adaptive | maximum
@@ -426,7 +427,7 @@ config_version = "3.0"
 
     # Grid and solver tolerances (shared by Aragog + SPIDER; ignored for dummy)
     num_levels                = 80           # radial grid levels (energetics domain only)
-    rtol                      = 1.0e-10      # relative ODE solver tolerance
+    rtol                      = -1.0         # relative ODE solver tolerance; unset: 1e-8 Aragog, 1e-10 SPIDER
     atol                      = 1.0e-10      # absolute ODE solver tolerance
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
     num_tolerance             = -1           # deprecated alias for rtol; leave at -1 (unset)
@@ -508,20 +509,15 @@ config_version = "3.0"
         core_bc                       = "energy_balance"  # CMB condition: energy_balance | quasi_steady | gradient | bower2018
         tolerance_struct              = 100      # absolute mass tolerance [kg] for the radius secant solver
         scalar_gravity_override       = false    # replace the mesh gravity column with a uniform surface scalar
-        # phi_step_cap, temperature_step_cap, entropy_step_cap: omitted here so they
-        # fall back to the schema default (0.0), which the Aragog wrapper reads as off
-        # (no cap). The caps are a debugging control, not a production setting: each
-        # ends the interior sub-solve at a freezing-front crossing, which slices the
-        # coupled step and drives the reported CMB heat flux briefly negative. Set a
-        # positive value to enable one; -1.0 is the off spelling; explicit 0.0 rejected.
-        # Proximity band [J/kg/K] within which a cell counts as near a solidus/liquidus
-        # crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase
-        # RHS. Solver-accuracy control, not a cosmetic step-size knob: lowering it below the
-        # default can under-resolve a real crossing and shift the converged state. Modestly
-        # widening does not move a converged result, but a value far above the default clamps
-        # the integrator to 1 yr steps (max_step = 1 yr vs 100 yr) every step and can stall
-        # the run; keep it of order a few hundred.
+        # phi_step_cap, temperature_step_cap, entropy_step_cap are omitted, so off (default 0.0).
+        # Debugging controls: each ends the sub-solve at a freezing-front crossing and can drive the
+        # reported CMB heat flux briefly negative. A positive value enables one; -1.0 is off; 0.0 is rejected.
+
+        # Band [J/kg/K] near a solidus/liquidus that arms the phase-boundary step control; a lower
+        # value can under-resolve a crossing, a value far above the default puts every call under
+        # it (1 yr steps with "fixed", which can stall a run; 1 to 100 yr segments with "rate").
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
+        phase_boundary_cap            = "rate"     # phase-boundary max_step policy: "rate" (default) | "fixed"
 
     # SPIDER-only parameters
     [interior_energetics.spider]
@@ -638,6 +634,7 @@ config_version = "3.0"
     # Grid and spectral setup (shared by agni + janus)
     spectral_group            = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
     spectral_bands            = "48"         # wavenumber bands in k-table
+    spectral_cache            = "none"       # reuse prepared spectral files across runs with the same star; none = off
     num_levels                = 50           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-6       # top-of-atmosphere pressure [bar]
     p_obs                     = "none"       # observation pressure level [bar] (transit radius)
@@ -771,9 +768,56 @@ config_version = "3.0"
         kappa_SO2             = 1.0          # grey SO2 opacity in IR [cm2 g-1]
         kappa_S2              = 1.0          # grey S2 opacity in IR [cm2 g-1]
 
-# Late accretion
+# Giant-impact accretion and delivery
 [accretion]
-    module                    = "none"       # not yet implemented
+    module                    = "none"       # none | dummy | timeline | morrigan
+    time_offset               = 0.0          # shift of impact times onto the PROTEUS time axis [yr]
+
+    # Impactor volatile source: dry impactors add silicate and iron only;
+    # match_planet scales formation composition to impactor mass;
+    # ppmw sets explicit volatile budgets per element.
+    impactor_volatiles        = "dry"        # dry | match_planet | ppmw
+    impactor_H_ppmw           = 0.0          # hydrogen per impactor [ppmw of impactor mass]
+    impactor_C_ppmw           = 0.0          # carbon per impactor [ppmw of impactor mass]
+    impactor_N_ppmw           = 0.0          # nitrogen per impactor [ppmw of impactor mass]
+    impactor_S_ppmw           = 0.0          # sulfur per impactor [ppmw of impactor mass]
+    impactor_O_ppmw           = 0.0          # oxygen per impactor [ppmw of impactor mass]
+
+    # Impact atmosphere loss: the fraction stripped from target and impactor.
+    # The constant module applies atmloss_frac directly; zephyrus evaluates
+    # the Kegerreis et al. (2020) collision erosion scaling.
+    atmloss_module            = "none"       # none | constant | zephyrus
+    atmloss_frac              = 0.0          # atmosphere fraction removed per impact (constant module) [0-1]
+
+    [accretion.morrigan]
+        seed                  = 1            # Monte Carlo seed
+        num_planets           = 10           # number of embryos at disk dispersal
+        masses                = []           # embryo masses [M_earth]; empty = all mass_equal
+        mass_equal            = 0.5          # embryo mass when masses is empty [M_earth]
+        eccentricity_init     = 0.01         # initial eccentricity of every embryo
+        inner_edge            = 0.1          # orbit of the innermost embryo [AU]
+        spacing               = 10.0         # initial embryo separation [mutual Hill radii]; max 50
+        density               = 5500.0       # bulk density for mass to radius [kg m-3]
+        impact_angle          = 45.0         # impact angle [deg]
+        evolution_time        = 1.0          # duration of the dynamical evolution [Gyr]
+        inner_cutoff          = 0.005        # perihelion counting as lost to the star [AU]
+        selector              = "match_config"  # match_config | mass | semimajoraxis | id
+        selector_value        = "none"       # target orbit [AU] or embryo id, per selector
+
+    [accretion.dummy]
+        # Analytical accretion: exponential mass growth with evenly spaced
+        # impacts, Noack & Lasbleis (2020) radii, and post-impact orbits
+        # determined by angular momentum conservation.
+        mass_accreted         = 0.1          # total mass delivered over the timeline [M_earth]
+        num_impacts           = 3            # number of impacts
+        timescale             = 1.0e6        # e-folding time of the accretion law [yr]
+        time_last             = 5.0e6        # time of the final impact [yr]
+        eccentricity          = 0.05         # encounter eccentricity [0-1)
+        impact_parameter      = 0.5          # sine of the impact angle [0-1]
+        timeline_path         = "none"       # not a dummy parameter; setting a file here is rejected, use module = "timeline"
+
+    [accretion.timeline]
+        timeline_path         = "none"       # impact timeline file to replay
 
 # Atmospheric chemistry (post-processing)
 [atmos_chem]

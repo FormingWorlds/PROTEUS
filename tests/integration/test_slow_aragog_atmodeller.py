@@ -48,12 +48,9 @@ from tests.integration.conftest import (  # noqa: E402
     validate_stability,
 )
 
-# Slow tier: this test sits in the nightly slow-tier file list in
-# ``.github/workflows/ci-nightly.yml`` and is excluded from the PR-CI
-# integration step (``pytest -m "integration and not slow"``). The 2400 s
-# timeout sits above the macOS GHA wall time (~440 s) and the projected
-# Linux GHA wall time (~1800-2200 s) with a margin; well under the
-# slow-tier 3600 s budget cap from proteus-tests.md section 7.
+# Slow tier: runs from the nightly slow-tier file list, not in PR CI. GHA wall
+# time is about 440 s on macOS and 1800-2200 s projected on Linux, inside the
+# 3600 s slow-tier budget (tests/AGENTS.md).
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
@@ -73,7 +70,7 @@ def test_aragog_atmodeller_two_timesteps(proteus_multi_timestep_run):
     Verifies:
     - At least 2 helpfile rows.
     - Per-element mass closure for H, C, N, S, O at the final row within
-      rel=1e-2 (conservation invariant, §2 carve-out).
+      rel=1e-2 (conservation invariant; tests/AGENTS.md, Discriminating values).
     - Sign guard on every reservoir mass.
     - Positivity of T_magma, P_surf, R_int, M_int, gravity at every row.
     - ``Phi_global`` in [0, 1].
@@ -131,8 +128,8 @@ def test_aragog_atmodeller_two_timesteps(proteus_multi_timestep_run):
 
     final = hf.iloc[-1]
 
-    # Per-element mass closure: the conservation invariant. Equality
-    # discriminates exponent / factor errors by construction (§2).
+    # Per-element mass closure: the conservation invariant. Equality discriminates
+    # exponent / factor errors by construction (tests/AGENTS.md, Discriminating values).
     for elt in ('H', 'C', 'N', 'S', 'O'):
         atm_key = f'{elt}_kg_atm'
         liq_key = f'{elt}_kg_liquid'
