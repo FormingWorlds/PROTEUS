@@ -434,10 +434,6 @@ def due_events(
     return [e for e in events if time_previous < e.time <= time_now]
 
 
-# Relative gap within which a step aimed at a scheduled impact counts as landing on it.
-_LANDING_RTOL = 1.0e-12
-
-
 def snap_to_impact(time: float, t_impact: float) -> float:
     """Return the impact time when a step ended a few ulp short of it.
 
@@ -458,6 +454,6 @@ def snap_to_impact(time: float, t_impact: float) -> float:
         ``t_impact`` when it lies above ``time`` within a relative 1e-12,
         otherwise ``time``.
     """
-    if 0.0 < t_impact - time <= _LANDING_RTOL * max(1.0, abs(time)):
+    if 0.0 < t_impact - time <= 1.0e-12 * max(1.0, abs(time)):
         return t_impact
     return time

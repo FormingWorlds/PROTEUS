@@ -321,13 +321,9 @@ def test_the_load_check_compares_the_first_impact_the_run_keeps(
         time_offset=-2.0e5,
         output_dir=tmp_path,
     )
+    handler.config.params.resume = resume
     with caplog.at_level('WARNING'):
         kept = init_accretion(handler)
-    if resume:
-        handler.config.params.resume = True
-        caplog.clear()
-        with caplog.at_level('WARNING'):
-            kept = init_accretion(handler)
     hits = [r for r in caplog.records if 'timeline target mass' in r.getMessage()]
     assert [e.time for e in kept] == [3.0e5]
     assert len(hits) == (1 if warns else 0)
@@ -1806,22 +1802,36 @@ def test_restore_accretion_state_drops_already_applied_events_on_resume(tmp_path
 
 
 @pytest.mark.unit
-def test_a_run_resumes_from_the_row_that_landed_an_impact_a_few_ulp_short(tmp_path):
-    """The step that lands an impact a few ulp short is moved onto the impact
-    time, so a resume from that row finds the impact before the resume time,
-    restores it as applied and does not schedule it again."""
+@pytest.mark.parametrize('t', [1.0e8 / 3.0, 2.0e8 / 3.0])
+def test_a_run_resumes_from_the_row_that_landed_an_impact(tmp_path, t):
+    """The step that landed an impact a few ulp short ends on the impact time;
+    the row then goes through the helpfile at '%.10e', which rounds 1e8/3 down
+    and 2e8/3 up. A resume from that row restores the impact as applied and
+    does not schedule it again."""
     import math
 
     from proteus.accretion.common import snap_to_impact, write_timeline
     from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
     from proteus.utils.constants import AU
+    from proteus.utils.coupler import (
+        CreateHelpfileFromDict,
+        ReadHelpfileFromCSV,
+        WriteHelpfileToCSV,
+        ZeroHelpfileRow,
+    )
 
-    t = 1.0e8 / 3.0
     event = _impact_event(
         time=t, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
     )
     write_timeline([event], str(tmp_path / _RESOLVED_TIMELINE_FILE))
-    short = math.nextafter(math.nextafter(t, 0.0), 0.0)
+    row = ZeroHelpfileRow()
+    row.update(
+        Time=snap_to_impact(math.nextafter(math.nextafter(t, 0.0), 0.0), t),
+        M_accreted_rock=1e23,
+        n_impacts_applied=1,
+        semimajorax=1.0 * AU,
+    )
+    WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
     handler = SimpleNamespace(
         config=SimpleNamespace(
             accretion=SimpleNamespace(module='dummy', impactor_volatiles='dry'),
@@ -1829,18 +1839,12 @@ def test_a_run_resumes_from_the_row_that_landed_an_impact_a_few_ulp_short(tmp_pa
             planet=SimpleNamespace(mass_tot=1.0),
             orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
         ),
-        hf_row={
-            'Time': snap_to_impact(short, t),
-            'M_accreted_rock': 1e23,
-            'n_impacts_applied': 1,
-            'semimajorax': 1.0 * AU,
-            'eccentricity': 0.0,
-        },
+        hf_row=ReadHelpfileFromCSV(str(tmp_path)).iloc[-1].to_dict(),
         directories={'output': str(tmp_path)},
         impact_events=[event],
     )
     restore_accretion_state(handler)
-    assert handler.hf_row['Time'] == t
+    assert handler.hf_row['n_impacts_applied'] == 1
     assert handler.impact_events == []
 
 

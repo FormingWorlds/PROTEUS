@@ -407,6 +407,20 @@ class Proteus:
             dirs['spider_solidus_ps'] = tables['solidus_path']
             dirs['spider_liquidus_ps'] = tables['liquidus_path']
 
+    def _advance_time(self) -> None:
+        """Advance the run and star age by the interior step [yr].
+
+        A step aimed at a pending impact ends on the impact time even when
+        rounding leaves it a few ulp short; the correction is exactly 0 otherwise.
+        """
+        from proteus.accretion.common import snap_to_impact
+
+        self.hf_row['Time'] += self.interior_o.dt
+        self.hf_row['age_star'] += self.interior_o.dt
+        t_end = snap_to_impact(self.hf_row['Time'], self.interior_o.t_next_impact)
+        self.hf_row['age_star'] += t_end - self.hf_row['Time']
+        self.hf_row['Time'] = t_end
+
     def _save_zalmoxis_output(self):
         """Copy ``zalmoxis_output.dat`` next to the snapshot of the row being written."""
         if (
@@ -518,7 +532,7 @@ class Proteus:
         # Import things needed to run PROTEUS
         #    atmospheric chemistry
         #    giant-impact accretion
-        from proteus.accretion.common import next_event, snap_to_impact
+        from proteus.accretion.common import next_event
         from proteus.accretion.wrapper import init_accretion, restore_accretion_state
         from proteus.atmos_chem.wrapper import run_chemistry
 
@@ -1136,12 +1150,7 @@ class Proteus:
                 _t_mod['interior'] = time.perf_counter() - _t0
 
             # Advance current time in main loop according to interior step
-            self.hf_row['Time'] += self.interior_o.dt  # in years
-            self.hf_row['age_star'] += self.interior_o.dt  # in years
-            # A step aimed at an impact ends on it even when rounding leaves it short.
-            landed = snap_to_impact(self.hf_row['Time'], self.interior_o.t_next_impact)
-            self.hf_row['age_star'] += landed - self.hf_row['Time']
-            self.hf_row['Time'] = landed
+            self._advance_time()
 
             # Apply giant impacts due in this step. Remove applied events
             # so each fires exactly once, including across init iterations.

@@ -246,6 +246,9 @@ def restore_accretion_state(handler: Proteus) -> None:
             'Restart the simulation.'
         )
     resume_time = t_num
+    # The row time went through the helpfile ('%.10e'), so an impact that landed
+    # on the resume row can read back just after it; compare at that resolution.
+    resume_cutoff = resume_time + 2.0e-10 * max(1.0, resume_time)
 
     m_raw = hf_row.get('M_accreted_rock')
     accreted = _as_float(0.0 if m_raw is None else m_raw)
@@ -287,7 +290,7 @@ def restore_accretion_state(handler: Proteus) -> None:
         from proteus.accretion.common import read_timeline
 
         all_events = read_timeline(resolved_path, time_offset=0.0)
-        events_before = sum(1 for ev in all_events if 0.0 < ev.time <= resume_time)
+        events_before = sum(1 for ev in all_events if 0.0 < ev.time <= resume_cutoff)
         if n_applied < events_before:
             raise RuntimeError(
                 f'Resume refused: {hf_name} records n_impacts_applied = {n_applied}, '
@@ -296,7 +299,7 @@ def restore_accretion_state(handler: Proteus) -> None:
             )
         # A counted impact after the resume time can only have landed during the
         # init stage, whose steps never reach beyond _INIT_STAGE_HORIZON_YR.
-        later = [ev for ev in all_events if ev.time > resume_time]
+        later = [ev for ev in all_events if ev.time > resume_cutoff]
         n_drop = n_applied - events_before
         if n_drop > len(later):
             raise RuntimeError(
@@ -325,7 +328,7 @@ def restore_accretion_state(handler: Proteus) -> None:
 
     pending = getattr(handler, 'impact_events', None)
     if module_on and pending:
-        handler.impact_events = [ev for ev in pending if ev.time > resume_time][n_drop:]
+        handler.impact_events = [ev for ev in pending if ev.time > resume_cutoff][n_drop:]
 
     if accreted <= 0.0:
         # Inform user when continuing from configured mass, which occurs either

@@ -1012,6 +1012,7 @@ def test_earlier_snapshot_exists_counts_by_the_writers_naming(tmp_path):
 
     # A step whose name rounds down does not count its own snapshot as older.
     t = 1.0e7 / 3.0
+    assert earlier_snapshot_exists(str(tmp_path / 'none'), t) is False
     (data / f'{format_subyear_time(t)}_int.nc').write_text('this step')
     assert earlier_snapshot_exists(str(tmp_path), t) is True  # the 100 yr file
     (data / f'{format_subyear_time(100.0)}_int.nc').unlink()
@@ -1743,7 +1744,7 @@ def test_an_exhausted_impact_step_names_the_step_and_the_ladder():
     interior_o.impact_reset_this_step = True
     with pytest.raises(RuntimeError, match='giant-impact step .stiff ladder, atol 1.0x.'):
         runner._solve_with_retry({'Time': 7.68e5, 'T_cmb': 4000.0}, interior_o)
-    assert len(attempts) > 6
+    assert len(attempts) == 8
 
 
 @pytest.mark.unit

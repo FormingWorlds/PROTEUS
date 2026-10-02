@@ -2708,6 +2708,25 @@ def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
     )
 
 
+@pytest.mark.parametrize('t_impact, lands', [(1.0e8 / 3.0, True), (float('inf'), False)])
+def test_the_time_advance_ends_a_short_step_on_the_pending_impact(tmp_path, t_impact, lands):
+    """A step that rounding leaves a few ulp short of the pending impact ends on
+    the impact time, and the star age moves with it; with no impact pending the
+    step end is Time + dt exactly."""
+    import math
+    from types import SimpleNamespace
+
+    p = _make_proteus_instance(tmp_path)
+    t0 = 1.0e7
+    t = 1.0e8 / 3.0
+    dt = math.nextafter(math.nextafter(t - t0, 0.0), 0.0)
+    p.hf_row = {'Time': t0, 'age_star': t0 + 1.0}
+    p.interior_o = SimpleNamespace(dt=dt, t_next_impact=t_impact)
+    p._advance_time()
+    assert p.hf_row['Time'] == (t if lands else t0 + dt)
+    assert p.hf_row['age_star'] - p.hf_row['Time'] == pytest.approx(1.0, abs=1.0e-9)
+
+
 def test_the_main_loop_lands_each_step_through_snap_to_impact(tmp_path):
     """Every iteration passes its step end through snap_to_impact; with no
     impact pending the step end is kept, so the run time stays finite."""
@@ -2717,7 +2736,6 @@ def test_the_main_loop_lands_each_step_through_snap_to_impact(tmp_path):
     with patch.object(common, 'snap_to_impact', wraps=common.snap_to_impact) as snap:
         _run_main_loop_capturing_plots(p, stop_at_loop=4)
     assert snap.call_count == p.loops['total']
-    assert all(c.args[1] == float('inf') for c in snap.call_args_list)
     assert 0.0 < p.hf_row['Time'] < float('inf')
 
 

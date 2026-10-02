@@ -2083,9 +2083,10 @@ class AragogRunner:
         A CV_TOO_MUCH_WORK stall (cvode_flag == -1) is a stiffness /
         step-budget problem, so recovery first raises the CVODE step
         budget (max_steps), then relaxes rtol (bounded), and only then
-        halves the integration interval, over up to eight attempts. Every
-        other failure keeps the dt-halving plus atol-scaling ladder over
-        six attempts. Each retry restores the entropy IC and dSdr_cmb_init
+        halves the integration interval, over up to eight attempts. On a
+        giant-impact step every failure takes this stiff ladder, so atol is
+        never relaxed there. Every other failure keeps the dt-halving plus
+        atol-scaling ladder over six attempts. Each retry restores the entropy IC and dSdr_cmb_init
         from before the attempt. On final failure this raises RuntimeError
         so the caller can apply its skip-step fallback.
 
@@ -2104,12 +2105,13 @@ class AragogRunner:
 
         Notes
         -----
-        The attempt budget is a monotonic ratchet: the first CV_TOO_MUCH_WORK
-        failure widens max_attempts from six to eight for the rest of the call
-        and it never narrows. A later non-stiff failure in the same call is
-        still part of the stiff recovery, so it keeps the wider budget rather
-        than reverting to six. The stiffness ramp is indexed by stiff_seen, the
-        running count of CV_TOO_MUCH_WORK attempts, so a late or intermittent
+        The attempt budget is a monotonic ratchet: the first stiff-ladder
+        failure (CV_TOO_MUCH_WORK, or any failure on an impact step) widens
+        max_attempts from six to eight for the rest of the call and it never
+        narrows. A later non-stiff failure in the same call is still part of
+        the stiff recovery, so it keeps the wider budget rather than reverting
+        to six. The stiffness ramp is indexed by stiff_seen, the running count
+        of stiff-ladder attempts, so a late or intermittent
         stiff switch still climbs the ramp from its first rung; the non-stiff
         ramp is indexed by the symmetric other_seen count.
 
@@ -2216,10 +2218,8 @@ class AragogRunner:
         rtol_cap = base_rtol * stiff_ramp[-1][1]
 
         out = None
-        # Running counts of CV_TOO_MUCH_WORK and other-mode attempts. stiff_seen
-        # indexes the stiffness ramp so it climbs from rung 1 whenever stiffness
-        # first appears; other_seen indexes the non-stiff atol/dt ramp so a
-        # switch back to non-stiff does not jump straight to the atol cap.
+        # Counts of stiff-ladder and other-mode attempts: each ramp climbs from its
+        # own rung 1, so a switch back to non-stiff does not jump to the atol cap.
         stiff_seen = 0
         other_seen = 0
         _diag_on = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
