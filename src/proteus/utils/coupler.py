@@ -1371,8 +1371,8 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
     an empty field reads as NaN in its own column; a file without tabs is split on
     runs of whitespace. ``float_precision='round_trip'`` returns each float bit for
     bit. The writer ends every line with a newline, so a file without one may have a
-    cut last row and is refused. A NUL byte or a lone carriage return is checked
-    first, then each line in order, so the error names the first defect.
+    cut last row and is refused. A NUL byte or a lone carriage return anywhere in the
+    file is reported first; otherwise the error names the first defect by line.
 
     Parameters
     ----------
@@ -1430,10 +1430,10 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
     if not n_columns:
         raise HelpfileFormatError(f'{path}, line {n_lines}: no header line')
     if not data.endswith(b'\n'):
-        last = 'last row' if n_rows else 'header line'
         raise HelpfileFormatError(
-            f'{path}, line {n_lines}: the {last} has no newline, so it may be cut; '
-            'if it is complete, append a newline'
+            f'{path}, line {n_lines}: the file does not end with a newline, so its last '
+            'line may be cut; remove an incomplete last line, and add a newline only to a '
+            'line you have checked is complete'
         )
     if n_rows < min_rows:
         raise HelpfileFormatError(
@@ -1441,7 +1441,9 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
         )
     try:
         table = pd.read_csv(io.BytesIO(data), sep=sep or r'\s+', float_precision='round_trip')
-    except (pd.errors.ParserError, pd.errors.EmptyDataError) as err:
+    except pd.errors.EmptyDataError as err:
+        raise HelpfileFormatError(f'{path}, line 1: no columns to parse') from err
+    except pd.errors.ParserError as err:
         raise HelpfileFormatError(f'{path}: {err}') from err
     text_columns = list(table.select_dtypes(exclude='number').columns) if n_rows else []
     if table.shape != (n_rows, n_columns) or text_columns:

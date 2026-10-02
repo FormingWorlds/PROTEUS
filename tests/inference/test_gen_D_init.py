@@ -202,7 +202,7 @@ def test_sample_from_grid_skips_a_case_whose_helpfile_row_is_ragged(
 @pytest.mark.unit
 def test_sample_from_grid_skips_a_case_without_a_helpfile(monkeypatch, tmp_path, caplog):
     """A case with no helpfile, or with a directory in its place, is skipped like an
-    unreadable one."""
+    unreadable one. The directory case pins the OSError half of the except clause."""
     grid_dir = tmp_path / 'grid'
     for i, text in enumerate([None, 'dir', 'R_obs\n2.5\n']):
         case = grid_dir / f'case_{i}'

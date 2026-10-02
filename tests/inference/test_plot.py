@@ -565,6 +565,19 @@ def test_plot_result_correlation_multi_par_multi_obs(monkeypatch, tmp_path, capl
     case_empty.mkdir(parents=True)
     (case_empty / 'init_coupler.toml').write_text('[planet]\nmass_tot = 2.5\n')
     (case_empty / 'runtime_helpfile.csv').write_text('P_surf\n', encoding='utf-8')
+    # The header-only case pins the min_rows=1 skip; this one tests the OSError half.
+    case_locked = workers / 'w_0' / 'i_3'
+    case_locked.mkdir(parents=True)
+    (case_locked / 'init_coupler.toml').write_text('[planet]\nmass_tot = 2.8\n')
+    (case_locked / 'runtime_helpfile.csv').write_text('P_surf\n3.0\n', encoding='utf-8')
+    real_read = plot_mod.read_helpfile_table
+
+    def read_or_deny(path, **kwargs):
+        if 'i_3' in str(path):
+            raise PermissionError(f'Permission denied: {path}')
+        return real_read(path, **kwargs)
+
+    monkeypatch.setattr(plot_mod, 'read_helpfile_table', read_or_deny)
 
     axis = MagicMock()
     axis.__getitem__.return_value = axis
@@ -588,6 +601,7 @@ def test_plot_result_correlation_multi_par_multi_obs(monkeypatch, tmp_path, capl
     fig.savefig.assert_called_once()
     assert 'Missing helpfile for' in caplog.text
     assert 'Unreadable helpfile for' in caplog.text
+    assert 'Permission denied' in caplog.text
     # Only the readable case is plotted, one point per panel.
     assert {len(c.args[0]) for c in axis.scatter.call_args_list} == {1}
 

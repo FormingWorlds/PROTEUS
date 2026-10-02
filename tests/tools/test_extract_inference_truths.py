@@ -53,7 +53,8 @@ def test_extract_prints_the_observable_at_the_row_nearest_the_target_time(
 
 
 def test_extract_refuses_a_header_only_helpfile(tmp_path, monkeypatch):
-    """A reference helpfile with no rows raises instead of reporting a value."""
+    """A reference helpfile with no rows raises instead of reporting a value; this pins
+    the tool's own empty-table check."""
     tool = _load_tool()
     infer = _write_configs(tmp_path, 'Time\tR_obs\n')
     monkeypatch.setattr(sys, 'argv', ['extract_inference_truths.py', str(infer)])
