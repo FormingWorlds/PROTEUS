@@ -466,6 +466,8 @@ def test_helpfile_round_trip_is_exact(tmp_path):
     for key in row:
         row[key] = float(rng.uniform(-1.0, 1.0) * 10.0 ** rng.integers(-30, 31))
     row['E_state_heat_cons_J'] = -4.524433010726972e30
+    # Discrimination: these values do not survive the 11-digit format.
+    assert sum(float('%.10e' % v) != v for v in row.values()) > 0.9 * len(row)
     WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
 
     back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]
