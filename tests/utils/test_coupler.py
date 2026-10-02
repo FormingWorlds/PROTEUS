@@ -476,6 +476,26 @@ def test_helpfile_round_trip_is_exact(tmp_path):
 
 
 @pytest.mark.unit
+def test_helpfile_keeps_a_nan_in_its_column(tmp_path):
+    """A NaN reads back in its own column, and every later column keeps its value.
+
+    The reader splits on runs of whitespace, so a NaN written as an empty field
+    would vanish and shift the rest of the row one column to the left.
+    """
+    row = ZeroHelpfileRow()
+    for i, key in enumerate(row):
+        row[key] = float(i + 1)
+    row['semimajorax'] = float('nan')
+    WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
+
+    back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]
+
+    assert math.isnan(back['semimajorax'])
+    assert [key for key in row if key != 'semimajorax' and back[key] != row[key]] == []
+    assert back['runtime'] == row['runtime']
+
+
+@pytest.mark.unit
 def test_write_helpfile_preserves_prior_file_on_failed_write():
     """A crash or full disk mid-write must not destroy the existing helpfile.
 

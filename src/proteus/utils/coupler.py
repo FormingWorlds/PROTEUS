@@ -1336,8 +1336,9 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     tmp_path = fpath + '.tmp'
     try:
         # 17 significant digits, parsed with float_precision='round_trip', give back the
-        # same double, so a resume restarts from the exact state the run held.
-        current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.16e')
+        # same double, so a resume restarts from the exact state the run held. NaN is a
+        # token rather than an empty field, which the whitespace-split reader would drop.
+        current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.16e', na_rep='nan')
         os.replace(tmp_path, fpath)
     except BaseException:
         # Best-effort temp cleanup; never let it mask the original error.
