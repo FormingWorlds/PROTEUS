@@ -743,7 +743,10 @@ def test_delivered_volatiles_raise_the_desiccation_baseline(monkeypatch):
     assert row['H_kg_total'] == pytest.approx(delivered, rel=1e-12)
     assert row['M_vol_initial'] == pytest.approx(1.0e20 + delivered, rel=1e-12)
     row['H_kg_total'] = 0.0
-    assert check_desiccation(SimpleNamespace(outgas=SimpleNamespace(mass_thresh=1.0e10)), row) is False
+    assert (
+        check_desiccation(SimpleNamespace(outgas=SimpleNamespace(mass_thresh=1.0e10)), row)
+        is False
+    )
 
 
 @pytest.mark.unit
@@ -757,6 +760,8 @@ def test_delivery_before_any_escape_baseline_sets_none(monkeypatch):
     handler = _impact_handler(accretion=_impact_accretion(H=1000.0))
     apply_impact(handler, _impact_event())
     assert 'M_vol_initial' not in handler.hf_row
+    # The delivery itself happened; only the baseline credit is skipped.
+    assert handler.hf_row['H_kg_total'] == pytest.approx(6.4e23 * 1000.0 / 1.0e6, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -1706,12 +1711,14 @@ def test_debit_escaped_mass_lowers_the_anchor_only_with_accretion():
 
     off, row = cfg(None), {'M_accreted_net': 0.0}
     debit_escaped_mass(off, row, 3.0e21)
-    assert off.planet.mass_tot == 1.0 and row['M_accreted_net'] == 0.0
+    assert off.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+    assert row['M_accreted_net'] == pytest.approx(0.0, abs=0.0)
 
     for bad in (0.0, -1.0e20, float('nan'), float('inf')):
         on, row = cfg('dummy'), {'M_accreted_net': 0.0}
         debit_escaped_mass(on, row, bad)
-        assert on.planet.mass_tot == 1.0 and row['M_accreted_net'] == 0.0
+        assert on.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+        assert row['M_accreted_net'] == pytest.approx(0.0, abs=0.0)
 
 
 def _restore_handler(mass_tot, hf_row):
@@ -1773,11 +1780,14 @@ def test_resume_with_escape_before_any_impact_restores_the_lowered_mass():
     )
     restore_accretion_state(handler)
     assert handler.config.planet.mass_tot == pytest.approx(1.0 - 1.0e21 / M_earth, rel=1e-15)
+    # No impact yet: the orbit stays at its configured value.
+    assert handler.config.orbit.semimajoraxis == pytest.approx(1.0, rel=1e-15)
 
 
 @pytest.mark.unit
 def test_resume_of_a_helpfile_without_the_net_column_uses_the_rock():
-    """A zero-filled M_accreted_net with rock recorded keeps the rock rule."""
+    """A zero-filled M_accreted_net with rock recorded keeps the rock rule;
+    a recorded net change is used instead of the rock."""
     from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import M_earth
 
@@ -1786,6 +1796,16 @@ def test_resume_of_a_helpfile_without_the_net_column_uses_the_rock():
     )
     restore_accretion_state(handler)
     assert handler.config.planet.mass_tot == pytest.approx(1.5, rel=1e-12)
+    handler = _restore_handler(
+        1.0,
+        {
+            'M_accreted_rock': 0.5 * M_earth,
+            'M_accreted_net': 0.4 * M_earth,
+            'n_impacts_applied': 1,
+        },
+    )
+    restore_accretion_state(handler)
+    assert handler.config.planet.mass_tot == pytest.approx(1.4, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -1800,6 +1820,8 @@ def test_resume_refuses_a_non_finite_net_column(bad):
     )
     with pytest.raises(RuntimeError, match='M_accreted_net'):
         restore_accretion_state(handler)
+    # The refused resume leaves the configured mass untouched.
+    assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
 
 
 @pytest.mark.unit
