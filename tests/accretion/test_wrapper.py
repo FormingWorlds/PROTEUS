@@ -670,6 +670,97 @@ def test_total_impact_loss_removes_the_atmosphere_but_not_the_interior(monkeypat
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+def test_escape_on_the_impact_step_draws_on_the_stripped_atmosphere(monkeypatch):
+    """Escape after a total strip finds no atmosphere and leaves the interior.
+
+    Escape runs before the outgassing solve re-partitions the budgets, and
+    sizes its loss from ``*_kg_atm``. The strip must debit that reservoir too,
+    or a strong escape rate drains the dissolved inventory on the impact step.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.escape.wrapper import calc_new_elements, limit_escape_step
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=1.0)
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    _atm_state(handler.hf_row, H=(4.0e20, 5.0e20), C=(2.0e19, 9.0e19))
+    apply_impact(handler, _impact_event())
+
+    row = handler.hf_row
+    assert row['H_kg_atm'] == 0.0
+    assert row['C_kg_atm'] == 0.0
+    row['esc_rate_total'] = 1.0e14
+    assert limit_escape_step(row, 1.0e3, 'outgas', min_thresh=1.0e10) == 0.0
+    tgt = calc_new_elements(row, 1.0e3, 'outgas', esc_mass=1.0e22)
+    assert tgt['H'] == pytest.approx(1.0e20, rel=1e-12)
+    assert tgt['C'] == pytest.approx(7.0e19, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_a_partial_strip_lowers_the_atmospheric_reservoir_by_the_stripped_mass(monkeypatch):
+    """A 25% strip leaves three quarters of each element's atmosphere."""
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.25)
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    _atm_state(handler.hf_row, H=(4.0e20, 5.0e20), N=(1.0e19, 4.0e20))
+    apply_impact(handler, _impact_event())
+
+    assert handler.hf_row['H_kg_atm'] == pytest.approx(3.0e20, rel=1e-12)
+    assert handler.hf_row['N_kg_atm'] == pytest.approx(7.5e18, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_delivered_volatiles_raise_the_desiccation_baseline(monkeypatch):
+    """The gate must not accept delivered mass as loss without escape.
+
+    1e20 kg escaped from a 1e20 kg baseline, then an impact delivered 6.4e20
+    kg of H. If all of it vanishes without escape, the gate must refuse; with
+    the baseline left at 1e20 kg it would accept (1e20 <= 1.5 * 1e20).
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.outgas.wrapper import check_desiccation
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(accretion=_impact_accretion(H=1000.0))
+    row = handler.hf_row
+    row.update(M_vol_initial=1.0e20, esc_kg_cumulative=1.0e20, H_kg_total=0.0)
+    apply_impact(handler, _impact_event())
+
+    delivered = 6.4e23 * 1000.0 / 1.0e6
+    assert row['H_kg_total'] == pytest.approx(delivered, rel=1e-12)
+    assert row['M_vol_initial'] == pytest.approx(1.0e20 + delivered, rel=1e-12)
+    row['H_kg_total'] = 0.0
+    assert check_desiccation(SimpleNamespace(outgas=SimpleNamespace(mass_thresh=1.0e10)), row) is False
+
+
+@pytest.mark.unit
+def test_delivery_before_any_escape_baseline_sets_none(monkeypatch):
+    """Without a baseline the first escape call snapshots the grown totals."""
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(accretion=_impact_accretion(H=1000.0))
+    apply_impact(handler, _impact_event())
+    assert 'M_vol_initial' not in handler.hf_row
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_stripping_a_sub_threshold_atmosphere_leaves_the_dissolved_inventory(monkeypatch):
     """An atmosphere below the outgassing mass threshold is not strippable.
 

@@ -549,9 +549,11 @@ def _apply_volatile_consequences(
 ) -> None:
     """Apply an impact's sized volatile changes to the whole-planet budgets.
 
-    Debits the stripped target atmosphere, books it into the escaped-mass
-    ledger the desiccation gate audits, credits the delivered impactor
-    volatiles, and refreshes the tracked-element total. The outgassing step
+    Debits the stripped target atmosphere from the whole-planet and the
+    atmospheric budgets, books it into the escaped-mass ledger the
+    desiccation gate audits, credits the delivered impactor volatiles to the
+    budgets and to the gate's baseline ``M_vol_initial`` (once escape has
+    set one), and refreshes the tracked-element total. The outgassing step
     later this iteration re-equilibrates the atmosphere against the updated
     totals; an element deferred to the chemistry step (e.g. oxygen under
     ic_chemistry) is re-derived there either way.
@@ -565,8 +567,10 @@ def _apply_volatile_consequences(
     f_loss : float
         Collision loss fraction in [0, 1], reported in the strip log line.
     """
+    # Debit the atmosphere too: escape on this step sizes its loss from it.
     for e, removed in strip.items():
-        hf_row[f'{e}_kg_total'] = max(0.0, float(hf_row.get(f'{e}_kg_total', 0.0)) - removed)
+        for res in ('_kg_total', '_kg_atm'):
+            hf_row[f'{e}{res}'] = max(0.0, float(hf_row.get(f'{e}{res}', 0.0)) - removed)
     if strip:
         stripped_total = sum(strip.values())
         hf_row['esc_kg_cumulative'] = (
@@ -579,6 +583,11 @@ def _apply_volatile_consequences(
         )
     for e, added in delivered.items():
         hf_row[f'{e}_kg_total'] = float(hf_row.get(f'{e}_kg_total', 0.0)) + added
+    # Credit the escape-balance baseline, or the desiccation gate reads the
+    # delivered mass as loss it may accept without escape.
+    m_vol_initial = float(hf_row.get('M_vol_initial') or 0.0)
+    if delivered and math.isfinite(m_vol_initial) and m_vol_initial > 0.0:
+        hf_row['M_vol_initial'] = m_vol_initial + sum(delivered.values())
     if delivered:
         log.info(
             '    delivered impactor volatiles [kg]: %s',
