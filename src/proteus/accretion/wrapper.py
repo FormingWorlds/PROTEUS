@@ -163,11 +163,12 @@ def restore_accretion_state(handler: Proteus) -> None:
     configured value on the first step whenever tides are off, because that
     path re-pins the row from the configuration each iteration.
 
-    The mass is rebuilt from ``M_accreted_rock``, the cumulative rock the
-    impacts added, on top of the configured mass rather than from ``M_planet``:
-    the anchor carries rock alone, while ``M_planet`` also carries the volatile
-    budgets, so anchoring on it would fold the volatiles into the rock and
-    drift further on every subsequent resume.
+    The mass is rebuilt from ``M_accreted_net``, the cumulative change the
+    impacts and escape made to ``mass_tot``, on top of the configured mass
+    rather than from ``M_planet``, which differs from ``mass_tot`` by the
+    structure solver's mass tolerance. A helpfile written before that column
+    existed reads it as zero; with rock recorded, the mass is then rebuilt
+    from ``M_accreted_rock``, the rule that run was written under.
 
     Call after :func:`init_accretion`, so the timeline is still resolved
     against the configured mass and orbit and a re-run dynamical model selects
@@ -196,9 +197,10 @@ def restore_accretion_state(handler: Proteus) -> None:
     ------
     RuntimeError
         If ``Time``, ``M_accreted_rock`` or ``n_impacts_applied`` is not a
-        finite non-negative number, the counter is not an integer, rock is
-        recorded with no counter while a module is selected, or the counter
-        disagrees with the resolved timeline.
+        finite non-negative number, ``M_accreted_net`` is not finite, the
+        counter is not an integer, rock is recorded with no counter while a
+        module is selected, or the counter disagrees with the resolved
+        timeline.
     """
     config = handler.config
 
@@ -227,6 +229,17 @@ def restore_accretion_state(handler: Proteus) -> None:
             f'Resume refused: {hf_name} contains invalid M_accreted_rock = {m_raw!r}. '
             'Restart the simulation.'
         )
+
+    net_raw = hf_row.get('M_accreted_net')
+    net = _as_float(0.0 if net_raw is None else net_raw)
+    if not math.isfinite(net):
+        raise RuntimeError(
+            f'Resume refused: {hf_name} contains invalid M_accreted_net = {net_raw!r}. '
+            'Restart the simulation.'
+        )
+    if net == 0.0 and accreted > 0.0:
+        log.info('Helpfile %s has no M_accreted_net: restoring the mass from the rock', hf_name)
+        net = accreted
 
     n_raw = hf_row.get('n_impacts_applied')
     n_num = _as_float(0.0 if n_raw is None else n_raw)
@@ -300,10 +313,11 @@ def restore_accretion_state(handler: Proteus) -> None:
     if module_on and pending:
         handler.impact_events = [ev for ev in pending if ev.time > resume_time][n_drop:]
 
+    config.planet.mass_tot += net / M_earth
     if accreted <= 0.0:
         # Inform user when continuing from configured mass, which occurs either
         # prior to any impacts or when resuming from an older helpfile format.
-        if config.accretion.module is not None:
+        if config.accretion.module is not None and net == 0.0:
             log.info(
                 'No accreted rock recorded before this resume: continuing from the '
                 'configured mass of %.4f M_earth. If this run had already applied an '
@@ -311,8 +325,6 @@ def restore_accretion_state(handler: Proteus) -> None:
                 config.planet.mass_tot,
             )
         return
-
-    config.planet.mass_tot += accreted / M_earth
 
     base_a, base_e = _current_orbit(hf_row, config)
     config.orbit.semimajoraxis = base_a / AU
@@ -399,9 +411,11 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     its time, so the orbit and structure of that step already use the grown
     planet and the next interior solve evolves it from there.
 
-    The impactor mass is added to the planet's total mass and the interior
+    The impactor's rock is added to the planet's total mass and the interior
     structure is re-solved, so the radius, gravity and the core/mantle split
-    follow the new mass at the configured core fraction. The orbit change
+    follow the new mass at the configured core fraction. The delivered
+    volatiles minus the stripped atmosphere are then added to the total mass
+    as well, and ``M_accreted_net`` records the cumulative change. The orbit change
     updates the running row base (which tides evolve) and the configuration
     reflects the current post-impact orbit.
 
@@ -448,8 +462,8 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # recomputation from artificially inflating volatile inventories.
     volatile_budgets = _snapshot_volatile_budgets(hf_row)
 
-    # Increase the interior anchor by the impactor's rock mass alone. Volatile
-    # budgets and target stripping are applied separately below.
+    # Grow the anchor by the rock first; the volatile change follows the
+    # structure solve below.
     from proteus.accretion.common import MASS_CLOSURE_RTOL
 
     impactor_rock = event.mass_delta - sum(content.values())
@@ -493,6 +507,14 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # Apply the sized consequences to the whole-planet budgets and refresh
     # the tracked-element total the budgets aggregate into.
     _apply_volatile_consequences(hf_row, strip, delivered, impactor_lost, f_loss)
+
+    # The anchor follows the real total from here on: after the structure
+    # solve above, so that solve's dry target still holds the rock alone.
+    net_volatiles = sum(delivered.values()) - sum(strip.values())
+    config.planet.mass_tot += net_volatiles / M_earth
+    hf_row['M_accreted_net'] = (
+        float(hf_row.get('M_accreted_net') or 0.0) + impactor_rock + net_volatiles
+    )
 
     # Re-melt the mantle to its molten initial condition, so the interior
     # evolves from a fully molten state after the impact.
@@ -544,6 +566,28 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     )
 
 
+def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
+    """Lower the planet's total mass by the volatile mass escape removed.
+
+    The interior structure solves for ``mass_tot`` minus the volatile budgets,
+    so escaped volatiles left in ``mass_tot`` come back as rock at the next
+    structure solve. Applied only with an accretion module selected.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration; ``planet.mass_tot`` is lowered in place.
+    hf_row : dict
+        Current helpfile row; ``M_accreted_net`` is lowered in place.
+    escaped : float
+        Volatile mass the escape step removed from the element budgets [kg].
+    """
+    if config.accretion.module is None or not math.isfinite(escaped) or escaped <= 0.0:
+        return
+    config.planet.mass_tot -= escaped / M_earth
+    hf_row['M_accreted_net'] = float(hf_row.get('M_accreted_net') or 0.0) - escaped
+
+
 def _apply_volatile_consequences(
     hf_row: dict, strip: dict, delivered: dict, impactor_lost: dict, f_loss: float
 ) -> None:
@@ -569,8 +613,8 @@ def _apply_volatile_consequences(
     """
     # Debit the atmosphere too: escape on this step sizes its loss from it.
     for e, removed in strip.items():
-        for res in ('_kg_total', '_kg_atm'):
-            hf_row[f'{e}{res}'] = max(0.0, float(hf_row.get(f'{e}{res}', 0.0)) - removed)
+        hf_row[f'{e}_kg_total'] = max(0.0, float(hf_row.get(f'{e}_kg_total', 0.0)) - removed)
+        hf_row[f'{e}_kg_atm'] = max(0.0, float(hf_row.get(f'{e}_kg_atm', 0.0)) - removed)
     if strip:
         stripped_total = sum(strip.values())
         hf_row['esc_kg_cumulative'] = (

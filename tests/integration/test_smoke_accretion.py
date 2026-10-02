@@ -57,7 +57,7 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
     rather than in a helper called directly.
 
     Validates:
-    - the interior mass anchor grows by the delivered rock, once
+    - the mass anchor grows by the delivered rock less the stripped atmosphere
     - the impact time falls inside the simulated interval, so the schedule and
       the timestep clamp actually met
     - M_accreted_rock is written, non-decreasing, and ends at the delivered mass
@@ -128,9 +128,15 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
             f'nearest was {times[np.argmin(np.abs(times - impact_time))]:.6e} yr'
         )
 
-        # A dry impactor delivers no volatiles, so every kilogram of the
-        # impactor is rock and the anchor grows by exactly the delivered mass.
-        assert runner.config.planet.mass_tot == pytest.approx(mass_before + delivered, rel=1e-6)
+        # A dry impactor delivers no volatiles, so the anchor grows by the
+        # rock less the stripped atmosphere (escape is off in dummy.toml).
+        stripped = float(hf['esc_kg_cumulative'].iloc[-1])
+        expected_net = delivered * M_earth - stripped
+        assert stripped > 0.0
+        assert runner.config.planet.mass_tot == pytest.approx(
+            mass_before + expected_net / M_earth, rel=1e-9
+        )
+        assert float(hf['M_accreted_net'].iloc[-1]) == pytest.approx(expected_net, rel=1e-9)
 
         # The ledger a resumed run reads back was written, never decreases, and
         # ends at the delivered rock. A handler that applied the impact twice
@@ -403,3 +409,64 @@ def test_impact_during_init_stage_applied_exactly_once(tmp_path):
     assert runner2.hf_all['n_impacts_applied'].iloc[-1] == 1
     rock_resumed = float(runner2.hf_all['M_accreted_rock'].iloc[-1])
     assert rock_resumed == pytest.approx(delivered * M_earth, rel=1e-6)
+
+
+def _escape_runner(output_dir, *, accretion):
+    """All-dummy runner with a bulk escape rate, with or without one impact."""
+    runner = Proteus(config_path=PROTEUS_ROOT / 'input' / 'dummy.toml')
+    runner.config.params.out.path = str(output_dir)
+    runner.init_directories()
+    runner.config.planet.tsurf_init = 2000.0
+    runner.config.params.stop.time.minimum = 1e2
+    runner.config.params.stop.time.maximum = 2e4
+    runner.config.params.dt.initial = 1e3
+    runner.config.params.dt.minimum = 1e0
+    runner.config.params.dt.maximum = 1e3
+    runner.config.params.out.plot_mod = None
+    runner.config.params.out.archive_mod = 'none'
+    runner.config.escape.dummy.rate = 1.0e7
+    if accretion:
+        runner.config.accretion.module = 'dummy'
+        runner.config.accretion.dummy.num_impacts = 1
+        runner.config.accretion.dummy.mass_accreted = 0.1
+        runner.config.accretion.dummy.time_last = 4.0e3
+        runner.config.accretion.dummy.timescale = 3.0e3
+        runner.config.accretion.impactor_volatiles = 'dry'
+    return runner
+
+
+@pytest.mark.physics_invariant
+def test_escape_without_accretion_leaves_the_mass_anchor(tmp_path):
+    """Without an accretion module escape does not move mass_tot.
+
+    The new ledger column stays zero on every row, so a run without
+    accretion writes the same shared columns as before plus one zero column.
+    """
+    runner = _escape_runner(tmp_path / 'esc_noacc', accretion=False)
+    mass_before = runner.config.planet.mass_tot
+    runner.start(resume=False, offline=True)
+    hf = runner.hf_all
+    assert float(hf['esc_kg_cumulative'].iloc[-1]) > 0.0, 'escape removed nothing'
+    assert np.all(hf['M_accreted_net'].to_numpy() == 0.0)
+    assert runner.config.planet.mass_tot == mass_before
+
+
+@pytest.mark.physics_invariant
+def test_escape_with_accretion_lowers_the_mass_anchor_by_the_escaped_mass(tmp_path):
+    """With accretion on, mass_tot follows rock in and volatiles out.
+
+    The anchor ends at the configured mass plus the rock less everything that
+    escaped, so the structure solve does not turn escaped volatiles into rock.
+    """
+    runner = _escape_runner(tmp_path / 'esc_acc', accretion=True)
+    mass_before = runner.config.planet.mass_tot
+    runner.start(resume=False, offline=True)
+    hf = runner.hf_all
+    escaped = float(hf['esc_kg_cumulative'].iloc[-1])
+    rock = float(hf['M_accreted_rock'].iloc[-1])
+    assert escaped > 0.0 and rock > 0.0
+    net = float(hf['M_accreted_net'].iloc[-1])
+    assert net == pytest.approx(rock - escaped, rel=1e-9)
+    assert runner.config.planet.mass_tot == pytest.approx(mass_before + net / M_earth, rel=1e-12)
+    # Discrimination: the rock-only anchor would sit escaped kg higher.
+    assert abs(rock - net) > 1.0e-6 * rock

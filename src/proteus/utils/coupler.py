@@ -791,6 +791,7 @@ def CreateLockFile(output_dir: str):
 RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'esc_kg_cumulative',
+        'M_accreted_net',
         'M_accreted_rock',
         'n_impacts_applied',
         'step_dE_impact_J',
@@ -1001,9 +1002,10 @@ def GetHelpfileKeys():
         'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
         'esc_step_kg',      # loss applied on this step, after the cap [kg]
 
-        # Giant-impact accretion ledger: cumulative rock mass added to interior
-        # mass anchor to enable reconstruction on resume.
+        # Giant-impact accretion ledger: the rock added and the net change of
+        # the mass anchor, so a resume can rebuild the anchor.
         'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
+        'M_accreted_net',   # cumulative change of the mass anchor by impacts and escape [kg]
         'n_impacts_applied',  # count of giant impacts applied [1]
     ]
 

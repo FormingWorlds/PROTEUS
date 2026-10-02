@@ -494,7 +494,11 @@ class Proteus:
         #    atmospheric chemistry
         #    giant-impact accretion
         from proteus.accretion.common import next_event
-        from proteus.accretion.wrapper import init_accretion, restore_accretion_state
+        from proteus.accretion.wrapper import (
+            debit_escaped_mass,
+            init_accretion,
+            restore_accretion_state,
+        )
         from proteus.atmos_chem.wrapper import run_chemistry
 
         #    atmosphere solver
@@ -503,7 +507,7 @@ class Proteus:
         from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
 
         #    escape and outgas
-        from proteus.escape.wrapper import run_escape
+        from proteus.escape.wrapper import readable_total, run_escape
 
         #    interior
         from proteus.interior_energetics.common import Interior_t
@@ -1254,6 +1258,7 @@ class Proteus:
                     and float(self.hf_row.get('Phi_global', 1.0))
                     <= float(self.config.params.stop.solid.phi_crit)
                 )
+                kg_before = readable_total(self.hf_row)
                 run_escape(
                     self.config,
                     self.hf_row,
@@ -1261,6 +1266,9 @@ class Proteus:
                     self.interior_o.dt,
                     atmosphere_only=frozen,
                     interior_o=self.interior_o,
+                )
+                debit_escaped_mass(
+                    self.config, self.hf_row, kg_before - readable_total(self.hf_row)
                 )
                 if _IT_TIMING_ENABLED:
                     _t_mod['escape'] = time.perf_counter() - _t0

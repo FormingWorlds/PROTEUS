@@ -2906,11 +2906,16 @@
       "origin": "literal",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "outgas"
       ],
@@ -2996,6 +3001,23 @@
       "consumers": [
         "accretion",
         "main loop"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "M_accreted_net",
+      "unit": "kg",
+      "description": "cumulative change of the mass anchor by impacts and escape",
+      "group": "Giant-impact accretion ledger",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "accretion"
       ],
       "consumers_possible": []
     },
@@ -24727,6 +24749,18 @@
     }
   ],
   "unresolved_events": [
+    {
+      "file": "src/proteus/accretion/wrapper.py",
+      "kind": "write",
+      "reason": "template <e>_kg_atm",
+      "function": "_apply_volatile_consequences"
+    },
+    {
+      "file": "src/proteus/accretion/wrapper.py",
+      "kind": "read",
+      "reason": "template <e>_kg_atm",
+      "function": "_apply_volatile_consequences"
+    },
     {
       "file": "src/proteus/atmos_clim/agni.py",
       "kind": "read",

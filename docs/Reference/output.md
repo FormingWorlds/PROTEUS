@@ -253,7 +253,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `fO2_vapourise_shift_IW_derived` | `log10 bar` | rock-vapour IW offset | `outgas/lavatmos.py` | outgas.vapourise = true | outgas |
 | `O_res` | `kg` | O mass-balance residual | `outgas/atmodeller.py`<br>`outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller"; outgas.module = "calliope"; outgas.module = "dummy" |   |
 | `O_vapourised_kg` | `kg` | oxygen released by rock vapourisation (LavAtmos) | `outgas/lavatmos.py` | outgas.vapourise = true |   |
-| `M_vol_initial` | `kg` | bulk volatile inventory baseline | `escape/wrapper.py` | always | escape, outgas |
+| `M_vol_initial` | `kg` | bulk volatile inventory baseline | `accretion/wrapper.py`<br>`escape/wrapper.py` | always | accretion, escape, outgas |
 | `esc_kg_cumulative` | `kg` | cumulative mass lost to space (escape + impact stripping) | `accretion/wrapper.py`<br>`escape/wrapper.py` | always | accretion, escape, outgas |
 | `esc_clamp_frac` | `1` | requested per-step loss / escapable reservoir | `escape/wrapper.py`<br>`proteus.py` | always | escape |
 | `esc_step_kg` | `kg` | loss applied on this step, after the cap | `escape/wrapper.py`<br>`proteus.py` | always | outgas |
@@ -263,6 +263,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `M_accreted_rock` | `kg` | cumulative rock mass added by giant impacts | `accretion/wrapper.py` | always | accretion, main loop |
+| `M_accreted_net` | `kg` | cumulative change of the mass anchor by impacts and escape | `accretion/wrapper.py` | always | accretion |
 | `n_impacts_applied` | `1` | count of giant impacts applied | `accretion/wrapper.py` | always | accretion |
 
 ### Gases from outgassing
@@ -1046,6 +1047,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 
 A computed key is a helpfile column name constructed dynamically at runtime through variable lookups or formatted strings. Because static analysis cannot determine the accessed column names in advance, these read sites are not attributed to specific columns in the table above.
 
+- `src/proteus/accretion/wrapper.py::_apply_volatile_consequences`: `template <e>_kg_atm`
 - `src/proteus/atmos_clim/agni.py::_validate_surface_state`: `dynamic key name` (touches T_surf, T_magma, P_surf)
 - `src/proteus/escape/common.py::calc_unfract_fluxes`: `dynamic key e + key` (touches <element>_kg_total, <element>_kg_atm)
 - `src/proteus/escape/wrapper.py::escapable_mass`: `dynamic key f'{e}{key}'` (touches <element>_kg_total, <element>_kg_atm)
@@ -1056,6 +1058,12 @@ A computed key is a helpfile column name constructed dynamically at runtime thro
 - `src/proteus/plot/cpl_global.py::plot_global`: `dynamic key k` (touches F_int, F_atm, F_olr, F_tidal, F_radio)
 - `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key sma_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
 - `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key ecc_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
+
+### Writes with computed keys
+
+A computed key is a helpfile column name constructed dynamically at runtime through variable lookups or formatted strings. Because static analysis cannot determine the modified column names in advance, these write sites are not attributed to specific columns in the table above.
+
+- `src/proteus/accretion/wrapper.py::_apply_volatile_consequences`: `template <e>_kg_atm`
 <!-- END GENERATED: helpfile-matrix -->
 
 ## Synthetic observation CSV columns
