@@ -684,12 +684,11 @@ def _impactor_volatile_content(config, hf_all, event: ImpactEvent, hf_row=None) 
     model co-formed from the same disk material; ``ppmw`` uses the configured
     per-element budgets. Only positive contributions are returned.
 
-    Under ``O_mode = 'ic_chemistry'`` oxygen is excluded from the content:
-    the volatile O budget is chemistry-derived (the next outgassing call
-    re-equilibrates it against the fO2 buffer for the grown planet), so a
-    delivered O mass would be overwritten while its subtraction from the
-    interior anchor persisted. The impactor's oxygen then arrives as part of
-    its rock, which is where oxide-bound oxygen belongs.
+    Oxygen is excluded from the content whenever the volatile O budget is a
+    solver output (``O_mode = 'ic_chemistry'``, or ``planet.fO2_source =
+    'user_constant'`` with any O_mode): O set by the melt fO2 is part of the
+    silicate budget, so delivered O counts as rock. The next outgassing call
+    rewrites the O budget, so delivered O would otherwise leave the planet.
     """
     mode = config.accretion.impactor_volatiles
     content: dict[str, float] = {}
@@ -706,7 +705,10 @@ def _impactor_volatile_content(config, hf_all, event: ImpactEvent, hf_row=None) 
                 content[e] = event.M_impactor * ppmw / 1.0e6
 
     o_mode = getattr(getattr(config.planet, 'elements', None), 'O_mode', None)
-    if o_mode == 'ic_chemistry':
+    if (
+        o_mode == 'ic_chemistry'
+        or getattr(config.planet, 'fO2_source', None) == 'user_constant'
+    ):
         content.pop('O', None)
 
     return content

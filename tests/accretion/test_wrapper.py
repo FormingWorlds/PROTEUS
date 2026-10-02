@@ -780,6 +780,41 @@ def test_a_stripping_wet_impact_credits_only_the_delivery_to_the_baseline(monkey
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'fO2_source, o_rock', [('user_constant', True), ('from_O_budget', False)]
+)
+def test_impactor_oxygen_counts_as_rock_when_the_fO2_sets_the_o_budget(
+    monkeypatch, fO2_source, o_rock
+):
+    """Under a fixed fO2 the outgassing rewrites the O budget, so delivered O
+    is rock: it enters neither the baseline credit nor the volatile column.
+    With the O budget as the fO2 input it is delivered as a volatile."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(accretion=_impact_accretion(H=1000.0, O=8000.0))
+    handler.config.planet.elements = SimpleNamespace(O_mode='ppmw')
+    handler.config.planet.fO2_source = fO2_source
+    handler.hf_row.update(M_vol_initial=1.0e20, O_kg_total=1.0e21)
+    event = _impact_event()
+    apply_impact(handler, event)
+
+    h, o = event.M_impactor * 1000.0 / 1.0e6, event.M_impactor * 8000.0 / 1.0e6
+    delivered = h if o_rock else h + o
+    rock = event.mass_delta - delivered
+    assert handler.hf_row['M_vol_initial'] == pytest.approx(1.0e20 + delivered, rel=1e-12)
+    assert handler.hf_row['M_volatile_change'] == pytest.approx(delivered, rel=1e-12)
+    assert handler.config.planet.mass_tot == pytest.approx(1.0 + rock / M_earth, rel=1e-12)
+    assert handler.hf_row['O_kg_total'] == pytest.approx(
+        1.0e21 + (0.0 if o_rock else o), rel=1e-12
+    )
+
+
+@pytest.mark.unit
 def test_delivery_before_any_escape_baseline_sets_none(monkeypatch):
     """Without a baseline the first escape call snapshots the grown totals."""
     from proteus.accretion.wrapper import apply_impact
