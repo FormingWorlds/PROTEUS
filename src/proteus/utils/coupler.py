@@ -791,7 +791,7 @@ def CreateLockFile(output_dir: str):
 RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'esc_kg_cumulative',
-        'M_accreted_net',
+        'M_planet_change',
         'M_accreted_rock',
         'n_impacts_applied',
         'step_dE_impact_J',
@@ -1002,10 +1002,10 @@ def GetHelpfileKeys():
         'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
         'esc_step_kg',      # loss applied on this step, after the cap [kg]
 
-        # Giant-impact accretion ledger: the rock, which rebuilds mass_tot on resume,
-        # and the whole-planet change, whose volatile part the Zalmoxis target adds.
+        # Mass ledger: the impact rock, which rebuilds mass_tot on resume, and the
+        # whole-planet change, whose volatile part the Zalmoxis target adds.
         'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
-        'M_accreted_net',   # cumulative whole-planet mass change from impacts and escape (rock, delivered, stripped, escaped) with Zalmoxis; rock only otherwise [kg]
+        'M_planet_change',  # cumulative whole-planet mass change: impact rock, plus delivered - stripped - escaped with Zalmoxis [kg]
         'n_impacts_applied',  # count of giant impacts applied [1]
     ]
 

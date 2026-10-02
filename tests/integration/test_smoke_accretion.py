@@ -131,7 +131,7 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
         # The dummy structure's mass_tot is the dry mass: a dry impactor grows
         # it by exactly the delivered rock; the strip moves only the budgets.
         assert runner.config.planet.mass_tot == pytest.approx(mass_before + delivered, rel=1e-9)
-        assert float(hf['M_accreted_net'].iloc[-1]) == pytest.approx(
+        assert float(hf['M_planet_change'].iloc[-1]) == pytest.approx(
             delivered * M_earth, rel=1e-9
         )
 
@@ -444,7 +444,7 @@ def test_escape_without_accretion_leaves_the_mass_anchor(tmp_path):
     runner.start(resume=False, offline=True)
     hf = runner.hf_all
     assert float(hf['esc_kg_cumulative'].iloc[-1]) > 0.0, 'escape removed nothing'
-    assert np.all(hf['M_accreted_net'].to_numpy() == 0.0)
+    assert np.all(hf['M_planet_change'].to_numpy() == 0.0)
     assert runner.config.planet.mass_tot == mass_before
 
 
@@ -464,7 +464,7 @@ def test_escape_with_accretion_leaves_the_dummy_dry_anchor_to_the_rock(tmp_path)
     rock = float(hf['M_accreted_rock'].iloc[-1])
     assert escaped > 0.0
     assert rock > 0.0
-    assert float(hf['M_accreted_net'].iloc[-1]) == pytest.approx(rock, rel=1e-12)
+    assert float(hf['M_planet_change'].iloc[-1]) == pytest.approx(rock, rel=1e-12)
     assert runner.config.planet.mass_tot == pytest.approx(
         mass_before + rock / M_earth, rel=1e-12
     )
@@ -476,10 +476,12 @@ def test_escape_with_accretion_leaves_the_dummy_dry_anchor_to_the_rock(tmp_path)
 
 
 @pytest.mark.physics_invariant
-def test_main_loop_escape_debit_reaches_the_zalmoxis_target(tmp_path, monkeypatch):
-    """With the Zalmoxis structure and accretion on, each escape step lowers the
-    M_accreted_net ledger by the escaped mass, mass_tot stays the rock anchor,
-    and every structure re-solve targets mass_tot + V less the volatiles.
+@pytest.mark.parametrize('accretion', [True, False], ids=['accretion', 'escape-only'])
+def test_main_loop_escape_debit_reaches_the_zalmoxis_target(tmp_path, monkeypatch, accretion):
+    """With the Zalmoxis structure, with or without accretion, each escape step
+    lowers the M_planet_change ledger by the escaped mass, mass_tot stays the
+    rock anchor, and every structure re-solve targets mass_tot + V less the
+    volatiles.
 
     The re-solve is a stub that runs each step after the init stage and takes
     its dry target from the real load_zalmoxis_configuration; no impact lands,
@@ -510,17 +512,18 @@ def test_main_loop_escape_debit_reaches_the_zalmoxis_target(tmp_path, monkeypatc
     monkeypatch.setattr(interior_wrapper, 'update_structure_from_interior', resolve)
     monkeypatch.setattr(Proteus, '_solve_structure_baseline_if_needed', lambda self: None)
     monkeypatch.setattr(Proteus, '_save_zalmoxis_output', lambda self: None)
-    runner = _escape_runner(tmp_path / 'esc_zal', accretion=True)
+    runner = _escape_runner(tmp_path / 'esc_zal', accretion=accretion)
     runner.config.interior_struct.module = 'zalmoxis'
     runner.config.interior_struct.zalmoxis.update_interval = 1.0
     runner.config.interior_struct.zalmoxis.equilibrate_init = False
-    runner.config.accretion.dummy.time_last = 1.0e9  # the impact never lands
+    if accretion:
+        runner.config.accretion.dummy.time_last = 1.0e9  # the impact never lands
     mass_before = runner.config.planet.mass_tot
     runner.start(resume=False, offline=True)
 
     hf = runner.hf_all[runner.hf_all['Time'] > 0.0]
     escaped = float(hf['esc_kg_cumulative'].iloc[-1])
-    net = hf['M_accreted_net'].to_numpy()
+    net = hf['M_planet_change'].to_numpy()
     assert escaped > 0.0
     assert len(calls) > len(hf) // 2, 'the stub must re-solve inside the loop'
     assert -net[-1] == pytest.approx(escaped, rel=1e-9)
