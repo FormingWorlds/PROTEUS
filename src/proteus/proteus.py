@@ -407,6 +407,80 @@ class Proteus:
             dirs['spider_solidus_ps'] = tables['solidus_path']
             dirs['spider_liquidus_ps'] = tables['liquidus_path']
 
+    def _save_zalmoxis_output(self):
+        """Copy ``zalmoxis_output.dat`` next to the snapshot of the row being written."""
+        if (
+            self.config.interior_struct.module == 'zalmoxis'
+            and self.config.interior_energetics.module == 'aragog'
+        ):
+            from proteus.interior_struct.zalmoxis import save_zalmoxis_output_snapshot
+
+            save_zalmoxis_output_snapshot(self.directories['output'], self.hf_row['Time'])
+
+    def _resync_zalmoxis_mesh(self):
+        """Make ``zalmoxis_output.dat`` match the resumed row before Aragog reads it.
+
+        A structure re-solve rewrites the file at once, while the helpfile
+        reaches disk only on snapshot iterations. The first match of the copy
+        saved with the row, the live file and its ``.prev`` backup is used.
+
+        Raises
+        ------
+        RuntimeError
+            When no candidate exists or none matches the row within Aragog's
+            ``reset()`` tolerance.
+        OSError
+            When restoring a matching candidate fails.
+        """
+        from proteus.interior_struct.zalmoxis import (
+            copy_zalmoxis_output,
+            get_zalmoxis_output_filepath,
+            zalmoxis_mesh_gaps,
+        )
+        from proteus.utils.helper import snapshot_path_for_time
+
+        log = logging.getLogger('fwl.' + __name__)
+        path = get_zalmoxis_output_filepath(self.directories['output'])
+        time = float(self.hf_row['Time'])
+        saved = snapshot_path_for_time(os.path.dirname(path), time, '_zalmoxis.dat')
+        tried = []
+        for file in (saved, path, path + '.prev'):
+            if not os.path.isfile(file):
+                continue
+            gaps = zalmoxis_mesh_gaps(file, self.hf_row)
+            if gaps is not None and abs(gaps[0]) <= gaps[2] and abs(gaps[1]) <= gaps[2]:
+                if tried:
+                    log.warning('Resume: skipped %s.', '; '.join(tried))
+                if file != path:
+                    copy_zalmoxis_output(file, path)
+                    log.log(
+                        logging.INFO if file == saved else logging.WARNING,
+                        'Resume: restored %s from %s for the row at t = %.6e yr.',
+                        path,
+                        file,
+                        time,
+                    )
+                return
+            tried.append(
+                f'{os.path.basename(file)}: '
+                + ('invalid' if gaps is None else 'R_core %+.3e m, R_int %+.3e m' % gaps[:2])
+            )
+        stop = (
+            f'Resume: no Zalmoxis structure file matches the helpfile row at t = {time:.6e} yr'
+        )
+        rerun = 'Run the configuration again from t = 0.'
+        if not tried:
+            raise RuntimeError(
+                f'{stop}: none of {saved}, {path} and {path}.prev exists. {rerun}'
+            )
+        raise RuntimeError(
+            f'{stop} within max(1 m, 1e-9 of the mantle thickness); {"; ".join(tried)}. '
+            'A resume needs one of these files to match the row; otherwise Aragog would '
+            f'reject {path} at a reset() or run on a structure off by these gaps.'
+            + ('' if os.path.isfile(saved) else f' {saved} does not exist.')
+            + f' {rerun}'
+        )
+
     def _check_crystallization(self) -> None:
         """Check mantle crystallization and lock outgassing when threshold is crossed."""
         log = logging.getLogger('fwl.' + __name__)
@@ -939,6 +1013,16 @@ class Proteus:
             self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
             self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
 
+            if (
+                self.config.interior_struct.module == 'zalmoxis'
+                and self.config.interior_energetics.module == 'aragog'
+            ):
+                try:
+                    self._resync_zalmoxis_mesh()
+                except Exception:
+                    UpdateStatusfile(self.directories, 20)
+                    raise
+
             # Arm the resume-settling structure-re-solve guard. The resumed
             # interior relaxes thermally over the first loops and would
             # otherwise fire repeated dynamic structure re-solves that recompute
@@ -1415,6 +1499,7 @@ class Proteus:
             # combines write_mod iteration check and dt_write time check)
             if is_snapshot:
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                self._save_zalmoxis_output()
                 WriteHelpfileToCSV(self.directories['output'], self.hf_all)
                 if _IT_TIMING_ENABLED:
                     _t_mod['write'] = time.perf_counter() - _t0
@@ -1489,6 +1574,7 @@ class Proteus:
             from proteus.interior_energetics.aragog import write_final_snapshot
 
             write_final_snapshot(self.config, self.interior_o, self.directories, self.hf_row)
+            self._save_zalmoxis_output()
 
         # Ensure the final atmosphere state is on disk, since it won't always happen to
         # be written on the last iteration of the model.
