@@ -831,6 +831,39 @@ def test_impactor_oxygen_counts_as_rock_when_the_fO2_sets_the_o_budget(
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_delivered_oxygen_stays_in_the_dry_anchor_of_the_dummy_structure(monkeypatch):
+    """With the dummy structure mass_tot is the whole anchor: delivered O
+    joins the rock there, since the outgassing would drop it from the budget."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    acc = _impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0, O=8000.0)
+    handler = _impact_handler(accretion=acc, structure='dummy')
+    handler.config.planet.elements = SimpleNamespace(O_mode='ppmw')
+    handler.config.planet.fO2_source = 'user_constant'
+    handler.config.outgas = SimpleNamespace(module='calliope', mass_thresh=1.0)
+    handler.hf_row.update(
+        M_vol_initial=1.0e20,
+        O_kg_total=1.0e21,
+        O_kg_atm=5.0e20,
+        H_kg_total=1.0e20,
+        H_kg_atm=5.0e19,
+    )
+    event = _impact_event()
+    apply_impact(handler, event)
+
+    h, o = event.M_impactor * 1000.0 / 1.0e6, event.M_impactor * 8000.0 / 1.0e6
+    gain = (handler.config.planet.mass_tot - 1.0) * M_earth
+    assert gain == pytest.approx(event.mass_delta - h - 0.25 * o, rel=1e-12)
+    assert handler.hf_row['M_vol_initial'] == pytest.approx(1.0e20 + 0.75 * h, rel=1e-12)
+    assert 'M_volatile_change' not in handler.hf_row
+
+
+@pytest.mark.unit
 def test_delivery_before_any_escape_baseline_sets_none(monkeypatch):
     """Without a baseline the first escape call snapshots the grown totals."""
     from proteus.accretion.wrapper import apply_impact
@@ -1258,6 +1291,7 @@ def test_the_o_budget_is_a_solver_output_under_ic_chemistry_or_a_fixed_fo2_solve
         return SimpleNamespace(planet=planet, outgas=SimpleNamespace(module=outgas))
 
     assert _o_budget_is_solver_output(cfg('ic_chemistry', 'from_O_budget', 'calliope'))
+    assert _o_budget_is_solver_output(cfg('ic_chemistry', 'user_constant', 'dummy'))
     assert _o_budget_is_solver_output(cfg('ppmw', 'user_constant', 'atmodeller'))
     assert not _o_budget_is_solver_output(cfg('ppmw', 'user_constant', 'dummy'))
     assert not _o_budget_is_solver_output(cfg('ppmw', 'from_O_budget', 'calliope'))
@@ -1788,7 +1822,7 @@ def test_a_resumed_run_rebuilds_the_mass_and_orbit_the_impacts_moved():
 def test_debit_escaped_mass_records_escape_with_zalmoxis_with_or_without_accretion():
     """Escape lowers the ledger with the Zalmoxis structure, also without an
     accretion module, never mass_tot, and nothing with the dummy structure."""
-    from proteus.interior_struct.common import debit_escaped_mass
+    from proteus.interior_struct.common import debit_escaped_mass, record_volatile_change
 
     def cfg(module, structure='zalmoxis'):
         return SimpleNamespace(
@@ -1813,6 +1847,11 @@ def test_debit_escaped_mass_records_escape_with_zalmoxis_with_or_without_accreti
         row = {'M_volatile_change': 0.0}
         debit_escaped_mass(cfg(None), row, bad)
         assert row['M_volatile_change'] == pytest.approx(0.0, abs=0.0)
+
+    row = {'M_volatile_change': 1.0e21}
+    with pytest.raises(RuntimeError, match='not finite'):
+        record_volatile_change(cfg(None), row, float('nan'))
+    assert row['M_volatile_change'] == pytest.approx(1.0e21, rel=1e-15)
 
 
 def _restore_handler(mass_tot, hf_row):

@@ -706,11 +706,12 @@ def _impactor_volatile_content(config, hf_all, event: ImpactEvent, hf_row=None) 
 def _o_budget_is_solver_output(config) -> bool:
     """Whether the outgassing rewrites the O budget from the melt fO2.
 
-    True under ``O_mode = 'ic_chemistry'``, or under ``planet.fO2_source =
-    'user_constant'`` with an outgassing solver; the dummy outgassing keeps a
-    positive O budget as given. Delivered O is then part of the silicate
-    budget and counts as rock, since the next outgassing call would otherwise
-    drop it from the planet. Impactor O lost with its atmosphere still leaves.
+    True under ``O_mode = 'ic_chemistry'``, which has no user O budget, with
+    any outgassing module; and under ``planet.fO2_source = 'user_constant'``
+    with an outgassing solver, while the dummy outgassing keeps a positive O
+    budget as given. Delivered O is then part of the silicate budget and counts
+    as rock, since the next outgassing call would otherwise drop it from the
+    planet. Impactor O lost with its atmosphere still leaves.
     """
     o_mode = getattr(getattr(config.planet, 'elements', None), 'O_mode', None)
     solver = getattr(getattr(config, 'outgas', None), 'module', None) != 'dummy'

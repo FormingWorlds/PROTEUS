@@ -89,10 +89,12 @@ def record_volatile_change(config: Config, hf_row: dict, delta: float) -> None:
     Raises
     ------
     RuntimeError
-        If the column is not finite.
+        If the column or ``delta`` is not finite.
     """
     if not tracks_volatile_mass(config):
         return
+    if not math.isfinite(delta):
+        raise RuntimeError(f'volatile mass change is not finite ({delta!r})')
     hf_row['M_volatile_change'] = volatile_mass_change(hf_row) + delta
 
 
