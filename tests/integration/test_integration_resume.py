@@ -318,15 +318,12 @@ def test_resume_continues_trajectory_from_disk_state(tmp_path):
         'resumed run did not advance simulation time'
     )
 
-    # The stored prefix survives unchanged. ``stored`` is read with the default pandas
-    # parser, which can miss the last bit; rtol=1e-9 clears that and sits far below
-    # any physical change a single step would make.
+    # The stored prefix survives unchanged, to the last bit: the helpfile reads every
+    # float back exactly.
     for column in ('Time', 'T_magma', 'Phi_global', 'F_atm', 'P_surf', 'M_atm', 'H_kg_atm'):
-        np.testing.assert_allclose(
+        np.testing.assert_array_equal(
             resumed[column].to_numpy()[:n_stored],
             stored[column].to_numpy(),
-            rtol=1e-9,
-            atol=0.0,
             err_msg=f'resume rewrote stored {column} values instead of extending them',
         )
 

@@ -1335,9 +1335,8 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
     tmp_path = fpath + '.tmp'
     try:
-        # 17 significant digits read with float_precision='round_trip' give back every
-        # float exactly, so a resume rebuilds from the row as the run wrote it. NaN is a
-        # token: an empty field would vanish in the whitespace-split read.
+        # 17 significant digits read with float_precision='round_trip' give back every float
+        # exactly; NaN is a token, as an empty field would vanish in the whitespace split.
         current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.16e', na_rep='nan')
         os.replace(tmp_path, fpath)
     except BaseException:
@@ -1682,8 +1681,8 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
     file without the field cannot be told apart from its neighbours, so it is
     accepted on its name, which is the behaviour every directory written
     before the field existed relies on. True as well once the simulation time
-    is large enough that the helpfile's own precision cannot separate two rows
-    inside one filename, which is a few Gyr in.
+    is large enough that the margin an eleven-digit helpfile needs cannot separate
+    two rows inside one filename, which is a few Gyr in.
 
     Parameters
     ----------

@@ -480,11 +480,7 @@ def test_helpfile_round_trip_is_exact(tmp_path):
 
 @pytest.mark.unit
 def test_helpfile_keeps_a_nan_in_its_column(tmp_path):
-    """A NaN reads back in its own column, and every later column keeps its value.
-
-    The reader splits on runs of whitespace, so a NaN written as an empty field
-    would vanish and shift the rest of the row one column to the left.
-    """
+    """A NaN reads back in its own column; an empty field would shift the later columns."""
     row = ZeroHelpfileRow()
     for i, key in enumerate(row):
         row[key] = float(i + 1)
@@ -4414,7 +4410,7 @@ def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
       separation the filename itself cannot resolve.
     - A file with no recorded time is accepted, so directories written before
       the field existed still resume.
-    - The tolerance admits the helpfile's own serialisation round trip and
+    - The tolerance admits the round trip of an eleven-digit helpfile and
       still rejects a step a thousandth of a year away.
     """
     own = _write_timed_nc(str(tmp_path / 'own_int.nc'), 70.2)
@@ -4434,7 +4430,7 @@ def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
     # A step a thousandth of a year away is a different step, not a round trip.
     assert _snapshot_belongs_to(own, 70.201) is False
 
-    # The margin is relative to the time, because the helpfile's precision is,
+    # The margin is relative to the time, because an eleven-digit helpfile's precision is,
     # so it has to be checked where a run actually ends up. At 1 Gyr a round
     # trip moves the row by about 0.05 yr and must still match, while a step
     # 0.7 yr away shares the same filename and must not: a margin that grew to
