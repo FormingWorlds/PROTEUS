@@ -436,6 +436,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
     config = handler.config
     hf_row = handler.hf_row
+    net_before = _net_ledger(hf_row)  # refuse a corrupt ledger before anything moves
 
     ratio = event.semimajoraxis_ratio
     if not math.isfinite(ratio) or ratio <= 0.0:
@@ -519,7 +520,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     if _anchor_includes_volatiles(config) and not getattr(handler, 'init_stage', False):
         net_volatiles = sum(delivered.values()) - sum(strip.values())
         config.planet.mass_tot += net_volatiles / M_earth
-    hf_row['M_accreted_net'] = _net_ledger(hf_row) + impactor_rock + net_volatiles
+    hf_row['M_accreted_net'] = net_before + impactor_rock + net_volatiles
 
     # Raise the mantle to its initial condition; hotter parts keep their state.
     remelt_mantle(handler.directories, config, hf_row, handler.interior_o, event)

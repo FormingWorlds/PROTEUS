@@ -1923,9 +1923,10 @@ def test_a_non_finite_ledger_stops_the_anchor_update(where, monkeypatch):
             apply_impact(handler, _impact_event())
         else:
             debit_escaped_mass(handler.config, handler.hf_row, 1.0e20)
-    # The escape path refuses before it touches the anchor.
-    if where == 'escape':
-        assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+    # Both paths refuse before they touch the anchor or the impact records.
+    assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+    assert 'M_accreted_rock' not in handler.hf_row
+    assert 'n_impacts_applied' not in handler.hf_row
 
 
 @pytest.mark.unit
