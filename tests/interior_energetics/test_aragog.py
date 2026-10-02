@@ -60,6 +60,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.aragog.temperature_step_cap = 0.0
     config.interior_energetics.aragog.entropy_step_cap = 0.0
     config.interior_energetics.aragog.phase_boundary_entropy_margin = 200.0
+    config.interior_energetics.aragog.phase_boundary_cap = 'fixed'
     config.interior_energetics.aragog.separation_viscosity = 'mixture'
     config.interior_energetics.spider.matprop_smooth_width = 0.0
     config.interior_energetics.const_properties = False
@@ -531,11 +532,12 @@ def _paired_energy_stub(
     temperature_step_cap=None,
     entropy_step_cap=None,
     phase_boundary_entropy_margin=None,
+    phase_boundary_cap=None,
     **rest,
 ):
-    """Signature of a paired Aragog: it accepts all three managed stepping
-    controls, so the guard treats phase_boundary_entropy_margin as supported
-    and threads the value straight through."""
+    """Signature of a paired Aragog: it accepts all managed stepping
+    controls, so the guard treats phase_boundary_cap and margin as supported
+    and threads their values straight through."""
     return MagicMock()
 
 
@@ -546,7 +548,7 @@ def _caps_only_energy_stub(
     **rest,
 ):
     """Signature of an Aragog that accepts the step caps but predates
-    phase_boundary_entropy_margin, so the guard must drop only the margin."""
+    phase_boundary_entropy_margin and phase_boundary_cap, so the guard drops both."""
     return MagicMock()
 
 
@@ -648,6 +650,70 @@ def test_setup_solver_threads_phase_boundary_margin(tmp_path):
     assert threaded[350.0] != pytest.approx(threaded[200.0])
 
 
+def _run_setup_solver(tmp_path, config, energy_stub):
+    """Run setup_solver against a stubbed _EnergyParameters; return the stub and the logger."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    mock_ep = create_autospec(energy_stub)
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+        patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
+        patch('proteus.interior_energetics.aragog.log') as mock_log,
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
+    return mock_ep, mock_log
+
+
+def _warned(mock_log, name):
+    return any(name in str(c) for c in mock_log.warning.call_args_list)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('requested', ['fixed', 'rate'])
+def test_setup_solver_threads_phase_boundary_cap(tmp_path, requested):
+    """setup_solver passes 'fixed' verbatim and 'rate', Aragog's default, as unset (None),
+    without a version-skew warning."""
+    config = _make_aragog_config(struct_module='spider')
+    config.interior_energetics.aragog.phase_boundary_cap = requested
+    mock_ep, mock_log = _run_setup_solver(tmp_path, config, _paired_energy_stub)
+
+    passed = mock_ep.call_args.kwargs['phase_boundary_cap']
+    assert passed == ('fixed' if requested == 'fixed' else None)
+    assert not _warned(mock_log, 'phase_boundary_cap')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('requested', ['fixed', 'rate'])
+def test_setup_solver_phase_boundary_cap_reaches_real_energy_parameters(tmp_path, requested):
+    """With the installed Aragog's own _EnergyParameters (not a stub), the
+    requested phase_boundary_cap is the value the solver's energy section holds."""
+    pytest.importorskip('aragog')
+    from aragog.parser import _EnergyParameters
+
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    if 'phase_boundary_cap' not in _EnergyParameters.__dataclass_fields__:
+        pytest.skip('installed Aragog has no phase_boundary_cap')
+    config = _make_aragog_config(struct_module='spider')
+    config.interior_energetics.aragog.phase_boundary_cap = requested
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters') as mock_params,
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
+
+    energy = mock_params.call_args.kwargs['energy']
+    assert isinstance(energy, _EnergyParameters)
+    assert energy.phase_boundary_cap == ('fixed' if requested == 'fixed' else None)
+
+
 @pytest.mark.unit
 def test_setup_solver_threads_resolved_step_caps(tmp_path):
     """setup_solver threads the RESOLVED step caps into _EnergyParameters, not
@@ -697,7 +763,7 @@ def test_setup_solver_threads_resolved_step_caps(tmp_path):
 
 @pytest.mark.unit
 def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
-    """The version-skew guard drops phase_boundary_entropy_margin, and only it,
+    """The version-skew guard drops phase_boundary_entropy_margin (and the cap),
     when the installed Aragog predates the field.
 
     An Aragog that still accepts the step caps but lacks the margin must not
@@ -757,6 +823,54 @@ def test_setup_solver_drops_margin_on_old_aragog(tmp_path):
     assert not any(
         'phase_boundary_entropy_margin' in str(c) for c in mock_log.warning.call_args_list
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('requested', ['rate', 'fixed'])
+def test_setup_solver_drops_phase_boundary_cap_on_old_aragog(tmp_path, requested):
+    """The version-skew guard drops phase_boundary_cap when the installed Aragog predates
+    the field; that Aragog runs 'fixed', so the drop needs no warning."""
+    config = _make_aragog_config(struct_module='spider')
+    config.interior_energetics.aragog.phase_boundary_cap = requested
+    mock_ep, mock_log = _run_setup_solver(tmp_path, config, _caps_only_energy_stub)
+
+    assert 'phase_boundary_cap' not in mock_ep.call_args.kwargs
+    assert not _warned(mock_log, 'phase_boundary_cap')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('active', ['temperature_step_cap', 'entropy_step_cap'])
+def test_setup_solver_drops_only_active_caps_on_old_aragog(tmp_path, active):
+    """On an Aragog without any optional field, the warning names only the controls the
+    config sets away from their Aragog default."""
+
+    def _no_caps_stub(**rest):
+        return MagicMock()
+
+    config = _make_aragog_config(struct_module='spider')
+    for name in ('temperature_step_cap', 'entropy_step_cap'):
+        setattr(config.interior_energetics.aragog, name, 50.0 if name == active else 0.0)
+    _, mock_log = _run_setup_solver(tmp_path, config, _no_caps_stub)
+
+    assert _warned(mock_log, active)
+    others = {'temperature_step_cap', 'entropy_step_cap'} - {active}
+    for name in (*others, 'phase_boundary_entropy_margin', 'phase_boundary_cap'):
+        assert not _warned(mock_log, name)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('rtol', [None, 3e-9])
+def test_setup_solver_passes_the_interior_rtol_to_aragog(tmp_path, rtol):
+    """The interior rtol reaches Aragog's solver parameters: the unset default 1e-8 and an
+    explicit value."""
+    from proteus.config._interior import Interior
+
+    config = _make_aragog_config(struct_module='spider')
+    kw = {} if rtol is None else {'rtol': rtol}
+    config.interior_energetics.rtol = Interior(module='aragog', **kw).rtol
+    with patch('proteus.interior_energetics.aragog._SolverParameters') as sp:
+        _run_setup_solver(tmp_path, config, lambda **rest: MagicMock())
+    assert sp.call_args.kwargs['rtol'] == pytest.approx(1e-8 if rtol is None else rtol)
 
 
 def test_setup_or_update_solver_tracks_stale_structure_steps():
@@ -3105,6 +3219,17 @@ def test_run_solver_writes_the_resume_state_every_step(tmp_path, core_bc):
     hf_row = {'Time': 202.0, 'T_surf': 3000.0}
     sim_time, _ = runner.run_solver(hf_row, interior_o, {'output': str(tmp_path)})
     assert sim_time == pytest.approx(282.0, rel=1e-15)
+    # The 7 profiles land on interior_o unchanged; the radius stays in metres.
+    for attr, field in (
+        ('phi', 'phi_stag'),
+        ('visc', 'visc_stag'),
+        ('density', 'rho_stag'),
+        ('radius', 'r_basic'),
+        ('mass', 'mass_stag'),
+        ('temp', 'T_stag'),
+        ('pres', 'P_stag'),
+    ):
+        assert getattr(interior_o, attr) is getattr(out, field)
     got, status = _snapshot_scalar(str(tmp_path), sim_time, 'dSdr_cmb_state')
     if core_bc == 'energy_balance':
         assert status == 'ok' and got == pytest.approx(-5.254e-08, rel=1e-15)

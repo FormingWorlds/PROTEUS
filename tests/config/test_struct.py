@@ -298,11 +298,15 @@ class TestMeltingDirWithPaleos:
         ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', False),
     ],
 )
-def test_two_mgsio3_sources_are_rejected_at_load(mantle, rejected):
+@pytest.mark.parametrize('module', ['zalmoxis', 'dummy'])
+def test_two_mgsio3_sources_are_rejected_at_load(mantle, rejected, module):
     """A mixture with MgSiO3 components of different keys has no single melting curve,
-    so it is rejected, naming both; one key repeated is one material."""
-    kwargs = dict(module='zalmoxis', zalmoxis=Zalmoxis(mantle_eos=mantle))
-    if rejected:
+    so the Zalmoxis structure rejects it, naming both; one key repeated is one material.
+    The dummy structure leaves the check to the energetics (Config validator)."""
+    kwargs = dict(
+        module=module, zalmoxis=Zalmoxis(mantle_eos=mantle), melting_dir='Monteux-600'
+    )
+    if rejected and module == 'zalmoxis':
         with pytest.raises(ValueError, match='MgSiO3 components from different sources') as exc:
             Struct(**kwargs)
         for key in mantle.replace(':0.5', '').split('+'):

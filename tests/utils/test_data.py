@@ -3250,8 +3250,9 @@ def test_download_zalmoxis_eos_seager(mock_static, mock_fetch, mock_file):
     from proteus.utils.data import download_zalmoxis_eos
 
     download_zalmoxis_eos('Seager2007:MgSiO3', core_eos='Seager2007:iron')
+    download_zalmoxis_eos('Seager2007:MgSiO3', with_core=False)
 
-    mock_static.assert_called_once()
+    assert mock_static.call_count == 2
     mock_fetch.assert_not_called()
     mock_file.assert_not_called()
 
@@ -6409,3 +6410,46 @@ def test_download_zenodo_file_log_read_failure_after_nonzero(
     # (so the log-readback branch on line 234 fired).
     download_calls = [c for c in mock_run.call_args_list if '--version' not in c[0][0]]
     assert len(download_calls) == 3
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('energetics', 'mantle', 'files'),
+    [
+        ('aragog', 'PALEOS:MgSiO3', {'paleos_mgsio3_eos_table_pt.dat'}),
+        (
+            'spider',
+            'PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1',
+            {'paleos_mgsio3_eos_table_pt.dat', 'paleos_water_eos_table_pt.dat'},
+        ),
+        ('aragog', 'PALEOS-2phase:MgSiO3', set()),
+        ('aragog', 'WolfBower2018:MgSiO3', None),
+        ('aragog', 'PALEOS:H2O:0.1+WolfBower2018:MgSiO3:0.9', None),
+        ('dummy', 'PALEOS:MgSiO3', None),
+    ],
+)
+@patch('proteus.data.fetch_dataset_file')
+@patch('proteus.data.fetch_dataset')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_for_config_fetches_the_paleos_mantle_of_a_dummy_structure(
+    mock_static, mock_fetch, mock_file, energetics, mantle, files
+):
+    """Under the dummy structure, SPIDER and Aragog with a PALEOS mantle EOS (a mixture
+    follows its MgSiO3 component) fetch every mantle table and the 2-phase pair, and no
+    Seager core; other mantles and the dummy energetics fetch nothing."""
+    from types import SimpleNamespace
+
+    from proteus.utils.data import _PALEOS_2PHASE_FILES, download_zalmoxis_eos_for_config
+
+    download_zalmoxis_eos_for_config(
+        SimpleNamespace(
+            interior_struct=SimpleNamespace(
+                module='dummy', zalmoxis=SimpleNamespace(mantle_eos=mantle)
+            ),
+            interior_energetics=SimpleNamespace(module=energetics),
+        )
+    )
+    mock_static.assert_not_called()
+    mock_fetch.assert_not_called()
+    fetched = {name for _, name in _fetched_files(mock_file)}
+    assert fetched == (set() if files is None else files | set(_PALEOS_2PHASE_FILES))

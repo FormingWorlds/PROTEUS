@@ -22,6 +22,7 @@ import numpy as np
 import pytest
 import toml
 
+from proteus.config import read_config_object
 from proteus.grid import manage as gm
 from proteus.grid.manage import (
     Grid,
@@ -1245,3 +1246,87 @@ class TestGridFromConfig:
         # Post-state: dispatch was blocked before reaching run or slurm.
         assert run_called['n'] == 0
         assert slurm_called['n'] == 0
+
+
+_UNSET = (1e-8, 1e-10)
+
+
+@pytest.mark.parametrize(
+    ('base', 'dims', 'expected'),
+    [
+        ('', {}, _UNSET),
+        ('rtol = -1.0', {}, _UNSET),
+        ('num_tolerance = -1.0', {}, _UNSET),
+        ('[interior_energetics.spider]\ntolerance_rel = -1.0', {}, _UNSET),
+        ('rtol = 3e-9', {}, (3e-9, 3e-9)),
+        ('num_tolerance = 3e-9', {}, (3e-9, 3e-9)),
+        ('[interior_energetics.spider]\ntolerance_rel = 3e-9', {}, (3e-9, 3e-9)),
+        ('', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
+        (
+            '[interior_energetics.spider]\ntolerance_rel = 3e-9',
+            {'interior_energetics.rtol': [1e-6]},
+            (1e-6, 1e-6),
+        ),
+        ('num_tolerance = 3e-9', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
+        ('[interior_energetics.spider]\ntolerance_rel = 0.0', {}, _UNSET),
+    ],
+)
+def test_write_config_files_gives_each_module_its_default_rtol(
+    fake_proteus_dir, tmp_path, monkeypatch, base, dims, expected
+):
+    """A grid over the interior module writes each case the rtol default of its own
+    module unless the base config or the grid sets rtol or an alias; cases reload."""
+    cfg = tmp_path / 'base_ie.toml'
+    cfg.write_text(f'[interior_energetics]\n{base}\n')
+    g = Grid(name='rtol_grid', base_config_path=str(cfg))
+    dims = {'interior_energetics.module': ['aragog', 'spider'], **dims}
+    for i, (key, values) in enumerate(dims.items()):
+        g.add_dimension(f'd{i}', key)
+        g.set_dimension_direct(f'd{i}', values)
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    g.write_config_files()
+    paths = {
+        toml.load(p)['interior_energetics']['module']: p for p in map(g._get_tmpcfg, range(2))
+    }
+    got = [toml.load(paths[m])['interior_energetics']['rtol'] for m in ('aragog', 'spider')]
+    loaded = [
+        read_config_object(paths[m]).interior_energetics.rtol for m in ('aragog', 'spider')
+    ]
+    assert got == pytest.approx(expected, rel=1e-12)
+    assert loaded == pytest.approx(expected, rel=1e-12)
+
+
+def test_all_options_grid_over_the_module_gives_each_its_default_rtol(
+    fake_proteus_dir, monkeypatch
+):
+    """input/all_options.toml leaves rtol unset, so a grid over the interior module writes
+    1e-8 for Aragog and 1e-10 for SPIDER."""
+    from helpers import PROTEUS_ROOT
+
+    g = Grid(
+        name='opts_grid', base_config_path=str(PROTEUS_ROOT / 'input' / 'all_options.toml')
+    )
+    g.add_dimension('d0', 'interior_energetics.module')
+    g.set_dimension_direct('d0', ['aragog', 'spider'])
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    g.write_config_files()
+    got = {
+        c['interior_energetics']['module']: c['interior_energetics']['rtol']
+        for c in (toml.load(g._get_tmpcfg(i)) for i in range(2))
+    }
+    assert got == pytest.approx({'aragog': 1e-8, 'spider': 1e-10}, rel=1e-12)
+
+
+@pytest.mark.parametrize(
+    'alias', ['interior_energetics.num_tolerance', 'interior_energetics.spider.tolerance_rel']
+)
+def test_add_dimension_rejects_a_deprecated_tolerance_alias(fake_proteus_dir, tmp_path, alias):
+    """A grid over a deprecated rtol alias is refused at setup, naming the key to use."""
+    cfg = tmp_path / 'base_ie.toml'
+    cfg.write_text('')
+    g = Grid(name='alias_grid', base_config_path=str(cfg))
+    with pytest.raises(ValueError, match='interior_energetics.rtol'):
+        g.add_dimension('tol', alias)
+    assert g.dim_names == []

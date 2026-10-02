@@ -716,6 +716,60 @@ def test_validate_zalmoxis_output_schema_skips_when_hf_row_unset(tmp_path):
     assert hf_row_no_mass['M_int'] == pytest.approx(0.0, abs=1e-12)
 
 
+def _write_mesh_bounds(path, r_first, r_last, n=6):
+    """Write a 5-column mesh file whose radius runs from r_first to r_last."""
+    r = np.linspace(r_first, r_last, n)
+    np.savetxt(path, np.column_stack([r, r, r, r, r]), fmt='%.17e')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('r_first', 'r_last', 'expected'),
+    [
+        (3.4e6, 6.4e6, (0.0, 0.0)),
+        (3.4e6, 6.4e6 + 300.0, (0.0, 300.0)),
+        (3.4e6 - 2.0, 6.4e6, (-2.0, 0.0)),
+    ],
+    ids=['match', 'R_int above', 'R_core below'],
+)
+def test_zalmoxis_mesh_gaps_reports_signed_gaps(tmp_path, r_first, r_last, expected):
+    """Each bound's gap is file minus row, with the 1 m floor as tolerance."""
+    from proteus.interior_struct.zalmoxis import zalmoxis_mesh_gaps
+
+    path = tmp_path / 'zalmoxis_output.dat'
+    _write_mesh_bounds(path, r_first, r_last)
+    dR_core, dR_int, atol = zalmoxis_mesh_gaps(str(path), {'R_core': 3.4e6, 'R_int': 6.4e6})
+
+    assert (dR_core, dR_int) == pytest.approx(expected, abs=1e-6)
+    assert atol == pytest.approx(1.0)  # span 3e6 m: 1e-9 * span = 3e-3 m, below the floor
+
+
+@pytest.mark.unit
+def test_zalmoxis_mesh_gaps_tolerance_scales_with_span(tmp_path):
+    """Above 1e9 m of mantle the tolerance is 1e-9 of the span, as in reset()."""
+    from proteus.interior_struct.zalmoxis import zalmoxis_mesh_gaps
+
+    path = tmp_path / 'zalmoxis_output.dat'
+    _write_mesh_bounds(path, 1.0e9, 5.0e9)
+    gaps = zalmoxis_mesh_gaps(str(path), {'R_core': 1.0e9, 'R_int': 5.0e9})
+
+    assert gaps[2] == pytest.approx(4.0)
+    assert gaps[:2] == pytest.approx((0.0, 0.0), abs=1e-6)
+
+
+@pytest.mark.unit
+def test_zalmoxis_mesh_gaps_none_without_a_usable_file(tmp_path):
+    """A missing file and a single-row file give None, not a gap."""
+    from proteus.interior_struct.zalmoxis import zalmoxis_mesh_gaps
+
+    row = {'R_core': 3.4e6, 'R_int': 6.4e6}
+    one_row = tmp_path / 'one.dat'
+    one_row.write_text('6.4e6 1 2 3 4\n')
+
+    assert zalmoxis_mesh_gaps(str(tmp_path / 'absent.dat'), row) is None
+    assert zalmoxis_mesh_gaps(str(one_row), row) is None
+
+
 # ---------------------------------------------------------------------------
 # check_zalmoxis_eos_files: missing-table fail-fast
 # ---------------------------------------------------------------------------
@@ -1049,9 +1103,10 @@ def test_require_paleos_tables_stops_an_offline_run(tmp_path, monkeypatch, missi
 
 
 def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypatch, caplog):
-    """A resumed SPIDER run with kept P-S tables continues without the pair, with one
-    WARNING; an Aragog resume, which re-solves its initial condition on the pair when
-    the mesh changes, and a resume without kept tables stop like a fresh run."""
+    """A resumed SPIDER run with kept P-S tables continues without the pair and leaves
+    the report on those tables to the later table check; an Aragog resume, which
+    re-solves its initial condition on the pair when the mesh changes, and a resume
+    without kept tables stop like a fresh run."""
     from proteus.interior_struct import zalmoxis as zmod
 
     monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
@@ -1064,13 +1119,14 @@ def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypat
     with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='solid.dat'):
         zmod.require_paleos_tables(config, str(bare))
 
+    # The check runs before the accreted mass is restored, so tables of a grown
+    # planet (another P_max) are kept here too; the later table check reports them.
     kept = tmp_path / 'kept'
-    _seed_tables(kept / 'data' / 'spider_eos', 'old-key')
-    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+    _seed_tables(kept / 'data' / 'spider_eos', 'P_max=9.000000e+11_nP=8')
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_struct.zalmoxis'):
         assert zmod.require_paleos_tables(config, str(kept)) is None
-    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
-    assert len(warnings) == 1
-    assert 'keeps its original energetics P-S entropy tables' in warnings[0]
+    assert caplog.text == ''
+    assert str(kept / 'data' / 'spider_eos') not in zmod._PS_RESUME_REPORTED
 
     config.interior_energetics.module = 'aragog'
     with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='solid.dat'):
@@ -3655,7 +3711,15 @@ _UNIFIED = object()
 
 
 def _generate_tables_stubbed(
-    tmp_path, monkeypatch, *, resume, run=True, entry=_UNIFIED, melt_calls=None, on_build=None
+    tmp_path,
+    monkeypatch,
+    *,
+    resume,
+    run=True,
+    entry=_UNIFIED,
+    melt_calls=None,
+    on_build=None,
+    mass_tot=1.0,
 ):
     """Run generate_spider_tables for a unified PALEOS entry with stubbed
     generators; return the result, the two generator mocks and the key the
@@ -3710,10 +3774,10 @@ def _generate_tables_stubbed(
     config.interior_struct.zalmoxis.mushy_zone_factor = 0.8
     config.interior_struct.zalmoxis.lookup_nP = 8
     config.interior_struct.zalmoxis.lookup_nS = 8
-    config.planet.mass_tot = 1.0
+    config.planet.mass_tot = mass_tot
     config.params.resume = resume
     key = zmod._ps_cache_key(
-        P_max=3.5e11,
+        P_max=150e9 * mass_tot + 200e9,
         nP=8,
         nS=8,
         mzf=0.8,
@@ -3802,14 +3866,14 @@ def test_resume_follows_the_pointer_to_shared_cache_tables(tmp_path, monkeypatch
 
 def test_resume_keeps_run_tables_after_a_settings_change(tmp_path, monkeypatch, caplog):
     """A resumed run whose stored key differs in a physical setting (here the
-    pressure ceiling) keeps its tables and warns with both keys that the
+    entropy resolution) keeps its tables and warns with both keys that the
     changed settings are ignored."""
     from pathlib import Path as _Path
 
     monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
     run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
     _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
-    stored = key.replace('P_max=3.500000e+11', 'P_max=4.000000e+11')
+    stored = key.replace('_nS=8_', '_nS=16_')
     assert stored != key
     _seed_tables(run_eos, stored)
 
@@ -3826,6 +3890,102 @@ def test_resume_keeps_run_tables_after_a_settings_change(tmp_path, monkeypatch, 
     assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
     assert 'ignores the changed settings' in caplog.text
     assert stored in caplog.text and key in caplog.text
+
+
+@pytest.mark.parametrize('stored_p_max', ['3.575000e+11', '3.425000e+11'])
+def test_resume_rebuilds_run_tables_after_a_planet_mass_change(
+    tmp_path, monkeypatch, caplog, stored_p_max
+):
+    """Tables built for another P_max, that is another planet mass (an impact after
+    the resume, or a walk-back past one), are not kept: the resumed run builds the
+    tables of the current mass, and the log names the mass change."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    _seed_tables(run_eos, key.replace('P_max=3.500000e+11', f'P_max={stored_p_max}'))
+
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+
+    bounds.assert_called_once()
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'NEW'
+    assert (run_eos / '.cache_info.txt').read_text() == key
+    assert f'Planet mass changed since the P-S tables in {run_eos} were built' in caplog.text
+    assert 'ignores the changed settings' not in caplog.text
+    assert 'has no kept' not in caplog.text
+
+
+def test_resume_keeps_run_tables_whose_marker_names_no_p_max(tmp_path, monkeypatch):
+    """A marker without a P_max field gives no mass to compare, so its tables are kept."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    _seed_tables(run_eos, 'old-key')
+
+    _, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+
+    bounds.assert_not_called()
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
+
+
+def test_resume_without_table_files_warns_although_a_marker_exists(
+    tmp_path, monkeypatch, caplog
+):
+    """A marker without its phase-boundary files keeps nothing, so the resumed run
+    warns before it builds the tables of the current key."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    run_eos.mkdir(parents=True)
+    (run_eos / '.cache_info.txt').write_text('P_max=3.500000e+11_nP=8')
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        _, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+
+    bounds.assert_called_once()
+    assert 'has no kept P-S entropy tables' in caplog.text
+
+
+def test_resume_keeps_run_tables_across_the_helpfile_round_trip_of_the_mass(
+    tmp_path, monkeypatch, caplog
+):
+    """Masses that differ by a helpfile round trip (4.3e-12) give P_max keys that differ
+    in the 7th digit; the run still keeps its tables."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    _, _, _, stored = _generate_tables_stubbed(
+        tmp_path, monkeypatch, resume=True, run=False, mass_tot=1.2790230000113
+    )
+    _seed_tables(run_eos, stored)
+
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_struct.zalmoxis'):
+        _, bounds, _, current = _generate_tables_stubbed(
+            tmp_path, monkeypatch, resume=True, mass_tot=1.2790229999999998
+        )
+
+    assert stored.partition('_nP')[0] != current.partition('_nP')[0]
+    bounds.assert_not_called()
+    assert 'Planet mass changed' not in caplog.text
+
+
+def test_resume_keeps_run_tables_of_an_unchanged_odd_mass(tmp_path, monkeypatch, caplog):
+    """The key rounds P_max to 7 digits; a mass whose P_max is not exact in that format
+    still keeps its own tables."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    mass = 1.0123456789
+    _, _, _, key = _generate_tables_stubbed(
+        tmp_path, monkeypatch, resume=True, run=False, mass_tot=mass
+    )
+    _seed_tables(run_eos, key)
+
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, _, _ = _generate_tables_stubbed(
+            tmp_path, monkeypatch, resume=True, mass_tot=mass
+        )
+
+    bounds.assert_not_called()
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
+    assert 'Planet mass changed' not in caplog.text
+    assert abs(float('3.518519e+11') / (150e9 * mass + 200e9) - 1) > 1e-9
 
 
 def test_resume_reports_kept_tables_once_per_process(tmp_path, monkeypatch, caplog):

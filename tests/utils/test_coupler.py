@@ -3821,11 +3821,17 @@ def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
         _write_valid_nc(str(data / f'{t}_atm.nc'))
     _write_corrupt_nc(str(data / '30_int.nc'))
     _write_valid_nc(str(data / '30_atm.nc'))
+    for t in (10, 20, 30):
+        (data / f'{t}p000_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
 
     out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
 
     assert dropped == [30]
     assert int(out.iloc[-1]['Time']) == 20
+    # Only the dropped row's structure copy goes; the kept and earlier rows keep theirs.
+    assert not (data / '30p000_zalmoxis.dat').exists()
+    assert (data / '20p000_zalmoxis.dat').exists()
+    assert (data / '10p000_zalmoxis.dat').exists()
     # Both halves of the incomplete pair are deleted (symmetry with the
     # corrupt-atm case): a stray valid 30_atm.nc must not be left for the
     # atmosphere module's latest-file glob to pick up against a missing 30_int.
@@ -3833,6 +3839,56 @@ def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
     assert not (data / '30_atm.nc.incomplete').exists()
     assert not (data / '30_int.nc').exists()
     assert not (data / '30_atm.nc').exists()
+
+
+@pytest.mark.unit
+def test_dropped_row_sharing_the_kept_rows_name_keeps_the_structure_copy(tmp_path):
+    """Two rows under 1e-3 yr apart share one copy name. Without an atmosphere
+    half, dropping the later row leaves the copy of the earlier, kept row, while a
+    dropped row with a name of its own loses its copy."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    _write_valid_nc(str(data / '10_int.nc'))
+    _write_timed_nc(str(data / '20p000_int.nc'), 20.0002)
+    _write_corrupt_nc(str(data / '30_int.nc'))
+    for name in ('20p000', '30p000'):
+        (data / f'{name}_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20.0002, 20.0004, 30]), require_atm=False
+    )
+
+    assert out.iloc[-1]['Time'] == pytest.approx(20.0002, rel=1e-12)
+    assert dropped == [20, 30]
+    assert (data / '20p000_zalmoxis.dat').exists()
+    assert not (data / '30p000_zalmoxis.dat').exists()
+
+
+@pytest.mark.unit
+def test_rows_dropped_with_their_shared_atmosphere_lose_every_copy(tmp_path):
+    """An atmosphere file records no time, so a dropped row takes the shared
+    _atm.nc down with it and the earlier row of that name is dropped too; every
+    dropped name, not only one, loses its structure copy."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for half in ('int', 'atm'):
+        _write_valid_nc(str(data / f'10_{half}.nc'))
+    _write_timed_nc(str(data / '20p000_int.nc'), 20.0002)
+    _write_valid_nc(str(data / '20p000_atm.nc'))
+    _write_corrupt_nc(str(data / '30_int.nc'))
+    _write_valid_nc(str(data / '30_atm.nc'))
+    for name in ('10p000', '20p000', '30p000'):
+        (data / f'{name}_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20.0002, 20.0004, 30])
+    )
+
+    assert out.iloc[-1]['Time'] == pytest.approx(10.0)
+    assert dropped == [20, 20, 30]
+    assert (data / '10p000_zalmoxis.dat').exists()
+    assert not (data / '20p000_zalmoxis.dat').exists()
+    assert not (data / '30p000_zalmoxis.dat').exists()
 
 
 @pytest.mark.unit
@@ -3887,9 +3943,11 @@ def test_select_resumable_snapshot_raises_when_no_complete_pair(tmp_path):
     for t in (10, 20):
         _write_corrupt_nc(str(data / f'{t}_int.nc'))
         _write_corrupt_nc(str(data / f'{t}_atm.nc'))
+    (data / '20p000_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
 
     with pytest.raises(RuntimeError, match='No complete'):
         select_resumable_snapshot(str(tmp_path), _hf_times([10, 20]))
+    assert (data / '20p000_zalmoxis.dat').exists(), 'a failed selection deletes nothing'
 
     # Boundary: a helpfile with no rows has nothing to resume from either.
     with pytest.raises(RuntimeError, match='No complete'):

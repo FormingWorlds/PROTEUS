@@ -349,7 +349,8 @@ class Struct:
     melting_dir: str
         Melting curve name in FWL_DATA. Required for the SPIDER structure
         module and for any run without a PALEOS table set; not read with
-        module = 'zalmoxis' and a single PALEOS mantle EOS.
+        module = 'zalmoxis' and a single PALEOS mantle EOS. With module =
+        'dummy' and a PALEOS mantle EOS, Aragog requires it but the solve uses the PALEOS set.
     eos_dir: str
         EOS folder name in FWL_DATA, for the SPIDER structure module.
     """

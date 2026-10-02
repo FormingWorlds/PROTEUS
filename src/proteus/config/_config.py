@@ -378,10 +378,37 @@ def aragog_needs_melting_curves(instance, attribute, value):
     if generates_paleos_tables(instance.interior_struct):
         return
     raise ValueError(
-        "interior_energetics.module = 'aragog' needs interior_struct.melting_dir without a "
-        'generated PALEOS table set (a PALEOS mantle EOS under the Zalmoxis structure; '
-        'a mixture follows its MgSiO3 component). Set melting_dir to a melting curve name (e.g. "Monteux-600").'
+        "interior_energetics.module = 'aragog' needs interior_struct.melting_dir unless Zalmoxis "
+        'generates a PALEOS table set (a PALEOS mantle EOS under the Zalmoxis structure; a mixture '
+        'follows its MgSiO3 component). The dummy structure requires it with any mantle EOS. '
+        'Set melting_dir to a melting curve name (e.g. "Monteux-600").'
     )
+
+
+def dummy_struct_mantle_eos(instance, attribute, value):
+    """Check the mantle EOS that the dummy structure hands to SPIDER or Aragog.
+
+    A mixture with two MgSiO3 sources has no energetics key and is rejected. With a
+    PALEOS energetics key the solve uses the PALEOS P-S set and its curves, so a set
+    ``melting_dir`` is passed to Aragog but does not change the solve; one warning says so.
+    """
+    from proteus.utils.constants import PALEOS_REGISTRY_KEYS
+    from proteus.utils.helper import energetics_eos_key
+
+    struct = instance.interior_struct
+    if struct.module != 'dummy' or struct.zalmoxis is None:
+        return
+    if value.module not in ('spider', 'aragog'):
+        return
+    key = energetics_eos_key(struct.zalmoxis.mantle_eos)
+    if struct.melting_dir is not None and key in PALEOS_REGISTRY_KEYS:
+        log.warning(
+            'interior_struct.melting_dir=%r does not change the solve: with module = "dummy" '
+            'and the PALEOS mantle EOS %s, %s uses the PALEOS P-S set and its curves.',
+            struct.melting_dir,
+            struct.zalmoxis.mantle_eos,
+            value.module,
+        )
 
 
 def planet_fO2_source_compat(instance, attribute, value):
@@ -563,6 +590,7 @@ class Config:
             boundary_requires_fixed_surface_state,
             energetics_needs_a_thermal_mantle_eos,
             aragog_needs_melting_curves,
+            dummy_struct_mantle_eos,
         ),
     )
     outgas: Outgas = field(factory=Outgas, validator=(front_trapping_requires_aragog,))
