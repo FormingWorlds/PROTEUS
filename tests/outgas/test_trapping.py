@@ -929,9 +929,9 @@ def test_an_element_the_run_does_not_carry_is_neither_buried_nor_checked(fixed_f
     """With a nitrogen budget of zero the chemistry can still leave dust-level
     nitrogen in the melt. Burying it would make a positive total out of mass
     the planet never held, and the closure check would then stop the run on
-    a hundredth of a kilogram. Such a species is not buried, and an element
-    whose total and reservoirs both sit below ``mass_thresh`` is not checked;
-    a real mismatch above it still is."""
+    a hundredth of a kilogram. Such a species is not buried, and the closure
+    admits a mismatch of up to 1 kg, the dust, while still refusing any break
+    above that, however small the element's total."""
     # 6.7e-2 kg of N2 and 1e-2 kg of NH3 in the melt, N_kg_total = 0.
     row = _hf_row(N2_kg_liquid=6.7e-2, NH3_kg_liquid=1.0e-2, N_kg_liquid=7.5e-2)
     row.update(N_kg_total=0.0, N_kg_atm=0.0, N_kg_solid=0.0)
@@ -949,23 +949,20 @@ def test_an_element_the_run_does_not_carry_is_neither_buried_nor_checked(fixed_f
     # The row an Earth run with He and Ar stopped on: dust total, dust parts.
     dust = _closure_row(1.0)
     dust.update(N_kg_total=5.3e-5, N_kg_liquid=6.7e-2, N_kg_atm=0.0, N_kg_solid=0.0)
-    assert_mass_conservation(
-        dust, check_element_closure=True, require_atm_le_planet=False, closure_floor_kg=1.0e16
-    )
-    # Error contract: without the floor the same row is refused.
+    assert_mass_conservation(dust, check_element_closure=True, require_atm_le_planet=False)
+    # Error contract: with no absolute tolerance the same row is refused.
     with pytest.raises(RuntimeError, match='closure failed for N'):
-        assert_mass_conservation(dust, check_element_closure=True, require_atm_le_planet=False)
-    # Edge cases: a mismatch whose reservoirs reach the floor is still refused,
-    # whether the total is tiny or planetary.
-    for total, liquid in ((5.3e-5, 2.0e16), (1.0e20, 1.1e20)):
+        assert_mass_conservation(
+            dust, check_element_closure=True, require_atm_le_planet=False, closure_atol_kg=0.0
+        )
+    # Edge cases: 2 kg on a dust total, 1e15 kg on 5e14 kg (below a mass_thresh
+    # of 1e16 kg) and 10% of a planetary total are each refused.
+    for total, liquid in ((5.3e-5, 2.0), (5.0e14, 1.5e15), (1.0e20, 1.1e20)):
         real = _closure_row(1.0)
         real.update(N_kg_total=total, N_kg_liquid=liquid, N_kg_atm=0.0, N_kg_solid=0.0)
         with pytest.raises(RuntimeError, match='closure failed for N'):
             assert_mass_conservation(
-                real,
-                check_element_closure=True,
-                require_atm_le_planet=False,
-                closure_floor_kg=1.0e16,
+                real, check_element_closure=True, require_atm_le_planet=False
             )
 
 

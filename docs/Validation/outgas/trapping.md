@@ -24,16 +24,21 @@ The trapping tests also assert, without a published reference:
   each trapped reservoir;
 - dissolved noble gases buried with the interstitial melt at `F_tl C_Z dM_RM`,
   with their moles following the masses after the chemistry solve;
-- no burial of a species whose element the run does not carry, and a remelt
-  after desiccation returning the planet its volatiles;
+- no burial of a species whose element the run does not carry, and a
+  per-element closure refusing any break above 1 kg;
+- a remelt after desiccation keeping what it releases however many steps it
+  takes: a desiccated planet with 3.6e19 kg of water trapped, remelting from
+  `Phi = 0.30` to 0.50 in 1000 steps that each release less than
+  `mass_thresh`, ends with every total and the trapped 5/7 that 4 steps
+  reach, and through the main loop in 8 such steps likewise;
 - the drained fraction set by the front speed alone, the same for a step five
   times longer that moves the front beyond its own thickness;
 - the trapped share of the solid reservoirs surviving a chemistry solve that
   rewrites them, adding to condensed graphite rather than competing with it;
 - species totals rebuilt from each fresh partition rather than frozen;
-- desiccation keeping the trapped mass while the closure still holds, and
-  with `trap_mode = 'none'` keeping every element total as it did before
-  trapping existed.
+- desiccation changing no total, with trapping on or off: with trapping on
+  the trapped mass stays in the solid and the rest of each total in the melt,
+  so the closure holds.
 
 ## Scope
 
