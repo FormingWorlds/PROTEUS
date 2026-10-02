@@ -1348,9 +1348,7 @@ def load_zalmoxis_configuration(
     # plus the volatile mass impacts and escape moved, which mass_tot (rock anchor) leaves out.
     from proteus.accretion.wrapper import accreted_volatile_mass
 
-    total_planet_mass = config.planet.mass_tot * M_earth + accreted_volatile_mass(
-        config, hf_row
-    )
+    total_planet_mass = config.planet.mass_tot * M_earth + accreted_volatile_mass(hf_row)
 
     log.debug(
         'Total target planet mass (dry mass + volatiles): %s kg '
@@ -1376,7 +1374,7 @@ def load_zalmoxis_configuration(
     log.debug(
         'Mass budget: total=%.6e kg (%.4f M_earth), volatiles=%.6e kg (%.2f%%)',
         total_planet_mass,
-        config.planet.mass_tot,
+        total_planet_mass / M_earth,
         M_volatiles,
         100.0 * M_volatiles / total_planet_mass if total_planet_mass > 0 else 0,
     )

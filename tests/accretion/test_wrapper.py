@@ -1790,6 +1790,26 @@ def test_resume_after_impact_and_escape_restores_the_uninterrupted_mass(monkeypa
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_resume_with_accretion_turned_off_keeps_the_volatile_change():
+    """Turning accretion off on resume keeps the Zalmoxis target of the
+    uninterrupted run: mass_tot from the rock, V from the ledger."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import M_earth
+
+    row = {
+        'M_accreted_rock': 0.1 * M_earth,
+        'M_accreted_net': 0.08 * M_earth,
+        'n_impacts_applied': 1,
+    }
+    handler = _restore_handler(1.0, row)
+    handler.config.accretion.module = None
+    restore_accretion_state(handler)
+    assert handler.config.planet.mass_tot == pytest.approx(1.1, rel=1e-12)
+    assert _zalmoxis_target(handler.config, row) == pytest.approx(1.08 * M_earth, rel=1e-12)
+
+
+@pytest.mark.unit
 def test_resume_with_escape_before_any_impact_restores_the_lowered_mass():
     """Escape alone moves only the ledger: the resume keeps mass_tot at the
     configured value and the Zalmoxis target lower by the escaped mass."""
@@ -1800,6 +1820,8 @@ def test_resume_with_escape_before_any_impact_restores_the_lowered_mass():
     handler = _restore_handler(1.0, row)
     restore_accretion_state(handler)
     assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+    # The ledger is not rewritten (not a legacy row), so the target keeps the loss.
+    assert row['M_accreted_net'] == pytest.approx(-1.0e21, rel=1e-15)
     assert _zalmoxis_target(handler.config, row) == pytest.approx(M_earth - 1.0e21, rel=1e-15)
     # No impact yet: the orbit stays at its configured value.
     assert handler.config.orbit.semimajoraxis == pytest.approx(1.0, rel=1e-15)
@@ -1810,7 +1832,7 @@ def _zalmoxis_target(config, row):
     from proteus.accretion.wrapper import accreted_volatile_mass
     from proteus.utils.constants import M_earth
 
-    return config.planet.mass_tot * M_earth + accreted_volatile_mass(config, row)
+    return config.planet.mass_tot * M_earth + accreted_volatile_mass(row)
 
 
 @pytest.mark.unit

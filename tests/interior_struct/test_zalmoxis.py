@@ -1651,9 +1651,9 @@ def test_dry_mass_target_excludes_only_undissolved_volatiles():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_dry_mass_target_adds_the_ledger_volatile_change_with_accretion():
-    """With an accretion module the whole-planet target is mass_tot plus the
-    ledger's volatile part (M_accreted_net - M_accreted_rock), which mass_tot,
-    the rock anchor, leaves out; without accretion the ledger is ignored."""
+    """The whole-planet target is mass_tot plus the ledger's volatile part
+    (M_accreted_net - M_accreted_rock), which mass_tot, the rock anchor, leaves
+    out; it keeps applying with accretion off, and is zero with no ledger."""
     from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
     from proteus.utils.constants import M_earth
 
@@ -1669,9 +1669,14 @@ def test_dry_mass_target_adds_the_ledger_volatile_change_with_accretion():
     with_ledger = load_zalmoxis_configuration(config, hf_row)
     assert with_ledger['planet_mass'] == pytest.approx(M_earth - 5.0e22 - H_total, rel=1e-12)
 
+    # The ledger keeps applying after accretion is turned off on resume.
     config.accretion.module = None
-    without = load_zalmoxis_configuration(config, hf_row)
-    assert without['planet_mass'] == pytest.approx(M_earth - H_total, rel=1e-12)
+    off = load_zalmoxis_configuration(config, hf_row)
+    assert off['planet_mass'] == pytest.approx(M_earth - 5.0e22 - H_total, rel=1e-12)
+    # A run that never had accretion has no ledger: V is zero.
+    no_ledger = {k: v for k, v in hf_row.items() if not k.startswith('M_accreted')}
+    plain = load_zalmoxis_configuration(config, no_ledger)
+    assert plain['planet_mass'] == pytest.approx(M_earth - H_total, rel=1e-12)
 
 
 # ============================================================================

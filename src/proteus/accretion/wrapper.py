@@ -323,7 +323,7 @@ def restore_accretion_state(handler: Proteus) -> None:
     if accreted <= 0.0:
         # Inform user when continuing from configured mass, which occurs either
         # prior to any impacts or when resuming from an older helpfile format.
-        if config.accretion.module is not None:
+        if config.accretion.module is not None and net == 0.0:
             log.info(
                 'No accreted rock recorded before this resume: continuing from the '
                 'configured mass of %.4f M_earth. If this run had already applied an '
@@ -577,17 +577,15 @@ def _tracks_volatile_mass(config: Config) -> bool:
     return config.interior_struct.module == 'zalmoxis'
 
 
-def accreted_volatile_mass(config: Config, hf_row: dict) -> float:
+def accreted_volatile_mass(hf_row: dict) -> float:
     """Volatile mass impacts and escape moved [kg], for the Zalmoxis whole-planet target.
 
     ``M_accreted_net`` less ``M_accreted_rock`` (delivered less stripped and
-    escaped); zero without an accretion module. ``mass_tot`` carries the rock.
+    escaped). Only accretion writes the ledger, so it is zero for a run that
+    never had an accretion module and keeps applying after accretion is turned
+    off on resume. ``mass_tot`` carries the rock.
     """
-    if config.accretion.module is None:
-        return 0.0
-    return float(hf_row.get('M_accreted_net') or 0.0) - float(
-        hf_row.get('M_accreted_rock') or 0.0
-    )
+    return _net_ledger(hf_row) - float(hf_row.get('M_accreted_rock') or 0.0)
 
 
 def _net_ledger(hf_row: dict) -> float:
