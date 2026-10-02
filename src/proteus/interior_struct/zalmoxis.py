@@ -2431,6 +2431,22 @@ def _ps_p_max(config: Config) -> float:
     return min(1.0e13, 150e9 * float(config.planet.mass_tot or 1.0) + 200e9)
 
 
+def ps_tables_p_max(eos_dir: str | None) -> float:
+    """``P_max`` [Pa] of the P-S tables in ``eos_dir``, from their marker; 0 when none."""
+    marker = os.path.join(str(eos_dir), '.cache_info.txt')
+    if not eos_dir or not os.path.isfile(marker):
+        return 0.0
+    return _marker_p_max(marker, os.stat(marker).st_mtime_ns)
+
+
+@functools.lru_cache(maxsize=8)
+def _marker_p_max(marker: str, mtime_ns: int) -> float:
+    """Parse ``P_max`` from a table marker; cached per file version (``mtime_ns``)."""
+    with open(marker) as f:
+        built = re.search(r'P_max=([^_]+)', f.read())
+    return float(built.group(1)) if built else 0.0
+
+
 def _resumed_ps_tables(
     outdir: str, current_key, p_max: float | None = None, dropped: list | None = None
 ) -> dict | None:
@@ -2690,7 +2706,13 @@ class _NoPSTables(ValueError):
         self.level = level
 
 
-def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts: dict):
+def _ps_table_inputs(
+    config: Config,
+    mantle_eos: str,
+    eos_entry: dict,
+    mat_dicts: dict,
+    p_max: float | None = None,
+):
     """Resolve the PALEOS files and the cache key of the P-S tables.
 
     Materialises PALEOS-API entries, which can build their tables on a cold
@@ -2778,7 +2800,7 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
             f'PALEOS-2phase entry {mantle_eos} is missing its solid or liquid file'
         )
 
-    P_max = _ps_p_max(config)
+    P_max = _ps_p_max(config) if p_max is None else p_max
 
     # Table resolution from config
     nP = config.interior_struct.zalmoxis.lookup_nP
@@ -2802,7 +2824,11 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
 
 
 def _ps_resume_key(
-    config: Config, key: str | None, eos_entry: dict | None, mat_dicts: dict
+    config: Config,
+    key: str | None,
+    eos_entry: dict | None,
+    mat_dicts: dict,
+    p_max: float | None = None,
 ) -> str:
     """Current P-S cache key for the resume warning, without building PALEOS-API tables."""
     from zalmoxis.eos.dispatch import _is_paleos_api
@@ -2812,10 +2838,10 @@ def _ps_resume_key(
         raise _NoPSTables(f'mantle EOS {mantle_eos} is not in the material dictionary')
     if _is_paleos_api(eos_entry):
         raise ValueError('a PALEOS-API mantle EOS is not resolved on resume')
-    return _ps_table_inputs(config, key, eos_entry, mat_dicts)[-1]
+    return _ps_table_inputs(config, key, eos_entry, mat_dicts, p_max)[-1]
 
 
-def generate_spider_tables(config: Config, outdir: str):
+def generate_spider_tables(config: Config, outdir: str, p_max: float | None = None):
     """Generate P-S EOS tables and phase boundaries from PALEOS data.
 
     Produces P-S lookup tables for density, temperature, heat capacity,
@@ -2853,6 +2879,9 @@ def generate_spider_tables(config: Config, outdir: str):
         when the ``PROTEUS_PS_CACHE_DIR`` environment variable is set, to a
         subdirectory of it named after the sanitised :func:`_ps_cache_key` string, which
         independent runs with the same key share.
+    p_max : float, optional
+        Upper pressure of the tables [Pa]; None takes it from the planet mass
+        (:func:`_ps_p_max`). A resume passes the value its row records.
 
     Returns
     -------
@@ -2882,8 +2911,8 @@ def generate_spider_tables(config: Config, outdir: str):
         dropped = []
         resumed = _resumed_ps_tables(
             outdir,
-            lambda: _ps_resume_key(config, key, eos_entry, mat_dicts),
-            _ps_p_max(config),
+            lambda: _ps_resume_key(config, key, eos_entry, mat_dicts, p_max),
+            _ps_p_max(config) if p_max is None else p_max,
             dropped,
         )
         if resumed is not None:
@@ -2898,7 +2927,7 @@ def generate_spider_tables(config: Config, outdir: str):
     if paleos_companion_keys(mantle_eos):
         check_zalmoxis_eos_files({'mantle': mantle_eos}, mat_dicts, paleos_companions=True)
     try:
-        inputs = _ps_table_inputs(config, key, eos_entry, mat_dicts)
+        inputs = _ps_table_inputs(config, key, eos_entry, mat_dicts, p_max)
     except _NoPSTables as exc:
         log.log(exc.level, 'No PALEOS P-S tables: %s; using pre-existing SPIDER tables.', exc)
         return None

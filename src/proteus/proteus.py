@@ -386,8 +386,10 @@ class Proteus:
         """Point a resumed run at the P-S tables of its restored planet mass.
 
         The resume restores ``spider_eos_dir`` before the accreted mass is
-        restored; tables built for another mass (a walk-back past an impact) are
-        replaced by the tables of the current one.
+        restored. The tables kept are those the row records (``ps_p_max``), so the
+        resumed run continues on the tables the uninterrupted run used there;
+        others (a walk-back past an impact) are rebuilt at that ``P_max``. A row
+        written before the column existed falls back to the restored mass.
         """
         dirs = self.directories
         struct = self.config.interior_struct.module
@@ -401,7 +403,10 @@ class Proteus:
             return
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
-        tables = generate_spider_tables(self.config, dirs['output'])
+        p_max = float(self.hf_row.get('ps_p_max') or 0.0)
+        tables = generate_spider_tables(
+            self.config, dirs['output'], p_max if p_max > 0 else None
+        )
         if tables is not None:
             dirs['spider_eos_dir'] = tables['eos_dir']
             dirs['spider_solidus_ps'] = tables['solidus_path']
@@ -1494,6 +1499,12 @@ class Proteus:
                 self.hf_row['Time'] = 0.0
             else:
                 self.interior_o.ic = 2
+
+            # Record the P-S tables in use, so a resume keeps exactly these.
+            if self.directories.get('spider_eos_dir'):
+                from proteus.interior_struct.zalmoxis import ps_tables_p_max
+
+                self.hf_row['ps_p_max'] = ps_tables_p_max(self.directories['spider_eos_dir'])
 
             # Update full helpfile
             if self.loops['total'] > 1:

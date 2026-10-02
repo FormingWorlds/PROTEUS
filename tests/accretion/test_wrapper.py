@@ -2598,6 +2598,27 @@ def test_main_loop_discards_preimpact_snapshot_on_impact_step(tmp_path, monkeypa
 
 
 @pytest.mark.unit
+def test_main_loop_records_the_p_max_of_the_tables_in_use(tmp_path, monkeypatch):
+    """Every helpfile row records the P_max of the P-S tables in use, read from
+    their marker, so a resume can keep exactly those tables."""
+    eos_dir = tmp_path / 'tables'
+    eos_dir.mkdir()
+    (eos_dir / '.cache_info.txt').write_text('P_max=3.575000e+11_nP=8')
+
+    def provide_tables(config, outdir, dirs):
+        dirs['spider_eos_dir'] = str(eos_dir)
+
+    import numpy as np
+
+    runner, *_ = _impact_loop_runner(tmp_path, monkeypatch, provide_tables)
+    runner.config.accretion.module = None  # no re-melt, which would load real tables
+    runner.start(resume=False, offline=True)
+    p_max = runner.hf_all['ps_p_max'].to_numpy()
+    assert len(p_max) > 1
+    np.testing.assert_allclose(p_max, 3.575e11, rtol=1e-15)
+
+
+@pytest.mark.unit
 def test_main_loop_checks_crystallization_only_after_the_init_stage(tmp_path, monkeypatch):
     """start() calls _check_crystallization on every step after the init stage and never
     during it, where the init stage recalculates the volatile targets instead."""
