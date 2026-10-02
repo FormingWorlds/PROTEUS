@@ -126,11 +126,6 @@ EXPECTED_INIT_LOOPS = 3
 # leaves roughly a third of the trajectory ahead of the seam.
 PARITY_ITERS = 40
 
-# Relative tolerance for that comparison: differencing two similar fluxes into F_net
-# amplifies round-off, and 1e-6 sits many orders below any physical difference a
-# genuine divergence would produce.
-PARITY_RTOL = 1.0e-6
-
 # Columns excluded from that comparison because they are not part of the
 # simulated state.
 PARITY_SKIP = ('runtime',)
@@ -621,11 +616,9 @@ def test_resume_twice_keeps_advancing(tmp_path):
     )
 
     # The prefix written before the second resume survives it intact.
-    np.testing.assert_allclose(
+    np.testing.assert_array_equal(
         final['Time'].to_numpy()[:n_second],
         leg2.hf_all['Time'].to_numpy(),
-        rtol=1e-9,
-        atol=0.0,
         err_msg='second resume rewrote the times stored by the first',
     )
 
@@ -672,9 +665,9 @@ def test_resume_reproduces_uninterrupted_run(tmp_path):
     Verifies:
     - The restarted run has the same number of rows as the uninterrupted
       one, so the restart neither dropped nor duplicated a step.
-    - Every numeric column agrees to within the helpfile's serialisation
-      floor, including the interior temperature, the fluxes, the surface
-      pressure and every volatile reservoir.
+    - Every numeric column agrees exactly, because the helpfile reads every
+      float back as written: the interior temperature, the fluxes, the
+      surface pressure and every volatile reservoir.
     - The comparison is made against a first leg that really did stop early,
       so the test cannot pass by comparing a run against itself.
     """
@@ -726,11 +719,9 @@ def test_resume_reproduces_uninterrupted_run(tmp_path):
         if not np.all(np.isfinite(expected)):
             non_finite.append(column)
             continue
-        np.testing.assert_allclose(
+        np.testing.assert_array_equal(
             actual,
             expected,
-            rtol=PARITY_RTOL,
-            atol=0.0,
             err_msg=f'restarted run diverges from the uninterrupted run in {column}',
         )
         compared += 1

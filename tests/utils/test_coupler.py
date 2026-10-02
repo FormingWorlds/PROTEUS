@@ -67,6 +67,7 @@ from proteus.utils.coupler import (
     get_proteus_directories,
     print_citation,
     print_module_configuration,
+    read_helpfile_table,
     remove_excess_files,
     select_profile_plot_times,
     select_resumable_snapshot,
@@ -479,19 +480,82 @@ def test_helpfile_round_trip_is_exact(tmp_path):
 
 
 @pytest.mark.unit
-def test_helpfile_keeps_a_nan_in_its_column(tmp_path):
-    """A NaN reads back in its own column; an empty field would shift the later columns."""
+@pytest.mark.parametrize('nan_key', ['Time', 'semimajorax', 'runtime'])
+def test_helpfile_keeps_a_nan_in_its_column(tmp_path, nan_key):
+    """A NaN reads back in its own column; an empty field would shift the later columns.
+
+    The NaN sits in the first, a middle or the last column of the middle row of three.
+    """
+    rows = [
+        {key: float(10 * r + i + 1) for i, key in enumerate(ZeroHelpfileRow())}
+        for r in range(3)
+    ]
+    rows[1][nan_key] = float('nan')
+    WriteHelpfileToCSV(str(tmp_path), pd.concat([CreateHelpfileFromDict(r) for r in rows]))
+
+    back = ReadHelpfileFromCSV(str(tmp_path))
+
+    assert math.isnan(back[nan_key].iloc[1])
+    shifted = [
+        (i, key)
+        for i, r in enumerate(rows)
+        for key in r
+        if (i, key) != (1, nan_key) and back[key].iloc[i] != r[key]
+    ]
+    assert shifted == []
+    assert back['runtime'].iloc[2] == rows[2]['runtime']
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'value',
+    [np.inf, -np.inf, -0.0, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, 1e22],
+)
+def test_helpfile_round_trip_keeps_edge_values(tmp_path, value):
+    """Infinities, a signed zero, subnormal and extreme doubles read back bit for bit."""
     row = ZeroHelpfileRow()
-    for i, key in enumerate(row):
-        row[key] = float(i + 1)
-    row['semimajorax'] = float('nan')
+    row['T_magma'] = value
     WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
+
+    back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]['T_magma']
+
+    assert back == value
+    assert np.signbit(back) == np.signbit(value)
+
+
+@pytest.mark.unit
+def test_helpfile_from_an_11_digit_writer_still_reads(tmp_path):
+    """An 11-digit helpfile, as runs that wrote fewer digits left it, reads within 5e-11."""
+    rng = np.random.default_rng(5)
+    row = {
+        key: float(rng.uniform(1.0, 10.0) * 10.0 ** rng.integers(-20, 21))
+        for key in ZeroHelpfileRow()
+    }
+    CreateHelpfileFromDict(row).to_csv(
+        tmp_path / 'runtime_helpfile.csv', index=False, sep='\t', float_format='%.10e'
+    )
 
     back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]
 
-    assert math.isnan(back['semimajorax'])
-    assert [key for key in row if key != 'semimajorax' and back[key] != row[key]] == []
-    assert back['runtime'] == row['runtime']
+    relative = [abs(back[key] / row[key] - 1.0) for key in row]
+    assert max(relative) <= 5e-11
+    assert max(relative) > 0.0  # the file really holds rounded values
+
+
+@pytest.mark.unit
+def test_helpfile_row_with_an_empty_field_is_refused(tmp_path):
+    """A row whose NaN was written as an empty field is refused, not read shifted."""
+    keys = list(ZeroHelpfileRow())
+    fields = ['1.0'] * len(keys)
+    fields[1] = ''
+    (tmp_path / 'runtime_helpfile.csv').write_text(
+        '\t'.join(keys) + '\n' + '\t'.join(fields) + '\n'
+    )
+
+    with pytest.raises(ValueError, match='fields against'):
+        ReadHelpfileFromCSV(str(tmp_path))
+    with pytest.raises(ValueError, match='line 2'):
+        read_helpfile_table(str(tmp_path / 'runtime_helpfile.csv'))
 
 
 @pytest.mark.unit
@@ -4410,7 +4474,7 @@ def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
       separation the filename itself cannot resolve.
     - A file with no recorded time is accepted, so directories written before
       the field existed still resume.
-    - The tolerance admits the round trip of an eleven-digit helpfile and
+    - The tolerance admits the round trip of an 11-digit helpfile and
       still rejects a step a thousandth of a year away.
     """
     own = _write_timed_nc(str(tmp_path / 'own_int.nc'), 70.2)
@@ -4424,15 +4488,13 @@ def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
     )
     assert _snapshot_belongs_to(legacy, 70.2) is True
 
-    # A helpfile written with '%.10e' moves Time in about the eleventh digit;
-    # such a row must still match.
+    # An 11-digit helpfile moves Time in about the eleventh digit; that row must match.
     assert _snapshot_belongs_to(own, float('%.10e' % 70.2)) is True
     # A step a thousandth of a year away is a different step, not a round trip.
     assert _snapshot_belongs_to(own, 70.201) is False
 
-    # The margin scales with the time, like an eleven-digit helpfile's precision: at 1 Gyr
-    # a round trip moves the row by about 0.05 yr and must match, while a step 0.7 yr
-    # away shares the filename and must not.
+    # At 1 Gyr an 11-digit helpfile moves the row by about 0.05 yr, which must match;
+    # a step 0.7 yr away shares the filename and must not.
     gyr = 1.0e9
     far = _write_timed_nc(str(tmp_path / 'gyr_int.nc'), gyr)
     assert _snapshot_belongs_to(far, float('%.10e' % gyr)) is True

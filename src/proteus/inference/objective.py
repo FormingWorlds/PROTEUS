@@ -22,7 +22,11 @@ from proteus.inference.failures import (
 )
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import element_list, gas_list
-from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
+from proteus.utils.coupler import (
+    get_proteus_directories,
+    read_helpfile_table,
+    variable_is_logarithmic,
+)
 from proteus.utils.helper import ReadStatus
 
 dtype = torch.double
@@ -327,9 +331,10 @@ def run_proteus(
         pd.errors.EmptyDataError,
         pd.errors.ParserError,
         IndexError,
+        ValueError,  # a row whose field count differs from the header
     )
     try:
-        df_row = dict(pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1])
+        df_row = dict(read_helpfile_table(out_csv).iloc[-1])
     except unreadable as err:
         # A truncated whitespace-delimited file usually presents as a ragged
         # row (ParserError) rather than an empty one, so both are caught.

@@ -1335,9 +1335,9 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
     tmp_path = fpath + '.tmp'
     try:
-        # 17 significant digits read with float_precision='round_trip' give back every float
-        # exactly; NaN is a token, as an empty field would vanish in the whitespace split.
-        current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.16e', na_rep='nan')
+        # pandas writes each float as its shortest repr, which read_helpfile_table reads
+        # back exactly; NaN is a token, as an empty field would vanish in the split.
+        current_hf.to_csv(tmp_path, index=False, sep='\t', na_rep='nan')
         os.replace(tmp_path, fpath)
     except BaseException:
         # Best-effort temp cleanup; never let it mask the original error.
@@ -1357,6 +1357,47 @@ class HelpfileSchemaDriftError(Exception):
 def helpfile_path(output_dir: str) -> str:
     """Path to the helpfile of a run directory."""
     return os.path.join(output_dir, 'runtime_helpfile.csv')
+
+
+def read_helpfile_table(path: str) -> pd.DataFrame:
+    """Read a helpfile table with every float exactly as it was written.
+
+    Fields are split on runs of whitespace, which reads both the tab-separated
+    files the writer makes and space-separated ones. ``float_precision='round_trip'``
+    returns each float bit for bit; pandas' default parser can miss the last bit.
+    The plot readers parse the file without it, which a display tolerates, and a
+    reader on the python engine cannot use it at all.
+
+    Parameters
+    ----------
+    path : str
+        Path to a ``runtime_helpfile.csv``.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per written step.
+
+    Raises
+    ------
+    ValueError
+        When a row has fewer or more fields than the header. An empty field, as
+        some files hold for a NaN, vanishes in the whitespace split and would
+        move every later value one column to the left.
+    """
+    table = pd.read_csv(path, sep=r'\s+', float_precision='round_trip')
+    n_columns = len(table.columns)
+    with open(path) as f:
+        next(f, None)
+        for line_number, line in enumerate(f, start=2):
+            n_fields = len(line.split())
+            if n_fields and n_fields != n_columns:
+                raise ValueError(
+                    f'{path}, line {line_number}: {n_fields} fields against {n_columns} '
+                    'columns; an empty field would shift the later values, so the row '
+                    'cannot be read'
+                )
+    return table
 
 
 class HelpfileRow(dict):
@@ -1532,7 +1573,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
 
-    hf_all = pd.read_csv(fpath, sep=r'\s+', float_precision='round_trip')
+    hf_all = read_helpfile_table(fpath)
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
     fillable = [key for key in missing if key in RESUMABLE_ZERO_FILL_KEYS]
@@ -1674,15 +1715,22 @@ def _snapshot_time(path: str) -> float | None:
         return None
 
 
+# An 11-digit helpfile (one from a run that wrote fewer digits) moves a time by up to
+# 4.94e-11 of its magnitude; the snapshot margin is four times that, so it still resumes.
+_HELPFILE_11_DIGIT_REL = 5.0e-11
+_SNAPSHOT_MARGIN_FACTOR = 4.0
+
+
 def _snapshot_belongs_to(path: str, time: float) -> bool:
     """Whether a snapshot is the one written for a simulation time.
 
     True when the file records that time, and also when it records none: a
     file without the field cannot be told apart from its neighbours, so it is
     accepted on its name, which is the behaviour every directory written
-    before the field existed relies on. True as well once the simulation time
-    is large enough that the margin an eleven-digit helpfile needs cannot separate
-    two rows inside one filename, which is a few Gyr in.
+    before the field existed relies on. The margin is sized for an 11-digit
+    helpfile (see ``_HELPFILE_11_DIGIT_REL``). Above about 2.5 Gyr it exceeds the
+    one-year name bucket, so the check accepts on the file name alone for every
+    file: the code cannot tell an 11-digit helpfile from an exact one.
 
     Parameters
     ----------
@@ -1702,14 +1750,8 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
     if not math.isfinite(recorded):
         return False
 
-    # A helpfile written with '%.10e' (eleven significant digits) moves the time by up to
-    # 4.94e-11 of its magnitude, so such a file still resumes; four times that is as
-    # tight as its data allows. A full-precision helpfile reads the time back exactly.
-    resolution = 5.0e-11 * max(1.0, abs(time))
-    tolerance = 4.0 * resolution
-
-    # Past a few Gyr that margin exceeds the one-year name bucket, so no margin
-    # separates two rows in it: accept on name instead.
+    tolerance = _SNAPSHOT_MARGIN_FACTOR * _HELPFILE_11_DIGIT_REL * max(1.0, abs(time))
+    # Past this the margin exceeds the one-year name bucket and separates no two rows.
     if tolerance >= 0.5:
         return True
 
