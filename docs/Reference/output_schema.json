@@ -7105,6 +7105,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -7474,6 +7478,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -7845,6 +7853,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -8215,6 +8227,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -8584,6 +8600,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -9659,6 +9679,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -10026,6 +10050,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -10395,6 +10423,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -10762,6 +10794,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -11835,6 +11871,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -12554,6 +12594,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -13978,6 +14022,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -15755,6 +15803,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -16474,6 +16526,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -18478,6 +18534,10 @@
       "origin": "<element>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -18619,6 +18679,10 @@
       "origin": "<element>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -18756,6 +18820,10 @@
       "origin": "<element>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -18889,6 +18957,10 @@
       "origin": "<element>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -19021,6 +19093,10 @@
       "group": "Quantities for each element",
       "origin": "<element>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -24749,18 +24825,6 @@
     }
   ],
   "unresolved_events": [
-    {
-      "file": "src/proteus/accretion/wrapper.py",
-      "kind": "write",
-      "reason": "template <e>_kg_atm",
-      "function": "_apply_volatile_consequences"
-    },
-    {
-      "file": "src/proteus/accretion/wrapper.py",
-      "kind": "read",
-      "reason": "template <e>_kg_atm",
-      "function": "_apply_volatile_consequences"
-    },
     {
       "file": "src/proteus/atmos_clim/agni.py",
       "kind": "read",

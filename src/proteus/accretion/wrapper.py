@@ -612,9 +612,13 @@ def _apply_volatile_consequences(
         Collision loss fraction in [0, 1], reported in the strip log line.
     """
     # Debit the atmosphere too: escape on this step sizes its loss from it.
-    for e, removed in strip.items():
-        hf_row[f'{e}_kg_total'] = max(0.0, float(hf_row.get(f'{e}_kg_total', 0.0)) - removed)
-        hf_row[f'{e}_kg_atm'] = max(0.0, float(hf_row.get(f'{e}_kg_atm', 0.0)) - removed)
+    for e in element_list:
+        if e in strip:
+            removed = strip[e]
+            hf_row[f'{e}_kg_total'] = max(
+                0.0, float(hf_row.get(f'{e}_kg_total', 0.0)) - removed
+            )
+            hf_row[f'{e}_kg_atm'] = max(0.0, float(hf_row.get(f'{e}_kg_atm', 0.0)) - removed)
     if strip:
         stripped_total = sum(strip.values())
         hf_row['esc_kg_cumulative'] = (
