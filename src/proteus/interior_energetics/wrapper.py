@@ -1913,7 +1913,8 @@ def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
 
     from proteus.interior_energetics.dummy import melt_state_from_temperature
 
-    t_reset = config.planet.tsurf_init
+    # An impact cannot cool the mantle below its current temperature.
+    t_reset = max(config.planet.tsurf_init, float(hf_row.get('T_magma', 0.0)))
     state = melt_state_from_temperature(config, hf_row, t_reset)
     hf_row.update(state)
     # The boundary backend also cools a surface temperature that the atmosphere
@@ -1985,11 +1986,14 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     profile carrier ``interior_o._last_entropy`` is set to the molten profile,
     the stale trajectory is cleared so the restore path cannot resurrect it,
     and the cached CMB-gradient state is cleared so it is re-derived from the
-    molten profile rather than inherited from the cooled one.
+    molten profile rather than inherited from the cooled one. Cells already
+    above the molten profile keep their entropy, so the re-melt never cools the
+    mantle, and the solver first switches to the P-S tables the structure solve
+    of this step built for the grown planet.
 
     The heat the re-melt injects is booked into ``hf_row['step_dE_impact_J']``
     using the solver's own entropy-transported heat quadrature over the jump
-    from the cooled to the molten profile, the same ``rho(P,S) T dS`` frame the
+    from the end-of-step profile to the re-melted one, the same ``rho(P,S) T dS`` frame the
     conservation residual integrates. The quadrature runs on the solver's
     current, pre-impact mesh (the solver is rebuilt for the grown planet only
     at its next solve), so the booked value is the heat that re-melts the
@@ -2003,9 +2007,9 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
 
     The melt-state keys in ``hf_row`` (``T_magma``, ``Phi_global``,
     ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``)
-    are updated to reflect the molten profile evaluated without time
-    integration, ensuring downstream modules on the impact iteration
-    read the post-impact melt state.
+    and the profile arrays on ``interior_o`` are updated to the re-melted
+    profile evaluated without time integration, so downstream modules on the
+    impact iteration read the post-impact melt state.
     """
     from proteus.interior_energetics.aragog import AragogRunner
 
@@ -2017,9 +2021,19 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
 
     solver = interior_o.aragog_solver
 
-    # Capture the cooled entropy profile before the reset replaces it; it is
-    # the start state of the heat-injection quadrature below.
-    S_cooled = getattr(interior_o, '_last_entropy', None)
+    # The structure solve of this step rebuilt the tables for the grown planet.
+    interior_o._spider_eos_dir = dirs.get('spider_eos_dir') or getattr(
+        interior_o, '_spider_eos_dir', ''
+    )
+    AragogRunner._refresh_entropy_eos(config, interior_o)
+
+    # The impact re-melts the state at the end of the landing step.
+    sol = getattr(solver, 'solution', None)
+    if sol is not None and sol.y.size > 0:
+        S_block = solver.entropy_staggered
+        S_cooled = S_block[:, -1] if S_block.ndim > 1 else S_block
+    else:
+        S_cooled = getattr(interior_o, '_last_entropy', None)
     if S_cooled is not None:
         S_cooled = np.asarray(S_cooled, dtype=float).ravel().copy()
 
@@ -2035,26 +2049,20 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     S_molten = AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
     S_molten = np.asarray(S_molten, dtype=float).ravel()
 
-    # Calculate injected heat from the entropy jump between cooled and molten
-    # profiles using volume-weighted quadrature.
+    # An impact cannot cool the mantle: cells above the molten profile keep their entropy.
     if S_cooled is not None and S_cooled.size > 0:
-        dE_impact = float(solver._step_heat_content(S_cooled, S_molten))
-
-        # Re-melts cannot remove energy. Clamp negative heat changes to zero
-        # when the current mantle temperature exceeds the re-melt profile.
-        if dE_impact < 0.0:
-            log.warning(
-                '    re-melt would remove %.3e J rather than add heat: the mantle is '
-                "above the temperature_mode='%s' state this impact resets it to. "
-                'Nothing is booked. If this is not a pair of impacts landing together, '
-                'the initial condition is too cool for this planet; temperature_mode='
-                "'liquidus_super' is molten for any mass and melting curve.",
-                abs(dE_impact),
+        S_new = np.maximum(S_cooled, S_molten)
+        n_hot = int(np.count_nonzero(S_new > S_molten))
+        if n_hot:
+            solver.set_initial_entropy(S_new)
+            log.info(
+                "    re-melt keeps %d of %d cells above the temperature_mode='%s' profile",
+                n_hot,
+                S_new.size,
                 config.planet.temperature_mode,
             )
-            dE_impact = 0.0
-
-        interior_o._last_entropy = S_molten.copy()
+        dE_impact = float(solver._step_heat_content(S_cooled, S_new))
+        interior_o._last_entropy = S_new.copy()
 
         # Accumulate heat across multiple impacts within the same timestep
         # rather than overwriting previous impact energy.
@@ -2074,6 +2082,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
 
     molten_out = evaluate_molten_state(solver, hf_row)
     if molten_out is not None:
+        AragogRunner._store_profiles(interior_o, molten_out)
         output = AragogRunner._build_helpfile_output(
             molten_out,
             hf_row,

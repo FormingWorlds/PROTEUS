@@ -3654,7 +3654,15 @@ _UNIFIED = object()
 
 
 def _generate_tables_stubbed(
-    tmp_path, monkeypatch, *, resume, run=True, entry=_UNIFIED, melt_calls=None, on_build=None
+    tmp_path,
+    monkeypatch,
+    *,
+    resume,
+    run=True,
+    entry=_UNIFIED,
+    melt_calls=None,
+    on_build=None,
+    mass_tot=1.0,
 ):
     """Run generate_spider_tables for a unified PALEOS entry with stubbed
     generators; return the result, the two generator mocks and the key the
@@ -3709,10 +3717,10 @@ def _generate_tables_stubbed(
     config.interior_struct.zalmoxis.mushy_zone_factor = 0.8
     config.interior_struct.zalmoxis.lookup_nP = 8
     config.interior_struct.zalmoxis.lookup_nS = 8
-    config.planet.mass_tot = 1.0
+    config.planet.mass_tot = mass_tot
     config.params.resume = resume
     key = zmod._ps_cache_key(
-        P_max=3.5e11,
+        P_max=150e9 * mass_tot + 200e9,
         nP=8,
         nS=8,
         mzf=0.8,
@@ -3801,14 +3809,14 @@ def test_resume_follows_the_pointer_to_shared_cache_tables(tmp_path, monkeypatch
 
 def test_resume_keeps_run_tables_after_a_settings_change(tmp_path, monkeypatch, caplog):
     """A resumed run whose stored key differs in a physical setting (here the
-    pressure ceiling) keeps its tables and warns with both keys that the
+    entropy resolution) keeps its tables and warns with both keys that the
     changed settings are ignored."""
     from pathlib import Path as _Path
 
     monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
     run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
     _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
-    stored = key.replace('P_max=3.500000e+11', 'P_max=4.000000e+11')
+    stored = key.replace('_nS=8_', '_nS=16_')
     assert stored != key
     _seed_tables(run_eos, stored)
 
@@ -3825,6 +3833,50 @@ def test_resume_keeps_run_tables_after_a_settings_change(tmp_path, monkeypatch, 
     assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
     assert 'ignores the changed settings' in caplog.text
     assert stored in caplog.text and key in caplog.text
+
+
+@pytest.mark.parametrize('stored_p_max', ['3.575000e+11', '3.425000e+11'])
+def test_resume_rebuilds_run_tables_after_a_planet_mass_change(
+    tmp_path, monkeypatch, caplog, stored_p_max
+):
+    """Tables built for another P_max, that is another planet mass (an impact after
+    the resume, or a walk-back past one), are not kept: the resumed run builds the
+    tables of the current mass, and the log names the mass change."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
+    _seed_tables(run_eos, key.replace('P_max=3.500000e+11', f'P_max={stored_p_max}'))
+
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+
+    bounds.assert_called_once()
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'NEW'
+    assert (run_eos / '.cache_info.txt').read_text() == key
+    assert f'Planet mass changed since the P-S tables in {run_eos} were built' in caplog.text
+    assert 'ignores the changed settings' not in caplog.text
+
+
+def test_resume_keeps_run_tables_of_an_unchanged_odd_mass(tmp_path, monkeypatch, caplog):
+    """The key rounds P_max to 7 digits; a mass whose P_max is not exact in that format
+    still keeps its own tables."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    mass = 1.0123456789
+    _, _, _, key = _generate_tables_stubbed(
+        tmp_path, monkeypatch, resume=True, run=False, mass_tot=mass
+    )
+    _seed_tables(run_eos, key)
+
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, bounds, _, _ = _generate_tables_stubbed(
+            tmp_path, monkeypatch, resume=True, mass_tot=mass
+        )
+
+    bounds.assert_not_called()
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
+    assert 'Planet mass changed' not in caplog.text
+    assert abs(float('3.518519e+11') / (150e9 * mass + 200e9) - 1) > 1e-9
 
 
 def test_resume_reports_kept_tables_once_per_process(tmp_path, monkeypatch, caplog):

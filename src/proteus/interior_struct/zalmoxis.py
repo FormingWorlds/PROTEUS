@@ -1990,6 +1990,7 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
     kept = config.params.resume and _resumed_ps_tables(
         outdir,
         lambda: _ps_resume_key(config, *energetics_entry(zc.mantle_eos, mat_dicts), mat_dicts),
+        _ps_p_max(config),
     )
     liquidus_super = config.planet.temperature_mode == 'liquidus_super'
     if liquidus_super:
@@ -2348,14 +2349,25 @@ def read_ps_cache_pointer(outdir: str) -> str | None:
 _PS_RESUME_REPORTED: set[str] = set()
 
 
-def _resumed_ps_tables(outdir: str, current_key) -> dict | None:
-    """Return the P-S tables a resumed run already uses, whatever their key.
+def _ps_p_max(config: Config) -> float:
+    """Upper pressure of the P-S lookup grid for the current planet mass [Pa].
+
+    It must cover the planet's P_cmb; the 10 TPa cap covers very massive rocky
+    planets (see interior_energetics/aragog.py for the matching cap).
+    """
+    return min(1.0e13, 150e9 * float(config.planet.mass_tot or 1.0) + 200e9)
+
+
+def _resumed_ps_tables(outdir: str, current_key, p_max: float | None = None) -> dict | None:
+    """Return the P-S tables a resumed run already uses, unless the planet mass changed.
 
     Looks in the per-run ``data/spider_eos`` directory, then in the shared
     cache directory recorded by :func:`_write_ps_cache_pointer`, for a marker
     with both phase-boundary files. A resumed run continues on these tables
-    even when the current key differs, so it does not switch tables part way
-    through its evolution. The first time a directory is kept in a process,
+    even when its settings or the table generator changed, so it does not
+    switch tables part way through its evolution. Tables built for another
+    ``P_max``, that is another planet mass (an impact, or a resume before
+    one), are not kept. The first time a directory is kept in a process,
     ``current_key()`` is called and a differing key is logged at WARNING with
     both keys, naming the generator identity when only that differs or the
     marker predates it. When ``current_key()`` raises, the tables are still
@@ -2368,6 +2380,8 @@ def _resumed_ps_tables(outdir: str, current_key) -> dict | None:
     current_key : callable
         No-argument callable returning the key the current code would build
         (from :func:`_ps_cache_key`); it raises when that key cannot be built.
+    p_max : float, optional
+        ``P_max`` of the current planet mass [Pa]; None keeps tables of any mass.
 
     Returns
     -------
@@ -2390,6 +2404,17 @@ def _resumed_ps_tables(outdir: str, current_key) -> dict | None:
             with open(marker) as f:
                 stored = f.read().strip()
         except OSError:
+            continue
+        built = re.search(r'P_max=([^_]+)', stored)
+        # The key holds P_max to 7 digits, so compare in that format.
+        if p_max is not None and built and built.group(1) != f'{p_max:.6e}':
+            log.info(
+                'Planet mass changed since the P-S tables in %s were built (P_max %s Pa, '
+                'now %.6e Pa); they are not kept',
+                eos_dir,
+                built.group(1),
+                p_max,
+            )
             continue
         if eos_dir not in _PS_RESUME_REPORTED:
             _PS_RESUME_REPORTED.add(eos_dir)
@@ -2673,14 +2698,7 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
             f'PALEOS-2phase entry {mantle_eos} is missing its solid or liquid file'
         )
 
-    # Determine pressure range from planet mass (higher mass needs wider range)
-    mass_tot = config.planet.mass_tot or 1.0
-    # P_max for the SPIDER P-S lookup grid. Must cover the actual P_cmb
-    # of the planet; the 10 TPa cap covers very massive rocky planets
-    # (mass_tot well above 2) without hitting the table edge. See
-    # interior_energetics/aragog.py for the matching cap and the
-    # comment on EOS / melting-curve calibration ranges.
-    P_max = min(1.0e13, 150e9 * mass_tot + 200e9)
+    P_max = _ps_p_max(config)
 
     # Table resolution from config
     nP = config.interior_struct.zalmoxis.lookup_nP
@@ -2782,7 +2800,7 @@ def generate_spider_tables(config: Config, outdir: str):
     # A resumed run stays on the tables it started with; the key only feeds the warning.
     if config.params.resume:
         resumed = _resumed_ps_tables(
-            outdir, lambda: _ps_resume_key(config, key, eos_entry, mat_dicts)
+            outdir, lambda: _ps_resume_key(config, key, eos_entry, mat_dicts), _ps_p_max(config)
         )
         if resumed is not None:
             return resumed

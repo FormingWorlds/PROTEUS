@@ -130,11 +130,12 @@ class _StopAfterMeshRestore(Exception):
     """Sentinel exception to stop start() after the mesh restoration block."""
 
 
-def _resume_with_patches(p, hf_df):
+def _resume_with_patches(p, hf_df, *extra):
     """Call p.start(resume=True) with all start() imports mocked.
 
     Uses ExitStack to avoid Python's nested-block limit.
-    Stops at init_star (after mesh restoration).
+    Stops at init_star (after mesh restoration), unless an ``extra`` patch,
+    entered last, replaces that stop with its own.
     """
     with ExitStack() as stack:
         for target in _START_PATCHES:
@@ -183,8 +184,70 @@ def _resume_with_patches(p, hf_df):
             )
         )
 
+        for extra_patch in extra:
+            stack.enter_context(extra_patch)
+
         with pytest.raises(_StopAfterMeshRestore):
             p.start(resume=True, offline=True)
+
+
+@pytest.mark.unit
+def test_resume_matches_the_ps_tables_after_restoring_the_accreted_mass(tmp_path):
+    """start(resume=True) points the run at the P-S tables of its mass only after
+    restore_accretion_state has restored that mass."""
+    p = _make_proteus_instance(tmp_path, interior_module='aragog')
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    calls = []
+
+    def match(self):
+        calls.append('match')
+        raise _StopAfterMeshRestore
+
+    _resume_with_patches(
+        p,
+        _make_hf_df(),
+        patch('proteus.star.wrapper.init_star'),
+        patch('proteus.orbit.wrapper.init_orbit'),
+        patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
+        patch(
+            'proteus.accretion.wrapper.restore_accretion_state',
+            side_effect=lambda handler: calls.append('restore'),
+        ),
+        patch.object(type(p), '_match_ps_tables_to_mass', match),
+    )
+
+    assert calls == ['restore', 'match']
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('struct', 'restored', 'tables', 'expected'),
+    [
+        ('zalmoxis', True, True, 'new'),
+        ('zalmoxis', True, False, 'old'),
+        ('zalmoxis', False, True, None),
+        ('dummy', True, True, 'old'),
+    ],
+)
+def test_match_ps_tables_to_mass_uses_the_tables_of_the_current_mass(
+    tmp_path, struct, restored, tables, expected
+):
+    """A resumed Zalmoxis run with restored tables takes the directory that
+    generate_spider_tables returns for the current mass; otherwise nothing changes."""
+    p = _make_proteus_instance(tmp_path, struct_module=struct, interior_module='aragog')
+    if restored:
+        p.directories['spider_eos_dir'] = 'old'
+    result = {'eos_dir': 'new', 'solidus_path': 'new/sol', 'liquidus_path': 'new/liq'}
+
+    with patch(
+        'proteus.interior_struct.zalmoxis.generate_spider_tables',
+        return_value=result if tables else None,
+    ) as generate:
+        p._match_ps_tables_to_mass()
+
+    assert p.directories.get('spider_eos_dir') == expected
+    assert generate.called is (struct == 'zalmoxis' and restored)
+    assert p.directories.get('spider_liquidus_ps') == ('new/liq' if expected == 'new' else None)
 
 
 def _make_hf_df():

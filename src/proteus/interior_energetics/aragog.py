@@ -1187,6 +1187,17 @@ class AragogRunner:
             )
 
     @staticmethod
+    def _store_profiles(interior_o: Interior_t, out) -> None:
+        """Store the profiles of a solver state on ``interior_o``; radius in metres."""
+        interior_o.phi = out.phi_stag
+        interior_o.visc = out.visc_stag
+        interior_o.density = out.rho_stag
+        interior_o.radius = out.r_basic
+        interior_o.mass = out.mass_stag
+        interior_o.temp = out.T_stag
+        interior_o.pres = out.P_stag
+
+    @staticmethod
     def _refresh_entropy_eos(config: Config, interior_o: Interior_t) -> None:
         """Point the solver at the P-S tables as they stand now.
 
@@ -2021,13 +2032,7 @@ class AragogRunner:
         # requires metres: its r <= _R_cmb comparison and downstream
         # np.interp would use mixed units if km were stored here, which
         # matters whenever Zalmoxis update_interval > 0.
-        interior_o.phi = out.phi_stag
-        interior_o.visc = out.visc_stag
-        interior_o.density = out.rho_stag
-        interior_o.radius = out.r_basic  # m
-        interior_o.mass = out.mass_stag
-        interior_o.temp = out.T_stag
-        interior_o.pres = out.P_stag
+        self._store_profiles(interior_o, out)
 
         # Use the actual integration endpoint, not the requested end_time.
         # If the solver exits early (status != 0), dt_actual < requested dt.

@@ -2230,6 +2230,40 @@ def test_run_interior_consumes_the_impact_flag_into_the_step_flag():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(('impact', 'T_magma'), [(True, 4000.0), (False, 3020.0)])
+def test_run_interior_keeps_an_impact_jump_after_consuming_the_flag(impact, T_magma):
+    """The flag is consumed at the start of run_interior, yet the jump on the impact
+    step is not clipped; the same jump on an ordinary step is clipped to prev + atol."""
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=1.0)
+    out = {
+        'T_magma': 4000.0,
+        'T_surf': 2805.0,
+        'Phi_global': 0.7,
+        'F_int': 2.0,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    interior_o = Interior_t(nlev_b=10)
+    interior_o.ic = 2
+    interior_o.impact_reset = impact
+
+    with (
+        patch('proteus.interior_energetics.dummy.run_dummy_int', return_value=(110.0, out)),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
+
+    assert hf_row['T_magma'] == pytest.approx(T_magma, rel=1e-12)
+    assert interior_o.impact_reset is False
+
+
+@pytest.mark.unit
 def test_run_interior_prevent_warming_clamps_T_and_Fint_on_ic2():
     """prevent_warming=True + ic=2 must clip Phi/T_magma/T_surf to previous values
     and floor F_int to 1e-8 when the previous step had F_int < 0."""
@@ -6399,6 +6433,7 @@ def _remelt_config(
     return SimpleNamespace(
         interior_energetics=SimpleNamespace(
             module=module,
+            const_properties=False,
             dummy=SimpleNamespace(mantle_tliq=mantle_tliq, mantle_tsol=mantle_tsol),
             boundary=SimpleNamespace(T_solidus=b_tsol, T_liquidus=b_tliq),
         ),
@@ -6526,6 +6561,10 @@ class _FakeAragogSolver:
         # Read-only view over the solved trajectory, as on the real solver.
         return self._solution.y[:, -1]
 
+    @property
+    def solution(self):
+        return self._solution
+
     def set_initial_entropy(self, S):
         # The real method writes only _S0; it does NOT update entropy_staggered.
         self._S0 = np.asarray(S, dtype=float).copy()
@@ -6644,6 +6683,7 @@ def test_aragog_remelt_without_a_prior_profile_warns_and_books_nothing(caplog):
     """
     molten = np.full(6, 3900.0)
     solver = _FakeAragogSolver(cooled_profile=np.full(6, 2400.0))
+    solver._solution = None
     interior_o = SimpleNamespace(aragog_solver=solver, _last_entropy=None, impact_reset=False)
     config = _remelt_config('aragog')
     hf_row = {}
@@ -6687,56 +6727,115 @@ def test_remelt_refuses_spider_and_rejects_an_unknown_backend():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_a_remelt_that_would_cool_the_mantle_books_nothing(caplog):
-    """An impact adds energy, so the re-melt can never book a heat loss.
+def test_a_remelt_never_cools_the_mantle(caplog):
+    """An impact adds energy, so the re-melt never lowers the entropy of a cell.
 
-    The re-melt re-applies the run's temperature-mode initial condition. Only
-    'liquidus_super' guarantees that condition is molten for any planet mass
-    and melting curve; a mode anchored on a user-supplied temperature can sit
-    below the current thermal state, and so can any mode once the mantle is
-    already at the state a second impact would reset it to. Booking the
-    resulting negative value would corrupt the energy ledger silently, because
-    it enters both sides of the residual and leaves it closed. Nothing is
-    booked, and the discrepancy is reported with its size and the mode.
-
-    The guard is on the quadrature result rather than on a summary of the two
-    entropy profiles, because the quadrature weights each cell by volume and by
-    rho*T and those weightings disagree with depth: a profile that rises on
-    average can still integrate to a loss.
+    Cells already above the molten profile keep their entropy and the others rise
+    to it; the solver restarts from that profile and the booked heat is the
+    non-negative jump to it from the end-of-step state.
     """
-    cooled = np.full(6, 3900.0)  # already hotter than the IC below
+    cooled = np.array([3900.0] * 3 + [2000.0] * 3)
     solver = _FakeAragogSolver(cooled_profile=cooled)
     interior_o = SimpleNamespace(
         aragog_solver=solver, _last_entropy=cooled.copy(), impact_reset=False
     )
     config = _remelt_config('aragog')
     config.planet.temperature_mode = 'adiabatic_from_cmb'
-
-    colder_ic = np.full(6, 2400.0)
-    would_remove = 6 * (3900.0 - 2400.0) * _FakeAragogSolver._HEAT_PER_ENTROPY
-
     hf_row = {}
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.wrapper'):
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
         with patch(
             'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
-            side_effect=lambda cfg, io, outdir, row: colder_ic,
+            side_effect=lambda cfg, io, outdir, row: np.full(6, 2400.0),
         ):
             remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
 
-    # Nothing is booked, so the negative value never reaches the budget.
-    assert hf_row['step_dE_impact_J'] == 0.0
-    # Discrimination: booking it would have put -1.35e31 J into both residual
-    # sides, which is the whole re-melt enthalpy rather than a rounding of it.
-    assert would_remove > 1e30
+    kept = np.array([3900.0] * 3 + [2400.0] * 3)
+    np.testing.assert_allclose(interior_o._last_entropy, kept)
+    np.testing.assert_allclose(solver._S0, kept)
+    # Only the 3 cooled cells gain 400 J/kg/K; the hot ones add and remove nothing.
+    assert hf_row['step_dE_impact_J'] == pytest.approx(
+        3 * 400.0 * _FakeAragogSolver._HEAT_PER_ENTROPY
+    )
+    assert "keeps 3 of 6 cells above the temperature_mode='adiabatic_from_cmb'" in caplog.text
 
-    # The report names the mode and carries the size, so the configuration
-    # error is actionable from the log rather than merely noted.
-    assert 'adiabatic_from_cmb' in caplog.text
-    assert 'remove' in caplog.text
 
-    # The re-melt still takes effect: the reset is a thermodynamic convention
-    # and only the energy booking is suppressed.
-    np.testing.assert_allclose(interior_o._last_entropy, colder_ic)
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_aragog_remelt_books_the_jump_from_the_end_of_step_profile():
+    """The impact re-melts the state at the end of the landing step, so the heat is
+    measured from the solver's end-of-step profile, not from the start-of-step carrier."""
+    solver = _FakeAragogSolver(cooled_profile=np.full(6, 2600.0))
+    interior_o = SimpleNamespace(
+        aragog_solver=solver, _last_entropy=np.full(6, 2400.0), impact_reset=False
+    )
+    hf_row = {}
+
+    with patch(
+        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+        side_effect=lambda cfg, io, outdir, row: np.full(6, 3900.0),
+    ):
+        remelt_mantle({'output': '/tmp/out'}, _remelt_config('aragog'), hf_row, interior_o)
+
+    np.testing.assert_array_equal(solver.heat_calls[0][0], np.full(6, 2600.0))
+    assert hf_row['step_dE_impact_J'] == pytest.approx(
+        6 * 1300.0 * _FakeAragogSolver._HEAT_PER_ENTROPY
+    )
+
+
+@pytest.mark.unit
+def test_aragog_remelt_reads_the_tables_of_the_grown_planet(tmp_path):
+    """The structure solve of the impact step built new P-S tables; the solver uses them
+    before the molten initial condition is set on them."""
+    old, new = tmp_path / 'old', tmp_path / 'new'
+    old.mkdir()
+    new.mkdir()
+    solver = _FakeAragogSolver(cooled_profile=np.full(6, 2400.0))
+    solver.entropy_eos = ('eos', str(old))
+    interior_o = SimpleNamespace(
+        aragog_solver=solver, _spider_eos_dir=str(old), _last_entropy=None, impact_reset=False
+    )
+    seen = []
+
+    def set_ic(cfg, io, outdir, row):
+        seen.append((io._spider_eos_dir, solver.entropy_eos))
+        return np.full(6, 3900.0)
+
+    with (
+        patch(
+            'proteus.interior_energetics.aragog._cached_entropy_eos',
+            side_effect=lambda d: ('eos', d),
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic', set_ic),
+    ):
+        remelt_mantle(
+            {'output': '/tmp/out', 'spider_eos_dir': str(new)},
+            _remelt_config('aragog'),
+            {},
+            interior_o,
+        )
+
+    assert seen == [(str(new), ('eos', str(new)))]
+    assert interior_o._spider_eos_dir == str(new)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_remelt_never_cools_a_hotter_scalar_mantle():
+    """A dummy mantle above tsurf_init keeps its temperature through the re-melt."""
+    hf_row = _remelt_hf_row(T_magma=4500.0)
+    interior_o = SimpleNamespace(impact_reset=False)
+
+    remelt_mantle(
+        {'output': '/tmp/unused'},
+        _remelt_config('dummy', tsurf_init=4000.0),
+        hf_row,
+        interior_o,
+    )
+
+    assert hf_row['T_magma'] == pytest.approx(4500.0, rel=1e-12)
+    np.testing.assert_array_equal(interior_o.temp, [4500.0])
+    assert hf_row['Phi_global'] == pytest.approx(1.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -7180,6 +7279,12 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     )
     assert hf_row['F_atm'] == pytest.approx(100.0, rel=1e-12)
     assert solver._solution is None
+    # The profile arrays later modules read on the impact step hold the re-melted state.
+    for name, value in (('phi', 0.73), ('visc', 1.0), ('density', 4000.0), ('mass', 1e22)):
+        np.testing.assert_array_equal(getattr(interior_o, name), np.full(80, value))
+    np.testing.assert_array_equal(interior_o.temp, np.full(80, 3800.0))
+    np.testing.assert_array_equal(interior_o.radius, np.linspace(3.4e6, 6.3e6, 81))
+    np.testing.assert_array_equal(interior_o.pres, np.linspace(1.4e11, 1e5, 80))
 
     # 3. Solver without get_state returns None; liquid/solid split runs from Phi_global with clamping
     class NoGetStateSolver:
