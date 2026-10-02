@@ -407,6 +407,22 @@ class Proteus:
             dirs['spider_solidus_ps'] = tables['solidus_path']
             dirs['spider_liquidus_ps'] = tables['liquidus_path']
 
+    def _run_escape_step(self, frozen: bool) -> None:
+        """Run escape and record the element mass it removed for the Zalmoxis target."""
+        from proteus.escape.wrapper import readable_total, run_escape
+        from proteus.interior_struct.common import debit_escaped_mass
+
+        kg_before = readable_total(self.hf_row)
+        run_escape(
+            self.config,
+            self.hf_row,
+            self.directories,
+            self.interior_o.dt,
+            atmosphere_only=frozen,
+            interior_o=self.interior_o,
+        )
+        debit_escaped_mass(self.config, self.hf_row, kg_before - readable_total(self.hf_row))
+
     def _save_zalmoxis_output(self):
         """Copy ``zalmoxis_output.dat`` next to the snapshot of the row being written."""
         if (
@@ -519,20 +535,13 @@ class Proteus:
         #    atmospheric chemistry
         #    giant-impact accretion
         from proteus.accretion.common import next_event
-        from proteus.accretion.wrapper import (
-            debit_escaped_mass,
-            init_accretion,
-            restore_accretion_state,
-        )
+        from proteus.accretion.wrapper import init_accretion, restore_accretion_state
         from proteus.atmos_chem.wrapper import run_chemistry
 
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Atmos_t
         from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
-
-        #    escape and outgas
-        from proteus.escape.wrapper import readable_total, run_escape
 
         #    interior
         from proteus.interior_energetics.common import Interior_t
@@ -542,6 +551,7 @@ class Proteus:
             solve_structure,
             update_planet_mass,
         )
+        from proteus.interior_struct.common import tracks_volatile_mass, volatile_mass_change
 
         #    synthetic observations
         from proteus.observe.wrapper import run_observe
@@ -1058,9 +1068,14 @@ class Proteus:
         restore_accretion_state(self)
         if resume:
             # Refuse a corrupt column here, before a structure solve reads it.
-            from proteus.accretion.wrapper import volatile_mass_change
-
-            volatile_mass_change(self.hf_row)
+            change = volatile_mass_change(self.hf_row)
+            if change != 0.0 and not tracks_volatile_mass(self.config):
+                log.warning(
+                    'M_volatile_change = %.3e kg is carried over but only the Zalmoxis '
+                    'structure reads or updates it; it stays stale under %s',
+                    change,
+                    self.config.interior_struct.module,
+                )
         if resume and self.config.accretion.module is not None:
             self._match_ps_tables_to_mass()
 
@@ -1290,18 +1305,7 @@ class Proteus:
                     and float(self.hf_row.get('Phi_global', 1.0))
                     <= float(self.config.params.stop.solid.phi_crit)
                 )
-                kg_before = readable_total(self.hf_row)
-                run_escape(
-                    self.config,
-                    self.hf_row,
-                    self.directories,
-                    self.interior_o.dt,
-                    atmosphere_only=frozen,
-                    interior_o=self.interior_o,
-                )
-                debit_escaped_mass(
-                    self.config, self.hf_row, kg_before - readable_total(self.hf_row)
-                )
+                self._run_escape_step(frozen)
                 if _IT_TIMING_ENABLED:
                     _t_mod['escape'] = time.perf_counter() - _t0
             else:

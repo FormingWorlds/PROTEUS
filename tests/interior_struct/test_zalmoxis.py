@@ -1650,6 +1650,41 @@ def test_dry_mass_target_excludes_only_undissolved_volatiles():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+def test_a_resumed_row_gives_the_zalmoxis_target_rock_anchor_plus_volatile_change(tmp_path):
+    """After restore_accretion_state, the real Zalmoxis target is the configured
+    mass plus the accreted rock plus the stored volatile change, less volatiles."""
+    from types import SimpleNamespace
+
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+    from proteus.utils.constants import AU, M_earth
+
+    H_total = 4.7e20
+    row = {
+        'Time': 1.0e5,
+        'H_kg_total': H_total,
+        'H_kg_atm': 1.2e20,
+        'M_accreted_rock': 0.1 * M_earth,
+        'M_volatile_change': -3.0e22,
+        'n_impacts_applied': 1,
+        'semimajorax': 1.0 * AU,
+        'eccentricity': 0.0,
+    }
+    config = _volatile_config(True)
+    config.params.resume = True
+    config.accretion.module = None
+    config.planet.mass_tot = 1.0
+    config.orbit.semimajoraxis = 1.0
+    config.orbit.eccentricity = 0.0
+    handler = SimpleNamespace(config=config, hf_row=row, directories={'output': str(tmp_path)})
+    restore_accretion_state(handler)
+    target = load_zalmoxis_configuration(config, row)['planet_mass']
+    assert config.planet.mass_tot == pytest.approx(1.1, rel=1e-12)
+    assert target == pytest.approx(1.1 * M_earth - 3.0e22 - H_total, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_dry_mass_target_adds_the_ledger_volatile_change():
     """The whole-planet target is mass_tot plus the volatile change
     (M_volatile_change), which mass_tot, the rock anchor, leaves

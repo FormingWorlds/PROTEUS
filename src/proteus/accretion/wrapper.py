@@ -415,10 +415,10 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         The impact to apply.
     """
     from proteus.interior_energetics.wrapper import remelt_mantle, solve_structure
+    from proteus.interior_struct.common import record_volatile_change, volatile_mass_change
 
     config = handler.config
     hf_row = handler.hf_row
-    volatiles_before = volatile_mass_change(hf_row)  # refuse a corrupt ledger first
 
     ratio = event.semimajoraxis_ratio
     if not math.isfinite(ratio) or ratio <= 0.0:
@@ -446,6 +446,11 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     strip = _target_strip_amounts(config, hf_row, f_loss)
     content = _impactor_volatile_content(config, handler.hf_all, event, hf_row=hf_row)
     delivered, impactor_lost = _partition_impactor_content(config, hf_row, content, f_loss)
+    # Refuse a corrupt ledger or a non-finite volatile sum before anything moves.
+    volatile_mass_change(hf_row)
+    net_volatiles = sum(delivered.values()) - sum(strip.values())
+    if not math.isfinite(net_volatiles):
+        raise RuntimeError(f'impact volatile change is not finite ({net_volatiles!r})')
 
     # Snapshot volatile budgets before the structure solve to prevent ppmw
     # recomputation from artificially inflating volatile inventories.
@@ -497,11 +502,8 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
     # The Zalmoxis target follows the volatile change; not in the init stage,
     # which rebuilds the budgets from config this iteration.
-    if _tracks_volatile_mass(config) and not getattr(handler, 'init_stage', False):
-        hf_row['M_volatile_change'] = (
-            volatiles_before + sum(delivered.values()) - sum(strip.values())
-        )
-        volatile_mass_change(hf_row)  # a non-finite sum would be zeroed in the helpfile
+    if not getattr(handler, 'init_stage', False):
+        record_volatile_change(config, hf_row, net_volatiles)
 
     # Raise the mantle to its initial condition; hotter parts keep their state.
     remelt_mantle(handler.directories, config, hf_row, handler.interior_o, event)
@@ -550,51 +552,6 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         config.orbit.semimajoraxis,
         config.orbit.eccentricity,
     )
-
-
-def _tracks_volatile_mass(config: Config) -> bool:
-    """Whether the ledger records volatile changes: only Zalmoxis solves a whole-planet target."""
-    return config.interior_struct.module == 'zalmoxis'
-
-
-def volatile_mass_change(hf_row: dict) -> float:
-    """Return ``M_volatile_change`` [kg]; zero when absent (dummy structure, older helpfile).
-
-    Raises
-    ------
-    RuntimeError
-        If the column is not finite, which would corrupt the structure target.
-    """
-    change = float(hf_row.get('M_volatile_change') or 0.0)
-    if not math.isfinite(change):
-        raise RuntimeError(
-            f'M_volatile_change is not finite ({change!r}); the ledger is corrupt.'
-        )
-    return change
-
-
-def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
-    """Record the volatile mass escape removed in ``M_volatile_change``.
-
-    The Zalmoxis target is ``mass_tot`` plus ``M_volatile_change``, less
-    the volatiles its mantle EOS does not hold, so escaped volatiles left out
-    of the ledger would come back as rock at the next structure solve. Applied
-    with the Zalmoxis structure, with or without accretion. The debit includes
-    any element the escape step set to zero below the outgassing threshold,
-    which ``esc_kg_cumulative`` does not count.
-
-    Parameters
-    ----------
-    config : Config
-        Model configuration; read for the structure module.
-    hf_row : dict
-        Current helpfile row; ``M_volatile_change`` is lowered in place.
-    escaped : float
-        Volatile mass the escape step removed from the element budgets [kg].
-    """
-    if not _tracks_volatile_mass(config) or not 0.0 < escaped < math.inf:
-        return
-    hf_row['M_volatile_change'] = volatile_mass_change(hf_row) - escaped
 
 
 def _apply_volatile_consequences(

@@ -751,6 +751,35 @@ def test_delivered_volatiles_raise_the_desiccation_baseline(monkeypatch):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_stripping_wet_impact_credits_only_the_delivery_to_the_baseline(monkeypatch):
+    """The baseline gains the delivered mass alone; the strip goes to the escape
+    ledger, so the desiccation gate accepts the stripped loss."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.outgas.wrapper import check_desiccation
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0)
+    )
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    _atm_state(handler.hf_row, H=(4.0e19, 1.0e20))
+    handler.hf_row.update(M_vol_initial=1.0e20, esc_kg_cumulative=0.0)
+    apply_impact(handler, _impact_event())
+
+    content = 6.4e23 * 1000.0 / 1.0e6
+    delivered = content * (1.0 - 0.4 * 0.5)  # the exposed f_atm = 0.4 share loses half
+    stripped = 0.5 * 4.0e19
+    assert handler.hf_row['M_vol_initial'] == pytest.approx(1.0e20 + delivered, rel=1e-12)
+    assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(stripped, rel=1e-12)
+    # Above the threshold only the escape-balance gate decides.
+    handler.config.outgas.mass_thresh = 1.0e25
+    assert check_desiccation(handler.config, handler.hf_row) is True
+
+
+@pytest.mark.unit
 def test_delivery_before_any_escape_baseline_sets_none(monkeypatch):
     """Without a baseline the first escape call snapshots the grown totals."""
     from proteus.accretion.wrapper import apply_impact
@@ -1706,7 +1735,7 @@ def test_a_resumed_run_rebuilds_the_mass_and_orbit_the_impacts_moved():
 def test_debit_escaped_mass_records_escape_with_zalmoxis_with_or_without_accretion():
     """Escape lowers the ledger with the Zalmoxis structure, also without an
     accretion module, never mass_tot, and nothing with the dummy structure."""
-    from proteus.accretion.wrapper import debit_escaped_mass
+    from proteus.interior_struct.common import debit_escaped_mass
 
     def cfg(module, structure='zalmoxis'):
         return SimpleNamespace(
@@ -1755,11 +1784,8 @@ def test_resume_after_impact_and_escape_restores_the_uninterrupted_mass(monkeypa
     kg. Restoring from the rock alone would miss the delivered, stripped and
     escaped mass.
     """
-    from proteus.accretion.wrapper import (
-        apply_impact,
-        debit_escaped_mass,
-        restore_accretion_state,
-    )
+    from proteus.accretion.wrapper import apply_impact, restore_accretion_state
+    from proteus.interior_struct.common import debit_escaped_mass
     from proteus.utils.constants import M_earth
 
     monkeypatch.setattr(
@@ -1818,8 +1844,6 @@ def test_resume_with_escape_before_any_impact_restores_the_lowered_mass():
     handler = _restore_handler(1.0, row)
     restore_accretion_state(handler)
     assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
-    # The column is read as stored, so the target keeps the loss.
-    assert row['M_volatile_change'] == pytest.approx(-1.0e21, rel=1e-15)
     assert _zalmoxis_target(handler.config, row) == pytest.approx(M_earth - 1.0e21, rel=1e-15)
     # No impact yet: the orbit stays at its configured value.
     assert handler.config.orbit.semimajoraxis == pytest.approx(1.0, rel=1e-15)
@@ -1827,7 +1851,7 @@ def test_resume_with_escape_before_any_impact_restores_the_lowered_mass():
 
 def _zalmoxis_target(config, row):
     """Whole-planet mass the Zalmoxis structure solves for [kg]: mass_tot + V."""
-    from proteus.accretion.wrapper import volatile_mass_change
+    from proteus.interior_struct.common import volatile_mass_change
     from proteus.utils.constants import M_earth
 
     return config.planet.mass_tot * M_earth + volatile_mass_change(row)
@@ -1922,7 +1946,8 @@ def test_an_init_stage_impact_keeps_the_dry_target_at_the_rock(monkeypatch):
 def test_a_non_finite_ledger_stops_the_anchor_update(where, monkeypatch):
     """A NaN M_volatile_change raises at the next write instead of letting
     mass_tot move while the ledger a resume reads is lost."""
-    from proteus.accretion.wrapper import apply_impact, debit_escaped_mass
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.interior_struct.common import debit_escaped_mass
 
     monkeypatch.setattr(
         'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
@@ -1943,8 +1968,8 @@ def test_a_non_finite_ledger_stops_the_anchor_update(where, monkeypatch):
 
 @pytest.mark.unit
 def test_a_non_finite_impact_volatile_change_stops_the_impact(monkeypatch):
-    """A non-finite delivery sum raises when the column is written, instead of
-    reaching the helpfile, which would store it as zero and lose the history."""
+    """A non-finite delivery sum stops the impact before anything moves: the
+    mass anchor, the rock ledger, the counter and the column stay as they were."""
     from proteus.accretion import wrapper
     from proteus.accretion.wrapper import apply_impact
 
@@ -1956,9 +1981,12 @@ def test_a_non_finite_impact_volatile_change_stops_the_impact(monkeypatch):
     )
     handler = _impact_handler(accretion=_impact_accretion(H=1000.0))
     handler.hf_row['M_volatile_change'] = -1.0e21
-    with pytest.raises(RuntimeError, match='M_volatile_change is not finite'):
+    with pytest.raises(RuntimeError, match='impact volatile change is not finite'):
         apply_impact(handler, _impact_event())
-    assert handler.hf_row['M_volatile_change'] != handler.hf_row['M_volatile_change']
+    assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+    assert 'M_accreted_rock' not in handler.hf_row
+    assert 'n_impacts_applied' not in handler.hf_row
+    assert handler.hf_row['M_volatile_change'] == pytest.approx(-1.0e21, rel=1e-15)
 
 
 @pytest.mark.unit
@@ -1966,7 +1994,7 @@ def test_a_non_finite_impact_volatile_change_stops_the_impact(monkeypatch):
 def test_a_non_finite_volatile_change_never_reaches_the_structure_target(bad):
     """The column is checked before it enters the Zalmoxis target: a non-finite
     value raises, a finite one is returned as stored."""
-    from proteus.accretion.wrapper import volatile_mass_change
+    from proteus.interior_struct.common import volatile_mass_change
 
     with pytest.raises(RuntimeError, match='M_volatile_change is not finite'):
         volatile_mass_change({'M_volatile_change': bad})

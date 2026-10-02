@@ -94,6 +94,7 @@ FILE_CONDITIONS = {
 FUNCTION_CONDITIONS = {
     ('escape/wrapper.py', 'run_zephyrus'): 'escape.module = "zephyrus"',
     ('escape/wrapper.py', 'run_dummy'): 'escape.module = "dummy"',
+    ('interior_struct/common.py', 'record_volatile_change'): 'interior_struct.module = "zalmoxis"',
 }
 
 

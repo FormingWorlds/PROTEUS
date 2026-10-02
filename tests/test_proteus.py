@@ -272,11 +272,70 @@ def test_resume_checks_the_volatile_change_column_before_any_structure_solve(tmp
         patch('proteus.orbit.wrapper.init_orbit'),
         patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
         patch('proteus.accretion.wrapper.restore_accretion_state'),
-        patch('proteus.accretion.wrapper.volatile_mass_change', side_effect=check),
+        patch('proteus.interior_struct.common.volatile_mass_change', side_effect=check),
         patch('proteus.proteus.setup_logger'),
     )
     assert len(seen) == 1
     assert seen[0] != seen[0]  # the restored row's NaN reached the check
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('struct, expected', [('zalmoxis', -3.0e21), ('dummy', 0.0)])
+def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
+    tmp_path, struct, expected
+):
+    """The main-loop escape step books the element mass escape removed into
+    M_volatile_change with the Zalmoxis structure, and nothing with the dummy
+    structure, whose mass_tot is the dry anchor."""
+    from types import SimpleNamespace
+
+    p = _make_proteus_instance(tmp_path, struct_module=struct)
+    p.hf_row = {'H_kg_total': 5.0e21, 'O_kg_total': 2.0e22}
+    p.interior_o = SimpleNamespace(dt=100.0)
+    calls = []
+
+    def escape(config, hf_row, dirs, dt, **kwargs):
+        calls.append(kwargs['atmosphere_only'])
+        hf_row['H_kg_total'] -= 3.0e21
+
+    with patch('proteus.escape.wrapper.run_escape', side_effect=escape):
+        p._run_escape_step(frozen=True)
+
+    assert calls == [True]
+    assert p.hf_row['H_kg_total'] == pytest.approx(2.0e21, rel=1e-15)
+    assert p.hf_row.get('M_volatile_change', 0.0) == pytest.approx(expected, rel=1e-12, abs=0.0)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('struct, warns', [('dummy', True), ('zalmoxis', False)])
+def test_resume_warns_when_the_volatile_change_is_stale_under_the_structure(
+    tmp_path, caplog, struct, warns
+):
+    """A non-zero M_volatile_change resumed under a structure that does not read
+    it is flagged; under Zalmoxis it is in use and nothing is logged."""
+    p = _make_proteus_instance(tmp_path, struct_module=struct, interior_module='aragog')
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    hf = _make_hf_df()
+    hf['M_volatile_change'] = [0.0, 0.0, 0.0, 0.0, -2.0e21]
+    with caplog.at_level('WARNING'):
+        _resume_with_patches(
+            p,
+            hf,
+            patch('proteus.star.wrapper.init_star'),
+            patch('proteus.orbit.wrapper.init_orbit'),
+            patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
+            patch('proteus.accretion.wrapper.restore_accretion_state'),
+            patch('proteus.proteus.setup_logger'),
+            patch.object(type(p), '_resync_zalmoxis_mesh', lambda self: None),
+            patch(
+                'proteus.proteus.UpdateStatusfile',
+                side_effect=lambda dirs, code: _raise_if(code == 1),
+            ),
+        )
+    stale = [r for r in caplog.records if 'stays stale' in r.getMessage()]
+    assert len(stale) == (1 if warns else 0)
+    if warns:
+        assert '-2.000e+21 kg' in stale[0].getMessage()
 
 
 def _raise_if(condition):

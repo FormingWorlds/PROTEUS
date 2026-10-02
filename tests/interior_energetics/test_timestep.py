@@ -1250,20 +1250,22 @@ class TestEscapeStepLimit:
         from proteus.proteus import Proteus
 
         src = inspect.getsource(Proteus.start)
-        assert 'run_escape(' in src  # the anchor below depends on it
-        call = src.split('run_escape(')[1].split(')')[0]
+        step = inspect.getsource(Proteus._run_escape_step)
+        assert '_run_escape_step(' in src  # the anchors below depend on these
+        assert 'run_escape(' in step
+        call = step.split('run_escape(')[1].split(')')[0]
         assert 'interior_o=self.interior_o' in call
+        assert 'atmosphere_only=frozen' in call
 
         # The reservoir escape draws on has to account for a mantle that freezes
         # on this iteration, since the flag recording it is set further down the
         # loop and reading it alone sizes the loss from a reservoir already gone.
-        before_call = src.split('run_escape(')[0]
+        before_call = src.split('_run_escape_step(')[0]
         assert 'freeze_volatiles' in before_call
-        assert 'atmosphere_only=self.crystallized,' not in call
 
         # The branch taken when escape does not run has to reset all three, so
         # the limit, the request and the applied loss cannot outlive their step.
-        skipped = src.split('run_escape(')[1]
+        skipped = src.split('_run_escape_step(')[1]
         for field in ('escape_dt_limit', 'esc_clamp_frac', 'esc_step_kg'):
             assert field in skipped, f'{field} is never cleared when escape is skipped'
 

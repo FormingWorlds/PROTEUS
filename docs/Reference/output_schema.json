@@ -3029,12 +3029,12 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/accretion/wrapper.py",
-          "condition": "always"
+          "file": "src/proteus/interior_struct/common.py",
+          "condition": "interior_struct.module = \"zalmoxis\""
         }
       ],
       "consumers": [
-        "accretion"
+        "interior_struct"
       ],
       "consumers_possible": []
     },
