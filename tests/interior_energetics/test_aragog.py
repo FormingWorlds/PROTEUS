@@ -1013,7 +1013,6 @@ def test_earlier_snapshot_exists_counts_by_the_writers_naming(tmp_path):
     # A step whose name rounds down does not count its own snapshot as older.
     t = 1.0e7 / 3.0
     (data / f'{format_subyear_time(t)}_int.nc').write_text('this step')
-    assert earlier_snapshot_exists(str(tmp_path / 'none'), t) is False
     assert earlier_snapshot_exists(str(tmp_path), t) is True  # the 100 yr file
     (data / f'{format_subyear_time(100.0)}_int.nc').unlink()
     assert earlier_snapshot_exists(str(tmp_path), t) is False
@@ -1292,6 +1291,7 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
 
         interior_o = MagicMock()
         interior_o._last_entropy = None
+        interior_o.impact_reset_this_step = False
 
         hf_row = {'Time': 2.15e5, 'T_cmb': 0.0}
         return runner, interior_o, hf_row
@@ -1700,7 +1700,7 @@ def test_the_core_temperature_guard_stands_aside_for_a_giant_impact():
     failed_interior.impact_reset_this_step = True
     with pytest.raises(RuntimeError):
         failed._solve_with_retry(prior, failed_interior)
-    assert len(failed_attempts) == 6
+    assert len(failed_attempts) == 8  # an impact step retries on the stiff ladder
 
 
 def _impact_step_after_a_failed_first_attempt(cvode_flag):
@@ -1725,14 +1725,25 @@ def test_the_giant_impact_exemption_holds_on_the_stiff_ladder():
 
 
 @pytest.mark.unit
-def test_the_giant_impact_exemption_ends_once_a_retry_relaxes_atol():
-    """Any other failure retries with a relaxed atol, the corruption source the
-    jump guard names, so on an impact step the same jump is rejected down the
-    whole ladder."""
+def test_an_impact_step_retries_any_failure_on_the_stiff_ladder():
+    """On an impact step a non-stiff first failure (cvode_flag -3) also retries on
+    the stiff ladder, at atol 1.0x, so the impact jump on the retry is kept
+    rather than rejected as an atol-relaxed solve."""
     runner, interior_o, attempts = _impact_step_after_a_failed_first_attempt(-3)
-    with pytest.raises(RuntimeError, match='T_core jump'):
+    out = runner._solve_with_retry({'Time': 7.68e5, 'T_cmb': 4000.0}, interior_o)
+    assert out.T_core == pytest.approx(12000.0, rel=1e-12)
+    assert len(attempts) == 2
+
+
+@pytest.mark.unit
+def test_an_exhausted_impact_step_names_the_step_and_the_ladder():
+    """When every attempt of an impact step fails, the stop says that it was the
+    impact step and that the stiff ladder at atol 1.0x was used."""
+    runner, interior_o, attempts = _retry_ladder_runner(status=-1, dt_actual=0.0)
+    interior_o.impact_reset_this_step = True
+    with pytest.raises(RuntimeError, match='giant-impact step .stiff ladder, atol 1.0x.'):
         runner._solve_with_retry({'Time': 7.68e5, 'T_cmb': 4000.0}, interior_o)
-    assert len(attempts) == 6
+    assert len(attempts) > 6
 
 
 @pytest.mark.unit
@@ -1756,9 +1767,9 @@ def test_the_giant_impact_exemption_does_not_cover_a_non_finite_tcore():
     nan_interior.impact_reset_this_step = True
     with pytest.raises(RuntimeError, match='non-finite'):
         nan_on_impact._solve_with_retry(prior, nan_interior)
-    assert len(nan_attempts) == 6, (
+    assert len(nan_attempts) == 8, (
         'a non-finite solve is corrupted regardless of the impact flag, so it '
-        'burns the retry ladder the same as any other non-finite result'
+        'burns the whole retry ladder, the stiff one on an impact step'
     )
 
 

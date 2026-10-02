@@ -526,28 +526,21 @@ def test_accretion_with_rock_vapour_is_refused_at_config_load():
 
 
 @pytest.mark.parametrize(
-    'module, method, star, model, warns',
-    [
-        ('dummy', 'inst', 'dummy', None, True),
-        (None, 'inst', 'dummy', None, False),
-        ('dummy', 'distance', 'dummy', None, False),
-        ('dummy', 'inst', 'mors', None, False),
-        ('dummy', 'inst', 'dummy', 'sp0d', False),
-    ],
+    'module, method, warns',
+    [('dummy', 'inst', True), (None, 'inst', False), ('dummy', 'distance', False)],
 )
 def test_accretion_with_a_flux_fixed_orbit_warns_that_impacts_leave_the_orbit(
-    caplog, module, method, star, model, warns
+    caplog, module, method, warns
 ):
-    """Only where the orbit step rewrites the semi-major axis from the flux does
-    an accretion run warn that the impact orbit change is not applied."""
+    """An accretion run with orbit.instellation_method = 'inst' warns that the
+    semi-major axis change of an impact is not applied (its eccentricity is)."""
     from types import SimpleNamespace
 
     from proteus.config._config import warn_accretion_fixed_instellation_orbit
 
     instance = SimpleNamespace(
         accretion=SimpleNamespace(module=module),
-        orbit=SimpleNamespace(instellation_method=method, star_planet_model=model),
-        star=SimpleNamespace(module=star),
+        orbit=SimpleNamespace(instellation_method=method),
     )
     with caplog.at_level('WARNING'):
         warn_accretion_fixed_instellation_orbit(instance, None, None)

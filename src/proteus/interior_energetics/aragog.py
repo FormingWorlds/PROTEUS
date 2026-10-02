@@ -2336,7 +2336,10 @@ class AragogRunner:
                 cvode_flag = int(getattr(out, 'cvode_flag', 0) or 0)
                 flag_name = str(getattr(out, 'cvode_flag_name', '') or '')
                 is_too_much_work = cvode_flag == -1 or flag_name == 'TOO_MUCH_WORK'
-                if is_too_much_work:
+                # An impact step retries on the stiff ladder whatever failed, so atol
+                # is never relaxed there and the impact jump exemption keeps holding.
+                stiff_ladder = is_too_much_work or impact_step
+                if stiff_ladder:
                     max_attempts = max_attempts_stiff
                     stiff_seen += 1
                 else:
@@ -2368,6 +2371,8 @@ class AragogRunner:
                         reason = f'{self._active_solver_name()} status={out.status}'
                         if flag_name:
                             reason += f' (cvode_flag={cvode_flag}, {flag_name})'
+                    if impact_step:
+                        reason += ' on a giant-impact step (stiff ladder, atol 1.0x)'
                     log.error(
                         'Aragog solver failed after %d attempts (%s). '
                         'Raising RuntimeError so wrapper can apply skip-step fallback.',
@@ -2382,7 +2387,7 @@ class AragogRunner:
                 # dt of the attempt that just failed. A retry must never run
                 # coarser than it, so clamp the scheduled dt below.
                 dt_current = float(solver.parameters.solver.end_time) - t_start
-                if is_too_much_work:
+                if stiff_ladder:
                     # Stiffness recovery, indexed by stiff_seen so it climbs
                     # from rung 1 whenever stiffness first appears. Raise the
                     # step budget first (wall-time cost only, no accuracy loss),
@@ -2409,9 +2414,12 @@ class AragogRunner:
                         solver._max_steps = int(max_steps_new)
                     solver.parameters.solver.rtol = rtol_new
                     log.warning(
-                        'Aragog CV_TOO_MUCH_WORK at t=%.3e yr (attempt %d/%d). '
+                        'Aragog %s at t=%.3e yr (attempt %d/%d). '
                         'Retrying with max_steps=%d, rtol=%.2e, dt=%.3e yr, '
                         'atol_sf=%.1fx (was dt=%.3e yr).',
+                        'CV_TOO_MUCH_WORK'
+                        if is_too_much_work
+                        else 'failure on a giant-impact step',
                         hf_row.get('Time', 0.0),
                         attempt,
                         max_attempts,

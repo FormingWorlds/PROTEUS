@@ -28,6 +28,7 @@ from proteus.accretion.common import (
     due_events,
     next_event,
     read_timeline,
+    snap_to_impact,
     validate_timeline,
     write_timeline,
 )
@@ -510,16 +511,20 @@ def test_scheduling_helpers_apply_each_impact_exactly_once():
 
 
 @pytest.mark.unit
-def test_a_landing_step_a_few_ulp_short_still_applies_the_impact_once():
-    """Rounding can end the step aimed at an impact just below its time; the
-    impact is applied by that step and not again by the next one."""
-    import math
-
+def test_a_landing_step_a_few_ulp_short_ends_on_the_impact():
+    """Rounding can end the step aimed at an impact just below its time; the step
+    end is moved onto the impact, so the impact is applied by that step, once,
+    and the row time equals the impact time."""
     t = 1.0e8 / 3.0
     event = _event(time=t, M_target_before=6.0e24, M_impactor=6.4e23, M_merged_after=6.64e24)
-    short = math.nextafter(math.nextafter(t, 0.0), 0.0)
-    assert due_events([event], t - 3.0e3, short) == [event]
-    assert due_events([event], short, short + 3.0e3) == []
+    short = float(np.nextafter(np.nextafter(t, 0.0), 0.0))
+    landed = snap_to_impact(short, t)
+    assert landed == t
+    assert due_events([event], t - 3.0e3, landed) == [event]
+    assert due_events([event], landed, landed + 3.0e3) == []
+    # A step that ends well short, past the impact, or with none pending is kept.
+    for time, t_impact in ((t - 1.0, t), (t + 1.0e-6, t), (t, float('inf'))):
+        assert snap_to_impact(time, t_impact) == time
 
 
 @pytest.mark.unit

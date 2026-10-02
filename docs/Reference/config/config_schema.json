@@ -1721,7 +1721,7 @@
         "inst"
       ],
       "bounds": null,
-      "description": "Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit. With 'inst' and the dummy star the semi-major axis follows the flux at every step, so a giant impact's orbit change is not applied.",
+      "description": "Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit. With 'inst' the semi-major axis follows the flux at every step, so a giant impact's semi-major axis change is not applied; its eccentricity change is.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11247,10 +11247,9 @@
       ],
       "touches": [
         "accretion.module",
-        "orbit",
-        "star.module"
+        "orbit.instellation_method"
       ],
-      "doc": "Warn that impacts cannot move an orbit the instellation flux fixes."
+      "doc": "Warn that impacts cannot move a semi-major axis the instellation fixes."
     },
     {
       "validator": "valid_escapedummy",

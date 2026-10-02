@@ -2708,6 +2708,19 @@ def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
     )
 
 
+def test_the_main_loop_lands_each_step_through_snap_to_impact(tmp_path):
+    """Every iteration passes its step end through snap_to_impact; with no
+    impact pending the step end is kept, so the run time stays finite."""
+    from proteus.accretion import common
+
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with patch.object(common, 'snap_to_impact', wraps=common.snap_to_impact) as snap:
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+    assert snap.call_count == p.loops['total']
+    assert all(c.args[1] == float('inf') for c in snap.call_args_list)
+    assert 0.0 < p.hf_row['Time'] < float('inf')
+
+
 def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog):
     """With the opt-in ``PROTEUS_TIMING`` instrumentation enabled (here
     patched directly on the frozen module constant, since it is normally

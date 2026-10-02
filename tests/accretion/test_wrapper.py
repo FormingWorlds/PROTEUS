@@ -308,6 +308,32 @@ def _impact_handler(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('resume, warns', [(False, True), (True, False)])
+def test_the_load_check_compares_the_first_impact_the_run_keeps(
+    tmp_path, caplog, resume, warns
+):
+    """A negative time_offset drops the first impact (6.0e24 kg, within 1 % of the
+    planet); the first kept one (6.64e24 kg) is 11 % off and warns on a fresh run.
+    A resumed run is past its configured mass, so the load check is skipped."""
+    handler = _handler(
+        module='timeline',
+        timeline_path=_timeline_file(tmp_path / 't.csv'),
+        time_offset=-2.0e5,
+        output_dir=tmp_path,
+    )
+    with caplog.at_level('WARNING'):
+        kept = init_accretion(handler)
+    if resume:
+        handler.config.params.resume = True
+        caplog.clear()
+        with caplog.at_level('WARNING'):
+            kept = init_accretion(handler)
+    hits = [r for r in caplog.records if 'timeline target mass' in r.getMessage()]
+    assert [e.time for e in kept] == [3.0e5]
+    assert len(hits) == (1 if warns else 0)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     'module, m_planet, mass_tot, warns',
     [
@@ -1777,6 +1803,45 @@ def test_restore_accretion_state_drops_already_applied_events_on_resume(tmp_path
     restore_accretion_state(handler)
     assert handler.impact_events == [ev2]
     assert handler.hf_row['n_impacts_applied'] == 1
+
+
+@pytest.mark.unit
+def test_a_run_resumes_from_the_row_that_landed_an_impact_a_few_ulp_short(tmp_path):
+    """The step that lands an impact a few ulp short is moved onto the impact
+    time, so a resume from that row finds the impact before the resume time,
+    restores it as applied and does not schedule it again."""
+    import math
+
+    from proteus.accretion.common import snap_to_impact, write_timeline
+    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
+    from proteus.utils.constants import AU
+
+    t = 1.0e8 / 3.0
+    event = _impact_event(
+        time=t, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    write_timeline([event], str(tmp_path / _RESOLVED_TIMELINE_FILE))
+    short = math.nextafter(math.nextafter(t, 0.0), 0.0)
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            accretion=SimpleNamespace(module='dummy', impactor_volatiles='dry'),
+            params=SimpleNamespace(resume=True),
+            planet=SimpleNamespace(mass_tot=1.0),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row={
+            'Time': snap_to_impact(short, t),
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 1,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        directories={'output': str(tmp_path)},
+        impact_events=[event],
+    )
+    restore_accretion_state(handler)
+    assert handler.hf_row['Time'] == t
+    assert handler.impact_events == []
 
 
 @pytest.mark.unit

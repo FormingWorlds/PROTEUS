@@ -415,9 +415,7 @@ def due_events(
 
     The interval is half-open, excluding ``time_previous`` and including
     ``time_now``, so an impact is applied exactly once no matter how the
-    timestep lands on it. Both ends carry a relative tolerance of 1e-12, so a
-    step aimed at an impact still takes it when rounding ends it a few ulp
-    short.
+    timestep lands on it.
 
     Parameters
     ----------
@@ -433,6 +431,33 @@ def due_events(
     due : list of ImpactEvent
         Impacts to apply for this step, in time order.
     """
-    lo = time_previous + 1.0e-12 * max(1.0, abs(time_previous))
-    hi = time_now + 1.0e-12 * max(1.0, abs(time_now))
-    return [e for e in events if lo < e.time <= hi]
+    return [e for e in events if time_previous < e.time <= time_now]
+
+
+# Relative gap within which a step aimed at a scheduled impact counts as landing on it.
+_LANDING_RTOL = 1.0e-12
+
+
+def snap_to_impact(time: float, t_impact: float) -> float:
+    """Return the impact time when a step ended a few ulp short of it.
+
+    ``time + (t_impact - time)`` can round below ``t_impact``, and the impact
+    would then land one step late. Moving the step end onto the impact keeps
+    every later comparison of the row time with the impact time exact.
+
+    Parameters
+    ----------
+    time : float
+        Simulation time at the end of the step [yr].
+    t_impact : float
+        Time of the next scheduled impact [yr], infinite when none is pending.
+
+    Returns
+    -------
+    float
+        ``t_impact`` when it lies above ``time`` within a relative 1e-12,
+        otherwise ``time``.
+    """
+    if 0.0 < t_impact - time <= _LANDING_RTOL * max(1.0, abs(time)):
+        return t_impact
+    return time

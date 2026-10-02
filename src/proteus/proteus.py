@@ -518,7 +518,7 @@ class Proteus:
         # Import things needed to run PROTEUS
         #    atmospheric chemistry
         #    giant-impact accretion
-        from proteus.accretion.common import next_event
+        from proteus.accretion.common import next_event, snap_to_impact
         from proteus.accretion.wrapper import init_accretion, restore_accretion_state
         from proteus.atmos_chem.wrapper import run_chemistry
 
@@ -1138,6 +1138,10 @@ class Proteus:
             # Advance current time in main loop according to interior step
             self.hf_row['Time'] += self.interior_o.dt  # in years
             self.hf_row['age_star'] += self.interior_o.dt  # in years
+            # A step aimed at an impact ends on it even when rounding leaves it short.
+            landed = snap_to_impact(self.hf_row['Time'], self.interior_o.t_next_impact)
+            self.hf_row['age_star'] += landed - self.hf_row['Time']
+            self.hf_row['Time'] = landed
 
             # Apply giant impacts due in this step. Remove applied events
             # so each fires exactly once, including across init iterations.

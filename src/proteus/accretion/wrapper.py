@@ -114,12 +114,13 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
 
     if not events and module in ('timeline', 'morrigan'):
         log.warning("Accretion module '%s' resolved to 0 impacts", module)
-    elif module in ('timeline', 'morrigan'):
-        _warn_target_mass_mismatch(events[0], config.planet.mass_tot * M_earth, 'configured')
 
-    return _drop_events_before_start(
-        events, handler.hf_row.get('Time', 0.0), resumed=bool(config.params.resume)
-    )
+    resumed = bool(config.params.resume)
+    kept = _drop_events_before_start(events, handler.hf_row.get('Time', 0.0), resumed=resumed)
+    # The configured mass is the planet's only at the start of a fresh run.
+    if kept and not resumed and module in ('timeline', 'morrigan'):
+        _warn_target_mass_mismatch(kept[0], config.planet.mass_tot * M_earth, 'configured')
+    return kept
 
 
 def _warn_target_mass_mismatch(event: ImpactEvent, m_planet: float, which: str) -> None:
