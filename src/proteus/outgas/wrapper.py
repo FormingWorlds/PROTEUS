@@ -319,7 +319,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     return True
 
 
-def outgassing_sets_o_budget(config: Config) -> bool:
+def outgassing_derives_o_kg_total(config: Config) -> bool:
     """Whether each outgassing call rewrites ``O_kg_total`` from the melt fO2.
 
     CALLIOPE and atmodeller set the O budget from the fixed fO2 under
@@ -605,7 +605,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
         first_iter : bool
-            True if this is the first iteration of the simulation, False otherwise
+            True for the init-stage iterations (loops['total'] <= loops['init_loops'])
     """
 
     # if desiccated, set all gas masses to zero
@@ -632,7 +632,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
 
 
 def run_outgassing_and_vapourisation(
-    dirs: dict, config: Config, hf_row: dict, first_iter: bool
+    dirs: dict, config: Config, hf_row: dict, first_iter: bool, *, init_stage: bool
 ):
     """Runs volatile outgassing and rock vapourisation together and combines the results.
 
@@ -652,7 +652,10 @@ def run_outgassing_and_vapourisation(
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
         first_iter : bool
-            True if this is the first iteration of the simulation, False otherwise
+            True for the init-stage iterations (loops['total'] <= loops['init_loops'])
+        init_stage : bool
+            Whether the run is in its init stage, the flag that also resets the
+            O budget there; the dummy outgassing derives an empty O budget only then.
     """
 
     # reset all rock-vapour masses to zero:
@@ -675,7 +678,7 @@ def run_outgassing_and_vapourisation(
         hf_row[e + '_kg_total'] = 0.0
 
     # Volatile outgassing
-    run_outgassing(dirs, config, hf_row, initial=first_iter)
+    run_outgassing(dirs, config, hf_row, initial=init_stage)
 
     # Vapourisation of refractories
     if config.outgas.vapourise:

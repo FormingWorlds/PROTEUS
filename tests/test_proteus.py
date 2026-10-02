@@ -280,6 +280,29 @@ def test_resume_checks_the_volatile_change_column_before_any_structure_solve(tmp
 
 
 @pytest.mark.unit
+def test_a_corrupt_volatile_change_at_resume_records_status_20(tmp_path):
+    """The resume refusal of a NaN M_volatile_change writes status 20 before it
+    raises, so a run stopped there does not read as still running."""
+    p = _make_proteus_instance(tmp_path, struct_module='dummy', interior_module='aragog')
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    hf = _make_hf_df()
+    hf['M_volatile_change'] = [0.0, 0.0, 0.0, 0.0, float('nan')]
+    codes = []
+    with pytest.raises(RuntimeError, match='M_volatile_change is not finite'):
+        _resume_with_patches(
+            p,
+            hf,
+            patch('proteus.star.wrapper.init_star'),
+            patch('proteus.orbit.wrapper.init_orbit'),
+            patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
+            patch('proteus.accretion.wrapper.restore_accretion_state'),
+            patch('proteus.proteus.setup_logger'),
+            patch('proteus.proteus.UpdateStatusfile', side_effect=lambda d, c: codes.append(c)),
+        )
+    assert codes[-1] == 20
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize('struct, expected', [('zalmoxis', -3.0e21), ('dummy', 0.0)])
 @pytest.mark.parametrize(
     'crystallized, freeze, phi, frozen',
@@ -2906,7 +2929,9 @@ def _write_post_outgas_row(hf_row, step, *, vapour):
     return hf_row
 
 
-def _run_main_loop_recording_mass(p, *, stop_at_loop, rows, row_writer, guard_calls=None):
+def _run_main_loop_recording_mass(
+    p, *, stop_at_loop, rows, row_writer, guard_calls=None, flags=None
+):
     """Run p.start with the physics mocked, recording the row each outgas step
     wrote. ``row_writer(hf_row, step)`` fills the mass columns.
 
@@ -2943,7 +2968,9 @@ def _run_main_loop_recording_mass(p, *, stop_at_loop, rows, row_writer, guard_ca
     def _fake_extend_helpfile(_hf_all, row):
         return _FakeHelpfile(row)
 
-    def _fake_outgas(_dirs, _config, hf_row, _first_iter):
+    def _fake_outgas(_dirs, _config, hf_row, _first_iter, *, init_stage):
+        if flags is not None:
+            flags.append((init_stage, p.init_stage))
         rows.append(dict(row_writer(hf_row, len(rows))))
 
     with ExitStack() as stack:
@@ -3067,6 +3094,25 @@ def test_vapourising_run_bounds_the_imbalance_across_steps(tmp_path, caplog):
 
 
 @pytest.mark.physics_invariant
+def test_the_outgassing_is_told_the_init_stage_on_every_iteration(tmp_path):
+    """The dummy outgassing derives an empty O budget only in the init stage, so
+    the main loop passes it the same init_stage flag that resets the O budget:
+    True for the init iterations, then False."""
+    rows, flags = [], []
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+    _run_main_loop_recording_mass(
+        p,
+        stop_at_loop=6,
+        rows=rows,
+        row_writer=lambda hf_row, step: _write_post_outgas_row(hf_row, step, vapour=False),
+        flags=flags,
+    )
+    assert all(passed is stage for passed, stage in flags)
+    assert [passed for passed, _ in flags] == [True] * 4 + [False] * (len(flags) - 4)
+
+
 def test_non_vapourising_run_keeps_strict_mass_conservation(tmp_path, caplog):
     """With rock vapourisation off, the loop demands the strict invariant and a
     breach of it aborts the run.

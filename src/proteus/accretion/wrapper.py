@@ -422,7 +422,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     from proteus.accretion.common import MASS_CLOSURE_RTOL
     from proteus.interior_energetics.wrapper import remelt_mantle, solve_structure
     from proteus.interior_struct.common import record_volatile_change, volatile_mass_change
-    from proteus.outgas.wrapper import outgassing_sets_o_budget
+    from proteus.outgas.wrapper import outgassing_derives_o_kg_total
 
     config = handler.config
     hf_row = handler.hf_row
@@ -453,7 +453,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     strip = _target_strip_amounts(config, hf_row, f_loss)
     content = _impactor_volatile_content(config, handler.hf_all, event, hf_row=hf_row)
     delivered, impactor_lost = _partition_impactor_content(config, hf_row, content, f_loss)
-    o_rock = delivered.pop('O', 0.0) if outgassing_sets_o_budget(config) else 0.0
+    o_rock = delivered.pop('O', 0.0) if outgassing_derives_o_kg_total(config) else 0.0
     # Refuse a corrupt ledger or a negative or non-finite mass before anything
     # moves; with valid inputs the loss split closes by construction.
     volatile_mass_change(hf_row)
@@ -461,8 +461,10 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     bad += [
         f'{e}_kg_total' for e in element_list if not _valid_mass(hf_row.get(f'{e}_kg_total'))
     ]
-    records = {'M_accreted_rock': hf_row.get('M_accreted_rock')}
-    records['n_impacts_applied'] = hf_row.get('n_impacts_applied')
+    records = {
+        'M_accreted_rock': hf_row.get('M_accreted_rock'),
+        'n_impacts_applied': hf_row.get('n_impacts_applied'),
+    }
     bad += [k for k, v in records.items() if not _valid_mass(v)]
     bad += [f'impactor {e}' for e, m in content.items() if not _valid_mass(m)]
     if bad:
@@ -581,7 +583,7 @@ def _apply_volatile_consequences(
     budgets and to the gate's baseline ``M_vol_initial`` (once escape has
     set one), and refreshes the tracked-element total. The outgassing step
     later this iteration re-equilibrates the atmosphere against the updated
-    totals; oxygen, where ``outgassing_sets_o_budget``, is set there either way.
+    totals; oxygen, where ``outgassing_derives_o_kg_total``, is set there either way.
 
     Parameters
     ----------

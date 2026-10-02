@@ -3024,7 +3024,7 @@
     {
       "name": "M_volatile_change",
       "unit": "kg",
-      "description": "cumulative delivered - stripped - escaped element mass",
+      "description": "delivered (no O as rock, no init stage) - stripped - escaped incl. rock vapour",
       "group": "Giant-impact accretion ledger",
       "origin": "literal",
       "producers": [

@@ -1085,8 +1085,13 @@ class Proteus:
         # model still selects its body against the configured planet.
         restore_accretion_state(self)
         if resume:
-            # Refuse a corrupt column here, before a structure solve reads it.
-            change = volatile_mass_change(self.hf_row)
+            # Refuse a corrupt column here, before a structure solve reads it, and
+            # record the stop so the run does not read as still running.
+            try:
+                change = volatile_mass_change(self.hf_row)
+            except RuntimeError:
+                UpdateStatusfile(self.directories, 20)
+                raise
             if change != 0.0 and not tracks_volatile_mass(self.config):
                 log.info(
                     'M_volatile_change = %.3e kg is carried over but only the Zalmoxis '
@@ -1347,7 +1352,11 @@ class Proteus:
 
             else:
                 run_outgassing_and_vapourisation(
-                    self.directories, self.config, self.hf_row, first_iter
+                    self.directories,
+                    self.config,
+                    self.hf_row,
+                    first_iter,
+                    init_stage=self.init_stage,
                 )
 
                 # Issue #677 IC consistency check. Fires once at the first

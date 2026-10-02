@@ -1274,7 +1274,7 @@ def test_match_planet_step_zero_without_history_falls_back_to_hf_row():
 
 
 # Whether each outgassing module rewrites O_kg_total from a fixed fO2 every call.
-_SETS_O_BUDGET = {'calliope': True, 'atmodeller': True, 'dummy': False}
+_DERIVES_O_KG_TOTAL = {'calliope': True, 'atmodeller': True, 'dummy': False}
 
 
 @pytest.mark.unit
@@ -1286,13 +1286,13 @@ def test_every_outgassing_module_has_a_stated_oxygen_rule():
     import attrs
 
     from proteus.config._outgas import Outgas
-    from proteus.outgas.wrapper import outgassing_sets_o_budget
+    from proteus.outgas.wrapper import outgassing_derives_o_kg_total
 
     modules = set(attrs.fields(Outgas).module.validator.options)
-    assert modules == set(_SETS_O_BUDGET)
+    assert modules == set(_DERIVES_O_KG_TOTAL)
     sources = ('user_constant', 'from_O_budget')
     rule = {
-        (m, f): outgassing_sets_o_budget(
+        (m, f): outgassing_derives_o_kg_total(
             SimpleNamespace(
                 planet=SimpleNamespace(fO2_source=f), outgas=SimpleNamespace(module=m)
             )
@@ -1301,7 +1301,9 @@ def test_every_outgassing_module_has_a_stated_oxygen_rule():
         for f in sources
     }
     assert rule == {
-        (m, f): _SETS_O_BUDGET[m] and f == 'user_constant' for m in modules for f in sources
+        (m, f): _DERIVES_O_KG_TOTAL[m] and f == 'user_constant'
+        for m in modules
+        for f in sources
     }
 
 
@@ -2071,6 +2073,8 @@ def test_a_non_finite_ledger_stops_the_anchor_update(where, monkeypatch):
         ({'H': 1.0e20}, 'dummy', 0.5, {'H_kg_atm': float('nan')}),
         ({'H': 1.0e20}, 'dummy', 0.0, {'H_kg_total': float('nan')}),
         ({'H': 1.0e20}, 'dummy', 0.5, {'H_kg_atm': -5.0e19}),
+        ({'H': 1.0e20}, 'dummy', 0.0, {'H_kg_total': -1.0e20}),
+        ({'H': -1.0e20}, 'dummy', 0.0, {}),
         ({'H': 1.0e20}, 'dummy', 0.0, {'n_impacts_applied': float('nan')}),
         ({'H': 1.0e20}, 'dummy', 0.0, {'M_accreted_rock': float('nan')}),
     ],

@@ -165,6 +165,24 @@ def test_sigma_partitions_h2_linearly(sigma, expected_liquid_frac, expected_atm_
 
 
 @pytest.mark.physics_invariant
+def test_the_h_reservoirs_do_not_go_negative_on_round_off():
+    """Dissolving all H2 from an atmosphere whose H_kg_atm sits 1e5 kg below the
+    old H2_kg_atm leaves H_kg_atm at 0, not at -1e5 kg, which the impact guard
+    would refuse."""
+    cfg = _make_config()
+    hf_row = _make_hf_row(
+        H2_kg_total=1e21 + 1e5,
+        H2_kg_atm=1e21 + 1e5,
+        extra={'H_kg_atm': 1e21, 'H_kg_liquid': 0.0},
+    )
+    with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=1.0):
+        apply_binodal_h2(hf_row, cfg)
+    assert hf_row['H2_kg_atm'] == pytest.approx(0.0, abs=0.0)
+    assert hf_row['H_kg_atm'] == pytest.approx(0.0, abs=0.0)
+    assert hf_row['H_kg_liquid'] == pytest.approx(1e21 + 1e5, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
 def test_solid_h2_reservoir_is_always_zero():
     """H2 does not partition into solid silicate; the solid reservoir
     must be zeroed regardless of sigma."""

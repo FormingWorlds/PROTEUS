@@ -440,6 +440,20 @@ def test_dummy_outgas_derives_an_empty_oxygen_budget_only_in_the_init_stage():
     assert later['O_kg_total'] == pytest.approx(0.0, abs=0.0)
 
 
+@pytest.mark.unit
+def test_an_emptied_dummy_oxygen_budget_stays_empty_while_the_species_keep_their_o():
+    """A budget derived in the init stage and later emptied by escape or a strip
+    stays 0 on the next call; the atmosphere and melt still hold the stoichiometric
+    O of the species built from H and C, which O_kg_total does not bound."""
+    hf_row = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.5)
+    _run(hf_row)
+    assert hf_row['O_kg_total'] > 0.0
+    hf_row['O_kg_total'] = 0.0
+    _run(hf_row, initial=False)
+    assert hf_row['O_kg_total'] == pytest.approx(0.0, abs=0.0)
+    assert hf_row['O_kg_atm'] + hf_row['O_kg_liquid'] > 0.0
+
+
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------

@@ -53,6 +53,15 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict, *, in
     initial : bool
         Whether this is an init-stage iteration. Only then is an empty O budget
         derived from the outgassed species; later an emptied budget stays empty.
+
+    Notes
+    -----
+    The O in the atmosphere and melt is the stoichiometric O of the H2O, CO2 and
+    SO2 built from H, C and S, and ``O_kg_total`` does not bound it. With escape
+    from the outgassed reservoir the O share of the loss is the atmosphere's, so
+    ``O_kg_total`` can reach 0 while H remains; the atmosphere then holds O that
+    no budget holds, which sets ``P_surf`` and cannot escape. An impact strips at
+    most ``O_kg_total`` of oxygen.
     """
     Phi_global = float(hf_row['Phi_global'])
     gravity = float(hf_row['gravity'])
