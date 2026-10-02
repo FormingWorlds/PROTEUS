@@ -3219,6 +3219,17 @@ def test_run_solver_writes_the_resume_state_every_step(tmp_path, core_bc):
     hf_row = {'Time': 202.0, 'T_surf': 3000.0}
     sim_time, _ = runner.run_solver(hf_row, interior_o, {'output': str(tmp_path)})
     assert sim_time == pytest.approx(282.0, rel=1e-15)
+    # The 7 profiles land on interior_o unchanged; the radius stays in metres.
+    for attr, field in (
+        ('phi', 'phi_stag'),
+        ('visc', 'visc_stag'),
+        ('density', 'rho_stag'),
+        ('radius', 'r_basic'),
+        ('mass', 'mass_stag'),
+        ('temp', 'T_stag'),
+        ('pres', 'P_stag'),
+    ):
+        assert getattr(interior_o, attr) is getattr(out, field)
     got, status = _snapshot_scalar(str(tmp_path), sim_time, 'dSdr_cmb_state')
     if core_bc == 'energy_balance':
         assert status == 'ok' and got == pytest.approx(-5.254e-08, rel=1e-15)

@@ -382,6 +382,31 @@ class Proteus:
         self.last_struct_Phi = new_Phi
         self._baseline_structure_done = True
 
+    def _match_ps_tables_to_mass(self):
+        """Point a resumed run at the P-S tables of its restored planet mass.
+
+        The resume restores ``spider_eos_dir`` before the accreted mass is
+        restored; tables built for another mass (a walk-back past an impact) are
+        replaced by the tables of the current one.
+        """
+        dirs = self.directories
+        struct = self.config.interior_struct.module
+        energetics = self.config.interior_energetics.module
+        # The SPIDER structure keeps the static tables, which do not depend on mass.
+        if (
+            struct == 'spider'
+            or energetics not in ('spider', 'aragog')
+            or 'spider_eos_dir' not in dirs
+        ):
+            return
+        from proteus.interior_struct.zalmoxis import generate_spider_tables
+
+        tables = generate_spider_tables(self.config, dirs['output'])
+        if tables is not None:
+            dirs['spider_eos_dir'] = tables['eos_dir']
+            dirs['spider_solidus_ps'] = tables['solidus_path']
+            dirs['spider_liquidus_ps'] = tables['liquidus_path']
+
     def _save_zalmoxis_output(self):
         """Copy ``zalmoxis_output.dat`` next to the snapshot of the row being written."""
         if (
@@ -1027,6 +1052,8 @@ class Proteus:
         # applied. Runs after the timeline is resolved, so a re-run dynamical
         # model still selects its body against the configured planet.
         restore_accretion_state(self)
+        if resume and self.config.accretion.module is not None:
+            self._match_ps_tables_to_mass()
 
         # Track the last simulation time at which data was written to disk.
         # Initialised to -inf so the first eligible iteration always writes.
