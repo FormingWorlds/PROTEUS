@@ -2994,7 +2994,9 @@ def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_
         from proteus.interior_chem.redox import write_fO2_profile_ncdf
 
         write_fO2_profile_ncdf(
-            os.path.join(dirs['output'], 'data', format_subyear_time(hf_row['Time']) + '_int.nc'),
+            os.path.join(
+                dirs['output'], 'data', format_subyear_time(hf_row['Time']) + '_int.nc'
+            ),
             interior_o.redox_state,
         )
 

@@ -700,6 +700,27 @@
       "group_qualifier": null
     },
     {
+      "path": "params.dt.afe_max_rel_change",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.03",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Largest relative change of the Fe-metal activity (``a_fe_max_mantle``, melt-redox tracker) allowed between two consecutive steps [dimensionless]. The next step is capped at ``dt_prev * afe_max_rel_change / |Δa_Fe / a_Fe|``, the change of the last step extrapolated at its own rate, and not below ``minimum + minimum_rel * Time``. Applies only while both of the last two steps tested a cell (``a_fe_max_mantle > 0``), i.e. under ``planet.fO2_source = \"from_mantle_redox\"``. Default 0.03; 0 disables the cap.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "params.stop.iters.enabled",
       "toml_section": "params.stop.iters",
       "class": "StopIters",

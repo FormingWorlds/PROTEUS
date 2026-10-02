@@ -70,6 +70,7 @@ flag that every public call returns:
 Pressures above ``P_EXERCISED`` (136 GPa, roughly Earth's core-mantle
 boundary and the deepest Schaefer et al. ran) are flagged but not refused.
 """
+
 from __future__ import annotations
 
 import logging
@@ -91,16 +92,16 @@ _A = np.array([35.7939748339471, 34.5261639420686])
 _B = np.array([71.1031366774265, 68.6442962291442])
 _C = np.array([36.5954522514324, 35.2706911576929])
 
-_P0 = 1.0e-4        # GPa, Deng reference pressure
-_T0 = 3000.0        # K,   Deng reference temperature
+_P0 = 1.0e-4  # GPa, Deng reference pressure
+_T0 = 3000.0  # K,   Deng reference temperature
 
 # Uncompressed reaction volume, 0.5*(V0_ox - V0_red), in J/GPa/mol.
 # The factor 0.5 is Schaefer's: the endmembers carry 2 Fe per formula unit,
 # so the per-FeO volume difference is half the endmember difference.
 _DV0 = 0.5 * (_V0[1] - _V0[0])
 
-T_CEILING = 5000.0      # K,   upper limit of Deng et al. (2020) modelling
-P_EXERCISED = 136.0     # GPa, deepest pressure Schaefer et al. (2024) ran
+T_CEILING = 5000.0  # K,   upper limit of Deng et al. (2020) modelling
+P_EXERCISED = 136.0  # GPa, deepest pressure Schaefer et al. (2024) ran
 
 # ── Lange & Carmichael (1987) FeO liquid + Kress & Carmichael (1993) K ──────
 _K0_FEO, _KP_FEO = 30.33, 4.0
@@ -112,7 +113,7 @@ _K0_FE, _KP_FE, _DELTA0_FE, _KAPPA_FE = 148.0, 5.8, 5.1, 0.56
 
 def _bh(x: np.ndarray, i: int) -> np.ndarray:
     """Deng thermal-pressure coefficient, GPa/K. x = V/V0."""
-    return (_A[i] - _B[i] * x + _C[i] * x ** 2) / 1000.0
+    return (_A[i] - _B[i] * x + _C[i] * x**2) / 1000.0
 
 
 def p_splice(T: float) -> float:
@@ -123,8 +124,7 @@ def p_splice(T: float) -> float:
     splice set from the ferric endmember alone leaves a thin band near the
     temperature ceiling where the ferrous solve fails.
     """
-    return _P0 + max(float(_bh(np.array(1.0), 0)),
-                     float(_bh(np.array(1.0), 1))) * (T - _T0)
+    return _P0 + max(float(_bh(np.array(1.0), 0)), float(_bh(np.array(1.0), 1))) * (T - _T0)
 
 
 def _bm4_pressure(V: float, T: float, i: int) -> float:
@@ -132,11 +132,13 @@ def _bm4_pressure(V: float, T: float, i: int) -> float:
     a1 = 3 * v0 * _P0
     a2 = 3 * v0 * (3 * k0 - 5 * _P0) / 2
     a3 = v0 * (9 * k0 * kp - 36 * k0 + 35 * _P0) / 2
-    a4 = 3 * v0 * (9 * k0 ** 2 * kdp + 9 * k0 * kp ** 2
-                   - 63 * k0 * kp + 143 * k0 - 105 * _P0) / 8
+    a4 = 3 * v0 * (9 * k0**2 * kdp + 9 * k0 * kp**2 - 63 * k0 * kp + 143 * k0 - 105 * _P0) / 8
     f = 0.5 * ((v0 / V) ** (2.0 / 3.0) - 1.0)
-    p_bm = (a1 + 2 * a2 * f + 3 * a3 * f ** 2 + 4 * a4 * f ** 3) \
-        * (v0 ** (2.0 / 3.0)) / (3.0 * V ** (5.0 / 3.0))
+    p_bm = (
+        (a1 + 2 * a2 * f + 3 * a3 * f**2 + 4 * a4 * f**3)
+        * (v0 ** (2.0 / 3.0))
+        / (3.0 * V ** (5.0 / 3.0))
+    )
     return p_bm + float(_bh(np.array(V / v0), i)) * (T - _T0)
 
 
@@ -159,9 +161,13 @@ def _solve_V(P: float, T: float, i: int) -> float:
 
 def _int_V_FeO(T: float, P: float) -> float:
     """Murnaghan integral of the Lange & Carmichael (1987) FeO liquid, J/mol."""
-    V = (13650.0 + 2.92 * (T - 1673.0)) * 1e-3          # cm3/mol
-    return (V * _K0_FEO / (_KP_FEO - 1.0)
-            * ((1.0 + _KP_FEO * P / _K0_FEO) ** (1.0 - 1.0 / _KP_FEO) - 1.0)) * 1e3
+    V = (13650.0 + 2.92 * (T - 1673.0)) * 1e-3  # cm3/mol
+    return (
+        V
+        * _K0_FEO
+        / (_KP_FEO - 1.0)
+        * ((1.0 + _KP_FEO * P / _K0_FEO) ** (1.0 - 1.0 / _KP_FEO) - 1.0)
+    ) * 1e3
 
 
 def _V_Fe(P: float) -> float:
@@ -171,8 +177,7 @@ def _V_Fe(P: float) -> float:
 
     def resid(V):
         x = (V / _V298_FE) ** (1.0 / 3.0)
-        return P - 3 * _K0_FE * (1 - x) / x ** 2 \
-            * np.exp(1.5 * (_KP_FE - 1) * (1 - x))
+        return P - 3 * _K0_FE * (1 - x) / x**2 * np.exp(1.5 * (_KP_FE - 1) * (1 - x))
 
     return brentq(resid, 0.2 * _V298_FE, _V298_FE, xtol=1e-12)
 
@@ -191,8 +196,9 @@ def _int_V_Fe_grid(T: float, Pgrid: np.ndarray) -> np.ndarray:
     VT = np.empty(len(Pgrid))
     for j, p in enumerate(Pgrid):
         Vp = _V_Fe(float(p))
-        alpha = _ALPHA0_FE * np.exp(-_DELTA0_FE / _KAPPA_FE
-                                    * (1.0 - (Vp / _V298_FE) ** _KAPPA_FE))
+        alpha = _ALPHA0_FE * np.exp(
+            -_DELTA0_FE / _KAPPA_FE * (1.0 - (Vp / _V298_FE) ** _KAPPA_FE)
+        )
         VT[j] = Vp * np.exp(alpha * (T - 298.0))
     return _cumint(VT, Pgrid) * 1e3
 
@@ -201,8 +207,7 @@ class _Table:
     """Cached (P, T) grids of int dV dP: the disproportionation reaction
     (``I``) and the FeO -> FeO1.5 oxidation reaction (``I_ox``)."""
 
-    def __init__(self, P_max: float, T_min: float, T_max: float,
-                 nP: int, nT: int):
+    def __init__(self, P_max: float, T_min: float, T_max: float, nP: int, nT: int):
         # The grid starts at P0 = 1 bar, not at zero: that is the standard
         # state the Kowalski & Spencer Gibbs energies are referenced to, and
         # the BM4 residual has no sign change in [0.15*V0, V0] at P = 0
@@ -219,17 +224,17 @@ class _Table:
             dV = np.empty(nP)
             for i, P in enumerate(self.P):
                 if P < Psp:
-                    dV[i] = _DV0                      # splice: uncompressed
+                    dV[i] = _DV0  # splice: uncompressed
                 else:
                     v_ox = _solve_V(P, T, 1)
                     v_red = _solve_V(P, T, 0)
-                    dV[i] = (np.nan if (np.isnan(v_ox) or np.isnan(v_red))
-                             else 0.5 * (v_ox - v_red))
+                    dV[i] = (
+                        np.nan if (np.isnan(v_ox) or np.isnan(v_red)) else 0.5 * (v_ox - v_red)
+                    )
             # carry the last good value forward if the EOS failed anywhere
             if np.isnan(dV).any():
                 bad = int(np.isnan(dV).sum())
-                log.warning('Deng EOS: %d/%d grid points failed at T=%.0f K',
-                            bad, nP, T)
+                log.warning('Deng EOS: %d/%d grid points failed at T=%.0f K', bad, nP, T)
                 idx = np.where(~np.isnan(dV))[0]
                 if idx.size == 0:
                     dV[:] = _DV0
@@ -256,22 +261,35 @@ class _Table:
         it = np.clip(np.searchsorted(self.T, Tc) - 1, 0, len(self.T) - 2)
         wp = (Pc - self.P[ip]) / (self.P[ip + 1] - self.P[ip])
         wt = (Tc - self.T[it]) / (self.T[it + 1] - self.T[it])
-        return ((1 - wp) * (1 - wt) * G[ip, it]
-                + wp * (1 - wt) * G[ip + 1, it]
-                + (1 - wp) * wt * G[ip, it + 1]
-                + wp * wt * G[ip + 1, it + 1])
+        return (
+            (1 - wp) * (1 - wt) * G[ip, it]
+            + wp * (1 - wt) * G[ip + 1, it]
+            + (1 - wp) * wt * G[ip, it + 1]
+            + wp * wt * G[ip + 1, it + 1]
+        )
 
 
 _TABLE: _Table | None = None
 
 
-def build_table(P_max: float = P_EXERCISED * 1.05, T_min: float = 1500.0,
-                T_max: float = T_CEILING, nP: int = 150, nT: int = 52) -> None:
+def build_table(
+    P_max: float = P_EXERCISED * 1.05,
+    T_min: float = 1500.0,
+    T_max: float = T_CEILING,
+    nP: int = 150,
+    nT: int = 52,
+) -> None:
     """Build and cache the (P, T) table. ~0.15 s; call once at init."""
     global _TABLE
     _TABLE = _Table(P_max, T_min, T_max, nP, nT)
-    log.info('Deng EOS dV dP table built: %d x %d, P<=%.0f GPa, T=%.0f-%.0f K',
-             nP, nT, P_max, _TABLE.T[0], _TABLE.T[-1])
+    log.info(
+        'Deng EOS dV dP table built: %d x %d, P<=%.0f GPa, T=%.0f-%.0f K',
+        nP,
+        nT,
+        P_max,
+        _TABLE.T[0],
+        _TABLE.T[-1],
+    )
 
 
 def clamped_mask(T, P):

@@ -55,6 +55,7 @@ identifiable. The paper describes these as "poorly known"; f_crit scales as
 GAMMA^0.5, so a factor-2 error in GAMMA moves the threshold by ~40%. Worth
 treating as a stated uncertainty rather than a fixed truth.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -64,9 +65,9 @@ from proteus.interior_chem import eos_deng
 
 R = 8.31447
 
-GAMMA_FEO = 1.55        # Hirschmann (2022); Schaefer et al. (2024) Section 2.7
+GAMMA_FEO = 1.55  # Hirschmann (2022); Schaefer et al. (2024) Section 2.7
 GAMMA_FEO15 = 1.0
-GAMMA = GAMMA_FEO ** 3 / GAMMA_FEO15 ** 2    # the only identifiable combination
+GAMMA = GAMMA_FEO**3 / GAMMA_FEO15**2  # the only identifiable combination
 
 
 # ── Kowalski & Spencer (1995) standard-state Gibbs energies, J/mol ──────────
@@ -74,9 +75,13 @@ def _g_fe_ref(T):
     T = np.asarray(T, dtype=float)
     return np.where(
         T < 1811,
-        1225.7 + 124.134 * T - 23.5143 * T * np.log(T) - 4.39752e-3 * T ** 2
-        - 5.89269e-8 * T ** 3 + 77358.5 / T,
-        -25383.451 + 299.31255 * T - 46 * T * np.log(T) + 2.2960305e31 / T ** 9,
+        1225.7
+        + 124.134 * T
+        - 23.5143 * T * np.log(T)
+        - 4.39752e-3 * T**2
+        - 5.89269e-8 * T**3
+        + 77358.5 / T,
+        -25383.451 + 299.31255 * T - 46 * T * np.log(T) + 2.2960305e31 / T**9,
     )
 
 
@@ -84,21 +89,27 @@ def _g_fe_liquid(T):
     T = np.asarray(T, dtype=float)
     return np.where(
         T < 1811,
-        12040.17 - 6.55843 * T - 3.6751551e-21 * T ** 7 + _g_fe_ref(T),
+        12040.17 - 6.55843 * T - 3.6751551e-21 * T**7 + _g_fe_ref(T),
         -10839.7 + 291.302 * T - 46 * T * np.log(T),
     )
 
 
 def _g_feo_liquid(T):
     T = np.asarray(T, dtype=float)
-    return (-279318 + 252.848 * T - 46.12826 * T * np.log(T)
-            - 5.7402984e-3 * T ** 2) + 34008 - 20.969 * T
+    return (
+        (-279318 + 252.848 * T - 46.12826 * T * np.log(T) - 5.7402984e-3 * T**2)
+        + 34008
+        - 20.969 * T
+    )
 
 
 def _g_feo15_liquid(T):
     T = np.asarray(T, dtype=float)
-    return 0.5 * (-858683 + 827.946 * T - 137.0089 * T * np.log(T)
-                  + 1453810 / T) + 39712 - 20.007 * T
+    return (
+        0.5 * (-858683 + 827.946 * T - 137.0089 * T * np.log(T) + 1453810 / T)
+        + 39712
+        - 20.007 * T
+    )
 
 
 def dG0(T):
@@ -133,11 +144,10 @@ def activity_Fe_metal(T, n2, n3, n_sil, P_gpa=None, use_P_term: bool = False):
     K, valid = K_eq(T, P_gpa, use_P_term)
     if n3 <= 0.0 or n2 <= 0.0 or n_sil <= 0.0:
         return np.full(np.shape(K), np.inf if n3 <= 0.0 < n2 else 0.0), valid
-    return K * GAMMA * n2 ** 3 / (n3 ** 2 * n_sil), valid
+    return K * GAMMA * n2**3 / (n3**2 * n_sil), valid
 
 
-def critical_ferric_fraction(T, n_FeT, n_sil, P_gpa=None,
-                             use_P_term: bool = False) -> float:
+def critical_ferric_fraction(T, n_FeT, n_sil, P_gpa=None, use_P_term: bool = False) -> float:
     """Fe3+/FeT at which a_Fe = 1. Metal saturates BELOW this value.
 
     Diagnostic only -- the model never needs it, but it is the quantity an
@@ -147,15 +157,16 @@ def critical_ferric_fraction(T, n_FeT, n_sil, P_gpa=None,
     K = float(K)
 
     def g(f):
-        return K * GAMMA * n_FeT * (1 - f) ** 3 / (f ** 2 * n_sil) - 1.0
+        return K * GAMMA * n_FeT * (1 - f) ** 3 / (f**2 * n_sil) - 1.0
 
     if g(0.5) > 0:
-        return np.nan            # saturated even at f = 0.5
+        return np.nan  # saturated even at f = 0.5
     return brentq(g, 1e-12, 0.5, xtol=1e-14)
 
 
-def solve_extent(K: float, n2: float, n3: float, n_sil: float,
-                 n_metal_avail: float = 0.0) -> float:
+def solve_extent(
+    K: float, n2: float, n3: float, n_sil: float, n_metal_avail: float = 0.0
+) -> float:
     """Reaction extent xi at a_Fe = 1, for ONE parcel. Moles.
 
     xi > 0 metal forms, xi < 0 metal redissolves, 0 nothing happens.
@@ -168,23 +179,22 @@ def solve_extent(K: float, n2: float, n3: float, n_sil: float,
         n_feo = n2 - 3.0 * xi
         if n_feo <= 0.0:
             return -np.inf
-        return K - (n3 + 2.0 * xi) ** 2 * (n_sil - xi) \
-            / (GAMMA_FEO ** 3 * n_feo ** 3)
+        return K - (n3 + 2.0 * xi) ** 2 * (n_sil - xi) / (GAMMA_FEO**3 * n_feo**3)
 
     f0 = F(0.0)
 
-    if f0 > 0.0:                                   # supersaturated -> form metal
+    if f0 > 0.0:  # supersaturated -> form metal
         hi = n2 / 3.0 * (1.0 - 1e-12)
-        if F(hi) > 0.0:                            # should not happen: RHS -> inf
+        if F(hi) > 0.0:  # should not happen: RHS -> inf
             return hi
         return brentq(F, 0.0, hi, xtol=1e-18, rtol=1e-12)
 
-    if f0 < 0.0 and n_metal_avail > 0.0:           # undersaturated -> dissolve
+    if f0 < 0.0 and n_metal_avail > 0.0:  # undersaturated -> dissolve
         lo = -n_metal_avail
-        if n3 + 2.0 * lo <= 0.0:                   # cannot un-make more Fe3+
+        if n3 + 2.0 * lo <= 0.0:  # cannot un-make more Fe3+
             lo = -n3 / 2.0 * (1.0 - 1e-12)
         if F(lo) <= 0.0:
-            return lo                              # all available metal dissolves
+            return lo  # all available metal dissolves
         return brentq(F, lo, 0.0, xtol=1e-18, rtol=1e-12)
 
     return 0.0

@@ -88,6 +88,7 @@ field (``planet.ferric_fraction_initial``, default 0.1). It is the least
 well constrained of these numbers and the one a parameter study most
 naturally varies, so it is exposed rather than fixed.
 """
+
 from __future__ import annotations
 
 import logging
@@ -115,15 +116,15 @@ log = logging.getLogger('fwl.' + __name__)
 # the initial Fe2+ reservoir, and Fe3+ is added on top of it from f_0 (Step 2).
 # The non-iron mass that becomes MgSiO3 in _metal_saturation_step is
 # therefore 1 - W_FET - w_FeO1.5, with w_FeO1.5 fixed at initialisation.
-W_FET  = 0.08       # ferrous FeO mass fraction in the melt (dimensionless)
-MU_FEO = 0.07184    # molar mass of FeO in kg/mol (= 71.84 g/mol)
+W_FET = 0.08  # ferrous FeO mass fraction in the melt (dimensionless)
+MU_FEO = 0.07184  # molar mass of FeO in kg/mol (= 71.84 g/mol)
 MU_FEO15 = 0.07984  # molar mass of FeO1.5 in kg/mol (= 79.84 g/mol)
 MU_MGSIO3 = 0.100389  # molar mass of MgSiO3 in kg/mol (= 100.389 g/mol)
 # Default initial ferric fraction Fe3+/FeT. The value actually used is
 # config.planet.ferric_fraction_initial, which defaults to this; the
 # constant is kept so the dataclass has a sane placeholder before
 # _init_state overwrites it, and to document the published default.
-F_0    = 0.10       # initial ferric fraction Fe3+/FeT (Schaefer et al. 2024)
+F_0 = 0.10  # initial ferric fraction Fe3+/FeT (Schaefer et al. 2024)
 
 # Melt-fraction threshold below which a cell counts as solid everywhere in
 # the tracker (melt inventory, crystallization, Step 4 homogenisation, the
@@ -134,30 +135,49 @@ F_0    = 0.10       # initial ferric fraction Fe3+/FeT (Schaefer et al. 2024)
 # threshold crystallises its remaining melt in that step (Step 3).
 PHI_SOLID = 0.05
 
-D_FE2_BRG = 0.85    # bridgmanite/melt partition coefficient for Fe2+ (both regimes)
+D_FE2_BRG = 0.85  # bridgmanite/melt partition coefficient for Fe2+ (both regimes)
 
-P_CUTOFF_GPA = 22.0        # halt bridgmanite assemblage above this pressure
-D_FE3_BRG    = 0.75        # bridgmanite/melt (Table 3)
-D_FE3_CPX    = 0.45        # clinopyroxene/melt (Table 3, Mallmann & O'Neill 2009)
-D_FE3_OPX    = 0.70 * D_FE3_CPX      # orthopyroxene/melt = D_opx/cpx x D_cpx/melt (Eq 6)
-D_FE3_SHALLOW = (D_FE3_CPX + D_FE3_OPX) / 2   # plain mean, no modal Cpx/Opx given
+P_CUTOFF_GPA = 22.0  # halt bridgmanite assemblage above this pressure
+D_FE3_BRG = 0.75  # bridgmanite/melt (Table 3)
+D_FE3_CPX = 0.45  # clinopyroxene/melt (Table 3, Mallmann & O'Neill 2009)
+D_FE3_OPX = 0.70 * D_FE3_CPX  # orthopyroxene/melt = D_opx/cpx x D_cpx/melt (Eq 6)
+D_FE3_SHALLOW = (D_FE3_CPX + D_FE3_OPX) / 2  # plain mean, no modal Cpx/Opx given
 
 # BSE starting composition (wt%)
 _WT_OXIDES = {
-    'FeO': 7.82, 'MgO': 38.3, 'SiO2': 45.5, 'CaO': 3.58, 'Al2O3': 4.49,
-    'FeO15': 0.36, 'Na2O': 0.0, 'K2O': 0.0, 'TiO2': 0.0, 'P2O5': 0.0,
+    'FeO': 7.82,
+    'MgO': 38.3,
+    'SiO2': 45.5,
+    'CaO': 3.58,
+    'Al2O3': 4.49,
+    'FeO15': 0.36,
+    'Na2O': 0.0,
+    'K2O': 0.0,
+    'TiO2': 0.0,
+    'P2O5': 0.0,
 }
 
 # Hirschmann (2022) Eq 21 fixed coefficients
-_R       = 8.31447
-_A       = 0.19317
-_B       = -4.51412 / 2.303
+_R = 8.31447
+_A = 0.19317
+_B = -4.51412 / 2.303
 _C_PARAM = 9574.293 / 2.303
 _DELTA_CP = 33.25
-_T0      = 1673.15
-_YS = [y / 2.303 for y in
-       (-1198.4, -426.82, 1138.371, 4232.933, 6650.972, 7998.434,
-        -10298.6, -2866.92, -2663.74)]
+_T0 = 1673.15
+_YS = [
+    y / 2.303
+    for y in (
+        -1198.4,
+        -426.82,
+        1138.371,
+        4232.933,
+        6650.972,
+        7998.434,
+        -10298.6,
+        -2866.92,
+        -2663.74,
+    )
+]
 
 
 def _compute_mole_fractions():
@@ -167,12 +187,30 @@ def _compute_mole_fractions():
     expressed per single cation, matching Hirschmann's point (2)
     modification to Eq 20.
     """
-    M = {'SiO2': 60.08, 'TiO2': 79.87, 'MgO': 40.30, 'CaO': 56.08,
-         'Na2O': 61.98, 'K2O': 94.20, 'P2O5': 141.94, 'Al2O3': 101.96,
-         'FeO': 71.84, 'FeO15': 79.84}
-    cations_per_unit = {'SiO2': 1, 'TiO2': 1, 'MgO': 1, 'CaO': 1,
-                        'Na2O': 2, 'K2O': 2, 'P2O5': 2, 'Al2O3': 2,
-                        'FeO': 1, 'FeO15': 1}
+    M = {
+        'SiO2': 60.08,
+        'TiO2': 79.87,
+        'MgO': 40.30,
+        'CaO': 56.08,
+        'Na2O': 61.98,
+        'K2O': 94.20,
+        'P2O5': 141.94,
+        'Al2O3': 101.96,
+        'FeO': 71.84,
+        'FeO15': 79.84,
+    }
+    cations_per_unit = {
+        'SiO2': 1,
+        'TiO2': 1,
+        'MgO': 1,
+        'CaO': 1,
+        'Na2O': 2,
+        'K2O': 2,
+        'P2O5': 2,
+        'Al2O3': 2,
+        'FeO': 1,
+        'FeO15': 1,
+    }
     n_cation = {k: cations_per_unit[k] * _WT_OXIDES[k] / M[k] for k in M}
     n_total = sum(n_cation.values())
     return {k: v / n_total for k, v in n_cation.items()}
@@ -187,16 +225,21 @@ def _log10_fO2(redox_ratio, T, X: dict, int_dV_dP=0.0):
     -int(dV dP)/(R T ln10) on the Fe3+/Fe2+ side, so at fixed ratio it
     raises log10(fO2) by int(dV dP)/(a R T ln10)."""
     T = np.asarray(T, dtype=float)
-    Xi = [X['SiO2'], X['TiO2'], X['MgO'], X['CaO'],
-          X['Na2O'], X['K2O'], X['P2O5'], X['Al2O3']]
+    Xi = [X['SiO2'], X['TiO2'], X['MgO'], X['CaO'], X['Na2O'], X['K2O'], X['P2O5'], X['Al2O3']]
     loggammas_const = (
-        _YS[0] * Xi[0] + _YS[1] * Xi[1] + _YS[2] * Xi[2] + _YS[3] * Xi[3]
-        + _YS[4] * Xi[4] + _YS[5] * Xi[5] + _YS[6] * Xi[6]
-        + _YS[7] * Xi[7] * Xi[0] + _YS[8] * Xi[0] * Xi[2]
+        _YS[0] * Xi[0]
+        + _YS[1] * Xi[1]
+        + _YS[2] * Xi[2]
+        + _YS[3] * Xi[3]
+        + _YS[4] * Xi[4]
+        + _YS[5] * Xi[5]
+        + _YS[6] * Xi[6]
+        + _YS[7] * Xi[7] * Xi[0]
+        + _YS[8] * Xi[0] * Xi[2]
     )
     logXFe3Fe2 = math.log10(redox_ratio)
-    dG_RT = _B + _C_PARAM / T - (_DELTA_CP / _R / math.log(10)) * (
-        1 - _T0 / T - np.log(T / _T0)
+    dG_RT = (
+        _B + _C_PARAM / T - (_DELTA_CP / _R / math.log(10)) * (1 - _T0 / T - np.log(T / _T0))
     )
     pressure_term = np.asarray(int_dV_dP, dtype=float) / (_R * T * math.log(10))
     loggammas = loggammas_const / T
@@ -241,6 +284,7 @@ def _update_ratios(state: MeltRedoxState) -> None:
 class MeltRedoxState:
     """Persistent Fe3+/Fe2+ tracking state, one instance per run (held at
     Interior_t.redox_state), carried across coupling-loop timesteps."""
+
     n_fe3_melt: float
     n_fe2_melt: float
     phi_prev: np.ndarray
@@ -290,9 +334,7 @@ def _init_state(
     the config layer, and f_0 in {0, 1} silently produces a degenerate
     redox ratio rather than an error."""
     if not 0.0 < f_0 < 1.0:
-        raise ValueError(
-            f'initial ferric fraction must lie in (0, 1), got {f_0}'
-        )
+        raise ValueError(f'initial ferric fraction must lie in (0, 1), got {f_0}')
 
     M_melt_0 = float(np.sum(phi * mass))
     n_fe2_0 = (W_FET * M_melt_0) / MU_FEO
@@ -327,8 +369,10 @@ def _warn_clamped_cells(temp: np.ndarray, P_gpa: np.ndarray, usable: np.ndarray)
         'P=%.1f-%.1f GPa; values of int(dV dP) are clamped to the nearest '
         'available grid value',
         int(np.count_nonzero(clamped)),
-        float(np.min(temp[clamped])), float(np.max(temp[clamped])),
-        float(np.min(P_gpa[clamped])), float(np.max(P_gpa[clamped])),
+        float(np.min(temp[clamped])),
+        float(np.max(temp[clamped])),
+        float(np.min(P_gpa[clamped])),
+        float(np.max(P_gpa[clamped])),
     )
 
 
@@ -408,7 +452,8 @@ def _metal_saturation_step(
                 'No melt cell lies inside the Fe-disproportionation EOS '
                 'envelope (T <= %.0f K, P <= %.0f GPa); metal saturation '
                 'cannot be evaluated while that holds.',
-                eos_deng.T_CEILING, eos_deng.P_EXERCISED,
+                eos_deng.T_CEILING,
+                eos_deng.P_EXERCISED,
             )
         return 0.0
     cstar = int(np.argmax(np.where(usable, a_fe, -np.inf)))
@@ -417,7 +462,7 @@ def _metal_saturation_step(
     # Forward reaction only: metal that has formed is never redissolved, so an
     # undersaturated melt is left untouched even if metal is present.
     if a_fe[cstar] < 1.0:
-        return 0.0                      # undersaturated, no metal forms
+        return 0.0  # undersaturated, no metal forms
 
     # Step 9f: the only equation solved. One scalar unknown, monotonic in xi,
     # bracketed automatically because F(0) = RHS(0)*(a_Fe - 1).
@@ -460,8 +505,9 @@ def write_fO2_profile_ncdf(fpath: str, state: MeltRedoxState | None) -> bool:
     with nc.Dataset(fpath, mode='a') as ds:
         if 'staggered' not in ds.dimensions or len(ds.dimensions['staggered']) != prof.size:
             log.warning(
-                'fO2 profile (%d cells) does not match the staggered grid of %s; '
-                'not written', prof.size, fpath,
+                'fO2 profile (%d cells) does not match the staggered grid of %s; not written',
+                prof.size,
+                fpath,
             )
             return False
         _put_fO2_profile(ds, state)
@@ -469,8 +515,11 @@ def write_fO2_profile_ncdf(fpath: str, state: MeltRedoxState | None) -> bool:
 
 
 def write_redox_ncdf(
-    fpath: str, state: MeltRedoxState | None, time: float,
-    interior_o: Interior_t, hf_row: dict,
+    fpath: str,
+    state: MeltRedoxState | None,
+    time: float,
+    interior_o: Interior_t,
+    hf_row: dict,
 ) -> bool:
     """Write a standalone per-step redox snapshot ``<time>_redox.nc``.
 
@@ -519,16 +568,20 @@ def _put_fO2_profile(ds, state: MeltRedoxState) -> None:
     v[:] = np.asarray(state.log10_fO2_cell, dtype=float)
     v.units = 'log10(bar)'
     v.long_name = 'melt oxygen fugacity, Hirschmann (2022) Eq 21 / Schaefer et al. (2024) Eq 13'
-    v.comment = ('Evaluated at each cell T and P with the FeO-FeO1.5 '
-                 'int(dV dP) (Deng et al. 2020); NaN in solid cells and '
-                 'outside the EOS envelope')
+    v.comment = (
+        'Evaluated at each cell T and P with the FeO-FeO1.5 '
+        'int(dV dP) (Deng et al. 2020); NaN in solid cells and '
+        'outside the EOS envelope'
+    )
     if 'fO2_top_index' in ds.variables:
         t = ds['fO2_top_index']
     else:
         t = ds.createVariable('fO2_top_index', np.int32)
     t.assignValue(int(state.fO2_cell))
-    t.comment = ('staggered index of the uppermost melt cell (diagnostic; '
-                 'fO2_shift_IW_mantle is evaluated at 1 bar, not here)')
+    t.comment = (
+        'staggered index of the uppermost melt cell (diagnostic; '
+        'fO2_shift_IW_mantle is evaluated at 1 bar, not here)'
+    )
 
 
 def effective_melt_fraction(phi) -> np.ndarray:
@@ -555,7 +608,7 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
 
     # Effective melt fraction: cells with phi < PHI_SOLID are solid (phi = 0)
     # for every step below. Applied once here so all steps agree.
-    phi  = effective_melt_fraction(interior_o.phi)
+    phi = effective_melt_fraction(interior_o.phi)
     mass = np.asarray(interior_o.mass, dtype=float)
     pres = np.asarray(interior_o.pres, dtype=float)
 
@@ -662,7 +715,9 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
             'Melt redox: T_magma = %.1f K is below outgas.T_floor = %.1f K; '
             'surface fO2 and Delta-IW are evaluated at %.1f K, the temperature '
             'the outgassing uses',
-            T_magma, T_floor, T_out,
+            T_magma,
+            T_floor,
+            T_out,
         )
     log10_fO2_surf = _log10_fO2_surface(state.redox_ratio, T_out, state.X)
     dIW = log10_fO2_surf - _iw_buffer_bower2022(T_out)
@@ -683,7 +738,11 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     log.info(
         'Metal redox state: %s; cumulative metal=%.3e mol, '
         'Fe3+/FeT=%.4f, surface dIW=%+.3f (1 bar, T=%.0f K)',
-        metal_msg, n_metal_total, state.ferric_frac, dIW, T_out,
+        metal_msg,
+        n_metal_total,
+        state.ferric_frac,
+        dIW,
+        T_out,
     )
 
     # Step 11: metal-saturation diagnostics. Written unconditionally so the

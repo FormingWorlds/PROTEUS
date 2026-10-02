@@ -48,8 +48,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('endmember', [0, 1],
-                         ids=['ferrous endmember', 'ferric endmember'])
+@pytest.mark.parametrize('endmember', [0, 1], ids=['ferrous endmember', 'ferric endmember'])
 def test_birch_murnaghan_returns_the_reference_pressure_at_the_reference_volume(endmember):
     """At the reference volume and reference temperature the fitted equation
     of state reproduces the reference pressure exactly.
@@ -69,8 +68,7 @@ def test_birch_murnaghan_returns_the_reference_pressure_at_the_reference_volume(
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('endmember', [0, 1],
-                         ids=['ferrous endmember', 'ferric endmember'])
+@pytest.mark.parametrize('endmember', [0, 1], ids=['ferrous endmember', 'ferric endmember'])
 def test_thermal_pressure_fit_turns_upward_just_below_the_reference_volume(endmember):
     """The thermal-pressure coefficient decreases with expanding volume only
     up to V/V0 near 0.97, then rises, so the fit is usable on compressed
@@ -165,13 +163,17 @@ def test_reaction_volume_change_is_positive_near_the_surface_and_negative_at_dep
     assert abs(float(deep)) > abs(float(shallow))
 
 
-@pytest.mark.parametrize('T_kelvin, P_gpa, reason', [
-    (T_CEILING + 100.0, 50.0, 'above the temperature ceiling'),
-    (3000.0, P_EXERCISED + 50.0, 'beyond the calibrated pressure range'),
-    (np.nan, 50.0, 'undefined temperature'),
-])
+@pytest.mark.parametrize(
+    'T_kelvin, P_gpa, reason',
+    [
+        (T_CEILING + 100.0, 50.0, 'above the temperature ceiling'),
+        (3000.0, P_EXERCISED + 50.0, 'beyond the calibrated pressure range'),
+        (np.nan, 50.0, 'undefined temperature'),
+    ],
+)
 def test_points_outside_the_equation_of_state_domain_are_reported_invalid(
-        T_kelvin, P_gpa, reason):
+    T_kelvin, P_gpa, reason
+):
     """Conditions the source equation of state does not cover are flagged
     rather than extrapolated, and return a zero the caller can distinguish
     from a computed zero through the validity flag.
@@ -205,7 +207,7 @@ def test_liquid_iron_oxide_volume_integral_is_linear_at_low_pressure():
     effectively constant, so doubling the pressure doubles the integral.
     """
     T = 2500.0
-    V_cm3 = 13650.0 + 2.92 * (T - 1673.0)          # cm3/mol times 1e3
+    V_cm3 = 13650.0 + 2.92 * (T - 1673.0)  # cm3/mol times 1e3
     small, smaller = _int_V_FeO(T, 0.02), _int_V_FeO(T, 0.01)
 
     assert small == pytest.approx(2.0 * smaller, rel=1e-3)

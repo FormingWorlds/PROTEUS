@@ -63,9 +63,14 @@ def _kowalski_spencer_g_o2(T: float) -> float:
     required here to build the independent oxidation reaction used as the
     cross-implementation anchor.
     """
-    return (-13137.5203 + 525809.556 / T + 25.3200332 * T
-            - 33.627603 * T * np.log(T) - 0.00119159274 * T ** 2
-            + 1.3561111e-8 * T ** 3)
+    return (
+        -13137.5203
+        + 525809.556 / T
+        + 25.3200332 * T
+        - 33.627603 * T * np.log(T)
+        - 0.00119159274 * T**2
+        + 1.3561111e-8 * T**3
+    )
 
 
 def _hirschmann_2021_iw(T: float) -> float:
@@ -79,9 +84,11 @@ def _hirschmann_2021_iw(T: float) -> float:
 
 
 @pytest.mark.reference_pinned
-@pytest.mark.parametrize('T_kelvin, tolerance', [(1673.0, 0.05), (1800.0, 0.15)],
-                         ids=['at the CALPHAD reference temperature',
-                              'above the reference temperature'])
+@pytest.mark.parametrize(
+    'T_kelvin, tolerance',
+    [(1673.0, 0.05), (1800.0, 0.15)],
+    ids=['at the CALPHAD reference temperature', 'above the reference temperature'],
+)
 def test_standard_state_gibbs_reproduces_the_iron_wustite_buffer(T_kelvin, tolerance):
     """The tabulated Gibbs energies place the Fe/FeO equilibrium on the
     measured iron-wuestite buffer.
@@ -93,8 +100,11 @@ def test_standard_state_gibbs_reproduces_the_iron_wustite_buffer(T_kelvin, toler
     because the module treats both Fe and FeO as liquids while the buffer is
     calibrated against solid wuestite.
     """
-    dG = float(_g_feo_liquid(T_kelvin) - _g_fe_liquid(T_kelvin)
-               - 0.5 * _kowalski_spencer_g_o2(T_kelvin))
+    dG = float(
+        _g_feo_liquid(T_kelvin)
+        - _g_fe_liquid(T_kelvin)
+        - 0.5 * _kowalski_spencer_g_o2(T_kelvin)
+    )
     log_fO2 = 2.0 * dG / (np.log(10) * R * T_kelvin)
     expected = _hirschmann_2021_iw(T_kelvin)
 
@@ -122,9 +132,9 @@ def test_reaction_gibbs_is_insensitive_to_the_reference_state_choice():
     # choice: added to FeO once, FeO1.5 once, Fe once, weighted by stoichiometry.
     shift = 1.234e5
     direct = float(dG0(T))
-    shifted = float(
-        2 * (0.5 * shift) + 1 * (0.0 * shift) - 3 * (0.0 * shift) + direct
-    ) - 2 * (0.5 * shift)
+    shifted = float(2 * (0.5 * shift) + 1 * (0.0 * shift) - 3 * (0.0 * shift) + direct) - 2 * (
+        0.5 * shift
+    )
 
     assert shifted == pytest.approx(direct, rel=1e-12)
     # The reaction energy is strongly positive at 1 bar: disproportionation is
@@ -152,15 +162,16 @@ def test_metal_activity_falls_as_the_melt_is_diluted():
     assert float(a_double) == pytest.approx(0.5 * float(a_single), rel=1e-12)
     # Invariance of the product is the discriminating form: a cancelled n_sil
     # would give a ratio of 1.0, a squared one a ratio of 0.25.
-    assert float(a_single) * _N_SIL == pytest.approx(
-        float(a_double) * 2.0 * _N_SIL, rel=1e-12)
+    assert float(a_single) * _N_SIL == pytest.approx(float(a_double) * 2.0 * _N_SIL, rel=1e-12)
     assert float(a_single) > 0.0
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('ferric_fraction', [0.001, 0.01, 0.05],
-                         ids=['strongly reduced melt', 'near the threshold',
-                              'oxidised melt'])
+@pytest.mark.parametrize(
+    'ferric_fraction',
+    [0.001, 0.01, 0.05],
+    ids=['strongly reduced melt', 'near the threshold', 'oxidised melt'],
+)
 def test_metal_activity_equals_the_constant_over_the_zero_extent_residual(ferric_fraction):
     """The metal activity is the equilibrium constant divided by the
     mass-action residual evaluated before any reaction has occurred.
@@ -172,7 +183,7 @@ def test_metal_activity_equals_the_constant_over_the_zero_extent_residual(ferric
     T = 2500.0
     n2, n3 = _N_FET * (1.0 - ferric_fraction), _N_FET * ferric_fraction
     K = float(K_eq(T)[0])
-    residual_at_zero = n3 ** 2 * _N_SIL / (GAMMA_FEO ** 3 * n2 ** 3)
+    residual_at_zero = n3**2 * _N_SIL / (GAMMA_FEO**3 * n2**3)
     a_fe, _ = activity_Fe_metal(T, n2, n3, _N_SIL)
 
     assert float(a_fe) == pytest.approx(K / residual_at_zero, rel=1e-12)
@@ -180,8 +191,11 @@ def test_metal_activity_equals_the_constant_over_the_zero_extent_residual(ferric
 
 
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('ferric_fraction', [0.01, 0.005, 0.001],
-                         ids=['mildly reduced', 'reduced', 'strongly reduced'])
+@pytest.mark.parametrize(
+    'ferric_fraction',
+    [0.01, 0.005, 0.001],
+    ids=['mildly reduced', 'reduced', 'strongly reduced'],
+)
 def test_reaction_extent_conserves_iron_and_oxygen(ferric_fraction):
     """Reacting a supersaturated melt to equilibrium moves iron between the
     melt and the metal without creating or destroying either element.
@@ -217,8 +231,7 @@ def test_supersaturated_melt_relaxes_until_metal_activity_is_unity():
     xi = solve_extent(K, n2, n3, _N_SIL)
 
     a_before, _ = activity_Fe_metal(T, n2, n3, _N_SIL)
-    a_after, _ = activity_Fe_metal(
-        T, n2 - 3 * xi, n3 + 2 * xi, _N_SIL - xi)
+    a_after, _ = activity_Fe_metal(T, n2 - 3 * xi, n3 + 2 * xi, _N_SIL - xi)
 
     assert float(a_after) == pytest.approx(1.0, rel=1e-9)
     # The starting melt really was supersaturated, so the test is not
@@ -271,8 +284,7 @@ def test_critical_ferric_fraction_decreases_with_temperature():
     temperature and melt dilution, which is why this mode cannot reproduce a
     depth-resolved metal distribution.
     """
-    thresholds = [critical_ferric_fraction(T, _N_FET, _N_SIL)
-                  for T in (1800.0, 2500.0, 3500.0)]
+    thresholds = [critical_ferric_fraction(T, _N_FET, _N_SIL) for T in (1800.0, 2500.0, 3500.0)]
 
     assert thresholds == sorted(thresholds, reverse=True)
     # Scale guard: the threshold sits around one to two per cent, not ten per
@@ -325,7 +337,7 @@ def test_metal_redissolves_when_the_melt_is_undersaturated():
 def test_activity_coefficients_enter_only_through_the_identifiable_combination():
     """Only the grouping gamma_FeO**3 / gamma_FeO1.5**2 affects the answer, so
     the two coefficients are not separately constrained by the model."""
-    assert GAMMA == pytest.approx(GAMMA_FEO ** 3, rel=1e-12)
+    assert GAMMA == pytest.approx(GAMMA_FEO**3, rel=1e-12)
     # Scale guard against a dropped or doubled exponent: 1.55**3 is 3.72,
     # 1.55**2 is 2.40 and 1.55**4 is 5.77.
     assert 3.5 < GAMMA < 4.0
@@ -344,9 +356,11 @@ def test_requesting_the_pressure_term_without_a_pressure_raises():
     assert bool(np.all(valid))
 
 
-@pytest.mark.parametrize('n2, n3', [(0.0, 1.0e-3), (1.0e-3, 0.0), (0.0, 0.0)],
-                         ids=['no ferrous iron', 'no ferric iron',
-                              'no iron at all'])
+@pytest.mark.parametrize(
+    'n2, n3',
+    [(0.0, 1.0e-3), (1.0e-3, 0.0), (0.0, 0.0)],
+    ids=['no ferrous iron', 'no ferric iron', 'no iron at all'],
+)
 def test_degenerate_iron_inventories_do_not_react(n2, n3):
     """A melt missing one of the iron species cannot run the reaction, and the
     extent solve returns zero rather than dividing by it."""

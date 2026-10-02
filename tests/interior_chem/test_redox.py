@@ -111,9 +111,7 @@ def test_init_state_splits_the_melt_iron_inventory_by_the_requested_ferric_fract
     # n_fe2_expected, 25% below the correct value, far outside rel=1e-12.
     assert abs(n_total / n_fe2_expected - 1.0) > 0.3
     # The FeO1.5 mass fraction carried into the metal step matches Fe3+.
-    assert state.w_feo15 == pytest.approx(
-        state.n_fe3_melt * MU_FEO15 / _M_MELT, rel=1e-12
-    )
+    assert state.w_feo15 == pytest.approx(state.n_fe3_melt * MU_FEO15 / _M_MELT, rel=1e-12)
     # Swapped-assignment guard: Fe2+ is the majority reservoir at f_0 = 0.25,
     # so a transposed split would put 0.75 here and miss by 0.5.
     assert abs(state.n_fe3_melt / n_total - (1.0 - f_0)) > 0.4
@@ -287,9 +285,6 @@ def _crystallise(f_0, n_steps=6):
     return interior.redox_state, rows
 
 
-
-
-
 @pytest.mark.physics_invariant
 def test_reduced_melt_saturates_in_metal_and_becomes_more_oxidised():
     """A melt below the saturation threshold exsolves iron metal, and doing so
@@ -346,8 +341,11 @@ def test_metal_diagnostics_reach_the_helpfile_csv(tmp_path, caplog):
             hf_row['T_magma'] = 2200.0
             update_melt_redox(interior, hf_row, config)
             rows.append(hf_row)
-            hf_all = (CreateHelpfileFromDict(hf_row) if hf_all is None
-                      else ExtendHelpfile(hf_all, hf_row))
+            hf_all = (
+                CreateHelpfileFromDict(hf_row)
+                if hf_all is None
+                else ExtendHelpfile(hf_all, hf_row)
+            )
     # The row filter no longer reports the metal keys as unknown.
     assert not any('not declared in GetHelpfileKeys' in r.message for r in caplog.records)
 
@@ -375,7 +373,8 @@ def test_metal_diagnostics_reach_the_helpfile_csv(tmp_path, caplog):
     np.testing.assert_allclose(
         csv['n_fe_metal_mantle'].to_numpy(),
         np.cumsum(csv['n_fe_metal_step_mantle'].to_numpy()),
-        rtol=1e-9, atol=0.0,
+        rtol=1e-9,
+        atol=0.0,
     )
     assert np.all(np.diff(csv['n_fe_metal_mantle'].to_numpy()) >= 0.0)
 
@@ -433,7 +432,7 @@ def test_surface_delta_iw_is_eq13_at_1_bar_and_the_outgassing_temperature(caplog
     # between 700, 2200 and 3500 K (it is not monotonic in T, so only
     # distinctness is asserted).
     vals = [results[T][0] for T in (700.0, 2200.0, 3500.0)]
-    assert min(abs(x - y) for i, x in enumerate(vals) for y in vals[i + 1:]) > 0.5
+    assert min(abs(x - y) for i, x in enumerate(vals) for y in vals[i + 1 :]) > 0.5
 
 
 @pytest.mark.physics_invariant
@@ -451,8 +450,10 @@ def test_freezing_the_shallow_melt_does_not_shift_the_surface_delta_iw():
     temp = np.array([2000.0, 3200.0, 3900.0])
     mass = np.array([1.0e21, 3.0e21, 5.0e21])
     out = {}
-    for name, phi in (('molten', np.array([1.0, 1.0, 1.0])),
-                      ('shallow frozen', np.array([0.0, 0.0, 1.0]))):
+    for name, phi in (
+        ('molten', np.array([1.0, 1.0, 1.0])),
+        ('shallow frozen', np.array([0.0, 0.0, 1.0])),
+    ):
         interior = _make_interior()
         interior.phi, interior.pres, interior.temp, interior.mass = phi, pres, temp, mass
         hf_row = {'T_magma': 2500.0}
@@ -482,15 +483,16 @@ def test_eq13_pressure_term_matches_the_uncompressed_volume_analytic_limit():
     from proteus.interior_chem import eos_deng
     from proteus.interior_chem.redox import _A, _R, _log10_fO2_profile, _log10_fO2_surface
 
-    T = 4000.0                       # p_splice(4000 K) ~ 1.29 GPa
+    T = 4000.0  # p_splice(4000 K) ~ 1.29 GPa
     P = np.array([1.0e-4, 0.3, 0.9])  # all below the splice
     assert np.all(P < eos_deng.p_splice(T))
     ratio = 0.1 / 0.9
     state = _init_state(_PHI, _MASS, _PRES, 0.1)
     prof, valid = _log10_fO2_profile(ratio, np.full(3, T), P, state.X)
     assert np.all(valid)
-    expected = _log10_fO2_surface(ratio, T, state.X) \
-        + eos_deng._DV0 * (P - 1.0e-4) / (_A * _R * T * math.log(10))
+    expected = _log10_fO2_surface(ratio, T, state.X) + eos_deng._DV0 * (P - 1.0e-4) / (
+        _A * _R * T * math.log(10)
+    )
     np.testing.assert_allclose(prof, expected, rtol=0, atol=1e-9)
     # P -> 1 bar recovers the surface relation (pressure term vanishes).
     assert prof[0] == pytest.approx(_log10_fO2_surface(ratio, T, state.X), abs=1e-12)
@@ -518,9 +520,9 @@ def test_fo2_profile_is_resolved_per_melt_cell_and_nan_in_solid():
     )
     np.testing.assert_allclose(prof[_PHI > 0], direct[_PHI > 0], rtol=1e-12)
 
-    flat, _ = _log10_fO2_profile(0.1 / 0.9, np.full(4, 3000.0),
-                                 np.array([0.1, 5.0, 25.0, 100.0]),
-                                 interior.redox_state.X)
+    flat, _ = _log10_fO2_profile(
+        0.1 / 0.9, np.full(4, 3000.0), np.array([0.1, 5.0, 25.0, 100.0]), interior.redox_state.X
+    )
     assert np.all(np.diff(flat) > 0)
 
 
@@ -531,7 +533,7 @@ def test_uppermost_melt_cell_index_is_found_whatever_the_grid_order():
     and a solid lid is skipped; the surface offset does not depend on the
     order either."""
     config = _make_config(0.1)
-    phi = np.array([0.0, 1.0, 0.5])            # solid lid on top
+    phi = np.array([0.0, 1.0, 0.5])  # solid lid on top
     pres = np.array([0.5e9, 3.0e9, 30.0e9])
     temp = np.array([1600.0, 2500.0, 3300.0])
     mass = np.array([1.0e21, 3.0e21, 5.0e21])
@@ -616,10 +618,12 @@ def test_the_pressure_term_moves_metal_formation_away_from_the_coolest_cell():
     through the chemistry directly, since the model always includes it.
     """
     n2, n3 = 0.99 * _N_FET_TEST, 0.01 * _N_FET_TEST
-    without_P, _ = activity_Fe_metal(_TEMP, n2, n3, _N_SIL_TEST,
-                                     P_gpa=_PRES / 1e9, use_P_term=False)
-    with_P, _ = activity_Fe_metal(_TEMP, n2, n3, _N_SIL_TEST,
-                                  P_gpa=_PRES / 1e9, use_P_term=True)
+    without_P, _ = activity_Fe_metal(
+        _TEMP, n2, n3, _N_SIL_TEST, P_gpa=_PRES / 1e9, use_P_term=False
+    )
+    with_P, _ = activity_Fe_metal(
+        _TEMP, n2, n3, _N_SIL_TEST, P_gpa=_PRES / 1e9, use_P_term=True
+    )
 
     assert int(np.argmax(without_P)) == 0
     assert int(np.argmax(with_P)) > 0
@@ -657,8 +661,11 @@ def test_a_fe_max_cell_is_the_cell_that_receives_the_metal():
     formed_any = False
     for step in range(6):
         interior.phi = np.clip(_PHI - np.array([0.12, 0.07, 0.0]) * step, 0.0, None)
-        before = (None if interior.redox_state is None
-                  else interior.redox_state.n_fe_metal_cell.copy())
+        before = (
+            None
+            if interior.redox_state is None
+            else interior.redox_state.n_fe_metal_cell.copy()
+        )
         hf_row = {'T_magma': 2200.0}
         update_melt_redox(interior, hf_row, config)
         idx = hf_row['a_fe_max_cell_mantle']
@@ -838,8 +845,9 @@ def test_crossing_the_solid_threshold_crystallises_the_remaining_melt():
         interior.phi = np.array([1.0, phi_last, 0.0])
         update_melt_redox(interior, {'T_magma': 2200.0}, _make_config(0.1))
         st = interior.redox_state
-        out.append((st.n_fe2_melt + float(np.sum(st.n_fe_metal_cell)), st.n_fe3_melt,
-                    st.phi_prev[1]))
+        out.append(
+            (st.n_fe2_melt + float(np.sum(st.n_fe_metal_cell)), st.n_fe3_melt, st.phi_prev[1])
+        )
     (fe2_a, fe3_a, prev_a), (fe2_b, fe3_b, prev_b) = out
     assert prev_a == 0.0 and prev_b == 0.0
     assert fe2_a == pytest.approx(fe2_b, rel=1e-12)

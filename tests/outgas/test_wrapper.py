@@ -1479,10 +1479,7 @@ def test_config_rejects_from_mantle_redox_with_dummy_interior(tmp_path):
         'mantle_redox_dummy.toml',
         _minimal_valid_toml(
             extra_planet='    fO2_source = "from_mantle_redox"\n',
-            extra_elements=(
-                '\n[interior_energetics]\n'
-                '    module = "dummy"\n'
-            ),
+            extra_elements=('\n[interior_energetics]\n    module = "dummy"\n'),
         ),
     )
 

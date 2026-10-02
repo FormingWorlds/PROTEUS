@@ -64,9 +64,6 @@ config_version = "3.0"
     temperature_mode = "liquidus_super"
     delta_T_super    = 500.0
     volatile_mode    = "elements"
-    fO2_source       = "from_mantle_redox"
-    ferric_fraction_initial = 0.005
-
     [planet.elements]
         O_mode   = "ic_chemistry"
         O_budget = 0.0

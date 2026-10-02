@@ -2573,8 +2573,11 @@ def run_interior(
             write_fO2_profile_ncdf(stem + '_int.nc', interior_o.redox_state)
         elif config.interior_energetics.module == 'spider':
             write_redox_ncdf(
-                stem + '_redox.nc', interior_o.redox_state, float(sim_time),
-                interior_o, hf_row,
+                stem + '_redox.nc',
+                interior_o.redox_state,
+                float(sim_time),
+                interior_o,
+                hf_row,
             )
 
     # Actual time step size.
