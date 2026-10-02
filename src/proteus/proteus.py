@@ -968,7 +968,7 @@ class Proteus:
         # applied. Runs after the timeline is resolved, so a re-run dynamical
         # model still selects its body against the configured planet.
         restore_accretion_state(self)
-        if resume:
+        if resume and self.config.accretion.module is not None:
             self._match_ps_tables_to_mass()
 
         # Track the last simulation time at which data was written to disk.

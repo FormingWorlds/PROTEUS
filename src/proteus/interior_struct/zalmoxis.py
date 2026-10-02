@@ -2346,12 +2346,6 @@ def read_ps_cache_pointer(outdir: str) -> str | None:
 _PS_RESUME_REPORTED: set[str] = set()
 
 
-def _ps_resume_candidates(outdir: str) -> list[str]:
-    """The run's ``data/spider_eos`` and, when recorded, the shared-cache directory it names."""
-    pointed = read_ps_cache_pointer(outdir)
-    return [os.path.join(outdir, 'data', 'spider_eos')] + ([pointed] if pointed else [])
-
-
 def _ps_p_max(config: Config) -> float:
     """Upper pressure of the P-S lookup grid for the current planet mass [Pa].
 
@@ -2361,7 +2355,9 @@ def _ps_p_max(config: Config) -> float:
     return min(1.0e13, 150e9 * float(config.planet.mass_tot or 1.0) + 200e9)
 
 
-def _resumed_ps_tables(outdir: str, current_key, p_max: float | None = None) -> dict | None:
+def _resumed_ps_tables(
+    outdir: str, current_key, p_max: float | None = None, dropped: list | None = None
+) -> dict | None:
     """Return the P-S tables a resumed run already uses, unless the planet mass changed.
 
     Looks in the per-run ``data/spider_eos`` directory, then in the shared
@@ -2386,6 +2382,8 @@ def _resumed_ps_tables(outdir: str, current_key, p_max: float | None = None) -> 
         None skips the report.
     p_max : float, optional
         ``P_max`` of the current planet mass [Pa]; None keeps tables of any mass.
+    dropped : list, optional
+        Receives each directory not kept because of its ``P_max``.
 
     Returns
     -------
@@ -2394,7 +2392,11 @@ def _resumed_ps_tables(outdir: str, current_key, p_max: float | None = None) -> 
         location holds a marker with both phase-boundary files.
     """
 
-    for eos_dir in _ps_resume_candidates(outdir):
+    candidates = [os.path.join(outdir, 'data', 'spider_eos')]
+    pointed = read_ps_cache_pointer(outdir)
+    if pointed:
+        candidates.append(pointed)
+    for eos_dir in candidates:
         marker = os.path.join(eos_dir, '.cache_info.txt')
         solidus_path = os.path.join(eos_dir, 'solidus_P-S.dat')
         liquidus_path = os.path.join(eos_dir, 'liquidus_P-S.dat')
@@ -2406,8 +2408,8 @@ def _resumed_ps_tables(outdir: str, current_key, p_max: float | None = None) -> 
         except OSError:
             continue
         built = re.search(r'P_max=([^_]+)', stored)
-        # The key holds P_max to 7 digits, so compare in that format.
-        if p_max is not None and built and built.group(1) != f'{p_max:.6e}':
+        # 1e-6 covers the 7-digit key and the helpfile round trip of the mass.
+        if p_max is not None and built and abs(float(built.group(1)) / p_max - 1) > 1e-6:
             log.info(
                 'Planet mass changed since the P-S tables in %s were built (P_max %s Pa, '
                 'now %.6e Pa); they are not kept',
@@ -2415,6 +2417,8 @@ def _resumed_ps_tables(outdir: str, current_key, p_max: float | None = None) -> 
                 built.group(1),
                 p_max,
             )
+            if dropped is not None:
+                dropped.append(eos_dir)
             continue
         if current_key is not None and eos_dir not in _PS_RESUME_REPORTED:
             _PS_RESUME_REPORTED.add(eos_dir)
@@ -2799,8 +2803,12 @@ def generate_spider_tables(config: Config, outdir: str):
 
     # A resumed run stays on the tables it started with; the key only feeds the warning.
     if config.params.resume:
+        dropped = []
         resumed = _resumed_ps_tables(
-            outdir, lambda: _ps_resume_key(config, key, eos_entry, mat_dicts), _ps_p_max(config)
+            outdir,
+            lambda: _ps_resume_key(config, key, eos_entry, mat_dicts),
+            _ps_p_max(config),
+            dropped,
         )
         if resumed is not None:
             return resumed
@@ -2824,10 +2832,7 @@ def generate_spider_tables(config: Config, outdir: str):
     nP = config.interior_struct.zalmoxis.lookup_nP
     nS = config.interior_struct.zalmoxis.lookup_nS
     # Tables dropped for a mass change were reported by _resumed_ps_tables.
-    if config.params.resume and not any(
-        os.path.isfile(os.path.join(d, '.cache_info.txt'))
-        for d in _ps_resume_candidates(outdir)
-    ):
+    if config.params.resume and not dropped:
         log.warning(
             'Resumed run has no kept P-S entropy tables in %s or at its shared-cache '
             'pointer; it continues on the tables of the current key %s, built now if absent',

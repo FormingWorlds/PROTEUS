@@ -2231,7 +2231,7 @@ def test_run_interior_consumes_the_impact_flag_into_the_step_flag():
 
 @pytest.mark.unit
 @pytest.mark.parametrize(('impact', 'T_magma'), [(True, 4000.0), (False, 3020.0)])
-def test_run_interior_keeps_an_impact_jump_after_consuming_the_flag(impact, T_magma):
+def test_run_interior_does_not_clip_the_impact_step_jump(impact, T_magma):
     """The flag is consumed at the start of run_interior, yet the jump on the impact
     step is not clipped; the same jump on an ordinary step is clipped to prev + atol."""
     from proteus.interior_energetics.common import Interior_t
@@ -6809,7 +6809,29 @@ def test_aragog_remelt_with_a_non_finite_end_state_books_nothing(caplog):
 
     assert hf_row['step_dE_impact_J'] == 0.0
     np.testing.assert_array_equal(interior_o._last_entropy, np.full(6, 3900.0))
-    assert 'not booked' in caplog.text
+    assert 'not booked: the end-of-step entropy profile is non-finite' in caplog.text
+
+
+@pytest.mark.unit
+def test_aragog_remelt_off_the_re_melt_mesh_books_nothing(caplog):
+    """An end-of-step profile of another length than the re-melted one cannot be
+    compared cell by cell: nothing is booked and the carrier holds the molten profile."""
+    solver = _FakeAragogSolver(cooled_profile=np.full(5, 2600.0))
+    interior_o = SimpleNamespace(aragog_solver=solver, _last_entropy=None, impact_reset=False)
+    hf_row = {}
+
+    with (
+        caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics'),
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            return_value=np.full(6, 3900.0),
+        ),
+    ):
+        remelt_mantle({'output': '/tmp/out'}, _remelt_config('aragog'), hf_row, interior_o)
+
+    assert hf_row['step_dE_impact_J'] == 0.0
+    np.testing.assert_array_equal(interior_o._last_entropy, np.full(6, 3900.0))
+    assert 'not on the re-melt mesh' in caplog.text
 
 
 @pytest.mark.unit
@@ -6915,18 +6937,20 @@ def test_two_impacts_in_one_step_accumulate_their_booked_heat():
         remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
         first = hf_row['step_dE_impact_J']
 
-        # The second impact of the same step: the carrier now holds the molten
-        # profile, so this re-melt injects nothing further.
-        solver._solution = _FakeAragogSolver._Solution(molten)
+    # The second impact of the same step: the first cleared the solution, so the
+    # jump starts from the carrier, which holds the first re-melt's profile.
+    with patch(
+        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+        side_effect=lambda cfg, io, outdir, row: np.full(6, 4000.0),
+    ):
         remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
 
     expected = 6 * (3900.0 - 2400.0) * _FakeAragogSolver._HEAT_PER_ENTROPY
+    second = 6 * (4000.0 - 3900.0) * _FakeAragogSolver._HEAT_PER_ENTROPY
     assert first == pytest.approx(expected, rel=1e-12)
-    # The first impact's injection survives the second re-melt.
-    assert hf_row['step_dE_impact_J'] == pytest.approx(expected, rel=1e-12)
-    # Discrimination: assigning instead of accumulating would leave 0.0 here,
-    # which differs from the correct value by the whole injection.
-    assert abs(hf_row['step_dE_impact_J']) > 0.5 * expected
+    np.testing.assert_array_equal(solver.heat_calls[1][0], molten)
+    # Assigning instead of accumulating would leave only the second injection.
+    assert hf_row['step_dE_impact_J'] == pytest.approx(expected + second, rel=1e-12)
 
 
 @pytest.mark.unit

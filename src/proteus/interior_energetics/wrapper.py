@@ -1912,7 +1912,6 @@ def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
 
     from proteus.interior_energetics.dummy import melt_state_from_temperature
 
-    # An impact cannot cool the mantle below its current temperature.
     t_reset = max(config.planet.tsurf_init, float(hf_row.get('T_magma', 0.0)))
     state = melt_state_from_temperature(config, hf_row, t_reset)
     hf_row.update(state)
@@ -2049,8 +2048,14 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     S_molten = AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
     S_molten = np.asarray(S_molten, dtype=float).ravel()
 
+    if S_end is None or S_end.size == 0:
+        unbooked = 'no pre-impact entropy profile is available to measure the jump from'
+    elif S_end.shape != S_molten.shape or not np.isfinite(S_end).all():
+        unbooked = 'the end-of-step entropy profile is non-finite or not on the re-melt mesh'
+    else:
+        unbooked = None
     # An impact cannot cool the mantle: cells above the molten profile keep their entropy.
-    if S_end is not None and S_end.size > 0 and np.isfinite(S_end).all():
+    if unbooked is None:
         S_new = np.maximum(S_end, S_molten)
         n_hot = np.count_nonzero(S_new > S_molten)
         if n_hot:
@@ -2070,13 +2075,8 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         log.info('    re-melt heat injection %.3e J booked into the energy budget', dE_impact)
     else:
         interior_o._last_entropy = S_molten.copy()
-        # Preserve existing step impact energy if no pre-impact profile is
-        # available to quantify the entropy jump.
         hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0)
-        log.warning(
-            '    re-melt heat injection not booked: no pre-impact entropy '
-            'profile is available to measure the jump from'
-        )
+        log.warning('    re-melt heat injection not booked: %s', unbooked)
 
     log.info('    mantle re-melted: Aragog restarts from the re-melted entropy profile')
 
@@ -2107,11 +2107,11 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
 
 
 def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:
-    """Reset the mantle to its molten initial condition after a giant impact.
+    """Raise the mantle to its initial condition after a giant impact.
 
-    A giant impact re-melts the mantle in full (no energy threshold), so the
-    interior is returned to a molten initial condition recomputed for the
-    current, grown planet. The reset is applied to the running interior state,
+    A giant impact re-melts the mantle (no energy threshold), so the interior
+    is raised to the initial condition recomputed for the current, grown
+    planet; parts that are already hotter keep their state. The reset is applied to the running interior state,
     and an ``impact_reset`` flag is raised on ``interior_o`` so the next
     interior solve does not clip the resulting temperature jump as if it were
     a solver glitch.
@@ -2196,9 +2196,9 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
             if not _REMELT_RETAINED_BAND[0] <= retained <= _REMELT_RETAINED_BAND[1]:
                 log.warning(
                     '    re-melt injection is %.3g of the impact kinetic energy, outside '
-                    'the physically expected band [%.2g, %.2g]. The re-melt re-applies the '
-                    'temperature-mode initial condition to the whole mantle, so its cost '
-                    'is set by the mantle rather than by this collision: a cool mantle '
+                    'the physically expected band [%.2g, %.2g]. The re-melt raises the mantle '
+                    'to the temperature-mode initial condition (hotter parts keep their '
+                    'state), so its cost is set by the mantle rather than by this collision: a cool mantle '
                     'struck by a small impactor absorbs far more than the impact carried, '
                     'and a mantle already near the initial condition absorbs far less. '
                     'Treat the thermal response to this impact as a property of the '

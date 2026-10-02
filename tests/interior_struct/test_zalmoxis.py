@@ -3872,6 +3872,45 @@ def test_resume_keeps_run_tables_whose_marker_names_no_p_max(tmp_path, monkeypat
     assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
 
 
+def test_resume_without_table_files_warns_although_a_marker_exists(
+    tmp_path, monkeypatch, caplog
+):
+    """A marker without its phase-boundary files keeps nothing, so the resumed run
+    warns before it builds the tables of the current key."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    run_eos.mkdir(parents=True)
+    (run_eos / '.cache_info.txt').write_text('P_max=3.500000e+11_nP=8')
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        _, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+
+    bounds.assert_called_once()
+    assert 'has no kept P-S entropy tables' in caplog.text
+
+
+def test_resume_keeps_run_tables_across_the_helpfile_round_trip_of_the_mass(
+    tmp_path, monkeypatch, caplog
+):
+    """Masses that differ by a helpfile round trip (4.3e-12) give P_max keys that differ
+    in the 7th digit; the run still keeps its tables."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    _, _, _, stored = _generate_tables_stubbed(
+        tmp_path, monkeypatch, resume=True, run=False, mass_tot=1.2790230000113
+    )
+    _seed_tables(run_eos, stored)
+
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_struct.zalmoxis'):
+        _, bounds, _, current = _generate_tables_stubbed(
+            tmp_path, monkeypatch, resume=True, mass_tot=1.2790229999999998
+        )
+
+    assert stored.partition('_nP')[0] != current.partition('_nP')[0]
+    bounds.assert_not_called()
+    assert 'Planet mass changed' not in caplog.text
+
+
 def test_resume_keeps_run_tables_of_an_unchanged_odd_mass(tmp_path, monkeypatch, caplog):
     """The key rounds P_max to 7 digits; a mass whose P_max is not exact in that format
     still keeps its own tables."""
