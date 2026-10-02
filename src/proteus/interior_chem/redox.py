@@ -16,7 +16,7 @@ this was validated against):
             W_FET, Fe3+ = Fe2+ * f_0 / (1 - f_0) on top of it
   Step 3    new solid mass each step, from the decrease in local melt
             fraction (delta_phi), using the mass-invariant _s grid. A cell
-            with phi < PHI_SOLID (0.01) counts as solid throughout (phi set
+            with phi < PHI_SOLID (0.05) counts as solid throughout (phi set
             to 0 on entry), so its last trace of melt crystallises when it
             crosses the threshold
   Step 4    redistribute the *previous* step's global Fe3+/Fe2+ reservoirs
@@ -132,7 +132,7 @@ F_0    = 0.10       # initial ferric fraction Fe3+/FeT (Schaefer et al. 2024)
 # otherwise stay "melt": it would keep its share of the Fe reservoirs and
 # could host the metal-saturation binding cell. A cell crossing the
 # threshold crystallises its remaining melt in that step (Step 3).
-PHI_SOLID = 0.01
+PHI_SOLID = 0.05
 
 D_FE2_BRG = 0.85    # bridgmanite/melt partition coefficient for Fe2+ (both regimes)
 
