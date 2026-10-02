@@ -471,8 +471,11 @@ def test_helpfile_round_trip_is_exact(tmp_path):
     WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
 
     back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]
+    plain = pd.read_csv(tmp_path / 'runtime_helpfile.csv', sep=r'\s+').iloc[0]
 
     assert [key for key in row if back[key] != row[key]] == []
+    # Discrimination: the default parser misses the last bit of some of these values.
+    assert any(plain[key] != row[key] for key in row)
 
 
 @pytest.mark.unit
@@ -4425,8 +4428,8 @@ def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
     )
     assert _snapshot_belongs_to(legacy, 70.2) is True
 
-    # The helpfile round-trips Time through '%.10e', so a restored row differs
-    # from the written value in about the eleventh digit; that must still match.
+    # A helpfile written with '%.10e' moves Time in about the eleventh digit;
+    # such a row must still match.
     assert _snapshot_belongs_to(own, float('%.10e' % 70.2)) is True
     # A step a thousandth of a year away is a different step, not a round trip.
     assert _snapshot_belongs_to(own, 70.201) is False

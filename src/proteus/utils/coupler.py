@@ -1335,9 +1335,9 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
     tmp_path = fpath + '.tmp'
     try:
-        # 17 significant digits, parsed with float_precision='round_trip', give back the
-        # same double, so a resume restarts from the exact state the run held. NaN is a
-        # token rather than an empty field, which the whitespace-split reader would drop.
+        # 17 significant digits read with float_precision='round_trip' give back every
+        # float exactly, so a resume rebuilds from the row as the run wrote it. NaN is a
+        # token: an empty field would vanish in the whitespace-split read.
         current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.16e', na_rep='nan')
         os.replace(tmp_path, fpath)
     except BaseException:
@@ -1703,15 +1703,14 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
     if not math.isfinite(recorded):
         return False
 
-    # The row's time has been through the helpfile, which serialises at
-    # '%.10e' and so holds eleven significant digits: a round trip moves it by
-    # up to 4.94e-11 of its own magnitude. The margin has to clear that, and a
-    # factor of four does, while staying as tight as the stored data allows.
+    # A helpfile written with '%.10e' (eleven significant digits) moves the time by up to
+    # 4.94e-11 of its magnitude, so such a file still resumes; four times that is as
+    # tight as its data allows. A full-precision helpfile reads the time back exactly.
     resolution = 5.0e-11 * max(1.0, abs(time))
     tolerance = 4.0 * resolution
 
-    # Past a few Gyr the helpfile precision itself exceeds the one-year name
-    # bucket, so no margin separates two rows in it: accept on name instead.
+    # Past a few Gyr that margin exceeds the one-year name bucket, so no margin
+    # separates two rows in it: accept on name instead.
     if tolerance >= 0.5:
         return True
 

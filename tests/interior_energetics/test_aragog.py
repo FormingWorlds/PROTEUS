@@ -3345,8 +3345,8 @@ def test_update_solver_infers_the_mesh_pressure_of_an_older_snapshot(tmp_path, c
             ds.createVariable('mesh_surface_pressure', np.float64)
             ds['mesh_surface_pressure'][0] = np.nan
     elif case == 'fresh-run-rounded-helpfile':
-        # A resumed run rebuilds R and g from the helpfile, written with %.10e;
-        # R rounds down here, which leaves a positive residue of about 2 Pa.
+        # A resumed run rebuilds R and g from the helpfile; one written with %.10e
+        # rounds R down here, which leaves a positive residue of about 2 Pa.
         mesh.outer_radius = float('%.10e' % mesh.outer_radius)
         mesh.gravitational_acceleration = float('%.10e' % mesh.gravitational_acceleration)
     interior_o = MagicMock()

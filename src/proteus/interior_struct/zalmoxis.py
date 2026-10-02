@@ -389,8 +389,8 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
 
     The tolerance is that of Aragog's ``EntropySolver.reset()``,
     ``max(1 m, 1e-9 * (R_int - R_core))``, applied to both bounds in both
-    directions; the helpfile rounding of the radii is at most 5e-5 m below
-    1e7 m and 5e-4 m up to 1e8 m.
+    directions; a helpfile written with eleven significant digits rounds the radii
+    by at most 5e-5 m below 1e7 m and 5e-4 m up to 1e8 m.
 
     Parameters
     ----------

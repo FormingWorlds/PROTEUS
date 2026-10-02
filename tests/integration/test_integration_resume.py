@@ -9,8 +9,7 @@ output directory left behind by a completed run and started with
 Contract clauses exercised:
 
 - The restored helpfile is extended, never rewritten: every row written by
-  the first leg survives the resume unchanged, to the precision of the
-  helpfile's own ``%.10e`` serialisation.
+  the first leg survives the resume unchanged.
 - Simulation time continues from the last stored row instead of restarting
   at t = 0, and stays strictly increasing across the seam.
 - Interior and volatile state continue from the stored row rather than
@@ -127,12 +126,9 @@ EXPECTED_INIT_LOOPS = 3
 # leaves roughly a third of the trajectory ahead of the seam.
 PARITY_ITERS = 40
 
-# Relative tolerance for that comparison. The helpfile serialises at
-# '%.10e', so a restored value carries about 5e-11 of relative error, and
-# differencing two similar fluxes into F_net amplifies it: the largest
-# observed disagreement across every numeric column is 2e-8. This sits
-# about fifty times above that floor and many orders below any physical
-# difference a genuine divergence would produce.
+# Relative tolerance for that comparison: differencing two similar fluxes into F_net
+# amplifies round-off, and 1e-6 sits many orders below any physical difference a
+# genuine divergence would produce.
 PARITY_RTOL = 1.0e-6
 
 # Columns excluded from that comparison because they are not part of the
@@ -322,10 +318,9 @@ def test_resume_continues_trajectory_from_disk_state(tmp_path):
         'resumed run did not advance simulation time'
     )
 
-    # The stored prefix survives unchanged. The helpfile is serialised with
-    # '%.10e', so a round-trip through disk is exact to ~11 significant
-    # digits; rtol=1e-9 sits clear of that floor and far below any physical
-    # change a single step would make.
+    # The stored prefix survives unchanged. ``stored`` is read with the default pandas
+    # parser, which can miss the last bit; rtol=1e-9 clears that and sits far below
+    # any physical change a single step would make.
     for column in ('Time', 'T_magma', 'Phi_global', 'F_atm', 'P_surf', 'M_atm', 'H_kg_atm'):
         np.testing.assert_allclose(
             resumed[column].to_numpy()[:n_stored],
