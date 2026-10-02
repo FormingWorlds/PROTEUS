@@ -165,6 +165,40 @@ def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
+def test_sample_from_grid_skips_a_case_whose_helpfile_row_is_ragged(
+    monkeypatch, tmp_path, caplog
+):
+    """A case whose helpfile row has more fields than its header is skipped with a
+    warning, so one unreadable case does not stop the dataset from the others."""
+    grid_dir = tmp_path / 'grid'
+    output_dir = tmp_path / 'output'
+    output_dir.mkdir(parents=True)
+    rows = ['R_obs\n1.5\n', 'R_obs\n2.5\n', 'R_obs\n3.5 9.0\n']
+    for i, (mass, text) in enumerate(zip([1.0, 2.0, 3.0], rows)):
+        case = grid_dir / f'case_{i}'
+        case.mkdir(parents=True)
+        (case / 'runtime_helpfile.csv').write_text(text, encoding='utf-8')
+        (case / 'init_coupler.toml').write_text(
+            toml.dumps({'planet': {'mass_tot': mass}}), encoding='utf-8'
+        )
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(output_dir)}
+    )
+
+    with caplog.at_level('WARNING'):
+        n = init_mod.sample_from_grid(
+            output='ignored',
+            params={'planet.mass_tot': [0.0, 10.0]},
+            observables={'R_obs': 1.0},
+            grid_dir=str(grid_dir),
+        )
+
+    assert n == 2
+    assert 'Skipping case_2' in caplog.text
+    assert len(pd.read_csv(output_dir / 'init.csv')) == 2
+
+
+@pytest.mark.unit
 def test_sample_from_bounds_rejects_invalid_worker_count():
     """``sample_from_bounds`` rejects ``n_workers < 1`` with an
     'at least 1' message, so a misconfigured worker pool fails loudly

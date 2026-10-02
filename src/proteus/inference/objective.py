@@ -23,6 +23,7 @@ from proteus.inference.failures import (
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import element_list, gas_list
 from proteus.utils.coupler import (
+    HelpfileFormatError,
     get_proteus_directories,
     read_helpfile_table,
     variable_is_logarithmic,
@@ -331,7 +332,7 @@ def run_proteus(
         pd.errors.EmptyDataError,
         pd.errors.ParserError,
         IndexError,
-        ValueError,  # a row whose field count differs from the header
+        HelpfileFormatError,
     )
     try:
         df_row = dict(read_helpfile_table(out_csv).iloc[-1])

@@ -49,6 +49,7 @@ from proteus.utils.coupler import (
     GetHelpfileDiagnosticKeys,
     GetHelpfileKeys,
     GetPostprocessingKeys,
+    HelpfileFormatError,
     HelpfileRow,
     HelpfileSchemaDriftError,
     PrintCurrentState,
@@ -540,6 +541,33 @@ def test_helpfile_from_an_11_digit_writer_still_reads(tmp_path):
     relative = [abs(back[key] / row[key] - 1.0) for key in row]
     assert max(relative) <= 5e-11
     assert max(relative) > 0.0  # the file really holds rounded values
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('body', 'refused'),
+    [
+        ('1 2 3 4\n', True),  # one field more than the header
+        ('1 2\n', True),  # one field fewer
+        ('\t2\t3\n', True),  # an empty first field
+        ('1 2 3\n4 5\n', True),  # a short second row
+        ('1 2 3\n\n4 5 6\n', False),  # a blank line between rows
+        ('1 2 3\r\n4 5 6\r\n', False),  # CRLF line ends
+    ],
+)
+def test_helpfile_table_checks_each_row_against_the_header(tmp_path, body, refused):
+    """A row with a field count other than the header's is refused; blank lines and
+    CRLF line ends read normally."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_text('a b c\n' + body, encoding='utf-8', newline='')
+
+    if refused:
+        with pytest.raises(HelpfileFormatError, match='fields against 3 columns'):
+            read_helpfile_table(str(path))
+    else:
+        table = read_helpfile_table(str(path))
+        assert table['c'].tolist() == [3.0, 6.0]
+        assert table['a'].tolist() == [1.0, 4.0]
 
 
 @pytest.mark.unit

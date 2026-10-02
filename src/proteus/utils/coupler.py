@@ -1359,6 +1359,10 @@ def helpfile_path(output_dir: str) -> str:
     return os.path.join(output_dir, 'runtime_helpfile.csv')
 
 
+class HelpfileFormatError(ValueError):
+    """A helpfile row whose field count differs from the header."""
+
+
 def read_helpfile_table(path: str) -> pd.DataFrame:
     """Read a helpfile table with every float exactly as it was written.
 
@@ -1380,7 +1384,7 @@ def read_helpfile_table(path: str) -> pd.DataFrame:
 
     Raises
     ------
-    ValueError
+    HelpfileFormatError
         When a row has fewer or more fields than the header. An empty field, as
         some files hold for a NaN, vanishes in the whitespace split and would
         move every later value one column to the left.
@@ -1392,7 +1396,7 @@ def read_helpfile_table(path: str) -> pd.DataFrame:
         for line_number, line in enumerate(f, start=2):
             n_fields = len(line.split())
             if n_fields and n_fields != n_columns:
-                raise ValueError(
+                raise HelpfileFormatError(
                     f'{path}, line {line_number}: {n_fields} fields against {n_columns} '
                     'columns; an empty field would shift the later values, so the row '
                     'cannot be read'
@@ -1716,7 +1720,7 @@ def _snapshot_time(path: str) -> float | None:
 
 
 # An 11-digit helpfile (one from a run that wrote fewer digits) moves a time by up to
-# 4.94e-11 of its magnitude; the snapshot margin is four times that, so it still resumes.
+# 5e-11 of its magnitude; the snapshot margin is four times that, so it still resumes.
 _HELPFILE_11_DIGIT_REL = 5.0e-11
 _SNAPSHOT_MARGIN_FACTOR = 4.0
 

@@ -18,7 +18,11 @@ from scipy.stats.qmc import Halton
 from proteus.inference.objective import child_timeout_s, eval_obj, prot_builder
 from proteus.inference.transforms import normalize_parameters
 from proteus.inference.utils import save_dataset_csv
-from proteus.utils.coupler import get_proteus_directories, read_helpfile_table
+from proteus.utils.coupler import (
+    HelpfileFormatError,
+    get_proteus_directories,
+    read_helpfile_table,
+)
 from proteus.utils.helper import recursive_get
 
 # Use double precision for all tensor computations
@@ -113,7 +117,11 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
     confs = []
     for c in cases:
         # Data
-        helps.append(read_helpfile_table(c / 'runtime_helpfile.csv'))
+        try:
+            helps.append(read_helpfile_table(c / 'runtime_helpfile.csv'))
+        except HelpfileFormatError as err:
+            log.warning('Skipping %s: %s', c.name, err)
+            continue
 
         # Config
         with open(c / 'init_coupler.toml', 'r') as f:

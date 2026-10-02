@@ -640,8 +640,7 @@ def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, t
             output='dummy_output',
         )
 
-    # Edge case: bytes that are not valid UTF-8 raise UnicodeDecodeError, a
-    # ValueError rather than a parser error, from pandas.
+    # Edge case: bytes that are not valid UTF-8 raise UnicodeDecodeError from pandas.
     (out_abs / 'runtime_helpfile.csv').write_bytes(b'Time P_surf\n1.0 2.0\n3.0 \xff\xfe\n')
     with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
         objective_mod.run_proteus(
@@ -654,6 +653,22 @@ def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, t
         )
     assert isinstance(excinfo.value.__cause__, UnicodeDecodeError)
     assert 'no readable output' in excinfo.value.reason
+
+    # Edge case: a row with more fields than the header would be read one column off.
+    (out_abs / 'runtime_helpfile.csv').write_text(
+        'Time P_surf\n1.0 2.0 3.0\n', encoding='utf-8'
+    )
+    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
+        objective_mod.run_proteus(
+            parameters={},
+            worker=0,
+            iter=0,
+            observables=['P_surf'],
+            ref_config='reference.toml',
+            output='dummy_output',
+        )
+    assert isinstance(excinfo.value.__cause__, objective_mod.HelpfileFormatError)
+    assert excinfo.value.exit_code == 0
 
     # Discrimination: a helpfile with a usable row completes normally, so the
     # failures above come from the output and not from an unconditional raise
