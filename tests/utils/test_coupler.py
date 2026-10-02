@@ -505,7 +505,8 @@ def test_helpfile_keeps_a_nan_in_its_column(tmp_path, nan_key):
 
 @pytest.mark.unit
 def test_helpfile_writes_nan_as_a_token(tmp_path):
-    """A NaN is written as the token nan, which whitespace-split readers keep in place."""
+    """The writer puts the token nan in a NaN's field and leaves no field empty, which the
+    plot readers that split on whitespace rely on (na_rep='nan')."""
     row = ZeroHelpfileRow()
     row['R_xuv'] = float('nan')
     WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
@@ -630,40 +631,45 @@ def test_helpfile_with_a_cut_last_row_is_refused(tmp_path, data):
     path = tmp_path / 'runtime_helpfile.csv'
     path.write_bytes(data)
 
-    with pytest.raises(HelpfileFormatError, match='line 3: no newline at the end') as excinfo:
+    with pytest.raises(
+        HelpfileFormatError, match='line 3: the last row has no newline'
+    ) as excinfo:
         read_helpfile_table(path)
 
     assert str(path) in str(excinfo.value)
+    assert 'if it is complete, append a newline' in str(excinfo.value)
 
 
 @pytest.mark.unit
-def test_helpfile_cut_at_any_byte_never_returns_a_changed_row(tmp_path):
-    """Every prefix of a written file either raises or reads only its whole rows."""
+@pytest.mark.parametrize('line_end', ['\n', '\r\n'], ids=['lf', 'crlf'])
+def test_helpfile_cut_at_any_byte_reads_whole_rows_or_refuses(tmp_path, line_end):
+    """A file cut at a line end reads its whole rows unchanged; a cut anywhere else is
+    refused at the line it falls in. Every last field changes under any truncation."""
     rows = pd.DataFrame(
-        {'a': [1.0, 4.0, 7.25], 'b': [2.5, np.nan, -0.0], 'c': [6.25e10, 1e-300, 3.0]}
+        {'a': [1.0, 4.0, 7.25], 'b': [2.5, np.nan, -0.0], 'c': [6.25e10, 1.5e-300, 7.25e5]}
     )
     full = tmp_path / 'full.csv'
-    rows.to_csv(full, index=False, sep='\t', na_rep='nan')
+    rows.to_csv(full, index=False, sep='\t', na_rep='nan', lineterminator=line_end)
     data = full.read_bytes()
     cut = tmp_path / 'runtime_helpfile.csv'
 
-    outcomes = []
+    read = []
     for k in range(len(data) + 1):
         cut.write_bytes(data[:k])
-        try:
+        if k and data[k - 1 : k] == b'\n':
             table = read_helpfile_table(cut)
-        except HelpfileFormatError:
-            outcomes.append('refused')
+            # A header-only prefix gives empty columns of object dtype.
+            expected = rows.iloc[: len(table)]
+            pd.testing.assert_frame_equal(
+                table, expected, check_exact=True, check_dtype=len(table) > 0
+            )
+            read.append(len(table))
             continue
-        # A header-only prefix gives empty columns of object dtype.
-        expected = rows.iloc[: len(table)]
-        pd.testing.assert_frame_equal(
-            table, expected, check_exact=True, check_dtype=len(table) > 0
-        )
-        outcomes.append(len(table))
+        with pytest.raises(HelpfileFormatError) as excinfo:
+            read_helpfile_table(cut)
+        assert f'line {data[:k].count(b"\n") + 1}' in str(excinfo.value), k
 
-    assert outcomes[-1] == 3
-    assert set(outcomes) == {'refused', 0, 1, 2, 3}
+    assert read == [0, 1, 2, 3]
 
 
 @pytest.mark.unit
@@ -692,20 +698,25 @@ def test_tab_only_line_reads_as_a_row_of_nan(tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ('data', 'min_rows'),
+    ('data', 'min_rows', 'where'),
     [
-        (b'', 0),  # empty file
-        (b'  \n\t\n', 0),  # whitespace only
-        (b'a\tb\n', 1),  # header only, a row needed
-        (b'a b c\n"x 3 4\n5 6 7\n', 0),  # text pandas cannot tokenise
-        (b'a b\n1 2\n3 \xff\n', 0),  # not UTF-8
-        (b'a\tb\n\t\t\n1\t2\n', 0),  # a tab file row with one field too many
-        (b'a\tb\n1\t2\n \t \n', 0),  # spaces read as text in a tab file
-        (b'a\tb\n"1\t2\n3\t4"\t5\n', 0),  # a quoted field across lines
-        (b'a\tb\n1\t2\n3\t4\n', 3),  # two data rows, three needed
-        (b'a\tb\r1\t2\r', 0),  # lone CR line ends, which pandas splits and the scan does not
-        (b'a\tb\tc\n\r\t2\t3\n4\t5\t6\n', 0),  # a lone CR that pandas would read as a line end
-        (b'a\tb\n2.5\x007\t1\n', 0),  # a NUL byte inside a number
+        (b'', 0, 'line 1: no header'),
+        (b'  \n\t\n', 0, 'line 2: no header'),
+        (b'a\tb\n', 1, 'line 1: 0 data rows'),
+        (b'a b c\n"x 3 4\n5 6 7\n', 0, 'row 1'),
+        (b'a b\n1 2\n3 \xff\n', 0, 'line 3: not UTF-8'),
+        (b'a\tb\n\t\t\n1\t2\n', 0, 'line 2: 3 fields'),
+        (b'a\tb\n1\t2\n \t \n', 0, 'lines 1 to 3'),
+        (b'a\tb\n"1\t2\n3\t4"\t5\n', 0, 'line 3: 3 fields'),
+        (b'a\tb\n1\t2\n3\t4\n', 3, 'line 3: 2 data rows'),
+        (b'a\tb\r1\t2\r', 0, 'line 1: a NUL'),
+        (b'a\tb\tc\n1\t2\t3\n\r\t2\t3\n', 0, 'line 3: a NUL'),
+        (b'a\tb\n1\t2\n2.5\x007\t1\n', 0, 'line 3: a NUL'),
+        (b'a\tb\r\n1\t2\r\n3\x00\t4\r\n', 0, 'line 3: a NUL'),
+        (b'a\tb\n1\t2\n1\x00\t2\n\r3\t4\n', 0, 'line 3: a NUL'),
+        (b'\xef\xbb\xbf\n', 0, 'No columns to parse'),
+        (b'a\tb\n1\t2\t3\n4\t5', 0, 'line 2: 3 fields'),
+        (b'a\tb', 0, 'line 1: the header line has no newline'),
     ],
     ids=[
         'empty',
@@ -720,10 +731,18 @@ def test_tab_only_line_reads_as_a_row_of_nan(tmp_path):
         'lone-cr',
         'lone-cr-in-row',
         'nul-byte',
+        'crlf-then-nul',
+        'nul-before-cr',
+        'bom-only',
+        'ragged-before-cut',
+        'header-without-newline',
     ],
 )
-def test_unreadable_helpfile_raises_one_error_naming_file_and_line(tmp_path, data, min_rows):
-    """Every unreadable helpfile raises HelpfileFormatError naming the file and a line."""
+def test_unreadable_helpfile_raises_one_error_naming_file_and_line(
+    tmp_path, data, min_rows, where
+):
+    """Every unreadable helpfile raises HelpfileFormatError naming the file and the line of
+    its first defect; a NUL byte or lone carriage return is reported before anything else."""
     path = tmp_path / 'runtime_helpfile.csv'
     path.write_bytes(data)
 
@@ -731,7 +750,7 @@ def test_unreadable_helpfile_raises_one_error_naming_file_and_line(tmp_path, dat
         read_helpfile_table(path, min_rows=min_rows)
 
     assert str(path) in str(excinfo.value)
-    assert re.search(r'(line|row)s? \d+', str(excinfo.value))
+    assert where in str(excinfo.value)
 
 
 # Readers that only display the values; every other helpfile reader uses read_helpfile_table.

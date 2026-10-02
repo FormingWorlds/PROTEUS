@@ -139,8 +139,8 @@ def test_get_obs_reads_a_tab_file_with_an_empty_field_in_place(tmp_path):
 
 
 def test_get_obs_and_print_results_refuse_a_header_only_helpfile(tmp_path):
-    """A helpfile with a header and no rows raises HelpfileFormatError in both readers
-    instead of an IndexError from the last-row lookup."""
+    """Both readers pass min_rows=1, so a helpfile with a header and no rows raises
+    HelpfileFormatError rather than an IndexError from the last-row lookup."""
     from proteus.inference.utils import get_obs, print_results
     from proteus.utils.coupler import HelpfileFormatError
 

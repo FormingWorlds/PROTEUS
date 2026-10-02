@@ -201,12 +201,15 @@ def test_sample_from_grid_skips_a_case_whose_helpfile_row_is_ragged(
 
 @pytest.mark.unit
 def test_sample_from_grid_skips_a_case_without_a_helpfile(monkeypatch, tmp_path, caplog):
-    """A case directory with no helpfile is skipped like an unreadable one."""
+    """A case with no helpfile, or with a directory in its place, is skipped like an
+    unreadable one."""
     grid_dir = tmp_path / 'grid'
-    for i, text in enumerate([None, 'R_obs\n2.5\n']):
+    for i, text in enumerate([None, 'dir', 'R_obs\n2.5\n']):
         case = grid_dir / f'case_{i}'
         case.mkdir(parents=True)
-        if text is not None:
+        if text == 'dir':
+            (case / 'runtime_helpfile.csv').mkdir()
+        elif text is not None:
             (case / 'runtime_helpfile.csv').write_text(text, encoding='utf-8')
         (case / 'init_coupler.toml').write_text(f'[planet]\nmass_tot = {i + 2.0}\n')
     output_dir = tmp_path / 'out'
@@ -224,8 +227,8 @@ def test_sample_from_grid_skips_a_case_without_a_helpfile(monkeypatch, tmp_path,
         )
 
     assert n == 1
-    assert 'Skipping case_0' in caplog.text
-    assert pd.read_csv(output_dir / 'init.csv')['x_0'].tolist() == pytest.approx([0.3])
+    assert 'Skipping case_0' in caplog.text and 'Skipping case_1' in caplog.text
+    assert pd.read_csv(output_dir / 'init.csv')['x_0'].tolist() == pytest.approx([0.4])
 
 
 @pytest.mark.unit

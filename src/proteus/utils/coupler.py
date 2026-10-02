@@ -1370,8 +1370,9 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
     A file whose header holds a tab, as the writer makes it, is split on tabs, so
     an empty field reads as NaN in its own column; a file without tabs is split on
     runs of whitespace. ``float_precision='round_trip'`` returns each float bit for
-    bit. The writer ends every line with a newline, so a file without one has a cut
-    last row and is refused.
+    bit. The writer ends every line with a newline, so a file without one may have a
+    cut last row and is refused. A NUL byte or a lone carriage return is checked
+    first, then each line in order, so the error names the first defect.
 
     Parameters
     ----------
@@ -1407,10 +1408,6 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
         raise HelpfileFormatError(
             f'{path}, line {bad_line}: a NUL byte or a lone carriage return'
         )
-    if data and not data.endswith(b'\n'):
-        raise HelpfileFormatError(
-            f'{path}, line {n_lines}: no newline at the end, so the row is cut'
-        )
     for line_number, raw in enumerate(data.split(b'\n'), start=1):
         try:
             line = raw.decode('utf-8')
@@ -1432,13 +1429,19 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
         n_rows += 1
     if not n_columns:
         raise HelpfileFormatError(f'{path}, line {n_lines}: no header line')
+    if not data.endswith(b'\n'):
+        last = 'last row' if n_rows else 'header line'
+        raise HelpfileFormatError(
+            f'{path}, line {n_lines}: the {last} has no newline, so it may be cut; '
+            'if it is complete, append a newline'
+        )
     if n_rows < min_rows:
         raise HelpfileFormatError(
             f'{path}, line {n_lines}: {n_rows} data rows, {min_rows} needed'
         )
     try:
         table = pd.read_csv(io.BytesIO(data), sep=sep or r'\s+', float_precision='round_trip')
-    except pd.errors.ParserError as err:
+    except (pd.errors.ParserError, pd.errors.EmptyDataError) as err:
         raise HelpfileFormatError(f'{path}: {err}') from err
     text_columns = list(table.select_dtypes(exclude='number').columns) if n_rows else []
     if table.shape != (n_rows, n_columns) or text_columns:

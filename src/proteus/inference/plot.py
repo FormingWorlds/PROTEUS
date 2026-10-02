@@ -591,7 +591,7 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
         # Read helpfile for observables
         try:
             help = read_helpfile_table(hf_path, min_rows=1)
-        except HelpfileFormatError as err:
+        except (OSError, HelpfileFormatError) as err:
             log.warning(f'Unreadable helpfile for {c}: {err}')
             continue
 
