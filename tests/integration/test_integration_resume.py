@@ -318,8 +318,7 @@ def test_resume_continues_trajectory_from_disk_state(tmp_path):
         'resumed run did not advance simulation time'
     )
 
-    # The stored prefix survives unchanged, to the last bit: the helpfile reads every
-    # float back exactly.
+    # The stored prefix survives to the last bit; the helpfile reads floats back exactly.
     for column in ('Time', 'T_magma', 'Phi_global', 'F_atm', 'P_surf', 'M_atm', 'H_kg_atm'):
         np.testing.assert_array_equal(
             resumed[column].to_numpy()[:n_stored],
