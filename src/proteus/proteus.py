@@ -407,11 +407,28 @@ class Proteus:
             dirs['spider_solidus_ps'] = tables['solidus_path']
             dirs['spider_liquidus_ps'] = tables['liquidus_path']
 
-    def _run_escape_step(self, frozen: bool) -> None:
-        """Run escape and record the element mass it removed for the Zalmoxis target."""
+    def _run_escape_step(self) -> bool:
+        """Run escape and record the element mass it removed for the Zalmoxis target.
+
+        Escape draws on the atmosphere alone from the iteration the mantle
+        freezes, read here because the check that records it runs later in the
+        loop. On a loop without escape the per-step limit and records are reset,
+        so last step's request does not carry forward. Returns whether escape ran.
+        """
         from proteus.escape.wrapper import readable_total, run_escape
         from proteus.interior_struct.common import debit_escaped_mass
 
+        if self.loops['total'] <= self.loops['init_loops'] + 2 or self.desiccated:
+            self.interior_o.escape_dt_limit = np.inf
+            self.hf_row['esc_clamp_frac'] = 0.0
+            self.hf_row['esc_step_kg'] = 0.0
+            return False
+        PrintHalfSeparator()
+        stop = self.config.params.stop.solid
+        frozen = self.crystallized or (
+            stop.freeze_volatiles
+            and float(self.hf_row.get('Phi_global', 1.0)) <= float(stop.phi_crit)
+        )
         kg_before = readable_total(self.hf_row)
         run_escape(
             self.config,
@@ -422,6 +439,7 @@ class Proteus:
             interior_o=self.interior_o,
         )
         debit_escaped_mass(self.config, self.hf_row, kg_before - readable_total(self.hf_row))
+        return True
 
     def _save_zalmoxis_output(self):
         """Copy ``zalmoxis_output.dat`` next to the snapshot of the row being written."""
@@ -1070,7 +1088,7 @@ class Proteus:
             # Refuse a corrupt column here, before a structure solve reads it.
             change = volatile_mass_change(self.hf_row)
             if change != 0.0 and not tracks_volatile_mass(self.config):
-                log.warning(
+                log.info(
                     'M_volatile_change = %.3e kg is carried over but only the Zalmoxis '
                     'structure reads or updates it; it stays stale under %s',
                     change,
@@ -1292,29 +1310,9 @@ class Proteus:
             ############### / STELLAR FLUX MANAGEMENT
 
             ############### ESCAPE
-            if (self.loops['total'] > self.loops['init_loops'] + 2) and (not self.desiccated):
-                PrintHalfSeparator()
-                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                # The mantle can cross the solidification threshold on this
-                # iteration and the check that records it runs further down the
-                # loop, so read the same condition here: escape must draw on the
-                # atmosphere alone from the step the mantle freezes, not the one
-                # after, or it sizes its loss from a reservoir already frozen.
-                frozen = self.crystallized or (
-                    self.config.params.stop.solid.freeze_volatiles
-                    and float(self.hf_row.get('Phi_global', 1.0))
-                    <= float(self.config.params.stop.solid.phi_crit)
-                )
-                self._run_escape_step(frozen)
-                if _IT_TIMING_ENABLED:
-                    _t_mod['escape'] = time.perf_counter() - _t0
-            else:
-                # No escape step this loop, so nothing justifies holding the
-                # step short on account of one, and last step's request would
-                # otherwise carry forward and read as a still-clamped run.
-                self.interior_o.escape_dt_limit = np.inf
-                self.hf_row['esc_clamp_frac'] = 0.0
-                self.hf_row['esc_step_kg'] = 0.0
+            _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+            if self._run_escape_step() and _IT_TIMING_ENABLED:
+                _t_mod['escape'] = time.perf_counter() - _t0
 
             ############### / ESCAPE
 

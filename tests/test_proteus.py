@@ -281,8 +281,12 @@ def test_resume_checks_the_volatile_change_column_before_any_structure_solve(tmp
 
 @pytest.mark.unit
 @pytest.mark.parametrize('struct, expected', [('zalmoxis', -3.0e21), ('dummy', 0.0)])
+@pytest.mark.parametrize(
+    'crystallized, freeze, phi, frozen',
+    [(False, False, 0.0, False), (True, False, 0.5, True), (False, True, 0.005, True)],
+)
 def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
-    tmp_path, struct, expected
+    tmp_path, struct, expected, crystallized, freeze, phi, frozen
 ):
     """The main-loop escape step books the element mass escape removed into
     M_volatile_change with the Zalmoxis structure, and nothing with the dummy
@@ -290,34 +294,67 @@ def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
     from types import SimpleNamespace
 
     p = _make_proteus_instance(tmp_path, struct_module=struct)
-    p.hf_row = {'H_kg_total': 5.0e21, 'O_kg_total': 2.0e22}
+    p.hf_row = {'H_kg_total': 5.0e21, 'O_kg_total': 2.0e22, 'Phi_global': phi}
     p.interior_o = SimpleNamespace(dt=100.0)
+    p.loops = {'total': 10, 'init_loops': 2}
+    p.desiccated, p.crystallized = False, crystallized
+    p.config.params.stop.solid.freeze_volatiles = freeze
     calls = []
 
     def escape(config, hf_row, dirs, dt, **kwargs):
-        calls.append(kwargs['atmosphere_only'])
+        calls.append((config, hf_row, dirs, dt, kwargs))
         hf_row['H_kg_total'] -= 3.0e21
 
     with patch('proteus.escape.wrapper.run_escape', side_effect=escape):
-        p._run_escape_step(frozen=True)
+        assert p._run_escape_step() is True
 
-    assert calls == [True]
+    assert len(calls) == 1
+    config, hf_row, dirs, dt, kwargs = calls[0]
+    assert (config, hf_row, dirs) == (p.config, p.hf_row, p.directories)
+    assert dt == pytest.approx(100.0, rel=1e-15)
+    assert kwargs == {'atmosphere_only': frozen, 'interior_o': p.interior_o}
     assert p.hf_row['H_kg_total'] == pytest.approx(2.0e21, rel=1e-15)
     assert p.hf_row.get('M_volatile_change', 0.0) == pytest.approx(expected, rel=1e-12, abs=0.0)
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('struct, warns', [('dummy', True), ('zalmoxis', False)])
-def test_resume_warns_when_the_volatile_change_is_stale_under_the_structure(
-    tmp_path, caplog, struct, warns
+@pytest.mark.parametrize('total, desiccated', [(4, False), (10, True)])
+def test_a_loop_without_escape_clears_the_per_step_escape_records(tmp_path, total, desiccated):
+    """Before the escape start and once desiccated, escape is skipped and the
+    step limit, the clamp and the applied loss of the last step are cleared."""
+    from types import SimpleNamespace
+
+    p = _make_proteus_instance(tmp_path)
+    p.hf_row = {'esc_clamp_frac': 0.3, 'esc_step_kg': 1.0e18, 'H_kg_total': 5.0e21}
+    p.interior_o = SimpleNamespace(dt=100.0, escape_dt_limit=10.0)
+    p.loops = {'total': total, 'init_loops': 2}
+    p.desiccated, p.crystallized = desiccated, False
+
+    with patch('proteus.escape.wrapper.run_escape') as escape:
+        assert p._run_escape_step() is False
+
+    escape.assert_not_called()
+    assert p.interior_o.escape_dt_limit == np.inf
+    assert p.hf_row['esc_clamp_frac'] == pytest.approx(0.0, abs=0.0)
+    assert p.hf_row['esc_step_kg'] == pytest.approx(0.0, abs=0.0)
+    assert p.hf_row['H_kg_total'] == pytest.approx(5.0e21, rel=1e-15)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'struct, change, logged',
+    [('dummy', -2.0e21, True), ('dummy', 0.0, False), ('zalmoxis', -2.0e21, False)],
+)
+def test_resume_notes_a_volatile_change_the_structure_does_not_read(
+    tmp_path, caplog, struct, change, logged
 ):
     """A non-zero M_volatile_change resumed under a structure that does not read
-    it is flagged; under Zalmoxis it is in use and nothing is logged."""
+    it is noted; a zero column, or one Zalmoxis reads, is not."""
     p = _make_proteus_instance(tmp_path, struct_module=struct, interior_module='aragog')
     (tmp_path / 'data').mkdir(exist_ok=True)
     hf = _make_hf_df()
-    hf['M_volatile_change'] = [0.0, 0.0, 0.0, 0.0, -2.0e21]
-    with caplog.at_level('WARNING'):
+    hf['M_volatile_change'] = [0.0, 0.0, 0.0, 0.0, change]
+    with caplog.at_level('INFO'):
         _resume_with_patches(
             p,
             hf,
@@ -333,9 +370,8 @@ def test_resume_warns_when_the_volatile_change_is_stale_under_the_structure(
             ),
         )
     stale = [r for r in caplog.records if 'stays stale' in r.getMessage()]
-    assert len(stale) == (1 if warns else 0)
-    if warns:
-        assert '-2.000e+21 kg' in stale[0].getMessage()
+    assert [r.levelname for r in stale] == (['INFO'] if logged else [])
+    assert all(f'{change:.3e} kg' in r.getMessage() for r in stale)
 
 
 def _raise_if(condition):

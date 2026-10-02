@@ -319,6 +319,20 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     return True
 
 
+def o_budget_is_derived(config: Config) -> bool:
+    """Whether each outgassing call rewrites ``O_kg_total`` from the melt fO2.
+
+    CALLIOPE and atmodeller set the O budget from the fixed fO2 under
+    ``planet.fO2_source = 'user_constant'``; ``O_mode = 'ic_chemistry'``
+    requires that source at config load. The dummy outgassing keeps a positive
+    ``O_kg_total`` as given, and ``from_O_budget`` takes the O budget as input.
+    """
+    return (
+        config.outgas.module in ('calliope', 'atmodeller')
+        and config.planet.fO2_source == 'user_constant'
+    )
+
+
 def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     """
     Run outgassing model to get new volatile surface pressures

@@ -1235,40 +1235,6 @@ class TestEscapeStepLimit:
         # without the forwarding is exactly the silent-failure shape.
         assert 'interior_o' in inspect.signature(BoundaryRunner.compute_time_step).parameters
 
-    @pytest.mark.unit
-    def test_main_loop_wires_and_clears_the_escape_step_limit(self):
-        """The coupling loop must hand the interior state to escape, and must
-        clear the per-step records on an iteration where escape does not run.
-
-        Without the hand-over the shortening is inert for every run, which is the
-        silent-failure shape a backend already hit. Without the clearing, the
-        request from an earlier step carries forward and a run that is stepping
-        freely still reads as one held short by the cap.
-        """
-        import inspect
-
-        from proteus.proteus import Proteus
-
-        src = inspect.getsource(Proteus.start)
-        step = inspect.getsource(Proteus._run_escape_step)
-        assert 'self._run_escape_step(frozen)' in src  # the anchors below depend on it
-        assert 'run_escape(' in step
-        call = step.split('run_escape(')[1].split(')')[0]
-        assert 'interior_o=self.interior_o' in call
-        assert 'atmosphere_only=frozen' in call
-
-        # The reservoir escape draws on has to account for a mantle that freezes
-        # on this iteration, since the flag recording it is set further down the
-        # loop and reading it alone sizes the loss from a reservoir already gone.
-        before_call = src.split('_run_escape_step(')[0]
-        assert 'freeze_volatiles' in before_call
-
-        # The branch taken when escape does not run has to reset all three, so
-        # the limit, the request and the applied loss cannot outlive their step.
-        skipped = src.split('_run_escape_step(')[1]
-        for field in ('escape_dt_limit', 'esc_clamp_frac', 'esc_step_kg'):
-            assert field in skipped, f'{field} is never cleared when escape is skipped'
-
 
 @pytest.mark.unit
 def test_init_stage_step_never_exceeds_the_accretion_resume_horizon():

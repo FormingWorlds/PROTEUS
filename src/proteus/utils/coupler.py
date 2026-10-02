@@ -1008,8 +1008,9 @@ def GetHelpfileKeys():
         'n_impacts_applied',  # count of giant impacts applied [1]
 
         # Element mass the Zalmoxis whole-planet target adds to mass_tot: impact
-        # delivery less stripping, and escape (rock vapour included). 0 with the dummy structure.
-        'M_volatile_change',  # cumulative delivered - stripped - escaped element mass [kg]
+        # delivery less stripping, and escape (rock vapour included). Not updated with the
+        # dummy structure.
+        'M_volatile_change',  # delivered - stripped (impacts) - escaped (escape steps) [kg]
     ]
 
     # gases from outgassing

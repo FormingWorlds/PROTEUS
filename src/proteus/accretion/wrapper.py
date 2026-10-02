@@ -414,8 +414,10 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     event : ImpactEvent
         The impact to apply.
     """
+    from proteus.accretion.common import MASS_CLOSURE_RTOL
     from proteus.interior_energetics.wrapper import remelt_mantle, solve_structure
     from proteus.interior_struct.common import record_volatile_change, volatile_mass_change
+    from proteus.outgas.wrapper import o_budget_is_derived
 
     config = handler.config
     hf_row = handler.hf_row
@@ -446,18 +448,24 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     strip = _target_strip_amounts(config, hf_row, f_loss)
     content = _impactor_volatile_content(config, handler.hf_all, event, hf_row=hf_row)
     delivered, impactor_lost = _partition_impactor_content(config, hf_row, content, f_loss)
-    o_rock = delivered.pop('O', 0.0) if _o_budget_is_solver_output(config) else 0.0
-    # Refuse a corrupt ledger or a non-finite volatile sum before anything moves.
+    o_rock = delivered.pop('O', 0.0) if o_budget_is_derived(config) else 0.0
+    # Refuse a corrupt ledger, a non-finite content or stripped atmosphere, or a split
+    # that loses mass, before anything moves (the strip drops a NaN atmosphere silently).
     volatile_mass_change(hf_row)
+    total = sum(content.values())
+    split = sum(delivered.values()) + sum(impactor_lost.values()) + o_rock
+    atm = [float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list] if f_loss > 0.0 else []
+    finite = all(math.isfinite(m) for m in (*content.values(), *atm))
+    if not (finite and math.isclose(split, total, rel_tol=MASS_CLOSURE_RTOL)):
+        raise RuntimeError(
+            f'impact volatile masses are not finite or do not close: content {content}, '
+            f'delivered + lost {split!r}, strip {strip}'
+        )
     net_volatiles = sum(delivered.values()) - sum(strip.values())
-    if not math.isfinite(net_volatiles):
-        raise RuntimeError(f'impact volatile change is not finite ({net_volatiles!r})')
 
     # Snapshot volatile budgets before the structure solve to prevent ppmw
     # recomputation from artificially inflating volatile inventories.
     volatile_budgets = _snapshot_volatile_budgets(hf_row)
-
-    from proteus.accretion.common import MASS_CLOSURE_RTOL
 
     impactor_volatiles = sum(content.values()) - o_rock
     impactor_rock = event.mass_delta - impactor_volatiles
@@ -701,23 +709,6 @@ def _impactor_volatile_content(config, hf_all, event: ImpactEvent, hf_row=None) 
                 content[e] = event.M_impactor * ppmw / 1.0e6
 
     return content
-
-
-def _o_budget_is_solver_output(config) -> bool:
-    """Whether the outgassing rewrites the O budget from the melt fO2.
-
-    True under ``O_mode = 'ic_chemistry'``, which has no user O budget, with
-    any outgassing module; and under ``planet.fO2_source = 'user_constant'``
-    with an outgassing solver, while the dummy outgassing keeps a positive O
-    budget as given. Delivered O is then part of the silicate budget and counts
-    as rock, since the next outgassing call would otherwise drop it from the
-    planet. Impactor O lost with its atmosphere still leaves.
-    """
-    o_mode = getattr(getattr(config.planet, 'elements', None), 'O_mode', None)
-    solver = getattr(getattr(config, 'outgas', None), 'module', None) != 'dummy'
-    return o_mode == 'ic_chemistry' or (
-        solver and getattr(config.planet, 'fO2_source', None) == 'user_constant'
-    )
 
 
 def _partition_impactor_content(

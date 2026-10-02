@@ -85,6 +85,7 @@ def record_volatile_change(config: Config, hf_row: dict, delta: float) -> None:
     The Zalmoxis whole-planet target is ``mass_tot`` plus ``M_volatile_change``
     less the volatiles its mantle EOS does not hold, so a volatile change left
     out of the column would come back as rock at the next structure solve.
+    Without the Zalmoxis structure it returns before any check.
 
     Raises
     ------
