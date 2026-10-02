@@ -3719,7 +3719,6 @@ def _generate_tables_stubbed(
     melt_calls=None,
     on_build=None,
     mass_tot=1.0,
-    p_max=None,
 ):
     """Run generate_spider_tables for a unified PALEOS entry with stubbed
     generators; return the result, the two generator mocks and the key the
@@ -3787,7 +3786,7 @@ def _generate_tables_stubbed(
         solid_eos=None,
         liquid_eos=None,
     )
-    out = zmod.generate_spider_tables(config, str(tmp_path / 'run'), p_max) if run else None
+    out = zmod.generate_spider_tables(config, str(tmp_path / 'run')) if run else None
     return out, bounds, tables, key
 
 
@@ -3986,62 +3985,6 @@ def test_resume_keeps_run_tables_of_an_unchanged_odd_mass(tmp_path, monkeypatch,
     assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
     assert 'Planet mass changed' not in caplog.text
     assert abs(float('3.518519e+11') / (150e9 * mass + 200e9) - 1) > 1e-9
-
-
-def test_resume_keeps_the_row_tables_after_escape_moved_the_mass(tmp_path, monkeypatch):
-    """With the row's P_max the resume keeps the tables in use although escape
-    moved mass_tot past the 1e-6 key tolerance; the mass rule would drop them."""
-    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
-    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
-    _, _, _, key = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True, run=False)
-    drifted = 1.0 - 1.0e-5  # P_max 4.3e-6 lower, outside the key tolerance
-    _seed_tables(run_eos, key)
-    _, bounds, _, _ = _generate_tables_stubbed(
-        tmp_path, monkeypatch, resume=True, mass_tot=drifted, p_max=150e9 + 200e9
-    )
-    bounds.assert_not_called()
-    assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
-
-    # Control: without the row value the drifted mass drops and rebuilds them.
-    _seed_tables(run_eos, key)
-    _, bounds, _, _ = _generate_tables_stubbed(
-        tmp_path, monkeypatch, resume=True, mass_tot=drifted
-    )
-    bounds.assert_called_once()
-    assert (run_eos / 'solidus_P-S.dat').read_text() == 'NEW'
-
-
-def test_a_walk_back_rebuilds_the_tables_at_the_row_p_max(tmp_path, monkeypatch):
-    """A resume before an impact finds the post-impact tables; it drops them and
-    rebuilds at the row's pre-impact P_max, not at the restored mass."""
-    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
-    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
-    _, _, _, post_key = _generate_tables_stubbed(
-        tmp_path, monkeypatch, resume=True, run=False, mass_tot=1.05
-    )
-    _seed_tables(run_eos, post_key)
-    _, bounds, _, _ = _generate_tables_stubbed(
-        tmp_path, monkeypatch, resume=True, mass_tot=1.0 - 1.0e-5, p_max=3.5e11
-    )
-    bounds.assert_called_once()
-    assert 'P_max=3.500000e+11' in (run_eos / '.cache_info.txt').read_text()
-
-
-def test_ps_tables_p_max_reads_the_marker_and_follows_a_rebuild(tmp_path):
-    """The P_max comes from the marker; a rebuild in place is read again, and
-    no marker or no directory gives 0."""
-    import os
-
-    from proteus.interior_struct.zalmoxis import ps_tables_p_max
-
-    _seed_tables(tmp_path, 'P_max=3.500000e+11_nP=8')
-    assert ps_tables_p_max(str(tmp_path)) == pytest.approx(3.5e11, rel=1e-15)
-    marker = tmp_path / '.cache_info.txt'
-    marker.write_text('P_max=3.575000e+11_nP=8')
-    os.utime(marker, ns=(1, 1))  # a new file version, whatever the clock resolution
-    assert ps_tables_p_max(str(tmp_path)) == pytest.approx(3.575e11, rel=1e-15)
-    assert ps_tables_p_max(str(tmp_path / 'missing')) == pytest.approx(0.0, abs=0.0)
-    assert ps_tables_p_max(None) == pytest.approx(0.0, abs=0.0)
 
 
 def test_resume_reports_kept_tables_once_per_process(tmp_path, monkeypatch, caplog):

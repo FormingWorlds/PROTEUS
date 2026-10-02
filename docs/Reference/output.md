@@ -265,7 +265,6 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `M_accreted_rock` | `kg` | cumulative rock mass added by giant impacts | `accretion/wrapper.py` | always | accretion, main loop |
 | `M_accreted_net` | `kg` | cumulative change of mass_tot: rock, plus net volatiles and escape with Zalmoxis; resume with the same structure module | `accretion/wrapper.py` | always | accretion |
 | `n_impacts_applied` | `1` | count of giant impacts applied | `accretion/wrapper.py` | always | accretion |
-| `ps_p_max` | `Pa` | upper pressure of the energetics P-S tables in use, 0 if none | `proteus.py` | always | main loop |
 
 ### Gases from outgassing
 

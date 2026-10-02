@@ -794,7 +794,6 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'M_accreted_net',
         'M_accreted_rock',
         'n_impacts_applied',
-        'ps_p_max',
         'step_dE_impact_J',
     }
 )
@@ -1008,7 +1007,6 @@ def GetHelpfileKeys():
         'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
         'M_accreted_net',   # cumulative change of mass_tot: rock, plus net volatiles and escape with Zalmoxis; resume with the same structure module [kg]
         'n_impacts_applied',  # count of giant impacts applied [1]
-        'ps_p_max',         # upper pressure of the energetics P-S tables in use, 0 if none [Pa]
     ]
 
     # gases from outgassing

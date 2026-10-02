@@ -276,7 +276,6 @@ def test_match_ps_tables_to_mass_uses_the_tables_of_the_current_mass(
     generate_spider_tables returns for the current mass; the SPIDER structure keeps its
     static tables, and nothing changes otherwise."""
     p = _make_proteus_instance(tmp_path, struct_module=struct, interior_module=energetics)
-    p.hf_row = {}  # a row written before ps_p_max existed: the mass rule
     if restored:
         p.directories['spider_eos_dir'] = 'old'
     result = {'eos_dir': 'new', 'solidus_path': 'new/sol', 'liquidus_path': 'new/liq'}
@@ -289,27 +288,11 @@ def test_match_ps_tables_to_mass_uses_the_tables_of_the_current_mass(
 
     assert p.directories.get('spider_eos_dir') == expected
     assert generate.call_args_list == (
-        [call(p.config, p.directories['output'], None)] if called else []
+        [call(p.config, p.directories['output'])] if called else []
     )
     new = expected == 'new'
     assert p.directories.get('spider_solidus_ps') == ('new/sol' if new else None)
     assert p.directories.get('spider_liquidus_ps') == ('new/liq' if new else None)
-
-
-@pytest.mark.unit
-def test_match_ps_tables_to_mass_passes_the_row_tables_p_max(tmp_path):
-    """A row that records the P_max of its tables passes it on, so the resume
-    keeps (or rebuilds at) those tables rather than the restored mass's."""
-    p = _make_proteus_instance(tmp_path, struct_module='zalmoxis', interior_module='aragog')
-    p.hf_row = {'ps_p_max': 3.575e11}
-    p.directories['spider_eos_dir'] = 'old'
-    result = {'eos_dir': 'kept', 'solidus_path': 'kept/sol', 'liquidus_path': 'kept/liq'}
-    with patch(
-        'proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=result
-    ) as generate:
-        p._match_ps_tables_to_mass()
-    assert generate.call_args_list == [call(p.config, p.directories['output'], 3.575e11)]
-    assert p.directories['spider_eos_dir'] == 'kept'
 
 
 def _make_hf_df():

@@ -3039,23 +3039,6 @@
       "consumers_possible": []
     },
     {
-      "name": "ps_p_max",
-      "unit": "Pa",
-      "description": "upper pressure of the energetics P-S tables in use, 0 if none",
-      "group": "Giant-impact accretion ledger",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/proteus.py",
-          "condition": "always"
-        }
-      ],
-      "consumers": [
-        "main loop"
-      ],
-      "consumers_possible": []
-    },
-    {
       "name": "H2O_mol_atm",
       "unit": "mol",
       "description": "number outgassed to atmosphere",
