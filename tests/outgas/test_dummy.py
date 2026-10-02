@@ -62,11 +62,11 @@ def _make_hf_row(
     return hf_row
 
 
-def _run(hf_row):
-    """Call dummy outgas with a mock config."""
+def _run(hf_row, initial=True):
+    """Call dummy outgas with a mock config, in the init stage by default."""
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
-    calc_surface_pressures_dummy(dirs, config, hf_row)
+    calc_surface_pressures_dummy(dirs, config, hf_row, initial=initial)
 
 
 def _expected_species_kg(element_kg, element):
@@ -424,15 +424,14 @@ def test_dummy_outgas_keeps_a_positive_oxygen_budget():
 
 
 @pytest.mark.unit
-def test_dummy_outgas_derives_an_empty_oxygen_budget_only_at_the_initial_condition():
-    """At Time = 0 an empty O budget is derived from the outgassed species; an
-    O budget that escape or a strip emptied later stays at 0, so no oxygen is
+def test_dummy_outgas_derives_an_empty_oxygen_budget_only_in_the_init_stage():
+    """In the init stage an empty O budget is derived from the outgassed species;
+    an O budget that escape or a strip emptied later stays at 0, so no oxygen is
     created that the mass ledger does not hold."""
     initial = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.5)
     _run(initial)
     later = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.5)
-    later['Time'] = 1.0e3
-    _run(later)
+    _run(later, initial=False)
     assert initial['O_kg_total'] > 1.0e19
     assert later['O_kg_total'] == pytest.approx(0.0, abs=0.0)
 

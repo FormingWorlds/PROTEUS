@@ -39,7 +39,9 @@ _ELEMENT_TO_SPECIES = {
 }
 
 
-def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
+def calc_surface_pressures_dummy(
+    dirs: dict, config: Config, hf_row: dict, initial: bool = False
+):
     """Compute volatile partitioning with parameterized model.
 
     Parameters
@@ -50,6 +52,9 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
         PROTEUS configuration.
     hf_row : dict
         Helpfile row (modified in place).
+    initial : bool, optional
+        Whether this is an init-stage iteration. Only then is an empty O budget
+        derived from the outgassed species; later an emptied budget stays empty.
     """
     Phi_global = float(hf_row['Phi_global'])
     gravity = float(hf_row['gravity'])
@@ -152,11 +157,10 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
         if element != 'O':
             hf_row[f'{element}_kg_total'] = kg
 
-    # Oxygen total: the saved budget is restored as given. Only at the initial
-    # condition (Time = 0) is an empty budget derived from the outgassed species;
-    # later an empty budget (stripped or escaped) stays empty.
+    # Oxygen total: the saved budget is restored as given; an empty one is derived
+    # from the outgassed species only in the init stage.
     saved_O = saved_element_kg.get('O', 0.0)
-    if saved_O <= 0.0 and float(hf_row.get('Time', 0.0)) <= 0.0:
+    if saved_O <= 0.0 and initial:
         saved_O = hf_row.get('O_kg_atm', 0.0) + hf_row.get('O_kg_liquid', 0.0)
     hf_row['O_kg_total'] = saved_O
 

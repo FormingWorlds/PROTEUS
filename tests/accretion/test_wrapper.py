@@ -1273,31 +1273,36 @@ def test_match_planet_step_zero_without_history_falls_back_to_hf_row():
     assert content['O'] == pytest.approx(1.0e23 * (1.2e21 / 6.0e24))
 
 
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    'o_mode, fO2_source, outgas, derived',
-    [
-        ('ic_chemistry', 'user_constant', 'calliope', True),
-        ('ic_chemistry', 'user_constant', 'atmodeller', True),
-        ('ic_chemistry', 'user_constant', 'dummy', False),
-        ('kg', 'user_constant', 'calliope', True),
-        ('FeO_mantle_wt_pct', 'user_constant', 'atmodeller', True),
-        ('ppmw', 'user_constant', 'dummy', False),
-        ('ppmw', 'from_O_budget', 'calliope', False),
-    ],
-)
-def test_the_o_budget_is_derived_only_by_an_outgassing_solver_at_a_fixed_fo2(
-    o_mode, fO2_source, outgas, derived
-):
-    """CALLIOPE and atmodeller rewrite the O budget under a fixed fO2 for every
-    O_mode; the dummy outgassing and from_O_budget keep it as given."""
-    from proteus.outgas.wrapper import o_budget_is_derived
+# Whether each outgassing module rewrites O_kg_total from a fixed fO2 every call.
+_SETS_O_BUDGET = {'calliope': True, 'atmodeller': True, 'dummy': False}
 
-    planet = SimpleNamespace(elements=SimpleNamespace(O_mode=o_mode), fO2_source=fO2_source)
-    config = SimpleNamespace(planet=planet, outgas=SimpleNamespace(module=outgas))
-    assert o_budget_is_derived(config) is derived
-    planet.elements.O_mode = 'ppmw'
-    assert o_budget_is_derived(config) is derived
+
+@pytest.mark.unit
+def test_every_outgassing_module_has_a_stated_oxygen_rule():
+    """Only CALLIOPE and atmodeller at a fixed fO2 rewrite the O budget; the dummy
+    outgassing and from_O_budget keep it as given. A module added to the config
+    fails here until it is classified. The rule never reads O_mode, so the
+    planet has no elements section."""
+    import attrs
+
+    from proteus.config._outgas import Outgas
+    from proteus.outgas.wrapper import outgassing_sets_o_budget
+
+    modules = set(attrs.fields(Outgas).module.validator.options)
+    assert modules == set(_SETS_O_BUDGET)
+    sources = ('user_constant', 'from_O_budget')
+    rule = {
+        (m, f): outgassing_sets_o_budget(
+            SimpleNamespace(
+                planet=SimpleNamespace(fO2_source=f), outgas=SimpleNamespace(module=m)
+            )
+        )
+        for m in modules
+        for f in sources
+    }
+    assert rule == {
+        (m, f): _SETS_O_BUDGET[m] and f == 'user_constant' for m in modules for f in sources
+    }
 
 
 @pytest.mark.unit
@@ -2058,21 +2063,24 @@ def test_a_non_finite_ledger_stops_the_anchor_update(where, monkeypatch):
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'content, outgas, frac, h_atm, h_total',
+    'content, outgas, frac, row',
     [
-        ({'H': 1.0e20, 'O': float('nan')}, 'dummy', 0.5, 5.0e19, 1.0e20),
-        ({'H': 1.0e20, 'O': float('nan')}, 'calliope', 0.0, 5.0e19, 1.0e20),
-        ({'H': float('inf')}, 'dummy', 0.0, 5.0e19, 1.0e20),
-        ({'H': 1.0e20}, 'dummy', 0.5, float('nan'), 1.0e20),
-        ({'H': 1.0e20}, 'dummy', 0.0, 5.0e19, float('nan')),
+        ({'H': 1.0e20, 'O': float('nan')}, 'dummy', 0.5, {}),
+        ({'H': 1.0e20, 'O': float('nan')}, 'calliope', 0.0, {}),
+        ({'H': float('inf')}, 'dummy', 0.0, {}),
+        ({'H': 1.0e20}, 'dummy', 0.5, {'H_kg_atm': float('nan')}),
+        ({'H': 1.0e20}, 'dummy', 0.0, {'H_kg_total': float('nan')}),
+        ({'H': 1.0e20}, 'dummy', 0.5, {'H_kg_atm': -5.0e19}),
+        ({'H': 1.0e20}, 'dummy', 0.0, {'n_impacts_applied': float('nan')}),
+        ({'H': 1.0e20}, 'dummy', 0.0, {'M_accreted_rock': float('nan')}),
     ],
 )
-def test_a_non_finite_impact_volatile_mass_stops_the_impact(
-    monkeypatch, content, outgas, frac, h_atm, h_total
+def test_a_negative_or_non_finite_impact_mass_stops_the_impact(
+    monkeypatch, content, outgas, frac, row
 ):
-    """A non-finite impactor content or element budget stops the impact
-    before anything moves, through the loss split and the O-as-rock path:
-    the anchor, the rock ledger, the counter and the column stay as they were."""
+    """A non-finite impactor content, or a negative or non-finite element budget
+    or impact record, stops the impact before anything moves: the anchor and
+    the whole helpfile row stay as they were."""
     from proteus.accretion import wrapper
     from proteus.accretion.wrapper import apply_impact
 
@@ -2084,14 +2092,42 @@ def test_a_non_finite_impact_volatile_mass_stops_the_impact(
     handler = _impact_handler(accretion=acc)
     handler.config.outgas.module = outgas
     handler.hf_row.update(
-        M_volatile_change=-1.0e21, H_kg_total=h_total, H_kg_atm=h_atm, O_kg_total=1.0e21
+        {
+            'M_volatile_change': -1.0e21,
+            'H_kg_total': 1.0e20,
+            'H_kg_atm': 5.0e19,
+            'O_kg_total': 1.0e21,
+            **row,
+        }
     )
-    with pytest.raises(RuntimeError, match='impact volatile masses are not finite'):
+    before = dict(handler.hf_row)
+    with pytest.raises(RuntimeError, match='impact masses are negative or not finite'):
         apply_impact(handler, _impact_event())
     assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
-    assert 'M_accreted_rock' not in handler.hf_row
+    assert handler.hf_row == before
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('escaped', [None, 1.0e20, 0.0])
+def test_a_non_finite_ledger_is_refused_with_the_dummy_structure_too(monkeypatch, escaped):
+    """A NaN M_volatile_change is corruption whatever the structure: the impact
+    and the escape debit refuse it with the dummy structure as well, also on an
+    escape step that removed nothing."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.interior_struct.common import debit_escaped_mass
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(structure='dummy')
+    handler.hf_row['M_volatile_change'] = float('nan')
+    with pytest.raises(RuntimeError, match='M_volatile_change is not finite'):
+        if escaped is None:
+            apply_impact(handler, _impact_event())
+        else:
+            debit_escaped_mass(handler.config, handler.hf_row, escaped)
+    assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
     assert 'n_impacts_applied' not in handler.hf_row
-    assert handler.hf_row['M_volatile_change'] == pytest.approx(-1.0e21, rel=1e-15)
 
 
 @pytest.mark.unit

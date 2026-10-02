@@ -85,18 +85,19 @@ def record_volatile_change(config: Config, hf_row: dict, delta: float) -> None:
     The Zalmoxis whole-planet target is ``mass_tot`` plus ``M_volatile_change``
     less the volatiles its mantle EOS does not hold, so a volatile change left
     out of the column would come back as rock at the next structure solve.
-    Without the Zalmoxis structure it returns before any check.
+    The column and ``delta`` are checked with every structure: a non-finite
+    value in the helpfile is corruption whether or not the column is read.
 
     Raises
     ------
     RuntimeError
         If the column or ``delta`` is not finite.
     """
-    if not tracks_volatile_mass(config):
-        return
+    change = volatile_mass_change(hf_row)
     if not math.isfinite(delta):
         raise RuntimeError(f'volatile mass change is not finite ({delta!r})')
-    hf_row['M_volatile_change'] = volatile_mass_change(hf_row) + delta
+    if tracks_volatile_mass(config):
+        hf_row['M_volatile_change'] = change + delta
 
 
 def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
@@ -107,6 +108,8 @@ def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
     which ``esc_kg_cumulative`` does not count: that mass leaves the budgets, so
     the target drops with it, and oxygen the chemistry recomputes from the melt
     is mass the mantle supplied.
+    The column is checked on every call, with every structure and also when
+    nothing escaped.
 
     Parameters
     ----------
@@ -117,5 +120,4 @@ def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
     escaped : float
         Element mass the escape step removed from the budgets [kg].
     """
-    if 0.0 < escaped < math.inf:
-        record_volatile_change(config, hf_row, -escaped)
+    record_volatile_change(config, hf_row, -escaped if 0.0 < escaped < math.inf else 0.0)

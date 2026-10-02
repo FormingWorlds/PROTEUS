@@ -1321,6 +1321,28 @@ def test_run_outgassing_from_O_budget_rejects_dummy_backend():
         mock_dummy.assert_not_called()
 
 
+class _StopAfterDispatch(Exception):
+    """Raised by a patched solver to end run_outgassing right after its call."""
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('initial', [True, False])
+def test_run_outgassing_tells_the_dummy_whether_it_is_the_init_stage(initial):
+    """The dummy outgassing derives an empty O budget only in the init stage, so
+    the wrapper must forward that flag to it unchanged."""
+    config = MagicMock()
+    config.outgas.module = 'dummy'
+    config.planet.fO2_source = 'user_constant'
+    config.outgas.fO2_shift_IW = 2.0
+    with patch(
+        'proteus.outgas.dummy.calc_surface_pressures_dummy', side_effect=_StopAfterDispatch
+    ) as mock_dummy:
+        with pytest.raises(_StopAfterDispatch):
+            run_outgassing({'output': '/tmp/test'}, config, {}, initial=initial)
+    assert mock_dummy.call_count == 1
+    assert mock_dummy.call_args.kwargs == {'initial': initial}
+
+
 @pytest.mark.unit
 def test_run_outgassing_rejects_unknown_fO2_source():
     """An unrecognised fO2_source must raise NotImplementedError rather
@@ -1980,7 +2002,7 @@ def test_run_outgassing_and_vapourisation_runs_vapour_step_above_phi_crit():
     ):
         run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
 
-    mock_outgas.assert_called_once_with(dirs, config, hf_row)
+    mock_outgas.assert_called_once_with(dirs, config, hf_row, initial=True)
     mock_vap.assert_called_once_with(dirs, config, hf_row, True)
     # Reset happened before the (mocked, no-op) vapourisation step.
     assert hf_row['M_vaps'] == 0.0
@@ -2006,7 +2028,7 @@ def test_run_outgassing_and_vapourisation_skips_vapour_step_below_phi_crit():
     ):
         run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=False)
 
-    mock_outgas.assert_called_once_with(dirs, config, hf_row)
+    mock_outgas.assert_called_once_with(dirs, config, hf_row, initial=False)
     mock_vap.assert_not_called()
     assert hf_row['M_vaps'] == 0.0
 
@@ -2029,7 +2051,7 @@ def test_run_outgassing_and_vapourisation_skips_vapour_step_when_disabled():
     ):
         run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
 
-    mock_outgas.assert_called_once_with(dirs, config, hf_row)
+    mock_outgas.assert_called_once_with(dirs, config, hf_row, initial=True)
     mock_vap.assert_not_called()
     assert hf_row['M_vaps'] == 0.0
 

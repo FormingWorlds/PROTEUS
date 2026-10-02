@@ -116,6 +116,11 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
     )
 
 
+def _valid_mass(value) -> bool:
+    """Whether a stored mass or count is finite and not negative (absent counts as 0)."""
+    return 0.0 <= float(value or 0.0) < math.inf
+
+
 def _as_float(val: object) -> float:
     """Convert value to float, returning NaN on ValueError or TypeError."""
     try:
@@ -417,7 +422,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     from proteus.accretion.common import MASS_CLOSURE_RTOL
     from proteus.interior_energetics.wrapper import remelt_mantle, solve_structure
     from proteus.interior_struct.common import record_volatile_change, volatile_mass_change
-    from proteus.outgas.wrapper import o_budget_is_derived
+    from proteus.outgas.wrapper import outgassing_sets_o_budget
 
     config = handler.config
     hf_row = handler.hf_row
@@ -448,23 +453,20 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     strip = _target_strip_amounts(config, hf_row, f_loss)
     content = _impactor_volatile_content(config, handler.hf_all, event, hf_row=hf_row)
     delivered, impactor_lost = _partition_impactor_content(config, hf_row, content, f_loss)
-    o_rock = delivered.pop('O', 0.0) if o_budget_is_derived(config) else 0.0
-    # Refuse a corrupt ledger or a non-finite mass before anything moves; with
-    # finite inputs the loss split closes by construction.
+    o_rock = delivered.pop('O', 0.0) if outgassing_sets_o_budget(config) else 0.0
+    # Refuse a corrupt ledger or a negative or non-finite mass before anything
+    # moves; with valid inputs the loss split closes by construction.
     volatile_mass_change(hf_row)
-    bad = [
-        f'{e}_kg_atm'
-        for e in element_list
-        if not math.isfinite(float(hf_row.get(f'{e}_kg_atm', 0.0)))
-    ]
+    bad = [f'{e}_kg_atm' for e in element_list if not _valid_mass(hf_row.get(f'{e}_kg_atm'))]
     bad += [
-        f'{e}_kg_total'
-        for e in element_list
-        if not math.isfinite(float(hf_row.get(f'{e}_kg_total', 0.0)))
+        f'{e}_kg_total' for e in element_list if not _valid_mass(hf_row.get(f'{e}_kg_total'))
     ]
-    bad += [f'impactor {e}' for e, m in content.items() if not math.isfinite(m)]
+    records = {'M_accreted_rock': hf_row.get('M_accreted_rock')}
+    records['n_impacts_applied'] = hf_row.get('n_impacts_applied')
+    bad += [k for k, v in records.items() if not _valid_mass(v)]
+    bad += [f'impactor {e}' for e, m in content.items() if not _valid_mass(m)]
     if bad:
-        raise RuntimeError(f'impact volatile masses are not finite: {", ".join(bad)}')
+        raise RuntimeError(f'impact masses are negative or not finite: {", ".join(bad)}')
     net_volatiles = sum(delivered.values()) - sum(strip.values())
 
     # Snapshot volatile budgets before the structure solve to prevent ppmw
@@ -579,8 +581,7 @@ def _apply_volatile_consequences(
     budgets and to the gate's baseline ``M_vol_initial`` (once escape has
     set one), and refreshes the tracked-element total. The outgassing step
     later this iteration re-equilibrates the atmosphere against the updated
-    totals; oxygen, where ``o_budget_is_derived``, is re-derived there either
-    way.
+    totals; oxygen, where ``outgassing_sets_o_budget``, is set there either way.
 
     Parameters
     ----------
