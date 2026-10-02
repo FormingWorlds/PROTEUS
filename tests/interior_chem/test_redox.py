@@ -771,3 +771,76 @@ def test_standalone_redox_snapshot_is_self_contained(tmp_path):
     # The stored top index points at the lowest-pressure melt cell.
     assert P_top == pytest.approx(np.min(_PRES[_PHI > 0]) / 1e9)
     assert not write_redox_ncdf(str(tmp_path / 'none_redox.nc'), None, 0.0, interior, hf_row)
+
+
+@pytest.mark.physics_invariant
+def test_cells_below_the_solid_threshold_carry_no_melt_iron():
+    """phi < PHI_SOLID counts as solid: such a cell is left out of the
+    initial melt inventory exactly as a phi = 0 cell is."""
+    from proteus.interior_chem.redox import PHI_SOLID
+
+    phi_trace = np.array([1.0, 0.5, 0.5 * PHI_SOLID])
+    phi_zero = np.array([1.0, 0.5, 0.0])
+    out = []
+    for phi in (phi_trace, phi_zero):
+        interior = _make_interior()
+        interior.phi = phi
+        update_melt_redox(interior, {'T_magma': 2200.0}, _make_config(0.1))
+        out.append(interior.redox_state)
+    assert out[0].n_fe2_melt == pytest.approx(out[1].n_fe2_melt, rel=1e-15)
+    assert out[0].n_fe2_melt == pytest.approx(W_FET * _M_MELT / MU_FEO, rel=1e-12)
+    # The interior's own phi is not modified.
+    assert interior.phi is phi_zero
+
+
+@pytest.mark.physics_invariant
+def test_a_trace_melt_cell_is_not_tested_for_metal_and_has_no_fo2():
+    """A deep, hot cell with phi just below PHI_SOLID would otherwise be
+    the binding cell (the pressure term favours depth); as solid it is
+    skipped by the metal check and left NaN in the fO2 profile."""
+    from proteus.interior_chem.redox import PHI_SOLID
+
+    pres = np.array([10.0e9, 30.0e9, 60.0e9])
+    temp = np.array([2200.0, 3000.0, 3800.0])
+    mass = np.array([2.0e21, 4.0e21, 6.0e21])
+    config = _make_config(0.01)
+
+    def run(phi_deep):
+        interior = _make_interior()
+        interior.pres, interior.temp, interior.mass = pres, temp, mass
+        interior.phi = np.array([1.0, 1.0, 1.0])
+        update_melt_redox(interior, {'T_magma': 2200.0}, config)
+        interior.phi = np.array([0.95, 0.95, phi_deep])
+        update_melt_redox(interior, {'T_magma': 2200.0}, config)
+        return interior.redox_state
+
+    st_melt = run(2.0 * PHI_SOLID)
+    st_trace = run(0.5 * PHI_SOLID)
+    # Discrimination guard: as melt, the deep cell is the most saturated one.
+    assert st_melt.a_fe_max_cell == 2
+    assert st_trace.a_fe_cell[2] == 0.0
+    assert st_trace.a_fe_max_cell != 2
+    assert np.isnan(st_trace.log10_fO2_cell[2])
+    assert np.isfinite(st_melt.log10_fO2_cell[2])
+
+
+@pytest.mark.physics_invariant
+def test_crossing_the_solid_threshold_crystallises_the_remaining_melt():
+    """A cell dropping from phi = 0.5 to just below PHI_SOLID crystallises
+    all of its remaining melt that step: the reservoirs end up the same as
+    for a drop straight to phi = 0."""
+    from proteus.interior_chem.redox import PHI_SOLID
+
+    out = []
+    for phi_last in (0.8 * PHI_SOLID, 0.0):
+        interior = _make_interior()
+        update_melt_redox(interior, {'T_magma': 2200.0}, _make_config(0.1))
+        interior.phi = np.array([1.0, phi_last, 0.0])
+        update_melt_redox(interior, {'T_magma': 2200.0}, _make_config(0.1))
+        st = interior.redox_state
+        out.append((st.n_fe2_melt + float(np.sum(st.n_fe_metal_cell)), st.n_fe3_melt,
+                    st.phi_prev[1]))
+    (fe2_a, fe3_a, prev_a), (fe2_b, fe3_b, prev_b) = out
+    assert prev_a == 0.0 and prev_b == 0.0
+    assert fe2_a == pytest.approx(fe2_b, rel=1e-12)
+    assert fe3_a == pytest.approx(fe3_b, rel=1e-12)

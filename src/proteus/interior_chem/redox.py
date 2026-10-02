@@ -15,7 +15,10 @@ this was validated against):
   Step 1-2  initial melt iron inventory: Fe2+ from the ferrous FeO fraction
             W_FET, Fe3+ = Fe2+ * f_0 / (1 - f_0) on top of it
   Step 3    new solid mass each step, from the decrease in local melt
-            fraction (delta_phi), using the mass-invariant _s grid
+            fraction (delta_phi), using the mass-invariant _s grid. A cell
+            with phi < PHI_SOLID (0.01) counts as solid throughout (phi set
+            to 0 on entry), so its last trace of melt crystallises when it
+            crosses the threshold
   Step 4    redistribute the *previous* step's global Fe3+/Fe2+ reservoirs
             across cells in proportion to local melt mass -- this is what
             makes the Fe3+/Fe2+ ratio spatially uniform: only the absolute
@@ -121,6 +124,15 @@ MU_MGSIO3 = 0.100389  # molar mass of MgSiO3 in kg/mol (= 100.389 g/mol)
 # constant is kept so the dataclass has a sane placeholder before
 # _init_state overwrites it, and to document the published default.
 F_0    = 0.10       # initial ferric fraction Fe3+/FeT (Schaefer et al. 2024)
+
+# Melt-fraction threshold below which a cell counts as solid everywhere in
+# the tracker (melt inventory, crystallization, Step 4 homogenisation, the
+# metal check and the fO2 profile). The interior solver's phi is only
+# exactly 0 below the solidus, so near-solid mush with a trace of melt would
+# otherwise stay "melt": it would keep its share of the Fe reservoirs and
+# could host the metal-saturation binding cell. A cell crossing the
+# threshold crystallises its remaining melt in that step (Step 3).
+PHI_SOLID = 0.01
 
 D_FE2_BRG = 0.85    # bridgmanite/melt partition coefficient for Fe2+ (both regimes)
 
@@ -519,6 +531,12 @@ def _put_fO2_profile(ds, state: MeltRedoxState) -> None:
                  'fO2_shift_IW_mantle is evaluated at 1 bar, not here)')
 
 
+def effective_melt_fraction(phi) -> np.ndarray:
+    """Solver melt fraction with cells below PHI_SOLID set to 0 (solid)."""
+    phi = np.asarray(phi, dtype=float)
+    return np.where(phi < PHI_SOLID, 0.0, phi)
+
+
 def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> None:
     """Advance the melt Fe3+/Fe2+ tracking by one coupling-loop timestep,
     compute the radial Eq 13 fO2 profile (diagnostic), and write the
@@ -535,7 +553,9 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     if config.planet.fO2_source != 'from_mantle_redox':
         return
 
-    phi  = np.asarray(interior_o.phi, dtype=float)
+    # Effective melt fraction: cells with phi < PHI_SOLID are solid (phi = 0)
+    # for every step below. Applied once here so all steps agree.
+    phi  = effective_melt_fraction(interior_o.phi)
     mass = np.asarray(interior_o.mass, dtype=float)
     pres = np.asarray(interior_o.pres, dtype=float)
 
