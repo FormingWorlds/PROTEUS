@@ -423,6 +423,20 @@ def test_dummy_outgas_keeps_a_positive_oxygen_budget():
     assert hf_row['O_kg_atm'] + hf_row['O_kg_liquid'] < 1.0e21
 
 
+@pytest.mark.unit
+def test_dummy_outgas_derives_an_empty_oxygen_budget_only_at_the_initial_condition():
+    """At Time = 0 an empty O budget is derived from the outgassed species; an
+    O budget that escape or a strip emptied later stays at 0, so no oxygen is
+    created that the mass ledger does not hold."""
+    initial = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.5)
+    _run(initial)
+    later = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.5)
+    later['Time'] = 1.0e3
+    _run(later)
+    assert initial['O_kg_total'] > 1.0e19
+    assert later['O_kg_total'] == pytest.approx(0.0, abs=0.0)
+
+
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
