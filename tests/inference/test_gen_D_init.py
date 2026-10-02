@@ -196,17 +196,33 @@ def test_sample_from_grid_skips_a_case_whose_helpfile_row_is_ragged(
     assert n == 2
     assert 'Skipping case_0' in caplog.text
     # The surviving cases keep their own configs: masses 2 and 3, not 1 and 2.
-    expected = [
-        float(
-            init_mod.normalize_parameters(
-                torch.tensor([m], dtype=torch.double),
-                torch.tensor([[0.0], [10.0]], dtype=torch.double),
-                ['planet.mass_tot'],
-            )[0]
+    assert pd.read_csv(output_dir / 'init.csv')['x_0'].tolist() == pytest.approx([0.2, 0.3])
+
+
+@pytest.mark.unit
+def test_sample_from_grid_refuses_a_grid_with_no_readable_case(monkeypatch, tmp_path, caplog):
+    """A grid whose cases are all empty or header-only raises instead of writing an
+    empty dataset, and the warning for each case names it."""
+    grid_dir = tmp_path / 'grid'
+    for i, text in enumerate(['', 'R_obs\n']):
+        case = grid_dir / f'case_{i}'
+        case.mkdir(parents=True)
+        (case / 'runtime_helpfile.csv').write_text(text, encoding='utf-8')
+        (case / 'init_coupler.toml').write_text('[planet]\nmass_tot = 1.0\n')
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(tmp_path / 'out')}
+    )
+
+    with caplog.at_level('WARNING'), pytest.raises(ValueError, match='No readable helpfile'):
+        init_mod.sample_from_grid(
+            output='ignored',
+            params={'planet.mass_tot': [0.0, 10.0]},
+            observables={'R_obs': 1.0},
+            grid_dir=str(grid_dir),
         )
-        for m in (2.0, 3.0)
-    ]
-    assert pd.read_csv(output_dir / 'init.csv')['x_0'].tolist() == pytest.approx(expected)
+
+    assert 'Skipping case_0' in caplog.text and 'Skipping case_1' in caplog.text
+    assert not (tmp_path / 'out' / 'init.csv').exists()
 
 
 @pytest.mark.unit

@@ -24,6 +24,7 @@ from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.config import read_config_object
 from proteus.interior_energetics.aragog import read_ncdf
 from proteus.utils.constants import R_earth, vol_list
+from proteus.utils.coupler import read_helpfile_table
 from proteus.utils.helper import format_subyear_time
 from proteus.utils.plot import get_colour, latexify
 
@@ -70,7 +71,7 @@ def postproc_once(simdir: str, plot: bool = True):
     os.mkdir(chilidir)
 
     # Read simulation helpfile
-    hf_all = pd.read_csv(hfpath, delimiter=r'\s+')
+    hf_all = read_helpfile_table(hfpath)
 
     # Copy config
     print('    copy config file')

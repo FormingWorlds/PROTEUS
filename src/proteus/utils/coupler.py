@@ -1360,22 +1360,34 @@ def helpfile_path(output_dir: str) -> str:
 
 
 class HelpfileFormatError(ValueError):
-    """A helpfile row whose field count differs from the header."""
+    """A helpfile that cannot be read as a table of one row per step."""
 
 
-def read_helpfile_table(path: str) -> pd.DataFrame:
+def _is_utf8(raw: bytes) -> bool:
+    """Whether a byte string decodes as UTF-8."""
+    try:
+        raw.decode('utf-8')
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
+def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.DataFrame:
     """Read a helpfile table with every float exactly as it was written.
 
-    Fields are split on runs of whitespace, which reads both the tab-separated
-    files the writer makes and space-separated ones. ``float_precision='round_trip'``
-    returns each float bit for bit; pandas' default parser can miss the last bit.
-    The plot readers parse the file without it, which a display tolerates, and a
-    reader on the python engine cannot use it at all.
+    A file whose header holds a tab, as the writer makes it, is split on tabs, so
+    an empty field reads as NaN in its own column; a file without tabs is split on
+    runs of whitespace. ``float_precision='round_trip'`` returns each float bit for
+    bit. The plot readers in ``proteus.plot`` and the plotting scripts in ``tools/`` use
+    plain ``read_csv``, without the exact parser or the field-count check, which a
+    display tolerates.
 
     Parameters
     ----------
-    path : str
+    path : str or os.PathLike
         Path to a ``runtime_helpfile.csv``.
+    min_rows : int
+        Fewest data rows the caller needs.
 
     Returns
     -------
@@ -1385,24 +1397,44 @@ def read_helpfile_table(path: str) -> pd.DataFrame:
     Raises
     ------
     HelpfileFormatError
-        When a row has fewer or more fields than the header.
-    pandas.errors.EmptyDataError, pandas.errors.ParserError
-        From pandas, for an empty file or one it cannot tokenise. An empty field, as
-        some files hold for a NaN, vanishes in the whitespace split and would
-        move every later value one column to the left.
+        For a file with no header, fewer rows than ``min_rows``, a row whose field
+        count differs from the header, text pandas cannot tokenise, or bytes that are
+        not UTF-8. In a space-separated file an empty field, as some files hold for a
+        NaN, would vanish and move the later values left, so its row is refused. The
+        underlying error is chained.
     """
-    with open(path) as f:
-        lines = enumerate(f, start=1)
-        header = next((line for _, line in lines if line.split()), '')
-        n_columns = len(header.split())
-        for line_number, line in lines:
-            n_fields = len(line.split())
-            if n_fields and n_fields != n_columns:
-                raise HelpfileFormatError(
-                    f'{path}, line {line_number}: {n_fields} fields against {n_columns} '
-                    'columns; the row would be read with its values in the wrong columns'
-                )
-    return pd.read_csv(path, sep=r'\s+', float_precision='round_trip')
+    line_number = 0
+    try:
+        with open(path, encoding='utf-8') as f:
+            sep = None
+            n_columns = n_rows = 0
+            for line_number, line in enumerate(f, start=1):
+                if not line.strip():
+                    continue
+                if not n_columns:
+                    sep = '\t' if '\t' in line else None
+                    n_columns = len(line.rstrip('\r\n').split(sep))
+                    continue
+                n_fields = len(line.rstrip('\r\n').split(sep))
+                if n_fields != n_columns:
+                    raise HelpfileFormatError(
+                        f'{path}, line {line_number}: {n_fields} fields against '
+                        f'{n_columns} columns, so the values cannot be placed'
+                    )
+                n_rows += 1
+        if not n_columns:
+            raise HelpfileFormatError(f'{path}, line {line_number + 1}: no header line')
+        if n_rows < min_rows:
+            raise HelpfileFormatError(
+                f'{path}, line {line_number + 1}: {n_rows} data rows, {min_rows} needed'
+            )
+        return pd.read_csv(path, sep=sep or r'\s+', float_precision='round_trip')
+    except UnicodeDecodeError as err:
+        with open(path, 'rb') as f:
+            bad = next((n for n, raw in enumerate(f, start=1) if not _is_utf8(raw)), 0)
+        raise HelpfileFormatError(f'{path}, line {bad}: not UTF-8 text') from err
+    except pd.errors.ParserError as err:
+        raise HelpfileFormatError(f'{path}: {err}') from err
 
 
 class HelpfileRow(dict):

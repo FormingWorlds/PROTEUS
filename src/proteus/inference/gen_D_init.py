@@ -118,7 +118,7 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
     for c in cases:
         # Data
         try:
-            helps.append(read_helpfile_table(c / 'runtime_helpfile.csv'))
+            helps.append(read_helpfile_table(c / 'runtime_helpfile.csv', min_rows=1))
         except HelpfileFormatError as err:
             log.warning('Skipping %s: %s', c.name, err)
             continue
@@ -126,6 +126,11 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
         # Config
         with open(c / 'init_coupler.toml', 'r') as f:
             confs.append(toml.load(f))
+
+    if cases and not helps:
+        raise HelpfileFormatError(
+            f'No readable helpfile in any of {len(cases)} cases in {grid_path}'
+        )
 
     # List of parameter keys for ordering
     keys = list(params.keys())

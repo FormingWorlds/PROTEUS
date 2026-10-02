@@ -27,6 +27,7 @@ import json
 import logging
 import math
 import os
+import re
 import sys
 import tempfile
 import types
@@ -496,14 +497,9 @@ def test_helpfile_keeps_a_nan_in_its_column(tmp_path, nan_key):
 
     back = ReadHelpfileFromCSV(str(tmp_path))
 
+    expected = pd.DataFrame(rows, columns=GetHelpfileKeys())
+    pd.testing.assert_frame_equal(back[expected.columns], expected, check_exact=True)
     assert math.isnan(back[nan_key].iloc[1])
-    shifted = [
-        (i, key)
-        for i, r in enumerate(rows)
-        for key in r
-        if (i, key) != (1, nan_key) and back[key].iloc[i] != r[key]
-    ]
-    assert shifted == []
     assert back['runtime'].iloc[2] == rows[2]['runtime']
 
 
@@ -572,19 +568,90 @@ def test_helpfile_table_checks_each_row_against_the_header(tmp_path, body, refus
 
 
 @pytest.mark.unit
-def test_helpfile_row_with_an_empty_field_is_refused(tmp_path):
-    """A row whose NaN was written as an empty field is refused, not read shifted."""
-    keys = list(ZeroHelpfileRow())
-    fields = ['1.0'] * len(keys)
-    fields[1] = ''
-    (tmp_path / 'runtime_helpfile.csv').write_text(
-        '\t'.join(keys) + '\n' + '\t'.join(fields) + '\n'
+def test_helpfile_with_empty_nan_fields_reads_in_place(tmp_path):
+    """A tab-separated helpfile whose NaN values are empty fields, as files written
+    with fewer digits hold them, reads with every NaN in its own column."""
+    rows = [{key: float(i + 1) for i, key in enumerate(ZeroHelpfileRow())} for _ in range(3)]
+    rows[0]['Time'] = rows[1]['R_xuv'] = rows[2]['runtime'] = float('nan')
+    pd.concat([CreateHelpfileFromDict(r) for r in rows]).to_csv(
+        tmp_path / 'runtime_helpfile.csv', index=False, sep='\t', float_format='%.10e'
     )
+    assert '\t\t' in (tmp_path / 'runtime_helpfile.csv').read_text()
 
-    with pytest.raises(ValueError, match='fields against'):
-        ReadHelpfileFromCSV(str(tmp_path))
-    with pytest.raises(ValueError, match='line 2'):
-        read_helpfile_table(str(tmp_path / 'runtime_helpfile.csv'))
+    back = ReadHelpfileFromCSV(str(tmp_path))
+
+    expected = pd.DataFrame(rows, columns=GetHelpfileKeys())
+    pd.testing.assert_frame_equal(back[expected.columns], expected, rtol=5e-11)
+    assert back['R_xuv'].isna().tolist() == [False, True, False]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('data', 'min_rows'),
+    [
+        (b'', 0),  # empty file
+        (b'  \n\t\n', 0),  # whitespace only
+        (b'a\tb\n', 1),  # header only, a row needed
+        (b'a b c\n"x 3 4\n5 6 7\n', 0),  # text pandas cannot tokenise
+        (b'a b\n1 2\n3 \xff\n', 0),  # not UTF-8
+    ],
+    ids=['empty', 'whitespace', 'header-only', 'unbalanced-quote', 'not-utf8'],
+)
+def test_unreadable_helpfile_raises_one_error_naming_file_and_line(tmp_path, data, min_rows):
+    """Every unreadable helpfile raises HelpfileFormatError naming the file and a line."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(data)
+
+    with pytest.raises(HelpfileFormatError) as excinfo:
+        read_helpfile_table(path, min_rows=min_rows)
+
+    assert str(path) in str(excinfo.value)
+    assert re.search(r'(line|row) \d+', str(excinfo.value))
+
+
+# Readers that only display the values; every other helpfile reader uses read_helpfile_table.
+_PLAIN_HELPFILE_READERS = {
+    'src/proteus/plot/cpl_bolometry.py',
+    'src/proteus/plot/cpl_escape.py',
+    'src/proteus/plot/cpl_fluxes_global.py',
+    'src/proteus/plot/cpl_global.py',
+    'src/proteus/plot/cpl_orbit.py',
+    'src/proteus/plot/cpl_population.py',
+    'src/proteus/plot/cpl_structure.py',
+    'src/proteus/plot/cpl_visual.py',
+    'src/proteus/utils/coupler.py',
+    'tools/plot_chili_comparison.py',
+    'tools/plot_energy_balance.py',
+    'tools/plot_tutorial.py',
+}
+
+
+@pytest.mark.unit
+def test_helpfile_is_read_with_read_csv_only_by_display_code():
+    """A read_csv of the helpfile outside the display readers would skip the exact
+    parser and the field-count check; a call counts when its path names a helpfile
+    or its function mentions runtime_helpfile."""
+    import ast
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    readers = set()
+    for path in sorted([*(root / 'src').rglob('*.py'), *(root / 'tools').rglob('*.py')]):
+        text = path.read_text()
+        for fn in ast.walk(ast.parse(text)):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            body = ast.get_source_segment(text, fn) or ''
+            for call in ast.walk(fn):
+                name = getattr(getattr(call, 'func', None), 'attr', None)
+                if isinstance(call, ast.Call) and name == 'read_csv' and call.args:
+                    arg = ast.get_source_segment(text, call.args[0]) or ''
+                    if re.search(r'helpfile|\bhf', arg) or 'runtime_helpfile' in body:
+                        readers.add(path.relative_to(root).as_posix())
+
+    assert readers - _PLAIN_HELPFILE_READERS == set()
+    # Guard the guard: the scan finds the display readers it allows.
+    assert 'src/proteus/plot/cpl_global.py' in readers
 
 
 @pytest.mark.unit
@@ -4536,6 +4603,16 @@ def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
     beyond = 1.0e10
     unresolvable = _write_timed_nc(str(tmp_path / 'beyond_int.nc'), beyond)
     assert _snapshot_belongs_to(unresolvable, beyond + 0.7) is True
+
+
+@pytest.mark.unit
+def test_snapshot_time_margin_is_four_times_the_11_digit_shift(tmp_path):
+    """At 1e8 yr the margin is 4 x 5e-11 x 1e8 = 0.02 yr: an offset of 0.015 yr
+    matches, which a margin of one shift (0.005 yr) would reject, and 0.025 yr does not."""
+    snap = _write_timed_nc(str(tmp_path / 'snap_int.nc'), 1.0e8)
+
+    assert _snapshot_belongs_to(snap, 1.0e8 + 0.015) is True
+    assert _snapshot_belongs_to(snap, 1.0e8 + 0.025) is False
 
 
 @pytest.mark.unit

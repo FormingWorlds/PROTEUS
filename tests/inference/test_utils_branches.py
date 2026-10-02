@@ -124,6 +124,20 @@ def test_get_obs_returns_observable_subset_under_normal_atmosphere(tmp_path):
     assert result['H2O_vmr'] == pytest.approx(0.42)
 
 
+def test_get_obs_reads_a_tab_file_with_an_empty_field_in_place(tmp_path):
+    """A tab-separated helpfile whose NaN is an empty field keeps every value in its
+    column; a whitespace split would move H2O_vmr into the empty column."""
+    from proteus.inference.utils import get_obs
+
+    csv = tmp_path / 'runtime_helpfile.csv'
+    csv.write_text('P_surf\tR_xuv\tH2O_vmr\n1.5e7\t\t0.42\n', encoding='utf-8')
+
+    result = get_obs(str(csv), observables=['P_surf', 'H2O_vmr'])
+
+    assert result['H2O_vmr'] == pytest.approx(0.42)
+    assert result['P_surf'] == pytest.approx(1.5e7)
+
+
 def test_get_obs_zeroes_vmr_and_mmw_when_atmosphere_has_escaped(tmp_path):
     """When P_surf is below 1e-30 the atmosphere has effectively
     escaped; ``get_obs`` overwrites every ``*_vmr`` and the mean
@@ -300,6 +314,28 @@ def test_get_kernel_raises_for_unknown_kernel_name():
 
 
 @pytest.mark.unit
+def test_print_results_reads_the_best_run_helpfile_in_place(tmp_path, caplog):
+    """The best run's helpfile is read through the exact reader: an empty field
+    before H2O_vmr leaves the reported best-fit value at 0.9, not NaN."""
+    from proteus.inference.utils import print_results
+
+    wdir = tmp_path / 'workers' / 'w_0' / 'i_0'
+    wdir.mkdir(parents=True)
+    (wdir / 'runtime_helpfile.csv').write_text(
+        'P_surf\tR_xuv\tH2O_vmr\n1.0e7\t\t0.9\n', encoding='utf-8'
+    )
+    (wdir / 'init_coupler.toml').write_text('[planet]\nmass_tot = 1.0\n')
+    D = {'X': torch.tensor([[0.5]]), 'Y': torch.tensor([[1.0]])}
+    config = {'observables': {'H2O_vmr': 0.9}, 'parameters': {'planet.mass_tot': [0.5, 1.5]}}
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.utils'):
+        print_results(D, [{'worker': 0, 'task_id': 0}], config, str(tmp_path), n_init=0)
+
+    line = next(rec.message for rec in caplog.records if rec.message.startswith('H2O_vmr'))
+    assert '9.0000e-01    9.0000e-01' in line
+    assert 'nan' not in line
+
+
 def test_print_results_counts_unscored_runs_and_refuses_a_study_with_no_fit(tmp_path, caplog):
     """Evaluations that failed, and those that completed on an excluded status,
     both carry the failure score rather than a fit quality, so the summary says

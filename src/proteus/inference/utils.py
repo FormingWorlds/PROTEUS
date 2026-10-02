@@ -197,7 +197,7 @@ def print_results(D, logs, config, output, n_init):
 
     # Read simulator output for this run
     out_path = Path(output) / 'workers' / f'w_{w}' / f'i_{id}' / 'runtime_helpfile.csv'
-    df = read_helpfile_table(out_path)
+    df = read_helpfile_table(out_path, min_rows=1)
 
     # True observables from config
     true_y = pd.Series(config['observables'])
@@ -358,7 +358,7 @@ def get_obs(out_csv, observables: list[str]):
     ----------
     - pandas.Series: Final-row observable values keyed by observable name.
     """
-    df_row = read_helpfile_table(out_csv).iloc[-1]
+    df_row = read_helpfile_table(out_csv, min_rows=1).iloc[-1]
 
     # Handle case where atmosphere has escaped
     #   Set VMRs and MMW to zero

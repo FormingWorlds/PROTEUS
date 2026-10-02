@@ -60,8 +60,8 @@ CONFIG = PROTEUS_ROOT / 'input' / 'dummy.toml'
 N_ITERS = 12
 SEAM_ITERS = 6
 
-# The resume matches the control bit for bit locally; the bounds stay until a nightly shows
-# the same on the CI runners. A mesh built from P_surf moves F_cmb and T_magma by 1e-2, 5e-3.
+# A mesh rebuilt from P_surf moves F_cmb and T_magma by 1e-2 and 5e-3; both bounds sit
+# far below that and above the differences a resumed run shows.
 FLUX_RTOL = 2.0e-3
 STATE_RTOL = 1.0e-5
 
