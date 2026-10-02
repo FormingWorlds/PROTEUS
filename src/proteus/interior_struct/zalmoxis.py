@@ -1987,11 +1987,8 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
         # Dissolved volatiles join the mantle EOS during the run.
         layers['volatiles'] = '+'.join(VOLATILE_EOS_MAP.values())
     mat_dicts = load_zalmoxis_material_dictionaries()
-    # Runs before the accreted mass is restored, so the planet mass is not compared here.
-    kept = config.params.resume and _resumed_ps_tables(
-        outdir,
-        lambda: _ps_resume_key(config, *energetics_entry(zc.mantle_eos, mat_dicts), mat_dicts),
-    )
+    # Runs before the accreted mass is restored: no mass check and no report here.
+    kept = config.params.resume and _resumed_ps_tables(outdir, None)
     liquidus_super = config.planet.temperature_mode == 'liquidus_super'
     if liquidus_super:
         layers['anchor'] = twophase_registry_key(zc.mantle_eos)
@@ -2377,9 +2374,10 @@ def _resumed_ps_tables(outdir: str, current_key, p_max: float | None = None) -> 
     ----------
     outdir : str
         The run output directory.
-    current_key : callable
+    current_key : callable or None
         No-argument callable returning the key the current code would build
         (from :func:`_ps_cache_key`); it raises when that key cannot be built.
+        None skips the report.
     p_max : float, optional
         ``P_max`` of the current planet mass [Pa]; None keeps tables of any mass.
 
@@ -2416,7 +2414,7 @@ def _resumed_ps_tables(outdir: str, current_key, p_max: float | None = None) -> 
                 p_max,
             )
             continue
-        if eos_dir not in _PS_RESUME_REPORTED:
+        if current_key is not None and eos_dir not in _PS_RESUME_REPORTED:
             _PS_RESUME_REPORTED.add(eos_dir)
             _report_kept_ps_tables(eos_dir, stored, current_key)
         return {

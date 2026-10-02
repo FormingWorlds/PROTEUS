@@ -195,7 +195,7 @@ def _resume_with_patches(p, hf_df, *extra):
 def test_resume_matches_the_ps_tables_after_restoring_the_accreted_mass(tmp_path):
     """start(resume=True) points the run at the P-S tables of its mass only after
     restore_accretion_state has restored that mass."""
-    p = _make_proteus_instance(tmp_path, interior_module='aragog')
+    p = _make_proteus_instance(tmp_path, struct_module='dummy', interior_module='aragog')
     (tmp_path / 'data').mkdir(exist_ok=True)
     calls = []
 
@@ -214,6 +214,7 @@ def test_resume_matches_the_ps_tables_after_restoring_the_accreted_mass(tmp_path
             side_effect=lambda handler: calls.append(('restore', handler is p)),
         ),
         patch.object(type(p), '_match_ps_tables_to_mass', match),
+        patch('proteus.proteus.setup_logger'),
     )
 
     assert calls[0] == ('restore', True)
@@ -230,13 +231,16 @@ def test_resume_matches_the_ps_tables_after_restoring_the_accreted_mass(tmp_path
         ('zalmoxis', 'aragog', True, False, 'old'),
         ('zalmoxis', 'aragog', False, True, None),
         ('dummy', 'dummy', True, True, 'old'),
+        ('spider', 'spider', True, True, 'old'),
+        ('spider', 'aragog', True, True, 'old'),
     ],
 )
 def test_match_ps_tables_to_mass_uses_the_tables_of_the_current_mass(
     tmp_path, struct, energetics, restored, tables, expected
 ):
     """A resumed SPIDER or Aragog run with restored tables takes the directory that
-    generate_spider_tables returns for the current mass; otherwise nothing changes."""
+    generate_spider_tables returns for the current mass; the SPIDER structure keeps its
+    static tables, and nothing changes otherwise."""
     p = _make_proteus_instance(tmp_path, struct_module=struct, interior_module=energetics)
     if restored:
         p.directories['spider_eos_dir'] = 'old'
@@ -249,7 +253,7 @@ def test_match_ps_tables_to_mass_uses_the_tables_of_the_current_mass(
         p._match_ps_tables_to_mass()
 
     assert p.directories.get('spider_eos_dir') == expected
-    assert generate.called is (energetics != 'dummy' and restored)
+    assert generate.called is (struct != 'spider' and energetics != 'dummy' and restored)
     new = expected == 'new'
     assert p.directories.get('spider_solidus_ps') == ('new/sol' if new else None)
     assert p.directories.get('spider_liquidus_ps') == ('new/liq' if new else None)

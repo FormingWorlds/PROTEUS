@@ -6499,12 +6499,14 @@ def test_remelt_below_the_liquidus_warns_and_is_not_fully_molten(caplog):
     hf_row = _remelt_hf_row(T_magma=1800.0)
     interior_o = SimpleNamespace(impact_reset=False)
 
-    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'):
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'):
         remelt_mantle({'output': '/tmp/unused'}, config, hf_row, interior_o)
 
     # (2200 - 1700) / (2700 - 1700) = 0.5, not fully molten.
     assert hf_row['Phi_global'] == pytest.approx(0.5, rel=1e-9)
     assert any('below' in m and 'liquidus' in m for m in caplog.messages)
+    assert 'planet.tsurf_init=2200 K' in caplog.text
+    assert 'T_magma reset to 2200 K' in caplog.text
 
 
 @pytest.mark.unit

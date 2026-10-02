@@ -1064,15 +1064,12 @@ def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypat
         zmod.require_paleos_tables(config, str(bare))
 
     # The check runs before the accreted mass is restored, so tables of a grown
-    # planet (another P_max) are kept here too.
+    # planet (another P_max) are kept here too; the later table check reports them.
     kept = tmp_path / 'kept'
     _seed_tables(kept / 'data' / 'spider_eos', 'P_max=9.000000e+11_nP=8')
     with caplog.at_level('INFO', logger='fwl.proteus.interior_struct.zalmoxis'):
         assert zmod.require_paleos_tables(config, str(kept)) is None
-    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
-    assert len(warnings) == 1
-    assert 'keeps its original energetics P-S entropy tables' in warnings[0]
-    assert 'Planet mass changed' not in caplog.text
+    assert caplog.text == ''
 
     config.interior_energetics.module = 'aragog'
     with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='solid.dat'):
@@ -3858,6 +3855,18 @@ def test_resume_rebuilds_run_tables_after_a_planet_mass_change(
     assert (run_eos / '.cache_info.txt').read_text() == key
     assert f'Planet mass changed since the P-S tables in {run_eos} were built' in caplog.text
     assert 'ignores the changed settings' not in caplog.text
+
+
+def test_resume_keeps_run_tables_whose_marker_names_no_p_max(tmp_path, monkeypatch):
+    """A marker without a P_max field gives no mass to compare, so its tables are kept."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
+    _seed_tables(run_eos, 'old-key')
+
+    out, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+
+    bounds.assert_not_called()
+    assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
 
 
 def test_resume_keeps_run_tables_of_an_unchanged_odd_mass(tmp_path, monkeypatch, caplog):

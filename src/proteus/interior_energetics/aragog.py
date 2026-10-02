@@ -2025,13 +2025,6 @@ class AragogRunner:
             surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
         )
 
-        # Store arrays on interior object for inter-module access.
-        # Radius is stored in metres (SI), matching SPIDER's convention
-        # (spider.py:1185 reads radius_b directly from the SPIDER JSON
-        # in metres). update_structure_from_interior (wrapper.py:795)
-        # requires metres: its r <= _R_cmb comparison and downstream
-        # np.interp would use mixed units if km were stored here, which
-        # matters whenever Zalmoxis update_interval > 0.
         self._store_profiles(interior_o, out)
 
         # Use the actual integration endpoint, not the requested end_time.

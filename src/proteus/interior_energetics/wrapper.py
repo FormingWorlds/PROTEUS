@@ -2078,7 +2078,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
             'profile is available to measure the jump from'
         )
 
-    log.info('    mantle re-melted: Aragog entropy reset to the molten initial condition')
+    log.info('    mantle re-melted: Aragog entropy raised to the molten initial condition')
 
     molten_out = evaluate_molten_state(solver, hf_row)
     if molten_out is not None:
