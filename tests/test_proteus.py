@@ -250,6 +250,35 @@ def test_resume_without_accretion_leaves_the_ps_tables_alone(tmp_path):
     assert not match.called
 
 
+@pytest.mark.unit
+def test_resume_checks_the_volatile_change_column_before_any_structure_solve(tmp_path):
+    """start(resume=True) reads M_volatile_change through its finite check right
+    after the restore, so a corrupt row stops the run with that message instead
+    of failing later inside a structure solve."""
+    p = _make_proteus_instance(tmp_path, struct_module='dummy', interior_module='aragog')
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    hf = _make_hf_df()
+    hf['M_volatile_change'] = [0.0, 0.0, 0.0, 0.0, float('nan')]
+    seen = []
+
+    def check(row):
+        seen.append(row.get('M_volatile_change'))
+        raise _StopAfterMeshRestore
+
+    _resume_with_patches(
+        p,
+        hf,
+        patch('proteus.star.wrapper.init_star'),
+        patch('proteus.orbit.wrapper.init_orbit'),
+        patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
+        patch('proteus.accretion.wrapper.restore_accretion_state'),
+        patch('proteus.accretion.wrapper.volatile_mass_change', side_effect=check),
+        patch('proteus.proteus.setup_logger'),
+    )
+    assert len(seen) == 1
+    assert seen[0] != seen[0]  # the restored row's NaN reached the check
+
+
 def _raise_if(condition):
     if condition:
         raise _StopAfterMeshRestore

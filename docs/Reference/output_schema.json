@@ -3005,9 +3005,9 @@
       "consumers_possible": []
     },
     {
-      "name": "M_volatile_change",
-      "unit": "kg",
-      "description": "delivered - stripped - escaped volatile mass, Zalmoxis only (dummy keeps a dry anchor, 0)",
+      "name": "n_impacts_applied",
+      "unit": "1",
+      "description": "count of giant impacts applied",
       "group": "Giant-impact accretion ledger",
       "origin": "literal",
       "producers": [
@@ -3022,9 +3022,9 @@
       "consumers_possible": []
     },
     {
-      "name": "n_impacts_applied",
-      "unit": "1",
-      "description": "count of giant impacts applied",
+      "name": "M_volatile_change",
+      "unit": "kg",
+      "description": "cumulative delivered - stripped - escaped element mass",
       "group": "Giant-impact accretion ledger",
       "origin": "literal",
       "producers": [

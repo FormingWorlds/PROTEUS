@@ -263,8 +263,8 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `M_accreted_rock` | `kg` | cumulative rock mass added by giant impacts | `accretion/wrapper.py` | always | accretion, main loop |
-| `M_volatile_change` | `kg` | delivered - stripped - escaped volatile mass, Zalmoxis only (dummy keeps a dry anchor, 0) | `accretion/wrapper.py` | always | accretion |
 | `n_impacts_applied` | `1` | count of giant impacts applied | `accretion/wrapper.py` | always | accretion |
+| `M_volatile_change` | `kg` | cumulative delivered - stripped - escaped element mass | `accretion/wrapper.py` | always | accretion |
 
 ### Gases from outgassing
 

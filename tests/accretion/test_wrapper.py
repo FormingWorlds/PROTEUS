@@ -872,10 +872,11 @@ def _converging_solve_structure():
 
     The real solve moves R_int until the whole-planet mass matches the target:
     at convergence ``M_planet = mass_tot * M_earth + V`` (V the volatile change,
-    ``M_volatile_change``) and the interior carries what the volatile budgets do not, ``M_int = M_planet - M_ele``. The mock
-    reproduces exactly that end state (with the budgets it finds, mirroring
-    the config-driven recompute), so a test can check how apply_impact's mass
-    ledger and budget updates CLOSE into M_planet, which a no-op mock hides.
+    ``M_volatile_change``) and the interior carries what the volatile budgets do
+    not, ``M_int = M_planet - M_ele``. The mock reproduces exactly that end state
+    (with the budgets it finds, mirroring the config-driven recompute), so a test
+    can check how apply_impact's mass ledger and budget updates CLOSE into
+    M_planet, which a no-op mock hides.
     """
     from proteus.utils.constants import M_earth, element_list
 
@@ -961,7 +962,7 @@ def test_impact_mass_closure_counts_each_volatile_channel_once(monkeypatch):
     )
     assert handler.hf_row['M_volatile_change'] == pytest.approx(delivered - stripped, rel=1e-9)
     # The next Zalmoxis-like solve (target mass_tot + V) keeps that mass; without
-    # the ledger's volatile part it would pull M_planet back to m_planet_0 + rock.
+    # the volatile change it would pull M_planet back to m_planet_0 + rock.
     _converging_solve_structure()(None, handler.config, None, handler.hf_row, None)
     assert handler.hf_row['M_planet'] == pytest.approx(expected, rel=1e-9)
     assert abs(m_planet_0 + rock - expected) > 1.0e-6 * expected
@@ -1748,7 +1749,7 @@ def _restore_handler(mass_tot, hf_row):
 @pytest.mark.physics_invariant
 def test_resume_after_impact_and_escape_restores_the_uninterrupted_mass(monkeypatch):
     """A resume rebuilds the Zalmoxis target exactly as the uninterrupted run
-    left it: the rock anchor plus the ledger's volatile part.
+    left it: the rock anchor plus the volatile change.
 
     The run takes a wet impact with a 50 % strip, then escape removes 2e21
     kg. Restoring from the rock alone would miss the delivered, stripped and
@@ -1817,7 +1818,7 @@ def test_resume_with_escape_before_any_impact_restores_the_lowered_mass():
     handler = _restore_handler(1.0, row)
     restore_accretion_state(handler)
     assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
-    # The ledger is not rewritten (not a legacy row), so the target keeps the loss.
+    # The column is read as stored, so the target keeps the loss.
     assert row['M_volatile_change'] == pytest.approx(-1.0e21, rel=1e-15)
     assert _zalmoxis_target(handler.config, row) == pytest.approx(M_earth - 1.0e21, rel=1e-15)
     # No impact yet: the orbit stays at its configured value.
@@ -1835,7 +1836,7 @@ def _zalmoxis_target(config, row):
 @pytest.mark.unit
 def test_resume_rebuilds_the_rock_anchor_and_reads_the_volatiles_from_the_row():
     """mass_tot is rebuilt from the rock; the volatile change stays in the row,
-    and a helpfile without the column adds none (the old rule)."""
+    and a helpfile without the column adds no volatile change."""
     from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import M_earth
 
@@ -1938,6 +1939,26 @@ def test_a_non_finite_ledger_stops_the_anchor_update(where, monkeypatch):
     assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
     assert 'M_accreted_rock' not in handler.hf_row
     assert 'n_impacts_applied' not in handler.hf_row
+
+
+@pytest.mark.unit
+def test_a_non_finite_impact_volatile_change_stops_the_impact(monkeypatch):
+    """A non-finite delivery sum raises when the column is written, instead of
+    reaching the helpfile, which would store it as zero and lose the history."""
+    from proteus.accretion import wrapper
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        wrapper, '_partition_impactor_content', lambda *a, **k: ({'H': float('nan')}, {})
+    )
+    handler = _impact_handler(accretion=_impact_accretion(H=1000.0))
+    handler.hf_row['M_volatile_change'] = -1.0e21
+    with pytest.raises(RuntimeError, match='M_volatile_change is not finite'):
+        apply_impact(handler, _impact_event())
+    assert handler.hf_row['M_volatile_change'] != handler.hf_row['M_volatile_change']
 
 
 @pytest.mark.unit

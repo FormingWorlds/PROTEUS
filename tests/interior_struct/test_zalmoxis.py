@@ -1651,7 +1651,7 @@ def test_dry_mass_target_excludes_only_undissolved_volatiles():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_dry_mass_target_adds_the_ledger_volatile_change():
-    """The whole-planet target is mass_tot plus the ledger's volatile part
+    """The whole-planet target is mass_tot plus the volatile change
     (M_volatile_change), which mass_tot, the rock anchor, leaves
     out; it keeps applying with accretion off, and is zero with no ledger."""
     from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration

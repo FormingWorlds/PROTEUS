@@ -501,6 +501,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         hf_row['M_volatile_change'] = (
             volatiles_before + sum(delivered.values()) - sum(strip.values())
         )
+        volatile_mass_change(hf_row)  # a non-finite sum would be zeroed in the helpfile
 
     # Raise the mantle to its initial condition; hotter parts keep their state.
     remelt_mantle(handler.directories, config, hf_row, handler.interior_o, event)
@@ -557,12 +558,7 @@ def _tracks_volatile_mass(config: Config) -> bool:
 
 
 def volatile_mass_change(hf_row: dict) -> float:
-    """``M_volatile_change`` [kg]: volatile mass delivered less stripped and escaped.
-
-    The Zalmoxis whole-planet target adds it to ``mass_tot``, which carries the
-    configured mass and the accreted rock. Only the Zalmoxis structure writes
-    it; the dummy structure keeps ``mass_tot`` as its dry anchor, so the column
-    stays zero there, and so does a helpfile written before the column existed.
+    """Return ``M_volatile_change`` [kg]; zero when absent (dummy structure, older helpfile).
 
     Raises
     ------

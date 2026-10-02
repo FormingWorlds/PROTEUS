@@ -1002,11 +1002,14 @@ def GetHelpfileKeys():
         'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
         'esc_step_kg',      # loss applied on this step, after the cap [kg]
 
-        # Giant-impact accretion ledger: the rock, which rebuilds mass_tot on resume,
-        # and the volatile change the Zalmoxis whole-planet target adds to mass_tot.
+        # Giant-impact accretion ledger: cumulative rock mass added to interior
+        # mass anchor to enable reconstruction on resume.
         'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
-        'M_volatile_change',  # delivered - stripped - escaped volatile mass, Zalmoxis only (dummy keeps a dry anchor, 0) [kg]
         'n_impacts_applied',  # count of giant impacts applied [1]
+
+        # Element mass the Zalmoxis whole-planet target adds to mass_tot: impact delivery
+        # less stripping, and escape (rock vapour included). 0 with the dummy structure.
+        'M_volatile_change',  # cumulative delivered - stripped - escaped element mass [kg]
     ]
 
     # gases from outgassing
