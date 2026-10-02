@@ -222,20 +222,22 @@ def test_resume_matches_the_ps_tables_after_restoring_the_accreted_mass(tmp_path
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ('struct', 'restored', 'tables', 'expected'),
+    ('struct', 'energetics', 'restored', 'tables', 'expected'),
     [
-        ('zalmoxis', True, True, 'new'),
-        ('zalmoxis', True, False, 'old'),
-        ('zalmoxis', False, True, None),
-        ('dummy', True, True, 'old'),
+        ('zalmoxis', 'aragog', True, True, 'new'),
+        ('dummy', 'aragog', True, True, 'new'),
+        ('zalmoxis', 'spider', True, True, 'new'),
+        ('zalmoxis', 'aragog', True, False, 'old'),
+        ('zalmoxis', 'aragog', False, True, None),
+        ('dummy', 'dummy', True, True, 'old'),
     ],
 )
 def test_match_ps_tables_to_mass_uses_the_tables_of_the_current_mass(
-    tmp_path, struct, restored, tables, expected
+    tmp_path, struct, energetics, restored, tables, expected
 ):
-    """A resumed Zalmoxis run with restored tables takes the directory that
+    """A resumed SPIDER or Aragog run with restored tables takes the directory that
     generate_spider_tables returns for the current mass; otherwise nothing changes."""
-    p = _make_proteus_instance(tmp_path, struct_module=struct, interior_module='aragog')
+    p = _make_proteus_instance(tmp_path, struct_module=struct, interior_module=energetics)
     if restored:
         p.directories['spider_eos_dir'] = 'old'
     result = {'eos_dir': 'new', 'solidus_path': 'new/sol', 'liquidus_path': 'new/liq'}
@@ -247,8 +249,10 @@ def test_match_ps_tables_to_mass_uses_the_tables_of_the_current_mass(
         p._match_ps_tables_to_mass()
 
     assert p.directories.get('spider_eos_dir') == expected
-    assert generate.called is (struct == 'zalmoxis' and restored)
-    assert p.directories.get('spider_liquidus_ps') == ('new/liq' if expected == 'new' else None)
+    assert generate.called is (energetics != 'dummy' and restored)
+    new = expected == 'new'
+    assert p.directories.get('spider_solidus_ps') == ('new/sol' if new else None)
+    assert p.directories.get('spider_liquidus_ps') == ('new/liq' if new else None)
 
 
 def _make_hf_df():

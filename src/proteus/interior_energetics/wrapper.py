@@ -1902,12 +1902,11 @@ def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
     """Re-melt a temperature-state backend (dummy or boundary) in place.
 
     These backends carry the mantle thermal state as a surface magma
-    temperature they cool from the configured initial value. Resetting that
-    temperature, and every melt quantity derived from it, returns the mantle
-    to its molten start. Writing the derived quantities as well, and the melt
-    fraction and temperature onto the interior arrays the same-iteration tidal
-    call reads, keeps the impact iteration self-consistent rather than leaving
-    those quantities a step behind the reset temperature.
+    temperature they cool from the configured initial value. The re-melt raises
+    that temperature to the initial value, or keeps it when it is higher, and
+    rewrites every melt quantity derived from it together with the melt
+    fraction and temperature on the interior arrays the same-iteration tidal
+    call reads, so the impact iteration stays self-consistent.
     """
     import numpy as np
 
@@ -1917,8 +1916,7 @@ def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
     t_reset = max(config.planet.tsurf_init, float(hf_row.get('T_magma', 0.0)))
     state = melt_state_from_temperature(config, hf_row, t_reset)
     hf_row.update(state)
-    # The boundary backend also cools a surface temperature that the atmosphere
-    # reads, so keep it in step with the magma temperature.
+    # The boundary backend starts with the surface at the magma temperature.
     if config.interior_energetics.module == 'boundary':
         hf_row['T_surf'] = t_reset
 
@@ -1929,13 +1927,15 @@ def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
 
     if state['Phi_global'] < 1.0:
         log.warning(
-            '    mantle re-melt left it only %.0f%% molten: tsurf_init=%.0f K is below '
-            'the liquidus. Raise planet.tsurf_init for a full re-melt.',
+            '    mantle re-melt left it only %.0f%% molten at %.0f K: planet.tsurf_init=%.0f K '
+            'is below the liquidus. Raise planet.tsurf_init for a full re-melt.',
             100.0 * state['Phi_global'],
             t_reset,
+            config.planet.tsurf_init,
         )
     log.info(
-        '    mantle re-melted: T_magma reset to %.0f K (melt fraction %.2f)',
+        '    mantle re-melted: T_magma %s %.0f K (melt fraction %.2f)',
+        'reset to' if t_reset == config.planet.tsurf_init else 'kept at',
         t_reset,
         state['Phi_global'],
     )
@@ -1983,18 +1983,19 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     ``_set_entropy_ic`` alone only rewrites the solver's initial-state vector,
     which the next coupling step overwrites when it restores the entropy from
     the previous (cooled) solution. To make the re-melt stick, the restored
-    profile carrier ``interior_o._last_entropy`` is set to the molten profile,
+    profile carrier ``interior_o._last_entropy`` is set to the re-melted profile,
     the stale trajectory is cleared so the restore path cannot resurrect it,
     and the cached CMB-gradient state is cleared so it is re-derived from the
-    molten profile rather than inherited from the cooled one. Cells already
-    above the molten profile keep their entropy, so the re-melt never cools the
-    mantle, and the solver first switches to the P-S tables the structure solve
-    of this step built for the grown planet.
+    re-melted profile rather than inherited from the cooled one. The re-melted
+    profile is the molten initial condition in each cell, or the end-of-step
+    entropy where that is higher, so the re-melt never cools the mantle. The
+    solver first switches to the P-S tables the structure solve of this step
+    built for the grown planet.
 
     The heat the re-melt injects is booked into ``hf_row['step_dE_impact_J']``
     using the solver's own entropy-transported heat quadrature over the jump
-    from the end-of-step profile to the re-melted one, the same ``rho(P,S) T dS`` frame the
-    conservation residual integrates. The quadrature runs on the solver's
+    from the end-of-step profile to the re-melted one, the same
+    ``rho(P,S) T dS`` frame the conservation residual integrates. The quadrature runs on the solver's
     current, pre-impact mesh (the solver is rebuilt for the grown planet only
     at its next solve), so the booked value is the heat that re-melts the
     mantle the planet had when the impact struck; the impactor's own heat
@@ -2022,20 +2023,19 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     solver = interior_o.aragog_solver
 
     # The structure solve of this step rebuilt the tables for the grown planet.
-    interior_o._spider_eos_dir = dirs.get('spider_eos_dir') or getattr(
-        interior_o, '_spider_eos_dir', ''
-    )
+    if dirs.get('spider_eos_dir'):
+        interior_o._spider_eos_dir = dirs['spider_eos_dir']
     AragogRunner._refresh_entropy_eos(config, interior_o)
 
     # The impact re-melts the state at the end of the landing step.
     sol = getattr(solver, 'solution', None)
     if sol is not None and sol.y.size > 0:
         S_block = solver.entropy_staggered
-        S_cooled = S_block[:, -1] if S_block.ndim > 1 else S_block
+        S_end = S_block[:, -1] if S_block.ndim > 1 else S_block
     else:
-        S_cooled = getattr(interior_o, '_last_entropy', None)
-    if S_cooled is not None:
-        S_cooled = np.asarray(S_cooled, dtype=float).ravel().copy()
+        S_end = getattr(interior_o, '_last_entropy', None)
+    if S_end is not None:
+        S_end = np.asarray(S_end, dtype=float).ravel().copy()
 
     # Drop cooled trajectory and CMB gradient before rebuilding initial conditions.
     # This prevents hot-starting from obsolete profiles or restoring cooled fields.
@@ -2050,9 +2050,9 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     S_molten = np.asarray(S_molten, dtype=float).ravel()
 
     # An impact cannot cool the mantle: cells above the molten profile keep their entropy.
-    if S_cooled is not None and S_cooled.size > 0:
-        S_new = np.maximum(S_cooled, S_molten)
-        n_hot = int(np.count_nonzero(S_new > S_molten))
+    if S_end is not None and S_end.size > 0 and np.isfinite(S_end).all():
+        S_new = np.maximum(S_end, S_molten)
+        n_hot = np.count_nonzero(S_new > S_molten)
         if n_hot:
             solver.set_initial_entropy(S_new)
             log.info(
@@ -2061,7 +2061,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
                 S_new.size,
                 config.planet.temperature_mode,
             )
-        dE_impact = float(solver._step_heat_content(S_cooled, S_new))
+        dE_impact = float(solver._step_heat_content(S_end, S_new))
         interior_o._last_entropy = S_new.copy()
 
         # Accumulate heat across multiple impacts within the same timestep
@@ -2117,10 +2117,12 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
     a solver glitch.
 
     The backends carry their state differently, so each is reset in its own
-    terms: the dummy and boundary backends cool a surface temperature and are
-    reset to the configured initial value together with every quantity derived
-    from it; Aragog re-applies its entropy initial condition and carries the
-    molten profile through the reset the coupling performs on the next step.
+    terms: the dummy and boundary backends cool a surface temperature, which is
+    raised to the configured initial value (or kept when higher) together with
+    every quantity derived from it; Aragog raises each cell to its entropy
+    initial condition (or keeps a higher entropy) and carries that profile
+    through the reset the coupling performs on the next step. The re-melt
+    never cools the mantle.
     SPIDER keeps its state in a restart file written by the external binary and
     has no validated re-melt path; an accretion run on SPIDER is refused at
     configuration load, and this backstop refuses it at the first impact.

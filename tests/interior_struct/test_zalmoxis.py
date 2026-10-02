@@ -1063,13 +1063,16 @@ def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypat
     with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='solid.dat'):
         zmod.require_paleos_tables(config, str(bare))
 
+    # The check runs before the accreted mass is restored, so tables of a grown
+    # planet (another P_max) are kept here too.
     kept = tmp_path / 'kept'
-    _seed_tables(kept / 'data' / 'spider_eos', 'old-key')
-    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+    _seed_tables(kept / 'data' / 'spider_eos', 'P_max=9.000000e+11_nP=8')
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_struct.zalmoxis'):
         assert zmod.require_paleos_tables(config, str(kept)) is None
     warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     assert len(warnings) == 1
     assert 'keeps its original energetics P-S entropy tables' in warnings[0]
+    assert 'Planet mass changed' not in caplog.text
 
     config.interior_energetics.module = 'aragog'
     with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='solid.dat'):
@@ -3937,7 +3940,9 @@ def test_resume_without_kept_tables_warns_before_the_build(tmp_path, monkeypatch
             monkeypatch,
             resume=True,
             melt_calls=melt_calls,
-            on_build=lambda: warned_at_build.append('has no kept' in caplog.text),
+            on_build=lambda: warned_at_build.append(
+                'keeps no P-S entropy tables' in caplog.text
+            ),
         )
     bounds.assert_called_once()
     # The warning is already recorded when the build starts.
@@ -3945,13 +3950,13 @@ def test_resume_without_kept_tables_warns_before_the_build(tmp_path, monkeypatch
     assert melt_calls == ['curves', 'derive']
     assert (run_eos / 'solidus_P-S.dat').read_text() == 'NEW'
     assert (run_eos / '.cache_info.txt').read_text() == key
-    assert 'has no kept P-S entropy tables' in caplog.text and key in caplog.text
+    assert 'keeps no P-S entropy tables' in caplog.text and key in caplog.text
     # Discrimination: a fresh run builds the same tables without the warning.
     caplog.clear()
     (run_eos / '.cache_info.txt').unlink()
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
         _generate_tables_stubbed(tmp_path, monkeypatch, resume=False)
-    assert 'has no kept' not in caplog.text
+    assert 'keeps no P-S entropy tables' not in caplog.text
 
 
 @pytest.mark.parametrize(

@@ -389,18 +389,17 @@ class Proteus:
         restored; tables built for another mass (a walk-back past an impact) are
         replaced by the tables of the current one.
         """
-        if (
-            self.config.interior_struct.module != 'zalmoxis'
-            or 'spider_eos_dir' not in self.directories
-        ):
+        dirs = self.directories
+        energetics = self.config.interior_energetics.module
+        if energetics not in ('spider', 'aragog') or 'spider_eos_dir' not in dirs:
             return
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
-        tables = generate_spider_tables(self.config, self.directories['output'])
+        tables = generate_spider_tables(self.config, dirs['output'])
         if tables is not None:
-            self.directories['spider_eos_dir'] = tables['eos_dir']
-            self.directories['spider_solidus_ps'] = tables['solidus_path']
-            self.directories['spider_liquidus_ps'] = tables['liquidus_path']
+            dirs['spider_eos_dir'] = tables['eos_dir']
+            dirs['spider_solidus_ps'] = tables['solidus_path']
+            dirs['spider_liquidus_ps'] = tables['liquidus_path']
 
     def _check_crystallization(self) -> None:
         """Check mantle crystallization and lock outgassing when threshold is crossed."""

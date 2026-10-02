@@ -46,7 +46,8 @@ upstream modules.
    within the step just taken. The impactor's rock is added to the planet and
    the interior structure is re-solved at the new mass, its volatiles are
    delivered while part of the target's atmosphere is stripped, the mantle is
-   re-melted by re-applying the run's temperature-mode initial condition, and
+   re-melted by raising it to the run's temperature-mode initial condition
+   (parts that are already hotter keep their state), and
    the orbit takes the impact's change in semi-major axis and eccentricity.
    How molten the re-melt leaves the mantle follows that initial condition:
    only `planet.temperature_mode = "liquidus_super"` is fully molten for any

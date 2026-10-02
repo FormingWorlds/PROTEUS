@@ -2241,7 +2241,7 @@ def test_run_interior_keeps_an_impact_jump_after_consuming_the_flag(impact, T_ma
     hf_all, hf_row = _make_run_interior_state(prev_f_int=1.0)
     out = {
         'T_magma': 4000.0,
-        'T_surf': 2805.0,
+        'T_surf': 3900.0,
         'Phi_global': 0.7,
         'F_int': 2.0,
         'M_mantle': 4.0e24,
@@ -2260,6 +2260,7 @@ def test_run_interior_keeps_an_impact_jump_after_consuming_the_flag(impact, T_ma
         run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
 
     assert hf_row['T_magma'] == pytest.approx(T_magma, rel=1e-12)
+    assert hf_row['T_surf'] == pytest.approx(3900.0 if impact else 2820.0, rel=1e-12)
     assert interior_o.impact_reset is False
 
 
@@ -6558,8 +6559,8 @@ class _FakeAragogSolver:
 
     @property
     def entropy_staggered(self):
-        # Read-only view over the solved trajectory, as on the real solver.
-        return self._solution.y[:, -1]
+        # Read-only (N, nt) block over the solved trajectory, as on the real solver.
+        return self._solution.y
 
     @property
     def solution(self):
@@ -6766,6 +6767,7 @@ def test_aragog_remelt_books_the_jump_from_the_end_of_step_profile():
     """The impact re-melts the state at the end of the landing step, so the heat is
     measured from the solver's end-of-step profile, not from the start-of-step carrier."""
     solver = _FakeAragogSolver(cooled_profile=np.full(6, 2600.0))
+    solver._solution.y = np.column_stack([np.full(6, 2500.0), np.full(6, 2600.0)])
     interior_o = SimpleNamespace(
         aragog_solver=solver, _last_entropy=np.full(6, 2400.0), impact_reset=False
     )
@@ -6781,6 +6783,30 @@ def test_aragog_remelt_books_the_jump_from_the_end_of_step_profile():
     assert hf_row['step_dE_impact_J'] == pytest.approx(
         6 * 1300.0 * _FakeAragogSolver._HEAT_PER_ENTROPY
     )
+
+
+@pytest.mark.unit
+def test_aragog_remelt_with_a_non_finite_end_state_books_nothing(caplog):
+    """A non-finite end-of-step profile cannot measure the jump: nothing is booked
+    and the carrier holds the molten profile."""
+    end = np.full(6, 2600.0)
+    end[2] = np.nan
+    solver = _FakeAragogSolver(cooled_profile=end)
+    interior_o = SimpleNamespace(aragog_solver=solver, _last_entropy=None, impact_reset=False)
+    hf_row = {}
+
+    with (
+        caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics'),
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            return_value=np.full(6, 3900.0),
+        ),
+    ):
+        remelt_mantle({'output': '/tmp/out'}, _remelt_config('aragog'), hf_row, interior_o)
+
+    assert hf_row['step_dE_impact_J'] == 0.0
+    np.testing.assert_array_equal(interior_o._last_entropy, np.full(6, 3900.0))
+    assert 'not booked' in caplog.text
 
 
 @pytest.mark.unit
@@ -6821,21 +6847,26 @@ def test_aragog_remelt_reads_the_tables_of_the_grown_planet(tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_remelt_never_cools_a_hotter_scalar_mantle():
-    """A dummy mantle above tsurf_init keeps its temperature through the re-melt."""
-    hf_row = _remelt_hf_row(T_magma=4500.0)
+@pytest.mark.parametrize('module', ['dummy', 'boundary'])
+def test_remelt_never_cools_a_hotter_scalar_mantle(caplog, module):
+    """A mantle above tsurf_init keeps its temperature through the re-melt; the
+    boundary backend starts its surface at that temperature, as at t = 0."""
+    hf_row = dict(_remelt_hf_row(T_magma=4500.0), T_surf=3000.0)
     interior_o = SimpleNamespace(impact_reset=False)
 
-    remelt_mantle(
-        {'output': '/tmp/unused'},
-        _remelt_config('dummy', tsurf_init=4000.0),
-        hf_row,
-        interior_o,
-    )
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        remelt_mantle(
+            {'output': '/tmp/unused'},
+            _remelt_config(module, tsurf_init=4000.0),
+            hf_row,
+            interior_o,
+        )
 
     assert hf_row['T_magma'] == pytest.approx(4500.0, rel=1e-12)
     np.testing.assert_array_equal(interior_o.temp, [4500.0])
     assert hf_row['Phi_global'] == pytest.approx(1.0, rel=1e-12)
+    assert hf_row['T_surf'] == (4500.0 if module == 'boundary' else 3000.0)
+    assert 'T_magma kept at 4500 K' in caplog.text
 
 
 @pytest.mark.unit

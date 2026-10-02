@@ -1987,10 +1987,10 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
         # Dissolved volatiles join the mantle EOS during the run.
         layers['volatiles'] = '+'.join(VOLATILE_EOS_MAP.values())
     mat_dicts = load_zalmoxis_material_dictionaries()
+    # Runs before the accreted mass is restored, so the planet mass is not compared here.
     kept = config.params.resume and _resumed_ps_tables(
         outdir,
         lambda: _ps_resume_key(config, *energetics_entry(zc.mantle_eos, mat_dicts), mat_dicts),
-        _ps_p_max(config),
     )
     liquidus_super = config.planet.temperature_mode == 'liquidus_super'
     if liquidus_super:
@@ -2825,8 +2825,8 @@ def generate_spider_tables(config: Config, outdir: str):
     nS = config.interior_struct.zalmoxis.lookup_nS
     if config.params.resume:
         log.warning(
-            'Resumed run has no kept P-S entropy tables in %s or at its shared-cache '
-            'pointer; it continues on the tables of the current key %s, built now if absent',
+            'Resumed run keeps no P-S entropy tables from %s or its shared-cache pointer; '
+            'it continues on the tables of the current key %s, built now if absent',
             os.path.join(outdir, 'data', 'spider_eos'),
             cache_key,
         )

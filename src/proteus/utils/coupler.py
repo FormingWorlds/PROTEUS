@@ -1108,7 +1108,7 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
 
     A giant-impact mantle re-melt contributes ``step_dE_impact_J``, the
     heat the re-melt injects evaluated in the same ``rho T dS`` frame
-    over the entropy jump from the cooled to the molten profile, on the
+    over the entropy jump from the end-of-step to the re-melted profile, on the
     pre-impact solver mesh (the impactor's own heat content arrives as
     part of the new initial condition and is not booked). It is added to
     BOTH cumulatives: to the state side because the jump falls between
