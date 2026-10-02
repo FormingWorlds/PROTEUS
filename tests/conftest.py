@@ -37,6 +37,7 @@ the testing framework.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -60,6 +61,33 @@ from proteus.utils.constants import (
     const_sigma,
     secs_per_year,
 )
+
+
+@pytest.fixture(autouse=True)
+def _restore_fwl_logger():
+    """Undo the logger setup that Proteus.start() leaves behind for later tests."""
+    logger = logging.getLogger('fwl')
+    level, handlers, hook = logger.level, list(logger.handlers), sys.excepthook
+    yield
+    for handler in set(logger.handlers) - set(handlers):
+        handler.close()
+    logger.setLevel(level)
+    logger.handlers[:] = handlers
+    sys.excepthook = hook
+
+
+@pytest.fixture(autouse=True)
+def _clear_paleos_api_resolutions():
+    """Drop the per-process PALEOS-API resolutions around each test, so a fake resolver
+    in one test does not hand its paths to another."""
+
+    def _clear():
+        if zal := sys.modules.get('proteus.interior_struct.zalmoxis'):
+            zal._PALEOS_API_RESOLVED.clear()
+
+    _clear()
+    yield
+    _clear()
 
 
 @pytest.fixture(autouse=True)

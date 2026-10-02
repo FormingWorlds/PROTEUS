@@ -66,10 +66,15 @@ def _make_handler(
     return handler
 
 
+def _phoenix_dir(tmp_path: Path) -> Path:
+    """Return the versioned PHOENIX dataset directory under a test data root."""
+    from proteus.data import STELLAR_SPECTRA_PHOENIX, dataset_dir
+
+    return dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path)
+
+
 def _raw_phoenix_path(tmp_path: Path, raw_name: str, FeH_str: str, alpha_str: str) -> Path:
-    return (
-        tmp_path / 'stellar_spectra' / 'PHOENIX' / f'FeH{FeH_str}_alpha{alpha_str}' / raw_name
-    )
+    return _phoenix_dir(tmp_path) / f'FeH{FeH_str}_alpha{alpha_str}' / raw_name
 
 
 def _install_fake_mors(monkeypatch):
@@ -260,16 +265,21 @@ def test_get_phoenix_modern_spectrum_offline_missing_raw_raises(tmp_path, monkey
     from proteus.star.phoenix import get_phoenix_modern_spectrum
 
     monkeypatch.setattr(phoenix_mod, 'GetFWLData', lambda: tmp_path)
-    handler = _make_handler(tmp_path=tmp_path, offline=True, Teff=5800.0, logg=4.5, radius=1.0)
+    handler = _make_handler(
+        tmp_path=tmp_path, offline=True, Teff=5800.0, logg=4.5, radius=1.0, FeH=-1.0, alpha=0.4
+    )
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(
+        FileNotFoundError, match=r'`proteus get phoenix --feh -1\.0 --alpha \+0\.4`.*relocate'
+    ):
         get_phoenix_modern_spectrum(handler, stellar_track=None)
+    assert (tmp_path / 'out' / 'status').read_text().splitlines()[0] == '23'
 
     # Discrimination: the offline branch must NOT silently emit a 1 AU file
     # before raising. A regression that wrote a zero-flux fallback to disk
     # and then raised (or that swallowed the raise) would corrupt the
     # downstream pipeline; assert no PHOENIX 1AU directory was created.
-    one_au_dir = tmp_path / 'stellar_spectra' / 'PHOENIX' / '1AU'
+    one_au_dir = _phoenix_dir(tmp_path) / '1AU'
     assert not one_au_dir.exists() or not any(one_au_dir.iterdir())
 
 
@@ -309,6 +319,20 @@ def test_get_phoenix_modern_spectrum_downloads_when_online(tmp_path, monkeypatch
 # init_star() spectrum selection tests
 
 
+def _solar_dir(root):
+    """Version directory of the solar spectra dataset below ``root``."""
+    from proteus.data import STELLAR_SPECTRA_SOLAR, dataset_dir
+
+    return dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=root)
+
+
+def _muscles_dir(root):
+    """Version directory of the MUSCLES spectra dataset below ``root``."""
+    from proteus.data import STELLAR_SPECTRA_MUSCLES, dataset_dir
+
+    return dataset_dir(STELLAR_SPECTRA_MUSCLES, data_root=root)
+
+
 @pytest.mark.unit
 def test_init_star_source_none_prefers_muscles_when_available(tmp_path, monkeypatch):
     """With ``spectrum_source=None``, ``init_star`` prefers MUSCLES over
@@ -321,8 +345,8 @@ def test_init_star_source_none_prefers_muscles_when_available(tmp_path, monkeypa
     handler = _make_handler_for_init_star(tmp_path, spectrum_source=None)
 
     star_file = 'gj876.txt'
-    solar = tmp_path / 'stellar_spectra' / 'solar' / star_file
-    muscles = tmp_path / 'stellar_spectra' / 'MUSCLES' / star_file
+    solar = _solar_dir(tmp_path) / star_file
+    muscles = _muscles_dir(tmp_path) / star_file
 
     _write_spectrum_file(solar, fl=(10.0, 20.0))
     _write_spectrum_file(muscles, fl=(30.0, 40.0))
@@ -350,7 +374,7 @@ def test_init_star_source_none_uses_muscles_when_solar_missing(tmp_path, monkeyp
     handler = _make_handler_for_init_star(tmp_path, spectrum_source=None)
 
     starname_proper = 'gj876.txt'
-    muscles = tmp_path / 'stellar_spectra' / 'MUSCLES' / starname_proper
+    muscles = _muscles_dir(tmp_path) / starname_proper
     _write_spectrum_file(muscles, fl=(30.0, 40.0))
 
     init_star(handler)
@@ -380,7 +404,7 @@ def test_init_star_source_solar_falls_back_to_muscles_with_warning(
     handler = _make_handler_for_init_star(tmp_path, spectrum_source='solar')
 
     starname_proper = 'gj876.txt'
-    muscles = tmp_path / 'stellar_spectra' / 'MUSCLES' / starname_proper
+    muscles = _muscles_dir(tmp_path) / starname_proper
     _write_spectrum_file(muscles, fl=(30.0, 40.0))
 
     init_star(handler)
@@ -406,7 +430,7 @@ def test_init_star_source_muscles_falls_back_to_solar_with_warning(
     handler = _make_handler_for_init_star(tmp_path, spectrum_source='muscles')
 
     starname_proper = 'gj876.txt'
-    solar = tmp_path / 'stellar_spectra' / 'solar' / starname_proper
+    solar = _solar_dir(tmp_path) / starname_proper
     _write_spectrum_file(solar, fl=(10.0, 20.0))
 
     init_star(handler)
@@ -418,18 +442,33 @@ def test_init_star_source_muscles_falls_back_to_solar_with_warning(
 
 
 @pytest.mark.unit
-def test_init_star_source_none_missing_both_raises(tmp_path, monkeypatch):
-    """With ``spectrum_source=None`` and neither solar nor MUSCLES on
-    disk, ``init_star`` raises FileNotFoundError rather than producing
-    a silent zero-flux spectrum.
+@pytest.mark.parametrize(
+    'source, star, command',
+    [
+        (None, 'gj 876', 'proteus get muscles --star gj876'),
+        ('solar', 'gj 876', 'proteus get muscles --star gj876'),
+        ('muscles', 'gj 876', 'proteus get muscles --star gj876'),
+        ('solar', 'Sun', 'proteus get solar'),
+        ('muscles', '', 'proteus get muscles --star <name>'),
+    ],
+)
+def test_init_star_missing_spectrum_names_its_catalogue_command(
+    tmp_path, monkeypatch, caplog, source, star, command
+):
+    """With neither solar nor MUSCLES on disk, ``init_star`` raises FileNotFoundError
+    naming the one catalogue that holds the star, with its id, and ``fwl-io relocate``,
+    rather than producing a silent zero-flux spectrum.
     """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
-    handler = _make_handler_for_init_star(tmp_path, spectrum_source=None)
+    handler = _make_handler_for_init_star(tmp_path, spectrum_source=source, star_name=star)
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(FileNotFoundError, match=f'with `{command}`. .*`fwl-io relocate`'):
         init_star(handler)
+    # The error is logged before the stop, and no log line names another --star.
+    assert any(r.levelname == 'ERROR' for r in caplog.records)
+    assert not [s for s in caplog.messages if 'muscles --star' in s and command not in s]
 
     # Discrimination: the raise must fire BEFORE any backup spectrum is
     # written. A regression that silently produced a zero-flux fallback
@@ -508,7 +547,7 @@ def test_init_star_phoenix_branch_uses_get_phoenix_modern_spectrum(tmp_path, mon
 
     fake_mors = _install_fake_mors(monkeypatch)
 
-    phoenix_modern = tmp_path / 'stellar_spectra' / 'PHOENIX' / '1AU' / 'fake_phoenix.txt'
+    phoenix_modern = _phoenix_dir(tmp_path) / '1AU' / 'fake_phoenix.txt'
     _write_spectrum_file(phoenix_modern, fl=(7.0, 8.0))
 
     calls = {'n': 0, 'track_type': None}
@@ -551,7 +590,7 @@ def test_init_star_phoenix_branch_tolerates_star_name_none(tmp_path, monkeypatch
 
     _install_fake_mors(monkeypatch)
 
-    phoenix_modern = tmp_path / 'stellar_spectra' / 'PHOENIX' / '1AU' / 'fake_phoenix.txt'
+    phoenix_modern = _phoenix_dir(tmp_path) / '1AU' / 'fake_phoenix.txt'
     _write_spectrum_file(phoenix_modern, fl=(7.0, 8.0))
 
     calls = {'n': 0}

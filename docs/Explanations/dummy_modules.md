@@ -41,7 +41,14 @@ Earth-like mineralogy and variable iron content.
 
 The dummy structure module provides all the radial profiles that SPIDER and
 Aragog need as boundary conditions without running a hydrostatic
-equilibrium solver or loading EOS tables. When paired with the dummy
+equilibrium solver. With a PALEOS `interior_struct.zalmoxis.mantle_eos` (a
+mixture follows its MgSiO3 component), SPIDER and Aragog read P-S tables and
+P-S melting curves generated from PALEOS; with any other mantle EOS they read
+the P-S tables from FWL_DATA or the SPIDER lookup data and the melting curves
+named by `interior_struct.melting_dir`. With a PALEOS mantle EOS, PROTEUS
+still passes Aragog the `melting_dir` curves and the Wolf and Bower lookup
+tables (or `interior_struct.eos_dir`) and requires them to exist, but the
+solve uses the PALEOS P-S set and its curves. When paired with the dummy
 energetics module, the entire interior is analytically specified.
 
 ### Interior energetics: dummy (`interior_energetics.module = 'dummy'`)

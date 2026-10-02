@@ -1058,3 +1058,27 @@ def test_find_key_problems_keeps_warning_about_a_schema_it_cannot_read(caplog):
     assert first == second == (['not_a_field'], [])
     warnings = [r for r in caplog.records if 'type hints' in r.getMessage()]
     assert len(warnings) == 2  # one per load, not one for the pair
+
+
+def test_phase_boundary_cap_fixed_in_a_toml_reaches_the_config(tmp_path):
+    """all_options.toml declares 'rate'; a TOML that sets 'fixed' resolves to 'fixed'."""
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    all_options = PROTEUS_ROOT / 'input' / 'all_options.toml'
+    with open(all_options, 'rb') as f:
+        raw = tomllib.load(f)
+    assert raw['interior_energetics']['aragog']['phase_boundary_cap'] == 'rate'
+    assert find_key_problems(raw)[0] == []
+
+    raw['interior_energetics']['aragog']['phase_boundary_cap'] = 'fixed'
+    fixed_toml = tmp_path / 'fixed.toml'
+    with open(fixed_toml, 'w') as f:
+        tomlkit.dump(raw, f)
+    assert (
+        read_config_object(fixed_toml).interior_energetics.aragog.phase_boundary_cap == 'fixed'
+    )

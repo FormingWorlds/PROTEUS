@@ -44,8 +44,8 @@ conda activate proteus
 proteus start --offline -c input/dummy.toml
 ```
 
-The `--offline` flag skips data downloads. The run should complete in
-under 30 seconds.
+The `--offline` flag skips data downloads. The run takes about a minute,
+including the plots.
 
 ## Expected output
 
@@ -60,11 +60,11 @@ output should look similar to this:
   flux (ASF) is constant. (b) Surface partial pressures: H<sub>2</sub>O dominates
   (~10<sup>4</sup> bar), with CO<sub>2</sub>, N<sub>2</sub>, and SO<sub>2</sub> as minor species; pressures
   increase as solidification forces dissolved volatiles into the atmosphere.
-  (c) Surface temperature: monotonic cooling from 4000 K to ~1700 K (solidus).
+  (c) Surface temperature: monotonic cooling to ~1700 K (solidus).
   (d) Atmospheric mole fractions: H<sub>2</sub>O at ~95%, stable throughout.
   (e) Mantle evolution: melt fraction drops from 1 (fully molten) to ~0
-  (solidified) over ~23,000 yr; the rheological front (orange) tracks the
-  melt fraction. (f) Volatile partitioning: dissolved fraction decreases from
+  (solidified) over ~23,000 yr; the rheological front (orange) moves toward
+  the surface as the melt fraction drops. (f) Volatile partitioning: dissolved fraction decreases from
   ~90% to ~0% as the melt fraction drops, transferring volatiles from the
   interior to the atmosphere.</figcaption>
 </figure>
@@ -84,10 +84,10 @@ series. Key columns:
 |--------|-------|----------------|
 | `Time` | yr | Stays at 0 for the first 3 iterations (init stage), then advances to ~23,000 yr |
 | `T_magma` | K | Decreases monotonically from 4000 to ~1700 |
-| `Phi_global` | 1 | Drops from 1.0 to ~0.01, triggering the solidification stop |
+| `Phi_global` | 1 | Drops from 1.0 to ~0.003, triggering the solidification stop |
 | `P_surf` | bar | Increases from ~7,000 to ~70,000 as volatiles outgas |
 | `F_atm` | W m$^{-2}$ | Outgoing longwave radiation; decreases as the surface cools |
-| `F_int` | W m$^{-2}$ | Interior heat flux; tracks `F_atm` in the dummy coupling |
+| `F_int` | W m$^{-2}$ | Interior heat flux; tracks `F_atm`, a few percent above it as the interior loses heat |
 | `M_planet` | kg | Constant throughout (mass conservation) |
 
 ## What to look for
@@ -102,8 +102,8 @@ series. Key columns:
    production modules (CALLIOPE, Aragog) compute with full thermodynamics.
 
 3. **Energy balance**: the OLR (red line in panel a) and interior flux
-   (orange dashed) track each other because the dummy atmosphere directly
-   couples `F_int = F_atm`. The absorbed stellar flux (blue dashed) is
+   (orange dashed) track each other, with `F_int` slightly above `F_atm` as
+   the interior loses heat. The absorbed stellar flux (blue dashed) is
    constant because the star is fixed.
 
 4. **Mass conservation**: `M_planet` should remain constant within rounding.

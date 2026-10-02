@@ -19,7 +19,8 @@ from getpass import getuser
 import numpy as np
 import toml
 
-from proteus.config import Config, read_config_object
+from proteus.config import Config, read_config, read_config_object
+from proteus.config._interior import _TOL_UNSET, default_rtol, rtol_is_set
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
 from proteus.utils.logs import setup_logger
 
@@ -144,6 +145,13 @@ class Grid:
     def add_dimension(self, name: str, var: str):
         if name in self.dim_names:
             raise Exception("Dimension '%s' cannot be added twice" % name)
+        if var in (
+            'interior_energetics.num_tolerance',
+            'interior_energetics.spider.tolerance_rel',
+        ):
+            raise ValueError(
+                f'{var} is a deprecated alias; sweep interior_energetics.rtol instead'
+            )
 
         log.info("Added new dimension '%s' " % name)
         log.debug(
@@ -273,6 +281,8 @@ class Grid:
         """Write config files."""
         # Read base config file
         base_config = read_config_object(self.conf)
+        # A module set per case takes that module's default rtol when nothing sets one.
+        rtol_unset = not rtol_is_set(read_config(self.conf).get('interior_energetics', {}))
 
         # Loop over grid points to write config files
         log.info('Writing config files')
@@ -286,6 +296,12 @@ class Grid:
             # Set other parameters in Config object
             for key in gp.keys():
                 recursive_setattr(thisconf, key, gp[key])
+            if 'interior_energetics.rtol' in gp:  # a base alias would conflict on reload
+                ie = thisconf.interior_energetics
+                ie.num_tolerance = ie.spider.tolerance_rel = _TOL_UNSET
+            elif rtol_unset and 'interior_energetics.module' in gp:
+                ie = thisconf.interior_energetics
+                ie.rtol = default_rtol(ie.module)
 
             # Write this configuration file
             thisconf.write(self._get_tmpcfg(i))

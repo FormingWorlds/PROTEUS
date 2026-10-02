@@ -307,10 +307,7 @@ def test_aragog_defaults():
 
 
 def test_aragog_core_module_defaults_and_mode_validator():
-    """The staged core-module sub-config initialises to the pure-iron
-    Earth-like defaults (depression off, radiogenic off), the core_bc
-    validator accepts the fifth mode and still rejects arbitrary strings,
-    and the physical bounds on the sub-config reject out-of-range values."""
+    """Verify core-module sub-config defaults and validator bounds."""
     from proteus.config._interior import AragogCoreModule
 
     aragog = Aragog()
@@ -344,3 +341,28 @@ def test_aragog_core_module_defaults_and_mode_validator():
         AragogCoreModule(f_ohm=0.0)  # bound is exclusive at 0
     with pytest.raises(ValueError):
         AragogCoreModule(flux_geometry='spherical_cow')
+
+
+def test_aragog_phase_boundary_cap_defaults_to_rate_and_rejects_other_values():
+    """The schema default is 'rate'; 'fixed' is kept; anything else is rejected at load."""
+    assert Aragog().phase_boundary_cap == 'rate'
+    assert Aragog(phase_boundary_cap='fixed').phase_boundary_cap == 'fixed'
+    for bad in ('Rate', '', 'adaptive'):
+        with pytest.raises(ValueError, match='phase_boundary_cap'):
+            Aragog(phase_boundary_cap=bad)
+
+
+@pytest.mark.parametrize(
+    ('module', 'expected'),
+    [('aragog', 1e-8), ('spider', 1e-10), ('dummy', 1e-10), ('boundary', 1e-10)],
+)
+def test_unset_interior_rtol_resolves_per_module(module, expected):
+    """An unset rtol resolves to 1e-8 for Aragog and 1e-10 otherwise; an explicit value is kept."""
+    assert Interior(module=module).rtol == pytest.approx(expected)
+    assert Interior(module=module, rtol=3e-9).rtol == pytest.approx(3e-9)
+
+
+def test_deprecated_rtol_alias_overrides_the_aragog_default():
+    """num_tolerance still copies into rtol for Aragog, with its deprecation warning."""
+    with pytest.warns(DeprecationWarning, match='num_tolerance'):
+        assert Interior(module='aragog', num_tolerance=1e-6).rtol == pytest.approx(1e-6)

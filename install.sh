@@ -534,7 +534,7 @@ if [ ${#missing_deps[@]} -gt 0 ]; then
             echo "  sudo apt install gfortran libnetcdff-dev build-essential curl git cmake unzip"
             ;;
         fedora)
-            echo "  sudo dnf install gcc-gfortran netcdf-fortran-devel make curl git cmake unzip"
+            echo "  sudo dnf install gcc-gfortran gcc-c++ netcdf-fortran-devel make curl git cmake unzip"
             ;;
         alpine)
             echo "  apk add gfortran netcdf-fortran-dev make curl git cmake unzip"
