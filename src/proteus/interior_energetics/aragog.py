@@ -2322,7 +2322,7 @@ class AragogRunner:
                                 float(solver._atol_sf),
                                 dt_requested,
                             )
-
+                        return out
 
                 # Determine the failure mode from the raw CVODE flag. status
                 # stays scipy-compatible -1 for every CVODE failure, so it
