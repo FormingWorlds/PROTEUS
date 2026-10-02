@@ -393,9 +393,11 @@ class Proteus:
         struct = self.config.interior_struct.module
         energetics = self.config.interior_energetics.module
         # The SPIDER structure keeps the static tables, which do not depend on mass.
-        if struct == 'spider' or energetics not in ('spider', 'aragog'):
-            return
-        if 'spider_eos_dir' not in dirs:
+        if (
+            struct == 'spider'
+            or energetics not in ('spider', 'aragog')
+            or 'spider_eos_dir' not in dirs
+        ):
             return
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 

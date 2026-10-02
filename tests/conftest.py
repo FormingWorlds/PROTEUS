@@ -65,13 +65,15 @@ from proteus.utils.constants import (
 
 @pytest.fixture(autouse=True)
 def _restore_fwl_logger():
-    """Restore the 'fwl' logger after each test: Proteus.start() calls setup_logger,
-    which would otherwise leave its level and handlers set for later tests."""
+    """Undo the logger setup that Proteus.start() leaves behind for later tests."""
     logger = logging.getLogger('fwl')
-    level, handlers = logger.level, list(logger.handlers)
+    level, handlers, hook = logger.level, list(logger.handlers), sys.excepthook
     yield
+    for handler in set(logger.handlers) - set(handlers):
+        handler.close()
     logger.setLevel(level)
     logger.handlers[:] = handlers
+    sys.excepthook = hook
 
 
 @pytest.fixture(autouse=True)

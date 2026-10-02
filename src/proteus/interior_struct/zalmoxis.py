@@ -2346,6 +2346,12 @@ def read_ps_cache_pointer(outdir: str) -> str | None:
 _PS_RESUME_REPORTED: set[str] = set()
 
 
+def _ps_resume_candidates(outdir: str) -> list[str]:
+    """The run's ``data/spider_eos`` and, when recorded, the shared-cache directory it names."""
+    pointed = read_ps_cache_pointer(outdir)
+    return [os.path.join(outdir, 'data', 'spider_eos')] + ([pointed] if pointed else [])
+
+
 def _ps_p_max(config: Config) -> float:
     """Upper pressure of the P-S lookup grid for the current planet mass [Pa].
 
@@ -2388,11 +2394,7 @@ def _resumed_ps_tables(outdir: str, current_key, p_max: float | None = None) -> 
         location holds a marker with both phase-boundary files.
     """
 
-    candidates = [os.path.join(outdir, 'data', 'spider_eos')]
-    pointed = read_ps_cache_pointer(outdir)
-    if pointed:
-        candidates.append(pointed)
-    for eos_dir in candidates:
+    for eos_dir in _ps_resume_candidates(outdir):
         marker = os.path.join(eos_dir, '.cache_info.txt')
         solidus_path = os.path.join(eos_dir, 'solidus_P-S.dat')
         liquidus_path = os.path.join(eos_dir, 'liquidus_P-S.dat')
@@ -2821,10 +2823,14 @@ def generate_spider_tables(config: Config, outdir: str):
         log.info('Using PALEOS-2phase tables for entropy-IC table generation')
     nP = config.interior_struct.zalmoxis.lookup_nP
     nS = config.interior_struct.zalmoxis.lookup_nS
-    if config.params.resume:
+    # Tables dropped for a mass change were reported by _resumed_ps_tables.
+    if config.params.resume and not any(
+        os.path.isfile(os.path.join(d, '.cache_info.txt'))
+        for d in _ps_resume_candidates(outdir)
+    ):
         log.warning(
-            'Resumed run keeps no P-S entropy tables from %s or its shared-cache pointer; '
-            'it continues on the tables of the current key %s, built now if absent',
+            'Resumed run has no kept P-S entropy tables in %s or at its shared-cache '
+            'pointer; it continues on the tables of the current key %s, built now if absent',
             os.path.join(outdir, 'data', 'spider_eos'),
             cache_key,
         )

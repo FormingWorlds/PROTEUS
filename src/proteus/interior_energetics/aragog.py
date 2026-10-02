@@ -1188,7 +1188,16 @@ class AragogRunner:
 
     @staticmethod
     def _store_profiles(interior_o: Interior_t, out) -> None:
-        """Store the profiles of a solver state on ``interior_o``; radius in metres."""
+        """Store the profiles of a solver state on ``interior_o`` for the other modules.
+
+        Parameters
+        ----------
+        interior_o : Interior_t
+            Interior state receiving phi, visc, density, radius, mass, temp and pres.
+        out : SolverOutput
+            Solver state; ``r_basic`` stays in metres, as the structure update
+            compares it with the core radius in metres.
+        """
         interior_o.phi = out.phi_stag
         interior_o.visc = out.visc_stag
         interior_o.density = out.rho_stag

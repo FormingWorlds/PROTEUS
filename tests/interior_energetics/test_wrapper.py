@@ -6761,6 +6761,7 @@ def test_a_remelt_never_cools_the_mantle(caplog):
         3 * 400.0 * _FakeAragogSolver._HEAT_PER_ENTROPY
     )
     assert "keeps 3 of 6 cells above the temperature_mode='adiabatic_from_cmb'" in caplog.text
+    assert 'restarts from the re-melted entropy profile' in caplog.text
 
 
 @pytest.mark.unit
@@ -6845,6 +6846,21 @@ def test_aragog_remelt_reads_the_tables_of_the_grown_planet(tmp_path):
 
     assert seen == [(str(new), ('eos', str(new)))]
     assert interior_o._spider_eos_dir == str(new)
+
+
+@pytest.mark.unit
+def test_remelt_of_a_hotter_partly_solid_mantle_names_tsurf_init(caplog):
+    """A mantle kept at its own temperature below the liquidus warns with tsurf_init,
+    not with the kept temperature."""
+    config = _remelt_config('dummy', tsurf_init=2000.0, mantle_tliq=2700.0, mantle_tsol=1700.0)
+    hf_row = _remelt_hf_row(T_magma=2200.0)
+
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'):
+        remelt_mantle({'output': '/tmp/unused'}, config, hf_row, SimpleNamespace())
+
+    assert hf_row['Phi_global'] == pytest.approx(0.5, rel=1e-9)
+    assert 'molten at 2200 K: planet.tsurf_init=2000 K' in caplog.text
+    assert 'T_magma kept at 2200 K' in caplog.text
 
 
 @pytest.mark.unit

@@ -1048,9 +1048,10 @@ def test_require_paleos_tables_stops_an_offline_run(tmp_path, monkeypatch, missi
 
 
 def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypatch, caplog):
-    """A resumed SPIDER run with kept P-S tables continues without the pair, with one
-    WARNING; an Aragog resume, which re-solves its initial condition on the pair when
-    the mesh changes, and a resume without kept tables stop like a fresh run."""
+    """A resumed SPIDER run with kept P-S tables continues without the pair and leaves
+    the report on those tables to the later table check; an Aragog resume, which
+    re-solves its initial condition on the pair when the mesh changes, and a resume
+    without kept tables stop like a fresh run."""
     from proteus.interior_struct import zalmoxis as zmod
 
     monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
@@ -1070,6 +1071,7 @@ def test_require_paleos_tables_lets_a_resume_keep_its_tables(tmp_path, monkeypat
     with caplog.at_level('INFO', logger='fwl.proteus.interior_struct.zalmoxis'):
         assert zmod.require_paleos_tables(config, str(kept)) is None
     assert caplog.text == ''
+    assert str(kept / 'data' / 'spider_eos') not in zmod._PS_RESUME_REPORTED
 
     config.interior_energetics.module = 'aragog'
     with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match='solid.dat'):
@@ -3855,6 +3857,7 @@ def test_resume_rebuilds_run_tables_after_a_planet_mass_change(
     assert (run_eos / '.cache_info.txt').read_text() == key
     assert f'Planet mass changed since the P-S tables in {run_eos} were built' in caplog.text
     assert 'ignores the changed settings' not in caplog.text
+    assert 'has no kept' not in caplog.text
 
 
 def test_resume_keeps_run_tables_whose_marker_names_no_p_max(tmp_path, monkeypatch):
@@ -3863,7 +3866,7 @@ def test_resume_keeps_run_tables_whose_marker_names_no_p_max(tmp_path, monkeypat
     run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
     _seed_tables(run_eos, 'old-key')
 
-    out, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
+    _, bounds, _, _ = _generate_tables_stubbed(tmp_path, monkeypatch, resume=True)
 
     bounds.assert_not_called()
     assert (run_eos / 'solidus_P-S.dat').read_text() == 'OLD'
@@ -3949,9 +3952,7 @@ def test_resume_without_kept_tables_warns_before_the_build(tmp_path, monkeypatch
             monkeypatch,
             resume=True,
             melt_calls=melt_calls,
-            on_build=lambda: warned_at_build.append(
-                'keeps no P-S entropy tables' in caplog.text
-            ),
+            on_build=lambda: warned_at_build.append('has no kept' in caplog.text),
         )
     bounds.assert_called_once()
     # The warning is already recorded when the build starts.
@@ -3959,13 +3960,13 @@ def test_resume_without_kept_tables_warns_before_the_build(tmp_path, monkeypatch
     assert melt_calls == ['curves', 'derive']
     assert (run_eos / 'solidus_P-S.dat').read_text() == 'NEW'
     assert (run_eos / '.cache_info.txt').read_text() == key
-    assert 'keeps no P-S entropy tables' in caplog.text and key in caplog.text
+    assert 'has no kept P-S entropy tables' in caplog.text and key in caplog.text
     # Discrimination: a fresh run builds the same tables without the warning.
     caplog.clear()
     (run_eos / '.cache_info.txt').unlink()
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
         _generate_tables_stubbed(tmp_path, monkeypatch, resume=False)
-    assert 'keeps no P-S entropy tables' not in caplog.text
+    assert 'has no kept' not in caplog.text
 
 
 @pytest.mark.parametrize(
