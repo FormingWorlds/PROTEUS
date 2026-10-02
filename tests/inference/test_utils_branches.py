@@ -138,6 +138,25 @@ def test_get_obs_reads_a_tab_file_with_an_empty_field_in_place(tmp_path):
     assert result['P_surf'] == pytest.approx(1.5e7)
 
 
+def test_get_obs_and_print_results_refuse_a_header_only_helpfile(tmp_path):
+    """A helpfile with a header and no rows raises HelpfileFormatError in both readers
+    instead of an IndexError from the last-row lookup."""
+    from proteus.inference.utils import get_obs, print_results
+    from proteus.utils.coupler import HelpfileFormatError
+
+    wdir = tmp_path / 'workers' / 'w_0' / 'i_0'
+    wdir.mkdir(parents=True)
+    (wdir / 'runtime_helpfile.csv').write_text('P_surf\tH2O_vmr\n', encoding='utf-8')
+    (wdir / 'init_coupler.toml').write_text('[planet]\nmass_tot = 1.0\n')
+    D = {'X': torch.tensor([[0.5]]), 'Y': torch.tensor([[1.0]])}
+    config = {'observables': {'H2O_vmr': 0.9}, 'parameters': {'planet.mass_tot': [0.5, 1.5]}}
+
+    with pytest.raises(HelpfileFormatError, match='0 data rows'):
+        get_obs(str(wdir / 'runtime_helpfile.csv'), observables=['H2O_vmr'])
+    with pytest.raises(HelpfileFormatError, match='0 data rows'):
+        print_results(D, [{'worker': 0, 'task_id': 0}], config, str(tmp_path), n_init=0)
+
+
 def test_get_obs_zeroes_vmr_and_mmw_when_atmosphere_has_escaped(tmp_path):
     """When P_surf is below 1e-30 the atmosphere has effectively
     escaped; ``get_obs`` overwrites every ``*_vmr`` and the mean

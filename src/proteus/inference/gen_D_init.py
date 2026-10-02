@@ -119,7 +119,7 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
         # Data
         try:
             helps.append(read_helpfile_table(c / 'runtime_helpfile.csv', min_rows=1))
-        except HelpfileFormatError as err:
+        except (OSError, HelpfileFormatError) as err:
             log.warning('Skipping %s: %s', c.name, err)
             continue
 

@@ -651,6 +651,14 @@ def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, t
         run()
     assert isinstance(excinfo.value.__cause__, objective_mod.HelpfileFormatError)
     assert excinfo.value.exit_code == 0
+    # The reason that reaches failures.csv names the file and the line.
+    assert 'runtime_helpfile.csv, line 3' in excinfo.value.reason
+
+    # Edge case: a header with no rows is a failed sample, not an IndexError.
+    helpfile.write_text('Time P_surf\n', encoding='utf-8')
+    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
+        run()
+    assert '0 data rows' in excinfo.value.reason
 
     # Discrimination: a helpfile with a usable row completes normally, so the
     # failures above come from the output and not from an unconditional raise.

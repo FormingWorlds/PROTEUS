@@ -1370,9 +1370,8 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
     A file whose header holds a tab, as the writer makes it, is split on tabs, so
     an empty field reads as NaN in its own column; a file without tabs is split on
     runs of whitespace. ``float_precision='round_trip'`` returns each float bit for
-    bit. The plot readers in ``proteus.plot`` and the plotting scripts in ``tools/`` use
-    plain ``read_csv``, without the exact parser or the field-count check, which a
-    display tolerates.
+    bit. The writer ends every line with a newline, so a file without one has a cut
+    last row and is refused.
 
     Parameters
     ----------
@@ -1400,6 +1399,10 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
         data = f.read()
     sep, n_columns, n_rows = None, 0, 0
     n_lines = data.count(b'\n') + (not data.endswith(b'\n'))
+    if data and not data.endswith(b'\n'):
+        raise HelpfileFormatError(
+            f'{path}, line {n_lines}: no newline at the end, so the row is cut'
+        )
     for line_number, raw in enumerate(data.split(b'\n'), start=1):
         try:
             line = raw.decode('utf-8')
@@ -1567,9 +1570,9 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     row from the last line of this table, and ``ExtendHelpfile`` rejects a row
     missing any schema key, so the shortfall is handled here rather than in each
     caller. How much of the schema a caller needs differs, which is what
-    ``required_columns`` sets. Readers that pull named columns straight out of
-    the file, such as the plotting and inference code, do not come through this
-    function and are not covered.
+    ``required_columns`` sets. The inference readers and the scripts in ``tools/``
+    read the file through ``read_helpfile_table`` as well; the plot readers under
+    ``proteus.plot`` and two plotting tools read it with pandas directly.
 
     A shortfall in the core columns is reported rather than filled. The
     diagnostic columns of `GetHelpfileDiagnosticKeys()` are the exception:
@@ -1603,6 +1606,8 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     ------
     HelpfileSchemaDriftError
         A required column that carries physical state is absent from the file.
+    HelpfileFormatError
+        From ``read_helpfile_table``, for a file that cannot be read as a table.
     """
     if required_columns is None:
         required_columns = GetHelpfileCoreKeys()
@@ -1753,21 +1758,16 @@ def _snapshot_time(path: str) -> float | None:
         return None
 
 
-# An 11-digit helpfile (one from a run that wrote fewer digits) moves a time by up to
-# 5e-11 of its magnitude; the snapshot margin is four times that, so it still resumes.
-_HELPFILE_11_DIGIT_REL = 5.0e-11
-_SNAPSHOT_MARGIN_FACTOR = 4.0
-
-
 def _snapshot_belongs_to(path: str, time: float) -> bool:
     """Whether a snapshot is the one written for a simulation time.
 
     True when the file records that time, and also when it records none: a
     file without the field cannot be told apart from its neighbours, so it is
     accepted on its name, which is the behaviour every directory written
-    before the field existed relies on. The margin is sized for an 11-digit
-    helpfile (see ``_HELPFILE_11_DIGIT_REL``). Above about 2.5 Gyr it exceeds the
-    one-year name bucket, so the check accepts on the file name alone for every
+    before the field existed relies on. The margin is four times the 5e-11
+    relative shift an 11-digit helpfile (one from a run that wrote fewer digits)
+    puts on a time, so such a file still resumes. Above about 2.5 Gyr it exceeds
+    the one-year name bucket, so the check accepts on the file name alone for every
     file: the code cannot tell an 11-digit helpfile from an exact one.
 
     Parameters
@@ -1788,7 +1788,7 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
     if not math.isfinite(recorded):
         return False
 
-    tolerance = _SNAPSHOT_MARGIN_FACTOR * _HELPFILE_11_DIGIT_REL * max(1.0, abs(time))
+    tolerance = 4.0 * 5.0e-11 * max(1.0, abs(time))
     # Past this the margin exceeds the one-year name bucket and separates no two rows.
     if tolerance >= 0.5:
         return True

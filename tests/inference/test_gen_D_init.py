@@ -200,6 +200,35 @@ def test_sample_from_grid_skips_a_case_whose_helpfile_row_is_ragged(
 
 
 @pytest.mark.unit
+def test_sample_from_grid_skips_a_case_without_a_helpfile(monkeypatch, tmp_path, caplog):
+    """A case directory with no helpfile is skipped like an unreadable one."""
+    grid_dir = tmp_path / 'grid'
+    for i, text in enumerate([None, 'R_obs\n2.5\n']):
+        case = grid_dir / f'case_{i}'
+        case.mkdir(parents=True)
+        if text is not None:
+            (case / 'runtime_helpfile.csv').write_text(text, encoding='utf-8')
+        (case / 'init_coupler.toml').write_text(f'[planet]\nmass_tot = {i + 2.0}\n')
+    output_dir = tmp_path / 'out'
+    output_dir.mkdir()
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(output_dir)}
+    )
+
+    with caplog.at_level('WARNING'):
+        n = init_mod.sample_from_grid(
+            output='ignored',
+            params={'planet.mass_tot': [0.0, 10.0]},
+            observables={'R_obs': 1.0},
+            grid_dir=str(grid_dir),
+        )
+
+    assert n == 1
+    assert 'Skipping case_0' in caplog.text
+    assert pd.read_csv(output_dir / 'init.csv')['x_0'].tolist() == pytest.approx([0.3])
+
+
+@pytest.mark.unit
 def test_sample_from_grid_refuses_a_grid_with_no_readable_case(monkeypatch, tmp_path, caplog):
     """A grid whose cases are all empty or header-only raises instead of writing an
     empty dataset, and the warning for each case names it."""

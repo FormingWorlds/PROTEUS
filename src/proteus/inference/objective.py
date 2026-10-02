@@ -330,7 +330,7 @@ def run_proteus(
     except (OSError, HelpfileFormatError) as err:
         # A missing file, or one that is empty, truncated, ragged or not UTF-8.
         raise _failure(
-            f'exited cleanly but produced no readable output ({out_csv.name})',
+            f'exited cleanly but produced no readable output ({out_csv.name}: {err})',
             exit_code=0,
         ) from err
 

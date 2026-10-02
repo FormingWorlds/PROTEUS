@@ -504,6 +504,19 @@ def test_helpfile_keeps_a_nan_in_its_column(tmp_path, nan_key):
 
 
 @pytest.mark.unit
+def test_helpfile_writes_nan_as_a_token(tmp_path):
+    """A NaN is written as the token nan, which whitespace-split readers keep in place."""
+    row = ZeroHelpfileRow()
+    row['R_xuv'] = float('nan')
+    WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
+
+    fields = (tmp_path / 'runtime_helpfile.csv').read_text().splitlines()[1].split('\t')
+
+    assert fields[list(row).index('R_xuv')] == 'nan'
+    assert '' not in fields
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     'value',
     [np.inf, -np.inf, -0.0, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, 1e22],
@@ -604,6 +617,56 @@ def test_helpfile_is_read_once_and_too_few_rows_names_the_last_line(tmp_path, mo
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    'data',
+    [
+        b'a\tb\tc\n1.0\t2.5\t6.25e10\n4.0\t5.5\t6.25e1',
+        b'a\tb\tc\n1.0\t2.5\t6.25e10\n4.0\t5.5\t',
+    ],
+    ids=['inside-last-field', 'after-last-tab'],
+)
+def test_helpfile_with_a_cut_last_row_is_refused(tmp_path, data):
+    """A last row without its newline was cut short, though its fields still count."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(data)
+
+    with pytest.raises(HelpfileFormatError, match='line 3: no newline at the end') as excinfo:
+        read_helpfile_table(path)
+
+    assert str(path) in str(excinfo.value)
+
+
+@pytest.mark.unit
+def test_helpfile_cut_at_any_byte_never_returns_a_changed_row(tmp_path):
+    """Every prefix of a written file either raises or reads only its whole rows."""
+    rows = pd.DataFrame(
+        {'a': [1.0, 4.0, 7.25], 'b': [2.5, np.nan, -0.0], 'c': [6.25e10, 1e-300, 3.0]}
+    )
+    full = tmp_path / 'full.csv'
+    rows.to_csv(full, index=False, sep='\t', na_rep='nan')
+    data = full.read_bytes()
+    cut = tmp_path / 'runtime_helpfile.csv'
+
+    outcomes = []
+    for k in range(len(data) + 1):
+        cut.write_bytes(data[:k])
+        try:
+            table = read_helpfile_table(cut)
+        except HelpfileFormatError:
+            outcomes.append('refused')
+            continue
+        # A header-only prefix gives empty columns of object dtype.
+        expected = rows.iloc[: len(table)]
+        pd.testing.assert_frame_equal(
+            table, expected, check_exact=True, check_dtype=len(table) > 0
+        )
+        outcomes.append(len(table))
+
+    assert outcomes[-1] == 3
+    assert set(outcomes) == {'refused', 0, 1, 2, 3}
+
+
+@pytest.mark.unit
 def test_header_only_helpfile_reads_as_an_empty_table(tmp_path):
     """A header with no rows is an empty table when the caller needs no row."""
     path = tmp_path / 'runtime_helpfile.csv'
@@ -689,9 +752,8 @@ def _helpfile_readers(root):
     where the path or the enclosing scope names a helpfile. A heuristic: a path passed
     in from another module is not traced."""
     import ast
-    from pathlib import Path
 
-    root, found = Path(root), set()
+    found = set()
     for path in sorted([*(root / 'src').rglob('*.py'), *(root / 'tools').rglob('*.py')]):
         text = path.read_text()
         tree = ast.parse(text)
