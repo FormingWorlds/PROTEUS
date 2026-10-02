@@ -2990,16 +2990,9 @@ def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_
     )
     # The rewrite above replaces the file, so restore the fO2 profile that
     # the in-loop step appended to it.
-    if config.planet.fO2_source == 'from_mantle_redox':
-        from proteus.interior_chem.redox import write_fO2_profile_ncdf
+    from proteus.interior_chem.redox import store_profile_snapshot
 
-        write_fO2_profile_ncdf(
-            os.path.join(
-                dirs['output'], 'data', format_subyear_time(hf_row['Time']) + '_int.nc'
-            ),
-            interior_o.redox_state,
-        )
-
+    store_profile_snapshot(config, dirs, hf_row['Time'], interior_o, hf_row)
 
 def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | None:
     """Adams-Williamson mesh surface pressure implied by a snapshot [Pa].

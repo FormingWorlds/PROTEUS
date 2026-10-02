@@ -215,3 +215,55 @@ def test_liquid_iron_oxide_volume_integral_is_linear_at_low_pressure():
     # is 1e3 J/mol, so V(T) times 0.01 GPa lands near V_cm3 * 1e-2 J/mol.
     assert smaller == pytest.approx(V_cm3 * 1e-2, rel=1e-2)
     assert smaller > 0.0
+
+
+def test_liquid_iron_volume_is_the_reference_volume_at_zero_pressure():
+    """The Vinet inversion is skipped at P ~ 0, where V = V298 exactly, and
+    the solved volume joins it continuously."""
+    from proteus.interior_chem import eos_deng as e
+
+    assert e._V_Fe(0.0) == e._V298_FE
+    assert e._V_Fe(1e-7) == e._V298_FE
+    assert e._V_Fe(1e-3) == pytest.approx(e._V298_FE, rel=1e-4)
+    assert e._V_Fe(10.0) < e._V298_FE
+
+
+def test_failed_eos_inversions_are_filled_from_the_successful_points(caplog, monkeypatch):
+    """Grid points where the BM4 inversion fails are interpolated from the
+    good ones (with a warning); if every point fails the uncompressed dV is
+    used, so the oxidation integral is then exactly dV0 (P - P0)."""
+    import logging
+
+    from proteus.interior_chem import eos_deng as e
+
+    real = e._solve_V
+
+    def fail_mid(P, T, i):
+        return np.nan if 3.0 < P < 6.0 else real(P, T, i)
+
+    monkeypatch.setattr(e, '_solve_V', fail_mid)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.eos_deng'):
+        tab = e._Table(P_max=10.0, T_min=3500.0, T_max=3600.0, nP=21, nT=2)
+    assert any('grid points failed' in r.message for r in caplog.records)
+    assert np.all(np.isfinite(tab.I_ox)) and np.all(np.isfinite(tab.I))
+
+    # Below T0 = 3000 K the splice pressure is below 1 bar, so every node
+    # needs an inversion; with all of them failing, dV falls back to dV0.
+    monkeypatch.setattr(e, '_solve_V', lambda P, T, i: np.nan)
+    tab = e._Table(P_max=10.0, T_min=2000.0, T_max=2100.0, nP=21, nT=2)
+    assert e.p_splice(2000.0) < e._P0
+    np.testing.assert_allclose(tab.I_ox[:, 0], e._DV0 * (tab.P - e._P0), rtol=1e-12)
+
+
+def test_the_table_is_built_on_first_use_by_any_public_call(monkeypatch):
+    """clamped_mask and int_dV_dP_oxidation build the cached table when it
+    does not exist yet, like int_dV_dP."""
+    from proteus.interior_chem import eos_deng as e
+
+    monkeypatch.setattr(e, '_TABLE', None)
+    assert not e.clamped_mask(3000.0, 10.0)
+    assert e._TABLE is not None
+
+    monkeypatch.setattr(e, '_TABLE', None)
+    I, valid = e.int_dV_dP_oxidation(3000.0, 10.0)
+    assert e._TABLE is not None and bool(valid) and float(I) > 0.0

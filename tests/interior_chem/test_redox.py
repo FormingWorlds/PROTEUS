@@ -852,3 +852,175 @@ def test_crossing_the_solid_threshold_crystallises_the_remaining_melt():
     assert prev_a == 0.0 and prev_b == 0.0
     assert fe2_a == pytest.approx(fe2_b, rel=1e-12)
     assert fe3_a == pytest.approx(fe3_b, rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Edge states: no iron, no melt, melt outside the EOS, a solidified mantle
+# ---------------------------------------------------------------------------
+
+
+def test_ratios_are_left_unchanged_when_the_melt_holds_no_iron():
+    """f = n3/(n2+n3) is undefined with no iron, so the last ratios stand."""
+    from proteus.interior_chem.redox import _update_ratios
+
+    state = _init_state(_PHI, _MASS, _PRES, 0.1)
+    state.n_fe2_melt = state.n_fe3_melt = 0.0
+    _update_ratios(state)
+    assert state.ferric_frac == pytest.approx(0.1, rel=1e-15)
+
+
+def test_cold_melt_below_the_eos_table_is_reported(caplog):
+    """Melt below the table's lowest temperature (1500 K) is usable but its
+    int(dV dP) is the clamped edge value; that is logged, not silent."""
+    import logging
+
+    from proteus.interior_chem.redox import _warn_clamped_cells
+
+    usable = np.array([True, True, False])
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.redox'):
+        _warn_clamped_cells(np.array([1200.0, 2500.0, 1000.0]), np.array([1.0, 5.0, 9.0]), usable)
+    msgs = [r.message for r in caplog.records if 'Out of the bounds' in r.message]
+    assert len(msgs) == 1 and '1 melt cell' in msgs[0]
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.redox'):
+        _warn_clamped_cells(np.array([2000.0, 2500.0, 1000.0]), np.array([1.0, 5.0, 9.0]), usable)
+    assert not any('Out of the bounds' in r.message for r in caplog.records)
+
+
+def test_metal_step_does_nothing_without_melt():
+    state = _init_state(_PHI, _MASS, _PRES, 0.01)
+    xi = _metal_saturation_step(state, _TEMP, _PRES, np.zeros(3), _MASS)
+    assert xi == 0.0 and state.a_fe_max_cell == -1
+
+
+def test_melt_hotter_than_the_eos_ceiling_is_not_tested_and_warned_once(caplog):
+    """All melt above T_CEILING: no cell can be tested, so no metal forms,
+    a_Fe stays 0 everywhere, and the warning is logged once per run."""
+    import logging
+
+    from proteus.interior_chem.eos_deng import T_CEILING
+
+    state = _init_state(_PHI, _MASS, _PRES, 0.001)
+    hot = np.full(3, T_CEILING + 500.0)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.redox'):
+        for _ in range(2):
+            n2 = state.n_fe2_melt
+            assert _metal_saturation_step(state, hot, _PRES, _PHI, _MASS) == 0.0
+            assert state.n_fe2_melt == n2
+    assert np.all(state.a_fe_cell == 0.0) and state.a_fe_max_cell == -1
+    warned = [r for r in caplog.records if 'envelope' in r.message]
+    assert len(warned) == 1
+
+
+@pytest.mark.physics_invariant
+def test_a_solidified_mantle_freezes_the_reservoirs(caplog):
+    """Once no cell holds melt the tracker stops: the reservoirs and the
+    ferric fraction are frozen, the metal check is reported as skipped,
+    and the surface offset is still evaluated from the frozen ratio."""
+    import logging
+
+    config = _make_config(0.1)
+    interior = _make_interior()
+    update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    interior.phi = np.array([0.8, 0.3, 0.0])
+    update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    st = interior.redox_state
+    # The step on which the last melt disappears still crystallises it.
+    interior.phi = np.zeros(3)
+    update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    assert not st.melt_exhausted
+    frozen = (st.n_fe2_melt, st.n_fe3_melt, st.ferric_frac)
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_chem.redox'):
+        update_melt_redox(interior, {'T_magma': 2200.0}, config)   # flags it
+        hf_row = {'T_magma': 2200.0}
+        update_melt_redox(interior, hf_row, config)                 # frozen step
+    assert st.melt_exhausted
+    assert (st.n_fe2_melt, st.n_fe3_melt, st.ferric_frac) == frozen
+    assert hf_row['ferric_frac_mantle'] == frozen[2]
+    assert hf_row['a_fe_max_cell_mantle'] == -1.0
+    assert np.isfinite(hf_row['fO2_shift_IW_mantle'])
+    msgs = ' '.join(r.message for r in caplog.records)
+    assert 'mantle fully solidified' in msgs
+    assert 'not checked (mantle solidified)' in msgs
+
+
+# ---------------------------------------------------------------------------
+# store_profile_snapshot: which file, for which interior module
+# ---------------------------------------------------------------------------
+
+
+def _snapshot_config(module, source='from_mantle_redox'):
+    config = _make_config(0.1, source=source)
+    config.interior_energetics.module = module
+    return config
+
+
+def test_snapshot_appends_to_the_aragog_int_file(tmp_path):
+    import netCDF4 as nc
+
+    from proteus.interior_chem.redox import store_profile_snapshot
+
+    (tmp_path / 'data').mkdir()
+    fpath = tmp_path / 'data' / '884p700_int.nc'
+    _make_int_snapshot(str(fpath), _PHI.size)
+    interior = _make_interior()
+    hf_row = {'T_magma': 2200.0}
+    update_melt_redox(interior, hf_row, _snapshot_config('aragog'))
+
+    out = store_profile_snapshot(_snapshot_config('aragog'), {'output': str(tmp_path)},
+                                 884.7, interior, hf_row)
+    assert out == str(fpath)
+    with nc.Dataset(fpath) as ds:
+        assert 'log10_fO2_s' in ds.variables
+    assert not (tmp_path / 'data' / '884p700_redox.nc').exists()
+
+
+def test_snapshot_writes_a_standalone_file_for_spider(tmp_path):
+    import netCDF4 as nc
+
+    from proteus.interior_chem.redox import store_profile_snapshot
+
+    (tmp_path / 'data').mkdir()
+    interior = _make_interior()
+    hf_row = {'T_magma': 2200.0}
+    update_melt_redox(interior, hf_row, _snapshot_config('spider'))
+
+    out = store_profile_snapshot(_snapshot_config('spider'), {'output': str(tmp_path)},
+                                 884.7, interior, hf_row)
+    assert out == str(tmp_path / 'data' / '884p700_redox.nc')
+    with nc.Dataset(out) as ds:
+        assert float(ds['time'][...]) == pytest.approx(884.7)
+
+
+def test_snapshot_writes_nothing_for_other_sources_modules_or_missing_files(tmp_path):
+    from proteus.interior_chem.redox import store_profile_snapshot
+
+    (tmp_path / 'data').mkdir()
+    interior = _make_interior()
+    hf_row = {'T_magma': 2200.0}
+    update_melt_redox(interior, hf_row, _snapshot_config('aragog'))
+    dirs = {'output': str(tmp_path)}
+    # Another fO2 source: the tracker never ran, nothing to store.
+    assert store_profile_snapshot(_snapshot_config('aragog', 'user_constant'), dirs, 1.0,
+                                  interior, hf_row) is None
+    # A module without radial output.
+    assert store_profile_snapshot(_snapshot_config('dummy'), dirs, 1.0, interior, hf_row) is None
+    # Aragog step that wrote no snapshot (dt_write throttle).
+    assert store_profile_snapshot(_snapshot_config('aragog'), dirs, 1.0, interior, hf_row) is None
+    assert list((tmp_path / 'data').iterdir()) == []
+
+
+def test_a_saturated_cell_with_no_reaction_extent_leaves_the_melt_unchanged(monkeypatch):
+    """If the extent solver finds nothing to react (xi <= 0, e.g. a melt
+    exactly at a_Fe = 1), no metal is deposited and the reservoirs stand."""
+    from proteus.interior_chem import redox
+
+    state = _init_state(_PHI, _MASS, _PRES, 0.001)   # strongly supersaturated
+    monkeypatch.setattr(redox.dispro, 'solve_extent', lambda *a, **k: 0.0)
+    n2, n3 = state.n_fe2_melt, state.n_fe3_melt
+    xi = _metal_saturation_step(state, _TEMP, _PRES, _PHI, _MASS)
+    assert xi == 0.0
+    assert state.a_fe_cell[state.a_fe_max_cell] >= 1.0      # the check did run
+    assert (state.n_fe2_melt, state.n_fe3_melt) == (n2, n3)
+    assert np.all(state.n_fe_metal_cell == 0.0)

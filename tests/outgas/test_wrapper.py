@@ -2131,3 +2131,29 @@ def test_two_frozen_mantle_steps_keep_the_escapable_reservoir_with_the_column():
     # Discrimination: reservoirs pinned at their starting value would report
     # 1.0e20 escapable against a 2.5e19 column, a factor of four out.
     assert escapable_mass(hf_row, 'outgas') == pytest.approx(2.5e19, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_run_outgassing_preseeds_the_derived_offset_from_the_melt_redox_tracker():
+    """Under from_mantle_redox the derived-offset column is pre-seeded from
+    hf_row['fO2_shift_IW_mantle'] before the backend dispatch, so a path
+    that skips the chemistry still reports the tracked offset rather than
+    the configured one or the ZeroHelpfileRow 0.0."""
+    dirs = {'output': '/tmp/test'}
+    config = MagicMock()
+    config.outgas.module = 'none'
+    config.outgas.fO2_shift_IW = -2.5
+    config.planet.fO2_source = 'from_mantle_redox'
+    hf_row = {}
+    for s in gas_list:
+        hf_row[s + '_kg_atm'] = 1e18
+        hf_row[s + '_vmr'] = 1.0 / len(gas_list)
+        hf_row[s + '_bar'] = 10.0
+    hf_row['P_surf'] = 90.0
+    hf_row['atm_kg_per_mol'] = 0.044
+    hf_row['fO2_shift_IW_mantle'] = 1.3
+
+    run_outgassing(dirs, config, hf_row)
+
+    assert hf_row['fO2_shift_IW_derived'] == pytest.approx(1.3)
+    assert hf_row['O_res'] == pytest.approx(0.0)

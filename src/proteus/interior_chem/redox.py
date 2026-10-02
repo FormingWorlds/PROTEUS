@@ -514,6 +514,34 @@ def write_fO2_profile_ncdf(fpath: str, state: MeltRedoxState | None) -> bool:
     return True
 
 
+def store_profile_snapshot(
+    config: Config, dirs: dict, time: float, interior_o: Interior_t, hf_row: dict
+) -> str | None:
+    """Store the Step 10a fO2 profile with the interior output for ``time``.
+
+    Aragog writes ``data/<time>_int.nc`` inside its solve, before the redox
+    step runs, so the profile is appended to that file. SPIDER writes JSON
+    from the C binary and has no ``_int.nc``, so it gets a standalone
+    ``data/<time>_redox.nc``. Other interior modules are rejected for this
+    fO2 source at config load. Returns the path written, or None when
+    nothing was written (another fO2 source, no profile yet, no file).
+    """
+    if config.planet.fO2_source != 'from_mantle_redox':
+        return None
+    from proteus.utils.helper import format_subyear_time
+
+    stem = os.path.join(dirs['output'], 'data', format_subyear_time(float(time)))
+    module = config.interior_energetics.module
+    state = interior_o.redox_state
+    if module == 'aragog':
+        path = stem + '_int.nc'
+        return path if write_fO2_profile_ncdf(path, state) else None
+    if module == 'spider':
+        path = stem + '_redox.nc'
+        return path if write_redox_ncdf(path, state, float(time), interior_o, hf_row) else None
+    return None
+
+
 def write_redox_ncdf(
     fpath: str,
     state: MeltRedoxState | None,

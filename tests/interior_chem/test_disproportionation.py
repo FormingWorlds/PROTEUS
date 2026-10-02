@@ -368,3 +368,81 @@ def test_degenerate_iron_inventories_do_not_react(n2, n3):
 
     assert xi == pytest.approx(0.0, abs=1e-30)
     assert np.isfinite(xi)
+
+
+# ---------------------------------------------------------------------------
+# Limits and the redissolution branch
+# ---------------------------------------------------------------------------
+
+
+def _activity_after(K, n2, n3, n_sil, xi):
+    """a_Fe of the melt after reaction extent xi (Eq 6.10c of the derivation)."""
+    from proteus.interior_chem.disproportionation import GAMMA
+
+    return K * GAMMA * (n2 - 3.0 * xi) ** 3 / ((n3 + 2.0 * xi) ** 2 * (n_sil - xi))
+
+
+def test_metal_activity_limits_when_an_iron_species_is_absent():
+    """a_Fe ~ n2^3 / n3^2: with no Fe3+ any Fe2+ melt is infinitely
+    supersaturated; with no Fe2+ (or no melt) no metal can form."""
+    from proteus.interior_chem.disproportionation import activity_Fe_metal
+
+    a_no_fe3, _ = activity_Fe_metal(3000.0, 1.0, 0.0, 20.0)
+    a_no_fe2, _ = activity_Fe_metal(3000.0, 0.0, 0.1, 20.0)
+    a_no_sil, _ = activity_Fe_metal(3000.0, 1.0, 0.1, 0.0)
+    assert np.isinf(a_no_fe3) and a_no_fe3 > 0
+    assert a_no_fe2 == 0.0 and a_no_sil == 0.0
+    # Approach to the n3 -> 0 limit is monotonic, so +inf is its limit.
+    a_small, _ = activity_Fe_metal(3000.0, 1.0, 1e-6, 20.0)
+    a_large, _ = activity_Fe_metal(3000.0, 1.0, 1e-3, 20.0)
+    assert a_small > a_large > 0
+
+
+def test_critical_ferric_fraction_is_nan_when_saturated_even_at_half_ferric(monkeypatch):
+    """At very large K the melt is saturated for every f <= 0.5, so there is
+    no threshold in the bracket and the diagnostic reports NaN."""
+    from proteus.interior_chem import disproportionation as d
+
+    monkeypatch.setattr(d, 'K_eq', lambda *a, **k: (np.asarray(1e12), np.asarray(True)))
+    assert np.isnan(d.critical_ferric_fraction(3000.0, 1.0, 20.0))
+
+
+@pytest.mark.physics_invariant
+def test_an_undersaturated_melt_redissolves_metal_back_to_saturation():
+    """With metal available and a_Fe < 1, the reverse reaction runs (xi < 0)
+    until a_Fe = 1, conserving Fe and O; with only a little metal, all of it
+    dissolves and the melt stays undersaturated."""
+    from proteus.interior_chem.disproportionation import GAMMA, solve_extent
+
+    n2, n3, n_sil = 1.1136, 0.1237, 19.369
+    K = 0.5 * n3**2 * n_sil / (GAMMA * n2**3)          # a_Fe = 0.5 before
+    assert _activity_after(K, n2, n3, n_sil, 0.0) == pytest.approx(0.5, rel=1e-12)
+
+    # Ample metal: the bracket is clipped to -n3/2 (cannot un-make more Fe3+
+    # than there is) and the root is the saturated state.
+    xi = solve_extent(K, n2, n3, n_sil, n_metal_avail=1.0)
+    assert -n3 / 2.0 < xi < 0.0
+    assert _activity_after(K, n2, n3, n_sil, xi) == pytest.approx(1.0, rel=1e-8)
+    fe_before, fe_after = n2 + n3 + 0.0, (n2 - 3 * xi) + (n3 + 2 * xi) + xi
+    o_before, o_after = n2 + 1.5 * n3, (n2 - 3 * xi) + 1.5 * (n3 + 2 * xi)
+    assert fe_after == pytest.approx(fe_before, rel=1e-14)
+    assert o_after == pytest.approx(o_before, rel=1e-14)
+
+    # A trace of metal: all of it dissolves, a_Fe rises but stays below 1.
+    xi_small = solve_extent(K, n2, n3, n_sil, n_metal_avail=1e-5)
+    assert xi_small == -1e-5
+    assert 0.5 < _activity_after(K, n2, n3, n_sil, xi_small) < 1.0
+
+    # No metal available: nothing happens.
+    assert solve_extent(K, n2, n3, n_sil, n_metal_avail=0.0) == 0.0
+
+
+def test_an_infinite_equilibrium_constant_consumes_all_the_ferrous_iron():
+    """K -> inf: the melt stays supersaturated until no FeO is left, so the
+    extent is n2/3 (the upper end of the bracket)."""
+    from proteus.interior_chem.disproportionation import solve_extent
+
+    n2 = 1.1136
+    xi = solve_extent(np.inf, n2, 0.1237, 19.369)
+    assert xi == pytest.approx(n2 / 3.0, rel=1e-10)
+    assert xi < n2 / 3.0

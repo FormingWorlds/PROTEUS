@@ -1363,6 +1363,11 @@ class TestMetalActivityCap:
         assert dt > 5.0e3 * 0.03 / 10.0
 
     @pytest.mark.physics_invariant
+    def test_an_unchanged_activity_leaves_the_controller_step(self):
+        """No change over the last step implies no rate to extrapolate."""
+        assert _next_step_afe(0.03, 0.7, 0.7) == pytest.approx(8.0e3, rel=1e-12)
+
+    @pytest.mark.physics_invariant
     def test_zero_disables_the_cap(self):
         assert _next_step_afe(0.0, 0.50, 0.55) == pytest.approx(8.0e3, rel=1e-12)
 

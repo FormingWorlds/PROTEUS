@@ -2553,32 +2553,14 @@ def run_interior(
     # planet.fO2_source == 'from_mantle_redox'. Placed after all T_magma
     # clamping above so the fO2 it computes is consistent with the
     # T_magma the outgas dispatch uses later this same iteration.
-    from proteus.interior_chem.redox import (
-        update_melt_redox,
-        write_fO2_profile_ncdf,
-        write_redox_ncdf,
-    )
+    from proteus.interior_chem.redox import store_profile_snapshot, update_melt_redox
 
     update_melt_redox(interior_o, hf_row, config)
 
-    # Store the fO2 profile with this step's output. The Aragog snapshot was
-    # written inside run_solver, before the redox step, so the profile is
-    # appended to it. SPIDER writes JSON from the C binary, with no _int.nc,
-    # so it gets a standalone <time>_redox.nc instead.
-    if write_data and config.planet.fO2_source == 'from_mantle_redox':
-        from proteus.utils.helper import format_subyear_time
-
-        stem = os.path.join(dirs['output'], 'data', format_subyear_time(sim_time))
-        if config.interior_energetics.module == 'aragog':
-            write_fO2_profile_ncdf(stem + '_int.nc', interior_o.redox_state)
-        elif config.interior_energetics.module == 'spider':
-            write_redox_ncdf(
-                stem + '_redox.nc',
-                interior_o.redox_state,
-                float(sim_time),
-                interior_o,
-                hf_row,
-            )
+    # Store the fO2 profile with this step's output (Aragog: appended to the
+    # _int.nc written inside run_solver; SPIDER: a standalone _redox.nc).
+    if write_data:
+        store_profile_snapshot(config, dirs, sim_time, interior_o, hf_row)
 
     # Actual time step size.
     # Use SPIDER's actual sim_time (read from 'time_years' inside the JSON,
