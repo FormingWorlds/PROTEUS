@@ -1335,7 +1335,9 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
     tmp_path = fpath + '.tmp'
     try:
-        current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.10e')
+        # 17 significant digits, parsed with float_precision='round_trip', give back the
+        # same double, so a resume restarts from the exact state the run held.
+        current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.16e')
         os.replace(tmp_path, fpath)
     except BaseException:
         # Best-effort temp cleanup; never let it mask the original error.
@@ -1530,7 +1532,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
 
-    hf_all = pd.read_csv(fpath, sep=r'\s+')
+    hf_all = pd.read_csv(fpath, sep=r'\s+', float_precision='round_trip')
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
     fillable = [key for key in missing if key in RESUMABLE_ZERO_FILL_KEYS]

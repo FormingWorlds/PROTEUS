@@ -453,6 +453,27 @@ def test_write_and_read_helpfile_roundtrip():
 
 
 @pytest.mark.unit
+def test_helpfile_round_trip_is_exact(tmp_path):
+    """Every helpfile float reads back as the same double.
+
+    A resume rebuilds the solver mesh and boundary values from the last row, so
+    a value rounded on its way through the file moves a resumed run off the run
+    it continues. The values span 60 decades and have all 17 significant digits,
+    which a shorter format or the default pandas parser does not reproduce.
+    """
+    rng = np.random.default_rng(3)
+    row = ZeroHelpfileRow()
+    for key in row:
+        row[key] = float(rng.uniform(-1.0, 1.0) * 10.0 ** rng.integers(-30, 31))
+    row['E_state_heat_cons_J'] = -4.524433010726972e30
+    WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
+
+    back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]
+
+    assert [key for key in row if back[key] != row[key]] == []
+
+
+@pytest.mark.unit
 def test_write_helpfile_preserves_prior_file_on_failed_write():
     """A crash or full disk mid-write must not destroy the existing helpfile.
 
