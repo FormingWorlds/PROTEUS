@@ -696,6 +696,7 @@
       ],
       "consumers": [
         "interior_energetics",
+        "interior_struct",
         "main loop"
       ],
       "consumers_possible": []

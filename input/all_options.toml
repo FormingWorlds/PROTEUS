@@ -434,7 +434,7 @@ config_version = "3.0"
 
     # Grid and solver tolerances (shared by Aragog + SPIDER; ignored for dummy)
     num_levels                = 80           # radial grid levels (energetics domain only)
-    rtol                      = 1.0e-10      # relative ODE solver tolerance
+    rtol                      = -1.0         # relative ODE solver tolerance; unset: 1e-8 Aragog, 1e-10 SPIDER
     atol                      = 1.0e-10      # absolute ODE solver tolerance
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
     num_tolerance             = -1           # deprecated alias for rtol; leave at -1 (unset)
@@ -516,20 +516,15 @@ config_version = "3.0"
         core_bc                       = "energy_balance"  # CMB condition: energy_balance | quasi_steady | gradient | bower2018
         tolerance_struct              = 100      # absolute mass tolerance [kg] for the radius secant solver
         scalar_gravity_override       = false    # replace the mesh gravity column with a uniform surface scalar
-        # phi_step_cap, temperature_step_cap, entropy_step_cap: omitted here so they
-        # fall back to the schema default (0.0), which the Aragog wrapper reads as off
-        # (no cap). The caps are a debugging control, not a production setting: each
-        # ends the interior sub-solve at a freezing-front crossing, which slices the
-        # coupled step and drives the reported CMB heat flux briefly negative. Set a
-        # positive value to enable one; -1.0 is the off spelling; explicit 0.0 rejected.
-        # Proximity band [J/kg/K] within which a cell counts as near a solidus/liquidus
-        # crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase
-        # RHS. Solver-accuracy control, not a cosmetic step-size knob: lowering it below the
-        # default can under-resolve a real crossing and shift the converged state. Modestly
-        # widening does not move a converged result, but a value far above the default clamps
-        # the integrator to 1 yr steps (max_step = 1 yr vs 100 yr) every step and can stall
-        # the run; keep it of order a few hundred.
+        # phi_step_cap, temperature_step_cap, entropy_step_cap are omitted, so off (default 0.0).
+        # Debugging controls: each ends the sub-solve at a freezing-front crossing and can drive the
+        # reported CMB heat flux briefly negative. A positive value enables one; -1.0 is off; 0.0 is rejected.
+
+        # Band [J/kg/K] near a solidus/liquidus that arms the phase-boundary step control; a lower
+        # value can under-resolve a crossing, a value far above the default puts every call under
+        # it (1 yr steps with "fixed", which can stall a run; 1 to 100 yr segments with "rate").
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
+        phase_boundary_cap            = "rate"     # phase-boundary max_step policy: "rate" (default) | "fixed"
 
     # SPIDER-only parameters
     [interior_energetics.spider]

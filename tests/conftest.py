@@ -37,6 +37,7 @@ the testing framework.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -60,6 +61,19 @@ from proteus.utils.constants import (
     const_sigma,
     secs_per_year,
 )
+
+
+@pytest.fixture(autouse=True)
+def _restore_fwl_logger():
+    """Undo the logger setup that Proteus.start() leaves behind for later tests."""
+    logger = logging.getLogger('fwl')
+    level, handlers, hook = logger.level, list(logger.handlers), sys.excepthook
+    yield
+    for handler in set(logger.handlers) - set(handlers):
+        handler.close()
+    logger.setLevel(level)
+    logger.handlers[:] = handlers
+    sys.excepthook = hook
 
 
 @pytest.fixture(autouse=True)

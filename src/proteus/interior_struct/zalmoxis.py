@@ -47,9 +47,11 @@ from proteus.utils.helper import (
     _strip_fraction_tokens,
     energetics_eos_key,
     eos_components,
+    format_subyear_time,
     generates_paleos_tables,
     is_mgsio3,
     paleos_companion_keys,
+    snapshot_path_for_time,
     twophase_registry_key,
 )
 
@@ -380,6 +382,80 @@ def validate_zalmoxis_output_schema(
                 f'{expected_mantle:.6e} kg '
                 f'(rel={m_rel:.3e} > {rtol_mass:.1e})'
             )
+
+
+def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, float] | None:
+    """Compare a mesh file's radial bounds with a helpfile row.
+
+    The tolerance is that of Aragog's ``EntropySolver.reset()``,
+    ``max(1 m, 1e-9 * (R_int - R_core))``, applied to both bounds in both
+    directions; the helpfile rounding of the radii is at most 5e-5 m below
+    1e7 m and 5e-4 m up to 1e8 m.
+
+    Parameters
+    ----------
+    output_path : str
+        Path to ``zalmoxis_output.dat``, its ``.prev`` backup or a saved copy.
+    hf_row : dict
+        Helpfile row holding ``R_core`` and ``R_int`` [m].
+
+    Returns
+    -------
+    tuple of float or None
+        ``(file r[0] - R_core, file r[-1] - R_int, tolerance)`` in metres, or
+        None unless the file ends with a newline and holds at least two finite
+        5-column rows with strictly increasing radii.
+    """
+    try:
+        text = Path(output_path).read_text()
+        data = np.loadtxt(text.splitlines(), ndmin=2) if text.strip() else None
+    except (OSError, ValueError):
+        return None
+    if data is None:
+        return None
+    r = data[:, 0]
+    if (
+        not text.endswith('\n')
+        or data.shape[1] != 5
+        or r.size < 2
+        or not np.isfinite(data).all()
+        or (np.diff(r) <= 0).any()
+    ):
+        return None
+    atol = max(1.0, 1.0e-9 * (hf_row['R_int'] - hf_row['R_core']))
+    return r[0] - hf_row['R_core'], r[-1] - hf_row['R_int'], atol
+
+
+def copy_zalmoxis_output(src: str, dst: str) -> None:
+    """Copy through a temporary file, so ``dst`` is never partial if the process stops."""
+    tmp = dst + '.tmp'
+    try:
+        shutil.copy2(src, tmp)
+        os.replace(tmp, dst)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def save_zalmoxis_output_snapshot(outdir: str, time: float) -> None:
+    """Copy ``zalmoxis_output.dat`` to ``data/<time>_zalmoxis.dat``.
+
+    The copy is written only next to the row's ``<time>_int.nc``, so archiving
+    and pruning treat it as part of that snapshot.
+
+    Parameters
+    ----------
+    outdir : str
+        Run output directory.
+    time : float
+        Simulated time of the helpfile row being written [yr].
+    """
+    src = get_zalmoxis_output_filepath(outdir)
+    data = os.path.join(outdir, 'data')
+    if os.path.isfile(src) and os.path.isfile(snapshot_path_for_time(data, time, '_int.nc')):
+        copy_zalmoxis_output(
+            src, os.path.join(data, format_subyear_time(time) + '_zalmoxis.dat')
+        )
 
 
 def build_volatile_profile(hf_row: dict, mantle_eos: str):
@@ -1987,10 +2063,8 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
         # Dissolved volatiles join the mantle EOS during the run.
         layers['volatiles'] = '+'.join(VOLATILE_EOS_MAP.values())
     mat_dicts = load_zalmoxis_material_dictionaries()
-    kept = config.params.resume and _resumed_ps_tables(
-        outdir,
-        lambda: _ps_resume_key(config, *energetics_entry(zc.mantle_eos, mat_dicts), mat_dicts),
-    )
+    # Runs before the accreted mass is restored: no mass check and no report here.
+    kept = config.params.resume and _resumed_ps_tables(outdir, None)
     liquidus_super = config.planet.temperature_mode == 'liquidus_super'
     if liquidus_super:
         layers['anchor'] = twophase_registry_key(zc.mantle_eos)
@@ -2348,14 +2422,27 @@ def read_ps_cache_pointer(outdir: str) -> str | None:
 _PS_RESUME_REPORTED: set[str] = set()
 
 
-def _resumed_ps_tables(outdir: str, current_key) -> dict | None:
-    """Return the P-S tables a resumed run already uses, whatever their key.
+def _ps_p_max(config: Config) -> float:
+    """Upper pressure of the P-S lookup grid for the current planet mass [Pa].
+
+    It must cover the planet's P_cmb; the 10 TPa cap covers very massive rocky
+    planets (see interior_energetics/aragog.py for the matching cap).
+    """
+    return min(1.0e13, 150e9 * float(config.planet.mass_tot or 1.0) + 200e9)
+
+
+def _resumed_ps_tables(
+    outdir: str, current_key, p_max: float | None = None, dropped: list | None = None
+) -> dict | None:
+    """Return the P-S tables a resumed run already uses, unless the planet mass changed.
 
     Looks in the per-run ``data/spider_eos`` directory, then in the shared
     cache directory recorded by :func:`_write_ps_cache_pointer`, for a marker
     with both phase-boundary files. A resumed run continues on these tables
-    even when the current key differs, so it does not switch tables part way
-    through its evolution. The first time a directory is kept in a process,
+    even when its settings or the table generator changed, so it does not
+    switch tables part way through its evolution. Tables built for another
+    ``P_max``, that is another planet mass (an impact, or a resume before
+    one), are not kept. The first time a directory is kept in a process,
     ``current_key()`` is called and a differing key is logged at WARNING with
     both keys, naming the generator identity when only that differs or the
     marker predates it. When ``current_key()`` raises, the tables are still
@@ -2365,9 +2452,14 @@ def _resumed_ps_tables(outdir: str, current_key) -> dict | None:
     ----------
     outdir : str
         The run output directory.
-    current_key : callable
+    current_key : callable or None
         No-argument callable returning the key the current code would build
         (from :func:`_ps_cache_key`); it raises when that key cannot be built.
+        None skips the report.
+    p_max : float, optional
+        ``P_max`` of the current planet mass [Pa]; None keeps tables of any mass.
+    dropped : list, optional
+        Receives each directory not kept because of its ``P_max``.
 
     Returns
     -------
@@ -2391,7 +2483,20 @@ def _resumed_ps_tables(outdir: str, current_key) -> dict | None:
                 stored = f.read().strip()
         except OSError:
             continue
-        if eos_dir not in _PS_RESUME_REPORTED:
+        built = re.search(r'P_max=([^_]+)', stored)
+        # 1e-6 covers the 7-digit key and the helpfile round trip of the mass.
+        if p_max is not None and built and abs(float(built.group(1)) / p_max - 1) > 1e-6:
+            log.info(
+                'Planet mass changed since the P-S tables in %s were built (P_max %s Pa, '
+                'now %.6e Pa); they are not kept',
+                eos_dir,
+                built.group(1),
+                p_max,
+            )
+            if dropped is not None:
+                dropped.append(eos_dir)
+            continue
+        if current_key is not None and eos_dir not in _PS_RESUME_REPORTED:
             _PS_RESUME_REPORTED.add(eos_dir)
             _report_kept_ps_tables(eos_dir, stored, current_key)
         return {
@@ -2673,14 +2778,7 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
             f'PALEOS-2phase entry {mantle_eos} is missing its solid or liquid file'
         )
 
-    # Determine pressure range from planet mass (higher mass needs wider range)
-    mass_tot = config.planet.mass_tot or 1.0
-    # P_max for the SPIDER P-S lookup grid. Must cover the actual P_cmb
-    # of the planet; the 10 TPa cap covers very massive rocky planets
-    # (mass_tot well above 2) without hitting the table edge. See
-    # interior_energetics/aragog.py for the matching cap and the
-    # comment on EOS / melting-curve calibration ranges.
-    P_max = min(1.0e13, 150e9 * mass_tot + 200e9)
+    P_max = _ps_p_max(config)
 
     # Table resolution from config
     nP = config.interior_struct.zalmoxis.lookup_nP
@@ -2781,8 +2879,12 @@ def generate_spider_tables(config: Config, outdir: str):
 
     # A resumed run stays on the tables it started with; the key only feeds the warning.
     if config.params.resume:
+        dropped = []
         resumed = _resumed_ps_tables(
-            outdir, lambda: _ps_resume_key(config, key, eos_entry, mat_dicts)
+            outdir,
+            lambda: _ps_resume_key(config, key, eos_entry, mat_dicts),
+            _ps_p_max(config),
+            dropped,
         )
         if resumed is not None:
             return resumed
@@ -2805,7 +2907,8 @@ def generate_spider_tables(config: Config, outdir: str):
         log.info('Using PALEOS-2phase tables for entropy-IC table generation')
     nP = config.interior_struct.zalmoxis.lookup_nP
     nS = config.interior_struct.zalmoxis.lookup_nS
-    if config.params.resume:
+    # Tables dropped for a mass change were reported by _resumed_ps_tables.
+    if config.params.resume and not dropped:
         log.warning(
             'Resumed run has no kept P-S entropy tables in %s or at its shared-cache '
             'pointer; it continues on the tables of the current key %s, built now if absent',

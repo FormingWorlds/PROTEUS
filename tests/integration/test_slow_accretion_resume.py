@@ -51,6 +51,7 @@ import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
+from proteus.config._interior import default_rtol
 from proteus.utils.constants import M_earth
 from proteus.utils.data import download_sufficient_data
 
@@ -148,6 +149,7 @@ def _make_runner(output_dir, stop_time):
     _RUNNER_TEMP_DIRS.append(runner.directories['temp'])
 
     runner.config.interior_energetics.module = 'aragog'
+    runner.config.interior_energetics.rtol = default_rtol('aragog')
     runner.config.interior_struct.melting_dir = MELTING_DIR
     # Use isothermal initial temperature profile at TSURF_INIT to ensure
     # the mantle is fully molten upon impact remelt without iterative root-finding.
