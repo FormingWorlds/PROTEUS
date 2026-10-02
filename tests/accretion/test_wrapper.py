@@ -871,8 +871,9 @@ def _converging_solve_structure():
     """Mock of solve_structure faithful to the root-finder's convergence state.
 
     The real solve moves R_int until the whole-planet mass matches the target:
-    at convergence ``M_planet = mass_tot * M_earth`` and the interior carries
-    what the volatile budgets do not, ``M_int = M_planet - M_ele``. The mock
+    at convergence ``M_planet = mass_tot * M_earth + V`` (V the ledger's volatile
+    part, ``M_accreted_net - M_accreted_rock``) and the interior carries what the
+    volatile budgets do not, ``M_int = M_planet - M_ele``. The mock
     reproduces exactly that end state (with the budgets it finds, mirroring
     the config-driven recompute), so a test can check how apply_impact's mass
     ledger and budget updates CLOSE into M_planet, which a no-op mock hides.
@@ -880,7 +881,10 @@ def _converging_solve_structure():
     from proteus.utils.constants import M_earth, element_list
 
     def _mock(dirs, config, hf_all, hf_row, outdir, **kwargs):
-        m_target = config.planet.mass_tot * M_earth
+        v = float(hf_row.get('M_accreted_net') or 0.0) - float(
+            hf_row.get('M_accreted_rock') or 0.0
+        )
+        m_target = config.planet.mass_tot * M_earth + v
         m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
         hf_row['M_int'] = m_target - m_ele
         hf_row['M_ele'] = m_ele
@@ -954,11 +958,13 @@ def test_impact_mass_closure_counts_each_volatile_channel_once(monkeypatch):
     assert abs(m_planet_after - (expected + delivered)) > 0.5 * delivered
     assert abs(m_planet_after - (expected - stripped)) > 0.5 * stripped
 
-    # The anchor follows the real total, and the ledger records the change.
-    assert handler.config.planet.mass_tot * M_earth == pytest.approx(expected, rel=1e-12)
+    # The anchor carries the rock; the ledger records the whole change.
+    assert handler.config.planet.mass_tot * M_earth == pytest.approx(
+        m_planet_0 + rock, rel=1e-12
+    )
     assert handler.hf_row['M_accreted_net'] == pytest.approx(expected - m_planet_0, rel=1e-9)
-    # The next structure solve keeps that mass; a rock-only anchor would pull
-    # M_planet back to m_planet_0 + rock, losing the net volatile change.
+    # The next Zalmoxis-like solve (target mass_tot + V) keeps that mass; without
+    # the ledger's volatile part it would pull M_planet back to m_planet_0 + rock.
     _converging_solve_structure()(None, handler.config, None, handler.hf_row, None)
     assert handler.hf_row['M_planet'] == pytest.approx(expected, rel=1e-9)
     assert abs(m_planet_0 + rock - expected) > 1.0e-6 * expected
@@ -1110,10 +1116,11 @@ def test_a_small_impactor_stripping_a_heavy_atmosphere_shrinks_the_planet(monkey
     )
     apply_impact(handler, event)
 
-    # The anchor follows the whole-planet mass: rock in, atmosphere out.
+    # The anchor takes the rock; the ledger the whole change, atmosphere out.
     assert handler.config.planet.mass_tot == pytest.approx(
-        (m_planet_0 + 6.4e21 - 2.0e23) / M_earth, rel=1e-9
+        (m_planet_0 + 6.4e21) / M_earth, rel=1e-9
     )
+    assert handler.hf_row['M_accreted_net'] == pytest.approx(6.4e21 - 2.0e23, rel=1e-9)
     # The whole-planet mass shrank: rock in, a far heavier atmosphere out.
     m_ele_after = sum(v for k, v in handler.hf_row.items() if k.endswith('_kg_total'))
     m_planet_after = handler.hf_row['M_int'] + m_ele_after
@@ -1222,9 +1229,9 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
     # Discrimination: an unbracketed second solve would carry a 1.2x rescale
     # of after_first, over 1e20 kg above the correct composition.
     assert abs(handler.hf_row['H_kg_total'] - (1.2 * after_first + delivered)) > 1.0e20
-    # With loss off the anchor grows by each impactor's whole mass: its rock
-    # plus the delivered content.
-    expected_mass = 1.0 + 2 * event.mass_delta / M_earth
+    # The anchor grows by each impactor's rock; with loss off the ledger takes
+    # its whole mass, rock plus the delivered content.
+    expected_mass = 1.0 + 2 * (event.mass_delta - delivered) / M_earth
     assert handler.config.planet.mass_tot == pytest.approx(expected_mass, rel=1e-12)
     assert handler.hf_row['M_accreted_net'] == pytest.approx(2 * event.mass_delta, rel=1e-12)
     assert float(handler.hf_row.get('esc_kg_cumulative', 0.0)) == pytest.approx(0.0, abs=1.0)
@@ -1283,12 +1290,15 @@ def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeyp
     # impactor's lost volatiles never belonged to the planet's inventory.
     assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(stripped, rel=1e-9)
 
-    # The anchor grew by the rock plus the delivered less the stripped mass;
-    # the impactor's lost volatiles never reach the planet.
-    expected_mass = 1.0 + (mass_delta - content + delivered - stripped) / M_earth
-    assert handler.config.planet.mass_tot == pytest.approx(expected_mass, rel=1e-12)
+    # The anchor grew by the rock; the ledger by the rock plus the delivered
+    # less the stripped mass; the impactor's lost volatiles never reach the planet.
+    assert handler.config.planet.mass_tot == pytest.approx(
+        1.0 + (mass_delta - content) / M_earth, rel=1e-12
+    )
+    expected_net = mass_delta - content + delivered - stripped
+    assert handler.hf_row['M_accreted_net'] == pytest.approx(expected_net, rel=1e-12)
     # Discrimination: the full merger mass would also count the lost content.
-    assert abs(handler.config.planet.mass_tot - (1.0 + mass_delta / M_earth)) > 1e-5
+    assert abs(handler.hf_row['M_accreted_net'] - mass_delta) > 1e-5 * M_earth
 
     # A provider outside the contract is rejected loudly.
     bad = _impact_handler(
@@ -1695,11 +1705,11 @@ def test_a_resumed_run_rebuilds_the_mass_and_orbit_the_impacts_moved():
 
 
 @pytest.mark.unit
-def test_debit_escaped_mass_lowers_only_a_whole_planet_anchor_with_accretion():
-    """Escape lowers mass_tot and the ledger with an accretion module and the
-    Zalmoxis structure; never with the dummy structure or accretion off."""
+def test_debit_escaped_mass_records_escape_only_with_accretion_and_zalmoxis():
+    """Escape lowers the ledger with an accretion module and the Zalmoxis
+    structure, never mass_tot, and nothing with the dummy structure or
+    accretion off."""
     from proteus.accretion.wrapper import debit_escaped_mass
-    from proteus.utils.constants import M_earth
 
     def cfg(module, structure='zalmoxis'):
         return SimpleNamespace(
@@ -1710,24 +1720,18 @@ def test_debit_escaped_mass_lowers_only_a_whole_planet_anchor_with_accretion():
 
     on, row = cfg('dummy'), {'M_accreted_net': 1.0e22}
     debit_escaped_mass(on, row, 3.0e21)
-    assert on.planet.mass_tot == pytest.approx(1.0 - 3.0e21 / M_earth, rel=1e-15)
+    assert on.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
     assert row['M_accreted_net'] == pytest.approx(7.0e21, rel=1e-15)
 
-    # The dummy structure's mass_tot is the dry mass, so escape leaves it alone.
-    dry, row = cfg('dummy', structure='dummy'), {'M_accreted_net': 0.0}
-    debit_escaped_mass(dry, row, 3.0e21)
-    assert dry.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
-    assert row['M_accreted_net'] == pytest.approx(0.0, abs=0.0)
-
-    off, row = cfg(None), {'M_accreted_net': 0.0}
-    debit_escaped_mass(off, row, 3.0e21)
-    assert off.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
-    assert row['M_accreted_net'] == pytest.approx(0.0, abs=0.0)
+    for config in (cfg('dummy', structure='dummy'), cfg(None)):
+        row = {'M_accreted_net': 0.0}
+        debit_escaped_mass(config, row, 3.0e21)
+        assert config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+        assert row['M_accreted_net'] == pytest.approx(0.0, abs=0.0)
 
     for bad in (0.0, -1.0e20, float('nan'), float('inf')):
         on, row = cfg('dummy'), {'M_accreted_net': 0.0}
         debit_escaped_mass(on, row, bad)
-        assert on.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
         assert row['M_accreted_net'] == pytest.approx(0.0, abs=0.0)
 
 
@@ -1746,7 +1750,8 @@ def _restore_handler(mass_tot, hf_row):
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_resume_after_impact_and_escape_restores_the_uninterrupted_mass(monkeypatch):
-    """A resume rebuilds mass_tot exactly as the uninterrupted run left it.
+    """A resume rebuilds the Zalmoxis target exactly as the uninterrupted run
+    left it: the rock anchor plus the ledger's volatile part.
 
     The run takes a wet impact with a 50 % strip, then escape removes 2e21
     kg. Restoring from the rock alone would miss the delivered, stripped and
@@ -1770,59 +1775,73 @@ def test_resume_after_impact_and_escape_restores_the_uninterrupted_mass(monkeypa
     _atm_state(handler.hf_row, H=(4.0e21, 5.0e21))
     apply_impact(handler, _impact_event())
     debit_escaped_mass(handler.config, handler.hf_row, 2.0e21)
-    uninterrupted = handler.config.planet.mass_tot
+    uninterrupted = _zalmoxis_target(handler.config, handler.hf_row)
 
     resumed = _restore_handler(1.0, dict(handler.hf_row))
     restore_accretion_state(resumed)
-    assert resumed.config.planet.mass_tot == pytest.approx(uninterrupted, rel=1e-14)
-    rock_only = 1.0 + handler.hf_row['M_accreted_rock'] / M_earth
-    assert abs(rock_only - uninterrupted) > 1.0e-6
+    assert resumed.config.planet.mass_tot == pytest.approx(
+        handler.config.planet.mass_tot, rel=1e-14
+    )
+    assert _zalmoxis_target(resumed.config, handler.hf_row) == pytest.approx(
+        uninterrupted, rel=1e-14
+    )
+    rock_only = (1.0 * M_earth) + handler.hf_row['M_accreted_rock']
+    assert abs(rock_only - uninterrupted) > 1.0e-6 * uninterrupted
 
 
 @pytest.mark.unit
 def test_resume_with_escape_before_any_impact_restores_the_lowered_mass():
-    """Escape alone lowers the anchor; the resume keeps that, with no rock."""
+    """Escape alone moves only the ledger: the resume keeps mass_tot at the
+    configured value and the Zalmoxis target lower by the escaped mass."""
     from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import M_earth
 
-    handler = _restore_handler(
-        1.0, {'M_accreted_rock': 0.0, 'M_accreted_net': -1.0e21, 'n_impacts_applied': 0}
-    )
+    row = {'M_accreted_rock': 0.0, 'M_accreted_net': -1.0e21, 'n_impacts_applied': 0}
+    handler = _restore_handler(1.0, row)
     restore_accretion_state(handler)
-    assert handler.config.planet.mass_tot == pytest.approx(1.0 - 1.0e21 / M_earth, rel=1e-15)
+    assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+    assert _zalmoxis_target(handler.config, row) == pytest.approx(M_earth - 1.0e21, rel=1e-15)
     # No impact yet: the orbit stays at its configured value.
     assert handler.config.orbit.semimajoraxis == pytest.approx(1.0, rel=1e-15)
 
 
+def _zalmoxis_target(config, row):
+    """Whole-planet mass the Zalmoxis structure solves for [kg]: mass_tot + V."""
+    from proteus.accretion.wrapper import accreted_volatile_mass
+    from proteus.utils.constants import M_earth
+
+    return config.planet.mass_tot * M_earth + accreted_volatile_mass(config, row)
+
+
 @pytest.mark.unit
-def test_resume_of_a_helpfile_without_the_net_column_uses_the_rock():
-    """A zero-filled M_accreted_net with rock recorded keeps the rock rule;
-    a recorded net change is used instead of the rock."""
+def test_resume_rebuilds_the_rock_anchor_and_reads_the_volatiles_from_the_ledger():
+    """mass_tot is rebuilt from the rock; the volatile change stays in the ledger,
+    which a helpfile without the column fills with the rock (V = 0)."""
     from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import M_earth
 
-    handler = _restore_handler(
-        1.0, {'M_accreted_rock': 0.5 * M_earth, 'M_accreted_net': 0.0, 'n_impacts_applied': 1}
-    )
+    row = {'M_accreted_rock': 0.5 * M_earth, 'M_accreted_net': 0.0, 'n_impacts_applied': 1}
+    handler = _restore_handler(1.0, row)
     restore_accretion_state(handler)
     assert handler.config.planet.mass_tot == pytest.approx(1.5, rel=1e-12)
-    handler = _restore_handler(
-        1.0,
-        {
-            'M_accreted_rock': 0.5 * M_earth,
-            'M_accreted_net': 0.4 * M_earth,
-            'n_impacts_applied': 1,
-        },
-    )
+    assert _zalmoxis_target(handler.config, row) == pytest.approx(1.5 * M_earth, rel=1e-12)
+
+    row = {
+        'M_accreted_rock': 0.5 * M_earth,
+        'M_accreted_net': 0.4 * M_earth,
+        'n_impacts_applied': 1,
+    }
+    handler = _restore_handler(1.0, row)
     restore_accretion_state(handler)
-    assert handler.config.planet.mass_tot == pytest.approx(1.4, rel=1e-12)
+    assert handler.config.planet.mass_tot == pytest.approx(1.5, rel=1e-12)
+    assert _zalmoxis_target(handler.config, row) == pytest.approx(1.4 * M_earth, rel=1e-12)
 
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_a_resume_after_a_legacy_resume_keeps_the_rock():
     """The legacy fallback stores the rock in the ledger, so a later escape
-    debit and a second resume give the uninterrupted mass."""
+    debit and a second resume give the uninterrupted Zalmoxis target."""
     import pandas as pd
 
     from proteus.accretion.wrapper import debit_escaped_mass, restore_accretion_state
@@ -1837,11 +1856,11 @@ def test_a_resume_after_a_legacy_resume_keeps_the_rock():
     assert first.hf_all['M_accreted_net'].iloc[-1] == pytest.approx(0.5 * M_earth, rel=1e-15)
 
     debit_escaped_mass(first.config, row, 1.0e21)
-    uninterrupted = first.config.planet.mass_tot
+    uninterrupted = _zalmoxis_target(first.config, row)
     second = _restore_handler(1.0, dict(row))
     restore_accretion_state(second)
-    assert second.config.planet.mass_tot == pytest.approx(uninterrupted, rel=1e-14)
-    assert uninterrupted == pytest.approx(1.5 - 1.0e21 / M_earth, rel=1e-14)
+    assert _zalmoxis_target(second.config, row) == pytest.approx(uninterrupted, rel=1e-14)
+    assert uninterrupted == pytest.approx(1.5 * M_earth - 1.0e21, rel=1e-14)
 
 
 @pytest.mark.unit

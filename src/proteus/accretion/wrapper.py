@@ -163,12 +163,13 @@ def restore_accretion_state(handler: Proteus) -> None:
     configured value on the first step whenever tides are off, because that
     path re-pins the row from the configuration each iteration.
 
-    The mass is rebuilt from ``M_accreted_net``, the cumulative change the
-    impacts and escape made to ``mass_tot``, on top of the configured mass
-    rather than from ``M_planet``, which differs from ``mass_tot`` by the
-    structure solver's mass tolerance. A helpfile written before that column
-    existed reads it as zero; with rock recorded, the mass is then rebuilt
-    from ``M_accreted_rock``, the rule that run was written under.
+    The mass is rebuilt from ``M_accreted_rock``, the cumulative rock the
+    impacts added, on top of the configured mass rather than from ``M_planet``:
+    the anchor carries rock alone, while ``M_planet`` also carries the volatile
+    budgets, so anchoring on it would fold the volatiles into the rock and
+    drift further on every subsequent resume. The volatile change the Zalmoxis
+    target adds is read from ``M_accreted_net`` in the row; a helpfile written
+    before that column existed reads it as zero, and the rock is stored there.
 
     Call after :func:`init_accretion`, so the timeline is still resolved
     against the configured mass and orbit and a re-run dynamical model selects
@@ -239,7 +240,7 @@ def restore_accretion_state(handler: Proteus) -> None:
         )
     legacy = net == 0.0 and accreted > 0.0
     if legacy:
-        log.info('Helpfile %s has no M_accreted_net: restoring the mass from the rock', hf_name)
+        log.info('Helpfile %s has no M_accreted_net: it holds the rock alone', hf_name)
         net = accreted
 
     n_raw = hf_row.get('n_impacts_applied')
@@ -315,15 +316,14 @@ def restore_accretion_state(handler: Proteus) -> None:
         handler.impact_events = [ev for ev in pending if ev.time > resume_time][n_drop:]
 
     if legacy:
-        # Store it, or later steps add to zero and a second resume loses the rock.
+        # Store it, or later steps add to zero and the Zalmoxis target loses the rock.
         hf_row['M_accreted_net'] = net
         if getattr(handler, 'hf_all', None) is not None and len(handler.hf_all) > 0:
             handler.hf_all.loc[handler.hf_all.index[-1], 'M_accreted_net'] = net
-    config.planet.mass_tot += net / M_earth
     if accreted <= 0.0:
         # Inform user when continuing from configured mass, which occurs either
         # prior to any impacts or when resuming from an older helpfile format.
-        if config.accretion.module is not None and net == 0.0:
+        if config.accretion.module is not None:
             log.info(
                 'No accreted rock recorded before this resume: continuing from the '
                 'configured mass of %.4f M_earth. If this run had already applied an '
@@ -331,6 +331,8 @@ def restore_accretion_state(handler: Proteus) -> None:
                 config.planet.mass_tot,
             )
         return
+
+    config.planet.mass_tot += accreted / M_earth
 
     base_a, base_e = _current_orbit(hf_row, config)
     config.orbit.semimajoraxis = base_a / AU
@@ -419,11 +421,11 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
     The impactor's rock is added to the planet's total mass and the interior
     structure is re-solved, so the radius, gravity and the core/mantle split
-    follow the new mass at the configured core fraction. With the Zalmoxis
-    structure the delivered volatiles minus the stripped atmosphere are then
-    added to ``mass_tot`` as well. ``M_accreted_net`` records the cumulative
-    change of ``mass_tot``. The orbit change updates the running row base (which
-    tides evolve) and the configuration reflects the current post-impact orbit.
+    follow the new mass at the configured core fraction. ``M_accreted_net``
+    records the rock and, with the Zalmoxis structure, the delivered volatiles
+    minus the stripped atmosphere, which the Zalmoxis target adds to
+    ``mass_tot``. The orbit change updates the running row base (which tides
+    evolve) and the configuration reflects the current post-impact orbit.
 
     Parameters
     ----------
@@ -495,6 +497,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # Record accreted rock and impact counts in the helpfile so resumed runs
     # can restore the accumulated mass and event state.
     hf_row['M_accreted_rock'] = float(hf_row.get('M_accreted_rock') or 0.0) + impactor_rock
+    hf_row['M_accreted_net'] = net_before + impactor_rock  # keeps V unchanged for this solve
     hf_row['n_impacts_applied'] = int(float(hf_row.get('n_impacts_applied') or 0.0)) + 1
     solve_structure(
         handler.directories,
@@ -513,14 +516,12 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # the tracked-element total the budgets aggregate into.
     _apply_volatile_consequences(hf_row, strip, delivered, impactor_lost, f_loss)
 
-    # A whole-planet anchor follows the volatiles too, after the structure solve
-    # above (its dry target holds the rock alone); not in the init stage, which
-    # rebuilds the budgets from config this iteration.
+    # The ledger records the volatile change for the Zalmoxis target; not in the
+    # init stage, which rebuilds the budgets from config this iteration.
     net_volatiles = 0.0
-    if _anchor_includes_volatiles(config) and not getattr(handler, 'init_stage', False):
+    if _tracks_volatile_mass(config) and not getattr(handler, 'init_stage', False):
         net_volatiles = sum(delivered.values()) - sum(strip.values())
-        config.planet.mass_tot += net_volatiles / M_earth
-    hf_row['M_accreted_net'] = net_before + impactor_rock + net_volatiles
+    hf_row['M_accreted_net'] += net_volatiles
 
     # Raise the mantle to its initial condition; hotter parts keep their state.
     remelt_mantle(handler.directories, config, hf_row, handler.interior_o, event)
@@ -571,9 +572,22 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     )
 
 
-def _anchor_includes_volatiles(config: Config) -> bool:
-    """Whether ``mass_tot`` is the whole-planet mass (Zalmoxis), not the dry mass (dummy)."""
+def _tracks_volatile_mass(config: Config) -> bool:
+    """Whether the ledger records volatile changes: only Zalmoxis solves a whole-planet target."""
     return config.interior_struct.module == 'zalmoxis'
+
+
+def accreted_volatile_mass(config: Config, hf_row: dict) -> float:
+    """Volatile mass impacts and escape moved [kg], for the Zalmoxis whole-planet target.
+
+    ``M_accreted_net`` less ``M_accreted_rock`` (delivered less stripped and
+    escaped); zero without an accretion module. ``mass_tot`` carries the rock.
+    """
+    if config.accretion.module is None:
+        return 0.0
+    return float(hf_row.get('M_accreted_net') or 0.0) - float(
+        hf_row.get('M_accreted_rock') or 0.0
+    )
 
 
 def _net_ledger(hf_row: dict) -> float:
@@ -582,8 +596,8 @@ def _net_ledger(hf_row: dict) -> float:
     Raises
     ------
     RuntimeError
-        If the ledger is not finite, which would leave ``mass_tot`` moving
-        while the record a resume rebuilds it from is lost.
+        If the ledger is not finite, which would give the Zalmoxis target a
+        non-finite volatile mass.
     """
     net = float(hf_row.get('M_accreted_net') or 0.0)
     if not math.isfinite(net):
@@ -594,18 +608,18 @@ def _net_ledger(hf_row: dict) -> float:
 
 
 def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
-    """Lower the planet's total mass by the volatile mass escape removed.
+    """Record the volatile mass escape removed in the ``M_accreted_net`` ledger.
 
-    The Zalmoxis structure solves for ``mass_tot`` minus the volatiles its mantle
-    EOS does not hold, so escaped volatiles left in ``mass_tot`` come back as rock
-    at the next structure solve. The debit includes any element the escape step
-    set to zero below the outgassing threshold, which ``esc_kg_cumulative`` does
-    not count.
+    The Zalmoxis target is ``mass_tot`` plus the ledger's volatile part, less
+    the volatiles its mantle EOS does not hold, so escaped volatiles left out
+    of the ledger would come back as rock at the next structure solve. The
+    debit includes any element the escape step set to zero below the
+    outgassing threshold, which ``esc_kg_cumulative`` does not count.
 
     Parameters
     ----------
     config : Config
-        Model configuration; ``planet.mass_tot`` is lowered in place.
+        Model configuration; read for the accretion and structure modules.
     hf_row : dict
         Current helpfile row; ``M_accreted_net`` is lowered in place.
     escaped : float
@@ -613,13 +627,11 @@ def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
     """
     if (
         config.accretion.module is None
-        or not _anchor_includes_volatiles(config)
+        or not _tracks_volatile_mass(config)
         or not 0.0 < escaped < math.inf
     ):
         return
-    net = _net_ledger(hf_row)
-    config.planet.mass_tot -= escaped / M_earth
-    hf_row['M_accreted_net'] = net - escaped
+    hf_row['M_accreted_net'] = _net_ledger(hf_row) - escaped
 
 
 def _apply_volatile_consequences(

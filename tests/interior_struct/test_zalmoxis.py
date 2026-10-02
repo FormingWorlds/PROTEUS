@@ -1648,6 +1648,32 @@ def test_dry_mass_target_excludes_only_undissolved_volatiles():
     assert 0.999 * M_earth < wet['planet_mass'] < M_earth
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_dry_mass_target_adds_the_ledger_volatile_change_with_accretion():
+    """With an accretion module the whole-planet target is mass_tot plus the
+    ledger's volatile part (M_accreted_net - M_accreted_rock), which mass_tot,
+    the rock anchor, leaves out; without accretion the ledger is ignored."""
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+    from proteus.utils.constants import M_earth
+
+    H_total = 4.7e20
+    hf_row = {
+        'H_kg_total': H_total,
+        'H_kg_atm': 1.2e20,
+        'M_accreted_rock': 6.0e23,
+        'M_accreted_net': 5.5e23,  # 5e22 kg of volatiles net lost since the start
+    }
+    config = _volatile_config(True)
+    config.accretion.module = 'dummy'
+    with_ledger = load_zalmoxis_configuration(config, hf_row)
+    assert with_ledger['planet_mass'] == pytest.approx(M_earth - 5.0e22 - H_total, rel=1e-12)
+
+    config.accretion.module = None
+    without = load_zalmoxis_configuration(config, hf_row)
+    assert without['planet_mass'] == pytest.approx(M_earth - H_total, rel=1e-12)
+
+
 # ============================================================================
 # Temperature-source dispatch: JAX-path viability and callable pass-through
 # ============================================================================

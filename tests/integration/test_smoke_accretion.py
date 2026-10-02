@@ -476,32 +476,43 @@ def test_escape_with_accretion_leaves_the_dummy_dry_anchor_to_the_rock(tmp_path)
 
 
 @pytest.mark.physics_invariant
-def test_main_loop_escape_debit_keeps_the_zalmoxis_dry_target(tmp_path, monkeypatch):
-    """With the Zalmoxis structure and accretion on, each escape step lowers
-    mass_tot by the escaped mass, so the dry target mass_tot - volatiles stays
-    fixed and M_accreted_net records the debit.
+def test_main_loop_escape_debit_reaches_the_zalmoxis_target(tmp_path, monkeypatch):
+    """With the Zalmoxis structure and accretion on, each escape step lowers the
+    M_accreted_net ledger by the escaped mass, mass_tot stays the rock anchor,
+    and every structure re-solve targets mass_tot + V less the volatiles.
 
-    The structure solve is a stub that applies the Zalmoxis dry target on top
-    of the dummy radius; no impact lands, so only the escape debit moves the
-    anchor. A sign flip or a missing debit call changes the dry target.
+    The re-solve is a stub that runs each step after the init stage and takes
+    its dry target from the real load_zalmoxis_configuration; no impact lands,
+    so only escape moves the ledger. A sign flip or a missing debit call
+    changes the ledger and the re-solved interior mass.
     """
     import proteus.interior_energetics.wrapper as interior_wrapper
-    from proteus.utils.constants import element_list
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
 
-    def zalmoxis_like_solve(dirs, config, hf_all, hf_row, outdir, **kwargs):
+    calls = []
+
+    def target_solve(config, hf_row):
+        hf_row['M_int'] = load_zalmoxis_configuration(config, hf_row)['planet_mass']
+        interior_wrapper.update_planet_mass(hf_row)
+        calls.append(hf_row['Time'])
+
+    def initial_solve(dirs, config, hf_all, hf_row, outdir, **kwargs):
         interior_wrapper.determine_interior_radius_with_dummy(
             dirs, config, hf_all, hf_row, outdir
         )
-        volatiles = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
-        hf_row['M_int'] = config.planet.mass_tot * M_earth - volatiles
-        interior_wrapper.update_planet_mass(hf_row)
+        target_solve(config, hf_row)
 
-    monkeypatch.setattr(interior_wrapper, 'solve_structure', zalmoxis_like_solve)
+    def resolve(dirs, config, hf_row, interior_o, t, T, phi, force=False):
+        target_solve(config, hf_row)
+        return hf_row['Time'], hf_row['T_magma'], hf_row['Phi_global']
+
+    monkeypatch.setattr(interior_wrapper, 'solve_structure', initial_solve)
+    monkeypatch.setattr(interior_wrapper, 'update_structure_from_interior', resolve)
     monkeypatch.setattr(Proteus, '_solve_structure_baseline_if_needed', lambda self: None)
     monkeypatch.setattr(Proteus, '_save_zalmoxis_output', lambda self: None)
     runner = _escape_runner(tmp_path / 'esc_zal', accretion=True)
     runner.config.interior_struct.module = 'zalmoxis'
-    runner.config.interior_struct.zalmoxis.update_interval = 0.0
+    runner.config.interior_struct.zalmoxis.update_interval = 1.0
     runner.config.interior_struct.zalmoxis.equilibrate_init = False
     runner.config.accretion.dummy.time_last = 1.0e9  # the impact never lands
     mass_before = runner.config.planet.mass_tot
@@ -511,10 +522,10 @@ def test_main_loop_escape_debit_keeps_the_zalmoxis_dry_target(tmp_path, monkeypa
     escaped = float(hf['esc_kg_cumulative'].iloc[-1])
     net = hf['M_accreted_net'].to_numpy()
     assert escaped > 0.0
-    assert float(hf['M_accreted_rock'].iloc[-1]) == pytest.approx(0.0, abs=0.0)
+    assert len(calls) > len(hf) // 2, 'the stub must re-solve inside the loop'
     assert -net[-1] == pytest.approx(escaped, rel=1e-9)
-    assert runner.config.planet.mass_tot == pytest.approx(
-        mass_before + net[-1] / M_earth, rel=1e-14
-    )
-    dry = mass_before * M_earth + net - hf['M_ele'].to_numpy()
-    np.testing.assert_allclose(dry, dry[0], rtol=1e-12)
+    assert runner.config.planet.mass_tot == pytest.approx(mass_before, rel=1e-15)
+    # Each row: interior = rock anchor + V (here the ledger, no rock) - volatiles.
+    # The first post-init row still takes the init-stage budgets after its solve.
+    expected_int = mass_before * M_earth + net - hf['M_ele'].to_numpy()
+    np.testing.assert_allclose(hf['M_int'].to_numpy()[1:], expected_int[1:], rtol=1e-12)

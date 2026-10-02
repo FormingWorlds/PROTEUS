@@ -1344,8 +1344,13 @@ def load_zalmoxis_configuration(
             config.interior_struct.core_frac,
         )
 
-    # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg]
-    total_planet_mass = config.planet.mass_tot * M_earth
+    # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg],
+    # plus the volatile mass impacts and escape moved, which mass_tot (rock anchor) leaves out.
+    from proteus.accretion.wrapper import accreted_volatile_mass
+
+    total_planet_mass = config.planet.mass_tot * M_earth + accreted_volatile_mass(
+        config, hf_row
+    )
 
     log.debug(
         'Total target planet mass (dry mass + volatiles): %s kg '
