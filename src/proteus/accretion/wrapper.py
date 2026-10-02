@@ -449,18 +449,22 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     content = _impactor_volatile_content(config, handler.hf_all, event, hf_row=hf_row)
     delivered, impactor_lost = _partition_impactor_content(config, hf_row, content, f_loss)
     o_rock = delivered.pop('O', 0.0) if o_budget_is_derived(config) else 0.0
-    # Refuse a corrupt ledger, a non-finite content or stripped atmosphere, or a split
-    # that loses mass, before anything moves (the strip drops a NaN atmosphere silently).
+    # Refuse a corrupt ledger or a non-finite mass before anything moves; with
+    # finite inputs the loss split closes by construction.
     volatile_mass_change(hf_row)
-    total = sum(content.values())
-    split = sum(delivered.values()) + sum(impactor_lost.values()) + o_rock
-    atm = [float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list] if f_loss > 0.0 else []
-    finite = all(math.isfinite(m) for m in (*content.values(), *atm))
-    if not (finite and math.isclose(split, total, rel_tol=MASS_CLOSURE_RTOL)):
-        raise RuntimeError(
-            f'impact volatile masses are not finite or do not close: content {content}, '
-            f'delivered + lost {split!r}, strip {strip}'
-        )
+    bad = [
+        f'{e}_kg_atm'
+        for e in element_list
+        if not math.isfinite(float(hf_row.get(f'{e}_kg_atm', 0.0)))
+    ]
+    bad += [
+        f'{e}_kg_total'
+        for e in element_list
+        if not math.isfinite(float(hf_row.get(f'{e}_kg_total', 0.0)))
+    ]
+    bad += [f'impactor {e}' for e, m in content.items() if not math.isfinite(m)]
+    if bad:
+        raise RuntimeError(f'impact volatile masses are not finite: {", ".join(bad)}')
     net_volatiles = sum(delivered.values()) - sum(strip.values())
 
     # Snapshot volatile budgets before the structure solve to prevent ppmw
@@ -575,8 +579,8 @@ def _apply_volatile_consequences(
     budgets and to the gate's baseline ``M_vol_initial`` (once escape has
     set one), and refreshes the tracked-element total. The outgassing step
     later this iteration re-equilibrates the atmosphere against the updated
-    totals; an element deferred to the chemistry step (e.g. oxygen under
-    ic_chemistry) is re-derived there either way.
+    totals; oxygen, where ``o_budget_is_derived``, is re-derived there either
+    way.
 
     Parameters
     ----------
@@ -655,7 +659,7 @@ def _primordial_mass_fractions(hf_all, hf_row=None) -> dict:
     ------
     RuntimeError
         If neither history nor step row is available, or the formation row
-        carries no positive planet mass.
+        carries no positive finite planet mass or a non-finite element budget.
     """
     if hf_all is not None and len(hf_all) > 0:
         init_rows = hf_all[hf_all['Time'] < 1.0]
@@ -669,13 +673,18 @@ def _primordial_mass_fractions(hf_all, hf_row=None) -> dict:
         )
 
     m_planet = float(t0.get('M_planet', 0.0))
-    if m_planet <= 0.0:
+    if not 0.0 < m_planet < math.inf:
         raise RuntimeError(
             'Cannot scale impactor volatiles to the planet: the formation row '
             f'carries M_planet = {m_planet!r}.'
         )
 
     fractions = {e: float(t0.get(f'{e}_kg_total', 0.0)) / m_planet for e in _VOLATILE_ELEMENTS}
+    if not all(math.isfinite(x) for x in fractions.values()):
+        raise RuntimeError(
+            'Cannot scale impactor volatiles to the planet: the formation row '
+            f'carries a non-finite element budget ({fractions}).'
+        )
     log.info(
         '    formation composition (M_planet=%.3e kg at t=%.2e yr): %s',
         m_planet,

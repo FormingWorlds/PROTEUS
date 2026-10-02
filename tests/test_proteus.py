@@ -283,7 +283,12 @@ def test_resume_checks_the_volatile_change_column_before_any_structure_solve(tmp
 @pytest.mark.parametrize('struct, expected', [('zalmoxis', -3.0e21), ('dummy', 0.0)])
 @pytest.mark.parametrize(
     'crystallized, freeze, phi, frozen',
-    [(False, False, 0.0, False), (True, False, 0.5, True), (False, True, 0.005, True)],
+    [
+        (False, False, 0.0, False),
+        (True, False, 0.5, True),
+        (False, True, 0.01, True),
+        (False, True, 0.5, False),
+    ],
 )
 def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
     tmp_path, struct, expected, crystallized, freeze, phi, frozen
@@ -296,7 +301,7 @@ def test_the_escape_step_records_the_removed_mass_for_the_zalmoxis_target(
     p = _make_proteus_instance(tmp_path, struct_module=struct)
     p.hf_row = {'H_kg_total': 5.0e21, 'O_kg_total': 2.0e22, 'Phi_global': phi}
     p.interior_o = SimpleNamespace(dt=100.0)
-    p.loops = {'total': 10, 'init_loops': 2}
+    p.loops = {'total': 5, 'init_loops': 2}  # the first loop that runs escape
     p.desiccated, p.crystallized = False, crystallized
     p.config.params.stop.solid.freeze_volatiles = freeze
     calls = []
@@ -2832,25 +2837,39 @@ def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
     )
 
 
+def test_the_main_loop_runs_the_escape_step_every_iteration(tmp_path):
+    """With the timing instrumentation off, every iteration still calls the
+    escape step, which decides by itself whether escape runs."""
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with patch.object(type(p), '_run_escape_step', return_value=False) as escape:
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+    assert escape.call_count == p.loops['total']
+    escape.assert_called_with()
+
+
 def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog):
     """With the opt-in ``PROTEUS_TIMING`` instrumentation enabled (here
     patched directly on the frozen module constant, since it is normally
     read from the environment once at import time), the main loop must
     record the orbit stage's wall-time in ``_t_mod`` and surface it in
     the per-iteration ``[IT_TIMING]`` log line -- not just the other
-    instrumented stages.
+    instrumented stages. An iteration that runs escape records its time too.
     """
     import logging
 
     monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
     p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
 
-    with caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'):
+    with (
+        caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'),
+        patch.object(type(p), '_run_escape_step', return_value=True),
+    ):
         _run_main_loop_capturing_plots(p, stop_at_loop=4)
 
     timing_records = [rec.message for rec in caplog.records if '[IT_TIMING]' in rec.message]
     assert len(timing_records) > 0, 'no [IT_TIMING] log line was emitted'
     assert any('orbit=' in msg for msg in timing_records)
+    assert any('escape=' in msg for msg in timing_records)
 
 
 # =======================================================================================

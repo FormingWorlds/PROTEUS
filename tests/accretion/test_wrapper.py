@@ -617,7 +617,6 @@ def test_impact_strips_the_atmosphere_in_proportion_to_its_composition(monkeypat
     handler = _impact_handler(
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.25)
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     # H is mostly atmospheric; N is mostly dissolved. A total-budget
     # partitioning would debit N nearly 4x more than the atmosphere holds.
     _atm_state(handler.hf_row, H=(4.0e20, 5.0e20), N=(1.0e19, 4.0e20))
@@ -660,7 +659,6 @@ def test_total_impact_loss_removes_the_atmosphere_but_not_the_interior(monkeypat
     handler = _impact_handler(
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=1.0)
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     _atm_state(handler.hf_row, H=(4.0e20, 5.0e20), C=(2.0e19, 9.0e19))
     apply_impact(handler, _impact_event())
 
@@ -690,7 +688,6 @@ def test_escape_on_the_impact_step_draws_on_the_stripped_atmosphere(monkeypatch)
     handler = _impact_handler(
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=1.0)
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     _atm_state(handler.hf_row, H=(4.0e20, 5.0e20), C=(2.0e19, 9.0e19))
     apply_impact(handler, _impact_event())
 
@@ -715,7 +712,6 @@ def test_a_partial_strip_lowers_the_atmospheric_reservoir_by_the_stripped_mass(m
     handler = _impact_handler(
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.25)
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     _atm_state(handler.hf_row, H=(4.0e20, 5.0e20), N=(1.0e19, 4.0e20))
     apply_impact(handler, _impact_event())
 
@@ -767,7 +763,6 @@ def test_a_stripping_wet_impact_credits_only_the_delivery_to_the_baseline(monkey
     handler = _impact_handler(
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0)
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     _atm_state(handler.hf_row, H=(4.0e19, 1.0e20))
     handler.hf_row.update(M_vol_initial=1.0e20, esc_kg_cumulative=0.0)
     apply_impact(handler, _impact_event())
@@ -929,7 +924,6 @@ def test_stripping_with_no_atmosphere_at_all_is_a_clean_no_op(monkeypatch):
     handler = _impact_handler(
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.9)
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     handler.hf_row['H_kg_total'] = 3.0e20  # dissolved only; no _kg_atm keys exist
     apply_impact(handler, _impact_event())
 
@@ -956,7 +950,6 @@ def test_impact_strips_oxygen_with_the_other_atmospheric_elements(monkeypatch):
     handler = _impact_handler(
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.4)
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     _atm_state(handler.hf_row, H=(1.0e20, 3.0e20), O=(8.0e20, 1.2e21))
     apply_impact(handler, _impact_event())
 
@@ -1032,7 +1025,6 @@ def test_impact_mass_closure_counts_each_volatile_channel_once(monkeypatch):
             atmloss_frac=0.5,
         ),
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     handler.hf_all = _history([{'Time': 0.0, 'M_planet': m_planet_0, 'H_kg_total': 4.0e22}])
     # Half the hydrogen is atmospheric: the mirror loses half the impactor's
     # content and the constant strip removes half the target atmosphere.
@@ -1152,7 +1144,6 @@ def test_match_planet_partition_mirror_and_fallback(monkeypatch):
             impactor_volatiles='match_planet', atmloss_module='constant', atmloss_frac=0.5
         )
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     handler.hf_all = _history(
         [
             {
@@ -1215,7 +1206,6 @@ def test_a_small_impactor_stripping_a_heavy_atmosphere_shrinks_the_planet(monkey
         mass_tot=m_planet_0 / M_earth,
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=1.0),
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     # Atmosphere of 2e23 kg; the impactor adds only 6.4e21 kg of rock.
     _atm_state(handler.hf_row, H=(2.0e23, 5.0e23))
     event = _impact_event(
@@ -1258,6 +1248,13 @@ def test_match_planet_without_history_fails_loudly():
     broken = _history([{'Time': 0.0, 'M_planet': 0.0, 'H_kg_total': 1.0e21}])
     with pytest.raises(RuntimeError, match='M_planet'):
         _impactor_volatile_content(cfg, broken, _impact_event())
+    nan = float('nan')
+    for row, match in (
+        ({'M_planet': nan, 'H_kg_total': 1.0e21}, 'M_planet'),
+        ({'M_planet': 6.0e24, 'H_kg_total': nan}, 'non-finite element budget'),
+    ):
+        with pytest.raises(RuntimeError, match=match):
+            _impactor_volatile_content(cfg, _history([{'Time': 0.0, **row}]), _impact_event())
 
 
 @pytest.mark.unit
@@ -1327,7 +1324,6 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
         mass_tot=1.0,
         accretion=_impact_accretion(H=1000.0),  # ppmw mode, loss off
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
     m_imp = 0.2 * M_earth
     event = _impact_event(
@@ -1381,7 +1377,6 @@ def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeyp
         mass_tot=1.0,
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0),
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     # One third of the planet's hydrogen sits in the atmosphere: the mirror
     # then declares one third of the impactor's content atmospheric (lost)
     # and delivers the remaining two thirds.
@@ -1893,7 +1888,6 @@ def test_resume_after_impact_and_escape_restores_the_uninterrupted_mass(monkeypa
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0)
     )
     handler.config.accretion.module = 'dummy'
-    handler.config.outgas.mass_thresh = 1.0e10
     _atm_state(handler.hf_row, H=(4.0e21, 5.0e21))
     apply_impact(handler, _impact_event())
     debit_escaped_mass(handler.config, handler.hf_row, 2.0e21)
@@ -1993,7 +1987,6 @@ def test_the_dummy_structure_anchor_takes_the_rock_only(monkeypatch):
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0),
         structure='dummy',
     )
-    handler.config.outgas.mass_thresh = 1.0e10
     _atm_state(handler.hf_row, H=(4.0e21, 5.0e21))
     event = _impact_event()
     apply_impact(handler, event)
@@ -2024,7 +2017,6 @@ def test_an_init_stage_impact_keeps_the_dry_target_at_the_rock(monkeypatch):
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0)
     )
     handler.init_stage = True
-    handler.config.outgas.mass_thresh = 1.0e10
     _atm_state(handler.hf_row, H=(4.0e21, 5.0e21))
     event = _impact_event()
     apply_impact(handler, event)
@@ -2066,19 +2058,19 @@ def test_a_non_finite_ledger_stops_the_anchor_update(where, monkeypatch):
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'content, outgas, frac, h_atm, o_atm',
+    'content, outgas, frac, h_atm, h_total',
     [
-        ({'H': 1.0e20, 'O': float('nan')}, 'dummy', 0.5, 5.0e19, 0.0),
-        ({'H': 1.0e20, 'O': float('nan')}, 'calliope', 0.0, 5.0e19, 0.0),
-        ({'H': 1.0e20}, 'dummy', 0.5, float('nan'), 0.0),
-        ({'H': float('inf')}, 'dummy', 0.0, 5.0e19, 0.0),
-        ({'H': 1.0e20}, 'dummy', 0.5, 5.0e19, float('nan')),
+        ({'H': 1.0e20, 'O': float('nan')}, 'dummy', 0.5, 5.0e19, 1.0e20),
+        ({'H': 1.0e20, 'O': float('nan')}, 'calliope', 0.0, 5.0e19, 1.0e20),
+        ({'H': float('inf')}, 'dummy', 0.0, 5.0e19, 1.0e20),
+        ({'H': 1.0e20}, 'dummy', 0.5, float('nan'), 1.0e20),
+        ({'H': 1.0e20}, 'dummy', 0.0, 5.0e19, float('nan')),
     ],
 )
 def test_a_non_finite_impact_volatile_mass_stops_the_impact(
-    monkeypatch, content, outgas, frac, h_atm, o_atm
+    monkeypatch, content, outgas, frac, h_atm, h_total
 ):
-    """A non-finite impactor content, strip or atmosphere fraction stops the impact
+    """A non-finite impactor content or element budget stops the impact
     before anything moves, through the loss split and the O-as-rock path:
     the anchor, the rock ledger, the counter and the column stay as they were."""
     from proteus.accretion import wrapper
@@ -2092,13 +2084,9 @@ def test_a_non_finite_impact_volatile_mass_stops_the_impact(
     handler = _impact_handler(accretion=acc)
     handler.config.outgas.module = outgas
     handler.hf_row.update(
-        M_volatile_change=-1.0e21,
-        H_kg_total=1.0e20,
-        H_kg_atm=h_atm,
-        O_kg_total=1.0e21,
-        O_kg_atm=o_atm,
+        M_volatile_change=-1.0e21, H_kg_total=h_total, H_kg_atm=h_atm, O_kg_total=1.0e21
     )
-    with pytest.raises(RuntimeError, match='not finite or do not close'):
+    with pytest.raises(RuntimeError, match='impact volatile masses are not finite'):
         apply_impact(handler, _impact_event())
     assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
     assert 'M_accreted_rock' not in handler.hf_row

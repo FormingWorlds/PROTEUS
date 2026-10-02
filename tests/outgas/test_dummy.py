@@ -412,6 +412,17 @@ def test_dummy_outgas_oxygen_total():
     assert O_total == pytest.approx(O_from_H2O + O_from_CO2, rel=1e-6)
 
 
+@pytest.mark.unit
+def test_dummy_outgas_keeps_a_positive_oxygen_budget():
+    """A positive saved O budget is an input and is kept as given, whatever O
+    the outgassed species carry; only an empty one is derived from them."""
+    hf_row = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.5)
+    hf_row['O_kg_total'] = 7.0e21
+    _run(hf_row)
+    assert hf_row['O_kg_total'] == pytest.approx(7.0e21, rel=1e-15)
+    assert hf_row['O_kg_atm'] + hf_row['O_kg_liquid'] < 1.0e21
+
+
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
