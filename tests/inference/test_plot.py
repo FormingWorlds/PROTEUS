@@ -588,6 +588,8 @@ def test_plot_result_correlation_multi_par_multi_obs(monkeypatch, tmp_path, capl
     fig.savefig.assert_called_once()
     assert 'Missing helpfile for' in caplog.text
     assert 'Unreadable helpfile for' in caplog.text
+    # Only the readable case is plotted, one point per panel.
+    assert {len(c.args[0]) for c in axis.scatter.call_args_list} == {1}
 
 
 @pytest.mark.unit

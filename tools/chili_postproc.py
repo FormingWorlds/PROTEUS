@@ -63,15 +63,13 @@ def postproc_once(simdir: str, plot: bool = True):
     config_path = os.path.join(simdir, 'init_coupler.toml')
     if not os.path.isfile(config_path):
         raise FileNotFoundError(f'Cannot find {config_path}')
+    hf_all = read_helpfile_table(hfpath)
 
     # Make chili folder
     chilidir = os.path.join(simdir, 'chili') + '/'
     if os.path.isdir(chilidir):
         rmtree(chilidir)
     os.mkdir(chilidir)
-
-    # Read simulation helpfile
-    hf_all = read_helpfile_table(hfpath)
 
     # Copy config
     print('    copy config file')

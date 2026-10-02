@@ -1398,7 +1398,8 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
     """
     with open(path, 'rb') as f:
         data = f.read()
-    sep, n_columns, n_rows, line_number = None, 0, 0, 0
+    sep, n_columns, n_rows = None, 0, 0
+    n_lines = data.count(b'\n') + (not data.endswith(b'\n'))
     for line_number, raw in enumerate(data.split(b'\n'), start=1):
         try:
             line = raw.decode('utf-8')
@@ -1419,10 +1420,10 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
             )
         n_rows += 1
     if not n_columns:
-        raise HelpfileFormatError(f'{path}, line {line_number}: no header line')
+        raise HelpfileFormatError(f'{path}, line {n_lines}: no header line')
     if n_rows < min_rows:
         raise HelpfileFormatError(
-            f'{path}, line {line_number}: {n_rows} data rows, {min_rows} needed'
+            f'{path}, line {n_lines}: {n_rows} data rows, {min_rows} needed'
         )
     try:
         table = pd.read_csv(io.BytesIO(data), sep=sep or r'\s+', float_precision='round_trip')
@@ -1431,7 +1432,7 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
     text_columns = list(table.select_dtypes(exclude='number').columns) if n_rows else []
     if table.shape != (n_rows, n_columns) or text_columns:
         raise HelpfileFormatError(
-            f'{path}, lines 1 to {line_number}: pandas read {table.shape[0]} rows of '
+            f'{path}, lines 1 to {n_lines}: pandas read {table.shape[0]} rows of '
             f'{table.shape[1]} columns against {n_rows} of {n_columns}, text in {text_columns[:3]}'
         )
     return table

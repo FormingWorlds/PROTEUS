@@ -586,6 +586,24 @@ def test_helpfile_with_empty_nan_fields_reads_in_place(tmp_path):
 
 
 @pytest.mark.unit
+def test_helpfile_is_read_once_and_too_few_rows_names_the_last_line(tmp_path, monkeypatch):
+    """pandas parses the bytes the check read, not the path again, and a short file
+    is reported at its last line."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(b'a\tb\n1\t2\n3\t4\n')
+    sources = []
+    real = pd.read_csv
+    monkeypatch.setattr(
+        pd, 'read_csv', lambda src, **kw: sources.append(src) or real(src, **kw)
+    )
+
+    assert read_helpfile_table(path)['b'].tolist() == [2, 4]
+    with pytest.raises(HelpfileFormatError, match=r'line 3: 2 data rows, 3 needed'):
+        read_helpfile_table(path, min_rows=3)
+    assert [type(s).__name__ for s in sources] == ['BytesIO']
+
+
+@pytest.mark.unit
 def test_header_only_helpfile_reads_as_an_empty_table(tmp_path):
     """A header with no rows is an empty table when the caller needs no row."""
     path = tmp_path / 'runtime_helpfile.csv'
@@ -747,7 +765,16 @@ def test_helpfile_is_read_with_read_csv_only_by_display_code(tmp_path):
     (tmp_path / 'src' / 'd.py').write_text(
         "import pandas as pd\nOUT = 'runtime_helpfile.csv'\ndef f(d):\n    return pd.read_csv(d / OUT)\n"
     )
-    assert _helpfile_readers(tmp_path) == {'src/a.py', 'src/b.py', 'src/c.py', 'src/d.py'}
+    (tmp_path / 'src' / 'e.py').write_text(
+        'import pandas as pd\ndef f(hf_path):\n    return pd.read_csv(hf_path)\n'
+    )
+    assert _helpfile_readers(tmp_path) == {
+        'src/a.py',
+        'src/b.py',
+        'src/c.py',
+        'src/d.py',
+        'src/e.py',
+    }
 
 
 @pytest.mark.unit
