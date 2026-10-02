@@ -4430,12 +4430,9 @@ def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
     # A step a thousandth of a year away is a different step, not a round trip.
     assert _snapshot_belongs_to(own, 70.201) is False
 
-    # The margin is relative to the time, because an eleven-digit helpfile's precision is,
-    # so it has to be checked where a run actually ends up. At 1 Gyr a round
-    # trip moves the row by about 0.05 yr and must still match, while a step
-    # 0.7 yr away shares the same filename and must not: a margin that grew to
-    # a whole year there would accept every neighbour and leave the check
-    # doing nothing exactly where runs spend most of their time.
+    # The margin scales with the time, like an eleven-digit helpfile's precision: at 1 Gyr
+    # a round trip moves the row by about 0.05 yr and must match, while a step 0.7 yr
+    # away shares the filename and must not.
     gyr = 1.0e9
     far = _write_timed_nc(str(tmp_path / 'gyr_int.nc'), gyr)
     assert _snapshot_belongs_to(far, float('%.10e' % gyr)) is True
