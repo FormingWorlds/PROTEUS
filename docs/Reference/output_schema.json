@@ -2990,7 +2990,7 @@
       "name": "M_accreted_rock",
       "unit": "kg",
       "description": "cumulative rock mass added by giant impacts",
-      "group": "Mass ledger",
+      "group": "Giant-impact accretion ledger",
       "origin": "literal",
       "producers": [
         {
@@ -3005,10 +3005,10 @@
       "consumers_possible": []
     },
     {
-      "name": "M_planet_change",
+      "name": "M_volatile_change",
       "unit": "kg",
-      "description": "cumulative whole-planet mass change: impact rock, plus delivered - stripped - escaped with Zalmoxis",
-      "group": "Mass ledger",
+      "description": "delivered - stripped - escaped volatile mass, Zalmoxis only (dummy keeps a dry anchor, 0)",
+      "group": "Giant-impact accretion ledger",
       "origin": "literal",
       "producers": [
         {
@@ -3025,7 +3025,7 @@
       "name": "n_impacts_applied",
       "unit": "1",
       "description": "count of giant impacts applied",
-      "group": "Mass ledger",
+      "group": "Giant-impact accretion ledger",
       "origin": "literal",
       "producers": [
         {

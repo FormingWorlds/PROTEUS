@@ -131,9 +131,8 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
         # The dummy structure's mass_tot is the dry mass: a dry impactor grows
         # it by exactly the delivered rock; the strip moves only the budgets.
         assert runner.config.planet.mass_tot == pytest.approx(mass_before + delivered, rel=1e-9)
-        assert float(hf['M_planet_change'].iloc[-1]) == pytest.approx(
-            delivered * M_earth, rel=1e-9
-        )
+        # The dummy structure keeps a dry anchor, so no volatile change is recorded.
+        assert np.all(hf['M_volatile_change'].to_numpy() == 0.0)
 
         # The ledger a resumed run reads back was written, never decreases, and
         # ends at the delivered rock. A handler that applied the impact twice
@@ -444,7 +443,7 @@ def test_escape_without_accretion_leaves_the_mass_anchor(tmp_path):
     runner.start(resume=False, offline=True)
     hf = runner.hf_all
     assert float(hf['esc_kg_cumulative'].iloc[-1]) > 0.0, 'escape removed nothing'
-    assert np.all(hf['M_planet_change'].to_numpy() == 0.0)
+    assert np.all(hf['M_volatile_change'].to_numpy() == 0.0)
     assert runner.config.planet.mass_tot == mass_before
 
 
@@ -464,7 +463,7 @@ def test_escape_with_accretion_leaves_the_dummy_dry_anchor_to_the_rock(tmp_path)
     rock = float(hf['M_accreted_rock'].iloc[-1])
     assert escaped > 0.0
     assert rock > 0.0
-    assert float(hf['M_planet_change'].iloc[-1]) == pytest.approx(rock, rel=1e-12)
+    assert np.all(hf['M_volatile_change'].to_numpy() == 0.0)
     assert runner.config.planet.mass_tot == pytest.approx(
         mass_before + rock / M_earth, rel=1e-12
     )
@@ -479,7 +478,7 @@ def test_escape_with_accretion_leaves_the_dummy_dry_anchor_to_the_rock(tmp_path)
 @pytest.mark.parametrize('accretion', [True, False], ids=['accretion', 'escape-only'])
 def test_main_loop_escape_debit_reaches_the_zalmoxis_target(tmp_path, monkeypatch, accretion):
     """With the Zalmoxis structure, with or without accretion, each escape step
-    lowers the M_planet_change ledger by the escaped mass, mass_tot stays the
+    lowers the M_volatile_change ledger by the escaped mass, mass_tot stays the
     rock anchor, and every structure re-solve targets mass_tot + V less the
     volatiles.
 
@@ -523,7 +522,7 @@ def test_main_loop_escape_debit_reaches_the_zalmoxis_target(tmp_path, monkeypatc
 
     hf = runner.hf_all[runner.hf_all['Time'] > 0.0]
     escaped = float(hf['esc_kg_cumulative'].iloc[-1])
-    net = hf['M_planet_change'].to_numpy()
+    net = hf['M_volatile_change'].to_numpy()
     assert escaped > 0.0
     assert len(calls) > len(hf) // 2, 'the stub must re-solve inside the loop'
     assert -net[-1] == pytest.approx(escaped, rel=1e-9)

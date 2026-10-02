@@ -258,12 +258,12 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `esc_clamp_frac` | `1` | requested per-step loss / escapable reservoir | `escape/wrapper.py`<br>`proteus.py` | always | escape |
 | `esc_step_kg` | `kg` | loss applied on this step, after the cap | `escape/wrapper.py`<br>`proteus.py` | always | outgas |
 
-### Mass ledger
+### Giant-impact accretion ledger
 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `M_accreted_rock` | `kg` | cumulative rock mass added by giant impacts | `accretion/wrapper.py` | always | accretion, main loop |
-| `M_planet_change` | `kg` | cumulative whole-planet mass change: impact rock, plus delivered - stripped - escaped with Zalmoxis | `accretion/wrapper.py` | always | accretion |
+| `M_volatile_change` | `kg` | delivered - stripped - escaped volatile mass, Zalmoxis only (dummy keeps a dry anchor, 0) | `accretion/wrapper.py` | always | accretion |
 | `n_impacts_applied` | `1` | count of giant impacts applied | `accretion/wrapper.py` | always | accretion |
 
 ### Gases from outgassing
