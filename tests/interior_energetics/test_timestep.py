@@ -42,6 +42,7 @@ def _make_config(
     bol_scale_duration: float = 0.0,
     impact_maximum: float = 0.0,
     escape_dt_floor_frac: float = 1.0e-3,
+    afe_max_rel_change: float = 0.0,
 ):
     """Build a minimal duck-typed config that ``next_step`` reads from.
 
@@ -70,6 +71,7 @@ def _make_config(
         hysteresis_sfinc=hysteresis_sfinc,
         max_growth_factor=max_growth_factor,
         impact_maximum=impact_maximum,
+        afe_max_rel_change=afe_max_rel_change,
     )
     stop_solid = SimpleNamespace(enabled=True, phi_crit=phi_crit)
     stop_radeqm = SimpleNamespace(enabled=False)
@@ -548,6 +550,7 @@ def _make_overshoot_config(*, dt_maximum, stop_time_enabled, stop_time_maximum):
         hysteresis_iters=0,
         hysteresis_sfinc=1.1,
         max_growth_factor=0.0,
+        afe_max_rel_change=0.0,
     )
     stop = SimpleNamespace(
         solid=SimpleNamespace(enabled=False, phi_crit=0.05),
@@ -1298,3 +1301,79 @@ def test_init_stage_step_never_exceeds_the_accretion_resume_horizon():
     # A retry shrinks the step; it never grows beyond the horizon.
     retried = next_step(config, {}, {'Time': 0.0, 'Phi_global': 1.0}, None, 0.5)
     assert retried == pytest.approx(0.5 * _INIT_STAGE_HORIZON_YR, rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Fe-metal activity cap (melt-redox tracker)
+# ---------------------------------------------------------------------------
+
+
+def _hf_all_with_afe(a_prev: float, a_last: float, dt_prev: float = 5.0e3):
+    """``_make_hf_all`` with an ``a_fe_max_mantle`` column whose last two
+    rows are ``a_prev`` then ``a_last`` (earlier rows equal ``a_prev``)."""
+    hf_all = _make_hf_all(n_rows=12, dt_prev=dt_prev, phi=1.0)
+    col = np.full(len(hf_all), float(a_prev))
+    col[-1] = float(a_last)
+    hf_all['a_fe_max_mantle'] = col
+    return hf_all
+
+
+def _next_step_afe(target, a_prev, a_last):
+    from proteus.interior_energetics.timestep import next_step
+
+    config = _make_config(afe_max_rel_change=target)
+    hf_all = _hf_all_with_afe(a_prev, a_last)
+    hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+    return next_step(config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o())
+
+
+class TestMetalActivityCap:
+    """The next step is scaled so the a_Fe change it implies is the target.
+
+    Without the cap the adaptive controller chooses SFINC * dt_prev =
+    1.6 * 5e3 = 8e3 yr here; the floor is minimum + minimum_rel * Time =
+    100 + 0.005 * 1e5 = 600 yr.
+    """
+
+    @pytest.mark.physics_invariant
+    def test_a_ten_percent_change_scales_the_step_to_three_percent(self):
+        """a_Fe 0.50 -> 0.55 (10%) over 5e3 yr: at that rate 3% takes 1.5e3 yr."""
+        dt = _next_step_afe(0.03, 0.50, 0.55)
+        assert dt == pytest.approx(5.0e3 * 0.03 / 0.10, rel=1e-12)
+        # The capped step, extrapolated at the observed rate, changes a_Fe by
+        # exactly the target.
+        assert (0.10 / 5.0e3) * dt == pytest.approx(0.03, rel=1e-12)
+
+    @pytest.mark.physics_invariant
+    def test_a_small_change_leaves_the_controller_step(self):
+        """1% over 5e3 yr allows 1.5e4 yr, above the 8e3 yr the controller picks."""
+        assert _next_step_afe(0.03, 1.00, 1.01) == pytest.approx(8.0e3, rel=1e-12)
+
+    @pytest.mark.physics_invariant
+    def test_inactive_when_no_cell_was_tested(self):
+        """a_Fe = 0 marks a step with no tested cell (or another fO2 source)."""
+        assert _next_step_afe(0.03, 0.0, 0.8) == pytest.approx(8.0e3, rel=1e-12)
+        assert _next_step_afe(0.03, 0.8, 0.0) == pytest.approx(8.0e3, rel=1e-12)
+
+    @pytest.mark.physics_invariant
+    def test_a_jump_is_held_at_the_minimum_step(self):
+        """A tenfold jump would ask for 15 yr; the floor keeps 600 yr."""
+        dt = _next_step_afe(0.03, 0.1, 1.1)
+        assert dt == pytest.approx(600.0, rel=1e-12)
+        assert dt > 5.0e3 * 0.03 / 10.0
+
+    @pytest.mark.physics_invariant
+    def test_an_unchanged_activity_leaves_the_controller_step(self):
+        """No change over the last step implies no rate to extrapolate."""
+        assert _next_step_afe(0.03, 0.7, 0.7) == pytest.approx(8.0e3, rel=1e-12)
+
+    @pytest.mark.physics_invariant
+    def test_zero_disables_the_cap(self):
+        assert _next_step_afe(0.0, 0.50, 0.55) == pytest.approx(8.0e3, rel=1e-12)
+
+    @pytest.mark.physics_invariant
+    def test_a_decrease_is_capped_like_an_increase(self):
+        """Metal formation lowers a_Fe; |change| is what is limited."""
+        assert _next_step_afe(0.03, 0.55, 0.495) == pytest.approx(
+            _next_step_afe(0.03, 0.50, 0.55), rel=1e-12
+        )

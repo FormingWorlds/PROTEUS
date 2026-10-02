@@ -138,7 +138,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `T_surf` | `K` | global surface temperature | `atmos_clim/agni.py`<br>`atmos_clim/dummy.py`<br>`atmos_clim/janus.py`<br>`atmos_clim/wrapper.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/wrapper.py`<br>`interior_struct/zalmoxis.py`<br>`proteus.py` | always; atmos_clim.module = "agni"; atmos_clim.module = "dummy"; atmos_clim.module = "janus"; interior_energetics.module = "boundary"; interior_struct.module = "zalmoxis" | atmos_chem, atmos_clim, interior_energetics, interior_struct, main loop, plot, utils |
-| `T_magma` | `K` | global outgassing temperature | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py`<br>`interior_energetics/wrapper.py`<br>`interior_struct/zalmoxis.py`<br>`proteus.py` | always; interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider"; interior_struct.module = "zalmoxis" | atmos_clim, interior_energetics, interior_struct, main loop, outgas, plot, utils |
+| `T_magma` | `K` | global outgassing temperature | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py`<br>`interior_energetics/wrapper.py`<br>`interior_struct/zalmoxis.py`<br>`proteus.py` | always; interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider"; interior_struct.module = "zalmoxis" | atmos_clim, interior_chem, interior_energetics, interior_struct, main loop, outgas, plot, utils |
 | `T_cmb` | `K` | core temperature, bottom mantle cell | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "spider" | interior_energetics |
 | `T_cmb_node` | `K` | temperature at the core-mantle boundary basic node | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "spider" |   |
 | `T_eqm` | `K` | grey radiative equilibrium temperature | `proteus.py`<br>`star/wrapper.py` | always | interior_energetics, interior_struct, star |
@@ -253,6 +253,13 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `fO2_vapourise_shift_IW_derived` | `log10 bar` | rock-vapour IW offset | `outgas/lavatmos.py` | outgas.vapourise = true | outgas |
 | `O_res` | `kg` | O mass-balance residual | `outgas/atmodeller.py`<br>`outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller"; outgas.module = "calliope"; outgas.module = "dummy" |   |
 | `O_vapourised_kg` | `kg` | oxygen released by rock vapourisation (LavAtmos) | `outgas/lavatmos.py` | outgas.vapourise = true |   |
+| `a_fe_max_mantle` | `1` | largest per-cell Fe-metal activity | `interior_chem/redox.py` | always | interior_energetics |
+| `a_fe_max_cell_mantle` | `1` | index of that cell (-1: none tested) | `interior_chem/redox.py` | always |   |
+| `fO2_shift_IW_mantle` | `log10 bar` | tracked-melt-redox surface Delta-IW | `interior_chem/redox.py` | always | interior_chem, outgas |
+| `fe_metal_kg_mantle` | `kg` | cumulative Fe metal formed in the mantle | `interior_chem/redox.py` | always |   |
+| `ferric_frac_mantle` | `1` | global melt Fe3+/FeT from the tracker | `interior_chem/redox.py` | always | interior_chem |
+| `n_fe_metal_mantle` | `mol` | cumulative Fe metal formed in the mantle | `interior_chem/redox.py` | always | interior_chem |
+| `n_fe_metal_step_mantle` | `mol` | Fe metal formed on this step | `interior_chem/redox.py` | always |   |
 | `M_vol_initial` | `kg` | bulk volatile inventory baseline | `escape/wrapper.py` | always | escape, outgas |
 | `esc_kg_cumulative` | `kg` | cumulative mass lost to space (escape + impact stripping) | `accretion/wrapper.py`<br>`escape/wrapper.py` | always | accretion, escape, outgas |
 | `esc_clamp_frac` | `1` | requested per-step loss / escapable reservoir | `escape/wrapper.py`<br>`proteus.py` | always | escape |

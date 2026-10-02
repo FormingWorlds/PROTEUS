@@ -2549,6 +2549,19 @@ def run_interior(
         if config.interior_energetics.heat_radiogenic:
             log.info('    F_radio    = %.2e W m-2' % float(hf_row['F_radio']))
 
+    # Melt Fe3+/Fe2+ redox tracking (issue #653). No-op unless
+    # planet.fO2_source == 'from_mantle_redox'. Placed after all T_magma
+    # clamping above so the fO2 it computes is consistent with the
+    # T_magma the outgas dispatch uses later this same iteration.
+    from proteus.interior_chem.redox import store_profile_snapshot, update_melt_redox
+
+    update_melt_redox(interior_o, hf_row, config)
+
+    # Store the fO2 profile with this step's output (Aragog: appended to the
+    # _int.nc written inside run_solver; SPIDER: a standalone _redox.nc).
+    if write_data:
+        store_profile_snapshot(config, dirs, sim_time, interior_o, hf_row)
+
     # Actual time step size.
     # Use SPIDER's actual sim_time (read from 'time_years' inside the JSON,
     # not from the llround'd filename) to compute the true dt. This fixes
