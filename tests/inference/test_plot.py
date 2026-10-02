@@ -561,6 +561,10 @@ def test_plot_result_correlation_multi_par_multi_obs(monkeypatch, tmp_path, capl
         toml.dumps({'planet': {'mass_tot': 2.0}}),
         encoding='utf-8',
     )
+    case_empty = workers / 'w_0' / 'i_2'
+    case_empty.mkdir(parents=True)
+    (case_empty / 'init_coupler.toml').write_text('[planet]\nmass_tot = 2.5\n')
+    (case_empty / 'runtime_helpfile.csv').write_text('P_surf\n', encoding='utf-8')
 
     axis = MagicMock()
     axis.__getitem__.return_value = axis
@@ -583,6 +587,7 @@ def test_plot_result_correlation_multi_par_multi_obs(monkeypatch, tmp_path, capl
     axis.set_ylabel.assert_called_once()
     fig.savefig.assert_called_once()
     assert 'Missing helpfile for' in caplog.text
+    assert 'Unreadable helpfile for' in caplog.text
 
 
 @pytest.mark.unit

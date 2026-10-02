@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import glob
+import io
 import json
 import logging
 import math
@@ -1389,50 +1390,49 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
     ------
     HelpfileFormatError
         For a file with no header, fewer rows than ``min_rows``, a row whose field
-        count differs from the header, text pandas cannot tokenise, or bytes that are
-        not UTF-8. In a space-separated file an empty field, as some files hold for a
-        NaN, would vanish and move the later values left, so its row is refused. The
-        underlying error is chained.
+        count differs from the header, bytes that are not UTF-8, text pandas cannot
+        tokenise, a table pandas reads with other row or column counts than the
+        lines hold, or a column of text. In a space-separated file an empty field,
+        as some files hold for a NaN, would vanish and move the later values left,
+        so its row is refused. The underlying error is chained.
     """
-    sep, n_columns, n_rows = None, 0, 0
     with open(path, 'rb') as f:
-        for line_number, raw in enumerate(f, start=1):
-            try:
-                line = raw.decode('utf-8')
-            except UnicodeDecodeError as err:
-                raise HelpfileFormatError(
-                    f'{path}, line {line_number}: not UTF-8 text'
-                ) from err
-            if not n_columns:
-                if line.strip():
-                    sep = '\t' if '\t' in line else None
-                    n_columns = len(line.split(sep))
-                continue
-            # In a tab file a tab-only line is a row of empty fields, not a blank line.
-            if not (line.strip(' \r\n') if sep else line.strip()):
-                continue
-            n_fields = len(line.split(sep))
-            if n_fields != n_columns:
-                raise HelpfileFormatError(
-                    f'{path}, line {line_number}: {n_fields} fields against '
-                    f'{n_columns} columns, so the values cannot be placed'
-                )
-            n_rows += 1
+        data = f.read()
+    sep, n_columns, n_rows, line_number = None, 0, 0, 0
+    for line_number, raw in enumerate(data.split(b'\n'), start=1):
+        try:
+            line = raw.decode('utf-8')
+        except UnicodeDecodeError as err:
+            raise HelpfileFormatError(f'{path}, line {line_number}: not UTF-8 text') from err
+        # In a tab file a tab-only line is a row of empty fields, not a blank line.
+        if not (line.strip(' \r') if sep else line.strip()):
+            continue
+        if not n_columns:
+            sep = '\t' if '\t' in line else None
+            n_columns = len(line.split(sep))
+            continue
+        n_fields = len(line.split(sep))
+        if n_fields != n_columns:
+            raise HelpfileFormatError(
+                f'{path}, line {line_number}: {n_fields} fields against '
+                f'{n_columns} columns, so the values cannot be placed'
+            )
+        n_rows += 1
     if not n_columns:
-        raise HelpfileFormatError(f'{path}, line 1: no header line')
+        raise HelpfileFormatError(f'{path}, line {line_number}: no header line')
     if n_rows < min_rows:
         raise HelpfileFormatError(
-            f'{path}, line {n_rows + 2}: {n_rows} data rows, {min_rows} needed'
+            f'{path}, line {line_number}: {n_rows} data rows, {min_rows} needed'
         )
     try:
-        table = pd.read_csv(path, sep=sep or r'\s+', float_precision='round_trip')
+        table = pd.read_csv(io.BytesIO(data), sep=sep or r'\s+', float_precision='round_trip')
     except pd.errors.ParserError as err:
         raise HelpfileFormatError(f'{path}: {err}') from err
-    text_columns = list(table.select_dtypes(exclude='number').columns)
+    text_columns = list(table.select_dtypes(exclude='number').columns) if n_rows else []
     if table.shape != (n_rows, n_columns) or text_columns:
         raise HelpfileFormatError(
-            f'{path}, line 1: pandas read {table.shape[0]} rows of {table.shape[1]} columns '
-            f'against {n_rows} of {n_columns} in the file, text in {text_columns[:3]}'
+            f'{path}, lines 1 to {line_number}: pandas read {table.shape[0]} rows of '
+            f'{table.shape[1]} columns against {n_rows} of {n_columns}, text in {text_columns[:3]}'
         )
     return table
 

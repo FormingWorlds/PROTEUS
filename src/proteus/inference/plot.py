@@ -26,7 +26,11 @@ from matplotlib.ticker import MaxNLocator
 from proteus import Proteus
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.plot import plot_dispatch
-from proteus.utils.coupler import read_helpfile_table, variable_is_logarithmic
+from proteus.utils.coupler import (
+    HelpfileFormatError,
+    read_helpfile_table,
+    variable_is_logarithmic,
+)
 from proteus.utils.helper import recursive_get
 
 log = logging.getLogger('fwl.' + __name__)
@@ -585,7 +589,11 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
             continue
 
         # Read helpfile for observables
-        help = read_helpfile_table(hf_path)
+        try:
+            help = read_helpfile_table(hf_path, min_rows=1)
+        except HelpfileFormatError as err:
+            log.warning(f'Unreadable helpfile for {c}: {err}')
+            continue
 
         # Get parameters and observables
         xx = [recursive_get(conf, k.split('.')) for k in par_keys]
