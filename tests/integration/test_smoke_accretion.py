@@ -473,3 +473,48 @@ def test_escape_with_accretion_leaves_the_dummy_dry_anchor_to_the_rock(tmp_path)
     d_planet = float(hf['M_planet'].iloc[-1] - hf['M_planet'].iloc[0])
     d_ele = float(hf['M_ele'].iloc[-1] - hf['M_ele'].iloc[0])
     assert d_planet == pytest.approx(rock + d_ele, rel=1e-9)
+
+
+@pytest.mark.physics_invariant
+def test_main_loop_escape_debit_keeps_the_zalmoxis_dry_target(tmp_path, monkeypatch):
+    """With the Zalmoxis structure and accretion on, each escape step lowers
+    mass_tot by the escaped mass, so the dry target mass_tot - volatiles stays
+    fixed and M_accreted_net records the debit.
+
+    The structure solve is a stub that applies the Zalmoxis dry target on top
+    of the dummy radius; no impact lands, so only the escape debit moves the
+    anchor. A sign flip or a missing debit call changes the dry target.
+    """
+    import proteus.interior_energetics.wrapper as interior_wrapper
+    from proteus.utils.constants import element_list
+
+    def zalmoxis_like_solve(dirs, config, hf_all, hf_row, outdir, **kwargs):
+        interior_wrapper.determine_interior_radius_with_dummy(
+            dirs, config, hf_all, hf_row, outdir
+        )
+        volatiles = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
+        hf_row['M_int'] = config.planet.mass_tot * M_earth - volatiles
+        interior_wrapper.update_planet_mass(hf_row)
+
+    monkeypatch.setattr(interior_wrapper, 'solve_structure', zalmoxis_like_solve)
+    monkeypatch.setattr(Proteus, '_solve_structure_baseline_if_needed', lambda self: None)
+    monkeypatch.setattr(Proteus, '_save_zalmoxis_output', lambda self: None)
+    runner = _escape_runner(tmp_path / 'esc_zal', accretion=True)
+    runner.config.interior_struct.module = 'zalmoxis'
+    runner.config.interior_struct.zalmoxis.update_interval = 0.0
+    runner.config.interior_struct.zalmoxis.equilibrate_init = False
+    runner.config.accretion.dummy.time_last = 1.0e9  # the impact never lands
+    mass_before = runner.config.planet.mass_tot
+    runner.start(resume=False, offline=True)
+
+    hf = runner.hf_all[runner.hf_all['Time'] > 0.0]
+    escaped = float(hf['esc_kg_cumulative'].iloc[-1])
+    net = hf['M_accreted_net'].to_numpy()
+    assert escaped > 0.0
+    assert float(hf['M_accreted_rock'].iloc[-1]) == pytest.approx(0.0, abs=0.0)
+    assert -net[-1] == pytest.approx(escaped, rel=1e-9)
+    assert runner.config.planet.mass_tot == pytest.approx(
+        mass_before + net[-1] / M_earth, rel=1e-14
+    )
+    dry = mass_before * M_earth + net - hf['M_ele'].to_numpy()
+    np.testing.assert_allclose(dry, dry[0], rtol=1e-12)
