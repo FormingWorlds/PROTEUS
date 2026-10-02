@@ -166,7 +166,9 @@ Zalmoxis modules (for example the PALEOS-API cache modules) or the contents of
 the EOS data files, which enter the key only through their resolved paths. A
 resumed run (`proteus start -r`) keeps the energetics P-S tables it already
 uses, in its own `data/` directory or in the shared cache, whatever differs from
-the current settings, including a changed mantle EOS or a new table generator.
+the current settings, including a changed mantle EOS or a new table generator,
+unless they were built for another planet mass (another `P_max`, after an impact
+or on a walk-back past one); those are replaced by the tables of the current mass.
 The first time a process reads them, it logs one warning that names the
 difference, or the reason the current key is not checked (for example a
 PALEOS-API mantle EOS, which is not resolved on resume, or a mantle EOS that is

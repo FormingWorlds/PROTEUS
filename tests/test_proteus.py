@@ -27,7 +27,7 @@ import sys
 import warnings
 from contextlib import ExitStack, nullcontext
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import numpy as np
 import pandas as pd
@@ -132,11 +132,12 @@ class _StopAfterMeshRestore(Exception):
     """Sentinel exception to stop start() after the mesh restoration block."""
 
 
-def _resume_with_patches(p, hf_df):
+def _resume_with_patches(p, hf_df, *extra):
     """Call p.start(resume=True) with all start() imports mocked.
 
     Uses ExitStack to avoid Python's nested-block limit.
-    Stops at init_star (after mesh restoration).
+    Stops at init_star (after mesh restoration), unless an ``extra`` patch,
+    entered last, replaces that stop with its own.
     """
     with ExitStack() as stack:
         for target in _START_PATCHES:
@@ -185,8 +186,113 @@ def _resume_with_patches(p, hf_df):
             )
         )
 
+        for extra_patch in extra:
+            stack.enter_context(extra_patch)
+
         with pytest.raises(_StopAfterMeshRestore):
             p.start(resume=True, offline=True)
+
+
+@pytest.mark.unit
+def test_resume_matches_the_ps_tables_after_restoring_the_accreted_mass(tmp_path):
+    """start(resume=True) points the run at the P-S tables of its mass only after
+    restore_accretion_state has restored that mass."""
+    p = _make_proteus_instance(tmp_path, struct_module='dummy', interior_module='aragog')
+    p.config.accretion.module = 'dummy'
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    calls = []
+
+    def match(self):
+        calls.append('match')
+        raise _StopAfterMeshRestore
+
+    _resume_with_patches(
+        p,
+        _make_hf_df(),
+        patch('proteus.star.wrapper.init_star'),
+        patch('proteus.orbit.wrapper.init_orbit'),
+        patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
+        patch(
+            'proteus.accretion.wrapper.restore_accretion_state',
+            side_effect=lambda handler: calls.append(('restore', handler is p)),
+        ),
+        patch.object(type(p), '_match_ps_tables_to_mass', match),
+        patch('proteus.proteus.setup_logger'),
+    )
+
+    assert calls[0] == ('restore', True)
+    assert calls[1:] == ['match']
+
+
+@pytest.mark.unit
+def test_resume_without_accretion_leaves_the_ps_tables_alone(tmp_path):
+    """A resume without an accretion module keeps the restored tables, as before."""
+    p = _make_proteus_instance(tmp_path, struct_module='dummy', interior_module='aragog')
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    with patch.object(type(p), '_match_ps_tables_to_mass') as match:
+        _resume_with_patches(
+            p,
+            _make_hf_df(),
+            patch('proteus.star.wrapper.init_star'),
+            patch('proteus.orbit.wrapper.init_orbit'),
+            patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
+            patch('proteus.accretion.wrapper.restore_accretion_state'),
+            patch('proteus.proteus.setup_logger'),
+            # The running status follows the table check, so stop there.
+            patch(
+                'proteus.proteus.UpdateStatusfile',
+                side_effect=lambda dirs, code: _raise_if(code == 1),
+            ),
+        )
+
+    assert p.config.accretion.module is None
+    assert not match.called
+
+
+def _raise_if(condition):
+    if condition:
+        raise _StopAfterMeshRestore
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('struct', 'energetics', 'restored', 'tables', 'expected', 'called'),
+    [
+        ('zalmoxis', 'aragog', True, True, 'new', True),
+        ('dummy', 'aragog', True, True, 'new', True),
+        ('zalmoxis', 'spider', True, True, 'new', True),
+        ('zalmoxis', 'aragog', True, False, 'old', True),
+        ('zalmoxis', 'aragog', False, True, None, False),
+        ('dummy', 'dummy', True, True, 'old', False),
+        ('spider', 'spider', True, True, 'old', False),
+        ('spider', 'aragog', True, True, 'old', False),
+    ],
+)
+def test_match_ps_tables_to_mass_uses_the_tables_of_the_current_mass(
+    tmp_path, struct, energetics, restored, tables, expected, called
+):
+    """A resumed SPIDER or Aragog run with restored tables takes the directory that
+    generate_spider_tables returns for the current mass; the SPIDER structure keeps its
+    static tables, and nothing changes otherwise."""
+    p = _make_proteus_instance(tmp_path, struct_module=struct, interior_module=energetics)
+    if restored:
+        p.directories['spider_eos_dir'] = 'old'
+    result = {'eos_dir': 'new', 'solidus_path': 'new/sol', 'liquidus_path': 'new/liq'}
+
+    with patch(
+        'proteus.interior_struct.zalmoxis.generate_spider_tables',
+        return_value=result if tables else None,
+    ) as generate:
+        p._match_ps_tables_to_mass()
+
+    assert p.directories.get('spider_eos_dir') == expected
+    assert generate.call_args_list == (
+        [call(p.config, p.directories['output'])] if called else []
+    )
+    new = expected == 'new'
+    assert p.directories.get('spider_solidus_ps') == ('new/sol' if new else None)
+    assert p.directories.get('spider_liquidus_ps') == ('new/liq' if new else None)
 
 
 def _make_hf_df():

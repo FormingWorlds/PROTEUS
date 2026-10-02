@@ -76,7 +76,7 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
     ):
         log.warning(
             "Accretion on Aragog with temperature_mode='%s': each impact re-melts "
-            'the mantle by re-applying this initial condition, which is not guaranteed '
+            'the mantle by raising it to this initial condition, which is not guaranteed '
             "fully molten. Use temperature_mode='liquidus_super' for a molten re-melt, "
             'or confirm the initial melt fraction is what you intend.',
             config.planet.temperature_mode,
@@ -516,8 +516,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         float(hf_row.get('M_accreted_net') or 0.0) + impactor_rock + net_volatiles
     )
 
-    # Re-melt the mantle to its molten initial condition, so the interior
-    # evolves from a fully molten state after the impact.
+    # Raise the mantle to its initial condition; hotter parts keep their state.
     remelt_mantle(handler.directories, config, hf_row, handler.interior_o, event)
 
     # A mantle that had crystallised is now a magma ocean again, so lift the

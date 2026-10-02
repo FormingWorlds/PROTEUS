@@ -34,10 +34,11 @@ impact-loss physics of its own; the `"zephyrus"` module evaluates the
 giant-impact erosion scaling law of Kegerreis et al. (2020) [^cite-kegerreis2020].
 
 The mantle re-melt after an impact is a thermodynamic reset rather than an
-energy deposition: it re-applies the run's `planet.temperature_mode` initial
-condition to the whole mantle, so how molten the result is follows that
-condition. Only `liquidus_super` is fully molten for any planet mass and melting
-curve.
+energy deposition: it raises the mantle to the run's `planet.temperature_mode`
+initial condition, and parts of the mantle that are already hotter keep their
+state, so the re-melt never cools the mantle. How molten the result is follows
+that condition. Only `liquidus_super` is fully molten for any planet mass and
+melting curve.
 
 Accretion requires an interior module that can be re-melted and that can be
 stepped onto the moment of an impact, so `interior_energetics.module = "spider"`
