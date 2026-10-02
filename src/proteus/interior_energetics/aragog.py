@@ -2994,6 +2994,7 @@ def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_
 
     store_profile_snapshot(config, dirs, hf_row['Time'], interior_o, hf_row)
 
+
 def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | None:
     """Adams-Williamson mesh surface pressure implied by a snapshot [Pa].
 

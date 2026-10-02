@@ -415,7 +415,7 @@ def test_an_undersaturated_melt_redissolves_metal_back_to_saturation():
     from proteus.interior_chem.disproportionation import GAMMA, solve_extent
 
     n2, n3, n_sil = 1.1136, 0.1237, 19.369
-    K = 0.5 * n3**2 * n_sil / (GAMMA * n2**3)          # a_Fe = 0.5 before
+    K = 0.5 * n3**2 * n_sil / (GAMMA * n2**3)  # a_Fe = 0.5 before
     assert _activity_after(K, n2, n3, n_sil, 0.0) == pytest.approx(0.5, rel=1e-12)
 
     # Ample metal: the bracket is clipped to -n3/2 (cannot un-make more Fe3+

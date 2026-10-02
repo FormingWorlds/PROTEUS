@@ -878,12 +878,16 @@ def test_cold_melt_below_the_eos_table_is_reported(caplog):
 
     usable = np.array([True, True, False])
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.redox'):
-        _warn_clamped_cells(np.array([1200.0, 2500.0, 1000.0]), np.array([1.0, 5.0, 9.0]), usable)
+        _warn_clamped_cells(
+            np.array([1200.0, 2500.0, 1000.0]), np.array([1.0, 5.0, 9.0]), usable
+        )
     msgs = [r.message for r in caplog.records if 'Out of the bounds' in r.message]
     assert len(msgs) == 1 and '1 melt cell' in msgs[0]
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.redox'):
-        _warn_clamped_cells(np.array([2000.0, 2500.0, 1000.0]), np.array([1.0, 5.0, 9.0]), usable)
+        _warn_clamped_cells(
+            np.array([2000.0, 2500.0, 1000.0]), np.array([1.0, 5.0, 9.0]), usable
+        )
     assert not any('Out of the bounds' in r.message for r in caplog.records)
 
 
@@ -932,9 +936,9 @@ def test_a_solidified_mantle_freezes_the_reservoirs(caplog):
     frozen = (st.n_fe2_melt, st.n_fe3_melt, st.ferric_frac)
 
     with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_chem.redox'):
-        update_melt_redox(interior, {'T_magma': 2200.0}, config)   # flags it
+        update_melt_redox(interior, {'T_magma': 2200.0}, config)  # flags it
         hf_row = {'T_magma': 2200.0}
-        update_melt_redox(interior, hf_row, config)                 # frozen step
+        update_melt_redox(interior, hf_row, config)  # frozen step
     assert st.melt_exhausted
     assert (st.n_fe2_melt, st.n_fe3_melt, st.ferric_frac) == frozen
     assert hf_row['ferric_frac_mantle'] == frozen[2]
@@ -968,8 +972,9 @@ def test_snapshot_appends_to_the_aragog_int_file(tmp_path):
     hf_row = {'T_magma': 2200.0}
     update_melt_redox(interior, hf_row, _snapshot_config('aragog'))
 
-    out = store_profile_snapshot(_snapshot_config('aragog'), {'output': str(tmp_path)},
-                                 884.7, interior, hf_row)
+    out = store_profile_snapshot(
+        _snapshot_config('aragog'), {'output': str(tmp_path)}, 884.7, interior, hf_row
+    )
     assert out == str(fpath)
     with nc.Dataset(fpath) as ds:
         assert 'log10_fO2_s' in ds.variables
@@ -986,8 +991,9 @@ def test_snapshot_writes_a_standalone_file_for_spider(tmp_path):
     hf_row = {'T_magma': 2200.0}
     update_melt_redox(interior, hf_row, _snapshot_config('spider'))
 
-    out = store_profile_snapshot(_snapshot_config('spider'), {'output': str(tmp_path)},
-                                 884.7, interior, hf_row)
+    out = store_profile_snapshot(
+        _snapshot_config('spider'), {'output': str(tmp_path)}, 884.7, interior, hf_row
+    )
     assert out == str(tmp_path / 'data' / '884p700_redox.nc')
     with nc.Dataset(out) as ds:
         assert float(ds['time'][...]) == pytest.approx(884.7)
@@ -1002,12 +1008,20 @@ def test_snapshot_writes_nothing_for_other_sources_modules_or_missing_files(tmp_
     update_melt_redox(interior, hf_row, _snapshot_config('aragog'))
     dirs = {'output': str(tmp_path)}
     # Another fO2 source: the tracker never ran, nothing to store.
-    assert store_profile_snapshot(_snapshot_config('aragog', 'user_constant'), dirs, 1.0,
-                                  interior, hf_row) is None
+    assert (
+        store_profile_snapshot(
+            _snapshot_config('aragog', 'user_constant'), dirs, 1.0, interior, hf_row
+        )
+        is None
+    )
     # A module without radial output.
-    assert store_profile_snapshot(_snapshot_config('dummy'), dirs, 1.0, interior, hf_row) is None
+    assert (
+        store_profile_snapshot(_snapshot_config('dummy'), dirs, 1.0, interior, hf_row) is None
+    )
     # Aragog step that wrote no snapshot (dt_write throttle).
-    assert store_profile_snapshot(_snapshot_config('aragog'), dirs, 1.0, interior, hf_row) is None
+    assert (
+        store_profile_snapshot(_snapshot_config('aragog'), dirs, 1.0, interior, hf_row) is None
+    )
     assert list((tmp_path / 'data').iterdir()) == []
 
 
@@ -1016,11 +1030,11 @@ def test_a_saturated_cell_with_no_reaction_extent_leaves_the_melt_unchanged(monk
     exactly at a_Fe = 1), no metal is deposited and the reservoirs stand."""
     from proteus.interior_chem import redox
 
-    state = _init_state(_PHI, _MASS, _PRES, 0.001)   # strongly supersaturated
+    state = _init_state(_PHI, _MASS, _PRES, 0.001)  # strongly supersaturated
     monkeypatch.setattr(redox.dispro, 'solve_extent', lambda *a, **k: 0.0)
     n2, n3 = state.n_fe2_melt, state.n_fe3_melt
     xi = _metal_saturation_step(state, _TEMP, _PRES, _PHI, _MASS)
     assert xi == 0.0
-    assert state.a_fe_cell[state.a_fe_max_cell] >= 1.0      # the check did run
+    assert state.a_fe_cell[state.a_fe_max_cell] >= 1.0  # the check did run
     assert (state.n_fe2_melt, state.n_fe3_melt) == (n2, n3)
     assert np.all(state.n_fe_metal_cell == 0.0)
