@@ -264,6 +264,18 @@ def boreas_requires_atmosphere(instance, attribute, value):
         )
 
 
+def front_trapping_requires_aragog(instance, attribute, value):
+    """Front trapping reads the freezing front the Aragog interior resolves."""
+    trap_mode = getattr(instance.outgas, 'trap_mode', 'none')
+    interior = instance.interior_energetics.module
+    if trap_mode == 'front' and interior != 'aragog':
+        raise ValueError(
+            'outgas.trap_mode = "front" requires interior_energetics.module = "aragog", '
+            f'not "{interior}". The front scheme reads the melt fraction, density and '
+            'pressure profiles that only the Aragog interior exports.'
+        )
+
+
 def observe_resolved_atmosphere(instance, attribute, value):
     """Synthetic observations require a spatially resolved atmosphere (not dummy)."""
     if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
@@ -581,7 +593,7 @@ class Config:
             dummy_struct_mantle_eos,
         ),
     )
-    outgas: Outgas = field(factory=Outgas)
+    outgas: Outgas = field(factory=Outgas, validator=(front_trapping_requires_aragog,))
     atmos_clim: AtmosClim = field(factory=AtmosClim)
     atmos_chem: AtmosChem = field(factory=AtmosChem)
     escape: Escape = field(

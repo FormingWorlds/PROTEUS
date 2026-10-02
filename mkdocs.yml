@@ -96,6 +96,9 @@ nav:
           - Outgas:
               - H2-MgSiO3 binodal (binodal.py): Validation/outgas/binodal.md
               - Rock-vapour molar masses (lavatmos.py): Validation/outgas/lavatmos.md
+              - Melt drainage across the freezing front (compaction.py): Validation/outgas/compaction.md
+              - Burial ledger for remelting (burial_ledger.py): Validation/outgas/burial_ledger.md
+              - Solid-phase volatile trapping (trapping.py): Validation/outgas/trapping.md
           - Star:
               - Stellar luminosity and instellation (star.py): Validation/star/star.md
               - Stellar wrapper dispatch (wrapper.py): Validation/star/wrapper.md

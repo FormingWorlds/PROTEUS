@@ -72,6 +72,10 @@ _BOTH = TemplateOverride(('gas_list', 'element_list'))
 _VAPS = TemplateOverride(('vap_list',))
 _GASES_POSSIBLE = TemplateOverride(('gas_list',), possible=True)
 _GASES_VOL = TemplateOverride(('gas_list', 'vol_element_list'))
+_TRAPPED = TemplateOverride(('vol_list', 'vol_element_list', 'noble_gases'))
+_TRAPPED_ELEMENTS = TemplateOverride(('vol_element_list', 'noble_gases'))
+_TRAPPED_SPECIES = TemplateOverride(('vol_list', 'noble_gases'))
+_NOBLE = TemplateOverride(('noble_gases',))
 
 # Templated access sites whose loop domain cannot be recovered statically.
 # Values name domain lists; downstream code trims them against the schema.
@@ -120,6 +124,25 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('outgas/lavatmos.py', 'run_vapourisation', '<?>_bar'): _VAPS,
     ('outgas/lavatmos.py', 'run_vapourisation', '<?>_vmr'): _VAPS,
     ('outgas/lavatmos.py', 'run_vapourisation', '<?>_kg_atm'): _ELEMENTS,
+    ('outgas/trapping.py', '_trapped', '<?>_kg_trapped'): _TRAPPED,
+    ('outgas/trapping.py', '_carried', '<?>_kg_total'): _TRAPPED_ELEMENTS,
+    ('outgas/trapping.py', 'released_mass', '<?>_kg_trapped'): _TRAPPED,
+    ('outgas/trapping.py', 'escapable_inventory', '<?>_kg_total'): _ELEMENTS,
+    ('outgas/trapping.py', 'restore_trapped_mass', '<?>_kg_solid'): _NOBLE,
+    ('outgas/trapping.py', 'restore_trapped_mass', '<?>_kg_total'): _NOBLE,
+    ('outgas/trapping.py', 'restore_trapped_mass', '<?>_mol_solid'): _NOBLE,
+    ('outgas/trapping.py', 'restore_trapped_mass', '<?>_mol_total'): _NOBLE,
+    ('outgas/trapping.py', 'mantle_totals', '<?>_kg_total'): _TRAPPED,
+    ('outgas/trapping.py', 'hold_in_mantle', '<?>_kg_liquid'): _TRAPPED,
+    ('outgas/trapping.py', 'hold_in_mantle', '<?>_kg_solid'): _TRAPPED,
+    ('outgas/trapping.py', 'hold_in_mantle', '<?>_kg_total'): _TRAPPED,
+    ('outgas/trapping.py', 'hold_in_mantle', '<?>_mol_liquid'): _TRAPPED_SPECIES,
+    ('outgas/trapping.py', 'hold_in_mantle', '<?>_mol_solid'): _TRAPPED_SPECIES,
+    ('outgas/trapping.py', 'hold_in_mantle', '<?>_mol_total'): _TRAPPED_SPECIES,
+    ('outgas/trapping.py', '_move', '<?>_kg_liquid'): _TRAPPED,
+    ('outgas/trapping.py', '_move', '<?>_kg_solid'): _TRAPPED,
+    ('outgas/trapping.py', '_move', '<?>_kg_trapped'): _TRAPPED,
+    ('outgas/trapping.py', 'run_trapping', '<?>_kg_liquid'): _TRAPPED_SPECIES,
 }
 
 # Dynamic-key writes that are not producers: save/restore of overridden
@@ -133,6 +156,10 @@ SUPPRESSED_DYNAMIC_WRITES = {
     # The mass-ratio loop assembles its key in a local; EXTRA_PRODUCERS
     # declares the full expansion for it.
     ('outgas/wrapper.py', 'run_outgassing'),
+    # The trapped mass withheld from, and restored to, reservoirs the
+    # chemistry and the trapping step already write, around each solve.
+    ('outgas/trapping.py', '_shift'),
+    ('outgas/trapping.py', '_reservoir_sum'),
     # hf_row.update(saved) restores of pre-call snapshots.
     ('interior_energetics/wrapper.py', '_solve_structure_with_adiabat_or_rollback'),
     ('interior_energetics/wrapper.py', 'update_structure_from_interior'),

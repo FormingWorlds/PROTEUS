@@ -99,6 +99,22 @@ planetary surface conditions.
 | `T_floor` | float | `700.0` | Temperature floor \[K\]. The outgassing temperature is clamped to this value from below before the chemistry solve. Must be > 0.0. |
 | `solver_rtol` | float | `0.0001` | Relative tolerance for the volatile equilibrium solver. Must be > 0.0. |
 | `solver_atol` | float | `1e-06` | Absolute tolerance for the volatile equilibrium solver. Must be > 0.0. |
+| `trap_mode` | str | `"none"` | Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off) and 'front' (F_tl from the drainage of melt across the freezing front the interior solver resolves; needs `interior_energetics.module = 'aragog'`). The disaggregation melt fraction that tops the front is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field. Choices: `"none"`, `"front"`. |
+| `trap_phi_min` | float | `0.01` | Porosity below which a node counts as solid \[1\]. Needed because the density-derived porosity never reaches exactly zero. Must be > 0.0 and < 1.0. |
+| `trap_mush_log10visc` | float | `-1.0` | Log10 viscosity of the mush near the solidus \[log10(Pa s)\], entering the matrix deformation time. Negative selects the default of 20, mid-range of the 18 to 22 the literature allows. |
+| `trap_n_front_min` | int | `3` | Fewest nodes a freezing front must span before its drainage is integrated rather than bounded above. Must be >= 2. |
+| `trap_max_front_fraction` | float | `1.0` | Largest fraction of the mantle thickness the front may occupy before its drainage is bounded above instead of integrated \[1\]. The default of 1 sets no limit: where percolation controls the drainage, the retained fraction depends on the ratio of drainage speed to front speed and not on the front thickness, and a thicker front only lengthens the residence time. Must be > 0.0 and <= 1.0. |
+| `D_const_H2O` | float | `0.0017` | Crystal/melt partition coefficient of H2O \[1\], D = w_solid / w_liquid. Must be >= 0.0. |
+| `D_const_CO2` | float | `0.0` | Crystal/melt partition coefficient of CO2 \[1\], D = w_solid / w_liquid. Must be >= 0.0. |
+| `D_const_O2` | float | `0.0` | Crystal/melt partition coefficient of O2 \[1\], D = w_solid / w_liquid. Must be >= 0.0. |
+| `D_const_H2` | float | `0.0` | Crystal/melt partition coefficient of H2 \[1\], D = w_solid / w_liquid. Must be >= 0.0. |
+| `D_const_CH4` | float | `0.0` | Crystal/melt partition coefficient of CH4 \[1\], D = w_solid / w_liquid. Must be >= 0.0. |
+| `D_const_CO` | float | `0.0` | Crystal/melt partition coefficient of CO \[1\], D = w_solid / w_liquid. Must be >= 0.0. |
+| `D_const_N2` | float | `0.0` | Crystal/melt partition coefficient of N2 \[1\], D = w_solid / w_liquid. Must be >= 0.0. |
+| `D_const_NH3` | float | `0.0` | Crystal/melt partition coefficient of NH3 \[1\], D = w_solid / w_liquid. Must be >= 0.0. |
+| `D_const_S2` | float | `0.0` | Crystal/melt partition coefficient of S2 \[1\], D = w_solid / w_liquid. Must be >= 0.0. |
+| `D_const_SO2` | float | `0.0` | Crystal/melt partition coefficient of SO2 \[1\], D = w_solid / w_liquid. Must be >= 0.0. |
+| `D_const_H2S` | float | `0.0` | Crystal/melt partition coefficient of H2S \[1\], D = w_solid / w_liquid. Must be >= 0.0. |
 | `vapourise` | bool | `false` | Enable rock vapourisation via LavAtmos/ThermoEngineLite. Requires `LAVA_DIR` and `FC_DIR` to be set; see the optional modules installation guide. LavAtmos parameters are set in `outgas.lavatmos`. |
 <!-- END GENERATED: config-table [outgas] -->
 
@@ -216,6 +232,7 @@ Rock vapourisation parameters, used when `outgas.vapourise = true`. Requires
 Cross-field constraints enforced when the config file loads:
 
 - BOREAS escape requires a radiative atmosphere (not dummy).
+- Front trapping reads the freezing front the Aragog interior resolves.
 - ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled.
 - ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks.
 - Dummy escape requires a non-negative escape rate.

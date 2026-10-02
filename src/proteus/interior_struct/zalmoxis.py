@@ -3058,6 +3058,20 @@ def generate_spider_tables(config: Config, outdir: str):
     }
 
 
+def dissolved_h2_mass(hf_row: dict) -> float:
+    """Mass of H2 dissolved in the melt [kg].
+
+    The species total less the atmospheric and solid reservoirs. The solid
+    reservoir holds any H2 trapped in the crystallising mantle, which the
+    species total includes but the melt does not.
+    """
+    return (
+        float(hf_row.get('H2_kg_total', 0.0))
+        - float(hf_row.get('H2_kg_atm', 0.0))
+        - float(hf_row.get('H2_kg_solid', 0.0))
+    )
+
+
 def compute_structure_mass_desync(radii, density, mass_enclosed) -> float:
     """Relative divergence between the density-profile mass integral and the
     structure ODE accumulator total.
@@ -3317,9 +3331,7 @@ def zalmoxis_solver(
 
         # Build H2 mass targets from current volatile inventories
         h2_mass_targets = {}
-        H2_kg_total = float(hf_row.get('H2_kg_total', 0.0))
-        H2_kg_atm = float(hf_row.get('H2_kg_atm', 0.0))
-        H2_kg_dissolved = H2_kg_total - H2_kg_atm
+        H2_kg_dissolved = dissolved_h2_mass(hf_row)
         if H2_kg_dissolved > 0:
             h2_mass_targets['Chabrier:H'] = H2_kg_dissolved
 

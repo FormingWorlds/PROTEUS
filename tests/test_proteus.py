@@ -3667,3 +3667,108 @@ def test_proteus_start_resume_accepts_legacy_accretion_ledger_when_disabled(tmp_
     log_files = list(tmp_path.glob('proteus_*.log'))
     log_text = '\n'.join(f.read_text() for f in log_files) if log_files else caplog.text
     assert 'Accretion is disabled for this resume' in log_text
+
+
+# Each of 8 steps of 0.025 releases 1.14e18 kg of O and 1.4e17 kg of H.
+_REMELT_THRESH = 1.5e18
+
+
+def _remelting_desiccated_run(tmp_path, monkeypatch, n_steps: int):
+    """Run the dummy configuration through a desiccated planet's slow remelt.
+
+    The real dummy interior runs every step; around it, the melt fraction is
+    held at 0.30 through the initialisation stage. On the first step after it
+    the planet is left with nothing but 3.6e19 kg of water trapped, 4.03e18 kg
+    of H and 3.20e19 kg of O, so the step desiccates it. The melt fraction then rises
+    to 0.50 in ``n_steps`` equal steps and holds for two more before the run
+    stops. Trapping is switched on after loading: the loaded config refuses
+    ``'front'`` without Aragog, and the remelt path reads no interior profile.
+    """
+    import proteus.interior_energetics.wrapper as interior_wrapper
+    from proteus import Proteus
+    from proteus.outgas.common import element_masses_from_species
+    from proteus.utils.constants import element_list, gas_list
+
+    out = tmp_path / 'run'
+    text = (Path(__file__).resolve().parents[1] / 'input' / 'dummy.toml').read_text()
+    cfg = tmp_path / 'remelt.toml'
+    cfg.write_text(text.replace('path = "auto"', f'path = "{out}"', 1))
+    runner = Proteus(config_path=cfg)
+    config = runner.config
+    config.outgas.trap_mode = 'front'
+    config.outgas.mass_thresh = _REMELT_THRESH
+    config.atmos_chem.module = None
+    config.params.stop.solid.enabled = False
+    config.params.stop.time.minimum = 0.0
+    config.params.stop.time.maximum = 1.0e9
+    config.params.out.plot_mod = None
+    config.params.out.archive_mod = 'none'
+
+    real_interior = interior_wrapper.run_interior
+    state = {'steps': -1}
+
+    def interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs):
+        real_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs)
+        if runner.init_stage:
+            hf_row['Phi_global'] = 0.30
+            return
+        state['steps'] += 1
+        if state['steps'] == 0:
+            for name in (*gas_list, *element_list):
+                for reservoir in ('atm', 'liquid', 'solid', 'total'):
+                    hf_row[f'{name}_kg_{reservoir}'] = 0.0
+                    hf_row[f'{name}_mol_{reservoir}'] = 0.0
+            trapped = {'H2O': 3.6e19, **element_masses_from_species({'H2O': 3.6e19})}
+            for name, mass in trapped.items():
+                hf_row.update({f'{name}_kg_{r}': mass for r in ('solid', 'trapped', 'total')})
+            # Escape removed nothing, so the inventory is the baseline.
+            hf_row.update(M_vol_initial=3.6e19, esc_kg_cumulative=0.0)
+        hf_row['Phi_global'] = min(0.30 + 0.20 * state['steps'] / n_steps, 0.50)
+        if state['steps'] >= n_steps + 2:
+            cfg_.params.stop.time.maximum = float(hf_row['Time'])
+
+    monkeypatch.setattr(interior_wrapper, 'run_interior', interior)
+    runner.start(resume=False, offline=True)
+    return runner, runner.hf_all, element_masses_from_species({'H2O': 3.6e19})
+
+
+@pytest.mark.physics_invariant
+def test_a_desiccated_planet_remelting_in_small_steps_keeps_what_it_releases(
+    tmp_path, monkeypatch
+):
+    """A desiccated planet remelts from Phi = 0.30 to 0.50 in 8 steps through
+    the main loop, each releasing less than mass_thresh. The released 2/7 of
+    the trapped water must stay in the melt and the totals while the planet is
+    still flagged, and the totals must not drop while the released hydrogen
+    sits below mass_thresh after the flag clears. The run ends where 4 steps
+    of 0.05 end: every total as trapped at the start, 5/7 of the water still
+    trapped, the rest outgassed into melt and atmosphere."""
+    runner, hf, trapped = _remelting_desiccated_run(tmp_path, monkeypatch, n_steps=8)
+    after = hf[np.isclose(hf['M_vol_initial'], 3.6e19, rtol=1e-12)]
+    end = hf.iloc[-1]
+    assert end['Phi_global'] == pytest.approx(0.50, abs=1e-12)
+    assert len(after) >= 11
+
+    # Conservation on every row: no total ever drops, flagged or not.
+    np.testing.assert_allclose(after['H_kg_total'], trapped['H'], rtol=1e-12)
+    np.testing.assert_allclose(after['O_kg_total'], trapped['O'], rtol=1e-12)
+    for element in ('H', 'O'):
+        parts = sum(end[f'{element}_kg_{r}'] for r in ('atm', 'liquid', 'solid'))
+        assert parts == pytest.approx(end[f'{element}_kg_total'], rel=1e-9)
+    # The step-length-free end state: the solid keeps 5/7 of what was trapped.
+    assert end['H2O_kg_trapped'] == pytest.approx(3.6e19 * 5.0 / 7.0, rel=1e-9)
+    reachable = end['H_kg_atm'] + end['H_kg_liquid']
+    assert reachable == pytest.approx(trapped['H'] * 2.0 / 7.0, rel=1e-6)
+    assert not runner.desiccated
+    assert end['P_surf'] > 0.0
+
+    # Discrimination: the flag stayed set through at least one remelt step,
+    # where the old rule emptied the melt; each step released below mass_thresh.
+    flagged = after[after['P_surf'] <= 0.0]
+    assert len(flagged) >= 2
+    per_step = (after['H2O_kg_trapped'].diff().abs()).max()
+    assert per_step * 16.0 / 18.015 < _REMELT_THRESH
+    # Edge case: released H stayed below mass_thresh after the flag cleared,
+    # where an escape floor on the reachable remainder deleted it every step.
+    h_reach = after['H_kg_atm'] + after['H_kg_liquid']
+    assert ((h_reach > 0.0) & (h_reach < _REMELT_THRESH)).sum() >= 5
