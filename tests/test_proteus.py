@@ -2730,12 +2730,15 @@ def test_the_time_advance_ends_a_short_step_on_the_pending_impact(tmp_path, t_im
 def test_the_main_loop_lands_each_step_through_snap_to_impact(tmp_path):
     """Every iteration passes its step end through snap_to_impact; with no
     impact pending the step end is kept, so the run time stays finite."""
+    import math
+
     from proteus.accretion import common
 
     p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
     with patch.object(common, 'snap_to_impact', wraps=common.snap_to_impact) as snap:
         _run_main_loop_capturing_plots(p, stop_at_loop=4)
     assert snap.call_count == p.loops['total']
+    assert all(math.isinf(c.args[1]) for c in snap.call_args_list)
     assert 0.0 < p.hf_row['Time'] < float('inf')
 
 

@@ -525,6 +525,9 @@ def test_a_landing_step_a_few_ulp_short_ends_on_the_impact():
     # A step that ends well short, past the impact, or with none pending is kept.
     for time, t_impact in ((t - 1.0, t), (t + 1.0e-6, t), (t, float('inf'))):
         assert snap_to_impact(time, t_impact) == time
+    # The window is a relative 1e-12 of the step end.
+    assert snap_to_impact(t * (1.0 - 0.5e-12), t) == t
+    assert snap_to_impact(t * (1.0 - 2.0e-12), t) == t * (1.0 - 2.0e-12)
 
 
 @pytest.mark.unit

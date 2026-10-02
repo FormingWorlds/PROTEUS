@@ -2086,9 +2086,10 @@ class AragogRunner:
         halves the integration interval, over up to eight attempts. On a
         giant-impact step every failure takes this stiff ladder, so atol is
         never relaxed there. Every other failure keeps the dt-halving plus
-        atol-scaling ladder over six attempts. Each retry restores the entropy IC and dSdr_cmb_init
-        from before the attempt. On final failure this raises RuntimeError
-        so the caller can apply its skip-step fallback.
+        atol-scaling ladder over six attempts. Each retry restores the
+        entropy IC and dSdr_cmb_init from before the attempt. On final
+        failure this raises RuntimeError so the caller can apply its
+        skip-step fallback.
 
         Parameters
         ----------
