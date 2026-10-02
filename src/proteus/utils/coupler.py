@@ -1385,7 +1385,9 @@ def read_helpfile_table(path: str) -> pd.DataFrame:
     Raises
     ------
     HelpfileFormatError
-        When a row has fewer or more fields than the header. An empty field, as
+        When a row has fewer or more fields than the header.
+    pandas.errors.EmptyDataError, pandas.errors.ParserError
+        From pandas, for an empty file or one it cannot tokenise. An empty field, as
         some files hold for a NaN, vanishes in the whitespace split and would
         move every later value one column to the left.
     """
@@ -1398,8 +1400,7 @@ def read_helpfile_table(path: str) -> pd.DataFrame:
             if n_fields and n_fields != n_columns:
                 raise HelpfileFormatError(
                     f'{path}, line {line_number}: {n_fields} fields against {n_columns} '
-                    'columns; an empty field would shift the later values, so the row '
-                    'cannot be read'
+                    'columns; the row would be read with its values in the wrong columns'
                 )
     return pd.read_csv(path, sep=r'\s+', float_precision='round_trip')
 
