@@ -3702,6 +3702,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -4079,6 +4083,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -4451,6 +4459,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -4837,6 +4849,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -5238,6 +5254,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -5610,6 +5630,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -5986,6 +6010,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -6358,6 +6386,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -6734,6 +6766,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -7106,6 +7142,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -7482,6 +7522,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -7854,6 +7898,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -8249,6 +8297,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -8640,6 +8692,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",
@@ -9035,6 +9091,10 @@
           "condition": "outgas.module = \"dummy\""
         },
         {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }
@@ -9426,6 +9486,10 @@
         {
           "file": "src/proteus/outgas/dummy.py",
           "condition": "outgas.module = \"dummy\""
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
         },
         {
           "file": "src/proteus/outgas/wrapper.py",

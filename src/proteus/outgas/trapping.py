@@ -81,7 +81,7 @@ Trapped mass must be excluded anywhere the code assumes the whole-planet
 inventory is reachable. :func:`locked_solid_mass` is the single definition of
 that exclusion, used by the escape step and the desiccation gate.
 :func:`trapped_mass_withheld` hides it from the chemistry for the duration of a
-solve, and :func:`keep_only_trapped_mass` keeps it through desiccation.
+solve, and :func:`hold_in_mantle` keeps it through desiccation.
 """
 
 from __future__ import annotations
@@ -413,33 +413,47 @@ def trapped_mass_withheld(hf_row: dict):
         restore_trapped_mass(hf_row)
 
 
-def keep_only_trapped_mass(hf_row: dict) -> None:
-    """Leave only the trapped mass in a row whose atmosphere and melt were emptied.
+# Species and elements whose reservoirs desiccation keeps while trapping is on.
+_MANTLE_HELD = (*vol_list, *vol_element_list, *noble_gases)
 
-    Desiccation empties the atmosphere and the melt, while what trapping buried
-    stays in the solid mantle. Once the outgassing reservoirs have been zeroed,
-    each trapped species and element gets its trapped mass back as its solid
-    reservoir, and the total of every volatile and noble element is set to what
-    it still holds, its trapped mass or zero, so that each total equals the sum of
-    its reservoirs.
+
+def mantle_totals(hf_row: dict) -> dict[str, float]:
+    """Whole-planet total of every volatile species and element [kg].
+
+    Read by :func:`run_desiccated` before it zeroes the outgassing columns,
+    some of which (the species totals, ``O_kg_total``) are among them.
     """
-    for species in vol_list:
-        mass = _trapped(hf_row, species)
-        if mass <= 0.0:
-            continue
-        mol = mass / eval_gas_mmw(species)
-        hf_row[f'{species}_kg_solid'] = mass
-        hf_row[f'{species}_kg_total'] = mass
-        hf_row[f'{species}_mol_solid'] = mol
-        hf_row[f'{species}_mol_total'] = mol
-    for element in (*vol_element_list, *noble_gases):
-        mass = _trapped(hf_row, element)
-        hf_row[f'{element}_kg_solid'] = mass
-        hf_row[f'{element}_kg_total'] = mass
-        if element in noble_gases:
-            mol = mass / eval_gas_mmw(element)
-            hf_row[f'{element}_mol_solid'] = mol
-            hf_row[f'{element}_mol_total'] = mol
+    return {name: float(hf_row.get(f'{name}_kg_total', 0.0)) for name in _MANTLE_HELD}
+
+
+def hold_in_mantle(hf_row: dict, totals: dict[str, float]) -> None:
+    """Refill a desiccated row: no atmosphere, everything else in the mantle.
+
+    Desiccation empties the atmosphere. It changes no total: each species and
+    element keeps ``totals``, its trapped mass stays in the solid, and the rest
+    of what the planet holds, total less trapped, sits in the melt. Mass a
+    remelt returns to the melt therefore stays there and in the total for as
+    long as the planet is desiccated, however many steps the remelt takes,
+    until :func:`check_desiccation` finds it above ``mass_thresh``.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row whose outgassing columns were just zeroed.
+    totals : dict
+        :func:`mantle_totals` of the row before the zeroing [kg].
+    """
+    for name in _MANTLE_HELD:
+        total = totals.get(name, 0.0)
+        solid = min(_trapped(hf_row, name), total)
+        hf_row[f'{name}_kg_liquid'] = total - solid
+        hf_row[f'{name}_kg_solid'] = solid
+        hf_row[f'{name}_kg_total'] = total
+        if name in vol_list or name in noble_gases:
+            mmw = eval_gas_mmw(name)
+            hf_row[f'{name}_mol_liquid'] = (total - solid) / mmw
+            hf_row[f'{name}_mol_solid'] = solid / mmw
+            hf_row[f'{name}_mol_total'] = total / mmw
 
 
 def _carried(hf_row: dict, species: str) -> bool:
