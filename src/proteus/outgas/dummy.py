@@ -39,9 +39,7 @@ _ELEMENT_TO_SPECIES = {
 }
 
 
-def calc_surface_pressures_dummy(
-    dirs: dict, config: Config, hf_row: dict, initial: bool = False
-):
+def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     """Compute volatile partitioning with parameterized model.
 
     Parameters
@@ -52,7 +50,7 @@ def calc_surface_pressures_dummy(
         PROTEUS configuration.
     hf_row : dict
         Helpfile row (modified in place).
-    initial : bool, optional
+    initial : bool
         Whether this is an init-stage iteration. Only then is an empty O budget
         derived from the outgassed species; later an emptied budget stays empty.
     """

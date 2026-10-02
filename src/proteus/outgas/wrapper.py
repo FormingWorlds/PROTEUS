@@ -333,7 +333,7 @@ def outgassing_sets_o_budget(config: Config) -> bool:
     )
 
 
-def run_outgassing(dirs: dict, config: Config, hf_row: dict, initial: bool = False):
+def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     """
     Run outgassing model to get new volatile surface pressures
 

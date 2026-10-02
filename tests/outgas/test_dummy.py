@@ -426,13 +426,17 @@ def test_dummy_outgas_keeps_a_positive_oxygen_budget():
 @pytest.mark.unit
 def test_dummy_outgas_derives_an_empty_oxygen_budget_only_in_the_init_stage():
     """In the init stage an empty O budget is derived from the outgassed species;
-    an O budget that escape or a strip emptied later stays at 0, so no oxygen is
-    created that the mass ledger does not hold."""
+    an O budget that escape or a strip emptied later stays at 0. The atmosphere
+    and melt still hold the stoichiometric O of the H2O, CO2 and SO2 built from
+    H, C and S, which O_kg_total does not bound with the dummy outgassing."""
     initial = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.5)
     _run(initial)
     later = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.5)
     _run(later, initial=False)
-    assert initial['O_kg_total'] > 1.0e19
+    assert initial['O_kg_total'] == pytest.approx(
+        initial['O_kg_atm'] + initial['O_kg_liquid'], rel=1e-12
+    )
+    assert initial['O_kg_total'] > 0.0
     assert later['O_kg_total'] == pytest.approx(0.0, abs=0.0)
 
 
