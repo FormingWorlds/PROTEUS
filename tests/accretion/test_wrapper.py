@@ -1876,6 +1876,59 @@ def test_the_dummy_structure_anchor_takes_the_rock_only(monkeypatch):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_an_init_stage_impact_keeps_the_dry_target_at_the_rock(monkeypatch):
+    """The init stage rebuilds the budgets from config after the impact, so the
+    delivered and stripped volatiles must not enter the anchor there; the next
+    structure solve then still finds the old dry mass plus the rock."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    solve = _converging_solve_structure()
+    monkeypatch.setattr('proteus.interior_energetics.wrapper.solve_structure', solve)
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0)
+    )
+    handler.init_stage = True
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    _atm_state(handler.hf_row, H=(4.0e21, 5.0e21))
+    event = _impact_event()
+    apply_impact(handler, event)
+    dry_at_impact = handler.hf_row['M_int']
+
+    # The init recompute restores the configured budget, then the structure re-solves.
+    _atm_state(handler.hf_row, H=(4.0e21, 5.0e21))
+    solve(None, handler.config, None, handler.hf_row, None)
+    assert handler.hf_row['M_int'] == pytest.approx(dry_at_impact, rel=1e-12)
+    rock = event.mass_delta - event.M_impactor * 1000.0 / 1.0e6
+    assert handler.hf_row['M_accreted_net'] == pytest.approx(rock, rel=1e-12)
+    assert handler.config.planet.mass_tot == pytest.approx(1.0 + rock / M_earth, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('where', ['impact', 'escape'])
+def test_a_non_finite_ledger_stops_the_anchor_update(where, monkeypatch):
+    """A NaN M_accreted_net raises at the next write instead of letting
+    mass_tot move while the ledger a resume reads is lost."""
+    from proteus.accretion.wrapper import apply_impact, debit_escaped_mass
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(accretion=_impact_accretion())
+    handler.config.accretion.module = 'dummy'
+    handler.hf_row['M_accreted_net'] = float('nan')
+    with pytest.raises(RuntimeError, match='M_accreted_net is not finite'):
+        if where == 'impact':
+            apply_impact(handler, _impact_event())
+        else:
+            debit_escaped_mass(handler.config, handler.hf_row, 1.0e20)
+    # The escape path refuses before it touches the anchor.
+    if where == 'escape':
+        assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize('bad', [float('nan'), float('inf'), float('-inf')])
 def test_resume_refuses_a_non_finite_net_column(bad):
     """A non-finite M_accreted_net cannot rebuild the mass and is refused."""

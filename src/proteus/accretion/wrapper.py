@@ -512,15 +512,14 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # the tracked-element total the budgets aggregate into.
     _apply_volatile_consequences(hf_row, strip, delivered, impactor_lost, f_loss)
 
-    # A whole-planet anchor follows the volatiles too, after the structure
-    # solve above, so that solve's dry target still holds the rock alone.
+    # A whole-planet anchor follows the volatiles too, after the structure solve
+    # above (its dry target holds the rock alone); not in the init stage, which
+    # rebuilds the budgets from config this iteration.
     net_volatiles = 0.0
-    if _anchor_includes_volatiles(config):
+    if _anchor_includes_volatiles(config) and not getattr(handler, 'init_stage', False):
         net_volatiles = sum(delivered.values()) - sum(strip.values())
         config.planet.mass_tot += net_volatiles / M_earth
-    hf_row['M_accreted_net'] = (
-        float(hf_row.get('M_accreted_net') or 0.0) + impactor_rock + net_volatiles
-    )
+    hf_row['M_accreted_net'] = _net_ledger(hf_row) + impactor_rock + net_volatiles
 
     # Raise the mantle to its initial condition; hotter parts keep their state.
     remelt_mantle(handler.directories, config, hf_row, handler.interior_o, event)
@@ -576,6 +575,23 @@ def _anchor_includes_volatiles(config: Config) -> bool:
     return config.interior_struct.module == 'zalmoxis'
 
 
+def _net_ledger(hf_row: dict) -> float:
+    """Return the ``M_accreted_net`` ledger [kg], absent read as zero.
+
+    Raises
+    ------
+    RuntimeError
+        If the ledger is not finite, which would leave ``mass_tot`` moving
+        while the record a resume rebuilds it from is lost.
+    """
+    net = float(hf_row.get('M_accreted_net') or 0.0)
+    if not math.isfinite(net):
+        raise RuntimeError(
+            f'M_accreted_net is not finite ({net!r}); the mass ledger is corrupt.'
+        )
+    return net
+
+
 def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
     """Lower the planet's total mass by the volatile mass escape removed.
 
@@ -597,12 +613,12 @@ def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
     if (
         config.accretion.module is None
         or not _anchor_includes_volatiles(config)
-        or not math.isfinite(escaped)
-        or escaped <= 0.0
+        or not 0.0 < escaped < math.inf
     ):
         return
+    net = _net_ledger(hf_row)
     config.planet.mass_tot -= escaped / M_earth
-    hf_row['M_accreted_net'] = float(hf_row.get('M_accreted_net') or 0.0) - escaped
+    hf_row['M_accreted_net'] = net - escaped
 
 
 def _apply_volatile_consequences(
