@@ -1010,6 +1010,14 @@ def test_earlier_snapshot_exists_counts_by_the_writers_naming(tmp_path):
     # A subyear step strictly after the older snapshot sees it.
     assert earlier_snapshot_exists(str(tmp_path), 100.6) is True
 
+    # A step whose name rounds down does not count its own snapshot as older.
+    t = 1.0e7 / 3.0
+    (data / f'{format_subyear_time(t)}_int.nc').write_text('this step')
+    assert earlier_snapshot_exists(str(tmp_path / 'none'), t) is False
+    assert earlier_snapshot_exists(str(tmp_path), t) is True  # the 100 yr file
+    (data / f'{format_subyear_time(100.0)}_int.nc').unlink()
+    assert earlier_snapshot_exists(str(tmp_path), t) is False
+
 
 def _retry_ladder_runner(
     *,
@@ -1019,6 +1027,7 @@ def _retry_ladder_runner(
     mass_tot=1.0,
     dt_requested=100.0,
     first_attempt_T_core=None,
+    first_state=None,
 ):
     """Build an AragogRunner whose solver returns one fixed result.
 
@@ -1045,6 +1054,9 @@ def _retry_ladder_runner(
         Core temperature the first attempt returns [K]. Set it above the
         sanity threshold to have that attempt rejected, so the accepted
         result comes from a retry.
+    first_state : SimpleNamespace, optional
+        Result of the first attempt (status, T_core, dt_actual, cvode_flag),
+        to steer the retry into the stiff or the atol-relaxing branch.
 
     Returns
     -------
@@ -1062,6 +1074,8 @@ def _retry_ladder_runner(
         states.insert(
             0, SimpleNamespace(status=status, T_core=first_attempt_T_core, dt_actual=dt_actual)
         )
+    if first_state is not None:
+        states.insert(0, first_state)
     solver = SimpleNamespace(
         parameters=SimpleNamespace(
             solver=SimpleNamespace(
@@ -1687,6 +1701,38 @@ def test_the_core_temperature_guard_stands_aside_for_a_giant_impact():
     with pytest.raises(RuntimeError):
         failed._solve_with_retry(prior, failed_interior)
     assert len(failed_attempts) == 6
+
+
+def _impact_step_after_a_failed_first_attempt(cvode_flag):
+    """Runner on an impact step whose first attempt fails with ``cvode_flag``
+    and whose retries return an 8000 K core-temperature jump."""
+    first = SimpleNamespace(status=-1, T_core=4000.0, dt_actual=0.0, cvode_flag=cvode_flag)
+    runner, interior_o, attempts = _retry_ladder_runner(
+        status=0, dt_actual=100.0, T_core=12000.0, first_state=first
+    )
+    interior_o.impact_reset_this_step = True
+    return runner, interior_o, attempts
+
+
+@pytest.mark.unit
+def test_the_giant_impact_exemption_holds_on_the_stiff_ladder():
+    """A first attempt that stalls on its step budget (cvode_flag -1) retries on
+    the stiff ladder at atol 1.0x, and the impact jump on that retry is kept."""
+    runner, interior_o, attempts = _impact_step_after_a_failed_first_attempt(-1)
+    out = runner._solve_with_retry({'Time': 7.68e5, 'T_cmb': 4000.0}, interior_o)
+    assert out.T_core == pytest.approx(12000.0, rel=1e-12)
+    assert len(attempts) == 2
+
+
+@pytest.mark.unit
+def test_the_giant_impact_exemption_ends_once_a_retry_relaxes_atol():
+    """Any other failure retries with a relaxed atol, the corruption source the
+    jump guard names, so on an impact step the same jump is rejected down the
+    whole ladder."""
+    runner, interior_o, attempts = _impact_step_after_a_failed_first_attempt(-3)
+    with pytest.raises(RuntimeError, match='T_core jump'):
+        runner._solve_with_retry({'Time': 7.68e5, 'T_cmb': 4000.0}, interior_o)
+    assert len(attempts) == 6
 
 
 @pytest.mark.unit

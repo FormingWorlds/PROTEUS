@@ -39,6 +39,10 @@ _INIT_STAGE_HORIZON_YR = 1.0
 # assumes a closed orbit throughout.
 _ECC_MAX = 0.99
 
+# Relative mismatch between a borrowed timeline's target mass and the planet
+# mass above which the run warns that collisions are sized for another body.
+_TARGET_MASS_RTOL = 0.1
+
 
 def init_accretion(handler: Proteus) -> list[ImpactEvent]:
     """Prepare the impact timeline for a run.
@@ -110,10 +114,32 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
 
     if not events and module in ('timeline', 'morrigan'):
         log.warning("Accretion module '%s' resolved to 0 impacts", module)
+    elif module in ('timeline', 'morrigan'):
+        _warn_target_mass_mismatch(events[0], config.planet.mass_tot * M_earth, 'configured')
 
     return _drop_events_before_start(
         events, handler.hf_row.get('Time', 0.0), resumed=bool(config.params.resume)
     )
+
+
+def _warn_target_mass_mismatch(event: ImpactEvent, m_planet: float, which: str) -> None:
+    """Warn when a borrowed timeline's target mass is not the planet's.
+
+    The impactor mass, loss fraction and impact energy of a timeline belong
+    to its dynamical bodies, so a target mass far from the simulated planet
+    applies collisions sized for another body.
+    """
+    if abs(event.M_target_before / m_planet - 1.0) > _TARGET_MASS_RTOL:
+        log.warning(
+            'Impact at t = %.4e yr: the timeline target mass %.3e kg differs from the '
+            '%s planet mass %.3e kg by more than %.0f %%; the collision is sized for '
+            'the timeline body, not this planet',
+            event.time,
+            event.M_target_before,
+            which,
+            m_planet,
+            100.0 * _TARGET_MASS_RTOL,
+        )
 
 
 def _as_float(val: object) -> float:
@@ -431,6 +457,11 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         event.id_impactor,
         event.mass_delta / M_earth,
     )
+    if config.accretion.module in ('timeline', 'morrigan'):
+        m_planet = _as_float(hf_row.get('M_planet'))
+        if not 0.0 < m_planet < math.inf:
+            m_planet = config.planet.mass_tot * M_earth
+        _warn_target_mass_mismatch(event, m_planet, 'running')
 
     # Calculate volatile stripping and delivery from the pre-impact state
     # before applying any mass updates.

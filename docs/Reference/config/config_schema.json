@@ -1721,7 +1721,7 @@
         "inst"
       ],
       "bounds": null,
-      "description": "Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit",
+      "description": "Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit. With 'inst' and the dummy star the semi-major axis follows the flux at every step, so a giant impact's orbit change is not applied.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -10003,7 +10003,7 @@
         "morrigan"
       ],
       "bounds": null,
-      "description": "Accretion module to use. Choices: None, \"dummy\", \"timeline\", \"morrigan\".",
+      "description": "Accretion module to use. Choices: None, \"dummy\", \"timeline\", \"morrigan\". A \"timeline\" or \"morrigan\" history is borrowed from its dynamical bodies: impactor masses, collision loss fractions and impact energies are theirs, not rescaled to this planet. A warning is logged when the timeline's target mass differs from the planet mass by more than 10 %, at load and per impact.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11238,6 +11238,19 @@
         "orbit.module"
       ],
       "doc": "Interior tidal heating requires an tides module to be enabled."
+    },
+    {
+      "validator": "warn_accretion_fixed_instellation_orbit",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion.module",
+        "orbit",
+        "star.module"
+      ],
+      "doc": "Warn that impacts cannot move an orbit the instellation flux fixes."
     },
     {
       "validator": "valid_escapedummy",

@@ -917,6 +917,28 @@ class TestImpactClamp:
         # only an active ceiling can produce 3e3 here.
         assert hf_row['Time'] + dt < t_impact
 
+    @pytest.mark.physics_invariant
+    def test_impact_maximum_leaves_a_step_that_does_not_reach_the_impact(self):
+        """The ceiling bounds the step that reaches the impact, not every step
+        while one is pending: a distant impact leaves the controller's step."""
+        from proteus.interior_energetics.timestep import next_step
+
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        steps = [
+            next_step(
+                _make_config(impact_maximum=cap),
+                {},
+                dict(hf_row),
+                hf_all,
+                1.0,
+                interior_o=_make_interior_o(t_next_impact=1.0e5 + 2.0e4),
+            )
+            for cap in (3.0e3, 0.0)
+        ]
+        assert steps[0] == pytest.approx(steps[1], rel=1e-12)
+        assert steps[0] == pytest.approx(8.0e3, rel=1e-6)
+
     def test_impact_maximum_does_not_shorten_a_step_already_below_it(self):
         """The ceiling never lengthens the step and stays inert once the
         remaining-time clamp has already produced something smaller."""

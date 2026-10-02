@@ -478,10 +478,11 @@ def next_step(
 
     # Align step with next scheduled giant impact, subject to optional
     # impact_maximum and dtfloor (the floor can overshoot by up to dtfloor).
+    # The ceiling bounds only a step that would reach the impact.
     if interior_o is not None and np.isfinite(interior_o.t_next_impact):
         dt_to_impact = interior_o.t_next_impact - hf_row['Time']
         impact_ceiling = float(config.params.dt.impact_maximum)
-        if impact_ceiling > 0.0:
+        if impact_ceiling > 0.0 and dtswitch >= dt_to_impact:
             dt_to_impact = min(dt_to_impact, impact_ceiling)
         dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
         dt_to_impact = max(dt_to_impact, dtfloor)

@@ -510,6 +510,19 @@ def test_scheduling_helpers_apply_each_impact_exactly_once():
 
 
 @pytest.mark.unit
+def test_a_landing_step_a_few_ulp_short_still_applies_the_impact_once():
+    """Rounding can end the step aimed at an impact just below its time; the
+    impact is applied by that step and not again by the next one."""
+    import math
+
+    t = 1.0e8 / 3.0
+    event = _event(time=t, M_target_before=6.0e24, M_impactor=6.4e23, M_merged_after=6.64e24)
+    short = math.nextafter(math.nextafter(t, 0.0), 0.0)
+    assert due_events([event], t - 3.0e3, short) == [event]
+    assert due_events([event], short, short + 3.0e3) == []
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
 def test_validator_accepts_the_analytic_two_body_collision():

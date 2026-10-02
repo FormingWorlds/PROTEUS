@@ -366,6 +366,10 @@ class Accretion:
     ----------
     module: str or None
         Accretion module to use. Choices: None, "dummy", "timeline", "morrigan".
+        A "timeline" or "morrigan" history is borrowed from its dynamical bodies:
+        impactor masses, collision loss fractions and impact energies are theirs,
+        not rescaled to this planet. A warning is logged when the timeline's target
+        mass differs from the planet mass by more than 10 %, at load and per impact.
     morrigan: Morrigan
         Parameters for the Morrigan giant-impact module.
     dummy: AccretionDummy

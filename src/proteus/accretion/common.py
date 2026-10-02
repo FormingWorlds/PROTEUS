@@ -415,7 +415,9 @@ def due_events(
 
     The interval is half-open, excluding ``time_previous`` and including
     ``time_now``, so an impact is applied exactly once no matter how the
-    timestep lands on it.
+    timestep lands on it. Both ends carry a relative tolerance of 1e-12, so a
+    step aimed at an impact still takes it when rounding ends it a few ulp
+    short.
 
     Parameters
     ----------
@@ -431,4 +433,6 @@ def due_events(
     due : list of ImpactEvent
         Impacts to apply for this step, in time order.
     """
-    return [e for e in events if time_previous < e.time <= time_now]
+    lo = time_previous + 1.0e-12 * max(1.0, abs(time_previous))
+    hi = time_now + 1.0e-12 * max(1.0, abs(time_now))
+    return [e for e in events if lo < e.time <= hi]

@@ -525,6 +525,60 @@ def test_accretion_with_rock_vapour_is_refused_at_config_load():
     )
 
 
+@pytest.mark.parametrize(
+    'module, method, star, model, warns',
+    [
+        ('dummy', 'inst', 'dummy', None, True),
+        (None, 'inst', 'dummy', None, False),
+        ('dummy', 'distance', 'dummy', None, False),
+        ('dummy', 'inst', 'mors', None, False),
+        ('dummy', 'inst', 'dummy', 'sp0d', False),
+    ],
+)
+def test_accretion_with_a_flux_fixed_orbit_warns_that_impacts_leave_the_orbit(
+    caplog, module, method, star, model, warns
+):
+    """Only where the orbit step rewrites the semi-major axis from the flux does
+    an accretion run warn that the impact orbit change is not applied."""
+    from types import SimpleNamespace
+
+    from proteus.config._config import warn_accretion_fixed_instellation_orbit
+
+    instance = SimpleNamespace(
+        accretion=SimpleNamespace(module=module),
+        orbit=SimpleNamespace(instellation_method=method, star_planet_model=model),
+        star=SimpleNamespace(module=star),
+    )
+    with caplog.at_level('WARNING'):
+        warn_accretion_fixed_instellation_orbit(instance, None, None)
+    hits = [r for r in caplog.records if 'instellationflux' in r.getMessage()]
+    assert [r.levelname for r in hits] == (['WARNING'] if warns else [])
+    assert all("'dummy'" in r.getMessage() for r in hits)
+
+
+@pytest.mark.unit
+def test_a_loaded_accretion_config_with_a_flux_fixed_orbit_warns(tmp_path, caplog):
+    """The warning is part of config load: the all-dummy config with accretion
+    and orbit.instellation_method = 'inst' logs it once."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    text = (PROTEUS_ROOT / 'input' / 'dummy.toml').read_text()
+    text = text.replace(
+        '    eccentricity  = 0.1\n',
+        '    eccentricity  = 0.1\n    instellation_method = "inst"\n',
+        1,
+    )
+    path = tmp_path / 'acc_inst.toml'
+    path.write_text(text + '\n[accretion]\n    module = "dummy"\n')
+    with caplog.at_level('WARNING'):
+        cfg = read_config_object(path)
+    hits = [r for r in caplog.records if 'instellationflux' in r.getMessage()]
+    assert cfg.orbit.instellation_method == 'inst'
+    assert len(hits) == 1
+
+
 def test_embryo_spacing_is_bounded_on_both_sides():
     """Embryo spacing is refused at zero and above the sanity ceiling.
 

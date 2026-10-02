@@ -390,7 +390,7 @@ class Orbit:
     eccentricity: float
         Initial Eccentricity of the planet's orbit.
     instellation_method: str
-        Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit
+        Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit. With 'inst' and the dummy star the semi-major axis follows the flux at every step, so a giant impact's orbit change is not applied.
     instellationflux: float
         Instellation flux initially received by the planet in Earth units.
 

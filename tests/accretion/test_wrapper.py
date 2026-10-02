@@ -94,12 +94,32 @@ def _handler(
                 ),
             ),
             interior_energetics=SimpleNamespace(module=interior_module),
-            planet=SimpleNamespace(temperature_mode=temperature_mode),
+            planet=SimpleNamespace(temperature_mode=temperature_mode, mass_tot=1.0),
             params=SimpleNamespace(resume=resume),
         ),
         directories={'output': str(output_dir) if output_dir is not None else '.'},
         hf_row={'Time': time_start},
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'mass_tot, warns', [(1.0, False), (1.08, False), (1.13, True), (5.0, True)]
+)
+def test_a_borrowed_timeline_sized_for_another_body_warns_at_load(
+    tmp_path, caplog, mass_tot, warns
+):
+    """The first impact's target mass (6.0e24 kg) is compared with the planet
+    mass: within 10 % the timeline loads quietly, beyond it the run warns."""
+    handler = _handler(
+        module='timeline', timeline_path=_timeline_file(tmp_path / 't.csv'), output_dir=tmp_path
+    )
+    handler.config.planet.mass_tot = mass_tot
+    with caplog.at_level('WARNING'):
+        events = init_accretion(handler)
+    hits = [r for r in caplog.records if 'timeline target mass' in r.getMessage()]
+    assert len(events) == 2
+    assert [r.levelname for r in hits] == (['WARNING'] if warns else [])
 
 
 @pytest.mark.unit
@@ -231,6 +251,7 @@ def _impact_accretion(atmloss_module=None, atmloss_frac=0.0, impactor_volatiles=
     if impactor_volatiles is None:
         impactor_volatiles = 'ppmw' if any(v > 0.0 for v in ppmw.values()) else 'dry'
     return SimpleNamespace(
+        module='dummy',
         impactor_volatiles=impactor_volatiles,
         impactor_H_ppmw=ppmw.get('H', 0.0),
         impactor_C_ppmw=ppmw.get('C', 0.0),
@@ -284,6 +305,38 @@ def _impact_handler(
         desiccated=desiccated,
         directories={'output': '/tmp/unused'},
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'module, m_planet, mass_tot, warns',
+    [
+        ('timeline', 3.0e25, 1.0, True),
+        ('morrigan', 6.1e24, 1.0, False),
+        ('timeline', None, 5.0, True),
+        ('timeline', None, 1.0, False),
+        ('dummy', 3.0e25, 1.0, False),
+    ],
+)
+def test_an_impact_from_a_borrowed_timeline_warns_on_a_target_mass_mismatch(
+    monkeypatch, caplog, module, m_planet, mass_tot, warns
+):
+    """Each borrowed impact compares its target mass (6.0e24 kg) with the running
+    planet mass, or mass_tot without one; the dummy module derives its own."""
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(mass_tot=mass_tot)
+    handler.config.accretion.module = module
+    if m_planet is not None:
+        handler.hf_row['M_planet'] = m_planet
+    with caplog.at_level('WARNING'):
+        apply_impact(handler, _impact_event())
+    hits = [r for r in caplog.records if 'timeline target mass' in r.getMessage()]
+    assert [r.levelname for r in hits] == (['WARNING'] if warns else [])
+    assert all('running planet mass' in r.getMessage() for r in hits)
 
 
 @pytest.mark.unit

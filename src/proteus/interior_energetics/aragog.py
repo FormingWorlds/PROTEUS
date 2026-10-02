@@ -2149,8 +2149,9 @@ class AragogRunner:
         sanity_dT_core = max(
             3000.0, 1500.0 * mass_tot
         )  # max plausible T_core change per retry [K]
-        # Giant impacts cause real T_core jumps that retries cannot reduce.
-        # Skip the sanity check on impact steps to prevent false ladder exhaustion.
+        # Giant impacts cause real T_core jumps that retries cannot reduce, so the
+        # jump check is skipped on an impact step while atol is not relaxed; an
+        # atol-relaxed attempt is the corruption source the check exists for.
         impact_step = bool(getattr(interior_o, 'impact_reset_this_step', False))
 
         # Immediately before the solve, so the state-heat integral this step
@@ -2255,7 +2256,7 @@ class AragogRunner:
 
                     # Reject non-finite CMB temperatures and implausibly large jumps.
                     # The jump-magnitude check is inactive when T_core_pre <= 0
-                    # or during an impact step.
+                    # or during an impact step at unrelaxed atol.
                     tcore_endpoint = float(out.T_core)
                     # tcore_change_max is the intra-solve maximum change,
                     # >= the endpoint change by construction; on an older
@@ -2272,7 +2273,7 @@ class AragogRunner:
                             if tcore_change_max is not None
                             else abs(tcore_endpoint - T_core_pre)
                         )
-                        if dT > sanity_dT_core and impact_step:
+                        if dT > sanity_dT_core and impact_step and solver._atol_sf == 1.0:
                             log.info(
                                 'T_core jumped %.1f K (>%.0f K threshold) on '
                                 'the step a giant impact re-melted the '
@@ -2854,8 +2855,8 @@ def earlier_snapshot_exists(output_dir: str, time: float) -> bool:
     bool
         Whether at least one older snapshot exists.
     """
-    # Compared against the stems on disk, handling both integer and subyear names.
-    cutoff = float(time)
+    # Compared against the stems on disk, so the cutoff rounds like the writer.
+    cutoff = parse_subyear_time(format_subyear_time(time))
     for fpath in glob.glob(os.path.join(output_dir, 'data', '*_int.nc')):
         stem = os.path.basename(fpath).split('_int.nc')[0]
         try:
