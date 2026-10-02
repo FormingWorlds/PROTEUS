@@ -1367,6 +1367,48 @@ def test_guard_keeps_unpushed_work_on_a_branch_that_is_not_checked_out(tmp_path,
 
 
 @pytest.mark.unit
+def test_every_refreshing_installer_guards_before_it_deletes():
+    """An installer that deletes and re-clones a checkout guards it first.
+
+    What protects a developer's unpushed work is not that the helper exists
+    but that every installer wiping a checkout calls it, and calls it before
+    the delete. An installer that forgets is how the protection goes missing,
+    and the per-script cases above cannot see it: they exercise the helper,
+    not its callers.
+    """
+    deletes = re.compile(r'^\s*rm -rf "\$[a-z_]+"')
+    sources = {p.name: p.read_text().splitlines() for p in _get_scripts()}
+    refreshing = {
+        name: lines
+        for name, lines in sources.items()
+        if any(deletes.search(ln) for ln in lines) and any('git clone' in ln for ln in lines)
+    }
+
+    # Guard the guard: discovery has to find the installers that replace a
+    # sibling checkout, and leave out the one that unpacks an archive and so
+    # has no git history to lose.
+    assert set(refreshing) >= {'get_morrigan.sh', 'get_boreas.sh', 'get_socrates.sh'}, sorted(
+        refreshing
+    )
+    assert 'get_petsc.sh' not in refreshing, 'the archive installer holds no git history'
+    assert len(refreshing) >= 8, sorted(refreshing)
+
+    unguarded, late = [], []
+    for name, lines in refreshing.items():
+        guard = next(
+            (i for i, ln in enumerate(lines) if ln.startswith('guard_dirty_checkout')), None
+        )
+        first_delete = next(i for i, ln in enumerate(lines) if deletes.search(ln))
+        if guard is None:
+            unguarded.append(name)
+        elif guard > first_delete:
+            late.append(name)
+
+    assert unguarded == [], f'installers replace a checkout with no guard: {unguarded}'
+    assert late == [], f'installers delete before they guard: {late}'
+
+
+@pytest.mark.unit
 def test_morrigan_guard_protects_its_own_checkout(tmp_path):
     """The accretion installer guards the ``Morrigan/`` checkout it deletes.
 
