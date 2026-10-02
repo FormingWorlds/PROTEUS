@@ -130,9 +130,9 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
 
         # The dummy structure's mass_tot is the dry mass: a dry impactor grows
         # it by exactly the delivered rock; the strip moves only the budgets.
-        assert runner.config.planet.mass_tot == pytest.approx(mass_before + delivered, rel=1e-6)
+        assert runner.config.planet.mass_tot == pytest.approx(mass_before + delivered, rel=1e-9)
         assert float(hf['M_accreted_net'].iloc[-1]) == pytest.approx(
-            delivered * M_earth, rel=1e-6
+            delivered * M_earth, rel=1e-9
         )
 
         # The ledger a resumed run reads back was written, never decreases, and

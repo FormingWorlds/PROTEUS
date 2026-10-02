@@ -1820,7 +1820,7 @@ def test_resume_of_a_helpfile_without_the_net_column_uses_the_rock():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_a_resume_after_a_legacy_resume_keeps_the_rock(monkeypatch):
+def test_a_resume_after_a_legacy_resume_keeps_the_rock():
     """The legacy fallback stores the rock in the ledger, so a later escape
     debit and a second resume give the uninterrupted mass."""
     import pandas as pd
@@ -1868,9 +1868,10 @@ def test_the_dummy_structure_anchor_takes_the_rock_only(monkeypatch):
     rock = event.mass_delta - content
     assert handler.config.planet.mass_tot == pytest.approx(1.0 + rock / M_earth, rel=1e-12)
     assert handler.hf_row['M_accreted_net'] == pytest.approx(rock, rel=1e-12)
-    # The volatiles moved in the budgets: half the atmosphere stripped, the
-    # unexposed part of the content delivered.
-    delivered = content * (1.0 - 0.8 * 0.5)
+    # The volatiles moved in the budgets: half the atmosphere stripped, and the
+    # content delivered less the exposed (mirrored f_atm) part the loss takes.
+    f_atm = 4.0e21 / 5.0e21
+    delivered = content * (1.0 - f_atm * 0.5)
     assert handler.hf_row['H_kg_total'] == pytest.approx(5.0e21 - 2.0e21 + delivered, rel=1e-9)
 
 

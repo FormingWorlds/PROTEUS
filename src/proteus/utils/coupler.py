@@ -1005,7 +1005,7 @@ def GetHelpfileKeys():
         # Giant-impact accretion ledger: the rock added and the net change of
         # the mass anchor, so a resume can rebuild the anchor.
         'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
-        'M_accreted_net',   # cumulative change of the mass anchor by impacts and escape [kg]
+        'M_accreted_net',   # cumulative change of mass_tot: rock, plus net volatiles and escape with Zalmoxis [kg]
         'n_impacts_applied',  # count of giant impacts applied [1]
     ]
 

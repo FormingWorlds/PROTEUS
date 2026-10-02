@@ -25,9 +25,6 @@ _VOLATILE_ELEMENTS = tuple(e for e in element_list if e in vol_element_list or e
 # set above, noble gases included.
 _PPMW_ELEMENTS = ('H', 'C', 'N', 'S', 'O')
 
-# Structure modules whose mass_tot is the whole-planet mass (the solve subtracts
-# the volatile budgets); the dummy structure takes mass_tot as the dry mass.
-_TOTAL_MASS_STRUCTURES = ('spider', 'zalmoxis')
 
 # Where the run records the impact timeline it resolved at initialisation, in
 # its own output directory. A resumed run replays this file instead of asking
@@ -423,9 +420,9 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
     The impactor's rock is added to the planet's total mass and the interior
     structure is re-solved, so the radius, gravity and the core/mantle split
-    follow the new mass at the configured core fraction. With a whole-planet
-    structure (Zalmoxis, SPIDER) the delivered volatiles minus the stripped
-    atmosphere are then added to ``mass_tot`` as well. ``M_accreted_net``
+    follow the new mass at the configured core fraction. With the Zalmoxis
+    structure the delivered volatiles minus the stripped atmosphere are then
+    added to ``mass_tot`` as well. ``M_accreted_net``
     records the cumulative change of ``mass_tot``. The orbit change
     updates the running row base (which tides evolve) and the configuration
     reflects the current post-impact orbit.
@@ -520,7 +517,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # A whole-planet anchor follows the volatiles too, after the structure
     # solve above, so that solve's dry target still holds the rock alone.
     net_volatiles = 0.0
-    if config.interior_struct.module in _TOTAL_MASS_STRUCTURES:
+    if _anchor_includes_volatiles(config):
         net_volatiles = sum(delivered.values()) - sum(strip.values())
         config.planet.mass_tot += net_volatiles / M_earth
     hf_row['M_accreted_net'] = (
@@ -576,14 +573,23 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     )
 
 
+def _anchor_includes_volatiles(config: Config) -> bool:
+    """Whether ``planet.mass_tot`` is the whole-planet mass, volatiles included.
+
+    Zalmoxis solves for ``mass_tot`` minus the volatile budgets; the dummy
+    structure takes ``mass_tot`` as the dry mass. SPIDER, the third structure,
+    is refused with an accretion module at config load.
+    """
+    return config.interior_struct.module == 'zalmoxis'
+
+
 def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
     """Lower the planet's total mass by the volatile mass escape removed.
 
-    A whole-planet structure (Zalmoxis, SPIDER) solves for ``mass_tot`` minus
-    the volatile budgets, so escaped volatiles left in ``mass_tot`` come back as
-    rock at the next structure solve. Applied only with an accretion module
-    selected and such a structure; the dummy structure takes ``mass_tot`` as the
-    dry mass. The debit includes any element the escape step set to zero below
+    The Zalmoxis structure solves for ``mass_tot`` minus the volatile budgets,
+    so escaped volatiles left in ``mass_tot`` come back as rock at the next
+    structure solve. Applied only with an accretion module selected and the
+    Zalmoxis structure; the dummy structure takes ``mass_tot`` as the dry mass. The debit includes any element the escape step set to zero below
     the outgassing threshold, which ``esc_kg_cumulative`` does not count.
 
     Parameters
@@ -597,7 +603,7 @@ def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
     """
     if (
         config.accretion.module is None
-        or config.interior_struct.module not in _TOTAL_MASS_STRUCTURES
+        or not _anchor_includes_volatiles(config)
         or not math.isfinite(escaped)
         or escaped <= 0.0
     ):

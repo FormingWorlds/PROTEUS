@@ -3007,7 +3007,7 @@
     {
       "name": "M_accreted_net",
       "unit": "kg",
-      "description": "cumulative change of the mass anchor by impacts and escape",
+      "description": "cumulative change of mass_tot: rock, plus net volatiles and escape with Zalmoxis",
       "group": "Giant-impact accretion ledger",
       "origin": "literal",
       "producers": [
