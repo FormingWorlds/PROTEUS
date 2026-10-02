@@ -586,6 +586,18 @@ def test_helpfile_with_empty_nan_fields_reads_in_place(tmp_path):
 
 
 @pytest.mark.unit
+def test_tab_only_line_reads_as_a_row_of_nan(tmp_path):
+    """In a tab file a line of one tab is a row of two empty fields, as pandas reads it."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(b'a\tb\n1\t2\n\t\n5\t6\n')
+
+    table = read_helpfile_table(path, min_rows=3)
+
+    assert table['a'].isna().tolist() == [False, True, False]
+    assert table['b'].iloc[2] == 6
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ('data', 'min_rows'),
     [
@@ -594,8 +606,20 @@ def test_helpfile_with_empty_nan_fields_reads_in_place(tmp_path):
         (b'a\tb\n', 1),  # header only, a row needed
         (b'a b c\n"x 3 4\n5 6 7\n', 0),  # text pandas cannot tokenise
         (b'a b\n1 2\n3 \xff\n', 0),  # not UTF-8
+        (b'a\tb\n\t\t\n1\t2\n', 0),  # a tab file row with one field too many
+        (b'a\tb\n1\t2\n \t \n', 0),  # spaces read as text in a tab file
+        (b'a\tb\n"1\t2\n3\t4"\t5\n', 0),  # a quoted field across lines
     ],
-    ids=['empty', 'whitespace', 'header-only', 'unbalanced-quote', 'not-utf8'],
+    ids=[
+        'empty',
+        'whitespace',
+        'header-only',
+        'unbalanced-quote',
+        'not-utf8',
+        'tab-row-too-long',
+        'tab-text',
+        'quoted-lines',
+    ],
 )
 def test_unreadable_helpfile_raises_one_error_naming_file_and_line(tmp_path, data, min_rows):
     """Every unreadable helpfile raises HelpfileFormatError naming the file and a line."""
@@ -626,32 +650,61 @@ _PLAIN_HELPFILE_READERS = {
 }
 
 
-@pytest.mark.unit
-def test_helpfile_is_read_with_read_csv_only_by_display_code():
-    """A read_csv of the helpfile outside the display readers would skip the exact
-    parser and the field-count check; a call counts when its path names a helpfile
-    or its function mentions runtime_helpfile."""
+def _helpfile_readers(root):
+    """Files under ``root``/src and ``root``/tools that read a table file with pandas or
+    numpy where the path names a helpfile or the enclosing scope mentions runtime_helpfile."""
     import ast
     from pathlib import Path
 
-    root = Path(__file__).resolve().parents[2]
-    readers = set()
+    root, found = Path(root), set()
     for path in sorted([*(root / 'src').rglob('*.py'), *(root / 'tools').rglob('*.py')]):
         text = path.read_text()
-        for fn in ast.walk(ast.parse(text)):
-            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        tree = ast.parse(text)
+        scopes = [
+            n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        for call in ast.walk(tree):
+            func = getattr(call, 'func', None)
+            name = getattr(func, 'attr', getattr(func, 'id', None))
+            if not isinstance(call, ast.Call) or name not in _TABLE_READERS:
                 continue
-            body = ast.get_source_segment(text, fn) or ''
-            for call in ast.walk(fn):
-                name = getattr(getattr(call, 'func', None), 'attr', None)
-                if isinstance(call, ast.Call) and name == 'read_csv' and call.args:
-                    arg = ast.get_source_segment(text, call.args[0]) or ''
-                    if re.search(r'helpfile|\bhf', arg) or 'runtime_helpfile' in body:
-                        readers.add(path.relative_to(root).as_posix())
+            keys = ('filepath_or_buffer', 'fname')
+            arg = (
+                call.args[0]
+                if call.args
+                else next((k.value for k in call.keywords if k.arg in keys), None)
+            )
+            inner = [s for s in scopes if s.lineno <= call.lineno <= s.end_lineno]
+            scope = min(inner, key=lambda s: s.end_lineno - s.lineno) if inner else tree
+            if re.search(
+                r'helpfile|\bhf', ast.get_source_segment(text, arg) or '' if arg else ''
+            ) or ('runtime_helpfile' in (ast.get_source_segment(text, scope) or text)):
+                found.add(path.relative_to(root).as_posix())
+    return found
+
+
+_TABLE_READERS = {'read_csv', 'read_table', 'loadtxt', 'genfromtxt'}
+
+
+@pytest.mark.unit
+def test_helpfile_is_read_with_read_csv_only_by_display_code(tmp_path):
+    """A table read of the helpfile outside the display readers would skip the exact
+    parser and the field-count check; the scan also finds module-level reads, bare
+    read_csv names and keyword paths."""
+    from pathlib import Path
+
+    readers = _helpfile_readers(Path(__file__).resolve().parents[2])
 
     assert readers - _PLAIN_HELPFILE_READERS == set()
-    # Guard the guard: the scan finds the display readers it allows.
-    assert 'src/proteus/plot/cpl_global.py' in readers
+    # Guard the guard: the scan finds the forms a new reader could take.
+    (tmp_path / 'src').mkdir()
+    (tmp_path / 'src' / 'a.py').write_text(
+        "from pandas import read_csv\nt = read_csv(filepath_or_buffer='o/runtime_helpfile.csv')\n"
+    )
+    (tmp_path / 'src' / 'b.py').write_text(
+        "import numpy as np\ndef f(p):\n    q = p + '/runtime_helpfile.csv'\n    return np.loadtxt(q)\n"
+    )
+    assert _helpfile_readers(tmp_path) == {'src/a.py', 'src/b.py'}
 
 
 @pytest.mark.unit

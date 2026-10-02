@@ -1363,15 +1363,6 @@ class HelpfileFormatError(ValueError):
     """A helpfile that cannot be read as a table of one row per step."""
 
 
-def _is_utf8(raw: bytes) -> bool:
-    """Whether a byte string decodes as UTF-8."""
-    try:
-        raw.decode('utf-8')
-    except UnicodeDecodeError:
-        return False
-    return True
-
-
 def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.DataFrame:
     """Read a helpfile table with every float exactly as it was written.
 
@@ -1403,38 +1394,47 @@ def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.Dat
         NaN, would vanish and move the later values left, so its row is refused. The
         underlying error is chained.
     """
-    line_number = 0
-    try:
-        with open(path, encoding='utf-8') as f:
-            sep = None
-            n_columns = n_rows = 0
-            for line_number, line in enumerate(f, start=1):
-                if not line.strip():
-                    continue
-                if not n_columns:
+    sep, n_columns, n_rows = None, 0, 0
+    with open(path, 'rb') as f:
+        for line_number, raw in enumerate(f, start=1):
+            try:
+                line = raw.decode('utf-8')
+            except UnicodeDecodeError as err:
+                raise HelpfileFormatError(
+                    f'{path}, line {line_number}: not UTF-8 text'
+                ) from err
+            if not n_columns:
+                if line.strip():
                     sep = '\t' if '\t' in line else None
-                    n_columns = len(line.rstrip('\r\n').split(sep))
-                    continue
-                n_fields = len(line.rstrip('\r\n').split(sep))
-                if n_fields != n_columns:
-                    raise HelpfileFormatError(
-                        f'{path}, line {line_number}: {n_fields} fields against '
-                        f'{n_columns} columns, so the values cannot be placed'
-                    )
-                n_rows += 1
-        if not n_columns:
-            raise HelpfileFormatError(f'{path}, line {line_number + 1}: no header line')
-        if n_rows < min_rows:
-            raise HelpfileFormatError(
-                f'{path}, line {line_number + 1}: {n_rows} data rows, {min_rows} needed'
-            )
-        return pd.read_csv(path, sep=sep or r'\s+', float_precision='round_trip')
-    except UnicodeDecodeError as err:
-        with open(path, 'rb') as f:
-            bad = next((n for n, raw in enumerate(f, start=1) if not _is_utf8(raw)), 0)
-        raise HelpfileFormatError(f'{path}, line {bad}: not UTF-8 text') from err
+                    n_columns = len(line.split(sep))
+                continue
+            # In a tab file a tab-only line is a row of empty fields, not a blank line.
+            if not (line.strip(' \r\n') if sep else line.strip()):
+                continue
+            n_fields = len(line.split(sep))
+            if n_fields != n_columns:
+                raise HelpfileFormatError(
+                    f'{path}, line {line_number}: {n_fields} fields against '
+                    f'{n_columns} columns, so the values cannot be placed'
+                )
+            n_rows += 1
+    if not n_columns:
+        raise HelpfileFormatError(f'{path}, line 1: no header line')
+    if n_rows < min_rows:
+        raise HelpfileFormatError(
+            f'{path}, line {n_rows + 2}: {n_rows} data rows, {min_rows} needed'
+        )
+    try:
+        table = pd.read_csv(path, sep=sep or r'\s+', float_precision='round_trip')
     except pd.errors.ParserError as err:
         raise HelpfileFormatError(f'{path}: {err}') from err
+    text_columns = list(table.select_dtypes(exclude='number').columns)
+    if table.shape != (n_rows, n_columns) or text_columns:
+        raise HelpfileFormatError(
+            f'{path}, line 1: pandas read {table.shape[0]} rows of {table.shape[1]} columns '
+            f'against {n_rows} of {n_columns} in the file, text in {text_columns[:3]}'
+        )
+    return table
 
 
 class HelpfileRow(dict):
