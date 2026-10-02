@@ -607,10 +607,9 @@ def calc_new_elements(
         # `_kg_total` whichever reservoir sized it. The threshold is applied to the
         # escapable remainder, so a locked reservoir cannot hold the total above it.
         locked = locked_solid_mass(hf_row, e)
-        # Noble gases are trace by nature (Earth-like inventories sit orders of
-        # magnitude below min_thresh), so they are exempt from the desiccation floor
-        # that empties a depleted major volatile, and only clamp to the locked mass.
-        if e not in noble_gases and (new_total - locked) < min_thresh:
+        # A major volatile whose whole total drops below min_thresh is empty but for
+        # its locked mass. Noble gases are trace by nature, so they are exempt.
+        if e not in noble_gases and new_total < min_thresh:
             new_total = locked
         tgt[e] = max(locked, new_total)
 
