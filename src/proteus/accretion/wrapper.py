@@ -25,7 +25,6 @@ _VOLATILE_ELEMENTS = tuple(e for e in element_list if e in vol_element_list or e
 # set above, noble gases included.
 _PPMW_ELEMENTS = ('H', 'C', 'N', 'S', 'O')
 
-
 # Where the run records the impact timeline it resolved at initialisation, in
 # its own output directory. A resumed run replays this file instead of asking
 # the module for a timeline again.
@@ -422,10 +421,9 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     structure is re-solved, so the radius, gravity and the core/mantle split
     follow the new mass at the configured core fraction. With the Zalmoxis
     structure the delivered volatiles minus the stripped atmosphere are then
-    added to ``mass_tot`` as well. ``M_accreted_net``
-    records the cumulative change of ``mass_tot``. The orbit change
-    updates the running row base (which tides evolve) and the configuration
-    reflects the current post-impact orbit.
+    added to ``mass_tot`` as well. ``M_accreted_net`` records the cumulative
+    change of ``mass_tot``. The orbit change updates the running row base (which
+    tides evolve) and the configuration reflects the current post-impact orbit.
 
     Parameters
     ----------
@@ -574,23 +572,18 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
 
 def _anchor_includes_volatiles(config: Config) -> bool:
-    """Whether ``planet.mass_tot`` is the whole-planet mass, volatiles included.
-
-    Zalmoxis solves for ``mass_tot`` minus the volatile budgets; the dummy
-    structure takes ``mass_tot`` as the dry mass. SPIDER, the third structure,
-    is refused with an accretion module at config load.
-    """
+    """Whether ``mass_tot`` is the whole-planet mass (Zalmoxis), not the dry mass (dummy)."""
     return config.interior_struct.module == 'zalmoxis'
 
 
 def debit_escaped_mass(config: Config, hf_row: dict, escaped: float) -> None:
     """Lower the planet's total mass by the volatile mass escape removed.
 
-    The Zalmoxis structure solves for ``mass_tot`` minus the volatile budgets,
-    so escaped volatiles left in ``mass_tot`` come back as rock at the next
-    structure solve. Applied only with an accretion module selected and the
-    Zalmoxis structure; the dummy structure takes ``mass_tot`` as the dry mass. The debit includes any element the escape step set to zero below
-    the outgassing threshold, which ``esc_kg_cumulative`` does not count.
+    The Zalmoxis structure solves for ``mass_tot`` minus the volatiles its mantle
+    EOS does not hold, so escaped volatiles left in ``mass_tot`` come back as rock
+    at the next structure solve. The debit includes any element the escape step
+    set to zero below the outgassing threshold, which ``esc_kg_cumulative`` does
+    not count.
 
     Parameters
     ----------

@@ -1696,8 +1696,8 @@ def test_a_resumed_run_rebuilds_the_mass_and_orbit_the_impacts_moved():
 
 @pytest.mark.unit
 def test_debit_escaped_mass_lowers_only_a_whole_planet_anchor_with_accretion():
-    """Escape lowers mass_tot and the ledger with an accretion module and a
-    whole-planet structure; never with the dummy structure or accretion off."""
+    """Escape lowers mass_tot and the ledger with an accretion module and the
+    Zalmoxis structure; never with the dummy structure or accretion off."""
     from proteus.accretion.wrapper import debit_escaped_mass
     from proteus.utils.constants import M_earth
 
@@ -1864,7 +1864,7 @@ def test_the_dummy_structure_anchor_takes_the_rock_only(monkeypatch):
     event = _impact_event()
     apply_impact(handler, event)
 
-    content = 6.4e23 * 1000.0 / 1.0e6
+    content = event.M_impactor * 1000.0 / 1.0e6
     rock = event.mass_delta - content
     assert handler.config.planet.mass_tot == pytest.approx(1.0 + rock / M_earth, rel=1e-12)
     assert handler.hf_row['M_accreted_net'] == pytest.approx(rock, rel=1e-12)
