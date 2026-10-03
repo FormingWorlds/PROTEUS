@@ -5457,48 +5457,6 @@
       "group_qualifier": null
     },
     {
-      "path": "interior_energetics.aragog.core_module.rho_cen",
-      "toml_section": "interior_energetics.aragog.core_module",
-      "class": "AragogCoreModule",
-      "type": "float",
-      "accepts_none": false,
-      "default": "12500.0",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Density at the planet centre [kg m-3] of the Gaussian core profile.",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
-      "path": "interior_energetics.aragog.core_module.length_scale",
-      "toml_section": "interior_energetics.aragog.core_module",
-      "class": "AragogCoreModule",
-      "type": "float",
-      "accepts_none": false,
-      "default": "7272000.0",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Gaussian density length scale L [m].",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
       "path": "interior_energetics.aragog.core_module.alpha",
       "toml_section": "interior_energetics.aragog.core_module",
       "class": "AragogCoreModule",

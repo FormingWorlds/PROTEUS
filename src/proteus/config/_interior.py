@@ -173,10 +173,6 @@ class AragogCoreModule:
 
     Attributes
     ----------
-    rho_cen: float
-        Density at the planet centre [kg m-3] of the Gaussian core profile.
-    length_scale: float
-        Gaussian density length scale L [m].
     alpha: float
         Core thermal expansion coefficient [K-1].
     c_p: float
@@ -223,8 +219,6 @@ class AragogCoreModule:
         'const_flux' or 'zero_outer'.
     """
 
-    rho_cen: float = field(default=12500.0, validator=gt(0))
-    length_scale: float = field(default=7272e3, validator=gt(0))
     alpha: float = field(default=1.35e-5, validator=gt(0))
     c_p: float = field(default=840.0, validator=gt(0))
     melting_curve: str = field(default='iron', validator=in_(('iron', 'quadratic')))

@@ -312,7 +312,12 @@ def test_aragog_core_module_defaults_and_mode_validator():
 
     aragog = Aragog()
     cm = aragog.core_module
-    assert cm.rho_cen == pytest.approx(12500.0)
+    assert not hasattr(cm, 'rho_cen')
+    assert not hasattr(cm, 'length_scale')
+    with pytest.raises(TypeError):
+        AragogCoreModule(rho_cen=12500.0)
+    with pytest.raises(TypeError):
+        AragogCoreModule(length_scale=7272e3)
     assert cm.melting_curve == 'iron'
     assert cm.light_element_fraction == pytest.approx(0.0)  # pure iron
     assert cm.q_radio == pytest.approx(0.0)

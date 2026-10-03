@@ -519,11 +519,10 @@ config_version = "3.0"
         phase_boundary_cap            = "rate"     # phase-boundary max_step policy: "rate" (default) | "fixed"
 
         # Staged core evolution; read when core_bc = "core_module". The CMB radius and
-        # pressure always come from the running mesh, so only material and model
+        # pressure always come from the running mesh, and central density and length scale
+        # are fitted to interior structure constraints, so only material and model
         # choices appear here.
         [interior_energetics.aragog.core_module]
-            rho_cen                = 12500.0   # central density [kg m-3] of the Gaussian core profile
-            length_scale           = 7272e3    # Gaussian density length scale L [m]
             alpha                  = 1.35e-5   # core thermal expansion coefficient [K-1]
             c_p                    = 840.0     # core specific heat capacity [J kg-1 K-1]
             melting_curve          = "iron"    # iron (Anzellini et al. 2013 via PALEOS) | quadratic (Nimmo 2015 Eq. 6)
