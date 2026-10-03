@@ -774,9 +774,14 @@ class AragogRunner:
             # Structure constraints from hf_row feed the Gaussian profile fit.
             m_core_val = float(hf_row.get('M_core', 0.0) or 0.0)
             p_cen_val = float(hf_row.get('P_center', 0.0) or 0.0)
-            if m_core_val > 0.0 and p_cen_val > 0.0:
-                core_module_params['m_core'] = m_core_val
-                core_module_params['p_cen'] = p_cen_val
+            if m_core_val <= 0.0 or p_cen_val <= 0.0:
+                struct_mod = config.interior_struct.module
+                raise ValueError(
+                    f"core_bc='core_module' requires positive M_core and P_center from interior structure, "
+                    f"but interior_struct.module='{struct_mod}' provided M_core={m_core_val:.4e}, P_center={p_cen_val:.4e}"
+                )
+            core_module_params['m_core'] = m_core_val
+            core_module_params['p_cen'] = p_cen_val
 
         bc_kwargs: dict[str, object] = {
             'outer_boundary_condition': _aragog_outer_bc,

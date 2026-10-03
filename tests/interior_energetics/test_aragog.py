@@ -3614,6 +3614,8 @@ def test_setup_solver_threads_core_module_params(tmp_path):
         'T_magma': 3000.0,
         'T_eqm': 255.0,
         'F_atm': 100.0,
+        'M_core': 1.93e24,
+        'P_center': 3.6e11,
     }
     interior_o = MagicMock()
     interior_o.tides = np.zeros(20)
@@ -3714,6 +3716,50 @@ def test_setup_solver_threads_structure_core_constraints(tmp_path):
     params = bc.core_module_params
     assert params['m_core'] == pytest.approx(1.93e24)
     assert params['p_cen'] == pytest.approx(3.6e11)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'm_core, p_cen',
+    [
+        (0.0, 3.6e11),
+        (1.93e24, 0.0),
+        (None, 3.6e11),
+        (1.93e24, None),
+    ],
+    ids=['zero-m-core', 'zero-p-center', 'missing-m-core', 'missing-p-center'],
+)
+def test_setup_solver_raises_when_structure_omits_core_mass_or_pressure(
+    tmp_path, m_core, p_cen
+):
+    """With core_bc='core_module', zero or missing M_core or P_center raises ValueError naming interior_struct."""
+    from proteus.config._interior import AragogCoreModule
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = str(tmp_path)
+    config = _make_aragog_config(struct_module='spider')
+    config.interior_energetics.aragog.core_bc = 'core_module'
+    config.interior_energetics.aragog.core_module = AragogCoreModule()
+
+    hf_row = {
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+    }
+    if m_core is not None:
+        hf_row['M_core'] = m_core
+    if p_cen is not None:
+        hf_row['P_center'] = p_cen
+
+    interior_o = MagicMock()
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        pytest.raises(ValueError, match="interior_struct.module='spider'"),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
 
 @pytest.mark.unit
