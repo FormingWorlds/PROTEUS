@@ -3020,7 +3020,8 @@
         }
       ],
       "consumers": [
-        "accretion"
+        "accretion",
+        "interior_energetics"
       ],
       "consumers_possible": []
     },

@@ -274,7 +274,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `M_accreted_rock` | `kg` | cumulative rock mass added by giant impacts | `accretion/wrapper.py` | always | accretion, main loop |
-| `n_impacts_applied` | `1` | count of giant impacts applied | `accretion/wrapper.py` | always | accretion |
+| `n_impacts_applied` | `1` | count of giant impacts applied | `accretion/wrapper.py` | always | accretion, interior_energetics |
 
 ### Gases from outgassing
 
