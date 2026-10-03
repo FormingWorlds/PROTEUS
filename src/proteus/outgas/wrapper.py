@@ -621,7 +621,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     for k in expected_keys():
         if k not in excepted_keys:
             hf_row[k] = 0.0
-    # Escape owns the non-noble element totals; with every column empty they are empty too.
+    # Empty the non-noble element totals with their columns; noble totals keep their value.
     for e in element_list:
         if e not in noble_gases:
             hf_row[f'{e}_kg_total'] = 0.0

@@ -2151,7 +2151,7 @@ def test_module_default_cap_matches_the_schema_default():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('frozen', [True, False])
+@pytest.mark.parametrize('frozen', [True, False], ids=['frozen_mantle', 'molten_mantle'])
 def test_an_element_escaping_below_the_threshold_on_a_frozen_mantle_keeps_its_columns(frozen):
     """On a frozen mantle an element whose total escapes below the outgassing
     threshold keeps that total, so it still equals its atmosphere plus melt plus
@@ -2199,3 +2199,48 @@ def test_an_element_escaping_below_the_threshold_on_a_frozen_mantle_keeps_its_co
     assert hf['esc_kg_cumulative'] == pytest.approx(
         1.0012e13 - hf['H_kg_total'] - hf['N_kg_total'], rel=1e-12
     )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_frozen_mantle_escapes_to_desiccation_with_closed_columns():
+    """Over every frozen step until desiccation each element total equals its
+    columns and escape books the whole loss; desiccation then leaves all zero.
+
+    Physical scenario: an insoluble H2 and N2 atmosphere over a crystallized mantle
+    at the default outgassing threshold of 1e16 kg. Edge case: N falls below the
+    threshold many steps before the atmosphere does.
+    """
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.wrapper import check_desiccation, run_crystallized, run_desiccated
+    from proteus.utils.constants import element_list
+
+    hf = {f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')}
+    hf.update(H_kg_atm=4.0e17, H_kg_total=4.0e17, N_kg_atm=3.0e16, N_kg_total=3.0e16)
+    hf.update(H2_kg_atm=4.0e17, N2_kg_atm=3.0e16, M_atm=4.3e17, P_surf=1.0)
+    hf.update(esc_kg_cumulative=0.0, M_vol_initial=4.3e17, atm_kg_per_mol=0.002, Phi_global=0.5)
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e16
+    config.outgas.vapourise = False
+
+    for _ in range(100):
+        if check_desiccation(config, hf):
+            break
+        run_escape(config, hf, dt=1.0e4, atmosphere_only=True)
+        run_crystallized(config, hf, dt=1.0e4)
+        for e in ('H', 'N'):
+            cols = hf[f'{e}_kg_atm'] + hf[f'{e}_kg_liquid'] + hf[f'{e}_kg_solid']
+            assert cols == pytest.approx(hf[f'{e}_kg_total'], rel=1e-9)
+        lost = 4.3e17 - hf['H_kg_total'] - hf['N_kg_total']
+        assert hf['esc_kg_cumulative'] == pytest.approx(lost, rel=1e-9)
+    else:
+        pytest.fail('no desiccation within 100 frozen steps')
+    # Discrimination: N was below the threshold for many steps without being zeroed.
+    assert 0.0 < hf['N_kg_total'] < 1.0e16
+    run_desiccated({}, config, hf, False)
+    assert all(hf[f'{e}_kg_{r}'] == 0.0 for e in ('H', 'N') for r in ('atm', 'total'))

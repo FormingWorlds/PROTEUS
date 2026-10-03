@@ -621,28 +621,25 @@ def test_run_desiccated_zeros_outgassing_keys():
 
 @pytest.mark.physics_invariant
 def test_run_desiccated_empties_the_volatile_element_totals():
-    """A desiccated planet holds no volatile element, so the escape-owned totals
-    are emptied with the columns; noble-gas totals keep their value.
+    """A desiccated row holds no non-noble element: its totals are emptied with the
+    columns, whatever their size. Noble-gas totals keep their value.
 
-    Physical scenario: a frozen mantle whose atmosphere escaped until every
-    element total fell below the outgassing threshold, with no floor on that
-    path. Edge case: totals above zero while every column is about to be zeroed.
+    Physical scenario: a frozen mantle whose element totals escaped below the
+    outgassing threshold without being floored. Edge case: every reservoir non-zero.
     """
     config = MagicMock()
     config.outgas.vapourise = False
+    seed = 2.0e15
     hf_row = {
-        f'{e}_kg_{r}': 2.0e15 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
+        f'{e}_kg_{r}': seed for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
     }
     hf_row.update(atm_kg_per_mol=0.01, Phi_global=0.5)
 
     run_desiccated({}, config, hf_row, False)
 
     for e in element_list:
-        cols = hf_row[f'{e}_kg_atm'] + hf_row[f'{e}_kg_liquid'] + hf_row[f'{e}_kg_solid']
-        if e in noble_gases:
-            assert hf_row[f'{e}_kg_total'] == 2.0e15
-        else:
-            assert hf_row[f'{e}_kg_total'] == 0.0 == cols
+        assert hf_row[f'{e}_kg_atm'] + hf_row[f'{e}_kg_liquid'] + hf_row[f'{e}_kg_solid'] == 0.0
+        assert hf_row[f'{e}_kg_total'] == (seed if e in noble_gases else 0.0)
 
 
 @pytest.mark.physics_invariant

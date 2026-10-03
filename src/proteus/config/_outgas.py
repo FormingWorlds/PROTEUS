@@ -218,7 +218,8 @@ class Outgas:
     fO2_shift_IW: float
         Oxygen fugacity relative to Iron-Wustite [log10 units].
     mass_thresh: float
-        Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+        Minimum threshold for element mass [kg]. Below it an element counts as absent in
+        outgassing, and escape on a molten mantle sets a non-noble element total to zero.
     h2_binodal: bool
         Enable binodal-controlled H2 partitioning between atmosphere and
         magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model.

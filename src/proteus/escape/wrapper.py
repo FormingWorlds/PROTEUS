@@ -248,7 +248,9 @@ def run_escape(
             If True, size the per-element loss from the atmospheric reservoir
             regardless of ``config.escape.reservoir``. Set once the mantle has
             solidified: dissolved volatiles are then frozen into the solid and
-            the atmosphere is the only reservoir that can supply escape.
+            the atmosphere is the only reservoir that can supply escape. The
+            element floor of :func:`calc_new_elements` is then off, since no
+            outgassing solve follows to repartition a zeroed total.
         interior_o : Interior_t | None
             Interior state. When given, its ``escape_dt_limit`` is set so a
             capped step shortens the next one; see :func:`escape_dt_limit`.
@@ -354,10 +356,9 @@ def run_escape(
     for e, mass in solvevol_target.items():
         hf_row[f'{e}_kg_total'] = mass
 
-    # The mass that actually left. Measured from the inventories, not the
-    # request, because the threshold gate can decline to debit; bounded by the
-    # applied loss, because that same gate also zeroes an element under the
-    # threshold and escape must not be credited with the truncation.
+    # The mass that left, measured from the inventories since the threshold gate can
+    # decline to debit; bounded by the applied loss since on a molten mantle the floor
+    # zeroes an element under the threshold, and escape is not credited with that.
     drop_kg = before_kg - readable_total(hf_row)
     # Test both operands, not the result: `min` returns whichever argument comes
     # first when the other is not a number, so a non-finite one would survive.

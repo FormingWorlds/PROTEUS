@@ -6919,7 +6919,7 @@
           "value": 0.0
         }
       ],
-      "description": "Minimum threshold for element mass [kg]. Inventories below this are set to zero.",
+      "description": "Minimum threshold for element mass [kg]. Below it an element counts as absent in outgassing, and escape on a molten mantle sets a non-noble element total to zero.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
