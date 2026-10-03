@@ -1131,8 +1131,8 @@ class Proteus:
             ############### INTERIOR
             PrintHalfSeparator()
 
-            # Tell the time-stepper when the next giant impact is due, so
-            # it can shorten the step to land on it.
+            # Tell the time-stepper the landing time of the next giant impact (the
+            # end of its chain), so it can shorten the step to land on it.
             t_next_impact = landing_time(self.impact_events, self.hf_row['Time'])
             self.interior_o.t_next_impact = t_next_impact
 

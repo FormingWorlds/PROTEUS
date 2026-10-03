@@ -94,6 +94,9 @@ FILE_CONDITIONS = {
 FUNCTION_CONDITIONS = {
     ('escape/wrapper.py', 'run_zephyrus'): 'escape.module = "zephyrus"',
     ('escape/wrapper.py', 'run_dummy'): 'escape.module = "dummy"',
+    ('interior_energetics/wrapper.py', '_remelt_aragog'): (
+        'giant impact, interior_energetics.module = "aragog"'
+    ),
 }
 
 

@@ -382,10 +382,9 @@ def next_step(
     dtmaximum = config.params.dt.maximum
     dtmaximum += config.params.dt.maximum_rel * hf_row['Time']
 
-    # Prevent overshooting the configured final time (#676): when
-    # stop.time is active, the next step cannot push Time past
-    # stop.time.maximum. The 1 yr floor keeps tiny end-of-run remainders
-    # from collapsing dt to zero (and then to dt.minimum on the next line).
+    # Limit overshoot of the final time (#676): the step ends at stop.time.maximum, or
+    # less than 1 yr past it by the floor that keeps tiny remainders from collapsing dt;
+    # the impact snap-forward below can extend a step by up to 1e-3 yr more.
     if config.params.stop.time.enabled:
         maxtime = config.params.stop.time.maximum
         dtmaximum = min(dtmaximum, max(1.0, float(maxtime - hf_row['Time'])))
@@ -504,7 +503,7 @@ def next_step(
                 dt_to_impact /= math.ceil(dt_to_impact / ceiling)
         if dtswitch > dt_to_impact:
             log.info(
-                'Time-stepping: impact at %.4e yr, capping dt at %.2e yr (was %.2e yr)',
+                'Time-stepping: impact landing at %.4e yr, capping dt at %.2e yr (was %.2e yr)',
                 interior_o.t_next_impact,
                 dt_to_impact,
                 dtswitch,

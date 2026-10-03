@@ -377,23 +377,48 @@ def test_the_load_check_compares_the_first_impact_the_run_keeps(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('m_planet', [None, float('nan'), 0.0], ids=['absent', 'nan', 'zero'])
+def test_the_per_impact_check_falls_back_to_the_configured_mass(monkeypatch, caplog, m_planet):
+    """Without a finite positive M_planet the per-impact check compares the target
+    mass (6.0e24 kg) with mass_tot (0.5 M_earth) and warns at the factor-2 mismatch."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(mass_tot=0.5)
+    handler.config.accretion.module = 'timeline'
+    handler.hf_row['n_impacts_applied'] = 1
+    if m_planet is not None:
+        handler.hf_row['M_planet'] = m_planet
+    with caplog.at_level('WARNING'):
+        apply_impact(handler, _impact_event())
+    hits = [r.getMessage() for r in caplog.records if 'timeline target mass' in r.getMessage()]
+    assert len(hits) == 1
+    assert f'running planet mass {0.5 * M_earth:.3e} kg' in hits[0]
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
-    'module, ratio, n_applied, warns',
+    'module, ratio, n_applied, resume, warns',
     [
-        ('timeline', 1.095, 1, False),
-        ('timeline', 1.105, 1, True),
-        ('morrigan', 0.905, 1, False),
-        ('morrigan', 0.895, 1, True),
-        ('timeline', 0.5, 0, False),
-        ('dummy', 0.5, 1, False),
+        ('timeline', 1.095, 1, False, False),
+        ('timeline', 1.105, 1, False, True),
+        ('morrigan', 0.905, 1, False, False),
+        ('morrigan', 0.895, 1, False, True),
+        ('timeline', 0.5, 0, False, False),
+        ('timeline', 0.5, 0, True, True),
+        ('dummy', 0.5, 1, False, False),
     ],
 )
 def test_an_impact_from_a_borrowed_timeline_warns_on_a_target_mass_mismatch(
-    monkeypatch, caplog, module, ratio, n_applied, warns
+    monkeypatch, caplog, module, ratio, n_applied, resume, warns
 ):
     """Each borrowed impact after the first compares its target mass (6.0e24 kg)
     with the running planet mass, warning beyond 10 % either way; the first impact
-    of a fresh run was checked at load, and the dummy module derives its own."""
+    of a fresh run was checked at load, while a resumed run skipped that check and
+    compares its first impact here; the dummy module derives its own."""
     from proteus.accretion.wrapper import apply_impact
 
     monkeypatch.setattr(
@@ -401,6 +426,7 @@ def test_an_impact_from_a_borrowed_timeline_warns_on_a_target_mass_mismatch(
     )
     handler = _impact_handler()
     handler.config.accretion.module = module
+    handler.config.params.resume = resume
     handler.hf_row.update(M_planet=6.0e24 / ratio, n_impacts_applied=n_applied)
     with caplog.at_level('WARNING'):
         apply_impact(handler, _impact_event())

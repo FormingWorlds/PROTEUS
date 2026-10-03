@@ -482,7 +482,8 @@ def snap_to_impact(time: float, t_impact: float) -> float:
     time : float
         Simulation time at the end of the step [yr].
     t_impact : float
-        Time of the next scheduled impact [yr], infinite when none is pending.
+        Landing time of the next impact, the last time of its chain
+        (:func:`landing_time`) [yr], infinite when none is pending.
 
     Returns
     -------

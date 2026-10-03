@@ -30,8 +30,8 @@ _PPMW_ELEMENTS = ('H', 'C', 'N', 'S', 'O')
 # the module for a timeline again.
 _RESOLVED_TIMELINE_FILE = 'impact_timeline.csv'
 
-# Longest step of the init stage [yr]: the time-stepper's static 1 yr step, which
-# only shrinks on retry; the solver-derived dt (interior_energetics/wrapper.py) cannot exceed it.
+# Longest step of the init stage [yr]: the time-stepper's static 1 yr step, which shrinks
+# on retry; the impact snap-forward can extend it by up to SUBYEAR_TIME_RESOLUTION.
 _INIT_STAGE_HORIZON_YR = 1.0
 
 # Ceiling on the planet's eccentricity after an impact applies its change. An
@@ -302,7 +302,7 @@ def restore_accretion_state(handler: Proteus) -> None:
                 'Restart the simulation.'
             )
         # A counted impact after the resume time can only have landed during the
-        # init stage, whose steps never reach beyond _INIT_STAGE_HORIZON_YR.
+        # init stage.
         later = [ev for ev in all_events if ev.time > resume_time]
         n_drop = n_applied - events_before
         if n_drop > len(later):
