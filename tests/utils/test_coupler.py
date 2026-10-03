@@ -4702,6 +4702,19 @@ def test_a_helpfile_missing_physical_state_is_refused_not_zero_filled():
 
 
 @pytest.mark.unit
+def test_a_helpfile_without_m_desiccated_resumes_with_nothing_booked(tmp_path):
+    """M_desiccated is a ledger: a helpfile written before the column resumes with it at zero."""
+    from proteus.utils.coupler import ReadHelpfileFromCSV
+
+    row = ZeroHelpfileRow()
+    del row['M_desiccated']
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert loaded['M_desiccated'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+
+
+@pytest.mark.unit
 def test_read_helpfile_from_csv_loads_legacy_helpfile_with_zero_filled_columns(tmp_path):
     """A legacy helpfile without n_impacts_applied loads successfully with zero backfill."""
     import shutil
