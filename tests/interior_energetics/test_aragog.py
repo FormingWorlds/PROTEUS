@@ -1089,8 +1089,18 @@ def _retry_ladder_runner(
 @pytest.mark.unit
 @pytest.mark.parametrize(
     'core_bc, slots, restored',
-    [('energy_balance', 1, -3.879e-6), ('bower2018', 1, None), ('gradient', 2, None)],
-    ids=['energy-balance', 'bower2018-core-temperature-slot', 'gradient'],
+    [
+        ('energy_balance', 1, -3.879e-6),
+        ('energy_balance', 2, None),
+        ('bower2018', 1, None),
+        ('gradient', 2, None),
+    ],
+    ids=[
+        'energy-balance',
+        'energy-balance-unexpected-state-length',
+        'bower2018-core-temperature-slot',
+        'gradient',
+    ],
 )
 def test_a_retry_after_a_cold_start_restarts_from_the_first_attempt_gradient(
     core_bc, slots, restored
@@ -1101,7 +1111,8 @@ def test_a_retry_after_a_cold_start_restarts_from_the_first_attempt_gradient(
     the pre-solve snapshot must come from the state attempt 1 starts from;
     otherwise each retry hot-starts from the failed attempt's final gradient.
     The slot after the entropies holds T_core under bower2018 and is never
-    used as a gradient there.
+    used as a gradient there, and a state vector with more than one slot after
+    the entropies is not read.
     """
     from proteus.interior_energetics.aragog import AragogRunner
 
