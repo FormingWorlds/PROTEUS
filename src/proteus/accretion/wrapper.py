@@ -368,8 +368,8 @@ def apply_due_impacts(handler: Proteus, is_snapshot: bool) -> list[ImpactEvent]:
     An impact is applied at the end of the first step that reaches its time. In a
     chain of impacts each less than ``SUBYEAR_TIME_RESOLUTION`` after the one
     before, that can be later than the impact time by up to the chain span. A
-    chain wider than that resolution gets one warning, on the row that lands its
-    last impact, naming its span and the largest delay.
+    chain spanning that resolution or more gets one warning, on the row that lands
+    its last impact, naming its span and the largest delay.
 
     Parameters
     ----------

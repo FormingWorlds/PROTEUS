@@ -420,8 +420,9 @@ def landing_time(events: Sequence[ImpactEvent], time: float) -> float:
 
     The next impact and those each less than ``SUBYEAR_TIME_RESOLUTION`` after the
     one before form a chain; the step aims at its last time. A step that ends
-    inside a wider chain applies the impacts it passed at its end, and rows that
-    apply impacts stay at least that resolution apart, so their snapshot names differ.
+    inside a wider chain applies the impacts it passed at its end. Rows that apply
+    impacts get distinct snapshot names when the steps inside the chain are at
+    least that resolution long.
 
     Parameters
     ----------
