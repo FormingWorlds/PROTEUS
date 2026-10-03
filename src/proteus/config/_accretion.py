@@ -406,7 +406,10 @@ class Accretion:
     impactor_S_ppmw: float
         Sulfur carried by each impactor [ppmw of impactor mass].
     impactor_O_ppmw: float
-        Oxygen carried by each impactor [ppmw of impactor mass].
+        Oxygen carried by each impactor [ppmw of impactor mass]. With CALLIOPE
+        or atmodeller at a fixed fO2 (``planet.fO2_source = 'user_constant'``)
+        the outgassing derives the O budget, so the delivered part counts as rock;
+        otherwise it joins the O budget.
     atmloss_module: str or None
         How impact atmosphere loss is computed. Choices: None (no impact
         atmosphere loss at all: the target keeps its atmosphere and a

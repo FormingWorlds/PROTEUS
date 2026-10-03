@@ -1787,7 +1787,7 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
         # 1. Volatile partitioning: recompute elemental targets and
         #    run CALLIOPE to get atmosphere/melt distribution
         calc_target_elemental_inventories(dirs, config, hf_row)
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=True)
 
         # 2. Re-compute structure with updated composition (volatile_profile is
         #    built inside zalmoxis_solver from hf_row). When the super-liquidus

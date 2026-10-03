@@ -150,6 +150,11 @@ def _warn_target_mass_mismatch(event: ImpactEvent, m_planet: float, which: str) 
         )
 
 
+def _valid_mass(value) -> bool:
+    """Whether a stored mass or count is finite and not negative (absent counts as 0)."""
+    return 0.0 <= float(value or 0.0) < math.inf
+
+
 def _as_float(val: object) -> float:
     """Convert value to float, returning NaN on ValueError or TypeError."""
     try:
@@ -494,11 +499,13 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     its time, so the orbit and structure of that step already use the grown
     planet and the next interior solve evolves it from there.
 
-    The impactor mass is added to the planet's total mass and the interior
+    The impactor's rock is added to the planet's total mass and the interior
     structure is re-solved, so the radius, gravity and the core/mantle split
-    follow the new mass at the configured core fraction. The orbit change
-    updates the running row base (which tides evolve) and the configuration
-    reflects the current post-impact orbit.
+    follow the new mass at the configured core fraction. With the Zalmoxis
+    structure the delivered volatiles minus the stripped atmosphere are added
+    to ``M_volatile_change``, which the Zalmoxis target adds to ``mass_tot``.
+    The orbit change updates the running row base (which tides evolve) and the
+    configuration reflects the current post-impact orbit.
 
     Parameters
     ----------
@@ -507,7 +514,10 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     event : ImpactEvent
         The impact to apply.
     """
+    from proteus.accretion.common import MASS_CLOSURE_RTOL
     from proteus.interior_energetics.wrapper import remelt_mantle, solve_structure
+    from proteus.interior_struct.common import record_volatile_change, volatile_mass_change
+    from proteus.outgas.wrapper import outgassing_derives_o_kg_total
 
     config = handler.config
     hf_row = handler.hf_row
@@ -545,22 +555,34 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     strip = _target_strip_amounts(config, hf_row, f_loss)
     content = _impactor_volatile_content(config, handler.hf_all, event, hf_row=hf_row)
     delivered, impactor_lost = _partition_impactor_content(config, hf_row, content, f_loss)
+    o_rock = delivered.pop('O', 0.0) if outgassing_derives_o_kg_total(config) else 0.0
+    # Refuse a corrupt ledger or a negative or non-finite mass before anything
+    # moves; with valid inputs the loss split closes by construction.
+    volatile_mass_change(hf_row)
+    bad = [f'{e}_kg_atm' for e in element_list if not _valid_mass(hf_row.get(f'{e}_kg_atm'))]
+    bad += [
+        f'{e}_kg_total' for e in element_list if not _valid_mass(hf_row.get(f'{e}_kg_total'))
+    ]
+    bad += [
+        k for k in ('M_accreted_rock', 'n_impacts_applied') if not _valid_mass(hf_row.get(k))
+    ]
+    bad += [f'impactor {e}' for e, m in content.items() if not _valid_mass(m)]
+    if bad:
+        raise RuntimeError(f'impact masses are negative or not finite: {", ".join(bad)}')
+    net_volatiles = sum(delivered.values()) - sum(strip.values())
 
     # Snapshot volatile budgets before the structure solve to prevent ppmw
     # recomputation from artificially inflating volatile inventories.
     volatile_budgets = _snapshot_volatile_budgets(hf_row)
 
-    # Increase the interior anchor by the impactor's rock mass alone. Volatile
-    # budgets and target stripping are applied separately below.
-    from proteus.accretion.common import MASS_CLOSURE_RTOL
-
-    impactor_rock = event.mass_delta - sum(content.values())
+    impactor_volatiles = sum(content.values()) - o_rock
+    impactor_rock = event.mass_delta - impactor_volatiles
     # Validate that volatile mass does not exceed impactor mass beyond numerical
     # closure tolerance. Small negative remainders within tolerance clamp to zero.
     rock_tol = MASS_CLOSURE_RTOL * (event.M_target_before + event.M_impactor)
     if impactor_rock < -rock_tol:
         raise ValueError(
-            f'Impactor volatile content {sum(content.values()):.6e} kg exceeds the '
+            f'Impactor volatile content {impactor_volatiles:.6e} kg exceeds the '
             f'{event.mass_delta:.6e} kg it adds to the planet, so the impact would '
             f'remove {-impactor_rock:.4e} kg of rock from the interior. With '
             f'accretion.impactor_volatiles = {config.accretion.impactor_volatiles!r}, '
@@ -595,6 +617,11 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # Apply the sized consequences to the whole-planet budgets and refresh
     # the tracked-element total the budgets aggregate into.
     _apply_volatile_consequences(hf_row, strip, delivered, impactor_lost, f_loss)
+
+    # The Zalmoxis target follows the volatile change; not in the init stage,
+    # which rebuilds the budgets from config this iteration.
+    if not getattr(handler, 'init_stage', False):
+        record_volatile_change(config, hf_row, net_volatiles)
 
     # Raise the mantle to its initial condition; hotter parts keep their state.
     remelt_mantle(handler.directories, config, hf_row, handler.interior_o, event)
@@ -658,12 +685,13 @@ def _apply_volatile_consequences(
 ) -> None:
     """Apply an impact's sized volatile changes to the whole-planet budgets.
 
-    Debits the stripped target atmosphere, books it into the escaped-mass
-    ledger the desiccation gate audits, credits the delivered impactor
-    volatiles, and refreshes the tracked-element total. The outgassing step
+    Debits the stripped target atmosphere from the whole-planet and the
+    atmospheric budgets, books it into the escaped-mass ledger the
+    desiccation gate audits, credits the delivered impactor volatiles to the
+    budgets and to the gate's baseline ``M_vol_initial`` (once escape has
+    set one), and refreshes the tracked-element total. The outgassing step
     later this iteration re-equilibrates the atmosphere against the updated
-    totals; an element deferred to the chemistry step (e.g. oxygen under
-    ic_chemistry) is re-derived there either way.
+    totals; oxygen, where ``outgassing_derives_o_kg_total``, is derived there either way.
 
     Parameters
     ----------
@@ -674,8 +702,14 @@ def _apply_volatile_consequences(
     f_loss : float
         Collision loss fraction in [0, 1], reported in the strip log line.
     """
-    for e, removed in strip.items():
-        hf_row[f'{e}_kg_total'] = max(0.0, float(hf_row.get(f'{e}_kg_total', 0.0)) - removed)
+    # Debit the atmosphere too: escape on this step sizes its loss from it.
+    for e in element_list:
+        if e in strip:
+            removed = strip[e]
+            hf_row[f'{e}_kg_total'] = max(
+                0.0, float(hf_row.get(f'{e}_kg_total', 0.0)) - removed
+            )
+            hf_row[f'{e}_kg_atm'] = max(0.0, float(hf_row.get(f'{e}_kg_atm', 0.0)) - removed)
     if strip:
         stripped_total = sum(strip.values())
         hf_row['esc_kg_cumulative'] = (
@@ -688,6 +722,10 @@ def _apply_volatile_consequences(
         )
     for e, added in delivered.items():
         hf_row[f'{e}_kg_total'] = float(hf_row.get(f'{e}_kg_total', 0.0)) + added
+    # Credit the escape-balance baseline, or the desiccation gate reads the
+    # delivered mass as loss it may accept without escape.
+    if (hf_row.get('M_vol_initial') or 0.0) > 0.0:
+        hf_row['M_vol_initial'] += sum(delivered.values())
     if delivered:
         log.info(
             '    delivered impactor volatiles [kg]: %s',
@@ -732,7 +770,7 @@ def _primordial_mass_fractions(hf_all, hf_row=None) -> dict:
     ------
     RuntimeError
         If neither history nor step row is available, or the formation row
-        carries no positive planet mass.
+        carries no positive finite planet mass or a non-finite element budget.
     """
     if hf_all is not None and len(hf_all) > 0:
         init_rows = hf_all[hf_all['Time'] < 1.0]
@@ -746,13 +784,18 @@ def _primordial_mass_fractions(hf_all, hf_row=None) -> dict:
         )
 
     m_planet = float(t0.get('M_planet', 0.0))
-    if m_planet <= 0.0:
+    if not 0.0 < m_planet < math.inf:
         raise RuntimeError(
             'Cannot scale impactor volatiles to the planet: the formation row '
             f'carries M_planet = {m_planet!r}.'
         )
 
     fractions = {e: float(t0.get(f'{e}_kg_total', 0.0)) / m_planet for e in _VOLATILE_ELEMENTS}
+    if not all(math.isfinite(x) for x in fractions.values()):
+        raise RuntimeError(
+            'Cannot scale impactor volatiles to the planet: the formation row '
+            f'carries a non-finite element budget ({fractions}).'
+        )
     log.info(
         '    formation composition (M_planet=%.3e kg at t=%.2e yr): %s',
         m_planet,
@@ -770,13 +813,6 @@ def _impactor_volatile_content(config, hf_all, event: ImpactEvent, hf_row=None) 
     the impactor mass, on the assumption that every embryo in the dynamical
     model co-formed from the same disk material; ``ppmw`` uses the configured
     per-element budgets. Only positive contributions are returned.
-
-    Under ``O_mode = 'ic_chemistry'`` oxygen is excluded from the content:
-    the volatile O budget is chemistry-derived (the next outgassing call
-    re-equilibrates it against the fO2 buffer for the grown planet), so a
-    delivered O mass would be overwritten while its subtraction from the
-    interior anchor persisted. The impactor's oxygen then arrives as part of
-    its rock, which is where oxide-bound oxygen belongs.
     """
     mode = config.accretion.impactor_volatiles
     content: dict[str, float] = {}
@@ -791,10 +827,6 @@ def _impactor_volatile_content(config, hf_all, event: ImpactEvent, hf_row=None) 
             ppmw = getattr(config.accretion, f'impactor_{e}_ppmw')
             if ppmw > 0.0:
                 content[e] = event.M_impactor * ppmw / 1.0e6
-
-    o_mode = getattr(getattr(config.planet, 'elements', None), 'O_mode', None)
-    if o_mode == 'ic_chemistry':
-        content.pop('O', None)
 
     return content
 

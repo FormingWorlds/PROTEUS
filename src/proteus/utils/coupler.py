@@ -793,6 +793,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'esc_kg_cumulative',
         'M_accreted_rock',
+        'M_volatile_change',
         'n_impacts_applied',
         'step_dE_impact_J',
     }
@@ -1006,6 +1007,9 @@ def GetHelpfileKeys():
         # mass anchor to enable reconstruction on resume.
         'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
         'n_impacts_applied',  # count of giant impacts applied [1]
+
+        # Element mass the Zalmoxis whole-planet target adds to mass_tot (Zalmoxis only).
+        'M_volatile_change',  # cumulative element mass added to the Zalmoxis target [kg]: delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included)
     ]
 
     # gases from outgassing

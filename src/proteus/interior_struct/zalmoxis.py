@@ -1344,8 +1344,11 @@ def load_zalmoxis_configuration(
             config.interior_struct.core_frac,
         )
 
-    # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg]
-    total_planet_mass = config.planet.mass_tot * M_earth
+    # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg],
+    # plus the volatile mass impacts and escape moved, which mass_tot (rock anchor) leaves out.
+    from proteus.interior_struct.common import volatile_mass_change
+
+    total_planet_mass = config.planet.mass_tot * M_earth + volatile_mass_change(hf_row)
 
     log.debug(
         'Total target planet mass (dry mass + volatiles): %s kg '
@@ -1371,7 +1374,7 @@ def load_zalmoxis_configuration(
     log.debug(
         'Mass budget: total=%.6e kg (%.4f M_earth), volatiles=%.6e kg (%.2f%%)',
         total_planet_mass,
-        config.planet.mass_tot,
+        total_planet_mass / M_earth,
         M_volatiles,
         100.0 * M_volatiles / total_planet_mass if total_planet_mass > 0 else 0,
     )

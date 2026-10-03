@@ -3978,7 +3978,7 @@ def test_equilibrate_initial_state_converges_within_tolerance(tmp_path, caplog):
             return_value=None,
         ),
         _patch('proteus.outgas.wrapper.calc_target_elemental_inventories'),
-        _patch('proteus.outgas.wrapper.run_outgassing'),
+        _patch('proteus.outgas.wrapper.run_outgassing') as outgas,
         _patch('shutil.copy2'),
         caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'),
     ):
@@ -3990,6 +3990,59 @@ def test_equilibrate_initial_state_converges_within_tolerance(tmp_path, caplog):
     )
     # M_mantle assignment must be consistent with M_int - M_core.
     assert hf_row['M_mantle'] == pytest.approx(5.972e24 - 2.0e24, rel=1e-12)
+    # Every equilibration iteration is init stage, so the dummy outgassing may
+    # derive an empty O budget there.
+    assert outgas.call_args.kwargs == {'initial': True}
+
+
+@pytest.mark.unit
+def test_equilibrate_initial_state_derives_oxygen_with_the_dummy_outgassing(tmp_path):
+    """Under ic_chemistry the O budget starts empty; the init equilibration runs
+    the dummy outgassing as init stage, so it derives the O of the outgassed
+    species and the structure solve sees it."""
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import equilibrate_initial_state
+    from proteus.outgas.dummy import calc_surface_pressures_dummy
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_struct.zalmoxis.equilibrate_max_iter = 2
+    config.interior_struct.zalmoxis.equilibrate_tol = 1e-3
+    hf_row = {
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+        'M_int': 5.972e24,
+        'M_core': 2.0e24,
+        'M_mantle': 4e24,
+        'T_magma': 3000.0,
+        'Phi_global': 1.0,
+        'gravity': 9.8,
+        'H_kg_total': 1.0e20,
+        'O_kg_total': 0.0,
+    }
+    seen = []
+
+    def _solver(config, outdir, hf_row, **kwargs):
+        seen.append(hf_row['O_kg_total'])
+        return (3.504e6, str(tmp_path / 'mesh.dat'))
+
+    def _outgas(dirs, config, hf_row, *, initial):
+        calc_surface_pressures_dummy(dirs, MagicMock(), hf_row, initial=initial)
+
+    with (
+        _patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=_solver),
+        _patch('proteus.interior_struct.zalmoxis.generate_spider_tables', return_value=None),
+        _patch('proteus.outgas.wrapper.calc_target_elemental_inventories'),
+        _patch('proteus.outgas.wrapper.run_outgassing', side_effect=_outgas),
+        _patch('shutil.copy2'),
+    ):
+        equilibrate_initial_state({'output': str(tmp_path)}, config, hf_row, str(tmp_path))
+
+    assert seen and seen[0] > 1.0e20
+    assert hf_row['O_kg_total'] == pytest.approx(
+        hf_row['O_kg_atm'] + hf_row['O_kg_liquid'], rel=1e-12
+    )
 
 
 @pytest.mark.unit

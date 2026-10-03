@@ -476,7 +476,7 @@ def test_run_outgassing_calliope_calculation():
     hf_row['atm_kg_per_mol'] = 0.018  # Mean molecular weight (kg/mol) for steam
 
     with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
 
         # Verify CALLIOPE was called
         mock_calc.assert_called_once_with(dirs, config, hf_row)
@@ -522,7 +522,7 @@ def test_run_outgassing_atmosphere_mass_conservation():
     hf_row['atm_kg_per_mol'] = 0.029  # N2-like
 
     with patch('proteus.outgas.calliope.calc_surface_pressures'):
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
 
         # Check mass conservation. gas_masses is built over the canonical
         # gas_list, which is exactly what run_outgassing sums, so the only
@@ -567,7 +567,7 @@ def test_run_outgassing_disabled_module():
     hf_row['atm_kg_per_mol'] = 0.044  # CO2-like
 
     with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
 
         # CALLIOPE should not be called
         mock_calc.assert_not_called()
@@ -772,7 +772,7 @@ def test_run_outgassing_zero_atmosphere_mass():
     hf_row['atm_kg_per_mol'] = 0.029  # Arbitrary (not used when M_atm=0)
 
     with patch('proteus.outgas.calliope.calc_surface_pressures'):
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
 
         # M_atm should be exactly zero
         assert hf_row['M_atm'] == pytest.approx(0.0, abs=1e-12)
@@ -873,7 +873,7 @@ def test_run_outgassing_mixed_species_dominance():
     hf_row['atm_kg_per_mol'] = 0.029  # N2/O2-dominated
 
     with patch('proteus.outgas.calliope.calc_surface_pressures'):
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
 
         # Check mass conservation. run_outgassing sums over its own local
         # gas_list (vol_list + vap_list, since config.outgas.vapourise is
@@ -1247,7 +1247,7 @@ def test_run_outgassing_from_O_budget_dispatches_to_calliope():
     hf_row['atm_kg_per_mol'] = 0.018
 
     with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
         mock_calc.assert_called_once_with(dirs, config, hf_row)
         # Pre-seed invariant under from_O_budget: run_outgassing must set
         # fO2_shift_IW_derived to the configured buffer value before
@@ -1289,7 +1289,7 @@ def test_run_outgassing_from_O_budget_dispatches_to_atmodeller():
         # both calls active (or fell through to calliope as a default)
         # would silently double-solve, with the second result winning.
         with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calliope:
-            run_outgassing(dirs, config, hf_row)
+            run_outgassing(dirs, config, hf_row, initial=False)
         mock_calc.assert_called_once_with(dirs, config, hf_row)
         mock_calliope.assert_not_called()
 
@@ -1310,15 +1310,37 @@ def test_run_outgassing_from_O_budget_rejects_dummy_backend():
     hf_row = {}
 
     with pytest.raises(NotImplementedError, match='dummy'):
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
     # Negative side-effect check: the dummy backend's calc function
     # must NOT be invoked when the wrapper rejects the combination.
     # A regression that raised AFTER dispatching would leak a partial
     # solve into hf_row.
     with patch('proteus.outgas.dummy.calc_surface_pressures_dummy') as mock_dummy:
         with pytest.raises(NotImplementedError, match='dummy'):
-            run_outgassing(dirs, config, hf_row)
+            run_outgassing(dirs, config, hf_row, initial=False)
         mock_dummy.assert_not_called()
+
+
+class _StopAfterDispatch(Exception):
+    """Raised by a patched solver to end run_outgassing right after its call."""
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('initial', [True, False])
+def test_run_outgassing_tells_the_dummy_whether_it_is_the_init_stage(initial):
+    """The dummy outgassing derives an empty O budget only in the init stage, so
+    the wrapper must forward that flag to it unchanged."""
+    config = MagicMock()
+    config.outgas.module = 'dummy'
+    config.planet.fO2_source = 'user_constant'
+    config.outgas.fO2_shift_IW = 2.0
+    with patch(
+        'proteus.outgas.dummy.calc_surface_pressures_dummy', side_effect=_StopAfterDispatch
+    ) as mock_dummy:
+        with pytest.raises(_StopAfterDispatch):
+            run_outgassing({'output': '/tmp/test'}, config, {}, initial=initial)
+    assert mock_dummy.call_count == 1
+    assert mock_dummy.call_args.kwargs == {'initial': initial}
 
 
 @pytest.mark.unit
@@ -1338,14 +1360,14 @@ def test_run_outgassing_rejects_unknown_fO2_source():
     hf_row = {}
 
     with pytest.raises(NotImplementedError, match='something_unexpected'):
-        run_outgassing(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row, initial=False)
     # No-dispatch invariant: an unrecognised fO2_source must reject
     # before any backend call. A regression that raised AFTER dispatch
     # (or that left the legacy chemistry path running and re-raised on
     # exit) would still match the regex but quietly do real work.
     with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
         with pytest.raises(NotImplementedError, match='something_unexpected'):
-            run_outgassing(dirs, config, hf_row)
+            run_outgassing(dirs, config, hf_row, initial=False)
         mock_calc.assert_not_called()
 
 
@@ -1980,7 +2002,7 @@ def test_run_outgassing_and_vapourisation_runs_vapour_step_above_phi_crit():
     ):
         run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
 
-    mock_outgas.assert_called_once_with(dirs, config, hf_row)
+    mock_outgas.assert_called_once_with(dirs, config, hf_row, initial=True)
     mock_vap.assert_called_once_with(dirs, config, hf_row, True)
     # Reset happened before the (mocked, no-op) vapourisation step.
     assert hf_row['M_vaps'] == 0.0
@@ -2006,7 +2028,7 @@ def test_run_outgassing_and_vapourisation_skips_vapour_step_below_phi_crit():
     ):
         run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=False)
 
-    mock_outgas.assert_called_once_with(dirs, config, hf_row)
+    mock_outgas.assert_called_once_with(dirs, config, hf_row, initial=False)
     mock_vap.assert_not_called()
     assert hf_row['M_vaps'] == 0.0
 
@@ -2029,7 +2051,7 @@ def test_run_outgassing_and_vapourisation_skips_vapour_step_when_disabled():
     ):
         run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
 
-    mock_outgas.assert_called_once_with(dirs, config, hf_row)
+    mock_outgas.assert_called_once_with(dirs, config, hf_row, initial=True)
     mock_vap.assert_not_called()
     assert hf_row['M_vaps'] == 0.0
 
