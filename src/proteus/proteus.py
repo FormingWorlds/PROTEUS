@@ -1156,29 +1156,9 @@ class Proteus:
             # Apply giant impacts due in this step. Remove applied events
             # so each fires exactly once, including across init iterations.
             if self.impact_events:
-                from proteus.accretion.common import due_events
-                from proteus.accretion.wrapper import (
-                    apply_impact,
-                    discard_preimpact_snapshot,
-                )
+                from proteus.accretion.wrapper import apply_due_impacts
 
-                time_now = self.hf_row['Time']
-                time_previous = time_now - self.interior_o.dt
-                landed = due_events(self.impact_events, time_previous, time_now)
-                if len(landed) > 1:
-                    log.info(
-                        'Impacts at t = %s yr land in one step at %.6e yr',
-                        ', '.join(f'{e.time:.6e}' for e in landed),
-                        time_now,
-                    )
-                for event in landed:
-                    apply_impact(self, event)
-                    self.impact_events.remove(event)
-
-                # Discard snapshot taken before remelting so resume does not
-                # load an un-melted mantle while keeping post-impact mass.
-                if landed and is_snapshot:
-                    discard_preimpact_snapshot(self)
+                apply_due_impacts(self, is_snapshot)
 
             # One-time structure baseline in the interior-fed callable
             # representation (dynamic and static runs share an identical start).

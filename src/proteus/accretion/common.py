@@ -418,9 +418,10 @@ def next_event(events: Sequence[ImpactEvent], time: float) -> ImpactEvent | None
 def landing_time(events: Sequence[ImpactEvent], time: float) -> float:
     """Return the step end that lands the next impact after the given time.
 
-    Impacts each less than ``SUBYEAR_TIME_RESOLUTION`` after the one before land
-    with the next one at the last of their times, so they share one step, row and
-    snapshot name, and landing rows are at least that far apart.
+    The next impact and those each less than ``SUBYEAR_TIME_RESOLUTION`` after the
+    one before form a chain; the step aims at its last time. A step that ends
+    inside a wider chain applies the impacts it passed at its end, and rows that
+    apply impacts stay at least that resolution apart, so their snapshot names differ.
 
     Parameters
     ----------
@@ -435,9 +436,7 @@ def landing_time(events: Sequence[ImpactEvent], time: float) -> float:
         Landing time [yr], infinite once the timeline is exhausted.
     """
     first = next_event(events, time)
-    if first is None:
-        return float('inf')
-    landing = first.time
+    landing = float('inf') if first is None else first.time
     for e in events:
         if 0.0 < e.time - landing < SUBYEAR_TIME_RESOLUTION:
             landing = e.time

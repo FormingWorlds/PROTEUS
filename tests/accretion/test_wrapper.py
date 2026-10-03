@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from proteus.accretion.common import TIMELINE_COLUMNS
@@ -1252,6 +1253,100 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
         2 * (event.mass_delta - delivered), rel=1e-12
     )
     assert float(handler.hf_row.get('esc_kg_cumulative', 0.0)) == pytest.approx(0.0, abs=1.0)
+
+
+def _next_step_from_history():
+    """Step ends from the real next_step after a history of 5e3 yr steps to 1e5 yr."""
+    from proteus.interior_energetics.timestep import next_step
+    from tests.interior_energetics.test_timestep import (
+        _make_config,
+        _make_hf_all,
+        _make_interior_o,
+    )
+
+    config = _make_config(impact_maximum=0.0, max_growth_factor=0.0)
+    times = list(1.0e5 + 5.0e3 * np.arange(-11, 1, dtype=float))
+
+    def step_end(time, landing):
+        hf_all = _make_hf_all(n_rows=len(times))
+        hf_all['Time'] = times
+        row = {'Time': time, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        times.append(time + next_step(config, {}, row, hf_all, 1.0, _make_interior_o(landing)))
+        return times[-1]
+
+    return step_end
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'times, t0, step, span, delay',
+    [
+        ([107999.999 + k * 9.0e-4 for k in range(4)], 1.0e5, None, '2.700e-03', '1.000e-03'),
+        ([5.0e-4 * (k + 1) for k in range(2000)], 0.0, 0.3, '9.995e-01', '2.995e-01'),
+    ],
+    ids=['step-ends-inside-chain', 'chain-of-2000'],
+)
+def test_a_wide_chain_applies_every_impact_once_in_order(
+    monkeypatch, caplog, times, t0, step, span, delay
+):
+    """Impacts each 9e-4 or 5e-4 yr after the one before, with steps that end inside
+    the chain: every impact is applied once and in time order, the rock and the
+    hydrogen the impactors deliver add up, the rows that apply impacts have
+    increasing times and distinct snapshot names, and one warning names the chain
+    span and the largest delay."""
+    from proteus.accretion import wrapper
+    from proteus.accretion.common import landing_time, snap_to_impact
+    from proteus.utils.constants import M_earth
+    from proteus.utils.helper import format_subyear_time
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', _rescaling_solve_structure(1.2)
+    )
+    applied, real = [], wrapper.apply_impact
+    monkeypatch.setattr(
+        wrapper, 'apply_impact', lambda h, e: (applied.append(e.time), real(h, e))
+    )
+    handler = _impact_handler(accretion=_impact_accretion(H=1000.0))
+    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
+    _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
+    m_imp = 1.0e-4 * M_earth
+    events = [
+        _impact_event(
+            time=t,
+            M_target_before=(6.0 + k * 1.0e-4) * M_earth,
+            M_impactor=m_imp,
+            M_merged_after=(6.0 + (k + 1) * 1.0e-4) * M_earth,
+        )
+        for k, t in enumerate(times)
+    ]
+    handler.impact_events = list(events)
+    step_end = (
+        _next_step_from_history() if step is None else (lambda t, land: min(t + step, land))
+    )
+    rows = [t0]
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        while handler.impact_events:
+            land = landing_time(handler.impact_events, rows[-1])
+            handler.hf_row['Time'] = snap_to_impact(step_end(rows[-1], land), land)
+            handler.interior_o.dt = handler.hf_row['Time'] - rows[-1]
+            wrapper.apply_due_impacts(handler, False)
+            rows.append(handler.hf_row['Time'])
+
+    assert applied == times
+    assert np.all(np.diff(rows) > 0.0)
+    names = [format_subyear_time(t) for t in rows[1:]]
+    assert len(set(names)) == len(names) >= 2
+    delivered = m_imp * 1000.0 / 1.0e6
+    rock = sum(e.mass_delta - delivered for e in events)
+    assert handler.hf_row['M_accreted_rock'] == pytest.approx(rock, rel=1e-9)
+    assert handler.hf_row['n_impacts_applied'] == len(times)
+    assert handler.hf_row['H_kg_total'] == pytest.approx(
+        6.0e20 + len(times) * delivered, rel=1e-9
+    )
+    warned = [r.getMessage() for r in caplog.records if 'form a chain' in r.getMessage()]
+    assert len(warned) == 1
+    assert f'{span} yr wide' in warned[0] and f'up to {delay} yr' in warned[0]
 
 
 @pytest.mark.unit

@@ -199,9 +199,12 @@ class TimeStepParams:
         (default) to disable. Independent of this setting, the step
         that lands on an impact can be shorter than dtfloor, a step
         ending at most 1e-3 yr short of an impact is extended onto it
-        (unless the step already reaches stop.time.maximum), and impacts
-        each less than 1e-3 yr apart land in one step at the last of
-        their times.
+        (unless the step already reaches stop.time.maximum), and an
+        impact is applied at the end of the first step that reaches its
+        time. Impacts each less than 1e-3 yr after the one before form a
+        chain that the step aims at the last of, so an impact in a chain
+        can be applied later than its time by up to the chain span; a
+        chain wider than 1e-3 yr is logged as a warning.
     """
 
     starspec: float = field(default=1e8, validator=ge(0))

@@ -2772,12 +2772,14 @@ def test_the_main_loop_lands_two_close_impacts_in_one_step(tmp_path, caplog):
                 (h.hf_row['Time'], e.time, h.interior_o.t_next_impact)
             ),
         ),
-        caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'),
+        caplog.at_level(logging.INFO, logger='fwl.proteus.accretion.wrapper'),
     ):
         _run_main_loop_capturing_plots(p, stop_at_loop=6)
     assert applied == [(300.0, 299.9999, 300.0), (300.0, 300.0, 300.0)]
     assert p.impact_events == []
     assert sum('land in one step' in r.message for r in caplog.records) == 1
+    # The pair spans 1e-4 yr, below the name resolution, so no chain warning.
+    assert not any('form a chain' in r.message for r in caplog.records)
 
 
 def test_the_main_loop_lands_each_step_through_snap_to_impact(tmp_path):

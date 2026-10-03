@@ -362,6 +362,67 @@ def restore_accretion_state(handler: Proteus) -> None:
     )
 
 
+def apply_due_impacts(handler: Proteus, is_snapshot: bool) -> list[ImpactEvent]:
+    """Apply the impacts the step just taken reached, each once and in time order.
+
+    An impact is applied at the end of the first step that reaches its time. In a
+    chain of impacts each less than ``SUBYEAR_TIME_RESOLUTION`` after the one
+    before, that can be later than the impact time by up to the chain span. A
+    chain wider than that resolution gets one warning, on the row that lands its
+    last impact, naming its span and the largest delay.
+
+    Parameters
+    ----------
+    handler : Proteus
+        Coupler state; ``impact_events`` loses the applied events and
+        ``impact_chain`` holds (first time, landing time, largest delay) [yr]
+        of a chain whose last impact is still pending.
+    is_snapshot : bool
+        Whether this row writes a snapshot, which a landing row discards.
+
+    Returns
+    -------
+    list of ImpactEvent
+        The impacts applied on this row.
+    """
+    from proteus.accretion.common import due_events, landing_time
+    from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION
+
+    time_now = handler.hf_row['Time']
+    time_previous = time_now - handler.interior_o.dt
+    landed = due_events(handler.impact_events, time_previous, time_now)
+    if not landed:
+        return landed
+    end = landing_time(handler.impact_events, time_previous)
+    chain = getattr(handler, 'impact_chain', None)
+    first, delay = (chain[0], chain[2]) if chain and chain[1] == end else (landed[0].time, 0.0)
+    delay = max(delay, time_now - landed[0].time)
+    if len(landed) > 1:
+        log.info(
+            'Impacts at t = %s yr land in one step at %.6e yr',
+            ', '.join(f'{e.time:.6e}' for e in landed),
+            time_now,
+        )
+    for event in landed:
+        apply_impact(handler, event)
+        handler.impact_events.remove(event)
+    # Discard snapshot taken before remelting so resume does not
+    # load an un-melted mantle while keeping post-impact mass.
+    if is_snapshot:
+        discard_preimpact_snapshot(handler)
+    handler.impact_chain = (first, end, delay) if time_now < end else None
+    if time_now >= end and end - first >= SUBYEAR_TIME_RESOLUTION:
+        log.warning(
+            'Impacts from t = %.6e to %.6e yr form a chain %.3e yr wide; they were '
+            'applied up to %.3e yr after their times',
+            first,
+            end,
+            end - first,
+            delay,
+        )
+    return landed
+
+
 def discard_preimpact_snapshot(handler: Proteus) -> None:
     """Drop the interior snapshot a step wrote before an impact re-melted it.
 
