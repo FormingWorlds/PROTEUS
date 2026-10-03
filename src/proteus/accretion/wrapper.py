@@ -114,6 +114,13 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
 
     if not events and module in ('timeline', 'morrigan'):
         log.warning("Accretion module '%s' resolved to 0 impacts", module)
+    if config.orbit.instellation_method == 'inst':
+        log.warning(
+            "accretion.module = '%s' with orbit.instellation_method = 'inst': the "
+            'semi-major axis follows orbit.instellationflux, so the semi-major axis '
+            'change of each impact is not applied; its eccentricity change is.',
+            module,
+        )
 
     resumed = bool(config.params.resume)
     kept = _drop_events_before_start(events, handler.hf_row.get('Time', 0.0), resumed=resumed)
@@ -311,8 +318,8 @@ def restore_accretion_state(handler: Proteus) -> None:
             raise RuntimeError(
                 f'Resume refused: {hf_name} records n_impacts_applied = {n_applied}, '
                 f'but only {events_before} impact(s) precede the resume time {resume_time} yr '
-                f'and the next {n_drop} cannot have landed during the init stage '
-                f'(t <= {_INIT_STAGE_HORIZON_YR} yr). Restart the simulation.'
+                f'and the next {n_drop} landed neither on the resume row nor during the '
+                f'init stage (t <= {_INIT_STAGE_HORIZON_YR} yr). Restart the simulation.'
             )
         if n_drop > 0:
             log.info(
@@ -461,7 +468,9 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         event.id_impactor,
         event.mass_delta / M_earth,
     )
-    if config.accretion.module in ('timeline', 'morrigan'):
+    # The first impact of a fresh run was checked at load, against mass_tot.
+    first_of_fresh_run = not config.params.resume and not hf_row.get('n_impacts_applied')
+    if config.accretion.module in ('timeline', 'morrigan') and not first_of_fresh_run:
         m_planet = _as_float(hf_row.get('M_planet'))
         if not 0.0 < m_planet < math.inf:
             m_planet = config.planet.mass_tot * M_earth
@@ -570,12 +579,20 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     hf_row['semimajorax'] = new_a
     hf_row['eccentricity'] = eccentricity
 
-    log.info(
-        '    planet is now %.4f M_earth at %.5f AU, e = %.4f',
-        config.planet.mass_tot,
-        config.orbit.semimajoraxis,
-        config.orbit.eccentricity,
-    )
+    if config.orbit.instellation_method == 'inst':
+        log.info(
+            '    planet is now %.4f M_earth, e = %.4f; the semi-major axis follows '
+            'orbit.instellationflux and is not changed by the impact',
+            config.planet.mass_tot,
+            config.orbit.eccentricity,
+        )
+    else:
+        log.info(
+            '    planet is now %.4f M_earth at %.5f AU, e = %.4f',
+            config.planet.mass_tot,
+            config.orbit.semimajoraxis,
+            config.orbit.eccentricity,
+        )
 
 
 def _apply_volatile_consequences(

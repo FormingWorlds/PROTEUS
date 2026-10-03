@@ -5,6 +5,7 @@ import glob
 import importlib.util
 import inspect
 import logging
+import math
 import os
 import platform
 import time
@@ -29,6 +30,7 @@ from aragog.parser import (
     _Radionuclide,
     _SolverParameters,
 )
+from proteus.accretion.common import snap_to_impact
 from proteus.interior_energetics.aragog_phase import (
     build_jax_phase_params,
     build_mixed_phase_params,
@@ -2036,11 +2038,12 @@ class AragogRunner:
 
         self._store_profiles(interior_o, out)
 
-        # Use the actual integration endpoint, not the requested end_time.
-        # If the solver exits early (status != 0), dt_actual < requested dt.
-        # Matches the SPIDER fix (reading time_years from JSON instead of
-        # using dtswitch) to prevent the same class of time desync.
-        sim_time = hf_row['Time'] + out.dt_actual
+        # The actual integration endpoint, not the requested end_time (dt_actual is
+        # shorter when the solver exits early); a step aimed at an impact ends on it,
+        # so the snapshot is named like the row.
+        sim_time = snap_to_impact(
+            hf_row['Time'] + out.dt_actual, getattr(interior_o, 't_next_impact', math.inf)
+        )
 
         # Write output to a file (skipped when dt_write suppresses this step)
         if write_data:
@@ -2083,13 +2086,11 @@ class AragogRunner:
         A CV_TOO_MUCH_WORK stall (cvode_flag == -1) is a stiffness /
         step-budget problem, so recovery first raises the CVODE step
         budget (max_steps), then relaxes rtol (bounded), and only then
-        halves the integration interval, over up to eight attempts. On a
-        giant-impact step every failure takes this stiff ladder, so atol is
-        never relaxed there. Every other failure keeps the dt-halving plus
-        atol-scaling ladder over six attempts. Each retry restores the
-        entropy IC and dSdr_cmb_init from before the attempt. On final
-        failure this raises RuntimeError so the caller can apply its
-        skip-step fallback.
+        halves the integration interval, over up to eight attempts. Every
+        other failure keeps the dt-halving plus atol-scaling ladder over
+        six attempts. Each retry restores the entropy IC and dSdr_cmb_init
+        from before the attempt. On final failure this raises RuntimeError
+        so the caller can apply its skip-step fallback.
 
         Parameters
         ----------
@@ -2106,13 +2107,12 @@ class AragogRunner:
 
         Notes
         -----
-        The attempt budget is a monotonic ratchet: the first stiff-ladder
-        failure (CV_TOO_MUCH_WORK, or any failure on an impact step) widens
-        max_attempts from six to eight for the rest of the call and it never
-        narrows. A later non-stiff failure in the same call is still part of
-        the stiff recovery, so it keeps the wider budget rather than reverting
-        to six. The stiffness ramp is indexed by stiff_seen, the running count
-        of stiff-ladder attempts, so a late or intermittent
+        The attempt budget is a monotonic ratchet: the first CV_TOO_MUCH_WORK
+        failure widens max_attempts from six to eight for the rest of the call
+        and it never narrows. A later non-stiff failure in the same call is
+        still part of the stiff recovery, so it keeps the wider budget rather
+        than reverting to six. The stiffness ramp is indexed by stiff_seen, the
+        running count of CV_TOO_MUCH_WORK attempts, so a late or intermittent
         stiff switch still climbs the ramp from its first rung; the non-stiff
         ramp is indexed by the symmetric other_seen count.
 
@@ -2152,10 +2152,6 @@ class AragogRunner:
         sanity_dT_core = max(
             3000.0, 1500.0 * mass_tot
         )  # max plausible T_core change per retry [K]
-        # Giant impacts cause real T_core jumps that retries cannot reduce, so the
-        # jump check is skipped on an impact step while atol is not relaxed; an
-        # atol-relaxed attempt is the corruption source the check exists for.
-        impact_step = bool(getattr(interior_o, 'impact_reset_this_step', False))
 
         # Immediately before the solve, so the state-heat integral this step
         # books is taken against the tables the step actually runs on.
@@ -2219,8 +2215,10 @@ class AragogRunner:
         rtol_cap = base_rtol * stiff_ramp[-1][1]
 
         out = None
-        # Counts of stiff-ladder and other-mode attempts: each ramp climbs from its
-        # own rung 1, so a switch back to non-stiff does not jump to the atol cap.
+        # Running counts of CV_TOO_MUCH_WORK and other-mode attempts. stiff_seen
+        # indexes the stiffness ramp so it climbs from rung 1 whenever stiffness
+        # first appears; other_seen indexes the non-stiff atol/dt ramp so a
+        # switch back to non-stiff does not jump straight to the atol cap.
         stiff_seen = 0
         other_seen = 0
         _diag_on = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
@@ -2256,8 +2254,7 @@ class AragogRunner:
                     sanity_reject_reason = None
 
                     # Reject non-finite CMB temperatures and implausibly large jumps.
-                    # The jump-magnitude check is inactive when T_core_pre <= 0
-                    # or during an impact step at unrelaxed atol.
+                    # The jump-magnitude check is inactive when T_core_pre <= 0.
                     tcore_endpoint = float(out.T_core)
                     # tcore_change_max is the intra-solve maximum change,
                     # >= the endpoint change by construction; on an older
@@ -2274,16 +2271,7 @@ class AragogRunner:
                             if tcore_change_max is not None
                             else abs(tcore_endpoint - T_core_pre)
                         )
-                        if dT > sanity_dT_core and impact_step and solver._atol_sf == 1.0:
-                            log.info(
-                                'T_core jumped %.1f K (>%.0f K threshold) on '
-                                'the step a giant impact re-melted the '
-                                'mantle. The jump is the impact, so the '
-                                'guard is skipped here.',
-                                dT,
-                                sanity_dT_core,
-                            )
-                        elif dT > sanity_dT_core:
+                        if dT > sanity_dT_core:
                             sanity_reject_reason = (
                                 f'T_core jumped by up to {dT:.1f} K '
                                 f'(>{sanity_dT_core:.0f} K sanity threshold)'
@@ -2337,10 +2325,7 @@ class AragogRunner:
                 cvode_flag = int(getattr(out, 'cvode_flag', 0) or 0)
                 flag_name = str(getattr(out, 'cvode_flag_name', '') or '')
                 is_too_much_work = cvode_flag == -1 or flag_name == 'TOO_MUCH_WORK'
-                # An impact step retries on the stiff ladder whatever failed, so atol
-                # is never relaxed there and the impact jump exemption keeps holding.
-                stiff_ladder = is_too_much_work or impact_step
-                if stiff_ladder:
+                if is_too_much_work:
                     max_attempts = max_attempts_stiff
                     stiff_seen += 1
                 else:
@@ -2372,8 +2357,6 @@ class AragogRunner:
                         reason = f'{self._active_solver_name()} status={out.status}'
                         if flag_name:
                             reason += f' (cvode_flag={cvode_flag}, {flag_name})'
-                    if impact_step:
-                        reason += ' on a giant-impact step (stiff ladder, atol 1.0x)'
                     log.error(
                         'Aragog solver failed after %d attempts (%s). '
                         'Raising RuntimeError so wrapper can apply skip-step fallback.',
@@ -2388,7 +2371,7 @@ class AragogRunner:
                 # dt of the attempt that just failed. A retry must never run
                 # coarser than it, so clamp the scheduled dt below.
                 dt_current = float(solver.parameters.solver.end_time) - t_start
-                if stiff_ladder:
+                if is_too_much_work:
                     # Stiffness recovery, indexed by stiff_seen so it climbs
                     # from rung 1 whenever stiffness first appears. Raise the
                     # step budget first (wall-time cost only, no accuracy loss),
@@ -2415,12 +2398,9 @@ class AragogRunner:
                         solver._max_steps = int(max_steps_new)
                     solver.parameters.solver.rtol = rtol_new
                     log.warning(
-                        'Aragog %s at t=%.3e yr (attempt %d/%d). '
+                        'Aragog CV_TOO_MUCH_WORK at t=%.3e yr (attempt %d/%d). '
                         'Retrying with max_steps=%d, rtol=%.2e, dt=%.3e yr, '
                         'atol_sf=%.1fx (was dt=%.3e yr).',
-                        'CV_TOO_MUCH_WORK'
-                        if is_too_much_work
-                        else 'failure on a giant-impact step',
                         hf_row.get('Time', 0.0),
                         attempt,
                         max_attempts,

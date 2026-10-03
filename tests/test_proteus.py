@@ -2721,10 +2721,36 @@ def test_the_time_advance_ends_a_short_step_on_the_pending_impact(tmp_path, t_im
     t = 1.0e8 / 3.0
     dt = math.nextafter(math.nextafter(t - t0, 0.0), 0.0)
     p.hf_row = {'Time': t0, 'age_star': t0 + 1.0}
-    p.interior_o = SimpleNamespace(dt=dt, t_next_impact=t_impact)
-    p._advance_time()
+    p.interior_o = SimpleNamespace(dt=dt)
+    p._advance_to_step_end(t_impact)
     assert p.hf_row['Time'] == (t if lands else t0 + dt)
     assert p.hf_row['age_star'] - p.hf_row['Time'] == pytest.approx(1.0, abs=1.0e-9)
+
+
+def test_the_main_loop_applies_a_snapped_impact_in_the_same_iteration(tmp_path):
+    """An impact 0.5e-12 (relative) after the end of a 100 yr step is within the
+    snap window: the row time moves onto it and the impact is applied in that
+    iteration, once, with the impact time as the row time."""
+    from types import SimpleNamespace
+
+    t_impact = 300.0 * (1.0 + 0.5e-12)
+    applied = []
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with (
+        patch(
+            'proteus.accretion.wrapper.init_accretion',
+            return_value=[SimpleNamespace(time=t_impact)],
+        ),
+        patch('proteus.accretion.wrapper.restore_accretion_state'),
+        patch('proteus.accretion.wrapper.discard_preimpact_snapshot'),
+        patch(
+            'proteus.accretion.wrapper.apply_impact',
+            side_effect=lambda handler, event: applied.append(handler.hf_row['Time']),
+        ),
+    ):
+        _run_main_loop_capturing_plots(p, stop_at_loop=6)
+    assert applied == [t_impact]
+    assert p.impact_events == []
 
 
 def test_the_main_loop_lands_each_step_through_snap_to_impact(tmp_path):

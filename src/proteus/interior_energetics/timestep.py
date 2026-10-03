@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -476,16 +477,17 @@ def next_step(
                 )
                 dtswitch = dt_capped
 
-    # Align step with next scheduled giant impact, subject to optional
-    # impact_maximum and dtfloor (the floor can overshoot by up to dtfloor).
-    # The ceiling bounds only a step that would reach the impact.
+    # Land a step that would reach the next scheduled impact exactly on it, below
+    # dtfloor if need be. With impact_maximum set (never below dtfloor), a longer
+    # approach is split into equal steps no longer than it, so the last one lands.
     if interior_o is not None and np.isfinite(interior_o.t_next_impact):
         dt_to_impact = interior_o.t_next_impact - hf_row['Time']
         impact_ceiling = float(config.params.dt.impact_maximum)
-        if impact_ceiling > 0.0 and dtswitch >= dt_to_impact:
-            dt_to_impact = min(dt_to_impact, impact_ceiling)
-        dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
-        dt_to_impact = max(dt_to_impact, dtfloor)
+        if impact_ceiling > 0.0:
+            dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
+            ceiling = max(impact_ceiling, dtfloor)
+            if dtswitch >= dt_to_impact > ceiling:
+                dt_to_impact /= math.ceil(dt_to_impact / ceiling)
         if dtswitch > dt_to_impact:
             log.info(
                 'Time-stepping: impact at %.4e yr, capping dt at %.2e yr (was %.2e yr)',

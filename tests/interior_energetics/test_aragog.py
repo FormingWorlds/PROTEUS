@@ -1090,12 +1090,19 @@ def _retry_ladder_runner(
         set_initial_entropy=lambda S: None,
         reset=lambda: None,
     )
-    solver.solve = lambda: attempts.append(float(solver.parameters.solver.end_time))
+    settings: list[tuple[float, float]] = []
+
+    def _solve():
+        attempts.append(float(solver.parameters.solver.end_time))
+        settings.append((solver._atol_sf, solver.parameters.solver.rtol))
+
+    solver.solve = _solve
 
     runner = AragogRunner.__new__(AragogRunner)
     runner.aragog_solver = solver
     runner._config = MagicMock()
     runner._config.planet.mass_tot = mass_tot
+    runner.settings_log = settings  # (atol_sf, rtol) of every attempt
     interior_o = SimpleNamespace(aragog_step_progress=[], _last_entropy=None)
     return runner, interior_o, attempts
 
@@ -1292,7 +1299,6 @@ def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
 
         interior_o = MagicMock()
         interior_o._last_entropy = None
-        interior_o.impact_reset_this_step = False
 
         hf_row = {'Time': 2.15e5, 'T_cmb': 0.0}
         return runner, interior_o, hf_row
@@ -1645,133 +1651,74 @@ def test_progress_is_weighed_against_what_the_coupling_asked_for():
 
 
 @pytest.mark.unit
-def test_the_core_temperature_guard_stands_aside_for_a_giant_impact():
-    """A giant impact's core-temperature jump is kept, not retried away.
-
-    Physical scenario: an impactor merges with the planet and re-melts the
-    mantle between two interior solves, so the core temperature moves by
-    thousands of kelvin in one coupling step. That jump is the impact, applied
-    outside the solver, and it is identical at every step size.
-
-    Contract clause: the jump guard exists to reject a solve that returned
-    garbage, which a smaller step can fix. It cannot fix an impact, so on the
-    step a re-melt fires the guard stands aside; on every other step it keeps
-    its full strength.
-
-    Verifies:
-    - The same 8000 K jump is accepted on the first attempt with the impact
-      flag raised and rejected down the whole ladder without it, which is the
-      discriminating pair: only the flag differs.
-    - The exemption is scoped to the jump guard, so a solve that actually
-      failed is still retried even on an impact step.
-    """
-    prior = {'Time': 7.68e5, 'T_cmb': 4000.0}
-
-    # 12000 K against a 4000 K prior state is an 8000 K jump, well past the
-    # 3000 K floor the guard applies at 1 M_earth.
-    impacted, impacted_interior, impacted_attempts = _retry_ladder_runner(
+@pytest.mark.parametrize('t_cmb, accepted', [(11900.0, True), (4000.0, False)])
+def test_the_core_temperature_guard_measures_an_impact_step_like_any_other(t_cmb, accepted):
+    """The re-melt writes the post-impact T_cmb, so an impact step that returns
+    12000 K against an 11900 K baseline passes on the first attempt with no
+    exemption; against the stale pre-impact 4000 K the 8000 K jump is rejected
+    down the whole ladder, as on any other step."""
+    runner, interior_o, attempts = _retry_ladder_runner(
         status=0, dt_actual=100.0, T_core=12000.0
     )
-    impacted_interior.impact_reset_this_step = True
-    out = impacted._solve_with_retry(prior, impacted_interior)
-
-    assert len(impacted_attempts) == 1, (
-        'the impact jump cannot shrink with the step, so retrying it burns the '
-        'ladder and kills the run at the impact'
-    )
-    assert out.T_core == pytest.approx(12000.0, rel=1e-12)
-
-    # Same solver result, same prior state, flag down: the guard must reject.
-    ordinary, ordinary_interior, ordinary_attempts = _retry_ladder_runner(
-        status=0, dt_actual=100.0, T_core=12000.0
-    )
-    with pytest.raises(RuntimeError, match='T_core jump'):
-        ordinary._solve_with_retry(prior, ordinary_interior)
-    assert len(ordinary_attempts) == 6, (
-        'without an impact to explain it, a jump of this size is a corrupted '
-        'solve and has to go down the ladder'
-    )
-
-    # The exemption covers the jump guard only. A solver that reports failure
-    # is still retried on an impact step, or a genuinely broken solve would be
-    # waved through whenever it landed on an impact.
-    failed, failed_interior, failed_attempts = _retry_ladder_runner(
-        status=-1, dt_actual=0.0, T_core=12000.0
-    )
-    failed_interior.impact_reset_this_step = True
-    with pytest.raises(RuntimeError):
-        failed._solve_with_retry(prior, failed_interior)
-    assert len(failed_attempts) == 8  # an impact step retries on the stiff ladder
+    interior_o.impact_reset_this_step = True
+    prior = {'Time': 7.68e5, 'T_cmb': t_cmb}
+    if accepted:
+        out = runner._solve_with_retry(prior, interior_o)
+        assert out.T_core == pytest.approx(12000.0, rel=1e-12)
+    else:
+        with pytest.raises(RuntimeError, match='T_core jump'):
+            runner._solve_with_retry(prior, interior_o)
+    assert len(attempts) == (1 if accepted else 6)
 
 
-def _impact_step_after_a_failed_first_attempt(cvode_flag):
-    """Runner on an impact step whose first attempt fails with ``cvode_flag``
-    and whose retries return an 8000 K core-temperature jump."""
-    first = SimpleNamespace(status=-1, T_core=4000.0, dt_actual=0.0, cvode_flag=cvode_flag)
+@pytest.mark.unit
+def test_a_corrupted_atol_relaxed_solve_on_an_impact_step_is_rejected():
+    """A first attempt that fails non-stiff (cvode_flag -3) retries at relaxed
+    atol; an 8000 K jump from those retries is a corrupted solve, rejected on the
+    impact step too, and every retry ran at relaxed atol."""
+    first = SimpleNamespace(status=-1, T_core=4000.0, dt_actual=0.0, cvode_flag=-3)
     runner, interior_o, attempts = _retry_ladder_runner(
         status=0, dt_actual=100.0, T_core=12000.0, first_state=first
     )
     interior_o.impact_reset_this_step = True
-    return runner, interior_o, attempts
-
-
-@pytest.mark.unit
-def test_the_giant_impact_exemption_holds_on_the_stiff_ladder():
-    """A first attempt that stalls on its step budget (cvode_flag -1) retries on
-    the stiff ladder at atol 1.0x, and the impact jump on that retry is kept."""
-    runner, interior_o, attempts = _impact_step_after_a_failed_first_attempt(-1)
-    out = runner._solve_with_retry({'Time': 7.68e5, 'T_cmb': 4000.0}, interior_o)
-    assert out.T_core == pytest.approx(12000.0, rel=1e-12)
-    assert len(attempts) == 2
-
-
-@pytest.mark.unit
-def test_an_impact_step_retries_any_failure_on_the_stiff_ladder():
-    """On an impact step a non-stiff first failure (cvode_flag -3) also retries on
-    the stiff ladder, at atol 1.0x, so the impact jump on the retry is kept
-    rather than rejected as an atol-relaxed solve."""
-    runner, interior_o, attempts = _impact_step_after_a_failed_first_attempt(-3)
-    out = runner._solve_with_retry({'Time': 7.68e5, 'T_cmb': 4000.0}, interior_o)
-    assert out.T_core == pytest.approx(12000.0, rel=1e-12)
-    assert len(attempts) == 2
-
-
-@pytest.mark.unit
-def test_an_exhausted_impact_step_names_the_step_and_the_ladder():
-    """When every attempt of an impact step fails, the stop says that it was the
-    impact step and that the stiff ladder at atol 1.0x was used."""
-    runner, interior_o, attempts = _retry_ladder_runner(status=-1, dt_actual=0.0)
-    interior_o.impact_reset_this_step = True
-    with pytest.raises(RuntimeError, match='giant-impact step .stiff ladder, atol 1.0x.'):
+    with pytest.raises(RuntimeError, match='T_core jump'):
         runner._solve_with_retry({'Time': 7.68e5, 'T_cmb': 4000.0}, interior_o)
-    assert len(attempts) == 8
+    atol, rtol = zip(*runner.settings_log)
+    assert len(attempts) == 6
+    assert atol[0] == pytest.approx(1.0, abs=0.0)
+    assert all(a > 1.0 for a in atol[1:])
+    assert set(rtol) == {1.0e-6}
 
 
 @pytest.mark.unit
-def test_the_giant_impact_exemption_does_not_cover_a_non_finite_tcore():
-    """A giant impact excuses a large T_core jump, not a non-finite one.
+def test_the_step_after_an_exhausted_impact_step_is_measured_from_the_re_melt():
+    """An impact step whose every attempt fails falls back; the next step reads
+    the re-melted T_cmb the impact wrote, so its solve near that temperature is
+    accepted on the first attempt without the impact flag."""
+    hf_row = {'Time': 7.68e5, 'T_cmb': 11900.0}
+    failed, failed_interior, _ = _retry_ladder_runner(status=-1, dt_actual=0.0)
+    failed_interior.impact_reset_this_step = True
+    with pytest.raises(RuntimeError, match='retry ladder exhausted'):
+        failed._solve_with_retry(hf_row, failed_interior)
+    runner, interior_o, attempts = _retry_ladder_runner(
+        status=0, dt_actual=100.0, T_core=11950.0
+    )
+    out = runner._solve_with_retry(hf_row, interior_o)
+    assert out.T_core == pytest.approx(11950.0, rel=1e-12)
+    assert len(attempts) == 1
 
-    Physical scenario: a relaxed rtol can let CVODE return a NaN core
-    temperature on any step, impact or not. The impact exemption exists to
-    keep a real, large jump from being mistaken for a corrupted solve; a NaN
-    is corrupted regardless of the flag.
 
-    Contract clause: the finiteness check runs before, and independently of,
-    the impact-step exemption, so a non-finite T_core is rejected down the
-    full retry ladder even on the step a giant impact fires.
-    """
-    prior = {'Time': 7.68e5, 'T_cmb': 4000.0}
-
-    nan_on_impact, nan_interior, nan_attempts = _retry_ladder_runner(
+@pytest.mark.unit
+def test_a_non_finite_tcore_is_rejected_on_an_impact_step():
+    """A relaxed rtol can let CVODE return a NaN core temperature on any step;
+    the finiteness check rejects it down the full ladder on an impact step too."""
+    runner, interior_o, attempts = _retry_ladder_runner(
         status=0, dt_actual=100.0, T_core=float('nan')
     )
-    nan_interior.impact_reset_this_step = True
+    interior_o.impact_reset_this_step = True
     with pytest.raises(RuntimeError, match='non-finite'):
-        nan_on_impact._solve_with_retry(prior, nan_interior)
-    assert len(nan_attempts) == 8, (
-        'a non-finite solve is corrupted regardless of the impact flag, so it '
-        'burns the whole retry ladder, the stiff one on an impact step'
-    )
+        runner._solve_with_retry({'Time': 7.68e5, 'T_cmb': 4000.0}, interior_o)
+    assert len(attempts) == 6
 
 
 def _jax_factory_config():
@@ -3303,6 +3250,38 @@ def test_run_solver_writes_the_resume_state_every_step(tmp_path, core_bc):
         write_data=False,
     )
     assert len(list((tmp_path / 'data').glob('*_int.nc'))) == 1
+
+
+@pytest.mark.unit
+def test_a_step_ending_short_of_an_impact_writes_its_snapshot_at_the_impact_time(tmp_path):
+    """A step aimed at an impact that rounding ends 2 ulp short returns the impact
+    time and names its snapshot from it, so the row and the snapshot agree."""
+    import math
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.utils.helper import format_subyear_time
+
+    (tmp_path / 'data').mkdir()
+    runner = AragogRunner.__new__(AragogRunner)
+    runner._use_jax = False
+    runner._config = MagicMock()
+    runner._config.interior_energetics.aragog.core_bc = 'bower2018'
+    runner._config.interior_energetics.write_flux_diagnostics = False
+    t_impact = 1.0e8 / 3.0
+    out = _snapshot_output()
+    out.dt_actual = math.nextafter(math.nextafter(t_impact, 0.0), 0.0) - 1.0e3
+    runner._solve_with_retry = lambda hf_row, interior_o: out
+    runner._build_helpfile_output = lambda *a, **k: {}
+    interior_o = SimpleNamespace(aragog_solver=_StateSolver(4100.0), t_next_impact=t_impact)
+    sim_time, _ = runner.run_solver(
+        {'Time': 1.0e3, 'T_surf': 3000.0}, interior_o, {'output': str(tmp_path)}
+    )
+    assert 1.0e3 + out.dt_actual < t_impact
+    assert sim_time == t_impact
+    assert [p.name for p in (tmp_path / 'data').glob('*_int.nc')] == [
+        format_subyear_time(t_impact) + '_int.nc'
+    ]
 
 
 @pytest.mark.parametrize(

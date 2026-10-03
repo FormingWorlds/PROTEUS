@@ -95,6 +95,7 @@ def _handler(
             ),
             interior_energetics=SimpleNamespace(module=interior_module),
             planet=SimpleNamespace(temperature_mode=temperature_mode, mass_tot=1.0),
+            orbit=SimpleNamespace(instellation_method='distance'),
             params=SimpleNamespace(resume=resume),
         ),
         directories={'output': str(output_dir) if output_dir is not None else '.'},
@@ -104,22 +105,62 @@ def _handler(
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'mass_tot, warns', [(1.0, False), (1.08, False), (1.13, True), (5.0, True)]
+    'ratio, warns', [(1.095, False), (1.105, True), (0.905, False), (0.895, True)]
 )
 def test_a_borrowed_timeline_sized_for_another_body_warns_at_load(
-    tmp_path, caplog, mass_tot, warns
+    tmp_path, caplog, ratio, warns
 ):
     """The first impact's target mass (6.0e24 kg) is compared with the planet
-    mass: within 10 % the timeline loads quietly, beyond it the run warns."""
+    mass: within 10 % either way the timeline loads quietly, beyond it the run
+    warns, whether the planet is lighter or heavier than the timeline body."""
+    from proteus.utils.constants import M_earth
+
     handler = _handler(
         module='timeline', timeline_path=_timeline_file(tmp_path / 't.csv'), output_dir=tmp_path
     )
-    handler.config.planet.mass_tot = mass_tot
+    handler.config.planet.mass_tot = 6.0e24 / (ratio * M_earth)
     with caplog.at_level('WARNING'):
         events = init_accretion(handler)
     hits = [r for r in caplog.records if 'timeline target mass' in r.getMessage()]
     assert len(events) == 2
     assert [r.levelname for r in hits] == (['WARNING'] if warns else [])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('method, warns', [('inst', True), ('distance', False)])
+def test_accretion_under_a_flux_fixed_orbit_warns_once_at_init(tmp_path, caplog, method, warns):
+    """With orbit.instellation_method = 'inst' init_accretion warns once that the
+    semi-major axis change of an impact is not applied; its eccentricity is."""
+    handler = _handler(
+        module='timeline', timeline_path=_timeline_file(tmp_path / 't.csv'), output_dir=tmp_path
+    )
+    handler.config.orbit.instellation_method = method
+    with caplog.at_level('WARNING'):
+        init_accretion(handler)
+    hits = [r for r in caplog.records if 'instellationflux' in r.getMessage()]
+    assert len(hits) == (1 if warns else 0)
+    assert all('eccentricity change is' in r.getMessage() for r in hits)
+
+
+@pytest.mark.unit
+def test_an_impact_under_a_flux_fixed_orbit_logs_that_the_axis_is_not_applied(
+    monkeypatch, caplog
+):
+    """Under 'inst' the impact log names the new eccentricity and says the
+    semi-major axis follows the flux, instead of printing an AU value the orbit
+    step overwrites."""
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler()
+    handler.config.orbit.instellation_method = 'inst'
+    with caplog.at_level('INFO'):
+        apply_impact(handler, _impact_event())
+    lines = [r.getMessage() for r in caplog.records if 'planet is now' in r.getMessage()]
+    assert len(lines) == 1
+    assert 'not changed by the impact' in lines[0] and ' AU' not in lines[0]
 
 
 @pytest.mark.unit
@@ -282,13 +323,18 @@ def _impact_handler(
     return SimpleNamespace(
         config=SimpleNamespace(
             planet=SimpleNamespace(mass_tot=mass_tot, tsurf_init=tsurf_init),
-            orbit=SimpleNamespace(semimajoraxis=semimajoraxis, eccentricity=eccentricity),
+            orbit=SimpleNamespace(
+                semimajoraxis=semimajoraxis,
+                eccentricity=eccentricity,
+                instellation_method='distance',
+            ),
             interior_energetics=SimpleNamespace(
                 module='dummy',
                 dummy=SimpleNamespace(mantle_tliq=2700.0, mantle_tsol=1700.0),
             ),
             interior_struct=SimpleNamespace(core_frac=0.55),
             accretion=accretion if accretion is not None else _impact_accretion(),
+            params=SimpleNamespace(resume=False),
         ),
         hf_row={
             'semimajorax': semimajoraxis * AU,
@@ -331,29 +377,30 @@ def test_the_load_check_compares_the_first_impact_the_run_keeps(
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'module, m_planet, mass_tot, warns',
+    'module, ratio, n_applied, warns',
     [
-        ('timeline', 3.0e25, 1.0, True),
-        ('morrigan', 6.1e24, 1.0, False),
-        ('timeline', None, 5.0, True),
-        ('timeline', None, 1.0, False),
-        ('dummy', 3.0e25, 1.0, False),
+        ('timeline', 1.095, 1, False),
+        ('timeline', 1.105, 1, True),
+        ('morrigan', 0.905, 1, False),
+        ('morrigan', 0.895, 1, True),
+        ('timeline', 0.5, 0, False),
+        ('dummy', 0.5, 1, False),
     ],
 )
 def test_an_impact_from_a_borrowed_timeline_warns_on_a_target_mass_mismatch(
-    monkeypatch, caplog, module, m_planet, mass_tot, warns
+    monkeypatch, caplog, module, ratio, n_applied, warns
 ):
-    """Each borrowed impact compares its target mass (6.0e24 kg) with the running
-    planet mass, or mass_tot without one; the dummy module derives its own."""
+    """Each borrowed impact after the first compares its target mass (6.0e24 kg)
+    with the running planet mass, warning beyond 10 % either way; the first impact
+    of a fresh run was checked at load, and the dummy module derives its own."""
     from proteus.accretion.wrapper import apply_impact
 
     monkeypatch.setattr(
         'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
     )
-    handler = _impact_handler(mass_tot=mass_tot)
+    handler = _impact_handler()
     handler.config.accretion.module = module
-    if m_planet is not None:
-        handler.hf_row['M_planet'] = m_planet
+    handler.hf_row.update(M_planet=6.0e24 / ratio, n_impacts_applied=n_applied)
     with caplog.at_level('WARNING'):
         apply_impact(handler, _impact_event())
     hits = [r for r in caplog.records if 'timeline target mass' in r.getMessage()]
@@ -1848,6 +1895,42 @@ def test_a_run_resumes_from_the_row_that_landed_an_impact(tmp_path, t, rounds_do
     assert (handler.hf_row['Time'] < t) is rounds_down
     restore_accretion_state(handler)
     assert handler.impact_events == []
+
+
+@pytest.mark.unit
+def test_a_counted_impact_beyond_the_helpfile_margin_refuses_the_resume(tmp_path):
+    """A row 5e-10 (relative) before an impact that its counter records as applied
+    is neither the landing row (beyond the 2e-10 helpfile margin) nor in the init
+    stage, so the resume is refused."""
+    from proteus.accretion.common import write_timeline
+    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
+    from proteus.utils.constants import AU
+
+    t = 1.0e6
+    event = _impact_event(
+        time=t, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    write_timeline([event], str(tmp_path / _RESOLVED_TIMELINE_FILE))
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            accretion=SimpleNamespace(module='dummy', impactor_volatiles='dry'),
+            params=SimpleNamespace(resume=True),
+            planet=SimpleNamespace(mass_tot=1.0),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row={
+            'Time': t * (1.0 - 5.0e-10),
+            'M_accreted_rock': 1e23,
+            'n_impacts_applied': 1,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        directories={'output': str(tmp_path)},
+        impact_events=[event],
+    )
+    with pytest.raises(RuntimeError, match='landed neither on the resume row'):
+        restore_accretion_state(handler)
+    assert handler.impact_events == [event]
 
 
 @pytest.mark.unit

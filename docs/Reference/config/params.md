@@ -219,5 +219,4 @@ Cross-field constraints enforced when the config file loads:
 - Reject accretion runs that also vapourise rock into the atmosphere.
 - Check that required external packages are importable for the selected modules.
 - The maximum must exceed the minimum on the same section.
-- Warn that impacts cannot move a semi-major axis the instellation fixes.
 <!-- END GENERATED: config-constraints params -->

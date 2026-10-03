@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 from typing import TYPE_CHECKING
 
@@ -19,6 +20,7 @@ import jax.numpy as jnp
 import netCDF4 as nc
 import numpy as np
 
+from proteus.accretion.common import snap_to_impact
 from proteus.interior_energetics.aragog_phase import build_jax_phase_params
 from proteus.interior_energetics.common import Interior_t
 from proteus.utils.helper import format_subyear_time
@@ -216,7 +218,10 @@ class AragogJAXRunner:
         # (temporarily set the numpy solver's solution to match JAX result)
         # Instead, compute output directly from JAX results
         out = self._extract_output(result, hf_row, interior_o)
-        sim_time = result.t_final
+        # A step aimed at an impact ends on it, so the snapshot is named like the row.
+        sim_time = snap_to_impact(
+            result.t_final, getattr(interior_o, 't_next_impact', math.inf)
+        )
 
         # Write NetCDF (skipped when dt_write suppresses this step)
         if write_data:

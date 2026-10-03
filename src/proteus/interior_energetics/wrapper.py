@@ -2005,7 +2005,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     defined convention quantified in the helpfile, not a quantity the residual
     itself can validate.
 
-    The melt-state keys in ``hf_row`` (``T_magma``, ``Phi_global``,
+    The melt-state keys in ``hf_row`` (``T_magma``, ``T_cmb``, ``Phi_global``,
     ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``)
     and the profile arrays on ``interior_o`` are updated to the re-melted
     profile evaluated without time integration, so downstream modules on the
@@ -2090,8 +2090,10 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
             surface_d=config.atmos_clim.surface_d,
             surface_bc_mode=config.interior_energetics.surface_bc_mode,
         )
+        # T_cmb as well: the T_core jump guard of the next solve measures from it.
         for key in (
             'T_magma',
+            'T_cmb',
             'Phi_global',
             'Phi_global_vol',
             'T_pot',

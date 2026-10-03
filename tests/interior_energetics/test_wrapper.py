@@ -7331,6 +7331,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
         lambda *a, **k: {
             'T_magma': 3850.0,
+            'T_cmb': 5200.0,
             'Phi_global': 0.73,
             'Phi_global_vol': 0.73,
             'T_pot': 3750.0,
@@ -7340,6 +7341,8 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
 
     assert hf_row['T_magma'] == pytest.approx(3850.0, rel=1e-12)
+    # The T_core jump guard of the next solve measures from the re-melted CMB.
+    assert hf_row['T_cmb'] == pytest.approx(5200.0, rel=1e-12)
     assert hf_row['Phi_global'] == pytest.approx(0.73, rel=1e-12)
     assert hf_row['Phi_global_vol'] == pytest.approx(0.73, rel=1e-12)
     assert hf_row['T_pot'] == pytest.approx(3750.0, rel=1e-12)

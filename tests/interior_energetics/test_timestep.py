@@ -853,13 +853,10 @@ class TestImpactClamp:
         assert dt <= 2.0e4
 
     @pytest.mark.physics_invariant
-    def test_an_imminent_impact_is_floored_at_the_minimum_step(self):
-        """An impact inside the minimum step must not collapse dt.
-
-        The event handler applies impacts on a half-open time window, so
-        overshooting an impact by less than one minimum step still fires
-        it exactly once. Shrinking dt towards zero to reach it, on the
-        other hand, would stall the run.
+    def test_an_imminent_impact_is_landed_exactly_below_the_minimum_step(self):
+        """An impact closer than the minimum step is landed on, not overshot:
+        the landing step may go below dtfloor (one short step, then the run
+        continues from the impact).
         """
         from proteus.interior_energetics.timestep import next_step
 
@@ -878,11 +875,9 @@ class TestImpactClamp:
             interior_o=_make_interior_o(t_next_impact=t_impact),
         )
 
-        # dt.minimum + dt.minimum_rel * Time = 100 + 0.005 * 1e5 = 600.
-        assert dt == pytest.approx(600.0, rel=1e-6), f'Expected the 600 yr floor, got {dt}'
-        # Positivity, and the deliberate overshoot that the floor implies.
-        assert dt > 0.0
-        assert hf_row['Time'] + dt > t_impact
+        # dt.minimum + dt.minimum_rel * Time = 600 yr would overshoot by 590 yr.
+        assert dt == pytest.approx(10.0, rel=1e-9), f'Expected the 10 yr landing, got {dt}'
+        assert hf_row['Time'] + dt == pytest.approx(t_impact, rel=1e-15)
 
     @pytest.mark.physics_invariant
     def test_impact_maximum_bounds_the_landing_step_below_the_remaining_time(self):
@@ -955,8 +950,50 @@ class TestImpactClamp:
             1.0,
             interior_o=_make_interior_o(t_next_impact=1.0e5 + 5.0e3 * 1.6),
         )
-        assert dt == pytest.approx(3.0e3, rel=1e-9)
+        # Three equal steps of 8000/3 yr, the last of which lands.
+        assert dt == pytest.approx(8.0e3 / 3.0, rel=1e-9)
         assert hf_row['Time'] + dt < 1.0e5 + 8.0e3
+
+    @staticmethod
+    def _steps_to(t_impact, cap):
+        """Iterate next_step from T0 = 1e5 yr (history of 5e3 yr steps) with the
+        main loop's snap until the run reaches t_impact; return the step ends."""
+        from proteus.accretion.common import snap_to_impact
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(impact_maximum=cap)
+        times = list(1.0e5 + 5.0e3 * np.arange(-11, 1, dtype=float))
+        ends = []
+        while times[-1] < t_impact:
+            hf_all = _make_hf_all(n_rows=len(times))
+            hf_all['Time'] = times
+            hf_row = {'Time': times[-1], 'F_atm': 1.0e4, 'Phi_global': 1.0}
+            dt = next_step(
+                config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o(t_impact)
+            )
+            times.append(snap_to_impact(times[-1] + dt, t_impact))
+            ends.append(times[-1])
+        return ends
+
+    @pytest.mark.physics_invariant
+    @pytest.mark.parametrize('offset', [8.3e3, 1.6e4, 1.62e4, 3.22e4])
+    def test_an_impact_under_the_ceiling_is_landed_exactly(self, offset):
+        """With impact_maximum = 3000 yr the run lands exactly on the impact, by a
+        step no longer than the ceiling, from approaches that end with a remainder
+        below the 600 yr floor."""
+        t = 1.0e5 + offset
+        ends = self._steps_to(t, cap=3.0e3)
+        assert ends[-1] == t
+        assert ends[-1] - (ends[-2] if len(ends) > 1 else 1.0e5) <= 3.0e3 * (1 + 1e-12)
+
+    @pytest.mark.physics_invariant
+    def test_an_impact_a_sub_floor_remainder_away_is_landed_exactly(self):
+        """Without a ceiling, a controller step of 8000 yr toward an impact 8300 yr
+        away leaves a 300 yr remainder below the 600 yr floor; the next step
+        lands on the impact instead of overshooting by the floor."""
+        ends = self._steps_to(1.0e5 + 8.3e3, cap=0.0)
+        assert ends == [1.0e5 + 8.0e3, 1.0e5 + 8.3e3]
+        assert ends[1] - ends[0] < 100.0 + 0.005 * ends[0]  # below the dt floor
 
     def test_impact_maximum_does_not_shorten_a_step_already_below_it(self):
         """The ceiling never lengthens the step and stays inert once the
@@ -992,9 +1029,9 @@ class TestImpactClamp:
     def test_impact_maximum_never_beats_the_minimum_floor(self):
         """A ceiling set below the minimum-step floor must not win.
 
-        The floor exists so an imminent impact cannot collapse dt to zero;
-        a misconfigured ceiling smaller than the floor must not reopen
-        that hazard.
+        A misconfigured ceiling smaller than the floor must not split the
+        approach into steps that collapse towards zero: the split uses the
+        600 yr floor, so a 2000 yr approach takes four 500 yr steps.
         """
         from proteus.interior_energetics.timestep import next_step
 
@@ -1002,7 +1039,7 @@ class TestImpactClamp:
         hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
         time_now = 1.0e5
         hf_row = {'Time': time_now, 'F_atm': 1.0e4, 'Phi_global': 1.0}
-        t_impact = time_now + 10.0
+        t_impact = time_now + 2000.0
 
         dt = next_step(
             config,
@@ -1013,9 +1050,9 @@ class TestImpactClamp:
             interior_o=_make_interior_o(t_next_impact=t_impact),
         )
 
-        # The 600 yr floor wins over the 50 yr ceiling.
-        assert dt == pytest.approx(600.0, rel=1e-6), f'Expected the 600 yr floor, got {dt}'
-        assert dt > 0.0
+        # ceil(2000 / 600) = 4 equal steps, not ceil(2000 / 50) = 40.
+        assert dt == pytest.approx(500.0, rel=1e-9), f'Expected 500 yr, got {dt}'
+        assert dt > 50.0
 
 
 class TestImpactAndBolscaleClampsTogether:

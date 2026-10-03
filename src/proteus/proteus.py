@@ -407,17 +407,18 @@ class Proteus:
             dirs['spider_solidus_ps'] = tables['solidus_path']
             dirs['spider_liquidus_ps'] = tables['liquidus_path']
 
-    def _advance_time(self) -> None:
+    def _advance_to_step_end(self, t_next_impact: float) -> None:
         """Advance the run and star age by the interior step [yr].
 
-        A step aimed at a pending impact ends on the impact time even when
-        rounding leaves it a few ulp short; the correction is exactly 0 otherwise.
+        A step aimed at the pending impact at ``t_next_impact`` (infinite when
+        none) ends on the impact time even when rounding leaves it a few ulp
+        short; the correction is exactly 0 otherwise.
         """
         from proteus.accretion.common import snap_to_impact
 
         self.hf_row['Time'] += self.interior_o.dt
         self.hf_row['age_star'] += self.interior_o.dt
-        t_end = snap_to_impact(self.hf_row['Time'], self.interior_o.t_next_impact)
+        t_end = snap_to_impact(self.hf_row['Time'], t_next_impact)
         self.hf_row['age_star'] += t_end - self.hf_row['Time']
         self.hf_row['Time'] = t_end
 
@@ -1133,7 +1134,8 @@ class Proteus:
             # Tell the time-stepper when the next giant impact is due, so
             # it can shorten the step to land on it.
             pending = next_event(self.impact_events, self.hf_row['Time'])
-            self.interior_o.t_next_impact = float('inf') if pending is None else pending.time
+            t_next_impact = float('inf') if pending is None else pending.time
+            self.interior_o.t_next_impact = t_next_impact
 
             # Evolve interior
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
@@ -1150,7 +1152,7 @@ class Proteus:
                 _t_mod['interior'] = time.perf_counter() - _t0
 
             # Advance current time in main loop according to interior step
-            self._advance_time()
+            self._advance_to_step_end(t_next_impact)
 
             # Apply giant impacts due in this step. Remove applied events
             # so each fires exactly once, including across init iterations.

@@ -230,24 +230,6 @@ def check_accretion_interior_compatibility(instance, attribute, value):
         )
 
 
-def warn_accretion_fixed_instellation_orbit(instance, attribute, value):
-    """Warn that impacts cannot move a semi-major axis the instellation fixes.
-
-    With ``orbit.instellation_method = 'inst'`` (which the config allows only
-    with the dummy star and no star-planet orbit model) the orbit step sets the
-    semi-major axis from ``orbit.instellationflux`` every iteration, so the
-    semi-major axis change of each impact is overwritten; its eccentricity
-    change, mass and volatiles apply.
-    """
-    if instance.accretion.module is not None and instance.orbit.instellation_method == 'inst':
-        log.warning(
-            "accretion.module = '%s' with orbit.instellation_method = 'inst': the "
-            'semi-major axis follows orbit.instellationflux, so the semi-major axis '
-            'change of each impact is not applied; its eccentricity change is.',
-            instance.accretion.module,
-        )
-
-
 def check_accretion_vapourise_compatibility(instance, attribute, value):
     """Reject accretion runs that also vapourise rock into the atmosphere.
 
@@ -616,7 +598,6 @@ class Config:
             check_module_dependencies,
             check_accretion_interior_compatibility,
             check_accretion_vapourise_compatibility,
-            warn_accretion_fixed_instellation_orbit,
         ),
     )
 
