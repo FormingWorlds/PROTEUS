@@ -2976,6 +2976,10 @@
       "origin": "literal",
       "producers": [
         {
+          "file": "src/proteus/escape/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/wrapper.py",
           "condition": "always"
         }

@@ -259,7 +259,8 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     from firing on pathologically tiny inventories. If the gate is
     inactive (no baseline tracked yet, e.g. resuming an old CSV without
     `M_vol_initial`), the function falls back to the old threshold-only
-    behaviour. Mass an earlier desiccation removed, ``M_desiccated``, is left out
+    behaviour. The current total skips a non-finite element, as run_desiccated
+    does, and mass an earlier desiccation removed, ``M_desiccated``, is left out
     of the loss the gate compares, so a desiccated row passes again on resume.
 
     Scope of "desiccated": the threshold loop below considers the volatile
@@ -298,9 +299,13 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # or the (m_init - cur_m_ele) comparison mixes element sets and
     # overstates "lost" mass by any noble-gas/rock-vapour inventory present
     # at baseline time.
-    cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
-    # Mass an earlier desiccation removed is not loss to explain by escape.
-    lost = m_init - cur_m_ele - float(hf_row.get('M_desiccated', 0.0))
+    from proteus.escape.wrapper import readable_total
+
+    removed = float(hf_row.get('M_desiccated', 0.0))
+    if not np.isfinite(removed):
+        removed = 0.0
+    cur_m_ele = readable_total(hf_row)
+    lost = m_init - cur_m_ele - removed
     esc_cum = float(hf_row.get('esc_kg_cumulative', 0.0))
 
     # Allow 1.5x scaling slack plus a 1 t absolute floor for noise.
@@ -597,7 +602,9 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
 def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     """
     Handle desiccation of the planet. This substitutes for run_outgassing when the planet
-    has lost its entire volatile inventory.
+    has lost its entire volatile inventory. Every element total is emptied with its
+    columns, noble gases included, and the mass removed is booked in ``M_desiccated``
+    and the Zalmoxis target.
 
     Parameters
     ----------
@@ -625,13 +632,12 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     # Set most values to zero, the element totals with their columns. The mass this
     # removes left no other way, so it is booked for the escape-balance gate and the
     # Zalmoxis target.
-    kg_before = readable_total(hf_row)
+    removed = readable_total(hf_row)
     for k in expected_keys():
         if k not in excepted_keys:
             hf_row[k] = 0.0
     for e in element_list:
         hf_row[f'{e}_kg_total'] = 0.0
-    removed = kg_before - readable_total(hf_row)
     hf_row['M_desiccated'] = float(hf_row.get('M_desiccated', 0.0)) + removed
     record_volatile_change(config, hf_row, -removed)
 

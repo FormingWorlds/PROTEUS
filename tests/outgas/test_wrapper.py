@@ -650,6 +650,40 @@ def test_run_desiccated_empties_every_element_and_books_the_mass():
 
 
 @pytest.mark.physics_invariant
+@pytest.mark.parametrize('module', ['zalmoxis', 'dummy'])
+def test_a_desiccated_row_gives_the_same_verdict_again(module):
+    """check_desiccation gives the same verdict before and after run_desiccated, as in
+    the loop and on resume; a second run_desiccated books nothing.
+
+    Physical scenario: desiccation with one element total left unreadable by an
+    upstream failure. Edge case: without the Zalmoxis structure the ledger stays.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1.0e16
+    config.interior_struct.module = module
+    hf_row = {
+        f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
+    }
+    hf_row.update(H_kg_total=float('nan'), N_kg_total=5.0e15, N_kg_atm=5.0e15)
+    hf_row.update(M_vol_initial=5.0e17, esc_kg_cumulative=1.0e17, M_desiccated=0.0)
+    hf_row.update(M_volatile_change=-1.0e17, atm_kg_per_mol=0.028, Phi_global=0.5)
+
+    in_loop = check_desiccation(config, hf_row)
+    run_desiccated({}, config, hf_row, False)
+    assert check_desiccation(config, hf_row) is in_loop
+    # The unreadable H counts as unexplained loss, so the gate refuses either way.
+    assert in_loop is False
+
+    hf_row.update(H_kg_total=0.0, M_vol_initial=1.05e17)
+    assert check_desiccation(config, hf_row) is True
+    booked = (hf_row['M_desiccated'], hf_row['M_volatile_change'])
+    run_desiccated({}, config, hf_row, False)
+    assert (hf_row['M_desiccated'], hf_row['M_volatile_change']) == booked
+    assert booked[1] == (-1.05e17 if module == 'zalmoxis' else -1.0e17)
+
+
+@pytest.mark.physics_invariant
 def test_desiccation_leaves_the_mass_bookkeeping_self_consistent():
     """A desiccated iteration empties the atmosphere without leaving any mass
     aggregate stale, so the runtime mass check still passes afterwards.

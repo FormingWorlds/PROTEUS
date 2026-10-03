@@ -2258,7 +2258,38 @@ def test_a_frozen_mantle_escapes_to_desiccation_with_closed_books(H_kg, N_kg):
 
     assert all(hf[f'{e}_kg_{r}'] == 0.0 for e in ('H', 'N') for r in ('atm', 'total'))
     assert hf['M_desiccated'] == pytest.approx(residual, rel=1e-12)
-    booked = hf['esc_kg_cumulative'] + hf['M_desiccated']
-    assert booked == pytest.approx(initial, rel=1e-9)
+    assert hf['esc_kg_cumulative'] + hf['M_desiccated'] == pytest.approx(initial, rel=1e-9)
     assert hf['M_volatile_change'] == pytest.approx(-initial, rel=1e-9)
     assert check_desiccation(config, hf)
+
+
+@pytest.mark.unit
+def test_a_new_escape_baseline_clears_the_desiccation_ledger():
+    """Mass removed before the escape baseline is not part of it, so taking the
+    baseline clears M_desiccated with esc_kg_cumulative and a later wipe is refused.
+
+    Physical scenario: a planet that desiccated before escape first ran, then
+    received volatiles from an impact. Edge case: the wipe is smaller than the
+    mass booked before the baseline.
+    """
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.wrapper import check_desiccation
+    from proteus.utils.constants import element_list
+
+    hf = {f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')}
+    hf.update(H_kg_atm=8.0e15, H_kg_total=8.0e15, H2_kg_atm=8.0e15, M_atm=8.0e15)
+    hf.update(M_vol_initial=0.0, esc_kg_cumulative=0.0, M_desiccated=5.0e15)
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e16
+
+    run_escape(config, hf, dt=1.0, atmosphere_only=True)
+    assert hf['M_vol_initial'] == pytest.approx(8.0e15, rel=1e-12)
+    assert hf['M_desiccated'] == 0.0
+
+    hf['H_kg_total'] = 4.0e15  # an upstream wipe, no escape
+    assert check_desiccation(config, hf) is False

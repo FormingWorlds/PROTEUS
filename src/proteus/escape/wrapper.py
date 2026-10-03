@@ -290,9 +290,10 @@ def run_escape(
         # implicitly carries the O contribution).
         m_vol_baseline = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
         hf_row['M_vol_initial'] = m_vol_baseline
-        # Reset the cumulative escape counter alongside the baseline so the
+        # Reset the escape and desiccation ledgers alongside the baseline so the
         # ratio (lost vs escaped) starts from a consistent zero.
         hf_row['esc_kg_cumulative'] = 0.0
+        hf_row['M_desiccated'] = 0.0
 
     if config.escape.module == 'dummy':
         run_dummy(config, hf_row, atmosphere_only=atmosphere_only)

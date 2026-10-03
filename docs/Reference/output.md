@@ -266,7 +266,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `O_vapourised_kg` | `kg` | oxygen released by rock vapourisation (LavAtmos) | `outgas/lavatmos.py` | outgas.vapourise = true |   |
 | `M_vol_initial` | `kg` | bulk volatile inventory baseline | `accretion/wrapper.py`<br>`escape/wrapper.py` | always | accretion, escape, outgas |
 | `esc_kg_cumulative` | `kg` | cumulative mass lost to space (escape + impact stripping) | `accretion/wrapper.py`<br>`escape/wrapper.py` | always | accretion, escape, outgas |
-| `M_desiccated` | `kg` | element mass removed at desiccation without escape | `outgas/wrapper.py` | always | outgas |
+| `M_desiccated` | `kg` | element mass removed at desiccation without escape | `escape/wrapper.py`<br>`outgas/wrapper.py` | always | outgas |
 | `esc_clamp_frac` | `1` | requested per-step loss / escapable reservoir | `escape/wrapper.py`<br>`proteus.py` | always | escape |
 | `esc_step_kg` | `kg` | loss applied on this step, after the cap | `escape/wrapper.py`<br>`proteus.py` | always | outgas |
 
