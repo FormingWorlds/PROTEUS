@@ -782,6 +782,11 @@ class AragogRunner:
                 )
             core_module_params['m_core'] = m_core_val
             core_module_params['p_cen'] = p_cen_val
+            log.info(
+                'Aragog core_module structure constraints: M_core=%.4e kg, P_center=%.4e Pa',
+                m_core_val,
+                p_cen_val,
+            )
 
         bc_kwargs: dict[str, object] = {
             'outer_boundary_condition': _aragog_outer_bc,
