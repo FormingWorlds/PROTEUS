@@ -3491,7 +3491,8 @@ def test_a_resumed_run_outgasses_with_first_iter_false(tmp_path):
         _stop_on_second,
         fake_outgas=_fake_outgas,
     )
-    assert flags == [(False, False), (False, False)]
+    assert [first_iter for first_iter, _ in flags] == [False, False]
+    assert [init_stage for _, init_stage in flags] == [False, False]
 
 
 @pytest.mark.unit

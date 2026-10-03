@@ -203,6 +203,7 @@ def test_a_shortfall_exactly_at_the_round_off_bound_is_floored():
     with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=1.0):
         apply_binodal_h2(hf_row, _make_config())
     assert hf_row['H_kg_atm'] == 0.0
+    assert hf_row['H_kg_liquid'] == pytest.approx(1e12, rel=1e-12)
 
 
 @pytest.mark.physics_invariant
