@@ -578,8 +578,8 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
 
     if config.orbit.instellation_method == 'inst':
         log.info(
-            '    planet is now %.4f M_earth, e = %.4f; the semi-major axis follows '
-            'orbit.instellationflux and is not changed by the impact',
+            '    planet is now %.4f M_earth, e = %.4f; the orbit step resets the '
+            'semi-major axis from orbit.instellationflux',
             config.planet.mass_tot,
             config.orbit.eccentricity,
         )

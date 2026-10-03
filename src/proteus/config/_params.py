@@ -185,15 +185,14 @@ class TimeStepParams:
         counter is active. Must be ``>= 1.0`` and ``<= SFINC``
         (1.6). Default 1.1 (gentle ramp-up).
     impact_maximum: float
-        Maximum time-step size [yr] for the step that lands on a
-        scheduled giant impact. The landing step is otherwise
-        clamped only to however much simulated time remains before
-        the impact, so after a long quiescent phase has let ``dt``
-        coarsen, that remaining time can itself be large and the
-        step absorbing the impact's melt-fraction jump inherits the
-        same coarseness. Set to 0 (default) to disable, in which
-        case the remaining-time clamp applies with no independent
-        ceiling.
+        Ceiling [yr] for the step that reaches a scheduled giant
+        impact. Such a step is otherwise clamped only to the time left
+        before the impact, which after a long quiescent phase can
+        itself be large. With the ceiling set, a reaching step longer
+        than ``max(impact_maximum, dtfloor)`` (dtfloor = dt.minimum +
+        dt.minimum_rel * Time) is cut to an equal fraction of the time
+        left; later steps are evaluated again, and the step that lands
+        is no longer than the ceiling. Set to 0 (default) to disable.
     """
 
     starspec: float = field(default=1e8, validator=ge(0))

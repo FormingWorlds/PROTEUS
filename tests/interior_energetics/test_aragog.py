@@ -1028,6 +1028,7 @@ def _retry_ladder_runner(
     dt_requested=100.0,
     first_attempt_T_core=None,
     first_state=None,
+    tcore_change_max=None,
 ):
     """Build an AragogRunner whose solver returns one fixed result.
 
@@ -1057,6 +1058,9 @@ def _retry_ladder_runner(
     first_state : SimpleNamespace, optional
         Result of the first attempt (status, T_core, dt_actual, cvode_flag),
         to steer the retry into the stiff or the atol-relaxing branch.
+    tcore_change_max : float, optional
+        Intra-solve core-temperature change the solve reports [K], as the
+        pinned Aragog does; without it the guard measures from ``T_cmb``.
 
     Returns
     -------
@@ -1068,6 +1072,9 @@ def _retry_ladder_runner(
 
     attempts: list[float] = []
     states = [SimpleNamespace(status=status, T_core=T_core, dt_actual=dt_actual)]
+    if tcore_change_max is not None:
+        # The pinned Aragog reports the intra-solve change from the solve entry.
+        states[0].tcore_change_max = tcore_change_max
     if first_attempt_T_core is not None:
         # A first attempt the core-temperature guard rejects, so the accepted
         # result comes from a retry whose interval the ladder already halved.
@@ -1651,16 +1658,26 @@ def test_progress_is_weighed_against_what_the_coupling_asked_for():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('t_cmb, accepted', [(11900.0, True), (4000.0, False)])
-def test_the_core_temperature_guard_measures_an_impact_step_like_any_other(t_cmb, accepted):
-    """The re-melt writes the post-impact T_cmb, so an impact step that returns
-    12000 K against an 11900 K baseline passes on the first attempt with no
-    exemption; against the stale pre-impact 4000 K the 8000 K jump is rejected
-    down the whole ladder, as on any other step."""
+@pytest.mark.parametrize(
+    'tcore_change_max, t_cmb, accepted',
+    [
+        (100.0, 4000.0, True),
+        (8000.0, 11900.0, False),
+        (None, 11900.0, True),
+        (None, 4000.0, False),
+    ],
+)
+def test_the_core_temperature_guard_measures_a_re_melted_step_like_any_other(
+    tcore_change_max, t_cmb, accepted
+):
+    """There is no impact exemption. With the pinned Aragog the guard reads the
+    intra-solve change from the re-melted solve entry (100 K passes even with a
+    stale T_cmb, 8000 K is rejected); without it, the guard measures the 12000 K
+    endpoint from the T_cmb the re-melt wrote (11900 K passes, a stale 4000 K
+    does not)."""
     runner, interior_o, attempts = _retry_ladder_runner(
-        status=0, dt_actual=100.0, T_core=12000.0
+        status=0, dt_actual=100.0, T_core=12000.0, tcore_change_max=tcore_change_max
     )
-    interior_o.impact_reset_this_step = True
     prior = {'Time': 7.68e5, 'T_cmb': t_cmb}
     if accepted:
         out = runner._solve_with_retry(prior, interior_o)
@@ -1672,17 +1689,16 @@ def test_the_core_temperature_guard_measures_an_impact_step_like_any_other(t_cmb
 
 
 @pytest.mark.unit
-def test_a_corrupted_atol_relaxed_solve_on_an_impact_step_is_rejected():
+def test_a_corrupted_atol_relaxed_solve_after_a_re_melt_is_rejected():
     """A first attempt that fails non-stiff (cvode_flag -3) retries at relaxed
-    atol; an 8000 K jump from those retries is a corrupted solve, rejected on the
-    impact step too, and every retry ran at relaxed atol."""
+    atol; an 8000 K intra-solve jump from those retries is a corrupted solve,
+    rejected as on any step, and every retry ran at relaxed atol."""
     first = SimpleNamespace(status=-1, T_core=4000.0, dt_actual=0.0, cvode_flag=-3)
     runner, interior_o, attempts = _retry_ladder_runner(
-        status=0, dt_actual=100.0, T_core=12000.0, first_state=first
+        status=0, dt_actual=100.0, T_core=12000.0, first_state=first, tcore_change_max=8000.0
     )
-    interior_o.impact_reset_this_step = True
     with pytest.raises(RuntimeError, match='T_core jump'):
-        runner._solve_with_retry({'Time': 7.68e5, 'T_cmb': 4000.0}, interior_o)
+        runner._solve_with_retry({'Time': 7.68e5, 'T_cmb': 11900.0}, interior_o)
     atol, rtol = zip(*runner.settings_log)
     assert len(attempts) == 6
     assert atol[0] == pytest.approx(1.0, abs=0.0)
@@ -1691,31 +1707,12 @@ def test_a_corrupted_atol_relaxed_solve_on_an_impact_step_is_rejected():
 
 
 @pytest.mark.unit
-def test_the_step_after_an_exhausted_impact_step_is_measured_from_the_re_melt():
-    """An impact step whose every attempt fails falls back; the next step reads
-    the re-melted T_cmb the impact wrote, so its solve near that temperature is
-    accepted on the first attempt without the impact flag."""
-    hf_row = {'Time': 7.68e5, 'T_cmb': 11900.0}
-    failed, failed_interior, _ = _retry_ladder_runner(status=-1, dt_actual=0.0)
-    failed_interior.impact_reset_this_step = True
-    with pytest.raises(RuntimeError, match='retry ladder exhausted'):
-        failed._solve_with_retry(hf_row, failed_interior)
-    runner, interior_o, attempts = _retry_ladder_runner(
-        status=0, dt_actual=100.0, T_core=11950.0
-    )
-    out = runner._solve_with_retry(hf_row, interior_o)
-    assert out.T_core == pytest.approx(11950.0, rel=1e-12)
-    assert len(attempts) == 1
-
-
-@pytest.mark.unit
-def test_a_non_finite_tcore_is_rejected_on_an_impact_step():
+def test_a_non_finite_tcore_is_rejected_after_a_re_melt():
     """A relaxed rtol can let CVODE return a NaN core temperature on any step;
-    the finiteness check rejects it down the full ladder on an impact step too."""
+    the finiteness check rejects it down the full ladder."""
     runner, interior_o, attempts = _retry_ladder_runner(
         status=0, dt_actual=100.0, T_core=float('nan')
     )
-    interior_o.impact_reset_this_step = True
     with pytest.raises(RuntimeError, match='non-finite'):
         runner._solve_with_retry({'Time': 7.68e5, 'T_cmb': 4000.0}, interior_o)
     assert len(attempts) == 6
@@ -2173,9 +2170,6 @@ def _retry_runner(solver, monkeypatch, *, T_core_pre=2000.0, mass_tot=1.0):
     runner.aragog_solver = solver
     interior_o = MagicMock()
     interior_o._last_entropy = None
-    # A bare MagicMock auto-vivifies any attribute as a truthy Mock, which
-    # would make the giant-impact exemption fire on every guard check below.
-    interior_o.impact_reset_this_step = False
     hf_row = {'Time': 1.0e6, 'T_cmb': T_core_pre}
     return runner, interior_o, hf_row
 

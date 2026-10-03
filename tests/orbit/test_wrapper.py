@@ -1118,8 +1118,9 @@ def test_run_orbit_evolved_branch_inst_method_sets_sma_from_dummy_star_luminosit
         'R_int': R_earth,
         'R_obs': R_earth,
         'R_xuv': R_earth,
-        'semimajorax': AU,
-        'eccentricity': 0.0,
+        # A different start (as an impact leaves it): a is reset, e is kept.
+        'semimajorax': 2.0 * AU,
+        'eccentricity': 0.35,
         'axial_period': 86400.0,
         'semimajorax_sat': 3.8e8,
         'M_sat': 7.342e22,
@@ -1138,6 +1139,7 @@ def test_run_orbit_evolved_branch_inst_method_sets_sma_from_dummy_star_luminosit
     # Solar-like Teff and R_star=1 R_sun at S_0=1 S_earth must recover
     # ~1 AU, not some arbitrary/unconverted value.
     assert hf_row['semimajorax'] == pytest.approx(AU, rel=0.1)
+    assert hf_row['eccentricity'] == pytest.approx(0.35, rel=1e-15)
 
 
 # ---------------------------------------------------------------------------
@@ -1230,35 +1232,3 @@ def test_run_orbit_obliqua_module_zeroes_imk2_for_other_degrees():
     # not the one written to Imk2) -- this isn't a "module skipped"
     # no-op, but a deliberate discard of the wrong-degree value.
     mock_run_obliqua.assert_called_once()
-
-
-@pytest.mark.unit
-def test_an_inst_orbit_step_recomputes_the_semi_major_axis_and_keeps_the_eccentricity():
-    """With orbit.instellation_method = 'inst' the orbit step after the init stage
-    sets the semi-major axis from the flux again (here from 2 AU to about 1 AU) and
-    leaves the eccentricity an impact wrote (0.35) as it is."""
-    from proteus.orbit.wrapper import run_orbit
-
-    config = MagicMock()
-    config.orbit.module = 'dummy'
-    config.orbit.star_planet_model = None
-    config.orbit.planet_satellite_model = None
-    config.orbit.instellation_method = 'inst'
-    config.orbit.instellationflux = 1.0
-    config.orbit.satellite = _make_satellite_config_stub()
-    config.orbit.axial_period = None
-    config.star.module = 'dummy'
-    config.star.dummy.Teff = 5772.0
-    config.star.dummy.radius = 1.0
-    hf_row = _make_init_branch_hf_row()
-    hf_row.update(Time=1.0e5, semimajorax=2.0 * AU, eccentricity=0.35, axial_period=86400.0)
-    interior_o = MagicMock()
-    interior_o.dt = 1.0
-    interior_o.phi = np.zeros(5)
-    with (
-        patch('proteus.orbit.dummy.run_dummy_tides', return_value=0.0),
-        patch('proteus.orbit.wrapper.update_period_sat'),
-    ):
-        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
-    assert hf_row['semimajorax'] / AU == pytest.approx(1.0, rel=0.01)
-    assert hf_row['eccentricity'] == pytest.approx(0.35, rel=1e-15)

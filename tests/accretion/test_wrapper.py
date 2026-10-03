@@ -160,7 +160,7 @@ def test_an_impact_under_a_flux_fixed_orbit_logs_that_the_axis_is_not_applied(
         apply_impact(handler, _impact_event())
     lines = [r.getMessage() for r in caplog.records if 'planet is now' in r.getMessage()]
     assert len(lines) == 1
-    assert 'not changed by the impact' in lines[0] and ' AU' not in lines[0]
+    assert 'resets the semi-major axis' in lines[0] and ' AU' not in lines[0]
 
 
 @pytest.mark.unit
@@ -1894,13 +1894,11 @@ def test_a_run_resumes_from_the_row_that_landed_an_impact(tmp_path, t):
     assert handler.impact_events == []
 
 
-@pytest.mark.unit
-def test_a_counted_impact_after_the_resume_row_refuses_the_resume(tmp_path):
-    """A row 5e-10 (relative) before an impact that its counter records as applied
-    did not land it, and the impact lies far outside the init stage, so the resume
-    is refused."""
+def _resume_handler(tmp_path, row_offset, n_applied):
+    """Resume handler on a row ``row_offset`` (relative) before an impact at 1e6 yr
+    whose counter records ``n_applied`` impacts; returns it with the event."""
     from proteus.accretion.common import write_timeline
-    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
+    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE
     from proteus.utils.constants import AU
 
     t = 1.0e6
@@ -1916,15 +1914,26 @@ def test_a_counted_impact_after_the_resume_row_refuses_the_resume(tmp_path):
             orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
         ),
         hf_row={
-            'Time': t * (1.0 - 5.0e-10),
-            'M_accreted_rock': 1e23,
-            'n_impacts_applied': 1,
+            'Time': t * (1.0 - row_offset),
+            'M_accreted_rock': 1e23 * n_applied,
+            'n_impacts_applied': n_applied,
             'semimajorax': 1.0 * AU,
             'eccentricity': 0.0,
         },
         directories={'output': str(tmp_path)},
         impact_events=[event],
     )
+    return handler, event
+
+
+@pytest.mark.unit
+def test_a_counted_impact_after_the_resume_row_refuses_the_resume(tmp_path):
+    """A row 5e-10 (relative) before an impact that its counter records as applied
+    did not land it, and the impact lies far outside the init stage, so the resume
+    is refused."""
+    from proteus.accretion.wrapper import restore_accretion_state
+
+    handler, event = _resume_handler(tmp_path, 5.0e-10, n_applied=1)
     with pytest.raises(RuntimeError, match='cannot have landed during the init stage'):
         restore_accretion_state(handler)
     assert handler.impact_events == [event]
@@ -1934,32 +1943,9 @@ def test_a_counted_impact_after_the_resume_row_refuses_the_resume(tmp_path):
 def test_an_impact_just_after_the_resume_row_stays_pending(tmp_path):
     """A row that ended 1.5e-10 (relative) before an impact it did not reach,
     with no impact counted, resumes with the impact still pending."""
-    from proteus.accretion.common import write_timeline
-    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
-    from proteus.utils.constants import AU
+    from proteus.accretion.wrapper import restore_accretion_state
 
-    t = 1.0e6
-    event = _impact_event(
-        time=t, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
-    )
-    write_timeline([event], str(tmp_path / _RESOLVED_TIMELINE_FILE))
-    handler = SimpleNamespace(
-        config=SimpleNamespace(
-            accretion=SimpleNamespace(module='dummy', impactor_volatiles='dry'),
-            params=SimpleNamespace(resume=True),
-            planet=SimpleNamespace(mass_tot=1.0),
-            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
-        ),
-        hf_row={
-            'Time': t * (1.0 - 1.5e-10),
-            'M_accreted_rock': 0.0,
-            'n_impacts_applied': 0,
-            'semimajorax': 1.0 * AU,
-            'eccentricity': 0.0,
-        },
-        directories={'output': str(tmp_path)},
-        impact_events=[event],
-    )
+    handler, event = _resume_handler(tmp_path, 1.5e-10, n_applied=0)
     restore_accretion_state(handler)
     assert handler.impact_events == [event]
     assert handler.hf_row['n_impacts_applied'] == 0

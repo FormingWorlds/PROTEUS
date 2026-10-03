@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import logging
-import math
 import os
 from typing import TYPE_CHECKING
 
@@ -219,9 +218,7 @@ class AragogJAXRunner:
         # Instead, compute output directly from JAX results
         out = self._extract_output(result, hf_row, interior_o)
         # A step aimed at an impact ends on it, so the snapshot is named like the row.
-        sim_time = snap_to_impact(
-            result.t_final, getattr(interior_o, 't_next_impact', math.inf)
-        )
+        sim_time = snap_to_impact(result.t_final, getattr(interior_o, 't_next_impact', np.inf))
 
         # Write NetCDF (skipped when dt_write suppresses this step)
         if write_data:

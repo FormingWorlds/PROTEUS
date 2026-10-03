@@ -5,7 +5,6 @@ import glob
 import importlib.util
 import inspect
 import logging
-import math
 import os
 import platform
 import time
@@ -2042,7 +2041,7 @@ class AragogRunner:
         # shorter when the solver exits early); a step aimed at an impact ends on it,
         # so the snapshot is named like the row.
         sim_time = snap_to_impact(
-            hf_row['Time'] + out.dt_actual, getattr(interior_o, 't_next_impact', math.inf)
+            hf_row['Time'] + out.dt_actual, getattr(interior_o, 't_next_impact', np.inf)
         )
 
         # Write output to a file (skipped when dt_write suppresses this step)

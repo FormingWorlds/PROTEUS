@@ -955,13 +955,13 @@ class TestImpactClamp:
         assert hf_row['Time'] + dt < 1.0e5 + 8.0e3
 
     @staticmethod
-    def _steps_to(t_impact, cap):
+    def _steps_to(t_impact, cap, growth=0.0):
         """Iterate next_step from T0 = 1e5 yr (history of 5e3 yr steps) with the
         main loop's snap until the run reaches t_impact; return the step ends."""
         from proteus.accretion.common import snap_to_impact
         from proteus.interior_energetics.timestep import next_step
 
-        config = _make_config(impact_maximum=cap)
+        config = _make_config(impact_maximum=cap, max_growth_factor=growth)
         times = list(1.0e5 + 5.0e3 * np.arange(-11, 1, dtype=float))
         ends = []
         while times[-1] < t_impact:
@@ -987,13 +987,16 @@ class TestImpactClamp:
         assert ends[-1] - (ends[-2] if len(ends) > 1 else 1.0e5) <= 3.0e3 * (1 + 1e-12)
 
     @pytest.mark.physics_invariant
-    def test_an_impact_a_sub_floor_remainder_away_is_landed_exactly(self):
-        """Without a ceiling, a controller step of 8000 yr toward an impact 8300 yr
-        away leaves a 300 yr remainder below the 600 yr floor; the next step
-        lands on the impact instead of overshooting by the floor."""
-        ends = self._steps_to(1.0e5 + 8.3e3, cap=0.0)
-        assert ends == [1.0e5 + 8.0e3, 1.0e5 + 8.3e3]
-        assert ends[1] - ends[0] < 100.0 + 0.005 * ends[0]  # below the dt floor
+    @pytest.mark.parametrize('offset, growth', [(8.3e3, 0.0), (8.0e3 * (1.0 + 1e-9), 2.0)])
+    def test_a_step_ending_short_of_the_floor_before_an_impact_is_stretched_onto_it(
+        self, offset, growth
+    ):
+        """A controller step of 8000 yr toward an impact less than the 600 yr floor
+        further away is stretched onto it, so no step below the floor is left for
+        the growth cap to build up from."""
+        ends = self._steps_to(1.0e5 + offset, cap=0.0, growth=growth)
+        assert ends == [1.0e5 + offset]
+        assert ends[0] - 1.0e5 > 600.0
 
     def test_impact_maximum_does_not_shorten_a_step_already_below_it(self):
         """The ceiling never lengthens the step and stays inert once the

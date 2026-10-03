@@ -1206,10 +1206,6 @@ class Interior_t:
         # solver anomaly. Consumed and cleared on that one step.
         self.impact_reset = False
 
-        # Snapshot of ``impact_reset`` at step start, allowing interior solvers
-        # to distinguish deliberate impact heating jumps from corrupted solves.
-        self.impact_reset_this_step = False
-
         # True when the most recent call to next_step() had its step size
         # clamped. For example, by `_estimate_bolscale()`.
         self.timestep_clamped = False
