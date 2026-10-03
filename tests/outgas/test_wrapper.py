@@ -2000,7 +2000,7 @@ def test_run_outgassing_and_vapourisation_runs_vapour_step_above_phi_crit():
         patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
         patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap,
     ):
-        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True, init_stage=True)
+        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
 
     mock_outgas.assert_called_once_with(dirs, config, hf_row, initial=True)
     mock_vap.assert_called_once_with(dirs, config, hf_row, True)
@@ -2026,9 +2026,7 @@ def test_run_outgassing_and_vapourisation_skips_vapour_step_below_phi_crit():
         patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
         patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap,
     ):
-        run_outgassing_and_vapourisation(
-            dirs, config, hf_row, first_iter=False, init_stage=False
-        )
+        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=False)
 
     mock_outgas.assert_called_once_with(dirs, config, hf_row, initial=False)
     mock_vap.assert_not_called()
@@ -2051,7 +2049,7 @@ def test_run_outgassing_and_vapourisation_skips_vapour_step_when_disabled():
         patch('proteus.outgas.wrapper.run_outgassing') as mock_outgas,
         patch('proteus.outgas.wrapper.run_vapourisation') as mock_vap,
     ):
-        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True, init_stage=True)
+        run_outgassing_and_vapourisation(dirs, config, hf_row, first_iter=True)
 
     mock_outgas.assert_called_once_with(dirs, config, hf_row, initial=True)
     mock_vap.assert_not_called()

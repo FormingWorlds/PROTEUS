@@ -104,9 +104,12 @@ def apply_binodal_h2(hf_row: dict, config: Config) -> None:
     # count the relocated hydrogen in the atmosphere.
     dH_atm = H2_kg_atm_new - H2_kg_atm_old
     dH_liquid = H2_kg_liquid_new - H2_kg_liquid_old
-    # Floored at 0: a round-off negative would otherwise stop a later impact.
-    hf_row['H_kg_atm'] = max(0.0, float(hf_row.get('H_kg_atm', 0.0)) + dH_atm)
-    hf_row['H_kg_liquid'] = max(0.0, float(hf_row.get('H_kg_liquid', 0.0)) + dH_liquid)
+    # A round-off negative becomes 0; NaN or a larger negative is kept for the
+    # impact check to refuse, since it marks a ledger defect.
+    H_atm = float(hf_row.get('H_kg_atm', 0.0)) + dH_atm
+    round_off = 1.0e-12 * max(abs(H2_kg_atm_old), abs(H2_kg_atm_new))
+    hf_row['H_kg_atm'] = 0.0 if -round_off <= H_atm < 0.0 else H_atm
+    hf_row['H_kg_liquid'] = float(hf_row.get('H_kg_liquid', 0.0)) + dH_liquid
 
     # Recompute H2 partial pressure from atmospheric mass
     # P_H2 = m_H2 * g / (4 * pi * R^2)

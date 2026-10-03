@@ -324,8 +324,9 @@ def outgassing_derives_o_kg_total(config: Config) -> bool:
 
     CALLIOPE and atmodeller set the O budget from the fixed fO2 under
     ``planet.fO2_source = 'user_constant'``; ``O_mode = 'ic_chemistry'``
-    requires that source at config load. The dummy outgassing keeps a positive
-    ``O_kg_total`` as given, and ``from_O_budget`` takes the O budget as input.
+    requires that source at config load. The dummy outgassing derives an empty
+    ``O_kg_total`` only in the init stage and otherwise keeps it as given, and
+    ``from_O_budget`` takes the O budget as input.
     """
     return (
         config.outgas.module in ('calliope', 'atmodeller')
@@ -632,7 +633,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
 
 
 def run_outgassing_and_vapourisation(
-    dirs: dict, config: Config, hf_row: dict, first_iter: bool, *, init_stage: bool
+    dirs: dict, config: Config, hf_row: dict, first_iter: bool
 ):
     """Runs volatile outgassing and rock vapourisation together and combines the results.
 
@@ -652,10 +653,8 @@ def run_outgassing_and_vapourisation(
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
         first_iter : bool
-            True for the init-stage iterations (loops['total'] <= loops['init_loops'])
-        init_stage : bool
-            Whether the run is in its init stage, the flag that also resets the
-            O budget there; the dummy outgassing derives an empty O budget only then.
+            Whether the run is in its init stage, the flag that also resets the O
+            budget; the dummy outgassing derives an empty O budget only then.
     """
 
     # reset all rock-vapour masses to zero:
@@ -678,7 +677,7 @@ def run_outgassing_and_vapourisation(
         hf_row[e + '_kg_total'] = 0.0
 
     # Volatile outgassing
-    run_outgassing(dirs, config, hf_row, initial=init_stage)
+    run_outgassing(dirs, config, hf_row, initial=first_iter)
 
     # Vapourisation of refractories
     if config.outgas.vapourise:

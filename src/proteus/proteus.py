@@ -1083,15 +1083,14 @@ class Proteus:
         # Rebuild the mass and orbit that impacts before a resume point already
         # applied. Runs after the timeline is resolved, so a re-run dynamical
         # model still selects its body against the configured planet.
-        restore_accretion_state(self)
+        try:
+            restore_accretion_state(self)
+            change = volatile_mass_change(self.hf_row) if resume else 0.0
+        except RuntimeError:
+            # A refused resume records its stop, so the run does not read as running.
+            UpdateStatusfile(self.directories, 20)
+            raise
         if resume:
-            # Refuse a corrupt column here, before a structure solve reads it, and
-            # record the stop so the run does not read as still running.
-            try:
-                change = volatile_mass_change(self.hf_row)
-            except RuntimeError:
-                UpdateStatusfile(self.directories, 20)
-                raise
             if change != 0.0 and not tracks_volatile_mass(self.config):
                 log.info(
                     'M_volatile_change = %.3e kg is carried over but only the Zalmoxis '
@@ -1341,7 +1340,7 @@ class Proteus:
 
             # Handle volatile exchange
             log.info('Solving for atmosphere composition...')
-            first_iter = bool(self.loops['total'] <= self.loops['init_loops'])
+            first_iter = self.init_stage
             if self.desiccated:
                 # no volatiles
                 run_desiccated(self.directories, self.config, self.hf_row, first_iter)
@@ -1352,11 +1351,7 @@ class Proteus:
 
             else:
                 run_outgassing_and_vapourisation(
-                    self.directories,
-                    self.config,
-                    self.hf_row,
-                    first_iter,
-                    init_stage=self.init_stage,
+                    self.directories, self.config, self.hf_row, first_iter
                 )
 
                 # Issue #677 IC consistency check. Fires once at the first
