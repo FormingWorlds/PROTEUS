@@ -1339,9 +1339,10 @@ class Proteus:
 
             # Handle volatile exchange
             log.info('Solving for atmosphere composition...')
+            first_iter = self.init_stage
             if self.desiccated:
                 # no volatiles
-                run_desiccated(self.directories, self.config, self.hf_row, self.init_stage)
+                run_desiccated(self.directories, self.config, self.hf_row, first_iter)
 
             elif self.crystallized:
                 # post solidification
@@ -1349,7 +1350,7 @@ class Proteus:
 
             else:
                 run_outgassing_and_vapourisation(
-                    self.directories, self.config, self.hf_row, self.init_stage
+                    self.directories, self.config, self.hf_row, first_iter
                 )
 
                 # Issue #677 IC consistency check. Fires once at the first
