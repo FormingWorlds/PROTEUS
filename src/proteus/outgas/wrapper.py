@@ -646,13 +646,12 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     }
     removed = readable_total(hf_row)
     for k in expected_keys():
-        if k in excepted_keys or k in unreadable or k.endswith(('_kg_solid', '_mol_solid')):
-            continue
-        hf_row[k] = (
-            float(hf_row.get(k.replace('_total', '_solid'), 0.0))
-            if k.endswith(('_kg_total', '_mol_total'))
-            else 0.0
-        )
+        if k not in excepted_keys and k not in unreadable and not k.endswith('_solid'):
+            hf_row[k] = 0.0
+    for gas in gas_list:
+        hf_row[f'{gas}_mol_total'] = float(hf_row.get(f'{gas}_mol_solid', 0.0))
+        if gas not in noble_gases and f'{gas}_kg_total' not in unreadable:
+            hf_row[f'{gas}_kg_total'] = float(hf_row.get(f'{gas}_kg_solid', 0.0))
     for e in element_list:
         if f'{e}_kg_total' not in unreadable:
             hf_row[f'{e}_kg_total'] = float(hf_row.get(f'{e}_kg_solid', 0.0))

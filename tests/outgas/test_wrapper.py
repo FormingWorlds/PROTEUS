@@ -637,8 +637,9 @@ def test_run_desiccated_keeps_the_solid_share_and_books_the_rest():
     for name in [*element_list, *gas_list]:
         hf_row.update({f'{name}_kg_atm': fluid, f'{name}_kg_liquid': fluid})
         hf_row.update({f'{name}_kg_solid': solid, f'{name}_kg_total': 2 * fluid + solid})
+    mol_solid = 1.0
     for name in gas_list:
-        hf_row.update({f'{name}_mol_solid': 1.0, f'{name}_mol_total': 5.0})
+        hf_row.update({f'{name}_mol_solid': mol_solid, f'{name}_mol_total': 5.0})
     hf_row.update(
         atm_kg_per_mol=0.01, Phi_global=0.5, M_desiccated=1.0e15, M_volatile_change=-3.0e15
     )
@@ -648,7 +649,9 @@ def test_run_desiccated_keeps_the_solid_share_and_books_the_rest():
     for name in [*element_list, *gas_list]:
         assert hf_row[f'{name}_kg_atm'] == 0.0 == hf_row[f'{name}_kg_liquid']
         assert hf_row[f'{name}_kg_solid'] == solid == hf_row[f'{name}_kg_total']
-    assert all(hf_row[f'{s}_mol_total'] == hf_row[f'{s}_mol_solid'] == 1.0 for s in gas_list)
+    assert all(
+        hf_row[f'{s}_mol_total'] == hf_row[f'{s}_mol_solid'] == mol_solid for s in gas_list
+    )
     removed = 2 * fluid * len(element_list)
     assert hf_row['M_desiccated'] == pytest.approx(1.0e15 + removed, rel=1e-12)
     assert hf_row['M_volatile_change'] == pytest.approx(-3.0e15 - removed, rel=1e-12)
@@ -670,14 +673,15 @@ def test_a_desiccated_row_with_a_solid_share_stays_desiccated():
     hf_row = {
         f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
     }
-    hf_row.update(H_kg_atm=1.0e15, H_kg_solid=6.0e15, H_kg_total=7.0e15)
-    hf_row.update(N_kg_atm=2.0e15, N_kg_solid=1.0e15, N_kg_total=3.0e15)
+    h_solid, n_solid = 6.0e15, 1.0e15
+    hf_row.update(H_kg_atm=1.0e15, H_kg_solid=h_solid, H_kg_total=7.0e15)
+    hf_row.update(N_kg_atm=2.0e15, N_kg_solid=n_solid, N_kg_total=3.0e15)
     hf_row.update(M_vol_initial=4.0e17, esc_kg_cumulative=3.9e17, M_desiccated=0.0)
     hf_row.update(atm_kg_per_mol=0.01, Phi_global=0.2)
 
     assert check_desiccation(config, hf_row) is True
     run_desiccated({}, config, hf_row, False)
-    assert hf_row['H_kg_total'] == 6.0e15 and hf_row['N_kg_total'] == 1.0e15
+    assert hf_row['H_kg_total'] == h_solid and hf_row['N_kg_total'] == n_solid
     assert hf_row['M_desiccated'] == pytest.approx(3.0e15, rel=1e-12)
     assert check_desiccation(config, hf_row) is True
     assert hf_row['esc_kg_cumulative'] + hf_row['M_desiccated'] + 7.0e15 == pytest.approx(
