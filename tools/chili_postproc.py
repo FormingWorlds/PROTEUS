@@ -24,6 +24,7 @@ from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.config import read_config_object
 from proteus.interior_energetics.aragog import read_ncdf
 from proteus.utils.constants import R_earth, vol_list
+from proteus.utils.coupler import read_helpfile_table
 from proteus.utils.helper import format_subyear_time
 from proteus.utils.plot import get_colour, latexify
 
@@ -62,15 +63,13 @@ def postproc_once(simdir: str, plot: bool = True):
     config_path = os.path.join(simdir, 'init_coupler.toml')
     if not os.path.isfile(config_path):
         raise FileNotFoundError(f'Cannot find {config_path}')
+    hf_all = read_helpfile_table(hfpath, min_rows=1)
 
     # Make chili folder
     chilidir = os.path.join(simdir, 'chili') + '/'
     if os.path.isdir(chilidir):
         rmtree(chilidir)
     os.mkdir(chilidir)
-
-    # Read simulation helpfile
-    hf_all = pd.read_csv(hfpath, delimiter=r'\s+')
 
     # Copy config
     print('    copy config file')

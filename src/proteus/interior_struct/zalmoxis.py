@@ -389,7 +389,7 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
 
     The tolerance is that of Aragog's ``EntropySolver.reset()``,
     ``max(1 m, 1e-9 * (R_int - R_core))``, applied to both bounds in both
-    directions; the helpfile rounding of the radii is at most 5e-5 m below
+    directions; an 11-digit helpfile rounds the radii by at most 5e-5 m below
     1e7 m and 5e-4 m up to 1e8 m.
 
     Parameters
@@ -2484,7 +2484,7 @@ def _resumed_ps_tables(
         except OSError:
             continue
         built = re.search(r'P_max=([^_]+)', stored)
-        # 1e-6 covers the 7-digit key and the helpfile round trip of the mass.
+        # 1e-6 covers the 7-digit key and the mass rounding of an 11-digit helpfile.
         if p_max is not None and built and abs(float(built.group(1)) / p_max - 1) > 1e-6:
             log.info(
                 'Planet mass changed since the P-S tables in %s were built (P_max %s Pa, '

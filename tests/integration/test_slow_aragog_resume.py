@@ -60,9 +60,8 @@ CONFIG = PROTEUS_ROOT / 'input' / 'dummy.toml'
 N_ITERS = 12
 SEAM_ITERS = 6
 
-# Resumed-run differences at rtol 1e-8, PALEOS / Wolf and Bower set: F_cmb 6.4e-5 / 8.8e-9,
-# T_magma 3.9e-7 / 6.1e-11, state-heat ledger 5.8e-6 / 9.8e-10 (1.7x below STATE_RTOL);
-# a mesh built from P_surf moves F_cmb and T_magma by 1e-2 and 5e-3.
+# A mesh rebuilt from P_surf moves F_cmb and T_magma by 1e-2 and 5e-3; both bounds sit
+# far below that and above the differences a resumed run shows.
 FLUX_RTOL = 2.0e-3
 STATE_RTOL = 1.0e-5
 
