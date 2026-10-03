@@ -436,8 +436,7 @@ def landing_time(events: Sequence[ImpactEvent], time: float) -> float:
     first = next_event(events, time)
     if first is None:
         return float('inf')
-    end = first.time + SUBYEAR_TIME_RESOLUTION
-    return max(e.time for e in events if first.time <= e.time < end)
+    return max(e.time for e in events if e.time < first.time + SUBYEAR_TIME_RESOLUTION)
 
 
 def due_events(
