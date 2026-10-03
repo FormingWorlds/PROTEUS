@@ -164,10 +164,10 @@ def valid_aragog(instance, attribute, value):
 
 @define
 class AragogCoreModule:
-    """Parameters of the staged core-evolution module (core_bc = 'core_module').
+    """Parameters of the core evolution module (core_bc = 'core_module').
 
     The core carries its own state: an energy budget with inner-core
-    nucleation and light-element gravitational energy, evolved as an extra
+    growth and light-element gravitational energy, evolved as an extra
     ODE state inside Aragog. The CMB radius and pressure always come from
     the running mesh, so only material and model choices live here.
 
@@ -197,7 +197,8 @@ class AragogCoreModule:
     ds_fusion: float
         Entropy of fusion at the inner-core boundary [J kg-1 K-1].
     icn_width: float
-        Temperature width [K] of the smoothed inner-core-nucleation switch.
+        Temperature width [K] of the inner-core nucleation diagnostic sigmoid.
+        Diagnostic only; does not affect the effective heat capacity.
     alpha_c: float
         Compositional expansivity of the outer-core alloy.
     c_light: float
@@ -350,9 +351,9 @@ class Aragog:
     any other negative, NaN, or infinity is rejected too."""
 
     core_module: AragogCoreModule = field(factory=AragogCoreModule)
-    """Staged core-evolution module parameters, active when core_bc =
+    """Core evolution module parameters, active when core_bc =
     'core_module': the core evolves its own energy budget (inner-core
-    nucleation, latent and gravitational terms) as an extra ODE state, and
+    growth, latent and gravitational terms) as an extra ODE state, and
     the reported core temperature is that boundary state rather than the
     lowermost mantle node."""
 

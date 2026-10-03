@@ -351,7 +351,7 @@ from the running mesh.
 | `t_m1` | float | `2.95e-12` | Quadratic-curve linear coefficient \[Pa-1\]. |
 | `t_m2` | float | `8.37e-25` | Quadratic-curve quadratic coefficient \[Pa-2\]. |
 | `ds_fusion` | float | `172.8` | Entropy of fusion at the inner-core boundary \[J kg-1 K-1\]. Must be > 0. |
-| `icn_width` | float | `10.0` | Temperature width \[K\] of the smoothed inner-core-nucleation switch. Must be > 0. |
+| `icn_width` | float | `10.0` | Temperature width \[K\] of the inner-core nucleation diagnostic sigmoid. Diagnostic only; does not affect the effective heat capacity. Must be > 0. |
 | `alpha_c` | float | `0.0` | Compositional expansivity of the outer-core alloy. Must be >= 0. |
 | `c_light` | float | `0.0` | Light-element mass fraction of the outer core (complete rejection). Must be >= 0. |
 | `q_radio` | float | `0.0` | Core radiogenic power \[W\], constant over a run. Must be >= 0. |

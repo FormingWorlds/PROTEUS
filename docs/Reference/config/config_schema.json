@@ -5693,7 +5693,7 @@
           "value": 0
         }
       ],
-      "description": "Temperature width [K] of the smoothed inner-core-nucleation switch.",
+      "description": "Temperature width [K] of the inner-core nucleation diagnostic sigmoid. Diagnostic only; does not affect the effective heat capacity.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
