@@ -989,40 +989,32 @@ class TestImpactClamp:
     @pytest.mark.physics_invariant
     @pytest.mark.parametrize(
         'offset, growth, ends',
-        [(8.3e3, 0.0, [104150.0, 108300.0]), (5.6e3, 1.1, [102800.0, 105600.0])],
+        [(8.3e3, 0.0, [108000.0, 108300.0]), (5.6e3, 1.1, [105500.0, 105600.0])],
     )
-    def test_a_step_ending_short_of_the_floor_before_an_impact_is_split(
-        self, offset, growth, ends
-    ):
-        """A capped step (8000 yr, or 5500 yr under a 1.1 growth cap) that would stop
-        less than the 600 yr floor short of an impact becomes two equal steps that
-        land, so no sub-floor step is left and the cap holds."""
-        assert self._steps_to(1.0e5 + offset, cap=0.0, growth=growth) == ends
-
-    @pytest.mark.parametrize('offset', [8.6e3, 8.0e3 + 606.0])
-    def test_a_step_ending_at_least_the_floor_short_of_an_impact_is_kept(self, offset):
-        """At or beyond the 600 yr floor past the 8000 yr step, no split applies."""
-        assert self._steps_to(1.0e5 + offset, cap=0.0)[0] == 1.08e5
+    def test_a_step_ending_short_of_an_impact_leaves_the_remainder(self, offset, growth, ends):
+        """A capped step (8000 yr, or 5500 yr under a 1.1 growth cap) that stops less
+        than the 600 yr floor short of an impact is kept; the next step lands exactly
+        on the impact, shorter than the floor."""
+        got = self._steps_to(1.0e5 + offset, cap=0.0, growth=growth)
+        assert got == pytest.approx(ends, rel=1e-15, abs=0.0)
+        assert got[-1] - got[-2] < 600.0
 
     @pytest.mark.physics_invariant
     @pytest.mark.parametrize(
-        'kwargs, step_sf, gap, cap',
+        'kwargs, phi, stop_time, step_sf, cap',
         [
-            ({'dt_max': 5.0e3}, 1.0, 5.3e3, 5.0e3),
-            ({'mushy_maximum': 1.0e3, 'phi': 0.5}, 1.0, 1.2e3, 1.0e3),
-            ({}, 0.09, 900.0, 720.0),
-            ({'stop_time': 1.05e5}, 1.0, 5.3e3, 5.0e3),
+            ({'dt_max': 5.0e3}, 1.0, None, 1.0, 5.0e3),
+            ({'mushy_maximum': 1.0e3}, 0.5, None, 1.0, 1.0e3),
+            ({}, 1.0, None, 0.09, 720.0),
+            ({}, 1.0, 1.05e5, 1.0, 5.0e3),
         ],
+        ids=['dt_max', 'mushy', 'step_sf', 'stop_time'],
     )
-    def test_the_split_before_an_impact_never_exceeds_an_earlier_cap(
-        self, kwargs, step_sf, gap, cap
-    ):
-        """dt.maximum, the mushy cap, a retry's step_sf and the stop time each bound
-        the step when the impact lies less than the floor beyond the capped step."""
+    def test_a_near_impact_keeps_every_earlier_cap(self, kwargs, phi, stop_time, step_sf, cap):
+        """dt.maximum, the mushy cap, a retry's step_sf and the stop time each keep
+        their step when the impact lies 300 yr, less than the floor, beyond it."""
         from proteus.interior_energetics.timestep import next_step
 
-        phi = kwargs.pop('phi', 1.0)
-        stop_time = kwargs.pop('stop_time', None)
         config = _make_config(**kwargs)
         if stop_time is not None:
             config.params.stop.time.enabled, config.params.stop.time.maximum = True, stop_time
@@ -1033,27 +1025,31 @@ class TestImpactClamp:
             hf_row,
             _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=phi),
             step_sf,
-            interior_o=_make_interior_o(1.0e5 + gap),
+            interior_o=_make_interior_o(1.0e5 + cap + 300.0),
         )
-        assert dt == pytest.approx(gap / 2.0, rel=1e-12)
-        assert dt <= cap
+        assert dt == pytest.approx(cap, rel=1e-12)
+        assert hf_row['Time'] + dt < 1.0e5 + cap + 300.0
 
-    def test_the_static_step_is_not_lengthened_by_a_near_impact(self):
+    def test_the_static_step_is_not_changed_by_a_near_impact(self):
         """In the init stage (Time < 2 yr) the 1 yr step stays 1 yr with an impact
-        500 yr ahead, inside the default 1e4 yr floor."""
+        500 yr ahead, inside the default 1e4 yr floor, as with a distant one."""
         from proteus.interior_energetics.timestep import next_step
 
         config = _make_config()
         config.params.dt.minimum = 1.0e4
-        dt = next_step(
-            config,
-            {},
-            {'Time': 0.0, 'F_atm': 1.0e4, 'Phi_global': 1.0},
-            _make_hf_all(n_rows=1),
-            1.0,
-            interior_o=_make_interior_o(500.0),
-        )
-        assert dt == 1.0
+        steps = [
+            next_step(
+                config,
+                {},
+                {'Time': 0.0, 'F_atm': 1.0e4, 'Phi_global': 1.0},
+                _make_hf_all(n_rows=1),
+                1.0,
+                interior_o=_make_interior_o(t),
+            )
+            for t in (500.0, 1.0e9)
+        ]
+        assert steps[0] == pytest.approx(1.0, rel=1e-12)
+        assert steps[0] == pytest.approx(steps[1], rel=1e-12)
 
     def test_impact_maximum_does_not_shorten_a_step_already_below_it(self):
         """The ceiling never lengthens the step and stays inert once the

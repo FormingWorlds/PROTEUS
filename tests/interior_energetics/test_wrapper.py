@@ -2221,12 +2221,12 @@ def test_run_interior_consumes_the_one_shot_impact_flag():
     ):
         run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
         assert interior_o.impact_reset is False, 'the one-shot flag was not consumed'
-        assert hf_row['T_magma'] == 3005.0
+        assert hf_row['T_magma'] == pytest.approx(3005.0, rel=1e-12)
 
         # The following step is ordinary again: nothing re-armed the flag.
         run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
         assert interior_o.impact_reset is False
-        assert hf_row['T_magma'] == 3000.0
+        assert hf_row['T_magma'] == pytest.approx(3000.0, rel=1e-12)
 
 
 @pytest.mark.unit

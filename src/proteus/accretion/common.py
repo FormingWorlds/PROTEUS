@@ -323,7 +323,12 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
 
     # The python engine's float parser can be 1 ulp off; resume compares times exactly.
     table = pd.read_csv(
-        resolved, sep=None, engine='python', comment='#', converters={'time': float}
+        resolved,
+        sep=None,
+        engine='python',
+        comment='#',
+        skipinitialspace=True,
+        converters={'time': float},
     )
     table.columns = [str(c).strip() for c in table.columns]
 

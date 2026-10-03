@@ -477,16 +477,13 @@ def next_step(
                 )
                 dtswitch = dt_capped
 
-    # A step reaching the next impact lands on it, cut to dt/ceil(dt/ceiling). One that
-    # would stop less than dtfloor short is split into equal steps that land, so no
-    # sub-floor remainder is left and no earlier cap is exceeded.
+    # A step reaching the next impact lands on it, cut to dt/ceil(dt/ceiling); the
+    # landing step can be shorter than dtfloor.
     if interior_o is not None and np.isfinite(interior_o.t_next_impact):
         dt_to_impact = interior_o.t_next_impact - hf_row['Time']
-        dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
-        if dtswitch < dt_to_impact < dtswitch + dtfloor:
-            dtswitch = dt_to_impact / math.ceil(dt_to_impact / dtswitch)
         impact_ceiling = float(config.params.dt.impact_maximum)
         if impact_ceiling > 0.0:
+            dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
             ceiling = max(impact_ceiling, dtfloor)
             if dtswitch >= dt_to_impact > ceiling:
                 dt_to_impact /= math.ceil(dt_to_impact / ceiling)
