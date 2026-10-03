@@ -402,7 +402,7 @@ class Accretion:
     impactor_O_ppmw: float
         Oxygen carried by each impactor [ppmw of impactor mass]. With CALLIOPE
         or atmodeller at a fixed fO2 (``planet.fO2_source = 'user_constant'``)
-        the outgassing sets the O budget, so the delivered part counts as rock;
+        the outgassing derives the O budget, so the delivered part counts as rock;
         otherwise it joins the O budget.
     atmloss_module: str or None
         How impact atmosphere loss is computed. Choices: None (no impact

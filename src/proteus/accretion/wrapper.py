@@ -461,11 +461,9 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     bad += [
         f'{e}_kg_total' for e in element_list if not _valid_mass(hf_row.get(f'{e}_kg_total'))
     ]
-    records = {
-        'M_accreted_rock': hf_row.get('M_accreted_rock'),
-        'n_impacts_applied': hf_row.get('n_impacts_applied'),
-    }
-    bad += [k for k, v in records.items() if not _valid_mass(v)]
+    bad += [
+        k for k in ('M_accreted_rock', 'n_impacts_applied') if not _valid_mass(hf_row.get(k))
+    ]
     bad += [f'impactor {e}' for e, m in content.items() if not _valid_mass(m)]
     if bad:
         raise RuntimeError(f'impact masses are negative or not finite: {", ".join(bad)}')
@@ -583,7 +581,7 @@ def _apply_volatile_consequences(
     budgets and to the gate's baseline ``M_vol_initial`` (once escape has
     set one), and refreshes the tracked-element total. The outgassing step
     later this iteration re-equilibrates the atmosphere against the updated
-    totals; oxygen, where ``outgassing_derives_o_kg_total``, is set there either way.
+    totals; oxygen, where ``outgassing_derives_o_kg_total``, is derived there either way.
 
     Parameters
     ----------

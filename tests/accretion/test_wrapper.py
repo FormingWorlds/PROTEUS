@@ -1273,13 +1273,13 @@ def test_match_planet_step_zero_without_history_falls_back_to_hf_row():
     assert content['O'] == pytest.approx(1.0e23 * (1.2e21 / 6.0e24))
 
 
-# Whether each outgassing module rewrites O_kg_total from a fixed fO2 every call.
+# Whether each outgassing module derives O_kg_total from a fixed fO2 every call.
 _DERIVES_O_KG_TOTAL = {'calliope': True, 'atmodeller': True, 'dummy': False}
 
 
 @pytest.mark.unit
 def test_every_outgassing_module_has_a_stated_oxygen_rule():
-    """Only CALLIOPE and atmodeller at a fixed fO2 rewrite the O budget; the dummy
+    """Only CALLIOPE and atmodeller at a fixed fO2 derive the O budget; the dummy
     outgassing and from_O_budget keep it as given. A module added to the config
     fails here until it is classified. The rule never reads O_mode, so the
     planet has no elements section."""

@@ -33,6 +33,10 @@ log = logging.getLogger('fwl.' + __name__)
 # Molar mass of H2 [kg/mol]
 _MU_H2 = eval_gas_mmw('H2')
 
+# Relative bound for a round-off negative H_kg_atm: H_kg_atm + dH_atm is a few ulp of
+# the H2 masses, and 1e-12 of 1e21 kg is 1e9 kg, ten times below mass_thresh.
+_H_ATM_ROUND_OFF_REL = 1.0e-12
+
 
 def apply_binodal_h2(hf_row: dict, config: Config) -> None:
     """Apply Rogers+2025 binodal to partition H2 between atm and mantle.
@@ -108,7 +112,7 @@ def apply_binodal_h2(hf_row: dict, config: Config) -> None:
     # A round-off negative becomes 0; NaN or a larger negative is kept for the
     # impact check to refuse, since it marks a ledger defect.
     H_atm = float(hf_row.get('H_kg_atm', 0.0)) + dH_atm
-    round_off = 1.0e-12 * max(abs(H2_kg_atm_old), abs(H2_kg_atm_new))
+    round_off = _H_ATM_ROUND_OFF_REL * max(abs(H2_kg_atm_old), abs(H2_kg_atm_new))
     floor = math.isfinite(round_off) and -round_off <= H_atm < 0.0
     hf_row['H_kg_atm'] = 0.0 if floor else H_atm
     hf_row['H_kg_liquid'] = float(hf_row.get('H_kg_liquid', 0.0)) + dH_liquid

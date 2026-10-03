@@ -1086,7 +1086,7 @@ class Proteus:
         try:
             restore_accretion_state(self)
             change = volatile_mass_change(self.hf_row) if resume else 0.0
-        except RuntimeError:
+        except Exception:
             # A refused resume records its stop, so the run does not read as running.
             UpdateStatusfile(self.directories, 20)
             raise

@@ -58,9 +58,10 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict, *, in
     -----
     The O in the atmosphere and melt is the stoichiometric O of the H2O, CO2 and
     SO2 built from H, C and S, and ``O_kg_total`` does not bound it. A user O
-    budget below that O (``O_mode`` kg, ppmw or FeO_mantle_wt_pct), or a budget a
-    strip emptied, leaves the atmosphere holding O that no budget holds: it sets
-    ``P_surf`` and cannot escape, and an impact strips at most ``O_kg_total``.
+    budget below that O (``O_mode`` kg, ppmw or FeO_mantle_wt_pct), a budget a
+    strip emptied, or an impact that delivers H, C or S without O leaves the
+    atmosphere holding O that no budget holds: it sets ``P_surf`` and cannot
+    escape, and an impact strips at most ``O_kg_total``.
     """
     Phi_global = float(hf_row['Phi_global'])
     gravity = float(hf_row['gravity'])

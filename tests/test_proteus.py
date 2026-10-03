@@ -285,8 +285,9 @@ def test_resume_checks_the_volatile_change_column_before_any_structure_solve(tmp
     [
         (None, 'M_volatile_change is not finite'),
         (RuntimeError('Resume refused: corrupt impact records'), 'corrupt impact records'),
+        (ValueError('Impact timeline is missing required columns'), 'missing required'),
     ],
-    ids=['volatile column', 'impact records'],
+    ids=['volatile column', 'impact records', 'malformed timeline'],
 )
 def test_a_refused_resume_records_status_20(tmp_path, side_effect, match):
     """A resume refused for a NaN M_volatile_change or for corrupt impact records
@@ -295,8 +296,15 @@ def test_a_refused_resume_records_status_20(tmp_path, side_effect, match):
     (tmp_path / 'data').mkdir(exist_ok=True)
     hf = _make_hf_df()
     hf['M_volatile_change'] = [0.0, 0.0, 0.0, 0.0, float('nan')]
+    from proteus.utils.coupler import UpdateStatusfile
+
     codes = []
-    with pytest.raises(RuntimeError, match=match):
+
+    def record(d, c):
+        codes.append((d['output'], c))
+        UpdateStatusfile(d, c)
+
+    with pytest.raises((RuntimeError, ValueError), match=match):
         _resume_with_patches(
             p,
             hf,
@@ -305,10 +313,11 @@ def test_a_refused_resume_records_status_20(tmp_path, side_effect, match):
             patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
             patch('proteus.accretion.wrapper.restore_accretion_state', side_effect=side_effect),
             patch('proteus.proteus.setup_logger'),
-            patch('proteus.proteus.UpdateStatusfile', side_effect=lambda d, c: codes.append(c)),
+            patch('proteus.proteus.UpdateStatusfile', side_effect=record),
         )
-    assert codes[-1] == 20
-    assert codes.count(20) == 1
+    assert codes[-1] == (str(tmp_path), 20)
+    assert [c for _, c in codes].count(20) == 1
+    assert (tmp_path / 'status').read_text().split()[0] == '20'
 
 
 @pytest.mark.unit
@@ -3394,11 +3403,12 @@ def test_resume_first_atmosphere_call_uses_interior_t_magma(tmp_path, interior_m
 
 
 def _run_resumed_loop_until_stop(
-    p, hf_df, fake_interior, fake_atmosphere, terminate_after=None
+    p, hf_df, fake_interior, fake_atmosphere, terminate_after=None, fake_outgas=None
 ):
     """Resume ``p`` from ``hf_df`` with the given interior and atmosphere fakes
     until the atmosphere fake raises ``_StopAfterAtmosphereCall``, or, with
-    ``terminate_after``, until the run ends normally after that many loops."""
+    ``terminate_after``, until the run ends normally after that many loops.
+    ``fake_outgas``, when given, replaces the no-op outgassing step."""
     from types import SimpleNamespace
 
     checks = []
@@ -3439,6 +3449,13 @@ def _run_resumed_loop_until_stop(
         stack.enter_context(
             patch('proteus.atmos_clim.run_atmosphere', side_effect=fake_atmosphere)
         )
+        if fake_outgas is not None:
+            stack.enter_context(
+                patch(
+                    'proteus.outgas.wrapper.run_outgassing_and_vapourisation',
+                    side_effect=fake_outgas,
+                )
+            )
         mock_interior_t = stack.enter_context(
             patch('proteus.interior_energetics.common.Interior_t')
         )
@@ -3451,6 +3468,30 @@ def _run_resumed_loop_until_stop(
         expect = nullcontext() if terminate_after else pytest.raises(_StopAfterAtmosphereCall)
         with expect:
             p.start(resume=True, offline=True)
+
+
+@pytest.mark.unit
+def test_a_resumed_run_outgasses_with_first_iter_false(tmp_path):
+    """A resumed run skips the init stage, so every outgassing step it takes is
+    told it is not the first iteration."""
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog')
+    flags = []
+
+    def _fake_outgas(_dirs, _config, _hf_row, first_iter):
+        flags.append((first_iter, p.init_stage))
+
+    def _stop_on_second(*args, **kwargs):
+        if len(flags) == 2:
+            raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(
+        p,
+        _make_resume_checkpoint_df(),
+        lambda *a, **k: None,
+        _stop_on_second,
+        fake_outgas=_fake_outgas,
+    )
+    assert flags == [(False, False), (False, False)]
 
 
 @pytest.mark.unit

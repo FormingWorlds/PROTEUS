@@ -167,23 +167,42 @@ def test_sigma_partitions_h2_linearly(sigma, expected_liquid_frac, expected_atm_
 
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
-    'shortfall, floored',
-    [(0.5e-12, True), (1e-9, False), (0.5, False), (float('nan'), False)],
+    'h2_atm, h_atm, sigma, floored',
+    [
+        (1e21, 1e21 * (1.0 - 0.5e-12), 1.0, True),
+        (1e21, 1e21 * (1.0 - 1.5e-12), 1.0, False),
+        (1e21, 1e21 * (1.0 - 2e-12), 1.0, False),
+        (1e21, 1e21 * (1.0 - 1e-9), 1.0, False),
+        (1e21, 0.5e21, 1.0, False),
+        (1e21, float('nan'), 1.0, False),
+        (0.0, -1e21 * (1.0 + 0.5e-12), 0.0, True),
+    ],
+    ids=['0.5e-12', '1.5e-12', '2e-12', '1e-9', '0.5', 'nan', 'new H2 larger'],
 )
-def test_only_a_round_off_negative_h_atm_is_floored(shortfall, floored):
-    """Dissolving all 1e21 kg of H2 from an atmosphere whose H_kg_atm sits a
-    relative shortfall below it leaves 0 within the 1e-12 round-off bound; a
-    larger shortfall or a NaN marks a ledger defect and is kept as it is."""
-    cfg = _make_config()
-    h_atm = 1e21 * (1.0 - shortfall)
+def test_only_a_round_off_negative_h_atm_is_floored(h2_atm, h_atm, sigma, floored):
+    """A negative H_kg_atm within 1e-12 of the larger of the old and new 1e21 kg H2
+    atmosphere becomes 0; a larger shortfall or a NaN marks a ledger defect and is
+    kept as it is."""
     hf_row = _make_hf_row(
-        H2_kg_total=1e21, H2_kg_atm=1e21, extra={'H_kg_atm': h_atm, 'H_kg_liquid': 0.0}
+        H2_kg_total=1e21, H2_kg_atm=h2_atm, extra={'H_kg_atm': h_atm, 'H_kg_liquid': 0.0}
+    )
+    with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=sigma):
+        apply_binodal_h2(hf_row, _make_config())
+    expected = 0.0 if floored else h_atm + (1.0 - sigma) * 1e21 - h2_atm
+    assert hf_row['H_kg_atm'] == pytest.approx(expected, rel=1e-6, abs=0.0, nan_ok=True)
+    assert hf_row['H_kg_liquid'] == pytest.approx(sigma * 1e21, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_a_shortfall_exactly_at_the_round_off_bound_is_floored():
+    """1e12 kg of H2 dissolved from an H_kg_atm of 1e12 - 1 kg leaves -1 kg, which
+    equals the 1e-12 bound and is floored to 0."""
+    hf_row = _make_hf_row(
+        H2_kg_total=1e12, H2_kg_atm=1e12, extra={'H_kg_atm': 1e12 - 1.0, 'H_kg_liquid': 0.0}
     )
     with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=1.0):
-        apply_binodal_h2(hf_row, cfg)
-    expected = 0.0 if floored else h_atm - 1e21
-    assert hf_row['H_kg_atm'] == pytest.approx(expected, rel=1e-6, abs=0.0, nan_ok=True)
-    assert hf_row['H_kg_liquid'] == pytest.approx(1e21, rel=1e-12)
+        apply_binodal_h2(hf_row, _make_config())
+    assert hf_row['H_kg_atm'] == 0.0
 
 
 @pytest.mark.physics_invariant

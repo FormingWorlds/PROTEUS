@@ -3024,7 +3024,7 @@
     {
       "name": "M_volatile_change",
       "unit": "kg",
-      "description": "(delivered excl. rock O - stripped) after init stage - escaped incl. rock vapour",
+      "description": "cumulative element mass added to the Zalmoxis target : delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included)",
       "group": "Giant-impact accretion ledger",
       "origin": "literal",
       "producers": [

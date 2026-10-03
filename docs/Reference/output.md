@@ -264,7 +264,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 |---|---|---|---|---|---|
 | `M_accreted_rock` | `kg` | cumulative rock mass added by giant impacts | `accretion/wrapper.py` | always | accretion, main loop |
 | `n_impacts_applied` | `1` | count of giant impacts applied | `accretion/wrapper.py` | always | accretion |
-| `M_volatile_change` | `kg` | (delivered excl. rock O - stripped) after init stage - escaped incl. rock vapour | `interior_struct/common.py` | interior_struct.module = "zalmoxis" | interior_struct |
+| `M_volatile_change` | `kg` | cumulative element mass added to the Zalmoxis target : delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) | `interior_struct/common.py` | interior_struct.module = "zalmoxis" | interior_struct |
 
 ### Gases from outgassing
 

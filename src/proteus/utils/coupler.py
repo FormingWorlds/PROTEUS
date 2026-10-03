@@ -1008,7 +1008,7 @@ def GetHelpfileKeys():
         'n_impacts_applied',  # count of giant impacts applied [1]
 
         # Element mass the Zalmoxis whole-planet target adds to mass_tot (Zalmoxis only).
-        'M_volatile_change',  # (delivered excl. rock O - stripped) after init stage - escaped incl. rock vapour [kg]
+        'M_volatile_change',  # cumulative element mass added to the Zalmoxis target [kg]: delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included)
     ]
 
     # gases from outgassing

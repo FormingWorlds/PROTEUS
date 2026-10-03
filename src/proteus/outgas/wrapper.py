@@ -320,9 +320,9 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
 
 
 def outgassing_derives_o_kg_total(config: Config) -> bool:
-    """Whether each outgassing call rewrites ``O_kg_total`` from the melt fO2.
+    """Whether each outgassing call derives ``O_kg_total`` from the melt fO2.
 
-    CALLIOPE and atmodeller set the O budget from the fixed fO2 under
+    CALLIOPE and atmodeller derive the O budget from the fixed fO2 under
     ``planet.fO2_source = 'user_constant'``; ``O_mode = 'ic_chemistry'``
     requires that source at config load. The dummy outgassing derives an empty
     ``O_kg_total`` only in the init stage and otherwise keeps it as given, and
@@ -653,8 +653,8 @@ def run_outgassing_and_vapourisation(
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
         first_iter : bool
-            Whether the run is in its init stage, the flag that also resets the O
-            budget; the dummy outgassing derives an empty O budget only then.
+            Whether the run is in its init stage; the dummy outgassing derives an
+            empty O budget only then.
     """
 
     # reset all rock-vapour masses to zero:
