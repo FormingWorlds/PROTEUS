@@ -2976,6 +2976,32 @@ def test_the_main_loop_runs_the_escape_step_every_iteration(tmp_path):
     escape.assert_called_with()
 
 
+def test_the_main_loop_applies_due_impacts_before_the_escape_step(tmp_path):
+    """Every iteration applies the impacts it reached before escape runs, so the
+    escape step measures and debits the post-impact budgets."""
+    from types import SimpleNamespace
+
+    calls = []
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with (
+        patch(
+            'proteus.accretion.wrapper.init_accretion',
+            return_value=[SimpleNamespace(time=1.0e9)],
+        ),
+        patch('proteus.accretion.wrapper.restore_accretion_state'),
+        patch(
+            'proteus.accretion.wrapper.apply_due_impacts',
+            side_effect=lambda handler, is_snapshot: calls.append('impacts') or [],
+        ),
+        patch.object(
+            type(p), '_run_escape_step', side_effect=lambda: calls.append('escape') or False
+        ),
+    ):
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+    assert calls == ['impacts', 'escape'] * p.loops['total']
+    assert p.loops['total'] >= 3
+
+
 def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog):
     """With the opt-in ``PROTEUS_TIMING`` instrumentation enabled (here
     patched directly on the frozen module constant, since it is normally

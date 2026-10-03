@@ -1551,7 +1551,7 @@ def test_a_wide_chain_applies_every_impact_once_in_order(
 ):
     """Impacts each 9e-4 or 5e-4 yr after the one before, with steps that end inside
     the chain: every impact is applied once and in time order, the rock and the
-    hydrogen the impactors deliver add up, the rows that apply impacts have
+    hydrogen the impactors deliver add up (also in M_volatile_change), the rows that apply impacts have
     increasing times and distinct snapshot names, and one warning names the chain
     span and the largest delay."""
     from proteus.accretion import wrapper
@@ -1599,6 +1599,9 @@ def test_a_wide_chain_applies_every_impact_once_in_order(
     rock = sum(e.mass_delta - delivered for e in events)
     assert handler.hf_row['M_accreted_rock'] == pytest.approx(rock, rel=1e-9)
     assert handler.hf_row['n_impacts_applied'] == len(times)
+    assert handler.hf_row['M_volatile_change'] == pytest.approx(
+        len(times) * delivered, rel=1e-9
+    )
     assert handler.hf_row['H_kg_total'] == pytest.approx(
         6.0e20 + len(times) * delivered, rel=1e-9
     )
