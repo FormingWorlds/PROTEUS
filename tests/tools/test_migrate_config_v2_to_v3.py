@@ -139,7 +139,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.atol_temperature_equivalent',
         'interior_energetics.aragog.backend',
         'interior_energetics.aragog.core_bc',
-        # The staged core budget is read only when core_bc = "core_module",
+        # The core budget is read only when core_bc = "core_module",
         # and a migrated config keeps core_bc at its default, so none of
         # these values reaches the run.
         'interior_energetics.aragog.core_module.alpha',

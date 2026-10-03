@@ -327,10 +327,10 @@ Jacobians for robust convergence.
 | `tolerance_struct` | float | `100.0` | Absolute mass tolerance \[kg\] for the secant solver in determine_interior_radius. Default 100 kg; pairs with Spider's matching field so both backends drive the same outer-loop convergence criterion. Must be > 0. |
 <!-- END GENERATED: config-table [interior_energetics.aragog] -->
 
-### Staged core evolution `[interior_energetics.aragog.core_module]`
+### Core evolution `[interior_energetics.aragog.core_module]`
 
 Active when `core_bc = "core_module"`. The core carries its own state: an
-energy budget with smoothed inner-core nucleation, latent heat, and
+energy budget with inner-core nucleation, latent heat, and
 light-element gravitational energy, integrated as an extra ODE state inside
 Aragog, so the reported core temperature is boundary-layer state rather than
 the lowermost mantle node's value. The CMB radius and pressure always come

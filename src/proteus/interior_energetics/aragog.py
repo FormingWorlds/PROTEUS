@@ -773,7 +773,7 @@ class AragogRunner:
         #   'quasi_steady'   (alpha-factor approximation)
         #   'gradient'       (gradient-based state)
         #   'bower2018'      (EXPERIMENTAL, not recommended)
-        #   'core_module'    (staged core-evolution budget; T_cmb as ODE state)
+        #   'core_module'    (core-evolution budget; T_cmb as ODE state)
         # Validation lives on the attrs schema (config._interior.Aragog).
         # The attrs schema (config._interior.Aragog) already restricts
         # core_bc to the five valid modes, so it is consumed directly here
@@ -2180,15 +2180,14 @@ class AragogRunner:
         solver._prev_struct_log = (t_new, R_int_new, R_core_new, g_new)
 
     def _write_core_module_diagnostics(self, output: dict, dt_actual_yr: float = 0.0) -> None:
-        """Fill the ``core_*`` helpfile columns from the staged core budget.
+        """Fill the ``core_*`` helpfile columns from the core evolution budget.
 
         Evaluates the energy-side quantities on the solver's own
         ``CoreEnergyBudget`` and the entropy, dynamo, and stratification
         diagnostics on a wrapper-side ``CoreEntropyBudget`` built from the
         config's ``k_core`` / ``f_ohm`` / ``flux_geometry``. The entropy
-        budget is rebuilt whenever the solver's budget object changes (a
-        structure re-solve rebuilds it with the new CMB radius), keyed on
-        object identity.
+        budget is rebuilt whenever the solver's budget object changes, keyed
+        on object identity.
 
         The CMB heat flow driving the diagnostics is the step-averaged
         power ``step_dE_F_cmb_J / dt`` rather than the end-of-step flux
@@ -2261,8 +2260,8 @@ class AragogRunner:
             surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
         )
 
-        # Core-evolution diagnostics ride along when the staged core
-        # budget is active; every other mode leaves the zero defaults.
+        # Core-evolution diagnostics ride along when the core module is active;
+        # every other mode leaves the zero defaults.
         if self._config.interior_energetics.aragog.core_bc == 'core_module':
             self._write_core_module_diagnostics(output, dt_actual_yr=float(out.dt_actual))
 
