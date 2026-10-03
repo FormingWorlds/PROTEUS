@@ -321,7 +321,10 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
     if not os.path.exists(resolved):
         raise FileNotFoundError(f'Impact timeline file does not exist: {resolved}')
 
-    table = pd.read_csv(resolved, sep=None, engine='python', comment='#')
+    # The python engine's float parser can be 1 ulp off; resume compares times exactly.
+    table = pd.read_csv(
+        resolved, sep=None, engine='python', comment='#', converters={'time': float}
+    )
     table.columns = [str(c).strip() for c in table.columns]
 
     missing = [c for c in TIMELINE_COLUMNS if c not in table.columns]

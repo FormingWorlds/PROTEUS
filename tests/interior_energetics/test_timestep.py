@@ -987,16 +987,73 @@ class TestImpactClamp:
         assert ends[-1] - (ends[-2] if len(ends) > 1 else 1.0e5) <= 3.0e3 * (1 + 1e-12)
 
     @pytest.mark.physics_invariant
-    @pytest.mark.parametrize('offset, growth', [(8.3e3, 0.0), (8.0e3 * (1.0 + 1e-9), 2.0)])
-    def test_a_step_ending_short_of_the_floor_before_an_impact_is_stretched_onto_it(
-        self, offset, growth
+    @pytest.mark.parametrize(
+        'offset, growth, ends',
+        [(8.3e3, 0.0, [104150.0, 108300.0]), (5.6e3, 1.1, [102800.0, 105600.0])],
+    )
+    def test_a_step_ending_short_of_the_floor_before_an_impact_is_split(
+        self, offset, growth, ends
     ):
-        """A controller step of 8000 yr toward an impact less than the 600 yr floor
-        further away is stretched onto it, so no step below the floor is left for
-        the growth cap to build up from."""
-        ends = self._steps_to(1.0e5 + offset, cap=0.0, growth=growth)
-        assert ends == [1.0e5 + offset]
-        assert ends[0] - 1.0e5 > 600.0
+        """A capped step (8000 yr, or 5500 yr under a 1.1 growth cap) that would stop
+        less than the 600 yr floor short of an impact becomes two equal steps that
+        land, so no sub-floor step is left and the cap holds."""
+        assert self._steps_to(1.0e5 + offset, cap=0.0, growth=growth) == ends
+
+    @pytest.mark.parametrize('offset', [8.6e3, 8.0e3 + 606.0])
+    def test_a_step_ending_at_least_the_floor_short_of_an_impact_is_kept(self, offset):
+        """At or beyond the 600 yr floor past the 8000 yr step, no split applies."""
+        assert self._steps_to(1.0e5 + offset, cap=0.0)[0] == 1.08e5
+
+    @pytest.mark.physics_invariant
+    @pytest.mark.parametrize(
+        'kwargs, step_sf, gap, cap',
+        [
+            ({'dt_max': 5.0e3}, 1.0, 5.3e3, 5.0e3),
+            ({'mushy_maximum': 1.0e3, 'phi': 0.5}, 1.0, 1.2e3, 1.0e3),
+            ({}, 0.09, 900.0, 720.0),
+            ({'stop_time': 1.05e5}, 1.0, 5.3e3, 5.0e3),
+        ],
+    )
+    def test_the_split_before_an_impact_never_exceeds_an_earlier_cap(
+        self, kwargs, step_sf, gap, cap
+    ):
+        """dt.maximum, the mushy cap, a retry's step_sf and the stop time each bound
+        the step when the impact lies less than the floor beyond the capped step."""
+        from proteus.interior_energetics.timestep import next_step
+
+        phi = kwargs.pop('phi', 1.0)
+        stop_time = kwargs.pop('stop_time', None)
+        config = _make_config(**kwargs)
+        if stop_time is not None:
+            config.params.stop.time.enabled, config.params.stop.time.maximum = True, stop_time
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': phi}
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=phi),
+            step_sf,
+            interior_o=_make_interior_o(1.0e5 + gap),
+        )
+        assert dt == pytest.approx(gap / 2.0, rel=1e-12)
+        assert dt <= cap
+
+    def test_the_static_step_is_not_lengthened_by_a_near_impact(self):
+        """In the init stage (Time < 2 yr) the 1 yr step stays 1 yr with an impact
+        500 yr ahead, inside the default 1e4 yr floor."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        config.params.dt.minimum = 1.0e4
+        dt = next_step(
+            config,
+            {},
+            {'Time': 0.0, 'F_atm': 1.0e4, 'Phi_global': 1.0},
+            _make_hf_all(n_rows=1),
+            1.0,
+            interior_o=_make_interior_o(500.0),
+        )
+        assert dt == 1.0
 
     def test_impact_maximum_does_not_shorten_a_step_already_below_it(self):
         """The ceiling never lengthens the step and stays inert once the

@@ -192,7 +192,10 @@ class TimeStepParams:
         than ``max(impact_maximum, dtfloor)`` (dtfloor = dt.minimum +
         dt.minimum_rel * Time) is cut to an equal fraction of the time
         left; later steps are evaluated again, and the step that lands
-        is no longer than the ceiling. Set to 0 (default) to disable.
+        is no longer than ``max(impact_maximum, dtfloor)``. Set to 0
+        (default) to disable. Independent of this setting, a step that
+        would stop less than dtfloor short of an impact is split into
+        equal steps that land on it.
     """
 
     starspec: float = field(default=1e8, validator=ge(0))
