@@ -2188,15 +2188,15 @@ def test_run_interior_consumes_the_one_shot_impact_flag():
     """run_interior consumes the one-shot impact flag on the step it serves.
 
     Verifies:
-    - An armed ``impact_reset`` is cleared by the step that reads it, so the
-      temperature-jump clip is lifted for that step only.
-    - The very next step leaves it cleared, so one impact cannot lift the clip
-      on two steps.
+    - An armed ``impact_reset`` is cleared by the step that reads it, and the
+      prevent-warming clamp leaves that step's warming (3005 K over 3000 K).
+    - The very next step leaves it cleared and is clamped to the 3000 K before,
+      so one impact cannot lift the clamp on two steps.
     """
     from proteus.interior_energetics.common import Interior_t
     from proteus.interior_energetics.wrapper import run_interior
 
-    config = _make_run_interior_config(prevent_warming=False)
+    config = _make_run_interior_config(prevent_warming=True)
     hf_all, hf_row = _make_run_interior_state(prev_f_int=1.0)
     out = {
         'T_magma': 3005.0,
@@ -2221,10 +2221,12 @@ def test_run_interior_consumes_the_one_shot_impact_flag():
     ):
         run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
         assert interior_o.impact_reset is False, 'the one-shot flag was not consumed'
+        assert hf_row['T_magma'] == 3005.0
 
         # The following step is ordinary again: nothing re-armed the flag.
         run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
         assert interior_o.impact_reset is False
+        assert hf_row['T_magma'] == 3000.0
 
 
 @pytest.mark.unit

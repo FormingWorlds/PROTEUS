@@ -1849,15 +1849,17 @@ def test_restore_accretion_state_drops_already_applied_events_on_resume(tmp_path
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('t', [1.0e8 / 3.0, 2.0e8 / 3.0, 1.00000000004999e7])
+@pytest.mark.parametrize(
+    't', [1.0e8 / 3.0, 2.0e8 / 3.0, 1.00000000004999e7, 14405738.971969359, 937776526.9009967]
+)
 def test_a_run_resumes_from_the_row_that_landed_an_impact(tmp_path, t):
     """The step that landed an impact a few ulp short ends on the impact time;
-    the helpfile reads that row time back exactly, so a resume from the row
-    restores the impact as applied and does not schedule it again."""
+    the helpfile and the timeline file read that time back exactly, so a resume
+    from the row restores the impact as applied and does not schedule it again."""
     import math
 
-    from proteus.accretion.common import snap_to_impact, write_timeline
-    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
+    from proteus.accretion.common import snap_to_impact
+    from proteus.accretion.wrapper import restore_accretion_state
     from proteus.utils.constants import AU
     from proteus.utils.coupler import (
         CreateHelpfileFromDict,
@@ -1866,10 +1868,6 @@ def test_a_run_resumes_from_the_row_that_landed_an_impact(tmp_path, t):
         ZeroHelpfileRow,
     )
 
-    event = _impact_event(
-        time=t, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
-    )
-    write_timeline([event], str(tmp_path / _RESOLVED_TIMELINE_FILE))
     row = ZeroHelpfileRow()
     row.update(
         Time=snap_to_impact(math.nextafter(math.nextafter(t, 0.0), 0.0), t),
@@ -1878,30 +1876,20 @@ def test_a_run_resumes_from_the_row_that_landed_an_impact(tmp_path, t):
         semimajorax=1.0 * AU,
     )
     WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
-    handler = SimpleNamespace(
-        config=SimpleNamespace(
-            accretion=SimpleNamespace(module='dummy', impactor_volatiles='dry'),
-            params=SimpleNamespace(resume=True),
-            planet=SimpleNamespace(mass_tot=1.0),
-            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
-        ),
-        hf_row=ReadHelpfileFromCSV(str(tmp_path)).iloc[-1].to_dict(),
-        directories={'output': str(tmp_path)},
-        impact_events=[event],
-    )
+    handler, _ = _resume_handler(tmp_path, 0.0, n_applied=1, t=t)
+    handler.hf_row = ReadHelpfileFromCSV(str(tmp_path)).iloc[-1].to_dict()
     assert handler.hf_row['Time'] == t
     restore_accretion_state(handler)
     assert handler.impact_events == []
 
 
-def _resume_handler(tmp_path, row_offset, n_applied):
-    """Resume handler on a row ``row_offset`` (relative) before an impact at 1e6 yr
+def _resume_handler(tmp_path, row_offset, n_applied, t=1.0e6):
+    """Resume handler on a row ``row_offset`` (relative) before an impact at ``t``
     whose counter records ``n_applied`` impacts; returns it with the event."""
     from proteus.accretion.common import write_timeline
     from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE
     from proteus.utils.constants import AU
 
-    t = 1.0e6
     event = _impact_event(
         time=t, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
     )
