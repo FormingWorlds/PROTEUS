@@ -20,6 +20,7 @@ When immiscible (sigma ~ 0): all H2 stays in the atmosphere.
 from __future__ import annotations
 
 import logging
+import math
 from typing import TYPE_CHECKING
 
 from proteus.utils.helper import eval_gas_mmw
@@ -108,13 +109,12 @@ def apply_binodal_h2(hf_row: dict, config: Config) -> None:
     # impact check to refuse, since it marks a ledger defect.
     H_atm = float(hf_row.get('H_kg_atm', 0.0)) + dH_atm
     round_off = 1.0e-12 * max(abs(H2_kg_atm_old), abs(H2_kg_atm_new))
-    hf_row['H_kg_atm'] = 0.0 if -round_off <= H_atm < 0.0 else H_atm
+    floor = math.isfinite(round_off) and -round_off <= H_atm < 0.0
+    hf_row['H_kg_atm'] = 0.0 if floor else H_atm
     hf_row['H_kg_liquid'] = float(hf_row.get('H_kg_liquid', 0.0)) + dH_liquid
 
     # Recompute H2 partial pressure from atmospheric mass
     # P_H2 = m_H2 * g / (4 * pi * R^2)
-    import math
-
     area = 4.0 * math.pi * R_int**2
     if area > 0 and gravity > 0:
         hf_row['H2_bar'] = H2_kg_atm_new * gravity / area / 1e5  # Pa -> bar

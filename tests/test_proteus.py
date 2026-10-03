@@ -280,35 +280,35 @@ def test_resume_checks_the_volatile_change_column_before_any_structure_solve(tmp
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('refusal', ['volatile column', 'impact records'])
-def test_a_refused_resume_records_status_20(tmp_path, refusal):
+@pytest.mark.parametrize(
+    'side_effect, match',
+    [
+        (None, 'M_volatile_change is not finite'),
+        (RuntimeError('Resume refused: corrupt impact records'), 'corrupt impact records'),
+    ],
+    ids=['volatile column', 'impact records'],
+)
+def test_a_refused_resume_records_status_20(tmp_path, side_effect, match):
     """A resume refused for a NaN M_volatile_change or for corrupt impact records
     writes status 20 before it raises, so the stopped run does not read as running."""
     p = _make_proteus_instance(tmp_path, struct_module='dummy', interior_module='aragog')
     (tmp_path / 'data').mkdir(exist_ok=True)
     hf = _make_hf_df()
     hf['M_volatile_change'] = [0.0, 0.0, 0.0, 0.0, float('nan')]
-    restore = (
-        patch('proteus.accretion.wrapper.restore_accretion_state')
-        if refusal == 'volatile column'
-        else patch(
-            'proteus.accretion.wrapper.restore_accretion_state',
-            side_effect=RuntimeError('Resume refused: corrupt impact records'),
-        )
-    )
     codes = []
-    with pytest.raises(RuntimeError, match='not finite|Resume refused'):
+    with pytest.raises(RuntimeError, match=match):
         _resume_with_patches(
             p,
             hf,
             patch('proteus.star.wrapper.init_star'),
             patch('proteus.orbit.wrapper.init_orbit'),
             patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
-            restore,
+            patch('proteus.accretion.wrapper.restore_accretion_state', side_effect=side_effect),
             patch('proteus.proteus.setup_logger'),
             patch('proteus.proteus.UpdateStatusfile', side_effect=lambda d, c: codes.append(c)),
         )
     assert codes[-1] == 20
+    assert codes.count(20) == 1
 
 
 @pytest.mark.unit

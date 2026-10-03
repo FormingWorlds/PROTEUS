@@ -606,7 +606,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
         first_iter : bool
-            True for the init-stage iterations (loops['total'] <= loops['init_loops'])
+            Whether the run is in its init stage.
     """
 
     # if desiccated, set all gas masses to zero

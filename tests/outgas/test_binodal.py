@@ -22,6 +22,7 @@ Anti-happy-path coverage:
 
 from __future__ import annotations
 
+import math
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
@@ -166,23 +167,37 @@ def test_sigma_partitions_h2_linearly(sigma, expected_liquid_frac, expected_atm_
 
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
-    'h_atm, expected',
-    [(1e21, 0.0), (5e20, -5e20 - 1e5), (float('nan'), float('nan'))],
+    'shortfall, floored',
+    [(0.5e-12, True), (1e-9, False), (0.5, False), (float('nan'), False)],
 )
-def test_only_a_round_off_negative_h_atm_is_floored(h_atm, expected):
-    """Dissolving all H2 (1e21 + 1e5 kg) from an atmosphere whose H_kg_atm sits
-    1e5 kg below it leaves 0, not -1e5 kg; a larger shortfall or a NaN marks a
-    ledger defect and is kept for the impact check to refuse."""
+def test_only_a_round_off_negative_h_atm_is_floored(shortfall, floored):
+    """Dissolving all 1e21 kg of H2 from an atmosphere whose H_kg_atm sits a
+    relative shortfall below it leaves 0 within the 1e-12 round-off bound; a
+    larger shortfall or a NaN marks a ledger defect and is kept as it is."""
     cfg = _make_config()
+    h_atm = 1e21 * (1.0 - shortfall)
     hf_row = _make_hf_row(
-        H2_kg_total=1e21 + 1e5,
-        H2_kg_atm=1e21 + 1e5,
-        extra={'H_kg_atm': h_atm, 'H_kg_liquid': 0.0},
+        H2_kg_total=1e21, H2_kg_atm=1e21, extra={'H_kg_atm': h_atm, 'H_kg_liquid': 0.0}
     )
     with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=1.0):
         apply_binodal_h2(hf_row, cfg)
+    expected = 0.0 if floored else h_atm - 1e21
+    assert hf_row['H_kg_atm'] == pytest.approx(expected, rel=1e-6, abs=0.0, nan_ok=True)
+    assert hf_row['H_kg_liquid'] == pytest.approx(1e21, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_an_infinite_h2_atmosphere_is_not_floored_away():
+    """A non-finite old H2_kg_atm gives an infinite round-off scale; the
+    resulting -inf H_kg_atm is kept, not floored to 0."""
+    cfg = _make_config()
+    hf_row = _make_hf_row(
+        H2_kg_total=1e21, H2_kg_atm=float('inf'), extra={'H_kg_atm': 1e21, 'H_kg_liquid': 0.0}
+    )
+    with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=1.0):
+        apply_binodal_h2(hf_row, cfg)
+    assert hf_row['H_kg_atm'] == -math.inf
     assert hf_row['H2_kg_atm'] == pytest.approx(0.0, abs=0.0)
-    assert hf_row['H_kg_atm'] == pytest.approx(expected, rel=1e-12, abs=0.0, nan_ok=True)
 
 
 @pytest.mark.physics_invariant

@@ -1090,14 +1090,13 @@ class Proteus:
             # A refused resume records its stop, so the run does not read as running.
             UpdateStatusfile(self.directories, 20)
             raise
-        if resume:
-            if change != 0.0 and not tracks_volatile_mass(self.config):
-                log.info(
-                    'M_volatile_change = %.3e kg is carried over but only the Zalmoxis '
-                    'structure reads or updates it; it stays stale under %s',
-                    change,
-                    self.config.interior_struct.module,
-                )
+        if change != 0.0 and not tracks_volatile_mass(self.config):
+            log.info(
+                'M_volatile_change = %.3e kg is carried over but only the Zalmoxis '
+                'structure reads or updates it; it stays stale under %s',
+                change,
+                self.config.interior_struct.module,
+            )
         if resume and self.config.accretion.module is not None:
             self._match_ps_tables_to_mass()
 
@@ -1340,10 +1339,9 @@ class Proteus:
 
             # Handle volatile exchange
             log.info('Solving for atmosphere composition...')
-            first_iter = self.init_stage
             if self.desiccated:
                 # no volatiles
-                run_desiccated(self.directories, self.config, self.hf_row, first_iter)
+                run_desiccated(self.directories, self.config, self.hf_row, self.init_stage)
 
             elif self.crystallized:
                 # post solidification
@@ -1351,7 +1349,7 @@ class Proteus:
 
             else:
                 run_outgassing_and_vapourisation(
-                    self.directories, self.config, self.hf_row, first_iter
+                    self.directories, self.config, self.hf_row, self.init_stage
                 )
 
                 # Issue #677 IC consistency check. Fires once at the first
