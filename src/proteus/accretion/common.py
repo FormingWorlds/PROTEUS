@@ -321,15 +321,7 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
     if not os.path.exists(resolved):
         raise FileNotFoundError(f'Impact timeline file does not exist: {resolved}')
 
-    # The python engine's float parser can be 1 ulp off; resume compares times exactly.
-    table = pd.read_csv(
-        resolved,
-        sep=None,
-        engine='python',
-        comment='#',
-        skipinitialspace=True,
-        converters={'time': float},
-    )
+    table = pd.read_csv(resolved, sep=None, engine='python', comment='#', dtype=str)
     table.columns = [str(c).strip() for c in table.columns]
 
     missing = [c for c in TIMELINE_COLUMNS if c not in table.columns]
@@ -338,6 +330,9 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
             f'Impact timeline {resolved} is missing required columns: {missing}. '
             f'Expected all of: {list(TIMELINE_COLUMNS)}'
         )
+    # float() reads each value exactly, where the python engine's parser can be 1 ulp off.
+    for c in TIMELINE_COLUMNS:
+        table[c] = table[c].str.strip().map(float)
 
     if len(table) == 0:
         return []

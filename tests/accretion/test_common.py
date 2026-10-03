@@ -416,10 +416,10 @@ def test_read_timeline_parses_both_delimiters_and_applies_the_offset(tmp_path):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('sep', [',', ', ', ' '])
+@pytest.mark.parametrize('sep', [',', ', ', ' ,', ' , ', ' '])
 def test_read_timeline_reads_the_time_back_exactly(tmp_path, sep):
     """A time the default python-engine parser reads 1 ulp off is read back exactly,
-    with time as the last column and with comma, padded comma and space separators."""
+    with time as the last column and comma, padded comma and space separators."""
     t = 14405738.971969359
     row = (t, 6.0e24, 6.4e23, 6.64e24, 1.3e4, 1.15e4, 0.7, 6.371e6, 3.39e6, 5510.0, 3930.0)
     values = dict(zip(TIMELINE_COLUMNS, row + (1.496e11, 1.4e11, 0.02, 0.05, 1, 4)))
