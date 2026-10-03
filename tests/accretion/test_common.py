@@ -26,6 +26,7 @@ from proteus.accretion.common import (
     TIMELINE_COLUMNS,
     ImpactEvent,
     due_events,
+    landing_time,
     next_event,
     read_timeline,
     snap_to_impact,
@@ -248,19 +249,14 @@ def test_timeline_must_advance_in_time_and_carry_mass_forward():
         time=5.0e5, M_target_before=6.64e24, M_impactor=1.0e23, M_merged_after=6.74e24
     )
     validate_timeline([first, second])
-    # Impacts written 1e-3 yr apart get their own snapshot names and are accepted.
-    validate_timeline(
-        [
-            _event(time=t, M_target_before=m0, M_impactor=mi, M_merged_after=m1)
-            for t, m0, mi, m1 in (
-                (100000.001, 6.0e24, 6.4e23, 6.64e24),
-                (100000.002, 6.64e24, 1.0e23, 6.74e24),
-            )
-        ]
+    # Impacts 1e-4 yr apart are a valid history; they land in one step.
+    close = _event(
+        time=1.0e5 + 1.0e-4, M_target_before=6.64e24, M_impactor=1.0e23, M_merged_after=6.74e24
     )
+    validate_timeline([first, close])
 
-    # Time running backwards, two impacts at the same instant, or with one snapshot name.
-    for bad_time in (1.0e5, 5.0e4, 1.0e5 + 3.0e-4):
+    # Time running backwards, and two impacts at the same instant.
+    for bad_time in (1.0e5, 5.0e4):
         with pytest.raises(ValueError, match='increase strictly'):
             validate_timeline(
                 [
@@ -551,6 +547,19 @@ def test_scheduling_helpers_apply_each_impact_exactly_once():
     # A long step sweeps up everything it spans, in order.
     assert due_events(events, 0.0, 1.0e6) == [first, second]
     assert due_events(events, 6.0e5, 1.0e6) == []
+
+
+@pytest.mark.unit
+def test_impacts_closer_than_the_name_resolution_share_one_landing_time():
+    """An impact 1e-4 yr after the next one moves the landing to its time; one 2e-3 yr
+    later lands on its own step; none left gives an infinite landing time."""
+    times = (1.0e5, 1.0e5 + 1.0e-4, 1.0e5 + 2.1e-3)
+    events = [
+        _event(time=t, M_target_before=m, M_impactor=1.0e22, M_merged_after=m + 1.0e22)
+        for t, m in zip(times, (6.0e24, 6.01e24, 6.02e24))
+    ]
+    assert [landing_time(events, t) for t in (0.0, times[1])] == [times[1], times[2]]
+    assert landing_time(events, times[2]) == float('inf')
 
 
 @pytest.mark.unit

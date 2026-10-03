@@ -533,7 +533,7 @@ class Proteus:
         # Import things needed to run PROTEUS
         #    atmospheric chemistry
         #    giant-impact accretion
-        from proteus.accretion.common import next_event
+        from proteus.accretion.common import landing_time
         from proteus.accretion.wrapper import init_accretion, restore_accretion_state
         from proteus.atmos_chem.wrapper import run_chemistry
 
@@ -1133,8 +1133,7 @@ class Proteus:
 
             # Tell the time-stepper when the next giant impact is due, so
             # it can shorten the step to land on it.
-            pending = next_event(self.impact_events, self.hf_row['Time'])
-            t_next_impact = float('inf') if pending is None else pending.time
+            t_next_impact = landing_time(self.impact_events, self.hf_row['Time'])
             self.interior_o.t_next_impact = t_next_impact
 
             # Evolve interior
@@ -1166,6 +1165,12 @@ class Proteus:
                 time_now = self.hf_row['Time']
                 time_previous = time_now - self.interior_o.dt
                 landed = due_events(self.impact_events, time_previous, time_now)
+                if len(landed) > 1:
+                    log.info(
+                        'Impacts at t = %s yr land in one step at %.6e yr',
+                        ', '.join(f'{e.time:.6e}' for e in landed),
+                        time_now,
+                    )
                 for event in landed:
                     apply_impact(self, event)
                     self.impact_events.remove(event)

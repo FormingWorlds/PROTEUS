@@ -198,7 +198,8 @@ class TimeStepParams:
         ending less than 1e-3 yr short of an impact is extended onto it
         (unless that passes stop.time.maximum), and after a landing
         max_growth_factor applies to the larger of the landing step
-        and ``min(dtfloor, last step before the landing)``.
+        and ``min(dtfloor, last step before the landing)``. Impacts less
+        than 1e-3 yr apart land in one step at the later time.
     """
 
     starspec: float = field(default=1e8, validator=ge(0))

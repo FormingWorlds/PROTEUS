@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from attrs import define, field
 
-from proteus.utils.helper import format_subyear_time
+from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -228,9 +228,9 @@ def validate_timeline(
     """Check a whole timeline for self-consistency.
 
     Every record must be physically valid on its own, times must increase
-    strictly and give each impact its own snapshot name (resolution 1e-3 yr),
-    and the mass handed from one impact to the next must follow from the body
-    the previous impact produced.
+    strictly so each impact can be scheduled unambiguously, and the mass
+    handed from one impact to the next must follow from the body the
+    previous impact produced.
 
     That last check is one-way. The timeline reports the perfect-merger
     mass, so between two impacts a body may shed the atmosphere the
@@ -250,8 +250,8 @@ def validate_timeline(
     Raises
     ------
     ValueError
-        If any record is invalid, if two impacts share a snapshot name or
-        run backwards, or if the target mass gains on, or falls too far
+        If any record is invalid, if two impacts share a time or run
+        backwards, or if the target mass gains on, or falls too far
         below, the previous merged mass.
     """
     previous: ImpactEvent | None = None
@@ -260,12 +260,11 @@ def validate_timeline(
         _check_event_physics(event, index)
 
         if previous is not None:
-            same_name = format_subyear_time(event.time) == format_subyear_time(previous.time)
-            if event.time <= previous.time or same_name:
+            if event.time <= previous.time:
                 raise ValueError(
                     f'impact {index} at t = {event.time:.4e} yr does not follow '
                     f'impact {index - 1} at t = {previous.time:.4e} yr; times must '
-                    'increase strictly and differ in the third decimal'
+                    'increase strictly'
                 )
 
             # The body that emerges from one impact is the target of the
@@ -414,6 +413,31 @@ def next_event(events: Sequence[ImpactEvent], time: float) -> ImpactEvent | None
         if event.time > time:
             return event
     return None
+
+
+def landing_time(events: Sequence[ImpactEvent], time: float) -> float:
+    """Return the step end that lands the next impact after the given time.
+
+    Impacts less than ``SUBYEAR_TIME_RESOLUTION`` after the next one land with it
+    at the last of their times, so they share one step, row and snapshot name.
+
+    Parameters
+    ----------
+    events : sequence of ImpactEvent
+        Timeline in time order.
+    time : float
+        Current simulation time [yr].
+
+    Returns
+    -------
+    float
+        Landing time [yr], infinite once the timeline is exhausted.
+    """
+    first = next_event(events, time)
+    if first is None:
+        return float('inf')
+    end = first.time + SUBYEAR_TIME_RESOLUTION
+    return max(e.time for e in events if first.time <= e.time < end)
 
 
 def due_events(

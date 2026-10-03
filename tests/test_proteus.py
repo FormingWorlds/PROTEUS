@@ -2753,6 +2753,33 @@ def test_the_main_loop_applies_a_snapped_impact_in_the_same_iteration(tmp_path):
     assert p.impact_events == []
 
 
+def test_the_main_loop_lands_two_close_impacts_in_one_step(tmp_path, caplog):
+    """Impacts at 299.9999 yr and 300 yr land in one step at 300 yr: the stepper is
+    told 300 yr, both are applied on that row, and one log line names both."""
+    import logging
+    from types import SimpleNamespace
+
+    events = [SimpleNamespace(time=299.9999), SimpleNamespace(time=300.0)]
+    applied = []
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with (
+        patch('proteus.accretion.wrapper.init_accretion', return_value=list(events)),
+        patch('proteus.accretion.wrapper.restore_accretion_state'),
+        patch('proteus.accretion.wrapper.discard_preimpact_snapshot'),
+        patch(
+            'proteus.accretion.wrapper.apply_impact',
+            side_effect=lambda h, e: applied.append(
+                (h.hf_row['Time'], e.time, h.interior_o.t_next_impact)
+            ),
+        ),
+        caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'),
+    ):
+        _run_main_loop_capturing_plots(p, stop_at_loop=6)
+    assert applied == [(300.0, 299.9999, 300.0), (300.0, 300.0, 300.0)]
+    assert p.impact_events == []
+    assert sum('land in one step' in r.message for r in caplog.records) == 1
+
+
 def test_the_main_loop_lands_each_step_through_snap_to_impact(tmp_path):
     """Every iteration passes its step end through snap_to_impact; with no
     impact pending the step end is kept, so the run time stays finite."""

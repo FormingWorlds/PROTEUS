@@ -1883,6 +1883,26 @@ def test_a_run_resumes_from_the_row_that_landed_an_impact(tmp_path, t):
     assert handler.impact_events == []
 
 
+@pytest.mark.unit
+def test_a_run_resumes_from_a_row_that_landed_two_close_impacts(tmp_path):
+    """A row at 1e6 + 1e-4 yr that landed impacts at 1e6 and 1e6 + 1e-4 yr in one
+    step records 2 applied impacts; a resume from it keeps both applied."""
+    from proteus.accretion.common import write_timeline
+    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
+
+    t1, t2 = 1.0e6, 1.0e6 + 1.0e-4
+    handler, first = _resume_handler(tmp_path, 0.0, n_applied=2, t=t1)
+    second = _impact_event(
+        time=t2, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    write_timeline([first, second], str(tmp_path / _RESOLVED_TIMELINE_FILE))
+    handler.impact_events = [first, second]
+    handler.hf_row['Time'] = t2
+    restore_accretion_state(handler)
+    assert handler.impact_events == []
+    assert handler.hf_row['n_impacts_applied'] == 2
+
+
 def _resume_handler(tmp_path, row_offset, n_applied, t=1.0e6):
     """Resume handler on a row ``row_offset`` (relative) before an impact at ``t``
     whose counter records ``n_applied`` impacts; returns it with the event."""
