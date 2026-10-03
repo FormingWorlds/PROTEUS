@@ -2878,6 +2878,94 @@ def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
     )
 
 
+@pytest.mark.parametrize('t_impact, lands', [(1.0e8 / 3.0, True), (float('inf'), False)])
+def test_the_time_advance_ends_a_short_step_on_the_pending_impact(tmp_path, t_impact, lands):
+    """A step that rounding leaves a few ulp short of the pending impact ends on
+    the impact time, and the star age moves with it; with no impact pending the
+    step end is Time + dt exactly."""
+    import math
+    from types import SimpleNamespace
+
+    p = _make_proteus_instance(tmp_path)
+    t0 = 1.0e7
+    t = 1.0e8 / 3.0
+    dt = math.nextafter(math.nextafter(t - t0, 0.0), 0.0)
+    p.hf_row = {'Time': t0, 'age_star': t0 + 1.0}
+    p.interior_o = SimpleNamespace(dt=dt)
+    p._advance_to_step_end(t_impact)
+    assert p.hf_row['Time'] == (t if lands else t0 + dt)
+    assert p.hf_row['age_star'] - p.hf_row['Time'] == pytest.approx(1.0, abs=1.0e-9)
+
+
+def test_the_main_loop_applies_a_snapped_impact_in_the_same_iteration(tmp_path):
+    """An impact 0.5e-12 (relative) after the end of a 100 yr step is within the
+    snap window: the row time moves onto it and the impact is applied in that
+    iteration, once, with the impact time as the row time."""
+    from types import SimpleNamespace
+
+    t_impact = 300.0 * (1.0 + 0.5e-12)
+    applied = []
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with (
+        patch(
+            'proteus.accretion.wrapper.init_accretion',
+            return_value=[SimpleNamespace(time=t_impact)],
+        ),
+        patch('proteus.accretion.wrapper.restore_accretion_state'),
+        patch('proteus.accretion.wrapper.discard_preimpact_snapshot'),
+        patch(
+            'proteus.accretion.wrapper.apply_impact',
+            side_effect=lambda handler, event: applied.append(handler.hf_row['Time']),
+        ),
+    ):
+        _run_main_loop_capturing_plots(p, stop_at_loop=6)
+    assert applied == [t_impact]
+    assert p.impact_events == []
+
+
+def test_the_main_loop_lands_two_close_impacts_in_one_step(tmp_path, caplog):
+    """Impacts at 299.9999 yr and 300 yr land in one step at 300 yr: the stepper is
+    told 300 yr, both are applied on that row, and one log line names both."""
+    from types import SimpleNamespace
+
+    events = [SimpleNamespace(time=299.9999), SimpleNamespace(time=300.0)]
+    applied = []
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with (
+        patch('proteus.accretion.wrapper.init_accretion', return_value=list(events)),
+        patch('proteus.accretion.wrapper.restore_accretion_state'),
+        patch('proteus.accretion.wrapper.discard_preimpact_snapshot'),
+        patch(
+            'proteus.accretion.wrapper.apply_impact',
+            side_effect=lambda h, e: applied.append(
+                (h.hf_row['Time'], e.time, h.interior_o.t_next_impact)
+            ),
+        ),
+        caplog.at_level(logging.INFO, logger='fwl.proteus.accretion.wrapper'),
+    ):
+        _run_main_loop_capturing_plots(p, stop_at_loop=6)
+    assert applied == [(300.0, 299.9999, 300.0), (300.0, 300.0, 300.0)]
+    assert p.impact_events == []
+    assert sum('land in one step' in r.message for r in caplog.records) == 1
+    # The pair spans 1e-4 yr, below the name resolution, so no chain warning.
+    assert not any('form a chain' in r.message for r in caplog.records)
+
+
+def test_the_main_loop_lands_each_step_through_snap_to_impact(tmp_path):
+    """Every iteration passes its step end through snap_to_impact; with no
+    impact pending the step end is kept, so the run time stays finite."""
+    import math
+
+    from proteus.accretion import common
+
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with patch.object(common, 'snap_to_impact', wraps=common.snap_to_impact) as snap:
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+    assert snap.call_count == p.loops['total']
+    assert all(math.isinf(c.args[1]) for c in snap.call_args_list)
+    assert 0.0 < p.hf_row['Time'] < float('inf')
+
+
 def test_the_main_loop_runs_the_escape_step_every_iteration(tmp_path):
     """With the timing instrumentation off, every iteration still calls the
     escape step, which decides by itself whether escape runs."""
@@ -2886,6 +2974,32 @@ def test_the_main_loop_runs_the_escape_step_every_iteration(tmp_path):
         _run_main_loop_capturing_plots(p, stop_at_loop=4)
     assert escape.call_count == p.loops['total']
     escape.assert_called_with()
+
+
+def test_the_main_loop_applies_due_impacts_before_the_escape_step(tmp_path):
+    """Every iteration applies the impacts it reached before escape runs, so the
+    escape step measures and debits the post-impact budgets."""
+    from types import SimpleNamespace
+
+    calls = []
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with (
+        patch(
+            'proteus.accretion.wrapper.init_accretion',
+            return_value=[SimpleNamespace(time=1.0e9)],
+        ),
+        patch('proteus.accretion.wrapper.restore_accretion_state'),
+        patch(
+            'proteus.accretion.wrapper.apply_due_impacts',
+            side_effect=lambda handler, is_snapshot: calls.append('impacts') or [],
+        ),
+        patch.object(
+            type(p), '_run_escape_step', side_effect=lambda: calls.append('escape') or False
+        ),
+    ):
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+    assert calls == ['impacts', 'escape'] * p.loops['total']
+    assert p.loops['total'] >= 3
 
 
 def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog):

@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from proteus.accretion.common import TIMELINE_COLUMNS
@@ -94,12 +95,73 @@ def _handler(
                 ),
             ),
             interior_energetics=SimpleNamespace(module=interior_module),
-            planet=SimpleNamespace(temperature_mode=temperature_mode),
+            planet=SimpleNamespace(temperature_mode=temperature_mode, mass_tot=1.0),
+            orbit=SimpleNamespace(instellation_method='distance'),
             params=SimpleNamespace(resume=resume),
         ),
         directories={'output': str(output_dir) if output_dir is not None else '.'},
         hf_row={'Time': time_start},
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'ratio, warns', [(1.095, False), (1.105, True), (0.905, False), (0.895, True)]
+)
+def test_a_borrowed_timeline_sized_for_another_body_warns_at_load(
+    tmp_path, caplog, ratio, warns
+):
+    """The first impact's target mass (6.0e24 kg) is compared with the planet
+    mass: within 10 % either way the timeline loads quietly, beyond it the run
+    warns, whether the planet is lighter or heavier than the timeline body."""
+    from proteus.utils.constants import M_earth
+
+    handler = _handler(
+        module='timeline', timeline_path=_timeline_file(tmp_path / 't.csv'), output_dir=tmp_path
+    )
+    handler.config.planet.mass_tot = 6.0e24 / (ratio * M_earth)
+    with caplog.at_level('WARNING'):
+        events = init_accretion(handler)
+    hits = [r for r in caplog.records if 'timeline target mass' in r.getMessage()]
+    assert len(events) == 2
+    assert [r.levelname for r in hits] == (['WARNING'] if warns else [])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('method, warns', [('inst', True), ('distance', False)])
+def test_accretion_under_a_flux_fixed_orbit_warns_once_at_init(tmp_path, caplog, method, warns):
+    """With orbit.instellation_method = 'inst' init_accretion warns once that the
+    semi-major axis change of an impact is not applied; its eccentricity is."""
+    handler = _handler(
+        module='timeline', timeline_path=_timeline_file(tmp_path / 't.csv'), output_dir=tmp_path
+    )
+    handler.config.orbit.instellation_method = method
+    with caplog.at_level('WARNING'):
+        init_accretion(handler)
+    hits = [r for r in caplog.records if 'instellationflux' in r.getMessage()]
+    assert len(hits) == (1 if warns else 0)
+    assert all('eccentricity change is' in r.getMessage() for r in hits)
+
+
+@pytest.mark.unit
+def test_an_impact_under_a_flux_fixed_orbit_logs_that_the_axis_is_not_applied(
+    monkeypatch, caplog
+):
+    """Under 'inst' the impact log names the new eccentricity and says the
+    semi-major axis follows the flux, instead of printing an AU value the orbit
+    step overwrites."""
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler()
+    handler.config.orbit.instellation_method = 'inst'
+    with caplog.at_level('INFO'):
+        apply_impact(handler, _impact_event())
+    lines = [r.getMessage() for r in caplog.records if 'planet is now' in r.getMessage()]
+    assert len(lines) == 1
+    assert 'resets the semi-major axis' in lines[0] and ' AU' not in lines[0]
 
 
 @pytest.mark.unit
@@ -231,6 +293,7 @@ def _impact_accretion(atmloss_module=None, atmloss_frac=0.0, impactor_volatiles=
     if impactor_volatiles is None:
         impactor_volatiles = 'ppmw' if any(v > 0.0 for v in ppmw.values()) else 'dry'
     return SimpleNamespace(
+        module='dummy',
         impactor_volatiles=impactor_volatiles,
         impactor_H_ppmw=ppmw.get('H', 0.0),
         impactor_C_ppmw=ppmw.get('C', 0.0),
@@ -264,7 +327,11 @@ def _impact_handler(
             planet=SimpleNamespace(
                 mass_tot=mass_tot, tsurf_init=tsurf_init, fO2_source='user_constant'
             ),
-            orbit=SimpleNamespace(semimajoraxis=semimajoraxis, eccentricity=eccentricity),
+            orbit=SimpleNamespace(
+                semimajoraxis=semimajoraxis,
+                eccentricity=eccentricity,
+                instellation_method='distance',
+            ),
             outgas=SimpleNamespace(module='dummy', mass_thresh=1.0e10),
             interior_energetics=SimpleNamespace(
                 module='dummy',
@@ -272,6 +339,7 @@ def _impact_handler(
             ),
             interior_struct=SimpleNamespace(core_frac=0.55, module=structure),
             accretion=accretion if accretion is not None else _impact_accretion(),
+            params=SimpleNamespace(resume=False),
         ),
         hf_row={
             'semimajorax': semimajoraxis * AU,
@@ -288,6 +356,87 @@ def _impact_handler(
         desiccated=desiccated,
         directories={'output': '/tmp/unused'},
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('resume, warns', [(False, True), (True, False)])
+def test_the_load_check_compares_the_first_impact_the_run_keeps(
+    tmp_path, caplog, resume, warns
+):
+    """A negative time_offset drops the first impact (6.0e24 kg, within 1 % of the
+    planet); the first kept one (6.64e24 kg) is 11 % off and warns on a fresh run.
+    A resumed run is past its configured mass, so the load check is skipped."""
+    handler = _handler(
+        module='timeline',
+        timeline_path=_timeline_file(tmp_path / 't.csv'),
+        time_offset=-2.0e5,
+        output_dir=tmp_path,
+    )
+    handler.config.params.resume = resume
+    with caplog.at_level('WARNING'):
+        kept = init_accretion(handler)
+    hits = [r for r in caplog.records if 'timeline target mass' in r.getMessage()]
+    assert [e.time for e in kept] == [3.0e5]
+    assert len(hits) == (1 if warns else 0)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('m_planet', [None, float('nan'), 0.0], ids=['absent', 'nan', 'zero'])
+def test_the_per_impact_check_falls_back_to_the_configured_mass(monkeypatch, caplog, m_planet):
+    """Without a finite positive M_planet the per-impact check compares the target
+    mass (6.0e24 kg) with mass_tot (0.5 M_earth) and warns at the factor-2 mismatch."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(mass_tot=0.5)
+    handler.config.accretion.module = 'timeline'
+    handler.hf_row['n_impacts_applied'] = 1
+    if m_planet is not None:
+        handler.hf_row['M_planet'] = m_planet
+    with caplog.at_level('WARNING'):
+        apply_impact(handler, _impact_event())
+    hits = [r.getMessage() for r in caplog.records if 'timeline target mass' in r.getMessage()]
+    assert len(hits) == 1
+    assert f'running planet mass {0.5 * M_earth:.3e} kg' in hits[0]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'module, ratio, n_applied, resume, warns',
+    [
+        ('timeline', 1.095, 1, False, False),
+        ('timeline', 1.105, 1, False, True),
+        ('morrigan', 0.905, 1, False, False),
+        ('morrigan', 0.895, 1, False, True),
+        ('timeline', 0.5, 0, False, False),
+        ('timeline', 0.5, 0, True, True),
+        ('dummy', 0.5, 1, False, False),
+    ],
+)
+def test_an_impact_from_a_borrowed_timeline_warns_on_a_target_mass_mismatch(
+    monkeypatch, caplog, module, ratio, n_applied, resume, warns
+):
+    """Each borrowed impact after the first compares its target mass (6.0e24 kg)
+    with the running planet mass, warning beyond 10 % either way; the first impact
+    of a fresh run was checked at load, while a resumed run skipped that check and
+    compares its first impact here; the dummy module derives its own."""
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler()
+    handler.config.accretion.module = module
+    handler.config.params.resume = resume
+    handler.hf_row.update(M_planet=6.0e24 / ratio, n_impacts_applied=n_applied)
+    with caplog.at_level('WARNING'):
+        apply_impact(handler, _impact_event())
+    hits = [r for r in caplog.records if 'timeline target mass' in r.getMessage()]
+    assert [r.levelname for r in hits] == (['WARNING'] if warns else [])
+    assert all('running planet mass' in r.getMessage() for r in hits)
 
 
 @pytest.mark.unit
@@ -1356,8 +1505,109 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
     # its whole mass, rock plus the delivered content.
     expected_mass = 1.0 + 2 * (event.mass_delta - delivered) / M_earth
     assert handler.config.planet.mass_tot == pytest.approx(expected_mass, rel=1e-12)
+    # Both impacts are counted, as when two close impacts land on one row.
+    assert handler.hf_row['n_impacts_applied'] == 2
+    assert handler.hf_row['M_accreted_rock'] == pytest.approx(
+        2 * (event.mass_delta - delivered), rel=1e-12
+    )
     assert handler.hf_row['M_volatile_change'] == pytest.approx(2 * delivered, rel=1e-12)
     assert float(handler.hf_row.get('esc_kg_cumulative', 0.0)) == pytest.approx(0.0, abs=1.0)
+
+
+def _next_step_from_history():
+    """Step ends from the real next_step after a history of 5e3 yr steps to 1e5 yr."""
+    from proteus.interior_energetics.timestep import next_step
+    from tests.interior_energetics.test_timestep import (
+        _make_config,
+        _make_hf_all,
+        _make_interior_o,
+    )
+
+    config = _make_config(impact_maximum=0.0, max_growth_factor=0.0)
+    times = list(1.0e5 + 5.0e3 * np.arange(-11, 1, dtype=float))
+
+    def step_end(time, landing):
+        hf_all = _make_hf_all(n_rows=len(times))
+        hf_all['Time'] = times
+        row = {'Time': time, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        times.append(time + next_step(config, {}, row, hf_all, 1.0, _make_interior_o(landing)))
+        return times[-1]
+
+    return step_end
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'times, t0, step, span, delay',
+    [
+        ([107999.999 + k * 9.0e-4 for k in range(4)], 1.0e5, None, '2.700e-03', '1.000e-03'),
+        ([5.0e-4 * (k + 1) for k in range(2000)], 0.0, 0.3, '9.995e-01', '2.995e-01'),
+    ],
+    ids=['step-ends-inside-chain', 'chain-of-2000'],
+)
+def test_a_wide_chain_applies_every_impact_once_in_order(
+    monkeypatch, caplog, times, t0, step, span, delay
+):
+    """Impacts each 9e-4 or 5e-4 yr after the one before, with steps that end inside
+    the chain: every impact is applied once and in time order, the rock and the
+    hydrogen the impactors deliver add up (also in M_volatile_change), the rows that apply impacts have
+    increasing times and distinct snapshot names, and one warning names the chain
+    span and the largest delay."""
+    from proteus.accretion import wrapper
+    from proteus.accretion.common import landing_time, snap_to_impact
+    from proteus.utils.constants import M_earth
+    from proteus.utils.helper import format_subyear_time
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', _rescaling_solve_structure(1.2)
+    )
+    applied, real = [], wrapper.apply_impact
+    monkeypatch.setattr(
+        wrapper, 'apply_impact', lambda h, e: (applied.append(e.time), real(h, e))
+    )
+    handler = _impact_handler(accretion=_impact_accretion(H=1000.0))
+    _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
+    m_imp = 1.0e-4 * M_earth
+    events = [
+        _impact_event(
+            time=t,
+            M_target_before=(6.0 + k * 1.0e-4) * M_earth,
+            M_impactor=m_imp,
+            M_merged_after=(6.0 + (k + 1) * 1.0e-4) * M_earth,
+        )
+        for k, t in enumerate(times)
+    ]
+    handler.impact_events = list(events)
+    step_end = (
+        _next_step_from_history() if step is None else (lambda t, land: min(t + step, land))
+    )
+    rows = [t0]
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        while handler.impact_events:
+            land = landing_time(handler.impact_events, rows[-1])
+            handler.hf_row['Time'] = snap_to_impact(step_end(rows[-1], land), land)
+            handler.interior_o.dt = handler.hf_row['Time'] - rows[-1]
+            wrapper.apply_due_impacts(handler, False)
+            rows.append(handler.hf_row['Time'])
+
+    assert applied == times
+    assert np.all(np.diff(rows) > 0.0)
+    names = [format_subyear_time(t) for t in rows[1:]]
+    assert len(set(names)) == len(names) >= 2
+    delivered = m_imp * 1000.0 / 1.0e6
+    rock = sum(e.mass_delta - delivered for e in events)
+    assert handler.hf_row['M_accreted_rock'] == pytest.approx(rock, rel=1e-9)
+    assert handler.hf_row['n_impacts_applied'] == len(times)
+    assert handler.hf_row['M_volatile_change'] == pytest.approx(
+        len(times) * delivered, rel=1e-9
+    )
+    assert handler.hf_row['H_kg_total'] == pytest.approx(
+        6.0e20 + len(times) * delivered, rel=1e-9
+    )
+    warned = [r.getMessage() for r in caplog.records if 'form a chain' in r.getMessage()]
+    assert len(warned) == 1
+    assert f'{span} yr wide' in warned[0] and f'up to {delay} yr' in warned[0]
 
 
 @pytest.mark.unit
@@ -2280,6 +2530,117 @@ def test_restore_accretion_state_drops_already_applied_events_on_resume(tmp_path
     restore_accretion_state(handler)
     assert handler.impact_events == [ev2]
     assert handler.hf_row['n_impacts_applied'] == 1
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    't', [1.0e8 / 3.0, 2.0e8 / 3.0, 1.00000000004999e7, 14405738.971969359, 937776526.9009967]
+)
+def test_a_run_resumes_from_the_row_that_landed_an_impact(tmp_path, t):
+    """The step that landed an impact a few ulp short ends on the impact time;
+    the helpfile and the timeline file read that time back exactly, so a resume
+    from the row restores the impact as applied and does not schedule it again."""
+    import math
+
+    from proteus.accretion.common import snap_to_impact
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import AU
+    from proteus.utils.coupler import (
+        CreateHelpfileFromDict,
+        ReadHelpfileFromCSV,
+        WriteHelpfileToCSV,
+        ZeroHelpfileRow,
+    )
+
+    row = ZeroHelpfileRow()
+    row.update(
+        Time=snap_to_impact(math.nextafter(math.nextafter(t, 0.0), 0.0), t),
+        M_accreted_rock=1e23,
+        n_impacts_applied=1,
+        semimajorax=1.0 * AU,
+    )
+    WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
+    handler, _ = _resume_handler(tmp_path, 0.0, n_applied=1, t=t)
+    handler.hf_row = ReadHelpfileFromCSV(str(tmp_path)).iloc[-1].to_dict()
+    assert handler.hf_row['Time'] == t
+    restore_accretion_state(handler)
+    assert handler.impact_events == []
+
+
+@pytest.mark.unit
+def test_a_run_resumes_from_a_row_that_landed_two_close_impacts(tmp_path):
+    """A row at 1e6 + 1e-4 yr that landed impacts at 1e6 and 1e6 + 1e-4 yr in one
+    step records 2 applied impacts; a resume from it keeps both applied."""
+    from proteus.accretion.common import write_timeline
+    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
+
+    t1, t2 = 1.0e6, 1.0e6 + 1.0e-4
+    handler, first = _resume_handler(tmp_path, 0.0, n_applied=2, t=t1)
+    second = _impact_event(
+        time=t2, M_target_before=6.072e24, M_impactor=1e23, M_merged_after=6.172e24
+    )
+    write_timeline([first, second], str(tmp_path / _RESOLVED_TIMELINE_FILE))
+    handler.impact_events = [first, second]
+    handler.hf_row['Time'] = t2
+    restore_accretion_state(handler)
+    assert handler.impact_events == []
+    assert handler.hf_row['n_impacts_applied'] == 2
+
+
+def _resume_handler(tmp_path, row_offset, n_applied, t=1.0e6):
+    """Resume handler on a row ``row_offset`` (relative) before an impact at ``t``
+    whose counter records ``n_applied`` impacts; returns it with the event."""
+    from proteus.accretion.common import write_timeline
+    from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE
+    from proteus.utils.constants import AU
+
+    event = _impact_event(
+        time=t, M_target_before=5.972e24, M_impactor=1e23, M_merged_after=6.072e24
+    )
+    write_timeline([event], str(tmp_path / _RESOLVED_TIMELINE_FILE))
+    handler = SimpleNamespace(
+        config=SimpleNamespace(
+            accretion=SimpleNamespace(module='dummy', impactor_volatiles='dry'),
+            params=SimpleNamespace(resume=True),
+            planet=SimpleNamespace(mass_tot=1.0),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row={
+            'Time': t * (1.0 - row_offset),
+            'M_accreted_rock': 1e23 * n_applied,
+            'n_impacts_applied': n_applied,
+            'semimajorax': 1.0 * AU,
+            'eccentricity': 0.0,
+        },
+        directories={'output': str(tmp_path)},
+        impact_events=[event],
+    )
+    return handler, event
+
+
+@pytest.mark.unit
+def test_a_counted_impact_after_the_resume_row_refuses_the_resume(tmp_path):
+    """A row 5e-10 (relative) before an impact that its counter records as applied
+    did not land it, and the impact lies far outside the init stage, so the resume
+    is refused."""
+    from proteus.accretion.wrapper import restore_accretion_state
+
+    handler, event = _resume_handler(tmp_path, 5.0e-10, n_applied=1)
+    with pytest.raises(RuntimeError, match='cannot have landed during the init stage'):
+        restore_accretion_state(handler)
+    assert handler.impact_events == [event]
+
+
+@pytest.mark.unit
+def test_an_impact_just_after_the_resume_row_stays_pending(tmp_path):
+    """A row that ended 1.5e-10 (relative) before an impact it did not reach,
+    with no impact counted, resumes with the impact still pending."""
+    from proteus.accretion.wrapper import restore_accretion_state
+
+    handler, event = _resume_handler(tmp_path, 1.5e-10, n_applied=0)
+    restore_accretion_state(handler)
+    assert handler.impact_events == [event]
+    assert handler.hf_row['n_impacts_applied'] == 0
 
 
 @pytest.mark.unit

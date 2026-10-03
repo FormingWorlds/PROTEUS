@@ -26,12 +26,15 @@ from proteus.accretion.common import (
     TIMELINE_COLUMNS,
     ImpactEvent,
     due_events,
+    landing_time,
     next_event,
     read_timeline,
+    snap_to_impact,
     validate_timeline,
     write_timeline,
 )
 from proteus.utils.constants import const_G
+from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION, format_subyear_time
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -247,6 +250,11 @@ def test_timeline_must_advance_in_time_and_carry_mass_forward():
         time=5.0e5, M_target_before=6.64e24, M_impactor=1.0e23, M_merged_after=6.74e24
     )
     validate_timeline([first, second])
+    # Impacts 1e-4 yr apart are a valid history; they land in one step.
+    close = _event(
+        time=1.0e5 + 1.0e-4, M_target_before=6.64e24, M_impactor=1.0e23, M_merged_after=6.74e24
+    )
+    validate_timeline([first, close])
 
     # Time running backwards, and two impacts at the same instant.
     for bad_time in (1.0e5, 5.0e4):
@@ -415,6 +423,39 @@ def test_read_timeline_parses_both_delimiters_and_applies_the_offset(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    'sep, width, tail',
+    [
+        (',', 0, ''),
+        (', ', 0, ''),
+        (' ,', 0, ''),
+        (' , ', 0, ''),
+        (' ', 0, ''),
+        ('   ', 0, ''),
+        (' ', 22, ''),
+        (' ', 0, '   '),
+    ],
+)
+def test_read_timeline_reads_the_time_back_exactly(tmp_path, sep, width, tail):
+    """A time the default python-engine parser reads 1 ulp off is read back exactly,
+    with time as the last column, for comma, padded comma, single and multiple space
+    separators, right-aligned columns and trailing spaces."""
+    t = 14405738.971969359
+    row = (t, 6.0e24, 6.4e23, 6.64e24, 1.3e4, 1.15e4, 0.7, 6.371e6, 3.39e6, 5510.0, 3930.0)
+    values = dict(zip(TIMELINE_COLUMNS, row + (1.496e11, 1.4e11, 0.02, 0.05, 1, 4)))
+    cols = [c for c in TIMELINE_COLUMNS if c != 'time'] + ['time']
+    path = tmp_path / 'padded.csv'
+    lines = [
+        sep.join(f.rjust(width) for f in fields) + tail
+        for fields in (cols, [repr(values[c]) for c in cols])
+    ]
+    path.write_text('\n'.join(lines) + '\n')
+    events = read_timeline(str(path))
+    assert len(events) == 1
+    assert events[0].time == t
+
+
+@pytest.mark.unit
 def test_read_timeline_rejects_unusable_files(tmp_path):
     """A malformed timeline fails at load, not part-way through a run.
 
@@ -507,6 +548,76 @@ def test_scheduling_helpers_apply_each_impact_exactly_once():
     # A long step sweeps up everything it spans, in order.
     assert due_events(events, 0.0, 1.0e6) == [first, second]
     assert due_events(events, 6.0e5, 1.0e6) == []
+
+
+@pytest.mark.unit
+def test_impacts_closer_than_the_name_resolution_share_one_landing_time():
+    """An impact 1e-4 yr after the next one moves the landing to its time; one 2e-3 yr
+    or exactly 1e-3 yr later lands on its own step; none left gives an infinite
+    landing time."""
+    times = (1.0e5, 1.0e5 + 1.0e-4, 1.0e5 + 2.1e-3)
+    events = [
+        _event(time=t, M_target_before=m, M_impactor=1.0e22, M_merged_after=m + 1.0e22)
+        for t, m in zip(times, (6.0e24, 6.01e24, 6.02e24))
+    ]
+    assert [landing_time(events, t) for t in (0.0, times[1])] == [times[1], times[2]]
+    assert landing_time(events, times[2]) == float('inf')
+    # A gap of exactly 1e-3 yr is not merged; decimal half-points 1e-3 yr apart
+    # get distinct names however the sum rounds.
+    pair = [_event(time=t) for t in (0.0, SUBYEAR_TIME_RESOLUTION)]
+    assert landing_time(pair, -1.0) == pair[0].time
+    for a, b in ((1.0015, 1.0025), (984.7875, 984.7885), (136364572.4025, 136364572.4035)):
+        pair = [_event(time=t) for t in (a, b)]
+        land = landing_time(pair, 0.0)
+        later = landing_time(pair, land)
+        assert later == float('inf') or format_subyear_time(later) != format_subyear_time(land)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'gaps, landings',
+    [((6.0e-4, 6.0e-4), (1.2e-3,)), ((9.0e-4,) * 3, (2.7e-3,)), ((9.0e-4, 1.1e-4), (1.01e-3,))],
+    ids=['chain-of-three', 'chain-of-four', 'chain-ending-close'],
+)
+def test_a_chain_of_close_impacts_lands_in_one_step(gaps, landings):
+    """Impacts each less than 1e-3 yr after the one before land together at the last,
+    so walking the timeline as the main loop does gives landing rows at least 1e-3 yr
+    apart with distinct snapshot names and applies every impact once."""
+    times = np.cumsum((1.0e5, *gaps, 5.0e-3))
+    events = [
+        _event(time=t, M_target_before=6.0e24, M_impactor=1.0e22, M_merged_after=6.01e24)
+        for t in times
+    ]
+    rows, t = [], 0.0
+    while (land := landing_time(events, t)) < float('inf'):
+        rows.append((land, len(due_events(events, t, land))))
+        t = land
+    expected = [1.0e5 + d for d in landings] + [times[-1]]
+    np.testing.assert_allclose([r[0] for r in rows], expected, rtol=0.0, atol=1e-9)
+    assert [r[1] for r in rows] == [len(gaps) + 1, 1]
+    names = [format_subyear_time(r[0]) for r in rows]
+    assert len(set(names)) == len(names)
+
+
+@pytest.mark.unit
+def test_a_landing_step_a_few_ulp_short_ends_on_the_impact():
+    """Rounding can end the step aimed at an impact just below its time; the step
+    end is moved onto the impact, so the impact is applied by that step, once,
+    and the row time equals the impact time."""
+    t = 1.0e8 / 3.0
+    event = _event(time=t, M_target_before=6.0e24, M_impactor=6.4e23, M_merged_after=6.64e24)
+    short = float(np.nextafter(np.nextafter(t, 0.0), 0.0))
+    landed = snap_to_impact(short, t)
+    assert landed == t
+    assert due_events([event], t - 3.0e3, landed) == [event]
+    assert due_events([event], landed, landed + 3.0e3) == []
+    # A step that ends well short, past the impact, or with none pending is kept.
+    for time, t_impact in ((t - 1.0, t), (t + 1.0e-6, t), (t, float('inf'))):
+        assert snap_to_impact(time, t_impact) == time
+    # The window is a relative 1e-12 of the step end, and 1e-12 yr below 1 yr.
+    assert snap_to_impact(t * (1.0 - 0.9e-12), t) == t
+    assert snap_to_impact(0.5, 0.5 + 0.9e-12) == 0.5 + 0.9e-12
+    assert snap_to_impact(t * (1.0 - 1.1e-12), t) == t * (1.0 - 1.1e-12)
 
 
 @pytest.mark.unit
