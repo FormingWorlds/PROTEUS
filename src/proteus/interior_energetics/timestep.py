@@ -494,7 +494,7 @@ def next_step(
         dt_to_impact = interior_o.t_next_impact - hf_row['Time']
         if 0.0 < dt_to_impact - dtswitch <= SUBYEAR_TIME_RESOLUTION and not (
             config.params.stop.time.enabled
-            and hf_row['Time'] + dt_to_impact > config.params.stop.time.maximum
+            and hf_row['Time'] + dtswitch >= config.params.stop.time.maximum
         ):
             dtswitch = dt_to_impact
         impact_ceiling = float(config.params.dt.impact_maximum)

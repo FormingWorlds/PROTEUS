@@ -1117,6 +1117,20 @@ class TestImpactClamp:
         assert dt == pytest.approx(1.1 * 227.48, rel=1e-9)
         assert dt < 100.0 + 0.005 * hf_row['Time']
 
+    def test_the_snap_forward_extends_a_step_ending_short_of_the_stop_time(self):
+        """A step held at dt.maximum ending 2e-4 yr before the stop time and 4e-4 yr
+        before an impact is extended onto the impact, not left for a 4e-4 yr step."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(dt_max=8.0e3)
+        config.params.stop.time.enabled, config.params.stop.time.maximum = True, 1.08e5 + 2e-4
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3)
+        t_impact = 1.08e5 + 4e-4
+        dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o(t_impact))
+        assert hf_row['Time'] + dt == t_impact
+        assert dt > 8.0e3
+
     def test_the_snap_forward_does_not_pass_the_stop_time(self):
         """A step ending on the stop time, 5e-4 yr before an impact, is not extended
         onto the impact."""
