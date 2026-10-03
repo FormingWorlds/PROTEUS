@@ -2036,11 +2036,37 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     if S_end is not None:
         S_end = np.asarray(S_end, dtype=float).ravel().copy()
 
+    # Preserve core temperature for core_module across the mantle re-melt
+    # so an impact does not reset the cooled core to the molten basal node.
+    core_bc = getattr(getattr(config.interior_energetics, 'aragog', None), 'core_bc', None)
+    T_core_pre = None
+    if core_bc in ('core_module', 'bower2018'):
+        if hasattr(solver, 'get_current_core_temperature'):
+            T_core_pre = solver.get_current_core_temperature()
+        if T_core_pre is None:
+            T_core_pre = getattr(solver, '_T_core_init', None)
+        if T_core_pre is None:
+            S0 = getattr(solver, '_S0', None)
+            n_stag = getattr(solver, '_n_stag', None)
+            if S0 is not None and n_stag is not None:
+                if core_bc == 'core_module' and len(S0) == n_stag + 2:
+                    T_core_pre = float(S0[n_stag + 1])
+                elif core_bc == 'bower2018' and len(S0) == n_stag + 1:
+                    T_core_pre = float(S0[n_stag])
+        if T_core_pre is None:
+            t_cmb_val = hf_row.get('T_cmb', hf_row.get('T_core'))
+            T_core_pre = float(t_cmb_val) if t_cmb_val is not None else None
+
     # Drop cooled trajectory and CMB gradient before rebuilding initial conditions.
     # This prevents hot-starting from obsolete profiles or restoring cooled fields.
     solver._solution = None
     if hasattr(solver, '_dSdr_cmb_init'):
         solver._dSdr_cmb_init = None
+    if T_core_pre is not None:
+        if hasattr(solver, 'set_initial_core_temperature'):
+            solver.set_initial_core_temperature(T_core_pre)
+        else:
+            solver._T_core_init = T_core_pre
 
     # _set_entropy_ic returns the staggered molten profile it just set. Take it
     # from the return value rather than from the solver's solution object, which

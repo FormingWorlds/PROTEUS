@@ -6685,6 +6685,61 @@ def test_aragog_remelt_carries_the_molten_profile_past_the_next_restore():
 
 
 @pytest.mark.unit
+def test_aragog_remelt_preserves_core_module_core_temperature():
+    """An impact re-melt must preserve the evolved core temperature under core_module."""
+    molten = np.full(6, 3900.0)
+
+    class FakeCoreModuleSolver:
+        def __init__(self):
+            self._solution = SimpleNamespace(y=np.zeros((8, 5)), t=np.zeros(5))
+            self._S0 = np.r_[np.full(6, 2400.0), [-1.0e-5, 3500.0]]
+            self._dSdr_cmb_init = -1.0e-5
+            self._T_core_init = None
+            self._n_stag = 6
+            self.parameters = SimpleNamespace(
+                boundary_conditions=SimpleNamespace(core_bc='core_module')
+            )
+
+        def get_current_core_temperature(self):
+            return 3500.0 if self._solution is not None else self._T_core_init
+
+        def set_initial_core_temperature(self, val):
+            self._T_core_init = val
+
+        def set_initial_entropy(self, S):
+            t_core = 4500.0 if self._T_core_init is None else self._T_core_init
+            self._S0 = np.r_[S, [-1.0e-5, t_core]]
+
+        def _step_heat_content(self, s1, s2):
+            return 1.0e20
+
+    solver = FakeCoreModuleSolver()
+    interior_o = SimpleNamespace(
+        aragog_solver=solver, _last_entropy=np.full(6, 2400.0), impact_reset=False
+    )
+    config = _remelt_config('aragog')
+    config.interior_energetics.aragog = SimpleNamespace(core_bc='core_module')
+
+    def _fake_set_ic(cfg, io, outdir, hf_row):
+        io.aragog_solver.set_initial_entropy(molten)
+        return molten
+
+    hf_row = {'Time': 100.0, 'T_magma': 2000.0}
+    with (
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            side_effect=_fake_set_ic,
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
+        patch('proteus.interior_energetics.wrapper.evaluate_molten_state', return_value=None),
+    ):
+        remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
+
+    assert solver._T_core_init == pytest.approx(3500.0)
+    assert solver._S0[-1] == pytest.approx(3500.0)
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_aragog_remelt_books_the_injected_heat_over_the_cooled_to_molten_jump():
     """The booked impact heat is the quadrature from the cooled to the molten state.

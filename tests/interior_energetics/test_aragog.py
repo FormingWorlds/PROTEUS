@@ -1186,6 +1186,51 @@ def test_a_retry_after_a_cold_start_restarts_from_the_first_attempt_gradient(
 
 
 @pytest.mark.unit
+def test_cold_start_retry_core_module_restores_gradient_and_core_temperature():
+    """A cold-start retry under core_module restores both dSdr_cmb and T_core snapshots."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    n_stag = 4
+    S0 = np.r_[np.full(n_stag, 3000.0), [-3.879e-6, 4250.0]]
+    states = [
+        SimpleNamespace(status=-1, T_core=4000.0, dt_actual=0.0),
+        SimpleNamespace(status=0, T_core=4000.0, dt_actual=50.0),
+    ]
+    attempts, dsdr_overrides, tcore_overrides = [], [], []
+    solver = SimpleNamespace(
+        parameters=SimpleNamespace(
+            solver=SimpleNamespace(start_time=0.0, end_time=100.0, rtol=1.0e-6, max_steps=1000)
+        ),
+        _atol_sf=1.0,
+        _max_steps=1000,
+        _S0=S0,
+        _n_stag=n_stag,
+        _dSdr_cmb_init=None,
+        _T_core_init=None,
+        get_state=lambda: states[len(attempts) - 1],
+        get_current_dSdr_cmb=lambda: None,
+        get_current_core_temperature=lambda: None,
+        set_initial_dSdr_cmb=dsdr_overrides.append,
+        set_initial_core_temperature=tcore_overrides.append,
+        set_initial_entropy=lambda S: None,
+        reset=lambda: None,
+    )
+    solver.solve = lambda: attempts.append(float(solver.parameters.solver.end_time))
+    runner = AragogRunner.__new__(AragogRunner)
+    runner.aragog_solver = solver
+    runner._config = MagicMock()
+    runner._config.planet.mass_tot = 1.0
+    runner._config.interior_energetics.aragog.core_bc = 'core_module'
+    interior_o = SimpleNamespace(aragog_step_progress=[], _last_entropy=None)
+
+    out = runner._solve_with_retry({'Time': 202.0, 'T_cmb': 4250.0}, interior_o)
+
+    assert out.status == 0 and len(attempts) == 2
+    assert dsdr_overrides == [pytest.approx(-3.879e-6, rel=1e-15), None]
+    assert tcore_overrides == [pytest.approx(4250.0, rel=1e-15), None]
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_a_step_stopped_by_the_terminal_event_is_accepted_as_it_stands():
     """A step the solver cut short at a physical event is kept, not retried.
