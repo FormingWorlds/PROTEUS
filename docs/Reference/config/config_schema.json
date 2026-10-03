@@ -6919,7 +6919,7 @@
           "value": 0.0
         }
       ],
-      "description": "Minimum threshold for element mass [kg]. Below it an element counts as absent in outgassing, and escape sets a non-noble element total to zero, except on a mantle frozen with params.stop.solid.freeze_volatiles.",
+      "description": "Minimum threshold for element mass [kg]. Outgassing treats H, C, N or S below it as absent; escape sets a non-noble element total below it to zero, except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

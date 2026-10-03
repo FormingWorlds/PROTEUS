@@ -672,8 +672,8 @@ def test_a_desiccated_row_gives_the_same_verdict_again(module):
     in_loop = check_desiccation(config, hf_row)
     run_desiccated({}, config, hf_row, False)
     assert check_desiccation(config, hf_row) is in_loop
-    # The unreadable H counts as unexplained loss, so the gate refuses either way.
-    assert in_loop is False
+    # An unreadable total refuses desiccation and stays visible.
+    assert in_loop is False and hf_row['H_kg_total'] != hf_row['H_kg_total']
 
     hf_row.update(H_kg_total=0.0, M_vol_initial=1.05e17)
     assert check_desiccation(config, hf_row) is True
@@ -681,6 +681,46 @@ def test_a_desiccated_row_gives_the_same_verdict_again(module):
     run_desiccated({}, config, hf_row, False)
     assert (hf_row['M_desiccated'], hf_row['M_volatile_change']) == booked
     assert booked[1] == (-1.05e17 if module == 'zalmoxis' else -1.0e17)
+
+
+@pytest.mark.physics_invariant
+def test_an_unreadable_total_refuses_desiccation_and_is_not_hidden():
+    """A non-finite element total refuses desiccation, with or without an escape
+    baseline, and run_desiccated leaves it non-finite rather than writing zero.
+
+    Physical scenario: an upstream failure leaves H unreadable while every other
+    total is below the threshold. Edge case: no escape baseline yet, where the
+    gate would otherwise accept on the threshold test alone.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1.0e16
+    config.interior_struct.module = 'zalmoxis'
+    hf_row = {
+        f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
+    }
+    hf_row.update(H_kg_total=float('nan'), N_kg_total=5.0e15, N_kg_atm=5.0e15)
+    hf_row.update(M_vol_initial=0.0, M_desiccated=0.0, M_volatile_change=0.0)
+    hf_row.update(atm_kg_per_mol=0.028, Phi_global=0.5)
+
+    assert check_desiccation(config, hf_row) is False
+
+    run_desiccated({}, config, hf_row, False)
+    assert hf_row['H_kg_total'] != hf_row['H_kg_total']
+    assert hf_row['N_kg_total'] == 0.0
+    assert hf_row['M_desiccated'] == pytest.approx(5.0e15, rel=1e-12)
+
+
+@pytest.mark.parametrize('ledger', [float('nan'), float('inf'), float('-inf')])
+def test_a_non_finite_desiccation_ledger_cannot_open_the_gate(ledger):
+    """A non-finite M_desiccated reads as zero, so a large unexplained loss is refused."""
+    config = MagicMock()
+    config.outgas.mass_thresh = 1.0e16
+    hf_row = {f'{e}_kg_total': 0.0 for e in element_list}
+    hf_row.update(M_vol_initial=1.0e17, esc_kg_cumulative=1.0e15, M_desiccated=ledger)
+    assert check_desiccation(config, hf_row) is False
+    hf_row['M_desiccated'] = 9.9e16  # the same loss, booked as removed at desiccation
+    assert check_desiccation(config, hf_row) is True
 
 
 @pytest.mark.physics_invariant

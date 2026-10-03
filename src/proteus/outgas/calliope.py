@@ -235,8 +235,9 @@ def construct_guess(hf_row: dict, target: dict, mass_thresh: float) -> dict | No
     target : dict
         Dictionary containing the target elemental inventories [kg]
     mass_thresh : float
-        Minimum threshold for element mass [kg]. An element whose target is below this
-        counts as absent.
+        Minimum threshold for element mass [kg]. A species with an element other than O
+        whose target is below this gets a zero guess; any positive noble-gas target
+        returns None instead.
 
     Returns
     -------

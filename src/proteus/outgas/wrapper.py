@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from proteus.escape.wrapper import readable_total
+from proteus.interior_struct.common import record_volatile_change
 from proteus.outgas.common import expected_keys
 from proteus.outgas.lavatmos import run_vapourisation
 from proteus.utils.constants import (
@@ -276,6 +278,16 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # CALLIOPE drives O_kg_total to near-zero once H/C/N/S vanish, so this
     # change rarely affects the desiccation timing, but it keeps the
     # semantics honest under whole-planet O accounting.
+    unreadable = [
+        e for e in element_list if not np.isfinite(float(hf_row.get(f'{e}_kg_total', 0.0)))
+    ]
+    if unreadable:
+        log.error(
+            'Desiccation check refused: the total of %s is not finite; an upstream '
+            'step left it unreadable and needs checking.',
+            ', '.join(unreadable),
+        )
+        return False
     for e in vol_element_list + noble_gases:
         if float(hf_row.get(e + '_kg_total', 0.0)) > config.outgas.mass_thresh:
             log.info(
@@ -299,8 +311,6 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # or the (m_init - cur_m_ele) comparison mixes element sets and
     # overstates "lost" mass by any noble-gas/rock-vapour inventory present
     # at baseline time.
-    from proteus.escape.wrapper import readable_total
-
     removed = float(hf_row.get('M_desiccated', 0.0))
     if not np.isfinite(removed):
         removed = 0.0
@@ -626,18 +636,19 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     for g in gas_list:
         excepted_keys.append(f'{g}_vmr')
 
-    from proteus.escape.wrapper import readable_total
-    from proteus.interior_struct.common import record_volatile_change
-
-    # Set most values to zero, the element totals with their columns. The mass this
-    # removes left no other way, so it is booked for the escape-balance gate and the
-    # Zalmoxis target.
+    # Zero the columns and the finite element totals; a non-finite total stays visible.
+    unreadable = {
+        f'{e}_kg_total'
+        for e in element_list
+        if not np.isfinite(float(hf_row.get(f'{e}_kg_total', 0.0)))
+    }
     removed = readable_total(hf_row)
     for k in expected_keys():
-        if k not in excepted_keys:
+        if k not in excepted_keys and k not in unreadable:
             hf_row[k] = 0.0
     for e in element_list:
-        hf_row[f'{e}_kg_total'] = 0.0
+        if f'{e}_kg_total' not in unreadable:
+            hf_row[f'{e}_kg_total'] = 0.0
     hf_row['M_desiccated'] = float(hf_row.get('M_desiccated', 0.0)) + removed
     record_volatile_change(config, hf_row, -removed)
 
