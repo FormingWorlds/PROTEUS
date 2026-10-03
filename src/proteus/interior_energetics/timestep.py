@@ -461,13 +461,15 @@ def next_step(
     # margin (e.g. the 10 yr -> 100 yr jump that occasionally wedges
     # CVODE in Aragog at the molten-to-mushy transition).
     max_growth = float(config.params.dt.max_growth_factor)
+    dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
     if max_growth > 0.0 and hf_all is not None and len(hf_all['Time']) >= 2:
         dt_prev_actual = float(hf_all['Time'].iloc[-1] - hf_all['Time'].iloc[-2])
-        # A step that landed on an impact can be far below dtfloor; grow from dtfloor.
+        # A step that landed on an impact can be far below dtfloor; grow from dtfloor,
+        # or from the step before the landing if that was shorter.
         n_impacts = hf_all.get('n_impacts_applied')
         if n_impacts is not None and n_impacts.iloc[-1] > n_impacts.iloc[-2]:
-            dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
-            dt_prev_actual = max(dt_prev_actual, dtfloor)
+            before = hf_all['Time'].iloc[-2] - hf_all['Time'].iloc[-3] if len(hf_all) > 2 else 0
+            dt_prev_actual = max(dt_prev_actual, min(dtfloor, before))
         if dt_prev_actual > 0.0:
             dt_capped = dt_prev_actual * max_growth
             if dtswitch > dt_capped:
@@ -487,11 +489,13 @@ def next_step(
     # is extended onto it. The landing step can be shorter than dtfloor.
     if interior_o is not None and np.isfinite(interior_o.t_next_impact):
         dt_to_impact = interior_o.t_next_impact - hf_row['Time']
-        if 0.0 < dt_to_impact - dtswitch <= SUBYEAR_TIME_RESOLUTION:
+        if (
+            0.0 < dt_to_impact - dtswitch <= SUBYEAR_TIME_RESOLUTION
+            and dt_to_impact <= dtmaximum
+        ):
             dtswitch = dt_to_impact
         impact_ceiling = float(config.params.dt.impact_maximum)
         if impact_ceiling > 0.0:
-            dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
             ceiling = max(impact_ceiling, dtfloor)
             if dtswitch >= dt_to_impact > ceiling:
                 dt_to_impact /= math.ceil(dt_to_impact / ceiling)

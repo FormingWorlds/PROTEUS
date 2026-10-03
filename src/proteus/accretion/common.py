@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from attrs import define, field
 
+from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -226,7 +228,8 @@ def validate_timeline(
     """Check a whole timeline for self-consistency.
 
     Every record must be physically valid on its own, times must increase
-    strictly so each impact can be scheduled unambiguously, and the mass
+    by at least ``SUBYEAR_TIME_RESOLUTION`` (1e-3 yr) so each impact lands on its
+    own step with its own snapshot name, and the mass
     handed from one impact to the next must follow from the body the
     previous impact produced.
 
@@ -248,8 +251,8 @@ def validate_timeline(
     Raises
     ------
     ValueError
-        If any record is invalid, if two impacts share a time or run
-        backwards, or if the target mass gains on, or falls too far
+        If any record is invalid, if two impacts are less than 1e-3 yr
+        apart or run backwards, or if the target mass gains on, or falls too far
         below, the previous merged mass.
     """
     previous: ImpactEvent | None = None
@@ -258,11 +261,11 @@ def validate_timeline(
         _check_event_physics(event, index)
 
         if previous is not None:
-            if event.time <= previous.time:
+            if not event.time - previous.time >= SUBYEAR_TIME_RESOLUTION:
                 raise ValueError(
                     f'impact {index} at t = {event.time:.4e} yr does not follow '
                     f'impact {index - 1} at t = {previous.time:.4e} yr; times must '
-                    'increase strictly'
+                    f'increase strictly, by at least {SUBYEAR_TIME_RESOLUTION:g} yr'
                 )
 
             # The body that emerges from one impact is the target of the
@@ -321,7 +324,9 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
     if not os.path.exists(resolved):
         raise FileNotFoundError(f'Impact timeline file does not exist: {resolved}')
 
-    table = pd.read_csv(resolved, sep=None, engine='python', comment='#', dtype=str)
+    table = pd.read_csv(
+        resolved, sep=None, engine='python', comment='#', dtype=str, skipinitialspace=True
+    )
     table.columns = [str(c).strip() for c in table.columns]
 
     missing = [c for c in TIMELINE_COLUMNS if c not in table.columns]
@@ -332,7 +337,7 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
         )
     # float() reads each value exactly, where the python engine's parser can be 1 ulp off.
     for c in TIMELINE_COLUMNS:
-        table[c] = table[c].str.strip().map(float)
+        table[c] = table[c].map(float)
 
     if len(table) == 0:
         return []

@@ -249,8 +249,8 @@ def test_timeline_must_advance_in_time_and_carry_mass_forward():
     )
     validate_timeline([first, second])
 
-    # Time running backwards, and two impacts at the same instant.
-    for bad_time in (1.0e5, 5.0e4):
+    # Time running backwards, two impacts at the same instant, or closer than 1e-3 yr.
+    for bad_time in (1.0e5, 5.0e4, 1.0e5 + 5.0e-4):
         with pytest.raises(ValueError, match='increase strictly'):
             validate_timeline(
                 [
@@ -416,16 +416,33 @@ def test_read_timeline_parses_both_delimiters_and_applies_the_offset(tmp_path):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('sep', [',', ', ', ' ,', ' , ', ' '])
-def test_read_timeline_reads_the_time_back_exactly(tmp_path, sep):
+@pytest.mark.parametrize(
+    'sep, width, tail',
+    [
+        (',', 0, ''),
+        (', ', 0, ''),
+        (' ,', 0, ''),
+        (' , ', 0, ''),
+        (' ', 0, ''),
+        ('   ', 0, ''),
+        (' ', 22, ''),
+        (' ', 0, '   '),
+    ],
+)
+def test_read_timeline_reads_the_time_back_exactly(tmp_path, sep, width, tail):
     """A time the default python-engine parser reads 1 ulp off is read back exactly,
-    with time as the last column and comma, padded comma and space separators."""
+    with time as the last column, for comma, padded comma, single and multiple space
+    separators, right-aligned columns and trailing spaces."""
     t = 14405738.971969359
     row = (t, 6.0e24, 6.4e23, 6.64e24, 1.3e4, 1.15e4, 0.7, 6.371e6, 3.39e6, 5510.0, 3930.0)
     values = dict(zip(TIMELINE_COLUMNS, row + (1.496e11, 1.4e11, 0.02, 0.05, 1, 4)))
     cols = [c for c in TIMELINE_COLUMNS if c != 'time'] + ['time']
     path = tmp_path / 'padded.csv'
-    path.write_text(sep.join(cols) + '\n' + sep.join(repr(values[c]) for c in cols) + '\n')
+    lines = [
+        sep.join(f.rjust(width) for f in fields) + tail
+        for fields in (cols, [repr(values[c]) for c in cols])
+    ]
+    path.write_text('\n'.join(lines) + '\n')
     events = read_timeline(str(path))
     assert len(events) == 1
     assert events[0].time == t

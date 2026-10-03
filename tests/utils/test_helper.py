@@ -775,6 +775,17 @@ def test_is_write_snapshot_initial_iteration_and_disabled_time_guard():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('t', [0.0, 884.7, 108000.25, 1.0e9])
+def test_times_one_resolution_apart_get_different_snapshot_names(t):
+    """SUBYEAR_TIME_RESOLUTION matches the precision of format_subyear_time: one
+    resolution apart gives a new name, 0.4 of it does not."""
+    from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION, format_subyear_time
+
+    assert format_subyear_time(t) != format_subyear_time(t + SUBYEAR_TIME_RESOLUTION)
+    assert format_subyear_time(t) == format_subyear_time(t + 0.4 * SUBYEAR_TIME_RESOLUTION)
+
+
+@pytest.mark.unit
 def test_format_subyear_time_replaces_dot_with_p():
     """format_subyear_time uses ``p`` as the decimal separator."""
     from proteus.utils.helper import format_subyear_time
