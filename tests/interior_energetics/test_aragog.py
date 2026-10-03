@@ -1087,6 +1087,77 @@ def _retry_ladder_runner(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    'core_bc, slots, restored',
+    [
+        ('energy_balance', 1, -3.879e-6),
+        ('energy_balance', 2, None),
+        ('bower2018', 1, None),
+        ('gradient', 2, None),
+    ],
+    ids=[
+        'energy-balance',
+        'energy-balance-unexpected-state-length',
+        'bower2018-core-temperature-slot',
+        'gradient',
+    ],
+)
+def test_a_retry_after_a_cold_start_restarts_from_the_first_attempt_gradient(
+    core_bc, slots, restored
+):
+    """A retry after a cold start reuses attempt 1's CMB gradient, not its end.
+
+    After a re-melt the solver has no previous solution and no override, so
+    the pre-solve snapshot must come from the state attempt 1 starts from;
+    otherwise each retry hot-starts from the failed attempt's final gradient.
+    The slot after the entropies holds T_core under bower2018 and is never
+    used as a gradient there, and a state vector with more than one slot after
+    the entropies is not read.
+    """
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    n_stag = 4
+    S0 = np.r_[np.full(n_stag, 3000.0), [-3.879e-6] if slots == 1 else [5.0e3, 1.0]]
+    states = [
+        SimpleNamespace(status=-1, T_core=4000.0, dt_actual=0.0),
+        SimpleNamespace(status=0, T_core=4000.0, dt_actual=50.0),
+    ]
+    attempts, overrides = [], []
+    solver = SimpleNamespace(
+        parameters=SimpleNamespace(
+            solver=SimpleNamespace(start_time=0.0, end_time=100.0, rtol=1.0e-6, max_steps=1000)
+        ),
+        _atol_sf=1.0,
+        _max_steps=1000,
+        _S0=S0,
+        _n_stag=n_stag,
+        _dSdr_cmb_init=None,
+        get_state=lambda: states[len(attempts) - 1],
+        get_current_dSdr_cmb=lambda: None,
+        set_initial_dSdr_cmb=overrides.append,
+        set_initial_entropy=lambda S: None,
+        reset=lambda: None,
+    )
+    solver.solve = lambda: attempts.append(float(solver.parameters.solver.end_time))
+    runner = AragogRunner.__new__(AragogRunner)
+    runner.aragog_solver = solver
+    runner._config = MagicMock()
+    runner._config.planet.mass_tot = 1.0
+    runner._config.interior_energetics.aragog.core_bc = core_bc
+    interior_o = SimpleNamespace(aragog_step_progress=[], _last_entropy=None)
+
+    out = runner._solve_with_retry({'Time': 202.0, 'T_cmb': 4000.0}, interior_o)
+
+    assert out.status == 0 and len(attempts) == 2
+    # The override is released after the ladder either way.
+    assert overrides[-1] is None
+    if restored is None:
+        assert overrides == [None]
+    else:
+        assert overrides == [pytest.approx(restored, rel=1e-15), None]
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_a_step_stopped_by_the_terminal_event_is_accepted_as_it_stands():
     """A step the solver cut short at a physical event is kept, not retried.

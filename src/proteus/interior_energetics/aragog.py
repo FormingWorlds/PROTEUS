@@ -2182,6 +2182,16 @@ class AragogRunner:
             dSdr_snapshot = solver.get_current_dSdr_cmb()
         if dSdr_snapshot is None:
             dSdr_snapshot = getattr(solver, '_dSdr_cmb_init', None)
+        # A cold start (first solve, or after a re-melt) has neither; take
+        # the value attempt 1 starts from, so retries do not inherit its end.
+        if (
+            dSdr_snapshot is None
+            and self._config.interior_energetics.aragog.core_bc == 'energy_balance'
+        ):
+            S0 = getattr(solver, '_S0', None)
+            n_stag = getattr(solver, '_n_stag', None)
+            if S0 is not None and n_stag is not None and len(S0) == n_stag + 1:
+                dSdr_snapshot = float(S0[n_stag])
         dSdr_ic = dSdr_snapshot
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.

@@ -57,7 +57,7 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
     rather than in a helper called directly.
 
     Validates:
-    - the interior mass anchor grows by the delivered rock, once
+    - the dry mass anchor of the dummy structure grows by the delivered rock, once
     - the impact time falls inside the simulated interval, so the schedule and
       the timestep clamp actually met
     - M_accreted_rock is written, non-decreasing, and ends at the delivered mass
@@ -128,9 +128,11 @@ def test_smoke_accretion_impact_lands_inside_the_coupled_loop():
             f'nearest was {times[np.argmin(np.abs(times - impact_time))]:.6e} yr'
         )
 
-        # A dry impactor delivers no volatiles, so every kilogram of the
-        # impactor is rock and the anchor grows by exactly the delivered mass.
-        assert runner.config.planet.mass_tot == pytest.approx(mass_before + delivered, rel=1e-6)
+        # The dummy structure's mass_tot is the dry mass: a dry impactor grows
+        # it by exactly the delivered rock; the strip moves only the budgets.
+        assert runner.config.planet.mass_tot == pytest.approx(mass_before + delivered, rel=1e-9)
+        # The dummy structure keeps a dry anchor, so no volatile change is recorded.
+        assert np.all(hf['M_volatile_change'].to_numpy() == 0.0)
 
         # The ledger a resumed run reads back was written, never decreases, and
         # ends at the delivered rock. A handler that applied the impact twice
@@ -403,3 +405,70 @@ def test_impact_during_init_stage_applied_exactly_once(tmp_path):
     assert runner2.hf_all['n_impacts_applied'].iloc[-1] == 1
     rock_resumed = float(runner2.hf_all['M_accreted_rock'].iloc[-1])
     assert rock_resumed == pytest.approx(delivered * M_earth, rel=1e-6)
+
+
+def _escape_runner(output_dir, *, accretion):
+    """All-dummy runner with a bulk escape rate, with or without one impact."""
+    runner = Proteus(config_path=PROTEUS_ROOT / 'input' / 'dummy.toml')
+    runner.config.params.out.path = str(output_dir)
+    runner.init_directories()
+    runner.config.planet.tsurf_init = 2000.0
+    runner.config.params.stop.time.minimum = 1e2
+    runner.config.params.stop.time.maximum = 2e4
+    runner.config.params.dt.initial = 1e3
+    runner.config.params.dt.minimum = 1e0
+    runner.config.params.dt.maximum = 1e3
+    runner.config.params.out.plot_mod = None
+    runner.config.params.out.archive_mod = 'none'
+    runner.config.escape.dummy.rate = 1.0e7
+    if accretion:
+        runner.config.accretion.module = 'dummy'
+        runner.config.accretion.dummy.num_impacts = 1
+        runner.config.accretion.dummy.mass_accreted = 0.1
+        runner.config.accretion.dummy.time_last = 4.0e3
+        runner.config.accretion.dummy.timescale = 3.0e3
+        runner.config.accretion.impactor_volatiles = 'dry'
+    return runner
+
+
+@pytest.mark.physics_invariant
+def test_escape_without_accretion_leaves_the_mass_anchor(tmp_path):
+    """Without an accretion module escape does not move mass_tot.
+
+    The new ledger column stays zero on every row, so a run without
+    accretion writes the same shared columns as before plus one zero column.
+    """
+    runner = _escape_runner(tmp_path / 'esc_noacc', accretion=False)
+    mass_before = runner.config.planet.mass_tot
+    runner.start(resume=False, offline=True)
+    hf = runner.hf_all
+    assert float(hf['esc_kg_cumulative'].iloc[-1]) > 0.0, 'escape removed nothing'
+    assert np.all(hf['M_volatile_change'].to_numpy() == 0.0)
+    assert runner.config.planet.mass_tot == mass_before
+
+
+@pytest.mark.physics_invariant
+def test_escape_with_accretion_leaves_the_dummy_dry_anchor_to_the_rock(tmp_path):
+    """With the dummy structure, mass_tot is the dry mass: escape leaves it and
+    the interior grows by the rock alone, so the planet mass closes.
+
+    Escaped volatiles leave only the budgets; taking them from mass_tot too
+    would remove them twice once the next impact re-solves the structure.
+    """
+    runner = _escape_runner(tmp_path / 'esc_acc', accretion=True)
+    mass_before = runner.config.planet.mass_tot
+    runner.start(resume=False, offline=True)
+    hf = runner.hf_all
+    escaped = float(hf['esc_kg_cumulative'].iloc[-1])
+    rock = float(hf['M_accreted_rock'].iloc[-1])
+    assert escaped > 0.0
+    assert rock > 0.0
+    assert np.all(hf['M_volatile_change'].to_numpy() == 0.0)
+    assert runner.config.planet.mass_tot == pytest.approx(
+        mass_before + rock / M_earth, rel=1e-12
+    )
+    d_int = float(hf['M_int'].iloc[-1] - hf['M_int'].iloc[0])
+    assert d_int == pytest.approx(rock, rel=1e-9)
+    d_planet = float(hf['M_planet'].iloc[-1] - hf['M_planet'].iloc[0])
+    d_ele = float(hf['M_ele'].iloc[-1] - hf['M_ele'].iloc[0])
+    assert d_planet == pytest.approx(rock + d_ele, rel=1e-9)
