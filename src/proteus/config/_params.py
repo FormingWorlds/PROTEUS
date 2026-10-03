@@ -111,7 +111,10 @@ class TimeStepParams:
     max_growth_factor: float
         Cap on the dt growth ratio between consecutive steps [dimensionless].
         Bounds dtswitch / dtprev, preventing large jumps that can wedge the
-        interior solver; 0 (default) disables the cap.
+        interior solver; 0 (default) disables the cap. After a step that
+        landed on a giant impact, dtprev is the larger of that step and
+        ``min(dtfloor, last step that did not land on an impact)``, or
+        dtfloor when there is no such step.
     maximum_rel: float
         Time-fraction allowance added to ``dt.maximum`` on every step
         [dimensionless]. The effective per-step cap is the sum
@@ -195,11 +198,9 @@ class TimeStepParams:
         is no longer than ``max(impact_maximum, dtfloor)``. Set to 0
         (default) to disable. Independent of this setting, the step
         that lands on an impact can be shorter than dtfloor, a step
-        ending less than 1e-3 yr short of an impact is extended onto it
-        (unless that passes stop.time.maximum), and after a landing
-        max_growth_factor applies to the larger of the landing step
-        and ``min(dtfloor, last step before the landing)``. Impacts less
-        than 1e-3 yr apart land in one step at the later time.
+        ending at most 1e-3 yr short of an impact is extended onto it
+        (unless the step already reaches stop.time.maximum), and impacts
+        less than 1e-3 yr apart land in one step at the later time.
     """
 
     starspec: float = field(default=1e8, validator=ge(0))

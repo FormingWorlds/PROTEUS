@@ -1059,13 +1059,21 @@ class TestImpactClamp:
                 1.1 * (100.0 + 0.005 * (1.0e5 + 4e-3)),
             ),
             ([1.0e5, 1.0e5 + 2e-3], [0.0, 1.0], 10.0),
+            ([1.0e5, 1.0e5 + 2e-3, 1.0e5 + 4e-3], [0.0, 1.0, 2.0], 10.0),
+            (
+                [*(1.0e5 + 5.0e3 * np.arange(-10, 1)), 1.0e5 + 227.48, 1.0e5 + 227.482]
+                + [1.0e5 + 227.484],
+                [0.0] * 12 + [1.0, 2.0],
+                1.1 * 227.48,
+            ),
         ],
-        ids=['two landings', 'second row'],
+        ids=['two landings', 'second row', 'landings on rows 1 and 2', 'after a short step'],
     )
     def test_the_growth_base_skips_earlier_landings(self, times, n_impacts, expected):
         """After two 2e-3 yr landings in a row the 1.1 growth cap starts from the 600 yr
-        floor (proportional method, about 1923 yr); after a landing on the second row it
-        leaves the 10 yr initial step."""
+        floor (proportional method, about 1923 yr), or from a shorter 227.48 yr step
+        before them; after landings from the second row on it leaves the 10 yr initial
+        step."""
         from proteus.interior_energetics.timestep import next_step
 
         hf_all = _make_hf_all(n_rows=len(times))
