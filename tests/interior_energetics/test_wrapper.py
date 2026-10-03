@@ -2184,20 +2184,19 @@ def _run_interior_with_dummy(config, hf_all, hf_row, *, ic: int, output: dict):
 
 
 @pytest.mark.unit
-def test_run_interior_consumes_the_impact_flag_into_the_step_flag():
-    """run_interior translates the one-shot impact flag into the per-step flag.
+def test_run_interior_consumes_the_one_shot_impact_flag():
+    """run_interior consumes the one-shot impact flag on the step it serves.
 
     Verifies:
-    - An armed ``impact_reset`` is consumed (cleared) and surfaces as
-      ``impact_reset_this_step`` for the rest of the step, which is what the
-      temperature-jump clip and the solver's core-temperature guard read.
-    - The very next step reads False again, so one impact cannot exempt two
-      steps from the guards.
+    - An armed ``impact_reset`` is cleared by the step that reads it, and the
+      prevent-warming clamp leaves that step's warming (3005 K over 3000 K).
+    - The very next step leaves it cleared and is clamped to the 3000 K before,
+      so one impact cannot lift the clamp on two steps.
     """
     from proteus.interior_energetics.common import Interior_t
     from proteus.interior_energetics.wrapper import run_interior
 
-    config = _make_run_interior_config(prevent_warming=False)
+    config = _make_run_interior_config(prevent_warming=True)
     hf_all, hf_row = _make_run_interior_state(prev_f_int=1.0)
     out = {
         'T_magma': 3005.0,
@@ -2221,12 +2220,13 @@ def test_run_interior_consumes_the_impact_flag_into_the_step_flag():
         patch('proteus.interior_energetics.wrapper.update_planet_mass'),
     ):
         run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
-        assert interior_o.impact_reset_this_step is True
         assert interior_o.impact_reset is False, 'the one-shot flag was not consumed'
+        assert hf_row['T_magma'] == pytest.approx(3005.0, rel=1e-12)
 
         # The following step is ordinary again: nothing re-armed the flag.
         run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
-        assert interior_o.impact_reset_this_step is False
+        assert interior_o.impact_reset is False
+        assert hf_row['T_magma'] == pytest.approx(3000.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -7384,6 +7384,8 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
         lambda *a, **k: {
             'T_magma': 3850.0,
+            'T_cmb': 5200.0,
+            'T_cmb_node': 5150.0,
             'Phi_global': 0.73,
             'Phi_global_vol': 0.73,
             'T_pot': 3750.0,
@@ -7393,6 +7395,9 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
 
     assert hf_row['T_magma'] == pytest.approx(3850.0, rel=1e-12)
+    # The impact row carries the re-melted CMB temperatures.
+    assert hf_row['T_cmb'] == pytest.approx(5200.0, rel=1e-12)
+    assert hf_row['T_cmb_node'] == pytest.approx(5150.0, rel=1e-12)
     assert hf_row['Phi_global'] == pytest.approx(0.73, rel=1e-12)
     assert hf_row['Phi_global_vol'] == pytest.approx(0.73, rel=1e-12)
     assert hf_row['T_pot'] == pytest.approx(3750.0, rel=1e-12)

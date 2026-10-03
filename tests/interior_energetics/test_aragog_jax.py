@@ -515,3 +515,42 @@ def test_run_solver_includes_heating_when_radiogenic_enabled(tmp_path):
     # Discrimination: a regression that swallowed the radio_per_kg into a
     # zero array would fail this check; the absolute value rules that out.
     assert h.sum() > 0, 'heating sum unexpectedly zero with heat_radiogenic=True'
+
+
+def test_run_solver_ends_a_step_short_of_an_impact_on_the_impact(tmp_path):
+    """A JAX step that rounding ends 2 ulp short of the pending impact returns,
+    and writes its snapshot at, the impact time, so the row and the snapshot
+    agree."""
+    import math
+
+    config = _make_config(heat_radiogenic=False, heat_tidal=False)
+    interior_o = _make_interior_o(spider_eos_dir=str(tmp_path), prepopulate_jax=True)
+    interior_o.aragog_solver._S0 = np.linspace(2500.0, 3500.0, 5)
+    t_impact = 1.0e8 / 3.0
+    interior_o.t_next_impact = t_impact
+    with patch.object(AragogJAXRunner, '_build_mesh_arrays', return_value=MagicMock()):
+        runner = AragogJAXRunner(
+            config, {'output': str(tmp_path)}, {'F_atm': 1e5}, None, interior_o
+        )
+    short = math.nextafter(math.nextafter(t_impact, 0.0), 0.0)
+    written = []
+    with (
+        patch(
+            'aragog.jax.solver.solve_entropy',
+            return_value=SimpleNamespace(
+                success=True, t_final=short, n_steps=1, S_final=np.ones(5)
+            ),
+        ),
+        patch.object(AragogJAXRunner, '_extract_output', return_value={}),
+        patch.object(
+            AragogJAXRunner,
+            '_write_ncdf',
+            side_effect=lambda out_dir, t, result: written.append(t),
+        ),
+    ):
+        sim_time, _ = runner.run_solver(
+            {'F_atm': 1e5, 'Time': 1.0e3}, interior_o, {'output': str(tmp_path)}
+        )
+    assert short < t_impact
+    assert sim_time == t_impact
+    assert written == [t_impact]

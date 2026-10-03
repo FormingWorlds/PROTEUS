@@ -981,6 +981,10 @@
           "condition": "always"
         },
         {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
+        },
+        {
           "file": "src/proteus/interior_struct/zalmoxis.py",
           "condition": "interior_struct.module = \"zalmoxis\""
         },
@@ -1018,6 +1022,10 @@
         {
           "file": "src/proteus/interior_energetics/spider.py",
           "condition": "interior_energetics.module = \"spider\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1043,6 +1051,10 @@
         {
           "file": "src/proteus/interior_energetics/spider.py",
           "condition": "interior_energetics.module = \"spider\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [],
@@ -1634,6 +1646,10 @@
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "always"
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1675,7 +1691,7 @@
         },
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
-          "condition": "always"
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [],
@@ -1710,7 +1726,7 @@
         },
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
-          "condition": "always"
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1822,6 +1838,10 @@
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "always"
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1860,6 +1880,10 @@
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "always"
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1897,7 +1921,7 @@
         },
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
-          "condition": "always"
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [],
@@ -2175,7 +2199,7 @@
         },
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
-          "condition": "always"
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         },
         {
           "file": "src/proteus/proteus.py",
@@ -3017,7 +3041,8 @@
         }
       ],
       "consumers": [
-        "accretion"
+        "accretion",
+        "interior_energetics"
       ],
       "consumers_possible": []
     },

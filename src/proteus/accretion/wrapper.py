@@ -30,14 +30,18 @@ _PPMW_ELEMENTS = ('H', 'C', 'N', 'S', 'O')
 # the module for a timeline again.
 _RESOLVED_TIMELINE_FILE = 'impact_timeline.csv'
 
-# Longest step of the init stage [yr]: the time-stepper's static 1 yr step, which
-# only shrinks on retry; the solver-derived dt (interior_energetics/wrapper.py) cannot exceed it.
+# Longest step of the init stage [yr]: the time-stepper's static 1 yr step, which shrinks
+# on retry; the impact snap-forward can extend it by up to SUBYEAR_TIME_RESOLUTION.
 _INIT_STAGE_HORIZON_YR = 1.0
 
 # Ceiling on the planet's eccentricity after an impact applies its change. An
 # impact excites a bound orbit; it cannot unbind one, and the rest of the model
 # assumes a closed orbit throughout.
 _ECC_MAX = 0.99
+
+# Relative mismatch between a borrowed timeline's target mass and the planet
+# mass above which the run warns that collisions are sized for another body.
+_TARGET_MASS_RTOL = 0.1
 
 
 def init_accretion(handler: Proteus) -> list[ImpactEvent]:
@@ -110,10 +114,40 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
 
     if not events and module in ('timeline', 'morrigan'):
         log.warning("Accretion module '%s' resolved to 0 impacts", module)
+    if config.orbit.instellation_method == 'inst':
+        log.warning(
+            "accretion.module = '%s' with orbit.instellation_method = 'inst': the "
+            'semi-major axis follows orbit.instellationflux, so the semi-major axis '
+            'change of each impact is not applied; its eccentricity change is.',
+            module,
+        )
 
-    return _drop_events_before_start(
-        events, handler.hf_row.get('Time', 0.0), resumed=bool(config.params.resume)
-    )
+    resumed = bool(config.params.resume)
+    kept = _drop_events_before_start(events, handler.hf_row.get('Time', 0.0), resumed=resumed)
+    # The configured mass is the planet's only at the start of a fresh run.
+    if kept and not resumed and module in ('timeline', 'morrigan'):
+        _warn_target_mass_mismatch(kept[0], config.planet.mass_tot * M_earth, 'configured')
+    return kept
+
+
+def _warn_target_mass_mismatch(event: ImpactEvent, m_planet: float, which: str) -> None:
+    """Warn when a borrowed timeline's target mass is not the planet's.
+
+    The impactor mass, loss fraction and impact energy of a timeline belong
+    to its dynamical bodies, so a target mass far from the simulated planet
+    applies collisions sized for another body.
+    """
+    if abs(event.M_target_before / m_planet - 1.0) > _TARGET_MASS_RTOL:
+        log.warning(
+            'Impact at t = %.4e yr: the timeline target mass %.3e kg differs from the '
+            '%s planet mass %.3e kg by more than %.0f %%; the collision is sized for '
+            'the timeline body, not this planet',
+            event.time,
+            event.M_target_before,
+            which,
+            m_planet,
+            100.0 * _TARGET_MASS_RTOL,
+        )
 
 
 def _valid_mass(value) -> bool:
@@ -273,7 +307,7 @@ def restore_accretion_state(handler: Proteus) -> None:
                 'Restart the simulation.'
             )
         # A counted impact after the resume time can only have landed during the
-        # init stage, whose steps never reach beyond _INIT_STAGE_HORIZON_YR.
+        # init stage.
         later = [ev for ev in all_events if ev.time > resume_time]
         n_drop = n_applied - events_before
         if n_drop > len(later):
@@ -331,6 +365,67 @@ def restore_accretion_state(handler: Proteus) -> None:
         config.orbit.eccentricity,
         accreted,
     )
+
+
+def apply_due_impacts(handler: Proteus, is_snapshot: bool) -> list[ImpactEvent]:
+    """Apply the impacts the step just taken reached, each once and in time order.
+
+    An impact is applied at the end of the first step that reaches its time. In a
+    chain of impacts each less than ``SUBYEAR_TIME_RESOLUTION`` after the one
+    before, that can be later than the impact time by up to the chain span. A
+    chain spanning that resolution or more gets one warning, on the row that lands
+    its last impact, naming its span and the largest delay.
+
+    Parameters
+    ----------
+    handler : Proteus
+        Coupler state; ``impact_events`` loses the applied events and
+        ``impact_chain`` holds (first time, landing time, largest delay) [yr]
+        of a chain whose last impact is still pending.
+    is_snapshot : bool
+        Whether this row writes a snapshot, which a landing row discards.
+
+    Returns
+    -------
+    list of ImpactEvent
+        The impacts applied on this row.
+    """
+    from proteus.accretion.common import due_events, landing_time
+    from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION
+
+    time_now = handler.hf_row['Time']
+    time_previous = time_now - handler.interior_o.dt
+    landed = due_events(handler.impact_events, time_previous, time_now)
+    if not landed:
+        return landed
+    end = landing_time(handler.impact_events, time_previous)
+    chain = getattr(handler, 'impact_chain', None)
+    first, delay = (chain[0], chain[2]) if chain and chain[1] == end else (landed[0].time, 0.0)
+    delay = max(delay, time_now - landed[0].time)
+    if len(landed) > 1:
+        log.info(
+            'Impacts at t = %s yr land in one step at %.6e yr',
+            ', '.join(f'{e.time:.6e}' for e in landed),
+            time_now,
+        )
+    for event in landed:
+        apply_impact(handler, event)
+        handler.impact_events.remove(event)
+    # Discard snapshot taken before remelting so resume does not
+    # load an un-melted mantle while keeping post-impact mass.
+    if is_snapshot:
+        discard_preimpact_snapshot(handler)
+    handler.impact_chain = (first, end, delay) if time_now < end else None
+    if time_now >= end and end - first >= SUBYEAR_TIME_RESOLUTION:
+        log.warning(
+            'Impacts from t = %.6e to %.6e yr form a chain %.3e yr wide; they were '
+            'applied up to %.3e yr after their times',
+            first,
+            end,
+            end - first,
+            delay,
+        )
+    return landed
 
 
 def discard_preimpact_snapshot(handler: Proteus) -> None:
@@ -441,6 +536,13 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         event.id_impactor,
         event.mass_delta / M_earth,
     )
+    # The first impact of a fresh run was checked at load, against mass_tot.
+    first_of_fresh_run = not config.params.resume and not hf_row.get('n_impacts_applied')
+    if config.accretion.module in ('timeline', 'morrigan') and not first_of_fresh_run:
+        m_planet = _as_float(hf_row.get('M_planet'))
+        if not 0.0 < m_planet < math.inf:
+            m_planet = config.planet.mass_tot * M_earth
+        _warn_target_mass_mismatch(event, m_planet, 'running')
 
     # Calculate volatile stripping and delivery from the pre-impact state
     # before applying any mass updates.
@@ -562,12 +664,20 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     hf_row['semimajorax'] = new_a
     hf_row['eccentricity'] = eccentricity
 
-    log.info(
-        '    planet is now %.4f M_earth at %.5f AU, e = %.4f',
-        config.planet.mass_tot,
-        config.orbit.semimajoraxis,
-        config.orbit.eccentricity,
-    )
+    if config.orbit.instellation_method == 'inst':
+        log.info(
+            '    planet is now %.4f M_earth, e = %.4f; the orbit step resets the '
+            'semi-major axis from orbit.instellationflux',
+            config.planet.mass_tot,
+            config.orbit.eccentricity,
+        )
+    else:
+        log.info(
+            '    planet is now %.4f M_earth at %.5f AU, e = %.4f',
+            config.planet.mass_tot,
+            config.orbit.semimajoraxis,
+            config.orbit.eccentricity,
+        )
 
 
 def _apply_volatile_consequences(

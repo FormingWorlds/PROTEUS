@@ -1118,8 +1118,9 @@ def test_run_orbit_evolved_branch_inst_method_sets_sma_from_dummy_star_luminosit
         'R_int': R_earth,
         'R_obs': R_earth,
         'R_xuv': R_earth,
-        'semimajorax': AU,
-        'eccentricity': 0.0,
+        # A different start (as an impact leaves it): a is reset, e is kept.
+        'semimajorax': 2.0 * AU,
+        'eccentricity': 0.35,
         'axial_period': 86400.0,
         'semimajorax_sat': 3.8e8,
         'M_sat': 7.342e22,
@@ -1138,6 +1139,7 @@ def test_run_orbit_evolved_branch_inst_method_sets_sma_from_dummy_star_luminosit
     # Solar-like Teff and R_star=1 R_sun at S_0=1 S_earth must recover
     # ~1 AU, not some arbitrary/unconverted value.
     assert hf_row['semimajorax'] == pytest.approx(AU, rel=0.1)
+    assert hf_row['eccentricity'] == pytest.approx(0.35, rel=1e-15)
 
 
 # ---------------------------------------------------------------------------

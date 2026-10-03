@@ -2005,7 +2005,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     defined convention quantified in the helpfile, not a quantity the residual
     itself can validate.
 
-    The melt-state keys in ``hf_row`` (``T_magma``, ``Phi_global``,
+    The melt-state keys in ``hf_row`` (``T_magma``, ``T_cmb``, ``Phi_global``,
     ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``)
     and the profile arrays on ``interior_o`` are updated to the re-melted
     profile evaluated without time integration, so downstream modules on the
@@ -2090,8 +2090,12 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
             surface_d=config.atmos_clim.surface_d,
             surface_bc_mode=config.interior_energetics.surface_bc_mode,
         )
+        # T_cmb and T_cmb_node keep the impact row consistent; the T_core jump guard
+        # reads T_cmb only on an Aragog that reports no intra-solve tcore_change_max.
         for key in (
             'T_magma',
+            'T_cmb',
+            'T_cmb_node',
             'Phi_global',
             'Phi_global_vol',
             'T_pot',
@@ -2325,9 +2329,6 @@ def run_interior(
     # temperature-jump clipping on subsequent ordinary steps.
     impact_reset = getattr(interior_o, 'impact_reset', False)
     interior_o.impact_reset = False
-    # The interior solvers run below, after the flag is cleared, so keep the
-    # value readable for the rest of this step.
-    interior_o.impact_reset_this_step = impact_reset
 
     # Write tidal heating file
     if config.interior_energetics.heat_tidal:

@@ -1197,18 +1197,14 @@ class Interior_t:
         # escaped from.
         self.dt_hysteresis_remaining = 0
 
-        # Time of the next scheduled giant impact [yr] from the accretion
-        # timeline used by the time-stepper to clamp dt; infinity if none.
+        # Landing time [yr] of the next giant impact, the last time of its chain
+        # (accretion.common.landing_time); the time-stepper clamps dt to it. Infinite if none.
         self.t_next_impact = float('inf')
 
-        # Raised by a giant-impact re-melt so the next interior solve does
-        # not clip the deliberate temperature jump back out as if it were a
-        # solver anomaly. Consumed and cleared on that one step.
+        # Raised by a giant-impact re-melt: the next interior step skips the warming
+        # clamp and the large-increase clips, and that iteration's crystallization
+        # check is held. Consumed and cleared by that interior step.
         self.impact_reset = False
-
-        # Snapshot of ``impact_reset`` at step start, allowing interior solvers
-        # to distinguish deliberate impact heating jumps from corrupted solves.
-        self.impact_reset_this_step = False
 
         # True when the most recent call to next_step() had its step size
         # clamped. For example, by `_estimate_bolscale()`.
