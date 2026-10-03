@@ -771,6 +771,13 @@ class AragogRunner:
             for _diag_key in ('f_ohm', 'flux_geometry'):
                 core_module_params.pop(_diag_key)
 
+            # Structure constraints from hf_row feed the Gaussian profile fit.
+            m_core_val = float(hf_row.get('M_core', 0.0) or 0.0)
+            p_cen_val = float(hf_row.get('P_center', 0.0) or 0.0)
+            if m_core_val > 0.0 and p_cen_val > 0.0:
+                core_module_params['m_core'] = m_core_val
+                core_module_params['p_cen'] = p_cen_val
+
         bc_kwargs: dict[str, object] = {
             'outer_boundary_condition': _aragog_outer_bc,
             'outer_boundary_value': hf_row['F_atm'],

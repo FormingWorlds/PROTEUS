@@ -3601,6 +3601,52 @@ def test_setup_solver_threads_core_module_params(tmp_path):
 
 
 @pytest.mark.unit
+def test_setup_solver_threads_structure_core_constraints(tmp_path):
+    """With core_bc='core_module', positive M_core and P_center in hf_row travel to core_module_params."""
+    from proteus.config._interior import AragogCoreModule
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = str(tmp_path)
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.interior_energetics.aragog.core_bc = 'core_module'
+    config.interior_energetics.aragog.core_module = AragogCoreModule()
+
+    hf_row = {
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+        'M_core': 1.93e24,
+        'P_center': 3.6e11,
+    }
+    interior_o = MagicMock()
+    spider_eos_dir = tmp_path / 'spider_eos'
+    spider_eos_dir.mkdir(parents=True)
+    interior_o._spider_eos_dir = str(spider_eos_dir)
+    eos_dir = (
+        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
+    )
+    eos_dir.mkdir(parents=True)
+    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    (tmp_path / 'interior_lookup_tables' / 'Melting_curves').mkdir(parents=True)
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters') as mock_params,
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+    bc = mock_params.call_args.kwargs.get('boundary_conditions')
+    params = bc.core_module_params
+    assert params['m_core'] == pytest.approx(1.93e24)
+    assert params['p_cen'] == pytest.approx(3.6e11)
+
+
+@pytest.mark.unit
 def test_setup_solver_does_not_pass_core_module_params_keyword_on_default_config(tmp_path):
     """When core_bc != 'core_module', _BoundaryConditionsParameters must be constructed
     without the 'core_module_params' keyword argument."""
