@@ -194,7 +194,11 @@ class TimeStepParams:
         left; later steps are evaluated again, and the step that lands
         is no longer than ``max(impact_maximum, dtfloor)``. Set to 0
         (default) to disable. Independent of this setting, the step
-        that lands on an impact can be shorter than dtfloor.
+        that lands on an impact can be shorter than dtfloor, a step
+        ending less than 1e-3 yr short of an impact is extended onto it
+        (unless that passes stop.time.maximum), and after a landing
+        max_growth_factor applies to the larger of the landing step
+        and ``min(dtfloor, last step before the landing)``.
     """
 
     starspec: float = field(default=1e8, validator=ge(0))

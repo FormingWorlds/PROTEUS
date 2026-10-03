@@ -464,11 +464,14 @@ def next_step(
     dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
     if max_growth > 0.0 and hf_all is not None and len(hf_all['Time']) >= 2:
         dt_prev_actual = float(hf_all['Time'].iloc[-1] - hf_all['Time'].iloc[-2])
-        # A step that landed on an impact can be far below dtfloor; grow from dtfloor,
-        # or from the step before the landing if that was shorter.
+        # A landing step can be far below dtfloor; grow from dtfloor, or from the last
+        # step that did not land on an impact if that was shorter.
         n_impacts = hf_all.get('n_impacts_applied')
         if n_impacts is not None and n_impacts.iloc[-1] > n_impacts.iloc[-2]:
-            before = hf_all['Time'].iloc[-2] - hf_all['Time'].iloc[-3] if len(hf_all) > 2 else 0
+            k = len(hf_all) - 2
+            while k > 0 and n_impacts.iloc[k] > n_impacts.iloc[k - 1]:
+                k -= 1
+            before = hf_all['Time'].iloc[k] - hf_all['Time'].iloc[k - 1] if k > 0 else dtfloor
             dt_prev_actual = max(dt_prev_actual, min(dtfloor, before))
         if dt_prev_actual > 0.0:
             dt_capped = dt_prev_actual * max_growth
@@ -489,9 +492,9 @@ def next_step(
     # is extended onto it. The landing step can be shorter than dtfloor.
     if interior_o is not None and np.isfinite(interior_o.t_next_impact):
         dt_to_impact = interior_o.t_next_impact - hf_row['Time']
-        if (
-            0.0 < dt_to_impact - dtswitch <= SUBYEAR_TIME_RESOLUTION
-            and dt_to_impact <= dtmaximum
+        if 0.0 < dt_to_impact - dtswitch <= SUBYEAR_TIME_RESOLUTION and not (
+            config.params.stop.time.enabled
+            and hf_row['Time'] + dt_to_impact > config.params.stop.time.maximum
         ):
             dtswitch = dt_to_impact
         impact_ceiling = float(config.params.dt.impact_maximum)

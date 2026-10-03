@@ -248,9 +248,19 @@ def test_timeline_must_advance_in_time_and_carry_mass_forward():
         time=5.0e5, M_target_before=6.64e24, M_impactor=1.0e23, M_merged_after=6.74e24
     )
     validate_timeline([first, second])
+    # Impacts written 1e-3 yr apart get their own snapshot names and are accepted.
+    validate_timeline(
+        [
+            _event(time=t, M_target_before=m0, M_impactor=mi, M_merged_after=m1)
+            for t, m0, mi, m1 in (
+                (100000.001, 6.0e24, 6.4e23, 6.64e24),
+                (100000.002, 6.64e24, 1.0e23, 6.74e24),
+            )
+        ]
+    )
 
-    # Time running backwards, two impacts at the same instant, or closer than 1e-3 yr.
-    for bad_time in (1.0e5, 5.0e4, 1.0e5 + 5.0e-4):
+    # Time running backwards, two impacts at the same instant, or with one snapshot name.
+    for bad_time in (1.0e5, 5.0e4, 1.0e5 + 3.0e-4):
         with pytest.raises(ValueError, match='increase strictly'):
             validate_timeline(
                 [
