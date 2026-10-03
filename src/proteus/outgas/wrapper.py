@@ -319,7 +319,22 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     return True
 
 
-def run_outgassing(dirs: dict, config: Config, hf_row: dict):
+def outgassing_derives_o_kg_total(config: Config) -> bool:
+    """Whether each outgassing call derives ``O_kg_total`` from the melt fO2.
+
+    CALLIOPE and atmodeller derive the O budget from the fixed fO2 under
+    ``planet.fO2_source = 'user_constant'``; ``O_mode = 'ic_chemistry'``
+    requires that source at config load. The dummy outgassing derives an empty
+    ``O_kg_total`` only in the init stage and otherwise keeps it as given, and
+    ``from_O_budget`` takes the O budget as input.
+    """
+    return (
+        config.outgas.module in ('calliope', 'atmodeller')
+        and config.planet.fO2_source == 'user_constant'
+    )
+
+
+def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     """
     Run outgassing model to get new volatile surface pressures
 
@@ -331,6 +346,9 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
             Configuration object
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
+        initial : bool
+            Whether this is an init-stage iteration, where the dummy outgassing
+            derives an empty O budget from the outgassed species.
     """
 
     log.info('Calculating volatile outgassing at surface')
@@ -386,7 +404,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     elif config.outgas.module == 'dummy':
         from proteus.outgas.dummy import calc_surface_pressures_dummy
 
-        calc_surface_pressures_dummy(dirs, config, hf_row)
+        calc_surface_pressures_dummy(dirs, config, hf_row, initial=initial)
 
     # Apply binodal-controlled H2 partitioning.
     # When global_miscibility is enabled, the binodal is handled radially
@@ -588,7 +606,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
         first_iter : bool
-            True if this is the first iteration of the simulation, False otherwise
+            Whether the run is in its init stage.
     """
 
     # if desiccated, set all gas masses to zero
@@ -635,7 +653,8 @@ def run_outgassing_and_vapourisation(
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
         first_iter : bool
-            True if this is the first iteration of the simulation, False otherwise
+            Whether the run is in its init stage; the dummy outgassing derives an
+            empty O budget only then.
     """
 
     # reset all rock-vapour masses to zero:
@@ -658,7 +677,7 @@ def run_outgassing_and_vapourisation(
         hf_row[e + '_kg_total'] = 0.0
 
     # Volatile outgassing
-    run_outgassing(dirs, config, hf_row)
+    run_outgassing(dirs, config, hf_row, initial=first_iter)
 
     # Vapourisation of refractories
     if config.outgas.vapourise:

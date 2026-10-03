@@ -250,6 +250,7 @@ def _impact_handler(
     crystallized=False,
     desiccated=False,
     accretion=None,
+    structure='zalmoxis',
 ):
     """Build the minimal handler shape apply_impact reads and mutates.
 
@@ -260,13 +261,16 @@ def _impact_handler(
 
     return SimpleNamespace(
         config=SimpleNamespace(
-            planet=SimpleNamespace(mass_tot=mass_tot, tsurf_init=tsurf_init),
+            planet=SimpleNamespace(
+                mass_tot=mass_tot, tsurf_init=tsurf_init, fO2_source='user_constant'
+            ),
             orbit=SimpleNamespace(semimajoraxis=semimajoraxis, eccentricity=eccentricity),
+            outgas=SimpleNamespace(module='dummy', mass_thresh=1.0e10),
             interior_energetics=SimpleNamespace(
                 module='dummy',
                 dummy=SimpleNamespace(mantle_tliq=2700.0, mantle_tsol=1700.0),
             ),
-            interior_struct=SimpleNamespace(core_frac=0.55),
+            interior_struct=SimpleNamespace(core_frac=0.55, module=structure),
             accretion=accretion if accretion is not None else _impact_accretion(),
         ),
         hf_row={
@@ -613,7 +617,6 @@ def test_impact_strips_the_atmosphere_in_proportion_to_its_composition(monkeypat
     handler = _impact_handler(
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.25)
     )
-    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
     # H is mostly atmospheric; N is mostly dissolved. A total-budget
     # partitioning would debit N nearly 4x more than the atmosphere holds.
     _atm_state(handler.hf_row, H=(4.0e20, 5.0e20), N=(1.0e19, 4.0e20))
@@ -656,7 +659,6 @@ def test_total_impact_loss_removes_the_atmosphere_but_not_the_interior(monkeypat
     handler = _impact_handler(
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=1.0)
     )
-    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
     _atm_state(handler.hf_row, H=(4.0e20, 5.0e20), C=(2.0e19, 9.0e19))
     apply_impact(handler, _impact_event())
 
@@ -666,6 +668,205 @@ def test_total_impact_loss_removes_the_atmosphere_but_not_the_interior(monkeypat
     assert handler.hf_row['H_kg_total'] >= 0.0
     assert handler.hf_row['C_kg_total'] >= 0.0
     assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(4.2e20, rel=1e-9)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_escape_on_the_impact_step_draws_on_the_stripped_atmosphere(monkeypatch):
+    """Escape after a total strip finds no atmosphere and leaves the interior.
+
+    Escape runs before the outgassing solve re-partitions the budgets, and
+    sizes its loss from ``*_kg_atm``. The strip must debit that reservoir too,
+    or a strong escape rate drains the dissolved inventory on the impact step.
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.escape.wrapper import calc_new_elements, limit_escape_step
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=1.0)
+    )
+    _atm_state(handler.hf_row, H=(4.0e20, 5.0e20), C=(2.0e19, 9.0e19))
+    apply_impact(handler, _impact_event())
+
+    row = handler.hf_row
+    assert row['H_kg_atm'] == 0.0
+    assert row['C_kg_atm'] == 0.0
+    row['esc_rate_total'] = 1.0e14
+    assert limit_escape_step(row, 1.0e3, 'outgas', min_thresh=1.0e10) == 0.0
+    tgt = calc_new_elements(row, 1.0e3, 'outgas', esc_mass=1.0e22)
+    assert tgt['H'] == pytest.approx(1.0e20, rel=1e-12)
+    assert tgt['C'] == pytest.approx(7.0e19, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_a_partial_strip_lowers_the_atmospheric_reservoir_by_the_stripped_mass(monkeypatch):
+    """A 25% strip leaves three quarters of each element's atmosphere."""
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.25)
+    )
+    _atm_state(handler.hf_row, H=(4.0e20, 5.0e20), N=(1.0e19, 4.0e20))
+    apply_impact(handler, _impact_event())
+
+    assert handler.hf_row['H_kg_atm'] == pytest.approx(3.0e20, rel=1e-12)
+    assert handler.hf_row['N_kg_atm'] == pytest.approx(7.5e18, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_delivered_volatiles_raise_the_desiccation_baseline(monkeypatch):
+    """The gate must not accept delivered mass as loss without escape.
+
+    1e20 kg escaped from a 1e20 kg baseline, then an impact delivered 6.4e20
+    kg of H. If all of it vanishes without escape, the gate must refuse; with
+    the baseline left at 1e20 kg it would accept (1e20 <= 1.5 * 1e20).
+    """
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.outgas.wrapper import check_desiccation
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(accretion=_impact_accretion(H=1000.0))
+    row = handler.hf_row
+    row.update(M_vol_initial=1.0e20, esc_kg_cumulative=1.0e20, H_kg_total=0.0)
+    apply_impact(handler, _impact_event())
+
+    delivered = 6.4e23 * 1000.0 / 1.0e6
+    assert row['H_kg_total'] == pytest.approx(delivered, rel=1e-12)
+    assert row['M_vol_initial'] == pytest.approx(1.0e20 + delivered, rel=1e-12)
+    row['H_kg_total'] = 0.0
+    assert (
+        check_desiccation(SimpleNamespace(outgas=SimpleNamespace(mass_thresh=1.0e10)), row)
+        is False
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_stripping_wet_impact_credits_only_the_delivery_to_the_baseline(monkeypatch):
+    """The baseline gains the delivered mass alone; the strip goes to the escape
+    ledger, so the desiccation gate accepts the stripped loss."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.outgas.wrapper import check_desiccation
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0)
+    )
+    _atm_state(handler.hf_row, H=(4.0e19, 1.0e20))
+    handler.hf_row.update(M_vol_initial=1.0e20, esc_kg_cumulative=0.0)
+    apply_impact(handler, _impact_event())
+
+    content = 6.4e23 * 1000.0 / 1.0e6
+    delivered = content * (1.0 - 0.4 * 0.5)  # the exposed f_atm = 0.4 share loses half
+    stripped = 0.5 * 4.0e19
+    assert handler.hf_row['M_vol_initial'] == pytest.approx(1.0e20 + delivered, rel=1e-12)
+    assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(stripped, rel=1e-12)
+    # Above the threshold only the escape-balance gate decides.
+    handler.config.outgas.mass_thresh = 1.0e25
+    assert check_desiccation(handler.config, handler.hf_row) is True
+
+
+def _oxygen_impact(monkeypatch, fO2_source, outgas, structure='zalmoxis', frac=0.5):
+    """Apply one H- and O-bearing impact to a planet with an O-rich atmosphere.
+
+    Returns the handler, the event and the impactor H and O masses [kg].
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    acc = _impact_accretion(atmloss_module='constant', atmloss_frac=frac, H=1000.0, O=8000.0)
+    handler = _impact_handler(accretion=acc, structure=structure)
+    handler.config.planet.fO2_source = fO2_source
+    handler.config.outgas.module = outgas
+    handler.config.outgas.mass_thresh = 1.0
+    handler.hf_row.update(
+        M_vol_initial=1.0e20,
+        O_kg_total=1.0e21,
+        O_kg_atm=5.0e20,
+        H_kg_total=1.0e20,
+        H_kg_atm=5.0e19,
+    )
+    event = _impact_event()
+    apply_impact(handler, event)
+    return handler, event, event.M_impactor * 1000.0 / 1.0e6, event.M_impactor * 8000.0 / 1.0e6
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'fO2_source, outgas, frac, o_rock',
+    [
+        ('user_constant', 'calliope', 0.5, True),
+        ('user_constant', 'atmodeller', 0.0, True),
+        ('from_O_budget', 'calliope', 0.5, False),
+        ('user_constant', 'dummy', 0.5, False),
+    ],
+)
+def test_impactor_oxygen_counts_as_rock_when_the_fO2_sets_the_o_budget(
+    monkeypatch, fO2_source, outgas, frac, o_rock
+):
+    """Under a fixed fO2 with an outgassing solver, delivered O is rock: it
+    enters neither the baseline credit nor the volatile column. The O lost
+    with the impactor atmosphere leaves in every case, so mass closes."""
+    from proteus.utils.constants import M_earth
+
+    handler, event, h, o = _oxygen_impact(monkeypatch, fO2_source, outgas, frac=frac)
+    kept = 1.0 - 0.5 * frac
+    strip = frac * (5.0e20 + 5.0e19)
+    delivered = kept * h + (0.0 if o_rock else kept * o)
+    gain = (handler.config.planet.mass_tot - 1.0) * M_earth
+    assert gain + handler.hf_row['M_volatile_change'] == pytest.approx(
+        event.mass_delta - (1.0 - kept) * (h + o) - strip, rel=1e-12
+    )
+    assert handler.hf_row['M_vol_initial'] == pytest.approx(1.0e20 + delivered, rel=1e-12)
+    assert handler.hf_row['M_volatile_change'] == pytest.approx(delivered - strip, rel=1e-12)
+    assert handler.hf_row['O_kg_total'] == pytest.approx(
+        1.0e21 - frac * 5.0e20 + (0.0 if o_rock else kept * o), rel=1e-12
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_delivered_oxygen_stays_in_the_dry_anchor_of_the_dummy_structure(monkeypatch):
+    """With the dummy structure mass_tot is the whole anchor: delivered O
+    joins the rock there, since the outgassing would drop it from the budget."""
+    from proteus.utils.constants import M_earth
+
+    handler, event, h, o = _oxygen_impact(
+        monkeypatch, 'user_constant', 'calliope', structure='dummy'
+    )
+    gain = (handler.config.planet.mass_tot - 1.0) * M_earth
+    assert gain == pytest.approx(event.mass_delta - h - 0.25 * o, rel=1e-12)
+    assert handler.hf_row['M_vol_initial'] == pytest.approx(1.0e20 + 0.75 * h, rel=1e-12)
+    assert 'M_volatile_change' not in handler.hf_row
+
+
+@pytest.mark.unit
+def test_delivery_before_any_escape_baseline_sets_none(monkeypatch):
+    """Without a baseline the first escape call snapshots the grown totals."""
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(accretion=_impact_accretion(H=1000.0))
+    apply_impact(handler, _impact_event())
+    assert 'M_vol_initial' not in handler.hf_row
+    # The delivery itself happened; only the baseline credit is skipped.
+    assert handler.hf_row['H_kg_total'] == pytest.approx(6.4e23 * 1000.0 / 1.0e6, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -691,7 +892,7 @@ def test_stripping_a_sub_threshold_atmosphere_leaves_the_dissolved_inventory(mon
     )
     # Production default threshold; the atmosphere sits well below it while the
     # dissolved reservoirs dominate the totals.
-    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e16)
+    handler.config.outgas.mass_thresh = 1.0e16
     _atm_state(handler.hf_row, H=(1.0e15, 5.0e20), C=(5.0e14, 2.0e20))
     handler.hf_row['esc_kg_cumulative'] = 0.0
     apply_impact(handler, _impact_event())
@@ -723,7 +924,6 @@ def test_stripping_with_no_atmosphere_at_all_is_a_clean_no_op(monkeypatch):
     handler = _impact_handler(
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.9)
     )
-    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
     handler.hf_row['H_kg_total'] = 3.0e20  # dissolved only; no _kg_atm keys exist
     apply_impact(handler, _impact_event())
 
@@ -750,7 +950,6 @@ def test_impact_strips_oxygen_with_the_other_atmospheric_elements(monkeypatch):
     handler = _impact_handler(
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.4)
     )
-    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
     _atm_state(handler.hf_row, H=(1.0e20, 3.0e20), O=(8.0e20, 1.2e21))
     apply_impact(handler, _impact_event())
 
@@ -774,16 +973,18 @@ def _converging_solve_structure():
     """Mock of solve_structure faithful to the root-finder's convergence state.
 
     The real solve moves R_int until the whole-planet mass matches the target:
-    at convergence ``M_planet = mass_tot * M_earth`` and the interior carries
-    what the volatile budgets do not, ``M_int = M_planet - M_ele``. The mock
-    reproduces exactly that end state (with the budgets it finds, mirroring
-    the config-driven recompute), so a test can check how apply_impact's mass
-    ledger and budget updates CLOSE into M_planet, which a no-op mock hides.
+    at convergence ``M_planet = mass_tot * M_earth + V`` (V the volatile change,
+    ``M_volatile_change``) and the interior carries what the volatile budgets do
+    not, ``M_int = M_planet - M_ele``. The mock reproduces exactly that end state
+    (with the budgets it finds, mirroring the config-driven recompute), so a test
+    can check how apply_impact's mass ledger and budget updates CLOSE into
+    M_planet, which a no-op mock hides.
     """
     from proteus.utils.constants import M_earth, element_list
 
     def _mock(dirs, config, hf_all, hf_row, outdir, **kwargs):
-        m_target = config.planet.mass_tot * M_earth
+        v = float(hf_row.get('M_volatile_change') or 0.0)
+        m_target = config.planet.mass_tot * M_earth + v
         m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
         hf_row['M_int'] = m_target - m_ele
         hf_row['M_ele'] = m_ele
@@ -797,10 +998,11 @@ def _converging_solve_structure():
 def test_impact_mass_closure_counts_each_volatile_channel_once(monkeypatch):
     """The planet's mass closes to before + rock + delivered - stripped.
 
-    The interior anchor (mass_tot) and the volatile budgets (M_ele) are the
-    two halves of M_planet, so each impact channel must land in exactly one
-    of them: the impactor's rock grows the anchor, its delivered volatiles
-    and the target strip move the budgets. Booking a channel in both halves
+    The volatile budgets (M_ele) and the dry interior (M_int) are the two
+    halves of M_planet, so each impact channel must land in exactly one of
+    them: the impactor's rock grows the interior, its delivered volatiles and
+    the target strip move the budgets. The anchor mass_tot follows the sum, so
+    the next structure solve keeps it. Booking a channel in both halves
     double-counts it: growing the anchor by the full merger mass while also
     crediting the delivered content would inflate M_planet by the delivery,
     and subtracting the strip from the anchor while also debiting the
@@ -823,7 +1025,6 @@ def test_impact_mass_closure_counts_each_volatile_channel_once(monkeypatch):
             atmloss_frac=0.5,
         ),
     )
-    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
     handler.hf_all = _history([{'Time': 0.0, 'M_planet': m_planet_0, 'H_kg_total': 4.0e22}])
     # Half the hydrogen is atmospheric: the mirror loses half the impactor's
     # content and the constant strip removes half the target atmosphere.
@@ -856,10 +1057,16 @@ def test_impact_mass_closure_counts_each_volatile_channel_once(monkeypatch):
     assert abs(m_planet_after - (expected + delivered)) > 0.5 * delivered
     assert abs(m_planet_after - (expected - stripped)) > 0.5 * stripped
 
-    # The anchor itself grew by the impactor's rock alone.
-    assert handler.config.planet.mass_tot == pytest.approx(
-        (m_planet_0 + rock) / M_earth, rel=1e-12
+    # The anchor carries the rock; the ledger records the whole change.
+    assert handler.config.planet.mass_tot * M_earth == pytest.approx(
+        m_planet_0 + rock, rel=1e-12
     )
+    assert handler.hf_row['M_volatile_change'] == pytest.approx(delivered - stripped, rel=1e-9)
+    # The next Zalmoxis-like solve (target mass_tot + V) keeps that mass; without
+    # the volatile change it would pull M_planet back to m_planet_0 + rock.
+    _converging_solve_structure()(None, handler.config, None, handler.hf_row, None)
+    assert handler.hf_row['M_planet'] == pytest.approx(expected, rel=1e-9)
+    assert abs(m_planet_0 + rock - expected) > 1.0e-6 * expected
 
 
 @pytest.mark.unit
@@ -937,7 +1144,6 @@ def test_match_planet_partition_mirror_and_fallback(monkeypatch):
             impactor_volatiles='match_planet', atmloss_module='constant', atmloss_frac=0.5
         )
     )
-    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
     handler.hf_all = _history(
         [
             {
@@ -983,9 +1189,9 @@ def test_a_small_impactor_stripping_a_heavy_atmosphere_shrinks_the_planet(monkey
     """The whole-planet mass falls when losses beat accretion.
 
     A small dry impactor that blows off a much heavier atmosphere leaves the
-    planet lighter than before: the interior anchor still grows by the
-    accreted rock, but the stripped budgets pull the whole-planet mass below
-    its pre-impact value.
+    planet lighter than before: the interior still grows by the accreted
+    rock, the stripped budgets pull the whole-planet mass below its
+    pre-impact value, and the anchor follows that mass.
     """
     from proteus.accretion.wrapper import apply_impact
     from proteus.utils.constants import M_earth
@@ -1000,7 +1206,6 @@ def test_a_small_impactor_stripping_a_heavy_atmosphere_shrinks_the_planet(monkey
         mass_tot=m_planet_0 / M_earth,
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=1.0),
     )
-    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
     # Atmosphere of 2e23 kg; the impactor adds only 6.4e21 kg of rock.
     _atm_state(handler.hf_row, H=(2.0e23, 5.0e23))
     event = _impact_event(
@@ -1008,10 +1213,11 @@ def test_a_small_impactor_stripping_a_heavy_atmosphere_shrinks_the_planet(monkey
     )
     apply_impact(handler, event)
 
-    # The dry impactor's whole mass is rock: the anchor grows by all of it.
+    # The anchor takes the rock; the ledger the whole change, atmosphere out.
     assert handler.config.planet.mass_tot == pytest.approx(
         (m_planet_0 + 6.4e21) / M_earth, rel=1e-9
     )
+    assert handler.hf_row['M_volatile_change'] == pytest.approx(-2.0e23, rel=1e-9)
     # The whole-planet mass shrank: rock in, a far heavier atmosphere out.
     m_ele_after = sum(v for k, v in handler.hf_row.items() if k.endswith('_kg_total'))
     m_planet_after = handler.hf_row['M_int'] + m_ele_after
@@ -1042,6 +1248,13 @@ def test_match_planet_without_history_fails_loudly():
     broken = _history([{'Time': 0.0, 'M_planet': 0.0, 'H_kg_total': 1.0e21}])
     with pytest.raises(RuntimeError, match='M_planet'):
         _impactor_volatile_content(cfg, broken, _impact_event())
+    nan = float('nan')
+    for row, match in (
+        ({'M_planet': nan, 'H_kg_total': 1.0e21}, 'M_planet'),
+        ({'M_planet': 6.0e24, 'H_kg_total': nan}, 'non-finite element budget'),
+    ):
+        with pytest.raises(RuntimeError, match=match):
+            _impactor_volatile_content(cfg, _history([{'Time': 0.0, **row}]), _impact_event())
 
 
 @pytest.mark.unit
@@ -1060,18 +1273,38 @@ def test_match_planet_step_zero_without_history_falls_back_to_hf_row():
     assert content['O'] == pytest.approx(1.0e23 * (1.2e21 / 6.0e24))
 
 
-@pytest.mark.unit
-def test_impactor_volatile_content_excludes_oxygen_under_ic_chemistry():
-    """Under O_mode = 'ic_chemistry', oxygen is excluded from impactor volatiles."""
-    from proteus.accretion.wrapper import _impactor_volatile_content
+# Whether each outgassing module derives O_kg_total from a fixed fO2 every call.
+_DERIVES_O_KG_TOTAL = {'calliope': True, 'atmodeller': True, 'dummy': False}
 
-    cfg = SimpleNamespace(
-        accretion=_impact_accretion(H=1000.0, O=5000.0),
-        planet=SimpleNamespace(elements=SimpleNamespace(O_mode='ic_chemistry')),
-    )
-    content = _impactor_volatile_content(cfg, None, _impact_event())
-    assert 'H' in content
-    assert 'O' not in content
+
+@pytest.mark.unit
+def test_every_outgassing_module_has_a_stated_oxygen_rule():
+    """Only CALLIOPE and atmodeller at a fixed fO2 derive the O budget; the dummy
+    outgassing and from_O_budget keep it as given. A module added to the config
+    fails here until it is classified. The rule never reads O_mode, so the
+    planet has no elements section."""
+    import attrs
+
+    from proteus.config._outgas import Outgas
+    from proteus.outgas.wrapper import outgassing_derives_o_kg_total
+
+    modules = set(attrs.fields(Outgas).module.validator.options)
+    assert modules == set(_DERIVES_O_KG_TOTAL)
+    sources = ('user_constant', 'from_O_budget')
+    rule = {
+        (m, f): outgassing_derives_o_kg_total(
+            SimpleNamespace(
+                planet=SimpleNamespace(fO2_source=f), outgas=SimpleNamespace(module=m)
+            )
+        )
+        for m in modules
+        for f in sources
+    }
+    assert rule == {
+        (m, f): _DERIVES_O_KG_TOTAL[m] and f == 'user_constant'
+        for m in modules
+        for f in sources
+    }
 
 
 @pytest.mark.unit
@@ -1098,7 +1331,6 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
         mass_tot=1.0,
         accretion=_impact_accretion(H=1000.0),  # ppmw mode, loss off
     )
-    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
     _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
     m_imp = 0.2 * M_earth
     event = _impact_event(
@@ -1120,10 +1352,11 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
     # Discrimination: an unbracketed second solve would carry a 1.2x rescale
     # of after_first, over 1e20 kg above the correct composition.
     assert abs(handler.hf_row['H_kg_total'] - (1.2 * after_first + delivered)) > 1.0e20
-    # The anchor grew by each impactor's rock (merger mass minus content);
-    # the delivered volatiles reach the planet through the budgets instead.
+    # The anchor grows by each impactor's rock; with loss off the ledger takes
+    # its whole mass, rock plus the delivered content.
     expected_mass = 1.0 + 2 * (event.mass_delta - delivered) / M_earth
     assert handler.config.planet.mass_tot == pytest.approx(expected_mass, rel=1e-12)
+    assert handler.hf_row['M_volatile_change'] == pytest.approx(2 * delivered, rel=1e-12)
     assert float(handler.hf_row.get('esc_kg_cumulative', 0.0)) == pytest.approx(0.0, abs=1.0)
 
 
@@ -1135,8 +1368,8 @@ def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeyp
     One impact carries three volatile channels: the shock strips the loss
     fraction of the target's atmosphere, the impactor's atmospheric part
     (mirrored from the planet, here exactly one third) loses the same
-    fraction, and everything else is delivered. The interior anchor grows
-    by the impactor's rock alone. A loss module returning a fraction
+    fraction, and everything else is delivered. The anchor grows by the
+    rock plus the delivered less the stripped mass. A loss module returning a fraction
     outside [0, 1] violates the partitioning contract and must raise rather
     than be clamped in silence.
     """
@@ -1151,7 +1384,6 @@ def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeyp
         mass_tot=1.0,
         accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0),
     )
-    handler.config.outgas = SimpleNamespace(mass_thresh=1.0e10)
     # One third of the planet's hydrogen sits in the atmosphere: the mirror
     # then declares one third of the impactor's content atmospheric (lost)
     # and delivers the remaining two thirds.
@@ -1180,14 +1412,15 @@ def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeyp
     # impactor's lost volatiles never belonged to the planet's inventory.
     assert handler.hf_row['esc_kg_cumulative'] == pytest.approx(stripped, rel=1e-9)
 
-    # The interior anchor grew by the impactor's rock alone; the delivered
-    # and stripped volatiles reach the whole-planet mass through the budgets.
-    expected_mass = 1.0 + (mass_delta - content) / M_earth
-    assert handler.config.planet.mass_tot == pytest.approx(expected_mass, rel=1e-12)
-    # Discrimination: growing the anchor by the full merger mass would put
-    # the delivered content into the interior AND the budgets, resolvable
-    # far above the tolerance.
-    assert abs(handler.config.planet.mass_tot - (1.0 + mass_delta / M_earth)) > 1e-5
+    # The anchor grew by the rock; the ledger by the rock plus the delivered
+    # less the stripped mass; the impactor's lost volatiles never reach the planet.
+    assert handler.config.planet.mass_tot == pytest.approx(
+        1.0 + (mass_delta - content) / M_earth, rel=1e-12
+    )
+    v = handler.hf_row['M_volatile_change']
+    assert v == pytest.approx(delivered - stripped, rel=1e-12)
+    # Discrimination: counting the impactor's lost content as delivered.
+    assert abs(v - (content - stripped)) > 0.1 * content
 
     # A provider outside the contract is rejected loudly.
     bad = _impact_handler(
@@ -1591,6 +1824,329 @@ def test_a_resumed_run_rebuilds_the_mass_and_orbit_the_impacts_moved():
     # Discrimination: anchoring on M_planet would have given 2.5 M_earth, which
     # differs from the correct 1.5 by two thirds of the correct value.
     assert abs(2.5 - 1.5) > 0.5 * 1.5
+
+
+@pytest.mark.unit
+def test_debit_escaped_mass_records_escape_with_zalmoxis_with_or_without_accretion():
+    """Escape lowers the ledger with the Zalmoxis structure, also without an
+    accretion module, never mass_tot, and nothing with the dummy structure."""
+    from proteus.interior_struct.common import debit_escaped_mass, record_volatile_change
+
+    def cfg(module, structure='zalmoxis'):
+        return SimpleNamespace(
+            accretion=SimpleNamespace(module=module),
+            interior_struct=SimpleNamespace(module=structure),
+            planet=SimpleNamespace(mass_tot=1.0),
+        )
+
+    for config, start in ((cfg('dummy'), 1.0e22), (cfg(None), 0.0)):
+        row = {'M_volatile_change': start}
+        debit_escaped_mass(config, row, 3.0e21)
+        assert config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+        assert row['M_volatile_change'] == pytest.approx(start - 3.0e21, rel=1e-15)
+
+    for config in (cfg('dummy', structure='dummy'), cfg(None, structure='dummy')):
+        row = {'M_volatile_change': 0.0}
+        debit_escaped_mass(config, row, 3.0e21)
+        assert config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+        assert row['M_volatile_change'] == pytest.approx(0.0, abs=0.0)
+
+    for bad in (0.0, -1.0e20, float('nan'), float('inf')):
+        row = {'M_volatile_change': 0.0}
+        debit_escaped_mass(cfg(None), row, bad)
+        assert row['M_volatile_change'] == pytest.approx(0.0, abs=0.0)
+
+    row = {'M_volatile_change': 1.0e21}
+    with pytest.raises(RuntimeError, match='not finite'):
+        record_volatile_change(cfg(None), row, float('nan'))
+    assert row['M_volatile_change'] == pytest.approx(1.0e21, rel=1e-15)
+
+
+def _restore_handler(mass_tot, hf_row):
+    return SimpleNamespace(
+        config=SimpleNamespace(
+            accretion=SimpleNamespace(module='morrigan'),
+            params=SimpleNamespace(resume=True),
+            planet=SimpleNamespace(mass_tot=mass_tot),
+            orbit=SimpleNamespace(semimajoraxis=1.0, eccentricity=0.0),
+        ),
+        hf_row=hf_row,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_resume_after_impact_and_escape_restores_the_uninterrupted_mass(monkeypatch):
+    """A resume rebuilds the Zalmoxis target exactly as the uninterrupted run
+    left it: the rock anchor plus the volatile change.
+
+    The run takes a wet impact with a 50 % strip, then escape removes 2e21
+    kg. Restoring from the rock alone would miss the delivered, stripped and
+    escaped mass.
+    """
+    from proteus.accretion.wrapper import apply_impact, restore_accretion_state
+    from proteus.interior_struct.common import debit_escaped_mass
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0)
+    )
+    handler.config.accretion.module = 'dummy'
+    _atm_state(handler.hf_row, H=(4.0e21, 5.0e21))
+    apply_impact(handler, _impact_event())
+    debit_escaped_mass(handler.config, handler.hf_row, 2.0e21)
+    uninterrupted = _zalmoxis_target(handler.config, handler.hf_row)
+
+    resumed = _restore_handler(1.0, dict(handler.hf_row))
+    restore_accretion_state(resumed)
+    assert resumed.config.planet.mass_tot == pytest.approx(
+        handler.config.planet.mass_tot, rel=1e-14
+    )
+    assert _zalmoxis_target(resumed.config, handler.hf_row) == pytest.approx(
+        uninterrupted, rel=1e-14
+    )
+    rock_only = (1.0 * M_earth) + handler.hf_row['M_accreted_rock']
+    assert abs(rock_only - uninterrupted) > 1.0e-6 * uninterrupted
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_resume_with_accretion_turned_off_keeps_the_volatile_change():
+    """Turning accretion off on resume keeps the Zalmoxis target of the
+    uninterrupted run: mass_tot from the rock, V from the ledger."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import M_earth
+
+    row = {
+        'M_accreted_rock': 0.1 * M_earth,
+        'M_volatile_change': -0.02 * M_earth,
+        'n_impacts_applied': 1,
+    }
+    handler = _restore_handler(1.0, row)
+    handler.config.accretion.module = None
+    restore_accretion_state(handler)
+    assert handler.config.planet.mass_tot == pytest.approx(1.1, rel=1e-12)
+    assert _zalmoxis_target(handler.config, row) == pytest.approx(1.08 * M_earth, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_resume_with_escape_before_any_impact_restores_the_lowered_mass():
+    """Escape alone moves only the ledger: the resume keeps mass_tot at the
+    configured value and the Zalmoxis target lower by the escaped mass."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import M_earth
+
+    row = {'M_accreted_rock': 0.0, 'M_volatile_change': -1.0e21, 'n_impacts_applied': 0}
+    handler = _restore_handler(1.0, row)
+    restore_accretion_state(handler)
+    assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+    assert _zalmoxis_target(handler.config, row) == pytest.approx(M_earth - 1.0e21, rel=1e-15)
+    # No impact yet: the orbit stays at its configured value.
+    assert handler.config.orbit.semimajoraxis == pytest.approx(1.0, rel=1e-15)
+
+
+def _zalmoxis_target(config, row):
+    """Whole-planet mass the Zalmoxis structure solves for [kg]: mass_tot + V."""
+    from proteus.interior_struct.common import volatile_mass_change
+    from proteus.utils.constants import M_earth
+
+    return config.planet.mass_tot * M_earth + volatile_mass_change(row)
+
+
+@pytest.mark.unit
+def test_resume_rebuilds_the_rock_anchor_and_reads_the_volatiles_from_the_row():
+    """mass_tot is rebuilt from the rock; the volatile change stays in the row,
+    and a helpfile without the column adds no volatile change."""
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.utils.constants import M_earth
+
+    row = {
+        'M_accreted_rock': 0.5 * M_earth,
+        'M_volatile_change': -0.1 * M_earth,
+        'n_impacts_applied': 1,
+    }
+    handler = _restore_handler(1.0, row)
+    restore_accretion_state(handler)
+    assert handler.config.planet.mass_tot == pytest.approx(1.5, rel=1e-12)
+    assert _zalmoxis_target(handler.config, row) == pytest.approx(1.4 * M_earth, rel=1e-12)
+
+    row = {'M_accreted_rock': 0.5 * M_earth, 'n_impacts_applied': 1}
+    handler = _restore_handler(1.0, row)
+    restore_accretion_state(handler)
+    assert _zalmoxis_target(handler.config, row) == pytest.approx(1.5 * M_earth, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_dummy_structure_anchor_takes_the_rock_only(monkeypatch):
+    """With the dummy structure mass_tot is the dry mass, so a wet, stripping
+    impact grows it by the rock alone and the volatiles stay in the budgets."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0),
+        structure='dummy',
+    )
+    _atm_state(handler.hf_row, H=(4.0e21, 5.0e21))
+    event = _impact_event()
+    apply_impact(handler, event)
+
+    content = event.M_impactor * 1000.0 / 1.0e6
+    rock = event.mass_delta - content
+    assert handler.config.planet.mass_tot == pytest.approx(1.0 + rock / M_earth, rel=1e-12)
+    assert handler.hf_row.get('M_volatile_change', 0.0) == pytest.approx(0.0, abs=0.0)
+    # The volatiles moved in the budgets: half the atmosphere stripped, and the
+    # content delivered less the exposed (mirrored f_atm) part the loss takes.
+    f_atm = 4.0e21 / 5.0e21
+    delivered = content * (1.0 - f_atm * 0.5)
+    assert handler.hf_row['H_kg_total'] == pytest.approx(5.0e21 - 2.0e21 + delivered, rel=1e-9)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_an_init_stage_impact_keeps_the_dry_target_at_the_rock(monkeypatch):
+    """The init stage rebuilds the budgets from config after the impact, so the
+    delivered and stripped volatiles must not enter the anchor there; the next
+    structure solve then still finds the old dry mass plus the rock."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    solve = _converging_solve_structure()
+    monkeypatch.setattr('proteus.interior_energetics.wrapper.solve_structure', solve)
+    handler = _impact_handler(
+        accretion=_impact_accretion(atmloss_module='constant', atmloss_frac=0.5, H=1000.0)
+    )
+    handler.init_stage = True
+    _atm_state(handler.hf_row, H=(4.0e21, 5.0e21))
+    event = _impact_event()
+    apply_impact(handler, event)
+    dry_at_impact = handler.hf_row['M_int']
+
+    # The init recompute restores the configured budget, then the structure re-solves.
+    _atm_state(handler.hf_row, H=(4.0e21, 5.0e21))
+    solve(None, handler.config, None, handler.hf_row, None)
+    assert handler.hf_row['M_int'] == pytest.approx(dry_at_impact, rel=1e-12)
+    rock = event.mass_delta - event.M_impactor * 1000.0 / 1.0e6
+    assert handler.hf_row.get('M_volatile_change', 0.0) == pytest.approx(0.0, abs=0.0)
+    assert handler.config.planet.mass_tot == pytest.approx(1.0 + rock / M_earth, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('where', ['impact', 'escape'])
+def test_a_non_finite_ledger_stops_the_anchor_update(where, monkeypatch):
+    """A NaN M_volatile_change raises at the next write instead of letting
+    mass_tot move while the ledger a resume reads is lost."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.interior_struct.common import debit_escaped_mass
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(accretion=_impact_accretion())
+    handler.config.accretion.module = 'dummy'
+    handler.hf_row['M_volatile_change'] = float('nan')
+    with pytest.raises(RuntimeError, match='M_volatile_change is not finite'):
+        if where == 'impact':
+            apply_impact(handler, _impact_event())
+        else:
+            debit_escaped_mass(handler.config, handler.hf_row, 1.0e20)
+    # Both paths refuse before they touch the anchor or the impact records.
+    assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+    assert 'M_accreted_rock' not in handler.hf_row
+    assert 'n_impacts_applied' not in handler.hf_row
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'content, outgas, frac, row',
+    [
+        ({'H': 1.0e20, 'O': float('nan')}, 'dummy', 0.5, {}),
+        ({'H': 1.0e20, 'O': float('nan')}, 'calliope', 0.0, {}),
+        ({'H': float('inf')}, 'dummy', 0.0, {}),
+        ({'H': 1.0e20}, 'dummy', 0.5, {'H_kg_atm': float('nan')}),
+        ({'H': 1.0e20}, 'dummy', 0.0, {'H_kg_total': float('nan')}),
+        ({'H': 1.0e20}, 'dummy', 0.5, {'H_kg_atm': -5.0e19}),
+        ({'H': 1.0e20}, 'dummy', 0.0, {'H_kg_total': -1.0e20}),
+        ({'H': -1.0e20}, 'dummy', 0.0, {}),
+        ({'H': 1.0e20}, 'dummy', 0.0, {'n_impacts_applied': float('nan')}),
+        ({'H': 1.0e20}, 'dummy', 0.0, {'M_accreted_rock': float('nan')}),
+    ],
+)
+def test_a_negative_or_non_finite_impact_mass_stops_the_impact(
+    monkeypatch, content, outgas, frac, row
+):
+    """A non-finite impactor content, or a negative or non-finite element budget
+    or impact record, stops the impact before anything moves: the anchor and
+    the whole helpfile row stay as they were."""
+    from proteus.accretion import wrapper
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    monkeypatch.setattr(wrapper, '_impactor_volatile_content', lambda *a, **k: dict(content))
+    acc = _impact_accretion(atmloss_module='constant', atmloss_frac=frac, H=1000.0)
+    handler = _impact_handler(accretion=acc)
+    handler.config.outgas.module = outgas
+    handler.hf_row.update(
+        {
+            'M_volatile_change': -1.0e21,
+            'H_kg_total': 1.0e20,
+            'H_kg_atm': 5.0e19,
+            'O_kg_total': 1.0e21,
+            **row,
+        }
+    )
+    before = dict(handler.hf_row)
+    with pytest.raises(RuntimeError, match='impact masses are negative or not finite'):
+        apply_impact(handler, _impact_event())
+    assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+    assert handler.hf_row == before
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('escaped', [None, 1.0e20, 0.0])
+def test_a_non_finite_ledger_is_refused_with_the_dummy_structure_too(monkeypatch, escaped):
+    """A NaN M_volatile_change is corruption whatever the structure: the impact
+    and the escape debit refuse it with the dummy structure as well, also on an
+    escape step that removed nothing."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.interior_struct.common import debit_escaped_mass
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(structure='dummy')
+    handler.hf_row['M_volatile_change'] = float('nan')
+    with pytest.raises(RuntimeError, match='M_volatile_change is not finite'):
+        if escaped is None:
+            apply_impact(handler, _impact_event())
+        else:
+            debit_escaped_mass(handler.config, handler.hf_row, escaped)
+    assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+    assert 'n_impacts_applied' not in handler.hf_row
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('bad', [float('nan'), float('inf'), float('-inf')])
+def test_a_non_finite_volatile_change_never_reaches_the_structure_target(bad):
+    """The column is checked before it enters the Zalmoxis target: a non-finite
+    value raises, a finite one is returned as stored."""
+    from proteus.interior_struct.common import volatile_mass_change
+
+    with pytest.raises(RuntimeError, match='M_volatile_change is not finite'):
+        volatile_mass_change({'M_volatile_change': bad})
+    assert volatile_mass_change({'M_volatile_change': -3.0e21}) == pytest.approx(
+        -3.0e21, rel=1e-15
+    )
+    assert volatile_mass_change({}) == pytest.approx(0.0, abs=0.0)
 
 
 @pytest.mark.unit
@@ -2419,8 +2975,8 @@ def test_the_row_an_impact_leaves_satisfies_the_runtime_mass_invariants(monkeypa
     hf_row['P_vap'] = 0.0
     hf_row['outgas_mass_thresh'] = 0.0
 
-    config = SimpleNamespace(outgas=SimpleNamespace(mass_thresh=1.0e10, vapourise=False))
-    handler.config.outgas = config.outgas
+    handler.config.outgas.vapourise = False
+    config = SimpleNamespace(outgas=handler.config.outgas)
 
     # The starting row already satisfies both checks, so anything raised after
     # the impact is the impact's doing.
@@ -2669,6 +3225,7 @@ def test_apply_impact_rock_remainder_value_error_and_tolerance_clamp(tmp_path):
     mass_tot_before = handler.config.planet.mass_tot
     apply_impact(handler, event_rounding)
     assert handler.hf_row['M_accreted_rock'] == pytest.approx(0.0, abs=1e-12)
+    # No rock is added, and the dummy structure's dry anchor takes no volatiles.
     assert handler.config.planet.mass_tot == pytest.approx(mass_tot_before, rel=1e-12)
 
 

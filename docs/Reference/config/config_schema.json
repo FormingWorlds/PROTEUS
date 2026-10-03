@@ -10974,7 +10974,7 @@
           "value": 0
         }
       ],
-      "description": "Oxygen carried by each impactor [ppmw of impactor mass].",
+      "description": "Oxygen carried by each impactor [ppmw of impactor mass]. With CALLIOPE or atmodeller at a fixed fO2 (``planet.fO2_source = 'user_constant'``) the outgassing derives the O budget, so the delivered part counts as rock; otherwise it joins the O budget.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
