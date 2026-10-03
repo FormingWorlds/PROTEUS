@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import glob
+import io
 import json
 import logging
 import math
@@ -1335,7 +1336,9 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
     tmp_path = fpath + '.tmp'
     try:
-        current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.10e')
+        # pandas writes each float as its shortest repr, which read_helpfile_table reads
+        # back exactly; NaN is a token, as an empty field would vanish in the split.
+        current_hf.to_csv(tmp_path, index=False, sep='\t', na_rep='nan')
         os.replace(tmp_path, fpath)
     except BaseException:
         # Best-effort temp cleanup; never let it mask the original error.
@@ -1355,6 +1358,100 @@ class HelpfileSchemaDriftError(Exception):
 def helpfile_path(output_dir: str) -> str:
     """Path to the helpfile of a run directory."""
     return os.path.join(output_dir, 'runtime_helpfile.csv')
+
+
+class HelpfileFormatError(ValueError):
+    """A helpfile that cannot be read as a table of one row per step."""
+
+
+def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.DataFrame:
+    """Read a helpfile table with every float exactly as it was written.
+
+    A file whose header holds a tab, as the writer makes it, is split on tabs, so
+    an empty field reads as NaN in its own column; a file without tabs is split on
+    runs of whitespace. ``float_precision='round_trip'`` returns each float bit for
+    bit. The writer ends every line with a newline, so a file without one may have a
+    cut last row and is refused. A NUL byte or a lone carriage return anywhere in the
+    file is reported first; otherwise the error names the first defect by line.
+
+    Parameters
+    ----------
+    path : str or os.PathLike
+        Path to a ``runtime_helpfile.csv``.
+    min_rows : int
+        Fewest data rows the caller needs.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per written step.
+
+    Raises
+    ------
+    HelpfileFormatError
+        For a file with no header, a last line without its newline, a NUL byte or a
+        lone carriage return, fewer rows than ``min_rows``, a row whose field
+        count differs from the header, bytes that are not UTF-8, text pandas cannot
+        tokenise, a table pandas reads with other row or column counts than the
+        lines hold, or a column of text. In a space-separated file an empty field,
+        as some files hold for a NaN, would vanish and move the later values left,
+        so its row is refused. The underlying error is chained.
+    """
+    with open(path, 'rb') as f:
+        data = f.read()
+    sep, n_columns, n_rows = None, 0, 0
+    n_lines = data.count(b'\n') + (not data.endswith(b'\n'))
+    unix = data.replace(b'\r\n', b'\n')
+    bad = min((i for i in (unix.find(b'\x00'), unix.find(b'\r')) if i >= 0), default=-1)
+    if bad >= 0:
+        bad_line = unix.count(b'\n', 0, bad) + 1
+        raise HelpfileFormatError(
+            f'{path}, line {bad_line}: a NUL byte or a lone carriage return'
+        )
+    for line_number, raw in enumerate(data.split(b'\n'), start=1):
+        try:
+            line = raw.decode('utf-8')
+        except UnicodeDecodeError as err:
+            raise HelpfileFormatError(f'{path}, line {line_number}: not UTF-8 text') from err
+        # In a tab file a tab-only line is a row of empty fields, not a blank line.
+        if not (line.strip(' \r') if sep else line.strip()):
+            continue
+        if not n_columns:
+            sep = '\t' if '\t' in line else None
+            n_columns = len(line.split(sep))
+            continue
+        n_fields = len(line.split(sep))
+        if n_fields != n_columns:
+            raise HelpfileFormatError(
+                f'{path}, line {line_number}: {n_fields} fields against '
+                f'{n_columns} columns, so the values cannot be placed'
+            )
+        n_rows += 1
+    if not n_columns:
+        raise HelpfileFormatError(f'{path}, line {n_lines}: no header line')
+    if not data.endswith(b'\n'):
+        raise HelpfileFormatError(
+            f'{path}, line {n_lines}: the file does not end with a newline, so its last '
+            'line may be cut; remove an incomplete last line, and add a newline only to a '
+            'line you have checked is complete'
+        )
+    if n_rows < min_rows:
+        raise HelpfileFormatError(
+            f'{path}, line {n_lines}: {n_rows} data rows, {min_rows} needed'
+        )
+    try:
+        table = pd.read_csv(io.BytesIO(data), sep=sep or r'\s+', float_precision='round_trip')
+    except pd.errors.EmptyDataError as err:
+        raise HelpfileFormatError(f'{path}, line 1: no columns to parse') from err
+    except pd.errors.ParserError as err:
+        raise HelpfileFormatError(f'{path}: {err}') from err
+    text_columns = list(table.select_dtypes(exclude='number').columns) if n_rows else []
+    if table.shape != (n_rows, n_columns) or text_columns:
+        raise HelpfileFormatError(
+            f'{path}, lines 1 to {n_lines}: pandas read {table.shape[0]} rows of '
+            f'{table.shape[1]} columns against {n_rows} of {n_columns}, text in {text_columns[:3]}'
+        )
+    return table
 
 
 class HelpfileRow(dict):
@@ -1486,9 +1583,9 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     row from the last line of this table, and ``ExtendHelpfile`` rejects a row
     missing any schema key, so the shortfall is handled here rather than in each
     caller. How much of the schema a caller needs differs, which is what
-    ``required_columns`` sets. Readers that pull named columns straight out of
-    the file, such as the plotting and inference code, do not come through this
-    function and are not covered.
+    ``required_columns`` sets. The inference readers and the scripts in ``tools/``
+    read the file through ``read_helpfile_table`` as well; the plot readers under
+    ``proteus.plot`` and three plotting tools read it with pandas directly.
 
     A shortfall in the core columns is reported rather than filled. The
     diagnostic columns of `GetHelpfileDiagnosticKeys()` are the exception:
@@ -1522,6 +1619,8 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     ------
     HelpfileSchemaDriftError
         A required column that carries physical state is absent from the file.
+    HelpfileFormatError
+        From ``read_helpfile_table``, for a file that cannot be read as a table.
     """
     if required_columns is None:
         required_columns = GetHelpfileCoreKeys()
@@ -1530,7 +1629,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
 
-    hf_all = pd.read_csv(fpath, sep=r'\s+')
+    hf_all = read_helpfile_table(fpath)
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
     fillable = [key for key in missing if key in RESUMABLE_ZERO_FILL_KEYS]
@@ -1678,9 +1777,11 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
     True when the file records that time, and also when it records none: a
     file without the field cannot be told apart from its neighbours, so it is
     accepted on its name, which is the behaviour every directory written
-    before the field existed relies on. True as well once the simulation time
-    is large enough that the helpfile's own precision cannot separate two rows
-    inside one filename, which is a few Gyr in.
+    before the field existed relies on. The margin is four times the 5e-11
+    relative shift an 11-digit helpfile (one from a run that wrote fewer digits)
+    puts on a time, so such a file still resumes. Above about 2.5 Gyr it exceeds
+    the one-year name bucket, so the check accepts on the file name alone for every
+    file: the code cannot tell an 11-digit helpfile from an exact one.
 
     Parameters
     ----------
@@ -1700,15 +1801,8 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
     if not math.isfinite(recorded):
         return False
 
-    # The row's time has been through the helpfile, which serialises at
-    # '%.10e' and so holds eleven significant digits: a round trip moves it by
-    # up to 4.94e-11 of its own magnitude. The margin has to clear that, and a
-    # factor of four does, while staying as tight as the stored data allows.
-    resolution = 5.0e-11 * max(1.0, abs(time))
-    tolerance = 4.0 * resolution
-
-    # Past a few Gyr the helpfile precision itself exceeds the one-year name
-    # bucket, so no margin separates two rows in it: accept on name instead.
+    tolerance = 4.0 * 5.0e-11 * max(1.0, abs(time))
+    # Past this the margin exceeds the one-year name bucket and separates no two rows.
     if tolerance >= 0.5:
         return True
 

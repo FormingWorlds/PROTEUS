@@ -2988,8 +2988,9 @@ def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | N
     P_surface follows from its pressure, its radius and the mesh parameters.
     It is taken from the top cell and accepted only if every cell gives the
     same value within 1e-9 of the largest pressure plus 1 Pa, which covers the
-    float round trip of the stored profile and the helpfile rounding of g and
-    R. A value within that tolerance of 0 is returned as exactly 0.
+    float round trip of the stored profile and the rounding of g and R in an
+    11-digit helpfile. A value within that tolerance of 0 is returned as
+    exactly 0.
 
     Parameters
     ----------
