@@ -612,9 +612,10 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
 def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     """
     Handle desiccation of the planet. This substitutes for run_outgassing when the planet
-    has lost its entire volatile inventory. Every element total is emptied with its
-    columns, noble gases included, and the mass removed is booked in ``M_desiccated``
-    and the Zalmoxis target.
+    has lost its entire volatile inventory. The atmosphere and the melt are emptied,
+    noble gases included; the solid mantle keeps its share, which becomes each
+    species and element total. The mass removed is booked in ``M_desiccated`` and
+    the Zalmoxis target.
 
     Parameters
     ----------
@@ -636,7 +637,8 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     for g in gas_list:
         excepted_keys.append(f'{g}_vmr')
 
-    # Zero the columns and the finite element totals; a non-finite total stays visible.
+    # Keep the solid columns and set each finite total to its solid share; a
+    # non-finite total stays visible.
     unreadable = {
         f'{e}_kg_total'
         for e in element_list
@@ -644,11 +646,17 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     }
     removed = readable_total(hf_row)
     for k in expected_keys():
-        if k not in excepted_keys and k not in unreadable:
-            hf_row[k] = 0.0
+        if k in excepted_keys or k in unreadable or k.endswith(('_kg_solid', '_mol_solid')):
+            continue
+        hf_row[k] = (
+            float(hf_row.get(k.replace('_total', '_solid'), 0.0))
+            if k.endswith(('_kg_total', '_mol_total'))
+            else 0.0
+        )
     for e in element_list:
         if f'{e}_kg_total' not in unreadable:
-            hf_row[f'{e}_kg_total'] = 0.0
+            hf_row[f'{e}_kg_total'] = float(hf_row.get(f'{e}_kg_solid', 0.0))
+    removed -= readable_total(hf_row)
     hf_row['M_desiccated'] = float(hf_row.get('M_desiccated', 0.0)) + removed
     record_volatile_change(config, hf_row, -removed)
 
