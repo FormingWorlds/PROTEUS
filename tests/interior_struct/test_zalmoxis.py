@@ -4014,8 +4014,8 @@ def test_resume_without_table_files_warns_although_a_marker_exists(
 def test_resume_keeps_run_tables_across_the_helpfile_round_trip_of_the_mass(
     tmp_path, monkeypatch, caplog
 ):
-    """Masses that differ by a helpfile round trip (4.3e-12) give P_max keys that differ
-    in the 7th digit; the run still keeps its tables."""
+    """Masses that differ by an 11-digit helpfile round trip (4.3e-12) give P_max
+    keys that differ in the 7th digit; the run still keeps its tables."""
     monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
     run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
     _, _, _, stored = _generate_tables_stubbed(

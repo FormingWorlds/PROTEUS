@@ -165,6 +165,99 @@ def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
+def test_sample_from_grid_skips_a_case_whose_helpfile_row_is_ragged(
+    monkeypatch, tmp_path, caplog
+):
+    """A case whose helpfile row has more fields than its header is skipped with a
+    warning, so one unreadable case does not stop the dataset from the others."""
+    grid_dir = tmp_path / 'grid'
+    output_dir = tmp_path / 'output'
+    output_dir.mkdir(parents=True)
+    rows = ['R_obs\n1.5\n4.5 9.0\n', 'R_obs\n2.5\n', 'R_obs\n3.5\n']
+    for i, (mass, text) in enumerate(zip([1.0, 2.0, 3.0], rows)):
+        case = grid_dir / f'case_{i}'
+        case.mkdir(parents=True)
+        (case / 'runtime_helpfile.csv').write_text(text, encoding='utf-8')
+        (case / 'init_coupler.toml').write_text(
+            toml.dumps({'planet': {'mass_tot': mass}}), encoding='utf-8'
+        )
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(output_dir)}
+    )
+
+    with caplog.at_level('WARNING'):
+        n = init_mod.sample_from_grid(
+            output='ignored',
+            params={'planet.mass_tot': [0.0, 10.0]},
+            observables={'R_obs': 1.0},
+            grid_dir=str(grid_dir),
+        )
+
+    assert n == 2
+    assert 'Skipping case_0' in caplog.text
+    # The surviving cases keep their own configs: masses 2 and 3, not 1 and 2.
+    assert pd.read_csv(output_dir / 'init.csv')['x_0'].tolist() == pytest.approx([0.2, 0.3])
+
+
+@pytest.mark.unit
+def test_sample_from_grid_skips_a_case_without_a_helpfile(monkeypatch, tmp_path, caplog):
+    """A case with no helpfile, or with a directory in its place, is skipped like an
+    unreadable one. The directory case pins the OSError half of the except clause."""
+    grid_dir = tmp_path / 'grid'
+    for i, text in enumerate([None, 'dir', 'R_obs\n2.5\n']):
+        case = grid_dir / f'case_{i}'
+        case.mkdir(parents=True)
+        if text == 'dir':
+            (case / 'runtime_helpfile.csv').mkdir()
+        elif text is not None:
+            (case / 'runtime_helpfile.csv').write_text(text, encoding='utf-8')
+        (case / 'init_coupler.toml').write_text(f'[planet]\nmass_tot = {i + 2.0}\n')
+    output_dir = tmp_path / 'out'
+    output_dir.mkdir()
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(output_dir)}
+    )
+
+    with caplog.at_level('WARNING'):
+        n = init_mod.sample_from_grid(
+            output='ignored',
+            params={'planet.mass_tot': [0.0, 10.0]},
+            observables={'R_obs': 1.0},
+            grid_dir=str(grid_dir),
+        )
+
+    assert n == 1
+    assert 'Skipping case_0' in caplog.text and 'Skipping case_1' in caplog.text
+    assert pd.read_csv(output_dir / 'init.csv')['x_0'].tolist() == pytest.approx([0.4])
+
+
+@pytest.mark.unit
+def test_sample_from_grid_refuses_a_grid_with_no_readable_case(monkeypatch, tmp_path, caplog):
+    """A grid whose cases are all empty or header-only raises instead of writing an
+    empty dataset, and the warning for each case names it."""
+    grid_dir = tmp_path / 'grid'
+    for i, text in enumerate(['', 'R_obs\n']):
+        case = grid_dir / f'case_{i}'
+        case.mkdir(parents=True)
+        (case / 'runtime_helpfile.csv').write_text(text, encoding='utf-8')
+        (case / 'init_coupler.toml').write_text('[planet]\nmass_tot = 1.0\n')
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(tmp_path / 'out')}
+    )
+
+    with caplog.at_level('WARNING'), pytest.raises(ValueError, match='No readable helpfile'):
+        init_mod.sample_from_grid(
+            output='ignored',
+            params={'planet.mass_tot': [0.0, 10.0]},
+            observables={'R_obs': 1.0},
+            grid_dir=str(grid_dir),
+        )
+
+    assert 'Skipping case_0' in caplog.text and 'Skipping case_1' in caplog.text
+    assert not (tmp_path / 'out' / 'init.csv').exists()
+
+
+@pytest.mark.unit
 def test_sample_from_bounds_rejects_invalid_worker_count():
     """``sample_from_bounds`` rejects ``n_workers < 1`` with an
     'at least 1' message, so a misconfigured worker pool fails loudly

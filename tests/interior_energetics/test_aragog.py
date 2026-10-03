@@ -3360,7 +3360,7 @@ def test_snapshot_round_trips_the_mesh_surface_pressure(tmp_path, value, expecte
 def test_update_solver_infers_the_mesh_pressure_of_an_older_snapshot(tmp_path, caplog, case):
     """A snapshot without a finite ``mesh_surface_pressure`` (older runs) gets
     the surface pressure its Adams-Williamson profile implies on Aragog's
-    mesh, not the restored row's P_surf, also when the helpfile rounds R and g
+    mesh, not the restored row's P_surf, also when an 11-digit helpfile rounds R and g
     (a fresh run's 0 Pa comes back as exactly 0). A mesh-file run keeps its
     setup value, and so does a snapshot without the profile or one not written
     on this mesh, even at a relative difference of 1e-6; the log says at
@@ -3405,8 +3405,7 @@ def test_update_solver_infers_the_mesh_pressure_of_an_older_snapshot(tmp_path, c
             ds.createVariable('mesh_surface_pressure', np.float64)
             ds['mesh_surface_pressure'][0] = np.nan
     elif case == 'fresh-run-rounded-helpfile':
-        # A resumed run rebuilds R and g from the helpfile, written with %.10e;
-        # R rounds down here, which leaves a positive residue of about 2 Pa.
+        # An 11-digit helpfile rounds R down here, leaving a positive residue of about 2 Pa.
         mesh.outer_radius = float('%.10e' % mesh.outer_radius)
         mesh.gravitational_acceleration = float('%.10e' % mesh.gravitational_acceleration)
     interior_o = MagicMock()
