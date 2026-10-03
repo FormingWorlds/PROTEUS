@@ -34,6 +34,7 @@ from proteus.accretion.common import (
     write_timeline,
 )
 from proteus.utils.constants import const_G
+from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION, format_subyear_time
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -552,7 +553,8 @@ def test_scheduling_helpers_apply_each_impact_exactly_once():
 @pytest.mark.unit
 def test_impacts_closer_than_the_name_resolution_share_one_landing_time():
     """An impact 1e-4 yr after the next one moves the landing to its time; one 2e-3 yr
-    later lands on its own step; none left gives an infinite landing time."""
+    or exactly 1e-3 yr later lands on its own step; none left gives an infinite
+    landing time."""
     times = (1.0e5, 1.0e5 + 1.0e-4, 1.0e5 + 2.1e-3)
     events = [
         _event(time=t, M_target_before=m, M_impactor=1.0e22, M_merged_after=m + 1.0e22)
@@ -560,6 +562,34 @@ def test_impacts_closer_than_the_name_resolution_share_one_landing_time():
     ]
     assert [landing_time(events, t) for t in (0.0, times[1])] == [times[1], times[2]]
     assert landing_time(events, times[2]) == float('inf')
+    pair = [_event(time=t) for t in (times[0], times[0] + SUBYEAR_TIME_RESOLUTION)]
+    assert landing_time(pair, 0.0) == times[0]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'gaps, landings',
+    [((6.0e-4, 6.0e-4), (1.2e-3,)), ((9.0e-4,) * 3, (2.7e-3,)), ((9.0e-4, 1.1e-4), (1.01e-3,))],
+    ids=['chain-of-three', 'chain-of-four', 'chain-ending-close'],
+)
+def test_a_chain_of_close_impacts_lands_in_one_step(gaps, landings):
+    """Impacts each less than 1e-3 yr after the one before land together at the last,
+    so walking the timeline as the main loop does gives landing rows at least 1e-3 yr
+    apart with distinct snapshot names and applies every impact once."""
+    times = np.cumsum((1.0e5, *gaps, 5.0e-3))
+    events = [
+        _event(time=t, M_target_before=6.0e24, M_impactor=1.0e22, M_merged_after=6.01e24)
+        for t in times
+    ]
+    rows, t = [], 0.0
+    while (land := landing_time(events, t)) < float('inf'):
+        rows.append((land, len(due_events(events, t, land))))
+        t = land
+    expected = [1.0e5 + d for d in landings] + [times[-1]]
+    np.testing.assert_allclose([r[0] for r in rows], expected, rtol=0.0, atol=1e-9)
+    assert [r[1] for r in rows] == [len(gaps) + 1, 1]
+    names = [format_subyear_time(r[0]) for r in rows]
+    assert len(set(names)) == len(names)
 
 
 @pytest.mark.unit

@@ -1246,6 +1246,11 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
     # the delivered volatiles reach the planet through the budgets instead.
     expected_mass = 1.0 + 2 * (event.mass_delta - delivered) / M_earth
     assert handler.config.planet.mass_tot == pytest.approx(expected_mass, rel=1e-12)
+    # Both impacts are counted, as when two close impacts land on one row.
+    assert handler.hf_row['n_impacts_applied'] == 2
+    assert handler.hf_row['M_accreted_rock'] == pytest.approx(
+        2 * (event.mass_delta - delivered), rel=1e-12
+    )
     assert float(handler.hf_row.get('esc_kg_cumulative', 0.0)) == pytest.approx(0.0, abs=1.0)
 
 

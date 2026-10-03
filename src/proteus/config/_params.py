@@ -200,7 +200,8 @@ class TimeStepParams:
         that lands on an impact can be shorter than dtfloor, a step
         ending at most 1e-3 yr short of an impact is extended onto it
         (unless the step already reaches stop.time.maximum), and impacts
-        less than 1e-3 yr apart land in one step at the later time.
+        each less than 1e-3 yr apart land in one step at the last of
+        their times.
     """
 
     starspec: float = field(default=1e8, validator=ge(0))
