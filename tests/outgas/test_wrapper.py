@@ -620,6 +620,32 @@ def test_run_desiccated_zeros_outgassing_keys():
 
 
 @pytest.mark.physics_invariant
+def test_run_desiccated_empties_the_volatile_element_totals():
+    """A desiccated planet holds no volatile element, so the escape-owned totals
+    are emptied with the columns; noble-gas totals keep their value.
+
+    Physical scenario: a frozen mantle whose atmosphere escaped until every
+    element total fell below the outgassing threshold, with no floor on that
+    path. Edge case: totals above zero while every column is about to be zeroed.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    hf_row = {
+        f'{e}_kg_{r}': 2.0e15 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
+    }
+    hf_row.update(atm_kg_per_mol=0.01, Phi_global=0.5)
+
+    run_desiccated({}, config, hf_row, False)
+
+    for e in element_list:
+        cols = hf_row[f'{e}_kg_atm'] + hf_row[f'{e}_kg_liquid'] + hf_row[f'{e}_kg_solid']
+        if e in noble_gases:
+            assert hf_row[f'{e}_kg_total'] == 2.0e15
+        else:
+            assert hf_row[f'{e}_kg_total'] == 0.0 == cols
+
+
+@pytest.mark.physics_invariant
 def test_desiccation_leaves_the_mass_bookkeeping_self_consistent():
     """A desiccated iteration empties the atmosphere without leaving any mass
     aggregate stale, so the runtime mass check still passes afterwards.
