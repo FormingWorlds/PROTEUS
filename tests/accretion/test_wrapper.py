@@ -1849,14 +1849,11 @@ def test_restore_accretion_state_drops_already_applied_events_on_resume(tmp_path
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    't, rounds_down', [(1.0e8 / 3.0, True), (2.0e8 / 3.0, False), (1.00000000004999e7, True)]
-)
-def test_a_run_resumes_from_the_row_that_landed_an_impact(tmp_path, t, rounds_down):
+@pytest.mark.parametrize('t', [1.0e8 / 3.0, 2.0e8 / 3.0, 1.00000000004999e7])
+def test_a_run_resumes_from_the_row_that_landed_an_impact(tmp_path, t):
     """The step that landed an impact a few ulp short ends on the impact time;
-    the row then goes through the helpfile at '%.10e', which rounds 1e8/3 and
-    1.00000000004999e7 (the worst case, -5e-11) down and 2e8/3 up. A resume from
-    that row restores the impact as applied and does not schedule it again."""
+    the helpfile reads that row time back exactly, so a resume from the row
+    restores the impact as applied and does not schedule it again."""
     import math
 
     from proteus.accretion.common import snap_to_impact, write_timeline
@@ -1892,16 +1889,16 @@ def test_a_run_resumes_from_the_row_that_landed_an_impact(tmp_path, t, rounds_do
         directories={'output': str(tmp_path)},
         impact_events=[event],
     )
-    assert (handler.hf_row['Time'] < t) is rounds_down
+    assert handler.hf_row['Time'] == t
     restore_accretion_state(handler)
     assert handler.impact_events == []
 
 
 @pytest.mark.unit
-def test_a_counted_impact_beyond_the_helpfile_margin_refuses_the_resume(tmp_path):
+def test_a_counted_impact_after_the_resume_row_refuses_the_resume(tmp_path):
     """A row 5e-10 (relative) before an impact that its counter records as applied
-    is neither the landing row (beyond the 2e-10 helpfile margin) nor in the init
-    stage, so the resume is refused."""
+    did not land it, and the impact lies far outside the init stage, so the resume
+    is refused."""
     from proteus.accretion.common import write_timeline
     from proteus.accretion.wrapper import _RESOLVED_TIMELINE_FILE, restore_accretion_state
     from proteus.utils.constants import AU
@@ -1928,7 +1925,7 @@ def test_a_counted_impact_beyond_the_helpfile_margin_refuses_the_resume(tmp_path
         directories={'output': str(tmp_path)},
         impact_events=[event],
     )
-    with pytest.raises(RuntimeError, match='landed neither on the resume row'):
+    with pytest.raises(RuntimeError, match='cannot have landed during the init stage'):
         restore_accretion_state(handler)
     assert handler.impact_events == [event]
 
@@ -3950,7 +3947,7 @@ def test_dropped_init_impacts_are_logged_and_an_oversized_counter_names_the_time
         restore_accretion_state(handler)
     dropped = [r.message for r in caplog.records if 'not applied again' in r.message]
     assert dropped == [
-        'Resume: 1 impact(s) after the resume time landed on the resume row or during the init stage and are not applied again: 0.8 yr'
+        'Resume: 1 impact(s) after the resume time landed during the init stage and are not applied again: 0.8 yr'
     ]
     assert [ev.time for ev in handler.impact_events] == pytest.approx([15.0])
 
