@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION, UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -463,6 +463,11 @@ def next_step(
     max_growth = float(config.params.dt.max_growth_factor)
     if max_growth > 0.0 and hf_all is not None and len(hf_all['Time']) >= 2:
         dt_prev_actual = float(hf_all['Time'].iloc[-1] - hf_all['Time'].iloc[-2])
+        # A step that landed on an impact can be far below dtfloor; grow from dtfloor.
+        n_impacts = hf_all.get('n_impacts_applied')
+        if n_impacts is not None and n_impacts.iloc[-1] > n_impacts.iloc[-2]:
+            dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
+            dt_prev_actual = max(dt_prev_actual, dtfloor)
         if dt_prev_actual > 0.0:
             dt_capped = dt_prev_actual * max_growth
             if dtswitch > dt_capped:
@@ -477,10 +482,13 @@ def next_step(
                 )
                 dtswitch = dt_capped
 
-    # A step reaching the next impact lands on it, cut to dt/ceil(dt/ceiling); the
-    # landing step can be shorter than dtfloor.
+    # A step reaching the next impact lands on it, cut to dt/ceil(dt/ceiling) with
+    # impact_maximum set; one ending within the snapshot-name resolution short of it
+    # is extended onto it. The landing step can be shorter than dtfloor.
     if interior_o is not None and np.isfinite(interior_o.t_next_impact):
         dt_to_impact = interior_o.t_next_impact - hf_row['Time']
+        if 0.0 < dt_to_impact - dtswitch <= SUBYEAR_TIME_RESOLUTION:
+            dtswitch = dt_to_impact
         impact_ceiling = float(config.params.dt.impact_maximum)
         if impact_ceiling > 0.0:
             dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']

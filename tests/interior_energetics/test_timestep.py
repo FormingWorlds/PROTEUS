@@ -955,23 +955,26 @@ class TestImpactClamp:
         assert hf_row['Time'] + dt < 1.0e5 + 8.0e3
 
     @staticmethod
-    def _steps_to(t_impact, cap, growth=0.0):
+    def _steps_to(t_impact, cap, growth=0.0, after=0):
         """Iterate next_step from T0 = 1e5 yr (history of 5e3 yr steps) with the
-        main loop's snap until the run reaches t_impact; return the step ends."""
+        main loop's snap until the run reaches t_impact, then ``after`` more steps
+        with the impact counted on the landing row; return the step ends."""
         from proteus.accretion.common import snap_to_impact
         from proteus.interior_energetics.timestep import next_step
 
         config = _make_config(impact_maximum=cap, max_growth_factor=growth)
         times = list(1.0e5 + 5.0e3 * np.arange(-11, 1, dtype=float))
         ends = []
-        while times[-1] < t_impact:
+        while times[-1] < t_impact or len(ends) < ends.index(t_impact) + 1 + after:
+            pending = t_impact if times[-1] < t_impact else np.inf
             hf_all = _make_hf_all(n_rows=len(times))
             hf_all['Time'] = times
+            hf_all['n_impacts_applied'] = [float(t >= t_impact) for t in times]
             hf_row = {'Time': times[-1], 'F_atm': 1.0e4, 'Phi_global': 1.0}
             dt = next_step(
-                config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o(t_impact)
+                config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o(pending)
             )
-            times.append(snap_to_impact(times[-1] + dt, t_impact))
+            times.append(snap_to_impact(times[-1] + dt, pending))
             ends.append(times[-1])
         return ends
 
@@ -998,6 +1001,44 @@ class TestImpactClamp:
         got = self._steps_to(1.0e5 + offset, cap=0.0, growth=growth)
         assert got == pytest.approx(ends, rel=1e-15, abs=0.0)
         assert got[-1] - got[-2] < 600.0
+
+    @pytest.mark.physics_invariant
+    @pytest.mark.parametrize(
+        'rem, ends', [(5.0e-4, [108000.0005]), (2.0e-3, [108000.0, 108000.002])]
+    )
+    def test_a_remainder_below_the_snapshot_resolution_is_absorbed(self, rem, ends):
+        """An 8000 yr step stopping 5e-4 yr short of an impact is extended onto it; a
+        2e-3 yr remainder gets its own step. Every row keeps its own snapshot name."""
+        from proteus.utils.helper import format_subyear_time
+
+        got = self._steps_to(1.08e5 + rem, cap=0.0)
+        assert got == pytest.approx(ends, rel=1e-15, abs=0.0)
+        names = [format_subyear_time(t) for t in [1.0e5, *got]]
+        assert len(set(names)) == len(names)
+
+    @pytest.mark.physics_invariant
+    def test_the_growth_cap_regrows_from_the_floor_after_a_short_landing(self):
+        """After a 2e-3 yr landing step under a 1.1 growth cap the next step is the
+        627.5 yr floor, and 22 steps of 1.1x growth reach 5000 yr again."""
+        ends = self._steps_to(1.055e5 + 2.0e-3, cap=0.0, growth=1.1, after=30)
+        steps = np.diff([1.0e5, *ends])
+        assert steps[1] == pytest.approx(2.0e-3, rel=1e-6)
+        assert steps[2] == pytest.approx(100.0 + 0.005 * 105500.002, rel=1e-9)
+        assert int(np.argmax(steps[2:] >= 5.0e3)) == 22
+
+    @pytest.mark.parametrize('n_impacts', [[0.0] * 12, [1.0] * 12])
+    def test_a_short_step_without_a_landing_keeps_its_growth_base(self, n_impacts):
+        """A 10 yr previous step that did not land on an impact caps the next step
+        at 11 yr under a 1.1 growth cap, as on main."""
+        from proteus.interior_energetics.timestep import next_step
+
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3)
+        hf_all['Time'] = [*(1.0e5 + 5.0e3 * np.arange(-10, 1)), 1.0e5 + 10.0]
+        hf_all['n_impacts_applied'] = n_impacts
+        hf_row = {'Time': 1.0e5 + 10.0, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        dt = next_step(_make_config(max_growth_factor=1.1), {}, hf_row, hf_all, 1.0)
+        assert dt == pytest.approx(11.0, rel=1e-9)
+        assert dt < 100.0 + 0.005 * hf_row['Time']
 
     @pytest.mark.physics_invariant
     @pytest.mark.parametrize(
