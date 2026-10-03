@@ -557,6 +557,7 @@ class Proteus:
 
         #   stellar spectrum and evolution
         from proteus.star.wrapper import (
+            flux_weighted_distance,
             get_new_spectrum,
             init_star,
             scale_spectrum_to_toa,
@@ -1251,8 +1252,12 @@ class Proteus:
                     modern_fl=self.star_modern_fl,
                 )
 
-                # Scale fluxes from 1 AU to TOA
-                self.star_fl = scale_spectrum_to_toa(self.star_fl, self.hf_row['separation'])
+                # Scale fluxes from 1 AU to TOA. This uses the same orbital
+                # average as F_ins and F_xuv, so the spectrum and the scalar
+                # fluxes derived from the same star agree on an eccentric orbit.
+                self.star_fl = scale_spectrum_to_toa(
+                    self.star_fl, flux_weighted_distance(self.hf_row)
+                )
 
                 # Save spectrum to file
                 write_spectrum(

@@ -44,6 +44,7 @@ from proteus.config._config import (
     check_module_dependencies,
     instmethod_evolve,
     orbit_requires_tides,
+    parameterized_excludes_tides,
     planet_fO2_source_compat,
     planet_mass_valid,
     planet_oxygen_mode_explicit,
@@ -895,6 +896,54 @@ def test_orbit_requires_tides_passes_for_0d_models_regardless_of_module(model, m
 
 
 # ---------------------------------------------------------------------------
+# parameterized_excludes_tides: a prescribed track computes no tides, so no
+# tides module may run alongside it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('module', ['dummy', 'lovepy', 'obliqua'])
+def test_parameterized_excludes_tides_rejects_every_tides_module(module):
+    """Pairing the prescribed track with any tides module must raise, since
+    the tidal dispatch in run_orbit would otherwise compute a tidal response
+    the model documents it never produces. The message names the offending
+    module and the required setting, so the user knows what to change."""
+    instance = _make_config_instance(
+        **{'orbit.module': module, 'orbit.star_planet_model': 'parameterized'}
+    )
+    with pytest.raises(ValueError, match='parameterized') as excinfo:
+        parameterized_excludes_tides(instance, None, None)
+    msg = str(excinfo.value)
+    assert repr(module) in msg
+    assert "orbit.module = 'none'" in msg
+
+
+@pytest.mark.unit
+def test_parameterized_excludes_tides_passes_without_a_tides_module():
+    """With tides disabled (``'none'`` converts to ``None`` on load) the
+    prescribed track is valid, and the validator leaves the config as is."""
+    instance = _make_config_instance(
+        **{'orbit.module': None, 'orbit.star_planet_model': 'parameterized'}
+    )
+    parameterized_excludes_tides(instance, None, None)
+    assert instance.orbit.module is None
+    assert instance.orbit.star_planet_model == 'parameterized'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('model', ['sp0d', 'sp1d'])
+def test_parameterized_excludes_tides_ignores_tidal_orbit_models(model):
+    """The restriction is specific to the prescribed track: the tidal orbit
+    models need a tides module, so the validator must not fire for them."""
+    instance = _make_config_instance(
+        **{'orbit.module': 'lovepy', 'orbit.star_planet_model': model}
+    )
+    parameterized_excludes_tides(instance, None, None)
+    assert instance.orbit.module == 'lovepy'
+    assert instance.orbit.star_planet_model == model
+
+
+# ---------------------------------------------------------------------------
 # sp0d_obliqua_degree_mismatch: sp0d's scalar Imk2 is only ever meaningful
 # for Obliqua's degree-2 output; run_orbit zeroes it for any other degree.
 # ---------------------------------------------------------------------------
@@ -1119,3 +1168,76 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
         f'validator is silent (dead-validator pattern) or the schema enums '
         f'in this test are too narrow.'
     )
+
+
+@pytest.mark.parametrize(
+    'migration',
+    ['instant', 'sigmoid', 'high_ecc'],
+    ids=['instant_step', 'sigmoid_ramp', 'high_eccentricity'],
+)
+@pytest.mark.parametrize(
+    'sma_init, sma_final',
+    [(None, 0.8), (2.0, None), (None, None)],
+    ids=['no_start', 'no_destination', 'neither'],
+)
+def test_parameterized_requires_both_endpoints_for_a_migrating_law(
+    migration, sma_init, sma_final
+):
+    """Negative: a law that moves the planet needs both endpoints, and the
+    schema says so at config time rather than at the first orbit step,
+    which is after the structure solve and the first interior step."""
+    from proteus.config._orbit import Parameterized
+
+    with pytest.raises(ValueError, match='requires both'):
+        Parameterized(migration=migration, sma_init=sma_init, sma_final=sma_final)
+
+
+@pytest.mark.parametrize(
+    'sma_init, sma_final',
+    [(None, None), (2.0, 0.8), (2.0, None)],
+    ids=['no_endpoints', 'both_endpoints', 'start_only'],
+)
+def test_parameterized_static_regime_needs_no_endpoints(sma_init, sma_final):
+    """Positive counterpart: the static regime never moves the planet, so
+    it accepts any combination of endpoints. Without this a blanket
+    requirement would break every non-migrating config."""
+    from proteus.config._orbit import Parameterized
+
+    params = Parameterized(migration='none', sma_init=sma_init, sma_final=sma_final)
+
+    assert params.migration == 'none'
+    assert params.sma_init == sma_init
+    assert params.sma_final == sma_final
+
+
+def test_parameterized_rejects_an_outward_high_eccentricity_track():
+    """Negative: high-eccentricity circularisation conserves orbital
+    angular momentum, so it can only shrink the orbit. Its inward
+    solution needs a non-negative 1 - sma_final / sma_init."""
+    from proteus.config._orbit import Parameterized
+
+    with pytest.raises(ValueError, match='inward only'):
+        Parameterized(migration='high_ecc', sma_init=0.8, sma_final=2.0)
+
+    # Positive: the mirrored inward track and the degenerate equal-endpoint
+    # case both validate, so the check is not rejecting every high_ecc config.
+    inward = Parameterized(migration='high_ecc', sma_init=2.0, sma_final=0.8)
+    assert inward.sma_final < inward.sma_init
+
+    equal = Parameterized(migration='high_ecc', sma_init=2.0, sma_final=2.0)
+    assert equal.sma_final == equal.sma_init
+
+
+@pytest.mark.parametrize(
+    'migration', ['instant', 'sigmoid'], ids=['instant_step', 'sigmoid_ramp']
+)
+def test_parameterized_allows_outward_migration_for_the_direction_free_laws(migration):
+    """The inward-only restriction belongs to high_ecc alone. Both the step
+    and the ramp are defined in either direction, so a config that migrates
+    a planet outward must validate rather than being caught by a rule
+    written for a different law."""
+    from proteus.config._orbit import Parameterized
+
+    params = Parameterized(migration=migration, sma_init=0.8, sma_final=2.0)
+
+    assert params.sma_final > params.sma_init

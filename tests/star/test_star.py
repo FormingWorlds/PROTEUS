@@ -281,16 +281,28 @@ def test_bol_scale_window_applies_across_dummy_run():
         bol_scale_vals = post_init['bol_scale'].values
         np.testing.assert_allclose(bol_scale_vals, 2.0, rtol=1e-12)
 
-        # Independent reference check: recompute the UNSCALED instellation
+        # Independent reference check: recompute the UNSCALED instellation.
+        # The instellation is an orbital average of 1/r^2, so the distance
+        # that carries it is a (1 - e^2)^(1/4), written out here rather than
+        # read back from the module. It is NOT hf_row['separation'], which is
+        # the time-averaged separation a (1 + e^2 / 2) and belongs to the
+        # Roche-limit and Hill-radius geometry instead.
+        def _flux_distance(row):
+            return row['semimajorax'] * (1.0 - row['eccentricity'] ** 2) ** 0.25
+
         for _, row in post_init.iterrows():
             s0_unscaled = star.calc_instellation(
-                runner.config.star.dummy.Teff, row['R_star'], row['separation']
+                runner.config.star.dummy.Teff, row['R_star'], _flux_distance(row)
             )
             assert row['F_ins'] == pytest.approx(row['bol_scale'] * s0_unscaled, rel=1e-9)
 
         # Discrimination: the scaled flux must actually differ from unscaled
         last_row = post_init.iloc[-1]
         s0_last_unscaled = star.calc_instellation(
-            runner.config.star.dummy.Teff, last_row['R_star'], last_row['separation']
+            runner.config.star.dummy.Teff, last_row['R_star'], _flux_distance(last_row)
         )
         assert last_row['F_ins'] > s0_last_unscaled
+        # The run is eccentric, so the two averages genuinely disagree and
+        # this check discriminates between them rather than coinciding.
+        assert last_row['eccentricity'] > 0.0
+        assert _flux_distance(last_row) < last_row['separation']

@@ -241,6 +241,14 @@ _REVIEWED_NEUTRAL = frozenset(
         'orbit.satellite.c_factor_sat',
         'orbit.satellite.axial_period_sat',
         'orbit.satellite.love_number_sat',
+        # The prescribed migration track (orbit.parameterized.*) is new in
+        # 3.0 and defaults to migration = "none" with no endpoints set, so a
+        # migrated config keeps a fixed orbit until the user opts in.
+        'orbit.parameterized.migration',
+        'orbit.parameterized.sma_init',
+        'orbit.parameterized.sma_final',
+        'orbit.parameterized.time_migration',
+        'orbit.parameterized.tau_migration',
         # Obliqua (orbit.obliqua.*) has no 2.0 analogue at all; every field
         # is new and stays at its 3.0 default for a migrated config.
         'orbit.obliqua.store_3D',

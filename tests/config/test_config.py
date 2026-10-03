@@ -2924,11 +2924,23 @@ def test_no_input_toml_uses_bare_interior_section():
     backend, with no warning.
     """
     import re
+    import subprocess
 
     repo_root = PROTEUS_ROOT
     pattern = re.compile(r'^\[interior\](?:\.|$)', re.MULTILINE)
+    # Only files the repository ships. A working tree may hold untracked
+    # scratch configs under input/, which are not what this guards.
+    tracked = subprocess.run(
+        ['git', 'ls-files', '-z', '--', 'input'],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split('\0')
+    toml_files = [repo_root / rel for rel in tracked if rel.endswith('.toml')]
+
     offenders = []
-    for toml_path in (repo_root / 'input').rglob('*.toml'):
+    for toml_path in toml_files:
         text = toml_path.read_text(encoding='utf-8')
         if pattern.search(text):
             offenders.append(str(toml_path.relative_to(repo_root)))
@@ -2940,8 +2952,207 @@ def test_no_input_toml_uses_bare_interior_section():
     # TOML file. A regression where the glob returned an empty list (wrong
     # path, missing directory) would produce ``offenders == []`` for the
     # wrong reason and silently pass the assertion above.
-    toml_files = list((repo_root / 'input').rglob('*.toml'))
     assert len(toml_files) > 0
+
+
+# ============================================================================
+# Parameterized orbital migration schema
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_orbit_parameterized_rejects_an_unknown_migration_regime():
+    """The migration field is an enum, so an unrecognised regime is
+    refused at config time rather than falling through the runtime
+    dispatch. All four recognised regimes are accepted alongside, so a
+    validator that rejected everything would also fail."""
+    from proteus.config._orbit import Parameterized
+
+    # Endpoints are supplied because a migrating law now requires both at
+    # config time. The enum is what this test is about.
+    for regime in ('none', 'instant', 'sigmoid', 'high_ecc'):
+        params = Parameterized(migration=regime, sma_init=2.0, sma_final=0.8)
+        assert params.migration == regime
+
+    with pytest.raises(ValueError, match='migration'):
+        Parameterized(migration='inward')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('bad_val', [0.0, -1.0e5], ids=['zero', 'negative'])
+def test_orbit_parameterized_rejects_non_positive_migration_times(bad_val):
+    """Both migration times are strictly positive: a zero or negative
+    epoch has no meaning, and a zero width would divide by zero inside
+    the sigmoid exponent. Valid values are accepted alongside."""
+    from proteus.config._orbit import Parameterized
+
+    with pytest.raises(ValueError, match='time_migration'):
+        Parameterized(time_migration=bad_val)
+    with pytest.raises(ValueError, match='tau_migration'):
+        Parameterized(tau_migration=bad_val)
+
+    accepted = Parameterized(time_migration=1.0e5, tau_migration=1.0e4)
+    assert accepted.time_migration == pytest.approx(1.0e5, rel=1e-12)
+    assert accepted.tau_migration == pytest.approx(1.0e4, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_orbit_parameterized_semimajor_axes_are_optional_but_positive():
+    """Both endpoints default to None so a config that never selects the
+    prescribed track needs no migration geometry, while a supplied value
+    must still be a real semi-major axis. A TOML file spells the absent
+    value "none", so the converter has to map that string to None before
+    the positivity validator ever sees it."""
+    from proteus.config._orbit import Parameterized
+
+    assert Parameterized().sma_init is None
+    assert Parameterized().sma_final is None
+    assert Parameterized(sma_init='none', sma_final='none').sma_init is None
+
+    with pytest.raises(ValueError, match='sma_init'):
+        Parameterized(sma_init=0.0)
+    with pytest.raises(ValueError, match='sma_final'):
+        Parameterized(sma_final=-0.5)
+
+    accepted = Parameterized(sma_init=2.0, sma_final=0.8)
+    assert accepted.sma_init == pytest.approx(2.0, rel=1e-12)
+    assert accepted.sma_final == pytest.approx(0.8, rel=1e-12)
+
+
+# ============================================================================
+# Planet configs under input/planets/
+# ============================================================================
+
+PLANET_PATHS = sorted((PROTEUS_ROOT / 'input' / 'planets').glob('*.toml'))
+
+
+@pytest.mark.unit
+def test_planet_config_directory_is_populated():
+    """Guard for the parametrized check below: an empty glob would make
+    it pass without examining anything, the same failure mode the
+    input/ rglob scan already guards against. The TOI-561 b config is
+    named because it is the one the prescribed-migration tests read, so
+    a rename moves this test rather than leaving it vacuously true."""
+    assert len(PLANET_PATHS) > 0
+    assert 'toi561b' in {path.stem for path in PLANET_PATHS}
+
+
+def _planet_configs_with_a_migration_block():
+    """Paths under input/planets/ that declare [orbit.parameterized]."""
+    return [
+        path
+        for path in PLANET_PATHS
+        if read_config(path).get('orbit', {}).get('parameterized') is not None
+    ]
+
+
+@pytest.mark.unit
+def test_at_least_one_planet_config_prescribes_a_migration_track():
+    """Without this, a renamed [orbit.parameterized] section would leave
+    every case of the parametrized check below skipping its migration
+    assertions and degrading to a schema-version check, silently."""
+    with_block = _planet_configs_with_a_migration_block()
+
+    assert len(with_block) > 0
+    assert 'toi561b' in {path.stem for path in with_block}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('path', PLANET_PATHS, ids=lambda p: p.stem)
+def test_planet_config_parses_on_the_current_schema(path):
+    """Every shipped planet config must declare the current schema
+    version, avoid the retired bare [interior] section, and, where it
+    prescribes a migration track, satisfy the Parameterized validators.
+    Structuring the orbit block alone keeps this runnable without the
+    optional chemistry backends some planet configs select."""
+    from proteus.config._orbit import Parameterized
+
+    raw = read_config(path)
+
+    assert raw['config_version'] == '3.0'
+    assert 'interior' not in raw
+
+    block = raw.get('orbit', {}).get('parameterized')
+    if block is None:
+        return
+
+    parameterized = Parameterized(**block)
+    assert parameterized.migration in ('none', 'instant', 'sigmoid', 'high_ecc')
+    assert parameterized.time_migration > 0.0
+    assert parameterized.tau_migration > 0.0
+
+
+@pytest.mark.unit
+def test_toi561b_config_selects_an_inward_parameterized_track():
+    """The shipped TOI-561 b config drives the prescribed migration
+    model, and its endpoints must describe an inward track because that
+    is the only direction high-eccentricity migration admits.
+
+    Read through the raw TOML and the orbit block alone, so the check
+    still runs on an image built without VULCAN, which this config
+    selects for its chemistry."""
+    from proteus.config._orbit import Parameterized
+
+    raw = read_config(PROTEUS_ROOT / 'input' / 'planets' / 'toi561b.toml')
+
+    assert raw['orbit']['star_planet_model'] == 'parameterized'
+    block = Parameterized(**raw['orbit']['parameterized'])
+    assert block.sma_init == pytest.approx(0.029, rel=1e-12)
+    assert block.sma_final == pytest.approx(0.0106, rel=1e-12)
+    assert block.sma_final < block.sma_init
+
+
+@pytest.mark.unit
+def test_toi561b_config_structures_into_a_full_config_object():
+    """Round trip of the same file through the whole schema, which is
+    what a run actually loads. Gated on VULCAN because this config
+    selects it and the dependency check imports it; the endpoint
+    assertions above stay ungated so they run everywhere."""
+    pytest.importorskip('vulcan')
+
+    obj = read_config_object(PROTEUS_ROOT / 'input' / 'planets' / 'toi561b.toml')
+
+    assert obj.orbit.star_planet_model == 'parameterized'
+    assert obj.orbit.parameterized.sma_init == pytest.approx(0.029, rel=1e-12)
+    assert obj.orbit.parameterized.migration in ('none', 'instant', 'sigmoid', 'high_ecc')
+
+
+@pytest.mark.unit
+def test_toi561b_config_structures_without_the_vulcan_backend(tmp_path):
+    """The gated round trip above is skipped wherever VULCAN is absent,
+    which is the PR image, so the shipped config's remaining sections were
+    never structured in CI. This copy selects no chemistry backend and so
+    needs no optional dependency, leaving the other sections to be
+    validated by the same schema a run uses.
+
+    Discriminating: it asserts fields from four separate sections, so a
+    schema break anywhere in the file fails here rather than only in the
+    orbit block the ungated endpoint test already covers.
+    """
+    raw = (PROTEUS_ROOT / 'input' / 'planets' / 'toi561b.toml').read_text()
+    head, marker, rest = raw.partition('[atmos_chem]')
+    assert marker, 'the shipped config no longer has an [atmos_chem] section'
+    section, nxt, tail = rest.partition('\n[')
+    assert 'module = "vulcan"' in section
+    patched = (
+        head + marker + section.replace('module = "vulcan"', 'module = "none"') + nxt + tail
+    )
+
+    path = tmp_path / 'toi561b_no_vulcan.toml'
+    path.write_text(patched)
+
+    obj = read_config_object(path)
+
+    assert obj.atmos_chem.module is None
+    assert obj.orbit.star_planet_model == 'parameterized'
+    assert obj.orbit.parameterized.migration == 'high_ecc'
+    assert obj.atmos_clim.module == 'agni'
+    assert obj.escape.module == 'zephyrus'
+    assert obj.interior_struct.module == 'spider'
+    assert obj.planet.mass_tot == pytest.approx(2.24, rel=1e-12)
+    # The endpoints the orbit track runs between, and the inward ordering
+    # the high_ecc law requires.
+    assert obj.orbit.parameterized.sma_final < obj.orbit.parameterized.sma_init
 
 
 @pytest.mark.unit

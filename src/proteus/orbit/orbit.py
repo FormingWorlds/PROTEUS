@@ -10,6 +10,7 @@ from scipy.integrate import solve_ivp
 from proteus.interior_energetics.common import Interior_t
 from proteus.orbit.common import Tides_t, kmin_kmax_for_m0_mirror, run_adaptive_orbit_substeps
 from proteus.orbit.hansen import get_all_m_hansen
+from proteus.orbit.parameterized import run_parameterized_orbital_migration
 from proteus.utils.constants import const_G, secs_per_year
 from proteus.utils.helper import UpdateStatusfile
 
@@ -17,6 +18,57 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
+
+# Fewest timesteps that can carry a smooth migration window. Below this the
+# track is sampled at little more than its endpoints.
+MIN_MIGRATION_SAMPLES = 3.0
+
+
+def _warn_if_migration_window_unresolved(hf_row: dict, config: Config, dt: float):
+    """Warn when the timestep cannot resolve a smooth prescribed migration.
+
+    The sigmoid and high-eccentricity laws carry the orbit over a window of
+    length ``tau_migration``. A timestep comparable to that window samples the
+    track at little more than its endpoints, so the run silently reduces to the
+    instant regime while still reporting the smooth one. Fires only for a step
+    that overlaps the window, ``[Time - dt, Time]`` against
+    ``[time_migration, time_migration + tau_migration]``, so it cannot spam a
+    whole run. That includes the step that carries the run past the end of the
+    window, since it jumps over the last part of the track.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        config : Config
+            Configuration options
+        dt : float
+            Length of the step that ended at ``hf_row['Time']`` [yr]
+    """
+    params = config.orbit.parameterized
+    if params.migration not in ('sigmoid', 'high_ecc'):
+        return
+
+    tau = float(params.tau_migration)
+    t_mig = float(params.time_migration)
+    time = float(hf_row['Time'])
+    dt = float(dt)
+
+    if dt <= 0.0 or tau <= 0.0 or not (time >= t_mig and time - dt <= t_mig + tau):
+        return
+
+    samples = tau / dt
+    if samples < MIN_MIGRATION_SAMPLES:
+        log.warning(
+            'Migration window is undersampled at Time = %.6e yr: tau_migration = %.3e yr '
+            'spans only %.1f timesteps of %.3e yr, so the %r track is degenerating '
+            'towards an instant step. Increase tau_migration or reduce the timestep.',
+            time,
+            tau,
+            samples,
+            dt,
+            params.migration,
+        )
 
 
 def _state_is_valid_star(hf_row):
@@ -35,6 +87,20 @@ def _state_is_valid_star(hf_row):
     if axp is not None and not np.isfinite(axp):
         return False
     return True
+
+
+def _prescribed_state_is_valid_star(hf_row):
+    """Reject an unphysical prescribed orbit. Extends the substep guard with
+    a periapsis test, since an eccentric orbit approaches its star at
+    ``a (1 - e)`` rather than at ``a``: a track can hold a comfortable
+    semi-major axis while grazing the star once per orbit.
+    """
+    if not _state_is_valid_star(hf_row):
+        return False
+
+    a = hf_row.get('semimajorax', np.nan)
+    e = hf_row.get('eccentricity', 0.0)
+    return a * (1.0 - e) > 1.05 * hf_row.get('R_star', 0.0)
 
 
 def evolve_orbit_star(
@@ -71,6 +137,22 @@ def evolve_orbit_star(
             return None
 
         needs_c_planet = True
+
+    elif model == 'parameterized':
+        _warn_if_migration_window_unresolved(hf_row, config, interior_o.dt)
+        run_parameterized_orbital_migration(hf_row, config)
+        # A prescribed track bypasses the substep controller, so there is no
+        # step to reject and shrink. An unphysical orbit stops the run instead,
+        # rather than being carried into the flux and escape modules.
+        if not _prescribed_state_is_valid_star(hf_row):
+            UpdateStatusfile(dirs, 26)
+            periapsis = hf_row['semimajorax'] * (1.0 - hf_row['eccentricity'])
+            raise ValueError(
+                f'Prescribed orbit is unphysical at Time = {float(hf_row["Time"]):.6e} yr: '
+                f'a = {hf_row["semimajorax"]:.6e} m, e = {hf_row["eccentricity"]:.6f}, '
+                f'periapsis = {periapsis:.6e} m, R_star = {hf_row.get("R_star", 0.0):.6e} m'
+            )
+        return
 
     else:
         UpdateStatusfile(dirs, 26)

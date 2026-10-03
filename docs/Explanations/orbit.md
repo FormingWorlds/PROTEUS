@@ -111,6 +111,7 @@ spectrum in `tides_o`).
 |---|---|---|---|
 | `sp0d` | `semimajorax`, `eccentricity` | Driscoll & Barnes (2015)[^cite-driscoll2015], Eq. 15-16 | Closed-form two-ODE system in `(a, e)` only; no spin dynamics, so it is **not** angular-momentum-conserving by construction. |
 | `sp1d` | `axial_period`, `semimajorax`, `eccentricity`, `plan_star_am` | Correia & Valente (2022)[^cite-correia2022] | Vectorial, Hansen-coefficient formulation restricted to planetary tides (star assumed non-dissipative). Genuinely angular-momentum-conserving; verified by dedicated tests. |
+| `parameterized` | `semimajorax`, `eccentricity` | `high_ecc`: Postolec et al. (2026)[^cite-postolec2026], Eq. 1-4 | Prescribed migration track, not a tidal model: the orbit is a closed-form function of time, no tidal force is computed, and no angular momentum is exchanged with the interior (no tidal heating). Use it to impose a migration history, not to derive one. |
 
 ??? note "sp0d in a nutshell - Driscoll & Barnes (2015)"
     Written for rocky planets around M dwarfs, where the habitable zone
@@ -129,8 +130,65 @@ spectrum in `tides_o`).
     into classical tidal theory, and it means spin and orbit are evolved
     together as one system, exchanging angular momentum internally.
 
-Both integrate with `scipy.solve_ivp` (`orbit.solver.*` controls method 
-and tolerances). 
+`sp0d` and `sp1d` integrate with `scipy.solve_ivp` (`orbit.solver.*` controls
+method and tolerances). `parameterized` solves nothing: it updates the semi-major 
+axis and eccentricity throughout the simulation based on input parameters chosen
+by the user.
+
+??? note "parameterized in a nutshell"
+    The other two star-planet models derive the orbit from a tidal
+    torque. This parameterized one imposes one instead, and does not compute 
+    any physics. The user chooses where the planet starts, where it ends up, 
+    when the migration happens and how long it takes. The orbit is evaluated 
+    at each time step from that closed form. It is the right tool to use when 
+    testing the influence of a migration history in a simulation without 
+    computing any tidal forces, for instance when asking how an atmosphere 
+    responds to a prescribed change in instellation.
+
+Configured under `[orbit.parameterized]`:
+
+| Key | Meaning | Unit |
+|---|---|---|
+| `migration` | `none`, `instant`, `sigmoid` or `high_ecc` | -- |
+| `sma_init` | semi-major axis held before the migration epoch | au |
+| `sma_final` | semi-major axis approached after it | au |
+| `time_migration` | epoch at which migration begins | yr |
+| `tau_migration` | length of the migration window for `sigmoid`, decay constant for `high_ecc` | yr |
+
+Only `high_ecc` evolves the eccentricity. `none`, `instant` and `sigmoid`
+hold it at `orbit.eccentricity` throughout.
+
+`sigmoid` holds the orbit until `time_migration`, carries it to `sma_final`
+over the following `tau_migration` along the cubic `3u^2 - 2u^3`, and holds
+it there afterwards.
+
+`high_ecc` circularises at constant orbital angular momentum (Postolec et al. 2026)[^cite-postolec2026]: it excites the
+eccentricity to `sqrt(1 - sma_final / sma_init)` at the migration epoch and
+then decays it, until the orbit reaches `sma_final`. The eccentricity jumps discontinuously at
+`time_migration` from `orbit.eccentricity` to its excited value. That step is
+physical, since a scattering or Kozai event is fast compared with the orbital
+evolution that follows.
+
+The migration window must also be resolved by the timestep. `sigmoid` and
+`high_ecc` are sampled wherever the coupled loop happens to step, and nothing
+aligns a step to `time_migration`. If `tau_migration` spans fewer than three
+timesteps the track is sampled at little more than its endpoints and silently
+degenerates to `instant`; the orbit module logs a warning when that happens.
+
+### Visualizing the four parameterized regimes
+
+Each regime was run as a dummy PROTEUS simulation and compared against the
+closed form in `src/proteus/orbit/parameterized.py`:
+
+![Parameterized orbital migration regimes](../assets/orbit/orbit_parameterized_migration.avif#only-light){ width="100%" }
+![Parameterized orbital migration regimes](../assets/orbit/orbit_parameterized_migration_dark.avif#only-dark){ width="100%" }
+
+Semi-major axis (top) and eccentricity (bottom) for the four regimes, with
+`sma_init = 2.0` au, `sma_final = 0.8` au, `time_migration = 1e3` yr and
+`tau_migration = 1e4` yr. The dashed vertical line marks the migration epoch
+and the shaded band spans one `tau_migration` after it. The dotted horizontal
+lines in the top panel mark the starting and final orbits, `a_0 = sma_init` and
+`a_f = sma_final`.
 
 ## Planet-satellite models (`orbit.planet_satellite_model`)
 
@@ -195,6 +253,7 @@ model reads the scalar path, a `1d` model reads `tides_o` directly.
 |---|---|---|
 | `sp0d` | `hf_row['Imk2']` | `dummy`, `lovepy`, `obliqua` (requires `orbit.obliqua.n == [2]`) |
 | `sp1d` | `tides_o`, (`primary='planet', perturber='star'`) | `lovepy`, `obliqua` |
+| `parameterized` | -- | none (`orbit.module = 'none'` is required) |
 | `ps0d` | `hf_row['F_tidal']` | `dummy`, `lovepy`, `obliqua` |
 | `ps1d` | `tides_o`, (both `primary='planet', perturber='satellite'` and `primary='satellite', perturber='planet'`) | `lovepy`, `obliqua` |
 | `ps1d_evec` | Same as `ps1d`, plus `evection_angle` | `lovepy`, `obliqua` (Note that `lovepy` breaks down at high eccentricities, so it is not recommended for this case) |
@@ -401,3 +460,5 @@ Orbital and rotational state feed three physical stopping conditions
  [^cite-korenaga2023]: Korenaga, J., *[Rapid tidal dissipation explains the extended lunar magma ocean](https://doi.org/10.1016/j.icarus.2023.115564)*, Icarus, 400, 115564, 2023.
 
  [^cite-rufu2020]: Rufu, R. & Canup, R.M., *[Evection resonance as a possible cause for lunar inclination](https://doi.org/10.1029/2019JE006312)*, Journal of Geophysical Research: Planets, 125, e2019JE006312, 2020.
+
+[^cite-postolec2026]: Postolec, E., Lichtenberg, T., Teske, J.K., Nicholls, H., Attia, M., Piette, A., Dang, L., Wallack, N.L., Plotnykov, M., McGinty, A., Boucher, S., Peng, B. & Valencia, D., *[Evolutionary pathways toward survival of a thick CO2- or SO2-rich atmosphere on the lava world TOI-561 b](https://doi.org/10.48550/arXiv.2609.03144)*, submitted to The Astrophysical Journal, arXiv:2609.03144, 2026.
