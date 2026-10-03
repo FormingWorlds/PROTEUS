@@ -2203,22 +2203,30 @@ def test_an_element_escaping_below_the_threshold_on_a_frozen_mantle_keeps_its_co
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_a_frozen_mantle_escapes_to_desiccation_with_closed_columns():
+@pytest.mark.parametrize(
+    'H_kg,N_kg', [(4.0e17, 3.0e16), (1.5e16, 1.0e16)], ids=['large', 'small']
+)
+def test_a_frozen_mantle_escapes_to_desiccation_with_closed_books(H_kg, N_kg):
     """Over every frozen step until desiccation each element total equals its
-    columns and escape books the whole loss; desiccation then leaves all zero.
+    columns and the books close: initial = totals + escaped + removed at
+    desiccation, the Zalmoxis target follows the totals, and the row is still
+    desiccated when checked again, as on resume.
 
     Physical scenario: an insoluble H2 and N2 atmosphere over a crystallized mantle
-    at the default outgassing threshold of 1e16 kg. Edge case: N falls below the
-    threshold many steps before the atmosphere does.
+    at the default outgassing threshold of 1e16 kg. Edge case: the small inventory,
+    where the mass left below the threshold is comparable to the mass escaped.
     """
-    from proteus.escape.wrapper import run_escape
+    from proteus.escape.wrapper import readable_total, run_escape
+    from proteus.interior_struct.common import debit_escaped_mass
     from proteus.outgas.wrapper import check_desiccation, run_crystallized, run_desiccated
     from proteus.utils.constants import element_list
 
+    initial = H_kg + N_kg
     hf = {f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')}
-    hf.update(H_kg_atm=4.0e17, H_kg_total=4.0e17, N_kg_atm=3.0e16, N_kg_total=3.0e16)
-    hf.update(H2_kg_atm=4.0e17, N2_kg_atm=3.0e16, M_atm=4.3e17, P_surf=1.0)
-    hf.update(esc_kg_cumulative=0.0, M_vol_initial=4.3e17, atm_kg_per_mol=0.002, Phi_global=0.5)
+    hf.update(H_kg_atm=H_kg, H_kg_total=H_kg, N_kg_atm=N_kg, N_kg_total=N_kg)
+    hf.update(H2_kg_atm=H_kg, N2_kg_atm=N_kg, M_atm=initial, P_surf=1.0)
+    hf.update(esc_kg_cumulative=0.0, M_vol_initial=initial, M_desiccated=0.0)
+    hf.update(M_volatile_change=0.0, atm_kg_per_mol=0.002, Phi_global=0.5)
     config = MagicMock()
     config.escape.module = 'dummy'
     config.escape.reservoir = 'outgas'
@@ -2227,20 +2235,30 @@ def test_a_frozen_mantle_escapes_to_desiccation_with_closed_columns():
     config.escape.step_dt_floor_frac = 1.0e-3
     config.outgas.mass_thresh = 1.0e16
     config.outgas.vapourise = False
+    config.interior_struct.module = 'zalmoxis'
 
     for _ in range(100):
         if check_desiccation(config, hf):
             break
+        kg_before = readable_total(hf)
         run_escape(config, hf, dt=1.0e4, atmosphere_only=True)
+        debit_escaped_mass(config, hf, kg_before - readable_total(hf))
         run_crystallized(config, hf, dt=1.0e4)
         for e in ('H', 'N'):
             cols = hf[f'{e}_kg_atm'] + hf[f'{e}_kg_liquid'] + hf[f'{e}_kg_solid']
             assert cols == pytest.approx(hf[f'{e}_kg_total'], rel=1e-9)
-        lost = 4.3e17 - hf['H_kg_total'] - hf['N_kg_total']
-        assert hf['esc_kg_cumulative'] == pytest.approx(lost, rel=1e-9)
+        assert hf['esc_kg_cumulative'] == pytest.approx(initial - readable_total(hf), rel=1e-9)
     else:
         pytest.fail('no desiccation within 100 frozen steps')
-    # Discrimination: N was below the threshold for many steps without being zeroed.
-    assert 0.0 < hf['N_kg_total'] < 1.0e16
+    residual = readable_total(hf)
+    # Discrimination: N was left below the threshold, not zeroed.
+    assert 0.0 < hf['N_kg_total'] < 1.0e16 and residual > 0.0
+
     run_desiccated({}, config, hf, False)
+
     assert all(hf[f'{e}_kg_{r}'] == 0.0 for e in ('H', 'N') for r in ('atm', 'total'))
+    assert hf['M_desiccated'] == pytest.approx(residual, rel=1e-12)
+    booked = hf['esc_kg_cumulative'] + hf['M_desiccated']
+    assert booked == pytest.approx(initial, rel=1e-9)
+    assert hf['M_volatile_change'] == pytest.approx(-initial, rel=1e-9)
+    assert check_desiccation(config, hf)

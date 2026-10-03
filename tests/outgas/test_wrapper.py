@@ -620,26 +620,33 @@ def test_run_desiccated_zeros_outgassing_keys():
 
 
 @pytest.mark.physics_invariant
-def test_run_desiccated_empties_the_volatile_element_totals():
-    """A desiccated row holds no non-noble element: its totals are emptied with the
-    columns, whatever their size. Noble-gas totals keep their value.
+def test_run_desiccated_empties_every_element_and_books_the_mass():
+    """A desiccated row holds no element: every total is emptied with its columns,
+    and the mass removed is booked in M_desiccated and the Zalmoxis target.
 
-    Physical scenario: a frozen mantle whose element totals escaped below the
-    outgassing threshold without being floored. Edge case: every reservoir non-zero.
+    Physical scenario: a frozen mantle whose totals escaped below the outgassing
+    threshold without being floored, noble gases included. Edge case: every
+    reservoir non-zero and an earlier desiccation already booked.
     """
     config = MagicMock()
     config.outgas.vapourise = False
+    config.interior_struct.module = 'zalmoxis'
     seed = 2.0e15
     hf_row = {
         f'{e}_kg_{r}': seed for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
     }
-    hf_row.update(atm_kg_per_mol=0.01, Phi_global=0.5)
+    hf_row.update(
+        atm_kg_per_mol=0.01, Phi_global=0.5, M_desiccated=1.0e15, M_volatile_change=-3.0e15
+    )
 
     run_desiccated({}, config, hf_row, False)
 
     for e in element_list:
-        assert hf_row[f'{e}_kg_atm'] + hf_row[f'{e}_kg_liquid'] + hf_row[f'{e}_kg_solid'] == 0.0
-        assert hf_row[f'{e}_kg_total'] == (seed if e in noble_gases else 0.0)
+        cols = hf_row[f'{e}_kg_atm'] + hf_row[f'{e}_kg_liquid'] + hf_row[f'{e}_kg_solid']
+        assert hf_row[f'{e}_kg_total'] == 0.0 == cols
+    removed = seed * len(element_list)
+    assert hf_row['M_desiccated'] == pytest.approx(1.0e15 + removed, rel=1e-12)
+    assert hf_row['M_volatile_change'] == pytest.approx(-3.0e15 - removed, rel=1e-12)
 
 
 @pytest.mark.physics_invariant

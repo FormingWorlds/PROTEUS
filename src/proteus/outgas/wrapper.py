@@ -259,7 +259,8 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     from firing on pathologically tiny inventories. If the gate is
     inactive (no baseline tracked yet, e.g. resuming an old CSV without
     `M_vol_initial`), the function falls back to the old threshold-only
-    behaviour.
+    behaviour. Mass an earlier desiccation removed, ``M_desiccated``, is left out
+    of the loss the gate compares, so a desiccated row passes again on resume.
 
     Scope of "desiccated": the threshold loop below considers the volatile
     elements (`vol_element_list`: H, O, C, N, S) together with the noble gases,
@@ -298,7 +299,8 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # overstates "lost" mass by any noble-gas/rock-vapour inventory present
     # at baseline time.
     cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
-    lost = m_init - cur_m_ele
+    # Mass an earlier desiccation removed is not loss to explain by escape.
+    lost = m_init - cur_m_ele - float(hf_row.get('M_desiccated', 0.0))
     esc_cum = float(hf_row.get('esc_kg_cumulative', 0.0))
 
     # Allow 1.5x scaling slack plus a 1 t absolute floor for noise.
@@ -617,14 +619,21 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     for g in gas_list:
         excepted_keys.append(f'{g}_vmr')
 
-    # Set most values to zero
+    from proteus.escape.wrapper import readable_total
+    from proteus.interior_struct.common import record_volatile_change
+
+    # Set most values to zero, the element totals with their columns. The mass this
+    # removes left no other way, so it is booked for the escape-balance gate and the
+    # Zalmoxis target.
+    kg_before = readable_total(hf_row)
     for k in expected_keys():
         if k not in excepted_keys:
             hf_row[k] = 0.0
-    # Empty the non-noble element totals with their columns; noble totals keep their value.
     for e in element_list:
-        if e not in noble_gases:
-            hf_row[f'{e}_kg_total'] = 0.0
+        hf_row[f'{e}_kg_total'] = 0.0
+    removed = kg_before - readable_total(hf_row)
+    hf_row['M_desiccated'] = float(hf_row.get('M_desiccated', 0.0)) + removed
+    record_volatile_change(config, hf_row, -removed)
 
     # Vapourisation of refractories, under the same crystallised gate as
     # volatile outgassing path.

@@ -910,7 +910,7 @@ def _target_strip_amounts(config, hf_row: dict, f_loss: float) -> dict:
     dissolved interior inventory is left intact.
 
     The debit is deliberately NOT routed through the continuous-escape path.
-    That path, on a molten mantle, applies a desiccation floor which zeroes an element's
+    That path, except on a mantle frozen with freeze_volatiles, applies a desiccation floor which zeroes an element's
     whole-planet total once it falls below the outgassing mass threshold, a
     reasonable convention for an element being ground down over many steps but
     wrong for a single collision: it would delete dissolved mantle inventory
