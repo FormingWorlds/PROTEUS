@@ -2756,7 +2756,6 @@ def test_the_main_loop_applies_a_snapped_impact_in_the_same_iteration(tmp_path):
 def test_the_main_loop_lands_two_close_impacts_in_one_step(tmp_path, caplog):
     """Impacts at 299.9999 yr and 300 yr land in one step at 300 yr: the stepper is
     told 300 yr, both are applied on that row, and one log line names both."""
-    import logging
     from types import SimpleNamespace
 
     events = [SimpleNamespace(time=299.9999), SimpleNamespace(time=300.0)]
