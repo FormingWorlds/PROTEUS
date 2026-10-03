@@ -67,7 +67,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.heat_radiogenic = False
     config.interior_energetics.heat_tidal = False
     config.planet.tsurf_init = 4000.0
-    # Unified tolerance fields (rtol/atol at top level)
+    config.params.resume = False
     config.interior_energetics.rtol = 1e-4
     config.interior_energetics.atol = 1e-4
     config.interior_energetics.tmagma_atol = 100.0
@@ -3967,6 +3967,10 @@ def test_core_module_snapshot_and_resume_preserves_t_core_and_gradient(tmp_path)
     config.interior_energetics.aragog.core_bc = 'core_module'
     config.interior_energetics.write_flux_diagnostics = False
     interior_o = MagicMock()
+    interior_o._frozen_core_rho_cen = 13559.79
+    interior_o._frozen_core_length_scale = 6281400.0
+    interior_o._frozen_core_m_core = 1.8916e24
+    interior_o._frozen_core_p_cen = 3.4139e11
     interior_o.aragog_solver = solver
     t_snap = 150.0
     hf_row = {'Time': t_snap, 'T_surf': 3200.0}
@@ -3980,6 +3984,22 @@ def test_core_module_snapshot_and_resume_preserves_t_core_and_gradient(tmp_path)
     assert status_g == 'ok'
     assert g_val == pytest.approx(-4.567e-8, rel=1e-12)
 
+    rho_val, status_rho = _snapshot_scalar(str(tmp_path), t_snap, 'core_module_rho_cen')
+    assert status_rho == 'ok'
+    assert rho_val == pytest.approx(13559.79, rel=1e-12)
+
+    len_val, status_len = _snapshot_scalar(str(tmp_path), t_snap, 'core_module_length_scale')
+    assert status_len == 'ok'
+    assert len_val == pytest.approx(6281400.0, rel=1e-12)
+
+    m_val, status_m = _snapshot_scalar(str(tmp_path), t_snap, 'core_module_m_core')
+    assert status_m == 'ok'
+    assert m_val == pytest.approx(1.8916e24, rel=1e-12)
+
+    p_val, status_p = _snapshot_scalar(str(tmp_path), t_snap, 'core_module_p_cen')
+    assert status_p == 'ok'
+    assert p_val == pytest.approx(3.4139e11, rel=1e-12)
+
     new_interior = MagicMock()
     new_solver = _MockSolver(0.0, 4500.0)
     new_interior.aragog_solver = new_solver
@@ -3992,3 +4012,286 @@ def test_core_module_snapshot_and_resume_preserves_t_core_and_gradient(tmp_path)
 
     assert getattr(new_interior, '_last_T_core', None) == pytest.approx(5987.654321, rel=1e-12)
     assert getattr(new_interior, '_last_dSdr_cmb', None) == pytest.approx(-4.567e-8, rel=1e-12)
+    assert getattr(new_interior, '_frozen_core_rho_cen', None) == pytest.approx(
+        13559.79, rel=1e-12
+    )
+    assert getattr(new_interior, '_frozen_core_length_scale', None) == pytest.approx(
+        6281400.0, rel=1e-12
+    )
+    assert getattr(new_interior, '_frozen_core_m_core', None) == pytest.approx(
+        1.8916e24, rel=1e-12
+    )
+    assert getattr(new_interior, '_frozen_core_p_cen', None) == pytest.approx(
+        3.4139e11, rel=1e-12
+    )
+
+
+@pytest.mark.unit
+def test_setup_solver_restores_frozen_profile_on_resume(tmp_path):
+    """On resume, setup_solver restores frozen rho_cen and length_scale from snapshot
+    and sets fit_profile=False so that reset() does not refit the profile."""
+    from proteus.config._interior import AragogCoreModule
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    outdir = str(tmp_path)
+    (tmp_path / 'data').mkdir(parents=True)
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.params.resume = True
+    config.interior_energetics.aragog.core_bc = 'core_module'
+    config.interior_energetics.aragog.core_module = AragogCoreModule()
+
+    t_snap = 200.0
+    out = _snapshot_output()
+    AragogRunner._write_output_ncdf(
+        outdir,
+        t_snap,
+        out,
+        core_module_rho_cen=13559.79,
+        core_module_length_scale=6281400.0,
+        core_module_m_core=1.8916e24,
+        core_module_p_cen=3.4139e11,
+    )
+
+    hf_row = {
+        'Time': t_snap,
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+        'M_core': 1.8916e24,
+        'P_center': 3.4139e11,
+    }
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    spider_eos_dir = tmp_path / 'spider_eos'
+    spider_eos_dir.mkdir(parents=True)
+    interior_o._spider_eos_dir = str(spider_eos_dir)
+    eos_dir = (
+        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
+    )
+    eos_dir.mkdir(parents=True)
+    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    (tmp_path / 'interior_lookup_tables' / 'Melting_curves').mkdir(parents=True)
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters') as mock_params,
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+    bc = mock_params.call_args.kwargs.get('boundary_conditions')
+    params = bc.core_module_params
+    assert params['rho_cen'] == pytest.approx(13559.79)
+    assert params['length_scale'] == pytest.approx(6281400.0)
+    assert params['fit_profile'] is False
+    assert 'm_core' not in params
+    assert 'p_cen' not in params
+    assert interior_o._frozen_core_rho_cen == pytest.approx(13559.79)
+    assert interior_o._frozen_core_length_scale == pytest.approx(6281400.0)
+
+
+@pytest.mark.unit
+def test_update_structure_core_module_drift_logging_and_warning(caplog):
+    """update_structure computes M_core and P_center drift against frozen constraints,
+    logs diagnostic drift, and warns only when drift exceeds 1% threshold."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    runner = AragogRunner.__new__(AragogRunner)
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.interior_energetics.aragog.core_bc = 'core_module'
+
+    solver = MagicMock()
+    solver.parameters.mesh.outer_radius = 6.371e6
+    solver.parameters.mesh.inner_radius = 3.48e6
+    solver.parameters.mesh.gravitational_acceleration = 9.81
+    solver.parameters.mesh.core_density = 12500.0
+    solver.parameters.boundary_conditions.core_module_params = {
+        'alpha': 1.35e-5,
+        'c_p': 840.0,
+    }
+    solver._P_basic_flat = np.array([136e9, 100e9])
+
+    interior_o = MagicMock()
+    interior_o.aragog_solver = solver
+    interior_o._frozen_core_m_core = 1.8916e24
+    interior_o._frozen_core_p_cen = 3.4139e11
+
+    # Small drift: 0.2% change in M_core and P_center (below 1% threshold)
+    hf_small = {
+        'Time': 100.0,
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'M_core': 1.8916e24 * 1.002,
+        'P_center': 3.4139e11 * 1.002,
+    }
+    with caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.aragog'):
+        caplog.clear()
+        runner.update_structure(config, hf_small, interior_o)
+
+    records = caplog.records
+    assert any('Aragog core_module structure drift' in r.getMessage() for r in records)
+    assert not any('exceeds 1% threshold' in r.getMessage() for r in records)
+
+    # Large drift: 2% change in M_core (above 1% threshold)
+    hf_large = {
+        'Time': 200.0,
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'M_core': 1.8916e24 * 1.02,
+        'P_center': 3.4139e11,
+    }
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.aragog'):
+        caplog.clear()
+        runner.update_structure(config, hf_large, interior_o)
+
+    warn_records = [r for r in caplog.records if r.levelname == 'WARNING']
+    assert any(
+        'Aragog core_module structure drift exceeds 1% threshold' in r.getMessage()
+        for r in warn_records
+    )
+
+
+@pytest.mark.unit
+def test_core_module_resumed_solver_matches_continuous_frozen_profile(tmp_path):
+    """A resumed run restores the frozen rho_cen and length_scale from the snapshot,
+    matching the continuous run exactly, and subsequent solver.reset() calls do not refit."""
+    from proteus.config._interior import AragogCoreModule
+    from proteus.interior_energetics.aragog import AragogRunner, write_final_snapshot
+
+    outdir = str(tmp_path)
+    (tmp_path / 'data').mkdir(parents=True)
+    config_cont = _make_aragog_config(struct_module='zalmoxis')
+    config_cont.params.resume = False
+    config_cont.planet.temperature_mode = 'isentropic'
+    config_cont.planet.ini_entropy = 3000.0
+    config_cont.interior_energetics.write_flux_diagnostics = False
+    config_cont.interior_energetics.aragog.core_bc = 'core_module'
+    config_cont.interior_energetics.aragog.core_module = AragogCoreModule()
+
+    config_cont.planet.ini_dsdr = 0.0
+
+    # Step 1: Continuous run initializes and freezes profile
+    interior_cont = MagicMock()
+    interior_cont.aragog_solver = None
+    interior_cont._frozen_core_rho_cen = None
+    interior_cont._frozen_core_length_scale = None
+    interior_cont._frozen_core_m_core = None
+    interior_cont._frozen_core_p_cen = None
+    interior_cont.tides = np.zeros(20)
+    spider_eos_dir = tmp_path / 'spider_eos'
+    spider_eos_dir.mkdir(parents=True, exist_ok=True)
+    interior_cont._spider_eos_dir = str(spider_eos_dir)
+    eos_dir = (
+        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
+    )
+    eos_dir.mkdir(parents=True, exist_ok=True)
+    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
+    (tmp_path / 'interior_lookup_tables' / 'Melting_curves').mkdir(parents=True, exist_ok=True)
+
+    hf_row = {
+        'Time': 100.0,
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+        'M_core': 1.93e24,
+        'P_center': 3.6e11,
+    }
+
+    mock_solver = MagicMock()
+    mock_solver.get_state.return_value = _snapshot_output()
+    mock_solver.get_current_core_temperature.return_value = 5000.0
+    mock_solver.get_current_dSdr_cmb.return_value = -2e-11
+    mock_solver._r_basic_flat = np.linspace(3.48e6, 6.371e6, 21)
+    mock_solver._P_stag_flat = np.linspace(136e9, 1e5, 20)
+    mock_budget = MagicMock()
+    mock_budget.profiles.rho_cen = 13559.79
+    mock_budget.profiles.length_scale = 6281400.0
+    mock_solver._core_module_budget = mock_budget
+    mock_bc_params = {'m_core': 1.93e24, 'p_cen': 3.6e11}
+    mock_solver.parameters.boundary_conditions.core_module_params = mock_bc_params
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver', return_value=mock_solver),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_or_update_solver(
+            dt=50.0,
+            hf_row=hf_row,
+            interior_o=interior_cont,
+            config=config_cont,
+            dirs={'output': outdir},
+        )
+
+    # Assert profile was frozen on continuous run
+    assert interior_cont._frozen_core_rho_cen == pytest.approx(13559.79)
+    assert interior_cont._frozen_core_length_scale == pytest.approx(6281400.0)
+    assert mock_bc_params['fit_profile'] is False
+
+    # Save snapshot from continuous run at t=100
+    write_final_snapshot(config_cont, interior_cont, {'output': outdir}, hf_row)
+
+    # Step 2: Resumed run from t=100
+    config_resume = _make_aragog_config(struct_module='zalmoxis')
+    config_resume.params.resume = True
+    config_resume.planet.temperature_mode = 'isentropic'
+    config_resume.planet.ini_entropy = 3000.0
+    config_resume.planet.ini_dsdr = 0.0
+    config_resume.interior_energetics.write_flux_diagnostics = False
+    config_resume.interior_energetics.aragog.core_bc = 'core_module'
+    config_resume.interior_energetics.aragog.core_module = AragogCoreModule()
+
+    interior_resume = MagicMock()
+    interior_resume.aragog_solver = None
+    interior_resume._frozen_core_rho_cen = None
+    interior_resume._frozen_core_length_scale = None
+    interior_resume._frozen_core_m_core = None
+    interior_resume._frozen_core_p_cen = None
+    interior_resume.tides = np.zeros(20)
+    interior_resume._spider_eos_dir = str(spider_eos_dir)
+
+    mock_solver_res = MagicMock()
+    mock_solver_res.get_state.return_value = _snapshot_output()
+    mock_solver_res.get_current_core_temperature.return_value = 5000.0
+    mock_solver_res.get_current_dSdr_cmb.return_value = -2e-11
+    mock_solver_res._r_basic_flat = np.linspace(3.48e6, 6.371e6, 21)
+    mock_solver_res._P_stag_flat = np.linspace(136e9, 1e5, 20)
+    mock_bc_params_res = {}
+    mock_solver_res.parameters.boundary_conditions.core_module_params = mock_bc_params_res
+    mock_solver_res._core_module_budget = mock_budget
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters') as mock_params_res,
+        patch('proteus.interior_energetics.aragog.EntropySolver', return_value=mock_solver_res),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_or_update_solver(
+            dt=50.0,
+            hf_row=hf_row,
+            interior_o=interior_resume,
+            config=config_resume,
+            dirs={'output': outdir},
+        )
+
+    # Resumed solver matches continuous frozen state exactly
+    assert interior_resume._frozen_core_rho_cen == pytest.approx(
+        interior_cont._frozen_core_rho_cen
+    )
+    assert interior_resume._frozen_core_length_scale == pytest.approx(
+        interior_cont._frozen_core_length_scale
+    )
+    bc_res = mock_params_res.call_args.kwargs.get('boundary_conditions')
+    assert bc_res.core_module_params['fit_profile'] is False
+    assert bc_res.core_module_params['rho_cen'] == pytest.approx(13559.79)
+    assert bc_res.core_module_params['length_scale'] == pytest.approx(6281400.0)

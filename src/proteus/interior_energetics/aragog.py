@@ -601,6 +601,28 @@ class AragogRunner:
                 AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
             _t_init = time.perf_counter()
             interior_o.aragog_solver.initialize()
+            if (
+                config.interior_energetics.aragog.core_bc == 'core_module'
+                and getattr(interior_o, '_frozen_core_rho_cen', None) is None
+            ):
+                budget = getattr(interior_o.aragog_solver, '_core_module_budget', None)
+                if budget is not None:
+                    fitted_rho = float(budget.profiles.rho_cen)
+                    fitted_len = float(budget.profiles.length_scale)
+                    interior_o._frozen_core_rho_cen = fitted_rho
+                    interior_o._frozen_core_length_scale = fitted_len
+                    bc_params = interior_o.aragog_solver.parameters.boundary_conditions.core_module_params
+                    if bc_params is not None:
+                        bc_params['rho_cen'] = fitted_rho
+                        bc_params['length_scale'] = fitted_len
+                        bc_params['fit_profile'] = False
+                        bc_params.pop('m_core', None)
+                        bc_params.pop('p_cen', None)
+                    log.info(
+                        'Aragog core_module profile frozen: rho_cen=%.2f kg/m^3, length_scale=%.1f km',
+                        fitted_rho,
+                        fitted_len / 1e3,
+                    )
             _t_after_init = time.perf_counter()
             # Option Z: register the JAX CVODE callback factory when
             # the flag is on. No-op when the flag is off.
@@ -771,22 +793,53 @@ class AragogRunner:
             for _diag_key in ('f_ohm', 'flux_geometry'):
                 core_module_params.pop(_diag_key)
 
-            # Structure constraints from hf_row feed the Gaussian profile fit.
-            m_core_val = float(hf_row.get('M_core', 0.0) or 0.0)
-            p_cen_val = float(hf_row.get('P_center', 0.0) or 0.0)
-            if m_core_val <= 0.0 or p_cen_val <= 0.0:
-                struct_mod = config.interior_struct.module
-                raise ValueError(
-                    f"core_bc='core_module' requires positive M_core and P_center from interior structure, "
-                    f"but interior_struct.module='{struct_mod}' provided M_core={m_core_val:.4e}, P_center={p_cen_val:.4e}"
+            # Check if this is a resume with saved frozen profile parameters in snapshot
+            restored_frozen = False
+            if getattr(config.params, 'resume', False) is True and 'Time' in hf_row:
+                rho_cen_snap, _ = _snapshot_scalar(
+                    outdir, hf_row['Time'], 'core_module_rho_cen'
                 )
-            core_module_params['m_core'] = m_core_val
-            core_module_params['p_cen'] = p_cen_val
-            log.info(
-                'Aragog core_module structure constraints: M_core=%.4e kg, P_center=%.4e Pa',
-                m_core_val,
-                p_cen_val,
-            )
+                len_scale_snap, _ = _snapshot_scalar(
+                    outdir, hf_row['Time'], 'core_module_length_scale'
+                )
+                m_core_snap, _ = _snapshot_scalar(outdir, hf_row['Time'], 'core_module_m_core')
+                p_cen_snap, _ = _snapshot_scalar(outdir, hf_row['Time'], 'core_module_p_cen')
+                if rho_cen_snap is not None and len_scale_snap is not None:
+                    core_module_params['rho_cen'] = rho_cen_snap
+                    core_module_params['length_scale'] = len_scale_snap
+                    core_module_params['fit_profile'] = False
+                    core_module_params.pop('m_core', None)
+                    core_module_params.pop('p_cen', None)
+                    interior_o._frozen_core_rho_cen = rho_cen_snap
+                    interior_o._frozen_core_length_scale = len_scale_snap
+                    interior_o._frozen_core_m_core = m_core_snap
+                    interior_o._frozen_core_p_cen = p_cen_snap
+                    restored_frozen = True
+                    log.info(
+                        'Restored frozen core profile from snapshot: rho_cen=%.2f kg/m^3, length_scale=%.1f km',
+                        rho_cen_snap,
+                        len_scale_snap / 1e3,
+                    )
+
+            if not restored_frozen:
+                # Structure constraints from hf_row feed the Gaussian profile fit.
+                m_core_val = float(hf_row.get('M_core', 0.0) or 0.0)
+                p_cen_val = float(hf_row.get('P_center', 0.0) or 0.0)
+                if m_core_val <= 0.0 or p_cen_val <= 0.0:
+                    struct_mod = config.interior_struct.module
+                    raise ValueError(
+                        f"core_bc='core_module' requires positive M_core and P_center from interior structure, "
+                        f"but interior_struct.module='{struct_mod}' provided M_core={m_core_val:.4e}, P_center={p_cen_val:.4e}"
+                    )
+                core_module_params['m_core'] = m_core_val
+                core_module_params['p_cen'] = p_cen_val
+                interior_o._frozen_core_m_core = m_core_val
+                interior_o._frozen_core_p_cen = p_cen_val
+                log.info(
+                    'Aragog core_module structure constraints: M_core=%.4e kg, P_center=%.4e Pa',
+                    m_core_val,
+                    p_cen_val,
+                )
 
         bc_kwargs: dict[str, object] = {
             'outer_boundary_condition': _aragog_outer_bc,
@@ -1884,6 +1937,22 @@ class AragogRunner:
             T_core, status_t = _snapshot_scalar(output_dir, hf_row['Time'], 'T_core_state')
             interior_o._last_T_core = T_core
             interior_o._last_T_core_status = status_t
+            rho_cen_snap, _ = _snapshot_scalar(
+                output_dir, hf_row['Time'], 'core_module_rho_cen'
+            )
+            len_scale_snap, _ = _snapshot_scalar(
+                output_dir, hf_row['Time'], 'core_module_length_scale'
+            )
+            m_core_snap, _ = _snapshot_scalar(output_dir, hf_row['Time'], 'core_module_m_core')
+            p_cen_snap, _ = _snapshot_scalar(output_dir, hf_row['Time'], 'core_module_p_cen')
+            if rho_cen_snap is not None:
+                interior_o._frozen_core_rho_cen = rho_cen_snap
+            if len_scale_snap is not None:
+                interior_o._frozen_core_length_scale = len_scale_snap
+            if m_core_snap is not None:
+                interior_o._frozen_core_m_core = m_core_snap
+            if p_cen_snap is not None:
+                interior_o._frozen_core_p_cen = p_cen_snap
             # The run built its mesh with the surface pressure of its own setup.
             P_mesh, status = _snapshot_scalar(
                 output_dir, hf_row['Time'], 'mesh_surface_pressure'
@@ -2022,6 +2091,55 @@ class AragogRunner:
                             rho_core_mesh,
                             M_core,
                         )
+
+        if config.interior_energetics.aragog.core_bc == 'core_module':
+            m_core_live = float(hf_row.get('M_core', 0.0) or 0.0)
+            p_cen_live = float(hf_row.get('P_center', 0.0) or 0.0)
+            m_core_frozen = getattr(interior_o, '_frozen_core_m_core', None)
+            p_cen_frozen = getattr(interior_o, '_frozen_core_p_cen', None)
+            if m_core_frozen and p_cen_frozen and m_core_live > 0 and p_cen_live > 0:
+                drift_m = abs(m_core_live - m_core_frozen) / m_core_frozen
+                drift_p = abs(p_cen_live - p_cen_frozen) / p_cen_frozen
+                r_cmb_live = float(solver.parameters.mesh.inner_radius)
+                p_cmb_live = (
+                    float(solver._P_basic_flat[0])
+                    if hasattr(solver, '_P_basic_flat') and solver._P_basic_flat is not None
+                    else float(hf_row.get('P_cmb', 136e9))
+                )
+                try:
+                    from aragog.core.profiles import fit_gaussian_core_profiles
+
+                    c_params = solver.parameters.boundary_conditions.core_module_params or {}
+                    refit = fit_gaussian_core_profiles(
+                        m_core=m_core_live,
+                        p_cen=p_cen_live,
+                        r_cmb=r_cmb_live,
+                        p_cmb=p_cmb_live,
+                        alpha=float(c_params.get('alpha', 1.35e-5)),
+                        c_p=float(c_params.get('c_p', 840.0)),
+                    )
+                    rho_refit = float(refit.rho_cen)
+                    len_refit = float(refit.length_scale)
+                except Exception as exc:
+                    rho_refit = float('nan')
+                    len_refit = float('nan')
+                    log.debug('Aragog core_module diagnostic refit skipped: %s', exc)
+
+                log.debug(
+                    'Aragog core_module structure drift: M_core drift=%.2e, P_center drift=%.2e; '
+                    'refit would give rho_cen=%.2f kg/m^3, length_scale=%.1f km',
+                    drift_m,
+                    drift_p,
+                    rho_refit,
+                    len_refit / 1e3,
+                )
+                if max(drift_m, drift_p) > 0.01:
+                    log.warning(
+                        'Aragog core_module structure drift exceeds 1%% threshold: '
+                        'M_core drift=%.2e, P_center drift=%.2e',
+                        drift_m,
+                        drift_p,
+                    )
 
         # Lightweight trace so validation can check that
         # the mesh scalars track the Zalmoxis re-solve cadence. The d*
@@ -2172,6 +2290,10 @@ class AragogRunner:
                     interior_o.aragog_solver, self._config.interior_energetics.aragog.core_bc
                 ),
                 mesh_surface_pressure=mesh_surface_pressure_state(interior_o.aragog_solver),
+                core_module_rho_cen=getattr(interior_o, '_frozen_core_rho_cen', None),
+                core_module_length_scale=getattr(interior_o, '_frozen_core_length_scale', None),
+                core_module_m_core=getattr(interior_o, '_frozen_core_m_core', None),
+                core_module_p_cen=getattr(interior_o, '_frozen_core_p_cen', None),
             )
 
         return sim_time, output
@@ -2883,6 +3005,10 @@ class AragogRunner:
         dSdr_cmb: float | None = None,
         T_core: float | None = None,
         mesh_surface_pressure: float | None = None,
+        core_module_rho_cen: float | None = None,
+        core_module_length_scale: float | None = None,
+        core_module_m_core: float | None = None,
+        core_module_p_cen: float | None = None,
     ):
         """Write entropy solver output to NetCDF using SolverOutput.
 
@@ -2964,6 +3090,10 @@ class AragogRunner:
                 ('dSdr_cmb_state', dSdr_cmb, 'J kg-1 K-1 m-1'),
                 ('T_core_state', T_core, 'K'),
                 ('mesh_surface_pressure', mesh_surface_pressure, 'Pa'),
+                ('core_module_rho_cen', core_module_rho_cen, 'kg m-3'),
+                ('core_module_length_scale', core_module_length_scale, 'm'),
+                ('core_module_m_core', core_module_m_core, 'kg'),
+                ('core_module_p_cen', core_module_p_cen, 'Pa'),
             ):
                 if value is None:
                     continue
@@ -3155,6 +3285,10 @@ def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_
         dSdr_cmb=cmb_gradient_state(solver, config.interior_energetics.aragog.core_bc),
         T_core=core_temperature_state(solver, config.interior_energetics.aragog.core_bc),
         mesh_surface_pressure=mesh_surface_pressure_state(solver),
+        core_module_rho_cen=getattr(interior_o, '_frozen_core_rho_cen', None),
+        core_module_length_scale=getattr(interior_o, '_frozen_core_length_scale', None),
+        core_module_m_core=getattr(interior_o, '_frozen_core_m_core', None),
+        core_module_p_cen=getattr(interior_o, '_frozen_core_p_cen', None),
     )
 
 
