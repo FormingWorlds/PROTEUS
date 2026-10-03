@@ -562,8 +562,15 @@ def test_impacts_closer_than_the_name_resolution_share_one_landing_time():
     ]
     assert [landing_time(events, t) for t in (0.0, times[1])] == [times[1], times[2]]
     assert landing_time(events, times[2]) == float('inf')
-    pair = [_event(time=t) for t in (times[0], times[0] + SUBYEAR_TIME_RESOLUTION)]
-    assert landing_time(pair, 0.0) == times[0]
+    # A gap of exactly 1e-3 yr is not merged; decimal half-points 1e-3 yr apart
+    # get distinct names however the sum rounds.
+    pair = [_event(time=t) for t in (0.0, SUBYEAR_TIME_RESOLUTION)]
+    assert landing_time(pair, -1.0) == pair[0].time
+    for a, b in ((1.0015, 1.0025), (984.7875, 984.7885), (136364572.4025, 136364572.4035)):
+        pair = [_event(time=t) for t in (a, b)]
+        land = landing_time(pair, 0.0)
+        later = landing_time(pair, land)
+        assert later == float('inf') or format_subyear_time(later) != format_subyear_time(land)
 
 
 @pytest.mark.unit

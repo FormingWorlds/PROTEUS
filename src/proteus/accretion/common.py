@@ -439,7 +439,7 @@ def landing_time(events: Sequence[ImpactEvent], time: float) -> float:
         return float('inf')
     landing = first.time
     for e in events:
-        if landing < e.time < landing + SUBYEAR_TIME_RESOLUTION:
+        if 0.0 < e.time - landing < SUBYEAR_TIME_RESOLUTION:
             landing = e.time
     return landing
 
