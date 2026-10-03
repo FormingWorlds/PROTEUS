@@ -3675,6 +3675,7 @@ def test_write_core_module_diagnostics_wiring_and_cache():
     budget.profiles.r_cmb = r_cmb
     budget.r_icb.return_value = 1.22e6
     budget.effective_capacity.return_value = 1.77e27
+    budget.convecting_radius.return_value = r_cmb
     solver = MagicMock()
     solver._core_module_budget = budget
     runner.aragog_solver = solver
@@ -3686,7 +3687,6 @@ def test_write_core_module_diagnostics_wiring_and_cache():
     with (
         patch('aragog.core.CoreEntropyBudget', return_value=entropy) as mock_ent_cls,
         patch('aragog.core.crystallization_regime', return_value=1) as mock_regime,
-        patch('aragog.core.stratification_depth', return_value=0.0) as mock_strat,
     ):
         runner._write_core_module_diagnostics(output)
 
@@ -3700,7 +3700,9 @@ def test_write_core_module_diagnostics_wiring_and_cache():
         assert args.args[0] == pytest.approx(4864.0)
         assert args.args[1] == pytest.approx(q_expected, rel=1e-12)
         assert args.kwargs['q_radio'] == pytest.approx(2.0e12)
-        assert mock_strat.call_args.args[2] == pytest.approx(q_expected, rel=1e-12)
+        assert budget.convecting_radius.call_args.args[1] == pytest.approx(
+            q_expected, rel=1e-12
+        )
         _ = mock_regime  # regime asserted through the output below
 
         # With elapsed time, the diagnostics use the step-averaged power
@@ -3723,6 +3725,12 @@ def test_write_core_module_diagnostics_wiring_and_cache():
         assert output['core_regime'] == pytest.approx(1.0)
         assert output['core_strat_depth'] == pytest.approx(0.0)
 
+        # Stratified layer active: reports layer thickness
+        budget.convecting_radius.return_value = r_cmb - 250.0e3
+        runner._write_core_module_diagnostics(output)
+        assert output['core_strat_depth'] == pytest.approx(250.0e3)
+        budget.convecting_radius.return_value = r_cmb
+
         # Second call, same budget object: the entropy budget is reused.
         runner._write_core_module_diagnostics(output)
         assert mock_ent_cls.call_count == 1
@@ -3732,6 +3740,7 @@ def test_write_core_module_diagnostics_wiring_and_cache():
         solver._core_module_budget.profiles.r_cmb = r_cmb
         solver._core_module_budget.r_icb.return_value = 1.22e6
         solver._core_module_budget.effective_capacity.return_value = 1.77e27
+        solver._core_module_budget.convecting_radius.return_value = r_cmb
         runner._write_core_module_diagnostics(output)
         assert mock_ent_cls.call_count == 2
 

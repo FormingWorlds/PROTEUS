@@ -2067,7 +2067,6 @@ class AragogRunner:
         from aragog.core import (
             CoreEntropyBudget,
             crystallization_regime,
-            stratification_depth,
         )
 
         cm_cfg = self._config.interior_energetics.aragog.core_module
@@ -2099,7 +2098,9 @@ class AragogRunner:
         )
         output['core_B_rms'] = float(ent.b_rms_core(t_cmb, q_cmb))
         output['core_regime'] = float(int(crystallization_regime(budget, t_cmb)))
-        output['core_strat_depth'] = float(stratification_depth(ent, t_cmb, q_cmb))
+        output['core_strat_depth'] = float(budget.profiles.r_cmb) - float(
+            budget.convecting_radius(t_cmb, q_cmb)
+        )
 
     def run_solver(self, hf_row, interior_o, dirs, write_data: bool = True):
         # Dispatch to JAX solver if configured
