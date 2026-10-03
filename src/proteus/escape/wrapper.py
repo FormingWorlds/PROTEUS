@@ -347,6 +347,7 @@ def run_escape(
         reservoir,
         min_thresh=config.outgas.mass_thresh,
         esc_mass=esc_step_kg,
+        floor=not atmosphere_only,
     )
 
     # store new elemental inventories
@@ -506,6 +507,7 @@ def calc_new_elements(
     reservoir: str,
     min_thresh: float = 1e10,
     esc_mass: float | None = None,
+    floor: bool = True,
 ):
     """Calculate new elemental inventory based on escape rate.
 
@@ -516,11 +518,16 @@ def calc_new_elements(
         dt : float
             Time-step length [years]
         min_thresh: float
-            Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+            Minimum threshold for element mass [kg]. A reservoir below it is not
+            debited; with ``floor``, an element total below it is set to zero.
         esc_mass : float | None
             Mass to remove over this step [kg]. Defaults to the unrestricted
             ``esc_rate_total * dt``; pass the value from
             :func:`limit_escape_step` to apply the per-step cap.
+        floor : bool
+            Set a non-noble element that falls below ``min_thresh`` to zero. Only
+            for a step whose outgassing solve repartitions the totals afterwards;
+            on a frozen mantle no solve follows and the atmosphere keeps the mass.
 
     Returns
     -------
@@ -593,7 +600,7 @@ def calc_new_elements(
         # min_thresh), so applying the same absolute floor would zero a
         # realistic noble inventory on the first escape step. Exempt them and
         # only clamp to non-negative.
-        if e not in noble_gases and new_total < min_thresh:
+        if floor and e not in noble_gases and new_total < min_thresh:
             new_total = 0.0
         tgt[e] = max(0.0, new_total)
 
