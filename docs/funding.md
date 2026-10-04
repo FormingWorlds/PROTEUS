@@ -5,7 +5,7 @@ hide:
 ---
 
 <div style="padding-left: 1em; padding-right: 1em">
-<h1>PROTEUS Funding Sources</h1>
+<h1>PROTEUS funding sources</h1>
 <p>
   We are thankful for the continuous support of the larger scientific community
   and funding by the public of fundamental research. The development of PROTEUS
