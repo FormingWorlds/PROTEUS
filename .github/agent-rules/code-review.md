@@ -20,7 +20,7 @@ Every site that sums element masses includes oxygen; that keeps `M_atm` below `M
 5. Desiccation gate (`check_desiccation`)
 6. First-call baseline (`M_vol_initial` in `run_escape`)
 
-Sites 1 and 2 sum `vol_element_list + noble_gases` and leave the rock-vapour elements of `vap_element_list` out on purpose, because rock vapour enters the atmosphere without being debited from the interior; sites 3, 4 and 6 sum `element_list`; site 5 tests `vol_element_list + noble_gases` against the threshold and sums `element_list` for the escape balance, to match the site-6 baseline. The different lists are intended, not an asymmetry to repair.
+Sites 1 and 2 sum `vol_element_list + noble_gases` and leave the rock-vapour elements of `vap_element_list` out on purpose, because rock vapour enters the atmosphere without being debited from the interior; sites 3, 4 and 6 sum `element_list`; site 5 tests `vol_element_list + noble_gases` against the threshold and sums `element_list` (finite totals only) for the escape balance, to match the site-6 baseline, leaving out the mass earlier desiccations removed (`M_desiccated`). The different lists are intended, not an asymmetry to repair.
 
 ## Mass-conservation check
 
