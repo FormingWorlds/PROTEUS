@@ -661,9 +661,7 @@ jobs:
           files: coverage.xml
           flags: nightly
           name: nightly-full-suite
-          # Upload only coverage.xml. Without this the action also uploads the per-tier
-          # XMLs, macOS included, and the JSON summaries in the workspace, which hide
-          # the partial branch lines of the combined report.
+          # Upload only coverage.xml, not the per-tier XMLs and JSON summaries in the workspace.
           disable_search: true
       - name: Upload nightly-coverage artifact
         id: upload-nightly-cov
