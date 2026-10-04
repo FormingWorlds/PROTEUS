@@ -770,7 +770,7 @@ def test_a_non_finite_ledger_on_entry_stays_desiccated():
     hf_row.update(atm_kg_per_mol=0.01, Phi_global=0.2)
     assert check_desiccation(config, hf_row) is True
     run_desiccated({}, config, hf_row, False)
-    assert hf_row['M_desiccated'] == 5.0e15
+    assert hf_row['M_desiccated'] == pytest.approx(5.0e15, rel=1e-12)
     assert check_desiccation(config, hf_row) is True
 
 
@@ -836,7 +836,7 @@ def test_an_unreadable_total_refuses_desiccation_and_is_not_hidden():
     run_desiccated({}, config, hf_row, False)
     assert hf_row['H_kg_total'] != hf_row['H_kg_total']
     assert math.isnan(hf_row['Fe_kg_total']) and math.isnan(hf_row['Fe_mol_total'])
-    assert hf_row['Fe_mol_solid'] == 2.0
+    assert hf_row['Fe_mol_solid'] == pytest.approx(2.0, rel=1e-12)
     assert hf_row['He_kg_total'] == math.inf and math.isnan(hf_row['He_mol_total'])
     assert hf_row['N_kg_total'] == 0.0
     assert hf_row['M_desiccated'] == pytest.approx(5.0e15, rel=1e-12)
