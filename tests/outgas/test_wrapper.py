@@ -26,6 +26,7 @@ Mocking strategy:
 
 from __future__ import annotations
 
+import math
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -664,7 +665,8 @@ def test_a_desiccated_row_with_a_solid_share_stays_desiccated():
     as on resume.
 
     Physical scenario: H and N left partly in the frozen mantle at desiccation.
-    Edge case: the solid share is most of the residual total.
+    Edge case: the loss is 1e12 kg inside the gate, so a row that books nothing
+    is refused.
     """
     config = MagicMock()
     config.outgas.vapourise = False
@@ -673,20 +675,61 @@ def test_a_desiccated_row_with_a_solid_share_stays_desiccated():
     hf_row = {
         f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
     }
-    h_solid, n_solid = 6.0e15, 1.0e15
+    h_solid, n_solid, esc = 6.0e15, 1.0e15, 3.9e17
     hf_row.update(H_kg_atm=1.0e15, H_kg_solid=h_solid, H_kg_total=7.0e15)
     hf_row.update(N_kg_atm=2.0e15, N_kg_solid=n_solid, N_kg_total=3.0e15)
-    hf_row.update(M_vol_initial=4.0e17, esc_kg_cumulative=3.9e17, M_desiccated=0.0)
-    hf_row.update(atm_kg_per_mol=0.01, Phi_global=0.2)
+    hf_row.update(M_vol_initial=1.5 * esc + 1.0e16 - 1.0e12, esc_kg_cumulative=esc)
+    hf_row.update(M_desiccated=0.0, atm_kg_per_mol=0.01, Phi_global=0.2)
 
     assert check_desiccation(config, hf_row) is True
     run_desiccated({}, config, hf_row, False)
     assert hf_row['H_kg_total'] == h_solid and hf_row['N_kg_total'] == n_solid
     assert hf_row['M_desiccated'] == pytest.approx(3.0e15, rel=1e-12)
     assert check_desiccation(config, hf_row) is True
-    assert hf_row['esc_kg_cumulative'] + hf_row['M_desiccated'] + 7.0e15 == pytest.approx(
-        4.0e17
-    )
+    assert check_desiccation(config, {**hf_row, 'M_desiccated': 0.0}) is False
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('solid', 'total', 'kept'),
+    [
+        (1.1e16, 0.0, 0.0),
+        (1.1e16, 4.0e15, 4.0e15),
+        (float('nan'), 2.0e15, 0.0),
+        (float('inf'), 2.0e15, 0.0),
+        (-5.0e14, 2.0e15, 0.0),
+        (0.0, -1.0e14, -1.0e14),
+    ],
+)
+def test_the_kept_solid_share_stays_within_the_total(solid, total, kept):
+    """The kept share is the solid column limited to [0, total before the call], and
+    a non-finite solid column keeps nothing; the solid column becomes the kept share,
+    no total rises, the booking is not negative and the row passes the check again.
+
+    Physical scenario: escape floors C below the threshold while the solid column
+    still holds the value of the last outgassing call. Edge cases: a total floored
+    to zero, a non-finite and a negative solid column, a negative total.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1.0e16
+    config.interior_struct.module = 'dummy'
+    hf_row = {
+        f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
+    }
+    hf_row.update(C_kg_atm=1.0e15, C_kg_solid=solid, C_kg_total=total)
+    hf_row.update(CO2_kg_solid=solid, CO2_kg_total=total, CO2_mol_solid=4.0)
+    hf_row.update(M_vol_initial=4.0e17, esc_kg_cumulative=3.9e17, M_desiccated=0.0)
+    hf_row.update(atm_kg_per_mol=0.01, Phi_global=0.2)
+
+    assert check_desiccation(config, hf_row) is True
+    run_desiccated({}, config, hf_row, False)
+    for s in ('C', 'CO2'):
+        assert hf_row[f'{s}_kg_total'] == kept == hf_row[f'{s}_kg_solid']
+    mol = 4.0 * kept / solid if kept > 0 else 0.0
+    assert hf_row['CO2_mol_total'] == pytest.approx(mol) == hf_row['CO2_mol_solid']
+    assert hf_row['M_desiccated'] == pytest.approx(total - kept, abs=1.0)
+    assert check_desiccation(config, hf_row) is True
 
 
 @pytest.mark.physics_invariant
@@ -729,8 +772,9 @@ def test_an_unreadable_total_refuses_desiccation_and_is_not_hidden():
     baseline, and run_desiccated leaves it non-finite rather than writing zero.
 
     Physical scenario: an upstream failure leaves H unreadable while every other
-    total is below the threshold. Edge case: no escape baseline yet, where the
-    gate would otherwise accept on the threshold test alone.
+    total is below the threshold. Edge cases: no escape baseline yet, where the
+    gate would otherwise accept on the threshold test alone; Fe and He, which are
+    both a species and an element, with a mol total that follows the kg total.
     """
     config = MagicMock()
     config.outgas.vapourise = False
@@ -740,6 +784,8 @@ def test_an_unreadable_total_refuses_desiccation_and_is_not_hidden():
         f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
     }
     hf_row.update(H_kg_total=float('nan'), N_kg_total=5.0e15, N_kg_atm=5.0e15)
+    hf_row.update(Fe_kg_total=float('nan'), Fe_kg_solid=1.0e14, Fe_mol_solid=2.0)
+    hf_row.update(He_kg_total=float('inf'), He_kg_solid=1.0e14, He_mol_solid=2.0)
     hf_row.update(M_vol_initial=0.0, M_desiccated=0.0, M_volatile_change=0.0)
     hf_row.update(atm_kg_per_mol=0.028, Phi_global=0.5)
 
@@ -747,6 +793,8 @@ def test_an_unreadable_total_refuses_desiccation_and_is_not_hidden():
 
     run_desiccated({}, config, hf_row, False)
     assert hf_row['H_kg_total'] != hf_row['H_kg_total']
+    assert math.isnan(hf_row['Fe_kg_total']) and math.isnan(hf_row['Fe_mol_total'])
+    assert hf_row['He_kg_total'] == math.inf and math.isnan(hf_row['He_mol_total'])
     assert hf_row['N_kg_total'] == 0.0
     assert hf_row['M_desiccated'] == pytest.approx(5.0e15, rel=1e-12)
 

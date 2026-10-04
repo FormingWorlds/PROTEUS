@@ -617,6 +617,13 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     species and element total. The mass removed is booked in ``M_desiccated`` and
     the Zalmoxis target.
 
+    The kept share is the solid column limited to [0, total before the call]; a
+    non-finite solid column keeps nothing and is logged. The solid column, kg and
+    mol, is set to the kept share. No total rises, so the mass removed is not
+    negative and a row that passed ``check_desiccation`` passes it again. A
+    non-finite total stays as it is, with its mol total set to NaN; a negative total
+    keeps its value.
+
     Parameters
     ----------
         dirs : dict
@@ -637,24 +644,30 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     for g in gas_list:
         excepted_keys.append(f'{g}_vmr')
 
-    # Keep the solid columns and set each finite total to its solid share; a
-    # non-finite total stays visible.
-    unreadable = {
-        f'{e}_kg_total'
-        for e in element_list
-        if not np.isfinite(float(hf_row.get(f'{e}_kg_total', 0.0)))
+    totals = {
+        n: float(hf_row.get(f'{n}_kg_total', 0.0))
+        for n in dict.fromkeys(element_list + gas_list)
     }
     removed = readable_total(hf_row)
     for k in expected_keys():
-        if k not in excepted_keys and k not in unreadable and not k.endswith('_solid'):
+        if k not in excepted_keys and not k.endswith('_solid'):
             hf_row[k] = 0.0
-    for gas in gas_list:
-        hf_row[f'{gas}_mol_total'] = float(hf_row.get(f'{gas}_mol_solid', 0.0))
-        if gas not in noble_gases and f'{gas}_kg_total' not in unreadable:
-            hf_row[f'{gas}_kg_total'] = float(hf_row.get(f'{gas}_kg_solid', 0.0))
-    for e in element_list:
-        if f'{e}_kg_total' not in unreadable:
-            hf_row[f'{e}_kg_total'] = float(hf_row.get(f'{e}_kg_solid', 0.0))
+    for n, total in totals.items():
+        solid = float(hf_row.get(f'{n}_kg_solid', 0.0))
+        kept = min(max(solid, 0.0), total) if np.isfinite(solid) else 0.0
+        share = 1.0 if kept == solid else (kept / solid if kept > 0 else 0.0)
+        if not np.isfinite(total):
+            kept, share = total, np.nan
+        elif kept != solid:
+            if not np.isfinite(solid):
+                log.warning('Desiccation: the solid %s column is not finite; none is kept', n)
+            hf_row[f'{n}_kg_solid'] = kept
+        hf_row[f'{n}_kg_total'] = kept
+        if n in gas_list:
+            mol = float(hf_row.get(f'{n}_mol_solid', 0.0)) * share
+            hf_row[f'{n}_mol_total'] = mol
+            if share != 1.0 and np.isfinite(mol):
+                hf_row[f'{n}_mol_solid'] = mol
     removed -= readable_total(hf_row)
     hf_row['M_desiccated'] = float(hf_row.get('M_desiccated', 0.0)) + removed
     record_volatile_change(config, hf_row, -removed)
