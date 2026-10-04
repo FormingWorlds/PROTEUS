@@ -659,6 +659,8 @@ jobs:
           files: coverage.xml
           flags: nightly
           name: nightly-full-suite
+          # Upload only the combined report, not the per-tier reports in the workspace.
+          disable_search: true
       - name: Upload nightly-coverage artifact
         id: upload-nightly-cov
         if: always()
