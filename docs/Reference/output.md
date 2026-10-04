@@ -266,6 +266,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `O_vapourised_kg` | `kg` | oxygen released by rock vapourisation (LavAtmos) | `outgas/lavatmos.py` | outgas.vapourise = true |   |
 | `M_vol_initial` | `kg` | bulk volatile inventory baseline | `accretion/wrapper.py`<br>`escape/wrapper.py` | always | accretion, escape, outgas |
 | `esc_kg_cumulative` | `kg` | cumulative mass lost to space (escape + impact stripping) | `accretion/wrapper.py`<br>`escape/wrapper.py` | always | accretion, escape, outgas |
+| `M_desiccated` | `kg` | element mass removed at desiccation without escape | `escape/wrapper.py`<br>`outgas/wrapper.py` | always | outgas |
 | `esc_clamp_frac` | `1` | requested per-step loss / escapable reservoir | `escape/wrapper.py`<br>`proteus.py` | always | escape |
 | `esc_step_kg` | `kg` | loss applied on this step, after the cap | `escape/wrapper.py`<br>`proteus.py` | always | outgas |
 
@@ -275,7 +276,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 |---|---|---|---|---|---|
 | `M_accreted_rock` | `kg` | cumulative rock mass added by giant impacts | `accretion/wrapper.py` | always | accretion, main loop |
 | `n_impacts_applied` | `1` | count of giant impacts applied | `accretion/wrapper.py` | always | accretion, interior_energetics |
-| `M_volatile_change` | `kg` | cumulative element mass added to the Zalmoxis target : delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) | `interior_struct/common.py` | interior_struct.module = "zalmoxis" | interior_struct |
+| `M_volatile_change` | `kg` | cumulative element mass added to the Zalmoxis target : delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation | `interior_struct/common.py` | interior_struct.module = "zalmoxis" | interior_struct |
 
 ### Gases from outgassing
 

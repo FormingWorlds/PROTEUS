@@ -2147,3 +2147,149 @@ def test_module_default_cap_matches_the_schema_default():
     # copies to something outside the documented range still fails here.
     assert ESCAPE_STEP_MAX_FRAC == pytest.approx(0.25, rel=1e-12)
     assert 0.0 < ESCAPE_STEP_MAX_FRAC <= 1.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('frozen', [True, False], ids=['frozen_mantle', 'molten_mantle'])
+def test_an_element_escaping_below_the_threshold_on_a_frozen_mantle_keeps_its_columns(frozen):
+    """On a frozen mantle an element whose total escapes below the outgassing
+    threshold keeps that total, so it still equals its atmosphere plus melt plus
+    solid after the atmosphere is rescaled.
+
+    Physical scenario: N escaping from the atmosphere above a crystallized mantle.
+    No outgassing solve follows on that path to repartition a zeroed total, so a
+    zero would leave the atmospheric N in place. Edge case: the same step on a
+    molten mantle, where the solve that follows repartitions, keeps the floor.
+    """
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.constants import element_list
+
+    thresh = 1.0e10
+    hf = {f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')}
+    hf.update(H_kg_atm=4.0e12, H_kg_solid=6.0e12, H_kg_total=1.0e13)
+    hf.update(N_kg_atm=1.2e10, N_kg_total=1.2e10, N2_kg_atm=1.2e10, H2_kg_atm=4.0e12)
+    hf.update(M_atm=4.012e12, P_surf=1.0, esc_kg_cumulative=0.0, M_vol_initial=1.0012e13)
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0e5  # kg/s, capped at a quarter of the atmosphere
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = thresh
+    config.outgas.vapourise = False
+
+    run_escape(config, hf, dt=1.0e4, atmosphere_only=frozen)
+    if not frozen:
+        # The repartitioning solve owns the columns on this path; the floor stays.
+        assert hf['N_kg_total'] == 0.0
+        return
+    run_crystallized(config, hf, dt=1.0e4)
+
+    # Discrimination: a real quarter loss takes N from above the threshold to below it.
+    assert (
+        hf['N_kg_total'] == pytest.approx(0.75 * 1.2e10, rel=1e-12)
+        and hf['N_kg_total'] < thresh
+    )
+    for e in ('H', 'N'):
+        cols = hf[f'{e}_kg_atm'] + hf[f'{e}_kg_liquid'] + hf[f'{e}_kg_solid']
+        assert cols == pytest.approx(hf[f'{e}_kg_total'], rel=1e-12)
+    assert hf['esc_kg_cumulative'] == pytest.approx(0.25 * 4.012e12, rel=1e-12)
+    assert hf['esc_kg_cumulative'] == pytest.approx(
+        1.0012e13 - hf['H_kg_total'] - hf['N_kg_total'], rel=1e-12
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'H_kg,N_kg', [(4.0e17, 3.0e16), (1.5e16, 1.0e16)], ids=['large', 'small']
+)
+def test_a_frozen_mantle_escapes_to_desiccation_with_closed_books(H_kg, N_kg):
+    """Over every frozen step until desiccation each element total equals its
+    columns and the books close: initial = totals + escaped + removed at
+    desiccation, the Zalmoxis target follows the totals, and the row is still
+    desiccated when checked again, as on resume.
+
+    Physical scenario: an insoluble H2 and N2 atmosphere over a crystallized mantle
+    at the default outgassing threshold of 1e16 kg. Edge case: the small inventory,
+    where the mass left below the threshold is comparable to the mass escaped.
+    """
+    from proteus.escape.wrapper import readable_total, run_escape
+    from proteus.interior_struct.common import debit_escaped_mass
+    from proteus.outgas.wrapper import check_desiccation, run_crystallized, run_desiccated
+    from proteus.utils.constants import element_list
+
+    initial = H_kg + N_kg
+    hf = {f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')}
+    hf.update(H_kg_atm=H_kg, H_kg_total=H_kg, N_kg_atm=N_kg, N_kg_total=N_kg)
+    hf.update(H2_kg_atm=H_kg, N2_kg_atm=N_kg, M_atm=initial, P_surf=1.0)
+    hf.update(esc_kg_cumulative=0.0, M_vol_initial=initial, M_desiccated=0.0)
+    hf.update(M_volatile_change=0.0, atm_kg_per_mol=0.002, Phi_global=0.5)
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e16
+    config.outgas.vapourise = False
+    config.interior_struct.module = 'zalmoxis'
+
+    for _ in range(100):
+        if check_desiccation(config, hf):
+            break
+        kg_before = readable_total(hf)
+        run_escape(config, hf, dt=1.0e4, atmosphere_only=True)
+        debit_escaped_mass(config, hf, kg_before - readable_total(hf))
+        run_crystallized(config, hf, dt=1.0e4)
+        for e in ('H', 'N'):
+            cols = hf[f'{e}_kg_atm'] + hf[f'{e}_kg_liquid'] + hf[f'{e}_kg_solid']
+            assert cols == pytest.approx(hf[f'{e}_kg_total'], rel=1e-9)
+        assert hf['esc_kg_cumulative'] == pytest.approx(initial - readable_total(hf), rel=1e-9)
+    else:
+        pytest.fail('no desiccation within 100 frozen steps')
+    residual = readable_total(hf)
+    # Discrimination: N was left below the threshold, not zeroed.
+    assert 0.0 < hf['N_kg_total'] < 1.0e16 and residual > 0.0
+
+    run_desiccated({}, config, hf, False)
+
+    assert all(hf[f'{e}_kg_{r}'] == 0.0 for e in ('H', 'N') for r in ('atm', 'total'))
+    assert hf['M_desiccated'] == pytest.approx(residual, rel=1e-12)
+    assert hf['esc_kg_cumulative'] + hf['M_desiccated'] == pytest.approx(initial, rel=1e-9)
+    assert hf['M_volatile_change'] == pytest.approx(-initial, rel=1e-9)
+    assert check_desiccation(config, hf)
+
+
+@pytest.mark.unit
+def test_a_new_escape_baseline_clears_the_desiccation_ledger():
+    """Mass removed before the escape baseline is not part of it, so taking the
+    baseline clears M_desiccated with esc_kg_cumulative and a later wipe is refused.
+
+    Physical scenario: a planet that desiccated before escape first ran, then
+    received volatiles from an impact. Edge case: the wipe is smaller than the
+    mass booked before the baseline.
+    """
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.wrapper import check_desiccation
+    from proteus.utils.constants import element_list
+
+    hf = {f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')}
+    hf.update(H_kg_atm=8.0e15, H_kg_total=8.0e15, H2_kg_atm=8.0e15, M_atm=8.0e15)
+    hf.update(M_vol_initial=0.0, esc_kg_cumulative=0.0, M_desiccated=5.0e15)
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e16
+
+    run_escape(config, hf, dt=1.0, atmosphere_only=True)
+    assert hf['M_vol_initial'] == pytest.approx(8.0e15, rel=1e-12)
+    assert hf['M_desiccated'] == 0.0
+
+    hf['H_kg_total'] = 4.0e15  # an upstream wipe, no escape
+    assert check_desiccation(config, hf) is False

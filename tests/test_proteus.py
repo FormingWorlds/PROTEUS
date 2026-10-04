@@ -2758,7 +2758,7 @@ _MAIN_LOOP_NOOP_PATCHES = [
 ]
 
 
-def _run_main_loop_capturing_plots(p, *, stop_at_loop):
+def _run_main_loop_capturing_plots(p, *extra, stop_at_loop):
     """Run p.start(resume=False) with the main loop's physics mocked out,
     capturing every main-loop UpdatePlots call as (loops_total, is_end).
 
@@ -2819,6 +2819,8 @@ def _run_main_loop_capturing_plots(p, *, stop_at_loop):
                 'proteus.utils.terminate.check_termination', side_effect=_fake_check_termination
             )
         )
+        for extra_patch in extra:
+            stack.enter_context(extra_patch)
 
         p.start(resume=False, offline=True)
 
@@ -4021,3 +4023,44 @@ def test_proteus_start_resume_accepts_legacy_accretion_ledger_when_disabled(tmp_
     log_files = list(tmp_path.glob('proteus_*.log'))
     log_text = '\n'.join(f.read_text() for f in log_files) if log_files else caplog.text
     assert 'Accretion is disabled for this resume' in log_text
+
+
+@pytest.mark.unit
+def test_the_main_loop_latches_desiccation_and_switches_to_run_desiccated(tmp_path):
+    """Once the in-loop check reports desiccation the flag latches and the outgas
+    step becomes run_desiccated; the check is not asked again."""
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    check = MagicMock(return_value=True)
+    desiccate, outgas = MagicMock(), MagicMock()
+    _run_main_loop_capturing_plots(
+        p,
+        patch('proteus.outgas.wrapper.check_desiccation', check),
+        patch('proteus.outgas.wrapper.run_desiccated', desiccate),
+        patch('proteus.outgas.wrapper.run_outgassing_and_vapourisation', outgas),
+        stop_at_loop=6,
+    )
+    assert p.desiccated is True
+    assert check.call_count == 1
+    assert desiccate.call_count >= 2
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('verdict', [True, False])
+def test_resume_takes_the_desiccated_latch_from_the_restored_row(tmp_path, verdict):
+    """start(resume=True) sets the desiccated flag from check_desiccation on the
+    restored last row, so a desiccated run resumes desiccated."""
+    p = _make_proteus_instance(tmp_path, struct_module='dummy', interior_module='aragog')
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    hf = _make_hf_df()
+    rows = []
+
+    def check(_config, row):
+        rows.append(float(row['Time']))
+        return verdict
+
+    p.desiccated = not verdict
+    _resume_with_patches(
+        p, hf, patch('proteus.outgas.wrapper.check_desiccation', side_effect=check)
+    )
+    assert p.desiccated is verdict
+    assert rows == [float(hf['Time'].iloc[-1])]
