@@ -693,15 +693,15 @@ def test_a_desiccated_row_with_a_solid_share_stays_desiccated():
 @pytest.mark.parametrize(
     ('solid', 'total', 'kept'),
     [
-        (1.1e16, 0.0, 0.0),
-        (1.1e16, 4.0e15, 4.0e15),
-        (float('nan'), 2.0e15, 0.0),
-        (float('inf'), 2.0e15, 0.0),
-        (-5.0e14, 2.0e15, 0.0),
-        (0.0, -1.0e14, -1.0e14),
+        pytest.param(1.1e16, 0.0, 0.0, id='escape-floored-total-under-stale-solid'),
+        pytest.param(1.1e16, 4.0e15, 4.0e15, id='stale-solid-above-escaped-total'),
+        pytest.param(float('nan'), 2.0e15, 0.0, id='unreadable-solid-nan'),
+        pytest.param(float('inf'), 2.0e15, 0.0, id='unreadable-solid-inf'),
+        pytest.param(-5.0e14, 2.0e15, 0.0, id='negative-solid'),
+        pytest.param(0.0, -1.0e14, -1.0e14, id='negative-total'),
     ],
 )
-def test_the_kept_solid_share_stays_within_the_total(solid, total, kept):
+def test_the_kept_solid_share_stays_within_the_total(solid, total, kept, caplog):
     """The kept share is the solid column limited to [0, total before the call], and
     a non-finite solid column keeps nothing; the solid column becomes the kept share,
     no total rises, the booking is not negative and the row passes the check again.
@@ -729,6 +729,48 @@ def test_the_kept_solid_share_stays_within_the_total(solid, total, kept):
     mol = 4.0 * kept / solid if kept > 0 else 0.0
     assert hf_row['CO2_mol_total'] == pytest.approx(mol) == hf_row['CO2_mol_solid']
     assert hf_row['M_desiccated'] == pytest.approx(total - kept, abs=1.0)
+    assert check_desiccation(config, hf_row) is True
+    assert 'C_mol_total' not in hf_row
+    assert ('solid C column is not finite' in caplog.text) is (not math.isfinite(solid))
+
+
+@pytest.mark.physics_invariant
+def test_nothing_kept_leaves_zero_mol_columns():
+    """Where nothing is kept, the mol total and mol solid of a species are 0, even
+    when the mol solid column was non-finite.
+
+    Physical scenario: Ne with an unreadable solid column at desiccation. Edge case:
+    an infinite mol solid, which times a kept share of 0 is not a number.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.interior_struct.module = 'dummy'
+    hf_row = {'Ne_kg_total': 1.0e14, 'Ne_kg_solid': math.inf, 'Ne_mol_solid': math.inf}
+    hf_row.update(atm_kg_per_mol=0.01, Phi_global=0.2)
+    run_desiccated({}, config, hf_row, False)
+    assert hf_row['Ne_kg_total'] == hf_row['Ne_kg_solid'] == 0.0
+    assert hf_row['Ne_mol_total'] == hf_row['Ne_mol_solid'] == 0.0
+
+
+@pytest.mark.physics_invariant
+def test_a_non_finite_ledger_on_entry_stays_desiccated():
+    """A non-finite M_desiccated reads as zero in check_desiccation, so the booking
+    starts from zero and the written row passes the check again.
+
+    Physical scenario: desiccation of a row whose ledger an upstream step left
+    unreadable. Edge case: the loss is inside the gate only with the booking.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1.0e16
+    config.interior_struct.module = 'dummy'
+    hf_row = {f'{e}_kg_total': 0.0 for e in element_list}
+    hf_row.update(H_kg_atm=5.0e15, H_kg_total=5.0e15, M_desiccated=math.nan)
+    hf_row.update(M_vol_initial=1.0e17, esc_kg_cumulative=6.5e16)
+    hf_row.update(atm_kg_per_mol=0.01, Phi_global=0.2)
+    assert check_desiccation(config, hf_row) is True
+    run_desiccated({}, config, hf_row, False)
+    assert hf_row['M_desiccated'] == 5.0e15
     assert check_desiccation(config, hf_row) is True
 
 
@@ -794,6 +836,7 @@ def test_an_unreadable_total_refuses_desiccation_and_is_not_hidden():
     run_desiccated({}, config, hf_row, False)
     assert hf_row['H_kg_total'] != hf_row['H_kg_total']
     assert math.isnan(hf_row['Fe_kg_total']) and math.isnan(hf_row['Fe_mol_total'])
+    assert hf_row['Fe_mol_solid'] == 2.0
     assert hf_row['He_kg_total'] == math.inf and math.isnan(hf_row['He_mol_total'])
     assert hf_row['N_kg_total'] == 0.0
     assert hf_row['M_desiccated'] == pytest.approx(5.0e15, rel=1e-12)

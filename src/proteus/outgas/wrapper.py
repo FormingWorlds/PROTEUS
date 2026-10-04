@@ -622,7 +622,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     mol, is set to the kept share. No total rises, so the mass removed is not
     negative and a row that passed ``check_desiccation`` passes it again. A
     non-finite total stays as it is, with its mol total set to NaN; a negative total
-    keeps its value.
+    keeps its value. A non-finite ``M_desiccated`` reads as 0, as in the check.
 
     Parameters
     ----------
@@ -658,18 +658,19 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
         share = 1.0 if kept == solid else (kept / solid if kept > 0 else 0.0)
         if not np.isfinite(total):
             kept, share = total, np.nan
-        elif kept != solid:
+        else:
             if not np.isfinite(solid):
                 log.warning('Desiccation: the solid %s column is not finite; none is kept', n)
             hf_row[f'{n}_kg_solid'] = kept
         hf_row[f'{n}_kg_total'] = kept
         if n in gas_list:
-            mol = float(hf_row.get(f'{n}_mol_solid', 0.0)) * share
+            mol = float(hf_row.get(f'{n}_mol_solid', 0.0)) * share if share else 0.0
             hf_row[f'{n}_mol_total'] = mol
-            if share != 1.0 and np.isfinite(mol):
+            if np.isfinite(mol):
                 hf_row[f'{n}_mol_solid'] = mol
     removed -= readable_total(hf_row)
-    hf_row['M_desiccated'] = float(hf_row.get('M_desiccated', 0.0)) + removed
+    booked = float(hf_row.get('M_desiccated', 0.0))
+    hf_row['M_desiccated'] = (booked if np.isfinite(booked) else 0.0) + removed
     record_volatile_change(config, hf_row, -removed)
 
     # Vapourisation of refractories, under the same crystallised gate as
