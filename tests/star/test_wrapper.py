@@ -537,8 +537,7 @@ def test_write_spectrum_emits_a_single_header_line(tmp_path):
 def test_flux_weighted_distance_is_the_semimajor_axis_on_a_circular_orbit():
     """Edge case e = 0, the fixed point of the (1 - e^2)^(1/4) factor:
     a circular orbit has nothing to average, so the flux-weighted
-    distance is the semi-major axis itself. A row that omits the
-    eccentricity is treated as circular rather than producing nan.
+    distance is the semi-major axis itself.
     """
     circular = star_wrapper.flux_weighted_distance(
         {'semimajorax': 1.496e11, 'eccentricity': 0.0}
@@ -546,8 +545,21 @@ def test_flux_weighted_distance_is_the_semimajor_axis_on_a_circular_orbit():
     assert circular == pytest.approx(1.496e11, rel=1e-12)
     assert circular > 0.0
 
-    absent = star_wrapper.flux_weighted_distance({'semimajorax': 1.496e11})
-    assert absent == pytest.approx(circular, rel=1e-12)
+
+@pytest.mark.parametrize(
+    'row, missing',
+    [({'semimajorax': 1.496e11}, 'eccentricity'), ({'eccentricity': 0.3}, 'semimajorax')],
+    ids=['no_eccentricity', 'no_semimajor_axis'],
+)
+def test_flux_weighted_distance_requires_both_orbital_elements(row, missing):
+    """A row without its eccentricity is refused rather than read as circular,
+    since a silent e = 0 would bring back the separation bias on an eccentric
+    orbit. The message names the absent element and the row is left as is."""
+    before = dict(row)
+    with pytest.raises(ValueError, match=missing) as excinfo:
+        star_wrapper.flux_weighted_distance(row)
+    assert f"hf_row['{missing}']" in str(excinfo.value)
+    assert row == before
 
 
 @pytest.mark.reference_pinned

@@ -93,9 +93,6 @@
         }
       ],
       "consumers": [
-        "atmos_chem",
-        "atmos_clim",
-        "observe",
         "orbit",
         "plot",
         "utils"

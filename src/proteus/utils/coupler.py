@@ -1448,7 +1448,8 @@ _POSTPROCESSING_FIXED_KEYS = (
     'atm_kg_per_mol',
     'R_star',
     'T_star',
-    'separation',
+    'semimajorax',
+    'eccentricity',
 )
 
 

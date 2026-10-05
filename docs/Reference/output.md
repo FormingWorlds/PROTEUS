@@ -83,7 +83,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 |---|---|---|---|---|---|
 | `semimajorax` | `m` | semi-major axis | `accretion/wrapper.py`<br>`orbit/orbit.py`<br>`orbit/parameterized.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true | accretion, escape, orbit, plot, star |
 | `sma_dot_planet` | `m s-1` | semi-major axis derivative | `orbit/orbit.py`<br>`orbit/satellite.py` | orbit.evolve = true; orbit.satellite = true |   |
-| `separation` | `m` | time-averaged separation | `orbit/wrapper.py` | always | atmos_chem, atmos_clim, observe, orbit, plot, utils |
+| `separation` | `m` | time-averaged separation | `orbit/wrapper.py` | always | orbit, plot, utils |
 | `perihelion` | `m` | lowest point in orbit | `orbit/wrapper.py` | always | orbit |
 | `orbital_period` | `s` | orbital duration | `orbit/wrapper.py` | always | orbit, plot |
 | `eccentricity` | `1` | orbital eccentricity | `accretion/wrapper.py`<br>`orbit/orbit.py`<br>`orbit/parameterized.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true | accretion, escape, orbit, plot, star |

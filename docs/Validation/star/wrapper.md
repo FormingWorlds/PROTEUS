@@ -25,7 +25,7 @@ The competing convention, the time-averaged separation `a (1 + e^2 / 2)` that
 `hf_row['separation']` carries, gives `1.32 a` at `e = 0.8` instead; the two
 disagree in the resulting flux by a factor of 2.904, which is what the
 discrimination guard pins. That separation remains the right quantity for the
-Roche limit, the Hill radius and the transit geometry, so both distances are
+Roche-limit checks and the orbit plots, so both distances are
 live and the test records which belongs where.
 
 ## Last verified

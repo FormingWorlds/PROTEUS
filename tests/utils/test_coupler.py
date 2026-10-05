@@ -958,7 +958,8 @@ def test_postprocessing_set_does_not_lose_a_key():
         'atm_kg_per_mol',
         'R_star',
         'T_star',
-        'separation',
+        'semimajorax',
+        'eccentricity',
     }
     assert named <= required, 'dropped from the requirement: %s' % sorted(named - required)
 
@@ -979,7 +980,7 @@ def test_postprocessing_still_refuses_a_column_it_does_read():
     the synthesis code reads without a fallback still has to be there.
     """
     probes = list(_POSTPROCESSING_FIXED_KEYS) + ['H2O_vmr', 'O_kg_atm']
-    assert len(probes) == 11, 'expected every fixed key plus one of each expansion'
+    assert len(probes) == 12, 'expected every fixed key plus one of each expansion'
     for needed in probes:
         assert needed in GetPostprocessingKeys()
         with tempfile.TemporaryDirectory() as tmpdir:
