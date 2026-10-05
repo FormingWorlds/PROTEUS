@@ -642,8 +642,7 @@ def test_calliope_result_does_not_depend_on_the_caller_rng(warm):
 
     assert [c.args for c in seed.call_args_list] == [(RANDOM_SEED,), (RANDOM_SEED,)]
     assert (solve.call_args.kwargs['p_guess'] is not None) == warm
-    assert rows[0]['P_surf'] == rows[1]['P_surf']
-    assert rows[0]['H2O_bar'] == rows[1]['H2O_bar']
+    assert rows[0] == rows[1]
     # The stand-in does reach hf_row: a bounded, positive pressure near its root.
     assert abs(rows[0]['P_surf'] - 250.0) < 1e-6
 
@@ -694,7 +693,8 @@ def test_from_o_budget_solve_gets_the_same_fixed_seed():
 def test_calliope_cold_start_guess_draws_from_the_global_rng():
     """CALLIOPE's cold-start guess helper consumes the global NumPy stream,
     which the seed in calc_surface_pressures controls. A solver that stops
-    using this helper is caught by the negative control of the smoke test."""
+    drawing from that stream fails the smoke test instead: a private unseeded
+    generator fails its first half, a self-seeded start its negative control."""
     from calliope.solve import get_initial_pressures
 
     target = {'H': 1.2e20, 'C': 1.0e20, 'N': 1.0e18, 'S': 1.0e18}
