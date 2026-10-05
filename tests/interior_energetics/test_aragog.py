@@ -4241,6 +4241,167 @@ def test_update_structure_core_module_drift_logging_and_warning(caplog):
 
 
 @pytest.mark.unit
+def test_update_structure_core_module_refit_debug_exception_handling(caplog):
+    """update_structure catches ValueError/RuntimeError in diagnostic refit under DEBUG and logs NaN."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    runner = AragogRunner.__new__(AragogRunner)
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.interior_energetics.aragog.core_bc = 'core_module'
+
+    solver = MagicMock()
+    solver.parameters.mesh.outer_radius = 6.371e6
+    solver.parameters.mesh.inner_radius = 3.48e6
+    solver.parameters.mesh.gravitational_acceleration = 9.81
+    solver.parameters.mesh.core_density = 12500.0
+    solver.parameters.boundary_conditions.core_module_params = {
+        'alpha': 1.35e-5,
+        'c_p': 840.0,
+    }
+    solver._P_basic_flat = np.array([136e9, 100e9])
+
+    interior_o = MagicMock()
+    interior_o.aragog_solver = solver
+    interior_o._frozen_core_m_core = 1.8916e24
+    interior_o._frozen_core_p_cen = 3.4139e11
+
+    hf = {
+        'Time': 100.0,
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'M_core': 1.8916e24 * 1.002,
+        'P_center': 3.4139e11 * 1.002,
+    }
+
+    with (
+        patch(
+            'aragog.core.profiles.fit_gaussian_core_profiles',
+            side_effect=RuntimeError('root solve non-convergence'),
+        ),
+        caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.aragog'),
+    ):
+        caplog.clear()
+        runner.update_structure(config, hf, interior_o)
+
+    records = [r.getMessage() for r in caplog.records]
+    assert any(
+        'Aragog core_module diagnostic refit skipped: root solve non-convergence' in msg
+        for msg in records
+    )
+    assert any(
+        'refit would give rho_cen=nan kg/m^3, length_scale=nan km' in msg for msg in records
+    )
+
+
+@pytest.mark.unit
+def test_run_solver_invokes_core_module_diagnostics_when_active(tmp_path):
+    """run_solver calls _write_core_module_diagnostics when core_bc == 'core_module'."""
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    (tmp_path / 'data').mkdir()
+    runner = AragogRunner.__new__(AragogRunner)
+    runner._use_jax = False
+    runner._config = MagicMock()
+    runner._config.interior_energetics.aragog.core_bc = 'core_module'
+    runner._config.interior_energetics.write_flux_diagnostics = False
+
+    out = _snapshot_output()
+    out.dt_actual = 75.0
+    runner._solve_with_retry = lambda hf_row, interior_o: out
+    runner._build_helpfile_output = lambda *a, **k: {'existing_col': 1.0}
+
+    diag_called = []
+
+    def _mock_write_diag(output, dt_actual_yr):
+        diag_called.append((output, dt_actual_yr))
+        output['core_flux'] = 12.34
+
+    runner._write_core_module_diagnostics = _mock_write_diag
+
+    interior_o = SimpleNamespace(aragog_solver=_StateSolver(4500.0))
+    hf_row = {'Time': 300.0, 'T_surf': 2800.0}
+
+    sim_time, output = runner.run_solver(hf_row, interior_o, {'output': str(tmp_path)})
+
+    assert len(diag_called) == 1
+    assert diag_called[0][1] == pytest.approx(75.0)
+    assert output.get('core_flux') == pytest.approx(12.34)
+    assert sim_time == pytest.approx(375.0)
+
+
+@pytest.mark.unit
+def test_setup_or_update_solver_restores_core_temperature_from_snapshot(caplog):
+    """setup_or_update_solver restores core temperature from snapshot or logs warning when absent."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.params.resume = True
+    config.interior_energetics.aragog.core_bc = 'core_module'
+
+    mock_solver = MagicMock()
+    mock_solver._n_stag = 20
+
+    def _mock_setup(cfg, row, int_o, outdir):
+        int_o.aragog_solver = mock_solver
+
+    interior_o_present = MagicMock()
+    interior_o_present.aragog_solver = None
+    interior_o_present._last_entropy = np.full(20, 4000.0)
+    interior_o_present._last_T_core = 5280.0
+    interior_o_present._frozen_core_rho_cen = 13500.0
+
+    with (
+        patch('proteus.interior_energetics.aragog.require_cvode'),
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner.setup_solver',
+            side_effect=_mock_setup,
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner.update_solver'),
+        caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.aragog'),
+    ):
+        caplog.clear()
+        AragogRunner.setup_or_update_solver(
+            config, {'Time': 100.0}, interior_o_present, 10.0, {'output': '/tmp'}
+        )
+
+    mock_solver.set_initial_core_temperature.assert_called_once_with(5280.0)
+    assert any(
+        'Restored core temperature from snapshot: T_core=5280.00 K' in r.getMessage()
+        for r in caplog.records
+    )
+
+    interior_o_none = MagicMock()
+    interior_o_none.aragog_solver = None
+    interior_o_none._last_entropy = np.full(20, 4000.0)
+    interior_o_none._last_T_core = None
+    interior_o_none._last_T_core_status = 'absent'
+    interior_o_none._frozen_core_rho_cen = 13500.0
+
+    with (
+        patch('proteus.interior_energetics.aragog.require_cvode'),
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner.setup_solver',
+            side_effect=_mock_setup,
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner.update_solver'),
+        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.aragog'),
+    ):
+        caplog.clear()
+        AragogRunner.setup_or_update_solver(
+            config, {'Time': 100.0}, interior_o_none, 10.0, {'output': '/tmp'}
+        )
+
+    assert any(
+        'Snapshot core temperature is absent; it restarts from initial condition.'
+        in r.getMessage()
+        for r in caplog.records
+    )
+
+
+@pytest.mark.unit
 def test_core_module_resumed_solver_matches_continuous_frozen_profile(tmp_path):
     """A resumed run restores the frozen rho_cen and length_scale from the snapshot,
     matching the continuous run exactly, and subsequent solver.reset() calls do not refit."""
