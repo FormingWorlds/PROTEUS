@@ -218,7 +218,7 @@ def field_path_kind(path: str, cls: type = Config) -> str:
         of it names nothing in the schema or follows a field that is not a section.
     """
     for part in path.split('.'):
-        if cls is None or part not in {f.name for f in attrs.fields(cls)}:
+        if cls is None or part not in attrs.fields_dict(cls):
             return 'unknown'
         cls = _extract_attrs_class(_type_hints_for(cls).get(part))
     return 'section' if cls is not None else 'field'

@@ -627,15 +627,35 @@ GRID_SETTINGS = frozenset(
     }
 )
 
+# Keys each dimension method reads from its table, in the order of its Grid setter.
+DIMENSION_METHODS = {
+    'direct': ('values',),
+    'linspace': ('start', 'stop', 'count'),
+    'logspace': ('start', 'stop', 'count'),
+    'arange': ('start', 'stop', 'step'),
+}
+
+
+def _dimension_kind(key: str, value) -> str:
+    """Classify a non-setting grid key; ``'field'`` means a complete dimension table."""
+    kind = field_path_kind(key)
+    if kind != 'field':
+        return kind
+    if not (isinstance(value, dict) and 'method' in value):
+        return 'value'
+    method = value['method']
+    if not isinstance(method, str) or method not in DIMENSION_METHODS:
+        return 'method'
+    return 'field' if all(arg in value for arg in DIMENSION_METHODS[method]) else 'incomplete'
+
 
 def grid_dimension_keys(config: dict, config_fpath: str) -> list[str]:
     """Return the dimension keys of a grid config, refusing any key it cannot account for.
 
     A top-level key is either one of ``GRID_SETTINGS`` or a dimension: the path of a
-    single configuration field in the PROTEUS schema, given as a table with a
-    ``method``. Whether a key is a field is decided by the schema, not by a dot; the
-    schema has no top-level scalar field today other than ``config_version``, which
-    grid files use as a setting.
+    single configuration field in the PROTEUS schema, given as a table with one of the
+    ``DIMENSION_METHODS`` and the keys that method reads. Whether a key is a field is
+    decided by the schema, not by a dot.
 
     Parameters
     ----------
@@ -653,20 +673,20 @@ def grid_dimension_keys(config: dict, config_fpath: str) -> list[str]:
     ------
     UnknownConfigKeyError
         If a key is neither a grid setting nor a schema field, names a whole section
-        rather than one field, or does not hold a table with a ``method``.
+        rather than one field, or does not hold a table with a known ``method`` and the
+        keys it reads.
     """
     dims = [key for key in config if key not in GRID_SETTINGS]
-    kinds = {key: field_path_kind(key) for key in dims}
-    for key in dims:
-        if kinds[key] == 'field' and not (
-            isinstance(config[key], dict) and 'method' in config[key]
-        ):
-            kinds[key] = 'value'
+    kinds = {key: _dimension_kind(key, config[key]) for key in dims}
     reasons = {
         'unknown': 'not a grid setting or a configuration field',
         'section': 'a configuration section, not a single field (quote a dotted table '
         'header, as in ["planet.mass_tot"])',
         'value': 'a configuration field without a dimension table holding a method',
+        'method': f'a dimension table whose method is not one of {", ".join(DIMENSION_METHODS)}',
+        'incomplete': 'a dimension table without a key its method reads ('
+        + '; '.join(f'{m}: {", ".join(args)}' for m, args in DIMENSION_METHODS.items())
+        + ')',
     }
     lines = []
     for kind, reason in reasons.items():
@@ -735,23 +755,9 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
         name = 'param_%03d' % dim
         pg.add_dimension(name, key)
 
-        # Handle each possible method for setting this dimension
         table = config[key]
-        method = table['method']
-        if method == 'direct':
-            pg.set_dimension_direct(name, list(table['values']))
-
-        elif method == 'linspace':
-            pg.set_dimension_linspace(name, table['start'], table['stop'], table['count'])
-
-        elif method == 'logspace':
-            pg.set_dimension_logspace(name, table['start'], table['stop'], table['count'])
-
-        elif method == 'arange':
-            pg.set_dimension_arange(name, table['start'], table['stop'], table['step'])
-
-        else:
-            raise ValueError(f'Invalid method for setting dimension: {method}')
+        setter = getattr(pg, f'set_dimension_{table["method"]}')
+        setter(name, *(table[arg] for arg in DIMENSION_METHODS[table['method']]))
 
     # Print information
     pg.print_setup()
