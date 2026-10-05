@@ -489,6 +489,7 @@ jobs:
       - name: List downloaded artifacts
         run: find artifacts -type f | sort
       - name: Combine Linux .coverage files
+        id: combine
         # Runs in a non-login shell: the step needs no conda environment,
         # and its empty-report branch ends on an explicit exit 0, which
         # the login shell's logout hook corrupts on the hosted runners.
@@ -556,6 +557,7 @@ jobs:
           PY
           if [ -z "$(ls -A combine_in 2>/dev/null)" ]; then
             echo "::warning::No Linux .coverage files to combine; emitting empty report"
+            echo "empty=true" >> "$GITHUB_OUTPUT"
             python -c "import json; open('coverage-branch-nightly.json','w').write(json.dumps({'totals': {'percent_covered': 0, 'covered_lines': 0, 'num_statements': 0}}))"
             cat > coverage.xml <<'EOF'
           <?xml version="1.0" ?>
@@ -651,7 +653,7 @@ jobs:
               sys.exit(1)
           PY
       - name: Upload to Codecov
-        if: env.CODECOV_TOKEN != ''
+        if: env.CODECOV_TOKEN != '' && steps.combine.outputs.empty != 'true'
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         uses: codecov/codecov-action@v6
@@ -659,6 +661,8 @@ jobs:
           files: coverage.xml
           flags: nightly
           name: nightly-full-suite
+          # Upload only coverage.xml, not the per-tier XMLs and JSON summaries in the workspace.
+          disable_search: true
       - name: Upload nightly-coverage artifact
         id: upload-nightly-cov
         if: always()

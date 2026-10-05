@@ -907,15 +907,7 @@ def test_clean_spider_config_warns_only_about_legacy_observe_synthesis():
     assert report.warnings == ['Unmapped 2.0 field (left out): observe.synthesis'], (
         report.warnings
     )
-
-    # The warning is reserved for fields main's 2.0 loader actually read. A key
-    # that was never part of the 2.0 schema had no effect on the 2.0 run, so
-    # dropping it is faithful and silent; warning on it would bury the one
-    # field that does need the user's attention.
-    v2 = _minimal_spider_v2()
-    v2['interior']['ghost_field'] = 1.0
-    _, ghost_report = _translate(v2)
-    assert ghost_report.warnings == report.warnings
+    assert report.dropped_unknown == []
 
 
 def test_grid_axis_renames():
@@ -945,3 +937,132 @@ def test_grid_axis_renames():
     assert out['ref_config'] == 'input/base.toml'  # header preserved
     assert out['planet.elements.H_budget']['step'] == pytest.approx(5e3)
     assert any('H_mode' in w for w in report.warnings)
+
+
+def test_translated_key_outside_the_schema_is_refused_by_name(monkeypatch):
+    """A 3.0 path the translation emits but the schema lacks stops the migration and is named."""
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    monkeypatch.setitem(mig.OVERRIDES, 'planet.mass_totl', 2.0)
+    with pytest.raises(UnknownConfigKeyError, match=r'"planet\.mass_totl"') as exc:
+        mig.translate(_minimal_spider_v2())
+    assert 'in the migrated 3.0 config' in str(exc.value)
+
+
+def test_main_writes_nothing_when_a_translated_key_is_refused(monkeypatch, tmp_path, capsys):
+    """The command exits 1, names the key on stderr and leaves no output file."""
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(_minimal_spider_v2(), v2_path)
+    monkeypatch.setitem(mig.OVERRIDES, 'planet.mass_totl', 2.0)
+    assert mig.main([str(v2_path), '-o', str(out_path)]) == 1
+    assert not out_path.exists()
+    err = capsys.readouterr().err
+    assert '"planet.mass_totl"' in err and 'fault in the migration tables' in err
+
+
+def test_translated_scalar_on_a_section_is_refused_as_misdeclared(monkeypatch):
+    """A translated value where the schema expects a section is refused and named."""
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    monkeypatch.setitem(mig.OVERRIDES, 'planet', 1.0)
+    with pytest.raises(UnknownConfigKeyError, match='Misdeclared configuration section') as exc:
+        mig.translate(_minimal_spider_v2())
+    assert '"planet"' in str(exc.value)
+
+
+def test_main_runs_without_julia(tmp_path):
+    """The command migrates a 2.0 file in a fresh interpreter that cannot import juliacall."""
+    import subprocess
+
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(_minimal_spider_v2(), v2_path)
+    root = Path(__file__).resolve().parents[2]
+    code = (
+        "import sys; sys.modules['juliacall'] = None; "
+        f'sys.path[:0] = [{str(root / "tools")!r}, {str(root / "src")!r}]; '
+        'import migrate_config_v2_to_v3 as m; '
+        f'sys.exit(m.main([{str(v2_path)!r}, "-o", {str(out_path)!r}]))'
+    )
+    run = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr[-2000:]
+    assert out_path.exists()
+
+
+def _with_zalmoxis(v2):
+    v2['struct']['module'] = 'zalmoxis'
+    v2['struct']['zalmoxis'] = {'mantle_eos': 'WolfBower2018:MgSiO3', 'ghost_field': 1.0}
+
+
+def _with_aragog(v2):
+    v2['interior']['module'] = 'aragog'
+    v2['interior']['aragog'] = {'ghost_field': 1.0}
+
+
+def _with_inactive_aragog(v2):
+    v2['interior']['aragog'] = {'ghost_field': 1.0, 'num_levels': 50}
+
+
+def _with_ghosts(v2):
+    v2['interior']['ghost_field'] = 1.0
+    v2['delivery']['volatiles'] = {'XYZ': 1.0}
+
+
+@pytest.mark.parametrize(
+    'edit, names',
+    [
+        (_with_ghosts, ['delivery.volatiles.XYZ', 'interior.ghost_field']),
+        (_with_zalmoxis, ['struct.zalmoxis.ghost_field']),
+        (_with_aragog, ['interior.aragog.ghost_field']),
+        (_with_inactive_aragog, ['interior.aragog.ghost_field']),
+    ],
+    ids=['section', 'zalmoxis', 'aragog', 'inactive_block'],
+)
+def test_unknown_2_0_key_is_left_out_and_named(edit, names):
+    """A user key outside the 2.0 schema is left out, listed by name and not warned about."""
+    clean = _minimal_spider_v2()
+    edit(clean)
+    for name in names:
+        section, _, key = name.rpartition('.')
+        node = clean
+        for part in section.split('.'):
+            node = node[part]
+        del node[key]
+    _, clean_report = _translate(clean)
+    v2 = _minimal_spider_v2()
+    edit(v2)
+    flat, report = _translate(v2)
+    assert not set(names) & set(flat)
+    assert sorted(report.dropped_unknown) == names
+    assert f'Left out (not in the 2.0 schema): {report.dropped_unknown}' in report.text()
+    assert report.warnings == clean_report.warnings
+    assert report.dropped_inactive == clean_report.dropped_inactive
+
+
+def test_main_prints_the_left_out_keys(tmp_path, capsys):
+    """The command writes the migrated file and lists the left-out keys on stdout."""
+    v2 = _minimal_spider_v2()
+    _with_ghosts(v2)
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(v2, v2_path)
+    assert mig.main([str(v2_path), '-o', str(out_path)]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "Left out (not in the 2.0 schema): ['interior.ghost_field', 'delivery.volatiles.XYZ']"
+        in out
+    )
+
+
+@pytest.mark.parametrize('field, value', [('mass', 'heavy'), ('age_ini', [1, 2])])
+def test_wrong_typed_value_is_refused_by_the_schema(field, value, tmp_path):
+    """A 2.0 field holding a value of the wrong type fails 3.0 structuring and nothing is written."""
+    import cattrs
+
+    v2 = _minimal_spider_v2()
+    v2['star'][field] = value
+    with pytest.raises(cattrs.errors.ClassValidationError):
+        mig.translate(v2)
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(v2, v2_path)
+    with pytest.raises(cattrs.errors.ClassValidationError):
+        mig.main([str(v2_path), '-o', str(out_path)])
+    assert not out_path.exists()
