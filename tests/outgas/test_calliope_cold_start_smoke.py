@@ -18,7 +18,7 @@ import pytest
 pytest.importorskip('calliope')
 
 from proteus.outgas.calliope import calc_surface_pressures
-from tests.outgas.test_calliope import (  # noqa: F401
+from tests.outgas._calliope_helpers import (  # noqa: F401
     _cold_start_config,
     _restore_global_rng,
     _surface_pressure_hf_row,
@@ -27,21 +27,20 @@ from tests.outgas.test_calliope import (  # noqa: F401
 pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
 
 
-def _cold_start(caller_seed):
+def _cold_start(caller_seed, config=None):
     hf_row = _surface_pressure_hf_row()
     np.random.set_state(np.random.RandomState(caller_seed).get_state())
-    calc_surface_pressures({'output': '/tmp/test'}, _cold_start_config(), hf_row)
+    calc_surface_pressures({'output': '/tmp/test'}, config or _cold_start_config(), hf_row)
     return hf_row
 
 
 def test_real_cold_start_is_identical_for_any_caller_rng_state(monkeypatch):
     """Two real cold starts under different caller RNG states agree in every
-    copied value.
+    copied value, and without the wrapper's seed they do not (negative control).
 
-    With the wrapper's seed disabled the roots differ (negative control; if
-    CALLIOPE seeds itself this fails and the wrapper's seed can go). The seeded
-    root lies within rel 1e-4 of these two unseeded ones, a sanity bound on the
-    seed, not a check of the physics.
+    The seeded root lies within 5 x solver_rtol of the two unseeded ones: each
+    root closes the mass balance only to solver_rtol, so two valid roots can
+    differ by more than solver_rtol. A sanity bound on the seed, not the physics.
     """
     a, b = _cold_start(1), _cold_start(2)
     assert a['P_surf'] > 0.0
@@ -51,7 +50,18 @@ def test_real_cold_start_is_identical_for_any_caller_rng_state(monkeypatch):
     c, d = _cold_start(1), _cold_start(2)
     assert c['P_surf'] != d['P_surf']
     for raw in (c, d):
-        assert a['P_surf'] == pytest.approx(raw['P_surf'], rel=1e-4)
+        assert a['P_surf'] == pytest.approx(
+            raw['P_surf'], rel=5 * _cold_start_config().outgas.solver_rtol
+        )
+
+
+def test_cold_start_with_helium_is_identical_for_any_caller_rng_state():
+    """With He active CALLIOPE also pre-solves the noble gas from the same
+    random stream; two caller RNG states still give identical rows."""
+    config = _cold_start_config({'He': True}, He_budget=3.0e16)
+    a, b = _cold_start(1, config), _cold_start(2, config)
+    assert a['He_bar'] > 0.0
+    assert [k for k in a if a[k] != b[k]] == []
 
 
 def test_failing_solve_draws_the_same_guesses_on_a_rerun(monkeypatch, tmp_path):
