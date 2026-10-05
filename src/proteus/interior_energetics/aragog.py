@@ -678,19 +678,34 @@ class AragogRunner:
                         'bower2018',
                     ):
                         T_core = getattr(interior_o, '_last_T_core', None)
-                        if T_core is None:
-                            log.warning(
-                                'Snapshot core temperature is %s; it restarts from initial condition.',
-                                getattr(interior_o, '_last_T_core_status', 'absent'),
-                            )
-                        elif hasattr(solver, 'set_initial_core_temperature'):
-                            solver.set_initial_core_temperature(T_core)
+                        if T_core is not None:
                             log.info(
-                                'Restored core temperature from snapshot: T_core=%.2f K',
-                                T_core,
+                                'Restored core temperature from snapshot: T_core=%.2f K', T_core
                             )
                         else:
-                            solver._T_core_init = T_core
+                            # The helpfile T_cmb column holds the core temperature in these modes.
+                            status = getattr(interior_o, '_last_T_core_status', 'absent')
+                            T_cmb = float(hf_row.get('T_cmb', np.nan))
+                            if np.isfinite(T_cmb) and T_cmb > 0:
+                                T_core = T_cmb
+                                log.warning(
+                                    'Snapshot core temperature is %s; it restarts from the '
+                                    'resumed row, T_cmb=%.2f K.',
+                                    status,
+                                    T_cmb,
+                                )
+                            else:
+                                log.warning(
+                                    'Snapshot core temperature is %s and the resumed row has no '
+                                    'usable T_cmb; it restarts from the basal-node temperature of '
+                                    'the restored profile.',
+                                    status,
+                                )
+                        if T_core is not None:
+                            if hasattr(solver, 'set_initial_core_temperature'):
+                                solver.set_initial_core_temperature(T_core)
+                            else:
+                                solver._T_core_init = T_core
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',

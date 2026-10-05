@@ -4417,72 +4417,67 @@ def test_run_solver_invokes_core_module_diagnostics_when_active(tmp_path):
 
 
 @pytest.mark.unit
-def test_setup_or_update_solver_restores_core_temperature_from_snapshot(caplog):
-    """setup_or_update_solver restores core temperature from snapshot or logs warning when absent."""
+@pytest.mark.parametrize(
+    'last_t_core, hf_row, expected, message',
+    [
+        (
+            5280.0,
+            {'Time': 100.0, 'T_cmb': 4100.0},
+            5280.0,
+            'Restored core temperature from snapshot: T_core=5280.00 K',
+        ),
+        (
+            None,
+            {'Time': 100.0, 'T_cmb': 4100.0},
+            4100.0,
+            'it restarts from the resumed row, T_cmb=4100.00 K',
+        ),
+        (
+            None,
+            {'Time': 100.0, 'T_cmb': float('nan')},
+            None,
+            'basal-node temperature of the restored profile',
+        ),
+        (None, {'Time': 100.0}, None, 'basal-node temperature of the restored profile'),
+    ],
+    ids=['snapshot', 'resumed_row', 'nan_row', 'no_row_value'],
+)
+def test_setup_or_update_solver_restores_the_core_temperature_on_resume(
+    caplog, last_t_core, hf_row, expected, message
+):
+    """A resume takes the core temperature from the snapshot, else from the resumed row's
+    T_cmb, else leaves it to the solver, and says which."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     config = _make_aragog_config(struct_module='zalmoxis')
     config.params.resume = True
     config.interior_energetics.aragog.core_bc = 'core_module'
+    solver = MagicMock(_n_stag=20)
+    interior_o = MagicMock(
+        aragog_solver=None, _last_T_core=last_t_core, _last_T_core_status='absent'
+    )
+    interior_o._last_entropy = np.full(20, 4000.0)
+    interior_o._frozen_core_rho_cen = 13500.0
 
-    mock_solver = MagicMock()
-    mock_solver._n_stag = 20
-
-    def _mock_setup(cfg, row, int_o, outdir):
-        int_o.aragog_solver = mock_solver
-
-    interior_o_present = MagicMock()
-    interior_o_present.aragog_solver = None
-    interior_o_present._last_entropy = np.full(20, 4000.0)
-    interior_o_present._last_T_core = 5280.0
-    interior_o_present._frozen_core_rho_cen = 13500.0
+    def _setup(cfg, row, int_o, outdir):
+        int_o.aragog_solver = solver
 
     with (
         patch('proteus.interior_energetics.aragog.require_cvode'),
         patch(
-            'proteus.interior_energetics.aragog.AragogRunner.setup_solver',
-            side_effect=_mock_setup,
+            'proteus.interior_energetics.aragog.AragogRunner.setup_solver', side_effect=_setup
         ),
         patch('proteus.interior_energetics.aragog.AragogRunner.update_solver'),
         caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.aragog'),
     ):
-        caplog.clear()
-        AragogRunner.setup_or_update_solver(
-            config, {'Time': 100.0}, interior_o_present, 10.0, {'output': '/tmp'}
-        )
+        AragogRunner.setup_or_update_solver(config, hf_row, interior_o, 10.0, {'output': '.'})
 
-    mock_solver.set_initial_core_temperature.assert_called_once_with(5280.0)
-    assert any(
-        'Restored core temperature from snapshot: T_core=5280.00 K' in r.getMessage()
-        for r in caplog.records
-    )
-
-    interior_o_none = MagicMock()
-    interior_o_none.aragog_solver = None
-    interior_o_none._last_entropy = np.full(20, 4000.0)
-    interior_o_none._last_T_core = None
-    interior_o_none._last_T_core_status = 'absent'
-    interior_o_none._frozen_core_rho_cen = 13500.0
-
-    with (
-        patch('proteus.interior_energetics.aragog.require_cvode'),
-        patch(
-            'proteus.interior_energetics.aragog.AragogRunner.setup_solver',
-            side_effect=_mock_setup,
-        ),
-        patch('proteus.interior_energetics.aragog.AragogRunner.update_solver'),
-        caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.aragog'),
-    ):
-        caplog.clear()
-        AragogRunner.setup_or_update_solver(
-            config, {'Time': 100.0}, interior_o_none, 10.0, {'output': '/tmp'}
-        )
-
-    assert any(
-        'Snapshot core temperature is absent; it restarts from initial condition.'
-        in r.getMessage()
-        for r in caplog.records
-    )
+    if expected is None:
+        solver.set_initial_core_temperature.assert_not_called()
+    else:
+        solver.set_initial_core_temperature.assert_called_once_with(expected)
+    assert any(message in r.getMessage() for r in caplog.records)
+    solver.set_initial_entropy.assert_called_once()
 
 
 @pytest.mark.unit
