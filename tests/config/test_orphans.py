@@ -1100,6 +1100,7 @@ def test_phase_boundary_cap_fixed_in_a_toml_reaches_the_config(tmp_path):
 )
 def test_orphans_field_path_kind_follows_the_schema_not_the_dots(path, kind):
     """A path is a field, a section or unknown by the schema walk; a bare top-level
-    field counts as a field, and a path through a scalar field is unknown."""
+    field counts as a field, a path through a scalar field is unknown, and names are
+    case-sensitive."""
     assert field_path_kind(path) == kind
-    assert field_path_kind(path) in ('field', 'section', 'unknown')
+    assert field_path_kind(path.upper() or 'X') == 'unknown'

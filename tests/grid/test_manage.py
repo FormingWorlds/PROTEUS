@@ -1394,7 +1394,7 @@ def test_grid_dimension_keys_names_every_refused_key_with_its_reason():
 
 
 def test_grid_from_config_numbers_dimensions_in_file_order(fake_proteus_dir, monkeypatch):
-    """Settings between dimensions do not take a dimension number; params follow file order."""
+    """Only dimensions take a number: param_000 onwards, in the order of the grid file."""
     (fake_proteus_dir / 'base.toml').write_text('# base\n')
     grid_path = fake_proteus_dir / 'g.toml'
     grid_path.write_text(
