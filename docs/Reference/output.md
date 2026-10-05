@@ -88,6 +88,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `orbital_period` | `s` | orbital duration | `orbit/wrapper.py` | always | orbit, plot |
 | `eccentricity` | `1` | orbital eccentricity | `accretion/wrapper.py`<br>`orbit/orbit.py`<br>`orbit/parameterized.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true | accretion, escape, orbit, plot, star |
 | `ecc_dot_planet` | `1 s-1` | eccentricity derivative | `orbit/orbit.py`<br>`orbit/satellite.py` | orbit.evolve = true; orbit.satellite = true |   |
+| `dEdt_orb` | `W` | orbital energy rate of a prescribed track | `orbit/parameterized.py` | always | orbit |
 | `plan_star_am` | `kg m2 s-1` | angular momentum of star+planet | `orbit/orbit.py` | orbit.evolve = true |   |
 | `axial_period` | `s` | day length of planet around its axis | `orbit/common.py`<br>`orbit/orbit.py`<br>`orbit/satellite.py`<br>`orbit/wrapper.py` | always; orbit.evolve = true; orbit.satellite = true | atmos_clim, orbit, plot, utils |
 | `Imk2` | `1` | Imaginary part of k2 Love Number | `orbit/wrapper.py` | always | orbit |

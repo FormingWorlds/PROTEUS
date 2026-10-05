@@ -10,7 +10,10 @@ from scipy.integrate import solve_ivp
 from proteus.interior_energetics.common import Interior_t
 from proteus.orbit.common import Tides_t, kmin_kmax_for_m0_mirror, run_adaptive_orbit_substeps
 from proteus.orbit.hansen import get_all_m_hansen
-from proteus.orbit.parameterized import run_parameterized_orbital_migration
+from proteus.orbit.parameterized import (
+    run_parameterized_orbital_migration,
+    update_orbital_energy_rate,
+)
 from proteus.utils.constants import const_G, secs_per_year
 from proteus.utils.helper import UpdateStatusfile
 
@@ -141,9 +144,9 @@ def evolve_orbit_star(
     elif model == 'parameterized':
         _warn_if_migration_window_unresolved(hf_row, config, interior_o.dt)
         run_parameterized_orbital_migration(hf_row, config)
-        # A prescribed track bypasses the substep controller, so there is no
-        # step to reject and shrink. An unphysical orbit stops the run instead,
-        # rather than being carried into the flux and escape modules.
+        update_orbital_energy_rate(hf_row, config)
+        # No substep to reject on a prescribed track, so an unphysical orbit
+        # stops the run before it reaches the flux and escape modules.
         if not _prescribed_state_is_valid_star(hf_row):
             UpdateStatusfile(dirs, 26)
             periapsis = hf_row['semimajorax'] * (1.0 - hf_row['eccentricity'])

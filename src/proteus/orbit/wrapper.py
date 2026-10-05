@@ -313,7 +313,10 @@ def run_orbit(
         # the run starts one step at config.orbit.semimajoraxis and then jumps
         # to sma_init.
         if config.orbit.star_planet_model == 'parameterized':
-            from proteus.orbit.parameterized import run_parameterized_orbital_migration
+            from proteus.orbit.parameterized import (
+                run_parameterized_orbital_migration,
+                update_orbital_energy_rate,
+            )
 
             sma_init = config.orbit.parameterized.sma_init
             if sma_init is not None and not np.isclose(
@@ -326,6 +329,7 @@ def run_orbit(
                     sma_init,
                 )
             run_parameterized_orbital_migration(hf_row, config)
+            update_orbital_energy_rate(hf_row, config)
 
         # Update orbital period (dependent)
         update_period(hf_row)

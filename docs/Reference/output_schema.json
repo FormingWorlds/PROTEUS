@@ -187,6 +187,23 @@
       "consumers_possible": []
     },
     {
+      "name": "dEdt_orb",
+      "unit": "W",
+      "description": "orbital energy rate of a prescribed track",
+      "group": "Orbital and spin parameters of planet",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/orbit/parameterized.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "orbit"
+      ],
+      "consumers_possible": []
+    },
+    {
       "name": "plan_star_am",
       "unit": "kg m2 s-1",
       "description": "angular momentum of star+planet",

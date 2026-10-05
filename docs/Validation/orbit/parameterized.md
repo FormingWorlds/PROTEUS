@@ -10,6 +10,7 @@ mathematics the laws are defined by.
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|
 | `tests/orbit/test_parameterized.py::test_sigmoid_matches_the_cubic_smoothstep_across_the_window` | Analytical limit: the cubic Hermite interpolant with zero slope at both ends, `S(u) = 3u^2 - 2u^3`, at `u = 1/4`, `1/2` and `3/4` | Standard | Pins `sigmoid_migration` across its migration window. Separates the cubic from a linear ramp and from the quintic smootherstep, and catches a swapped `sma_init`/`sma_final`. |
+| `tests/orbit/test_parameterized.py::test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau` | Analytical limit: `dE/dt` of `E = -G M m (1 - e_mig^2 x) / (2 a_f)` at `x = 1` equals `2 dE / tau` | Derived below | Pins `orbital_energy_rate` at the high-eccentricity epoch for the TOI-561 b setup (`dE = -2.86e35 J`, `-1.8e21 W` at `tau = 1e7` yr), with guards on the factor 2, the sign and the unit. Last compared 2026-10-02. |
 | `tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity` | Postolec et al. (2026), submitted to ApJ, arXiv:2609.03144 (doi:10.48550/arXiv.2609.03144) | Sect. 2.2, Eqs. 1-4 | Pins `e(t) = e_mig exp(-(t - t_mig) / tau)`, a form the source never evaluates, plus the one-tau e-folding. The semi-latus-rectum equality `a (1 - e^2) = a_f` is kept as a sanity check only: it is an identity of the implementation, not an emergent conservation law. Also asserts the pericentre `a (1 - e)` is not conserved. |
 
 ## Re-derivation notes
@@ -119,6 +120,27 @@ difference.
 
 The `rtol=1e-10` tolerance on the invariant absorbs the round-off of the
 `sqrt` round trip through `e` and back.
+
+### Orbital energy rate
+
+The orbital energy is `E = -G M_star M_planet / (2 a)`, so at fixed masses
+`dE/dt = G M_star M_planet (da/dt) / (2 a^2)`. On the high-eccentricity
+track `1/a = (1 - e_mig^2 x) / a_f` with `x = exp(-2 (t - t_mig) / tau)`,
+which gives
+
+```
+dE/dt = -G M_star M_planet e_mig^2 x / (a_f tau)
+```
+
+At the epoch `x = 1` and `e_mig^2 = 1 - a_f / a_0`, so the rate is
+`2 dE / tau` with `dE = E(a_f) - E(a_0) = -(G M_star M_planet / 2)(1/a_f - 1/a_0)`
+the energy change of the whole circularisation, negative for inward migration. The rate depends on time through `x`
+alone, so one `tau` after the epoch it has fallen by exactly `e^-2`; a
+decay written with `exp(-(t - t_mig) / tau)` would fall by `e^-1`. The
+closure test integrates the rate with `scipy.integrate.quad` and recovers
+`E(a_end) - E(a_0)` to `rel=1e-8` for the high-eccentricity track and for
+the sigmoid inward and outward, which a missing factor of 1/2 or a rate
+left per year instead of per second would miss by a factor of 2 or 3.2e7.
 
 ## End-to-end check against dummy runs
 

@@ -111,7 +111,7 @@ spectrum in `tides_o`).
 |---|---|---|---|
 | `sp0d` | `semimajorax`, `eccentricity` | Driscoll & Barnes (2015)[^cite-driscoll2015], Eq. 15-16 | Closed-form two-ODE system in `(a, e)` only; no spin dynamics, so it is **not** angular-momentum-conserving by construction. |
 | `sp1d` | `axial_period`, `semimajorax`, `eccentricity`, `plan_star_am` | Correia & Valente (2022)[^cite-correia2022] | Vectorial, Hansen-coefficient formulation restricted to planetary tides (star assumed non-dissipative). Genuinely angular-momentum-conserving; verified by dedicated tests. |
-| `parameterized` | `semimajorax`, `eccentricity` | `high_ecc`: Postolec et al. (2026)[^cite-postolec2026], Eq. 1-4 | Prescribed migration track, not a tidal model: the orbit is a closed-form function of time, no tidal force is computed, and no angular momentum is exchanged with the interior (no tidal heating). Use it to impose a migration history, not to derive one. |
+| `parameterized` | `semimajorax`, `eccentricity`, `axial_period` (when `orbit.axial_period` is unset), `dEdt_orb` | `high_ecc`: Postolec et al. (2026)[^cite-postolec2026], Eq. 1-4 | Prescribed migration track, not a tidal model: the orbit is a closed-form function of time, no tidal force is computed, and no angular momentum is exchanged with the interior (no tidal heating). Use it to impose a migration history, not to derive one. Giant impacts are rejected (`accretion.module = 'none'` is required). |
 
 ??? note "sp0d in a nutshell - Driscoll & Barnes (2015)"
     Written for rocky planets around M dwarfs, where the habitable zone
@@ -174,6 +174,64 @@ The migration window must also be resolved by the timestep. `sigmoid` and
 aligns a step to `time_migration`. If `tau_migration` spans fewer than three
 timesteps the track is sampled at little more than its endpoints and silently
 degenerates to `instant`; the orbit module logs a warning when that happens.
+
+### Spin, stellar flux and impacts on a prescribed track
+
+No torque acts on the spin, so with `orbit.axial_period` unset the planet
+stays synchronous: `axial_period` is set to the current orbital period at
+every step, and AGNI and the breakup check read that value. A configured
+`axial_period` is held fixed instead.
+
+On an eccentric orbit the stellar flux is averaged over the orbit as
+`<1/r^2> = 1 / (a^2 sqrt(1 - e^2))`, which is the flux at the distance
+`a (1 - e^2)^(1/4)`. Every module that scales a flux by distance uses that
+distance: the bolometric and XUV instellation, the stored stellar spectrum,
+the eclipse depth, VULCAN's `star.dat` and `orbit_radius`, and the
+stellar-surface flux petitRADTRANS recovers from the stored spectrum.
+F_ins is refreshed every `params.dt.starinst` and the stored spectrum every
+`params.dt.starspec`. While the orbit evolves, petitRADTRANS and VULCAN undo
+the latest stored spectrum at the current distance, so their stellar flux is
+off by the square of the ratio of the current distance to the one the file
+was written at. AGNI is not affected: it takes only the spectral shape from
+the file and its heating from F_ins.
+The time-averaged separation `a (1 + e^2 / 2)` stays in use for geometry
+only (the Roche-limit checks and the orbit plots). This applies to every
+eccentric run, not only to `parameterized`.
+
+Giant impacts are rejected at config load (`accretion.module = 'none'` is
+required): the track rebuilds the orbit from its own parameters every step,
+so an impact's new semi-major axis would be overwritten while its change in
+eccentricity persisted.
+
+### Where the orbital energy goes
+
+The track changes the orbital energy `E = -G M_star M_planet / (2 a)` but
+deposits that energy nowhere: no tidal heating reaches the interior and the
+energy balance of the planet does not include it. The helpfile column
+`dEdt_orb` [W] records the rate the track implies,
+`dE/dt = G M_star M_planet (da/dt) / (2 a^2)`, negative while the orbit
+shrinks. It is zero for `none`, outside the migration window and for
+`instant`, whose step releases its energy at a single time.
+
+For `high_ecc` the rate is largest in magnitude at `time_migration`, where
+it equals `2 dE / tau_migration`, with `dE = E(sma_final) - E(sma_init) =
+-(G M_star M_planet / 2) (1/sma_final - 1/sma_init)` the whole energy change
+(negative for inward migration), and it then decays as
+`exp(-2 (t - time_migration) / tau_migration)`. The eccentricity step at
+`time_migration` changes the orbital angular momentum instantly while
+leaving the energy unchanged, since `a` is still `sma_init` there.
+
+For the TOI-561 b setup in `input/planets/toi561b.toml` (0.806 M_sun,
+2.24 M_earth, 0.029 to 0.0106 au) the orbit loses 2.9e35 J (`dE = -2.9e35 J`).
+With `tau_migration = 1e7` yr the rate at onset is `-1.8e21 W`. At that epoch the
+star (age 0.101 Gyr, about 0.28 L_sun) delivers about `1.7e20 W` to the
+planet's cross-section at the flux-weighted distance of 0.0226 au, so the
+dropped power is about ten times the instellation in magnitude, and it scales as
+`1 / tau_migration`: comparable to the instellation at `tau_migration = 1e8`
+yr, a hundred times it at `1e6` yr. A tidal model following the same track
+would have to dissipate this power in the planet. Results that depend on
+the interior temperature during circularisation should be read with that in
+mind.
 
 ### Visualizing the four parameterized regimes
 

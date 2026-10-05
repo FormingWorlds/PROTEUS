@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import AU
+from proteus.utils.constants import AU, const_G, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -149,6 +149,126 @@ def high_eccentricity_migration(
         sma = sma_final / (1.0 - e_mig**2 * np.exp(-2 * (t - time_migration) / tau_mig))
         ecc = np.sqrt(max(0, 1.0 - sma_final / sma))
         return sma, ecc
+
+
+def orbital_energy_rate(
+    t: float,
+    migration: str,
+    sma_init: float,
+    sma_final: float,
+    time_migration: float,
+    tau_mig: float,
+    mass_star: float,
+    mass_planet: float,
+) -> float:
+    """
+    Rate of change of the orbital energy along a prescribed migration track.
+
+    The orbital energy is ``E = -G M_star M_planet / (2 a)``, so its rate is
+    ``dE/dt = G M_star M_planet (da/dt) / (2 a^2)``, evaluated with the
+    closed-form ``da/dt`` of the selected law at fixed masses. It is negative
+    while the orbit shrinks. The parameterized model deposits this energy
+    nowhere, so the value is a diagnostic of the power a tidal model would
+    have to dissipate to follow the same track.
+
+    For ``high_ecc`` the rate is ``-G M_star M_planet e_mig^2 x / (sma_final
+    tau_mig)`` with ``x = exp(-2 (t - time_migration) / tau_mig)``, largest at
+    the epoch, where it equals twice the total energy change divided by
+    ``tau_mig``. ``none`` and ``instant`` return zero: the instant step
+    releases its energy at a single time, which a rate cannot carry.
+
+    Parameters
+    ----------
+    t : float
+        Current simulation time [yr].
+    migration : str
+        Migration law: "none", "instant", "sigmoid" or "high_ecc".
+    sma_init : float
+        Initial semi-major axis [m].
+    sma_final : float
+        Final semi-major axis [m].
+    time_migration : float
+        Time at which migration starts [yr].
+    tau_mig : float
+        Migration window for "sigmoid", decay timescale for "high_ecc" [yr].
+    mass_star : float
+        Stellar mass [kg].
+    mass_planet : float
+        Planet mass [kg].
+
+    Returns
+    -------
+    float
+        Rate of change of the orbital energy [W].
+    """
+
+    if migration in ('none', 'instant'):
+        return 0.0
+
+    if tau_mig <= 0:
+        raise ValueError(f'Migration timescale tau_mig must be > 0, got {tau_mig}')
+
+    if migration == 'sigmoid':
+        if not time_migration < t < time_migration + tau_mig:
+            return 0.0
+        u = (t - time_migration) / tau_mig
+        sma = sigmoid_migration(t, sma_init, sma_final, time_migration, tau_mig)
+        dadt = (sma_final - sma_init) * 6.0 * u * (1.0 - u) / tau_mig
+    elif migration == 'high_ecc':
+        # Evaluated first so that an outward track is refused at every time
+        sma, _ = high_eccentricity_migration(
+            t, 0.0, sma_init, sma_final, time_migration, tau_mig
+        )
+        if t < time_migration:
+            return 0.0
+        e_mig_sq = 1.0 - sma_final / sma_init
+        decay = np.exp(-2.0 * (t - time_migration) / tau_mig)
+        dadt = -2.0 * sma * sma * e_mig_sq * decay / (sma_final * tau_mig)
+    else:
+        raise ValueError(
+            f'Unknown migration option: {migration!r}. '
+            'Expected "none", "instant", "sigmoid" or "high_ecc".'
+        )
+
+    # da/dt is in m per year here, the energy rate in W
+    return float(const_G * mass_star * mass_planet * dadt / (2.0 * sma * sma * secs_per_year))
+
+
+def update_orbital_energy_rate(hf_row: dict, config: Config) -> float:
+    """
+    Write the orbital energy rate of the prescribed track to ``hf_row['dEdt_orb']``.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Dictionary of current runtime variables, carrying ``Time`` [yr],
+        ``M_star`` [kg] and ``M_planet`` [kg].
+    config : Config
+        Configuration options
+
+    Returns
+    -------
+    float
+        Rate of change of the orbital energy [W].
+    """
+
+    params = config.orbit.parameterized
+    if params.sma_init is None:
+        raise ValueError('Parameterized migration requires orbit.parameterized.sma_init')
+    sma_i = params.sma_init * AU
+    sma_f = sma_i if params.sma_final is None else params.sma_final * AU
+
+    hf_row['dEdt_orb'] = orbital_energy_rate(
+        t=float(hf_row['Time']),
+        migration=params.migration,
+        sma_init=sma_i,
+        sma_final=sma_f,
+        time_migration=float(params.time_migration),
+        tau_mig=float(params.tau_migration),
+        mass_star=float(hf_row['M_star']),
+        mass_planet=float(hf_row['M_planet']),
+    )
+    return hf_row['dEdt_orb']
 
 
 def run_parameterized_orbital_migration(hf_row: dict, config: Config) -> tuple[float, float]:

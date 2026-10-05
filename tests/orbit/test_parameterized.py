@@ -18,6 +18,9 @@ Contract clauses exercised:
 - ``high_eccentricity_migration`` circularises at constant orbital
   angular momentum, exciting the eccentricity to
   ``sqrt(1 - sma_final / sma_init)`` at ``time_migration``.
+- ``orbital_energy_rate`` returns ``G M_star M_planet (da/dt) / (2 a^2)``
+  along each law, zero outside the migration window and for the
+  ``none`` and ``instant`` laws.
 - ``run_parameterized_orbital_migration`` converts AU to metres,
   dispatches on ``config.orbit.parameterized.migration``, and seeds
   ``hf_row`` from the config on the first recorded step.
@@ -32,9 +35,14 @@ Physics invariants asserted:
   ``sma_final``.
 - **Monotonicity**: ``a`` and ``e`` decrease monotonically once
   migration is active.
+- **Energy closure**: the orbital energy rate integrated over the
+  migration equals ``E(a_end) - E(a_start)`` with
+  ``E = -G M_star M_planet / (2 a)``.
 - **Pinned values with discrimination guards**: the cubic quarter,
   half and three-quarter points, the high-eccentricity half-decay
-  point, and the one-tau e-folding of the eccentricity.
+  point, the one-tau e-folding of the eccentricity, the orbital energy
+  rate 2 dE / tau at the high-eccentricity epoch, and its e^-2 fall
+  over one tau.
 
 Anti-happy-path coverage:
 
@@ -68,10 +76,12 @@ import pytest
 from proteus.orbit.parameterized import (
     high_eccentricity_migration,
     instant_migration,
+    orbital_energy_rate,
     run_parameterized_orbital_migration,
     sigmoid_migration,
+    update_orbital_energy_rate,
 )
-from proteus.utils.constants import AU
+from proteus.utils.constants import AU, M_earth, M_sun, const_G, secs_per_year
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -872,3 +882,223 @@ def test_high_ecc_passes_a_near_radial_input_eccentricity_through_untouched():
     # The pre-event branch does not excite: the event value would be
     # sqrt(1 - 0.8 / 2.0) = 0.7746, well below what was handed in.
     assert e > np.sqrt(1.0 - SMA_F / SMA_I)
+
+
+# ---------------------------------------------------------------------------
+# orbital_energy_rate: the power the prescribed track removes from the orbit
+# ---------------------------------------------------------------------------
+
+# TOI-561 b high-eccentricity setup (input/planets/toi561b.toml).
+M_STAR_TOI = 0.806 * M_sun  # [kg]
+M_PL_TOI = 2.24 * M_earth  # [kg]
+A0_TOI = 0.029 * AU  # [m]
+AF_TOI = 0.0106 * AU  # [m]
+TMIG_TOI = 1.0e6  # [yr]
+TAU_TOI = 1.0e7  # [yr]
+
+
+def _orbital_energy(sma, m_star=M_STAR_TOI, m_pl=M_PL_TOI):
+    """Keplerian orbital energy -G M m / (2 a) [J], written out independently
+    of the code under test."""
+    return -const_G * m_star * m_pl / (2.0 * sma)
+
+
+def _rate(t, migration, sma_init=A0_TOI, sma_final=AF_TOI, tau=TAU_TOI):
+    """orbital_energy_rate on the TOI-561 b masses and epoch."""
+    return orbital_energy_rate(
+        t=t,
+        migration=migration,
+        sma_init=sma_init,
+        sma_final=sma_final,
+        time_migration=TMIG_TOI,
+        tau_mig=tau,
+        mass_star=M_STAR_TOI,
+        mass_planet=M_PL_TOI,
+    )
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau():
+    """At the epoch the high-eccentricity track removes orbital energy at
+    2 dE / tau, where dE = E(sma_final) - E(sma_init) is the whole energy
+    change of circularisation. Analytic limit of d/dt of
+    -G M m (1 - e_mig^2 x) / (2 a_f) at x = 1. For TOI-561 b
+    (0.806 M_sun, 2.24 M_earth, 0.029 to 0.0106 au, tau = 1e7 yr) dE is
+    -2.9e35 J and the onset rate -1.8e21 W."""
+    rate = _rate(TMIG_TOI, 'high_ecc')
+    delta_e = _orbital_energy(AF_TOI) - _orbital_energy(A0_TOI)
+    expected = 2.0 * delta_e / (TAU_TOI * secs_per_year)
+
+    assert rate == pytest.approx(expected, rel=1e-10)
+    assert delta_e == pytest.approx(-2.86e35, rel=0.01)
+    # Factor guard: dropping the 2 of the decay exponent gives dE / tau.
+    assert abs(rate - delta_e / (TAU_TOI * secs_per_year)) > 0.4 * abs(expected)
+    assert rate < 0.0  # the orbit loses energy while it shrinks
+    assert 1.0e21 < abs(rate) < 3.0e21  # W, not J/yr or erg/s
+
+
+@pytest.mark.physics_invariant
+def test_high_ecc_energy_rate_decays_as_twice_the_eccentricity_e_folding():
+    """The high-eccentricity rate is proportional to exp(-2 (t - t_mig) / tau)
+    alone, so one tau after the epoch it has fallen by exactly e^-2. A decay
+    written with exp(-(t - t_mig) / tau) would fall only by e^-1."""
+    ratio = _rate(TMIG_TOI + TAU_TOI, 'high_ecc') / _rate(TMIG_TOI, 'high_ecc')
+
+    assert ratio == pytest.approx(np.exp(-2.0), rel=1e-10)
+    assert abs(ratio - np.exp(-1.0)) > 0.2  # exponent guard
+    assert 0.0 < ratio < 1.0
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'migration, sma_final, t_end_tau',
+    [
+        ('high_ecc', AF_TOI, 40.0),
+        ('sigmoid', AF_TOI, 1.0),
+        ('sigmoid', 2.5 * A0_TOI, 1.0),
+    ],
+    ids=['high_eccentricity_inward', 'sigmoid_inward', 'sigmoid_outward'],
+)
+def test_energy_rate_integrates_to_the_orbital_energy_change(migration, sma_final, t_end_tau):
+    """Energy closure: integrating the rate over the migration recovers
+    E(a_end) - E(a_start) for each smooth law, inward and outward. A rate
+    missing the factor 1/2 of the orbital energy, or written per year
+    rather than per second, misses this by a factor of 2 or 3.2e7. Forty
+    tau leaves the high-eccentricity orbit e^-80 from sma_final."""
+    from scipy.integrate import quad
+
+    t_end = TMIG_TOI + t_end_tau * TAU_TOI
+    integral, _ = quad(
+        lambda t: _rate(t, migration, sma_final=sma_final),
+        TMIG_TOI,
+        t_end,
+        limit=200,
+        epsrel=1e-11,
+    )
+    integral *= secs_per_year  # rate in W integrated over years
+    if migration == 'high_ecc':
+        a_end, _ = high_eccentricity_migration(t_end, 0.0, A0_TOI, sma_final, TMIG_TOI, TAU_TOI)
+    else:
+        a_end = sigmoid_migration(t_end, A0_TOI, sma_final, TMIG_TOI, TAU_TOI)
+    expected = _orbital_energy(a_end) - _orbital_energy(A0_TOI)
+
+    assert integral == pytest.approx(expected, rel=1e-8)
+    # Sign: inward migration releases energy, outward migration needs it.
+    assert np.sign(integral) == (1.0 if sma_final > A0_TOI else -1.0)
+    assert 1.0e34 < abs(integral) < 1.0e36
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'migration, t_yr',
+    [
+        ('high_ecc', TMIG_TOI * (1.0 - 1e-9)),
+        ('sigmoid', TMIG_TOI),
+        ('sigmoid', TMIG_TOI + TAU_TOI),
+        ('sigmoid', TMIG_TOI + 3.0 * TAU_TOI),
+        ('instant', TMIG_TOI),
+        ('none', TMIG_TOI + 0.5 * TAU_TOI),
+    ],
+    ids=[
+        'high_eccentricity_before_epoch',
+        'sigmoid_at_window_start',
+        'sigmoid_at_window_end',
+        'sigmoid_after_window',
+        'instant_step_carries_no_rate',
+        'static_track',
+    ],
+)
+def test_energy_rate_vanishes_where_the_orbit_is_held(migration, t_yr):
+    """Outside its migration window a law holds the orbit, so no energy is
+    removed. The smoothstep has zero slope at both window edges, and the
+    instant step releases its energy at one time, which a rate cannot carry,
+    so both report zero there. Inside the window the same laws are nonzero,
+    which keeps this from passing on a constant zero."""
+    rate = _rate(t_yr, migration)
+    inside = _rate(TMIG_TOI + 0.5 * TAU_TOI, 'sigmoid')
+
+    assert rate == pytest.approx(0.0, abs=1e-6 * abs(inside))
+    assert inside < -1.0e19
+
+
+@pytest.mark.parametrize(
+    'migration, tau, sma_final, t_yr, error',
+    [
+        ('sigmoid', 0.0, AF_TOI, TMIG_TOI + 1.0, 'must be > 0'),
+        ('high_ecc', -1.0, AF_TOI, TMIG_TOI + 1.0, 'must be > 0'),
+        ('high_ecc', TAU_TOI, 2.0 * A0_TOI, TMIG_TOI + 1.0, 'inward only'),
+        ('high_ecc', TAU_TOI, 2.0 * A0_TOI, TMIG_TOI - 1.0, 'inward only'),
+        ('spiral', TAU_TOI, AF_TOI, TMIG_TOI + 1.0, 'Unknown migration option'),
+    ],
+    ids=[
+        'sigmoid_zero_width',
+        'high_ecc_negative_tau',
+        'high_ecc_outward',
+        'high_ecc_outward_before_epoch',
+        'unknown_law',
+    ],
+)
+def test_energy_rate_rejects_an_invalid_track(migration, tau, sma_final, t_yr, error):
+    """A non-positive timescale, an outward high-eccentricity track (before
+    the epoch as well as after it) and an unknown law raise rather than
+    returning a rate. The valid inward high-eccentricity track at the same
+    time returns a finite rate, so the refusal is specific to the bad input."""
+    with pytest.raises(ValueError, match=error):
+        _rate(t_yr, migration, sma_final=sma_final, tau=tau)
+
+    valid = _rate(t_yr, 'high_ecc')
+    assert np.isfinite(valid)
+    assert valid <= 0.0
+
+
+@pytest.mark.physics_invariant
+def test_update_energy_rate_converts_au_and_writes_the_row():
+    """The wrapper reads sma_init and sma_final in au and the masses from the
+    row, and writes the rate in W to hf_row['dEdt_orb']. Fed metres as if
+    they were au, the rate would change by AU^-1, far outside the tolerance."""
+    config = _config(
+        'high_ecc',
+        sma_init=A0_TOI / AU,
+        sma_final=AF_TOI / AU,
+        time_migration=TMIG_TOI,
+        tau_migration=TAU_TOI,
+    )
+    hf_row = {'Time': TMIG_TOI, 'M_star': M_STAR_TOI, 'M_planet': M_PL_TOI}
+
+    returned = update_orbital_energy_rate(hf_row, config)
+
+    assert hf_row['dEdt_orb'] == pytest.approx(_rate(TMIG_TOI, 'high_ecc'), rel=1e-12)
+    assert returned == hf_row['dEdt_orb']
+    assert 1.0e21 < -hf_row['dEdt_orb'] < 3.0e21
+
+
+def test_update_energy_rate_without_sma_init_raises_and_leaves_the_row():
+    """A missing sma_init is named, and the row gains no energy-rate value."""
+    config = _config('high_ecc', sma_init=None)
+    hf_row = {'Time': TMIG_TOI, 'M_star': M_STAR_TOI, 'M_planet': M_PL_TOI}
+
+    with pytest.raises(ValueError, match='sma_init'):
+        update_orbital_energy_rate(hf_row, config)
+    assert 'dEdt_orb' not in hf_row
+    assert set(hf_row) == {'Time', 'M_star', 'M_planet'}
+
+
+@pytest.mark.physics_invariant
+def test_update_energy_rate_of_a_static_track_needs_no_final_orbit():
+    """The static law never moves the planet, so it needs no sma_final and
+    removes no orbital energy: the rate written is zero, while a migrating
+    law on the same row is not."""
+    hf_row = {'Time': TMIG_TOI, 'M_star': M_STAR_TOI, 'M_planet': M_PL_TOI}
+    static = _config('none', sma_init=A0_TOI / AU, sma_final=None)
+
+    assert update_orbital_energy_rate(hf_row, static) == 0.0
+    assert hf_row['dEdt_orb'] == 0.0
+    migrating = _config(
+        'high_ecc',
+        sma_init=A0_TOI / AU,
+        sma_final=AF_TOI / AU,
+        time_migration=TMIG_TOI,
+        tau_migration=TAU_TOI,
+    )
+    assert update_orbital_energy_rate(hf_row, migrating) < -1.0e21

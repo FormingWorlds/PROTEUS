@@ -342,6 +342,8 @@ def _make_hf_row(
         'M_star': M_star,
         'R_int': R_int,
         'M_int': M_int,
+        # Read by the orbital energy rate of the prescribed track.
+        'M_planet': M_int,
         # Only read by evolve_orbit_star's adaptive-substep controller
         # (for log messages), not by sp0d/sp1d directly.
         'Time': 0.0,
@@ -907,6 +909,9 @@ def test_evolve_orbit_star_parameterized_writes_the_prescribed_track(monkeypatch
     # Conservation of orbital angular momentum survives the unit change.
     assert sma * (1.0 - ecc**2) == pytest.approx(0.8 * AU, rel=1e-10)
     assert 0.0 < ecc < 1.0
+    # The energy rate is written alongside the orbit and is negative while
+    # the orbit shrinks.
+    assert hf_row['dEdt_orb'] < 0.0
 
 
 def _run_parameterized_track(
