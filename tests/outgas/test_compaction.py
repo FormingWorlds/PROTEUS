@@ -13,8 +13,8 @@ compaction time becomes the two timescales above, and the solidus-to-front
 temperature interval disappears because the residence time is geometric rather
 than thermal. These tests exercise:
 
-* the permeability transcription against the interior solver's own, which is
-  the only thing keeping the two from drifting apart,
+* the mobility, the solver's ``aragog.eos.mobility_function``, against the
+  separation velocity the solver computes with it,
 * the Darcy velocity, including the matrix fraction the solver omits,
 * the matrix deformation time and its independence of porosity,
 * that the slower process controls, which is the sign of the combination and
@@ -111,9 +111,10 @@ def test_mobility_reproduces_the_interior_solver_in_every_regime():
     """Cross-implementation check against the permeability the interior solver
     uses for gravitational separation (Bower et al. 2018 section 2.1), by
     calling the solver's own ``relative_velocity`` and backing the mobility out
-    of it, so a change to the solver's law fails here. The drainage velocity is
-    the solver's melt velocity times the matrix fraction (1 - phi), the one
-    deliberate difference between the two."""
+    of it, so the mobility the drainage uses is the one the solver's separation
+    velocity uses. The drainage velocity is the solver's melt velocity times
+    (1 - phi), the buoyancy taken against the mixture rather than the solid,
+    the one deliberate difference between the two."""
     pytest.importorskip('aragog')
     rho_s, rho_l, gravity, eta = 4000.0, 3600.0, 9.8, 100.0
     # Both blends and all three regimes, from the porosity floor to Stokes.

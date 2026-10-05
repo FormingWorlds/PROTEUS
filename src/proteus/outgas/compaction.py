@@ -30,9 +30,9 @@ time.
 
 Relation to the solver's own separation velocity
 ------------------------------------------------
-``w_rel`` here is the same three-regime law the interior solver uses for
-gravitational separation (Bower et al. 2018 section 2.1), with two deliberate
-differences.
+``w_rel`` here uses the interior solver's own three-regime permeability,
+``aragog.eos.mobility_function`` (Bower et al. 2018 section 2.1), with two
+deliberate differences.
 
 * The drag viscosity is always the melt viscosity. The solver's
   ``separation_viscosity`` defaults to ``'mixture'``, the
@@ -42,16 +42,19 @@ differences.
   construction. Trapping is a sub-grid process the solver does not resolve, so
   it uses the melt viscosity regardless of the solver's choice, and the
   inconsistency is deliberate rather than overlooked.
-* The Darcy velocity of McKenzie (1984) carries a factor ``(1 - phi)`` that the
-  solver's ``relative_velocity`` omits, because the solver wants the melt
-  velocity relative to the solid rather than the melt flux relative to the
-  mixture. The factor is applied here; it is 30 percent at ``phi = 0.3``.
+* The buoyancy carries a factor ``(1 - phi)`` that the solver's
+  ``relative_velocity`` omits. Both forms give the melt velocity relative to
+  the matrix: McKenzie (1984, Eq. 3.7) takes the buoyancy against the mixture,
+  ``(1 - phi) (rho_s - rho_f) g``, and Abe (1995, Eq. 40) against the solid,
+  ``(rho_s - rho_f) g``. The factor slows percolation by 30 percent at
+  ``phi = 0.3``. McKenzie's solution assumes touching grains, so it holds for
+  melt fractions below about 0.2, while the front is entered at the
+  rheological transition, ``rfront_loc = 0.4`` by default; above about 0.2 the
+  factor is an extrapolation of that solution. FormingWorlds/aragog#67 tracks
+  the same factor for the solver.
 
-The permeability law is transcribed rather than imported because the interior
-solver does not yet expose it as a public function. ``test_compaction.py`` pins
-this transcription against the solver's own ``relative_velocity``, so the two
-cannot drift apart silently. Replace the transcription with the import once the
-solver exposes a mobility function.
+``test_compaction.py`` checks the mobility against the solver's own
+``relative_velocity``, so the two cannot drift apart.
 
 A caution on calibration
 ------------------------
@@ -73,14 +76,6 @@ from dataclasses import dataclass
 import numpy as np
 
 log = logging.getLogger('fwl.' + __name__)
-
-# Regime boundaries of the three-part permeability, Bower et al. (2018) Eqs.
-# 13a-c, as in the interior solver; the lower one sits 1.7e-5 below the analytic
-# crossing. The blend widths are numerical smoothing, not physics.
-MOBILITY_BOUND_LOW = 0.0769452
-MOBILITY_BOUND_HIGH = 0.771462
-MOBILITY_BLEND_LOW = 0.02
-MOBILITY_BLEND_HIGH = 0.05
 
 # Mush viscosity entering the matrix deformation time [log10 Pa s] when the
 # configuration leaves it unset. The literature spans 1e18 to 1e22 Pa s for a
@@ -115,14 +110,12 @@ class FrontGeometry:
 
 
 def mobility_function(porosity: float | np.ndarray, grain_size: float) -> float | np.ndarray:
-    """Permeability over porosity, ``F = K / phi`` [m2].
+    """Permeability over porosity, ``F = K / phi`` [m2], as the interior solver has it.
 
-    The three-regime form of Bower et al. (2018) section 2.1, blended with the
-    same tanh weights the interior solver uses:
-
-    * Blake-Kozeny-Carman, low porosity: ``a^2 phi^2 / ((1-phi)^2 * 1000)``
-    * Rumpf-Gupte, intermediate:         ``a^2 phi^4.5 * 5/7``
-    * Stokes settling, high porosity:    ``a^2 * 2/9``
+    ``aragog.eos.mobility_function``: the three regimes of Bower et al. (2018)
+    section 2.1, Blake-Kozeny-Carman ``a^2 phi^2 / ((1-phi)^2 * 1000)``,
+    Rumpf-Gupte ``a^2 phi^4.5 * 5/7`` and Stokes ``a^2 * 2/9``, blended with
+    tanh weights.
 
     Parameters
     ----------
@@ -130,22 +123,19 @@ def mobility_function(porosity: float | np.ndarray, grain_size: float) -> float 
         Volume fraction of melt [1].
     grain_size : float
         Crystal grain size [m].
+
+    Raises
+    ------
+    ValueError
+        If ``grain_size`` is not positive, which would give no permeability.
     """
+    # Imported here: the solver package takes seconds to load.
+    from aragog.eos import mobility_function as solver_mobility
+
     if grain_size <= 0.0:
         raise ValueError(f'grain_size must be positive, got {grain_size!r}')
-    phi = np.asarray(porosity, dtype=float)
-    por = np.maximum(phi, 1.0e-20)
-    one_m_por = np.maximum(1.0 - phi, 1.0e-20)
-
-    f_bkc = grain_size**2 * por**2 / (one_m_por**2 * 1000.0)
-    f_rg = grain_size**2 * por**4.5 * (5.0 / 7.0)
-    f_stokes = grain_size**2 * 2.0 / 9.0
-
-    w_rg = 0.5 * (1.0 + np.tanh((phi - MOBILITY_BOUND_LOW) / MOBILITY_BLEND_LOW))
-    w_st = 0.5 * (1.0 + np.tanh((phi - MOBILITY_BOUND_HIGH) / MOBILITY_BLEND_HIGH))
-    f = (1.0 - w_rg) * f_bkc + (w_rg - w_st) * f_rg + w_st * f_stokes
-    f = np.maximum(f, 0.0)
-    return float(f) if np.ndim(porosity) == 0 else f
+    f = solver_mobility(np.asarray(porosity, dtype=float), float(grain_size))
+    return float(f) if np.ndim(porosity) == 0 else np.asarray(f, dtype=float)
 
 
 def darcy_velocity(
@@ -157,9 +147,9 @@ def darcy_velocity(
 ) -> float | np.ndarray:
     """Melt percolation speed relative to the matrix [m s-1].
 
-    ``w_D = (1 - phi) |delta_rho| g F(phi) / eta_melt``. The ``(1 - phi)`` factor
-    is the one the solver's ``relative_velocity`` omits; see the module
-    docstring.
+    ``w_D = (1 - phi) |delta_rho| g F(phi) / eta_melt``, with the buoyancy taken
+    against the mixture (McKenzie 1984, Eq. 3.7); the solver's
+    ``relative_velocity`` takes it against the solid. See the module docstring.
     """
     if melt_visc <= 0.0:
         raise ValueError(f'melt viscosity must be positive, got {melt_visc!r}')
