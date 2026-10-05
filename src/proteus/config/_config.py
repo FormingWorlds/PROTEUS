@@ -132,6 +132,20 @@ def parameterized_excludes_tides(instance, attribute, value):
         )
 
 
+def spinless_orbit_keeps_spin_synchronous(instance, attribute, value):
+    """sp0d and parameterized evolve no spin, so the planet stays synchronous
+    and orbit.axial_period must be unset; see "Star-planet models" in
+    docs/Explanations/orbit.md.
+    """
+    model = instance.orbit.star_planet_model
+    if model in ('sp0d', 'parameterized') and instance.orbit.axial_period is not None:
+        raise ValueError(
+            f'orbit.star_planet_model = {model!r} evolves no spin, so the planet is kept '
+            "synchronous with its orbit and requires orbit.axial_period = 'none' "
+            f'(got {instance.orbit.axial_period!r})'
+        )
+
+
 def parameterized_high_ecc_inward(instance, attribute, value):
     """The high-eccentricity law circularises at fixed orbital angular momentum,
     which can only shrink the orbit, so its final semi-major axis must not
@@ -618,6 +632,7 @@ class Config:
             orbit_requires_tides,
             parameterized_excludes_tides,
             parameterized_high_ecc_inward,
+            spinless_orbit_keeps_spin_synchronous,
         ),
     )
     planet: Planet = field(

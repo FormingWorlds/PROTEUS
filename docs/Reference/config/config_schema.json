@@ -1826,7 +1826,7 @@
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Planet initial day length [hours], will use orbital period if value is None.",
+      "description": "Planet initial day length [hours], will use orbital period if value is None. Must be None for sp0d and parameterized, which keep the spin locked to the orbit.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11347,6 +11347,18 @@
         "star.mors.tracks"
       ],
       "doc": "ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."
+    },
+    {
+      "validator": "spinless_orbit_keeps_spin_synchronous",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.axial_period",
+        "orbit.star_planet_model"
+      ],
+      "doc": "sp0d and parameterized evolve no spin, so the planet stays synchronous and orbit.axial_period must be unset; see \"Star-planet models\" in docs/Explanations/orbit.md."
     },
     {
       "validator": "tides_enabled_orbit",

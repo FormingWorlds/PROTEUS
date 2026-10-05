@@ -52,6 +52,7 @@ from proteus.config._config import (
     planet_oxygen_mode_explicit,
     satellite_evolve,
     sp0d_obliqua_degree_mismatch,
+    spinless_orbit_keeps_spin_synchronous,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -963,6 +964,40 @@ def test_parameterized_excludes_tides_ignores_tidal_orbit_models(model):
     parameterized_excludes_tides(instance, None, None)
     assert instance.orbit.module == 'lovepy'
     assert instance.orbit.star_planet_model == model
+
+
+# ---------------------------------------------------------------------------
+# spinless_orbit_keeps_spin_synchronous: no fixed spin without spin dynamics
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize('model', ['sp0d', 'parameterized'])
+def test_spinless_orbit_rejects_a_configured_axial_period(model):
+    """sp0d and the prescribed track evolve no spin, so a fixed day length
+    would decouple the spin from the orbit it is locked to. The message names
+    the model and the setting to use."""
+    instance = _make_config_instance(
+        **{'orbit.star_planet_model': model, 'orbit.axial_period': 24.0}
+    )
+    with pytest.raises(ValueError, match='evolves no spin') as excinfo:
+        spinless_orbit_keeps_spin_synchronous(instance, None, None)
+    msg = str(excinfo.value)
+    assert repr(model) in msg
+    assert "orbit.axial_period = 'none'" in msg
+
+    instance.orbit.axial_period = None
+    assert spinless_orbit_keeps_spin_synchronous(instance, None, None) is None
+
+
+@pytest.mark.parametrize('model', [None, 'sp1d'], ids=['no_orbit_model', 'sp1d'])
+def test_spinless_orbit_allows_a_configured_spin_where_it_means_something(model):
+    """Positive counterpart: sp1d evolves the spin from its configured start,
+    and a static orbit holds it, so both keep a configured axial period."""
+    instance = _make_config_instance(
+        **{'orbit.star_planet_model': model, 'orbit.axial_period': 24.0}
+    )
+    assert spinless_orbit_keeps_spin_synchronous(instance, None, None) is None
+    assert instance.orbit.axial_period == pytest.approx(24.0, rel=1e-12)
 
 
 # ---------------------------------------------------------------------------

@@ -80,7 +80,7 @@ parameter studies where stellar evolution is not relevant.
 | `zenith_angle` | float | `48.19` | Characteristic angle of incoming stellar radiation, relative to the zenith \[deg\]. Must be >= 0 and < 90. |
 | `s0_factor` | float | `0.375` | Scale factor applies to incoming stellar radiation to represent planetary rotation. Must be > 0. |
 | `star_planet_model` | str or none | `none` | Select star-planet orbit module to use. Choices: `none`, `"none"`, `"sp0d"`, `"sp1d"`, `"parameterized"`. |
-| `axial_period` | float or none | `none` | Planet initial day length \[hours\], will use orbital period if value is None. |
+| `axial_period` | float or none | `none` | Planet initial day length \[hours\], will use orbital period if value is None. Must be None for sp0d and parameterized, which keep the spin locked to the orbit. |
 | `planet_satellite_model` | str or none | `none` | Select planet-satellite orbit module to use. Choices: `none`, `"none"`, `"ps0d"`, `"ps1d"`, `"ps1d_evec"`. |
 | `perturber` | str or none | `none` | Select perturber to induce tides on the planet. Options: 'none', 'star', 'satellite'. Choices: `none`, `"none"`, `"star"`, `"satellite"`. |
 | `module` | str or none | `none` | Select tides module to use. Choices: `none`, `"dummy"`, `"lovepy"`, `"obliqua"`. |
@@ -257,6 +257,7 @@ Cross-field constraints enforced when the config file loads:
 - The high-eccentricity law circularises at fixed orbital angular momentum, which can only shrink the orbit, so its final semi-major axis must not exceed the initial one, orbit.semimajoraxis.
 - Star-planet orbital evolution and the planet-satellite model are mutually exclusive.
 - sp0d's closed-form is by definition the n=2 Love number. Obliqua can compute arbitrary tidal degree(s), block the mismatch.
+- sp0d and parameterized evolve no spin, so the planet stays synchronous and orbit.axial_period must be unset; see "Star-planet models" in docs/Explanations/orbit.md.
 - A bolometric scaling other than 1 requires bol_scale_start and a positive duration.
 - Validate MORS settings: positive age, spectrum-source requirements, and rotation set by exactly one of percentile or period.
 - Dummy star requires a consistent radius specification and a valid Teff.

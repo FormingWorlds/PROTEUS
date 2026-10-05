@@ -10,8 +10,7 @@ law, Hill-radius cube-root scaling, Roche-limit linear scaling in
 correct exponents from plausible bugs. Also asserted: the semi-major
 axis for a target instellation returns that flux through the
 orbit-averaged inverse square on an eccentric orbit, and on a prescribed
-track an unset spin follows the orbital period while a configured one is
-held.
+track and under sp0d the spin follows the orbital period.
 """
 
 from __future__ import annotations
@@ -1332,11 +1331,10 @@ def test_run_orbit_starts_a_prescribed_track_on_the_configured_orbit(migration):
 # ---------------------------------------------------------------------------
 
 
-def _run_two_parameterized_steps(axial_period_hours):
+def _run_two_parameterized_steps():
     """Seed a high-eccentricity track at Time = 0, then step one tau past the
     epoch, returning (orbital, axial) periods [s] at both steps."""
     config = _make_parameterized_orbit_config('high_ecc', 0.029, 0.0106)
-    config.orbit.axial_period = axial_period_hours
     hf_row = _parameterized_seed_hf_row()
     interior_o = MagicMock()
     interior_o.dt = 1.0
@@ -1357,7 +1355,7 @@ def test_run_orbit_keeps_an_unset_spin_synchronous_on_a_prescribed_track():
     applies no torque to the spin, so the spin must follow the orbit it moves
     to: one tau after the epoch the orbit has shrunk from 0.029 au and the day
     must shorten with it rather than keep the first-step value."""
-    (p_orb_0, p_ax_0), (p_orb_1, p_ax_1) = _run_two_parameterized_steps(None)
+    (p_orb_0, p_ax_0), (p_orb_1, p_ax_1) = _run_two_parameterized_steps()
 
     assert p_ax_0 == pytest.approx(p_orb_0, rel=1e-12)
     assert p_ax_1 == pytest.approx(p_orb_1, rel=1e-12)
@@ -1368,14 +1366,33 @@ def test_run_orbit_keeps_an_unset_spin_synchronous_on_a_prescribed_track():
 
 
 @pytest.mark.physics_invariant
-def test_run_orbit_keeps_a_configured_spin_on_a_prescribed_track():
-    """A configured axial period is the user's choice, not a lock to the
-    orbit, so it is held while the prescribed orbit shrinks."""
-    (p_orb_0, p_ax_0), (p_orb_1, p_ax_1) = _run_two_parameterized_steps(24.0)
+def test_run_orbit_keeps_the_spin_synchronous_under_sp0d():
+    """sp0d evolves a and e but no spin, so the planet stays locked to the
+    orbit it moves to, as on a prescribed track. The orbit step is replaced by
+    a halving of a, so the orbital period falls by 2^1.5 = 2.83 and a spin
+    frozen at its first value would sit far outside the tolerance."""
+    config = _make_parameterized_orbit_config('none', 0.029, None)
+    config.orbit.star_planet_model = 'sp0d'
+    hf_row = _parameterized_seed_hf_row()
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(5)
 
-    assert p_ax_0 == pytest.approx(24.0 * 3600.0, rel=1e-12)
-    assert p_ax_1 == pytest.approx(24.0 * 3600.0, rel=1e-12)
-    assert p_orb_1 < 0.5 * p_orb_0  # the orbit did move
+    run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+    p_orb_0, p_ax_0 = hf_row['orbital_period'], hf_row['axial_period']
+
+    def _halve_the_orbit(row, *args):
+        row['semimajorax'] *= 0.5
+
+    hf_row['Time'] = 1.0e5
+    interior_o.dt = 1.0e5
+    with patch('proteus.orbit.orbit.evolve_orbit_star', side_effect=_halve_the_orbit):
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    assert p_ax_0 == pytest.approx(p_orb_0, rel=1e-12)
+    assert hf_row['axial_period'] == pytest.approx(hf_row['orbital_period'], rel=1e-12)
+    assert hf_row['orbital_period'] == pytest.approx(p_orb_0 / 2.0**1.5, rel=1e-12)
+    assert abs(hf_row['axial_period'] - p_ax_0) > 0.5 * p_ax_0
 
 
 def _dummy_inst_config(flux_s_earth):

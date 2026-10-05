@@ -436,7 +436,7 @@ class Orbit:
     star_planet_model: str | None
         Select star-planet orbit module to use. Choices: 'none', 'sp0d', 'sp1d', 'parameterized'.
     axial_period: float | None
-        Planet initial day length [hours], will use orbital period if value is None.
+        Planet initial day length [hours], will use orbital period if value is None. Must be None for sp0d and parameterized, which keep the spin locked to the orbit.
 
     satellite: Satellite
         Satellite and orbit configuration for planet-satellite systems.
