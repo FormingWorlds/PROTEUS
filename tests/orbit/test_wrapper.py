@@ -1,12 +1,17 @@
 """Unit tests for the orbital-mechanics helpers in
 ``proteus.orbit.wrapper``: ``update_separation``, ``update_period``,
-``update_hillradius``, ``update_rochelimit``, ``update_breakup_period``.
+``update_hillradius``, ``update_rochelimit``, ``update_breakup_period``,
+``sma_for_instellation`` and the ``run_orbit`` dispatch.
 
 These are closed-form physics formulas, so each test pins the value
 against a hand-calculation with a known invariant (Kepler's third
 law, Hill-radius cube-root scaling, Roche-limit linear scaling in
 ``R_pl``) and uses discriminating values that distinguish the
-correct exponents from plausible bugs.
+correct exponents from plausible bugs. Also asserted: the semi-major
+axis for a target instellation returns that flux through the
+orbit-averaged inverse square on an eccentric orbit, and on a prescribed
+track an unset spin follows the orbital period while a configured one is
+held.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ import pytest
 
 from proteus.orbit.wrapper import (
     run_orbit,
+    sma_for_instellation,
     update_breakup_period,
     update_hillradius,
     update_period,
@@ -26,7 +32,7 @@ from proteus.orbit.wrapper import (
     update_separation,
     update_separation_sat,
 )
-from proteus.utils.constants import AU, M_earth, M_sun, R_earth, const_G
+from proteus.utils.constants import AU, L_sun, M_earth, M_sun, R_earth, R_sun, const_G
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -1426,3 +1432,109 @@ def test_run_orbit_keeps_a_configured_spin_on_a_prescribed_track():
     assert p_ax_0 == pytest.approx(24.0 * 3600.0, rel=1e-12)
     assert p_ax_1 == pytest.approx(24.0 * 3600.0, rel=1e-12)
     assert p_orb_1 < 0.5 * p_orb_0  # the orbit did move
+
+
+def _dummy_inst_config(flux_s_earth):
+    """Config stand-in for the dummy star at a target instellation."""
+    config = MagicMock()
+    config.star.dummy.Teff = 5772.0
+    config.orbit.instellationflux = flux_s_earth
+    return config
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('ecc', [0.0, 0.3, 0.8], ids=['circular', 'mild', 'high'])
+def test_sma_for_instellation_inverts_the_orbit_averaged_flux(ecc):
+    """Round trip: the semi-major axis returned for a target flux must give
+    that flux back through the orbit-averaged inverse square used by
+    update_instellation, exactly up to round-off since the luminosity cancels.
+    The circular inverse sqrt(L / 4 pi S) would instead deliver
+    (1 - e^2)^(-1/2) times the target: 1.048 at e = 0.3 and 1.67 at e = 0.8."""
+    from proteus.star.dummy import calc_instellation, calc_star_luminosity
+    from proteus.star.wrapper import flux_weighted_distance
+
+    config = _dummy_inst_config(2.0)
+    with patch('proteus.star.dummy.get_star_radius', return_value=1.0):
+        sma = sma_for_instellation(config, ecc)
+    s_earth = L_sun / (4.0 * np.pi * AU**2)
+    flux = calc_instellation(
+        5772.0, R_sun, flux_weighted_distance({'semimajorax': sma, 'eccentricity': ecc})
+    )
+
+    assert flux / s_earth == pytest.approx(2.0, rel=1e-10)
+    # Guard: the circular inverse misses the target by (1 - e^2)^(-1/2).
+    circular = np.sqrt(calc_star_luminosity(5772.0, R_sun) / (4.0 * np.pi * 2.0 * s_earth))
+    flux_wrong = calc_instellation(
+        5772.0, R_sun, flux_weighted_distance({'semimajorax': circular, 'eccentricity': ecc})
+    )
+    assert flux_wrong / s_earth == pytest.approx(2.0 / np.sqrt(1.0 - ecc**2), rel=1e-10)
+    if ecc > 0.0:
+        assert abs(flux_wrong / s_earth - 2.0) > 0.09
+    assert 0.5 * AU < sma < 1.0 * AU
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('time_yr', [0.0, 100.0], ids=['first_step', 'later_step'])
+def test_run_orbit_inst_method_puts_an_eccentric_orbit_at_the_target_flux(time_yr):
+    """Both run_orbit call sites of the instellation inverse (the first step
+    and a later step of a fixed orbit) place an e = 0.8 orbit where the
+    orbit-averaged flux equals orbit.instellationflux. The circular inverse
+    would leave the semi-major axis 1.29 times too small and the flux 1.67
+    times too high."""
+    from proteus.star.dummy import calc_instellation, calc_star_luminosity
+    from proteus.star.wrapper import flux_weighted_distance
+
+    config = MagicMock()
+    config.orbit.module = None
+    config.orbit.evolve = False
+    config.orbit.star_planet_model = None
+    config.orbit.planet_satellite_model = None
+    config.orbit.satellite.include_satellite = False
+    config.orbit.axial_period = None
+    config.orbit.instellation_method = 'inst'
+    config.orbit.instellationflux = 2.0
+    config.orbit.semimajoraxis = 1.0
+    config.orbit.eccentricity = 0.8
+    config.star.module = 'dummy'
+    config.star.dummy.Teff = 5772.0
+    config.params.stop.disint.offset_spin = 0.0
+    config.params.stop.disint.offset_roche = 0.0
+    hf_row = {
+        'M_star': M_sun,
+        'M_planet': M_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+        'R_obs': R_earth,
+        'R_xuv': R_earth,
+        'R_star': R_sun,
+        'semimajorax': AU,
+        'eccentricity': 0.8,
+        'axial_period': 86400.0,
+        'semimajorax_sat': 3.8e8,
+        'M_sat': 7.342e22,
+        'Time': time_yr,
+        'plan_sat_am': 0.0,
+        'plan_star_am': 0.0,
+    }
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(3)
+
+    with patch('proteus.star.dummy.get_star_radius', return_value=1.0):
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    s_earth = L_sun / (4.0 * np.pi * AU**2)
+    flux = calc_instellation(5772.0, R_sun, flux_weighted_distance(hf_row))
+    circular = np.sqrt(calc_star_luminosity(5772.0, R_sun) / (4.0 * np.pi * 2.0 * s_earth))
+    assert flux / s_earth == pytest.approx(2.0, rel=1e-10)
+    assert hf_row['semimajorax'] / circular == pytest.approx(0.36**-0.25, rel=1e-10)
+    assert hf_row['eccentricity'] == pytest.approx(0.8, rel=1e-12)
+
+
+@pytest.mark.parametrize('ecc', [1.0, -0.1], ids=['unbound', 'negative'])
+def test_sma_for_instellation_rejects_an_unphysical_eccentricity(ecc):
+    """An eccentricity outside [0, 1) has no bound orbit to invert to."""
+    config = _dummy_inst_config(1.0)
+    with pytest.raises(ValueError, match='Eccentricity') as excinfo:
+        sma_for_instellation(config, ecc)
+    assert str(ecc) in str(excinfo.value)
