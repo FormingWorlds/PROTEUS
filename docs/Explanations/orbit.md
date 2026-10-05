@@ -160,8 +160,11 @@ model; the track is evaluated from the first step after it. Setting the orbit
 from a target flux (`orbit.instellation_method = 'inst'`) is rejected at
 config load, since it would give the run a second starting orbit.
 
-Only `high_ecc` evolves the eccentricity. `none`, `instant` and `sigmoid`
-hold it at `orbit.eccentricity` throughout.
+A law writes only the orbital elements it sets: `instant` and `sigmoid` the
+semi-major axis, `high_ecc` both elements. `none`, and every law before
+`time_migration`, leave the orbit as the previous step left it. Only
+`high_ecc` evolves the eccentricity, so under the other laws it keeps the
+value seeded from `orbit.eccentricity`.
 
 `sigmoid` holds the orbit until `time_migration`, carries it to `sma_final`
 over the following `tau_migration` along the cubic `3u^2 - 2u^3`, and holds
@@ -204,9 +207,9 @@ only (the Roche-limit checks and the orbit plots). This applies to every
 eccentric run, not only to `parameterized`.
 
 Giant impacts are rejected at config load (`accretion.module = 'none'` is
-required): the track rebuilds the orbit from its own parameters every step,
-so an impact's new semi-major axis would be overwritten while its change in
-eccentricity persisted.
+required): after `time_migration` the track sets the semi-major axis from
+its own parameters every step, so an impact's new semi-major axis would be
+overwritten while its change in eccentricity persisted.
 
 ### Where the orbital energy goes
 

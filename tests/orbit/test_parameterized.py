@@ -22,8 +22,10 @@ Contract clauses exercised:
   along each law, zero outside the migration window and for the
   ``none`` and ``instant`` laws.
 - ``run_parameterized_orbital_migration`` converts AU to metres,
-  starts the track from ``orbit.semimajoraxis`` and dispatches on
-  ``config.orbit.parameterized.migration``.
+  starts the track from ``orbit.semimajoraxis``, dispatches on
+  ``config.orbit.parameterized.migration`` and writes only the elements
+  the law sets: nothing for the static law or before the epoch, the
+  semi-major axis for ``instant`` and ``sigmoid``, both for ``high_ecc``.
 
 Physics invariants asserted:
 
@@ -120,6 +122,12 @@ def _config(
             ),
         )
     )
+
+
+def _row(time_yr, a_au=SMA_I, ecc=0.0):
+    """Runtime row as a run hands it to the step: the orbit already seeded
+    from the config at the initial condition, or set by the previous step."""
+    return {'Time': time_yr, 'semimajorax': a_au * AU, 'eccentricity': ecc}
 
 
 def _sweep(func, times, **kwargs):
@@ -522,12 +530,13 @@ def test_high_ecc_refuses_outward_migration():
 def test_wrapper_converts_semimajor_axis_from_au_to_metres():
     """The config carries AU but hf_row['semimajorax'] is SI. A missing
     or doubled AU factor is the classic failure here and a dimensionless
-    comparison would not see it."""
-    hf_row = {'Time': 1.0e6}
-    a, _ = run_parameterized_orbital_migration(hf_row, _config('none'))
+    comparison would not see it. Probed after an instant step, so the value
+    written comes from the config rather than from the seeded row."""
+    hf_row = _row(1.0e6)
+    a, _ = run_parameterized_orbital_migration(hf_row, _config('instant'))
 
-    assert a == pytest.approx(SMA_I * AU, rel=RTOL)
-    assert hf_row['semimajorax'] == pytest.approx(SMA_I * AU, rel=RTOL)
+    assert a == pytest.approx(SMA_F * AU, rel=RTOL)
+    assert hf_row['semimajorax'] == pytest.approx(SMA_F * AU, rel=RTOL)
     # Scale guard: a planetary orbit is ~1e11 m, not ~1 (AU left
     # unconverted) nor ~1e22 (AU applied twice).
     assert 1.0e9 < a < 1.0e13
@@ -553,7 +562,7 @@ def test_wrapper_dispatches_each_law_at_the_migration_epoch(migration, a_au, ecc
     """Each regime is routed to its own law. Probed at the epoch, where
     all four differ, rather than at late time where three of them have
     already converged on sma_final and a mis-dispatch would hide."""
-    hf_row = {'Time': T_MIG}
+    hf_row = _row(T_MIG)
     a, e = run_parameterized_orbital_migration(hf_row, _config(migration))
 
     assert a == pytest.approx(a_au * AU, rel=RTOL)
@@ -586,7 +595,7 @@ def test_wrapper_dispatch_holds_at_a_second_epoch(migration, a_au, ecc):
     at the midpoint of its window and the high-eccentricity law has
     decayed by exp(-1), so a regime swap cannot survive on a coincidence
     at a single time. All four values differ here."""
-    hf_row = {'Time': T_MIG + 0.5 * TAU}
+    hf_row = _row(T_MIG + 0.5 * TAU)
     a, e = run_parameterized_orbital_migration(hf_row, _config(migration))
 
     assert a == pytest.approx(a_au * AU, rel=RTOL)
@@ -604,7 +613,7 @@ def test_wrapper_settles_on_the_final_orbit(migration, a_au):
     """Long after the epoch every migrating law has arrived at
     sma_final on a circular orbit, and the static law is still at
     orbit.semimajoraxis."""
-    hf_row = {'Time': T_MIG + 60.0 * TAU}
+    hf_row = _row(T_MIG + 60.0 * TAU)
     a, e = run_parameterized_orbital_migration(hf_row, _config(migration))
 
     assert a == pytest.approx(a_au * AU, rel=1e-8)
@@ -617,7 +626,7 @@ def test_wrapper_preserves_angular_momentum_after_unit_conversion():
     """The ``a (1 - e^2) = sma_final`` invariant must survive the AU to
     metre conversion, and the eccentricity is excited even though the
     config starts the planet on a circular orbit."""
-    hf_row = {'Time': T_MIG + 2.0 * TAU}
+    hf_row = _row(T_MIG + 2.0 * TAU)
     a, e = run_parameterized_orbital_migration(hf_row, _config('high_ecc'))
 
     assert a * (1.0 - e**2) == pytest.approx(SMA_F * AU, rel=1e-10)
@@ -625,21 +634,60 @@ def test_wrapper_preserves_angular_momentum_after_unit_conversion():
     assert e < 1.0
 
 
-@pytest.mark.parametrize('time_yr', [1.0, T_MIG], ids=['first_recorded_step', 'mid_evolution'])
+@pytest.mark.parametrize(
+    'migration',
+    ['none', 'instant', 'sigmoid', 'high_ecc'],
+    ids=['static', 'instant_step', 'sigmoid_ramp', 'high_eccentricity'],
+)
 @pytest.mark.physics_invariant
-def test_wrapper_overwrites_a_stale_orbit_at_every_time(time_yr):
-    """A row carrying a stale orbit is replaced by the config values at
-    every recorded time, including the first step PROTEUS writes. The
-    edge case is that first step, where an earlier revision seeded the
-    row before validating the config and so could leave half an orbit
-    behind on a bad one."""
-    hf_row = {'Time': time_yr, 'semimajorax': 999.0, 'eccentricity': 0.9}
-    a, e = run_parameterized_orbital_migration(hf_row, _config('none', ecc=0.05))
+def test_wrapper_leaves_the_row_untouched_before_the_epoch(migration):
+    """Before time_migration every law holds the orbit, so the step writes
+    nothing and the row keeps the orbit it carries. That orbit is set apart
+    from the config here (1.5 au, e = 0.3 against 2.0 au, e = 0.05), so a step
+    that rewrote the row from the config would land outside the tolerance."""
+    hf_row = _row(0.5 * T_MIG, a_au=1.5, ecc=0.3)
+    a, e = run_parameterized_orbital_migration(hf_row, _config(migration, ecc=0.05))
 
-    assert a == pytest.approx(SMA_I * AU, rel=RTOL)
-    assert e == pytest.approx(0.05, rel=RTOL)
-    assert hf_row['semimajorax'] == pytest.approx(SMA_I * AU, rel=RTOL)
-    assert 0.0 <= e < 1.0
+    assert hf_row == _row(0.5 * T_MIG, a_au=1.5, ecc=0.3)
+    assert (a, e) == (hf_row['semimajorax'], hf_row['eccentricity'])
+    assert abs(a - SMA_I * AU) > 0.4 * AU
+
+
+@pytest.mark.parametrize(
+    'migration, time_yr',
+    [
+        ('none', T_MIG + 0.5 * TAU),
+        ('instant', T_MIG + 0.5 * TAU),
+        ('sigmoid', T_MIG + 0.5 * TAU),
+    ],
+    ids=['static', 'instant_step', 'sigmoid_ramp'],
+)
+@pytest.mark.physics_invariant
+def test_wrapper_keeps_an_eccentricity_the_law_does_not_set(migration, time_yr):
+    """Only high_ecc evolves the eccentricity, so on the other laws an
+    eccentricity the row carries survives a step after the epoch, even when it
+    differs from orbit.eccentricity. The static law leaves the semi-major axis
+    as well. The high_ecc law on the same row does write e, which keeps this
+    from passing for a step that never writes the row at all."""
+    hf_row = _row(time_yr, a_au=1.0, ecc=0.3)
+    _, e = run_parameterized_orbital_migration(hf_row, _config(migration, ecc=0.05))
+
+    assert e == pytest.approx(0.3, rel=RTOL)
+    assert hf_row['eccentricity'] == pytest.approx(0.3, rel=RTOL)
+    if migration == 'none':
+        assert hf_row['semimajorax'] == pytest.approx(1.0 * AU, rel=RTOL)
+    else:
+        # The step lands at 0.8 au and the ramp midpoint at 1.4 au.
+        assert abs(hf_row['semimajorax'] - 1.0 * AU) > 0.1 * AU
+
+    excited = _row(time_yr, a_au=1.5, ecc=0.3)
+    run_parameterized_orbital_migration(excited, _config('high_ecc', ecc=0.05))
+    # a (1 - e^2) = sma_final on the high_ecc track, which e = 0.3 at the
+    # law's semi-major axis would break.
+    assert excited['semimajorax'] * (1.0 - excited['eccentricity'] ** 2) == pytest.approx(
+        SMA_F * AU, rel=1e-10
+    )
+    assert abs(excited['eccentricity'] - 0.3) > 0.1
 
 
 def test_wrapper_rejects_a_null_migration_setting():
@@ -671,9 +719,9 @@ def test_wrapper_rejects_an_unrecognised_migration_setting():
     with pytest.raises(ValueError, match='Unknown migration option'):
         run_parameterized_orbital_migration({'Time': 1.0e6}, _config('bogus'))
 
-    hf_row = {'Time': 1.0e6}
-    a, e = run_parameterized_orbital_migration(hf_row, _config('none'))
-    assert a == pytest.approx(SMA_I * AU, rel=RTOL)
+    hf_row = _row(1.0e6)
+    a, e = run_parameterized_orbital_migration(hf_row, _config('instant'))
+    assert a == pytest.approx(SMA_F * AU, rel=RTOL)
     assert 0.0 <= e < 1.0
 
 
@@ -698,7 +746,7 @@ def test_wrapper_requires_a_final_semimajor_axis_for_every_migrating_law(migrati
     assert 'sma_final' in str(excinfo.value)
     assert 'semimajorax' not in hf_row
 
-    a, e = run_parameterized_orbital_migration({'Time': T_MIG}, _config('none', sma_final=None))
+    a, e = run_parameterized_orbital_migration(_row(T_MIG), _config('none', sma_final=None))
     assert a == pytest.approx(SMA_I * AU, rel=RTOL)
     assert 0.0 <= e < 1.0
 
@@ -805,7 +853,7 @@ def test_wrapper_dispatches_an_outward_track(migration, a_au):
     conversion and the dispatch. Probed at the epoch, where the two
     laws disagree: the step has arrived at 2.0 AU and the ramp has not
     left 0.8 AU, so a mis-dispatch cannot hide behind a shared value."""
-    hf_row = {'Time': T_MIG}
+    hf_row = _row(T_MIG, a_au=SMA_F)
     a, e = run_parameterized_orbital_migration(
         hf_row, _config(migration, semimajoraxis=SMA_F, sma_final=SMA_I)
     )
@@ -833,7 +881,7 @@ def test_wrapper_refuses_an_outward_high_eccentricity_track():
 
     assert 'semimajorax' not in hf_row
 
-    a, e = run_parameterized_orbital_migration({'Time': T_MIG}, _config('high_ecc'))
+    a, e = run_parameterized_orbital_migration(_row(T_MIG), _config('high_ecc'))
     assert a == pytest.approx(SMA_I * AU, rel=RTOL)
     assert e == pytest.approx(np.sqrt(1.0 - SMA_F / SMA_I), rel=RTOL)
 

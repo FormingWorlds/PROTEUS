@@ -305,12 +305,17 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config) -> tuple[f
     """
     Run the parameterized orbital migration module.
 
-    Evaluate semi-major axis for a selected orbital migration option.
+    Advance the orbit along the selected migration law. A law writes only the
+    elements it sets: ``instant`` and ``sigmoid`` the semi-major axis,
+    ``high_ecc`` both elements. The static law and every law before
+    ``time_migration`` leave the row as it is, carrying the orbit seeded from
+    the config at the initial condition or set by the previous step.
 
     Parameters
     ----------
     hf_row : dict
-        Dictionary of current runtime variables
+        Dictionary of current runtime variables, carrying ``Time`` [yr],
+        ``semimajorax`` [m] and ``eccentricity`` [].
     config : Config
         Configuration options
 
@@ -327,20 +332,25 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config) -> tuple[f
     tau_mig = config.orbit.parameterized.tau_migration
     sma_i, sma_f = track_endpoints(config)
 
+    if migration not in ('none', 'instant', 'sigmoid', 'high_ecc'):
+        # Defensive: the config validator already restricts migration to the
+        # four names above, so this is reachable only through a stub config.
+        raise ValueError(
+            f'Unknown migration option: {migration!r}. '
+            'Expected "none", "instant", "sigmoid" or "high_ecc".'
+        )
+
     # Time step
     current_time = float(hf_row['Time'])
 
-    # Evaluate migration regime. Every regime below writes both orbital
-    # elements, so the row is either fully updated or left untouched.
+    # Validated above, so an early return here cannot hide a bad config.
+    if migration == 'none' or current_time < t_mig:
+        return hf_row['semimajorax'], hf_row['eccentricity']
 
-    if migration == 'none':  # no migration
-        hf_row['semimajorax'] = sma_i
-        hf_row['eccentricity'] = eccentricity
-    elif migration == 'instant':  # instant migration
+    if migration == 'instant':  # instant migration
         hf_row['semimajorax'] = instant_migration(
             t=current_time, sma_init=sma_i, sma_final=sma_f, time_migration=t_mig
         )
-        hf_row['eccentricity'] = eccentricity
     elif migration == 'sigmoid':  # sigmoid migration
         hf_row['semimajorax'] = sigmoid_migration(
             t=current_time,
@@ -349,8 +359,7 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config) -> tuple[f
             time_migration=t_mig,
             tau_mig=tau_mig,
         )
-        hf_row['eccentricity'] = eccentricity
-    elif migration == 'high_ecc':  # high-eccentricity migration
+    else:  # high-eccentricity migration, which sets both elements
         hf_row['semimajorax'], hf_row['eccentricity'] = high_eccentricity_migration(
             t=current_time,
             ecc=eccentricity,
@@ -358,13 +367,6 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config) -> tuple[f
             sma_final=sma_f,
             time_migration=t_mig,
             tau_mig=tau_mig,
-        )
-    else:
-        # Defensive: the config validator already restricts migration to the
-        # four names above, so this is reachable only through a stub config.
-        raise ValueError(
-            f'Unknown migration option: {migration!r}. '
-            'Expected "none", "instant", "sigmoid" or "high_ecc".'
         )
 
     return hf_row['semimajorax'], hf_row['eccentricity']
