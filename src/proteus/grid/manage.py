@@ -16,17 +16,17 @@ from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
 
-import attrs
 import numpy as np
 import toml
 
-from proteus.config import Config, read_config, read_config_object
-from proteus.config._interior import _TOL_UNSET, default_rtol, rtol_is_set
-from proteus.config.orphans import (
+from proteus.config import (
+    Config,
     UnknownConfigKeyError,
-    _extract_attrs_class,
-    _type_hints_for,
+    field_path_kind,
+    read_config,
+    read_config_object,
 )
+from proteus.config._interior import _TOL_UNSET, default_rtol, rtol_is_set
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
 from proteus.utils.logs import setup_logger
 
@@ -628,34 +628,14 @@ GRID_SETTINGS = frozenset(
 )
 
 
-def _schema_field_kind(path: str) -> str:
-    """Classify a key path against the Config schema.
-
-    Parameters
-    ----------
-    path:
-        Key as written in the grid file, dotted or not.
-
-    Returns
-    -------
-    str
-        ``'field'`` when the path ends at a single configuration field,
-        ``'section'`` when it ends at a nested section, ``'unknown'`` otherwise.
-    """
-    cls = Config
-    for part in path.split('.'):
-        if cls is None or part not in {f.name for f in attrs.fields(cls)}:
-            return 'unknown'
-        cls = _extract_attrs_class(_type_hints_for(cls).get(part))
-    return 'section' if cls is not None else 'field'
-
-
 def grid_dimension_keys(config: dict, config_fpath: str) -> list[str]:
     """Return the dimension keys of a grid config, refusing any key it cannot account for.
 
-    A top-level key is either one of ``GRID_SETTINGS`` or the path of a single
-    configuration field in the PROTEUS schema, which the grid sweeps. A dot is not
-    required: a top-level scalar field of the schema would be swept by its bare name.
+    A top-level key is either one of ``GRID_SETTINGS`` or a dimension: the path of a
+    single configuration field in the PROTEUS schema, given as a table with a
+    ``method``. Whether a key is a field is decided by the schema, not by a dot; the
+    schema has no top-level scalar field today other than ``config_version``, which
+    grid files use as a setting.
 
     Parameters
     ----------
@@ -672,21 +652,29 @@ def grid_dimension_keys(config: dict, config_fpath: str) -> list[str]:
     Raises
     ------
     UnknownConfigKeyError
-        If a key is neither a grid setting nor a schema field, or names a whole
-        section rather than one field.
+        If a key is neither a grid setting nor a schema field, names a whole section
+        rather than one field, or does not hold a table with a ``method``.
     """
     dims = [key for key in config if key not in GRID_SETTINGS]
-    kinds = {key: _schema_field_kind(key) for key in dims}
-    unknown = [key for key in dims if kinds[key] == 'unknown']
-    sections = [key for key in dims if kinds[key] == 'section']
-    if unknown or sections:
-        lines = [f'Grid config {config_fpath} has keys the grid cannot account for:']
-        if unknown:
-            keys = ', '.join(f'"{key}"' for key in unknown)
-            lines.append(f'  not a grid setting or a configuration field: {keys}')
-        if sections:
-            keys = ', '.join(f'"{key}"' for key in sections)
-            lines.append(f'  a configuration section, not a single field: {keys}')
+    kinds = {key: field_path_kind(key) for key in dims}
+    for key in dims:
+        if kinds[key] == 'field' and not (
+            isinstance(config[key], dict) and 'method' in config[key]
+        ):
+            kinds[key] = 'value'
+    reasons = {
+        'unknown': 'not a grid setting or a configuration field',
+        'section': 'a configuration section, not a single field (quote a dotted table '
+        'header, as in ["planet.mass_tot"])',
+        'value': 'a configuration field without a dimension table holding a method',
+    }
+    lines = []
+    for kind, reason in reasons.items():
+        keys = ', '.join(f'"{key}"' for key in dims if kinds[key] == kind)
+        if keys:
+            lines.append(f'  {reason}: {keys}')
+    if lines:
+        lines.insert(0, f'Grid config {config_fpath} has keys the grid cannot account for:')
         lines.append(
             f'  A key is a grid setting ({", ".join(sorted(GRID_SETTINGS))}) or the path '
             'of one configuration field to sweep, such as "planet.mass_tot".'

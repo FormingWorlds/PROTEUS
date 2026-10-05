@@ -200,6 +200,30 @@ def find_key_problems(
     return orphans, mistyped
 
 
+def field_path_kind(path: str, cls: type = Config) -> str:
+    """Classify a key path, dotted or not, against the schema.
+
+    Parameters
+    ----------
+    path:
+        Key path as written by the user, for example ``planet.mass_tot``.
+    cls:
+        attrs class the path starts from. Defaults to the whole Config schema.
+
+    Returns
+    -------
+    str
+        ``'field'`` when the path ends at a single configuration field,
+        ``'section'`` when it ends at a nested section, ``'unknown'`` when a part
+        of it names nothing in the schema or follows a field that is not a section.
+    """
+    for part in path.split('.'):
+        if cls is None or part not in {f.name for f in attrs.fields(cls)}:
+            return 'unknown'
+        cls = _extract_attrs_class(_type_hints_for(cls).get(part))
+    return 'section' if cls is not None else 'field'
+
+
 def format_orphan_message(
     orphans: list[str], path: Path | str, mistyped: list[str] | None = None
 ) -> str:

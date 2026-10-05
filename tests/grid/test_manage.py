@@ -1345,6 +1345,7 @@ _DIM = {'method': 'direct', 'values': [1.0]}
         ('planet.mass_totl', _DIM, 'not a grid setting or a configuration field'),
         ('planet.mass_tot.x', _DIM, 'not a grid setting or a configuration field'),
         ('planet', _DIM, 'a configuration section, not a single field'),
+        ('orbit.semimajoraxis', 1.0, 'without a dimension table holding a method'),
     ],
 )
 def test_unaccounted_grid_key_is_refused_before_any_case(fake_proteus_dir, key, value, reason):
@@ -1363,14 +1364,59 @@ def test_unaccounted_grid_key_is_refused_before_any_case(fake_proteus_dir, key, 
 def test_grid_dimension_keys_skips_settings_and_keeps_file_order():
     """Grid settings are not dimensions; every schema field path is, in file order."""
     config = {
-        'output': 'g',
-        'config_version': '3.0',
-        'jax_cache': True,
-        'interior_struct.core_frac': _DIM,
         'planet.mass_tot': _DIM,
+        'output': 'g',
+        'interior_struct.core_frac': _DIM,
+        'config_version': '3.0',
+        'orbit.semimajoraxis': _DIM,
+        'jax_cache': True,
     }
-    assert grid_dimension_keys(config, 'g.toml') == [
-        'interior_struct.core_frac',
-        'planet.mass_tot',
-    ]
+    expected = ['planet.mass_tot', 'interior_struct.core_frac', 'orbit.semimajoraxis']
+    assert grid_dimension_keys(config, 'g.toml') == expected
     assert grid_dimension_keys({'output': 'g'}, 'g.toml') == []
+
+
+def test_grid_dimension_keys_names_every_refused_key_with_its_reason():
+    """Several bad keys are refused together, each named under its reason."""
+    config = {
+        'output': 'g',
+        'jax_cahce': True,
+        'planet.mass_totl': _DIM,
+        'planet': _DIM,
+        'orbit.semimajoraxis': 1.0,
+    }
+    with pytest.raises(UnknownConfigKeyError) as exc:
+        grid_dimension_keys(config, 'g.toml')
+    msg = str(exc.value)
+    assert 'not a grid setting or a configuration field: "jax_cahce", "planet.mass_totl"' in msg
+    assert 'a configuration section, not a single field' in msg and '"planet"' in msg
+    assert 'without a dimension table holding a method: "orbit.semimajoraxis"' in msg
+
+
+def test_grid_from_config_numbers_dimensions_in_file_order(fake_proteus_dir, monkeypatch):
+    """Settings between dimensions do not take a dimension number; params follow file order."""
+    (fake_proteus_dir / 'base.toml').write_text('# base\n')
+    grid_path = fake_proteus_dir / 'g.toml'
+    grid_path.write_text(
+        toml.dumps(
+            {
+                'output': 'unit_grid',
+                'planet.mass_tot': _DIM,
+                'symlink': '',
+                'use_slurm': False,
+                'interior_struct.core_frac': _DIM,
+                'max_jobs': 2,
+                'max_days': 1,
+                'max_mem': 3,
+                'ref_config': 'base.toml',
+            }
+        )
+    )
+    captured = {}
+    monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: captured.setdefault('g', self))
+    monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+    monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+    assert captured['g'].dim_names == ['param_000', 'param_001']
+    assert captured['g'].dim_param == ['planet.mass_tot', 'interior_struct.core_frac']
