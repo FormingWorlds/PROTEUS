@@ -763,7 +763,8 @@ def translate(v2_toml: dict):
             continue
         if v2_path.startswith(inactive) or v2_path in inactive_bare:
             if v2_path in explicit:
-                report.dropped_inactive.append(v2_path)
+                known = v2_path in v2_defaults
+                (report.dropped_inactive if known else report.dropped_unknown).append(v2_path)
             continue
         if v2_path == 'atmos_clim.albedo_pl' and isinstance(val, str):
             # 2.0 accepted either a constant or a path to a CSV lookup table;
@@ -788,14 +789,13 @@ def translate(v2_toml: dict):
         elif v2_path in v3_defaults:  # identical path in 3.0
             dst = v2_path
         else:
-            # No 3.0 home, so the user's key is left out and named: as an unmapped-field warning
-            # if main's 2.0 schema has it, in a separate list if not (the 2.0 loader ignored
-            # it). Redesigned zalmoxis/aragog blocks get one summary warning instead.
-            redesigned = v2_path.startswith(('struct.zalmoxis.', 'interior.aragog.'))
-            if v2_path in explicit and v2_path in v2_defaults and not redesigned:
-                report.warnings.append(f'Unmapped 2.0 field (left out): {v2_path}')
-            elif v2_path in explicit and not redesigned:
-                report.dropped_unknown.append(v2_path)
+            # No 3.0 home: a key outside the 2.0 schema is listed, a 2.0 field is warned about
+            # unless its redesigned zalmoxis/aragog block already has one summary warning.
+            if v2_path in explicit:
+                if v2_path not in v2_defaults:
+                    report.dropped_unknown.append(v2_path)
+                elif not v2_path.startswith(('struct.zalmoxis.', 'interior.aragog.')):
+                    report.warnings.append(f'Unmapped 2.0 field (left out): {v2_path}')
             continue
         emit(dst, tval, v2_path)
         if v2_path != dst:

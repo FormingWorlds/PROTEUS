@@ -887,15 +887,7 @@ def test_clean_spider_config_warns_only_about_legacy_observe_synthesis():
     assert report.warnings == ['Unmapped 2.0 field (left out): observe.synthesis'], (
         report.warnings
     )
-
-    # The warning is reserved for fields main's 2.0 loader actually read. A key
-    # that was never part of the 2.0 schema had no effect on the 2.0 run, so
-    # dropping it is faithful and silent; warning on it would bury the one
-    # field that does need the user's attention.
-    v2 = _minimal_spider_v2()
-    v2['interior']['ghost_field'] = 1.0
-    _, ghost_report = _translate(v2)
-    assert ghost_report.warnings == report.warnings
+    assert report.dropped_unknown == []
 
 
 def test_grid_axis_renames():
@@ -976,12 +968,81 @@ def test_main_runs_without_julia(tmp_path):
     assert out_path.exists()
 
 
-def test_unknown_2_0_key_is_left_out_and_named():
-    """A user key outside the 2.0 schema migrates as before and is listed by name."""
-    v2 = _minimal_spider_v2()
+def _with_zalmoxis(v2):
+    v2['struct']['module'] = 'zalmoxis'
+    v2['struct']['zalmoxis'] = {'mantle_eos': 'WolfBower2018:MgSiO3', 'ghost_field': 1.0}
+
+
+def _with_aragog(v2):
+    v2['interior']['module'] = 'aragog'
+    v2['interior']['aragog'] = {'ghost_field': 1.0}
+
+
+def _with_inactive_aragog(v2):
+    v2['interior']['aragog'] = {'ghost_field': 1.0, 'num_levels': 50}
+
+
+def _with_ghosts(v2):
     v2['interior']['ghost_field'] = 1.0
-    v2.setdefault('delivery', {}).setdefault('volatiles', {})['XYZ'] = 1.0
+    v2['delivery']['volatiles'] = {'XYZ': 1.0}
+
+
+@pytest.mark.parametrize(
+    'edit, names',
+    [
+        (_with_ghosts, ['delivery.volatiles.XYZ', 'interior.ghost_field']),
+        (_with_zalmoxis, ['struct.zalmoxis.ghost_field']),
+        (_with_aragog, ['interior.aragog.ghost_field']),
+        (_with_inactive_aragog, ['interior.aragog.ghost_field']),
+    ],
+    ids=['section', 'zalmoxis', 'aragog', 'inactive_block'],
+)
+def test_unknown_2_0_key_is_left_out_and_named(edit, names):
+    """A user key outside the 2.0 schema is left out, listed by name and not warned about."""
+    clean = _minimal_spider_v2()
+    edit(clean)
+    for name in names:
+        section, _, key = name.rpartition('.')
+        node = clean
+        for part in section.split('.'):
+            node = node[part]
+        del node[key]
+    _, clean_report = _translate(clean)
+    v2 = _minimal_spider_v2()
+    edit(v2)
     flat, report = _translate(v2)
-    assert 'interior.ghost_field' not in flat
-    assert sorted(report.dropped_unknown) == ['delivery.volatiles.XYZ', 'interior.ghost_field']
-    assert 'Left out (not in the 2.0 schema):' in report.text()
+    assert not set(names) & set(flat)
+    assert sorted(report.dropped_unknown) == names
+    assert f'Left out (not in the 2.0 schema): {report.dropped_unknown}' in report.text()
+    assert report.warnings == clean_report.warnings
+    assert report.dropped_inactive == clean_report.dropped_inactive
+
+
+def test_main_prints_the_left_out_keys(tmp_path, capsys):
+    """The command writes the migrated file and lists the left-out keys on stdout."""
+    v2 = _minimal_spider_v2()
+    _with_ghosts(v2)
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(v2, v2_path)
+    assert mig.main([str(v2_path), '-o', str(out_path)]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "Left out (not in the 2.0 schema): ['interior.ghost_field', 'delivery.volatiles.XYZ']"
+        in out
+    )
+
+
+@pytest.mark.parametrize('field, value', [('mass', 'heavy'), ('age_ini', [1, 2])])
+def test_wrong_typed_value_is_refused_by_the_schema(field, value, tmp_path):
+    """A 2.0 field holding a value of the wrong type fails 3.0 structuring and nothing is written."""
+    import cattrs
+
+    v2 = _minimal_spider_v2()
+    v2['star'][field] = value
+    with pytest.raises(cattrs.errors.ClassValidationError):
+        mig.translate(v2)
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(v2, v2_path)
+    with pytest.raises(cattrs.errors.ClassValidationError):
+        mig.main([str(v2_path), '-o', str(out_path)])
+    assert not out_path.exists()
