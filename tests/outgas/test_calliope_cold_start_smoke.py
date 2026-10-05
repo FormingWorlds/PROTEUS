@@ -18,17 +18,13 @@ import pytest
 pytest.importorskip('calliope')
 
 from proteus.outgas.calliope import calc_surface_pressures
-from tests.outgas.test_calliope import _cold_start_config, _surface_pressure_hf_row
+from tests.outgas.test_calliope import (  # noqa: F401
+    _cold_start_config,
+    _restore_global_rng,
+    _surface_pressure_hf_row,
+)
 
 pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
-
-
-@pytest.fixture(autouse=True)
-def _restore_global_rng():
-    """Give the global NumPy RNG back to later tests in the state it had."""
-    state = np.random.get_state()
-    yield
-    np.random.set_state(state)
 
 
 def _cold_start(caller_seed):
@@ -43,12 +39,11 @@ def test_real_cold_start_is_identical_for_any_caller_rng_state(monkeypatch):
     """Two real cold starts under different caller RNG states agree in every
     copied value.
 
-    The second half is the negative control: with the wrapper's seed disabled
-    the two roots differ, so the first half can fail. If CALLIOPE starts to seed
-    itself, the control fails and the wrapper's seed can go. The seeded surface
-    pressure lies within rel 1e-4 of the unseeded ones: their measured spread for
-    this case is 6.2e-5 over 60 caller states (the CALLIOPE rtol bounds the mass
-    residual in kg, not the pressure).
+    With the wrapper's seed disabled the roots differ (negative control; if
+    CALLIOPE seeds itself this fails and the wrapper's seed can go). rel 1e-4 is
+    a sanity bound on the seeded root against these two unseeded ones, which
+    differ from it by about 1e-9; over 2000 caller states the median deviation
+    is 2e-10 and the largest 1.1e-4.
     """
     a, b = _cold_start(1), _cold_start(2)
     assert a['P_surf'] > 0.0

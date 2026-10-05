@@ -1,9 +1,11 @@
 """Unit tests for ``proteus.outgas.calliope``.
 
 Exercises the CALLIOPE wrapper helper functions with mocked CALLIOPE
-imports: ``_resolve_element`` (element mode-to-mass conversion),
+solves: ``_resolve_element`` (element mode-to-mass conversion),
 ``construct_guess`` (initial-guess construction for the solver),
-and ``flag_included_volatiles`` (volatile inclusion logic).
+``flag_included_volatiles`` (volatile inclusion logic) and
+``calc_surface_pressures`` (the target and the seeded solve). One test
+calls CALLIOPE's real ``get_initial_pressures``.
 
 Invariants tested:
   - _resolve_element: correct unit conversion for 'X/H', 'ppmw', 'kg' modes
@@ -11,6 +13,9 @@ Invariants tested:
   - construct_guess: returns None at Time < 1 (IC phase)
   - construct_guess: zeros guess for depleted elements
   - flag_included_volatiles: O2 is always included
+  - calc_surface_pressures: the result does not depend on the caller's RNG state
+  - calc_surface_pressures: the caller's RNG stream is restored, also when CALLIOPE raises
+  - calc_surface_pressures: the from_O_budget path gets the seed and leaves the global RNG alone
 
 Testing standards:
   - docs/How-to/testing.md
@@ -617,24 +622,25 @@ def test_calliope_result_does_not_depend_on_the_caller_rng(warm):
     """Two CALLIOPE solves from the same helpfile row give the same surface
     pressure whatever state the caller left the global RNG in.
 
-    CALLIOPE draws its cold-start guess (Time 0) and every restart guess from
-    the global ``np.random``, and its converged root moves within the solver
-    tolerance with that guess; unseeded, identical runs differ from row 0.
+    CALLIOPE draws its cold-start guess (Time < 1, or any active noble gas)
+    and every restart guess from the global ``np.random``, and its converged
+    root moves within the solver tolerance with that guess; unseeded,
+    identical runs differ from row 0.
     """
     config, rows = _cold_start_config(), []
-    for caller_seed in (1, 2):
-        hf_row = _warm_start_hf_row() if warm else _surface_pressure_hf_row()
-        np.random.seed(caller_seed)
-        with (
-            patch(
-                'proteus.outgas.calliope.equilibrium_atmosphere', side_effect=_drawing_solver
-            ) as solve,
-            patch('proteus.outgas.calliope.np.random.seed', wraps=np.random.seed) as seed,
-        ):
+    with (
+        patch(
+            'proteus.outgas.calliope.equilibrium_atmosphere', side_effect=_drawing_solver
+        ) as solve,
+        patch('proteus.outgas.calliope.np.random.seed', wraps=np.random.seed) as seed,
+    ):
+        for caller_seed in (1, 2):
+            hf_row = _warm_start_hf_row() if warm else _surface_pressure_hf_row()
+            np.random.set_state(np.random.RandomState(caller_seed).get_state())
             calc_surface_pressures({'output': '/tmp/test'}, config, hf_row)
-        rows.append(hf_row)
+            rows.append(hf_row)
 
-    seed.assert_called_once_with(RANDOM_SEED)
+    assert [c.args for c in seed.call_args_list] == [(RANDOM_SEED,), (RANDOM_SEED,)]
     assert (solve.call_args.kwargs['p_guess'] is not None) == warm
     assert rows[0]['P_surf'] == rows[1]['P_surf']
     assert rows[0]['H2O_bar'] == rows[1]['H2O_bar']
@@ -686,9 +692,9 @@ def test_from_o_budget_solve_gets_the_same_fixed_seed():
 
 
 def test_calliope_cold_start_guess_draws_from_the_global_rng():
-    """CALLIOPE's start guess consumes the global NumPy stream, which is what
-    the seed in calc_surface_pressures controls; if CALLIOPE stops drawing
-    from it, the seed becomes dead code and this test fails."""
+    """CALLIOPE's cold-start guess helper consumes the global NumPy stream,
+    which the seed in calc_surface_pressures controls. A solver that stops
+    using this helper is caught by the negative control of the smoke test."""
     from calliope.solve import get_initial_pressures
 
     target = {'H': 1.2e20, 'C': 1.0e20, 'N': 1.0e18, 'S': 1.0e18}
