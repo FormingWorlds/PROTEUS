@@ -150,10 +150,15 @@ Configured under `[orbit.parameterized]`:
 | Key | Meaning | Unit |
 |---|---|---|
 | `migration` | `none`, `instant`, `sigmoid` or `high_ecc` | -- |
-| `sma_init` | semi-major axis held before the migration epoch | au |
 | `sma_final` | semi-major axis approached after it | au |
 | `time_migration` | epoch at which migration begins | yr |
 | `tau_migration` | length of the migration window for `sigmoid`, decay constant for `high_ecc` | yr |
+
+The track starts from `a_0 = orbit.semimajoraxis` and `orbit.eccentricity`,
+which seed the orbit at the initial condition as for every other star-planet
+model; the track is evaluated from the first step after it. Setting the orbit
+from a target flux (`orbit.instellation_method = 'inst'`) is rejected at
+config load, since it would give the run a second starting orbit.
 
 Only `high_ecc` evolves the eccentricity. `none`, `instant` and `sigmoid`
 hold it at `orbit.eccentricity` throughout.
@@ -163,7 +168,7 @@ over the following `tau_migration` along the cubic `3u^2 - 2u^3`, and holds
 it there afterwards.
 
 `high_ecc` circularises at constant orbital angular momentum (Postolec et al. 2026)[^cite-postolec2026]: it excites the
-eccentricity to `sqrt(1 - sma_final / sma_init)` at the migration epoch and
+eccentricity to `sqrt(1 - sma_final / a_0)` at the migration epoch and
 then decays it, until the orbit reaches `sma_final`. The eccentricity jumps discontinuously at
 `time_migration` from `orbit.eccentricity` to its excited value. That step is
 physical, since a scattering or Kozai event is fast compared with the orbital
@@ -214,12 +219,12 @@ shrinks. It is zero for `none`, outside the migration window and for
 `instant`, whose step releases its energy at a single time.
 
 For `high_ecc` the rate is largest in magnitude at `time_migration`, where
-it equals `2 dE / tau_migration`, with `dE = E(sma_final) - E(sma_init) =
--(G M_star M_planet / 2) (1/sma_final - 1/sma_init)` the whole energy change
+it equals `2 dE / tau_migration`, with `dE = E(sma_final) - E(a_0) =
+-(G M_star M_planet / 2) (1/sma_final - 1/a_0)` the whole energy change
 (negative for inward migration), and it then decays as
 `exp(-2 (t - time_migration) / tau_migration)`. The eccentricity step at
 `time_migration` changes the orbital angular momentum instantly while
-leaving the energy unchanged, since `a` is still `sma_init` there.
+leaving the energy unchanged, since `a` is still `a_0` there.
 
 For the TOI-561 b setup in `input/planets/toi561b.toml` (0.806 M_sun,
 2.24 M_earth, 0.029 to 0.0106 au) the orbit loses 2.9e35 J (`dE = -2.9e35 J`).
@@ -242,11 +247,11 @@ closed form in `src/proteus/orbit/parameterized.py`:
 ![Parameterized orbital migration regimes](../assets/orbit/orbit_parameterized_migration_dark.avif#only-dark){ width="100%" }
 
 Semi-major axis (top) and eccentricity (bottom) for the four regimes, with
-`sma_init = 2.0` au, `sma_final = 0.8` au, `time_migration = 1e3` yr and
+`orbit.semimajoraxis = 2.0` au, `sma_final = 0.8` au, `time_migration = 1e3` yr and
 `tau_migration = 1e4` yr. The dashed vertical line marks the migration epoch
 and the shaded band spans one `tau_migration` after it. The dotted horizontal
-lines in the top panel mark the starting and final orbits, `a_0 = sma_init` and
-`a_f = sma_final`.
+lines in the top panel mark the starting and final orbits, `a_0 = orbit.semimajoraxis`
+and `a_f = sma_final`.
 
 ## Planet-satellite models (`orbit.planet_satellite_model`)
 

@@ -1241,24 +1241,21 @@ def test_run_orbit_obliqua_module_zeroes_imk2_for_other_degrees():
     mock_run_obliqua.assert_called_once()
 
 
-def _make_parameterized_orbit_config(migration, sma_init_au, sma_final_au):
+def _make_parameterized_orbit_config(migration, semimajoraxis_au, sma_final_au):
     """Config stand-in for a prescribed-track run through run_orbit."""
     config = MagicMock()
     config.orbit.module = 'none'
     config.orbit.evolve = False
     config.orbit.eccentricity = 0.0
-    # Deliberately different from sma_init, which is the disagreement the
-    # test is about.
-    config.orbit.semimajoraxis = 0.0106
+    config.orbit.semimajoraxis = semimajoraxis_au
     config.orbit.star_planet_model = 'parameterized'
     config.orbit.planet_satellite_model = None
     config.orbit.satellite = _make_satellite_config_stub()
     config.orbit.satellite.include_satellite = False
     config.orbit.axial_period = None
-    config.orbit.instellation_method = 'sep'
+    config.orbit.instellation_method = 'distance'
     config.orbit.parameterized = types.SimpleNamespace(
         migration=migration,
-        sma_init=sma_init_au,
         sma_final=sma_final_au,
         time_migration=1.0e6,
         tau_migration=1.0e7,
@@ -1267,52 +1264,6 @@ def _make_parameterized_orbit_config(migration, sma_init_au, sma_final_au):
     config.params.stop.disint.offset_spin = 0.0
     config.params.stop.disint.offset_roche = 0.0
     return config
-
-
-@pytest.mark.parametrize(
-    'migration',
-    ['none', 'instant', 'sigmoid', 'high_ecc'],
-    ids=['static', 'instant_step', 'sigmoid_ramp', 'high_eccentricity'],
-)
-def test_run_orbit_seeds_the_first_step_from_the_prescribed_track(migration):
-    """A prescribed track defines the orbit at every time, so the first
-    recorded step must already sit on it rather than on
-    orbit.semimajoraxis.
-
-    Discriminating: the config carries semimajoraxis = 0.0106 au and
-    sma_init = 0.029 au, which differ by a factor 2.74. Seeding from the
-    wrong one puts the first step at the wrong orbit and jumps the
-    instellation by 7.48 at the second step, since flux scales as the
-    inverse square of the distance. All four regimes are held before
-    time_migration, so all four must report sma_init.
-    """
-    config = _make_parameterized_orbit_config(migration, 0.029, 0.0106)
-    hf_row = {
-        'M_star': M_sun,
-        'M_planet': M_earth,
-        'M_int': M_earth,
-        'R_int': R_earth,
-        'R_obs': R_earth,
-        'R_xuv': R_earth,
-        'R_star': 6.957e8,
-        'semimajorax_sat': 1.0e8,
-        'Time': 0.0,
-        'plan_sat_am': 0.0,
-        'plan_star_am': 0.0,
-    }
-    interior_o = MagicMock()
-    interior_o.dt = 1.0
-    interior_o.phi = np.zeros(5)
-
-    run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
-
-    assert hf_row['semimajorax'] == pytest.approx(0.029 * AU, rel=1e-12)
-    # Guard against the config seed leaking through: that value is
-    # 0.0106 au, far outside the tolerance above.
-    assert abs(hf_row['semimajorax'] - 0.0106 * AU) > 0.01 * AU
-    # Scale and bounds: SI metres on a physical orbit.
-    assert 1.0e9 < hf_row['semimajorax'] < 1.0e13
-    assert 0.0 <= hf_row['eccentricity'] < 1.0
 
 
 def _parameterized_seed_hf_row():
@@ -1326,62 +1277,54 @@ def _parameterized_seed_hf_row():
         'R_xuv': R_earth,
         'R_star': 6.957e8,
         'semimajorax_sat': 1.0e8,
+        'M_sat': 7.342e22,
         'Time': 0.0,
         'plan_sat_am': 0.0,
         'plan_star_am': 0.0,
     }
 
 
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize(
-    'sma_init_au, expect_warning',
-    [(0.0106, False), (0.029, True)],
-    ids=['agrees_with_semimajoraxis_silent', 'differs_from_semimajoraxis_warns'],
+    'migration',
+    ['none', 'instant', 'sigmoid', 'high_ecc'],
+    ids=['static', 'instant_step', 'sigmoid_ramp', 'high_eccentricity'],
 )
-def test_run_orbit_warns_only_when_semimajoraxis_disagrees_with_sma_init(
-    caplog, sma_init_au, expect_warning
-):
-    """orbit.semimajoraxis is unused under the prescribed track, so the run
-    warns when it disagrees with sma_init and stays silent when the two
-    agree. The config stand-in carries semimajoraxis = 0.0106 au, so the
-    agreeing case would warn if the comparison were dropped and the
-    disagreeing one would stay silent if it were inverted. Either way the
-    first step is seeded from sma_init."""
-    import logging
+def test_run_orbit_starts_a_prescribed_track_on_the_configured_orbit(migration):
+    """The initial condition seeds a prescribed track from orbit.semimajoraxis
+    and orbit.eccentricity, as for every other star-planet model, and the
+    track is not evaluated there. A later step that is still before
+    time_migration must find the orbit where the seed put it, so the run has
+    no jump between its first two steps.
 
-    config = _make_parameterized_orbit_config('none', sma_init_au, None)
+    Discriminating: the track ends at 0.0106 au, a factor 2.74 inside the
+    0.029 au start, so a seed taken from the destination, or a pre-epoch
+    step that moved the orbit, lands far outside the tolerance."""
+    config = _make_parameterized_orbit_config(migration, 0.029, 0.0106)
+    config.orbit.eccentricity = 0.05
     hf_row = _parameterized_seed_hf_row()
     interior_o = MagicMock()
     interior_o.dt = 1.0
     interior_o.phi = np.zeros(5)
 
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.orbit.wrapper'):
+    with patch('proteus.orbit.parameterized.run_parameterized_orbital_migration') as track:
         run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+        track.assert_not_called()
+    seed = (hf_row['semimajorax'], hf_row['eccentricity'])
 
-    unused = [r.getMessage() for r in caplog.records if 'is unused under' in r.getMessage()]
-    assert len(unused) == int(expect_warning)
-    if expect_warning:
-        # The message names both values, so the user can see which one wins.
-        assert '0.0106' in unused[0]
-        assert '0.029' in unused[0]
-    assert hf_row['semimajorax'] == pytest.approx(sma_init_au * AU, rel=1e-12)
+    assert seed[0] == pytest.approx(0.029 * AU, rel=1e-12)
+    assert seed[1] == pytest.approx(0.05, rel=1e-12)
+    assert 'dEdt_orb' not in hf_row
 
+    hf_row['Time'] = 1.0e5
+    interior_o.dt = 1.0e5
+    run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
 
-def test_run_orbit_without_sma_init_raises_the_named_error():
-    """A missing sma_init must surface as the ValueError that names the key,
-    not as a TypeError from comparing None against orbit.semimajoraxis,
-    which is what the None guard on the comparison prevents. The row keeps
-    the config seed, since the prescribed track never wrote to it."""
-    config = _make_parameterized_orbit_config('none', None, None)
-    hf_row = _parameterized_seed_hf_row()
-    interior_o = MagicMock()
-    interior_o.dt = 1.0
-    interior_o.phi = np.zeros(5)
-
-    with pytest.raises(ValueError, match='sma_init') as excinfo:
-        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
-
-    assert excinfo.type is ValueError
-    assert hf_row['semimajorax'] == pytest.approx(0.0106 * AU, rel=1e-12)
+    assert hf_row['semimajorax'] == pytest.approx(seed[0], rel=1e-12)
+    assert hf_row['eccentricity'] == pytest.approx(seed[1], rel=1e-12)
+    assert abs(hf_row['semimajorax'] - 0.0106 * AU) > 0.01 * AU
+    # Scale and bounds: SI metres on a physical orbit.
+    assert 1.0e9 < hf_row['semimajorax'] < 1.0e13
 
 
 # ---------------------------------------------------------------------------
@@ -1395,7 +1338,6 @@ def _run_two_parameterized_steps(axial_period_hours):
     config = _make_parameterized_orbit_config('high_ecc', 0.029, 0.0106)
     config.orbit.axial_period = axial_period_hours
     hf_row = _parameterized_seed_hf_row()
-    hf_row['M_sat'] = 7.342e22  # read by the satellite period update on later steps
     interior_o = MagicMock()
     interior_o.dt = 1.0
     interior_o.phi = np.zeros(5)

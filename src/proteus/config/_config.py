@@ -37,12 +37,18 @@ def instmethod_dummy(instance, attribute, value):
 
 
 def instmethod_evolve(instance, attribute, value):
-    """Orbital evolution cannot be combined with instellation method 'inst'."""
+    """Orbital evolution cannot be combined with instellation method 'inst'.
+
+    'inst' derives the semi-major axis from the flux, while every star-planet
+    model, a prescribed track included, starts from orbit.semimajoraxis.
+    """
     if (instance.orbit.instellation_method == 'inst') and (
         instance.orbit.star_planet_model is not None
     ):
         raise ValueError(
-            "Planet orbital evolution not supported for `instellation_method='inst'`"
+            "Planet orbital evolution not supported for `instellation_method='inst'`: "
+            f'orbit.star_planet_model = {instance.orbit.star_planet_model!r} starts from '
+            "orbit.semimajoraxis, so set instellation_method = 'distance'"
         )
 
 
@@ -123,6 +129,24 @@ def parameterized_excludes_tides(instance, attribute, value):
         raise ValueError(
             "orbit.star_planet_model = 'parameterized' requires orbit.module = 'none' "
             f'(got {instance.orbit.module!r}): a prescribed migration track computes no tides'
+        )
+
+
+def parameterized_high_ecc_inward(instance, attribute, value):
+    """The high-eccentricity law circularises at fixed orbital angular momentum,
+    which can only shrink the orbit, so its final semi-major axis must not
+    exceed the initial one, orbit.semimajoraxis.
+    """
+    params = instance.orbit.parameterized
+    if (
+        params.migration == 'high_ecc'
+        and params.sma_final is not None
+        and params.sma_final > instance.orbit.semimajoraxis
+    ):
+        raise ValueError(
+            'High-eccentricity migration is inward only and requires '
+            'orbit.parameterized.sma_final <= orbit.semimajoraxis, got '
+            f'semimajoraxis={instance.orbit.semimajoraxis} and sma_final={params.sma_final}'
         )
 
 
@@ -593,6 +617,7 @@ class Config:
             sp0d_obliqua_degree_mismatch,
             orbit_requires_tides,
             parameterized_excludes_tides,
+            parameterized_high_ecc_inward,
         ),
     )
     planet: Planet = field(

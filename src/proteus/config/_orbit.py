@@ -261,12 +261,13 @@ def ax_valid(instance, attribute, value):
 class Parameterized:
     """Parameterized orbital migration module.
 
+    The track starts from ``orbit.semimajoraxis`` and ``orbit.eccentricity``,
+    which seed the orbit at the initial condition as for every other model.
+
     Attributes
     ----------
     migration: str
         Type of orbital migration to apply.
-    sma_init: float | None
-        Initial semi-major axis [AU].
     sma_final: float | None
         Final semi-major axis [AU].
     time_migration: float
@@ -275,7 +276,6 @@ class Parameterized:
         Timescale of migration, used by the sigmoid and high_ecc laws [yr].
     """
 
-    sma_init = field(default=None, validator=optional(gt(0)), converter=none_if_none)
     sma_final = field(default=None, validator=optional(gt(0)), converter=none_if_none)
 
     migration: str = field(
@@ -285,20 +285,9 @@ class Parameterized:
     tau_migration: float = field(default=1e9, validator=gt(0))
 
     def __attrs_post_init__(self):
-        if self.migration == 'none':
-            return
-
-        if self.sma_init is None or self.sma_final is None:
+        if self.migration != 'none' and self.sma_final is None:
             raise ValueError(
-                f'orbit.parameterized.migration = {self.migration!r} requires both '
-                'sma_init and sma_final'
-            )
-
-        if self.migration == 'high_ecc' and self.sma_final > self.sma_init:
-            raise ValueError(
-                'High-eccentricity migration is inward only and requires '
-                f'sma_final <= sma_init, got sma_init={self.sma_init} '
-                f'and sma_final={self.sma_final}'
+                f'orbit.parameterized.migration = {self.migration!r} requires sma_final'
             )
 
 

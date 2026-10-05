@@ -177,7 +177,6 @@ visc_thresh = 1000000000.0
 
 [orbit.parameterized]
 migration = "high_ecc"
-sma_init = 0.029
 sma_final = 0.0106
 time_migration = 1e6
 tau_migration = 1e7

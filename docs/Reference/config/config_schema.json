@@ -2376,27 +2376,6 @@
       "group_qualifier": null
     },
     {
-      "path": "orbit.parameterized.sma_init",
-      "toml_section": "orbit.parameterized",
-      "class": "Parameterized",
-      "type": "float or none",
-      "accepts_none": true,
-      "default": "none",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Initial semi-major axis [AU].",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
       "path": "orbit.parameterized.sma_final",
       "toml_section": "orbit.parameterized",
       "class": "Parameterized",
@@ -11281,6 +11260,18 @@
         "orbit.star_planet_model"
       ],
       "doc": "The parameterized model prescribes the orbit as a closed-form track and exchanges no energy with the interior, so no tides module can run alongside it; see \"Star-planet models\" in docs/Explanations/orbit.md."
+    },
+    {
+      "validator": "parameterized_high_ecc_inward",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.parameterized",
+        "orbit.semimajoraxis"
+      ],
+      "doc": "The high-eccentricity law circularises at fixed orbital angular momentum, which can only shrink the orbit, so its final semi-major axis must not exceed the initial one, orbit.semimajoraxis."
     },
     {
       "validator": "planet_fO2_source_compat",

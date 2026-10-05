@@ -854,11 +854,11 @@ def _make_parameterized_config(
         SimpleNamespace(
             orbit=SimpleNamespace(
                 star_planet_model='parameterized',
+                semimajoraxis=sma_init_au,
                 eccentricity=ecc,
                 solver=OrbitSolver(),
                 parameterized=SimpleNamespace(
                     migration=migration,
-                    sma_init=sma_init_au,
                     sma_final=sma_final_au,
                     time_migration=time_migration,
                     tau_migration=tau_migration,

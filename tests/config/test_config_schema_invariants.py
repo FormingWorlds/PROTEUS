@@ -46,6 +46,7 @@ from proteus.config._config import (
     orbit_requires_tides,
     parameterized_excludes_accretion,
     parameterized_excludes_tides,
+    parameterized_high_ecc_inward,
     planet_fO2_source_compat,
     planet_mass_valid,
     planet_oxygen_mode_explicit,
@@ -730,6 +731,27 @@ def test_instmethod_evolve_rejects_inst_with_orbit_evolve():
 
 
 @pytest.mark.unit
+def test_instmethod_evolve_rejects_inst_with_a_prescribed_track():
+    """A prescribed track starts from orbit.semimajoraxis, while 'inst' would
+    derive a second starting orbit from the flux, so the pair is refused
+    and the message points at the setting that resolves it."""
+    instance = _make_config_instance(
+        **{
+            'orbit.instellation_method': 'inst',
+            'orbit.star_planet_model': 'parameterized',
+        }
+    )
+    with pytest.raises(ValueError, match=r"instellation_method='inst'") as excinfo:
+        instmethod_evolve(instance, None, None)
+    msg = str(excinfo.value)
+    assert "'parameterized'" in msg
+    assert "instellation_method = 'distance'" in msg
+
+    instance.orbit.instellation_method = 'distance'
+    assert instmethod_evolve(instance, None, None) is None
+
+
+@pytest.mark.unit
 def test_instmethod_evolve_passes_with_inst_and_no_evolve():
     """instellation_method='inst' is OK when star_planet_model is None."""
     instance = _make_config_instance(
@@ -1231,75 +1253,107 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
     ['instant', 'sigmoid', 'high_ecc'],
     ids=['instant_step', 'sigmoid_ramp', 'high_eccentricity'],
 )
-@pytest.mark.parametrize(
-    'sma_init, sma_final',
-    [(None, 0.8), (2.0, None), (None, None)],
-    ids=['no_start', 'no_destination', 'neither'],
-)
-def test_parameterized_requires_both_endpoints_for_a_migrating_law(
-    migration, sma_init, sma_final
-):
-    """Negative: a law that moves the planet needs both endpoints, and the
-    schema says so at config time rather than at the first orbit step,
-    which is after the structure solve and the first interior step."""
+def test_parameterized_requires_a_destination_for_a_migrating_law(migration):
+    """Negative: a law that moves the planet needs sma_final, and the schema
+    says so at config time rather than at the first orbit step, which is
+    after the structure solve and the first interior step. The start is
+    orbit.semimajoraxis, which always has a value."""
     from proteus.config._orbit import Parameterized
 
-    with pytest.raises(ValueError, match='requires both') as excinfo:
-        Parameterized(migration=migration, sma_init=sma_init, sma_final=sma_final)
-    # The message names the law, so the user knows which setting asked for both.
+    with pytest.raises(ValueError, match='requires sma_final') as excinfo:
+        Parameterized(migration=migration)
+    # The message names the law, so the user knows which setting asked for it.
     assert repr(migration) in str(excinfo.value)
 
+    accepted = Parameterized(migration=migration, sma_final=0.8)
+    assert accepted.sma_final == pytest.approx(0.8, rel=1e-12)
 
-@pytest.mark.parametrize(
-    'sma_init, sma_final',
-    [(None, None), (2.0, 0.8), (2.0, None)],
-    ids=['no_endpoints', 'both_endpoints', 'start_only'],
-)
-def test_parameterized_static_regime_needs_no_endpoints(sma_init, sma_final):
+
+@pytest.mark.parametrize('sma_final', [None, 0.8], ids=['no_destination', 'destination'])
+def test_parameterized_static_regime_needs_no_destination(sma_final):
     """Positive counterpart: the static regime never moves the planet, so
-    it accepts any combination of endpoints. Without this a blanket
+    it accepts a missing or a set destination. Without this a blanket
     requirement would break every non-migrating config."""
     from proteus.config._orbit import Parameterized
 
-    params = Parameterized(migration='none', sma_init=sma_init, sma_final=sma_final)
+    params = Parameterized(migration='none', sma_final=sma_final)
 
     assert params.migration == 'none'
-    assert params.sma_init == sma_init
     assert params.sma_final == sma_final
+
+
+def _high_ecc_instance(migration, semimajoraxis, sma_final):
+    """Config stand-in for the high-eccentricity direction rule."""
+    from proteus.config._orbit import Parameterized
+
+    return _make_config_instance(
+        **{
+            'orbit.semimajoraxis': semimajoraxis,
+            'orbit.parameterized': Parameterized(migration=migration, sma_final=sma_final),
+        }
+    )
 
 
 def test_parameterized_rejects_an_outward_high_eccentricity_track():
     """Negative: high-eccentricity circularisation conserves orbital
     angular momentum, so it can only shrink the orbit. Its inward
-    solution needs a non-negative 1 - sma_final / sma_init."""
-    from proteus.config._orbit import Parameterized
-
-    with pytest.raises(ValueError, match='inward only'):
-        Parameterized(migration='high_ecc', sma_init=0.8, sma_final=2.0)
+    solution needs a non-negative 1 - sma_final / orbit.semimajoraxis."""
+    with pytest.raises(ValueError, match='inward only') as excinfo:
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 0.8, 2.0), None, None)
+    # The message names both orbits, so the user can see which one to change.
+    assert 'semimajoraxis=0.8' in str(excinfo.value)
+    assert 'sma_final=2.0' in str(excinfo.value)
 
     # Positive: the mirrored inward track and the degenerate equal-endpoint
     # case both validate, so the check is not rejecting every high_ecc config.
-    inward = Parameterized(migration='high_ecc', sma_init=2.0, sma_final=0.8)
-    assert inward.sma_final < inward.sma_init
-
-    equal = Parameterized(migration='high_ecc', sma_init=2.0, sma_final=2.0)
-    assert equal.sma_final == equal.sma_init
+    assert (
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 2.0, 0.8), None, None)
+        is None
+    )
+    assert (
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 2.0, 2.0), None, None)
+        is None
+    )
 
 
 @pytest.mark.parametrize(
-    'migration', ['instant', 'sigmoid'], ids=['instant_step', 'sigmoid_ramp']
+    'migration', ['none', 'instant', 'sigmoid'], ids=['static', 'instant_step', 'sigmoid_ramp']
 )
 def test_parameterized_allows_outward_migration_for_the_direction_free_laws(migration):
     """The inward-only restriction belongs to high_ecc alone. Both the step
     and the ramp are defined in either direction, so a config that migrates
     a planet outward must validate rather than being caught by a rule
     written for a different law."""
-    from proteus.config._orbit import Parameterized
+    instance = _high_ecc_instance(migration, 0.8, 2.0)
 
-    params = Parameterized(migration=migration, sma_init=0.8, sma_final=2.0)
-
-    assert params.sma_final > params.sma_init
-    # The same endpoints are refused for high_ecc, so the acceptance above is
+    assert parameterized_high_ecc_inward(instance, None, None) is None
+    assert instance.orbit.parameterized.sma_final > instance.orbit.semimajoraxis
+    # The same orbits are refused for high_ecc, so the acceptance above is
     # specific to the direction-free laws.
     with pytest.raises(ValueError, match='inward only'):
-        Parameterized(migration='high_ecc', sma_init=0.8, sma_final=2.0)
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 0.8, 2.0), None, None)
+
+
+def test_parameterized_high_ecc_direction_is_enforced_on_config_load(tmp_path):
+    """The direction rule is registered on the Config, so an outward
+    high_ecc track in a real file is refused at load, and the inward one
+    loads with the track starting from orbit.semimajoraxis."""
+    from pathlib import Path
+
+    base = (Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml').read_text()
+
+    def _write(sma_final):
+        path = tmp_path / f'track_{sma_final}.toml'
+        path.write_text(
+            base
+            + '\n[orbit.parameterized]\nmigration = "high_ecc"\n'
+            + f'sma_final = {sma_final}\n'
+        )
+        return path
+
+    with pytest.raises(ValueError, match='inward only'):
+        read_config_object(_write(2.0))
+
+    cfg = read_config_object(_write(0.5))
+    assert cfg.orbit.parameterized.sma_final == pytest.approx(0.5, rel=1e-12)
+    assert cfg.orbit.parameterized.sma_final < cfg.orbit.semimajoraxis

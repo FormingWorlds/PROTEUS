@@ -2968,10 +2968,10 @@ def test_orbit_parameterized_rejects_an_unknown_migration_regime():
     validator that rejected everything would also fail."""
     from proteus.config._orbit import Parameterized
 
-    # Endpoints are supplied because a migrating law now requires both at
+    # A destination is supplied because a migrating law requires one at
     # config time. The enum is what this test is about.
     for regime in ('none', 'instant', 'sigmoid', 'high_ecc'):
-        params = Parameterized(migration=regime, sma_init=2.0, sma_final=0.8)
+        params = Parameterized(migration=regime, sma_final=0.8)
         assert params.migration == regime
 
     with pytest.raises(ValueError, match='migration'):
@@ -2997,25 +2997,27 @@ def test_orbit_parameterized_rejects_non_positive_migration_times(bad_val):
 
 
 @pytest.mark.unit
-def test_orbit_parameterized_semimajor_axes_are_optional_but_positive():
-    """Both endpoints default to None so a config that never selects the
+def test_orbit_parameterized_final_semimajor_axis_is_optional_but_positive():
+    """The destination defaults to None so a config that never selects the
     prescribed track needs no migration geometry, while a supplied value
     must still be a real semi-major axis. A TOML file spells the absent
     value "none", so the converter has to map that string to None before
-    the positivity validator ever sees it."""
+    the positivity validator ever sees it. The track has no starting key
+    of its own: it starts from orbit.semimajoraxis."""
+    from attrs import fields
+
     from proteus.config._orbit import Parameterized
 
-    assert Parameterized().sma_init is None
     assert Parameterized().sma_final is None
-    assert Parameterized(sma_init='none', sma_final='none').sma_init is None
+    assert Parameterized(sma_final='none').sma_final is None
+    assert 'sma_init' not in {f.name for f in fields(Parameterized)}
 
-    with pytest.raises(ValueError, match='sma_init'):
-        Parameterized(sma_init=0.0)
     with pytest.raises(ValueError, match='sma_final'):
         Parameterized(sma_final=-0.5)
+    with pytest.raises(TypeError, match='sma_init'):
+        Parameterized(sma_init=2.0)
 
-    accepted = Parameterized(sma_init=2.0, sma_final=0.8)
-    assert accepted.sma_init == pytest.approx(2.0, rel=1e-12)
+    accepted = Parameterized(sma_final=0.8)
     assert accepted.sma_final == pytest.approx(0.8, rel=1e-12)
 
 
@@ -3097,9 +3099,10 @@ def test_toi561b_config_selects_an_inward_parameterized_track():
 
     assert raw['orbit']['star_planet_model'] == 'parameterized'
     block = Parameterized(**raw['orbit']['parameterized'])
-    assert block.sma_init == pytest.approx(0.029, rel=1e-12)
+    a_0 = raw['orbit']['semimajoraxis']
+    assert a_0 == pytest.approx(0.029, rel=1e-12)
     assert block.sma_final == pytest.approx(0.0106, rel=1e-12)
-    assert block.sma_final < block.sma_init
+    assert block.sma_final < a_0
 
 
 @pytest.mark.unit
@@ -3113,7 +3116,7 @@ def test_toi561b_config_structures_into_a_full_config_object():
     obj = read_config_object(PROTEUS_ROOT / 'input' / 'planets' / 'toi561b.toml')
 
     assert obj.orbit.star_planet_model == 'parameterized'
-    assert obj.orbit.parameterized.sma_init == pytest.approx(0.029, rel=1e-12)
+    assert obj.orbit.semimajoraxis == pytest.approx(0.029, rel=1e-12)
     assert obj.orbit.parameterized.migration in ('none', 'instant', 'sigmoid', 'high_ecc')
 
 
@@ -3152,7 +3155,7 @@ def test_toi561b_config_structures_without_the_vulcan_backend(tmp_path):
     assert obj.planet.mass_tot == pytest.approx(2.24, rel=1e-12)
     # The endpoints the orbit track runs between, and the inward ordering
     # the high_ecc law requires.
-    assert obj.orbit.parameterized.sma_final < obj.orbit.parameterized.sma_init
+    assert obj.orbit.parameterized.sma_final < obj.orbit.semimajoraxis
 
 
 @pytest.mark.unit

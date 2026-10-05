@@ -22,8 +22,8 @@ Contract clauses exercised:
   along each law, zero outside the migration window and for the
   ``none`` and ``instant`` laws.
 - ``run_parameterized_orbital_migration`` converts AU to metres,
-  dispatches on ``config.orbit.parameterized.migration``, and seeds
-  ``hf_row`` from the config on the first recorded step.
+  starts the track from ``orbit.semimajoraxis`` and dispatches on
+  ``config.orbit.parameterized.migration``.
 
 Physics invariants asserted:
 
@@ -54,7 +54,7 @@ Anti-happy-path coverage:
   asserted to refuse the outward case at both the law and the
   wrapper level.
 - Error contract: a non-positive ``tau_mig`` raises, a missing
-  ``sma_init`` or ``sma_final`` is named rather than failing inside
+  ``sma_final`` is named rather than failing inside
   the unit conversion, outward high-eccentricity migration raises,
   and an unrecognised or null ``migration`` raises rather than
   falling through.
@@ -98,16 +98,22 @@ RTOL = 1e-12
 
 
 def _config(
-    migration, ecc=0.0, sma_init=SMA_I, sma_final=SMA_F, time_migration=T_MIG, tau_migration=TAU
+    migration,
+    ecc=0.0,
+    semimajoraxis=SMA_I,
+    sma_final=SMA_F,
+    time_migration=T_MIG,
+    tau_migration=TAU,
 ):
     """Narrow stand-in for the attrs Config, carrying only the fields
-    ``run_parameterized_orbital_migration`` reads."""
+    ``run_parameterized_orbital_migration`` reads. The track starts from
+    ``orbit.semimajoraxis``."""
     return SimpleNamespace(
         orbit=SimpleNamespace(
+            semimajoraxis=semimajoraxis,
             eccentricity=ecc,
             parameterized=SimpleNamespace(
                 migration=migration,
-                sma_init=sma_init,
                 sma_final=sma_final,
                 time_migration=time_migration,
                 tau_migration=tau_migration,
@@ -493,21 +499,6 @@ def test_no_net_migration_is_a_fixed_point_of_every_law():
 
 
 @pytest.mark.physics_invariant
-def test_wrapper_reports_a_missing_semimajor_axis():
-    """``sma_init`` and ``sma_final`` default to None in the orbit schema,
-    so selecting the parameterized model without setting them is a
-    reachable configuration. The missing key is named rather than
-    failing inside an arithmetic expression. A fully specified config is
-    asserted alongside as the positive control."""
-    with pytest.raises(ValueError, match='sma_init'):
-        run_parameterized_orbital_migration({'Time': 1.0e6}, _config('none', sma_init=None))
-
-    a, e = run_parameterized_orbital_migration({'Time': 1.0e6}, _config('none'))
-    assert a == pytest.approx(SMA_I * AU, rel=RTOL)
-    assert 0.0 <= e < 1.0
-
-
-@pytest.mark.physics_invariant
 def test_high_ecc_refuses_outward_migration():
     """Outward migration has no high-eccentricity circularisation
     solution, since it would need a negative ``e_mig^2``. The law reports
@@ -612,7 +603,7 @@ def test_wrapper_dispatch_holds_at_a_second_epoch(migration, a_au, ecc):
 def test_wrapper_settles_on_the_final_orbit(migration, a_au):
     """Long after the epoch every migrating law has arrived at
     sma_final on a circular orbit, and the static law is still at
-    sma_init."""
+    orbit.semimajoraxis."""
     hf_row = {'Time': T_MIG + 60.0 * TAU}
     a, e = run_parameterized_orbital_migration(hf_row, _config(migration))
 
@@ -816,7 +807,7 @@ def test_wrapper_dispatches_an_outward_track(migration, a_au):
     left 0.8 AU, so a mis-dispatch cannot hide behind a shared value."""
     hf_row = {'Time': T_MIG}
     a, e = run_parameterized_orbital_migration(
-        hf_row, _config(migration, sma_init=SMA_F, sma_final=SMA_I)
+        hf_row, _config(migration, semimajoraxis=SMA_F, sma_final=SMA_I)
     )
 
     assert a == pytest.approx(a_au * AU, rel=RTOL)
@@ -837,7 +828,7 @@ def test_wrapper_refuses_an_outward_high_eccentricity_track():
 
     with pytest.raises(ValueError, match='inward only'):
         run_parameterized_orbital_migration(
-            hf_row, _config('high_ecc', sma_init=SMA_F, sma_final=SMA_I)
+            hf_row, _config('high_ecc', semimajoraxis=SMA_F, sma_final=SMA_I)
         )
 
     assert 'semimajorax' not in hf_row
@@ -1036,12 +1027,12 @@ def test_energy_rate_rejects_an_invalid_track(migration, tau, sma_final, t_yr, e
 
 @pytest.mark.physics_invariant
 def test_update_energy_rate_converts_au_and_writes_the_row():
-    """The wrapper reads sma_init and sma_final in au and the masses from the
+    """The wrapper reads orbit.semimajoraxis and sma_final in au and the masses from the
     row, and writes the rate in W to hf_row['dEdt_orb']. Fed metres as if
     they were au, the rate would change by AU^-1, far outside the tolerance."""
     config = _config(
         'high_ecc',
-        sma_init=A0_TOI / AU,
+        semimajoraxis=A0_TOI / AU,
         sma_final=AF_TOI / AU,
         time_migration=TMIG_TOI,
         tau_migration=TAU_TOI,
@@ -1055,12 +1046,13 @@ def test_update_energy_rate_converts_au_and_writes_the_row():
     assert 1.0e21 < -hf_row['dEdt_orb'] < 3.0e21
 
 
-def test_update_energy_rate_without_sma_init_raises_and_leaves_the_row():
-    """A missing sma_init is named, and the row gains no energy-rate value."""
-    config = _config('high_ecc', sma_init=None)
+def test_update_energy_rate_without_sma_final_raises_and_leaves_the_row():
+    """A migrating law with no destination is named, and the row gains no
+    energy-rate value."""
+    config = _config('high_ecc', semimajoraxis=A0_TOI / AU, sma_final=None)
     hf_row = {'Time': TMIG_TOI, 'M_star': M_STAR_TOI, 'M_planet': M_PL_TOI}
 
-    with pytest.raises(ValueError, match='sma_init'):
+    with pytest.raises(ValueError, match='sma_final'):
         update_orbital_energy_rate(hf_row, config)
     assert 'dEdt_orb' not in hf_row
     assert set(hf_row) == {'Time', 'M_star', 'M_planet'}
@@ -1072,13 +1064,13 @@ def test_update_energy_rate_of_a_static_track_needs_no_final_orbit():
     removes no orbital energy: the rate written is zero, while a migrating
     law on the same row is not."""
     hf_row = {'Time': TMIG_TOI, 'M_star': M_STAR_TOI, 'M_planet': M_PL_TOI}
-    static = _config('none', sma_init=A0_TOI / AU, sma_final=None)
+    static = _config('none', semimajoraxis=A0_TOI / AU, sma_final=None)
 
     assert update_orbital_energy_rate(hf_row, static) == 0.0
     assert hf_row['dEdt_orb'] == 0.0
     migrating = _config(
         'high_ecc',
-        sma_init=A0_TOI / AU,
+        semimajoraxis=A0_TOI / AU,
         sma_final=AF_TOI / AU,
         time_migration=TMIG_TOI,
         tau_migration=TAU_TOI,

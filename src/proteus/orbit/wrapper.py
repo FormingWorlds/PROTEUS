@@ -335,27 +335,6 @@ def run_orbit(
         if config.orbit.instellation_method == 'inst' and config.star.module == 'dummy':
             hf_row['semimajorax'] = sma_for_instellation(config, hf_row['eccentricity'])
 
-        # A prescribed track defines the orbit from the first step, so it
-        # supersedes the seeds above rather than jumping to sma_init later.
-        if config.orbit.star_planet_model == 'parameterized':
-            from proteus.orbit.parameterized import (
-                run_parameterized_orbital_migration,
-                update_orbital_energy_rate,
-            )
-
-            sma_init = config.orbit.parameterized.sma_init
-            if sma_init is not None and not np.isclose(
-                sma_init, config.orbit.semimajoraxis, rtol=1e-9
-            ):
-                log.warning(
-                    'orbit.semimajoraxis = %.6g AU is unused under the parameterized '
-                    'star-planet model, which starts the track at sma_init = %.6g AU',
-                    config.orbit.semimajoraxis,
-                    sma_init,
-                )
-            run_parameterized_orbital_migration(hf_row, config)
-            update_orbital_energy_rate(hf_row, config)
-
         # Update orbital period (dependent)
         update_period(hf_row)
 

@@ -245,7 +245,6 @@ _REVIEWED_NEUTRAL = frozenset(
         # 3.0 and defaults to migration = "none" with no endpoints set, so a
         # migrated config keeps a fixed orbit until the user opts in.
         'orbit.parameterized.migration',
-        'orbit.parameterized.sma_init',
         'orbit.parameterized.sma_final',
         'orbit.parameterized.time_migration',
         'orbit.parameterized.tau_migration',

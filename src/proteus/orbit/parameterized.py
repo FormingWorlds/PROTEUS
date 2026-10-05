@@ -234,6 +234,39 @@ def orbital_energy_rate(
     return float(const_G * mass_star * mass_planet * dadt / (2.0 * sma * sma * secs_per_year))
 
 
+def track_endpoints(config: Config) -> tuple[float, float]:
+    """
+    Semi-major axes at the two ends of the prescribed track.
+
+    The track starts from ``orbit.semimajoraxis``, the same value that seeds
+    the orbit at the initial condition, so the run has one source for a(0).
+    A static track (``migration = 'none'``) needs no final value and ends
+    where it starts.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration options
+
+    Returns
+    -------
+    tuple[float, float]
+        Initial and final semi-major axis [m].
+    """
+
+    params = config.orbit.parameterized
+    sma_i = float(config.orbit.semimajoraxis) * AU
+
+    if params.sma_final is None:
+        if params.migration != 'none':
+            raise ValueError(
+                f'Migration option {params.migration!r} requires orbit.parameterized.sma_final'
+            )
+        return sma_i, sma_i
+
+    return sma_i, float(params.sma_final) * AU
+
+
 def update_orbital_energy_rate(hf_row: dict, config: Config) -> float:
     """
     Write the orbital energy rate of the prescribed track to ``hf_row['dEdt_orb']``.
@@ -253,10 +286,7 @@ def update_orbital_energy_rate(hf_row: dict, config: Config) -> float:
     """
 
     params = config.orbit.parameterized
-    if params.sma_init is None:
-        raise ValueError('Parameterized migration requires orbit.parameterized.sma_init')
-    sma_i = params.sma_init * AU
-    sma_f = sma_i if params.sma_final is None else params.sma_final * AU
+    sma_i, sma_f = track_endpoints(config)
 
     hf_row['dEdt_orb'] = orbital_energy_rate(
         t=float(hf_row['Time']),
@@ -295,20 +325,7 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config) -> tuple[f
     migration = config.orbit.parameterized.migration
     t_mig = config.orbit.parameterized.time_migration
     tau_mig = config.orbit.parameterized.tau_migration
-
-    # Both endpoints are schema-optional, so name the missing one here rather
-    # than failing inside the unit conversion below.
-    if config.orbit.parameterized.sma_init is None:
-        raise ValueError('Parameterized migration requires orbit.parameterized.sma_init')
-    sma_i = config.orbit.parameterized.sma_init * AU
-
-    sma_f = None
-    if migration in ('instant', 'sigmoid', 'high_ecc'):
-        if config.orbit.parameterized.sma_final is None:
-            raise ValueError(
-                f'Migration option {migration!r} requires orbit.parameterized.sma_final'
-            )
-        sma_f = config.orbit.parameterized.sma_final * AU
+    sma_i, sma_f = track_endpoints(config)
 
     # Time step
     current_time = float(hf_row['Time'])
