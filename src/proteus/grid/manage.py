@@ -16,11 +16,17 @@ from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
 
+import attrs
 import numpy as np
 import toml
 
 from proteus.config import Config, read_config, read_config_object
 from proteus.config._interior import _TOL_UNSET, default_rtol, rtol_is_set
+from proteus.config.orphans import (
+    UnknownConfigKeyError,
+    _extract_attrs_class,
+    _type_hints_for,
+)
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
 from proteus.utils.logs import setup_logger
 
@@ -606,12 +612,96 @@ done
         time.sleep(2.0)
 
 
+# Top-level keys of a grid file that set up the grid; every other key names a dimension.
+GRID_SETTINGS = frozenset(
+    {
+        'output',
+        'ref_config',
+        'symlink',
+        'use_slurm',
+        'max_jobs',
+        'max_days',
+        'max_mem',
+        'jax_cache',
+        'config_version',
+    }
+)
+
+
+def _schema_field_kind(path: str) -> str:
+    """Classify a key path against the Config schema.
+
+    Parameters
+    ----------
+    path:
+        Key as written in the grid file, dotted or not.
+
+    Returns
+    -------
+    str
+        ``'field'`` when the path ends at a single configuration field,
+        ``'section'`` when it ends at a nested section, ``'unknown'`` otherwise.
+    """
+    cls = Config
+    for part in path.split('.'):
+        if cls is None or part not in {f.name for f in attrs.fields(cls)}:
+            return 'unknown'
+        cls = _extract_attrs_class(_type_hints_for(cls).get(part))
+    return 'section' if cls is not None else 'field'
+
+
+def grid_dimension_keys(config: dict, config_fpath: str) -> list[str]:
+    """Return the dimension keys of a grid config, refusing any key it cannot account for.
+
+    A top-level key is either one of ``GRID_SETTINGS`` or the path of a single
+    configuration field in the PROTEUS schema, which the grid sweeps. A dot is not
+    required: a top-level scalar field of the schema would be swept by its bare name.
+
+    Parameters
+    ----------
+    config:
+        The grid config as parsed from TOML.
+    config_fpath:
+        Path of the grid file, quoted back in the error.
+
+    Returns
+    -------
+    list[str]
+        The dimension keys, in file order.
+
+    Raises
+    ------
+    UnknownConfigKeyError
+        If a key is neither a grid setting nor a schema field, or names a whole
+        section rather than one field.
+    """
+    dims = [key for key in config if key not in GRID_SETTINGS]
+    kinds = {key: _schema_field_kind(key) for key in dims}
+    unknown = [key for key in dims if kinds[key] == 'unknown']
+    sections = [key for key in dims if kinds[key] == 'section']
+    if unknown or sections:
+        lines = [f'Grid config {config_fpath} has keys the grid cannot account for:']
+        if unknown:
+            keys = ', '.join(f'"{key}"' for key in unknown)
+            lines.append(f'  not a grid setting or a configuration field: {keys}')
+        if sections:
+            keys = ', '.join(f'"{key}"' for key in sections)
+            lines.append(f'  a configuration section, not a single field: {keys}')
+        lines.append(
+            f'  A key is a grid setting ({", ".join(sorted(GRID_SETTINGS))}) or the path '
+            'of one configuration field to sweep, such as "planet.mass_tot".'
+        )
+        raise UnknownConfigKeyError('\n'.join(lines))
+    return dims
+
+
 def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: float = 15.0):
     """Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)"""
 
     # Load configuration from TOML file
     with open(config_fpath, 'r') as file:
         config = toml.load(file)
+    dimension_keys = grid_dimension_keys(config, config_fpath)
 
     # Output folder name, created inside `PROTEUS/output/`
     folder = str(config['output'])
@@ -653,14 +743,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     pg = Grid(folder, cfg_base, symlink_dir=symlink, grid_config=config_fpath)
 
     # Add dimensions to grid by looping over keys
-    dim = -1
-    for key in config.keys():
-        # Skip those without dots, since they aren't config variables
-        if '.' not in key:
-            continue
-
-        # Add dimension
-        dim += 1
+    for dim, key in enumerate(dimension_keys):
         name = 'param_%03d' % dim
         pg.add_dimension(name, key)
 

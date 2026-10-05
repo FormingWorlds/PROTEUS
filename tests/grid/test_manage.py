@@ -16,17 +16,19 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from unittest import mock
 
 import numpy as np
 import pytest
 import toml
 
-from proteus.config import read_config_object
+from proteus.config import UnknownConfigKeyError, read_config_object
 from proteus.grid import manage as gm
 from proteus.grid.manage import (
     Grid,
     _thread_target,
+    grid_dimension_keys,
     grid_from_config,
 )
 
@@ -1330,3 +1332,45 @@ def test_add_dimension_rejects_a_deprecated_tolerance_alias(fake_proteus_dir, tm
     with pytest.raises(ValueError, match='interior_energetics.rtol'):
         g.add_dimension('tol', alias)
     assert g.dim_names == []
+
+
+_DIM = {'method': 'direct', 'values': [1.0]}
+
+
+@pytest.mark.parametrize(
+    ('key', 'value', 'reason'),
+    [
+        ('struct_mass_tot', _DIM, 'not a grid setting or a configuration field'),
+        ('jax_cahce', True, 'not a grid setting or a configuration field'),
+        ('planet.mass_totl', _DIM, 'not a grid setting or a configuration field'),
+        ('planet.mass_tot.x', _DIM, 'not a grid setting or a configuration field'),
+        ('planet', _DIM, 'a configuration section, not a single field'),
+    ],
+)
+def test_unaccounted_grid_key_is_refused_before_any_case(fake_proteus_dir, key, value, reason):
+    """A key that is no grid setting and no single schema field stops the grid at load,
+    named together with the grid file, before any output is created."""
+    (fake_proteus_dir / 'base.toml').write_text('# base\n')
+    grid_path = _write_grid_toml(
+        fake_proteus_dir / 'g.toml', dimensions={'planet.mass_tot': _DIM, key: value}
+    )
+    with pytest.raises(UnknownConfigKeyError, match=re.escape(f'"{key}"')) as exc:
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+    assert str(grid_path) in str(exc.value) and reason in str(exc.value)
+    assert not (fake_proteus_dir / 'output').exists()
+
+
+def test_grid_dimension_keys_skips_settings_and_keeps_file_order():
+    """Grid settings are not dimensions; every schema field path is, in file order."""
+    config = {
+        'output': 'g',
+        'config_version': '3.0',
+        'jax_cache': True,
+        'interior_struct.core_frac': _DIM,
+        'planet.mass_tot': _DIM,
+    }
+    assert grid_dimension_keys(config, 'g.toml') == [
+        'interior_struct.core_frac',
+        'planet.mass_tot',
+    ]
+    assert grid_dimension_keys({'output': 'g'}, 'g.toml') == []
