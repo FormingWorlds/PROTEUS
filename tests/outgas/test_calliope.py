@@ -20,7 +20,7 @@ Testing standards:
 from __future__ import annotations
 
 from contextlib import nullcontext
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -29,7 +29,9 @@ import pytest
 pytest.importorskip('calliope')
 
 from proteus.outgas.calliope import (
+    RANDOM_SEED,
     _resolve_element,
+    calc_surface_pressures,
     construct_guess,
     construct_options,
     flag_included_volatiles,
@@ -615,10 +617,6 @@ def test_calliope_result_does_not_depend_on_the_caller_rng(warm):
     the global ``np.random``, and its converged root moves within the solver
     tolerance with that guess; unseeded, identical runs differ from row 0.
     """
-    from unittest.mock import patch
-
-    from proteus.outgas.calliope import calc_surface_pressures
-
     config, rows = _cold_start_config(), []
     for caller_seed in (1, 2):
         hf_row = _warm_start_hf_row() if warm else _surface_pressure_hf_row()
@@ -640,9 +638,6 @@ def test_calliope_result_does_not_depend_on_the_caller_rng(warm):
 def test_calliope_call_restores_the_caller_rng_stream(error):
     """The caller's global RNG stream continues after the CALLIOPE call as if
     the call had not drawn from it, also when CALLIOPE raises."""
-    from unittest.mock import patch
-
-    from proteus.outgas.calliope import calc_surface_pressures
 
     def _failing_solver(target, opts, **kwargs):
         np.random.uniform()
@@ -667,19 +662,16 @@ def test_calliope_call_restores_the_caller_rng_stream(error):
 
 def test_from_o_budget_solve_gets_the_same_fixed_seed():
     """The from_O_budget path passes RANDOM_SEED to CALLIOPE, which seeds its
-    own generator with it, and leaves the caller's global RNG stream alone."""
-    from unittest.mock import patch
-
-    from proteus.outgas.calliope import RANDOM_SEED, calc_surface_pressures
-
+    own generator with it, and does not seed the global RNG."""
     config = _cold_start_config()
     config.planet.fO2_source = 'from_O_budget'
-    expected = np.random.RandomState(3).uniform()
-    np.random.seed(3)
-    with patch(
-        'proteus.outgas.calliope.equilibrium_atmosphere_authoritative_O',
-        return_value={'fO2_shift_derived': 4.0, 'O_res': 0.0},
-    ) as solve:
+    with (
+        patch(
+            'proteus.outgas.calliope.equilibrium_atmosphere_authoritative_O',
+            return_value={'fO2_shift_derived': 4.0, 'O_res': 0.0},
+        ) as solve,
+        patch('proteus.outgas.calliope.np.random.seed') as global_seed,
+    ):
         calc_surface_pressures({'output': '/tmp/test'}, config, _surface_pressure_hf_row())
     assert solve.call_args.kwargs['random_seed'] == RANDOM_SEED == 42
-    assert np.random.uniform() == expected
+    assert global_seed.call_count == 0

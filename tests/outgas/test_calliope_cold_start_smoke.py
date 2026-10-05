@@ -33,8 +33,8 @@ def _cold_start(caller_seed):
 @pytest.mark.physics_invariant
 def test_real_cold_start_is_identical_for_any_caller_rng_state(monkeypatch):
     """Two real cold starts under different caller RNG states agree in every
-    copied value. Without the wrapper's seed they differ, and the seeded root
-    lies inside the solver tolerance of the unseeded ones."""
+    copied value. Without the wrapper's seed they differ, and the seeded surface
+    pressure agrees with the unseeded ones to rel 1e-4, the configured solver_rtol."""
     a, b = _cold_start(1), _cold_start(2)
     assert a['P_surf'] > 0.0
     assert [k for k in a if a[k] != b[k]] == []
