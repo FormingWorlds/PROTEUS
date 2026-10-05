@@ -39,7 +39,7 @@ _ELEMENT_TO_SPECIES = {
 }
 
 
-def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
+def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     """Compute volatile partitioning with parameterized model.
 
     Parameters
@@ -50,6 +50,18 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
         PROTEUS configuration.
     hf_row : dict
         Helpfile row (modified in place).
+    initial : bool
+        Whether this is an init-stage iteration. Only then is an empty O budget
+        derived from the outgassed species; later an emptied budget stays empty.
+
+    Notes
+    -----
+    The O in the atmosphere and melt is the stoichiometric O of the H2O, CO2 and
+    SO2 built from H, C and S, and ``O_kg_total`` does not bound it. A user O
+    budget below that O (``O_mode`` kg, ppmw or FeO_mantle_wt_pct), a budget a
+    strip emptied, or an impact that delivers H, C or S without O leaves the
+    atmosphere holding O that no budget holds: it sets ``P_surf`` and cannot
+    escape, and an impact strips at most ``O_kg_total``.
     """
     Phi_global = float(hf_row['Phi_global'])
     gravity = float(hf_row['gravity'])
@@ -152,15 +164,12 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
         if element != 'O':
             hf_row[f'{element}_kg_total'] = kg
 
-    # Oxygen total. When the user supplied an O budget (O_mode != "ic_chemistry")
-    # it is an input like the other elements and is restored verbatim; under
-    # ic_chemistry there is no user O budget, so derive it from the
-    # stoichiometric O in the outgassed species.
+    # Oxygen total: the saved budget is restored as given; an empty one is derived
+    # from the outgassed species only in the init stage.
     saved_O = saved_element_kg.get('O', 0.0)
-    if saved_O > 0.0:
-        hf_row['O_kg_total'] = saved_O
-    else:
-        hf_row['O_kg_total'] = hf_row.get('O_kg_atm', 0.0) + hf_row.get('O_kg_liquid', 0.0)
+    if saved_O <= 0.0 and initial:
+        saved_O = hf_row.get('O_kg_atm', 0.0) + hf_row.get('O_kg_liquid', 0.0)
+    hf_row['O_kg_total'] = saved_O
 
     log.info(
         'Dummy outgas: P_surf=%.2f bar, Phi=%.3f, f_atm=%.3f, %d species',

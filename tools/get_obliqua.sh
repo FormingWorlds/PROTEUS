@@ -20,17 +20,18 @@ if ! command -v julia >/dev/null 2>&1; then
     exit 1
 fi
 
-script_root="$(cd "$(dirname "$0")/.." && pwd)"
+# Shared helpers: see tools/_get_common.sh.
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 
-ob_url="${OBLIQUA_GIT_URL:-$(python "$script_root/tools/_module_pins.py" obliqua url)}"
-ob_ref="${OBLIQUA_GIT_REF:-$(python "$script_root/tools/_module_pins.py" obliqua ref)}"
+ob_url="${OBLIQUA_GIT_URL:-$(python "$proteus_tools_dir/_module_pins.py" obliqua url)}"
+ob_ref="${OBLIQUA_GIT_REF:-$(python "$proteus_tools_dir/_module_pins.py" obliqua ref)}"
 
 # First positional arg can be either "0" (skip Obliqua test step) or a path.
 # Passing "0" skips Pkg.test (Obliqua has no upstream install script of its
 # own to preserve an interface for). Anything else is treated as a
 # destination path.
 skip_tests=""
-dest="$script_root/Obliqua"
+dest="$proteus_root/Obliqua"
 if [ "${1:-}" = "0" ]; then
     skip_tests="0"
 elif [ -n "${1:-}" ]; then

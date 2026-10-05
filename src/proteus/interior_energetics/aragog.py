@@ -29,6 +29,7 @@ from aragog.parser import (
     _Radionuclide,
     _SolverParameters,
 )
+from proteus.accretion.common import snap_to_impact
 from proteus.interior_energetics.aragog_phase import (
     build_jax_phase_params,
     build_mixed_phase_params,
@@ -2036,11 +2037,12 @@ class AragogRunner:
 
         self._store_profiles(interior_o, out)
 
-        # Use the actual integration endpoint, not the requested end_time.
-        # If the solver exits early (status != 0), dt_actual < requested dt.
-        # Matches the SPIDER fix (reading time_years from JSON instead of
-        # using dtswitch) to prevent the same class of time desync.
-        sim_time = hf_row['Time'] + out.dt_actual
+        # The actual integration endpoint, not the requested end_time (dt_actual is
+        # shorter when the solver exits early); a step aimed at an impact ends on it,
+        # so the snapshot is named like the row.
+        sim_time = snap_to_impact(
+            hf_row['Time'] + out.dt_actual, getattr(interior_o, 't_next_impact', np.inf)
+        )
 
         # Write output to a file (skipped when dt_write suppresses this step)
         if write_data:
@@ -2149,9 +2151,6 @@ class AragogRunner:
         sanity_dT_core = max(
             3000.0, 1500.0 * mass_tot
         )  # max plausible T_core change per retry [K]
-        # Giant impacts cause real T_core jumps that retries cannot reduce.
-        # Skip the sanity check on impact steps to prevent false ladder exhaustion.
-        impact_step = bool(getattr(interior_o, 'impact_reset_this_step', False))
 
         # Immediately before the solve, so the state-heat integral this step
         # books is taken against the tables the step actually runs on.
@@ -2182,6 +2181,16 @@ class AragogRunner:
             dSdr_snapshot = solver.get_current_dSdr_cmb()
         if dSdr_snapshot is None:
             dSdr_snapshot = getattr(solver, '_dSdr_cmb_init', None)
+        # A cold start (first solve, or after a re-melt) has neither; take
+        # the value attempt 1 starts from, so retries do not inherit its end.
+        if (
+            dSdr_snapshot is None
+            and self._config.interior_energetics.aragog.core_bc == 'energy_balance'
+        ):
+            S0 = getattr(solver, '_S0', None)
+            n_stag = getattr(solver, '_n_stag', None)
+            if S0 is not None and n_stag is not None and len(S0) == n_stag + 1:
+                dSdr_snapshot = float(S0[n_stag])
         dSdr_ic = dSdr_snapshot
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.
@@ -2254,8 +2263,7 @@ class AragogRunner:
                     sanity_reject_reason = None
 
                     # Reject non-finite CMB temperatures and implausibly large jumps.
-                    # The jump-magnitude check is inactive when T_core_pre <= 0
-                    # or during an impact step.
+                    # The jump-magnitude check is inactive when T_core_pre <= 0.
                     tcore_endpoint = float(out.T_core)
                     # tcore_change_max is the intra-solve maximum change,
                     # >= the endpoint change by construction; on an older
@@ -2272,16 +2280,7 @@ class AragogRunner:
                             if tcore_change_max is not None
                             else abs(tcore_endpoint - T_core_pre)
                         )
-                        if dT > sanity_dT_core and impact_step:
-                            log.info(
-                                'T_core jumped %.1f K (>%.0f K threshold) on '
-                                'the step a giant impact re-melted the '
-                                'mantle. The jump is the impact, so the '
-                                'guard is skipped here.',
-                                dT,
-                                sanity_dT_core,
-                            )
-                        elif dT > sanity_dT_core:
+                        if dT > sanity_dT_core:
                             sanity_reject_reason = (
                                 f'T_core jumped by up to {dT:.1f} K '
                                 f'(>{sanity_dT_core:.0f} K sanity threshold)'
@@ -2854,8 +2853,8 @@ def earlier_snapshot_exists(output_dir: str, time: float) -> bool:
     bool
         Whether at least one older snapshot exists.
     """
-    # Compared against the stems on disk, handling both integer and subyear names.
-    cutoff = float(time)
+    # Compared against the stems on disk, so the cutoff rounds like the writer.
+    cutoff = parse_subyear_time(format_subyear_time(time))
     for fpath in glob.glob(os.path.join(output_dir, 'data', '*_int.nc')):
         stem = os.path.basename(fpath).split('_int.nc')[0]
         try:
@@ -2998,8 +2997,9 @@ def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | N
     P_surface follows from its pressure, its radius and the mesh parameters.
     It is taken from the top cell and accepted only if every cell gives the
     same value within 1e-9 of the largest pressure plus 1 Pa, which covers the
-    float round trip of the stored profile and the helpfile rounding of g and
-    R. A value within that tolerance of 0 is returned as exactly 0.
+    float round trip of the stored profile and the rounding of g and R in an
+    11-digit helpfile. A value within that tolerance of 0 is returned as
+    exactly 0.
 
     Parameters
     ----------

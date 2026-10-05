@@ -62,6 +62,31 @@ field sets) are written one entry per line with a trailing comma, grouped by
 module under a header comment, and ordered alphabetically within each group.
 This keeps two independent additions on different lines so they merge cleanly.
 
+**Module install scripts**
+
+The `tools/get_*.sh` scripts share one sourced library, `tools/_get_common.sh`.
+It provides `portable_realpath`, the checkout root (`proteus_root`) and tools
+directory (`proteus_tools_dir`), the `--force` and install-path argument split
+(`get_parse_args`), the dirty-checkout guard (`guard_dirty_checkout`), the
+GitHub SSH probe (`github_use_ssh`), the https-to-SSH URL rewrite
+(`github_ssh_url`), and the pin reader (`resolve_module_pin`).
+
+A new install script starts with the same bootstrap the existing ones use:
+
+```bash
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
+```
+
+The `|| exit 1` is load-bearing: half the scripts set no `-e`, and one that
+carried on past a failed `source` would run with `proteus_root` empty, putting
+its work path at the filesystem root.
+
+Add a helper to the library rather than copying one into a script, and give it
+a parameter for the variation a caller needs: `get_socrates.sh` passes a git
+pathspec to `guard_dirty_checkout` so its regenerable `make/Mk_cmd` does not
+count as local work. The helpers target bash 3.2 and run the same with or
+without `set -euo pipefail`, because the scripts differ on that.
+
 **Editing shared files**
 
 - When adding to the main coupling loop, add a stage function and call it rather

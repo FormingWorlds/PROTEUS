@@ -9,8 +9,7 @@ output directory left behind by a completed run and started with
 Contract clauses exercised:
 
 - The restored helpfile is extended, never rewritten: every row written by
-  the first leg survives the resume unchanged, to the precision of the
-  helpfile's own ``%.10e`` serialisation.
+  the first leg survives the resume unchanged.
 - Simulation time continues from the last stored row instead of restarting
   at t = 0, and stays strictly increasing across the seam.
 - Interior and volatile state continue from the stored row rather than
@@ -126,14 +125,6 @@ EXPECTED_INIT_LOOPS = 3
 # Any value that stops the first leg well inside the evolution works; 40
 # leaves roughly a third of the trajectory ahead of the seam.
 PARITY_ITERS = 40
-
-# Relative tolerance for that comparison. The helpfile serialises at
-# '%.10e', so a restored value carries about 5e-11 of relative error, and
-# differencing two similar fluxes into F_net amplifies it: the largest
-# observed disagreement across every numeric column is 2e-8. This sits
-# about fifty times above that floor and many orders below any physical
-# difference a genuine divergence would produce.
-PARITY_RTOL = 1.0e-6
 
 # Columns excluded from that comparison because they are not part of the
 # simulated state.
@@ -322,16 +313,11 @@ def test_resume_continues_trajectory_from_disk_state(tmp_path):
         'resumed run did not advance simulation time'
     )
 
-    # The stored prefix survives unchanged. The helpfile is serialised with
-    # '%.10e', so a round-trip through disk is exact to ~11 significant
-    # digits; rtol=1e-9 sits clear of that floor and far below any physical
-    # change a single step would make.
+    # The stored prefix survives to the last bit; the helpfile reads floats back exactly.
     for column in ('Time', 'T_magma', 'Phi_global', 'F_atm', 'P_surf', 'M_atm', 'H_kg_atm'):
-        np.testing.assert_allclose(
+        np.testing.assert_array_equal(
             resumed[column].to_numpy()[:n_stored],
             stored[column].to_numpy(),
-            rtol=1e-9,
-            atol=0.0,
             err_msg=f'resume rewrote stored {column} values instead of extending them',
         )
 
@@ -630,11 +616,9 @@ def test_resume_twice_keeps_advancing(tmp_path):
     )
 
     # The prefix written before the second resume survives it intact.
-    np.testing.assert_allclose(
+    np.testing.assert_array_equal(
         final['Time'].to_numpy()[:n_second],
         leg2.hf_all['Time'].to_numpy(),
-        rtol=1e-9,
-        atol=0.0,
         err_msg='second resume rewrote the times stored by the first',
     )
 
@@ -681,9 +665,9 @@ def test_resume_reproduces_uninterrupted_run(tmp_path):
     Verifies:
     - The restarted run has the same number of rows as the uninterrupted
       one, so the restart neither dropped nor duplicated a step.
-    - Every numeric column agrees to within the helpfile's serialisation
-      floor, including the interior temperature, the fluxes, the surface
-      pressure and every volatile reservoir.
+    - Every numeric column agrees exactly, because the helpfile reads every
+      float back as written: the interior temperature, the fluxes, the
+      surface pressure and every volatile reservoir.
     - The comparison is made against a first leg that really did stop early,
       so the test cannot pass by comparing a run against itself.
     """
@@ -735,11 +719,9 @@ def test_resume_reproduces_uninterrupted_run(tmp_path):
         if not np.all(np.isfinite(expected)):
             non_finite.append(column)
             continue
-        np.testing.assert_allclose(
+        np.testing.assert_array_equal(
             actual,
             expected,
-            rtol=PARITY_RTOL,
-            atol=0.0,
             err_msg=f'restarted run diverges from the uninterrupted run in {column}',
         )
         compared += 1

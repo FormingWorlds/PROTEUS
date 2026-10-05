@@ -111,7 +111,10 @@ class TimeStepParams:
     max_growth_factor: float
         Cap on the dt growth ratio between consecutive steps [dimensionless].
         Bounds dtswitch / dtprev, preventing large jumps that can wedge the
-        interior solver; 0 (default) disables the cap.
+        interior solver; 0 (default) disables the cap. After a step that
+        landed on a giant impact, dtprev is the larger of that step and
+        ``min(dtfloor, last step that did not land on an impact)``, or
+        dtfloor when there is no such step.
     maximum_rel: float
         Time-fraction allowance added to ``dt.maximum`` on every step
         [dimensionless]. The effective per-step cap is the sum
@@ -185,15 +188,23 @@ class TimeStepParams:
         counter is active. Must be ``>= 1.0`` and ``<= SFINC``
         (1.6). Default 1.1 (gentle ramp-up).
     impact_maximum: float
-        Maximum time-step size [yr] for the step that lands on a
-        scheduled giant impact. The landing step is otherwise
-        clamped only to however much simulated time remains before
-        the impact, so after a long quiescent phase has let ``dt``
-        coarsen, that remaining time can itself be large and the
-        step absorbing the impact's melt-fraction jump inherits the
-        same coarseness. Set to 0 (default) to disable, in which
-        case the remaining-time clamp applies with no independent
-        ceiling.
+        Ceiling [yr] for the step that reaches a scheduled giant
+        impact. Such a step is otherwise clamped only to the time left
+        before the impact, which after a long quiescent phase can
+        itself be large. With the ceiling set, a reaching step longer
+        than ``max(impact_maximum, dtfloor)`` (dtfloor = dt.minimum +
+        dt.minimum_rel * Time) is cut to an equal fraction of the time
+        left; later steps are evaluated again, and the step that lands
+        is no longer than ``max(impact_maximum, dtfloor)``. Set to 0
+        (default) to disable. Independent of this setting, the step
+        that lands on an impact can be shorter than dtfloor, a step
+        ending at most 1e-3 yr short of an impact is extended onto it
+        (unless the step already reaches stop.time.maximum), and an
+        impact is applied at the end of the first step that reaches its
+        time. Impacts each less than 1e-3 yr after the one before form a
+        chain that the step aims at the last of, so an impact in a chain
+        can be applied later than its time by up to the chain span; a
+        chain spanning 1e-3 yr or more is logged as a warning.
     """
 
     starspec: float = field(default=1e8, validator=ge(0))

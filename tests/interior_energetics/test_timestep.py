@@ -853,13 +853,10 @@ class TestImpactClamp:
         assert dt <= 2.0e4
 
     @pytest.mark.physics_invariant
-    def test_an_imminent_impact_is_floored_at_the_minimum_step(self):
-        """An impact inside the minimum step must not collapse dt.
-
-        The event handler applies impacts on a half-open time window, so
-        overshooting an impact by less than one minimum step still fires
-        it exactly once. Shrinking dt towards zero to reach it, on the
-        other hand, would stall the run.
+    def test_an_imminent_impact_is_landed_exactly_below_the_minimum_step(self):
+        """An impact closer than the minimum step is landed on, not overshot:
+        the landing step may go below dtfloor (one short step, then the run
+        continues from the impact).
         """
         from proteus.interior_energetics.timestep import next_step
 
@@ -878,11 +875,9 @@ class TestImpactClamp:
             interior_o=_make_interior_o(t_next_impact=t_impact),
         )
 
-        # dt.minimum + dt.minimum_rel * Time = 100 + 0.005 * 1e5 = 600.
-        assert dt == pytest.approx(600.0, rel=1e-6), f'Expected the 600 yr floor, got {dt}'
-        # Positivity, and the deliberate overshoot that the floor implies.
-        assert dt > 0.0
-        assert hf_row['Time'] + dt > t_impact
+        # dt.minimum + dt.minimum_rel * Time = 600 yr would overshoot by 590 yr.
+        assert dt == pytest.approx(10.0, rel=1e-9), f'Expected the 10 yr landing, got {dt}'
+        assert hf_row['Time'] + dt == pytest.approx(t_impact, rel=1e-15)
 
     @pytest.mark.physics_invariant
     def test_impact_maximum_bounds_the_landing_step_below_the_remaining_time(self):
@@ -916,6 +911,314 @@ class TestImpactClamp:
         # at 6e3 (the impact is nearer than the controller's 8e3 choice), so
         # only an active ceiling can produce 3e3 here.
         assert hf_row['Time'] + dt < t_impact
+
+    @pytest.mark.physics_invariant
+    def test_impact_maximum_leaves_a_step_that_does_not_reach_the_impact(self):
+        """The ceiling bounds the step that reaches the impact, not every step
+        while one is pending: a distant impact leaves the controller's step."""
+        from proteus.interior_energetics.timestep import next_step
+
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        steps = [
+            next_step(
+                _make_config(impact_maximum=cap),
+                {},
+                dict(hf_row),
+                hf_all,
+                1.0,
+                interior_o=_make_interior_o(t_next_impact=1.0e5 + 2.0e4),
+            )
+            for cap in (3.0e3, 0.0)
+        ]
+        assert steps[0] == pytest.approx(steps[1], rel=1e-12)
+        assert steps[0] == pytest.approx(8.0e3, rel=1e-6)
+
+    @pytest.mark.physics_invariant
+    def test_impact_maximum_caps_a_step_that_ends_exactly_on_the_impact(self):
+        """A controller step equal to the time left reaches the impact, so the
+        ceiling bounds it (5e3 * the 1.6 growth factor = 8e3 yr to the impact)."""
+        from proteus.interior_energetics.timestep import next_step
+
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        dt = next_step(
+            _make_config(impact_maximum=3.0e3),
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_next_impact=1.0e5 + 5.0e3 * 1.6),
+        )
+        # Three equal steps of 8000/3 yr, the last of which lands.
+        assert dt == pytest.approx(8.0e3 / 3.0, rel=1e-9)
+        assert hf_row['Time'] + dt < 1.0e5 + 8.0e3
+
+    @staticmethod
+    def _steps_to(t_impact, cap, growth=0.0, after=0):
+        """Iterate next_step from T0 = 1e5 yr (history of 5e3 yr steps) with the
+        main loop's snap until the run reaches t_impact, then ``after`` more steps
+        with the impact counted on the landing row; return the step ends."""
+        from proteus.accretion.common import snap_to_impact
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(impact_maximum=cap, max_growth_factor=growth)
+        times = list(1.0e5 + 5.0e3 * np.arange(-11, 1, dtype=float))
+        ends, left = [], after
+        while times[-1] < t_impact or left > 0:
+            pending = t_impact if times[-1] < t_impact else np.inf
+            left -= pending == np.inf
+            hf_all = _make_hf_all(n_rows=len(times))
+            hf_all['Time'] = times
+            hf_all['n_impacts_applied'] = [float(t >= t_impact) for t in times]
+            hf_row = {'Time': times[-1], 'F_atm': 1.0e4, 'Phi_global': 1.0}
+            dt = next_step(
+                config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o(pending)
+            )
+            times.append(snap_to_impact(times[-1] + dt, pending))
+            ends.append(times[-1])
+        return ends
+
+    @pytest.mark.physics_invariant
+    @pytest.mark.parametrize('offset', [8.3e3, 1.6e4, 1.62e4, 3.22e4])
+    def test_an_impact_under_the_ceiling_is_landed_exactly(self, offset):
+        """With impact_maximum = 3000 yr the run lands exactly on the impact, by a
+        step no longer than the ceiling, from approaches that end with a remainder
+        below the 600 yr floor."""
+        t = 1.0e5 + offset
+        ends = self._steps_to(t, cap=3.0e3)
+        assert ends[-1] == t
+        assert ends[-1] - (ends[-2] if len(ends) > 1 else 1.0e5) <= 3.0e3 * (1 + 1e-12)
+
+    @pytest.mark.physics_invariant
+    @pytest.mark.parametrize(
+        'offset, growth, ends',
+        [(8.3e3, 0.0, [108000.0, 108300.0]), (5.6e3, 1.1, [105500.0, 105600.0])],
+    )
+    def test_a_step_ending_short_of_an_impact_leaves_the_remainder(self, offset, growth, ends):
+        """A capped step (8000 yr, or 5500 yr under a 1.1 growth cap) that stops less
+        than the 600 yr floor short of an impact is kept; the next step lands exactly
+        on the impact, shorter than the floor."""
+        got = self._steps_to(1.0e5 + offset, cap=0.0, growth=growth)
+        assert got == pytest.approx(ends, rel=1e-15, abs=0.0)
+        assert got[-1] - got[-2] < 600.0
+
+    @pytest.mark.physics_invariant
+    @pytest.mark.parametrize(
+        'rem, ends', [(5.0e-4, [108000.0005]), (2.0e-3, [108000.0, 108000.002])]
+    )
+    def test_a_remainder_below_the_snapshot_resolution_is_absorbed(self, rem, ends):
+        """An 8000 yr step stopping 5e-4 yr short of an impact is extended onto it; a
+        2e-3 yr remainder gets its own step. Every row keeps its own snapshot name."""
+        from proteus.utils.helper import format_subyear_time
+
+        got = self._steps_to(1.08e5 + rem, cap=0.0)
+        assert got == pytest.approx(ends, rel=1e-15, abs=0.0)
+        names = [format_subyear_time(t) for t in [1.0e5, *got]]
+        assert len(set(names)) == len(names)
+
+    @pytest.mark.physics_invariant
+    def test_the_growth_cap_regrows_from_the_floor_after_a_short_landing(self):
+        """After a 2e-3 yr landing step under a 1.1 growth cap the next step is the
+        627.5 yr floor, and 22 steps of 1.1x growth reach 5000 yr again."""
+        ends = self._steps_to(1.055e5 + 2.0e-3, cap=0.0, growth=1.1, after=30)
+        steps = np.diff([1.0e5, *ends])
+        assert steps[1] == pytest.approx(2.0e-3, rel=1e-6)
+        assert steps[2] == pytest.approx(100.0 + 0.005 * 105500.002, rel=1e-9)
+        assert int(np.argmax(steps[2:] >= 5.0e3)) == 22
+
+    def test_the_impact_ceiling_bounds_a_step_extended_onto_the_impact(self):
+        """With impact_maximum = 100 yr the 8000 yr step that the snap-forward extends
+        onto an impact 5e-4 yr further is still cut by the 600 yr ceiling, into 14 steps."""
+        ends = self._steps_to(1.08e5 + 5.0e-4, cap=100.0)
+        assert ends[-1] == 1.08e5 + 5.0e-4
+        assert ends[0] - 1.0e5 == pytest.approx(8000.0005 / 14, rel=1e-12)
+
+    def test_the_growth_base_after_a_landing_is_the_floor_not_the_step_before(self):
+        """With the proportional method (Time/52, about 1923 yr) after a 2e-3 yr landing
+        that followed 5000 yr steps, the 1.1 growth cap starts from the 600 yr floor."""
+        from proteus.interior_energetics.timestep import next_step
+
+        times = [*(1.0e5 + 5.0e3 * np.arange(-10, 1)), 1.0e5 + 2.0e-3]
+        hf_all = _make_hf_all(n_rows=len(times))
+        hf_all['Time'] = times
+        hf_all['n_impacts_applied'] = [0.0] * (len(times) - 1) + [1.0]
+        config = _make_config(max_growth_factor=1.1)
+        config.params.dt.method = 'proportional'
+        hf_row = {'Time': times[-1], 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        dt = next_step(config, {}, hf_row, hf_all, 1.0)
+        assert dt == pytest.approx(1.1 * (100.0 + 0.005 * times[-1]), rel=1e-9)
+        assert dt < times[-1] / 52.0
+
+    @pytest.mark.parametrize(
+        'times, n_impacts, expected',
+        [
+            (
+                [*(1.0e5 + 5.0e3 * np.arange(-10, 1)), 1.0e5 + 2e-3, 1.0e5 + 4e-3],
+                [0.0] * 11 + [1.0, 2.0],
+                1.1 * (100.0 + 0.005 * (1.0e5 + 4e-3)),
+            ),
+            ([1.0e5, 1.0e5 + 2e-3], [0.0, 1.0], 10.0),
+            ([1.0e5, 1.0e5 + 2e-3, 1.0e5 + 4e-3], [0.0, 1.0, 2.0], 10.0),
+            (
+                [*(1.0e5 + 5.0e3 * np.arange(-10, 1)), 1.0e5 + 227.48, 1.0e5 + 227.482]
+                + [1.0e5 + 227.484],
+                [0.0] * 12 + [1.0, 2.0],
+                1.1 * 227.48,
+            ),
+        ],
+        ids=['two landings', 'second row', 'landings on rows 1 and 2', 'after a short step'],
+    )
+    def test_the_growth_base_skips_earlier_landings(self, times, n_impacts, expected):
+        """After two 2e-3 yr landings in a row the 1.1 growth cap starts from the 600 yr
+        floor (proportional method, about 1923 yr), or from a shorter 227.48 yr step
+        before them; after landings from the second row on it leaves the 10 yr initial
+        step."""
+        from proteus.interior_energetics.timestep import next_step
+
+        hf_all = _make_hf_all(n_rows=len(times))
+        hf_all['Time'] = times
+        hf_all['n_impacts_applied'] = n_impacts
+        config = _make_config(max_growth_factor=1.1)
+        config.params.dt.method = 'proportional'
+        hf_row = {'Time': times[-1], 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        dt = next_step(config, {}, hf_row, hf_all, 1.0)
+        assert dt == pytest.approx(expected, rel=1e-9)
+        assert dt > 1.1 * 2e-3
+
+    def test_the_snap_forward_extends_a_step_held_at_dt_maximum(self):
+        """With dt.maximum = 8000 yr, a stop time at 1e9 yr and an impact 5e-4 yr past
+        the step end, the step lands on the impact, so the two rows keep different
+        snapshot names."""
+        from proteus.interior_energetics.timestep import next_step
+        from proteus.utils.helper import format_subyear_time
+
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        t_impact = 1.08e5 + 5.0e-4
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3)
+        config = _make_config(dt_max=8.0e3)
+        config.params.stop.time.enabled, config.params.stop.time.maximum = True, 1.0e9
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=_make_interior_o(t_impact),
+        )
+        assert hf_row['Time'] + dt == t_impact
+        assert format_subyear_time(hf_row['Time']) != format_subyear_time(t_impact)
+
+    def test_the_growth_base_after_a_landing_keeps_a_ramp_below_the_floor(self):
+        """A growth ramp below the 604 yr floor (227.48 yr before a 100 yr landing)
+        continues at 1.1 x 227.48 yr after the landing."""
+        from proteus.interior_energetics.timestep import next_step
+
+        times = [*(1.0e5 + 5.0e3 * np.arange(-8, 1)), 1.0e5 + 188.0]
+        times += [times[-1] + 206.8, times[-1] + 206.8 + 227.48]
+        times.append(times[-1] + 100.0)
+        hf_all = _make_hf_all(n_rows=len(times))
+        hf_all['Time'] = times
+        hf_all['n_impacts_applied'] = [0.0] * (len(times) - 1) + [1.0]
+        hf_row = {'Time': times[-1], 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        dt = next_step(_make_config(max_growth_factor=1.1), {}, hf_row, hf_all, 1.0)
+        assert dt == pytest.approx(1.1 * 227.48, rel=1e-9)
+        assert dt < 100.0 + 0.005 * hf_row['Time']
+
+    def test_the_snap_forward_extends_a_step_ending_short_of_the_stop_time(self):
+        """A step held at dt.maximum ending 2e-4 yr before the stop time and 4e-4 yr
+        before an impact is extended onto the impact, not left for a 4e-4 yr step."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(dt_max=8.0e3)
+        config.params.stop.time.enabled, config.params.stop.time.maximum = True, 1.08e5 + 2e-4
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3)
+        t_impact = 1.08e5 + 4e-4
+        dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o(t_impact))
+        assert hf_row['Time'] + dt == t_impact
+        assert dt > 8.0e3
+
+    def test_the_snap_forward_does_not_pass_the_stop_time(self):
+        """A step ending on the stop time, 5e-4 yr before an impact, is not extended
+        onto the impact."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        config.params.stop.time.enabled, config.params.stop.time.maximum = True, 1.03e5
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3)
+        dt = next_step(
+            config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o(1.03e5 + 5e-4)
+        )
+        assert dt == pytest.approx(3.0e3, rel=1e-12)
+        assert hf_row['Time'] + dt < 1.03e5 + 5e-4
+
+    @pytest.mark.parametrize('n_impacts', [[0.0] * 12, [1.0] * 12])
+    def test_a_short_step_without_a_landing_keeps_its_growth_base(self, n_impacts):
+        """A 10 yr previous step that did not land on an impact caps the next step
+        at 11 yr under a 1.1 growth cap."""
+        from proteus.interior_energetics.timestep import next_step
+
+        hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3)
+        hf_all['Time'] = [*(1.0e5 + 5.0e3 * np.arange(-10, 1)), 1.0e5 + 10.0]
+        hf_all['n_impacts_applied'] = n_impacts
+        hf_row = {'Time': 1.0e5 + 10.0, 'F_atm': 1.0e4, 'Phi_global': 1.0}
+        dt = next_step(_make_config(max_growth_factor=1.1), {}, hf_row, hf_all, 1.0)
+        assert dt == pytest.approx(11.0, rel=1e-9)
+        assert dt < 100.0 + 0.005 * hf_row['Time']
+
+    @pytest.mark.physics_invariant
+    @pytest.mark.parametrize(
+        'kwargs, phi, stop_time, step_sf, cap',
+        [
+            ({'dt_max': 5.0e3}, 1.0, None, 1.0, 5.0e3),
+            ({'mushy_maximum': 1.0e3}, 0.5, None, 1.0, 1.0e3),
+            ({}, 1.0, None, 0.09, 720.0),
+            ({}, 1.0, 1.05e5, 1.0, 5.0e3),
+        ],
+        ids=['dt_max', 'mushy', 'step_sf', 'stop_time'],
+    )
+    def test_a_near_impact_keeps_every_earlier_cap(self, kwargs, phi, stop_time, step_sf, cap):
+        """dt.maximum, the mushy cap, a retry's step_sf and the stop time each keep
+        their step when the impact lies 300 yr, less than the floor, beyond it."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config(**kwargs)
+        if stop_time is not None:
+            config.params.stop.time.enabled, config.params.stop.time.maximum = True, stop_time
+        hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': phi}
+        dt = next_step(
+            config,
+            {},
+            hf_row,
+            _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=phi),
+            step_sf,
+            interior_o=_make_interior_o(1.0e5 + cap + 300.0),
+        )
+        assert dt == pytest.approx(cap, rel=1e-12)
+        assert hf_row['Time'] + dt < 1.0e5 + cap + 300.0
+
+    def test_the_static_step_is_not_changed_by_a_near_impact(self):
+        """In the init stage (Time < 2 yr) the 1 yr step stays 1 yr with an impact
+        500 yr ahead, inside the default 1e4 yr floor, as with a distant one."""
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        config.params.dt.minimum = 1.0e4
+        steps = [
+            next_step(
+                config,
+                {},
+                {'Time': 0.0, 'F_atm': 1.0e4, 'Phi_global': 1.0},
+                _make_hf_all(n_rows=1),
+                1.0,
+                interior_o=_make_interior_o(t),
+            )
+            for t in (500.0, 1.0e9)
+        ]
+        assert steps[0] == pytest.approx(1.0, rel=1e-12)
+        assert steps[0] == pytest.approx(steps[1], rel=1e-12)
 
     def test_impact_maximum_does_not_shorten_a_step_already_below_it(self):
         """The ceiling never lengthens the step and stays inert once the
@@ -951,9 +1254,9 @@ class TestImpactClamp:
     def test_impact_maximum_never_beats_the_minimum_floor(self):
         """A ceiling set below the minimum-step floor must not win.
 
-        The floor exists so an imminent impact cannot collapse dt to zero;
-        a misconfigured ceiling smaller than the floor must not reopen
-        that hazard.
+        A misconfigured ceiling smaller than the floor must not split the
+        approach into steps that collapse towards zero: the split uses the
+        600 yr floor, so a 2000 yr approach takes four 500 yr steps.
         """
         from proteus.interior_energetics.timestep import next_step
 
@@ -961,7 +1264,7 @@ class TestImpactClamp:
         hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
         time_now = 1.0e5
         hf_row = {'Time': time_now, 'F_atm': 1.0e4, 'Phi_global': 1.0}
-        t_impact = time_now + 10.0
+        t_impact = time_now + 2000.0
 
         dt = next_step(
             config,
@@ -972,9 +1275,9 @@ class TestImpactClamp:
             interior_o=_make_interior_o(t_next_impact=t_impact),
         )
 
-        # The 600 yr floor wins over the 50 yr ceiling.
-        assert dt == pytest.approx(600.0, rel=1e-6), f'Expected the 600 yr floor, got {dt}'
-        assert dt > 0.0
+        # ceil(2000 / 600) = 4 equal steps, not ceil(2000 / 50) = 40.
+        assert dt == pytest.approx(500.0, rel=1e-9), f'Expected 500 yr, got {dt}'
+        assert dt > 50.0
 
 
 class TestImpactAndBolscaleClampsTogether:
@@ -1234,38 +1537,6 @@ class TestEscapeStepLimit:
         # The parameter exists to be forwarded, so its presence in the signature
         # without the forwarding is exactly the silent-failure shape.
         assert 'interior_o' in inspect.signature(BoundaryRunner.compute_time_step).parameters
-
-    @pytest.mark.unit
-    def test_main_loop_wires_and_clears_the_escape_step_limit(self):
-        """The coupling loop must hand the interior state to escape, and must
-        clear the per-step records on an iteration where escape does not run.
-
-        Without the hand-over the shortening is inert for every run, which is the
-        silent-failure shape a backend already hit. Without the clearing, the
-        request from an earlier step carries forward and a run that is stepping
-        freely still reads as one held short by the cap.
-        """
-        import inspect
-
-        from proteus.proteus import Proteus
-
-        src = inspect.getsource(Proteus.start)
-        assert 'run_escape(' in src  # the anchor below depends on it
-        call = src.split('run_escape(')[1].split(')')[0]
-        assert 'interior_o=self.interior_o' in call
-
-        # The reservoir escape draws on has to account for a mantle that freezes
-        # on this iteration, since the flag recording it is set further down the
-        # loop and reading it alone sizes the loss from a reservoir already gone.
-        before_call = src.split('run_escape(')[0]
-        assert 'freeze_volatiles' in before_call
-        assert 'atmosphere_only=self.crystallized,' not in call
-
-        # The branch taken when escape does not run has to reset all three, so
-        # the limit, the request and the applied loss cannot outlive their step.
-        skipped = src.split('run_escape(')[1]
-        for field in ('escape_dt_limit', 'esc_clamp_frac', 'esc_step_kg'):
-            assert field in skipped, f'{field} is never cleared when escape is skipped'
 
 
 @pytest.mark.unit

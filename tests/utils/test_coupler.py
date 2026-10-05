@@ -27,6 +27,7 @@ import json
 import logging
 import math
 import os
+import re
 import sys
 import tempfile
 import types
@@ -49,6 +50,7 @@ from proteus.utils.coupler import (
     GetHelpfileDiagnosticKeys,
     GetHelpfileKeys,
     GetPostprocessingKeys,
+    HelpfileFormatError,
     HelpfileRow,
     HelpfileSchemaDriftError,
     PrintCurrentState,
@@ -67,6 +69,7 @@ from proteus.utils.coupler import (
     get_proteus_directories,
     print_citation,
     print_module_configuration,
+    read_helpfile_table,
     remove_excess_files,
     select_profile_plot_times,
     select_resumable_snapshot,
@@ -450,6 +453,416 @@ def test_write_and_read_helpfile_roundtrip():
         assert hf_read['T_magma'].iloc[0] == pytest.approx(2500.0)
         assert hf_read['P_surf'].iloc[0] == pytest.approx(1.0)
         assert hf_read['F_int'].iloc[0] == pytest.approx(50.0)
+
+
+@pytest.mark.unit
+def test_helpfile_round_trip_is_exact(tmp_path):
+    """Every helpfile float reads back as the same double.
+
+    A resume rebuilds the solver mesh and boundary values from the last row, so
+    a value rounded on its way through the file moves a resumed run off the run
+    it continues. The values span 60 decades and have all 17 significant digits,
+    which a shorter format or the default pandas parser does not reproduce.
+    """
+    rng = np.random.default_rng(3)
+    row = ZeroHelpfileRow()
+    for key in row:
+        row[key] = float(rng.uniform(-1.0, 1.0) * 10.0 ** rng.integers(-30, 31))
+    row['E_state_heat_cons_J'] = -4.524433010726972e30
+    # Discrimination: these values do not survive the 11-digit format.
+    assert sum(float('%.10e' % v) != v for v in row.values()) > 0.9 * len(row)
+    WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
+
+    back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]
+    plain = pd.read_csv(tmp_path / 'runtime_helpfile.csv', sep=r'\s+').iloc[0]
+
+    assert [key for key in row if back[key] != row[key]] == []
+    # Discrimination: the default parser misses the last bit of some of these values.
+    assert any(plain[key] != row[key] for key in row)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('nan_key', ['Time', 'semimajorax', 'runtime'])
+def test_helpfile_keeps_a_nan_in_its_column(tmp_path, nan_key):
+    """A NaN reads back in its own column; an empty field would shift the later columns.
+
+    The NaN sits in the first, a middle or the last column of the middle row of three.
+    """
+    rows = [
+        {key: float(10 * r + i + 1) for i, key in enumerate(ZeroHelpfileRow())}
+        for r in range(3)
+    ]
+    rows[1][nan_key] = float('nan')
+    WriteHelpfileToCSV(str(tmp_path), pd.concat([CreateHelpfileFromDict(r) for r in rows]))
+
+    back = ReadHelpfileFromCSV(str(tmp_path))
+
+    expected = pd.DataFrame(rows, columns=GetHelpfileKeys())
+    pd.testing.assert_frame_equal(back[expected.columns], expected, check_exact=True)
+    assert math.isnan(back[nan_key].iloc[1])
+    assert back['runtime'].iloc[2] == rows[2]['runtime']
+
+
+@pytest.mark.unit
+def test_helpfile_writes_nan_as_a_token(tmp_path):
+    """The writer puts the token nan in a NaN's field and leaves no field empty, which the
+    plot readers that split on whitespace rely on (na_rep='nan')."""
+    row = ZeroHelpfileRow()
+    row['R_xuv'] = float('nan')
+    WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
+
+    fields = (tmp_path / 'runtime_helpfile.csv').read_text().splitlines()[1].split('\t')
+
+    assert fields[list(row).index('R_xuv')] == 'nan'
+    assert '' not in fields
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'value',
+    [np.inf, -np.inf, -0.0, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, 1e22],
+)
+def test_helpfile_round_trip_keeps_edge_values(tmp_path, value):
+    """Infinities, a signed zero, subnormal and extreme doubles read back bit for bit."""
+    row = ZeroHelpfileRow()
+    row['T_magma'] = value
+    WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
+
+    back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]['T_magma']
+
+    assert back == value
+    assert np.signbit(back) == np.signbit(value)
+
+
+@pytest.mark.unit
+def test_helpfile_from_an_11_digit_writer_still_reads(tmp_path):
+    """An 11-digit helpfile, as runs that wrote fewer digits left it, reads within 5e-11."""
+    rng = np.random.default_rng(5)
+    row = {
+        key: float(rng.uniform(1.0, 10.0) * 10.0 ** rng.integers(-20, 21))
+        for key in ZeroHelpfileRow()
+    }
+    CreateHelpfileFromDict(row).to_csv(
+        tmp_path / 'runtime_helpfile.csv', index=False, sep='\t', float_format='%.10e'
+    )
+
+    back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]
+
+    relative = [abs(back[key] / row[key] - 1.0) for key in row]
+    assert max(relative) <= 5e-11
+    assert max(relative) > 0.0  # the file really holds rounded values
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('body', 'refused'),
+    [
+        ('1 2 3 4\n', True),  # one field more than the header
+        ('1 2\n', True),  # one field fewer
+        ('\t2\t3\n', True),  # an empty first field
+        ('1 2 3\n4 5\n', True),  # a short second row
+        ('1 2 3\n4 5 6 7\n', True),  # a long second row
+        ('1 2 3\n\n4 5 6\n', False),  # a blank line between rows
+        ('1 2 3\r\n4 5 6\r\n', False),  # CRLF line ends
+    ],
+)
+def test_helpfile_table_checks_each_row_against_the_header(tmp_path, body, refused):
+    """A row with a field count other than the header's is refused; blank lines and
+    CRLF line ends read normally."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_text('\na b c\n' + body, encoding='utf-8', newline='')
+
+    if refused:
+        with pytest.raises(HelpfileFormatError, match='fields against 3 columns'):
+            read_helpfile_table(str(path))
+    else:
+        table = read_helpfile_table(str(path))
+        assert table['c'].tolist() == [3.0, 6.0]
+        assert table['a'].tolist() == [1.0, 4.0]
+
+
+@pytest.mark.unit
+def test_helpfile_with_empty_nan_fields_reads_in_place(tmp_path):
+    """A tab-separated helpfile whose NaN values are empty fields, as files written
+    with fewer digits hold them, reads with every NaN in its own column."""
+    rows = [{key: float(i + 1) for i, key in enumerate(ZeroHelpfileRow())} for _ in range(3)]
+    rows[0]['Time'] = rows[1]['R_xuv'] = rows[2]['runtime'] = float('nan')
+    pd.concat([CreateHelpfileFromDict(r) for r in rows]).to_csv(
+        tmp_path / 'runtime_helpfile.csv', index=False, sep='\t', float_format='%.10e'
+    )
+    assert '\t\t' in (tmp_path / 'runtime_helpfile.csv').read_text()
+
+    back = ReadHelpfileFromCSV(str(tmp_path))
+
+    expected = pd.DataFrame(rows, columns=GetHelpfileKeys())
+    pd.testing.assert_frame_equal(back[expected.columns], expected, rtol=5e-11)
+    assert back['R_xuv'].isna().tolist() == [False, True, False]
+
+
+@pytest.mark.unit
+def test_helpfile_is_read_once_and_too_few_rows_names_the_last_line(tmp_path, monkeypatch):
+    """pandas parses the bytes the check read, not the path again, and a short file
+    is reported at its last line."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(b'a\tb\n1\t2\n3\t4\n')
+    sources = []
+    real = pd.read_csv
+    monkeypatch.setattr(
+        pd, 'read_csv', lambda src, **kw: sources.append(src) or real(src, **kw)
+    )
+
+    assert read_helpfile_table(path)['b'].tolist() == [2, 4]
+    with pytest.raises(HelpfileFormatError, match=r'line 3: 2 data rows, 3 needed'):
+        read_helpfile_table(path, min_rows=3)
+    assert [type(s).__name__ for s in sources] == ['BytesIO']
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'data',
+    [
+        b'a\tb\tc\n1.0\t2.5\t6.25e10\n4.0\t5.5\t6.25e1',
+        b'a\tb\tc\n1.0\t2.5\t6.25e10\n4.0\t5.5\t',
+    ],
+    ids=['inside-last-field', 'after-last-tab'],
+)
+def test_helpfile_with_a_cut_last_row_is_refused(tmp_path, data):
+    """A last row without its newline was cut short, though its fields still count."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(data)
+
+    with pytest.raises(
+        HelpfileFormatError, match='line 3: the file does not end with a newline'
+    ) as excinfo:
+        read_helpfile_table(path)
+
+    assert str(path) in str(excinfo.value)
+    assert 'remove an incomplete last line' in str(excinfo.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('line_end', ['\n', '\r\n'], ids=['lf', 'crlf'])
+def test_helpfile_cut_at_any_byte_reads_whole_rows_or_refuses(tmp_path, line_end):
+    """A file cut at a line end reads its whole rows unchanged; a cut anywhere else is
+    refused at the line it falls in. Every last field changes under any truncation."""
+    rows = pd.DataFrame(
+        {'a': [1.0, 4.0, 7.25], 'b': [2.5, np.nan, -0.0], 'c': [6.25e10, 1.5e-300, 7.25e-05]}
+    )
+    full = tmp_path / 'full.csv'
+    rows.to_csv(full, index=False, sep='\t', na_rep='nan', lineterminator=line_end)
+    data = full.read_bytes()
+    cut = tmp_path / 'runtime_helpfile.csv'
+
+    read = []
+    for k in range(len(data) + 1):
+        cut.write_bytes(data[:k])
+        if k and data[k - 1 : k] == b'\n':
+            table = read_helpfile_table(cut)
+            # A header-only prefix gives empty columns of object dtype.
+            expected = rows.iloc[: len(table)]
+            pd.testing.assert_frame_equal(
+                table, expected, check_exact=True, check_dtype=len(table) > 0
+            )
+            read.append(len(table))
+            continue
+        with pytest.raises(HelpfileFormatError) as excinfo:
+            read_helpfile_table(cut)
+        assert f'line {data[:k].count(b"\n") + 1}' in str(excinfo.value), k
+
+    assert read == [0, 1, 2, 3]
+
+
+@pytest.mark.unit
+def test_header_only_helpfile_reads_as_an_empty_table(tmp_path):
+    """A header with no rows is an empty table when the caller needs no row."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(b'a\tb\n')
+
+    table = read_helpfile_table(path)
+
+    assert table.shape == (0, 2)
+    assert list(table.columns) == ['a', 'b']
+
+
+@pytest.mark.unit
+def test_tab_only_line_reads_as_a_row_of_nan(tmp_path):
+    """In a tab file a line of one tab is a row of two empty fields, as pandas reads it."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(b'a\tb\n1\t2\n\t\n5\t6\n')
+
+    table = read_helpfile_table(path, min_rows=3)
+
+    assert table['a'].isna().tolist() == [False, True, False]
+    assert table['b'].iloc[2] == 6
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('data', 'min_rows', 'where'),
+    [
+        (b'', 0, 'line 1: no header'),
+        (b'  \n\t\n', 0, 'line 2: no header'),
+        (b'a\tb\n', 1, 'line 1: 0 data rows'),
+        (b'a b c\n"x 3 4\n5 6 7\n', 0, None),
+        (b'a b\n1 2\n3 \xff\n', 0, 'line 3: not UTF-8'),
+        (b'a\tb\n\t\t\n1\t2\n', 0, 'line 2: 3 fields'),
+        (b'a\tb\n1\t2\n \t \n', 0, 'lines 1 to 3'),
+        (b'a\tb\n"1\t2\n3\t4"\t5\n', 0, 'line 3: 3 fields'),
+        (b'a\tb\n1\t2\n3\t4\n', 3, 'line 3: 2 data rows'),
+        (b'a\tb\r1\t2\r', 0, 'line 1: a NUL'),
+        (b'a\tb\tc\n1\t2\t3\n\r\t2\t3\n', 0, 'line 3: a NUL'),
+        (b'a\tb\n1\t2\n2.5\x007\t1\n', 0, 'line 3: a NUL'),
+        (b'a\tb\r\n1\t2\r\n3\x00\t4\r\n', 0, 'line 3: a NUL'),
+        (b'a\tb\n1\t2\n1\x00\t2\n\r3\t4\n', 0, 'line 3: a NUL'),
+        (b'\xef\xbb\xbf\n', 0, 'line 1: no columns to parse'),
+        (b'a\tb\n1\t2\t3\n4\t5\n6\x007\t8\n', 0, 'line 4: a NUL'),
+        (b'a\tb\n1\t2\t3\n4\t5', 0, 'line 2: 3 fields'),
+        (b'a\tb', 0, 'line 1: the file does not end with a newline'),
+    ],
+    ids=[
+        'empty',
+        'whitespace',
+        'header-only',
+        'unbalanced-quote',
+        'not-utf8',
+        'tab-row-too-long',
+        'tab-text',
+        'quoted-lines',
+        'too-few-rows',
+        'lone-cr',
+        'lone-cr-in-row',
+        'nul-byte',
+        'pin-crlf-then-nul',
+        'pin-nul-before-cr',
+        'bom-only',
+        'nul-after-ragged',
+        'ragged-before-cut',
+        'header-without-newline',
+    ],
+)
+def test_unreadable_helpfile_raises_one_error_naming_file_and_line(
+    tmp_path, data, min_rows, where
+):
+    """Every unreadable helpfile raises HelpfileFormatError naming the file and the line of
+    its first defect; a NUL byte or lone carriage return is reported before anything else."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(data)
+
+    with pytest.raises(HelpfileFormatError) as excinfo:
+        read_helpfile_table(path, min_rows=min_rows)
+
+    assert str(path) in str(excinfo.value)
+    # pandas words its own tokenising error; only the type and the file are pinned there.
+    assert where is None or where in str(excinfo.value)
+
+
+# Readers that only display the values; every other helpfile reader uses read_helpfile_table.
+_PLAIN_HELPFILE_READERS = {
+    'src/proteus/plot/cpl_bolometry.py',
+    'src/proteus/plot/cpl_escape.py',
+    'src/proteus/plot/cpl_fluxes_global.py',
+    'src/proteus/plot/cpl_global.py',
+    'src/proteus/plot/cpl_orbit.py',
+    'src/proteus/plot/cpl_population.py',
+    'src/proteus/plot/cpl_structure.py',
+    'src/proteus/plot/cpl_visual.py',
+    'src/proteus/utils/coupler.py',
+    'tools/plot_chili_comparison.py',
+    'tools/plot_energy_balance.py',
+    'tools/plot_tutorial.py',
+}
+
+
+def _helpfile_readers(root):
+    """Files under ``root``/src and ``root``/tools that read a table with pandas or numpy
+    where the path or the enclosing scope names a helpfile. A heuristic: a path passed
+    in from another module is not traced."""
+    import ast
+
+    found = set()
+    for path in sorted([*(root / 'src').rglob('*.py'), *(root / 'tools').rglob('*.py')]):
+        text = path.read_text()
+        tree = ast.parse(text)
+        aliases = {
+            a.asname
+            for n in ast.walk(tree)
+            if isinstance(n, ast.ImportFrom)
+            for a in n.names
+            if a.name in _TABLE_READERS and a.asname
+        }
+        scopes = [
+            n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        constants = {
+            t.id
+            for n in tree.body
+            if isinstance(n, ast.Assign)
+            and 'runtime_helpfile' in str(getattr(n.value, 'value', ''))
+            for t in n.targets
+            if isinstance(t, ast.Name)
+        }
+        for call in ast.walk(tree):
+            func = getattr(call, 'func', None)
+            name = getattr(func, 'attr', getattr(func, 'id', None))
+            if not isinstance(call, ast.Call) or name not in _TABLE_READERS | aliases:
+                continue
+            keys = ('filepath_or_buffer', 'fname')
+            arg = (
+                call.args[0]
+                if call.args
+                else next((k.value for k in call.keywords if k.arg in keys), None)
+            )
+            inner = [s for s in scopes if s.lineno <= call.lineno <= s.end_lineno]
+            scope = min(inner, key=lambda s: s.end_lineno - s.lineno) if inner else tree
+            names = ast.get_source_segment(text, arg) or '' if arg else ''
+            body = ast.get_source_segment(text, scope) or text
+            if (
+                re.search(r'helpfile|(?:\b|_)hf', names, re.I)
+                or any(c in names for c in constants)
+                or re.search(r'runtime_helpfile|helpfile_path\(', body, re.I)
+            ):
+                found.add(path.relative_to(root).as_posix())
+    return found
+
+
+_TABLE_READERS = {'read_csv', 'read_table', 'loadtxt', 'genfromtxt'}
+
+
+@pytest.mark.unit
+def test_helpfile_is_read_with_read_csv_only_by_display_code(tmp_path):
+    """A table read of the helpfile outside the display readers would skip the exact
+    parser and the field-count check; the scan also finds module-level reads, bare
+    read_csv names and keyword paths."""
+    from pathlib import Path
+
+    readers = _helpfile_readers(Path(__file__).resolve().parents[2])
+
+    assert readers - _PLAIN_HELPFILE_READERS == set()
+    # Guard the guard: the scan finds the forms a new reader could take.
+    (tmp_path / 'src').mkdir()
+    (tmp_path / 'src' / 'a.py').write_text(
+        "from pandas import read_csv\nt = read_csv(filepath_or_buffer='o/runtime_helpfile.csv')\n"
+    )
+    (tmp_path / 'src' / 'b.py').write_text(
+        "import numpy as np\ndef f(p):\n    q = p + '/runtime_helpfile.csv'\n    return np.loadtxt(q)\n"
+    )
+    (tmp_path / 'src' / 'c.py').write_text(
+        'from pandas import read_csv as rc\nfrom m import helpfile_path\n'
+        'def f(d):\n    p = helpfile_path(d)\n    return rc(p)\n'
+    )
+    (tmp_path / 'src' / 'd.py').write_text(
+        "import pandas as pd\nOUT = 'runtime_helpfile.csv'\ndef f(d):\n    return pd.read_csv(d / OUT)\n"
+    )
+    (tmp_path / 'src' / 'e.py').write_text(
+        'import pandas as pd\ndef f(hf_path):\n    return pd.read_csv(hf_path)\n'
+    )
+    assert _helpfile_readers(tmp_path) == {
+        'src/a.py',
+        'src/b.py',
+        'src/c.py',
+        'src/d.py',
+        'src/e.py',
+    }
 
 
 @pytest.mark.unit
@@ -4308,6 +4721,20 @@ def test_a_helpfile_missing_physical_state_is_refused_not_zero_filled():
 
 
 @pytest.mark.unit
+def test_a_helpfile_without_m_desiccated_resumes_with_nothing_booked(tmp_path):
+    """M_desiccated is a ledger: a helpfile written before the column resumes with it at zero."""
+    from proteus.utils.coupler import GetHelpfileKeys, ReadHelpfileFromCSV
+
+    row = ZeroHelpfileRow()
+    del row['M_desiccated']
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert loaded['M_desiccated'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+    assert set(loaded.columns) == set(GetHelpfileKeys())
+
+
+@pytest.mark.unit
 def test_read_helpfile_from_csv_loads_legacy_helpfile_with_zero_filled_columns(tmp_path):
     """A legacy helpfile without n_impacts_applied loads successfully with zero backfill."""
     import shutil
@@ -4387,7 +4814,7 @@ def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
       separation the filename itself cannot resolve.
     - A file with no recorded time is accepted, so directories written before
       the field existed still resume.
-    - The tolerance admits the helpfile's own serialisation round trip and
+    - The tolerance admits the round trip of an 11-digit helpfile and
       still rejects a step a thousandth of a year away.
     """
     own = _write_timed_nc(str(tmp_path / 'own_int.nc'), 70.2)
@@ -4401,18 +4828,13 @@ def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
     )
     assert _snapshot_belongs_to(legacy, 70.2) is True
 
-    # The helpfile round-trips Time through '%.10e', so a restored row differs
-    # from the written value in about the eleventh digit; that must still match.
+    # An 11-digit helpfile moves Time in about the eleventh digit; that row must match.
     assert _snapshot_belongs_to(own, float('%.10e' % 70.2)) is True
     # A step a thousandth of a year away is a different step, not a round trip.
     assert _snapshot_belongs_to(own, 70.201) is False
 
-    # The margin is relative to the time, because the helpfile's precision is,
-    # so it has to be checked where a run actually ends up. At 1 Gyr a round
-    # trip moves the row by about 0.05 yr and must still match, while a step
-    # 0.7 yr away shares the same filename and must not: a margin that grew to
-    # a whole year there would accept every neighbour and leave the check
-    # doing nothing exactly where runs spend most of their time.
+    # At 1 Gyr an 11-digit helpfile moves the row by about 0.05 yr, which must match;
+    # a step 0.7 yr away shares the filename and must not.
     gyr = 1.0e9
     far = _write_timed_nc(str(tmp_path / 'gyr_int.nc'), gyr)
     assert _snapshot_belongs_to(far, float('%.10e' % gyr)) is True
@@ -4425,6 +4847,16 @@ def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
     beyond = 1.0e10
     unresolvable = _write_timed_nc(str(tmp_path / 'beyond_int.nc'), beyond)
     assert _snapshot_belongs_to(unresolvable, beyond + 0.7) is True
+
+
+@pytest.mark.unit
+def test_snapshot_time_margin_is_four_times_the_11_digit_shift(tmp_path):
+    """At 1e8 yr the margin is 4 x 5e-11 x 1e8 = 0.02 yr: an offset of 0.015 yr
+    matches, which a margin of one shift (0.005 yr) would reject, and 0.025 yr does not."""
+    snap = _write_timed_nc(str(tmp_path / 'snap_int.nc'), 1.0e8)
+
+    assert _snapshot_belongs_to(snap, 1.0e8 + 0.015) is True
+    assert _snapshot_belongs_to(snap, 1.0e8 + 0.025) is False
 
 
 @pytest.mark.unit

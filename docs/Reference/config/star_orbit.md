@@ -75,7 +75,7 @@ parameter studies where stellar evolution is not relevant.
 |---|---|---|---|
 | `semimajoraxis` | float | `1.0` | Initial semi-major axis of the planet's orbit \[AU\]. Must be > 0. |
 | `eccentricity` | float | `0.0` | Initial Eccentricity of the planet's orbit. Must be >= 0 and < 1. |
-| `instellation_method` | str | `"distance"` | Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit. Choices: `"distance"`, `"inst"`. |
+| `instellation_method` | str | `"distance"` | Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit. With 'inst' the semi-major axis follows the flux at every step, so a giant impact's semi-major axis change is not applied; its eccentricity change is. Choices: `"distance"`, `"inst"`. |
 | `instellationflux` | float | `1.0` | Instellation flux initially received by the planet in Earth units. Must be > 0. |
 | `zenith_angle` | float | `48.19` | Characteristic angle of incoming stellar radiation, relative to the zenith \[deg\]. Must be >= 0 and < 90. |
 | `s0_factor` | float | `0.375` | Scale factor applies to incoming stellar radiation to represent planetary rotation. Must be > 0. |
