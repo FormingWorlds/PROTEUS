@@ -208,7 +208,7 @@ eccentricity persisted.
 The track changes the orbital energy `E = -G M_star M_planet / (2 a)` but
 deposits that energy nowhere: no tidal heating reaches the interior and the
 energy balance of the planet does not include it. The helpfile column
-`dEdt_orb` [W] records the rate the track implies,
+`dEdt_orb` \[W\] records the rate the track implies,
 `dE/dt = G M_star M_planet (da/dt) / (2 a^2)`, negative while the orbit
 shrinks. It is zero for `none`, outside the migration window and for
 `instant`, whose step releases its energy at a single time.
