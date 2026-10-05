@@ -925,3 +925,33 @@ def test_grid_axis_renames():
     assert out['ref_config'] == 'input/base.toml'  # header preserved
     assert out['planet.elements.H_budget']['step'] == pytest.approx(5e3)
     assert any('H_mode' in w for w in report.warnings)
+
+
+def test_translated_key_outside_the_schema_is_refused_by_name(monkeypatch):
+    """A 3.0 path the translation emits but the schema lacks stops the migration and is named."""
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    monkeypatch.setitem(mig.OVERRIDES, 'planet.mass_totl', 2.0)
+    with pytest.raises(UnknownConfigKeyError, match=r'"planet\.mass_totl"') as exc:
+        mig.translate(_minimal_spider_v2())
+    assert 'in the migrated 3.0 config' in str(exc.value)
+
+
+def test_main_writes_nothing_when_a_translated_key_is_refused(monkeypatch, tmp_path, capsys):
+    """The command exits 1, names the key and leaves no output file."""
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(_minimal_spider_v2(), v2_path)
+    monkeypatch.setitem(mig.OVERRIDES, 'planet.mass_totl', 2.0)
+    assert mig.main([str(v2_path), '-o', str(out_path)]) == 1
+    assert not out_path.exists()
+    assert '"planet.mass_totl"' in capsys.readouterr().out
+
+
+def test_unknown_2_0_key_is_left_out_and_named():
+    """A user key outside the 2.0 schema migrates as before and is listed by name."""
+    v2 = _minimal_spider_v2()
+    v2['interior']['ghost_field'] = 1.0
+    flat, report = _translate(v2)
+    assert 'interior.ghost_field' not in flat
+    assert report.dropped_unknown == ['interior.ghost_field']
+    assert "Left out (not in the 2.0 schema): ['interior.ghost_field']" in report.text()
