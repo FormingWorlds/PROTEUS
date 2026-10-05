@@ -85,10 +85,8 @@ from proteus.utils.constants import AU, M_earth, M_sun, const_G, secs_per_year
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Asymmetric, non-unity values so that a swapped sma_init/sma_final, a
-# dropped factor of 2 or an off-by-one exponent cannot pass by
-# coincidence. A ratio of 2.5 between the endpoints keeps every pinned
-# value well separated from its wrong-formula neighbour.
+# Asymmetric endpoints (ratio 2.5) keep each pinned value clear of a swapped
+# endpoint, a dropped factor of 2 or an off-by-one exponent.
 SMA_I = 2.0  # semi-major axis before migration [AU]
 SMA_F = 0.8  # semi-major axis after migration [AU]
 T_MIG = 1.0e5  # migration epoch [yr]
@@ -267,10 +265,8 @@ def test_sigmoid_is_continuous_across_both_window_edges():
         slope = (high - low) / (2.0 * step) * TAU
         assert abs(slope) < 1e-3
 
-    # Discrimination: the interior of the window is genuinely moving, so
-    # the vanishing slopes above are a property of the edges and not of a
-    # law that never migrates at all. At the centre S'(1/2) = 3/2, giving
-    # a slope of -1.8 AU per window length.
+    # The centre still moves (S'(1/2) = 3/2, -1.8 AU per window), so the flat
+    # edges are not a law that never migrates.
     centre_slope = (
         (
             sigmoid_migration(T_MIG + 0.5 * TAU + step, SMA_I, SMA_F, T_MIG, TAU)
@@ -316,10 +312,8 @@ def test_high_ecc_half_decay_point_pins_the_factor_of_two():
 
     assert a == pytest.approx(0.8 / 0.7, rel=RTOL)
     assert e == pytest.approx(np.sqrt(0.3), rel=RTOL)
-    # Exponent guard: without the factor 2 the decay factor is
-    # exp(-ln(2)/2) = 0.70711, putting a at 1.38953 AU. The margin is a
-    # fraction of the derived gap so retuning the endpoints cannot
-    # silently soften it.
+    # Without the factor 2 the decay is exp(-ln(2)/2), putting a at 1.38953 AU;
+    # the margin scales with that gap, so new endpoints cannot soften it.
     wrong_no_two = SMA_F / (1.0 - 0.6 * np.exp(-0.5 * np.log(2.0)))
     assert abs(a - wrong_no_two) > 0.5 * abs(0.8 / 0.7 - wrong_no_two)
     # Sign and scale guards: AU-scale positive semi-major axis.
@@ -394,10 +388,8 @@ def test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity():
     e_expected = np.sqrt(0.6) * np.exp(-(t_early - T_MIG) / TAU)
     np.testing.assert_allclose(e_early, e_expected, rtol=1e-9)
 
-    # E-folding guard: one tau must take the eccentricity down by exactly
-    # 1/e. Dropping the 2 from the semi-major-axis exponent makes the
-    # eccentricity e-fold in 2 tau instead, landing at 0.6065 of its
-    # initial value here rather than 0.3679.
+    # One tau takes e down by exactly 1/e; without the 2 in the exponent it
+    # would land at 0.6065 of its initial value rather than 0.3679.
     one_tau = high_eccentricity_migration(T_MIG + TAU, 0.0, SMA_I, SMA_F, T_MIG, TAU)[1]
     assert one_tau / np.sqrt(0.6) == pytest.approx(np.exp(-1.0), rel=1e-10)
     assert abs(one_tau / np.sqrt(0.6) - np.exp(-0.5)) > 0.2
@@ -721,18 +713,8 @@ def test_wrapper_requires_a_final_semimajor_axis_for_every_migrating_law(migrati
 
 
 # ---------------------------------------------------------------------------
-# Outward migration: sma_final > sma_init
+# Outward migration: the same endpoints swapped, 0.8 -> 2.0 AU
 # ---------------------------------------------------------------------------
-#
-# The endpoints above are reused swapped, so the outward pair is
-# 0.8 -> 2.0 AU. Keeping the same two numbers makes the reflection
-# identity below exact: for any shape function S, the inward and
-# outward tracks evaluated at the same window fraction sum to
-# SMA_I + SMA_F, since (a_0 + d S) + (a_0' - d S) with a_0' - a_0 = d
-# collapses to a constant. A law that took the magnitude of the
-# endpoint difference instead of its signed value would migrate the
-# wrong way here while staying correct inward, and would break that
-# identity.
 
 
 @pytest.mark.physics_invariant

@@ -688,10 +688,8 @@ def test_update_instellation_spada_shares_one_average_for_bolometric_and_xuv():
     assert fluxes[0.8][1] / fluxes[0.8][0] == pytest.approx(
         fluxes[0.0][1] / fluxes[0.0][0], rel=1e-12
     )
-    # Absolute XUV pin, because the ratio above survives any uniform
-    # prefactor error in the cgs-to-SI chain. Lx + Leuv = 3.0e29 erg/s
-    # over 4 pi (1.496e13 cm)^2 = 2.81236e27 cm^2 gives 106.6714
-    # erg/s/cm^2, and 1 erg/s/cm^2 is 1e-3 W/m^2.
+    # Absolute pin, since the ratio survives a uniform cgs-to-SI error:
+    # 3.0e29 erg/s over 4 pi (1.496e13 cm)^2 = 106.6714 erg/s/cm^2 = 0.1066714 W/m^2.
     assert fluxes[0.0][1] == pytest.approx(0.1066714, rel=1e-6)
     assert fluxes[0.8][1] == pytest.approx(0.1066714 / 0.6, rel=1e-6)
     # Scale guard: dropping the metre-to-centimetre factor lands at

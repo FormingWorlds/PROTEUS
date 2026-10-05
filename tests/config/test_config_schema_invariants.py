@@ -897,8 +897,7 @@ def test_orbit_requires_tides_passes_for_0d_models_regardless_of_module(model, m
 
 
 # ---------------------------------------------------------------------------
-# parameterized_excludes_tides: a prescribed track computes no tides, so no
-# tides module may run alongside it.
+# parameterized_excludes_tides: no tides module alongside a prescribed track
 # ---------------------------------------------------------------------------
 
 

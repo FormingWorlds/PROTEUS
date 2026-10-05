@@ -281,12 +281,8 @@ def test_bol_scale_window_applies_across_dummy_run():
         bol_scale_vals = post_init['bol_scale'].values
         np.testing.assert_allclose(bol_scale_vals, 2.0, rtol=1e-12)
 
-        # Independent reference check: recompute the UNSCALED instellation.
-        # The instellation is an orbital average of 1/r^2, so the distance
-        # that carries it is a (1 - e^2)^(1/4), written out here rather than
-        # read back from the module. It is NOT hf_row['separation'], which is
-        # the time-averaged separation a (1 + e^2 / 2) and belongs to the
-        # Roche-limit and Hill-radius geometry instead.
+        # Unscaled reference at the flux-weighted distance a (1 - e^2)^(1/4),
+        # written out here, not the time-averaged separation a (1 + e^2 / 2).
         def _flux_distance(row):
             return row['semimajorax'] * (1.0 - row['eccentricity'] ** 2) ** 0.25
 
