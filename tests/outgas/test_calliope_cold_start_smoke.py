@@ -78,3 +78,28 @@ def test_failing_solve_draws_the_same_guesses_on_a_rerun(monkeypatch, tmp_path):
     # Per run: the cold-start guess plus one redraw after each of the 3 failed attempts.
     assert len(draws) == 8
     assert draws[:4] == draws[4:]
+
+
+@pytest.mark.physics_invariant
+def test_seeded_low_h_cold_start_returns_the_physical_root(tmp_path):
+    """A low-H, C-rich inventory (H 1e19, C 5e19, N 1e17, S 1e18 kg) at IW+2 and
+    1500 K, whose seeded cold start CALLIOPE can end on a root with negative
+    pH2O, returns the physical root with positive H2O and H2."""
+    config = _cold_start_config()
+    config.outgas.fO2_shift_IW = 2.0
+    config.outgas.calliope.nguess = 1000
+    config.outgas.calliope.nsolve = 3000
+    hf_row = _surface_pressure_hf_row()
+    hf_row.update(
+        T_magma=1500.0,
+        H_kg_total=1.0e19,
+        C_kg_total=5.0e19,
+        N_kg_total=1.0e17,
+        S_kg_total=1.0e18,
+    )
+    calc_surface_pressures({'output': str(tmp_path)}, config, hf_row)
+    assert hf_row['H2O_bar'] > 0.0
+    assert hf_row['H2_bar'] > 0.0
+    assert hf_row['P_surf'] == pytest.approx(24.8673, rel=1e-4)
+    # Discrimination guard: the negative-water root gives 18.60 bar.
+    assert abs(hf_row['P_surf'] - 18.60) > 1.0
