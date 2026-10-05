@@ -916,12 +916,12 @@ def GetHelpfileKeys():
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
         # Core evolution diagnostic keys for core_module mode
-        'core_r_icb',           # inner-core boundary radius [m]
-        'core_C_eff',           # core effective heat capacity incl. nucleation terms [J K-1]
-        'core_dynamo_margin',   # entropy margin for dynamo action [W K-1]
-        'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic) [T]
-        'core_regime',          # crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen [1]
-        'core_strat_depth',     # thermally stratified layer depth below the CMB [m]
+        'core_r_icb',           # inner-core boundary radius; 0 means not computed outside core_module and in rows zero-filled on resume [m]
+        'core_C_eff',           # core effective heat capacity incl. nucleation terms; 0 means not computed outside core_module and in rows zero-filled on resume [J K-1]
+        'core_dynamo_margin',   # entropy margin for dynamo action; 0 means not computed outside core_module and in rows zero-filled on resume [W K-1]
+        'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); 0 means not computed outside core_module and in rows zero-filled on resume [T]
+        'core_regime',          # crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen; 0 means not computed outside core_module and in rows zero-filled on resume [1]
+        'core_strat_depth',     # thermally stratified layer depth below the CMB; 0 means not computed outside core_module and in rows zero-filled on resume [m]
 
         # Energy-conservation columns: cumulative integrals of entropy-transported
         # heat against boundary-flux and source predictions in the live EOS frame.

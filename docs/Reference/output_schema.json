@@ -1957,13 +1957,13 @@
     {
       "name": "core_r_icb",
       "unit": "m",
-      "description": "inner-core boundary radius",
+      "description": "inner-core boundary radius; 0 means not computed outside core_module and in rows zero-filled on resume",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
         {
           "file": "src/proteus/interior_energetics/aragog.py",
-          "condition": "interior_energetics.module = \"aragog\""
+          "condition": "interior_energetics.aragog.core_bc = \"core_module\""
         }
       ],
       "consumers": [],
@@ -1972,13 +1972,13 @@
     {
       "name": "core_C_eff",
       "unit": "J K-1",
-      "description": "core effective heat capacity incl. nucleation terms",
+      "description": "core effective heat capacity incl. nucleation terms; 0 means not computed outside core_module and in rows zero-filled on resume",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
         {
           "file": "src/proteus/interior_energetics/aragog.py",
-          "condition": "interior_energetics.module = \"aragog\""
+          "condition": "interior_energetics.aragog.core_bc = \"core_module\""
         }
       ],
       "consumers": [],
@@ -1987,13 +1987,13 @@
     {
       "name": "core_dynamo_margin",
       "unit": "W K-1",
-      "description": "entropy margin for dynamo action",
+      "description": "entropy margin for dynamo action; 0 means not computed outside core_module and in rows zero-filled on resume",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
         {
           "file": "src/proteus/interior_energetics/aragog.py",
-          "condition": "interior_energetics.module = \"aragog\""
+          "condition": "interior_energetics.aragog.core_bc = \"core_module\""
         }
       ],
       "consumers": [],
@@ -2002,13 +2002,13 @@
     {
       "name": "core_B_rms",
       "unit": "T",
-      "description": "rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic)",
+      "description": "rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); 0 means not computed outside core_module and in rows zero-filled on resume",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
         {
           "file": "src/proteus/interior_energetics/aragog.py",
-          "condition": "interior_energetics.module = \"aragog\""
+          "condition": "interior_energetics.aragog.core_bc = \"core_module\""
         }
       ],
       "consumers": [],
@@ -2017,13 +2017,13 @@
     {
       "name": "core_regime",
       "unit": "1",
-      "description": "crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen",
+      "description": "crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen; 0 means not computed outside core_module and in rows zero-filled on resume",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
         {
           "file": "src/proteus/interior_energetics/aragog.py",
-          "condition": "interior_energetics.module = \"aragog\""
+          "condition": "interior_energetics.aragog.core_bc = \"core_module\""
         }
       ],
       "consumers": [],
@@ -2032,13 +2032,13 @@
     {
       "name": "core_strat_depth",
       "unit": "m",
-      "description": "thermally stratified layer depth below the CMB",
+      "description": "thermally stratified layer depth below the CMB; 0 means not computed outside core_module and in rows zero-filled on resume",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
         {
           "file": "src/proteus/interior_energetics/aragog.py",
-          "condition": "interior_energetics.module = \"aragog\""
+          "condition": "interior_energetics.aragog.core_bc = \"core_module\""
         }
       ],
       "consumers": [],

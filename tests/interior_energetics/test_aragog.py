@@ -3833,9 +3833,16 @@ def test_setup_solver_raises_when_structure_omits_core_mass_or_pressure(
     interior_o = MagicMock()
     with (
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
-        pytest.raises(ValueError, match="interior_struct.module='spider'"),
+        pytest.raises(ValueError, match="interior_struct.module='spider'") as exc_info,
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+    err_msg = str(exc_info.value)
+    if m_core is None or m_core <= 0.0:
+        assert 'M_core=0.0000e+00' in err_msg
+    else:
+        assert 'P_center=0.0000e+00' in err_msg
+    assert "core_bc='core_module'" in err_msg
 
 
 @pytest.mark.unit
