@@ -2107,33 +2107,36 @@ class AragogRunner:
                     if hasattr(solver, '_P_basic_flat') and solver._P_basic_flat is not None
                     else float(hf_row.get('P_cmb', 136e9))
                 )
-                try:
-                    from aragog.core.profiles import fit_gaussian_core_profiles
+                if log.isEnabledFor(logging.DEBUG):
+                    try:
+                        from aragog.core.profiles import fit_gaussian_core_profiles
 
-                    c_params = solver.parameters.boundary_conditions.core_module_params or {}
-                    refit = fit_gaussian_core_profiles(
-                        m_core=m_core_live,
-                        p_cen=p_cen_live,
-                        r_cmb=r_cmb_live,
-                        p_cmb=p_cmb_live,
-                        alpha=float(c_params.get('alpha', 1.35e-5)),
-                        c_p=float(c_params.get('c_p', 840.0)),
+                        c_params = (
+                            solver.parameters.boundary_conditions.core_module_params or {}
+                        )
+                        refit = fit_gaussian_core_profiles(
+                            m_core=m_core_live,
+                            p_cen=p_cen_live,
+                            r_cmb=r_cmb_live,
+                            p_cmb=p_cmb_live,
+                            alpha=float(c_params.get('alpha', 1.35e-5)),
+                            c_p=float(c_params.get('c_p', 840.0)),
+                        )
+                        rho_refit = float(refit.rho_cen)
+                        len_refit = float(refit.length_scale)
+                    except (ValueError, RuntimeError) as exc:
+                        rho_refit = float('nan')
+                        len_refit = float('nan')
+                        log.debug('Aragog core_module diagnostic refit skipped: %s', exc)
+
+                    log.debug(
+                        'Aragog core_module structure drift: M_core drift=%.2e, P_center drift=%.2e; '
+                        'refit would give rho_cen=%.2f kg/m^3, length_scale=%.1f km',
+                        drift_m,
+                        drift_p,
+                        rho_refit,
+                        len_refit / 1e3,
                     )
-                    rho_refit = float(refit.rho_cen)
-                    len_refit = float(refit.length_scale)
-                except Exception as exc:
-                    rho_refit = float('nan')
-                    len_refit = float('nan')
-                    log.debug('Aragog core_module diagnostic refit skipped: %s', exc)
-
-                log.debug(
-                    'Aragog core_module structure drift: M_core drift=%.2e, P_center drift=%.2e; '
-                    'refit would give rho_cen=%.2f kg/m^3, length_scale=%.1f km',
-                    drift_m,
-                    drift_p,
-                    rho_refit,
-                    len_refit / 1e3,
-                )
                 if max(drift_m, drift_p) > 0.01:
                     log.warning(
                         'Aragog core_module structure drift exceeds 1%% threshold: '
