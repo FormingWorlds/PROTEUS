@@ -35,7 +35,8 @@ log = logging.getLogger('fwl.' + __name__)
 # Constants
 mass_ocean = ocean_moles * molar_mass['H2']
 
-# Seed of the CALLIOPE Monte-Carlo start and restart draws, so identical runs agree.
+# Seed of CALLIOPE's start and restart draws, so identical runs agree. The same integer
+# seeds CALLIOPE's own PCG64 generator (from_O_budget) or the global MT19937 stream.
 RANDOM_SEED = 42
 
 
@@ -381,8 +382,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         opts['T_magma'] = config.outgas.T_floor
         log.warning('Outgassing temperature clipped to %.1f K' % opts['T_magma'])
 
-    # CALLIOPE's cold start and restarts draw from the global NumPy RNG: each call
-    # replays one seeded sequence, then the caller gets its state back (not thread-safe).
+    # The caller's global RNG state is handed back after the call (not thread-safe).
     state = np.random.get_state()
 
     # Dispatch on planet.fO2_source. The two entry points share the
@@ -408,6 +408,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 opt_solver=False,
             )
         else:
+            # equilibrium_atmosphere takes no seed and draws from the global stream.
             np.random.seed(RANDOM_SEED)
             solvevol_result = equilibrium_atmosphere(
                 target,

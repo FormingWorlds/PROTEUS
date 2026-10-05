@@ -137,7 +137,7 @@ because their budgets are set in `[planet.elements]`.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `nguess` | int | `1000` | Maximum number of initial-guess samples for the CALLIOPE equilibrium solver. Default 1000. Must be > 0. |
+| `nguess` | int | `1000` | Maximum number of initial-guess samples for the CALLIOPE equilibrium solver. The samples come from a fixed seed, so identical inputs draw the same guesses, and an input that exhausts the samples fails the same way on a rerun. Default 1000. Must be > 0. |
 | `nsolve` | int | `3000` | Maximum number of iterations of the CALLIOPE equilibrium solver per call. Default 3000. Must be > 0. |
 | `p_guess_max` | float | `100000.0` | Upper bound \[bar\] of the CALLIOPE Monte-Carlo cold-start surface- pressure draw. Sets where the cold start samples, so raising it helps the solver find a high-pressure (e.g. sub-Neptune) basin faster. It does NOT raise the maximum pressure the solver can accept (CALLIOPE's fixed 1e7 bar box), so it is bounded to (0, 1e7\]. Default 1e5. Must be > 0 and <= 10000000.0. |
 <!-- END GENERATED: config-table [outgas.calliope] -->

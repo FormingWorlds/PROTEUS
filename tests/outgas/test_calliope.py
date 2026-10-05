@@ -478,10 +478,6 @@ def _surface_pressure_hf_row():
 
 def _captured_target(config, hf_row):
     """Run calc_surface_pressures with CALLIOPE mocked and return the target."""
-    from unittest.mock import patch
-
-    from proteus.outgas.calliope import calc_surface_pressures
-
     # A minimal output dict: the wrapper only copies keys it recognises, so an
     # empty result leaves hf_row untouched and keeps the test on the target.
     with patch('proteus.outgas.calliope.equilibrium_atmosphere', return_value={}) as mock_solve:
@@ -576,6 +572,14 @@ def test_calliope_target_reaches_the_solver_for_an_active_noble_gas():
 # -----------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _restore_global_rng():
+    """Give the global NumPy RNG back to later tests in the state it had."""
+    state = np.random.get_state()
+    yield
+    np.random.set_state(state)
+
+
 def _cold_start_config():
     """Element-mode config on the user_constant fO2 path, no noble gas active."""
     config = _element_mode_config({})
@@ -621,12 +625,16 @@ def test_calliope_result_does_not_depend_on_the_caller_rng(warm):
     for caller_seed in (1, 2):
         hf_row = _warm_start_hf_row() if warm else _surface_pressure_hf_row()
         np.random.seed(caller_seed)
-        with patch(
-            'proteus.outgas.calliope.equilibrium_atmosphere', side_effect=_drawing_solver
-        ) as solve:
+        with (
+            patch(
+                'proteus.outgas.calliope.equilibrium_atmosphere', side_effect=_drawing_solver
+            ) as solve,
+            patch('proteus.outgas.calliope.np.random.seed', wraps=np.random.seed) as seed,
+        ):
             calc_surface_pressures({'output': '/tmp/test'}, config, hf_row)
         rows.append(hf_row)
 
+    seed.assert_called_once_with(RANDOM_SEED)
     assert (solve.call_args.kwargs['p_guess'] is not None) == warm
     assert rows[0]['P_surf'] == rows[1]['P_surf']
     assert rows[0]['H2O_bar'] == rows[1]['H2O_bar']
@@ -675,3 +683,20 @@ def test_from_o_budget_solve_gets_the_same_fixed_seed():
         calc_surface_pressures({'output': '/tmp/test'}, config, _surface_pressure_hf_row())
     assert solve.call_args.kwargs['random_seed'] == RANDOM_SEED == 42
     assert global_seed.call_count == 0
+
+
+def test_calliope_cold_start_guess_draws_from_the_global_rng():
+    """CALLIOPE's start guess consumes the global NumPy stream, which is what
+    the seed in calc_surface_pressures controls; if CALLIOPE stops drawing
+    from it, the seed becomes dead code and this test fails."""
+    from calliope.solve import get_initial_pressures
+
+    target = {'H': 1.2e20, 'C': 1.0e20, 'N': 1.0e18, 'S': 1.0e18}
+    np.random.seed(5)
+    first = get_initial_pressures(target)
+    np.random.seed(5)
+    again = get_initial_pressures(target)
+    other = get_initial_pressures(target)
+    assert first == again
+    assert first != other
+    assert all(p > 0.0 for p in first)

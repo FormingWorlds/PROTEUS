@@ -23,6 +23,14 @@ from tests.outgas.test_calliope import _cold_start_config, _surface_pressure_hf_
 pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
 
 
+@pytest.fixture(autouse=True)
+def _restore_global_rng():
+    """Give the global NumPy RNG back to later tests in the state it had."""
+    state = np.random.get_state()
+    yield
+    np.random.set_state(state)
+
+
 def _cold_start(caller_seed):
     hf_row = _surface_pressure_hf_row()
     np.random.set_state(np.random.RandomState(caller_seed).get_state())
@@ -33,8 +41,15 @@ def _cold_start(caller_seed):
 @pytest.mark.physics_invariant
 def test_real_cold_start_is_identical_for_any_caller_rng_state(monkeypatch):
     """Two real cold starts under different caller RNG states agree in every
-    copied value. Without the wrapper's seed they differ, and the seeded surface
-    pressure agrees with the unseeded ones to rel 1e-4, the configured solver_rtol."""
+    copied value.
+
+    The second half is the negative control: with the wrapper's seed disabled
+    the two roots differ, so the first half can fail. If CALLIOPE starts to seed
+    itself, the control fails and the wrapper's seed can go. The seeded surface
+    pressure lies within rel 1e-4 of the unseeded ones: their measured spread for
+    this case is 6.2e-5 over 60 caller states (the CALLIOPE rtol bounds the mass
+    residual in kg, not the pressure).
+    """
     a, b = _cold_start(1), _cold_start(2)
     assert a['P_surf'] > 0.0
     assert [k for k in a if a[k] != b[k]] == []
