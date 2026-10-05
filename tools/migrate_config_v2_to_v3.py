@@ -4,10 +4,9 @@
 The 2.0 to 3.0 change is a structural refactor, not a value tweak: the interior
 splits into ``[interior_struct]`` and ``[interior_energetics]``, the volatile
 inventory moves under ``[planet]``, several fields are renamed, and a number of
-schema defaults change. The config loader ignores unknown keys, so a naive
-rename pass silently reverts moved or omitted fields to a 3.0 default that may
-differ from the 2.0 value, producing a file that loads cleanly but simulates a
-different planet.
+schema defaults change. A naive rename pass silently reverts omitted fields to a
+3.0 default that may differ from the 2.0 value, producing a file that loads
+cleanly but simulates a different planet.
 
 This tool avoids that failure mode with a materialise-map-emit engine:
 
@@ -697,13 +696,13 @@ def translate(v2_toml: dict):
     -------
     nested_v3 : dict
         The 3.0 config as a nested dict, validated through the 3.0 schema.
+    report : MigrationReport
+        What the translation renamed, pinned, overrode, dropped, and warned on.
 
     Raises
     ------
     UnknownConfigKeyError
         If the translation produces a key or section the 3.0 schema cannot accept.
-    report : MigrationReport
-        What the translation renamed, pinned, overrode, dropped, and warned on.
     """
     report = MigrationReport()
     v2_defaults = _load_v2_defaults()
