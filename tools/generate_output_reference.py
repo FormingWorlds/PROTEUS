@@ -104,7 +104,7 @@ FUNCTION_CONDITIONS = {
     (
         'interior_energetics/aragog.py',
         '_write_core_module_diagnostics',
-    ): 'interior_energetics.aragog.core_bc = "core_module"',
+    ): 'interior_energetics.module = "aragog", interior_energetics.aragog.core_bc = "core_module"',
 }
 
 

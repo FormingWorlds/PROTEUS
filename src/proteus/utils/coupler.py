@@ -916,12 +916,12 @@ def GetHelpfileKeys():
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
         # Core evolution diagnostic keys for core_module mode
-        'core_r_icb',           # inner-core boundary radius; 0 means not computed outside core_module and in rows zero-filled on resume [m]
-        'core_C_eff',           # core effective heat capacity incl. nucleation terms; 0 means not computed outside core_module and in rows zero-filled on resume [J K-1]
-        'core_dynamo_margin',   # entropy margin for dynamo action; 0 means not computed outside core_module and in rows zero-filled on resume [W K-1]
-        'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); 0 means not computed outside core_module and in rows zero-filled on resume [T]
-        'core_regime',          # crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen; 0 means not computed outside core_module and in rows zero-filled on resume [1]
-        'core_strat_depth',     # thermally stratified layer depth below the CMB; 0 means not computed outside core_module and in rows zero-filled on resume [m]
+        'core_r_icb',           # inner-core boundary radius; NaN when not computed (core_bc is not core_module) [m]
+        'core_C_eff',           # core effective heat capacity incl. nucleation terms; NaN when not computed (core_bc is not core_module) [J K-1]
+        'core_dynamo_margin',   # entropy margin for dynamo action; NaN when not computed (core_bc is not core_module) [W K-1]
+        'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); NaN when not computed (core_bc is not core_module) [T]
+        'core_regime',          # crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen; NaN when not computed (core_bc is not core_module) [1]
+        'core_strat_depth',     # thermally stratified layer depth below the CMB; NaN when not computed (core_bc is not core_module) [m]
 
         # Energy-conservation columns: cumulative integrals of entropy-transported
         # heat against boundary-flux and source predictions in the live EOS frame.
@@ -1098,11 +1098,10 @@ def CreateHelpfileFromDict(d: dict):
 def ZeroHelpfileRow():
     """
     Get a dictionary with same keys as helpfile but with values of zero
+
+    The columns of `NAN_UNLESS_COMPUTED_KEYS` start as NaN, their value when not computed.
     """
-    out = {}
-    for k in GetHelpfileKeys():
-        out[k] = 0.0
-    return out
+    return {k: np.nan if k in NAN_UNLESS_COMPUTED_KEYS else 0.0 for k in GetHelpfileKeys()}
 
 
 def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
@@ -1316,7 +1315,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     time_val = new_row['Time'].iloc[0]
     for i, col in enumerate(new_row.columns):
         col_data = new_row.iloc[:, i]
-        if col_data.isna().any():
+        if col_data.isna().any() and col not in NAN_UNLESS_COMPUTED_KEYS:
             log.warning(
                 'hf_row[%s] is NaN at t=%.2e years; setting to zero.',
                 col,
@@ -1525,6 +1524,10 @@ _DIAGNOSTIC_KEYS = (
     'core_strat_depth',
 )
 
+# Core-evolution diagnostics that hold NaN, not zero, when they are not computed: zero is
+# a physical value for most of them (liquid core, no inner core, subadiabatic field).
+NAN_UNLESS_COMPUTED_KEYS = frozenset(_DIAGNOSTIC_KEYS[1:])
+
 
 def GetHelpfileDiagnosticKeys():
     """
@@ -1681,12 +1684,13 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     backfill = [k for k in GetHelpfileDiagnosticKeys() if k not in hf_all.columns]
     if backfill:
         log.info(
-            "Helpfile '%s' predates diagnostic column(s) %s; filling with zeros.",
+            "Helpfile '%s' predates diagnostic column(s) %s; filling with zeros "
+            '(NaN for the core-evolution columns).',
             fpath,
             ', '.join(backfill),
         )
-        zeros = pd.DataFrame(0.0, index=hf_all.index, columns=backfill)
-        hf_all = pd.concat([hf_all, zeros], axis=1)
+        fill = {k: np.nan if k in NAN_UNLESS_COMPUTED_KEYS else 0.0 for k in backfill}
+        hf_all = pd.concat([hf_all, pd.DataFrame(fill, index=hf_all.index)], axis=1)
     return hf_all
 
 

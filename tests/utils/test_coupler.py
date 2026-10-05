@@ -189,10 +189,16 @@ def test_zero_helpfile_row_returns_dict():
 
 @pytest.mark.unit
 def test_zero_helpfile_row_all_values_are_zero():
-    """Test that ZeroHelpfileRow initializes all values to 0.0."""
+    """Test that ZeroHelpfileRow initializes all values to 0.0, except the core-evolution
+    diagnostics, which start as NaN (not computed)."""
+    from proteus.utils.coupler import NAN_UNLESS_COMPUTED_KEYS
+
     row = ZeroHelpfileRow()
     for key, value in row.items():
-        assert value == 0.0, f'Key {key} has value {value}, expected 0.0'
+        if key in NAN_UNLESS_COMPUTED_KEYS:
+            assert np.isnan(value), f'Key {key} has value {value}, expected NaN'
+        else:
+            assert value == 0.0, f'Key {key} has value {value}, expected 0.0'
     # Discrimination: every value must be a Python float (not int 0 or
     # numpy zero), so a regression that initialised values to integer 0
     # would be caught even though `0 == 0.0` is True.
@@ -5299,8 +5305,8 @@ def test_select_resumable_snapshot_resolves_sub_year_rows_to_distinct_files(tmp_
 
 
 @pytest.mark.unit
-def test_core_module_columns_registered_and_zero_seeded():
-    """Verify registration and zero-seeding of core diagnostic columns."""
+def test_core_module_columns_registered_and_nan_seeded():
+    """Verify registration and NaN seeding of core diagnostic columns."""
     from proteus.utils.coupler import GetHelpfileKeys, ZeroHelpfileRow
 
     core_cols = [
@@ -5316,12 +5322,13 @@ def test_core_module_columns_registered_and_zero_seeded():
         assert keys.count(col) == 1, f'{col} must be registered exactly once'
     row = ZeroHelpfileRow()
     for col in core_cols:
-        assert row[col] == 0.0  # seed value, assigned not computed
+        assert np.isnan(row[col])  # not computed until core_module writes it
 
 
 @pytest.mark.unit
 def test_helpfile_without_core_evolution_diagnostic_columns_resumes():
-    """Verify legacy helpfiles load with zero-filled core columns on resume."""
+    """Verify legacy helpfiles load with NaN-filled core columns on resume, and the other
+    diagnostic column with zeros."""
     core_cols = [
         'core_r_icb',
         'core_C_eff',
@@ -5331,7 +5338,7 @@ def test_helpfile_without_core_evolution_diagnostic_columns_resumes():
         'core_strat_depth',
     ]
     with tempfile.TemporaryDirectory() as tmpdir:
-        _write_drifted_helpfile(tmpdir, core_cols, n_rows=3)
+        _write_drifted_helpfile(tmpdir, core_cols + ['T_cmb_node'], n_rows=3)
         raw = pd.read_csv(os.path.join(tmpdir, 'runtime_helpfile.csv'), sep=r'\s+')
         for col in core_cols:
             assert col not in raw.columns
@@ -5340,7 +5347,8 @@ def test_helpfile_without_core_evolution_diagnostic_columns_resumes():
         assert len(hf) == 3
         for col in core_cols:
             assert col in hf.columns
-            assert (hf[col] == 0.0).all()
+            assert hf[col].isna().all()
+        assert (hf['T_cmb_node'] == 0.0).all()
 
 
 @pytest.mark.unit
@@ -5387,3 +5395,24 @@ def test_snapshot_time_rejects_empty_nc_and_non_dict_json(tmp_path):
     time_json = _snapshot_time(str(json_list))
     assert time_json is not None and math.isnan(time_json)
     assert _snapshot_belongs_to(str(json_list), 100.0) is False
+
+
+@pytest.mark.unit
+def test_core_diagnostics_keep_nan_through_append_write_and_read(tmp_path, caplog):
+    """A not-computed core diagnostic stays NaN through ExtendHelpfile, the CSV and the
+    reader, without the NaN-to-zero warning other columns get."""
+    from proteus.utils.coupler import NAN_UNLESS_COMPUTED_KEYS
+
+    row = ZeroHelpfileRow()
+    row['Time'] = 1.0
+    row['T_magma'] = np.nan
+    with caplog.at_level('WARNING', logger='fwl.proteus.utils.coupler'):
+        hf = ExtendHelpfile(pd.DataFrame(columns=GetHelpfileKeys()), row)
+    warned = [r.getMessage() for r in caplog.records if 'is NaN' in r.getMessage()]
+    assert warned == ['hf_row[T_magma] is NaN at t=1.00e+00 years; setting to zero.']
+    assert hf['T_magma'].iloc[0] == 0.0
+    WriteHelpfileToCSV(str(tmp_path), hf)
+    back = ReadHelpfileFromCSV(str(tmp_path))
+    for col in NAN_UNLESS_COMPUTED_KEYS:
+        assert np.isnan(back[col].iloc[0]), col
+    assert back['T_cmb_node'].iloc[0] == 0.0
