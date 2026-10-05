@@ -19,6 +19,7 @@ Testing standards:
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -593,78 +594,92 @@ def _drawing_solver(target, opts, **kwargs):
     return {'P_surf': 250.0 * (1.0 + 1e-9 * x0), 'H2O_bar': 200.0 * (1.0 + 1e-9 * x0)}
 
 
-def _rng_states_equal(a, b):
-    return a[0] == b[0] and np.array_equal(a[1], b[1]) and a[2:] == b[2:]
+def _warm_start_hf_row():
+    """Row past the start with previous pressures and no noble gas, so CALLIOPE gets a warm guess."""
+    hf_row = _surface_pressure_hf_row()
+    hf_row['Time'] = 10.0
+    for gas in noble_gases:
+        hf_row[f'{gas}_kg_total'] = 0.0
+    for s in vol_list:
+        hf_row[f'{s}_bar'] = 1.0
+    return hf_row
 
 
 @pytest.mark.physics_invariant
-def test_cold_start_result_does_not_depend_on_the_caller_rng():
-    """Two cold starts from the same helpfile row give the same surface
+@pytest.mark.parametrize('warm', [False, True], ids=['cold_start', 'warm_start'])
+def test_calliope_result_does_not_depend_on_the_caller_rng(warm):
+    """Two CALLIOPE solves from the same helpfile row give the same surface
     pressure whatever state the caller left the global RNG in.
 
-    CALLIOPE draws its start guess from the global ``np.random`` when no
-    previous pressures exist (Time 0), and its converged root moves within the
-    solver tolerance with that guess; unseeded, identical runs differ from row 0.
+    CALLIOPE draws its cold-start guess (Time 0) and every restart guess from
+    the global ``np.random``, and its converged root moves within the solver
+    tolerance with that guess; unseeded, identical runs differ from row 0.
     """
     from unittest.mock import patch
 
     from proteus.outgas.calliope import calc_surface_pressures
 
-    config = _cold_start_config()
-    rows = []
+    config, rows = _cold_start_config(), []
     for caller_seed in (1, 2):
-        hf_row = _surface_pressure_hf_row()
+        hf_row = _warm_start_hf_row() if warm else _surface_pressure_hf_row()
         np.random.seed(caller_seed)
         with patch(
             'proteus.outgas.calliope.equilibrium_atmosphere', side_effect=_drawing_solver
-        ):
+        ) as solve:
             calc_surface_pressures({'output': '/tmp/test'}, config, hf_row)
         rows.append(hf_row)
 
+    assert (solve.call_args.kwargs['p_guess'] is not None) == warm
     assert rows[0]['P_surf'] == rows[1]['P_surf']
     assert rows[0]['H2O_bar'] == rows[1]['H2O_bar']
     # The stand-in does reach hf_row: a bounded, positive pressure near its root.
     assert abs(rows[0]['P_surf'] - 250.0) < 1e-6
 
 
-def test_cold_start_restores_the_caller_rng_state():
+@pytest.mark.parametrize('error', [None, RuntimeError, ValueError])
+def test_calliope_call_restores_the_caller_rng_stream(error):
     """The caller's global RNG stream continues after the CALLIOPE call as if
-    the call had not drawn from it."""
-    from unittest.mock import patch
-
-    from proteus.outgas.calliope import calc_surface_pressures
-
-    np.random.seed(7)
-    before = np.random.get_state()
-    with patch('proteus.outgas.calliope.equilibrium_atmosphere', side_effect=_drawing_solver):
-        calc_surface_pressures(
-            {'output': '/tmp/test'}, _cold_start_config(), _surface_pressure_hf_row()
-        )
-    assert _rng_states_equal(np.random.get_state(), before)
-    np.random.seed(7)
-    assert np.random.uniform() == np.random.RandomState(7).uniform()
-
-
-def test_failed_cold_start_restores_the_caller_rng_state():
-    """A CALLIOPE failure still propagates, and the caller's RNG state is
-    restored before it does."""
+    the call had not drawn from it, also when CALLIOPE raises."""
     from unittest.mock import patch
 
     from proteus.outgas.calliope import calc_surface_pressures
 
     def _failing_solver(target, opts, **kwargs):
         np.random.uniform()
-        raise RuntimeError('Could not find solution for volatile abundances')
+        raise error('Could not find solution for volatile abundances')
 
-    np.random.seed(11)
-    before = np.random.get_state()
+    expected = np.random.RandomState(7).uniform()
+    np.random.seed(7)
     with (
-        patch('proteus.outgas.calliope.equilibrium_atmosphere', side_effect=_failing_solver),
+        patch(
+            'proteus.outgas.calliope.equilibrium_atmosphere',
+            side_effect=_failing_solver if error else _drawing_solver,
+        ),
         patch('proteus.outgas.calliope.UpdateStatusfile') as status,
-        pytest.raises(RuntimeError, match='Could not find solution'),
+        pytest.raises(error, match='Could not find solution') if error else nullcontext(),
     ):
         calc_surface_pressures(
             {'output': '/tmp/test'}, _cold_start_config(), _surface_pressure_hf_row()
         )
-    assert _rng_states_equal(np.random.get_state(), before)
-    status.assert_called_once_with({'output': '/tmp/test'}, 27)
+    assert np.random.uniform() == expected
+    assert status.call_count == int(error is RuntimeError)
+
+
+def test_from_o_budget_solve_gets_the_same_fixed_seed():
+    """The from_O_budget path passes RANDOM_SEED to CALLIOPE, which seeds its
+    own generator with it, and leaves the caller's global RNG stream alone."""
+    from unittest.mock import patch
+
+    from proteus.outgas.calliope import RANDOM_SEED, calc_surface_pressures
+
+    config = _cold_start_config()
+    config.planet.fO2_source = 'from_O_budget'
+    expected = np.random.RandomState(3).uniform()
+    np.random.seed(3)
+    with patch(
+        'proteus.outgas.calliope.equilibrium_atmosphere_authoritative_O',
+        return_value={'fO2_shift_derived': 4.0, 'O_res': 0.0},
+    ) as solve:
+        calc_surface_pressures({'output': '/tmp/test'}, config, _surface_pressure_hf_row())
+    assert solve.call_args.kwargs['random_seed'] == RANDOM_SEED == 42
+    assert np.random.uniform() == expected

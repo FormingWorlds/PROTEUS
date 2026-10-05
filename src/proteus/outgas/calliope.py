@@ -2,7 +2,6 @@
 from __future__ import annotations  # noqa: I001
 
 import logging
-from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -38,27 +37,6 @@ mass_ocean = ocean_moles * molar_mass['H2']
 
 # Seed of the CALLIOPE Monte-Carlo start and restart draws, so identical runs agree.
 RANDOM_SEED = 42
-
-
-@contextmanager
-def _seeded_global_rng(seed: int):
-    """Seed the global NumPy RNG for the enclosed block.
-
-    ``equilibrium_atmosphere`` draws its start and restart guesses from the
-    global ``np.random`` state and takes no seed argument. The caller's RNG
-    state is restored on exit, also when the block raises.
-
-    Parameters
-    ----------
-    seed : int
-        Seed applied to the global NumPy RNG inside the block.
-    """
-    state = np.random.get_state()
-    np.random.seed(seed)
-    try:
-        yield
-    finally:
-        np.random.set_state(state)
 
 
 def construct_options(dirs: dict, config: Config, hf_row: dict):
@@ -403,6 +381,10 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         opts['T_magma'] = config.outgas.T_floor
         log.warning('Outgassing temperature clipped to %.1f K' % opts['T_magma'])
 
+    # CALLIOPE's cold start and restarts draw from the global NumPy RNG: each call
+    # replays one seeded sequence, then the caller gets its state back (not thread-safe).
+    state = np.random.get_state()
+
     # Dispatch on planet.fO2_source. The two entry points share the
     # output-dict schema (volatile partial pressures, per-species reservoir
     # masses, elemental totals, atmospheric diagnostics) so downstream
@@ -426,24 +408,26 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 opt_solver=False,
             )
         else:
-            with _seeded_global_rng(RANDOM_SEED):
-                solvevol_result = equilibrium_atmosphere(
-                    target,
-                    opts,
-                    xtol=config.outgas.solver_atol,
-                    rtol=config.outgas.solver_rtol,
-                    atol=config.outgas.mass_thresh,
-                    nguess=config.outgas.calliope.nguess,
-                    nsolve=config.outgas.calliope.nsolve,
-                    p_guess=p_guess,
-                    p_guess_max=config.outgas.calliope.p_guess_max,
-                    print_result=False,
-                    opt_solver=False,
-                )
+            np.random.seed(RANDOM_SEED)
+            solvevol_result = equilibrium_atmosphere(
+                target,
+                opts,
+                xtol=config.outgas.solver_atol,
+                rtol=config.outgas.solver_rtol,
+                atol=config.outgas.mass_thresh,
+                nguess=config.outgas.calliope.nguess,
+                nsolve=config.outgas.calliope.nsolve,
+                p_guess=p_guess,
+                p_guess_max=config.outgas.calliope.p_guess_max,
+                print_result=False,
+                opt_solver=False,
+            )
     except RuntimeError as e:
         log.error('Outgassing calculation with CALLIOPE failed')
         UpdateStatusfile(dirs, 27)
         raise e
+    finally:
+        np.random.set_state(state)
 
     # Get result
     for k in expected_keys():
