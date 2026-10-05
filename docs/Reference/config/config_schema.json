@@ -2431,7 +2431,7 @@
           "value": 1
         }
       ],
-      "description": "Time at which migration begins [yr]. Must be > 1, since the initial condition, which spans Time <= 1, holds the configured orbit.",
+      "description": "Time at which migration begins [yr].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

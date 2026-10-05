@@ -161,10 +161,10 @@ from a target flux (`orbit.instellation_method = 'inst'`) is rejected at
 config load, since it would give the run a second starting orbit.
 
 A law writes only the orbital elements it sets: `instant` and `sigmoid` the
-semi-major axis, `high_ecc` both elements. `none`, and every law before
-`time_migration`, leave the orbit as the previous step left it. Only
-`high_ecc` evolves the eccentricity, so under the other laws it keeps the
-value seeded from `orbit.eccentricity`.
+semi-major axis, `high_ecc` the semi-major axis and the eccentricity. `none`,
+and every law before `time_migration`, leave the orbit as the previous step
+left it. Only
+`high_ecc` evolves the eccentricity.
 
 `sigmoid` holds the orbit until `time_migration`, carries it to `sma_final`
 over the following `tau_migration` along the cubic `3u^2 - 2u^3`, and holds

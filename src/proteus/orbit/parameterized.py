@@ -309,9 +309,10 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config) -> tuple[f
 
     Advance the orbit along the selected migration law. A law writes only the
     elements it sets: ``instant`` and ``sigmoid`` the semi-major axis,
-    ``high_ecc`` both elements. The static law and every law before
-    ``time_migration`` leave the row as it is, carrying the orbit seeded from
-    the config at the initial condition or set by the previous step.
+    ``high_ecc`` the semi-major axis and the eccentricity. The static law and
+    every law before ``time_migration`` leave the row as it is, carrying the
+    orbit seeded from the config at the initial condition or set by the
+    previous step.
 
     Parameters
     ----------

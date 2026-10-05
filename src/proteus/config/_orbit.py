@@ -271,7 +271,7 @@ class Parameterized:
     sma_final: float | None
         Final semi-major axis [AU].
     time_migration: float
-        Time at which migration begins [yr]. Must be > 1, since the initial condition, which spans Time <= 1, holds the configured orbit.
+        Time at which migration begins [yr].
     tau_migration: float
         Timescale of migration, used by the sigmoid and high_ecc laws [yr].
     """
