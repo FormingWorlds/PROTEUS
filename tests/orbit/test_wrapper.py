@@ -1374,3 +1374,55 @@ def test_run_orbit_without_sma_init_raises_the_named_error():
 
     assert excinfo.type is ValueError
     assert hf_row['semimajorax'] == pytest.approx(0.0106 * AU, rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# run_orbit: spin of a prescribed track, and the eccentric instellation inverse
+# ---------------------------------------------------------------------------
+
+
+def _run_two_parameterized_steps(axial_period_hours):
+    """Seed a high-eccentricity track at Time = 0, then step one tau past the
+    epoch, returning (orbital, axial) periods [s] at both steps."""
+    config = _make_parameterized_orbit_config('high_ecc', 0.029, 0.0106)
+    config.orbit.axial_period = axial_period_hours
+    hf_row = _parameterized_seed_hf_row()
+    hf_row['M_sat'] = 7.342e22  # read by the satellite period update on later steps
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(5)
+
+    run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+    first = (hf_row['orbital_period'], hf_row['axial_period'])
+
+    hf_row['Time'] = 1.0e6 + 1.0e7
+    interior_o.dt = 1.0e5
+    run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+    return first, (hf_row['orbital_period'], hf_row['axial_period'])
+
+
+@pytest.mark.physics_invariant
+def test_run_orbit_keeps_an_unset_spin_synchronous_on_a_prescribed_track():
+    """With axial_period unset the planet is tidally locked. A prescribed track
+    applies no torque to the spin, so the spin must follow the orbit it moves
+    to: one tau after the epoch the orbit has shrunk from 0.029 au and the day
+    must shorten with it rather than keep the first-step value."""
+    (p_orb_0, p_ax_0), (p_orb_1, p_ax_1) = _run_two_parameterized_steps(None)
+
+    assert p_ax_0 == pytest.approx(p_orb_0, rel=1e-12)
+    assert p_ax_1 == pytest.approx(p_orb_1, rel=1e-12)
+    # Discrimination: the orbit moved, so a spin frozen at its first value
+    # would sit far outside the tolerance above.
+    assert p_orb_1 < 0.5 * p_orb_0
+    assert abs(p_ax_1 - p_ax_0) > 0.5 * p_ax_0
+
+
+@pytest.mark.physics_invariant
+def test_run_orbit_keeps_a_configured_spin_on_a_prescribed_track():
+    """A configured axial period is the user's choice, not a lock to the
+    orbit, so it is held while the prescribed orbit shrinks."""
+    (p_orb_0, p_ax_0), (p_orb_1, p_ax_1) = _run_two_parameterized_steps(24.0)
+
+    assert p_ax_0 == pytest.approx(24.0 * 3600.0, rel=1e-12)
+    assert p_ax_1 == pytest.approx(24.0 * 3600.0, rel=1e-12)
+    assert p_orb_1 < 0.5 * p_orb_0  # the orbit did move

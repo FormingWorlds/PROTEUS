@@ -429,6 +429,14 @@ def run_orbit(
         # Update orbital period, from independent variables above
         update_period(hf_row)
 
+        # A prescribed track moves the orbit with no torque on the spin, so
+        # an unset axial period stays locked to the orbit it now has
+        if (
+            config.orbit.star_planet_model == 'parameterized'
+            and config.orbit.axial_period is None
+        ):
+            hf_row['axial_period'] = hf_row['orbital_period']
+
         # Update satellite orbital period, from independent variables above
         update_period_sat(hf_row)
 
