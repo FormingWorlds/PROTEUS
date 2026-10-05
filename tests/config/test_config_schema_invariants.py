@@ -1244,8 +1244,10 @@ def test_parameterized_requires_both_endpoints_for_a_migrating_law(
     which is after the structure solve and the first interior step."""
     from proteus.config._orbit import Parameterized
 
-    with pytest.raises(ValueError, match='requires both'):
+    with pytest.raises(ValueError, match='requires both') as excinfo:
         Parameterized(migration=migration, sma_init=sma_init, sma_final=sma_final)
+    # The message names the law, so the user knows which setting asked for both.
+    assert repr(migration) in str(excinfo.value)
 
 
 @pytest.mark.parametrize(
@@ -1297,3 +1299,7 @@ def test_parameterized_allows_outward_migration_for_the_direction_free_laws(migr
     params = Parameterized(migration=migration, sma_init=0.8, sma_final=2.0)
 
     assert params.sma_final > params.sma_init
+    # The same endpoints are refused for high_ecc, so the acceptance above is
+    # specific to the direction-free laws.
+    with pytest.raises(ValueError, match='inward only'):
+        Parameterized(migration='high_ecc', sma_init=0.8, sma_final=2.0)
