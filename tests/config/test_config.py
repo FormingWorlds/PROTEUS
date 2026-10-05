@@ -2997,6 +2997,21 @@ def test_orbit_parameterized_rejects_non_positive_migration_times(bad_val):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('bad_val', [0.5, 1.0], ids=['inside_init', 'at_init_edge'])
+def test_orbit_parameterized_epoch_lies_after_the_initial_condition(bad_val):
+    """The initial condition spans Time <= 1 yr and holds the configured
+    orbit, so an epoch inside it would put the first step after it off the
+    track. The epoch must therefore exceed 1 yr; just above is accepted."""
+    from proteus.config._orbit import Parameterized
+
+    with pytest.raises(ValueError, match='time_migration'):
+        Parameterized(time_migration=bad_val)
+
+    accepted = Parameterized(time_migration=1.5)
+    assert accepted.time_migration == pytest.approx(1.5, rel=1e-12)
+
+
+@pytest.mark.unit
 def test_orbit_parameterized_final_semimajor_axis_is_optional_but_positive():
     """The destination defaults to None so a config that never selects the
     prescribed track needs no migration geometry, while a supplied value

@@ -53,8 +53,9 @@ Anti-happy-path coverage:
 - Direction: ``instant`` and ``sigmoid`` are exercised outward
   (``sma_final > sma_init``) as well as inward, since both are
   reachable configurations. ``high_ecc`` is inward only and is
-  asserted to refuse the outward case at both the law and the
-  wrapper level.
+  asserted to refuse the outward case at the law level and, from
+  ``time_migration`` on, at the wrapper level; before the epoch the
+  config validator is what refuses it.
 - Error contract: a non-positive ``tau_mig`` raises, a missing
   ``sma_final`` is named rather than failing inside
   the unit conversion, outward high-eccentricity migration raises,
@@ -690,14 +691,16 @@ def test_wrapper_keeps_an_eccentricity_the_law_does_not_set(migration, time_yr):
     assert abs(excited['eccentricity'] - 0.3) > 0.1
 
 
-def test_wrapper_rejects_a_null_migration_setting():
+@pytest.mark.parametrize('time_yr', [0.5 * T_MIG, 1.0e6], ids=['before_epoch', 'after_epoch'])
+def test_wrapper_rejects_a_null_migration_setting(time_yr):
     """``migration=None`` is not a regime and is reported rather than
-    silently leaving the orbit at whatever hf_row already held. The row
-    must come back untouched, so a caller that swallows the error does
-    not go on to integrate a half-written orbit. This is an
-    error-contract test, so it asserts the contract and the absence of a
-    side effect rather than a physical invariant."""
-    hf_row = {'Time': 1.0e6}
+    silently leaving the orbit at whatever hf_row already held, also before
+    the epoch, where every valid law leaves the row alone. The row must come
+    back untouched, so a caller that swallows the error does not go on to
+    integrate a half-written orbit. This is an error-contract test, so it
+    asserts the contract and the absence of a side effect rather than a
+    physical invariant."""
+    hf_row = {'Time': time_yr}
 
     with pytest.raises(ValueError) as excinfo:
         run_parameterized_orbital_migration(hf_row, _config(None))
@@ -712,12 +715,17 @@ def test_wrapper_rejects_a_null_migration_setting():
 
 @pytest.mark.physics_invariant
 def test_wrapper_rejects_an_unrecognised_migration_setting():
-    """An unrecognised regime is reported. Config validation blocks this
-    upstream, so the path is reachable only by calling the function
+    """An unrecognised regime is reported, before the epoch as well as after
+    it, and ahead of the missing-destination check. Config validation blocks
+    this upstream, so the path is reachable only by calling the function
     directly. A recognised regime on the same row is asserted alongside,
     so a wrapper that rejected every regime would also fail."""
     with pytest.raises(ValueError, match='Unknown migration option'):
         run_parameterized_orbital_migration({'Time': 1.0e6}, _config('bogus'))
+    early = _row(0.5 * T_MIG)
+    with pytest.raises(ValueError, match='Unknown migration option'):
+        run_parameterized_orbital_migration(early, _config('bogus', sma_final=None))
+    assert early == _row(0.5 * T_MIG)
 
     hf_row = _row(1.0e6)
     a, e = run_parameterized_orbital_migration(hf_row, _config('instant'))

@@ -1366,6 +1366,28 @@ def test_run_orbit_keeps_an_unset_spin_synchronous_on_a_prescribed_track():
 
 
 @pytest.mark.physics_invariant
+@pytest.mark.parametrize('time_yr', [0.0, 1.0], ids=['init_loops', 'first_unit_step'])
+def test_run_orbit_does_not_evaluate_the_track_at_the_initial_condition(time_yr):
+    """The initial condition spans Time <= 1 yr and holds the configured orbit
+    whatever the track says. The epoch is put at 0.5 yr here, below the bound
+    the config enforces, so an instant track evaluated there by any code path
+    would move the planet to 0.0106 au, a factor 2.74 inside the seed."""
+    config = _make_parameterized_orbit_config('instant', 0.029, 0.0106)
+    config.orbit.parameterized.time_migration = 0.5
+    hf_row = _parameterized_seed_hf_row()
+    hf_row['Time'] = time_yr
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(5)
+
+    run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    assert hf_row['semimajorax'] == pytest.approx(0.029 * AU, rel=1e-12)
+    assert abs(hf_row['semimajorax'] - 0.0106 * AU) > 0.01 * AU
+    assert 'dEdt_orb' not in hf_row
+
+
+@pytest.mark.physics_invariant
 def test_run_orbit_keeps_the_spin_synchronous_under_sp0d():
     """sp0d evolves a and e but no spin, so the planet stays locked to the
     orbit it moves to, as on a prescribed track. The orbit step is replaced by

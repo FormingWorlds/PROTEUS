@@ -271,7 +271,7 @@ class Parameterized:
     sma_final: float | None
         Final semi-major axis [AU].
     time_migration: float
-        Time at which migration begins [yr].
+        Time at which migration begins [yr]. Must be > 1, since the initial condition, which spans Time <= 1, holds the configured orbit.
     tau_migration: float
         Timescale of migration, used by the sigmoid and high_ecc laws [yr].
     """
@@ -281,7 +281,7 @@ class Parameterized:
     migration: str = field(
         default='none', validator=in_(('none', 'instant', 'sigmoid', 'high_ecc'))
     )
-    time_migration: float = field(default=1e6, validator=gt(0))
+    time_migration: float = field(default=1e6, validator=gt(1))
     tau_migration: float = field(default=1e9, validator=gt(0))
 
     def __attrs_post_init__(self):

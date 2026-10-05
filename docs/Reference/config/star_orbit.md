@@ -141,7 +141,7 @@ Prescribed migration track used by the `parameterized` star-planet model.
 |---|---|---|---|
 | `sma_final` | float or none | `none` | Final semi-major axis \[AU\]. Must be > 0. |
 | `migration` | str | `"none"` | Type of orbital migration to apply. Choices: `"none"`, `"instant"`, `"sigmoid"`, `"high_ecc"`. |
-| `time_migration` | float | `1000000.0` | Time at which migration begins \[yr\]. Must be > 0. |
+| `time_migration` | float | `1000000.0` | Time at which migration begins \[yr\]. Must be > 1, since the initial condition, which spans Time <= 1, holds the configured orbit. Must be > 1. |
 | `tau_migration` | float | `1000000000.0` | Timescale of migration, used by the sigmoid and high_ecc laws \[yr\]. Must be > 0. |
 <!-- END GENERATED: config-table [orbit.parameterized] -->
 

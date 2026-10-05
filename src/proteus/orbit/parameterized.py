@@ -271,6 +271,8 @@ def update_orbital_energy_rate(hf_row: dict, config: Config) -> float:
     """
     Write the orbital energy rate of the prescribed track to ``hf_row['dEdt_orb']``.
 
+    The track runs from ``orbit.semimajoraxis`` to ``orbit.parameterized.sma_final``.
+
     Parameters
     ----------
     hf_row : dict
@@ -330,7 +332,6 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config) -> tuple[f
     migration = config.orbit.parameterized.migration
     t_mig = config.orbit.parameterized.time_migration
     tau_mig = config.orbit.parameterized.tau_migration
-    sma_i, sma_f = track_endpoints(config)
 
     if migration not in ('none', 'instant', 'sigmoid', 'high_ecc'):
         # Defensive: the config validator already restricts migration to the
@@ -339,6 +340,7 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config) -> tuple[f
             f'Unknown migration option: {migration!r}. '
             'Expected "none", "instant", "sigmoid" or "high_ecc".'
         )
+    sma_i, sma_f = track_endpoints(config)
 
     # Time step
     current_time = float(hf_row['Time'])

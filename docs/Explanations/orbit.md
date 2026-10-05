@@ -131,16 +131,15 @@ spectrum in `tides_o`).
     together as one system, exchanging angular momentum internally.
 
 `sp0d` and `sp1d` integrate with `scipy.solve_ivp` (`orbit.solver.*` controls
-method and tolerances). `parameterized` solves nothing: it updates the semi-major 
-axis and eccentricity throughout the simulation based on input parameters chosen
-by the user.
+method and tolerances). `parameterized` solves nothing: after `time_migration` it sets the orbit from a
+closed form in time, with parameters chosen by the user.
 
 ??? note "parameterized in a nutshell"
     The other two star-planet models derive the orbit from a tidal
     torque. This parameterized one imposes one instead, and does not compute 
     any physics. The user chooses where the planet starts, where it ends up, 
-    when the migration happens and how long it takes. The orbit is evaluated 
-    at each time step from that closed form. It is the right tool to use when 
+    when the migration happens and how long it takes. After `time_migration`
+    the orbit follows that closed form. It is the right tool to use when 
     testing the influence of a migration history in a simulation without 
     computing any tidal forces, for instance when asking how an atmosphere 
     responds to a prescribed change in instellation.
@@ -156,7 +155,8 @@ Configured under `[orbit.parameterized]`:
 
 The track starts from `a_0 = orbit.semimajoraxis` and `orbit.eccentricity`,
 which seed the orbit at the initial condition as for every other star-planet
-model; the track is evaluated from the first step after it. Setting the orbit
+model; the track is evaluated from the first step after it. The initial
+condition spans `Time <= 1` yr, so `time_migration` must be greater than 1 yr. Setting the orbit
 from a target flux (`orbit.instellation_method = 'inst'`) is rejected at
 config load, since it would give the run a second starting orbit.
 

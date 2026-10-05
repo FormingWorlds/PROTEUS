@@ -153,7 +153,8 @@ def parameterized_high_ecc_inward(instance, attribute, value):
     """
     params = instance.orbit.parameterized
     if (
-        params.migration == 'high_ecc'
+        instance.orbit.star_planet_model == 'parameterized'
+        and params.migration == 'high_ecc'
         and params.sma_final is not None
         and params.sma_final > instance.orbit.semimajoraxis
     ):

@@ -992,12 +992,42 @@ def test_spinless_orbit_rejects_a_configured_axial_period(model):
 @pytest.mark.parametrize('model', [None, 'sp1d'], ids=['no_orbit_model', 'sp1d'])
 def test_spinless_orbit_allows_a_configured_spin_where_it_means_something(model):
     """Positive counterpart: sp1d evolves the spin from its configured start,
-    and a static orbit holds it, so both keep a configured axial period."""
+    and a static orbit holds it, so both keep a configured axial period. The
+    same day length under sp0d is refused, so the rule tells the models apart."""
     instance = _make_config_instance(
         **{'orbit.star_planet_model': model, 'orbit.axial_period': 24.0}
     )
     assert spinless_orbit_keeps_spin_synchronous(instance, None, None) is None
-    assert instance.orbit.axial_period == pytest.approx(24.0, rel=1e-12)
+
+    instance.orbit.star_planet_model = 'sp0d'
+    with pytest.raises(ValueError, match='evolves no spin'):
+        spinless_orbit_keeps_spin_synchronous(instance, None, None)
+
+
+def test_spinless_orbit_rule_is_enforced_on_config_load(tmp_path):
+    """The spin rule is registered on the Config: a prescribed track with a
+    fixed day length is refused at load, the same file with the spin unset
+    loads, and a fixed day length without a star-planet model loads."""
+    from pathlib import Path
+
+    base = (Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml').read_text()
+
+    def _write(name, orbit_lines):
+        path = tmp_path / f'{name}.toml'
+        path.write_text(base.replace('[orbit]\n', '[orbit]\n' + orbit_lines, 1))
+        return path
+
+    track = '    star_planet_model = "parameterized"\n'
+    with pytest.raises(ValueError, match='evolves no spin'):
+        read_config_object(_write('fixed', track + '    axial_period = 24.0\n'))
+
+    locked = read_config_object(_write('locked', track + '    axial_period = "none"\n'))
+    assert locked.orbit.star_planet_model == 'parameterized'
+    assert locked.orbit.axial_period is None
+
+    static = read_config_object(_write('static', '    axial_period = 24.0\n'))
+    assert static.orbit.star_planet_model is None
+    assert static.orbit.axial_period == pytest.approx(24.0, rel=1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -1323,6 +1353,7 @@ def _high_ecc_instance(migration, semimajoraxis, sma_final):
 
     return _make_config_instance(
         **{
+            'orbit.star_planet_model': 'parameterized',
             'orbit.semimajoraxis': semimajoraxis,
             'orbit.parameterized': Parameterized(migration=migration, sma_final=sma_final),
         }
@@ -1349,6 +1380,10 @@ def test_parameterized_rejects_an_outward_high_eccentricity_track():
         parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 2.0, 2.0), None, None)
         is None
     )
+    # Boundary: one part in a million outward is already refused, which a
+    # rule with any slack factor on the start would let through.
+    with pytest.raises(ValueError, match='inward only'):
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 2.0, 2.000002), None, None)
 
 
 @pytest.mark.parametrize(
@@ -1369,6 +1404,24 @@ def test_parameterized_allows_outward_migration_for_the_direction_free_laws(migr
         parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 0.8, 2.0), None, None)
 
 
+@pytest.mark.parametrize(
+    'model', [None, 'sp0d', 'sp1d'], ids=['no_orbit_model', 'sp0d', 'sp1d']
+)
+def test_parameterized_high_ecc_direction_is_silent_for_other_models(model):
+    """The block is read only by the parameterized model, so a leftover
+    outward high_ecc block under another star-planet model is not refused,
+    while the same block under parameterized is."""
+    instance = _high_ecc_instance('high_ecc', 0.8, 2.0)
+    instance.orbit.star_planet_model = model
+
+    assert parameterized_high_ecc_inward(instance, None, None) is None
+    assert instance.orbit.parameterized.sma_final > instance.orbit.semimajoraxis
+
+    instance.orbit.star_planet_model = 'parameterized'
+    with pytest.raises(ValueError, match='inward only'):
+        parameterized_high_ecc_inward(instance, None, None)
+
+
 def test_parameterized_high_ecc_direction_is_enforced_on_config_load(tmp_path):
     """The direction rule is registered on the Config, so an outward
     high_ecc track in a real file is refused at load, and the inward one
@@ -1380,7 +1433,7 @@ def test_parameterized_high_ecc_direction_is_enforced_on_config_load(tmp_path):
     def _write(sma_final):
         path = tmp_path / f'track_{sma_final}.toml'
         path.write_text(
-            base
+            base.replace('[orbit]\n', '[orbit]\n    star_planet_model = "parameterized"\n', 1)
             + '\n[orbit.parameterized]\nmigration = "high_ecc"\n'
             + f'sma_final = {sma_final}\n'
         )
@@ -1390,5 +1443,6 @@ def test_parameterized_high_ecc_direction_is_enforced_on_config_load(tmp_path):
         read_config_object(_write(2.0))
 
     cfg = read_config_object(_write(0.5))
+    assert cfg.orbit.star_planet_model == 'parameterized'
     assert cfg.orbit.parameterized.sma_final == pytest.approx(0.5, rel=1e-12)
     assert cfg.orbit.parameterized.sma_final < cfg.orbit.semimajoraxis

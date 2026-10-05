@@ -2428,10 +2428,10 @@
       "bounds": [
         {
           "op": ">",
-          "value": 0
+          "value": 1
         }
       ],
-      "description": "Time at which migration begins [yr].",
+      "description": "Time at which migration begins [yr]. Must be > 1, since the initial condition, which spans Time <= 1, holds the configured orbit.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11269,7 +11269,8 @@
       ],
       "touches": [
         "orbit.parameterized",
-        "orbit.semimajoraxis"
+        "orbit.semimajoraxis",
+        "orbit.star_planet_model"
       ],
       "doc": "The high-eccentricity law circularises at fixed orbital angular momentum, which can only shrink the orbit, so its final semi-major axis must not exceed the initial one, orbit.semimajoraxis."
     },
