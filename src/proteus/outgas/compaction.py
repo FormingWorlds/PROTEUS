@@ -97,7 +97,7 @@ BRANCH_REMELT = 7  # remelting: trapped mass released with the solid that remelt
 class FrontGeometry:
     """The freezing front located on the interior mesh at one instant."""
 
-    index: np.ndarray  # staggered-node indices spanning the front
+    index: np.ndarray  # node indices spanning the front
     r_top: float  # radius where the melt fraction crosses rfront_loc [m]
     r_base: float  # radius where the porosity falls to phi_min [m]
     thickness: float  # r_top - r_base [m]

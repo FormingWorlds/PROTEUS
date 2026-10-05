@@ -1277,6 +1277,13 @@ class Interior_t:
         self.pres = np.zeros(self.nlev_s)  # Pressure [Pa]
         self.temp = np.zeros(self.nlev_s)  # Temperature [K]
 
+        # Basic-node profiles, length N+1, written by the aragog interior only.
+        self.phi_b = None  # Melt fraction.
+        self.rho_b = None  # Mixture density [kg m-3]
+        self.rho_solid_b = None  # Solid density at the phase boundary [kg m-3]
+        self.rho_melt_b = None  # Melt density at the phase boundary [kg m-3]
+        self.g_b = None  # Gravitational acceleration [m s-2]
+
     def _load_ps_table(self, spider_dir: str, eos_dir: str, filename: str) -> np.ndarray | None:
         """Load a SPIDER-format P-S lookup table.
 

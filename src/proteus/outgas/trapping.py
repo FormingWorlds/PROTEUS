@@ -459,62 +459,6 @@ def _move(hf_row: dict, name: str, mass: float) -> None:
 SECS_PER_YEAR = 3.15576e7  # Julian year, matching the interior solver's step length
 
 
-def _phase_densities(interior_o, pressure: np.ndarray):
-    """End-member densities at the node pressures [kg m-3], or ``None``.
-
-    Read from the interior solver's own equation of state so the porosity and
-    the density contrast are the ones the solver itself would compute. Uses a
-    private lookup because the solver does not yet expose a public accessor;
-    returns ``None`` when the solver or its EOS is absent, which is every
-    backend other than aragog.
-    """
-    solver = getattr(interior_o, 'aragog_solver', None)
-    # The entropy solver holds its equation of state as ``entropy_eos``. The
-    # bare ``eos`` name belongs to an unrelated root-finding helper in the same
-    # module, so both are tried rather than assuming either.
-    eos = getattr(solver, 'entropy_eos', None) or getattr(solver, 'eos', None)
-    lookup = getattr(eos, '_lookup_at_phase_boundary', None)
-    if lookup is None:
-        log.warning(
-            'Trapping: no phase-boundary lookup on the interior solver '
-            '(solver=%s, eos=%s), so the drainage integral cannot run and the '
-            'step buries at the crystal partition coefficients alone.',
-            type(solver).__name__ if solver is not None else None,
-            type(eos).__name__ if eos is not None else None,
-        )
-        return None
-    try:
-        rho_s = np.asarray(lookup('density', pressure, 'solid'), dtype=float).ravel()
-        rho_l = np.asarray(lookup('density', pressure, 'melt'), dtype=float).ravel()
-    except Exception as exc:
-        log.warning(
-            'Phase-boundary densities unavailable (%s); trapping buries at the '
-            'crystal partition coefficients alone this step.',
-            exc,
-        )
-        return None
-    if rho_s.shape != rho_l.shape or not np.all(np.isfinite(rho_s + rho_l)):
-        log.warning(
-            'Trapping: phase-boundary densities are inconsistent or non-finite '
-            '(shapes %s and %s), so the step buries at the crystal partition '
-            'coefficients alone.',
-            rho_s.shape,
-            rho_l.shape,
-        )
-        return None
-    return rho_s, rho_l
-
-
-def _staggered_radii(radius: np.ndarray, n_stag: int) -> np.ndarray:
-    """Midpoints of the basic mesh, which is where the staggered fields live."""
-    r = np.asarray(radius, dtype=float).ravel()
-    if r.size == n_stag:
-        return r
-    if r.size == n_stag + 1:
-        return 0.5 * (r[:-1] + r[1:])
-    return r[:n_stag]
-
-
 def _usable_gravity(values, n: int) -> np.ndarray | None:
     """``values`` as ``n`` finite, positive accelerations [m s-2], else ``None``."""
     if values is None:
@@ -527,28 +471,42 @@ def _usable_gravity(values, n: int) -> np.ndarray | None:
     return g
 
 
-def _node_gravity(interior_o, r_stag: np.ndarray) -> np.ndarray | None:
-    """Gravitational acceleration on the staggered nodes [m s-2], or ``None``.
+def _basic_profiles(interior_o) -> tuple[np.ndarray, ...] | None:
+    """The interior solver's basic-node profiles the front drains with, or ``None``.
 
-    The interior solver's own per-node values come first, so the front drains
-    under the gravity the thermal evolution uses. With a Zalmoxis structure
-    they are its radial profile interpolated onto the solver's nodes, or its
-    surface value everywhere when ``scalar_gravity_override`` flattens that
-    profile on purpose. The structure profile the solver was built from is the
-    fallback, interpolated here. Both are read from solver internals that have
-    no public accessor yet.
+    Radius [m], melt fraction [1], mixture density, solid and melt densities at
+    the phase boundary [kg m-3], and gravity [m s-2], each at the N+1 basic
+    nodes from the core-mantle boundary up. Aragog writes them on every step
+    (``SolverOutput.phi_basic``, ``rho_basic``, ``rho_solid_b``, ``rho_melt_b``,
+    ``g_b``); the gravity is ``None`` when unusable, and the rest returns
+    ``None`` when absent, mis-sized or non-finite, which no backend but aragog
+    supplies.
     """
-    solver = getattr(interior_o, 'aragog_solver', None)
-    phase = getattr(getattr(solver, 'state', None), 'phase_staggered', None)
-    g = _usable_gravity(getattr(phase, '_g', None), r_stag.size)
-    if g is not None:
-        return g
-    mesh = getattr(getattr(solver, 'parameters', None), 'mesh', None)
-    r_eos = np.asarray(getattr(mesh, 'eos_radius', []), dtype=float).ravel()
-    g_eos = np.asarray(getattr(mesh, 'eos_gravity', []), dtype=float).ravel()
-    if r_eos.size > 1 and r_eos.size == g_eos.size and np.all(np.diff(r_eos) > 0.0):
-        return _usable_gravity(np.interp(r_stag, r_eos, g_eos), r_stag.size)
-    return None
+    radius = np.asarray(getattr(interior_o, 'radius', []), dtype=float).ravel()
+    fields = [getattr(interior_o, name, None) for name in _BASIC_FIELDS]
+    arrays = [np.asarray(f, dtype=float).ravel() if f is not None else None for f in fields]
+    usable = radius.size > 1 and all(
+        a is not None and a.size == radius.size and np.all(np.isfinite(a)) for a in arrays
+    )
+    if not usable:
+        log.warning(
+            'Trapping: the interior basic-node profiles needed to locate a freezing '
+            'front are unavailable (radius %d nodes; %s), so the step buries at the '
+            'crystal partition coefficients alone. The drainage integral needs an '
+            'aragog interior.',
+            radius.size,
+            ', '.join(
+                f'{name} {"absent" if a is None else a.size}'
+                for name, a in zip(_BASIC_FIELDS, arrays)
+            ),
+        )
+        return None
+    gravity = _usable_gravity(getattr(interior_o, 'g_b', None), radius.size)
+    return (radius, *arrays, gravity)
+
+
+# Basic-node fields of the interior state, besides the radius and the gravity.
+_BASIC_FIELDS = ('phi_b', 'rho_b', 'rho_solid_b', 'rho_melt_b')
 
 
 def _drainage_fraction(
@@ -560,36 +518,18 @@ def _drainage_fraction(
     available, so the caller can bury at the crystal partition coefficients alone.
     """
     tr = config.outgas
-    phi_solver = np.asarray(getattr(interior_o, 'phi', None), dtype=float).ravel()
-    rho = np.asarray(getattr(interior_o, 'density', None), dtype=float).ravel()
-    pres = np.asarray(getattr(interior_o, 'pres', None), dtype=float).ravel()
-    radius = getattr(interior_o, 'radius', None)
-    if phi_solver.size == 0 or rho.size != phi_solver.size or radius is None:
-        log.warning(
-            'Trapping: the interior profiles needed to locate a freezing front '
-            'are unavailable (phi %d, density %d, radius %s), so the step buries '
-            'at the crystal partition coefficients alone. The drainage integral '
-            'needs an aragog interior; no other backend supplies these.',
-            phi_solver.size,
-            rho.size,
-            'absent' if radius is None else str(np.asarray(radius).size),
-        )
+    profiles = _basic_profiles(interior_o)
+    if profiles is None:
         return None
-    densities = _phase_densities(interior_o, pres)
-    if densities is None:
-        return None
-    rho_s, rho_l = densities
+    radius, phi_b, rho_b, rho_s, rho_l, g_b = profiles
 
-    porosity = porosity_from_densities(rho, rho_s, rho_l, phi_solver)
-    r_stag = _staggered_radii(radius, phi_solver.size)
-    # The basic mesh starts at the core-mantle boundary, the base of a front
-    # that is still porous at the lowest staggered node.
-    r_basic = np.asarray(radius, dtype=float).ravel()
-    r_floor = float(r_basic.min()) if r_basic.size == phi_solver.size + 1 else None
+    porosity = porosity_from_densities(rho_b, rho_s, rho_l, phi_b)
+    # The lowest basic node is the core-mantle boundary, the base of a front that
+    # is still porous there.
     rfront_loc = critical_melt_fraction(config)
     geom, branch = locate_front(
-        r_stag,
-        phi_solver,
+        radius,
+        phi_b,
         porosity,
         rho_s,
         rho_l,
@@ -597,7 +537,6 @@ def _drainage_fraction(
         phi_min=float(tr.trap_phi_min),
         n_front_min=int(tr.trap_n_front_min),
         max_front_fraction=float(tr.trap_max_front_fraction),
-        r_floor=r_floor,
     )
     if geom is None:
         return TrappingStep(
@@ -617,16 +556,15 @@ def _drainage_fraction(
     mush_visc = 10.0 ** (mush_log10 if mush_log10 > 0.0 else DEFAULT_MUSH_LOG10VISC)
     # Gravity averaged over the front nodes, like the density contrast: a front
     # near the core-mantle boundary sits well below the surface value.
-    g_nodes = _node_gravity(interior_o, r_stag)
-    if g_nodes is None:
+    if g_b is None:
         gravity = float(hf_row.get('gravity', 0.0))
         log.warning(
-            'Trapping: the interior solver carries no usable per-node gravity, so '
+            'Trapping: the interior solver carries no usable basic-node gravity, so '
             'the front drains under the surface gravity %.3f m/s2.',
             gravity,
         )
     else:
-        gravity = float(np.mean(g_nodes[geom.index]))
+        gravity = float(np.mean(g_b[geom.index]))
 
     step = TrappingStep(
         mode='front',

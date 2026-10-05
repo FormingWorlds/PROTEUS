@@ -155,60 +155,44 @@ def fixed_front():
         yield mocked
 
 
-# Interior-solver profile for the drainage path: 40 uniform cells from a
-# core-mantle boundary at 3500 km to a surface at 6300 km, with end-member
-# densities 4000 and 3600 kg/m3 at every pressure.
-_N_STAG = 40
+# Interior-solver profile for the drainage path: 41 uniform basic nodes from a
+# core-mantle boundary at 3500 km to a surface at 6300 km, with phase-boundary
+# densities 4000 and 3600 kg/m3 at every node.
+_N_BASIC = 41
 _R_CMB = 3.5e6
 _R_SURF = 6.3e6
 _RHO_SOLID = 4000.0
 _RHO_MELT = 3600.0
 
 
-class _PhaseBoundaryEOS:
-    """Equation-of-state double returning fixed end-member densities."""
-
-    def _lookup_at_phase_boundary(self, prop, pressure, phase):
-        if prop != 'density':
-            raise KeyError(prop)
-        rho = _RHO_SOLID if phase == 'solid' else _RHO_MELT
-        return np.full(np.shape(pressure), rho)
-
-
 def _aragog_interior(
-    phi_stag: np.ndarray,
+    phi_b: np.ndarray,
     porosity: np.ndarray | None = None,
     gravity: float | np.ndarray | None = 9.8,
-    structure: tuple[np.ndarray, np.ndarray] | None = None,
+    rho_melt: float | np.ndarray = _RHO_MELT,
 ) -> SimpleNamespace:
-    """Interior double carrying the profiles the drainage integral reads.
+    """Interior double carrying the basic-node profiles the drainage integral reads.
 
-    The mixture density follows the lever rule on ``porosity``, so the
-    porosity read back from it is exactly that; it defaults to the solver melt
-    fraction. The equation of state sits under ``entropy_eos``, the attribute
-    the entropy solver uses; a lookup through the unrelated ``eos`` name finds
-    nothing and buries at the crystal partition coefficients alone. ``gravity`` is the solver's
-    per-node value on the staggered nodes (``state.phase_staggered._g``), and
-    ``structure`` the radius and gravity columns of the structure profile the
-    solver was built from (``parameters.mesh.eos_radius`` and ``eos_gravity``).
+    These are the arrays the aragog interior stores from its solver output on
+    every step (``phi_basic``, ``rho_basic``, ``rho_solid_b``, ``rho_melt_b``,
+    ``g_b``). The mixture density follows the lever rule on ``porosity``, so the
+    porosity read back from it is exactly that; it defaults to the melt
+    fraction. ``gravity`` of ``None`` leaves the solver's gravity unset.
     """
-    phi_stag = np.asarray(phi_stag, dtype=float)
-    por = phi_stag if porosity is None else np.asarray(porosity, dtype=float)
-    solver = SimpleNamespace(entropy_eos=_PhaseBoundaryEOS())
+    phi_b = np.asarray(phi_b, dtype=float)
+    por = phi_b if porosity is None else np.asarray(porosity, dtype=float)
+    rho_s = np.full(_N_BASIC, _RHO_SOLID)
+    rho_l = np.broadcast_to(np.asarray(rho_melt, dtype=float), (_N_BASIC,)).copy()
+    g_b = None
     if gravity is not None:
-        g_stag = np.broadcast_to(np.asarray(gravity, dtype=float), (_N_STAG,)).copy()
-        solver.state = SimpleNamespace(phase_staggered=SimpleNamespace(_g=g_stag))
-    if structure is not None:
-        eos_radius, eos_gravity = structure
-        solver.parameters = SimpleNamespace(
-            mesh=SimpleNamespace(eos_radius=eos_radius, eos_gravity=eos_gravity)
-        )
+        g_b = np.broadcast_to(np.asarray(gravity, dtype=float), (_N_BASIC,)).copy()
     return SimpleNamespace(
-        phi=phi_stag,
-        density=_RHO_SOLID - por * (_RHO_SOLID - _RHO_MELT),
-        pres=np.linspace(1.3e11, 1.0e5, _N_STAG),
-        radius=np.linspace(_R_CMB, _R_SURF, _N_STAG + 1),
-        aragog_solver=solver,
+        radius=np.linspace(_R_CMB, _R_SURF, _N_BASIC),
+        phi_b=phi_b,
+        rho_b=rho_s - por * (rho_s - rho_l),
+        rho_solid_b=rho_s,
+        rho_melt_b=rho_l,
+        g_b=g_b,
     )
 
 
@@ -906,13 +890,15 @@ def _reservoir_sums(hf_row: dict) -> dict[str, float]:
 @pytest.mark.physics_invariant
 def test_a_front_resting_on_the_core_mantle_boundary_is_drained_not_bounded(caplog):
     """A mantle crystallising from the bottom up is still porous at its lowest
-    node, so its front rests on the core-mantle boundary. The step integrates
-    the drainage over that front instead of taking the no-drainage upper
-    bound, measures the front from the boundary rather than from the lowest
-    node, and conserves every element it moves from the melt into the solid."""
-    # Melt fraction 0.30 at the lowest node rising to 1 at the surface. The
-    # front spans nodes 0 to 11 and its top crosses 0.5 at 11.14 spacings.
-    phi_stag = np.linspace(0.30, 1.0, _N_STAG)
+    node, which on the basic mesh is the core-mantle boundary itself, so its
+    front rests on that boundary. The step integrates the drainage over that
+    front instead of taking the no-drainage upper bound, measures the front
+    from the boundary, and conserves every element it moves from the melt into
+    the solid."""
+    # Melt fraction 0.30 at the boundary rising to 1 at the surface. The front
+    # spans nodes 0 to 11 and its top crosses 0.5 at 40 * 0.2 / 0.7 = 11.43
+    # spacings of 70 km, 800 km above the boundary.
+    phi_b = np.linspace(0.30, 1.0, _N_BASIC)
     # The solid mantle grows by the 2e23 kg crystallised over the 1e4 yr step.
     hf_row = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
     before = _reservoir_sums(hf_row)
@@ -921,22 +907,22 @@ def test_a_front_resting_on_the_core_mantle_boundary_is_drained_not_bounded(capl
             _drainage_config(),
             hf_row,
             _hf_all(M_mantle_solid=2.2e24),
-            _aragog_interior(phi_stag),
+            _aragog_interior(phi_b),
         )
 
     # Percolation-limited: the matrix closes in about 1 kyr, the melt needs
-    # about 40 kyr to percolate out of an 815 km front.
+    # about 40 kyr to percolate out of an 800 km front.
     assert step.branch == BRANCH_DARCY
     assert step.tau_d > 10.0 * step.tau_s
     assert step.guard_reason == ''
     assert step.n_front == 12
     assert not any('could not be integrated' in rec.getMessage() for rec in caplog.records)
 
-    # Thickness from the boundary at 3500 km, not from the lowest node 35 km
-    # above it, which would give 780 km instead of 815 km.
-    dr = (_R_SURF - _R_CMB) / _N_STAG
-    thickness = dr * (0.2 * 39.0 / 0.7 + 0.5)
+    # Thickness from the boundary at 3500 km to the interpolated crossing.
+    dr = (_R_SURF - _R_CMB) / (_N_BASIC - 1)
+    thickness = dr * 0.2 * 40.0 / 0.7
     assert step.l_front == pytest.approx(thickness, rel=1e-9)
+    assert thickness == pytest.approx(8.0e5, rel=1e-12)
     # v_f dt / L with the new solid spread over the boundary sphere; the time
     # step cancels, leaving dM / (4 pi r_cmb^2 rho_s L).
     courant = 2.0e23 / (4.0 * np.pi * _R_CMB**2 * _RHO_SOLID * thickness)
@@ -947,7 +933,7 @@ def test_a_front_resting_on_the_core_mantle_boundary_is_drained_not_bounded(capl
 
     # The drained fraction is positive and well below the no-drainage bound
     # taken from the entry porosity, 0.471 as a mass fraction.
-    bound = volume_to_mass_fraction(phi_stag[11], _RHO_MELT, _RHO_SOLID)
+    bound = volume_to_mass_fraction(phi_b[11], _RHO_MELT, _RHO_SOLID)
     assert 0.0 < step.f_tl < 0.9 * bound
 
     # Conservation: each element only moved between reservoirs, and the water
@@ -966,12 +952,12 @@ def test_the_drained_fraction_follows_the_front_speed_not_the_step_length():
     long the step: a step five times longer that crystallises five times the
     mass advances the front beyond its own thickness and is still integrated,
     not sent to the no-drainage bound."""
-    phi_stag = np.linspace(0.30, 1.0, _N_STAG)
+    phi_b = np.linspace(0.30, 1.0, _N_BASIC)
     short = run_trapping(
         _drainage_config(),
         _hf_row(M_mantle_solid=2.4e24, gravity=9.8),
         _hf_all(M_mantle_solid=2.2e24),
-        _aragog_interior(phi_stag),
+        _aragog_interior(phi_b),
     )
     # Phi 0.65 -> 0.40 over 5e4 yr: dM_RM = 1e24 kg, the same front speed.
     long_row = _hf_row(Time=6.0e4, M_mantle_solid=2.4e24, gravity=9.8)
@@ -979,7 +965,7 @@ def test_the_drained_fraction_follows_the_front_speed_not_the_step_length():
         _drainage_config(),
         long_row,
         _hf_all(Phi_global=0.65, M_mantle_solid=1.4e24),
-        _aragog_interior(phi_stag),
+        _aragog_interior(phi_b),
     )
     assert long.dm_rm == pytest.approx(5.0 * short.dm_rm, rel=1e-12)
     assert long.v_front == pytest.approx(short.v_front, rel=1e-12)
@@ -990,7 +976,7 @@ def test_the_drained_fraction_follows_the_front_speed_not_the_step_length():
     assert long.f_tl == pytest.approx(short.f_tl, rel=1e-12)
     # Discrimination: the no-drainage bound a step-length guard would take here
     # is 0.471, some 0.13 above the drained fraction of 0.340.
-    bound = volume_to_mass_fraction(phi_stag[11], _RHO_MELT, _RHO_SOLID)
+    bound = volume_to_mass_fraction(phi_b[11], _RHO_MELT, _RHO_SOLID)
     assert bound - long.f_tl > 0.1
     # Edge case: a step of zero length has no front speed and takes the bound.
     stalled = _hf_row(Time=1.0e4, M_mantle_solid=2.4e24, gravity=9.8)
@@ -998,7 +984,7 @@ def test_the_drained_fraction_follows_the_front_speed_not_the_step_length():
         _drainage_config(),
         stalled,
         _hf_all(Time=1.0e4, M_mantle_solid=2.2e24),
-        _aragog_interior(phi_stag),
+        _aragog_interior(phi_b),
     )
     assert zero.branch == BRANCH_GUARD
     assert zero.f_tl == pytest.approx(bound, rel=1e-12)
@@ -1013,9 +999,9 @@ def test_every_step_on_the_upper_bound_reports_its_cause_and_the_mass_it_buried(
     critical melt fraction rfront_loc, and a step on which nothing crystallised
     moves nothing and reports no guard."""
     # A second porous layer near the surface splits the mush in two.
-    phi_stag = np.linspace(0.30, 1.0, _N_STAG)
-    phi_stag[30:33] = 0.45
-    interior = _aragog_interior(phi_stag)
+    phi_b = np.linspace(0.30, 1.0, _N_BASIC)
+    phi_b[30:33] = 0.45
+    interior = _aragog_interior(phi_b)
     hf_row = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.trapping'):
         step = run_trapping(
@@ -1025,7 +1011,7 @@ def test_every_step_on_the_upper_bound_reports_its_cause_and_the_mass_it_buried(
     assert step.branch == BRANCH_GUARD
     assert step.guard_reason == 'the mush is split into 2 separate layers'
     assert hf_row['trap_branch'] == pytest.approx(float(BRANCH_GUARD), rel=1e-12)
-    bound = volume_to_mass_fraction(phi_stag[11], _RHO_MELT, _RHO_SOLID)
+    bound = volume_to_mass_fraction(phi_b[11], _RHO_MELT, _RHO_SOLID)
     assert step.f_tl == pytest.approx(bound, rel=1e-12)
     # At F_tl = 0.471 the water buried is 278 times the lattice-only term.
     lattice_only = 0.0017 * 1.0e-3 * _DM_RM
@@ -1042,13 +1028,13 @@ def test_every_step_on_the_upper_bound_reports_its_cause_and_the_mass_it_buried(
     # The bound never exceeds the critical melt fraction: densities implying
     # porosity 0.6 at the top node (mass fraction 0.574) claim more melt than the
     # framework locks at the solver's transition, so rfront_loc = 0.5 holds.
-    porous = phi_stag.copy()
+    porous = phi_b.copy()
     porous[11] = 0.6
     capped = run_trapping(
         _drainage_config(),
         _hf_row(M_mantle_solid=2.4e24, gravity=9.8),
         _hf_all(M_mantle_solid=2.2e24),
-        _aragog_interior(phi_stag, porosity=porous),
+        _aragog_interior(phi_b, porosity=porous),
     )
     assert capped.branch == BRANCH_GUARD
     assert capped.f_tl == pytest.approx(0.5, rel=1e-12)
@@ -1093,10 +1079,10 @@ def test_the_disaggregation_fraction_is_the_solver_transition_and_nothing_else()
 def test_the_front_drains_under_the_interior_solvers_per_node_gravity(caplog):
     """Both drainage timescales scale as 1/g, and a front near the core-mantle
     boundary sits where gravity is well above its surface value. The front
-    drains under the interior solver's per-node gravity averaged over the front
-    nodes, then under the structure profile the solver was built from, and only
-    without either under the surface gravity, with a warning."""
-    phi_stag = np.linspace(0.30, 1.0, _N_STAG)  # front on nodes 0 to 11
+    drains under the interior solver's basic-node gravity ``g_b`` averaged over
+    the front nodes, and only without a usable one under the surface gravity,
+    with a warning."""
+    phi_b = np.linspace(0.30, 1.0, _N_BASIC)  # front on nodes 0 to 11
 
     def matrix_time(interior, surface_g=8.0):
         step = run_trapping(
@@ -1108,17 +1094,17 @@ def test_the_front_drains_under_the_interior_solvers_per_node_gravity(caplog):
         return step
 
     # tau_s = mu_s / (drho g L) [yr] with mu_s = 1e20 Pa s, drho = 400 kg/m3 and
-    # the 815 km front of this profile.
-    length = (_R_SURF - _R_CMB) / _N_STAG * (0.2 * 39.0 / 0.7 + 0.5)
+    # the 800 km front of this profile.
+    length = 8.0e5
 
     def expected_tau_s(g):
         return 1.0e20 / (400.0 * g * length) / 3.15576e7
 
     # The solver's own profile, 12 m/s2 at the base falling to 8 at the surface:
-    # the front mean over nodes 0 to 11 is 12 - 4 * 5.5 / 39 = 11.436 m/s2.
-    solver_g = np.linspace(12.0, 8.0, _N_STAG)
-    g_front = 12.0 - 4.0 * 5.5 / 39.0
-    deep = matrix_time(_aragog_interior(phi_stag, gravity=solver_g))
+    # the front mean over nodes 0 to 11 is 12 - 4 * 5.5 / 40 = 11.45 m/s2.
+    solver_g = np.linspace(12.0, 8.0, _N_BASIC)
+    g_front = 12.0 - 4.0 * 5.5 / 40.0
+    deep = matrix_time(_aragog_interior(phi_b, gravity=solver_g))
     assert deep.branch == BRANCH_DARCY
     assert deep.tau_s == pytest.approx(expected_tau_s(g_front), rel=1e-9)
     # Discrimination guard: the surface value would make tau_s 43% longer.
@@ -1126,42 +1112,30 @@ def test_the_front_drains_under_the_interior_solvers_per_node_gravity(caplog):
 
     # Invariant: both timescales scale as 1/g at a fixed front, so the uniform
     # 9.8 m/s2 run and the deep one agree on tau * g for each.
-    uniform = matrix_time(_aragog_interior(phi_stag, gravity=9.8), surface_g=9.8)
+    uniform = matrix_time(_aragog_interior(phi_b, gravity=9.8), surface_g=9.8)
     assert uniform.tau_s * 9.8 == pytest.approx(deep.tau_s * g_front, rel=1e-9)
     assert uniform.tau_d * 9.8 == pytest.approx(deep.tau_d * g_front, rel=1e-9)
 
-    # Without the solver's values the structure profile is interpolated onto the
-    # nodes, 12 - 4 (k + 0.5) / 40 at node k, a front mean of 11.4 m/s2; a corrupt
-    # solver profile is passed over the same way.
-    structure = (np.array([_R_CMB, _R_SURF]), np.array([12.0, 8.0]))
-    for solver_values in (None, np.full(_N_STAG, np.nan)):
-        fallback = matrix_time(
-            _aragog_interior(phi_stag, gravity=solver_values, structure=structure)
-        )
-        assert fallback.tau_s == pytest.approx(expected_tau_s(11.4), rel=1e-9)
-
-    # Edge case: no profile at all. The surface gravity stands in, loudly.
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.trapping'):
-        bare = matrix_time(_aragog_interior(phi_stag, gravity=None))
-    assert bare.tau_s == pytest.approx(expected_tau_s(8.0), rel=1e-9)
-    assert any('no usable per-node gravity' in r.getMessage() for r in caplog.records)
+    # Edge case and error contract: an absent profile, a corrupt one and one
+    # with a non-positive node each leave the surface gravity to stand in, loudly.
+    corrupt = np.full(_N_BASIC, np.nan)
+    for values in (None, corrupt, np.linspace(12.0, -1.0, _N_BASIC)):
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.trapping'):
+            bare = matrix_time(_aragog_interior(phi_b, gravity=values))
+        assert bare.tau_s == pytest.approx(expected_tau_s(8.0), rel=1e-9)
+        assert any('no usable basic-node gravity' in r.getMessage() for r in caplog.records)
 
 
-class _ShallowDenseMeltEOS:
-    """Phase-boundary densities with the melt the denser phase below 5 GPa.
+def _shallow_dense_melt(pressure: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Phase-boundary densities with the melt the denser phase below 5 GPa [kg m-3].
 
     The shallow phase-boundary tables of the Earth-analogue run read that way
     (3084 kg/m3 solid against 3456 kg/m3 melt at 1.9 GPa); deeper, the melt is
     the lighter phase, at the end-member densities of the other doubles.
     """
-
-    def _lookup_at_phase_boundary(self, prop, pressure, phase):
-        if prop != 'density':
-            raise KeyError(prop)
-        shallow = np.asarray(pressure, dtype=float) < 5.0e9
-        if phase == 'solid':
-            return np.where(shallow, 3084.0, _RHO_SOLID)
-        return np.where(shallow, 3456.0, _RHO_MELT)
+    shallow = np.asarray(pressure, dtype=float) < 5.0e9
+    return np.where(shallow, 3084.0, _RHO_SOLID), np.where(shallow, 3456.0, _RHO_MELT)
 
 
 @pytest.mark.physics_invariant
@@ -1171,24 +1145,19 @@ def test_a_mush_reaching_the_dense_shallow_mantle_takes_the_no_drainage_bound(ca
     must include those porous nodes and take the guard branch at the entry
     porosity of the top node, rather than stop at the last node with lighter
     melt and integrate the drainage of a front cut short there."""
-    phi = np.linspace(0.02, 0.45, _N_STAG)
-    pres = np.linspace(1.3e11, 1.0e5, _N_STAG)
-    eos = _ShallowDenseMeltEOS()
-    rho_s = eos._lookup_at_phase_boundary('density', pres, 'solid')
-    rho_l = eos._lookup_at_phase_boundary('density', pres, 'melt')
+    phi = np.linspace(0.02, 0.45, _N_BASIC)
+    pres = np.linspace(1.3e11, 1.0e5, _N_BASIC)
+    rho_s, rho_l = _shallow_dense_melt(pres)
     rho = 1.0 / (phi / rho_l + (1.0 - phi) / rho_s)
     shallow = pres < 5.0e9
-    assert 1 < shallow.sum() < _N_STAG // 2  # a shallow band, not the whole column
-    solver = SimpleNamespace(
-        entropy_eos=eos,
-        state=SimpleNamespace(phase_staggered=SimpleNamespace(_g=np.full(_N_STAG, 9.8))),
-    )
+    assert 1 < shallow.sum() < _N_BASIC // 2  # a shallow band, not the whole column
     interior = SimpleNamespace(
-        phi=phi,
-        density=rho,
-        pres=pres,
-        radius=np.linspace(_R_CMB, _R_SURF, _N_STAG + 1),
-        aragog_solver=solver,
+        radius=np.linspace(_R_CMB, _R_SURF, _N_BASIC),
+        phi_b=phi,
+        rho_b=rho,
+        rho_solid_b=rho_s,
+        rho_melt_b=rho_l,
+        g_b=np.full(_N_BASIC, 9.8),
     )
     row = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.trapping'):
@@ -1199,7 +1168,7 @@ def test_a_mush_reaching_the_dense_shallow_mantle_takes_the_no_drainage_bound(ca
     assert 'reaches the surface node' in step.guard_reason
     # Every node is porous mush, the dense ones included, so the front spans
     # the whole column; cut short, it would have ended below the shallow band.
-    assert step.n_front == _N_STAG
+    assert step.n_front == _N_BASIC
     # The bound is the entry porosity of the top node, its melt volume
     # fraction, converted to mass and capped at rfront_loc = 0.5.
     top_por = phi[-1] * rho[-1] / rho_l[-1]
@@ -1218,7 +1187,7 @@ def test_a_step_without_the_interior_profiles_buries_at_the_crystal_term_alone(c
     from proteus.outgas.compaction import BRANCH_FALLBACK
 
     row = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
-    bare = SimpleNamespace(phi=None, density=None, pres=None, radius=None)
+    bare = SimpleNamespace(radius=None)
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.trapping'):
         step = run_trapping(_config(), row, _hf_all(M_mantle_solid=2.2e24), bare)
 
@@ -1231,7 +1200,22 @@ def test_a_step_without_the_interior_profiles_buries_at_the_crystal_term_alone(c
     # Discrimination: burying at the no-drainage bound instead would take the
     # interstitial melt too, some two orders of magnitude more water.
     assert row['H2O_kg_trapped'] < 0.01 * 0.5 * 1.0e-3 * _DM_RM
-    assert any('interior profiles' in r.getMessage() for r in caplog.records)
+    assert any('basic-node profiles' in r.getMessage() for r in caplog.records)
+
+    # Edge cases: an interior carrying only the staggered profiles, and one whose
+    # solid density is one node short, are no front either.
+    staggered = SimpleNamespace(
+        phi=np.linspace(0.3, 1.0, _N_BASIC - 1),
+        density=np.full(_N_BASIC - 1, 3800.0),
+        radius=np.linspace(_R_CMB, _R_SURF, _N_BASIC),
+    )
+    short = _aragog_interior(np.linspace(0.30, 1.0, _N_BASIC))
+    short.rho_solid_b = short.rho_solid_b[:-1]
+    for interior in (staggered, short):
+        fallback_row = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
+        fallback = run_trapping(_config(), fallback_row, _hf_all(), interior)
+        assert fallback.branch == BRANCH_FALLBACK
+        assert fallback_row['H2O_kg_trapped'] == pytest.approx(row['H2O_kg_trapped'], rel=1e-12)
 
 
 @pytest.mark.physics_invariant
@@ -1434,18 +1418,18 @@ def test_the_front_speed_follows_the_crystallised_mass_not_the_solid_mass():
     while the melt fraction fell (a structure re-solve, or a released
     temperature clamp) is integrated like any other instead of being buried at
     the no-drainage bound."""
-    phi_stag = np.linspace(0.30, 1.0, _N_STAG)
+    phi_b = np.linspace(0.30, 1.0, _N_BASIC)
     grew = run_trapping(
         _drainage_config(),
         _hf_row(M_mantle_solid=2.4e24, gravity=9.8),
         _hf_all(M_mantle_solid=2.2e24),
-        _aragog_interior(phi_stag),
+        _aragog_interior(phi_b),
     )
     shrank = run_trapping(
         _drainage_config(),
         _hf_row(M_mantle_solid=2.0e24, gravity=9.8),
         _hf_all(M_mantle_solid=2.2e24),
-        _aragog_interior(phi_stag),
+        _aragog_interior(phi_b),
     )
     assert grew.branch == BRANCH_DARCY
     assert shrank.branch == BRANCH_DARCY
@@ -1454,5 +1438,5 @@ def test_the_front_speed_follows_the_crystallised_mass_not_the_solid_mass():
     assert shrank.f_tl == pytest.approx(grew.f_tl, rel=1e-12)
     # Discrimination: the no-drainage bound at this front is the entry
     # porosity as a mass fraction, far above the integrated value.
-    bound = volume_to_mass_fraction(phi_stag[11], _RHO_MELT, _RHO_SOLID)
+    bound = volume_to_mass_fraction(phi_b[11], _RHO_MELT, _RHO_SOLID)
     assert shrank.f_tl < 0.9 * bound

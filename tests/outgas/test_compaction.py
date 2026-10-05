@@ -161,6 +161,49 @@ def test_mobility_reproduces_the_interior_solver_in_every_regime():
         mobility_function(0.3, 0.0)
 
 
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter():
+    """Cross-implementation check against the interior solver's own porosity,
+    ``EntropyPhaseEvaluator._porosity_from``, from which it writes ``porosity_b``.
+    On a two-phase mush where the melt is the lighter phase both are the lever
+    rule on density, the solver's soft-clipped at the edges by 2.5e-7 / phi. Where
+    the melt is the denser phase the solver's porosity reads about 0, as its
+    docstring warns, while the melt volume the drainage needs is still the lever
+    rule; and a single-phase node takes its melt fraction, which the lever rule
+    does not give there."""
+    pytest.importorskip('aragog')
+    from aragog.eos.entropy_phase import EntropyPhaseEvaluator
+
+    def solver_porosity(rho, rho_s, rho_l):
+        evaluator = object.__new__(EntropyPhaseEvaluator)
+        evaluator._density = rho
+        return np.asarray(evaluator._porosity_from(rho_s, rho_l), dtype=float)
+
+    phi = np.array([0.02, 0.1, 0.3, 0.45, 0.8, 0.98])
+    rho_s, rho_l = np.full(phi.size, 4000.0), np.full(phi.size, 3600.0)
+    rho = rho_s - phi * (rho_s - rho_l)
+    mine = porosity_from_densities(rho, rho_s, rho_l, phi)
+    np.testing.assert_allclose(mine, phi, rtol=1e-12)
+    # Held to 2e-5: the solver's soft clip moves phi by 2.5e-7 / phi at each edge,
+    # 1.2e-5 at phi = 0.02 and at 0.98.
+    np.testing.assert_allclose(solver_porosity(rho, rho_s, rho_l), mine, rtol=0.0, atol=2e-5)
+
+    # The melt the denser phase, 3456 against 3084 kg/m3: the solver's porosity
+    # is near 0, the lever rule the melt volume itself.
+    dense_l, dense_s = np.full(phi.size, 3456.0), np.full(phi.size, 3084.0)
+    dense = dense_s - phi * (dense_s - dense_l)
+    np.testing.assert_allclose(porosity_from_densities(dense, dense_s, dense_l, phi), phi)
+    assert np.all(solver_porosity(dense, dense_s, dense_l) < 1e-3)
+    # Edge case: a fully molten node at a single-phase density 20 kg/m3 above
+    # the phase-boundary melt reads 0.95 by the lever rule, 1 by its melt fraction.
+    molten = porosity_from_densities(np.array([3620.0]), 4000.0, 3600.0, np.array([1.0]))
+    assert molten[0] == pytest.approx(1.0, abs=0.0)
+    assert solver_porosity(np.array([3620.0]), 4000.0, 3600.0)[0] == pytest.approx(
+        0.95, abs=1e-5
+    )
+
+
 @pytest.mark.physics_invariant
 def test_darcy_velocity_carries_the_matrix_fraction_and_the_grain_scaling():
     """The percolation speed is (1-phi)|drho| g F(phi)/eta_melt. The (1-phi)
