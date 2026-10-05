@@ -7589,154 +7589,103 @@ def test_dummy_structure_passes_a_missing_paleos_table_error_through(tmp_path):
     provide.assert_not_called()
 
 
-@pytest.mark.unit
-def test_remelt_aragog_preserves_core_temperature_getter(tmp_path, monkeypatch):
-    """_remelt_aragog preserves core temperature from solver.get_current_core_temperature()."""
-    from proteus.config import read_config_object
-    from proteus.interior_energetics.wrapper import _remelt_aragog
+def _remelt_stub(getter=None, t_core_init=None, s0=None, n_stag=None, setter=True):
+    """A solver stand-in for _remelt_aragog that records each core temperature it is given."""
 
-    config = read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml')
-    config.interior_energetics.module = 'aragog'
-    config.interior_energetics.aragog.core_bc = 'core_module'
+    class Stub:
+        _solution = 'active'
+        _dSdr_cmb_init = -1.2e-4
 
-    class MockCoreSolver:
-        def __init__(self, t_core):
-            self._t_core = t_core
-            self._solution = 'active'
-            self._dSdr_cmb_init = -1.2e-4
-            self.set_t_core_called_with = None
+        def __init__(self):
+            self._T_core_init = t_core_init
+            self.set_calls = []
+            if s0 is not None:
+                self._S0, self._n_stag = s0, n_stag
 
-        def get_current_core_temperature(self):
-            return self._t_core
+        def core_t(self):
+            return self.set_calls[-1] if self.set_calls else self._T_core_init
 
-        def set_initial_core_temperature(self, t):
-            self.set_t_core_called_with = t
-
-    solver = MockCoreSolver(5234.5)
-    interior_o = SimpleNamespace(aragog_solver=solver, impact_reset=False)
-    monkeypatch.setattr(
-        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
-        lambda *a, **k: np.full(80, 4000.0),
-    )
-    monkeypatch.setattr(
-        'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
-        lambda *a, **k: {'T_magma': 3800.0, 'Phi_global': 0.8},
-    )
-    hf_row = {'Time': 100.0, 'M_mantle': 4e24}
-    _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
-
-    assert solver.set_t_core_called_with == pytest.approx(5234.5)
-    assert solver._solution is None
-    assert solver._dSdr_cmb_init is None
+    if getter is not None:
+        Stub.get_current_core_temperature = lambda self: getter()
+    if setter:
+        Stub.set_initial_core_temperature = lambda self, t: self.set_calls.append(t)
+    return Stub()
 
 
-@pytest.mark.unit
-def test_remelt_aragog_preserves_core_temperature_t_core_init_fallback(tmp_path, monkeypatch):
-    """_remelt_aragog falls back to solver._T_core_init when getter returns None and sets _T_core_init."""
-    from proteus.config import read_config_object
-    from proteus.interior_energetics.wrapper import _remelt_aragog
-
-    config = read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml')
-    config.interior_energetics.module = 'aragog'
-    config.interior_energetics.aragog.core_bc = 'core_module'
-
-    class MockInitSolver:
-        def __init__(self, t_core):
-            self._T_core_init = t_core
-            self._solution = 'active'
-
-        def get_current_core_temperature(self):
-            return None
-
-    solver = MockInitSolver(5123.4)
-    interior_o = SimpleNamespace(aragog_solver=solver, impact_reset=False)
-    monkeypatch.setattr(
-        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
-        lambda *a, **k: np.full(80, 4000.0),
-    )
-    monkeypatch.setattr(
-        'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
-        lambda *a, **k: {'T_magma': 3800.0, 'Phi_global': 0.8},
-    )
-    hf_row = {'Time': 100.0, 'M_mantle': 4e24}
-    _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
-
-    assert solver._T_core_init == pytest.approx(5123.4)
-    assert solver._solution is None
+def _s0(n_stag, extra, idx, value):
+    s0 = np.full(n_stag + extra, 4000.0)
+    s0[idx] = value
+    return s0
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'core_bc, n_stag, s0_len, idx, expected_t',
+    'core_bc, stub_kw, hf_extra, expected',
     [
-        ('core_module', 80, 82, 81, 5067.8),
-        ('bower2018', 80, 81, 80, 4987.6),
+        ('core_module', dict(getter=lambda: 5234.5, t_core_init=1.0), {}, 5234.5),
+        ('core_module', dict(getter=lambda: None, t_core_init=5123.4), {}, 5123.4),
+        ('core_module', dict(s0=_s0(80, 2, 81, 5067.8), n_stag=80, setter=False), {}, 5067.8),
+        ('bower2018', dict(s0=_s0(80, 1, 80, 4987.6), n_stag=80, setter=False), {}, 4987.6),
+        ('core_module', dict(setter=False), {'T_cmb': 4876.5, 'T_core': 1.0}, 4876.5),
+        ('core_module', dict(setter=False), {'T_core': 4765.4}, 4765.4),
+    ],
+    ids=[
+        'getter',
+        't_core_init',
+        's0_core_module',
+        's0_bower2018',
+        'hf_t_cmb_first',
+        'hf_t_core',
     ],
 )
-def test_remelt_aragog_preserves_core_temperature_s0_vector_fallback(
-    tmp_path, monkeypatch, core_bc, n_stag, s0_len, idx, expected_t
+def test_remelt_aragog_keeps_the_core_temperature(
+    tmp_path, monkeypatch, core_bc, stub_kw, hf_extra, expected
 ):
-    """_remelt_aragog extracts core temperature from staggered state vector S0 when no getter/attr present."""
+    """An impact re-melt hands the pre-impact core temperature to the solver before the
+    molten initial condition is built, taking the first source that has one."""
     from proteus.config import read_config_object
     from proteus.interior_energetics.wrapper import _remelt_aragog
 
     config = read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml')
     config.interior_energetics.module = 'aragog'
     config.interior_energetics.aragog.core_bc = core_bc
+    solver = _remelt_stub(**stub_kw)
+    seen_at_ic = []
 
-    s0 = np.full(s0_len, 4000.0)
-    s0[idx] = expected_t
+    def fake_ic(config, interior_o, *a, **k):
+        seen_at_ic.append(interior_o.aragog_solver.core_t())
+        return np.full(80, 4000.0)
 
-    class MockS0Solver:
-        def __init__(self):
-            self._S0 = s0
-            self._n_stag = n_stag
-            self._solution = 'active'
-            self._T_core_init = None
-
-    solver = MockS0Solver()
-    interior_o = SimpleNamespace(aragog_solver=solver, impact_reset=False)
     monkeypatch.setattr(
-        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
-        lambda *a, **k: np.full(n_stag, 4000.0),
+        'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic', fake_ic
     )
     monkeypatch.setattr(
         'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
         lambda *a, **k: {'T_magma': 3800.0, 'Phi_global': 0.8},
     )
-    hf_row = {'Time': 100.0, 'M_mantle': 4e24}
+    hf_row = {'Time': 100.0, 'M_mantle': 4e24, **hf_extra}
+    interior_o = SimpleNamespace(aragog_solver=solver, impact_reset=False)
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
 
-    assert solver._T_core_init == pytest.approx(expected_t)
-    assert solver._solution is None
+    assert seen_at_ic == [pytest.approx(expected)]
+    assert solver.core_t() == pytest.approx(expected)
+    if stub_kw.get('setter', True):
+        assert solver.set_calls == [pytest.approx(expected)]
+    assert solver._solution is None and solver._dSdr_cmb_init is None
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    'hf_key, hf_val',
-    [
-        ('T_cmb', 4876.5),
-        ('T_core', 4765.4),
-    ],
-)
-def test_remelt_aragog_preserves_core_temperature_hf_row_fallback(
-    tmp_path, monkeypatch, hf_key, hf_val
+def test_remelt_aragog_leaves_the_core_temperature_alone_without_a_core_state(
+    tmp_path, monkeypatch
 ):
-    """_remelt_aragog falls back to hf_row T_cmb / T_core when solver has no internal state."""
+    """A core boundary condition without a core temperature state gets no override."""
     from proteus.config import read_config_object
     from proteus.interior_energetics.wrapper import _remelt_aragog
 
     config = read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml')
     config.interior_energetics.module = 'aragog'
-    config.interior_energetics.aragog.core_bc = 'core_module'
-
-    class MockEmptySolver:
-        def __init__(self):
-            self._solution = 'active'
-            self._T_core_init = None
-
-    solver = MockEmptySolver()
-    interior_o = SimpleNamespace(aragog_solver=solver, impact_reset=False)
+    config.interior_energetics.aragog.core_bc = 'energy_balance'
+    solver = _remelt_stub(getter=lambda: 5234.5, t_core_init=None)
     monkeypatch.setattr(
         'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
         lambda *a, **k: np.full(80, 4000.0),
@@ -7745,8 +7694,9 @@ def test_remelt_aragog_preserves_core_temperature_hf_row_fallback(
         'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
         lambda *a, **k: {'T_magma': 3800.0, 'Phi_global': 0.8},
     )
-    hf_row = {'Time': 100.0, 'M_mantle': 4e24, hf_key: hf_val}
+    interior_o = SimpleNamespace(aragog_solver=solver, impact_reset=False)
+    hf_row = {'Time': 100.0, 'M_mantle': 4e24, 'T_cmb': 4876.5}
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
 
-    assert solver._T_core_init == pytest.approx(hf_val)
-    assert solver._solution is None
+    assert solver.set_calls == []
+    assert solver._T_core_init is None
