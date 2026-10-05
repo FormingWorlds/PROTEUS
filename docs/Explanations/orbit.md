@@ -163,8 +163,7 @@ config load, since it would give the run a second starting orbit.
 A law writes only the orbital elements it sets: `instant` and `sigmoid` the
 semi-major axis, `high_ecc` the semi-major axis and the eccentricity. `none`,
 and every law before `time_migration`, leave the orbit as the previous step
-left it. Only
-`high_ecc` evolves the eccentricity.
+left it. 
 
 `sigmoid` holds the orbit until `time_migration`, carries it to `sma_final`
 over the following `tau_migration` along the cubic `3u^2 - 2u^3`, and holds
@@ -228,18 +227,6 @@ it equals `2 dE / tau_migration`, with `dE = E(sma_final) - E(a_0) =
 `exp(-2 (t - time_migration) / tau_migration)`. The eccentricity step at
 `time_migration` changes the orbital angular momentum instantly while
 leaving the energy unchanged, since `a` is still `a_0` there.
-
-For the TOI-561 b setup in `input/planets/toi561b.toml` (0.806 M_sun,
-2.24 M_earth, 0.029 to 0.0106 au) the orbit loses 2.9e35 J (`dE = -2.9e35 J`).
-With `tau_migration = 1e7` yr the rate at onset is `-1.8e21 W`. At that epoch the
-star (age 0.101 Gyr, about 0.28 L_sun) delivers about `1.7e20 W` to the
-planet's cross-section at the flux-weighted distance of 0.0226 au, so the
-dropped power is about ten times the instellation in magnitude, and it scales as
-`1 / tau_migration`: comparable to the instellation at `tau_migration = 1e8`
-yr, a hundred times it at `1e6` yr. A tidal model following the same track
-would have to dissipate this power in the planet. Results that depend on
-the interior temperature during circularisation should be read with that in
-mind.
 
 ### Visualizing the four parameterized regimes
 
