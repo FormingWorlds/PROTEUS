@@ -24,8 +24,10 @@ This tool avoids that failure mode with a materialise-map-emit engine:
    divergent default, whether at an identical path or a renamed one, is therefore
    pinned automatically.
 
-The result is validated by structuring it through the 3.0 ``Config`` schema; a
-structural error is raised rather than written. The unit test
+The result is validated against the 3.0 ``Config`` schema: a key or section the
+schema cannot accept, or a structural error, is raised rather than written. A user
+key outside the 2.0 schema is left out, as the 2.0 loader ignored it, and listed in
+the report. The unit test
 (``tests/tools/test_migrate_config_v2_to_v3.py``) checks map completeness,
 new-field classification, and per-field regression. A separate developer harness
 resolves each 2.0 input through main's loader and the 3.0 output through this
@@ -410,14 +412,19 @@ def _load_v2_defaults():
         return json.load(f)
 
 
-def _v3_defaults():
-    """Return the live 3.0 schema defaults as a flat dict (stub-import safe)."""
+def _stub_pipeline():
+    """Stand in for ``proteus.proteus`` so importing ``proteus.config`` does not start Julia."""
     import types
 
     if 'proteus.proteus' not in sys.modules:
         stub = types.ModuleType('proteus.proteus')
         stub.Proteus = object
         sys.modules['proteus.proteus'] = stub
+
+
+def _v3_defaults():
+    """Return the live 3.0 schema defaults as a flat dict (stub-import safe)."""
+    _stub_pipeline()
     import typing
 
     import attr
@@ -690,6 +697,11 @@ def translate(v2_toml: dict):
     -------
     nested_v3 : dict
         The 3.0 config as a nested dict, validated through the 3.0 schema.
+
+    Raises
+    ------
+    UnknownConfigKeyError
+        If the translation produces a key or section the 3.0 schema cannot accept.
     report : MigrationReport
         What the translation renamed, pinned, overrode, dropped, and warned on.
     """
@@ -743,6 +755,8 @@ def translate(v2_toml: dict):
             sp = v2_path.split('.')[-1]
             if sp in _VOLATILE_SPECIES:
                 emit(f'planet.gas_prs.{sp}', val, v2_path)
+            elif v2_path in explicit and v2_path not in v2_defaults:
+                report.dropped_unknown.append(v2_path)
             continue
         if v2_path in REMOVED:
             if v2_path in explicit:
@@ -874,12 +888,7 @@ def _validate(nested_v3):
         If the translation produced a key or section the 3.0 schema cannot accept;
         ``cattrs`` would otherwise drop it and the field would sit at its default.
     """
-    import types
-
-    if 'proteus.proteus' not in sys.modules:
-        stub = types.ModuleType('proteus.proteus')
-        stub.Proteus = object
-        sys.modules['proteus.proteus'] = stub
+    _stub_pipeline()
     import cattrs
 
     from proteus.config._config import Config
@@ -987,12 +996,17 @@ def main(argv=None):
     with open(args.input, 'rb') as f:
         data = tomllib.load(f)
 
+    _stub_pipeline()
     from proteus.config.orphans import UnknownConfigKeyError
 
     try:
         nested, report = translate_grid(data) if args.grid else translate(data)
     except UnknownConfigKeyError as exc:
-        print(f'Not written: {args.input} migrates to keys the 3.0 schema rejects.\n{exc}')
+        print(
+            f'Not written: the migration of {args.input} produced keys the 3.0 schema '
+            f'rejects. This is a fault in the migration tables, not in the input.\n{exc}',
+            file=sys.stderr,
+        )
         return 1
 
     out = args.output or args.input.with_suffix('.v3.toml')

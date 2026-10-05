@@ -938,20 +938,50 @@ def test_translated_key_outside_the_schema_is_refused_by_name(monkeypatch):
 
 
 def test_main_writes_nothing_when_a_translated_key_is_refused(monkeypatch, tmp_path, capsys):
-    """The command exits 1, names the key and leaves no output file."""
+    """The command exits 1, names the key on stderr and leaves no output file."""
     v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
     mig._dump_toml(_minimal_spider_v2(), v2_path)
     monkeypatch.setitem(mig.OVERRIDES, 'planet.mass_totl', 2.0)
     assert mig.main([str(v2_path), '-o', str(out_path)]) == 1
     assert not out_path.exists()
-    assert '"planet.mass_totl"' in capsys.readouterr().out
+    err = capsys.readouterr().err
+    assert '"planet.mass_totl"' in err and 'fault in the migration tables' in err
+
+
+def test_translated_scalar_on_a_section_is_refused_as_misdeclared(monkeypatch):
+    """A translated value where the schema expects a section is refused and named."""
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    monkeypatch.setitem(mig.OVERRIDES, 'planet', 1.0)
+    with pytest.raises(UnknownConfigKeyError, match='Misdeclared configuration section') as exc:
+        mig.translate(_minimal_spider_v2())
+    assert '"planet"' in str(exc.value)
+
+
+def test_main_runs_without_julia(tmp_path):
+    """The command migrates a 2.0 file in a fresh interpreter that cannot import juliacall."""
+    import subprocess
+
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(_minimal_spider_v2(), v2_path)
+    root = Path(__file__).resolve().parents[2]
+    code = (
+        "import sys; sys.modules['juliacall'] = None; "
+        f'sys.path[:0] = [{str(root / "tools")!r}, {str(root / "src")!r}]; '
+        'import migrate_config_v2_to_v3 as m; '
+        f'sys.exit(m.main([{str(v2_path)!r}, "-o", {str(out_path)!r}]))'
+    )
+    run = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr[-2000:]
+    assert out_path.exists()
 
 
 def test_unknown_2_0_key_is_left_out_and_named():
     """A user key outside the 2.0 schema migrates as before and is listed by name."""
     v2 = _minimal_spider_v2()
     v2['interior']['ghost_field'] = 1.0
+    v2.setdefault('delivery', {}).setdefault('volatiles', {})['XYZ'] = 1.0
     flat, report = _translate(v2)
     assert 'interior.ghost_field' not in flat
-    assert report.dropped_unknown == ['interior.ghost_field']
-    assert "Left out (not in the 2.0 schema): ['interior.ghost_field']" in report.text()
+    assert sorted(report.dropped_unknown) == ['delivery.volatiles.XYZ', 'interior.ghost_field']
+    assert 'Left out (not in the 2.0 schema):' in report.text()
