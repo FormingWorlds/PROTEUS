@@ -23,7 +23,7 @@ def load(p):
 def _n(v):
     if not isinstance(v, str):
         return v
-    return re.sub(r'proteus_\d+', 'proteus_TMP', re.sub(r'repro935_\w+?([/\'])', r'repro935_RUN\1', v))
+    return re.sub(r'proteus_\d+', 'proteus_TMP', re.sub(r'(repro|probe|phys)935_\w+?([/\'])', r'\g<1>935_RUN\2', v))
 
 
 def diffargs(ra, rb, field='args'):

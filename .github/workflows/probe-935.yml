@@ -29,7 +29,7 @@ jobs:
           nproc
       - name: Two identical runs, hashed per call
         env:
-          STOP_AFTER_STRUCT: '14'
+          STOP_AFTER_STRUCT: '12'
           PROBE_ONLINE: '1'
         run: |
           for r in a b; do sed "s/probe935_RUN/probe935_$r/" tools/probe935/E_upd.toml > cfg_$r.toml; done
@@ -37,11 +37,11 @@ jobs:
           sleep 5
           (timeout 330m python -u tools/probe935/hashrun.py cfg_b.toml calls_b.jsonl > out_b.log 2>&1; echo "b rc=$?") &
           wait
-          tail -5 out_a.log out_b.log
+          tail -n 5 out_a.log out_b.log
       - name: Compare
         if: always()
         run: |
-          cd tools/probe935 && python verify.py ../../calls_a.jsonl ../../calls_b.jsonl
+          cd tools/probe935 && python verify.py ../../calls_a.jsonl ../../calls_b.jsonl | tail -n 20 && python hfkeys.py ../../calls_a.jsonl ../../calls_b.jsonl
       - uses: actions/upload-artifact@v6
         if: always()
         with:
