@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 # calliope is an optional dependency; skip if not installed
@@ -565,3 +566,105 @@ def test_calliope_target_reaches_the_solver_for_an_active_noble_gas():
     for gas in ('Ne', 'Ar', 'Kr', 'Xe'):
         assert opts[f'{gas}_included'] == 0
         assert target[gas] == pytest.approx(1.0e16, rel=1e-12)
+
+
+# -----------------------------------------------------------------------
+# calc_surface_pressures :: reproducible CALLIOPE cold start
+# -----------------------------------------------------------------------
+
+
+def _cold_start_config():
+    """Element-mode config on the user_constant fO2 path, no noble gas active."""
+    config = _element_mode_config({})
+    config.outgas.T_floor = 1200.0
+    config.outgas.mass_thresh = 1.0e16
+    config.outgas.solver_atol = 1e-6
+    config.outgas.solver_rtol = 1e-4
+    config.outgas.calliope.nguess = 100
+    config.outgas.calliope.nsolve = 500
+    config.outgas.calliope.p_guess_max = 1.0e5
+    config.planet.fO2_source = 'user_constant'
+    return config
+
+
+def _drawing_solver(target, opts, **kwargs):
+    """CALLIOPE stand-in whose root moves with the global RNG, as a cold start does."""
+    x0 = np.random.uniform(low=-1.0, high=1.0)
+    return {'P_surf': 250.0 * (1.0 + 1e-9 * x0), 'H2O_bar': 200.0 * (1.0 + 1e-9 * x0)}
+
+
+def _rng_states_equal(a, b):
+    return a[0] == b[0] and np.array_equal(a[1], b[1]) and a[2:] == b[2:]
+
+
+@pytest.mark.physics_invariant
+def test_cold_start_result_does_not_depend_on_the_caller_rng():
+    """Two cold starts from the same helpfile row give the same surface
+    pressure whatever state the caller left the global RNG in.
+
+    CALLIOPE draws its start guess from the global ``np.random`` when no
+    previous pressures exist (Time 0), and its converged root moves within the
+    solver tolerance with that guess; unseeded, identical runs differ from row 0.
+    """
+    from unittest.mock import patch
+
+    from proteus.outgas.calliope import calc_surface_pressures
+
+    config = _cold_start_config()
+    rows = []
+    for caller_seed in (1, 2):
+        hf_row = _surface_pressure_hf_row()
+        np.random.seed(caller_seed)
+        with patch(
+            'proteus.outgas.calliope.equilibrium_atmosphere', side_effect=_drawing_solver
+        ):
+            calc_surface_pressures({'output': '/tmp/test'}, config, hf_row)
+        rows.append(hf_row)
+
+    assert rows[0]['P_surf'] == rows[1]['P_surf']
+    assert rows[0]['H2O_bar'] == rows[1]['H2O_bar']
+    # The stand-in does reach hf_row: a bounded, positive pressure near its root.
+    assert abs(rows[0]['P_surf'] - 250.0) < 1e-6
+
+
+def test_cold_start_restores_the_caller_rng_state():
+    """The caller's global RNG stream continues after the CALLIOPE call as if
+    the call had not drawn from it."""
+    from unittest.mock import patch
+
+    from proteus.outgas.calliope import calc_surface_pressures
+
+    np.random.seed(7)
+    before = np.random.get_state()
+    with patch('proteus.outgas.calliope.equilibrium_atmosphere', side_effect=_drawing_solver):
+        calc_surface_pressures(
+            {'output': '/tmp/test'}, _cold_start_config(), _surface_pressure_hf_row()
+        )
+    assert _rng_states_equal(np.random.get_state(), before)
+    np.random.seed(7)
+    assert np.random.uniform() == np.random.RandomState(7).uniform()
+
+
+def test_failed_cold_start_restores_the_caller_rng_state():
+    """A CALLIOPE failure still propagates, and the caller's RNG state is
+    restored before it does."""
+    from unittest.mock import patch
+
+    from proteus.outgas.calliope import calc_surface_pressures
+
+    def _failing_solver(target, opts, **kwargs):
+        np.random.uniform()
+        raise RuntimeError('Could not find solution for volatile abundances')
+
+    np.random.seed(11)
+    before = np.random.get_state()
+    with (
+        patch('proteus.outgas.calliope.equilibrium_atmosphere', side_effect=_failing_solver),
+        patch('proteus.outgas.calliope.UpdateStatusfile') as status,
+        pytest.raises(RuntimeError, match='Could not find solution'),
+    ):
+        calc_surface_pressures(
+            {'output': '/tmp/test'}, _cold_start_config(), _surface_pressure_hf_row()
+        )
+    assert _rng_states_equal(np.random.get_state(), before)
+    status.assert_called_once_with({'output': '/tmp/test'}, 27)
