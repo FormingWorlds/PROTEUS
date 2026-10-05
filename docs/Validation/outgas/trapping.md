@@ -30,15 +30,19 @@ The trapping tests also assert, without a published reference:
   takes: a desiccated planet with 3.6e19 kg of water trapped, remelting from
   `Phi = 0.30` to 0.50 in 1000 steps that each release less than
   `mass_thresh`, ends with every total and the trapped 5/7 that 4 steps
-  reach, and through the main loop in 8 such steps likewise;
+  reach, and through the main loop in 16 such steps likewise;
+- the escape floor reading the reachable mass, as the desiccation gate does:
+  two runs that differ only in how much N is trapped, 5e14 or 1.1e16 kg, both
+  empty a reachable 9e15 kg below `mass_thresh` to the locked mass, and on a
+  step on which a remelt returned buried mass the floor is off;
 - the drained fraction set by the front speed alone, the same for a step five
   times longer that moves the front beyond its own thickness;
 - the trapped share of the solid reservoirs surviving a chemistry solve that
   rewrites them, adding to condensed graphite rather than competing with it;
 - species totals rebuilt from each fresh partition rather than frozen;
-- desiccation changing no total, with trapping on or off: with trapping on
-  the trapped mass stays in the solid and the rest of each total in the melt,
-  so the closure holds.
+- desiccation emptying the atmosphere into `M_desiccated` and keeping the
+  solid, and with trapping on the melt as well, so the closure holds and a
+  remelt's release stays in the planet.
 
 ## Scope
 

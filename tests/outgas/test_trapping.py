@@ -155,9 +155,8 @@ def fixed_front():
         yield mocked
 
 
-# Interior-solver profile for the drainage path: 41 uniform basic nodes from a
-# core-mantle boundary at 3500 km to a surface at 6300 km, with phase-boundary
-# densities 4000 and 3600 kg/m3 at every node.
+# Drainage profile: 41 uniform basic nodes from a core-mantle boundary at 3500 km
+# to a surface at 6300 km, phase-boundary densities 4000 and 3600 kg/m3 at each.
 _N_BASIC = 41
 _R_CMB = 3.5e6
 _R_SURF = 6.3e6
@@ -895,9 +894,8 @@ def test_a_front_resting_on_the_core_mantle_boundary_is_drained_not_bounded(capl
     front instead of taking the no-drainage upper bound, measures the front
     from the boundary, and conserves every element it moves from the melt into
     the solid."""
-    # Melt fraction 0.30 at the boundary rising to 1 at the surface. The front
-    # spans nodes 0 to 11 and its top crosses 0.5 at 40 * 0.2 / 0.7 = 11.43
-    # spacings of 70 km, 800 km above the boundary.
+    # Melt fraction 0.30 at the boundary rising to 1 at the surface: the front spans
+    # nodes 0 to 11 and crosses 0.5 at 11.43 spacings of 70 km, 800 km up.
     phi_b = np.linspace(0.30, 1.0, _N_BASIC)
     # The solid mantle grows by the 2e23 kg crystallised over the 1e4 yr step.
     hf_row = _hf_row(M_mantle_solid=2.4e24, gravity=9.8)
