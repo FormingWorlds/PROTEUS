@@ -1,0 +1,53 @@
+name: Probe run reproducibility (935)
+
+on:
+  push:
+    branches: [tl/probe-repro-935]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash -el {0}
+
+jobs:
+  repro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-proteus
+        with:
+          full-data: 'true'
+      - name: Module versions
+        run: |
+          pip list 2>/dev/null | grep -i -E "fwl|jax|numpy|scipy"
+          git -C AGNI log -1 --format='AGNI %h %cs' || true
+          nproc
+      - name: Two identical runs, hashed per call
+        env:
+          STOP_AFTER_STRUCT: '14'
+          PROBE_ONLINE: '1'
+        run: |
+          for r in a b; do sed "s/probe935_RUN/probe935_$r/" tools/probe935/E_upd.toml > cfg_$r.toml; done
+          (timeout 330m python -u tools/probe935/hashrun.py cfg_a.toml calls_a.jsonl > out_a.log 2>&1; echo "a rc=$?") &
+          sleep 5
+          (timeout 330m python -u tools/probe935/hashrun.py cfg_b.toml calls_b.jsonl > out_b.log 2>&1; echo "b rc=$?") &
+          wait
+          tail -5 out_a.log out_b.log
+      - name: Compare
+        if: always()
+        run: |
+          cd tools/probe935 && python verify.py ../../calls_a.jsonl ../../calls_b.jsonl
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: probe935
+          path: |
+            calls_*.jsonl
+            out_*.log
+            output/probe935_*/runtime_helpfile.csv
+            output/probe935_*/proteus_00.log
