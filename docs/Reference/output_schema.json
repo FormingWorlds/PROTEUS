@@ -3073,7 +3073,9 @@
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "outgas"
+      ],
       "consumers_possible": []
     },
     {
@@ -3105,7 +3107,9 @@
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "outgas"
+      ],
       "consumers_possible": []
     },
     {

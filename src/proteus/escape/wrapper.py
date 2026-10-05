@@ -268,11 +268,15 @@ def run_escape(
             solidified: dissolved volatiles are then frozen into the solid and
             the atmosphere is the only reservoir that can supply escape. The
             element floor of :func:`calc_new_elements` is then off, since no
-            outgassing solve follows to repartition a zeroed total.
+            outgassing solve follows to repartition a zeroed total. It is also
+            off on a step on which a remelt returned buried mass to the melt.
         interior_o : Interior_t | None
             Interior state. When given, its ``escape_dt_limit`` is set so a
             capped step shortens the next one; see :func:`escape_dt_limit`.
     """
+    # Imported here: proteus.outgas imports this module at load.
+    from proteus.outgas.trapping import remelt_returned_mass
+
     dirs = dirs or {}
 
     if not config.escape.module:
@@ -368,7 +372,7 @@ def run_escape(
         reservoir,
         min_thresh=config.outgas.mass_thresh,
         esc_mass=esc_step_kg,
-        floor=not atmosphere_only,
+        floor=not (atmosphere_only or remelt_returned_mass(hf_row)),
     )
 
     # store new elemental inventories
@@ -539,17 +543,23 @@ def calc_new_elements(
             Time-step length [years]
         min_thresh: float
             Minimum threshold for element mass [kg]. A reservoir below it is not
-            debited; with ``floor``, an element total below it is emptied to the
-            mass locked in the solid.
+            debited; with ``floor``, an element whose reachable mass is below it
+            is emptied to the mass locked in the solid.
         esc_mass : float | None
             Mass to remove over this step [kg]. Defaults to the unrestricted
             ``esc_rate_total * dt``; pass the value from
             :func:`limit_escape_step` to apply the per-step cap.
         floor : bool
-            Set a non-noble element that falls below ``min_thresh`` to the mass
-            locked in the solid. Only for a step whose outgassing solve
-            repartitions the totals afterwards; on a frozen mantle no solve
-            follows and the atmosphere keeps the mass.
+            Empty a non-noble element whose reachable mass, its total less the
+            mass trapping locks in the solid, falls below ``min_thresh``, down to
+            that locked mass. The desiccation gate tests the same reachable mass,
+            so the two agree on what depleted means. Only for a step whose
+            outgassing solve repartitions the totals afterwards; on a frozen
+            mantle no solve follows and the atmosphere keeps the mass. On a step
+            on which a remelt returned buried mass, the element is being
+            resupplied rather than depleted: flooring it then would delete the
+            release whenever it is small, so the result would depend on how many
+            steps the remelt takes, and the caller turns the floor off.
 
     Returns
     -------
@@ -619,10 +629,10 @@ def calc_new_elements(
             tgt[e] = old_total
             continue
         new_total = old_total - lost
-        # A major volatile whose whole total drops below min_thresh is empty but for
-        # its locked mass. Noble gases are trace by nature, so they are exempt.
+        # A major volatile whose reachable mass, the total less what is locked in the
+        # solid, falls below min_thresh is depleted, as check_desiccation reads it.
         locked = locked_solid_mass(hf_row, e)
-        if floor and e not in noble_gases and new_total < min_thresh:
+        if floor and e not in noble_gases and new_total - locked < min_thresh:
             new_total = locked
         tgt[e] = max(locked, new_total)
 

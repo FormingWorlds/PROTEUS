@@ -307,6 +307,13 @@ def escapable_inventory(hf_row: dict, element: str) -> float:
     return max(0.0, total - locked_solid_mass(hf_row, element))
 
 
+def remelt_returned_mass(hf_row: dict) -> bool:
+    """Whether this step's trapping released buried mass back to the melt."""
+    branch = float(hf_row.get('trap_branch', 0.0))
+    step = float(hf_row.get('trap_kg_step', 0.0))
+    return bool(np.isfinite(branch) and round(branch) == BRANCH_REMELT and step < 0.0)
+
+
 def trapping_active(config: Config) -> bool:
     """Whether the run traps volatiles; with ``trap_mode = 'none'`` nothing
     this module owns may change what the run does."""

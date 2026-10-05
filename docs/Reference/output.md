@@ -276,9 +276,9 @@ Each iteration carries the previous row forward and overwrites only the columns 
 |---|---|---|---|---|---|
 | `trap_dM_RM` | `kg` | mantle mass crystallised this step, negative when it remelted | `outgas/trapping.py` | always |   |
 | `trap_F_tl` | `1` | trapped melt fraction applied this step | `outgas/trapping.py` | always |   |
-| `trap_kg_step` | `kg` | volatile mass buried this step, negative when remelting released it | `outgas/trapping.py` | always |   |
+| `trap_kg_step` | `kg` | volatile mass buried this step, negative when remelting released it | `outgas/trapping.py` | always | outgas |
 | `trap_kg_cumulative` | `kg` | net volatile mass buried since the run began | `outgas/trapping.py` | always | outgas |
-| `trap_branch` | `1` | drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting | `outgas/trapping.py` | always |   |
+| `trap_branch` | `1` | drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting | `outgas/trapping.py` | always | outgas |
 | `trap_tau_D` | `yr` | percolation time at the top of the front | `outgas/trapping.py` | always |   |
 | `trap_tau_s` | `yr` | matrix deformation time | `outgas/trapping.py` | always |   |
 | `trap_t_res` | `yr` | parcel residence time in the front | `outgas/trapping.py` | always |   |
