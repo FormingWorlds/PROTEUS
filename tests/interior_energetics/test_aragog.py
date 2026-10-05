@@ -4294,6 +4294,90 @@ def test_update_structure_core_module_refit_debug_exception_handling(caplog):
     )
 
 
+def _core_drift_setup(p_basic=(136e9, 100e9)):
+    """Runner, config, solver and interior state for update_structure under core_module."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    runner = AragogRunner.__new__(AragogRunner)
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.interior_energetics.aragog.core_bc = 'core_module'
+    solver = MagicMock()
+    solver.parameters.mesh.outer_radius = 6.371e6
+    solver.parameters.mesh.inner_radius = 3.48e6
+    solver.parameters.mesh.gravitational_acceleration = 9.81
+    solver.parameters.boundary_conditions.core_module_params = {'alpha': 1.3e-5, 'c_p': 850.0}
+    solver._P_basic_flat = None if p_basic is None else np.array(p_basic)
+    interior_o = MagicMock(aragog_solver=solver)
+    interior_o._frozen_core_m_core = 1.8916e24
+    interior_o._frozen_core_p_cen = 3.4139e11
+    hf = {
+        'Time': 100.0,
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'M_core': 1.8916e24 * 1.02,
+        'P_center': 3.4139e11 * 1.002,
+        'P_cmb': 1.3e11,
+    }
+    return runner, config, interior_o, hf
+
+
+@pytest.mark.unit
+def test_update_structure_skips_the_core_refit_below_debug(caplog):
+    """Above DEBUG the diagnostic refit does not run, and the drift warning still does."""
+    runner, config, interior_o, hf = _core_drift_setup()
+    with (
+        patch('aragog.core.profiles.fit_gaussian_core_profiles') as fit,
+        caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.aragog'),
+    ):
+        runner.update_structure(config, hf, interior_o)
+    fit.assert_not_called()
+    assert any('drift exceeds 1% threshold' in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'p_basic, p_cmb', [((136e9, 100e9), 136e9), (None, 1.3e11)], ids=['basic_mesh', 'hf_row']
+)
+def test_update_structure_refits_the_core_from_the_live_structure_at_debug(
+    caplog, p_basic, p_cmb
+):
+    """At DEBUG the refit gets the live core mass, centre pressure, CMB radius and CMB
+    pressure, and its result is logged in kg/m^3 and km."""
+    runner, config, interior_o, hf = _core_drift_setup(p_basic)
+    refit = SimpleNamespace(rho_cen=12345.6, length_scale=7.1e6)
+    with (
+        patch('aragog.core.profiles.fit_gaussian_core_profiles', return_value=refit) as fit,
+        caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.aragog'),
+    ):
+        runner.update_structure(config, hf, interior_o)
+    fit.assert_called_once_with(
+        m_core=hf['M_core'],
+        p_cen=hf['P_center'],
+        r_cmb=3.48e6,
+        p_cmb=p_cmb,
+        alpha=1.3e-5,
+        c_p=850.0,
+    )
+    assert any(
+        'refit would give rho_cen=12345.60 kg/m^3, length_scale=7100.0 km' in r.getMessage()
+        for r in caplog.records
+    )
+
+
+@pytest.mark.unit
+def test_update_structure_lets_an_unexpected_refit_error_through(caplog):
+    """Only the fit's own errors (ValueError, RuntimeError) are logged and skipped."""
+    runner, config, interior_o, hf = _core_drift_setup()
+    with (
+        patch('aragog.core.profiles.fit_gaussian_core_profiles', side_effect=KeyError('alpha')),
+        caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.aragog'),
+        pytest.raises(KeyError, match='alpha'),
+    ):
+        runner.update_structure(config, hf, interior_o)
+    assert not any('refit skipped' in r.getMessage() for r in caplog.records)
+
+
 @pytest.mark.unit
 def test_run_solver_invokes_core_module_diagnostics_when_active(tmp_path):
     """run_solver calls _write_core_module_diagnostics when core_bc == 'core_module'."""

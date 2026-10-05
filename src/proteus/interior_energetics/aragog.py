@@ -2101,13 +2101,14 @@ class AragogRunner:
             if m_core_frozen and p_cen_frozen and m_core_live > 0 and p_cen_live > 0:
                 drift_m = abs(m_core_live - m_core_frozen) / m_core_frozen
                 drift_p = abs(p_cen_live - p_cen_frozen) / p_cen_frozen
-                r_cmb_live = float(solver.parameters.mesh.inner_radius)
-                p_cmb_live = (
-                    float(solver._P_basic_flat[0])
-                    if hasattr(solver, '_P_basic_flat') and solver._P_basic_flat is not None
-                    else float(hf_row.get('P_cmb', 136e9))
-                )
                 if log.isEnabledFor(logging.DEBUG):
+                    r_cmb_live = float(solver.parameters.mesh.inner_radius)
+                    p_flat = getattr(solver, '_P_basic_flat', None)
+                    p_cmb_live = (
+                        float(p_flat[0])
+                        if p_flat is not None
+                        else float(hf_row.get('P_cmb', 136e9))
+                    )
                     try:
                         from aragog.core.profiles import fit_gaussian_core_profiles
 
