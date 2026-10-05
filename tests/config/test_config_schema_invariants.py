@@ -44,6 +44,7 @@ from proteus.config._config import (
     check_module_dependencies,
     instmethod_evolve,
     orbit_requires_tides,
+    parameterized_excludes_accretion,
     parameterized_excludes_tides,
     planet_fO2_source_compat,
     planet_mass_valid,
@@ -940,6 +941,62 @@ def test_parameterized_excludes_tides_ignores_tidal_orbit_models(model):
     )
     parameterized_excludes_tides(instance, None, None)
     assert instance.orbit.module == 'lovepy'
+    assert instance.orbit.star_planet_model == model
+
+
+# ---------------------------------------------------------------------------
+# parameterized_excludes_accretion: no impacts on a prescribed track
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('module', ['dummy', 'timeline', 'morrigan'])
+def test_parameterized_excludes_accretion_rejects_every_accretion_module(module):
+    """Every accretion module applies its impacts through apply_impact, which
+    rewrites the configured orbit. Under the prescribed track that keeps the
+    eccentricity change and drops the semi-major axis change, so the pairing
+    must raise, naming the module and the setting to change."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': None,
+            'orbit.star_planet_model': 'parameterized',
+            'accretion.module': module,
+        }
+    )
+    with pytest.raises(ValueError, match='parameterized') as excinfo:
+        parameterized_excludes_accretion(instance, None, None)
+    msg = str(excinfo.value)
+    assert repr(module) in msg
+    assert "accretion.module = 'none'" in msg
+
+
+@pytest.mark.unit
+def test_parameterized_excludes_accretion_passes_without_accretion():
+    """With accretion disabled (``'none'`` converts to ``None``) the prescribed
+    track is valid, and the validator leaves the config as is."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': None,
+            'orbit.star_planet_model': 'parameterized',
+            'accretion.module': None,
+        }
+    )
+    parameterized_excludes_accretion(instance, None, None)
+    assert instance.accretion.module is None
+    assert instance.orbit.star_planet_model == 'parameterized'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('model', [None, 'sp0d', 'sp1d'])
+def test_parameterized_excludes_accretion_ignores_other_orbit_models(model):
+    """A fixed or tidally evolved orbit carries the impact's new orbit forward
+    from the running row, so accretion stays allowed there and the validator
+    must not fire."""
+    instance = _make_config_instance(
+        **{'orbit.star_planet_model': model, 'accretion.module': 'dummy'}
+    )
+    parameterized_excludes_accretion(instance, None, None)
+    assert instance.accretion.module == 'dummy'
     assert instance.orbit.star_planet_model == model
 
 

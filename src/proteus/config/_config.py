@@ -126,6 +126,24 @@ def parameterized_excludes_tides(instance, attribute, value):
         )
 
 
+def parameterized_excludes_accretion(instance, attribute, value):
+    """Reject giant impacts with the parameterized star-planet model.
+
+    The track rebuilds the orbit every step, so an impact's new semi-major axis
+    would be lost while its eccentricity change persisted; see "Star-planet
+    models" in docs/Explanations/orbit.md.
+    """
+    if (
+        instance.orbit.star_planet_model == 'parameterized'
+        and instance.accretion.module is not None
+    ):
+        raise ValueError(
+            "orbit.star_planet_model = 'parameterized' requires accretion.module = 'none' "
+            f'(got {instance.accretion.module!r}): the prescribed track overwrites the '
+            'semi-major axis an impact sets but keeps its eccentricity change'
+        )
+
+
 CURRENT_CONFIG_VERSION = '3.0'
 
 
@@ -614,6 +632,7 @@ class Config:
             check_module_dependencies,
             check_accretion_interior_compatibility,
             check_accretion_vapourise_compatibility,
+            parameterized_excludes_accretion,
         ),
     )
 
