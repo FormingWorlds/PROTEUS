@@ -266,6 +266,10 @@ def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
     return subyear
 
 
+# Smallest time difference [yr] that format_subyear_time resolves.
+SUBYEAR_TIME_RESOLUTION = 1.0e-3
+
+
 def format_subyear_time(time: float) -> str:
     """Format a simulation time with sub-year precision for snapshot filenames.
 

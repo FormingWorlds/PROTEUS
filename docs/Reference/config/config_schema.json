@@ -671,7 +671,7 @@
           "value": 0
         }
       ],
-      "description": "Maximum time-step size [yr] for the step that lands on a scheduled giant impact. The landing step is otherwise clamped only to however much simulated time remains before the impact, so after a long quiescent phase has let ``dt`` coarsen, that remaining time can itself be large and the step absorbing the impact's melt-fraction jump inherits the same coarseness. Set to 0 (default) to disable, in which case the remaining-time clamp applies with no independent ceiling.",
+      "description": "Ceiling [yr] for the step that reaches a scheduled giant impact. Such a step is otherwise clamped only to the time left before the impact, which after a long quiescent phase can itself be large. With the ceiling set, a reaching step longer than ``max(impact_maximum, dtfloor)`` (dtfloor = dt.minimum + dt.minimum_rel * Time) is cut to an equal fraction of the time left; later steps are evaluated again, and the step that lands is no longer than ``max(impact_maximum, dtfloor)``. Set to 0 (default) to disable. Independent of this setting, the step that lands on an impact can be shorter than dtfloor, a step ending at most 1e-3 yr short of an impact is extended onto it (unless the step already reaches stop.time.maximum), and an impact is applied at the end of the first step that reaches its time. Impacts each less than 1e-3 yr after the one before form a chain that the step aims at the last of, so an impact in a chain can be applied later than its time by up to the chain span; a chain spanning 1e-3 yr or more is logged as a warning.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -692,7 +692,7 @@
           "value": 0
         }
       ],
-      "description": "Cap on the dt growth ratio between consecutive steps [dimensionless]. Bounds dtswitch / dtprev, preventing large jumps that can wedge the interior solver; 0 (default) disables the cap.",
+      "description": "Cap on the dt growth ratio between consecutive steps [dimensionless]. Bounds dtswitch / dtprev, preventing large jumps that can wedge the interior solver; 0 (default) disables the cap. After a step that landed on a giant impact, dtprev is the larger of that step and ``min(dtfloor, last step that did not land on an impact)``, or dtfloor when there is no such step.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1721,7 +1721,7 @@
         "inst"
       ],
       "bounds": null,
-      "description": "Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit",
+      "description": "Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit. With 'inst' the semi-major axis follows the flux at every step, so a giant impact's semi-major axis change is not applied; its eccentricity change is.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6919,7 +6919,7 @@
           "value": 0.0
         }
       ],
-      "description": "Minimum threshold for element mass [kg]. Inventories below this are set to zero.",
+      "description": "Minimum threshold for element mass [kg]. Outgassing treats H, C, N or S below it as absent; escape sets a non-noble element total below it to zero, except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -10340,7 +10340,7 @@
         "morrigan"
       ],
       "bounds": null,
-      "description": "Accretion module to use. Choices: None, \"dummy\", \"timeline\", \"morrigan\".",
+      "description": "Accretion module to use. A \"timeline\" or \"morrigan\" history is borrowed from its dynamical bodies: impactor masses, collision loss fractions and impact energies are theirs, not rescaled to this planet. A warning is logged when the timeline's target mass differs from the planet mass by more than 10 %, a round threshold (about 3.5 % in escape speed, which scales as M^0.36), at load and per impact. Choices: None, \"dummy\", \"timeline\", \"morrigan\".",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -10922,7 +10922,7 @@
           "value": 0
         }
       ],
-      "description": "Oxygen carried by each impactor [ppmw of impactor mass].",
+      "description": "Oxygen carried by each impactor [ppmw of impactor mass]. With CALLIOPE or atmodeller at a fixed fO2 (``planet.fO2_source = 'user_constant'``) the outgassing derives the O budget, so the delivered part counts as rock; otherwise it joins the O budget.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

@@ -5,7 +5,6 @@ import os
 import subprocess
 from pathlib import Path
 
-import pandas as pd
 import toml
 import torch
 from numpy import log10
@@ -22,7 +21,12 @@ from proteus.inference.failures import (
 )
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import element_list, gas_list
-from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
+from proteus.utils.coupler import (
+    HelpfileFormatError,
+    get_proteus_directories,
+    read_helpfile_table,
+    variable_is_logarithmic,
+)
 from proteus.utils.helper import ReadStatus
 
 dtype = torch.double
@@ -321,20 +325,12 @@ def run_proteus(
     # Read simulator output. A run that exits cleanly but writes no usable
     # helpfile (killed mid-write, stopped before the first row, or corrupted
     # on disk) is a failed sample, not a crash of the study.
-    unreadable = (
-        OSError,
-        UnicodeDecodeError,
-        pd.errors.EmptyDataError,
-        pd.errors.ParserError,
-        IndexError,
-    )
     try:
-        df_row = dict(pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1])
-    except unreadable as err:
-        # A truncated whitespace-delimited file usually presents as a ragged
-        # row (ParserError) rather than an empty one, so both are caught.
+        df_row = dict(read_helpfile_table(out_csv, min_rows=1).iloc[-1])
+    except (OSError, HelpfileFormatError) as err:
+        # A missing file, or one that is empty, truncated, ragged or not UTF-8.
         raise _failure(
-            f'exited cleanly but produced no readable output ({out_csv.name})',
+            f'exited cleanly but produced no readable output ({out_csv.name}: {err})',
             exit_code=0,
         ) from err
 

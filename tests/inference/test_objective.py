@@ -9,6 +9,7 @@ References:
 from __future__ import annotations
 
 import csv
+import functools
 import logging
 import subprocess
 
@@ -604,64 +605,20 @@ def test_run_proteus_failure_points_at_the_simulator_logfile(monkeypatch, tmp_pa
 def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, tmp_path):
     """A run that exits zero but writes no readable helpfile is reported as a
     failed sample rather than crashing the study with a bare parser error. That
-    covers a missing file, an empty one, and one corrupted into invalid UTF-8.
-    The exit code is recorded as zero so the report does not suggest a crash.
+    covers a missing file, an empty one, one corrupted into invalid UTF-8 and a
+    ragged row. The exit code is recorded as zero so the report does not suggest
+    a crash.
     """
     out_abs = tmp_path / 'sim'
     out_abs.mkdir(parents=True)
+    helpfile = out_abs / 'runtime_helpfile.csv'
     monkeypatch.setattr(
         objective_mod, 'get_proteus_directories', lambda _path: {'output': str(out_abs)}
     )
     monkeypatch.setattr(objective_mod, 'update_toml', lambda *_args, **_kwargs: None)
     monkeypatch.setattr(objective_mod.subprocess, 'run', lambda *args, **kwargs: None)
-
-    # No helpfile at all.
-    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
-        objective_mod.run_proteus(
-            parameters={},
-            worker=0,
-            iter=0,
-            observables=['P_surf'],
-            ref_config='reference.toml',
-            output='dummy_output',
-        )
-    assert excinfo.value.exit_code == 0
-    assert 'no readable output' in excinfo.value.reason
-
-    # Edge case: a helpfile that exists but holds no rows.
-    (out_abs / 'runtime_helpfile.csv').write_text('', encoding='utf-8')
-    with pytest.raises(objective_mod.ProteusRunFailure):
-        objective_mod.run_proteus(
-            parameters={},
-            worker=0,
-            iter=0,
-            observables=['P_surf'],
-            ref_config='reference.toml',
-            output='dummy_output',
-        )
-
-    # Edge case: bytes that are not valid UTF-8 raise UnicodeDecodeError, a
-    # ValueError rather than a parser error, from pandas.
-    (out_abs / 'runtime_helpfile.csv').write_bytes(b'Time P_surf\n1.0 2.0\n3.0 \xff\xfe\n')
-    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
-        objective_mod.run_proteus(
-            parameters={},
-            worker=0,
-            iter=0,
-            observables=['P_surf'],
-            ref_config='reference.toml',
-            output='dummy_output',
-        )
-    assert isinstance(excinfo.value.__cause__, UnicodeDecodeError)
-    assert 'no readable output' in excinfo.value.reason
-
-    # Discrimination: a helpfile with a usable row completes normally, so the
-    # failures above come from the output and not from an unconditional raise
-    # on this code path.
-    pd.DataFrame([{'P_surf': 2.5}]).to_csv(
-        out_abs / 'runtime_helpfile.csv', sep=' ', index=False
-    )
-    obs, _status = objective_mod.run_proteus(
+    run = functools.partial(
+        objective_mod.run_proteus,
         parameters={},
         worker=0,
         iter=0,
@@ -669,6 +626,44 @@ def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, t
         ref_config='reference.toml',
         output='dummy_output',
     )
+
+    # No helpfile at all.
+    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
+        run()
+    assert excinfo.value.exit_code == 0
+    assert 'no readable output' in excinfo.value.reason
+
+    # Edge case: a helpfile that exists but holds no rows.
+    helpfile.write_text('', encoding='utf-8')
+    with pytest.raises(objective_mod.ProteusRunFailure):
+        run()
+
+    # Edge case: bytes that are not valid UTF-8 fail the reader's own UTF-8 read.
+    helpfile.write_bytes(b'Time P_surf\n1.0 2.0\n3.0 \xff\xfe\n')
+    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
+        run()
+    assert isinstance(excinfo.value.__cause__, objective_mod.HelpfileFormatError)
+    assert isinstance(excinfo.value.__cause__.__cause__, UnicodeDecodeError)
+
+    # Edge case: a row with more fields than the header would be read one column off.
+    helpfile.write_text('Time P_surf\n1.0 2.0\n3.0 4.0 5.0\n', encoding='utf-8')
+    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
+        run()
+    assert isinstance(excinfo.value.__cause__, objective_mod.HelpfileFormatError)
+    assert excinfo.value.exit_code == 0
+    # The reason that reaches failures.csv names the file and the line.
+    assert 'runtime_helpfile.csv, line 3' in excinfo.value.reason
+
+    # Edge case: a header with no rows is a failed sample, not an IndexError.
+    helpfile.write_text('Time P_surf\n', encoding='utf-8')
+    with pytest.raises(objective_mod.ProteusRunFailure) as excinfo:
+        run()
+    assert '0 data rows' in excinfo.value.reason
+
+    # Discrimination: a helpfile with a usable row completes normally, so the
+    # failures above come from the output and not from an unconditional raise.
+    pd.DataFrame([{'P_surf': 2.5}]).to_csv(helpfile, sep=' ', index=False)
+    obs, _status = run()
     assert obs['P_surf'] == pytest.approx(2.5)
 
 

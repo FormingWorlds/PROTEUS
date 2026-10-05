@@ -54,9 +54,7 @@ from proteus.outgas.trapping import (
     derived_total_elements,
     effective_partition,
     escapable_inventory,
-    hold_in_mantle,
     locked_solid_mass,
-    mantle_totals,
     remelted_fraction,
     restore_trapped_mass,
     run_trapping,
@@ -770,75 +768,6 @@ def test_the_oxygen_total_is_the_whole_planets_under_either_fo2_source():
         assert_mass_conservation(
             broken, check_element_closure=True, require_atm_le_planet=False
         )
-
-
-def _desiccating_row() -> dict:
-    """Row the step before desiccation empties it.
-
-    Hydrogen holds its trapped 4e19 kg plus a 5e15 kg remainder in the
-    atmosphere, below the desiccation threshold; oxygen its trapped 3.2e20 kg
-    plus 4e15 kg in the melt; carbon a 1e15 kg remainder in the melt and
-    helium, which escape never floors, 1e14 kg in the atmosphere.
-    """
-    row = {'M_planet': 6.0e24, 'M_atm': 0.0, 'M_vol_atm': 0.0}
-    for name in ('H', 'O', 'C', 'N', 'S', 'He', 'H2O'):
-        for reservoir in ('atm', 'liquid', 'solid', 'total'):
-            row[f'{name}_kg_{reservoir}'] = 0.0
-    row.update(H_kg_atm=5.0e15, H_kg_solid=4.0e19, H_kg_total=4.0e19 + 5.0e15)
-    row.update(O_kg_liquid=4.0e15, O_kg_solid=3.2e20, O_kg_total=3.2e20 + 4.0e15)
-    row.update(C_kg_liquid=1.0e15, C_kg_total=1.0e15, He_kg_atm=1.0e14, He_kg_total=1.0e14)
-    row.update(H2O_kg_solid=3.6e20, H2O_kg_total=3.6e20)
-    row.update(H_kg_trapped=4.0e19, O_kg_trapped=3.2e20, H2O_kg_trapped=3.6e20)
-    return row
-
-
-def _desiccate(row: dict) -> dict:
-    """Zero the outgassing columns as desiccation does, holding the mantle."""
-    from proteus.outgas.common import expected_keys
-
-    totals = mantle_totals(row)
-    for key in expected_keys():
-        if key in row:
-            row[key] = 0.0
-    hold_in_mantle(row, totals)
-    return row
-
-
-@pytest.mark.physics_invariant
-def test_desiccation_keeps_every_total_and_holds_it_in_the_mantle():
-    """Desiccation empties the atmosphere and changes no total, as on a run
-    without trapping. Each species and element keeps its trapped mass in the
-    solid and the rest of its total in the melt, so the per-element closure
-    holds and nothing is deleted, the remainders below the threshold included."""
-    before = _desiccating_row()
-    row = _desiccate(dict(before))
-    for name in ('H', 'O', 'C', 'He', 'H2O'):
-        assert row[f'{name}_kg_total'] == pytest.approx(before[f'{name}_kg_total'], rel=1e-15)
-        assert row[f'{name}_kg_atm'] == pytest.approx(0.0, abs=0.0)
-    assert row['H_kg_solid'] == pytest.approx(4.0e19, rel=1e-12)
-    # The 5e15 kg atmospheric remainder of hydrogen now sits in the melt.
-    assert row['H_kg_liquid'] == pytest.approx(5.0e15, rel=1e-6)
-    assert row['O_kg_liquid'] == pytest.approx(4.0e15, rel=1e-6)
-    assert row['C_kg_liquid'] == pytest.approx(1.0e15, rel=1e-12)
-    assert row['He_kg_liquid'] == pytest.approx(1.0e14, rel=1e-12)
-    assert row['He_mol_liquid'] == pytest.approx(1.0e14 / eval_gas_mmw('He'), rel=1e-12)
-    assert row['H2O_mol_total'] == pytest.approx(3.6e20 / eval_gas_mmw('H2O'), rel=1e-12)
-    assert_mass_conservation(row, check_element_closure=True, require_atm_le_planet=False)
-    # Discrimination: emptying the melt and setting each total to its trapped
-    # mass, the rule this replaces, would delete the hydrogen remainder.
-    assert row['H_kg_total'] - 4.0e19 == pytest.approx(5.0e15, rel=1e-6)
-
-    # Edge case: desiccating again changes nothing.
-    again = _desiccate(dict(row))
-    for key in ('H_kg_liquid', 'H_kg_solid', 'H_kg_total', 'He_kg_liquid'):
-        assert again[key] == pytest.approx(row[key], rel=1e-15)
-    # Error contract: a non-finite trapped record counts as nothing trapped,
-    # and a non-finite total is carried, not turned into zero.
-    stale = dict(before, H_kg_trapped=float('nan'), C_kg_total=float('nan'))
-    stale = _desiccate(stale)
-    assert stale['H_kg_solid'] == pytest.approx(0.0, abs=0.0)
-    assert stale['H_kg_liquid'] == pytest.approx(4.0e19 + 5.0e15, rel=1e-12)
-    assert not np.isfinite(stale['C_kg_total'])
 
 
 def _closure_row(parts_over_total: float) -> dict:

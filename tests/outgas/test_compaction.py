@@ -35,8 +35,6 @@ for the test framework.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import numpy as np
 import pytest
 from scipy.optimize import brentq
@@ -90,7 +88,10 @@ def _solver_velocity(porosity, grain_size, rho_s=4000.0, rho_l=3600.0, gravity=9
     from aragog.eos.entropy_phase import EntropyPhaseEvaluator
 
     phi = np.asarray(porosity, dtype=float)
-    stand_in = SimpleNamespace(
+    # An uninitialised evaluator, so the solver's own porosity and phase-boundary
+    # lookups run on the attributes set here.
+    stand_in = object.__new__(EntropyPhaseEvaluator)
+    stand_in.__dict__.update(
         _const_properties=False,
         _eos=_EndMemberEOS(rho_s, rho_l),
         pressure=np.full(phi.shape, 1.0e10),

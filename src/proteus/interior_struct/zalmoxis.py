@@ -389,7 +389,7 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
 
     The tolerance is that of Aragog's ``EntropySolver.reset()``,
     ``max(1 m, 1e-9 * (R_int - R_core))``, applied to both bounds in both
-    directions; the helpfile rounding of the radii is at most 5e-5 m below
+    directions; an 11-digit helpfile rounds the radii by at most 5e-5 m below
     1e7 m and 5e-4 m up to 1e8 m.
 
     Parameters
@@ -1344,8 +1344,11 @@ def load_zalmoxis_configuration(
             config.interior_struct.core_frac,
         )
 
-    # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg]
-    total_planet_mass = config.planet.mass_tot * M_earth
+    # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg],
+    # plus the volatile mass impacts and escape moved, which mass_tot (rock anchor) leaves out.
+    from proteus.interior_struct.common import volatile_mass_change
+
+    total_planet_mass = config.planet.mass_tot * M_earth + volatile_mass_change(hf_row)
 
     log.debug(
         'Total target planet mass (dry mass + volatiles): %s kg '
@@ -1371,7 +1374,7 @@ def load_zalmoxis_configuration(
     log.debug(
         'Mass budget: total=%.6e kg (%.4f M_earth), volatiles=%.6e kg (%.2f%%)',
         total_planet_mass,
-        config.planet.mass_tot,
+        total_planet_mass / M_earth,
         M_volatiles,
         100.0 * M_volatiles / total_planet_mass if total_planet_mass > 0 else 0,
     )
@@ -2484,7 +2487,7 @@ def _resumed_ps_tables(
         except OSError:
             continue
         built = re.search(r'P_max=([^_]+)', stored)
-        # 1e-6 covers the 7-digit key and the helpfile round trip of the mass.
+        # 1e-6 covers the 7-digit key and the mass rounding of an 11-digit helpfile.
         if p_max is not None and built and abs(float(built.group(1)) / p_max - 1) > 1e-6:
             log.info(
                 'Planet mass changed since the P-S tables in %s were built (P_max %s Pa, '

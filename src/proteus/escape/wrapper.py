@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.escape.common import calc_unfract_fluxes
-from proteus.outgas.trapping import locked_solid_mass
 from proteus.utils.constants import M_sun, element_list, noble_gases, secs_per_year
 from proteus.utils.helper import UpdateStatusfile
 
@@ -62,6 +61,9 @@ def reservoir_mass(hf_row: dict, element: str, key: str) -> float:
     subtraction, and sizing a loss from a reservoir that included it would ask
     escape to remove mass it cannot reach.
     """
+    # Imported here: proteus.outgas imports this module at load.
+    from proteus.outgas.trapping import locked_solid_mass
+
     mass = float(hf_row.get(f'{element}{key}', 0.0))
     if key != '_kg_total' or not np.isfinite(mass):
         return mass
@@ -264,7 +266,9 @@ def run_escape(
             If True, size the per-element loss from the atmospheric reservoir
             regardless of ``config.escape.reservoir``. Set once the mantle has
             solidified: dissolved volatiles are then frozen into the solid and
-            the atmosphere is the only reservoir that can supply escape.
+            the atmosphere is the only reservoir that can supply escape. The
+            element floor of :func:`calc_new_elements` is then off, since no
+            outgassing solve follows to repartition a zeroed total.
         interior_o : Interior_t | None
             Interior state. When given, its ``escape_dt_limit`` is set so a
             capped step shortens the next one; see :func:`escape_dt_limit`.
@@ -304,9 +308,10 @@ def run_escape(
         # implicitly carries the O contribution).
         m_vol_baseline = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
         hf_row['M_vol_initial'] = m_vol_baseline
-        # Reset the cumulative escape counter alongside the baseline so the
+        # Reset the escape and desiccation ledgers alongside the baseline so the
         # ratio (lost vs escaped) starts from a consistent zero.
         hf_row['esc_kg_cumulative'] = 0.0
+        hf_row['M_desiccated'] = 0.0
 
     if config.escape.module == 'dummy':
         run_dummy(config, hf_row, atmosphere_only=atmosphere_only)
@@ -363,16 +368,16 @@ def run_escape(
         reservoir,
         min_thresh=config.outgas.mass_thresh,
         esc_mass=esc_step_kg,
+        floor=not atmosphere_only,
     )
 
     # store new elemental inventories
     for e, mass in solvevol_target.items():
         hf_row[f'{e}_kg_total'] = mass
 
-    # The mass that actually left. Measured from the inventories, not the
-    # request, because the threshold gate can decline to debit; bounded by the
-    # applied loss, because that same gate also zeroes an element under the
-    # threshold and escape must not be credited with the truncation.
+    # The mass that left, measured from the inventories since the threshold gate can
+    # decline to debit; bounded by the applied loss since on a molten mantle the floor
+    # zeroes an element under the threshold, and escape is not credited with that.
     drop_kg = before_kg - readable_total(hf_row)
     # Test both operands, not the result: `min` returns whichever argument comes
     # first when the other is not a number, so a non-finite one would survive.
@@ -522,6 +527,7 @@ def calc_new_elements(
     reservoir: str,
     min_thresh: float = 1e10,
     esc_mass: float | None = None,
+    floor: bool = True,
 ):
     """Calculate new elemental inventory based on escape rate.
 
@@ -532,17 +538,27 @@ def calc_new_elements(
         dt : float
             Time-step length [years]
         min_thresh: float
-            Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+            Minimum threshold for element mass [kg]. A reservoir below it is not
+            debited; with ``floor``, an element total below it is emptied to the
+            mass locked in the solid.
         esc_mass : float | None
             Mass to remove over this step [kg]. Defaults to the unrestricted
             ``esc_rate_total * dt``; pass the value from
             :func:`limit_escape_step` to apply the per-step cap.
+        floor : bool
+            Set a non-noble element that falls below ``min_thresh`` to the mass
+            locked in the solid. Only for a step whose outgassing solve
+            repartitions the totals afterwards; on a frozen mantle no solve
+            follows and the atmosphere keeps the mass.
 
     Returns
     -------
         tgt : dict
             Volatile element whole-planet inventories [kg]
     """
+    # Imported here: proteus.outgas imports this module at load.
+    from proteus.outgas.trapping import locked_solid_mass
+
     # which reservoir?
 
     log.info(f'Calculating new elemental inventories from escape, reservoir = {reservoir}')
@@ -603,13 +619,10 @@ def calc_new_elements(
             tgt[e] = old_total
             continue
         new_total = old_total - lost
-        # Mass trapped in the solid is the floor, not zero: the debit lands on
-        # `_kg_total` whichever reservoir sized it. The threshold is applied to the
-        # escapable remainder, so a locked reservoir cannot hold the total above it.
-        locked = locked_solid_mass(hf_row, e)
         # A major volatile whose whole total drops below min_thresh is empty but for
         # its locked mass. Noble gases are trace by nature, so they are exempt.
-        if e not in noble_gases and new_total < min_thresh:
+        locked = locked_solid_mass(hf_row, e)
+        if floor and e not in noble_gases and new_total < min_thresh:
             new_total = locked
         tgt[e] = max(locked, new_total)
 
