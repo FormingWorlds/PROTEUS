@@ -86,6 +86,10 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('escape/common.py', 'calc_unfract_fluxes', 'esc_rate_<?>'): _ELEMENTS,
     ('escape/boreas.py', '_set_boreas_params', '<?>_vmr_xuv'): _GASES_POSSIBLE,
     ('outgas/calliope.py', 'calc_target_masses', '<?>_kg_total'): _ELEMENTS,
+    ('outgas/wrapper.py', 'run_desiccated', '<?>_kg_total'): _BOTH,
+    ('outgas/wrapper.py', 'run_desiccated', '<?>_kg_solid'): _BOTH,
+    ('outgas/wrapper.py', 'run_desiccated', '<?>_mol_total'): _GASES,
+    ('outgas/wrapper.py', 'run_desiccated', '<?>_mol_solid'): _GASES,
     ('outgas/atmodeller.py', '_populate_volatile_element_reservoirs', '<?>_kg_atm'): _ELEMENTS,
     (
         'outgas/atmodeller.py',

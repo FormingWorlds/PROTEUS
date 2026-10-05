@@ -78,7 +78,7 @@ def test_main_loop_escape_debit_reaches_the_zalmoxis_target(tmp_path, monkeypatc
     net = hf['M_volatile_change'].to_numpy()
     assert escaped > 0.0
     assert len(calls) > len(hf) // 2, 'the stub must re-solve inside the loop'
-    assert -net[-1] == pytest.approx(escaped, rel=1e-9)
+    assert -net[-1] == pytest.approx(escaped + float(hf['M_desiccated'].iloc[-1]), rel=1e-9)
     assert runner.config.planet.mass_tot == pytest.approx(mass_before, rel=1e-15)
     # Each row: interior = rock anchor + V (here the ledger, no rock) - volatiles.
     # The first post-init row still takes the init-stage budgets after its solve.

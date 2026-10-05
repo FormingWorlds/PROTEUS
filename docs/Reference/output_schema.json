@@ -3059,6 +3059,27 @@
       "consumers_possible": []
     },
     {
+      "name": "M_desiccated",
+      "unit": "kg",
+      "description": "element mass removed at desiccation without escape",
+      "group": "Atmospheric composition from outgassing",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/wrapper.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
       "name": "esc_clamp_frac",
       "unit": "1",
       "description": "requested per-step loss / escapable reservoir",
@@ -3139,7 +3160,7 @@
     {
       "name": "M_volatile_change",
       "unit": "kg",
-      "description": "cumulative element mass added to the Zalmoxis target : delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included)",
+      "description": "cumulative element mass added to the Zalmoxis target : delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation",
       "group": "Giant-impact accretion ledger",
       "origin": "literal",
       "producers": [

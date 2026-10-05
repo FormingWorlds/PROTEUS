@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from proteus.escape.wrapper import readable_total
+from proteus.interior_struct.common import record_volatile_change
 from proteus.outgas.common import expected_keys
 from proteus.outgas.lavatmos import run_vapourisation
 from proteus.utils.constants import (
@@ -259,7 +261,9 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     from firing on pathologically tiny inventories. If the gate is
     inactive (no baseline tracked yet, e.g. resuming an old CSV without
     `M_vol_initial`), the function falls back to the old threshold-only
-    behaviour.
+    behaviour. The current total skips a non-finite element, as run_desiccated
+    does, and mass an earlier desiccation removed, ``M_desiccated``, is left out
+    of the loss the gate compares, so a desiccated row passes again on resume.
 
     Scope of "desiccated": the threshold loop below considers the volatile
     elements (`vol_element_list`: H, O, C, N, S) together with the noble gases,
@@ -274,6 +278,16 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # CALLIOPE drives O_kg_total to near-zero once H/C/N/S vanish, so this
     # change rarely affects the desiccation timing, but it keeps the
     # semantics honest under whole-planet O accounting.
+    unreadable = [
+        e for e in element_list if not np.isfinite(float(hf_row.get(f'{e}_kg_total', 0.0)))
+    ]
+    if unreadable:
+        log.error(
+            'Desiccation check refused: the total of %s is not finite; an upstream '
+            'step left it unreadable and needs checking.',
+            ', '.join(unreadable),
+        )
+        return False
     for e in vol_element_list + noble_gases:
         if float(hf_row.get(e + '_kg_total', 0.0)) > config.outgas.mass_thresh:
             log.info(
@@ -297,8 +311,11 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # or the (m_init - cur_m_ele) comparison mixes element sets and
     # overstates "lost" mass by any noble-gas/rock-vapour inventory present
     # at baseline time.
-    cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
-    lost = m_init - cur_m_ele
+    removed = float(hf_row.get('M_desiccated', 0.0))
+    if not np.isfinite(removed):
+        removed = 0.0
+    cur_m_ele = readable_total(hf_row)
+    lost = m_init - cur_m_ele - removed
     esc_cum = float(hf_row.get('esc_kg_cumulative', 0.0))
 
     # Allow 1.5x scaling slack plus a 1 t absolute floor for noise.
@@ -595,7 +612,17 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
 def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     """
     Handle desiccation of the planet. This substitutes for run_outgassing when the planet
-    has lost its entire volatile inventory.
+    has lost its entire volatile inventory. The atmosphere and the melt are emptied,
+    noble gases included; the solid mantle keeps its share, which becomes each
+    species and element total. The mass removed is booked in ``M_desiccated`` and
+    the Zalmoxis target.
+
+    The kept share is the solid column limited to [0, total before the call]; a
+    non-finite solid column keeps nothing and is logged. The solid column, kg and
+    mol, is set to the kept share. No total rises, so the mass removed is not
+    negative and a row that passed ``check_desiccation`` passes it again. A
+    non-finite total stays as it is, with its mol total set to NaN; a negative total
+    keeps its value. A non-finite ``M_desiccated`` reads as 0, as in the check.
 
     Parameters
     ----------
@@ -617,10 +644,34 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     for g in gas_list:
         excepted_keys.append(f'{g}_vmr')
 
-    # Set most values to zero
+    totals = {
+        n: float(hf_row.get(f'{n}_kg_total', 0.0))
+        for n in dict.fromkeys(element_list + gas_list)
+    }
+    removed = readable_total(hf_row)
     for k in expected_keys():
-        if k not in excepted_keys:
+        if k not in excepted_keys and not k.endswith('_solid'):
             hf_row[k] = 0.0
+    for n, total in totals.items():
+        solid = float(hf_row.get(f'{n}_kg_solid', 0.0))
+        kept = min(max(solid, 0.0), total) if np.isfinite(solid) else 0.0
+        share = 1.0 if kept == solid else (kept / solid if kept > 0 else 0.0)
+        if not np.isfinite(total):
+            kept, share = total, np.nan
+        else:
+            if not np.isfinite(solid):
+                log.warning('Desiccation: the solid %s column is not finite; none is kept', n)
+            hf_row[f'{n}_kg_solid'] = kept
+        hf_row[f'{n}_kg_total'] = kept
+        if n in gas_list:
+            mol = float(hf_row.get(f'{n}_mol_solid', 0.0)) * share if share else 0.0
+            hf_row[f'{n}_mol_total'] = mol
+            if np.isfinite(mol):
+                hf_row[f'{n}_mol_solid'] = mol
+    removed -= readable_total(hf_row)
+    booked = float(hf_row.get('M_desiccated', 0.0))
+    hf_row['M_desiccated'] = (booked if np.isfinite(booked) else 0.0) + removed
+    record_volatile_change(config, hf_row, -removed)
 
     # Vapourisation of refractories, under the same crystallised gate as
     # volatile outgassing path.
