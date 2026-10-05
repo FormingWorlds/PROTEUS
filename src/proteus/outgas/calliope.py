@@ -381,8 +381,8 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         opts['T_magma'] = config.outgas.T_floor
         log.warning('Outgassing temperature clipped to %.1f K' % opts['T_magma'])
 
-    # CALLIOPE's cold start and restarts draw from the global NumPy RNG, which is
-    # seeded for the call and handed back to the caller after it (not thread-safe).
+    # CALLIOPE's cold start and restarts draw from the global NumPy RNG: each call
+    # replays one seeded sequence, then the caller gets its state back (not thread-safe).
     state = np.random.get_state()
 
     # Dispatch on planet.fO2_source. The two entry points share the

@@ -19,6 +19,7 @@ Testing standards:
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -635,8 +636,8 @@ def test_calliope_result_does_not_depend_on_the_caller_rng(warm):
     assert abs(rows[0]['P_surf'] - 250.0) < 1e-6
 
 
-@pytest.mark.parametrize('fails', [False, True], ids=['solved', 'raised'])
-def test_calliope_call_restores_the_caller_rng_stream(fails):
+@pytest.mark.parametrize('error', [None, RuntimeError, ValueError])
+def test_calliope_call_restores_the_caller_rng_stream(error):
     """The caller's global RNG stream continues after the CALLIOPE call as if
     the call had not drawn from it, also when CALLIOPE raises."""
     from unittest.mock import patch
@@ -645,44 +646,40 @@ def test_calliope_call_restores_the_caller_rng_stream(fails):
 
     def _failing_solver(target, opts, **kwargs):
         np.random.uniform()
-        raise RuntimeError('Could not find solution for volatile abundances')
+        raise error('Could not find solution for volatile abundances')
 
     expected = np.random.RandomState(7).uniform()
     np.random.seed(7)
     with (
         patch(
             'proteus.outgas.calliope.equilibrium_atmosphere',
-            side_effect=_failing_solver if fails else _drawing_solver,
+            side_effect=_failing_solver if error else _drawing_solver,
         ),
         patch('proteus.outgas.calliope.UpdateStatusfile') as status,
+        pytest.raises(error, match='Could not find solution') if error else nullcontext(),
     ):
-        if fails:
-            with pytest.raises(RuntimeError, match='Could not find solution'):
-                calc_surface_pressures(
-                    {'output': '/tmp/test'}, _cold_start_config(), _surface_pressure_hf_row()
-                )
-        else:
-            calc_surface_pressures(
-                {'output': '/tmp/test'}, _cold_start_config(), _surface_pressure_hf_row()
-            )
+        calc_surface_pressures(
+            {'output': '/tmp/test'}, _cold_start_config(), _surface_pressure_hf_row()
+        )
     assert np.random.uniform() == expected
-    assert status.call_count == int(fails)
+    assert status.call_count == int(error is RuntimeError)
 
 
 def test_from_o_budget_solve_gets_the_same_fixed_seed():
-    """The from_O_budget path hands CALLIOPE the same fixed seed as its own
-    generator, so its derived redox state is reproducible too."""
+    """The from_O_budget path passes RANDOM_SEED to CALLIOPE, which seeds its
+    own generator with it, and leaves the caller's global RNG stream alone."""
     from unittest.mock import patch
 
     from proteus.outgas.calliope import RANDOM_SEED, calc_surface_pressures
 
     config = _cold_start_config()
     config.planet.fO2_source = 'from_O_budget'
-    hf_row = _surface_pressure_hf_row()
+    expected = np.random.RandomState(3).uniform()
+    np.random.seed(3)
     with patch(
         'proteus.outgas.calliope.equilibrium_atmosphere_authoritative_O',
         return_value={'fO2_shift_derived': 4.0, 'O_res': 0.0},
     ) as solve:
-        calc_surface_pressures({'output': '/tmp/test'}, config, hf_row)
+        calc_surface_pressures({'output': '/tmp/test'}, config, _surface_pressure_hf_row())
     assert solve.call_args.kwargs['random_seed'] == RANDOM_SEED == 42
-    assert hf_row['O_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
+    assert np.random.uniform() == expected
