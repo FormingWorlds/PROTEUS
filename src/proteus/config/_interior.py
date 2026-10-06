@@ -239,7 +239,7 @@ class AragogCoreModule:
     stratification: bool = field(default=False)
     k_core: float = field(default=130.0, validator=gt(0))
     f_ohm: float = field(default=1.0, validator=(gt(0), le(1)))
-    ra_crit_cmb: float = field(default=450.0, validator=gt(0))
+    ra_crit_cmb: float = field(default=450.0, validator=(gt(0), lt(float('inf'))))
     flux_geometry: str = field(
         default='const_flux', validator=in_(('const_flux', 'zero_outer'))
     )

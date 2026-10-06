@@ -1386,35 +1386,77 @@ def test_a_step_that_never_advanced_is_still_refused():
     )
 
 
+class _HotStartSolver(SimpleNamespace):
+    """Solver stand-in with Aragog's start rules: an override wins, else the end of the
+    last solution, which every attempt replaces, accepted or not."""
+
+    def _end(self, slot):
+        return None if self._solution is None else float(self._solution.y[slot, -1])
+
+    def get_current_dSdr_cmb(self):
+        return self._end(self._n_stag)
+
+    def get_current_core_temperature(self):
+        return self._end(self._n_stag + 1)
+
+    def set_initial_dSdr_cmb(self, value):
+        self._dSdr_cmb_init = value
+
+    def set_initial_core_temperature(self, value):
+        self._T_core_init = value
+
+    def next_start(self):
+        dsdr, t_core = self._dSdr_cmb_init, self._T_core_init
+        return (
+            self.get_current_dSdr_cmb() if dsdr is None else dsdr,
+            self.get_current_core_temperature() if t_core is None else t_core,
+        )
+
+    def solve(self):
+        self.attempts += 1
+        y_end = np.r_[np.full(self._n_stag, 3000.0), [5.08e-4, 4000.0]]
+        self._solution = SimpleNamespace(y=y_end[:, None], status=self.status)
+
+    def get_state(self):
+        return SimpleNamespace(status=self.status, T_core=4000.0, dt_actual=50.0)
+
+
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_an_exhausted_ladder_restarts_the_core_from_the_pre_step_temperature():
-    """A skipped step keeps the previous interior state, so after an exhausted ladder the
-    next coupling step starts the core from the pre-step T_core (here an explicit 5000 K
-    start), not from the rejected attempt's 4000 K end that the last solution holds."""
+@pytest.mark.parametrize(
+    ('skipped', 'after_remelt'),
+    [(True, False), (True, True), (False, False)],
+    ids=['skipped_step', 'skipped_step_after_remelt', 'accepted_step'],
+)
+def test_a_skipped_step_restarts_from_the_pre_step_state(skipped, after_remelt):
+    """A step whose retry ladder fails is skipped, so the next step starts from the pre-step
+    solution, CMB entropy gradient and core temperature, not from the rejected attempt's end
+    (dSdr_cmb 5.08e-4, T_core 4000 K), which the re-melt and the energy_balance hot start
+    would otherwise read. Right after a re-melt there is no pre-step solution and the start is
+    the explicit one (T_core 6124 K), which a skip keeps. An accepted step releases the
+    overrides and starts from its end."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     n_stag = 4
-    attempts, tcore_overrides = [], []
-    solver = SimpleNamespace(
+    sol_pre = SimpleNamespace(
+        y=np.r_[np.full(n_stag, 3000.0), [-1.64e-4, 5000.0]][:, None], status=0
+    )
+    solver = _HotStartSolver(
         parameters=SimpleNamespace(
             solver=SimpleNamespace(start_time=0.0, end_time=100.0, rtol=1.0e-6, max_steps=1000)
         ),
         _atol_sf=1.0,
         _max_steps=1000,
-        _S0=np.r_[np.full(n_stag, 3000.0), [-3.879e-6, 5000.0]],
+        _S0=np.r_[np.full(n_stag, 3000.0), [-1.64e-4, 5000.0]],
         _n_stag=n_stag,
         _dSdr_cmb_init=None,
-        _T_core_init=5000.0,
-        get_state=lambda: SimpleNamespace(status=-1, T_core=4000.0, dt_actual=0.0),
-        get_current_dSdr_cmb=lambda: None,
-        get_current_core_temperature=lambda: 4000.0,
-        set_initial_dSdr_cmb=lambda v: None,
-        set_initial_core_temperature=tcore_overrides.append,
+        _T_core_init=6124.0 if after_remelt else None,
+        _solution=None if after_remelt else sol_pre,
+        status=-1 if skipped else 0,
+        attempts=0,
         set_initial_entropy=lambda S: None,
         reset=lambda: None,
     )
-    solver.solve = lambda: attempts.append(float(solver.parameters.solver.end_time))
     runner = AragogRunner.__new__(AragogRunner)
     runner.aragog_solver = solver
     runner._config = MagicMock()
@@ -1422,10 +1464,18 @@ def test_an_exhausted_ladder_restarts_the_core_from_the_pre_step_temperature():
     runner._config.interior_energetics.aragog.core_bc = 'core_module'
     interior_o = SimpleNamespace(aragog_step_progress=[], _last_entropy=None)
 
-    with pytest.raises(RuntimeError, match='retry ladder exhausted'):
-        runner._solve_with_retry({'Time': 202.0, 'T_cmb': 4000.0}, interior_o)
-    assert len(attempts) > 1
-    assert set(tcore_overrides) == {5000.0}
+    if skipped:
+        with pytest.raises(RuntimeError, match='retry ladder exhausted'):
+            runner._solve_with_retry({'Time': 202.0, 'T_cmb': 5000.0}, interior_o)
+        assert solver.attempts > 1
+        t_core = 6124.0 if after_remelt else 5000.0
+        assert solver.next_start() == (pytest.approx(-1.64e-4), pytest.approx(t_core))
+        assert solver._solution is (None if after_remelt else sol_pre)
+    else:
+        runner._solve_with_retry({'Time': 202.0, 'T_cmb': 5000.0}, interior_o)
+        assert solver.attempts == 1
+        assert (solver._dSdr_cmb_init, solver._T_core_init) == (None, None)
+        assert solver.next_start() == (pytest.approx(5.08e-4), pytest.approx(4000.0))
 
 
 @pytest.mark.unit
@@ -4440,9 +4490,9 @@ def test_run_solver_writes_the_core_impact_heat_booked_at_the_reset(tmp_path):
             None,
             {'Time': 100.0, 'T_cmb': float('nan')},
             None,
-            'basal-node temperature of the restored profile',
+            "restored profile's bottom cell at the CMB",
         ),
-        (None, {'Time': 100.0}, None, 'basal-node temperature of the restored profile'),
+        (None, {'Time': 100.0}, None, "restored profile's bottom cell at the CMB"),
     ],
     ids=['snapshot', 'resumed_row', 'nan_row', 'no_row_value'],
 )

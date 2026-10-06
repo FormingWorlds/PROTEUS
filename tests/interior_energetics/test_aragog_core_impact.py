@@ -317,7 +317,9 @@ def test_a_real_refit_books_the_lift_the_next_call_measures():
     interior_o.aragog_solver = solver
     jump = core_call_heat(out, interior_o)
     assert jump == pytest.approx(lift, rel=1e-15)
-    # An independent order-of-magnitude anchor for the lift: M_core c_p dT.
-    assert lift == pytest.approx(2.055439e24 * 840.0 * (6124.36 - 5940.16), rel=0.3)
-    assert abs(refit) > 0.1 * lift
+    # The coupled impact run booked 3.757742e29 J from the same structure (7 digits here);
+    # above onset that is dT times the secular capacity, M_core c_p times the adiabat's 1.18.
+    assert lift == pytest.approx(3.757742e29, rel=1e-4)
+    assert 1.1 < lift / (2.055439e24 * 840.0 * (6124.36 - 5940.16)) < 1.3
+    assert refit == pytest.approx(1.116566e30, rel=1e-4)
     assert abs((old.heat_content(6124.36) - old.heat_content(5940.16)) - lift) > 1.0e28

@@ -5795,6 +5795,10 @@
         {
           "op": ">",
           "value": 0
+        },
+        {
+          "op": "<",
+          "value": Infinity
         }
       ],
       "description": "Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019, Table 2).",

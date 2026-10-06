@@ -854,16 +854,28 @@ def test_accretion_with_a_stratified_core_is_refused_at_config_load(
 
 
 @pytest.mark.unit
-def test_the_stratified_core_guard_runs_at_config_load():
-    """The guard is one of the validators the configuration runs when it loads."""
+@pytest.mark.parametrize('stratification', [True, False])
+def test_a_stratified_core_with_accretion_is_refused_when_the_config_is_built(stratification):
+    """Building a configuration with accretion and a stratified core_module core runs the
+    guard and fails; the same configuration without stratification builds."""
     import attrs
+    from helpers import PROTEUS_ROOT
 
-    from proteus.config._config import (
-        Config,
-        check_accretion_core_stratification_compatibility,
-        check_accretion_vapourise_compatibility,
+    from proteus.config import read_config_object
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'all_options.toml')
+    aragog = cfg.interior_energetics.aragog
+    core = attrs.evolve(aragog.core_module, stratification=stratification)
+    interior = attrs.evolve(
+        cfg.interior_energetics,
+        module='aragog',
+        aragog=attrs.evolve(aragog, core_bc='core_module', core_module=core),
     )
-
-    validators = attrs.fields(Config).config_version.validator._validators
-    assert check_accretion_vapourise_compatibility in validators
-    assert check_accretion_core_stratification_compatibility in validators
+    accretion = attrs.evolve(cfg.accretion, module='dummy')
+    if stratification:
+        with pytest.raises(ValueError, match='stratification = true'):
+            attrs.evolve(cfg, interior_energetics=interior, accretion=accretion)
+    else:
+        built = attrs.evolve(cfg, interior_energetics=interior, accretion=accretion)
+        assert built.interior_energetics.aragog.core_bc == 'core_module'
+        assert built.accretion.module == 'dummy'

@@ -698,8 +698,8 @@ class AragogRunner:
                             else:
                                 log.warning(
                                     'Snapshot core temperature is %s and the resumed row has no '
-                                    'usable T_cmb; it restarts from the basal-node temperature of '
-                                    'the restored profile.',
+                                    'usable T_cmb; it restarts from the temperature of the '
+                                    "restored profile's bottom cell at the CMB.",
                                     status,
                                 )
                         if T_core is not None:
@@ -2428,6 +2428,7 @@ class AragogRunner:
                     T_core_snapshot = float(S0[n_stag])
         dSdr_ic = dSdr_snapshot
         T_core_ic = T_core_snapshot
+        sol_pre = getattr(solver, '_solution', None)
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.
         T_core_pre = float(hf_row.get('T_cmb', hf_row.get('T_core', 0.0)))
@@ -2467,7 +2468,7 @@ class AragogRunner:
         stiff_seen = 0
         other_seen = 0
         _diag_on = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
-        exhausted = False
+        skipped = False
         try:
             # Range over the widest ladder. max_attempts holds the active
             # budget (6, widened to max_attempts_stiff on a stiff failure)
@@ -2609,7 +2610,6 @@ class AragogRunner:
                         attempt,
                         reason,
                     )
-                    exhausted = True
                     raise RuntimeError(
                         f'Aragog retry ladder exhausted: {reason} '
                         f'after {attempt} attempts at t={hf_row.get("Time", 0.0):.3e} yr'
@@ -2699,6 +2699,12 @@ class AragogRunner:
                 solver.reset()
                 if S_ic is not None:
                     solver.set_initial_entropy(S_ic)
+        except BaseException:
+            # The caller skips the step and keeps the pre-step state: the solution that hot
+            # starts and the re-melt read, and the dSdr_cmb and T_core starts below.
+            solver._solution = sol_pre
+            skipped = True
+            raise
         finally:
             # Always reset atol_sf so subsequent coupling steps start at 1.0x
             solver._atol_sf = 1.0
@@ -2708,13 +2714,13 @@ class AragogRunner:
             solver.parameters.solver.rtol = base_rtol
             if hasattr(solver, '_max_steps'):
                 solver._max_steps = base_max_steps
-            # Release the dSdr_cmb and T_core overrides for the next coupling step; an
-            # exhausted ladder keeps the pre-step T_core, since the step is skipped.
+            # Release the dSdr_cmb and T_core overrides for the next coupling step, or keep
+            # the pre-step ones when the step is skipped.
+            dSdr_next, t_core_next = (dSdr_ic, T_core_ic) if skipped else (None, None)
             if hasattr(solver, 'set_initial_dSdr_cmb'):
-                solver.set_initial_dSdr_cmb(None)
+                solver.set_initial_dSdr_cmb(dSdr_next)
             else:
-                solver._dSdr_cmb_init = None
-            t_core_next = T_core_ic if exhausted else None
+                solver._dSdr_cmb_init = dSdr_next
             if hasattr(solver, 'set_initial_core_temperature'):
                 solver.set_initial_core_temperature(t_core_next)
             else:

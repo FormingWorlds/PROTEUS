@@ -4388,17 +4388,20 @@ def test_a_skipped_aragog_step_books_no_call_energy():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_every_per_step_column_is_zeroed_on_a_skipped_step_or_reset_per_row():
-    """Each step_* helpfile column is either a per-call Aragog value that a skipped step
-    sets to 0 or an impact column the main loop resets on every row, so no column carries
-    a previous call's energy into the ledgers."""
-    from proteus.interior_energetics.wrapper import _ARAGOG_CALL_ENERGY_KEYS
+    """A skipped step sets every per-call step_* helpfile column to 0; the rest are impact
+    columns the main loop resets on each row (the core ones on Aragog core_module rows),
+    so no column carries a previous call's energy into the ledgers."""
+    from proteus.interior_energetics.wrapper import _skip_aragog_call_energy
     from proteus.utils.coupler import GetHelpfileKeys
 
     reset_per_row = {'step_dE_impact_J', 'step_dE_impact_core_J', 'step_dE_impact_core_refit_J'}
-    step_keys = {k for k in GetHelpfileKeys() if k.startswith('step_')}
-    assert step_keys == set(_ARAGOG_CALL_ENERGY_KEYS) | reset_per_row
-    assert len(_ARAGOG_CALL_ENERGY_KEYS) == len(set(_ARAGOG_CALL_ENERGY_KEYS)) == 10
+    row = {k: 1.0 for k in GetHelpfileKeys() if k.startswith('step_')}
+    _skip_aragog_call_energy(row)
+    zeroed = {k for k, v in row.items() if v == 0.0}
+    assert set(row) - zeroed == reset_per_row
+    assert {'step_dE_core_J', 'step_solver_residual_J', 'step_dE_F_cmb_J'} <= zeroed
 
 
 @pytest.mark.unit
