@@ -2400,17 +2400,23 @@ def test_the_per_step_impact_heat_starts_each_row_at_zero(tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('core_bc', ['core_module', 'energy_balance'])
-def test_the_per_step_core_impact_heat_starts_core_module_rows_at_zero(tmp_path, core_bc):
-    """The core part of the impact heat is cleared with the total on core_module rows,
-    and keeps its NaN (not computed) on any other core boundary."""
+@pytest.mark.parametrize(
+    ('module', 'core_bc'),
+    [('aragog', 'core_module'), ('aragog', 'energy_balance'), ('dummy', 'core_module')],
+)
+def test_the_per_step_core_impact_heat_starts_core_module_rows_at_zero(
+    tmp_path, module, core_bc
+):
+    """The core part of the impact heat is cleared with the total on Aragog core_module
+    rows, and keeps its NaN (not computed) on any other core boundary or interior."""
     from proteus.utils.constants import vol_gas_list
 
     p = _make_main_loop_proteus(
         tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
     )
-    p.config.interior_energetics.module = 'aragog'
+    p.config.interior_energetics.module = module
     p.config.interior_energetics.aragog.core_bc = core_bc
+    active = module == 'aragog' and core_bc == 'core_module'
     rows, incoming = [], []
 
     def _writer(hf_row, step):
@@ -2426,12 +2432,12 @@ def test_the_per_step_core_impact_heat_starts_core_module_rows_at_zero(tmp_path,
         hf_row['P_vap'] = 0.0
         hf_row['P_surf'] = 260.0
         if step == 0:
-            hf_row['step_dE_impact_core_J'] = 2.4e30 if core_bc == 'core_module' else np.nan
+            hf_row['step_dE_impact_core_J'] = 2.4e30 if active else np.nan
         return hf_row
 
     _run_main_loop_recording_mass(p, stop_at_loop=2, rows=rows, row_writer=_writer)
 
-    if core_bc == 'core_module':
+    if active:
         assert rows[0]['step_dE_impact_core_J'] == pytest.approx(2.4e30)
         assert incoming[1] == pytest.approx(0.0)
     else:

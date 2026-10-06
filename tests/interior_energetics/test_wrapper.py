@@ -6684,37 +6684,40 @@ def test_aragog_remelt_carries_the_molten_profile_past_the_next_restore():
     assert hf_row['step_dE_impact_J'] > 0.0
 
 
+class _FakeCoreModuleSolver:
+    """A core_module solver stand-in: core temperature 3500 K until a re-melt clears it."""
+
+    def __init__(self):
+        self._solution = SimpleNamespace(y=np.zeros((8, 5)), t=np.zeros(5))
+        self._S0 = np.r_[np.full(6, 2400.0), [-1.0e-5, 3500.0]]
+        self._dSdr_cmb_init = -1.0e-5
+        self._T_core_init = None
+        self._n_stag = 6
+        self.parameters = SimpleNamespace(
+            boundary_conditions=SimpleNamespace(core_bc='core_module')
+        )
+
+    def get_current_core_temperature(self):
+        return 3500.0 if self._solution is not None else self._T_core_init
+
+    def set_initial_core_temperature(self, val):
+        self._T_core_init = val
+
+    def set_initial_entropy(self, S):
+        t_core = 4500.0 if self._T_core_init is None else self._T_core_init
+        self._S0 = np.r_[S, [-1.0e-5, t_core]]
+
+    def _step_heat_content(self, s1, s2):
+        return 1.0e20
+
+
 @pytest.mark.unit
 def test_aragog_remelt_preserves_core_module_core_temperature():
     """An impact re-melt hands the evolved core temperature to the core helper and starts
     the next solve from the temperature the helper returns."""
     molten = np.linspace(3900.0, 3500.0, 6)  # bottom cell first
 
-    class FakeCoreModuleSolver:
-        def __init__(self):
-            self._solution = SimpleNamespace(y=np.zeros((8, 5)), t=np.zeros(5))
-            self._S0 = np.r_[np.full(6, 2400.0), [-1.0e-5, 3500.0]]
-            self._dSdr_cmb_init = -1.0e-5
-            self._T_core_init = None
-            self._n_stag = 6
-            self.parameters = SimpleNamespace(
-                boundary_conditions=SimpleNamespace(core_bc='core_module')
-            )
-
-        def get_current_core_temperature(self):
-            return 3500.0 if self._solution is not None else self._T_core_init
-
-        def set_initial_core_temperature(self, val):
-            self._T_core_init = val
-
-        def set_initial_entropy(self, S):
-            t_core = 4500.0 if self._T_core_init is None else self._T_core_init
-            self._S0 = np.r_[S, [-1.0e-5, t_core]]
-
-        def _step_heat_content(self, s1, s2):
-            return 1.0e20
-
-    solver = FakeCoreModuleSolver()
+    solver = _FakeCoreModuleSolver()
     interior_o = SimpleNamespace(
         aragog_solver=solver, _last_entropy=np.full(6, 2400.0), impact_reset=False
     )
@@ -6746,6 +6749,66 @@ def test_aragog_remelt_preserves_core_module_core_temperature():
     assert core_mock.call_args.args[4] == pytest.approx(3900.0)
     assert solver._T_core_init == pytest.approx(5800.0)
     assert solver._S0[-1] == pytest.approx(5800.0)
+
+
+def _remelt_core_module_twice(core_side_effect, status_calls):
+    """Run two Aragog core_module re-melts in one step with a mocked core helper."""
+    molten = np.linspace(3900.0, 3500.0, 6)
+    solver = _FakeCoreModuleSolver()
+    interior_o = SimpleNamespace(
+        aragog_solver=solver, _last_entropy=np.full(6, 2400.0), impact_reset=False
+    )
+    config = _remelt_config('aragog')
+    config.interior_energetics.aragog = SimpleNamespace(core_bc='core_module')
+
+    def _fake_set_ic(cfg, io, outdir, hf_row):
+        io.aragog_solver.set_initial_entropy(molten)
+        return molten
+
+    hf_row = {'Time': 100.0, 'T_magma': 2000.0}
+    with (
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            side_effect=_fake_set_ic,
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
+        patch('proteus.interior_energetics.wrapper.evaluate_molten_state', return_value=None),
+        patch(
+            'proteus.interior_energetics.wrapper.UpdateStatusfile',
+            side_effect=lambda dirs, code: status_calls.append(code),
+        ) as status_mock,
+        patch(
+            'proteus.interior_energetics.aragog_core_impact.remelt_core_module',
+            side_effect=core_side_effect,
+        ) as core_mock,
+    ):
+        for _ in range(2):
+            remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
+    return solver, core_mock, status_mock
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_two_aragog_core_module_impacts_chain_the_core_temperature():
+    """The second impact of a step starts from the temperature the first impact returned,
+    not from the pre-step core state (3500 K), and the next solve starts from the last."""
+    solver, core_mock, status_mock = _remelt_core_module_twice([5800.0, 6100.0], [])
+    pre = [c.args[3] for c in core_mock.call_args_list]
+    assert pre == [pytest.approx(3500.0), pytest.approx(5800.0)]
+    assert solver._T_core_init == pytest.approx(6100.0)
+    assert solver._S0[-1] == pytest.approx(6100.0)
+    status_mock.assert_not_called()
+
+
+@pytest.mark.unit
+def test_a_failed_core_refit_writes_the_error_status_and_raises():
+    """A core refit that cannot be done stops the run with status 20, not silently."""
+    status_calls = []
+    with pytest.raises(ValueError, match='incompressible'):
+        _remelt_core_module_twice(
+            ValueError('p_cen below the incompressible limit'), status_calls
+        )
+    assert status_calls == [20]
 
 
 @pytest.mark.unit

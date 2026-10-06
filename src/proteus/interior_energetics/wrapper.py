@@ -2193,7 +2193,8 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
     NotImplementedError
         If the interior module has no supported re-melt path (SPIDER).
     ValueError
-        If the interior module is unrecognised.
+        If the interior module is unrecognised, or the core_module core cannot be
+        refit to the grown core (``aragog_core_impact.remelt_core_module``).
     RuntimeError
         If the Aragog solver has not been initialised.
     """
@@ -2208,7 +2209,11 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
         case 'dummy' | 'boundary':
             _remelt_scalar_backend(config, hf_row, interior_o)
         case 'aragog':
-            _remelt_aragog(config, dirs, hf_row, interior_o)
+            try:
+                _remelt_aragog(config, dirs, hf_row, interior_o)
+            except ValueError:
+                UpdateStatusfile(dirs, 20)
+                raise
         case 'spider':
             UpdateStatusfile(dirs, 20)
             raise NotImplementedError(

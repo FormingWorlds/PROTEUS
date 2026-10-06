@@ -2048,10 +2048,12 @@ def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch, r
         patch('proteus.interior_energetics.aragog._cached_entropy_eos_jax'),
     ):
         AragogRunner._maybe_install_jax_cvode_factory(_jax_factory_config(), interior_o)
+        # An impact replaces the budget after install; the factory must read it per call.
+        solver._core_module_budget = 'refit-sentinel'
         installed['factory'](MagicMock(), 'core_module')
     kwargs = build.call_args.kwargs
     assert kwargs['core_bc_mode'] == 'core_module'
-    assert kwargs['core_module_budget'] == 'budget-sentinel'
+    assert kwargs['core_module_budget'] == 'refit-sentinel'
     assert kwargs['core_module_q_radio'] == pytest.approx(3.0e12)
     assert kwargs['core_module_ra_crit_cmb'] == (pytest.approx(ra_crit) if ra_crit else None)
 

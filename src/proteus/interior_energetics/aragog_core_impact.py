@@ -27,7 +27,8 @@ def remelt_core_module(
     plus the heat of the lift under the refitted profile. It is added to
     ``step_dE_impact_core_J`` and to ``step_dE_impact_J``. The refitted budget
     becomes the solver's budget, so a second impact in the same step books
-    against it. Nothing changes when the fit or the budget build fails.
+    against it. When the fit, the budget build or a temperature or heat check
+    fails, this function changes nothing.
 
     Parameters
     ----------
@@ -50,8 +51,8 @@ def remelt_core_module(
     Raises
     ------
     ValueError
-        From the profile fit or the budget factory, or when ``t_core_pre`` or
-        ``T_basal`` is not finite.
+        From the profile fit or the budget factory, or when ``t_core_pre``,
+        ``T_basal`` or the booked heat is not finite.
     """
     from aragog.core import build_core_module_budget, fit_gaussian_core_profiles
 
@@ -72,19 +73,23 @@ def remelt_core_module(
     t_basal = float(np.asarray(solver.entropy_eos.temperature(p_cmb, s_bottom)).flat[0])
     if not (np.isfinite(t_basal) and np.isfinite(t_core_pre)):
         raise ValueError(f'core or basal temperature is not finite: {t_core_pre}, {t_basal}')
+    t_core = max(float(t_core_pre), t_basal)
+    dE = new.heat_content(t_core) - solver._core_module_budget.heat_content(float(t_core_pre))
+    if not np.isfinite(dE):
+        raise ValueError(f'booked core heat is not finite: {dE}')
 
-    old, solver._core_module_budget = solver._core_module_budget, new
+    # The numpy RHS calls the cached rate function, so it moves with the budget.
+    solver._core_module_budget = new
+    solver._core_module_budget_dtcmb_dt = new.dtcmb_dt
     params.update(rho_cen=refit['rho_cen'], length_scale=refit['length_scale'])
     interior_o._frozen_core_rho_cen = refit['rho_cen']
     interior_o._frozen_core_length_scale = refit['length_scale']
     interior_o._frozen_core_m_core = m_core
     interior_o._frozen_core_p_cen = p_cen
 
-    t_core = max(float(t_core_pre), t_basal)
-    dE = new.heat_content(t_core) - old.heat_content(float(t_core_pre))
-    for key in ('step_dE_impact_core_J', 'step_dE_impact_J'):
-        prior = float(hf_row.get(key) or 0.0)
-        hf_row[key] = (prior if np.isfinite(prior) else 0.0) + dE
+    prior = float(hf_row.get('step_dE_impact_core_J') or 0.0)
+    hf_row['step_dE_impact_core_J'] = (prior if np.isfinite(prior) else 0.0) + dE
+    hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0) + dE
 
     log.info(
         '    core refit: rho_cen %.2f kg/m^3, length_scale %.1f km; profile M_core %.6e kg '

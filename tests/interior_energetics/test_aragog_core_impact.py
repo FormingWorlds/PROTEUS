@@ -28,6 +28,9 @@ class _Budget:
     def heat_content(self, t):
         return self.slope * t + self.offset
 
+    def dtcmb_dt(self, t_cmb, q_cmb, q_sources=0.0):
+        return (q_sources - q_cmb) / self.slope
+
 
 def _setup(t_basal):
     params = {
@@ -117,7 +120,7 @@ def test_refit_uses_the_live_structure_and_replaces_the_frozen_profile():
 def test_two_impacts_in_one_step_book_the_combined_change():
     """A second impact before the next solve books against the first refit, so the two
     bookings sum to E_2(T_2) - E_0(T_pre). Booking the second against the pre-step budget
-    would add E_1(T_1) - E_0(T_1) = 2e29 J a second time."""
+    would add E_1(T_1) - E_0(T_1), about 7.2e29 J (21 %), a second time."""
     _, old, solver, hf_row, interior_o = _setup(6089.0)
     new1 = _Budget(1.8e27, -3.0e29, POST['M_core'], POST['P_center'])
     new2 = _Budget(2.0e27, -9.0e29, POST['M_core'], POST['P_center'])
@@ -134,6 +137,9 @@ def test_two_impacts_in_one_step_book_the_combined_change():
     assert hf_row['step_dE_impact_core_J'] == pytest.approx(combined, rel=1e-12)
     assert hf_row['step_dE_impact_J'] == pytest.approx(5.0e28 + combined, rel=1e-12)
     assert solver._core_module_budget is new2
+    assert solver._core_module_budget_dtcmb_dt(5000.0, 1.0e13) == pytest.approx(
+        -1.0e13 / 2.0e27
+    )
     assert abs((new1.heat_content(t1) - old.heat_content(t1)) / combined) > 0.05
 
 
@@ -177,17 +183,18 @@ def test_basal_temperature_comes_from_the_bottom_entropy_at_the_cmb_pressure():
     assert t_new == pytest.approx(6089.0)
 
 
-@pytest.mark.parametrize('failure', ['fit', 'budget', 'basal_nan', 'core_nan'])
+@pytest.mark.parametrize('failure', ['fit', 'budget', 'basal_nan', 'core_nan', 'heat_nan'])
 def test_a_failed_refit_or_basal_lookup_changes_nothing(failure):
-    """A fit or budget error, or a non-finite core or basal temperature, raises before any state
-    is touched: the profile params, the frozen attributes, the solver budget and the
-    booked columns stay as they were."""
+    """A fit or budget error, or a non-finite core temperature, basal temperature or booked
+    heat, raises before any state is touched: the profile params, the frozen attributes,
+    the solver budget and the booked columns stay as they were."""
     params, old, solver, hf_row, interior_o = _setup(
         float('nan') if failure == 'basal_nan' else 6089.0
     )
     before = (dict(params), dict(hf_row), vars(interior_o).copy())
     fit = SimpleNamespace(rho_cen=12345.0, length_scale=7.1e6)
-    new = _Budget(1.8e27, -3.0e29, POST['M_core'], POST['P_center'])
+    slope = float('nan') if failure == 'heat_nan' else 1.8e27
+    new = _Budget(slope, -3.0e29, POST['M_core'], POST['P_center'])
     fit_kw = (
         {'side_effect': ValueError('p_cen below the incompressible limit')}
         if failure == 'fit'
@@ -207,3 +214,20 @@ def test_a_failed_refit_or_basal_lookup_changes_nothing(failure):
         remelt_core_module(hf_row, interior_o, solver, t_pre, 3100.0)
     assert (dict(params), dict(hf_row), vars(interior_o)) == before
     assert solver._core_module_budget is old
+
+
+@pytest.mark.physics_invariant
+def test_a_nan_mantle_booking_stays_visible_in_the_total():
+    """Only the core column treats a non-finite prior as zero; a NaN mantle booking in
+    step_dE_impact_J stays NaN instead of being replaced by the core heat."""
+    _, _, solver, hf_row, interior_o = _setup(6089.0)
+    hf_row['step_dE_impact_J'] = float('nan')
+    new = _Budget(1.8e27, -3.0e29, POST['M_core'], POST['P_center'])
+    fit = SimpleNamespace(rho_cen=12345.0, length_scale=7.1e6)
+    with (
+        patch('aragog.core.fit_gaussian_core_profiles', return_value=fit),
+        patch('aragog.core.build_core_module_budget', return_value=new),
+    ):
+        remelt_core_module(hf_row, interior_o, solver, 5091.0, 3100.0)
+    assert np.isnan(hf_row['step_dE_impact_J'])
+    assert np.isfinite(hf_row['step_dE_impact_core_J'])
