@@ -735,30 +735,61 @@ for v in LDFLAGS LIBRARY_PATH LIBS CPATH; do printf "%s=%s\\n" "$v" "${!v-unset}
 """
 
 
-@pytest.mark.unit
-def test_petsc_configure_on_macos_gets_no_library_path(tmp_path):
-    """On macOS with a system MPI, PETSc configure gets LDFLAGS=-Wl,-w and no -L in any
-    argument or exported variable, so no library directory comes ahead of the SUNDIALS 2.5
-    it downloads."""
-    for name in ('xcrun', 'mpicc', 'mpirun'):
+def _run_petsc_macos(tmp_path, tools, path_extra=':/usr/bin:/bin'):
+    """Run the shipped platform and configure steps of get_petsc.sh as macOS with stub ``tools``."""
+    for name in tools:
         _write_stub(tmp_path, name, '#!/bin/bash\necho /sdk\n')
     _write_stub(tmp_path, 'configure', CONFIGURE_STUB)
     block = _extract_script_block(
         'get_petsc.sh', 'current_step="Determining platform-specific flags"', '# 6. Build PETSc'
     )
-    result = _run_bash(
-        f'set -euo pipefail\nOSTYPE=darwin24\nworkpath=.\n{block}\n',
+    return subprocess.run(
+        ['/bin/bash', '-c', f'set -euo pipefail\nOSTYPE=darwin24\nworkpath=.\n{block}\n'],
+        capture_output=True,
+        text=True,
         cwd=tmp_path,
-        env={'PATH': f'{tmp_path}:/usr/bin:/bin'},
+        env={'PATH': f'{tmp_path}{path_extra}'},
     )
-    assert result.returncode == 0, result.stderr
-    args = (tmp_path / 'args').read_text().splitlines()
-    assert {'LDFLAGS=-Wl,-w', '--download-sundials2'} <= set(args)
-    assert [a for a in args if '-L' in a] == []
+
+
+def _petsc_configure_args(tmp_path) -> list[str]:
+    """Return the configure arguments, after checking no build variable names a library path."""
     named = (tmp_path / 'named').read_text().split()
     assert named == [f'{v}=unset' for v in ('LDFLAGS', 'LIBRARY_PATH', 'LIBS', 'CPATH')]
     assert 'homebrew/lib' not in (tmp_path / 'env').read_text()
+    args = (tmp_path / 'args').read_text().splitlines()
+    assert [a for a in args if '-L' in a] == []
+    return args
+
+
+@pytest.mark.unit
+def test_petsc_configure_on_macos_gets_no_library_path(tmp_path):
+    """On macOS with a system MPI, PETSc configure gets LDFLAGS=-Wl,-w and no -L in any
+    argument or build variable, so no library directory comes ahead of the SUNDIALS 2.5 it
+    downloads."""
+    result = _run_petsc_macos(tmp_path, ('xcrun', 'mpicc', 'mpirun'))
+    assert result.returncode == 0, result.stderr
+    args = _petsc_configure_args(tmp_path)
+    assert {'LDFLAGS=-Wl,-w', '--download-sundials2'} <= set(args)
     assert '--download-mpich' not in args
+
+
+@pytest.mark.unit
+def test_petsc_configure_on_macos_without_mpicc_downloads_mpich(tmp_path):
+    """Without mpicc on PATH, PETSc downloads MPICH and still gets only LDFLAGS=-Wl,-w."""
+    result = _run_petsc_macos(tmp_path, ('xcrun',), path_extra='')
+    assert result.returncode == 0, result.stderr
+    args = _petsc_configure_args(tmp_path)
+    assert {'LDFLAGS=-Wl,-w', '--download-sundials2', '--download-mpich'} <= set(args)
+
+
+@pytest.mark.unit
+def test_petsc_on_macos_without_xcrun_stops_before_configure(tmp_path):
+    """Without xcrun the script stops with its install hint and never runs configure."""
+    result = _run_petsc_macos(tmp_path, ('mpicc', 'mpirun'), path_extra='')
+    assert result.returncode == 1
+    assert 'xcrun not found' in result.stdout and 'xcode-select --install' in result.stdout
+    assert not (tmp_path / 'args').exists()
 
 
 # ---------------------------------------------------------------------------
