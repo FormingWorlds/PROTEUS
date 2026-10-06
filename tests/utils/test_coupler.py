@@ -5423,21 +5423,25 @@ def test_core_diagnostics_keep_nan_through_append_write_and_read(tmp_path, caplo
 @pytest.mark.parametrize('booked', [True, False], ids=['booked', 'booking_removed'])
 def test_core_ledger_closes_across_an_impact_and_shows_a_missing_booking(booked):
     """Row 2 carries a solve that cooled the core by 1e29 J into the mantle and a
-    1.5e30 J T_core lift between calls; with the lift booked in step_dE_impact_core_J
-    the core ledger stays at the prior row's residual, without it the residual grows
-    by exactly the lift."""
+    3e29 J T_core lift between calls, which cancels the core's cumulative cooling.
+    With the lift booked the residual stays at the prior row's value, without it it
+    grows by exactly the lift; the fraction is normalised by the summed CMB and booked
+    lift magnitudes, so it stays bounded where the summed core heat change is zero."""
     from proteus.utils.coupler import _populate_core_residual
 
-    hf = pd.DataFrame([{'step_dE_core_J': -2.0e29, 'E_core_residual_J': 3.0e24}])
+    hf = pd.DataFrame(
+        [{'step_dE_core_J': -2.0e29, 'step_dE_F_cmb_J': 2.0e29, 'E_core_residual_J': 3.0e24}]
+    )
     row = {
-        'step_dE_core_J': -1.0e29 + 1.5e30,
+        'step_dE_core_J': -1.0e29 + 3.0e29,
         'step_dE_F_cmb_J': 1.0e29,
-        'step_dE_impact_core_J': 1.5e30 if booked else 0.0,
+        'step_dE_impact_core_J': 3.0e29 if booked else 0.0,
     }
     _populate_core_residual(hf, row)
-    expected = 3.0e24 + (0.0 if booked else 1.5e30)
-    assert row['E_core_residual_J'] == pytest.approx(expected, rel=1e-12)
-    assert row['E_core_residual_frac'] == pytest.approx(expected / 1.2e30, rel=1e-12)
+    expected = 3.0e24 + (0.0 if booked else 3.0e29)
+    scale = 3.0e29 + (3.0e29 if booked else 0.0)
+    assert row['E_core_residual_J'] == pytest.approx(expected, rel=1e-9)
+    assert row['E_core_residual_frac'] == pytest.approx(expected / scale, rel=1e-9)
 
 
 @pytest.mark.unit

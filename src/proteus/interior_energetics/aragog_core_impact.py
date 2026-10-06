@@ -155,14 +155,15 @@ def refit_core_at_reset(hf_row: dict, interior_o, solver) -> None:
     )
 
 
-def core_call_heat(out, interior_o, solver, secs_per_year: float) -> float:
+def core_call_heat(out, interior_o, solver, secs_per_year: float, lift: float = 0.0) -> float:
     """Heat change of the core over one solver call, for the core ledger [J].
 
     ``out.step_dE_core_J`` (the effective capacity integrated over the call's T_core
     trajectory) net of the core's internal source over the call, plus the heat of
     any jump between the previous call's final T_core and this call's initial one,
     measured with the solver's current budget. An impact lift appears here as that
-    jump, so the ledger closes only when the same lift is booked.
+    jump, so the ledger closes only when the same lift is booked; ``lift``, the heat
+    booked on this call, is logged against the jump at DEBUG.
     """
     t_start = float(solver._S0[-1])
     t_prev = getattr(interior_o, '_core_t_end', None)
@@ -170,6 +171,13 @@ def core_call_heat(out, interior_o, solver, secs_per_year: float) -> float:
     if t_prev is not None and abs(t_start - t_prev) > 1e-9:
         budget = solver._core_module_budget
         jump = budget.heat_content(t_start) - budget.heat_content(t_prev)
+    if jump or lift:
+        log.debug(
+            '    core jump %.17g J, booked lift %.17g J, difference %.17g J',
+            jump,
+            lift,
+            jump - lift,
+        )
     interior_o._core_t_end = float(out.T_core)
     source = float(solver._core_module_q_radio) * float(out.dt_actual) * secs_per_year
     return float(out.step_dE_core_J) - source + jump

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -224,7 +225,7 @@ def test_a_rebuilt_budget_without_the_refit_profile_raises():
 
 
 @pytest.mark.physics_invariant
-def test_core_call_heat_adds_the_jump_since_the_last_call_and_removes_the_source():
+def test_core_call_heat_adds_the_jump_since_the_last_call_and_removes_the_source(caplog):
     """The core's heat change over a call is the capacity integral net of its internal
     source, plus the heat of a T_core jump between calls measured with the solver's
     budget; a continuous T_core adds no jump, and the call's final T_core is kept."""
@@ -236,9 +237,12 @@ def test_core_call_heat_adds_the_jump_since_the_last_call_and_removes_the_source
     )
     out = SimpleNamespace(step_dE_core_J=-4.0e29, T_core=6000.0, dt_actual=10.0)
     interior_o = SimpleNamespace(_core_t_end=5153.0)
-    heat = core_call_heat(out, interior_o, solver, 3.15576e7)
+    with caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.aragog_core_impact'):
+        heat = core_call_heat(out, interior_o, solver, 3.15576e7, lift=1.9e30)
     jump = 2.0e27 * (6124.0 - 5153.0)
     assert heat == pytest.approx(-4.0e29 - 1.0e12 * 10.0 * 3.15576e7 + jump, rel=1e-12)
+    logged = float(re.search(r'difference (\S+) J', caplog.text).group(1))
+    assert logged == pytest.approx(jump - 1.9e30, rel=1e-12)
     assert interior_o._core_t_end == pytest.approx(6000.0)
     solver._S0[-1] = 6000.0
     heat = core_call_heat(out, interior_o, solver, 3.15576e7)

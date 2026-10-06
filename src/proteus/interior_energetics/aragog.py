@@ -2247,7 +2247,11 @@ class AragogRunner:
             from proteus.utils.constants import secs_per_year
 
             output['step_dE_core_J'] = core_call_heat(
-                out, interior_o, interior_o.aragog_solver, secs_per_year
+                out,
+                interior_o,
+                interior_o.aragog_solver,
+                secs_per_year,
+                lift=booked[0] if booked is not None else 0.0,
             )
 
         self._store_profiles(interior_o, out)

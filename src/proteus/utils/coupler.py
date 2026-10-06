@@ -950,7 +950,7 @@ def GetHelpfileKeys():
         'solver_residual_J',    # cumulative entropy-ODE LHS-RHS residual [J]
         'step_dE_core_J',       # core heat change over the call net of its internal source, plus a T_core jump since the last call; NaN when not computed (core_bc is not core_module) [J]
         'E_core_residual_J',    # cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J); NaN when not computed (core_bc is not core_module) [J]
-        'E_core_residual_frac', # E_core_residual_J / max(|sum step_dE_core_J|, 1 J); NaN when not computed (core_bc is not core_module) [1]
+        'E_core_residual_frac', # E_core_residual_J / max(sum(|step_dE_F_cmb_J| + |step_dE_impact_core_J|), 1 J); NaN when not computed (core_bc is not core_module) [1]
         'Cp_eff',           # effective mantle heat capacity [J kg-1 K-1]
 
         # Host star properties
@@ -1119,26 +1119,27 @@ def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     it, ``step_dE_impact_core_J``. ``E_core_residual_J`` accumulates the difference;
     a jump in T_core that no booking accounts for, or a CMB flux integral that does
     not match the core's cooling, shows here. ``E_core_residual_frac`` normalises by
-    ``max(|sum step_dE_core_J|, 1 J)``. Rows without ``step_dE_core_J`` keep NaN.
+    ``max(sum(|step_dE_F_cmb_J| + |step_dE_impact_core_J|), 1 J)`` over the ledger's
+    rows, which grows monotonically, so a lift that cancels the core's cumulative
+    cooling cannot blow it up. Rows without ``step_dE_core_J`` keep NaN.
     """
     dE_core = float(new_row.get('step_dE_core_J', np.nan))
     if not np.isfinite(dE_core):
         new_row['E_core_residual_J'] = np.nan
         new_row['E_core_residual_frac'] = np.nan
         return
-    impact = float(new_row.get('step_dE_impact_core_J', 0.0))
-    inc = (
-        dE_core
-        + float(new_row.get('step_dE_F_cmb_J', 0.0))
-        - (impact if np.isfinite(impact) else 0.0)
-    )
-    prev, total = 0.0, dE_core
+    impact = np.nan_to_num(float(new_row.get('step_dE_impact_core_J', 0.0)))
+    f_cmb = np.nan_to_num(float(new_row.get('step_dE_F_cmb_J', 0.0)))
+    prev, scale = 0.0, abs(f_cmb) + abs(impact)
     if len(current_hf) and 'E_core_residual_J' in current_hf:
         last = float(current_hf['E_core_residual_J'].iloc[-1])
         prev = last if np.isfinite(last) else 0.0
-        total += float(np.nansum(current_hf['step_dE_core_J'].to_numpy(dtype=float)))
-    new_row['E_core_residual_J'] = prev + inc
-    new_row['E_core_residual_frac'] = new_row['E_core_residual_J'] / max(abs(total), 1.0)
+        rows = current_hf[np.isfinite(current_hf['step_dE_core_J'].to_numpy(dtype=float))]
+        for key in ('step_dE_F_cmb_J', 'step_dE_impact_core_J'):
+            if key in rows:
+                scale += float(np.nansum(np.abs(rows[key].to_numpy(dtype=float))))
+    new_row['E_core_residual_J'] = prev + dE_core + f_cmb - impact
+    new_row['E_core_residual_frac'] = new_row['E_core_residual_J'] / max(scale, 1.0)
 
 
 def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:

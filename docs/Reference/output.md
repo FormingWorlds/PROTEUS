@@ -233,7 +233,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `solver_residual_J` | `J` | cumulative entropy-ODE LHS-RHS residual | `utils/coupler.py` | always |   |
 | `step_dE_core_J` | `J` | core heat change over the call net of its internal source, plus a T_core jump since the last call; NaN when not computed (core_bc is not core_module) | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" | utils |
 | `E_core_residual_J` | `J` | cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J); NaN when not computed (core_bc is not core_module) | `utils/coupler.py` | always | utils |
-| `E_core_residual_frac` | `1` | E_core_residual_J / max(\|sum step_dE_core_J\|, 1 J); NaN when not computed (core_bc is not core_module) | `utils/coupler.py` | always |   |
+| `E_core_residual_frac` | `1` | E_core_residual_J / max(sum(\|step_dE_F_cmb_J\| + \|step_dE_impact_core_J\|), 1 J); NaN when not computed (core_bc is not core_module) | `utils/coupler.py` | always |   |
 | `Cp_eff` | `J kg-1 K-1` | effective mantle heat capacity | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "spider" |   |
 
 ### Host star properties

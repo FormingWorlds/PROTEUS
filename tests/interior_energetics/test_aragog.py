@@ -4338,13 +4338,15 @@ def test_run_solver_writes_the_core_impact_heat_booked_at_the_reset(tmp_path):
     )
     with patch(
         'proteus.interior_energetics.aragog_core_impact.core_call_heat', return_value=0.0
-    ):
+    ) as heat:
         _, output = runner.run_solver({'Time': 300.0}, interior_o, {'output': str(tmp_path)})
         assert output['step_dE_impact_core_J'] == pytest.approx(1.79e30)
         assert output['step_dE_impact_core_refit_J'] == pytest.approx(5.2e29)
         assert interior_o._core_impact_booked is None
+        assert heat.call_args.kwargs == {'lift': pytest.approx(1.79e30)}
         _, output = runner.run_solver({'Time': 375.0}, interior_o, {'output': str(tmp_path)})
     assert output['step_dE_impact_core_J'] == pytest.approx(0.0)
+    assert heat.call_args.kwargs == {'lift': 0.0}
 
 
 @pytest.mark.unit
