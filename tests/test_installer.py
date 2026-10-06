@@ -357,6 +357,44 @@ class TestIdempotency:
         assert result.stdout.strip() == path_with_spaces
 
 
+def _capture_shell_rc(shell: str, home: Path) -> subprocess.CompletedProcess:
+    """Run install.sh's own log helpers and detect_shell_rc as RC_FILE=$(detect_shell_rc)."""
+    defs = subprocess.run(
+        ['sed', '-n', '/^RED=/,/^phase()/p; /^detect_shell_rc() {/,/^}/p', str(INSTALL_SH)],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    script = defs + '\nRC_FILE=$(detect_shell_rc)\nprintf "%s" "$RC_FILE"\n'
+    env = {**os.environ, 'SHELL': shell, 'HOME': str(home)}
+    return subprocess.run(
+        ['bash', '-c', script], capture_output=True, text=True, env=env, timeout=10
+    )
+
+
+class TestShellRcDetection:
+    """Verify the rc file path the installer captures from detect_shell_rc."""
+
+    @pytest.mark.parametrize(
+        ('shell', 'rc', 'warns'),
+        [
+            ('/usr/local/bin/fish', '.bashrc', True),
+            ('/bin/zsh', '.zshrc', False),
+            ('/bin/bash', '.bashrc', False),
+        ],
+    )
+    def test_captured_rc_file_is_only_the_path(self, tmp_path, shell, rc, warns):
+        """RC_FILE holds exactly the path; the unsupported-shell warning goes to stderr.
+
+        Discrimination: with warn on stdout, the fish case captures the
+        warning line in front of the path, so the equality fails.
+        """
+        out = _capture_shell_rc(shell, tmp_path)
+        assert out.returncode == 0, out.stderr
+        assert out.stdout == str(tmp_path / rc)
+        assert ("Unsupported shell 'fish'" in out.stderr) is warns
+
+
 class TestDiskSpaceCheck:
     """Verify disk space detection."""
 
