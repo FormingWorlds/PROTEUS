@@ -3,7 +3,8 @@
 # get_petsc.sh — Download, configure, and compile PETSc for PROTEUS/SPIDER
 # =============================================================================
 #
-# Downloads PETSc 3.19.0 from OSF and builds it with sundials2 support.
+# Downloads the PETSc 3.19.0 source archive from Zenodo, or its DataverseNL
+# mirror, checks its SHA-256, and builds it with sundials2 support.
 # SPIDER is a pure C code, so C++ and Fortran compilers are disabled.
 #
 # Supported platforms:
@@ -52,8 +53,8 @@ on_error() {
     case "$current_step" in
         *"Download"*)
             echo "   - Check your internet connection"
-            echo "   - Verify the OSF URL is accessible: $url"
-            echo "   - Try downloading manually: curl -LsS $url > petsc.zip"
+            echo "   - The sources and the SHA-256 are in pyproject.toml [tool.proteus.modules.petsc];"
+            echo "     PETSC_URL and PETSC_MIRROR_URL override the sources"
             ;;
         *"Decompress"*)
             echo "   - The downloaded archive may be corrupted"
@@ -122,16 +123,14 @@ rm -rf "$workpath"
 mkdir "$workpath"
 
 # -----------------------------------------------------------------------------
-# 3. Download PETSc 3.19.0 from OSF
+# 3. Download the PETSc 3.19.0 archive: Zenodo first, then the DataverseNL mirror
 # -----------------------------------------------------------------------------
-current_step="Downloading PETSc archive from OSF"
+current_step="Downloading PETSc archive"
 
 zipfile="$workpath/petsc.zip"
-url="https://osf.io/download/p5vxq/"
-echo "Downloading PETSc archive from OSF..."
-echo "    $url -> $zipfile"
-sleep 1
-curl -LsS "$url" > "$zipfile"
+petsc_pin() { python "$proteus_tools_dir/_module_pins.py" petsc "$1"; }
+fetch_verified "$(petsc_pin sha256)" "$zipfile" \
+    "${PETSC_URL:-$(petsc_pin url)}" "${PETSC_MIRROR_URL:-$(petsc_pin mirror)}"
 
 current_step="Decompressing PETSc archive"
 echo "Decompressing..."

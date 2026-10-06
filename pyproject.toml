@@ -328,10 +328,11 @@ url = "https://github.com/FormingWorlds/LavAtmos"
 ref = "c963dd2acf6c8a4c33d246d653342121666ae612"
 
 [tool.proteus.modules.petsc]
-# Pre-built PETSc archive on OSF. Required by SPIDER. tools/get_petsc.sh
-# downloads and validates by SHA-256.
-url = "https://osf.io/download/p5vxq/"
-sha256 = ""
+# PETSc 3.19.0 source archive (Zenodo 15805756), required by SPIDER. tools/get_petsc.sh
+# tries url, then the DataverseNL mirror (empty: no fallback), and checks the SHA-256.
+url = "https://zenodo.org/records/15805756/files/petsc.zip?download=1"
+mirror = ""
+sha256 = "c5bdb75048b609627bac7fdc83042078a629f5de0c6508b50166a351d2aa045d"
 
 [tool.proteus.coverage_fast]
 # Fast PR gate: unit-only coverage on PRs (smoke, integration, and slow tiers

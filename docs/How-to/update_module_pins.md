@@ -23,8 +23,9 @@ module is distributed.
 
 
 A third entry, PETSc, is pinned in `[tool.proteus.modules.petsc]` by the SHA-256
-of a pre-built archive rather than a git ref, because it is downloaded as a
-binary from OSF.
+of its source archive rather than a git ref: `tools/get_petsc.sh` downloads it from
+Zenodo (`url`), or from the DataverseNL mirror (`mirror`) when Zenodo fails, and
+refuses a file with another SHA-256.
 
 **PyPI floors** are minimum bounds. When a user runs `pip install -e ".[develop]"`,
 pip resolves the newest release that satisfies every floor. The floor is the

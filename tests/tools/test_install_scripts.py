@@ -635,6 +635,107 @@ def test_resolve_module_pin_reads_the_pin_and_stops_when_it_is_missing(tmp_path)
     assert 'REACHED_CLONE' not in missing.stdout
 
 
+def _sha256(data: bytes) -> str:
+    """Return the SHA-256 hex digest of ``data``."""
+    import hashlib
+
+    return hashlib.sha256(data).hexdigest()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('strict', [False, True])
+def test_fetch_verified_falls_back_to_the_next_source_with_the_pinned_hash(tmp_path, strict):
+    """A failed download, an empty url and a wrong file each give way to the next source.
+
+    The archive goes straight into ``unzip`` and a PETSc build, so only a file
+    with the pinned SHA-256 may end the search.
+    """
+    good, bad = tmp_path / 'good.zip', tmp_path / 'bad.zip'
+    good.write_bytes(b'petsc archive')
+    bad.write_bytes(b'an error page')
+    dest = tmp_path / 'petsc.zip'
+    body = (
+        f'fetch_verified {_sha256(b"petsc archive")} "{dest}" '
+        f'"file://{tmp_path}/missing.zip" "" "file://{bad}" "file://{good}"\n'
+        'echo REACHED_UNZIP\n'
+    )
+
+    result = _run_bash(_with_common(body, strict))
+
+    assert result.returncode == 0, result.stderr
+    assert dest.read_bytes() == b'petsc archive'
+    assert 'REACHED_UNZIP' in result.stdout
+    assert f'download from file://{tmp_path}/missing.zip failed' in result.stderr
+    assert (
+        f'file://{bad} served a file with SHA-256 {_sha256(b"an error page")}' in result.stderr
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('strict', [False, True])
+def test_fetch_verified_stops_when_no_source_serves_the_pinned_file(tmp_path, strict):
+    """With no matching source the install stops and leaves no archive to unpack."""
+    bad = tmp_path / 'bad.zip'
+    bad.write_bytes(b'an error page')
+    dest = tmp_path / 'petsc.zip'
+    body = f'fetch_verified {"0" * 64} "{dest}" "file://{bad}" ""\necho REACHED_UNZIP\n'
+
+    result = _run_bash(_with_common(body, strict))
+
+    assert result.returncode == 1
+    assert 'REACHED_UNZIP' not in result.stdout
+    assert not dest.exists()
+    assert f'no source served petsc.zip with SHA-256 {"0" * 64}' in result.stderr
+
+
+@pytest.mark.unit
+def test_get_petsc_tries_zenodo_then_the_mirror_from_its_pins(tmp_path):
+    """The shipped download step passes the pinned hash and sources, overridable by
+    PETSC_URL and PETSC_MIRROR_URL, to fetch_verified in that order."""
+    fake_tools = tmp_path / 'tools'
+    fake_tools.mkdir()
+    shutil.copy2(COMMON_LIB, fake_tools / '_get_common.sh')
+    (fake_tools / '_module_pins.py').write_text('')
+    archive = tmp_path / 'mirror.zip'
+    archive.write_bytes(b'petsc archive')
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    _write_stub(
+        stubs,
+        'python',
+        f'#!/bin/bash\ncase "$3" in sha256) echo {_sha256(b"petsc archive")} ;; '
+        'url) echo "file:///nowhere/petsc.zip" ;; mirror) echo "" ;; esac\n',
+    )
+    block = _extract_script_block(
+        'get_petsc.sh', 'zipfile="$workpath/petsc.zip"', 'current_step="Decompressing'
+    )
+    snippet = (
+        f'source "{fake_tools}/_get_common.sh"\nworkpath="{tmp_path}"\n{block}\necho DONE\n'
+    )
+    env = {**os.environ, 'PATH': f'{stubs}:{os.environ["PATH"]}'}
+
+    pinned = subprocess.run(['bash', '-c', snippet], capture_output=True, text=True, env=env)
+    assert pinned.returncode == 1
+    assert 'download from file:///nowhere/petsc.zip failed' in pinned.stderr
+
+    env['PETSC_MIRROR_URL'] = f'file://{archive}'
+    mirrored = subprocess.run(['bash', '-c', snippet], capture_output=True, text=True, env=env)
+    assert mirrored.returncode == 0, mirrored.stderr
+    assert (tmp_path / 'petsc.zip').read_bytes() == b'petsc archive'
+    assert 'DONE' in mirrored.stdout
+
+
+@pytest.mark.unit
+def test_pyproject_pins_the_petsc_archive_by_sha256():
+    """PETSc is pinned to its Zenodo archive by a SHA-256, with a mirror field."""
+    pin = tomllib.loads((TOOLS_DIR.parent / 'pyproject.toml').read_text())['tool']['proteus'][
+        'modules'
+    ]['petsc']
+    assert pin['url'] == 'https://zenodo.org/records/15805756/files/petsc.zip?download=1'
+    assert re.fullmatch(r'[0-9a-f]{64}', pin['sha256'])
+    assert 'mirror' in pin
+
+
 # ---------------------------------------------------------------------------
 # ERR trap tests
 # ---------------------------------------------------------------------------
