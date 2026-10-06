@@ -29,6 +29,7 @@ from aragog.parser import (
     _Radionuclide,
     _SolverParameters,
 )
+from proteus.accretion.common import snap_to_impact
 from proteus.interior_energetics.aragog_phase import (
     build_jax_phase_params,
     build_mixed_phase_params,
@@ -97,9 +98,10 @@ def _melting_curve_files(config, outdir):
         return _write_paleos_melting_curves(outdir, config)
     if config.interior_struct.melting_dir is None:
         raise ValueError(
-            'interior_struct.melting_dir must be set without a generated PALEOS '
-            'table set (a PALEOS mantle EOS under the Zalmoxis structure). '
-            'Provide a melting curve folder name (e.g. "Monteux-600").'
+            'interior_struct.melting_dir must be set unless Zalmoxis generates a PALEOS '
+            'table set (a PALEOS mantle EOS under the Zalmoxis structure); the dummy '
+            'structure requires it with any mantle EOS. Provide a melting curve folder '
+            'name (e.g. "Monteux-600").'
         )
     return resolve_melting_curve_files(
         config.interior_struct.melting_dir, data_root=FWL_DATA_DIR
@@ -293,6 +295,7 @@ _OPTIONAL_ENERGY_FIELDS = frozenset(
         'temperature_step_cap',
         'entropy_step_cap',
         'phase_boundary_entropy_margin',
+        'phase_boundary_cap',
     }
 )
 
@@ -300,14 +303,13 @@ _OPTIONAL_ENERGY_FIELDS = frozenset(
 def _unsupported_energy_fields() -> set[str]:
     """Return the optional energy fields the installed Aragog does not accept.
 
-    The temperature/entropy step caps and the phase-boundary entropy margin need
-    a paired Aragog. An older Aragog omits them from ``_EnergyParameters``, so
-    ``setup_solver`` drops them and the solver degrades to Aragog defaults. The
-    config snapshot calls this too, so it records a not-applied marker for a
-    dropped step cap rather than a resolved value the run never received. The
-    margin has no such marker because its positive-only validator forbids the
-    sentinel, so a dropped non-default margin is reported through a solve-time
-    warning instead.
+    The temperature/entropy step caps, the phase-boundary entropy margin and the
+    phase-boundary cap need a paired Aragog. An older Aragog omits them from
+    ``_EnergyParameters``, so ``setup_solver`` drops them and the solver degrades
+    to Aragog defaults. The config snapshot calls this too, so it records a
+    not-applied marker for a dropped step cap and the fixed policy for a dropped
+    phase-boundary cap. The margin has no such marker, so a dropped non-default
+    margin is reported through a setup warning instead.
     """
     accepted = set(inspect.signature(_EnergyParameters).parameters)
     return set(_OPTIONAL_ENERGY_FIELDS) - accepted
@@ -867,24 +869,26 @@ class AragogRunner:
             temperature_step_cap=temperature_step_cap,
             entropy_step_cap=entropy_step_cap,
             phase_boundary_entropy_margin=float(ar.phase_boundary_entropy_margin),
+            # 'rate' is Aragog's default; passing it unset keeps its fallback notes at INFO.
+            phase_boundary_cap='fixed' if ar.phase_boundary_cap == 'fixed' else None,
         )
-        # The temperature/entropy step caps and the phase-boundary entropy
-        # margin require a paired Aragog. Pass them only when the installed
-        # Aragog accepts them, so an older Aragog degrades gracefully (no caps,
-        # its built-in 200 J/kg/K margin) with a clear warning instead of
-        # crashing on an unexpected keyword.
+        # The optional stepping controls need a paired Aragog. An older Aragog drops them and
+        # falls back to its defaults (no caps, 200 J/kg/K margin, fixed cap); a warning names
+        # each dropped step cap or margin the config sets away from that default.
         _unsupported = _unsupported_energy_fields()
-        _caps_requested = temperature_step_cap > 0.0 or entropy_step_cap > 0.0
-        _nondefault_margin_dropped = (
-            'phase_boundary_entropy_margin' in _unsupported
-            and float(ar.phase_boundary_entropy_margin) != _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN
-        )
-        if _unsupported and (_caps_requested or _nondefault_margin_dropped):
+        _active = {
+            'temperature_step_cap': temperature_step_cap > 0.0,
+            'entropy_step_cap': entropy_step_cap > 0.0,
+            'phase_boundary_entropy_margin': float(ar.phase_boundary_entropy_margin)
+            != _ARAGOG_DEFAULT_PHASE_BOUNDARY_MARGIN,
+        }
+        _dropped_active = {k for k in _unsupported if _active.get(k)}
+        if _dropped_active:
             log.warning(
                 'Installed Aragog does not support %s; the affected interior '
                 'stepping control(s) fall back to Aragog defaults. Update '
                 'Aragog to enable them.',
-                ', '.join(sorted(_unsupported)),
+                ', '.join(sorted(_dropped_active)),
             )
         for _key in _unsupported:
             energy_kwargs.pop(_key, None)
@@ -1182,6 +1186,26 @@ class AragogRunner:
                 _t_post_eos - _t_pre_eos,
                 _t_post_solver - _t_post_eos,
             )
+
+    @staticmethod
+    def _store_profiles(interior_o: Interior_t, out) -> None:
+        """Store the profiles of a solver state on ``interior_o`` for the other modules.
+
+        Parameters
+        ----------
+        interior_o : Interior_t
+            Interior state receiving phi, visc, density, radius, mass, temp and pres.
+        out : SolverOutput
+            Solver state; ``r_basic`` stays in metres, as the structure update
+            compares it with the core radius in metres.
+        """
+        interior_o.phi = out.phi_stag
+        interior_o.visc = out.visc_stag
+        interior_o.density = out.rho_stag
+        interior_o.radius = out.r_basic
+        interior_o.mass = out.mass_stag
+        interior_o.temp = out.T_stag
+        interior_o.pres = out.P_stag
 
     @staticmethod
     def _refresh_entropy_eos(config: Config, interior_o: Interior_t) -> None:
@@ -2011,26 +2035,14 @@ class AragogRunner:
             surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
         )
 
-        # Store arrays on interior object for inter-module access.
-        # Radius is stored in metres (SI), matching SPIDER's convention
-        # (spider.py:1185 reads radius_b directly from the SPIDER JSON
-        # in metres). update_structure_from_interior (wrapper.py:795)
-        # requires metres: its r <= _R_cmb comparison and downstream
-        # np.interp would use mixed units if km were stored here, which
-        # matters whenever Zalmoxis update_interval > 0.
-        interior_o.phi = out.phi_stag
-        interior_o.visc = out.visc_stag
-        interior_o.density = out.rho_stag
-        interior_o.radius = out.r_basic  # m
-        interior_o.mass = out.mass_stag
-        interior_o.temp = out.T_stag
-        interior_o.pres = out.P_stag
+        self._store_profiles(interior_o, out)
 
-        # Use the actual integration endpoint, not the requested end_time.
-        # If the solver exits early (status != 0), dt_actual < requested dt.
-        # Matches the SPIDER fix (reading time_years from JSON instead of
-        # using dtswitch) to prevent the same class of time desync.
-        sim_time = hf_row['Time'] + out.dt_actual
+        # The actual integration endpoint, not the requested end_time (dt_actual is
+        # shorter when the solver exits early); a step aimed at an impact ends on it,
+        # so the snapshot is named like the row.
+        sim_time = snap_to_impact(
+            hf_row['Time'] + out.dt_actual, getattr(interior_o, 't_next_impact', np.inf)
+        )
 
         # Write output to a file (skipped when dt_write suppresses this step)
         if write_data:
@@ -2139,9 +2151,6 @@ class AragogRunner:
         sanity_dT_core = max(
             3000.0, 1500.0 * mass_tot
         )  # max plausible T_core change per retry [K]
-        # Giant impacts cause real T_core jumps that retries cannot reduce.
-        # Skip the sanity check on impact steps to prevent false ladder exhaustion.
-        impact_step = bool(getattr(interior_o, 'impact_reset_this_step', False))
 
         # Immediately before the solve, so the state-heat integral this step
         # books is taken against the tables the step actually runs on.
@@ -2172,6 +2181,16 @@ class AragogRunner:
             dSdr_snapshot = solver.get_current_dSdr_cmb()
         if dSdr_snapshot is None:
             dSdr_snapshot = getattr(solver, '_dSdr_cmb_init', None)
+        # A cold start (first solve, or after a re-melt) has neither; take
+        # the value attempt 1 starts from, so retries do not inherit its end.
+        if (
+            dSdr_snapshot is None
+            and self._config.interior_energetics.aragog.core_bc == 'energy_balance'
+        ):
+            S0 = getattr(solver, '_S0', None)
+            n_stag = getattr(solver, '_n_stag', None)
+            if S0 is not None and n_stag is not None and len(S0) == n_stag + 1:
+                dSdr_snapshot = float(S0[n_stag])
         dSdr_ic = dSdr_snapshot
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.
@@ -2244,8 +2263,7 @@ class AragogRunner:
                     sanity_reject_reason = None
 
                     # Reject non-finite CMB temperatures and implausibly large jumps.
-                    # The jump-magnitude check is inactive when T_core_pre <= 0
-                    # or during an impact step.
+                    # The jump-magnitude check is inactive when T_core_pre <= 0.
                     tcore_endpoint = float(out.T_core)
                     # tcore_change_max is the intra-solve maximum change,
                     # >= the endpoint change by construction; on an older
@@ -2262,16 +2280,7 @@ class AragogRunner:
                             if tcore_change_max is not None
                             else abs(tcore_endpoint - T_core_pre)
                         )
-                        if dT > sanity_dT_core and impact_step:
-                            log.info(
-                                'T_core jumped %.1f K (>%.0f K threshold) on '
-                                'the step a giant impact re-melted the '
-                                'mantle. The jump is the impact, so the '
-                                'guard is skipped here.',
-                                dT,
-                                sanity_dT_core,
-                            )
-                        elif dT > sanity_dT_core:
+                        if dT > sanity_dT_core:
                             sanity_reject_reason = (
                                 f'T_core jumped by up to {dT:.1f} K '
                                 f'(>{sanity_dT_core:.0f} K sanity threshold)'
@@ -2844,8 +2853,8 @@ def earlier_snapshot_exists(output_dir: str, time: float) -> bool:
     bool
         Whether at least one older snapshot exists.
     """
-    # Compared against the stems on disk, handling both integer and subyear names.
-    cutoff = float(time)
+    # Compared against the stems on disk, so the cutoff rounds like the writer.
+    cutoff = parse_subyear_time(format_subyear_time(time))
     for fpath in glob.glob(os.path.join(output_dir, 'data', '*_int.nc')):
         stem = os.path.basename(fpath).split('_int.nc')[0]
         try:
@@ -2988,8 +2997,9 @@ def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | N
     P_surface follows from its pressure, its radius and the mesh parameters.
     It is taken from the top cell and accepted only if every cell gives the
     same value within 1e-9 of the largest pressure plus 1 Pa, which covers the
-    float round trip of the stored profile and the helpfile rounding of g and
-    R. A value within that tolerance of 0 is returned as exactly 0.
+    float round trip of the stored profile and the rounding of g and R in an
+    11-digit helpfile. A value within that tolerance of 0 is returned as
+    exactly 0.
 
     Parameters
     ----------

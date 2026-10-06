@@ -11,7 +11,6 @@ from multiprocessing import Event, Pool
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import toml
 import torch
 from scipy.stats.qmc import Halton
@@ -19,7 +18,11 @@ from scipy.stats.qmc import Halton
 from proteus.inference.objective import child_timeout_s, eval_obj, prot_builder
 from proteus.inference.transforms import normalize_parameters
 from proteus.inference.utils import save_dataset_csv
-from proteus.utils.coupler import get_proteus_directories
+from proteus.utils.coupler import (
+    HelpfileFormatError,
+    get_proteus_directories,
+    read_helpfile_table,
+)
 from proteus.utils.helper import recursive_get
 
 # Use double precision for all tensor computations
@@ -122,11 +125,20 @@ def sample_from_grid(
     confs = []
     for c in cases:
         # Data
-        helps.append(pd.read_csv(c / 'runtime_helpfile.csv', delimiter=r'\s+'))
+        try:
+            helps.append(read_helpfile_table(c / 'runtime_helpfile.csv', min_rows=1))
+        except (OSError, HelpfileFormatError) as err:
+            log.warning('Skipping %s: %s', c.name, err)
+            continue
 
         # Config
         with open(c / 'init_coupler.toml', 'r') as f:
             confs.append(toml.load(f))
+
+    if cases and not helps:
+        raise HelpfileFormatError(
+            f'No readable helpfile in any of {len(cases)} cases in {grid_path}'
+        )
 
     # List of parameter keys for ordering
     keys = list(params.keys())

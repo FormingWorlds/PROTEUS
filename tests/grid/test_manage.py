@@ -16,16 +16,20 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
 import pytest
 import toml
 
+from proteus.config import UnknownConfigKeyError, read_config_object
 from proteus.grid import manage as gm
 from proteus.grid.manage import (
     Grid,
     _thread_target,
+    grid_dimension_keys,
     grid_from_config,
 )
 
@@ -972,45 +976,28 @@ def _write_grid_toml(path, **overrides):
 class TestGridFromConfig:
     """grid_from_config: TOML parse + Grid build + dispatch wiring."""
 
-    def test_invalid_method_raises(self, fake_proteus_dir, monkeypatch):
-        """An unknown ``method`` value in a dimension table raises
-        ValueError with the offending name in the message.
-        """
-        # base config must exist at the path Grid expects (PROTEUS_DIR/ref_config)
-        base_path = fake_proteus_dir / 'base.toml'
-        base_path.write_text('# base\n')
-
-        grid_path = fake_proteus_dir / 'g.toml'
-        _write_grid_toml(
-            grid_path,
-            dimensions={
-                'planet.mass_tot': {
-                    'method': 'BOGUS_METHOD',
-                    'values': [0.5],
-                },
-            },
+    @pytest.mark.parametrize(
+        ('table', 'reason'),
+        [
+            ({'method': 'BOGUS_METHOD', 'values': [0.5]}, 'whose method is not one of'),
+            ({'method': 'linspace', 'start': 1.0, 'stop': 2.0}, 'without a key its method'),
+            ({'method': 'direct'}, 'without a key its method reads'),
+        ],
+    )
+    def test_bad_dimension_table_keeps_the_old_output(self, fake_proteus_dir, table, reason):
+        """A bad method or a missing method key stops the grid before the old output
+        directory is removed."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml', dimensions={'planet.mass_tot': table}
         )
-        # Stop dispatch early (raise during dim setup, not at pg.run)
-        monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
-        # Also block run + slurm so a missed error path cannot silently
-        # dispatch a real grid.
-        run_called = {'n': 0}
-        slurm_called = {'n': 0}
-        monkeypatch.setattr(
-            Grid,
-            'run',
-            lambda self, *a, **k: run_called.__setitem__('n', run_called['n'] + 1),
-        )
-        monkeypatch.setattr(
-            Grid,
-            'slurm_config',
-            lambda self, *a, **k: slurm_called.__setitem__('n', slurm_called['n'] + 1),
-        )
-        with pytest.raises(ValueError, match='BOGUS_METHOD'):
+        with pytest.raises(UnknownConfigKeyError, match=reason) as exc:
             grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
-        # Post-state: neither dispatch path ran (error raised before).
-        assert run_called['n'] == 0
-        assert slurm_called['n'] == 0
+        assert '"planet.mass_tot"' in str(exc.value)
+        assert old.read_text() == 'kept\n'
 
     def test_relative_symlink_rejected(self, fake_proteus_dir):
         """Non-absolute ``symlink`` path is refused with RuntimeError.
@@ -1197,7 +1184,10 @@ class TestGridFromConfig:
         # Discriminating: 2 x 3 x 4 x 3 (arange 0.3, 0.4, 0.5) = 72 points
         # (arange appends 0.5 explicitly since np.arange may stop before).
         # The four methods all produced non-empty value lists.
-        assert all(len(v) > 0 for v in g.dim_avars.values())
+        assert g.dim_avars['param_000'] == [0.5, 1.0]
+        np.testing.assert_allclose(g.dim_avars['param_001'], [100.0, 150.0, 200.0])
+        np.testing.assert_allclose(g.dim_avars['param_002'], [1.0, 10.0, 100.0, 1000.0])
+        np.testing.assert_allclose(g.dim_avars['param_003'], [0.3, 0.4, 0.5])
         # And the dimension count is exactly four:
         assert len(g.dim_names) == 4
         # Size is the product of the lengths
@@ -1245,3 +1235,226 @@ class TestGridFromConfig:
         # Post-state: dispatch was blocked before reaching run or slurm.
         assert run_called['n'] == 0
         assert slurm_called['n'] == 0
+
+
+_UNSET = (1e-8, 1e-10)
+
+
+@pytest.mark.parametrize(
+    ('base', 'dims', 'expected'),
+    [
+        ('', {}, _UNSET),
+        ('rtol = -1.0', {}, _UNSET),
+        ('num_tolerance = -1.0', {}, _UNSET),
+        ('[interior_energetics.spider]\ntolerance_rel = -1.0', {}, _UNSET),
+        ('rtol = 3e-9', {}, (3e-9, 3e-9)),
+        ('num_tolerance = 3e-9', {}, (3e-9, 3e-9)),
+        ('[interior_energetics.spider]\ntolerance_rel = 3e-9', {}, (3e-9, 3e-9)),
+        ('', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
+        (
+            '[interior_energetics.spider]\ntolerance_rel = 3e-9',
+            {'interior_energetics.rtol': [1e-6]},
+            (1e-6, 1e-6),
+        ),
+        ('num_tolerance = 3e-9', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
+        ('[interior_energetics.spider]\ntolerance_rel = 0.0', {}, _UNSET),
+    ],
+)
+def test_write_config_files_gives_each_module_its_default_rtol(
+    fake_proteus_dir, tmp_path, monkeypatch, base, dims, expected
+):
+    """A grid over the interior module writes each case the rtol default of its own
+    module unless the base config or the grid sets rtol or an alias; cases reload."""
+    cfg = tmp_path / 'base_ie.toml'
+    cfg.write_text(f'[interior_energetics]\n{base}\n')
+    g = Grid(name='rtol_grid', base_config_path=str(cfg))
+    dims = {'interior_energetics.module': ['aragog', 'spider'], **dims}
+    for i, (key, values) in enumerate(dims.items()):
+        g.add_dimension(f'd{i}', key)
+        g.set_dimension_direct(f'd{i}', values)
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    g.write_config_files()
+    paths = {
+        toml.load(p)['interior_energetics']['module']: p for p in map(g._get_tmpcfg, range(2))
+    }
+    got = [toml.load(paths[m])['interior_energetics']['rtol'] for m in ('aragog', 'spider')]
+    loaded = [
+        read_config_object(paths[m]).interior_energetics.rtol for m in ('aragog', 'spider')
+    ]
+    assert got == pytest.approx(expected, rel=1e-12)
+    assert loaded == pytest.approx(expected, rel=1e-12)
+
+
+def test_all_options_grid_over_the_module_gives_each_its_default_rtol(
+    fake_proteus_dir, monkeypatch
+):
+    """input/all_options.toml leaves rtol unset, so a grid over the interior module writes
+    1e-8 for Aragog and 1e-10 for SPIDER."""
+    from helpers import PROTEUS_ROOT
+
+    g = Grid(
+        name='opts_grid', base_config_path=str(PROTEUS_ROOT / 'input' / 'all_options.toml')
+    )
+    g.add_dimension('d0', 'interior_energetics.module')
+    g.set_dimension_direct('d0', ['aragog', 'spider'])
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    g.write_config_files()
+    got = {
+        c['interior_energetics']['module']: c['interior_energetics']['rtol']
+        for c in (toml.load(g._get_tmpcfg(i)) for i in range(2))
+    }
+    assert got == pytest.approx({'aragog': 1e-8, 'spider': 1e-10}, rel=1e-12)
+
+
+@pytest.mark.parametrize(
+    'alias', ['interior_energetics.num_tolerance', 'interior_energetics.spider.tolerance_rel']
+)
+def test_add_dimension_rejects_a_deprecated_tolerance_alias(fake_proteus_dir, tmp_path, alias):
+    """A grid over a deprecated rtol alias is refused at setup, naming the key to use."""
+    cfg = tmp_path / 'base_ie.toml'
+    cfg.write_text('')
+    g = Grid(name='alias_grid', base_config_path=str(cfg))
+    with pytest.raises(ValueError, match='interior_energetics.rtol'):
+        g.add_dimension('tol', alias)
+    assert g.dim_names == []
+
+
+_DIM = {'method': 'direct', 'values': [1.0]}
+_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.parametrize(
+    ('key', 'value', 'reason'),
+    [
+        ('struct_mass_tot', _DIM, 'not a grid setting or a configuration field'),
+        ('jax_cahce', True, 'not a grid setting or a configuration field'),
+        ('planet.mass_totl', _DIM, 'not a grid setting or a configuration field'),
+        ('planet.mass_tot.x', _DIM, 'not a grid setting or a configuration field'),
+        ('planet', _DIM, 'a configuration section, not a single field'),
+        ('orbit.semimajoraxis', 1.0, 'without a dimension table holding a method'),
+        (
+            'orbit.semimajoraxis',
+            {'values': [1.0]},
+            'without a dimension table holding a method',
+        ),
+        ('orbit.semimajoraxis', [_DIM], 'without a dimension table holding a method'),
+        ('orbit.semimajoraxis', {'method': 'lnspace'}, 'whose method is not one of'),
+        ('orbit.semimajoraxis', {'method': ['direct'], 'values': [1.0]}, 'whose method is not'),
+        (
+            'orbit.semimajoraxis',
+            {'method': 'arange', 'start': 0, 'stop': 1},
+            'its method reads',
+        ),
+    ],
+)
+def test_unaccounted_grid_key_is_refused_before_any_case(fake_proteus_dir, key, value, reason):
+    """A key that is no grid setting and no single schema field stops the grid at load,
+    named together with the grid file, before any output is created."""
+    (fake_proteus_dir / 'base.toml').write_text('# base\n')
+    grid_path = _write_grid_toml(
+        fake_proteus_dir / 'g.toml', dimensions={'planet.mass_tot': _DIM, key: value}
+    )
+    with pytest.raises(UnknownConfigKeyError, match=re.escape(f'"{key}"')) as exc:
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+    assert str(grid_path) in str(exc.value) and reason in str(exc.value)
+    assert not (fake_proteus_dir / 'output').exists()
+
+
+def test_grid_dimension_keys_skips_settings_and_keeps_file_order():
+    """Grid settings are not dimensions; every schema field path is, in file order."""
+    config = {
+        'planet.mass_tot': _DIM,
+        'output': 'g',
+        'interior_struct.core_frac': _DIM,
+        'config_version': '3.0',
+        'orbit.semimajoraxis': _DIM,
+        'jax_cache': True,
+    }
+    expected = ['planet.mass_tot', 'interior_struct.core_frac', 'orbit.semimajoraxis']
+    assert grid_dimension_keys(config, 'g.toml') == expected
+    assert grid_dimension_keys({'output': 'g'}, 'g.toml') == []
+
+
+def test_grid_dimension_keys_names_every_refused_key_with_its_reason():
+    """Several bad keys are refused together, each named under its reason."""
+    config = {
+        'output': 'g',
+        'jax_cahce': True,
+        'planet.mass_totl': _DIM,
+        'planet': _DIM,
+        'orbit.semimajoraxis': 1.0,
+    }
+    with pytest.raises(UnknownConfigKeyError) as exc:
+        grid_dimension_keys(config, 'g.toml')
+    msg = str(exc.value)
+    assert 'not a grid setting or a configuration field: "jax_cahce", "planet.mass_totl"' in msg
+    assert 'a configuration section, not a single field' in msg and '"planet"' in msg
+    assert 'without a dimension table holding a method: "orbit.semimajoraxis"' in msg
+
+
+def test_grid_from_config_numbers_dimensions_in_file_order(fake_proteus_dir, monkeypatch):
+    """Only dimensions take a number: param_000 onwards, in the order of the grid file."""
+    (fake_proteus_dir / 'base.toml').write_text('# base\n')
+    grid_path = fake_proteus_dir / 'g.toml'
+    grid_path.write_text(
+        toml.dumps(
+            {
+                'output': 'unit_grid',
+                'planet.mass_tot': _DIM,
+                'symlink': '',
+                'use_slurm': False,
+                'interior_struct.core_frac': _DIM,
+                'max_jobs': 2,
+                'max_days': 1,
+                'max_mem': 3,
+                'ref_config': 'base.toml',
+            }
+        )
+    )
+    captured = {}
+    monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: captured.setdefault('g', self))
+    monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+    monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+    assert captured['g'].dim_names == ['param_000', 'param_001']
+    assert captured['g'].dim_param == ['planet.mass_tot', 'interior_struct.core_frac']
+
+
+_SHIPPED_GRIDS = sorted(
+    str(p.relative_to(_ROOT))
+    for p in [*(_ROOT / 'input').rglob('*grid*.toml'), _ROOT / 'tests/grid/dummy.grid.toml']
+)
+
+
+@pytest.mark.parametrize('rel_path', _SHIPPED_GRIDS)
+def test_shipped_grid_files_pass_the_key_check(rel_path):
+    """Every grid file in the repository has only settings and complete dimension tables."""
+    config = toml.load(_ROOT / rel_path)
+    dims = grid_dimension_keys(config, rel_path)
+    assert dims
+    assert set(dims).isdisjoint(gm.GRID_SETTINGS)
+
+
+def test_grid_settings_match_the_keys_grid_from_config_reads(fake_proteus_dir, monkeypatch):
+    """GRID_SETTINGS holds the settings grid_from_config reads plus config_version."""
+
+    class Recorder(dict):
+        def __getitem__(self, key):
+            read.add(key)
+            return super().__getitem__(key)
+
+        def get(self, key, default=None):
+            read.add(key)
+            return super().get(key, default)
+
+    read = set()
+    config = toml.load(_write_grid_toml(fake_proteus_dir / 'g.toml', dimensions={}))
+    config.update({'jax_cache': False, 'planet.mass_tot': _DIM})
+    monkeypatch.setattr(gm.toml, 'load', lambda f: Recorder(config))
+    monkeypatch.setattr(gm, 'Grid', mock.MagicMock(return_value=mock.MagicMock(size=1)))
+    grid_from_config(str(fake_proteus_dir / 'g.toml'), test_run=True, check_interval=0.0)
+    assert 'planet.mass_tot' in read
+    assert read - {'planet.mass_tot'} == gm.GRID_SETTINGS - {'config_version'}

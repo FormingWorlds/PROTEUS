@@ -66,7 +66,9 @@ class Calliope:
         Enable solubility of volatiles into melt.
     nguess: int
         Maximum number of initial-guess samples for the CALLIOPE
-        equilibrium solver. Default 1000.
+        equilibrium solver. The samples come from a fixed seed, so identical
+        inputs draw the same guesses, and an input that exhausts the samples
+        fails the same way on a rerun. Default 1000.
     nsolve: int
         Maximum number of iterations of the CALLIOPE equilibrium
         solver per call. Default 3000.
@@ -218,7 +220,9 @@ class Outgas:
     fO2_shift_IW: float
         Oxygen fugacity relative to Iron-Wustite [log10 units].
     mass_thresh: float
-        Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+        Minimum threshold for element mass [kg]. Outgassing treats H, C, N or S below it
+        as absent; escape sets a non-noble element total below it to zero, except on a
+        mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt.
     h2_binodal: bool
         Enable binodal-controlled H2 partitioning between atmosphere and
         magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model.

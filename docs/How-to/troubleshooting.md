@@ -11,10 +11,12 @@ step-by-step guide or the advice below,
 |---|---|
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
 | `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
+| `Resume: no Zalmoxis structure file matches the helpfile row` | [Resume stops on the Zalmoxis structure](#resume-stops-no-zalmoxis-structure-file-matches-the-row) |
 | Simulation fails to converge (general) | [Stabilise a simulation](stabilise_run.md) |
 | `Aragog needs the SUNDIALS CVODE solver` / `scikits_odes_sundials.cvode cannot be imported` | [Aragog stops at setup](#aragog-stops-at-setup-cvode-cannot-be-imported) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
 | `Out-of-date modules detected` | [Module updates](#out-of-date-modules-detected) |
+| `Refusing to delete it` during an install | [Module checkout kept](#an-install-refuses-to-replace-a-module-checkout) |
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
 | `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
@@ -78,6 +80,18 @@ Either run the configuration again from `t = 0`, or check out the PROTEUS versio
 
 To keep a long run resumable across an upgrade, note the PROTEUS version it was launched with and stay on it until the run finishes.
 
+### Resume stops: no Zalmoxis structure file matches the row {#resume-stops-no-zalmoxis-structure-file-matches-the-row}
+
+`proteus start --resume` on a Zalmoxis + Aragog run stops with status 20 and a message such as:
+
+```text
+Resume: no Zalmoxis structure file matches the helpfile row at t = 6.020140e+02 yr
+within max(1 m, 1e-9 of the mantle thickness); zalmoxis_output.dat: R_core +8.513e+03 m,
+R_int -5.486e+04 m; ...
+```
+
+A structure solve rewrites `data/zalmoxis_output.dat` at once, while the helpfile and the snapshots are written only on snapshot iterations, so a stopped run can hold a structure newer than the row it resumes from. PROTEUS tries three files in this order: the copy saved with that row (`data/<time>_zalmoxis.dat`), `data/zalmoxis_output.dat`, and its backup `data/zalmoxis_output.dat.prev`. The run resumes on the first one whose inner and outer radii match the row within the tolerance in the message. When none of them matches, or none of them exists, run the configuration again from `t = 0`.
+
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 
 Have you added your SSH key to GitHub? See these pages for guidance:
@@ -120,6 +134,41 @@ git checkout main
 git pull
 python -m pip install -U -e .
 ```
+
+### An install refuses to replace a module checkout {#an-install-refuses-to-replace-a-module-checkout}
+
+An install script stops rather than delete a module checkout that holds work
+you would not get back:
+
+```console
+ERROR: /path/to/aragog has uncommitted changes or commits not on a remote.
+       Refusing to delete it. Commit and push your work, or run
+       bash tools/get_aragog.sh --force  to discard the checkout.
+```
+
+Commit and push the work, and the next run replaces the checkout normally.
+
+`install.sh` and `proteus install-all` never pass `--force`, so they cannot
+step over this for you. To discard the checkout deliberately, run the script
+the message names by hand, from the PROTEUS folder:
+
+```console
+bash tools/get_aragog.sh --force
+```
+
+A second message reports a checkout git cannot read at all, from a truncated
+copy or a clone interrupted after it started writing refs:
+
+```console
+ERROR: git could not report the state of /path/to/aragog, so whether
+       it holds local work is unknown. Refusing to delete it.
+       Inspect the checkout, or run
+       bash tools/get_aragog.sh --force  to discard it.
+```
+
+The same `--force` discards it. A clone killed before it committed anything
+is not affected: there is nothing to lose, so the next install refreshes it
+without asking.
 
 ### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 

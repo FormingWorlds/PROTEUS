@@ -688,6 +688,7 @@
       ],
       "consumers": [
         "interior_energetics",
+        "interior_struct",
         "main loop"
       ],
       "consumers_possible": []
@@ -980,6 +981,10 @@
           "condition": "always"
         },
         {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
+        },
+        {
           "file": "src/proteus/interior_struct/zalmoxis.py",
           "condition": "interior_struct.module = \"zalmoxis\""
         },
@@ -1017,6 +1022,10 @@
         {
           "file": "src/proteus/interior_energetics/spider.py",
           "condition": "interior_energetics.module = \"spider\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1042,6 +1051,10 @@
         {
           "file": "src/proteus/interior_energetics/spider.py",
           "condition": "interior_energetics.module = \"spider\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [],
@@ -1633,6 +1646,10 @@
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "always"
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1674,7 +1691,7 @@
         },
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
-          "condition": "always"
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [],
@@ -1709,7 +1726,7 @@
         },
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
-          "condition": "always"
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1821,6 +1838,10 @@
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "always"
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1859,6 +1880,10 @@
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "always"
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -1896,7 +1921,7 @@
         },
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
-          "condition": "always"
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [],
@@ -2174,7 +2199,7 @@
         },
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
-          "condition": "always"
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         },
         {
           "file": "src/proteus/proteus.py",
@@ -2905,11 +2930,16 @@
       "origin": "literal",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/escape/wrapper.py",
           "condition": "always"
         }
       ],
       "consumers": [
+        "accretion",
         "escape",
         "outgas"
       ],
@@ -2934,6 +2964,27 @@
       "consumers": [
         "accretion",
         "escape",
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "M_desiccated",
+      "unit": "kg",
+      "description": "element mass removed at desiccation without escape",
+      "group": "Atmospheric composition from outgassing",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/escape/wrapper.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
         "outgas"
       ],
       "consumers_possible": []
@@ -3011,7 +3062,25 @@
         }
       ],
       "consumers": [
-        "accretion"
+        "accretion",
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "M_volatile_change",
+      "unit": "kg",
+      "description": "cumulative element mass added to the Zalmoxis target : delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation",
+      "group": "Giant-impact accretion ledger",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_struct/common.py",
+          "condition": "interior_struct.module = \"zalmoxis\""
+        }
+      ],
+      "consumers": [
+        "interior_struct"
       ],
       "consumers_possible": []
     },
@@ -7082,6 +7151,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -7451,6 +7524,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -7822,6 +7899,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -8192,6 +8273,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -8561,6 +8646,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -9636,6 +9725,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -10003,6 +10096,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -10372,6 +10469,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -10739,6 +10840,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -11812,6 +11917,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -12531,6 +12640,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -13955,6 +14068,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -15732,6 +15849,10 @@
       "origin": "<gas>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -16451,6 +16572,10 @@
       "group": "Gases from outgassing",
       "origin": "<gas>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
@@ -18455,6 +18580,10 @@
       "origin": "<element>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -18596,6 +18725,10 @@
       "origin": "<element>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -18733,6 +18866,10 @@
       "origin": "<element>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -18866,6 +19003,10 @@
       "origin": "<element>_kg_atm",
       "producers": [
         {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
         },
@@ -18998,6 +19139,10 @@
       "group": "Quantities for each element",
       "origin": "<element>_kg_atm",
       "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""

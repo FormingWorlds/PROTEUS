@@ -121,6 +121,8 @@ def generates_paleos_tables(interior_struct) -> bool:
     (:func:`energetics_eos_key`) is a PALEOS key of the Zalmoxis material
     registry. SPIDER, Aragog and the table fetch then use the PALEOS-derived
     curves instead of interior_struct.melting_dir. The table files are not checked.
+    The dummy structure builds the same P-S set for a PALEOS mantle EOS, but Aragog
+    still requires melting_dir there, so it is not covered here.
 
     Parameters
     ----------
@@ -262,6 +264,10 @@ def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
     if os.path.exists(wholeyear):
         return wholeyear
     return subyear
+
+
+# Smallest time difference [yr] that format_subyear_time resolves.
+SUBYEAR_TIME_RESOLUTION = 1.0e-3
 
 
 def format_subyear_time(time: float) -> str:

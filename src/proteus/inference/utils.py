@@ -24,6 +24,7 @@ from gpytorch.priors.torch_priors import LogNormalPrior
 from proteus.inference.objective import BAD_OBJ_VALUE, EPS_CLIP, eval_obj
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import gas_list
+from proteus.utils.coupler import read_helpfile_table
 
 # Use double precision for tensor computations
 dtype = torch.double
@@ -196,7 +197,7 @@ def print_results(D, logs, config, output, n_init):
 
     # Read simulator output for this run
     out_path = Path(output) / 'workers' / f'w_{w}' / f'i_{id}' / 'runtime_helpfile.csv'
-    df = pd.read_csv(out_path, delimiter=r'\s+')
+    df = read_helpfile_table(out_path, min_rows=1)
 
     # True observables from config
     true_y = pd.Series(config['observables'])
@@ -364,7 +365,7 @@ def get_obs(out_csv, observables: list[str]):
     ----------
     - pandas.Series: Final-row observable values keyed by observable name.
     """
-    df_row = pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1]
+    df_row = read_helpfile_table(out_csv, min_rows=1).iloc[-1]
 
     # Handle case where atmosphere has escaped
     #   Set VMRs and MMW to zero

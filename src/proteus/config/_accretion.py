@@ -345,8 +345,8 @@ class Accretion:
     impactors carry the per-element budgets configured below.
 
     The mantle re-melt is a thermodynamic reset, not an energy deposition.
-    It re-applies the run's ``planet.temperature_mode`` initial condition to
-    the whole mantle, so the heat it injects is set by the mantle's own state
+    It raises the mantle to the run's ``planet.temperature_mode`` initial
+    condition, and hotter parts keep their state, so the heat it injects is set by the mantle's own state
     and mass rather than by the energy the collision carried. The two agree in
     order of magnitude for a large impact onto a mantle that has cooled
     appreciably, which is the regime this coupling targets, and diverge outside
@@ -365,7 +365,13 @@ class Accretion:
     Attributes
     ----------
     module: str or None
-        Accretion module to use. Choices: None, "dummy", "timeline", "morrigan".
+        Accretion module to use. A "timeline" or "morrigan" history is borrowed
+        from its dynamical bodies: impactor masses, collision loss fractions and
+        impact energies are theirs, not rescaled to this planet. A warning is
+        logged when the timeline's target mass differs from the planet mass by
+        more than 10 %, a round threshold (about 3.5 % in escape speed, which
+        scales as M^0.36), at load and per impact. Choices: None, "dummy",
+        "timeline", "morrigan".
     morrigan: Morrigan
         Parameters for the Morrigan giant-impact module.
     dummy: AccretionDummy
@@ -400,7 +406,10 @@ class Accretion:
     impactor_S_ppmw: float
         Sulfur carried by each impactor [ppmw of impactor mass].
     impactor_O_ppmw: float
-        Oxygen carried by each impactor [ppmw of impactor mass].
+        Oxygen carried by each impactor [ppmw of impactor mass]. With CALLIOPE
+        or atmodeller at a fixed fO2 (``planet.fO2_source = 'user_constant'``)
+        the outgassing derives the O budget, so the delivered part counts as rock;
+        otherwise it joins the O budget.
     atmloss_module: str or None
         How impact atmosphere loss is computed. Choices: None (no impact
         atmosphere loss at all: the target keeps its atmosphere and a
