@@ -79,8 +79,9 @@ def refit_core_at_reset(hf_row: dict, interior_o, solver) -> None:
     ``E_new - E_old`` (the added iron's heat content from the profile's
     reference), is recorded in ``step_dE_impact_core_refit_J`` and not booked, the
     same convention as the mantle re-melt. Both land on the first row after the
-    impact, through ``interior_o._core_impact_booked``. Nothing changes when the
-    fit, the budget build or a heat check fails.
+    impact, through ``interior_o._core_impact_booked``. A failing fit, budget build
+    or heat check raises before anything changes; the final profile check raises
+    after the solver budget is rebuilt, and the run then stops.
 
     Parameters
     ----------
@@ -125,7 +126,11 @@ def refit_core_at_reset(hf_row: dict, interior_o, solver) -> None:
 
     params.update(rho_cen=refit['rho_cen'], length_scale=refit['length_scale'])
     solver._cache_bc_constants()
-    if not np.isclose(float(solver._core_module_budget.profiles.rho_cen), refit['rho_cen']):
+    profiles = solver._core_module_budget.profiles
+    if not (
+        np.isclose(float(profiles.rho_cen), refit['rho_cen'])
+        and np.isclose(float(profiles.length_scale), refit['length_scale'])
+    ):
         raise ValueError('the rebuilt solver budget does not carry the refitted core profile')
     interior_o._frozen_core_rho_cen = refit['rho_cen']
     interior_o._frozen_core_length_scale = refit['length_scale']

@@ -353,7 +353,7 @@ from the running mesh.
 | `alpha_c` | float | `0.0` | Compositional expansivity of the outer-core alloy. Must be >= 0. |
 | `c_light` | float | `0.0` | Light-element mass fraction of the outer core (complete rejection). Must be >= 0. |
 | `q_radio` | float | `0.0` | Core radiogenic power \[W\], constant over a run. Must be >= 0. |
-| `stratification` | bool | `false` | When true, a stably stratified sub-CMB layer at its equilibrium conductive-matching depth reduces the convecting volume in the core's energy and entropy budgets whenever the CMB heat flow is subadiabatic. |
+| `stratification` | bool | `false` | When true, a stably stratified sub-CMB layer at its equilibrium conductive-matching depth reduces the convecting volume in the core's energy and entropy budgets whenever the CMB heat flow is subadiabatic. Not available with accretion. |
 | `k_core` | float | `130.0` | Core thermal conductivity \[W m-1 K-1\] for the stratified-layer depth and the entropy and dynamo diagnostics; the default is the Nimmo (2015) Table 2 value. Must be > 0. |
 | `f_ohm` | float | `1.0` | Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1\]; Christensen et al. (2009) adopt 1 for planets. Must be > 0 and <= 1. |
 | `ra_crit_cmb` | float | `450.0` | Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019, Table 2). Must be > 0. |

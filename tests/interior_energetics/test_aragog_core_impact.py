@@ -41,7 +41,9 @@ class _Solver(SimpleNamespace):
         self.rebuilds += 1
         params = self.parameters.boundary_conditions.core_module_params
         self._core_module_budget = SimpleNamespace(
-            profiles=SimpleNamespace(rho_cen=params['rho_cen'])
+            profiles=SimpleNamespace(
+                rho_cen=params['rho_cen'], length_scale=params['length_scale']
+            )
         )
 
 
@@ -205,11 +207,20 @@ def test_a_failed_reset_refit_changes_nothing(failure):
     assert getattr(interior_o, '_core_impact_booked', None) is None
 
 
-def test_a_rebuilt_budget_without_the_refit_profile_raises():
-    """If the solver's rebuilt budget does not carry the refitted central density (the
-    params the solver reads are not the ones updated), the refit stops loudly."""
+@pytest.mark.parametrize('stale', ['budget', 'length_scale'])
+def test_a_rebuilt_budget_without_the_refit_profile_raises(stale):
+    """If the solver's rebuilt budget does not carry the refitted profile (the params the
+    solver reads are not the ones updated, or only the central density matches), the
+    refit stops loudly."""
     solver, params, _ = _solver()
-    solver._cache_bc_constants = lambda: None
+    if stale == 'budget':
+        solver._cache_bc_constants = lambda: None
+    else:
+        solver._cache_bc_constants = lambda: setattr(
+            solver,
+            '_core_module_budget',
+            SimpleNamespace(profiles=SimpleNamespace(rho_cen=12345.0, length_scale=7.0e6)),
+        )
     pending = {'t_pre': 5091.0, 't_new': 6089.0, 'budget': solver._core_module_budget}
     interior_o = SimpleNamespace(_core_refit_pending=pending)
     fit = SimpleNamespace(rho_cen=12345.0, length_scale=7.1e6)
@@ -305,7 +316,8 @@ def test_a_real_refit_books_the_lift_the_next_call_measures():
     out = SimpleNamespace(step_dE_core_J=0.0, T_core=6100.0, dt_actual=0.0)
     interior_o.aragog_solver = solver
     jump = core_call_heat(out, interior_o)
-    assert jump == lift
-    assert lift > 1.0e29
-    assert abs(refit) > 1.0e29
+    assert jump == pytest.approx(lift, rel=1e-15)
+    # An independent order-of-magnitude anchor for the lift: M_core c_p dT.
+    assert lift == pytest.approx(2.055439e24 * 840.0 * (6124.36 - 5940.16), rel=0.3)
+    assert abs(refit) > 0.1 * lift
     assert abs((old.heat_content(6124.36) - old.heat_content(5940.16)) - lift) > 1.0e28

@@ -2269,9 +2269,14 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
+        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2286,9 +2291,15 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "interior_energetics"
+      ],
       "consumers_possible": []
     },
     {

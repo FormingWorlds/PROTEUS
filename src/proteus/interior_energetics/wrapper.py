@@ -110,6 +110,8 @@ _ARAGOG_CALL_ENERGY_KEYS = (
     'step_dE_Q_tidal_J',
     'step_dE_Q_radio_cons_J',
     'step_dE_Q_tidal_cons_J',
+    'step_solver_residual_J',
+    'step_dE_compression_J',
     'step_dE_state_heat_J',
     'step_dE_core_J',
 )

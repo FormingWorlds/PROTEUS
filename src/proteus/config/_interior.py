@@ -205,7 +205,7 @@ class AragogCoreModule:
         When true, a stably stratified sub-CMB layer at its equilibrium
         conductive-matching depth reduces the convecting volume in the
         core's energy and entropy budgets whenever the CMB heat flow is
-        subadiabatic.
+        subadiabatic. Not available with accretion.
     k_core: float
         Core thermal conductivity [W m-1 K-1] for the stratified-layer
         depth and the entropy and dynamo diagnostics; the default is the

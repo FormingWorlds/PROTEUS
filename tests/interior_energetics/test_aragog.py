@@ -1387,6 +1387,48 @@ def test_a_step_that_never_advanced_is_still_refused():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_an_exhausted_ladder_restarts_the_core_from_the_pre_step_temperature():
+    """A skipped step keeps the previous interior state, so after an exhausted ladder the
+    next coupling step starts the core from the pre-step T_core (here an explicit 5000 K
+    start), not from the rejected attempt's 4000 K end that the last solution holds."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    n_stag = 4
+    attempts, tcore_overrides = [], []
+    solver = SimpleNamespace(
+        parameters=SimpleNamespace(
+            solver=SimpleNamespace(start_time=0.0, end_time=100.0, rtol=1.0e-6, max_steps=1000)
+        ),
+        _atol_sf=1.0,
+        _max_steps=1000,
+        _S0=np.r_[np.full(n_stag, 3000.0), [-3.879e-6, 5000.0]],
+        _n_stag=n_stag,
+        _dSdr_cmb_init=None,
+        _T_core_init=5000.0,
+        get_state=lambda: SimpleNamespace(status=-1, T_core=4000.0, dt_actual=0.0),
+        get_current_dSdr_cmb=lambda: None,
+        get_current_core_temperature=lambda: 4000.0,
+        set_initial_dSdr_cmb=lambda v: None,
+        set_initial_core_temperature=tcore_overrides.append,
+        set_initial_entropy=lambda S: None,
+        reset=lambda: None,
+    )
+    solver.solve = lambda: attempts.append(float(solver.parameters.solver.end_time))
+    runner = AragogRunner.__new__(AragogRunner)
+    runner.aragog_solver = solver
+    runner._config = MagicMock()
+    runner._config.planet.mass_tot = 1.0
+    runner._config.interior_energetics.aragog.core_bc = 'core_module'
+    interior_o = SimpleNamespace(aragog_step_progress=[], _last_entropy=None)
+
+    with pytest.raises(RuntimeError, match='retry ladder exhausted'):
+        runner._solve_with_retry({'Time': 202.0, 'T_cmb': 4000.0}, interior_o)
+    assert len(attempts) > 1
+    assert set(tcore_overrides) == {5000.0}
+
+
+@pytest.mark.unit
 def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
     monkeypatch,
 ):

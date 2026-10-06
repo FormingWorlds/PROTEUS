@@ -2406,11 +2406,10 @@ class AragogRunner:
             dSdr_snapshot = solver.get_current_dSdr_cmb()
         if dSdr_snapshot is None:
             dSdr_snapshot = getattr(solver, '_dSdr_cmb_init', None)
-        T_core_snapshot = None
-        if hasattr(solver, 'get_current_core_temperature'):
+        # An explicit start (re-melt, resume, exhausted ladder) wins over the last solution.
+        T_core_snapshot = getattr(solver, '_T_core_init', None)
+        if T_core_snapshot is None and hasattr(solver, 'get_current_core_temperature'):
             T_core_snapshot = solver.get_current_core_temperature()
-        if T_core_snapshot is None:
-            T_core_snapshot = getattr(solver, '_T_core_init', None)
         # A cold start (first solve, or after a re-melt) has neither; take
         # the value attempt 1 starts from, so retries do not inherit its end.
         core_bc = getattr(self._config.interior_energetics.aragog, 'core_bc', None)
@@ -2468,6 +2467,7 @@ class AragogRunner:
         stiff_seen = 0
         other_seen = 0
         _diag_on = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
+        exhausted = False
         try:
             # Range over the widest ladder. max_attempts holds the active
             # budget (6, widened to max_attempts_stiff on a stiff failure)
@@ -2609,6 +2609,7 @@ class AragogRunner:
                         attempt,
                         reason,
                     )
+                    exhausted = True
                     raise RuntimeError(
                         f'Aragog retry ladder exhausted: {reason} '
                         f'after {attempt} attempts at t={hf_row.get("Time", 0.0):.3e} yr'
@@ -2707,15 +2708,17 @@ class AragogRunner:
             solver.parameters.solver.rtol = base_rtol
             if hasattr(solver, '_max_steps'):
                 solver._max_steps = base_max_steps
-            # Release the dSdr_cmb and T_core overrides for the next coupling step.
+            # Release the dSdr_cmb and T_core overrides for the next coupling step; an
+            # exhausted ladder keeps the pre-step T_core, since the step is skipped.
             if hasattr(solver, 'set_initial_dSdr_cmb'):
                 solver.set_initial_dSdr_cmb(None)
             else:
                 solver._dSdr_cmb_init = None
+            t_core_next = T_core_ic if exhausted else None
             if hasattr(solver, 'set_initial_core_temperature'):
-                solver.set_initial_core_temperature(None)
+                solver.set_initial_core_temperature(t_core_next)
             else:
-                solver._T_core_init = None
+                solver._T_core_init = t_core_next
 
         return out
 

@@ -4388,6 +4388,20 @@ def test_a_skipped_aragog_step_books_no_call_energy():
 
 
 @pytest.mark.unit
+def test_every_per_step_column_is_zeroed_on_a_skipped_step_or_reset_per_row():
+    """Each step_* helpfile column is either a per-call Aragog value that a skipped step
+    sets to 0 or an impact column the main loop resets on every row, so no column carries
+    a previous call's energy into the ledgers."""
+    from proteus.interior_energetics.wrapper import _ARAGOG_CALL_ENERGY_KEYS
+    from proteus.utils.coupler import GetHelpfileKeys
+
+    reset_per_row = {'step_dE_impact_J', 'step_dE_impact_core_J', 'step_dE_impact_core_refit_J'}
+    step_keys = {k for k in GetHelpfileKeys() if k.startswith('step_')}
+    assert step_keys == set(_ARAGOG_CALL_ENERGY_KEYS) | reset_per_row
+    assert len(_ARAGOG_CALL_ENERGY_KEYS) == len(set(_ARAGOG_CALL_ENERGY_KEYS)) == 10
+
+
+@pytest.mark.unit
 def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
     """After _ARAGOG_MAX_CONSECUTIVE_FAILS (default 3), the next failure re-raises."""
     from unittest.mock import patch as _patch

@@ -851,3 +851,19 @@ def test_accretion_with_a_stratified_core_is_refused_at_config_load(
             check_accretion_core_stratification_compatibility(instance, None, None)
     else:
         assert check_accretion_core_stratification_compatibility(instance, None, None) is None
+
+
+@pytest.mark.unit
+def test_the_stratified_core_guard_runs_at_config_load():
+    """The guard is one of the validators the configuration runs when it loads."""
+    import attrs
+
+    from proteus.config._config import (
+        Config,
+        check_accretion_core_stratification_compatibility,
+        check_accretion_vapourise_compatibility,
+    )
+
+    validators = attrs.fields(Config).config_version.validator._validators
+    assert check_accretion_vapourise_compatibility in validators
+    assert check_accretion_core_stratification_compatibility in validators

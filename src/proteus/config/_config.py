@@ -270,12 +270,10 @@ def check_accretion_core_stratification_compatibility(instance, attribute, value
         and interior.aragog.core_module.stratification
     ):
         raise ValueError(
-            "accretion.module = '"
-            + str(instance.accretion.module)
-            + "' cannot run with interior_energetics.aragog.core_module.stratification "
-            '= true: the core heat booked at an impact is the full-core content, '
-            'while a stratified core evolves only its convecting volume. Disable one '
-            'of the two.'
+            f"accretion.module = '{instance.accretion.module}' cannot run with "
+            'interior_energetics.aragog.core_module.stratification = true: the core heat '
+            'booked at an impact is the full-core content, while a stratified core evolves '
+            'only its convecting volume. Disable one of the two.'
         )
 
 
