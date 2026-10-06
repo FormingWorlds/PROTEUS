@@ -587,8 +587,8 @@ def test_declared_floor_is_not_below_the_schema_floor():
     # Checked first so a dropped `>=` reports the absence it is, rather than
     # reaching the comparison below and reading as a version mismatch.
     assert len(bounds) == 1, f'expected one lower bound on fwl-io, found {bounds}'
-    assert Version(bounds[0]) >= Version(FWL_IO_FLOOR), (
-        f'pyproject floor {bounds[0]} is below the manifest schema floor {FWL_IO_FLOOR}'
+    assert Version(bounds[0]) == Version(FWL_IO_FLOOR), (
+        f'pyproject floor {bounds[0]} differs from the floor the messages name, {FWL_IO_FLOOR}'
     )
 
 

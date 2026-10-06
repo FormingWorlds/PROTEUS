@@ -17,7 +17,8 @@ checksum registry committed beside that manifest,
 and places the files in a version directory named for the record, so a re-pinned
 deposit lands beside its predecessor rather than overwriting it. Every request
 carries a connect and read timeout, and a transient failure is retried with
-backoff. A file that Zenodo does not serve is fetched from the
+backoff. For every dataset except the PHOENIX spectra, which have no mirror yet, a
+file that Zenodo does not serve is fetched from the
 [DataverseNL](https://dataverse.nl/dataverse/Proteus_Fr) mirror the manifest pins
 beside the record, and checked against the same registry.
 Data several models read (spectral files, stellar spectra, equations of state,
@@ -47,11 +48,11 @@ and offers no `.mon` aerosol species.
 
 ### Upgrading an older data folder
 
-A `$FWL_DATA` folder written by an older PROTEUS keeps its files at paths that are no longer read. Two steps bring it into the current layout:
+A `$FWL_DATA` folder written by an older PROTEUS keeps its files at paths that are no longer read. Three steps bring it into the current layout:
 
 1. Run `fwl-io relocate`. It moves every dataset whose files all match their pinned checksums into its version directory. `fwl-io relocate --dry-run` lists what would move, what is incomplete and what does not match, without moving anything.
 2. Run `proteus start --config <config.toml>` once without `--offline`, which downloads the data that configuration needs, or `proteus get interiordata --config-path <config.toml>` for the interior tables alone. This downloads what the first step left: incomplete and mismatched datasets, and those it cannot move (the Chabrier archive, the surface albedos, the Seager tables, the Spada tracks and the scattering tables).
-3. Delete `$FWL_DATA/scattering`, which PROTEUS does not read; `proteus get scattering` fetches the tables into their version directory.
+3. Delete `$FWL_DATA/scattering`, which PROTEUS does not read; `proteus get scattering` fetches the tables into their version directory. The `zenodo_download.log` and `zenodo_validate.log` files in `$FWL_DATA` and the `*.zenodo` files beside downloaded files are no longer written or read and can be deleted too.
 
 A run with `--offline` stops when an interior EOS table, a melting curve, a P-S lookup table, a spectral file, a stellar spectrum or a surface albedo file is missing. The error names its download command and ends with: "Data kept in the older FWL_DATA layout can be moved into place with `fwl-io relocate`." Two stops have no download command. A spectral file of a group and band count that no manifest declares is not downloaded, so its error says to place the file at the path it names. PALEOS-API tables are built at start from the `paleos` package, so their error names that package.
 

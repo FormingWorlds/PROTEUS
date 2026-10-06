@@ -105,11 +105,11 @@ def _ensure_mors_data_or_skip() -> None:
     """
     if not os.environ.get('FWL_DATA'):
         pytest.skip('FWL_DATA env var not set; mors track data unavailable')
-    try:
-        from mors.data import spada_data_dir
+    from mors.data import spada_data_dir
 
+    try:
         grid = spada_data_dir()
-    except Exception as exc:  # noqa: BLE001
+    except OSError as exc:
         pytest.skip(f'cannot resolve the mors spada directory: {exc}')
 
     def _present() -> bool:

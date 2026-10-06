@@ -71,7 +71,7 @@ def spectral_file_key(group: str, bands: str | int) -> str:
 # manifest as malformed rather than as a version mismatch, so the load names
 # which side is out of date. The fwl-io requirement in pyproject.toml must be at
 # least this version; the test suite enforces the relation.
-FWL_IO_FLOOR = '26.9.23'
+FWL_IO_FLOOR = '26.10.6'
 
 
 def manifest_path() -> Path:

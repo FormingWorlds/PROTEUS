@@ -108,6 +108,38 @@ def test_determine_aerosols_reads_the_fetched_scattering_dataset(monkeypatch, tm
 
 
 @pytest.mark.unit
+def test_determine_aerosols_skips_the_scattering_lookup_without_aerosols(monkeypatch, tmp_path):
+    """With aerosols off, the scattering dataset is not resolved and no .mon species is listed."""
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials('SiO2_amorph'))
+    calls = []
+    monkeypatch.setattr(agni_mod, 'dataset_dir', lambda *a, **k: calls.append(a) or tmp_path)
+
+    assert _determine_aerosols({'fwl': str(tmp_path)}, aerosols_enabled=False) == {
+        'SiO2_amorph': 'mie'
+    }
+    assert calls == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'error', [KeyError('atmos_clim.scattering'), RuntimeError('upgrade fwl-io'), OSError('ro')]
+)
+def test_determine_aerosols_warns_when_the_scattering_dataset_cannot_be_resolved(
+    monkeypatch, tmp_path, caplog, error
+):
+    """A failure to resolve the scattering dataset is a warning with no .mon species."""
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
+
+    def fail(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(agni_mod, 'dataset_dir', fail)
+    with caplog.at_level(logging.WARNING):
+        assert _determine_aerosols({'fwl': str(tmp_path)}) == {}
+    assert 'Scattering data directory not found: unresolved' in caplog.text
+
+
+@pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.path.isdir')
 def test_determine_aerosols_missing_directory(mock_isdir, monkeypatch, tmp_path):
     """
@@ -788,7 +820,7 @@ def test_a_cached_spectral_file_is_keyed_on_the_aerosols_agni_receives(monkeypat
     cache.mkdir()
     ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
     ctx.config.atmos_clim.aerosols_enabled = True
-    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda _d: {'SiO2': 'mon'})
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda _d, *args: {'SiO2': 'mon'})
     monkeypatch.setattr(agni_mod, '_determine_condensates', lambda _v: ['SiO2'])
 
     tied = cache_key(
@@ -823,7 +855,7 @@ def test_a_run_with_a_mie_aerosol_builds_its_own_spectral_file(monkeypatch, tmp_
     ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
     ctx.config.atmos_clim.aerosols_enabled = True
     ctx.config.atmos_clim.agni.rainout = True
-    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda _d: {'SiO2': 'mie'})
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda _d, *args: {'SiO2': 'mie'})
     monkeypatch.setattr(agni_mod, '_determine_condensates', lambda _v: ['SiO2'])
     key = cache_key(
         ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=['SiO2']

@@ -83,7 +83,7 @@ If you want to add new input data you can either update a Zenodo record or creat
 
 Declare a dataset that only PROTEUS reads as a table in `src/proteus/data/proteus_manifest.toml`, keyed by the location it should occupy below `FWL_DATA`, then run `fwl-io sync src/proteus/data/proteus_manifest.toml` and commit the registry file it writes alongside the manifest.
 
-Once the record is on Zenodo, its DataverseNL mirror is created (`fwl-io mirror`) and published, and its DOI goes in the `dataverse` field beside the `zenodo` one; `fwl-io check-mirrors` confirms that the mirror serves the registry.
+Once the record is on Zenodo, its DataverseNL mirror is created with `fwl-io mirror` and published with `fwl-io mirror-publish`, and its DOI goes in the `dataverse` field beside the `zenodo` one; `fwl-io check-mirrors` confirms that the mirror serves the registry.
 
 ### Linting
 

@@ -1003,7 +1003,7 @@ def test_attempt_on_an_old_fwl_io_does_not_run_the_step(monkeypatch):
     from proteus.utils import data as data_mod
 
     def _stale():
-        raise RuntimeError('upgrade to fwl-io>=26.9.23')
+        raise RuntimeError('upgrade to fwl-io>=26.10.6')
 
     calls = []
     monkeypatch.setattr(data_mod, '_fetch_errors', _stale)

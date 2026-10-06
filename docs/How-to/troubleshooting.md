@@ -172,7 +172,7 @@ without asking.
 
 ### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 
-PROTEUS downloads input data through fwl-io from Zenodo, without an API token. A file that Zenodo does not serve is fetched from its DataverseNL mirror, and every file is checked against the committed registry. When neither source serves a file, the error lists the failure from each source: a timeout, a connection error or an HTTP 429 or 5xx clears if you retry later; a 404 or a checksum mismatch from both sources does not, so report it as an issue. `fwl-io check proteus` lists what is missing or corrupt among the datasets PROTEUS declares in its own manifest.
+PROTEUS downloads input data through fwl-io from Zenodo, without an API token. A file that Zenodo does not serve is fetched from its DataverseNL mirror (every dataset except the PHOENIX spectra has one), and every file is checked against the committed registry. When neither source serves a file, the error lists the failure from each source: a timeout, a connection error or an HTTP 429 or 5xx clears if you retry later; a 404 or a checksum mismatch from both sources does not, so report it as an issue. `fwl-io check proteus` lists what is missing or corrupt among the datasets PROTEUS declares in its own manifest.
 
 ### PETSc complains about being in the wrong directory
 
