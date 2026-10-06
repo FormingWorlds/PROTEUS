@@ -44,8 +44,8 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 info()  { printf "${GREEN}[INFO]${NC}  %s\n" "$*"; }
-warn()  { printf "${YELLOW}[WARN]${NC}  %s\n" "$*"; }
-fail()  { printf "${RED}[FAIL]${NC}  %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC}  %s\n" "$*" >&2; }
+fail()  { printf "${RED}[FAIL]${NC}  %s\n" "$*" >&2; }
 phase() { printf "\n${CYAN}${BOLD}=== Phase %s: %s ===${NC}\n" "$1" "$2"; }
 
 # Collect machine and environment details into the log so the log file alone is

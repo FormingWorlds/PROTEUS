@@ -4,6 +4,8 @@ from __future__ import annotations  # noqa: I001
 import logging
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 if TYPE_CHECKING:
     from proteus.config import Config
 
@@ -32,6 +34,10 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Constants
 mass_ocean = ocean_moles * molar_mass['H2']
+
+# Seed of CALLIOPE's start and restart draws, so identical runs agree. The same integer
+# seeds CALLIOPE's own PCG64 generator (from_O_budget) or the global MT19937 stream.
+RANDOM_SEED = 42
 
 
 def construct_options(dirs: dict, config: Config, hf_row: dict):
@@ -376,6 +382,9 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         opts['T_magma'] = config.outgas.T_floor
         log.warning('Outgassing temperature clipped to %.1f K' % opts['T_magma'])
 
+    # The caller's global RNG state is handed back after the call (not thread-safe).
+    state = np.random.get_state()
+
     # Dispatch on planet.fO2_source. The two entry points share the
     # output-dict schema (volatile partial pressures, per-species reservoir
     # masses, elemental totals, atmospheric diagnostics) so downstream
@@ -394,16 +403,13 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 nsolve=config.outgas.calliope.nsolve,
                 p_guess=p_guess,
                 p_guess_max=config.outgas.calliope.p_guess_max,
-                # Fixed seed so the Monte-Carlo restart draws are
-                # reproducible run to run. Without it the first-iteration
-                # cold solve (no p_guess) and any restart draw from the
-                # global RNG, so the derived IC redox state varies between
-                # identical runs and cannot be pinned by --deterministic.
-                random_seed=42,
+                random_seed=RANDOM_SEED,
                 print_result=False,
                 opt_solver=False,
             )
         else:
+            # equilibrium_atmosphere takes no seed and draws from the global stream.
+            np.random.seed(RANDOM_SEED)
             solvevol_result = equilibrium_atmosphere(
                 target,
                 opts,
@@ -421,6 +427,8 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         log.error('Outgassing calculation with CALLIOPE failed')
         UpdateStatusfile(dirs, 27)
         raise e
+    finally:
+        np.random.set_state(state)
 
     # Get result
     for k in expected_keys():

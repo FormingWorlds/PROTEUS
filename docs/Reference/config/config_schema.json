@@ -7643,7 +7643,7 @@
           "value": 0
         }
       ],
-      "description": "Maximum number of initial-guess samples for the CALLIOPE equilibrium solver. Default 1000.",
+      "description": "Maximum number of initial-guess samples for the CALLIOPE equilibrium solver. The samples come from a fixed seed, so identical inputs draw the same guesses, and an input that exhausts the samples fails the same way on a rerun. Default 1000.",
       "doc_source": "attributes",
       "group_order": 1,
       "group_position": 0,
