@@ -15,29 +15,23 @@ _SOLVER_ONLY_KEYS = ('q_radio', 'ra_crit_cmb')
 def remelt_core_module(
     hf_row: dict, interior_o, solver, t_core_pre: float, s_bottom: float
 ) -> float:
-    """Refit the core profile to the grown core, clamp T_core, and book the heat.
+    """Lift T_core on an impact re-melt and leave the core refit for the next reset.
 
-    The Gaussian profile is refit to the live ``M_core``, ``P_center``, ``R_core``
-    and ``P_cmb`` of the structure solve that follows the impact. The core
-    temperature becomes ``max(t_core_pre, T_basal)``, with ``T_basal`` the
-    re-melted bottom cell's entropy ``s_bottom`` evaluated at ``P_cmb``. The
-    booked heat is ``E_new(T_core_new) - E_old(t_core_pre)`` from
-    ``CoreEnergyBudget.heat_content``: the content difference of the refit at
-    fixed ``t_core_pre`` (for an added core mass, its secular content from 0 K)
-    plus the heat of the lift under the refitted profile. It is added to
-    ``step_dE_impact_core_J`` and to ``step_dE_impact_J``. The refitted budget
-    becomes the solver's budget, so a second impact in the same step books
-    against it. When the fit, the budget build or a temperature or heat check
-    fails, this function changes nothing.
+    The core temperature becomes ``max(t_core_pre, T_basal)``, with ``T_basal`` the
+    re-melted bottom cell's entropy ``s_bottom`` evaluated at ``P_cmb``. The refit
+    of the core profile and the heat booking wait for ``refit_core_at_reset``,
+    which runs on the grown planet's final mesh. Several impacts before that reset
+    keep the first pre-impact temperature and budget and the last lifted
+    temperature, so the refit books the whole chain once.
 
     Parameters
     ----------
     hf_row : dict
-        Helpfile row after the impact's structure solve; mutated in place.
+        Helpfile row after the impact's structure solve; read only.
     interior_o : Interior_t
-        Interior state; its frozen core-profile attributes are replaced.
+        Interior state; it carries the pending refit.
     solver : EntropySolver
-        The Aragog solver, holding the current budget and the core params.
+        The Aragog solver, holding the pre-impact budget.
     t_core_pre : float
         Core temperature at the end of the landing step [K].
     s_bottom : float
@@ -51,14 +45,64 @@ def remelt_core_module(
     Raises
     ------
     ValueError
-        From the profile fit or the budget factory, or when ``t_core_pre``,
-        ``T_basal`` or the booked heat is not finite.
+        When ``t_core_pre`` or ``T_basal`` is not finite.
     """
+    p_cmb = float(hf_row['P_cmb'])
+    t_basal = float(np.asarray(solver.entropy_eos.temperature(p_cmb, s_bottom)).flat[0])
+    if not (np.isfinite(t_basal) and np.isfinite(t_core_pre)):
+        raise ValueError(f'core or basal temperature is not finite: {t_core_pre}, {t_basal}')
+    t_core = max(float(t_core_pre), t_basal)
+    pending = getattr(interior_o, '_core_refit_pending', None)
+    if pending is None:
+        pending = {'t_pre': float(t_core_pre), 'budget': solver._core_module_budget}
+        interior_o._core_refit_pending = pending
+    pending['t_new'] = t_core
+    log.info(
+        '    core temperature %.1f K -> %.1f K (basal mantle %.1f K); refit at the next solve',
+        t_core_pre,
+        t_core,
+        t_basal,
+    )
+    return t_core
+
+
+def refit_core_at_reset(hf_row: dict, interior_o, solver) -> None:
+    """Refit the core profile to the grown core and book the impact's core heat.
+
+    Runs after the solver reset that follows an impact, so the Gaussian profile is
+    fit to the row's ``M_core`` and ``P_center`` with the solver's own CMB radius and
+    pressure, the geometry the next solve integrates on. The heat of the lift under
+    the refitted profile, ``E_new(T_new) - E_new(T_pre)``, is booked in
+    ``step_dE_impact_core_J``; the refit's content difference at ``T_pre``,
+    ``E_new - E_old`` (the added iron's heat content from the profile's
+    reference), is recorded in ``step_dE_impact_core_refit_J`` and not booked, the
+    same convention as the mantle re-melt. Both land on the first row after the
+    impact, through ``interior_o._core_impact_booked``. Nothing changes when the
+    fit, the budget build or a heat check fails.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row of the step being solved; read only.
+    interior_o : Interior_t
+        Interior state; its pending refit is consumed and its frozen profile replaced.
+    solver : EntropySolver
+        The Aragog solver, already reset onto the grown planet's mesh.
+
+    Raises
+    ------
+    ValueError
+        From the profile fit or the budget factory, when a core heat change is not
+        finite, or when the rebuilt solver budget does not carry the refitted profile.
+    """
+    pending = getattr(interior_o, '_core_refit_pending', None)
+    if pending is None:
+        return
     from aragog.core import build_core_module_budget, fit_gaussian_core_profiles
 
     params = solver.parameters.boundary_conditions.core_module_params
     m_core, p_cen = float(hf_row['M_core']), float(hf_row['P_center'])
-    r_cmb, p_cmb = float(hf_row['R_core']), float(hf_row['P_cmb'])
+    r_cmb, p_cmb = float(solver._r_basic_flat[0]), float(solver._P_basic_flat[0])
     fit = fit_gaussian_core_profiles(
         m_core=m_core,
         p_cen=p_cen,
@@ -70,42 +114,42 @@ def remelt_core_module(
     refit = dict(params, rho_cen=float(fit.rho_cen), length_scale=float(fit.length_scale))
     budget_params = {k: v for k, v in refit.items() if k not in _SOLVER_ONLY_KEYS}
     new = build_core_module_budget(budget_params, r_cmb=r_cmb, p_cmb_fallback=p_cmb)
-    t_basal = float(np.asarray(solver.entropy_eos.temperature(p_cmb, s_bottom)).flat[0])
-    if not (np.isfinite(t_basal) and np.isfinite(t_core_pre)):
-        raise ValueError(f'core or basal temperature is not finite: {t_core_pre}, {t_basal}')
-    t_core = max(float(t_core_pre), t_basal)
-    dE = new.heat_content(t_core) - solver._core_module_budget.heat_content(float(t_core_pre))
-    if not np.isfinite(dE):
-        raise ValueError(f'booked core heat is not finite: {dE}')
+    t_pre, t_new = pending['t_pre'], pending['t_new']
+    e_pre = new.heat_content(t_pre)
+    dE = new.heat_content(t_new) - e_pre
+    dE_refit = e_pre - pending['budget'].heat_content(t_pre)
+    if not (np.isfinite(dE) and np.isfinite(dE_refit)):
+        raise ValueError(f'core heat change is not finite: lift {dE}, refit {dE_refit}')
 
-    # The numpy RHS calls the cached rate function, so it moves with the budget.
-    solver._core_module_budget = new
-    solver._core_module_budget_dtcmb_dt = new.dtcmb_dt
     params.update(rho_cen=refit['rho_cen'], length_scale=refit['length_scale'])
+    solver._cache_bc_constants()
+    if not np.isclose(float(solver._core_module_budget.profiles.rho_cen), refit['rho_cen']):
+        raise ValueError('the rebuilt solver budget does not carry the refitted core profile')
     interior_o._frozen_core_rho_cen = refit['rho_cen']
     interior_o._frozen_core_length_scale = refit['length_scale']
     interior_o._frozen_core_m_core = m_core
     interior_o._frozen_core_p_cen = p_cen
-
-    prior = float(hf_row.get('step_dE_impact_core_J') or 0.0)
-    hf_row['step_dE_impact_core_J'] = (prior if np.isfinite(prior) else 0.0) + dE
-    hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0) + dE
+    interior_o._core_refit_pending = None
+    interior_o._core_impact_booked = (dE, dE_refit)
 
     log.info(
-        '    core refit: rho_cen %.2f kg/m^3, length_scale %.1f km; profile M_core %.6e kg '
-        '(structure %.6e), P_center %.6e Pa (structure %.6e)',
+        '    core refit: rho_cen %.2f kg/m^3, length_scale %.1f km at R_core %.6e m, '
+        'P_cmb %.6e Pa; profile M_core %.6e kg (structure %.6e), P_center %.6e Pa '
+        '(structure %.6e)',
         refit['rho_cen'],
         refit['length_scale'] / 1e3,
+        r_cmb,
+        p_cmb,
         float(new.profiles.enclosed_mass(r_cmb)),
         m_core,
         float(new.profiles.pressure(0.0)),
         p_cen,
     )
     log.info(
-        '    core temperature %.1f K -> %.1f K (basal mantle %.1f K); %.3e J booked',
-        t_core_pre,
-        t_core,
-        t_basal,
+        '    core impact heat: lift %.6e J booked (%.2f K -> %.2f K), refit content '
+        'change %.6e J recorded',
         dE,
+        t_pre,
+        t_new,
+        dE_refit,
     )
-    return t_core

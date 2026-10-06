@@ -2288,10 +2288,6 @@
           "condition": "interior_energetics.module = \"aragog\""
         },
         {
-          "file": "src/proteus/interior_energetics/aragog_core_impact.py",
-          "condition": "always"
-        },
-        {
           "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "giant impact, interior_energetics.module = \"aragog\""
         },
@@ -2309,7 +2305,7 @@
     {
       "name": "step_dE_impact_core_J",
       "unit": "J",
-      "description": "core part of step_dE_impact_J: refit at fixed T_core plus the T_core lift; NaN when not computed (core_bc is not core_module)",
+      "description": "giant-impact core heat: the T_core lift under the refitted profile, on the first row after the impact; NaN when not computed (core_bc is not core_module)",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -2318,17 +2314,30 @@
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         },
         {
-          "file": "src/proteus/interior_energetics/aragog_core_impact.py",
+          "file": "src/proteus/proteus.py",
           "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "step_dE_impact_core_refit_J",
+      "unit": "J",
+      "description": "giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first row after the impact, recorded, not booked; NaN when not computed (core_bc is not core_module)",
+      "group": "Energy-conservation columns",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         },
         {
           "file": "src/proteus/proteus.py",
           "condition": "always"
         }
       ],
-      "consumers": [
-        "interior_energetics"
-      ],
+      "consumers": [],
       "consumers_possible": []
     },
     {

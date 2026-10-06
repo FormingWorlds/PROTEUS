@@ -2006,9 +2006,11 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     itself can validate.
 
     With ``core_bc = 'core_module'`` the core keeps its temperature across the
-    re-melt unless the re-melted base is hotter, the core profile is refit to the
-    grown core, and the core's heat change is booked as well
-    (``aragog_core_impact.remelt_core_module``).
+    re-melt unless the re-melted base is hotter
+    (``aragog_core_impact.remelt_core_module``); the core profile is refit to the
+    grown core at the next solver reset, and the core's heat goes to
+    ``step_dE_impact_core_J`` on the next row, not to ``step_dE_impact_J``, which
+    stays the mantle's.
 
     The melt-state keys in ``hf_row`` (``T_magma``, ``T_cmb``, ``Phi_global``,
     ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``)

@@ -941,7 +941,8 @@ def GetHelpfileKeys():
         'step_dE_compression_J',  # per-call structure-re-solve compression work [J] (diagnostic)
         'step_dE_state_heat_J',  # per-call entropy-transported heat content change [J]
         'step_dE_impact_J',  # giant-impact re-melt heat injection [J] (both residual sides)
-        'step_dE_impact_core_J',  # core part of step_dE_impact_J: refit at fixed T_core plus the T_core lift; NaN when not computed (core_bc is not core_module) [J]
+        'step_dE_impact_core_J',  # giant-impact core heat: the T_core lift under the refitted profile, on the first row after the impact; NaN when not computed (core_bc is not core_module) [J]
+        'step_dE_impact_core_refit_J',  # giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first row after the impact, recorded, not booked; NaN when not computed (core_bc is not core_module) [J]
         'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
         'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
         'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
@@ -1524,6 +1525,7 @@ _DIAGNOSTIC_KEYS = (
     'core_regime',
     'core_strat_depth',
     'step_dE_impact_core_J',
+    'step_dE_impact_core_refit_J',
 )
 
 # Core-evolution diagnostics that hold NaN, not zero, when they are not computed: zero is

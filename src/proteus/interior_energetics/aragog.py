@@ -757,6 +757,10 @@ class AragogRunner:
             # the updated table ceiling on impact steps.
             AragogRunner._refresh_entropy_eos(config, interior_o)
             interior_o.aragog_solver.reset()
+            if config.interior_energetics.aragog.core_bc == 'core_module':
+                from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
+
+                refit_core_at_reset(hf_row, interior_o, interior_o.aragog_solver)
             # Restore entropy from previous solve. Known gap: cached _last_entropy
             # is not bounds-checked against the regenerated [S_min, S_max].
             if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
@@ -2205,6 +2209,7 @@ class AragogRunner:
         )
         # A giant impact in this step adds the core's heat change after the solve.
         output['step_dE_impact_core_J'] = 0.0
+        output['step_dE_impact_core_refit_J'] = 0.0
 
     def run_solver(self, hf_row, interior_o, dirs, write_data: bool = True):
         # Dispatch to JAX solver if configured
@@ -2233,6 +2238,11 @@ class AragogRunner:
         # every other mode leaves the zero defaults.
         if self._config.interior_energetics.aragog.core_bc == 'core_module':
             self._write_core_module_diagnostics(output, dt_actual_yr=float(out.dt_actual))
+            # A core refit at this step's reset books the previous impact's core heat here.
+            booked = getattr(interior_o, '_core_impact_booked', None)
+            if booked is not None:
+                output['step_dE_impact_core_J'], output['step_dE_impact_core_refit_J'] = booked
+                interior_o._core_impact_booked = None
 
         self._store_profiles(interior_o, out)
 

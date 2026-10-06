@@ -2203,6 +2203,40 @@ def test_cvode_factory_installs_with_empty_mesh_mock(caplog):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('core_bc', ['core_module', 'energy_balance'])
+def test_the_update_refits_the_core_right_after_the_solver_reset(core_bc):
+    """On core_module the pending impact refit runs after reset() rebuilds the mesh and
+    before the entropy is restored, so it fits on the solver's final geometry; other
+    core boundaries never call it."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    calls = MagicMock()
+    interior_o = MagicMock()
+    interior_o.ic = 2
+    interior_o.structure_stale = False
+    interior_o.aragog_solver.reset = calls.reset
+    interior_o.aragog_solver.set_initial_entropy = calls.set_initial_entropy
+    config = MagicMock()
+    config.interior_energetics.aragog.core_bc = core_bc
+    with (
+        patch.object(AragogRunner, 'update_structure'),
+        patch.object(AragogRunner, 'update_solver'),
+        patch.object(AragogRunner, '_refresh_entropy_eos'),
+        patch(
+            'proteus.interior_energetics.aragog_core_impact.refit_core_at_reset',
+            side_effect=lambda hf, io, sv: calls.refit(sv),
+        ),
+    ):
+        AragogRunner.setup_or_update_solver(config, {'Time': 600.0}, interior_o, 1.0, {})
+    names = [c[0] for c in calls.mock_calls]
+    if core_bc == 'core_module':
+        assert names == ['reset', 'refit', 'set_initial_entropy']
+        assert calls.refit.call_args.args[0] is interior_o.aragog_solver
+    else:
+        assert names == ['reset', 'set_initial_entropy']
+
+
+@pytest.mark.unit
 def test_setup_or_update_solver_refuses_to_build_without_cvode(cvode_missing):
     """The first-build branch stops before any solver or parameter object exists.
 
@@ -4266,6 +4300,43 @@ def test_run_solver_invokes_core_module_diagnostics_when_active(tmp_path):
     assert diag_called[0][1] == pytest.approx(75.0)
     assert output.get('core_flux') == pytest.approx(12.34)
     assert sim_time == pytest.approx(375.0)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_solver_writes_the_core_impact_heat_booked_at_the_reset(tmp_path):
+    """A core refit at this step's reset left its booking on the interior; run_solver
+    writes it into the row after the core diagnostics (which write 0.0) and clears it,
+    so the next row starts clean."""
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    (tmp_path / 'data').mkdir()
+    runner = AragogRunner.__new__(AragogRunner)
+    runner._use_jax = False
+    runner._config = MagicMock()
+    runner._config.interior_energetics.aragog.core_bc = 'core_module'
+    runner._config.interior_energetics.write_flux_diagnostics = False
+    out = _snapshot_output()
+    out.dt_actual = 75.0
+    runner._solve_with_retry = lambda hf_row, interior_o: out
+    runner._build_helpfile_output = lambda *a, **k: {}
+
+    def _zero_diag(output, dt_actual_yr):
+        output['step_dE_impact_core_J'] = 0.0
+        output['step_dE_impact_core_refit_J'] = 0.0
+
+    runner._write_core_module_diagnostics = _zero_diag
+    interior_o = SimpleNamespace(
+        aragog_solver=_StateSolver(4500.0), _core_impact_booked=(1.79e30, 5.2e29)
+    )
+    _, output = runner.run_solver({'Time': 300.0}, interior_o, {'output': str(tmp_path)})
+    assert output['step_dE_impact_core_J'] == pytest.approx(1.79e30)
+    assert output['step_dE_impact_core_refit_J'] == pytest.approx(5.2e29)
+    assert interior_o._core_impact_booked is None
+    _, output = runner.run_solver({'Time': 375.0}, interior_o, {'output': str(tmp_path)})
+    assert output['step_dE_impact_core_J'] == pytest.approx(0.0)
 
 
 @pytest.mark.unit

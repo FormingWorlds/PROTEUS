@@ -1157,6 +1157,7 @@ class Proteus:
                 ie = self.config.interior_energetics
                 if ie.module == 'aragog' and ie.aragog.core_bc == 'core_module':
                     self.hf_row['step_dE_impact_core_J'] = 0.0
+                    self.hf_row['step_dE_impact_core_refit_J'] = 0.0
             log.info(' ')
             PrintSeparator()
             log.info('Loop counters')
