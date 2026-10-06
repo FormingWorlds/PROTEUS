@@ -724,96 +724,23 @@ fi
 
 
 # ---------------------------------------------------------------------------
-# Homebrew prefix fallback tests
+# macOS linker flags (get_petsc.sh)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_brew_prefix_fallback_arm64(tmp_path):
-    """With ``uname -m`` spoofed to arm64 and no brew, fallback is
-    ``/opt/homebrew``.
+def test_petsc_macos_ldflags_add_no_homebrew_library_path():
+    """The macOS LDFLAGS only silence linker warnings and add no library path.
 
-    We create a fake ``uname`` that always reports arm64 and ensure
-    ``brew`` is not on PATH.
+    A Homebrew ``-L`` ahead of PETSc's own lib directory lets a Homebrew SUNDIALS
+    7 shadow the SUNDIALS 2.5 PETSc downloads, and configure then fails on the
+    missing ``CVDense``; mpicc already carries the MPI library path.
     """
-    # Create a fake uname that reports arm64
-    fake_bin = tmp_path / 'bin'
-    fake_bin.mkdir()
-    # Locate the real uname binary for the passthrough case.
-    real_uname = subprocess.run(
-        ['which', 'uname'], capture_output=True, text=True
-    ).stdout.strip()
-
-    fake_uname = fake_bin / 'uname'
-    fake_uname.write_text(
-        f'#!/bin/bash\nif [[ "$1" == "-m" ]]; then echo arm64; else {real_uname} "$@"; fi\n'
-    )
-    fake_uname.chmod(0o755)
-
-    # Test the brew-prefix fallback logic in isolation.  The restricted PATH
-    # excludes brew on all platforms (including Linux with Linuxbrew), so the
-    # snippet always exercises the fallback branch.
-    snippet = f"""\
-export PATH="{fake_bin}:/usr/bin:/bin"
-if [[ "$(uname -m)" == "arm64" ]]; then
-    default_brew_prefix="/opt/homebrew"
-else
-    default_brew_prefix="/usr/local"
-fi
-brew_prefix=$(brew --prefix 2>/dev/null || echo "$default_brew_prefix")
-echo "$brew_prefix"
-"""
-    env = {**os.environ, 'PATH': f'{fake_bin}:/usr/bin:/bin'}
-    result = subprocess.run(
-        ['bash', '-c', snippet],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    assert result.returncode == 0
-    assert result.stdout.strip() == '/opt/homebrew'
-
-
-@pytest.mark.unit
-def test_brew_prefix_fallback_x86_64(tmp_path):
-    """With ``uname -m`` spoofed to x86_64 and no brew, fallback is
-    ``/usr/local``.
-
-    Works on Linux too: ``brew`` is not on the restricted PATH, so the
-    fallback branch is always exercised regardless of platform.
-    """
-    fake_bin = tmp_path / 'bin'
-    fake_bin.mkdir()
-
-    real_uname = subprocess.run(
-        ['which', 'uname'], capture_output=True, text=True
-    ).stdout.strip()
-
-    fake_uname = fake_bin / 'uname'
-    fake_uname.write_text(
-        f'#!/bin/bash\nif [[ "$1" == "-m" ]]; then echo x86_64; else {real_uname} "$@"; fi\n'
-    )
-    fake_uname.chmod(0o755)
-
-    snippet = f"""\
-export PATH="{fake_bin}:/usr/bin:/bin"
-if [[ "$(uname -m)" == "arm64" ]]; then
-    default_brew_prefix="/opt/homebrew"
-else
-    default_brew_prefix="/usr/local"
-fi
-brew_prefix=$(brew --prefix 2>/dev/null || echo "$default_brew_prefix")
-echo "$brew_prefix"
-"""
-    env = {**os.environ, 'PATH': f'{fake_bin}:/usr/bin:/bin'}
-    result = subprocess.run(
-        ['bash', '-c', snippet],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    assert result.returncode == 0
-    assert result.stdout.strip() == '/usr/local'
+    text = (TOOLS_DIR / 'get_petsc.sh').read_text()
+    assignments = re.findall(r'^\s*ldflags=(.*)$', text, re.M)
+    assert assignments == ['""', '"-Wl,-w"']
+    assert 'brew --prefix' not in text
+    assert '-L' not in ''.join(assignments)
 
 
 # ---------------------------------------------------------------------------
