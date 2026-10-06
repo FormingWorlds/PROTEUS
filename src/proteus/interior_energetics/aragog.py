@@ -1514,10 +1514,11 @@ class AragogRunner:
                     scales,
                     core_bc_mode=core_bc_mode,
                     radio_isotope_params=radio_isotope_params,
-                    # core_module closure: the solver's own budget and
-                    # constant core source; None/0 in every other mode.
+                    # core_module closure: the solver's own budget, constant core
+                    # source and CMB boundary-layer Ra_crit; None/0 in every other mode.
                     core_module_budget=getattr(solver, '_core_module_budget', None),
                     core_module_q_radio=float(getattr(solver, '_core_module_q_radio', 0.0)),
+                    core_module_ra_crit_cmb=getattr(solver, '_core_module_ra_crit_cmb', None),
                 )
                 return rhs_fn, jac_fn
 
@@ -2108,59 +2109,6 @@ class AragogRunner:
                             M_core,
                         )
 
-        if config.interior_energetics.aragog.core_bc == 'core_module':
-            m_core_live = float(hf_row.get('M_core', 0.0) or 0.0)
-            p_cen_live = float(hf_row.get('P_center', 0.0) or 0.0)
-            m_core_frozen = getattr(interior_o, '_frozen_core_m_core', None)
-            p_cen_frozen = getattr(interior_o, '_frozen_core_p_cen', None)
-            if m_core_frozen and p_cen_frozen and m_core_live > 0 and p_cen_live > 0:
-                drift_m = abs(m_core_live - m_core_frozen) / m_core_frozen
-                drift_p = abs(p_cen_live - p_cen_frozen) / p_cen_frozen
-                if log.isEnabledFor(logging.DEBUG):
-                    r_cmb_live = float(solver.parameters.mesh.inner_radius)
-                    p_flat = getattr(solver, '_P_basic_flat', None)
-                    p_cmb_live = (
-                        float(p_flat[0])
-                        if p_flat is not None
-                        else float(hf_row.get('P_cmb', 136e9))
-                    )
-                    try:
-                        from aragog.core.profiles import fit_gaussian_core_profiles
-
-                        c_params = (
-                            solver.parameters.boundary_conditions.core_module_params or {}
-                        )
-                        refit = fit_gaussian_core_profiles(
-                            m_core=m_core_live,
-                            p_cen=p_cen_live,
-                            r_cmb=r_cmb_live,
-                            p_cmb=p_cmb_live,
-                            alpha=float(c_params.get('alpha', 1.35e-5)),
-                            c_p=float(c_params.get('c_p', 840.0)),
-                        )
-                        rho_refit = float(refit.rho_cen)
-                        len_refit = float(refit.length_scale)
-                    except (ValueError, RuntimeError) as exc:
-                        rho_refit = float('nan')
-                        len_refit = float('nan')
-                        log.debug('Aragog core_module diagnostic refit skipped: %s', exc)
-
-                    log.debug(
-                        'Aragog core_module structure drift: M_core drift=%.2e, P_center drift=%.2e; '
-                        'refit would give rho_cen=%.2f kg/m^3, length_scale=%.1f km',
-                        drift_m,
-                        drift_p,
-                        rho_refit,
-                        len_refit / 1e3,
-                    )
-                if max(drift_m, drift_p) > 0.01:
-                    log.warning(
-                        'Aragog core_module structure drift exceeds 1%% threshold: '
-                        'M_core drift=%.2e, P_center drift=%.2e',
-                        drift_m,
-                        drift_p,
-                    )
-
         # Lightweight trace so validation can check that
         # the mesh scalars track the Zalmoxis re-solve cadence. The d*
         # fields are the change since the previous update, computed from
@@ -2255,6 +2203,8 @@ class AragogRunner:
         output['core_strat_depth'] = float(budget.profiles.r_cmb) - float(
             budget.convecting_radius(t_cmb, q_cmb)
         )
+        # A giant impact in this step adds the core's heat change after the solve.
+        output['step_dE_impact_core_J'] = 0.0
 
     def run_solver(self, hf_row, interior_o, dirs, write_data: bool = True):
         # Dispatch to JAX solver if configured

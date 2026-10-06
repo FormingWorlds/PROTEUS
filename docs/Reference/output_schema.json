@@ -2288,6 +2288,10 @@
           "condition": "interior_energetics.module = \"aragog\""
         },
         {
+          "file": "src/proteus/interior_energetics/aragog_core_impact.py",
+          "condition": "always"
+        },
+        {
           "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "giant impact, interior_energetics.module = \"aragog\""
         },
@@ -2299,6 +2303,27 @@
       "consumers": [
         "interior_energetics",
         "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "step_dE_impact_core_J",
+      "unit": "J",
+      "description": "core part of step_dE_impact_J: refit at fixed T_core plus the T_core lift; NaN when not computed (core_bc is not core_module)",
+      "group": "Energy-conservation columns",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/aragog_core_impact.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
       ],
       "consumers_possible": []
     },

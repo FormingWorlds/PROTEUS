@@ -2005,6 +2005,11 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     defined convention quantified in the helpfile, not a quantity the residual
     itself can validate.
 
+    With ``core_bc = 'core_module'`` the core keeps its temperature across the
+    re-melt unless the re-melted base is hotter, the core profile is refit to the
+    grown core, and the core's heat change is booked as well
+    (``aragog_core_impact.remelt_core_module``).
+
     The melt-state keys in ``hf_row`` (``T_magma``, ``T_cmb``, ``Phi_global``,
     ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``)
     and the profile arrays on ``interior_o`` are updated to the re-melted
@@ -2036,8 +2041,8 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     if S_end is not None:
         S_end = np.asarray(S_end, dtype=float).ravel().copy()
 
-    # Preserve core temperature for core_module across the mantle re-melt
-    # so an impact does not reset the cooled core to the molten basal node.
+    # Keep the core temperature across the re-melt; core_module lifts it to the
+    # re-melted base below, never lowers it.
     core_bc = getattr(getattr(config.interior_energetics, 'aragog', None), 'core_bc', None)
     T_core_pre = None
     if core_bc in ('core_module', 'bower2018'):
@@ -2103,6 +2108,18 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         interior_o._last_entropy = S_molten.copy()
         hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0)
         log.warning('    re-melt heat injection not booked: %s', unbooked)
+
+    # core_module: refit the core to the grown planet and lift T_core to the re-melted base.
+    if core_bc == 'core_module' and T_core_pre is not None:
+        from proteus.interior_energetics.aragog_core_impact import remelt_core_module
+
+        S_ic = np.asarray(interior_o._last_entropy, dtype=float)
+        T_core_new = remelt_core_module(hf_row, interior_o, solver, T_core_pre, float(S_ic[0]))
+        if hasattr(solver, 'set_initial_core_temperature'):
+            solver.set_initial_core_temperature(T_core_new)
+        else:
+            solver._T_core_init = T_core_new
+        solver.set_initial_entropy(S_ic)
 
     log.info('    mantle re-melted: Aragog restarts from the re-melted entropy profile')
 

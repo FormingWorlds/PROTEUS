@@ -6686,7 +6686,8 @@ def test_aragog_remelt_carries_the_molten_profile_past_the_next_restore():
 
 @pytest.mark.unit
 def test_aragog_remelt_preserves_core_module_core_temperature():
-    """An impact re-melt must preserve the evolved core temperature under core_module."""
+    """An impact re-melt hands the evolved core temperature to the core helper and starts
+    the next solve from the temperature the helper returns."""
     molten = np.full(6, 3900.0)
 
     class FakeCoreModuleSolver:
@@ -6732,11 +6733,19 @@ def test_aragog_remelt_preserves_core_module_core_temperature():
         ),
         patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
         patch('proteus.interior_energetics.wrapper.evaluate_molten_state', return_value=None),
+        patch(
+            'proteus.interior_energetics.aragog_core_impact.remelt_core_module',
+            return_value=5800.0,
+        ) as core_mock,
     ):
         remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
 
-    assert solver._T_core_init == pytest.approx(3500.0)
-    assert solver._S0[-1] == pytest.approx(3500.0)
+    # The pre-impact core temperature reaches the core helper with the re-melted base
+    # entropy, and the temperature it returns is the one the next solve starts from.
+    assert core_mock.call_args.args[3] == pytest.approx(3500.0)
+    assert core_mock.call_args.args[4] == pytest.approx(3900.0)
+    assert solver._T_core_init == pytest.approx(5800.0)
+    assert solver._S0[-1] == pytest.approx(5800.0)
 
 
 @pytest.mark.unit
@@ -7605,6 +7614,9 @@ def _remelt_stub(getter=None, t_core_init=None, s0=None, n_stag=None, setter=Tru
         def core_t(self):
             return self.set_calls[-1] if self.set_calls else self._T_core_init
 
+        def set_initial_entropy(self, S):
+            self.ic_entropy = np.asarray(S)
+
     if getter is not None:
         Stub.get_current_core_temperature = lambda self: getter()
     if setter:
@@ -7663,14 +7675,20 @@ def test_remelt_aragog_keeps_the_core_temperature(
         'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
         lambda *a, **k: {'T_magma': 3800.0, 'Phi_global': 0.8},
     )
+    handed = []
+    monkeypatch.setattr(
+        'proteus.interior_energetics.aragog_core_impact.remelt_core_module',
+        lambda hf, io, sv, t_pre, s_bottom: handed.append(t_pre) or t_pre,
+    )
     hf_row = {'Time': 100.0, 'M_mantle': 4e24, **hf_extra}
     interior_o = SimpleNamespace(aragog_solver=solver, impact_reset=False)
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
 
     assert seen_at_ic == [pytest.approx(expected)]
     assert solver.core_t() == pytest.approx(expected)
+    assert handed == ([pytest.approx(expected)] if core_bc == 'core_module' else [])
     if stub_kw.get('setter', True):
-        assert solver.set_calls == [pytest.approx(expected)]
+        assert solver.set_calls and all(c == pytest.approx(expected) for c in solver.set_calls)
     assert solver._solution is None and solver._dSdr_cmb_init is None
 
 
