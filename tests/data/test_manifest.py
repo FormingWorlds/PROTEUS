@@ -175,7 +175,7 @@ def test_manifest_declares_the_datasets():
     )
     assert datasets[EXOPLANET_REFERENCE].zenodo == f'10.5281/zenodo.{EXOPLANET_RECORD}'
     assert datasets[MASS_RADIUS_ZENG_2019].zenodo == f'10.5281/zenodo.{ZENG_2019_RECORD}'
-    assert datasets[SCATTERING].subdir == 'atmos_clim/scattering'
+    assert datasets[SCATTERING].subdir == 'atmos_clim/scattering/socrates_aerosols'
     assert datasets[SCATTERING].zenodo == f'10.5281/zenodo.{SCATTERING_RECORD}'
     # All are PROTEUS-owned, so "proteus" has to appear in required_by or
     # "fwl-io fetch proteus" would skip them.
@@ -205,7 +205,10 @@ def test_fetcher_passes_the_dataverse_pin_to_fwl_io(monkeypatch, tmp_path):
     _fetcher(SCATTERING, data_root=tmp_path)
     assert seen['dataverse'] == '10.34894/6Z8Y0Q'
     assert seen['zenodo'] == f'10.5281/zenodo.{SCATTERING_RECORD}'
-    assert seen['subdir'] == 'atmos_clim/scattering' and seen['data_root'] == tmp_path
+    assert (
+        seen['subdir'] == 'atmos_clim/scattering/socrates_aerosols'
+        and seen['data_root'] == tmp_path
+    )
     assert seen['registry'] == _dataset(SCATTERING).registry() and seen['extract'] is None
 
 

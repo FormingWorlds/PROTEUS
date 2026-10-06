@@ -53,7 +53,7 @@ def _fake_jl_with_mie_materials(*names):
 
 
 # Version directory of the scattering dataset below a data root (record 19294180).
-SCATTERING_DIR = Path('atmos_clim', 'scattering', 'r19294180')
+SCATTERING_DIR = Path('atmos_clim', 'scattering', 'socrates_aerosols', 'r19294180')
 
 
 @pytest.mark.unit
@@ -122,7 +122,12 @@ def test_determine_aerosols_skips_the_scattering_lookup_without_aerosols(monkeyp
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'error', [KeyError('atmos_clim.scattering'), RuntimeError('upgrade fwl-io'), OSError('ro')]
+    'error',
+    [
+        KeyError('atmos_clim.scattering.socrates_aerosols'),
+        RuntimeError('upgrade fwl-io'),
+        OSError('ro'),
+    ],
 )
 def test_determine_aerosols_warns_when_the_scattering_dataset_cannot_be_resolved(
     monkeypatch, tmp_path, caplog, error

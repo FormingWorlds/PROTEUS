@@ -26,7 +26,7 @@ zenodo = "10.5281/zenodo.15727998"
 dataverse = "10.34894/QZZGHW"
 required_by = ["proteus"]
 
-[atmos_clim.scattering]
+[atmos_clim.scattering.socrates_aerosols]
 name = "Monochromatic aerosol scattering properties (.mon)"
 zenodo = "10.5281/zenodo.19294180"
 dataverse = "10.34894/6Z8Y0Q"

@@ -1107,7 +1107,7 @@ def test_download_scattering_fetches_the_manifest_dataset(mock_fetch):
     download_scattering()
 
     mock_fetch.assert_called_once_with(SCATTERING)
-    assert mock_fetch.call_args.args[0] == 'atmos_clim.scattering'
+    assert mock_fetch.call_args.args[0] == 'atmos_clim.scattering.socrates_aerosols'
 
 
 @pytest.mark.unit

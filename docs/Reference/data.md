@@ -40,7 +40,7 @@ A data folder in the older layout is brought into this one as described in
 | Melting curves | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
 | P-S lookup tables | fwl-io | fetched when SPIDER or Aragog run without a generated PALEOS table set |
 
-The scattering tables in the version directory below `$FWL_DATA/atmos_clim/scattering`
+The scattering tables in the version directory below `$FWL_DATA/atmos_clim/scattering/socrates_aerosols`
 decide which `.mon` aerosol species PROTEUS offers to AGNI; AGNI reads the tables
 themselves from its own `res/scattering` folder. Fetch them with `proteus get scattering`
 before a run with `--offline` and aerosols enabled: without them that run only warns
