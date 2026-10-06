@@ -2408,7 +2408,7 @@ def test_the_per_step_core_impact_heat_starts_core_module_rows_at_zero(
     tmp_path, module, core_bc
 ):
     """The core part of the impact heat is cleared with the total on Aragog core_module
-    rows, and keeps its NaN (not computed) on any other core boundary or interior."""
+    rows; on any other core boundary or interior the main loop leaves the column alone."""
     p = _make_main_loop_proteus(
         tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
     )
@@ -2421,17 +2421,13 @@ def test_the_per_step_core_impact_heat_starts_core_module_rows_at_zero(
         incoming.append(hf_row.get('step_dE_impact_core_J'))
         _write_post_outgas_row(hf_row, step, vapour=False)
         if step == 0:
-            hf_row['step_dE_impact_core_J'] = 2.4e30 if active else np.nan
+            hf_row['step_dE_impact_core_J'] = 2.4e30
         return hf_row
 
     _run_main_loop_recording_mass(p, stop_at_loop=2, rows=rows, row_writer=_writer)
 
-    if active:
-        assert rows[0]['step_dE_impact_core_J'] == pytest.approx(2.4e30)
-        assert incoming[1] == pytest.approx(0.0)
-    else:
-        assert np.isnan(incoming[1])
-        assert np.isnan(rows[0]['step_dE_impact_core_J'])
+    assert rows[0]['step_dE_impact_core_J'] == pytest.approx(2.4e30)
+    assert incoming[1] == pytest.approx(0.0 if active else 2.4e30)
 
 
 # ---------------------------------------------------------------------------

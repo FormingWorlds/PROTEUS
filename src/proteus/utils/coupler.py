@@ -916,12 +916,12 @@ def GetHelpfileKeys():
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
         # Core evolution diagnostic keys for core_module mode
-        'core_r_icb',           # inner-core boundary radius; NaN when not computed (core_bc is not core_module) [m]
-        'core_C_eff',           # core effective heat capacity incl. nucleation terms; NaN when not computed (core_bc is not core_module) [J K-1]
-        'core_dynamo_margin',   # entropy margin for dynamo action; NaN when not computed (core_bc is not core_module) [W K-1]
-        'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); NaN when not computed (core_bc is not core_module) [T]
-        'core_regime',          # crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen; NaN when not computed (core_bc is not core_module) [1]
-        'core_strat_depth',     # thermally stratified layer depth below the CMB; NaN when not computed (core_bc is not core_module) [m]
+        'core_r_icb',           # inner-core boundary radius; written only with core_bc = core_module, 0 otherwise [m]
+        'core_C_eff',           # core effective heat capacity incl. nucleation terms; written only with core_bc = core_module, 0 otherwise [J K-1]
+        'core_dynamo_margin',   # entropy margin for dynamo action; written only with core_bc = core_module, 0 otherwise [W K-1]
+        'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); written only with core_bc = core_module, 0 otherwise [T]
+        'core_regime',          # crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen; written only with core_bc = core_module, 0 otherwise [1]
+        'core_strat_depth',     # thermally stratified layer depth below the CMB; written only with core_bc = core_module, 0 otherwise [m]
 
         # Energy-conservation columns: cumulative integrals of entropy-transported
         # heat against boundary-flux and source predictions in the live EOS frame.
@@ -941,16 +941,16 @@ def GetHelpfileKeys():
         'step_dE_compression_J',  # per-call structure-re-solve compression work [J] (diagnostic)
         'step_dE_state_heat_J',  # per-call entropy-transported heat content change [J]
         'step_dE_impact_J',  # giant-impact re-melt heat injection [J] (both residual sides)
-        'step_dE_impact_core_J',  # giant-impact core heat: the T_core lift under the refitted profile, on the first row after the impact; NaN when not computed (core_bc is not core_module) [J]
-        'step_dE_impact_core_refit_J',  # giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first row after the impact, recorded, not booked; NaN when not computed (core_bc is not core_module) [J]
+        'step_dE_impact_core_J',  # giant-impact core heat: the T_core lift under the refitted profile, on the first row after the impact; written only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_impact_core_refit_J',  # giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first row after the impact, recorded, not booked; written only with core_bc = core_module, 0 otherwise [J]
         'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
         'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
         'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
         'E_residual_cons_frac', # E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J) [1]
         'solver_residual_J',    # cumulative entropy-ODE LHS-RHS residual [J]
-        'step_dE_core_J',       # core heat change over the call net of its internal source, plus a T_core jump since the last call; NaN when not computed (core_bc is not core_module) [J]
-        'E_core_residual_J',    # cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J); NaN when not computed (core_bc is not core_module) [J]
-        'E_core_residual_frac', # E_core_residual_J / max(sum(|step_dE_F_cmb_J| + |step_dE_impact_core_J|), 1 J); NaN when not computed (core_bc is not core_module) [1]
+        'step_dE_core_J',       # core heat change over the call net of its internal source, plus a T_core jump since the last call; written only with core_bc = core_module, 0 otherwise [J]
+        'E_core_residual_J',    # cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J); written only with core_bc = core_module, 0 otherwise [J]
+        'E_core_residual_frac', # E_core_residual_J / max(sum(|step_dE_F_cmb_J| + |step_dE_impact_core_J|), 1 J); written only with core_bc = core_module, 0 otherwise [1]
         'Cp_eff',           # effective mantle heat capacity [J kg-1 K-1]
 
         # Host star properties
@@ -1103,10 +1103,11 @@ def CreateHelpfileFromDict(d: dict):
 def ZeroHelpfileRow():
     """
     Get a dictionary with same keys as helpfile but with values of zero
-
-    The columns of `NAN_UNLESS_COMPUTED_KEYS` start as NaN, their value when not computed.
     """
-    return {k: np.nan if k in NAN_UNLESS_COMPUTED_KEYS else 0.0 for k in GetHelpfileKeys()}
+    out = {}
+    for k in GetHelpfileKeys():
+        out[k] = 0.0
+    return out
 
 
 def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
@@ -1123,24 +1124,23 @@ def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     in the lift itself. ``E_core_residual_frac`` normalises by
     ``max(sum(|step_dE_F_cmb_J| + |step_dE_impact_core_J|), 1 J)`` over the ledger's
     rows, which grows monotonically, so a lift that cancels the core's cumulative
-    cooling cannot blow it up. Rows without ``step_dE_core_J`` keep NaN.
+    cooling cannot blow it up. The ledger runs on rows that carry the core budget's
+    effective capacity ``core_C_eff``, positive whenever core_bc = core_module; other
+    rows keep 0.
     """
-    dE_core = float(new_row.get('step_dE_core_J', np.nan))
-    if not np.isfinite(dE_core):
-        new_row['E_core_residual_J'] = np.nan
-        new_row['E_core_residual_frac'] = np.nan
+    if not float(new_row.get('core_C_eff', 0.0)) > 0.0:
+        new_row['E_core_residual_J'] = new_row['E_core_residual_frac'] = 0.0
         return
-    impact = np.nan_to_num(float(new_row.get('step_dE_impact_core_J', 0.0)))
-    f_cmb = np.nan_to_num(float(new_row.get('step_dE_F_cmb_J', 0.0)))
+    impact = float(new_row.get('step_dE_impact_core_J', 0.0))
+    f_cmb = float(new_row.get('step_dE_F_cmb_J', 0.0))
     prev, scale = 0.0, abs(f_cmb) + abs(impact)
     if len(current_hf) and 'E_core_residual_J' in current_hf:
-        last = float(current_hf['E_core_residual_J'].iloc[-1])
-        prev = last if np.isfinite(last) else 0.0
-        rows = np.isfinite(current_hf['step_dE_core_J'].to_numpy(dtype=float))
+        prev = float(current_hf['E_core_residual_J'].iloc[-1])
+        rows = current_hf['core_C_eff'].to_numpy(dtype=float) > 0.0
         for key in ('step_dE_F_cmb_J', 'step_dE_impact_core_J'):
             if key in current_hf:
                 scale += float(np.nansum(np.abs(current_hf[key].to_numpy(dtype=float)[rows])))
-    new_row['E_core_residual_J'] = prev + dE_core + f_cmb - impact
+    new_row['E_core_residual_J'] = prev + float(new_row['step_dE_core_J']) + f_cmb - impact
     new_row['E_core_residual_frac'] = new_row['E_core_residual_J'] / max(scale, 1.0)
 
 
@@ -1356,7 +1356,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     time_val = new_row['Time'].iloc[0]
     for i, col in enumerate(new_row.columns):
         col_data = new_row.iloc[:, i]
-        if col_data.isna().any() and col not in NAN_UNLESS_COMPUTED_KEYS:
+        if col_data.isna().any():
             log.warning(
                 'hf_row[%s] is NaN at t=%.2e years; setting to zero.',
                 col,
@@ -1570,10 +1570,6 @@ _DIAGNOSTIC_KEYS = (
     'E_core_residual_frac',
 )
 
-# Core-evolution diagnostics that hold NaN, not zero, when they are not computed: zero is
-# a physical value for most of them (liquid core, no inner core, subadiabatic field).
-NAN_UNLESS_COMPUTED_KEYS = frozenset(_DIAGNOSTIC_KEYS[1:])
-
 
 def GetHelpfileDiagnosticKeys():
     """
@@ -1730,13 +1726,12 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     backfill = [k for k in GetHelpfileDiagnosticKeys() if k not in hf_all.columns]
     if backfill:
         log.info(
-            "Helpfile '%s' predates diagnostic column(s) %s; filling with zeros "
-            '(NaN for the core-evolution columns).',
+            "Helpfile '%s' predates diagnostic column(s) %s; filling with zeros.",
             fpath,
             ', '.join(backfill),
         )
-        fill = {k: np.nan if k in NAN_UNLESS_COMPUTED_KEYS else 0.0 for k in backfill}
-        hf_all = pd.concat([hf_all, pd.DataFrame(fill, index=hf_all.index)], axis=1)
+        zeros = pd.DataFrame(0.0, index=hf_all.index, columns=backfill)
+        hf_all = pd.concat([hf_all, zeros], axis=1)
     return hf_all
 
 

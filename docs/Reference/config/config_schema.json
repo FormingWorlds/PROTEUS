@@ -5359,7 +5359,7 @@
         "core_module"
       ],
       "bounds": null,
-      "description": "Core-mantle boundary condition mode. Default 'energy_balance'. Valid values: - 'quasi_steady': alpha-factor heat-flux partition; gives about -19% T_core offset vs SPIDER. - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a new state variable (mirrors SPIDER bc.c:76-131). - 'gradient': gradient-based state with two boundary entropies as state variables. - 'bower2018': experimental, do not use for production. - 'core_module': full core evolution module with nucleation, crystallisation regimes, and dynamo energetics (aragog.core).",
+      "description": "Core-mantle boundary condition mode. Default 'energy_balance'. Valid values: - 'quasi_steady': alpha-factor heat-flux partition; gives about -19% T_core offset vs SPIDER. - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a new state variable (mirrors SPIDER bc.c:76-131). - 'gradient': gradient-based state with two boundary entropies as state variables. - 'bower2018': experimental, do not use for production. - 'core_module': full core evolution module with nucleation, crystallisation regimes, and dynamo energetics (aragog.core), coupled through a boundary-layer CMB flux in the core-mantle temperature contrast.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

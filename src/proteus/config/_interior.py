@@ -287,7 +287,8 @@ class Aragog:
           - 'bower2018': experimental, do not use for production.
           - 'core_module': full core evolution module with nucleation,
                            crystallisation regimes, and dynamo energetics
-                           (aragog.core).
+                           (aragog.core), coupled through a boundary-layer
+                           CMB flux in the core-mantle temperature contrast.
     """
 
     mass_coordinates: bool = field(default=True)

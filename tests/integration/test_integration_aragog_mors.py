@@ -14,7 +14,7 @@ Integration-tier scope:
 - Aragog backend enum is exactly ``{'jax', 'numpy'}`` pinned as a
   set; the production default 'jax' round-trips.
 - Aragog core_bc enum is ``{'quasi_steady', 'energy_balance',
-  'gradient', 'bower2018'}`` pinned as a set; default is
+  'gradient', 'bower2018', 'core_module'}`` pinned as a set; default is
   'energy_balance'.
 - Aragog phase_smoothing enum is ``{'tanh', 'cubic_hermite'}``
   pinned as a set; default is 'tanh'.
@@ -99,16 +99,16 @@ def test_aragog_backend_enum_pinned_as_set():
 
 def test_aragog_core_bc_enum_pinned_as_set():
     """Pin the Aragog.core_bc enum as ``{'quasi_steady',
-    'energy_balance', 'gradient', 'bower2018'}``. The default is
-    'energy_balance' (SPIDER-parity BC); legacy 'quasi_steady'
-    still rounds-trips for back-compatibility runs.
+    'energy_balance', 'gradient', 'bower2018', 'core_module'}``. The default
+    is 'energy_balance' (SPIDER-parity BC); 'core_module' selects the
+    aragog.core evolution budget with the boundary-layer CMB flux.
     """
     import attrs
 
     from proteus.config._interior import Aragog
 
     allowed = attrs.fields(Aragog).core_bc.validator.options
-    documented = {'quasi_steady', 'energy_balance', 'gradient', 'bower2018'}
+    documented = {'quasi_steady', 'energy_balance', 'gradient', 'bower2018', 'core_module'}
     assert set(allowed) == documented, (
         f'Aragog.core_bc enum drifted from documented set: {allowed}'
     )

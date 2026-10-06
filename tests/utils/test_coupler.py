@@ -189,16 +189,10 @@ def test_zero_helpfile_row_returns_dict():
 
 @pytest.mark.unit
 def test_zero_helpfile_row_all_values_are_zero():
-    """Test that ZeroHelpfileRow initializes all values to 0.0, except the core-evolution
-    diagnostics, which start as NaN (not computed)."""
-    from proteus.utils.coupler import NAN_UNLESS_COMPUTED_KEYS
-
+    """Test that ZeroHelpfileRow initializes all values to 0.0."""
     row = ZeroHelpfileRow()
     for key, value in row.items():
-        if key in NAN_UNLESS_COMPUTED_KEYS:
-            assert np.isnan(value), f'Key {key} has value {value}, expected NaN'
-        else:
-            assert value == 0.0, f'Key {key} has value {value}, expected 0.0'
+        assert value == 0.0, f'Key {key} has value {value}, expected 0.0'
     # Discrimination: every value must be a Python float (not int 0 or
     # numpy zero), so a regression that initialised values to integer 0
     # would be caught even though `0 == 0.0` is True.
@@ -5304,51 +5298,46 @@ def test_select_resumable_snapshot_resolves_sub_year_rows_to_distinct_files(tmp_
     assert kept.iloc[-1]['Time'] == pytest.approx(30.2)
 
 
+CORE_COLUMNS = (
+    'core_r_icb',
+    'core_C_eff',
+    'core_dynamo_margin',
+    'core_B_rms',
+    'core_regime',
+    'core_strat_depth',
+    'step_dE_impact_core_J',
+    'step_dE_impact_core_refit_J',
+    'step_dE_core_J',
+    'E_core_residual_J',
+    'E_core_residual_frac',
+)
+
+
 @pytest.mark.unit
-def test_core_module_columns_registered_and_nan_seeded():
-    """Verify registration and NaN seeding of core diagnostic columns."""
+def test_core_module_columns_registered_and_zero_seeded():
+    """The core_module columns are registered once and start at 0.0 like every other
+    column; they are written only with core_bc = core_module."""
     from proteus.utils.coupler import GetHelpfileKeys, ZeroHelpfileRow
 
-    core_cols = [
-        'core_r_icb',
-        'core_C_eff',
-        'core_dynamo_margin',
-        'core_B_rms',
-        'core_regime',
-        'core_strat_depth',
-    ]
     keys = GetHelpfileKeys()
-    for col in core_cols:
-        assert keys.count(col) == 1, f'{col} must be registered exactly once'
+    assert [keys.count(col) for col in CORE_COLUMNS] == [1] * len(CORE_COLUMNS)
     row = ZeroHelpfileRow()
-    for col in core_cols:
-        assert np.isnan(row[col])  # not computed until core_module writes it
+    assert [row[col] for col in CORE_COLUMNS] == [0.0] * len(CORE_COLUMNS)
 
 
 @pytest.mark.unit
 def test_helpfile_without_core_evolution_diagnostic_columns_resumes():
-    """Verify legacy helpfiles load with NaN-filled core columns on resume, and the other
-    diagnostic column with zeros."""
-    core_cols = [
-        'core_r_icb',
-        'core_C_eff',
-        'core_dynamo_margin',
-        'core_B_rms',
-        'core_regime',
-        'core_strat_depth',
-    ]
+    """A helpfile written before the core diagnostic columns resumes with them filled
+    with zeros, as for every other diagnostic column."""
+    core_cols = list(CORE_COLUMNS[:6])
     with tempfile.TemporaryDirectory() as tmpdir:
         _write_drifted_helpfile(tmpdir, core_cols + ['T_cmb_node'], n_rows=3)
         raw = pd.read_csv(os.path.join(tmpdir, 'runtime_helpfile.csv'), sep=r'\s+')
-        for col in core_cols:
-            assert col not in raw.columns
+        assert [col in raw.columns for col in core_cols] == [False] * 6
 
         hf = ReadHelpfileFromCSV(tmpdir)
         assert len(hf) == 3
-        for col in core_cols:
-            assert col in hf.columns
-            assert hf[col].isna().all()
-        assert (hf['T_cmb_node'] == 0.0).all()
+        assert (hf[core_cols + ['T_cmb_node']] == 0.0).all().all()
 
 
 @pytest.mark.unit
@@ -5398,24 +5387,20 @@ def test_snapshot_time_rejects_empty_nc_and_non_dict_json(tmp_path):
 
 
 @pytest.mark.unit
-def test_core_diagnostics_keep_nan_through_append_write_and_read(tmp_path, caplog):
-    """A not-computed core diagnostic stays NaN through ExtendHelpfile, the CSV and the
-    reader, without the NaN-to-zero warning other columns get."""
-    from proteus.utils.coupler import NAN_UNLESS_COMPUTED_KEYS
-
+def test_core_columns_of_a_run_without_the_core_module_stay_zero(tmp_path, caplog):
+    """Without the core module the core columns stay 0.0 through ExtendHelpfile, the CSV
+    and the reader, with no NaN warning; a NaN elsewhere is still set to zero with one."""
     row = ZeroHelpfileRow()
     row['Time'] = 1.0
     row['T_magma'] = np.nan
+    row['step_dE_F_cmb_J'] = 4.0e28
     with caplog.at_level('WARNING', logger='fwl.proteus.utils.coupler'):
         hf = ExtendHelpfile(pd.DataFrame(columns=GetHelpfileKeys()), row)
     warned = [r.getMessage() for r in caplog.records if 'is NaN' in r.getMessage()]
     assert warned == ['hf_row[T_magma] is NaN at t=1.00e+00 years; setting to zero.']
-    assert hf['T_magma'].iloc[0] == 0.0
     WriteHelpfileToCSV(str(tmp_path), hf)
     back = ReadHelpfileFromCSV(str(tmp_path))
-    for col in NAN_UNLESS_COMPUTED_KEYS:
-        assert np.isnan(back[col].iloc[0]), col
-    assert back['T_cmb_node'].iloc[0] == 0.0
+    assert [back[col].iloc[0] for col in CORE_COLUMNS] == [0.0] * len(CORE_COLUMNS)
 
 
 @pytest.mark.unit
@@ -5430,9 +5415,17 @@ def test_core_ledger_closes_across_an_impact_and_shows_a_missing_booking(booked)
     from proteus.utils.coupler import _populate_core_residual
 
     hf = pd.DataFrame(
-        [{'step_dE_core_J': -2.0e29, 'step_dE_F_cmb_J': 2.0e29, 'E_core_residual_J': 3.0e24}]
+        [
+            {
+                'core_C_eff': 1.6e27,
+                'step_dE_core_J': -2.0e29,
+                'step_dE_F_cmb_J': 2.0e29,
+                'E_core_residual_J': 3.0e24,
+            }
+        ]
     )
     row = {
+        'core_C_eff': 1.6e27,
         'step_dE_core_J': -1.0e29 + 3.0e29,
         'step_dE_F_cmb_J': 1.0e29,
         'step_dE_impact_core_J': 3.0e29 if booked else 0.0,
@@ -5448,40 +5441,39 @@ def test_core_ledger_closes_across_an_impact_and_shows_a_missing_booking(booked)
 def test_core_ledger_scale_sums_the_history_of_core_rows_only():
     """The fraction's scale adds |step_dE_F_cmb_J| and |step_dE_impact_core_J| of every
     earlier core row, a booked lift included, and leaves out rows without the core
-    ledger, whose CMB flux is not core heat."""
+    budget (core_C_eff 0), whose CMB flux is not core heat."""
     from proteus.utils.coupler import _populate_core_residual
 
     hf = pd.DataFrame(
-        [
-            {
-                'step_dE_core_J': np.nan,
-                'step_dE_F_cmb_J': 9.0e30,
-                'step_dE_impact_core_J': np.nan,
-            },
-            {
-                'step_dE_core_J': -1.0e29,
-                'step_dE_F_cmb_J': 1.0e29,
-                'step_dE_impact_core_J': 0.0,
-            },
-            {
-                'step_dE_core_J': 1.6e29,
-                'step_dE_F_cmb_J': 4.0e28,
-                'step_dE_impact_core_J': 2.0e29,
-            },
-        ]
-    ).assign(E_core_residual_J=[np.nan, 0.0, 2.0e24])
-    row = {'step_dE_core_J': -5.0e28, 'step_dE_F_cmb_J': 5.0e28, 'step_dE_impact_core_J': 0.0}
+        {
+            'core_C_eff': [0.0, 1.6e27, 1.6e27],
+            'step_dE_core_J': [0.0, -1.0e29, 1.6e29],
+            'step_dE_F_cmb_J': [9.0e30, 1.0e29, 4.0e28],
+            'step_dE_impact_core_J': [0.0, 0.0, 2.0e29],
+            'E_core_residual_J': [0.0, 0.0, 2.0e24],
+        }
+    )
+    row = {
+        'core_C_eff': 1.6e27,
+        'step_dE_core_J': -5.0e28,
+        'step_dE_F_cmb_J': 5.0e28,
+        'step_dE_impact_core_J': 0.0,
+    }
     _populate_core_residual(hf, row)
     assert row['E_core_residual_J'] == pytest.approx(2.0e24, rel=1e-9)
     assert row['E_core_residual_frac'] == pytest.approx(2.0e24 / 3.9e29, rel=1e-12)
 
 
 @pytest.mark.unit
-def test_core_ledger_is_nan_without_the_core_module():
-    """A row without the core heat column (core_bc is not core_module) keeps NaN."""
+def test_core_ledger_is_zero_without_the_core_module():
+    """Without the core module (core_C_eff 0) the ledger stays 0 even where the CMB carries
+    heat into an energy_balance reservoir, which is not the core budget's heat."""
     from proteus.utils.coupler import _populate_core_residual
 
-    row = {'step_dE_core_J': np.nan, 'step_dE_F_cmb_J': 1.0e29}
-    _populate_core_residual(pd.DataFrame(), row)
-    assert np.isnan(row['E_core_residual_J'])
-    assert np.isnan(row['E_core_residual_frac'])
+    hf = pd.DataFrame(
+        {'core_C_eff': [0.0], 'step_dE_F_cmb_J': [2.0e29], 'E_core_residual_J': [0.0]}
+    )
+    row = {'core_C_eff': 0.0, 'step_dE_core_J': 0.0, 'step_dE_F_cmb_J': 1.0e29}
+    _populate_core_residual(hf, row)
+    assert row['E_core_residual_J'] == 0.0
+    assert row['E_core_residual_frac'] == 0.0
