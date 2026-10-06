@@ -76,6 +76,20 @@ def _restore_fwl_logger():
     sys.excepthook = hook
 
 
+@pytest.fixture(scope='session')
+def _session_fwl_data(tmp_path_factory) -> Path:
+    """An empty data root for tests run without FWL_DATA."""
+    return tmp_path_factory.mktemp('fwl_data')
+
+
+@pytest.fixture(autouse=True)
+def _default_fwl_data(monkeypatch, _session_fwl_data):
+    """Set FWL_DATA to an empty data root when the environment has none, so a test that
+    builds Proteus does not depend on the environment or on another module setting it."""
+    if 'FWL_DATA' not in os.environ:
+        monkeypatch.setenv('FWL_DATA', str(_session_fwl_data))
+
+
 @pytest.fixture(autouse=True)
 def _clear_paleos_api_resolutions():
     """Drop the per-process PALEOS-API resolutions around each test, so a fake resolver
