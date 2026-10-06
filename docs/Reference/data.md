@@ -7,9 +7,9 @@ config files. For instructions on switching between spectrum sources, see
 ## Automatic data download
 
 PROTEUS downloads reference data from
-[Zenodo](https://zenodo.org/communities/proteus_framework/) on first run.
-Each dataset is provisioned by one of two mechanisms, named per dataset in the
-table below.
+[Zenodo](https://zenodo.org/communities/proteus_framework/) on first run,
+through fwl-io; the stellar evolution tracks come through MORS, which uses
+fwl-io as well.
 
 **fwl-io.** [fwl-io](https://github.com/FormingWorlds/fwl-io) pins a dataset to
 a Zenodo version DOI declared in a manifest, verifies every file against a
@@ -17,35 +17,31 @@ checksum registry committed beside that manifest,
 and places the files in a version directory named for the record, so a re-pinned
 deposit lands beside its predecessor rather than overwriting it. Every request
 carries a connect and read timeout, and a transient failure is retried with
-backoff. Zenodo is currently the only mirror these datasets declare, so an
-unreachable Zenodo means the fetch fails rather than falling back elsewhere.
+backoff. A file that Zenodo does not serve is fetched from the
+[DataverseNL](https://dataverse.nl/dataverse/Proteus_Fr) mirror the manifest pins
+beside the record, and checked against the same registry.
 Data several models read (spectral files, stellar spectra, equations of state,
 melting curves, lookup tables) is declared in the shared manifest that fwl-io
 ships; data only PROTEUS reads is declared in `src/proteus/data/proteus_manifest.toml`.
 A data folder in the older layout is brought into this one as described in
 [Upgrading an older data folder](#upgrading-an-older-data-folder).
 
-**The PROTEUS downloader.** `proteus.utils.data` fetches a whole Zenodo record,
-retrying a few times, and falls back to the corresponding project on the
-[Open Science Framework](https://osf.io/) (OSF) when Zenodo is unavailable. A
-Zenodo API token applies to this mechanism only; without one, public access is
-used with lower rate limits.
-
 | Dataset | Provisioned by | Downloaded by |
 |---|---|---|
 | Stellar spectra (solar, named stars, MUSCLES) | fwl-io | `proteus get solar`, `proteus get muscles` |
 | PHOENIX synthetic spectra | fwl-io | `proteus get phoenix`, or fetched when a run needs a grid |
-| Stellar evolution tracks | PROTEUS downloader | `proteus get stellar` |
+| Stellar evolution tracks | MORS, through fwl-io | `proteus get stellar` |
 | Spectral k-tables | fwl-io | `proteus get spectral` |
 | Surface albedos | fwl-io | `proteus get surfaces` |
-| Scattering properties | PROTEUS downloader | `proteus get scattering` |
+| Scattering properties | fwl-io | `proteus get scattering` |
 | Exoplanet populations, mass-radius curves | fwl-io | `proteus get reference` |
 | Interior structure EOS tables | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
 | Melting curves | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
 | P-S lookup tables | fwl-io | fetched when SPIDER or Aragog run without a generated PALEOS table set |
 
-To configure a Zenodo API token, see the
-[Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
+The scattering tables are read from `$FWL_DATA/atmos_clim/scattering/r19294180`; a
+`$FWL_DATA/scattering/scattering` folder from an older PROTEUS is no longer read
+and can be deleted.
 
 ### Upgrading an older data folder
 

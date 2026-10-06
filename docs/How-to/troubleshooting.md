@@ -172,22 +172,7 @@ without asking.
 
 ### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 
-PROTEUS automatically downloads input data files from Zenodo. The code works without an API token using public access, but you can optionally configure a token for enhanced rate limits.
-
-??? tip "Optional: Configure a Zenodo API token"
-    If you encounter rate limiting errors or slow downloads, you can set up a Zenodo API token:
-
-    1. Get a personal access token from [Zenodo](https://zenodo.org/account/settings/applications/tokens/new/)
-    2. Configure it:
-        ```console
-        pystow set zenodo api_token <your-token>
-        ```
-    3. Verify it's configured:
-        ```console
-        pystow get zenodo api_token
-        ```
-
-    The token is optional. PROTEUS uses public access by default and falls back gracefully if the token is unavailable.
+PROTEUS downloads input data through fwl-io from Zenodo, without an API token. A file that Zenodo does not serve is fetched from its DataverseNL mirror, and every file is checked against the committed registry. When neither source serves a file, the error lists the failure from each source: a timeout, a connection error or an HTTP 429 or 5xx clears if you retry later; a 404 or a checksum mismatch from both sources does not, so report it as an issue. `fwl-io check proteus` lists what is missing or corrupt in your data folder.
 
 ### PETSc complains about being in the wrong directory
 

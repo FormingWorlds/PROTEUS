@@ -18,6 +18,7 @@ from proteus.atmos_clim.common import (
     require_spfile_path,
 )
 from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
+from proteus.data import SCATTERING, dataset_dir
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
@@ -453,8 +454,8 @@ def _determine_aerosols(dirs: dict) -> dict:
 
     aerosols = {}
 
-    # Pre-computed monochromatic scattering data (FWL_DATA)
-    scattering_dir = os.path.join(dirs['fwl'], 'scattering', 'scattering')
+    # Pre-computed monochromatic scattering data (FWL_DATA, fetched through fwl-io)
+    scattering_dir = dataset_dir(SCATTERING, data_root=dirs['fwl'])
     if os.path.isdir(scattering_dir):
         for f in os.listdir(scattering_dir):
             if f.endswith('.mon'):

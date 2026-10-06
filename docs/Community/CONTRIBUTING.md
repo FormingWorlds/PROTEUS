@@ -76,7 +76,7 @@ You can make files/folders invisible to Git by prepending `nogit_` to their name
 
 PROTEUS relies on input data files that can be potentially large. These are stored outside the Git repository in [Zenodo](https://zenodo.org/communities/proteus_framework/). When running PROTEUS, it will automatically download the necessary input data and store it locally inside your FWL data folder defined by the `FWL_DATA` environment variable in your shell. Placing large files in this folder allows them to be kept on 'storage' file systems on clusters to avoid reaching your allocation limits.
 
-A dataset is provisioned either through [fwl-io](https://github.com/FormingWorlds/fwl-io), which pins it to a Zenodo version DOI and verifies it against a committed checksum registry, or through the downloader in `src/proteus/utils/data.py`, which fetches a whole Zenodo record and falls back to a copy on the [OSF](https://osf.io/8dumn/). [Reference data](../Reference/data.md) names the mechanism for each dataset.
+A dataset is provisioned through [fwl-io](https://github.com/FormingWorlds/fwl-io), which pins it to a Zenodo version DOI and its DataverseNL mirror and verifies it against a committed checksum registry. [Reference data](../Reference/data.md) lists the datasets.
 
 If you want to add new input data you can either update a Zenodo record or create a new one.
 
@@ -85,7 +85,7 @@ If you want to add new input data you can either update a Zenodo record or creat
 
 For a dataset provisioned through fwl-io, declare it instead as a table in `src/proteus/data/proteus_manifest.toml`, keyed by the location it should occupy below `FWL_DATA`, then run `fwl-io sync src/proteus/data/proteus_manifest.toml` and commit the registry file it writes alongside the manifest. No download function is needed: the pin and the checksums are the declaration.
 
-For a dataset served by the PROTEUS downloader, upload it on the OSF as well once it is on Zenodo, and update PROTEUS with the OSF record number when necessary. Some checks have been implemented to detect new input data files but note that it might be necessary in some cases to delete your local input data folder (or the data cache in the CI) to enforce the download of the new data.
+Once the record is on Zenodo, its DataverseNL mirror is created (`fwl-io mirror`) and published, and its DOI goes in the `dataverse` field beside the `zenodo` one; `fwl-io check-mirrors` confirms that the mirror serves the registry.
 
 ### Linting
 

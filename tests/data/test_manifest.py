@@ -38,6 +38,7 @@ from proteus.data import (
     MELTING_MONTEUX_MINUS600,
     MELTING_MONTEUX_PLUS600,
     MELTING_WOLF_BOWER_2018,
+    SCATTERING,
     STELLAR_SPECTRA_MUSCLES,
     STELLAR_SPECTRA_NAMED,
     STELLAR_SPECTRA_PHOENIX,
@@ -59,6 +60,7 @@ EXOPLANET_RECORD = '15727878'
 ZENG_2019_RECORD = '15727899'
 HAMMOND_2024_RECORD = '15880455'
 SEAGER_2007_RECORD = '15727998'
+SCATTERING_RECORD = '19294180'
 SOLAR_RECORD = '17981836'
 NAMED_RECORD = '15721440'
 MUSCLES_RECORD = '17802209'
@@ -129,6 +131,7 @@ _OWNED_KEYS = {
     MASS_RADIUS_ZENG_2019,
     SURFACE_ALBEDOS_HAMMOND_2024,
     EOS_SEAGER_2007,
+    SCATTERING,
 }
 
 
@@ -171,10 +174,27 @@ def test_manifest_declares_the_datasets():
     )
     assert datasets[EXOPLANET_REFERENCE].zenodo == f'10.5281/zenodo.{EXOPLANET_RECORD}'
     assert datasets[MASS_RADIUS_ZENG_2019].zenodo == f'10.5281/zenodo.{ZENG_2019_RECORD}'
+    assert datasets[SCATTERING].subdir == 'atmos_clim/scattering'
+    assert datasets[SCATTERING].zenodo == f'10.5281/zenodo.{SCATTERING_RECORD}'
     # All are PROTEUS-owned, so "proteus" has to appear in required_by or
     # "fwl-io fetch proteus" would skip them.
     for ds in datasets.values():
         assert 'proteus' in [model.lower() for model in ds.required_by]
+
+
+def test_every_owned_dataset_pins_its_dataverse_mirror():
+    """Each PROTEUS dataset names its own DataverseNL mirror, the fallback after Zenodo."""
+    from fwl_io import load_manifest
+
+    pins = {ds.key: ds.dataverse for ds in load_manifest(manifest_path())}
+    assert pins == {
+        EXOPLANET_REFERENCE: '10.34894/9UJ0R7',
+        MASS_RADIUS_ZENG_2019: '10.34894/ZGZA6I',
+        SURFACE_ALBEDOS_HAMMOND_2024: '10.34894/8ARDN5',
+        EOS_SEAGER_2007: '10.34894/QZZGHW',
+        SCATTERING: '10.34894/6Z8Y0Q',
+    }
+    assert len(set(pins.values())) == len(pins)
 
 
 def test_shared_datasets_resolve_through_the_fwl_io_manifest():
@@ -593,13 +613,13 @@ def test_spectral_file_datasets_pin_their_records_and_locations(tmp_path):
         assert _dataset(key).registry(), f'empty registry for {key}'
 
 
-def test_every_spectral_folder_has_a_dataset_and_no_legacy_entry():
-    """The download list and the manifest agree, and the OSF-era map holds none.
+def test_every_spectral_folder_has_a_dataset():
+    """The download list and the manifest agree.
 
     A folder without a manifest table would fail only when a user runs the
-    download; a leftover map entry would give the record a second pin.
+    download.
     """
-    from proteus.utils.data import DATA_SOURCE_MAP, SPECTRAL_FILE_FOLDERS
+    from proteus.utils.data import SPECTRAL_FILE_FOLDERS
 
     assert {tuple(folder.split('/')) for folder in SPECTRAL_FILE_FOLDERS} == set(
         SPECTRAL_RECORDS
@@ -607,7 +627,6 @@ def test_every_spectral_folder_has_a_dataset_and_no_legacy_entry():
     for folder in SPECTRAL_FILE_FOLDERS:
         group, bands = folder.split('/')
         assert _dataset(spectral_file_key(group, bands)).registry()
-        assert folder not in DATA_SOURCE_MAP, f'{folder} is still pinned in DATA_SOURCE_MAP'
 
 
 def test_get_spfile_path_resolves_into_the_versioned_dataset_dir(tmp_path):
@@ -632,48 +651,6 @@ def test_unknown_spectral_pair_is_rejected():
     assert key == 'atmos_clim.spectral_files.oak.16'
     with pytest.raises(KeyError, match=r'oak\.16'):
         dataset_dir(key)
-
-
-def test_migrated_datasets_are_not_also_pinned_in_the_legacy_map():
-    """A migrated dataset is pinned in one place only.
-
-    Leaving its record in the legacy mapping too would let the two pins drift,
-    so a re-pin of the manifest would silently keep fetching the old deposit
-    through whichever path ran first.
-    """
-    from proteus.utils.data import DATA_SOURCE_MAP
-
-    assert 'Exoplanets' not in DATA_SOURCE_MAP
-    assert 'Zeng2019' not in DATA_SOURCE_MAP
-    assert 'Hammond24' not in DATA_SOURCE_MAP
-    assert 'EOS_Seager2007' not in DATA_SOURCE_MAP
-    for legacy in (
-        'EOS_WolfBower2018_1TPa',
-        'EOS_RTPress_melt_100TPa',
-        'EOS_PALEOS_MgSiO3',
-        'EOS_PALEOS_iron',
-        'EOS_PALEOS_MgSiO3_unified',
-        'EOS_PALEOS_H2O',
-        'EOS_Chabrier2021_HHe',
-    ):
-        assert legacy not in DATA_SOURCE_MAP
-    assert 'Population' not in DATA_SOURCE_MAP
-    # Discrimination: the map is still populated for the datasets that have not
-    # migrated, so an emptied map cannot make this pass.
-    assert 'Named' not in DATA_SOURCE_MAP
-    assert 'solar' not in DATA_SOURCE_MAP
-    assert 'MUSCLES' not in DATA_SOURCE_MAP
-    assert 'PHOENIX' not in DATA_SOURCE_MAP
-    assert 'scattering' in DATA_SOURCE_MAP
-    pinned_records = {entry['zenodo_id'] for entry in DATA_SOURCE_MAP.values()}
-    assert EXOPLANET_RECORD not in pinned_records
-    assert HAMMOND_2024_RECORD not in pinned_records
-    assert SEAGER_2007_RECORD not in pinned_records
-    assert ZENG_2019_RECORD not in pinned_records
-    assert SOLAR_RECORD not in pinned_records
-    assert NAMED_RECORD not in pinned_records
-    assert MUSCLES_RECORD not in pinned_records
-    assert PHOENIX_RECORD not in pinned_records
 
 
 def test_fetch_dataset_delegates_to_the_pinned_fetcher(monkeypatch, tmp_path):

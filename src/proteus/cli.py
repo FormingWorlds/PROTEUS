@@ -513,16 +513,10 @@ def solar():
             return
 
     # If we get here, the downloader didn't raise but we can't find files.
-    log_dir = GetFWLData()
-    zenodo_log = log_dir / 'zenodo_download.log'
-    validate_log = log_dir / 'zenodo_validate.log'
-
     msg = (
         'Solar download finished without an exception, but no files were found where expected.\n'
         f'Expected: {solar_dir}\n'
-        f'Check logs:\n'
-        f'  - {zenodo_log}\n'
-        f'  - {validate_log}'
+        'Check the dataset with: fwl-io check proteus'
     )
     raise click.ClickException(msg)
 

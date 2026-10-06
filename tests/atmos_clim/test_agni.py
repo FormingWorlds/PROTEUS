@@ -52,15 +52,19 @@ def _fake_jl_with_mie_materials(*names):
     )
 
 
+# Version directory of the scattering dataset below a data root (record 19294180).
+SCATTERING_DIR = Path('atmos_clim', 'scattering', 'r19294180')
+
+
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_success(mock_isdir, mock_listdir, monkeypatch):
+def test_determine_aerosols_success(mock_isdir, mock_listdir, monkeypatch, tmp_path):
     """
     Test aerosol discovery when scattering data directory exists.
 
     Physical scenario: Scattering data for aerosols (e.g., sulfate, silicate)
-    is available in FWL_DATA/scattering/scattering/*.mon files, and AGNI has
+    is available as *.mon files in the scattering dataset directory of FWL_DATA, and AGNI has
     no Mie-capable materials for any of them.
     """
     monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
@@ -73,7 +77,7 @@ def test_determine_aerosols_success(mock_isdir, mock_listdir, monkeypatch):
         'readme.md',  # Should be ignored
     ]
 
-    dirs = {'fwl': '/fake/fwl/path'}
+    dirs = {'fwl': str(tmp_path)}
     aerosols = _determine_aerosols(dirs)
 
     # Verify correct aerosols found, each via the 'mon' method, keeping the
@@ -81,12 +85,31 @@ def test_determine_aerosols_success(mock_isdir, mock_listdir, monkeypatch):
     assert aerosols == {'Haze': 'mon', 'Silicate': 'mon', 'Sulfate': 'mon'}
 
     # Verify correct directory was checked
-    mock_isdir.assert_called_once_with('/fake/fwl/path/scattering/scattering')
+    mock_isdir.assert_called_once_with(tmp_path / SCATTERING_DIR)
+
+
+@pytest.mark.unit
+def test_determine_aerosols_reads_the_fetched_scattering_dataset(monkeypatch, tmp_path):
+    """The .mon species come from the version directory fwl-io fills for SCATTERING."""
+    from proteus.data import SCATTERING, dataset_dir
+
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
+    target = dataset_dir(SCATTERING, data_root=tmp_path)
+    target.mkdir(parents=True)
+    for name in ('sulph.mon', 'ash.mon', 'notes.txt'):
+        (target / name).write_text('x')
+    # A file in the old layout must not be read.
+    old = tmp_path / 'scattering' / 'scattering'
+    old.mkdir(parents=True)
+    (old / 'soot.mon').write_text('x')
+
+    assert _determine_aerosols({'fwl': str(tmp_path)}) == {'ash': 'mon', 'sulph': 'mon'}
+    assert target == tmp_path / SCATTERING_DIR
 
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_missing_directory(mock_isdir, monkeypatch):
+def test_determine_aerosols_missing_directory(mock_isdir, monkeypatch, tmp_path):
     """
     Test aerosol discovery when scattering directory doesn't exist.
 
@@ -97,7 +120,7 @@ def test_determine_aerosols_missing_directory(mock_isdir, monkeypatch):
     monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
     mock_isdir.return_value = False
 
-    dirs = {'fwl': '/nonexistent/path'}
+    dirs = {'fwl': str(tmp_path)}
     aerosols = _determine_aerosols(dirs)
 
     # Should return an empty mapping without crashing
@@ -108,7 +131,7 @@ def test_determine_aerosols_missing_directory(mock_isdir, monkeypatch):
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir, monkeypatch):
+def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir, monkeypatch, tmp_path):
     """
     Test aerosol discovery when directory exists but has no .mon files.
 
@@ -119,7 +142,7 @@ def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir, monkeypatc
     mock_isdir.return_value = True
     mock_listdir.return_value = ['readme.txt', 'config.yaml']
 
-    dirs = {'fwl': '/path/to/fwl'}
+    dirs = {'fwl': str(tmp_path)}
     aerosols = _determine_aerosols(dirs)
 
     # Should return an empty mapping
@@ -128,7 +151,7 @@ def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir, monkeypatc
     # been queried AND listdir must have been called to inspect the
     # contents. A regression that returned {} without inspecting (e.g.
     # always short-circuited) would still pass the assertion above.
-    mock_isdir.assert_called_once_with('/path/to/fwl/scattering/scattering')
+    mock_isdir.assert_called_once_with(tmp_path / SCATTERING_DIR)
     mock_listdir.assert_called_once()
     # Type guard: returning None or a non-dict would also satisfy
     # `== {}` against another empty container, so pin the type.
@@ -138,7 +161,7 @@ def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir, monkeypatc
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_single_species(mock_isdir, mock_listdir, monkeypatch):
+def test_determine_aerosols_single_species(mock_isdir, mock_listdir, monkeypatch, tmp_path):
     """
     Test aerosol discovery with only one aerosol type.
 
@@ -149,7 +172,7 @@ def test_determine_aerosols_single_species(mock_isdir, mock_listdir, monkeypatch
     mock_isdir.return_value = True
     mock_listdir.return_value = ['Sulfate.mon']
 
-    dirs = {'fwl': '/path/to/fwl'}
+    dirs = {'fwl': str(tmp_path)}
     aerosols = _determine_aerosols(dirs)
 
     assert aerosols == {'Sulfate': 'mon'}
@@ -161,7 +184,7 @@ def test_determine_aerosols_single_species(mock_isdir, mock_listdir, monkeypatch
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_mie_only_species(mock_isdir, monkeypatch):
+def test_determine_aerosols_mie_only_species(mock_isdir, monkeypatch, tmp_path):
     """
     Test aerosol discovery when AGNI has Mie-capable materials but there is
     no FWL_DATA scattering directory at all.
@@ -174,19 +197,21 @@ def test_determine_aerosols_mie_only_species(mock_isdir, monkeypatch):
     monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials('SiO2_amorph', 'VO'))
     mock_isdir.return_value = False
 
-    dirs = {'fwl': '/nonexistent/path'}
+    dirs = {'fwl': str(tmp_path)}
     aerosols = _determine_aerosols(dirs)
 
     assert aerosols == {'SiO2_amorph': 'mie', 'VO': 'mie'}
     # Discrimination guard: a regression that only merged Mie names in when
     # the scattering directory also existed would return {} here instead.
-    mock_isdir.assert_called_once_with('/nonexistent/path/scattering/scattering')
+    mock_isdir.assert_called_once_with(tmp_path / SCATTERING_DIR)
 
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_prefers_mie_over_mon(mock_isdir, mock_listdir, monkeypatch):
+def test_determine_aerosols_prefers_mie_over_mon(
+    mock_isdir, mock_listdir, monkeypatch, tmp_path
+):
     """
     A species with both a 'mon' file and Mie support uses 'mie'.
 
@@ -202,7 +227,7 @@ def test_determine_aerosols_prefers_mie_over_mon(mock_isdir, mock_listdir, monke
     mock_isdir.return_value = True
     mock_listdir.return_value = ['Sulfate.mon', 'Haze.mon']
 
-    dirs = {'fwl': '/path/to/fwl'}
+    dirs = {'fwl': str(tmp_path)}
     aerosols = _determine_aerosols(dirs)
 
     assert aerosols == {'Sulfate': 'mie', 'Haze': 'mon'}
@@ -478,7 +503,7 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     data_dir.mkdir(parents=True)
     (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     hf_row = {
         'F_ins': 1000.0,
@@ -866,7 +891,7 @@ def test_init_agni_atmos_loads_the_row_matched_profile(monkeypatch, tmp_path):
     (data_dir / '30p200_atm.nc').write_text('row', encoding='utf-8')
     (data_dir / '40p000_atm.nc').write_text('stray', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     hf_row = {
         'Time': 30.200,
@@ -920,7 +945,7 @@ def test_init_agni_atmos_falls_back_to_latest_profile_mid_run(monkeypatch, tmp_p
     (data_dir / '9p000_atm.nc').write_text('early', encoding='utf-8')
     (data_dir / '40p000_atm.nc').write_text('latest', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     hf_row = {
         'Time': 50.000,
@@ -970,7 +995,7 @@ def test_init_agni_atmos_passes_unscaled_surface_pressure(monkeypatch, tmp_path)
     data_dir.mkdir(parents=True)
     (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     p_surf_true = 200.0  # bar, far above the p_top floor so no clamping occurs
     hf_row = {
@@ -1063,7 +1088,7 @@ def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
     data_dir.mkdir(parents=True)
     # NOTE: no *.sflux file written. Pre-fix this would have crashed.
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     hf_row = {
         'F_ins': 1000.0,
@@ -1114,7 +1139,7 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
     data_dir.mkdir(parents=True)
     # No *.sflux; no runtime.sf either.
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     # Use the same scaffold as greygas test but flip spectral_file to None
     # so the function takes the "AGNI copy from FWL_DATA" branch.
     config = _build_greygas_config()
@@ -1175,7 +1200,7 @@ def test_init_agni_atmos_forwards_hill_radius_and_hydrograv_hilldr(monkeypatch, 
     data_dir.mkdir(parents=True)
     (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     hf_row = {
         'F_ins': 1000.0,
@@ -1230,7 +1255,7 @@ def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_pa
     data_dir.mkdir(parents=True)
     (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     config.atmos_clim.aerosols_enabled = True
     config.atmos_clim.agni.rainout = True
@@ -1295,7 +1320,7 @@ def test_init_agni_atmos_mie_aerosol_carries_size_distribution(monkeypatch, tmp_
     data_dir.mkdir(parents=True)
     (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     config.atmos_clim.aerosols_enabled = True
     config.atmos_clim.agni.rainout = True
@@ -1587,7 +1612,7 @@ def test_init_agni_spectral_file_path_not_found_raises(monkeypatch, tmp_path):
     config = _build_greygas_config()
     config.atmos_clim.agni.spectral_file = '/nonexistent/path/to/spec.sf'
 
-    dirs = {'output': str(tmp_path), 'fwl': '/fake/fwl', 'agni': '/fake/agni'}
+    dirs = {'output': str(tmp_path), 'fwl': str(tmp_path), 'agni': '/fake/agni'}
     hf_row = {'T_surf': 1500.0, 'P_surf': 100.0}
 
     with pytest.raises(FileNotFoundError, match='AGNI spectral file not found') as excinfo:
