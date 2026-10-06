@@ -6688,7 +6688,7 @@ def test_aragog_remelt_carries_the_molten_profile_past_the_next_restore():
 def test_aragog_remelt_preserves_core_module_core_temperature():
     """An impact re-melt hands the evolved core temperature to the core helper and starts
     the next solve from the temperature the helper returns."""
-    molten = np.full(6, 3900.0)
+    molten = np.linspace(3900.0, 3500.0, 6)  # bottom cell first
 
     class FakeCoreModuleSolver:
         def __init__(self):
@@ -7688,7 +7688,9 @@ def test_remelt_aragog_keeps_the_core_temperature(
     assert solver.core_t() == pytest.approx(expected)
     assert handed == ([pytest.approx(expected)] if core_bc == 'core_module' else [])
     if stub_kw.get('setter', True):
-        assert solver.set_calls and all(c == pytest.approx(expected) for c in solver.set_calls)
+        # core_module sets the kept temperature, then the helper's return value.
+        n_calls = 2 if core_bc == 'core_module' else 1
+        assert solver.set_calls == [pytest.approx(expected)] * n_calls
     assert solver._solution is None and solver._dSdr_cmb_init is None
 
 

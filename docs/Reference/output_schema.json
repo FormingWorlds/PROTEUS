@@ -2320,6 +2320,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog_core_impact.py",
           "condition": "always"
+        },
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
         }
       ],
       "consumers": [

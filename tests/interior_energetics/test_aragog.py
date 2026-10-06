@@ -2006,6 +2006,57 @@ def test_an_interior_that_moves_under_fixed_radii_is_still_followed(monkeypatch)
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('ra_crit', [777.0, None], ids=['set', 'absent'])
+def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch, ra_crit):
+    """The option Z factory hands the solver's own core budget, core source power and
+    CMB boundary-layer Ra_crit to the JAX RHS builder; a solver without the Ra_crit
+    attribute passes None, which Aragog resolves to its default."""
+    pytest.importorskip('jax')
+    pytest.importorskip('aragog.jax.phase')
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    monkeypatch.delenv('PROTEUS_CI_NIGHTLY', raising=False)
+    n = 8
+    mesh = SimpleNamespace(radii=np.linspace(2.86e6, 5.84e6, n))
+    solver = SimpleNamespace(
+        _n_stag=n,
+        _r_basic_flat=mesh.radii,
+        _core_bc='core_module',
+        _core_module_budget='budget-sentinel',
+        _core_module_q_radio=3.0e12,
+        evaluator=SimpleNamespace(mesh=mesh),
+        parameters=SimpleNamespace(
+            boundary_conditions=MagicMock(),
+            energy=SimpleNamespace(tidal_array=np.zeros(n)),
+            radionuclides=[],
+            mesh=SimpleNamespace(core_density=10800.0),
+        ),
+    )
+    if ra_crit is not None:
+        solver._core_module_ra_crit_cmb = ra_crit
+    installed = {}
+    solver.set_jax_cvode_factory = lambda f: installed.update(factory=f)
+    interior_o = SimpleNamespace(aragog_solver=solver, _spider_eos_dir='/nonexistent')
+    with (
+        patch('aragog.jax.phase.MeshArrays'),
+        patch('aragog.jax.phase.PhaseParams'),
+        patch('aragog.jax.solver.BoundaryParams'),
+        patch(
+            'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
+            return_value=('rhs', 'jac', {}),
+        ) as build,
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos_jax'),
+    ):
+        AragogRunner._maybe_install_jax_cvode_factory(_jax_factory_config(), interior_o)
+        installed['factory'](MagicMock(), 'core_module')
+    kwargs = build.call_args.kwargs
+    assert kwargs['core_bc_mode'] == 'core_module'
+    assert kwargs['core_module_budget'] == 'budget-sentinel'
+    assert kwargs['core_module_q_radio'] == pytest.approx(3.0e12)
+    assert kwargs['core_module_ra_crit_cmb'] == (pytest.approx(ra_crit) if ra_crit else None)
+
+
+@pytest.mark.unit
 def test_the_solver_is_pointed_at_the_current_tables_before_each_solve(tmp_path):
     """The energy diagnostic integrates the tables the step actually runs on.
 

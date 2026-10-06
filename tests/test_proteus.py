@@ -2398,6 +2398,47 @@ def test_the_per_step_impact_heat_starts_each_row_at_zero(tmp_path):
     assert rows[0]['step_dE_impact_J'] == pytest.approx(6.1e30)
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('core_bc', ['core_module', 'energy_balance'])
+def test_the_per_step_core_impact_heat_starts_core_module_rows_at_zero(tmp_path, core_bc):
+    """The core part of the impact heat is cleared with the total on core_module rows,
+    and keeps its NaN (not computed) on any other core boundary."""
+    from proteus.utils.constants import vol_gas_list
+
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+    p.config.interior_energetics.module = 'aragog'
+    p.config.interior_energetics.aragog.core_bc = core_bc
+    rows, incoming = [], []
+
+    def _writer(hf_row, step):
+        incoming.append(hf_row.get('step_dE_impact_core_J'))
+        for s in vol_gas_list:
+            hf_row[s + '_kg_atm'] = 1.0e18
+            hf_row[s + '_kg_total'] = 1.0e18
+        hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
+        hf_row['M_vaps'] = 0.0
+        hf_row['M_atm'] = hf_row['M_vol_atm']
+        hf_row['M_planet'] = _MASS_PLANET_KG
+        hf_row['P_vol'] = 260.0
+        hf_row['P_vap'] = 0.0
+        hf_row['P_surf'] = 260.0
+        if step == 0:
+            hf_row['step_dE_impact_core_J'] = 2.4e30 if core_bc == 'core_module' else np.nan
+        return hf_row
+
+    _run_main_loop_recording_mass(p, stop_at_loop=2, rows=rows, row_writer=_writer)
+
+    if core_bc == 'core_module':
+        assert rows[0]['step_dE_impact_core_J'] == pytest.approx(2.4e30)
+        assert incoming[1] == pytest.approx(0.0)
+    else:
+        assert np.isnan(incoming[1])
+        assert np.isnan(rows[0]['step_dE_impact_core_J'])
+
+
 # ---------------------------------------------------------------------------
 # Resume path: crystallization flag restoration (proteus.py, resume branch)
 # ---------------------------------------------------------------------------
@@ -2794,7 +2835,7 @@ def _run_main_loop_capturing_plots(p, *extra, stop_at_loop):
         mock_interior_t = stack.enter_context(
             patch('proteus.interior_energetics.common.Interior_t')
         )
-        mock_interior_t.return_value = SimpleNamespace(dt=100.0, ic=1)
+        mock_interior_t.return_value = SimpleNamespace(dt=100.0, ic=1, aragog_solver=None)
 
         mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
         mock_atmos_t.return_value = SimpleNamespace(converged=True)
@@ -3114,7 +3155,7 @@ def _run_main_loop_recording_mass(
         mock_interior_t = stack.enter_context(
             patch('proteus.interior_energetics.common.Interior_t')
         )
-        mock_interior_t.return_value = SimpleNamespace(dt=100.0, ic=1)
+        mock_interior_t.return_value = SimpleNamespace(dt=100.0, ic=1, aragog_solver=None)
 
         mock_atmos_t = stack.enter_context(patch('proteus.atmos_clim.common.Atmos_t'))
         mock_atmos_t.return_value = SimpleNamespace(converged=True)
