@@ -48,6 +48,49 @@ def test_validate_correlation_rejects_invalid_matrices():
 
 
 @pytest.mark.unit
+def test_composition_from_names_parses_ratios_and_rejects_unknown_elements():
+    """Each '/' name becomes +1 numerator, -1 denominator; other names are skipped."""
+    obs = {'R_obs': 9.18e6, 'C/O_atm': 0.62, 'S/O_atm': 0.25, 'O/H_atm': 5.4, 'Si/Mg_atm': 1.1}
+    assert likelihood_mod.composition_from_names(obs) == {
+        'C/O_atm': {'C': 1, 'O': -1},
+        'S/O_atm': {'S': 1, 'O': -1},
+        'O/H_atm': {'O': 1, 'H': -1},
+        'Si/Mg_atm': {'Si': 1, 'Mg': -1},
+    }
+    for bad in ('C/Xx_atm', 'CO/H_atm', 'C/O/H_atm', 'C/C_atm', '/O_atm', 'C/O'):
+        with pytest.raises(ValueError, match='two different elements'):
+            likelihood_mod.composition_from_names({'R_obs': 1.0, bad: 1.0})
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_ratio_correlation_shares_elements_with_sign():
+    """Equal element errors give rho = +-1/2 for one shared element, signed by
+    whether it sits on the same side of both ratios.
+    """
+    obs = {'R_obs': 9.18e6, 'C/O_atm': 0.624, 'S/O_atm': 0.249, 'O/H_atm': 5.37}
+    comp = likelihood_mod.composition_from_names(obs)
+    corr = likelihood_mod.ratio_correlation(comp)
+
+    assert corr['C/O_atm']['S/O_atm'] == pytest.approx(0.5, abs=1e-12)
+    assert corr['C/O_atm']['O/H_atm'] == pytest.approx(-0.5, abs=1e-12)
+    assert corr['S/O_atm']['O/H_atm'] == pytest.approx(-0.5, abs=1e-12)
+    assert sum(len(row) for row in corr.values()) == 3
+    assert 'R_obs' not in corr and all('R_obs' not in row for row in corr.values())
+
+    # Positive definite: eigenvalues of [[1, .5, -.5], [.5, 1, -.5], [-.5, -.5, 1]] are 2, .5, .5.
+    names = list(comp)
+    mat = torch.eye(3, dtype=torch.double)
+    for a, row in corr.items():
+        for b, rho in row.items():
+            mat[names.index(a), names.index(b)] = mat[names.index(b), names.index(a)] = rho
+    eig = torch.linalg.eigvalsh(mat)
+    assert eig.tolist() == pytest.approx([0.5, 0.5, 2.0], abs=1e-12)
+    sigma = {k: 0.1 * v for k, v in obs.items()}
+    assert likelihood_mod.validate_correlation(obs, sigma, corr) == corr
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ('name', 'expected'),
     [

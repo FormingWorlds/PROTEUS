@@ -120,6 +120,14 @@ and the matrix as a whole must be positive definite; both are checked at start-u
 observable compared as `log10` values the coefficient is used unchanged, since to first order the
 conversion to log10 units only rescales each uncertainty.
 
+For element-ratio observables, `correlate_ratios = true` builds the table instead. Each name
+with a `/` must be a ratio of two elements ending in `_atm` (`C/O_atm` is C to the power +1, O to the power -1),
+and, assuming the same dex error for every element, two ratios correlate by the cosine of their
+exponent vectors. One element shared on the same side gives +0.5 (`C/O_atm` with `S/O_atm`), on
+opposite sides -0.5 (`C/O_atm` with `O/H_atm`). Observables without a `/` stay uncorrelated. It
+needs `[sigma]` and cannot be combined with `[correlation]`. The assumption fixes only the
+correlations; each ratio keeps its own `[sigma]`.
+
 The correlations describe the measurement errors, not the way the model links observables: a
 model that predicts both radius and gravity from one planet mass already accounts for that link.
 

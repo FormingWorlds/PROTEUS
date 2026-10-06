@@ -537,10 +537,10 @@ def test_run_inference_rejects_incomplete_sigma_before_emptying_output(monkeypat
 
 @pytest.mark.unit
 def test_run_inference_rejects_invalid_correlation_before_emptying_output(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, caplog
 ):
     """An invalid ``[correlation]`` table is refused before the output folder is
-    emptied; a valid one is stored back as floats.
+    emptied; a valid one, or the one ``correlate_ratios`` derives, is stored as floats.
     """
     config = {
         'output': 'unit_inference',
@@ -597,6 +597,47 @@ def test_run_inference_rejects_invalid_correlation_before_emptying_output(
     with pytest.raises(RuntimeError, match='stop after validation'):
         inference_mod.run_inference(config)
     assert config['correlation'] == {'R_obs': {'T_obs': pytest.approx(-0.25)}}
+
+    # correlate_ratios derives the table from the ratio names instead.
+    # A finished run repoints ref_config at its copy in the output folder.
+    ratios = {
+        **config,
+        'ref_config': BASE_CONFIG,
+        'observables': {'R_obs': 6.0e6, 'C/O_atm': 0.62, 'S/O_atm': 0.25, 'O/H_atm': 5.4},
+        'sigma': {'R_obs': 1.0e5, 'C/O_atm': 0.1, 'S/O_atm': 0.05, 'O/H_atm': 0.5},
+        'correlation': None,
+        'correlate_ratios': True,
+    }
+    for bad, match in (
+        ({'sigma': None}, 'sigma'),
+        ({'correlation': {'R_obs': {'C/O_atm': 0.1}}}, 'cannot both'),
+        ({'correlate_ratios': 'yes'}, 'true or false'),
+        (
+            {'observables': {'R_obs': 6.0e6}, 'sigma': {'R_obs': 1.0e5}},
+            'no observable is a ratio',
+        ),
+    ):
+        with pytest.raises(ValueError, match=match):
+            inference_mod.run_inference({**ratios, **bad})
+    with pytest.raises(RuntimeError, match='stop after validation'):
+        inference_mod.run_inference(ratios)
+    assert ratios['correlation'] == {
+        'C/O_atm': {'S/O_atm': pytest.approx(0.5), 'O/H_atm': pytest.approx(-0.5)},
+        'S/O_atm': {'O/H_atm': pytest.approx(-0.5)},
+    }
+
+    # One ratio has no partner: nothing is correlated, and the log says so.
+    single = {
+        **ratios,
+        'ref_config': BASE_CONFIG,
+        'correlation': None,
+        'observables': {'R_obs': 6.0e6, 'C/O_atm': 0.62},
+    }
+    single['sigma'] = {'R_obs': 1.0e5, 'C/O_atm': 0.1}
+    with pytest.raises(RuntimeError, match='stop after validation'):
+        inference_mod.run_inference(single)
+    assert single['correlation'] == {}
+    assert 'share no element' in caplog.text
 
 
 @pytest.mark.unit

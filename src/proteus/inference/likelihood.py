@@ -78,3 +78,41 @@ def validate_correlation(
         raise ValueError('correlation is given but sigma is not: correlations scale sigma')
     CorrelationWhitener(list(observables), correlation)
     return {a: {b: float(rho) for b, rho in row.items()} for a, row in correlation.items()}
+
+
+def composition_from_names(observables) -> dict:
+    """Element exponents of each ratio observable: 'C/O_atm' gives {'C': 1, 'O': -1}.
+
+    Names without '/' are left out.
+
+    Raises:
+        ValueError: If a name with '/' is not a ratio of two different elements
+            ending in '_atm'.
+    """
+    composition = {}
+    for name in (n for n in observables if '/' in n):
+        num, _, den = name.removesuffix('_atm').partition('/')
+        if not is_element_ratio(name) or num == den:
+            raise ValueError(
+                f"Observable '{name}' has a '/' but is not a ratio '<element>/<element>_atm' "
+                f'of two different elements from {element_list}'
+            )
+        composition[name] = {num: 1, den: -1}
+    return composition
+
+
+def ratio_correlation(composition: dict) -> dict:
+    """Correlations of ratio observables that share elements, for equal element errors.
+
+    With the same dex error for every element, cov(a, b) is proportional to the dot
+    product of the exponent vectors, so rho_ab = <n_a, n_b> / (|n_a| |n_b|).
+    Returns the nonzero pairs in the `[correlation]` format, each pair once.
+    """
+    norm = {n: math.sqrt(sum(v * v for v in expo.values())) for n, expo in composition.items()}
+    names = list(composition)
+    correlation = {}
+    for i, a in enumerate(names):
+        for b in names[i + 1 :]:
+            if dot := sum(v * composition[b].get(e, 0) for e, v in composition[a].items()):
+                correlation.setdefault(a, {})[b] = dot / (norm[a] * norm[b])
+    return correlation

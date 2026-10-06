@@ -32,7 +32,11 @@ from proteus.config import (
 from proteus.inference.async_BO import checkpoint, parallel_process
 from proteus.inference.failures import ABORT_ON_FAILURE_ENV, summarise_failures
 from proteus.inference.gen_D_init import create_init
-from proteus.inference.likelihood import validate_correlation
+from proteus.inference.likelihood import (
+    composition_from_names,
+    ratio_correlation,
+    validate_correlation,
+)
 from proteus.inference.objective import (
     SPECTRAL_CACHE_ENV,
     WORKER_CONFIG_OVERRIDES,
@@ -242,6 +246,40 @@ def validate_reference_config(
         _reject_bad_config(candidate, f'{ref_config} (parameters at their {label} bounds)')
 
 
+def observable_correlation(config: dict) -> dict | None:
+    """The `[correlation]` table, or the one `correlate_ratios = true` derives.
+
+    The derived table correlates element-ratio observables through their shared
+    elements, assuming the same dex error for every element; other observables
+    stay uncorrelated.
+
+    Raises:
+        ValueError: If `correlate_ratios` is not a bool, or is true together with
+            `[correlation]`, or with no ratio observables.
+    """
+    correlate_ratios = config.get('correlate_ratios', False)
+    if not isinstance(correlate_ratios, bool):
+        raise ValueError(f'correlate_ratios must be true or false, got {correlate_ratios!r}')
+    if not correlate_ratios:
+        return config.get('correlation')
+
+    if config.get('correlation') is not None:
+        raise ValueError('correlate_ratios = true and [correlation] cannot both be given')
+    composition = composition_from_names(config['observables'])
+    if not composition:
+        raise ValueError(
+            "correlate_ratios = true but no observable is a ratio such as 'C/O_atm'"
+        )
+    correlation = ratio_correlation(composition)
+    if correlation:
+        log.info(f'Correlating ratio observables through shared elements: {list(composition)}')
+    else:
+        log.warning(
+            f'Ratio observables {list(composition)} share no element; none are correlated'
+        )
+    return correlation
+
+
 # Entry point for inference scheme, providing infererence-config dict
 def run_inference(config):
     """Run the full asynchronous Bayesian inference workflow.
@@ -285,7 +323,7 @@ def run_inference(config):
 
     # Optional correlations between the observable uncertainties
     config['correlation'] = validate_correlation(
-        config['observables'], config['sigma'], config.get('correlation')
+        config['observables'], config['sigma'], observable_correlation(config)
     )
 
     # Optional true value of each parameter, for studies of a known simulation
@@ -368,7 +406,11 @@ def run_inference(config):
     log.info(f'    dispatch      = {dispatch_mode()}')
     objective = 'chi-squared' if config['sigma'] else 'relative'
     if config['correlation']:
-        objective += ', correlated'
+        objective += (
+            ', correlated (shared elements)'
+            if config.get('correlate_ratios')
+            else ', correlated'
+        )
     log.info(f'    objective     = {objective}')
     log.info(' ')
     t_0 = time.perf_counter()

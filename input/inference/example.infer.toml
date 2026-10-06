@@ -79,6 +79,11 @@ n_steps    = 100       # Total number of evaluations (i.e. BO steps)
 # [correlation.R_obs]
 # "g_obs" = -0.4
 
+# Alternatively, derive the correlations of the element-ratio observables (names with a '/')
+# from the elements they share, assuming the same dex error for every element. Needs [sigma];
+# cannot be combined with [correlation]. Other observables stay uncorrelated.
+# correlate_ratios = true
+
 # Optional true value of each parameter, when the observables above came from a simulation
 # with known parameters.
 # [truth]
