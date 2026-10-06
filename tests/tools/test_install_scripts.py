@@ -6,7 +6,7 @@ Reusable shell logic replicated inline from ``tools/get_petsc.sh`` and
 ``tools/get_spider.sh``:
 - ERR trap: exit-code and step-name capture
 - Platform detection: PETSC_ARCH assignment
-- Homebrew prefix fallback: architecture-aware default
+- macOS linker flags: no library path that could hide the downloaded SUNDIALS
 - PETSc library detection: versioned ``.so``, ``.dylib``, missing
 
 ``tools/_get_common.sh``, the helper library every ``get_*.sh`` sources, is
@@ -729,18 +729,12 @@ fi
 
 
 @pytest.mark.unit
-def test_petsc_macos_ldflags_add_no_homebrew_library_path():
-    """The macOS LDFLAGS only silence linker warnings and add no library path.
-
-    A Homebrew ``-L`` ahead of PETSc's own lib directory lets a Homebrew SUNDIALS
-    7 shadow the SUNDIALS 2.5 PETSc downloads, and configure then fails on the
-    missing ``CVDense``; mpicc already carries the MPI library path.
-    """
-    text = (TOOLS_DIR / 'get_petsc.sh').read_text()
-    assignments = re.findall(r'^\s*ldflags=(.*)$', text, re.M)
-    assert assignments == ['""', '"-Wl,-w"']
-    assert 'brew --prefix' not in text
-    assert '-L' not in ''.join(assignments)
+def test_petsc_build_passes_no_library_path():
+    """No code line of get_petsc.sh passes a -L to the build, so no library directory
+    can come ahead of the SUNDIALS 2.5 that PETSc downloads; -Wl,-w stays."""
+    code = [line for _, line in _code_lines(TOOLS_DIR / 'get_petsc.sh')]
+    assert [line for line in code if re.search(r'(^|[\s"=\'])-L[/$"\']', line)] == []
+    assert any(line == 'ldflags="-Wl,-w"' for line in code)
 
 
 # ---------------------------------------------------------------------------

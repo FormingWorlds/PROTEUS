@@ -253,7 +253,7 @@ xcode-select --install
         cd petsc
         ./configure \
            PETSC_ARCH=arch-darwin-c-opt \
-           LDFLAGS="-L$(brew --prefix)/lib -Wl,-w" \
+           LDFLAGS="-Wl,-w" \
            --with-debugging=0 \
            --with-fc=0 \
            --with-cxx=0 \
