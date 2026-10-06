@@ -3,8 +3,7 @@ Unit tests for proteus.utils.data module.
 
 This module validates the data management utilities, ensuring reliable access to
 external physics data (spectral files, lookup tables). It covers:
-- Zenodo/OSF download logic (with mocking to prevent real network calls).
-- File integrity verification (MD5 checksums).
+- fwl-io dataset fetches (with mocking to prevent real network calls).
 - Configuration mapping for remote resources.
 
 See also:
@@ -764,7 +763,6 @@ def test_download_stellar_spectra_default(mock_fetch):
     from proteus.data import (
         STELLAR_SPECTRA_MUSCLES,
         STELLAR_SPECTRA_NAMED,
-        STELLAR_SPECTRA_PHOENIX,
         STELLAR_SPECTRA_SOLAR,
     )
     from proteus.utils.data import download_stellar_spectra
@@ -775,7 +773,8 @@ def test_download_stellar_spectra_default(mock_fetch):
     assert sorted(fetched) == sorted(
         [STELLAR_SPECTRA_NAMED, STELLAR_SPECTRA_SOLAR, STELLAR_SPECTRA_MUSCLES]
     )
-    assert STELLAR_SPECTRA_PHOENIX not in fetched
+    # Each collection goes to the default data root, with no other argument.
+    assert all(c.args == (c.args[0],) and c.kwargs == {} for c in mock_fetch.call_args_list)
 
 
 @pytest.mark.unit
@@ -1139,8 +1138,7 @@ def test_GetFWLData(mock_fwl_data_dir, tmp_path):
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download_Seager_EOS')
-def test_get_Seager_EOS_exists(mock_download, tmp_path):
+def test_get_Seager_EOS_exists(tmp_path):
     """Test get_Seager_EOS when EOS folder already exists."""
     from proteus.utils.data import get_Seager_EOS
 
@@ -1150,8 +1148,6 @@ def test_get_Seager_EOS_exists(mock_download, tmp_path):
     # Patch FWL_DATA_DIR at module level
     with patch('proteus.utils.data.FWL_DATA_DIR', tmp_path):
         iron_silicate, water = get_Seager_EOS()
-
-    # Should not have called download
 
     # Check structure of returned dictionaries
     # iron_silicate has 'mantle' and 'core' keys
@@ -1212,8 +1208,7 @@ def test_download_Seager_EOS(monkeypatch, tmp_path):
 @pytest.mark.parametrize('folder', ['UnknownFolder', 'scattering'])
 @patch('proteus.data.fetch_dataset')
 def test_download_stellar_spectra_rejects_other_collections(mock_fetch, folder):
-    """A name other than Named, solar or MUSCLES is rejected before any fetch, also
-    when DATA_SOURCE_MAP knows it."""
+    """A name other than Named, solar or MUSCLES is rejected before any fetch."""
     from proteus.utils.data import download_stellar_spectra
 
     with pytest.raises(ValueError, match=f"Unknown stellar spectra collection.*'{folder}'"):
@@ -1242,10 +1237,7 @@ def test_download_Seager_EOS_failure_raises(monkeypatch, tmp_path):
     assert attempts == ['interior_struct.eos.seager_2007']
 
 
-@pytest.mark.unit
-@pytest.mark.skip(
-    reason='Complex file system mocking required - hash validation verified in integration tests'
-)  # =============================================================================
+# =============================================================================
 # get_petsc / get_spider wrapper tests
 # =============================================================================
 
@@ -2449,64 +2441,6 @@ def test_get_sufficient_janus_always_downloads_group_and_bands(monkeypatch):
 
 
 # ============================================================================
-# download_zenodo_folder additional error-branch coverage
-# ============================================================================
-
-
-# ============================================================================
-# download_zenodo_file additional error-branch coverage
-# ============================================================================
-
-
-# ============================================================================
-# validate_zenodo_folder additional error-branch coverage
-# ============================================================================
-
-
-# ============================================================================
-# download_OSF_folder / download_OSF_file additional coverage
-# ============================================================================
-
-
-def _make_osf_storage(file_specs):
-    """Build a mock storage object whose .files iterates the given specs.
-
-    Each spec is a tuple (path_str, payload_bytes_or_callable, size).
-    """
-    storage = MagicMock()
-    files = []
-    for spec in file_specs:
-        path, payload, size = spec
-        f = MagicMock()
-        f.path = path
-        f.size = size
-        if callable(payload):
-            f.write_to = payload
-        else:
-
-            def make_writer(payload_bytes):
-                def _write(fp):
-                    fp.write(payload_bytes)
-
-                return _write
-
-            f.write_to = make_writer(payload)
-        files.append(f)
-    storage.files = files
-    return storage
-
-
-# ============================================================================
-# download() additional file-mode and folder-mode error branches
-# ============================================================================
-
-
-# ============================================================================
-# download_scattering / download_interior_lookuptables additional coverage
-# ============================================================================
-
-
-# ============================================================================
 # download_melting_curves additional coverage
 # ============================================================================
 
@@ -2514,23 +2448,21 @@ def _make_osf_storage(file_specs):
 @pytest.mark.unit
 @patch('proteus.utils.data.GetFWLData')
 def test_download_melting_curves_none_dir_is_noop(mock_getfwl, tmp_path):
-    """When melting_dir is None, the function returns early and writes nothing."""
+    """When melting_dir is None, the function returns early and fetches nothing."""
     from unittest.mock import MagicMock
 
     from proteus.utils.data import download_melting_curves
 
     mock_getfwl.return_value = tmp_path
-
     config = MagicMock()
     config.interior_struct.melting_dir = None
 
-    download_melting_curves(config, clean=False)
+    with patch('proteus.data.fetch_dataset') as mock_fetch:
+        download_melting_curves(config, clean=False)
 
-    # Discrimination: confirm GetFWLData was NOT consulted (the early
-    # return precedes the directory probe); a regression that dropped
-    # the None-check would have called GetFWLData.
+    mock_fetch.assert_not_called()
+    # The early return precedes the directory probe as well.
     mock_getfwl.assert_not_called()
-    assert list(tmp_path.iterdir()) == []
 
 
 # ============================================================================
@@ -3015,11 +2947,6 @@ def test_get_zalmoxis_melting_curves_returns_two_interpolators(monkeypatch, tmp_
 
 
 # ============================================================================
-# download() further branches: no Zenodo, OSF cleanup of empty folder
-# ============================================================================
-
-
-# ============================================================================
 # get_zalmoxis_EOS branches
 # ============================================================================
 
@@ -3354,18 +3281,6 @@ def test_get_socrates_uses_none_dirs_when_not_given(mock_run, tmp_path, monkeypa
     mock_run.assert_called_once()
     cmd = mock_run.call_args[0][0]
     assert cmd[0].startswith(str(tmp_path / 'tools'))
-
-
-# ============================================================================
-# download_stellar_tracks OSF inner-loop exception caught
-# ============================================================================
-
-
-# ============================================================================
-# download_zenodo_file: log read on success-path returns 0 exit
-# (line 247 TimeoutExpired-in-file-mode is already covered above; round out
-# the file-mode test inventory with the rejects-bad-id for completeness)
-# ============================================================================
 
 
 @pytest.mark.unit

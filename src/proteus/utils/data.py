@@ -33,9 +33,6 @@ FWL_DATA_DIR = resolve_fwl_data_dir()
 RELOCATE_HINT = (
     'Data kept in the older FWL_DATA layout can be moved into place with `fwl-io relocate`.'
 )
-MAX_ATTEMPTS = 3
-MAX_DLTIME = 120.0  # seconds
-RETRY_WAIT = 5.0  # seconds
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
@@ -599,9 +596,8 @@ def download_stellar_tracks(track: str):
 
     log.debug(f'Downloading stellar evolution tracks: {track}')
     mors_data.DownloadEvolutionTracks(track)
-    tracks_path = (
-        mors_data.baraffe_data_dir() if track == 'Baraffe' else mors_data.spada_data_dir()
-    )
+    accessors = {'Baraffe': mors_data.baraffe_data_dir, 'Spada': mors_data.spada_data_dir}
+    tracks_path = accessors[track]()
     if not (tracks_path.exists() and any(tracks_path.iterdir())):
         raise FileNotFoundError(f'Tracks directory empty or missing: {tracks_path}')
     log.info(f'Successfully downloaded {track} tracks via MORS')

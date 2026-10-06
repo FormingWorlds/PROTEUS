@@ -11,8 +11,8 @@ checksums have a single source of truth.
 
 Readers resolve a dataset directory through :func:`dataset_dir` rather than
 joining a path by hand, so the version segment stays an implementation detail of
-the pin. Datasets absent from the manifest are provisioned by the downloader in
-:mod:`proteus.utils.data` instead.
+the pin. A manifest may pin a DataverseNL mirror beside the Zenodo record, which
+fwl-io tries when Zenodo does not serve a file.
 """
 
 from __future__ import annotations

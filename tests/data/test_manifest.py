@@ -197,6 +197,20 @@ def test_every_owned_dataset_pins_its_dataverse_mirror():
     assert len(set(pins.values())) == len(pins)
 
 
+def test_fetcher_passes_the_dataverse_pin_to_fwl_io(monkeypatch, tmp_path):
+    """The fetcher PROTEUS builds for a dataset carries its Zenodo record and its mirror."""
+    import fwl_io
+
+    from proteus.data import _fetcher
+
+    seen = {}
+    monkeypatch.setattr(fwl_io, 'create_fetcher', lambda **kwargs: seen.update(kwargs))
+    _fetcher(SCATTERING, data_root=tmp_path)
+    assert seen['dataverse'] == '10.34894/6Z8Y0Q'
+    assert seen['zenodo'] == f'10.5281/zenodo.{SCATTERING_RECORD}'
+    assert seen['subdir'] == 'atmos_clim/scattering' and seen['data_root'] == tmp_path
+
+
 def test_shared_datasets_resolve_through_the_fwl_io_manifest():
     """Every multi-model dataset PROTEUS reads comes from the fwl-io shared manifest.
 
@@ -250,6 +264,7 @@ def test_registries_pin_committed_checksums():
     zeng = _dataset(MASS_RADIUS_ZENG_2019).registry()
     hammond = _dataset(SURFACE_ALBEDOS_HAMMOND_2024).registry()
     seager = _dataset(EOS_SEAGER_2007).registry()
+    scattering = _dataset(SCATTERING).registry()
     solar = _dataset(STELLAR_SPECTRA_SOLAR).registry()
     named = _dataset(STELLAR_SPECTRA_NAMED).registry()
     muscles = _dataset(STELLAR_SPECTRA_MUSCLES).registry()
@@ -263,6 +278,8 @@ def test_registries_pin_committed_checksums():
     melting_wolf_bower = _dataset(MELTING_WOLF_BOWER_2018).registry()
 
     assert len(exo) == 1, 'the catalogue ships exactly one file'
+    assert len(scattering) == 17 and all(name.endswith('.mon') for name in scattering)
+    assert scattering['sulph.mon'] == 'md5:ff75bb4b4136e562a45075d2ff7290d5'
     assert len(zeng) == 57, 'the Zeng-2019 grid ships 57 curve files'
     assert len(hammond) == 26, 'the Hammond-2024 record ships 25 spectra and a readme'
     assert set(seager) == {

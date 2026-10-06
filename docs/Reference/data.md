@@ -39,9 +39,11 @@ A data folder in the older layout is brought into this one as described in
 | Melting curves | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
 | P-S lookup tables | fwl-io | fetched when SPIDER or Aragog run without a generated PALEOS table set |
 
-The scattering tables are read from `$FWL_DATA/atmos_clim/scattering/r19294180`; a
-`$FWL_DATA/scattering/scattering` folder from an older PROTEUS is no longer read
-and can be deleted.
+The scattering tables are read from their version directory below
+`$FWL_DATA/atmos_clim/scattering`; a `$FWL_DATA/scattering/scattering` folder from
+an older PROTEUS is no longer read and can be deleted. Fetch the tables with
+`proteus get scattering` before a run with `--offline` and aerosols enabled: without
+them that run only warns and uses no `.mon` aerosol species.
 
 ### Upgrading an older data folder
 
