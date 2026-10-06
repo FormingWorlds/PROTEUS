@@ -18,7 +18,7 @@ from proteus.atmos_clim.common import (
     require_spfile_path,
 )
 from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
-from proteus.data import SCATTERING, dataset_dir
+from proteus.data import SCATTERING, SURFACE_ALBEDOS_HAMMOND_2024, dataset_dir
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
@@ -497,8 +497,6 @@ def _resolve_surface_material(name: str, fwl_dir: str) -> str:
     str
         Path to the reflectance file, which may not exist.
     """
-    from proteus.data import SURFACE_ALBEDOS_HAMMOND_2024, dataset_dir
-
     parts = Path(name).parts
     if parts[:2] == ('surface_albedos', 'Hammond24') and len(parts) == 3:
         name = parts[2]

@@ -276,28 +276,11 @@ def test_registries_pin_committed_checksums():
     melting_wolf_bower = _dataset(MELTING_WOLF_BOWER_2018).registry()
 
     assert len(exo) == 1, 'the catalogue ships exactly one file'
-    assert set(scattering) == {
-        f'{name}.mon'
-        for name in (
-            'agsoot',
-            'ash',
-            'biogenic',
-            'bioms1',
-            'delta',
-            'dustdiv1',
-            'dustdiv2',
-            'dustdiv3',
-            'dustdiv4',
-            'dustdiv5',
-            'dustdiv6',
-            'frsoot',
-            'naclflm',
-            'nacljet',
-            'nitrate',
-            'soot',
-            'sulph',
-        )
-    }
+    names = (
+        'agsoot ash biogenic bioms1 delta dustdiv1 dustdiv2 dustdiv3 dustdiv4 dustdiv5 '
+        'dustdiv6 frsoot naclflm nacljet nitrate soot sulph'
+    )
+    assert set(scattering) == {f'{name}.mon' for name in names.split()}
     assert scattering['sulph.mon'] == 'md5:ff75bb4b4136e562a45075d2ff7290d5'
     assert len(zeng) == 57, 'the Zeng-2019 grid ships 57 curve files'
     assert len(hammond) == 26, 'the Hammond-2024 record ships 25 spectra and a readme'

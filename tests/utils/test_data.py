@@ -2590,7 +2590,8 @@ def test_download_stellar_tracks_rejects_an_unknown_set_before_fetching(
 
     with pytest.raises(ValueError, match='Unknown stellar track set'):
         data_mod.download_stellar_tracks(track)
-    assert fetched == [] and used == []
+    assert fetched == []
+    assert used == []
 
 
 @pytest.mark.unit

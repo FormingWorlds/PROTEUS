@@ -39,11 +39,11 @@ A data folder in the older layout is brought into this one as described in
 | Melting curves | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
 | P-S lookup tables | fwl-io | fetched when SPIDER or Aragog run without a generated PALEOS table set |
 
-The scattering tables are read from their version directory below
-`$FWL_DATA/atmos_clim/scattering`; a `$FWL_DATA/scattering/scattering` folder from
-an older PROTEUS is no longer read and can be deleted. Fetch the tables with
-`proteus get scattering` before a run with `--offline` and aerosols enabled: without
-them that run only warns and uses no `.mon` aerosol species.
+The scattering tables in the version directory below `$FWL_DATA/atmos_clim/scattering`
+decide which `.mon` aerosol species PROTEUS offers to AGNI; AGNI reads the tables
+themselves from its own `res/scattering` folder. Fetch them with `proteus get scattering`
+before a run with `--offline` and aerosols enabled: without them that run only warns
+and offers no `.mon` aerosol species.
 
 ### Upgrading an older data folder
 
@@ -51,6 +51,7 @@ A `$FWL_DATA` folder written by an older PROTEUS keeps its files at paths that a
 
 1. Run `fwl-io relocate`. It moves every dataset whose files all match their pinned checksums into its version directory. `fwl-io relocate --dry-run` lists what would move, what is incomplete and what does not match, without moving anything.
 2. Run `proteus start --config <config.toml>` once without `--offline`, which downloads the data that configuration needs, or `proteus get interiordata --config-path <config.toml>` for the interior tables alone. This downloads what the first step left: incomplete and mismatched datasets, and those it cannot move (the Chabrier archive, the surface albedos, the Seager tables, the Spada tracks and the scattering tables).
+3. Delete `$FWL_DATA/scattering`, which PROTEUS does not read; `proteus get scattering` fetches the tables into their version directory.
 
 A run with `--offline` stops when an interior EOS table, a melting curve, a P-S lookup table, a spectral file, a stellar spectrum or a surface albedo file is missing. The error names its download command and ends with: "Data kept in the older FWL_DATA layout can be moved into place with `fwl-io relocate`." Two stops have no download command. A spectral file of a group and band count that no manifest declares is not downloaded, so its error says to place the file at the path it names. PALEOS-API tables are built at start from the `paleos` package, so their error names that package.
 

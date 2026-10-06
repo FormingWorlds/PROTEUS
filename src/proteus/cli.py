@@ -513,11 +513,11 @@ def solar():
             return
 
     # If we get here, the downloader didn't raise but we can't find files.
-    msg = (
+    raise click.ClickException(
         'Solar download finished without an exception, but no files were found where expected.\n'
-        f'Expected: {solar_dir}'
+        f'Expected: {solar_dir}\n'
+        'Run `proteus get solar` again; if this repeats, remove that folder first.'
     )
-    raise click.ClickException(msg)
 
 
 @click.command()
