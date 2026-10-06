@@ -5416,3 +5416,36 @@ def test_core_diagnostics_keep_nan_through_append_write_and_read(tmp_path, caplo
     for col in NAN_UNLESS_COMPUTED_KEYS:
         assert np.isnan(back[col].iloc[0]), col
     assert back['T_cmb_node'].iloc[0] == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('booked', [True, False], ids=['booked', 'booking_removed'])
+def test_core_ledger_closes_across_an_impact_and_shows_a_missing_booking(booked):
+    """Row 2 carries a solve that cooled the core by 1e29 J into the mantle and a
+    1.5e30 J T_core lift between calls; with the lift booked in step_dE_impact_core_J
+    the core ledger stays at the prior row's residual, without it the residual grows
+    by exactly the lift."""
+    from proteus.utils.coupler import _populate_core_residual
+
+    hf = pd.DataFrame([{'step_dE_core_J': -2.0e29, 'E_core_residual_J': 3.0e24}])
+    row = {
+        'step_dE_core_J': -1.0e29 + 1.5e30,
+        'step_dE_F_cmb_J': 1.0e29,
+        'step_dE_impact_core_J': 1.5e30 if booked else 0.0,
+    }
+    _populate_core_residual(hf, row)
+    expected = 3.0e24 + (0.0 if booked else 1.5e30)
+    assert row['E_core_residual_J'] == pytest.approx(expected, rel=1e-12)
+    assert row['E_core_residual_frac'] == pytest.approx(expected / 1.2e30, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_core_ledger_is_nan_without_the_core_module():
+    """A row without the core heat column (core_bc is not core_module) keeps NaN."""
+    from proteus.utils.coupler import _populate_core_residual
+
+    row = {'step_dE_core_J': np.nan, 'step_dE_F_cmb_J': 1.0e29}
+    _populate_core_residual(pd.DataFrame(), row)
+    assert np.isnan(row['E_core_residual_J'])
+    assert np.isnan(row['E_core_residual_frac'])

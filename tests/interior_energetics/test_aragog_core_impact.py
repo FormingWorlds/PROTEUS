@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from proteus.interior_energetics.aragog_core_impact import (
+    core_call_heat,
     refit_core_at_reset,
     remelt_core_module,
 )
@@ -51,7 +52,6 @@ def _solver(t_basal=6089.0):
         'length_scale': 7.0e6,
         'fit_profile': False,
         'q_radio': 0.0,
-        'ra_crit_cmb': 450.0,
     }
     seen = []
     eos = SimpleNamespace(temperature=lambda p, s: seen.append((p, s)) or np.array([t_basal]))
@@ -220,3 +220,25 @@ def test_a_rebuilt_budget_without_the_refit_profile_raises():
     ):
         refit_core_at_reset(dict(STRUCT), interior_o, solver)
     assert params['rho_cen'] == pytest.approx(12345.0)
+
+
+@pytest.mark.physics_invariant
+def test_core_call_heat_adds_the_jump_since_the_last_call_and_removes_the_source():
+    """The core's heat change over a call is the capacity integral net of its internal
+    source, plus the heat of a T_core jump between calls measured with the solver's
+    budget; a continuous T_core adds no jump, and the call's final T_core is kept."""
+    budget = _Budget(2.0e27, 0.0)
+    solver = SimpleNamespace(
+        _S0=np.array([3000.0, -1e-5, 6124.0]),
+        _core_module_budget=budget,
+        _core_module_q_radio=1.0e12,
+    )
+    out = SimpleNamespace(step_dE_core_J=-4.0e29, T_core=6000.0, dt_actual=10.0)
+    interior_o = SimpleNamespace(_core_t_end=5153.0)
+    heat = core_call_heat(out, interior_o, solver, 3.15576e7)
+    jump = 2.0e27 * (6124.0 - 5153.0)
+    assert heat == pytest.approx(-4.0e29 - 1.0e12 * 10.0 * 3.15576e7 + jump, rel=1e-12)
+    assert interior_o._core_t_end == pytest.approx(6000.0)
+    solver._S0[-1] = 6000.0
+    heat = core_call_heat(out, interior_o, solver, 3.15576e7)
+    assert heat == pytest.approx(-4.0e29 - 3.15576e20, rel=1e-12)

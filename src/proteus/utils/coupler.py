@@ -948,6 +948,9 @@ def GetHelpfileKeys():
         'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
         'E_residual_cons_frac', # E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J) [1]
         'solver_residual_J',    # cumulative entropy-ODE LHS-RHS residual [J]
+        'step_dE_core_J',       # core heat change over the call net of its internal source, plus a T_core jump since the last call; NaN when not computed (core_bc is not core_module) [J]
+        'E_core_residual_J',    # cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J); NaN when not computed (core_bc is not core_module) [J]
+        'E_core_residual_frac', # E_core_residual_J / max(|sum step_dE_core_J|, 1 J); NaN when not computed (core_bc is not core_module) [1]
         'Cp_eff',           # effective mantle heat capacity [J kg-1 K-1]
 
         # Host star properties
@@ -1104,6 +1107,38 @@ def ZeroHelpfileRow():
     The columns of `NAN_UNLESS_COMPUTED_KEYS` start as NaN, their value when not computed.
     """
     return {k: np.nan if k in NAN_UNLESS_COMPUTED_KEYS else 0.0 for k in GetHelpfileKeys()}
+
+
+def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
+    """Fill the cumulative core ledger of ``new_row`` in place (Aragog core_module).
+
+    The core's own heat change over each call, ``step_dE_core_J`` (the integral of
+    its effective capacity over the T_core trajectory, net of its internal source,
+    plus any T_core jump the solver finds between calls), must equal the heat it
+    gives the mantle, ``-step_dE_F_cmb_J``, plus the heat a giant impact books into
+    it, ``step_dE_impact_core_J``. ``E_core_residual_J`` accumulates the difference;
+    a jump in T_core that no booking accounts for, or a CMB flux integral that does
+    not match the core's cooling, shows here. ``E_core_residual_frac`` normalises by
+    ``max(|sum step_dE_core_J|, 1 J)``. Rows without ``step_dE_core_J`` keep NaN.
+    """
+    dE_core = float(new_row.get('step_dE_core_J', np.nan))
+    if not np.isfinite(dE_core):
+        new_row['E_core_residual_J'] = np.nan
+        new_row['E_core_residual_frac'] = np.nan
+        return
+    impact = float(new_row.get('step_dE_impact_core_J', 0.0))
+    inc = (
+        dE_core
+        + float(new_row.get('step_dE_F_cmb_J', 0.0))
+        - (impact if np.isfinite(impact) else 0.0)
+    )
+    prev, total = 0.0, dE_core
+    if len(current_hf) and 'E_core_residual_J' in current_hf:
+        last = float(current_hf['E_core_residual_J'].iloc[-1])
+        prev = last if np.isfinite(last) else 0.0
+        total += float(np.nansum(current_hf['step_dE_core_J'].to_numpy(dtype=float)))
+    new_row['E_core_residual_J'] = prev + inc
+    new_row['E_core_residual_frac'] = new_row['E_core_residual_J'] / max(abs(total), 1.0)
 
 
 def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
@@ -1267,6 +1302,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     # columns stay at 0.0 too, signalling "diagnostic not available for
     # this run" to downstream plotting.
     _populate_energy_residual(current_hf, new_row)
+    _populate_core_residual(current_hf, new_row)
 
     # Validate keys. We guard in both directions:
     # - Missing keys (schema expects but new_row lacks) are a real bug (a
@@ -1526,6 +1562,9 @@ _DIAGNOSTIC_KEYS = (
     'core_strat_depth',
     'step_dE_impact_core_J',
     'step_dE_impact_core_refit_J',
+    'step_dE_core_J',
+    'E_core_residual_J',
+    'E_core_residual_frac',
 )
 
 # Core-evolution diagnostics that hold NaN, not zero, when they are not computed: zero is

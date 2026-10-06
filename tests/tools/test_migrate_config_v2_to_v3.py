@@ -155,7 +155,6 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.core_module.light_element_fraction',
         'interior_energetics.aragog.core_module.melting_curve',
         'interior_energetics.aragog.core_module.q_radio',
-        'interior_energetics.aragog.core_module.ra_crit_cmb',
         'interior_energetics.aragog.core_module.stratification',
         'interior_energetics.aragog.core_module.t_m0',
         'interior_energetics.aragog.core_module.t_m1',

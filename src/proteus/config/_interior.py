@@ -213,10 +213,6 @@ class AragogCoreModule:
     f_ohm: float
         Ohmic fraction of the dissipation in the field-strength scaling,
         in (0, 1]; Christensen et al. (2009) adopt 1 for planets.
-    ra_crit_cmb: float
-        Critical Rayleigh number of the mantle-side boundary layer that sets
-        the CMB heat flux from the core-mantle temperature contrast; the
-        default is the theoretical value of Thiriet et al. (2019, Table 2).
     flux_geometry: str
         Which printed Earth-core efficiency factor converts the
         superadiabatic flux into the field-strength scaling's F:
@@ -239,7 +235,6 @@ class AragogCoreModule:
     stratification: bool = field(default=False)
     k_core: float = field(default=130.0, validator=gt(0))
     f_ohm: float = field(default=1.0, validator=(gt(0), le(1)))
-    ra_crit_cmb: float = field(default=450.0, validator=gt(0))
     flux_geometry: str = field(
         default='const_flux', validator=in_(('const_flux', 'zero_outer'))
     )

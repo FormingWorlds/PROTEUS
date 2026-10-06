@@ -53,6 +53,7 @@ MERGE_SITES = [
     ('interior_energetics/spider.py', 'ReadSPIDER', {}),
     ('interior_energetics/aragog.py', '_build_helpfile_output', {}),
     ('interior_energetics/aragog.py', '_write_core_module_diagnostics', {}),
+    ('interior_energetics/aragog.py', 'run_solver', {}),
     ('interior_energetics/aragog_jax.py', '_extract_output', {}),
     ('interior_energetics/boundary.py', 'run_solver', {}),
     ('interior_energetics/dummy.py', 'run_dummy_int', {}),

@@ -2311,6 +2311,10 @@
       "producers": [
         {
           "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         },
         {
@@ -2318,7 +2322,9 @@
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "utils"
+      ],
       "consumers_possible": []
     },
     {
@@ -2328,6 +2334,10 @@
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
@@ -2404,6 +2414,55 @@
       "name": "solver_residual_J",
       "unit": "J",
       "description": "cumulative entropy-ODE LHS-RHS residual",
+      "group": "Energy-conservation columns",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/utils/coupler.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "step_dE_core_J",
+      "unit": "J",
+      "description": "core heat change over the call net of its internal source, plus a T_core jump since the last call; NaN when not computed (core_bc is not core_module)",
+      "group": "Energy-conservation columns",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        }
+      ],
+      "consumers": [
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "E_core_residual_J",
+      "unit": "J",
+      "description": "cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J); NaN when not computed (core_bc is not core_module)",
+      "group": "Energy-conservation columns",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/utils/coupler.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "E_core_residual_frac",
+      "unit": "1",
+      "description": "E_core_residual_J / max(|sum step_dE_core_J|, 1 J); NaN when not computed (core_bc is not core_module)",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [

@@ -347,12 +347,6 @@ def test_aragog_core_module_defaults_and_mode_validator():
     with pytest.raises(ValueError):
         AragogCoreModule(flux_geometry='spherical_cow')
 
-    # CMB boundary-layer critical Rayleigh number: Thiriet et al. (2019) Table 2 default.
-    assert cm.ra_crit_cmb == pytest.approx(450.0)
-    assert AragogCoreModule(ra_crit_cmb=1000.0).ra_crit_cmb == pytest.approx(1000.0)
-    with pytest.raises(ValueError):
-        AragogCoreModule(ra_crit_cmb=0.0)
-
 
 def test_aragog_phase_boundary_cap_defaults_to_rate_and_rejects_other_values():
     """The schema default is 'rate'; 'fixed' is kept; anything else is rejected at load."""

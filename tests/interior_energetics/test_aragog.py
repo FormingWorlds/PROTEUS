@@ -2006,11 +2006,10 @@ def test_an_interior_that_moves_under_fixed_radii_is_still_followed(monkeypatch)
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('ra_crit', [777.0, None], ids=['set', 'absent'])
-def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch, ra_crit):
-    """The option Z factory hands the solver's own core budget, core source power and
-    CMB boundary-layer Ra_crit to the JAX RHS builder; a solver without the Ra_crit
-    attribute passes None, which Aragog resolves to its default."""
+def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch):
+    """The option Z factory hands the solver's own core budget and core source power to
+    the JAX RHS builder, read at each call, so a budget an impact refit replaces after
+    install reaches the next solve."""
     pytest.importorskip('jax')
     pytest.importorskip('aragog.jax.phase')
     from proteus.interior_energetics.aragog import AragogRunner
@@ -2032,8 +2031,6 @@ def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch, r
             mesh=SimpleNamespace(core_density=10800.0),
         ),
     )
-    if ra_crit is not None:
-        solver._core_module_ra_crit_cmb = ra_crit
     installed = {}
     solver.set_jax_cvode_factory = lambda f: installed.update(factory=f)
     interior_o = SimpleNamespace(aragog_solver=solver, _spider_eos_dir='/nonexistent')
@@ -2055,7 +2052,7 @@ def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch, r
     assert kwargs['core_bc_mode'] == 'core_module'
     assert kwargs['core_module_budget'] == 'refit-sentinel'
     assert kwargs['core_module_q_radio'] == pytest.approx(3.0e12)
-    assert kwargs['core_module_ra_crit_cmb'] == (pytest.approx(ra_crit) if ra_crit else None)
+    assert 'core_module_ra_crit_cmb' not in kwargs
 
 
 @pytest.mark.unit
@@ -4294,7 +4291,11 @@ def test_run_solver_invokes_core_module_diagnostics_when_active(tmp_path):
     interior_o = SimpleNamespace(aragog_solver=_StateSolver(4500.0))
     hf_row = {'Time': 300.0, 'T_surf': 2800.0}
 
-    sim_time, output = runner.run_solver(hf_row, interior_o, {'output': str(tmp_path)})
+    with patch(
+        'proteus.interior_energetics.aragog_core_impact.core_call_heat', return_value=-3.0e29
+    ):
+        sim_time, output = runner.run_solver(hf_row, interior_o, {'output': str(tmp_path)})
+    assert output['step_dE_core_J'] == pytest.approx(-3.0e29)
 
     assert len(diag_called) == 1
     assert diag_called[0][1] == pytest.approx(75.0)
@@ -4331,11 +4332,14 @@ def test_run_solver_writes_the_core_impact_heat_booked_at_the_reset(tmp_path):
     interior_o = SimpleNamespace(
         aragog_solver=_StateSolver(4500.0), _core_impact_booked=(1.79e30, 5.2e29)
     )
-    _, output = runner.run_solver({'Time': 300.0}, interior_o, {'output': str(tmp_path)})
-    assert output['step_dE_impact_core_J'] == pytest.approx(1.79e30)
-    assert output['step_dE_impact_core_refit_J'] == pytest.approx(5.2e29)
-    assert interior_o._core_impact_booked is None
-    _, output = runner.run_solver({'Time': 375.0}, interior_o, {'output': str(tmp_path)})
+    with patch(
+        'proteus.interior_energetics.aragog_core_impact.core_call_heat', return_value=0.0
+    ):
+        _, output = runner.run_solver({'Time': 300.0}, interior_o, {'output': str(tmp_path)})
+        assert output['step_dE_impact_core_J'] == pytest.approx(1.79e30)
+        assert output['step_dE_impact_core_refit_J'] == pytest.approx(5.2e29)
+        assert interior_o._core_impact_booked is None
+        _, output = runner.run_solver({'Time': 375.0}, interior_o, {'output': str(tmp_path)})
     assert output['step_dE_impact_core_J'] == pytest.approx(0.0)
 
 
