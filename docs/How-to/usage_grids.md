@@ -26,8 +26,9 @@ The top-level settings are:
 | `max_jobs` | Maximum number of cases running concurrently. |
 | `max_days`, `max_mem` | Per-job walltime (days) and memory (GB) limits, used when dispatching through Slurm. |
 | `jax_cache` | Share a JAX compilation cache across Slurm array tasks (see below). Default `false`; only affects Slurm dispatch. |
+| `config_version` | Config format version, for example `"3.0"`. Accepted so that a grid file can state it; the grid manager does not read it. |
 
-Each parameter axis is a TOML table whose **name is the dotted path of the config field to vary**. For example, `["planet.mass_tot"]` sweeps `config.planet.mass_tot`, and `["outgas.fO2_shift_IW"]` sweeps the mantle redox offset. Any field documented in `input/all_options.toml` (or the [configuration reference](config.md)) can serve as an axis. The grid manager treats every top-level key containing a dot as an axis, and every key without one as a setting, so axis names must always be given as the full dotted path.
+Each parameter axis is a TOML table whose **name is the dotted path of the config field to vary**. For example, `["planet.mass_tot"]` sweeps `config.planet.mass_tot`, and `["outgas.fO2_shift_IW"]` sweeps the mantle redox offset. Any field documented in `input/all_options.toml` (or the [configuration reference](config.md)) can serve as an axis. Every top-level key must be accounted for: it is either one of the settings above or the path of one configuration field, given as a table with one of the methods below and the keys that method requires. Any other key, a path that names a whole section, an unquoted dotted header such as `[planet.mass_tot]` (TOML reads it as the section `planet`), or an axis table with an unknown method or a missing required key stops the grid at load, before the output directory is touched, with an error that names the key and the grid file.
 
 Each axis declares a `method` that controls how its values are generated:
 

@@ -4,10 +4,9 @@
 The 2.0 to 3.0 change is a structural refactor, not a value tweak: the interior
 splits into ``[interior_struct]`` and ``[interior_energetics]``, the volatile
 inventory moves under ``[planet]``, several fields are renamed, and a number of
-schema defaults change. The config loader ignores unknown keys, so a naive
-rename pass silently reverts moved or omitted fields to a 3.0 default that may
-differ from the 2.0 value, producing a file that loads cleanly but simulates a
-different planet.
+schema defaults change. A naive rename pass silently reverts omitted fields to a
+3.0 default that may differ from the 2.0 value, producing a file that loads
+cleanly but simulates a different planet.
 
 This tool avoids that failure mode with a materialise-map-emit engine:
 
@@ -24,8 +23,10 @@ This tool avoids that failure mode with a materialise-map-emit engine:
    divergent default, whether at an identical path or a renamed one, is therefore
    pinned automatically.
 
-The result is validated by structuring it through the 3.0 ``Config`` schema; a
-structural error is raised rather than written. The unit test
+The result is validated against the 3.0 ``Config`` schema: a key or section the
+schema cannot accept, or a structural error, is raised rather than written. A user
+key outside the 2.0 schema is left out, as the 2.0 loader ignored it, and listed in
+the report. The unit test
 (``tests/tools/test_migrate_config_v2_to_v3.py``) checks map completeness,
 new-field classification, and per-field regression. A separate developer harness
 resolves each 2.0 input through main's loader and the 3.0 output through this
@@ -376,6 +377,7 @@ class MigrationReport:
         self.overridden = []
         self.dropped_inactive = []
         self.dropped_removed = set()
+        self.dropped_unknown = []
         self.warnings = []
 
     def text(self):
@@ -392,6 +394,8 @@ class MigrationReport:
             lines += [f'  - {p} = {v!r}' for p, v in sorted(self.overridden)]
         if self.dropped_removed:
             lines.append(f'Dropped (removed in 3.0): {sorted(self.dropped_removed)}')
+        if self.dropped_unknown:
+            lines.append(f'Left out (not in the 2.0 schema): {self.dropped_unknown}')
         if self.dropped_inactive:
             lines.append(f'Dropped inactive-module fields: {len(self.dropped_inactive)}')
         return '\n'.join(lines)
@@ -407,14 +411,19 @@ def _load_v2_defaults():
         return json.load(f)
 
 
-def _v3_defaults():
-    """Return the live 3.0 schema defaults as a flat dict (stub-import safe)."""
+def _stub_pipeline():
+    """Stand in for ``proteus.proteus`` so importing ``proteus.config`` does not start Julia."""
     import types
 
     if 'proteus.proteus' not in sys.modules:
         stub = types.ModuleType('proteus.proteus')
         stub.Proteus = object
         sys.modules['proteus.proteus'] = stub
+
+
+def _v3_defaults():
+    """Return the live 3.0 schema defaults as a flat dict (stub-import safe)."""
+    _stub_pipeline()
     import typing
 
     import attr
@@ -689,6 +698,11 @@ def translate(v2_toml: dict):
         The 3.0 config as a nested dict, validated through the 3.0 schema.
     report : MigrationReport
         What the translation renamed, pinned, overrode, dropped, and warned on.
+
+    Raises
+    ------
+    UnknownConfigKeyError
+        If the translation produces a key or section the 3.0 schema cannot accept.
     """
     report = MigrationReport()
     v2_defaults = _load_v2_defaults()
@@ -740,6 +754,8 @@ def translate(v2_toml: dict):
             sp = v2_path.split('.')[-1]
             if sp in _VOLATILE_SPECIES:
                 emit(f'planet.gas_prs.{sp}', val, v2_path)
+            elif v2_path in explicit and v2_path not in v2_defaults:
+                report.dropped_unknown.append(v2_path)
             continue
         if v2_path in REMOVED:
             if v2_path in explicit:
@@ -747,7 +763,8 @@ def translate(v2_toml: dict):
             continue
         if v2_path.startswith(inactive) or v2_path in inactive_bare:
             if v2_path in explicit:
-                report.dropped_inactive.append(v2_path)
+                known = v2_path in v2_defaults
+                (report.dropped_inactive if known else report.dropped_unknown).append(v2_path)
             continue
         if v2_path == 'atmos_clim.albedo_pl' and isinstance(val, str):
             # 2.0 accepted either a constant or a path to a CSV lookup table;
@@ -772,14 +789,13 @@ def translate(v2_toml: dict):
         elif v2_path in v3_defaults:  # identical path in 3.0
             dst = v2_path
         else:
-            # No 3.0 home. Warn only when the field was set by the user AND is
-            # part of main's 2.0 schema (so it actually affected the 2.0 run) AND
-            # is not in a redesigned block (zalmoxis/aragog get one summary
-            # warning instead of per-field noise). A field absent from main's
-            # schema was ignored by the 2.0 loader, so dropping it is faithful.
-            redesigned = v2_path.startswith(('struct.zalmoxis.', 'interior.aragog.'))
-            if v2_path in explicit and v2_path in v2_defaults and not redesigned:
-                report.warnings.append(f'Unmapped 2.0 field (left out): {v2_path}')
+            # No 3.0 home: a key outside the 2.0 schema is listed, a 2.0 field is warned about
+            # unless its redesigned zalmoxis/aragog block already has one summary warning.
+            if v2_path in explicit:
+                if v2_path not in v2_defaults:
+                    report.dropped_unknown.append(v2_path)
+                elif not v2_path.startswith(('struct.zalmoxis.', 'interior.aragog.')):
+                    report.warnings.append(f'Unmapped 2.0 field (left out): {v2_path}')
             continue
         emit(dst, tval, v2_path)
         if v2_path != dst:
@@ -863,17 +879,29 @@ def translate(v2_toml: dict):
 
 
 def _validate(nested_v3):
-    """Structure the nested 3.0 dict through the schema; raise on failure."""
-    import types
+    """Account for every key of the nested 3.0 dict, then structure it through the schema.
 
-    if 'proteus.proteus' not in sys.modules:
-        stub = types.ModuleType('proteus.proteus')
-        stub.Proteus = object
-        sys.modules['proteus.proteus'] = stub
+    Raises
+    ------
+    UnknownConfigKeyError
+        If the translation produced a key or section the 3.0 schema cannot accept;
+        ``cattrs`` would otherwise drop it and the field would sit at its default.
+    """
+    _stub_pipeline()
     import cattrs
 
     from proteus.config._config import Config
+    from proteus.config.orphans import (
+        UnknownConfigKeyError,
+        find_key_problems,
+        format_orphan_message,
+    )
 
+    orphans, mistyped = find_key_problems(nested_v3)
+    if orphans or mistyped:
+        raise UnknownConfigKeyError(
+            format_orphan_message(orphans, 'the migrated 3.0 config', mistyped)
+        )
     cattrs.structure(nested_v3, Config)
 
 
@@ -967,10 +995,18 @@ def main(argv=None):
     with open(args.input, 'rb') as f:
         data = tomllib.load(f)
 
-    if args.grid:
-        nested, report = translate_grid(data)
-    else:
-        nested, report = translate(data)
+    _stub_pipeline()
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    try:
+        nested, report = translate_grid(data) if args.grid else translate(data)
+    except UnknownConfigKeyError as exc:
+        print(
+            f'Not written: the migration of {args.input} produced keys the 3.0 schema '
+            f'rejects. This is a fault in the migration tables, not in the input.\n{exc}',
+            file=sys.stderr,
+        )
+        return 1
 
     out = args.output or args.input.with_suffix('.v3.toml')
     _dump_toml(nested, out)
