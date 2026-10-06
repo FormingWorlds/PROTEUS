@@ -268,7 +268,19 @@ xcode-select --install
         make PETSC_DIR=$(pwd) PETSC_ARCH=arch-darwin-c-opt check
         ```
 
-    Tested on M1 Ultra (macOS 15.6.1), M2 (macOS 26.2), and M4 Max (macOS 26.3).
+    With `LDFLAGS="-Wl,-w"`, `get_petsc.sh` was tested on M1 Ultra (macOS 26.6.2). The earlier command, which also passed the Homebrew library path, was tested on M1 Ultra (macOS 15.6.1), M2 (macOS 26.2), and M4 Max (macOS 26.3).
+
+### PETSc configure: "Downloaded sundials2 could not be used"
+
+PETSc configure on macOS stops with:
+
+```
+Downloaded sundials2 could not be used. Please check install in .../arch-darwin-c-opt
+```
+
+and `configure.log` reports `_CVDense` and `_CVSpgmr` as undefined symbols.
+
+A SUNDIALS 7 from Homebrew is in the linker search path ahead of the SUNDIALS 2.5 that PETSc downloads, and SUNDIALS 7 has no `CVDense`. `get_petsc.sh` passes no Homebrew library path, so on Apple Silicon, where Homebrew lives in `/opt/homebrew`, PETSc builds with a Homebrew SUNDIALS installed. On an Intel Mac, Homebrew installs into `/usr/local/lib`, which the linker searches by default, so a Homebrew SUNDIALS can still hide the downloaded one there. `brew list --versions sundials` shows whether Homebrew's SUNDIALS is installed.
 
 ### PETSc tests error (network configuration)
 

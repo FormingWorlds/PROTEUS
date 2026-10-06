@@ -725,7 +725,14 @@ fi
 
 # ---------------------------------------------------------------------------
 # macOS linker flags (get_petsc.sh)
-# ---------------------------------------------------------------------------
+
+
+# A stub configure: records its arguments, its environment and four named variables.
+CONFIGURE_STUB = """#!/bin/bash
+printf "%s\\n" "$@" > args
+export -p > env
+for v in LDFLAGS LIBRARY_PATH LIBS CPATH; do printf "%s=%s\\n" "$v" "${!v-unset}"; done > named
+"""
 
 
 @pytest.mark.unit
@@ -735,7 +742,7 @@ def test_petsc_configure_on_macos_gets_no_library_path(tmp_path):
     it downloads."""
     for name in ('xcrun', 'mpicc', 'mpirun'):
         _write_stub(tmp_path, name, '#!/bin/bash\necho /sdk\n')
-    _write_stub(tmp_path, 'configure', '#!/bin/bash\nprintf "%s\\n" "$@" > args\nenv > env\n')
+    _write_stub(tmp_path, 'configure', CONFIGURE_STUB)
     block = _extract_script_block(
         'get_petsc.sh', 'current_step="Determining platform-specific flags"', '# 6. Build PETSc'
     )
@@ -748,7 +755,9 @@ def test_petsc_configure_on_macos_gets_no_library_path(tmp_path):
     args = (tmp_path / 'args').read_text().splitlines()
     assert {'LDFLAGS=-Wl,-w', '--download-sundials2'} <= set(args)
     assert [a for a in args if '-L' in a] == []
-    assert [v for v in (tmp_path / 'env').read_text().splitlines() if '-L' in v] == []
+    named = (tmp_path / 'named').read_text().split()
+    assert named == [f'{v}=unset' for v in ('LDFLAGS', 'LIBRARY_PATH', 'LIBS', 'CPATH')]
+    assert 'homebrew/lib' not in (tmp_path / 'env').read_text()
     assert '--download-mpich' not in args
 
 

@@ -210,7 +210,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     SDKROOT=$(xcrun --show-sdk-path)
     echo "    SDKROOT = $SDKROOT"
 
-    # Use Homebrew's MPI if available (both Intel and Apple Silicon paths)
+    # Use the MPI on PATH if there is one, for example Homebrew's Open MPI
     if command -v mpicc >/dev/null 2>&1; then
         echo "    Found system MPI ($(which mpicc)) — skipping mpich download"
         mpi_flag=""
@@ -223,9 +223,8 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS provides Accelerate framework with BLAS/LAPACK; no download needed
     blas_flag=""
 
-    # -Wl,-w silences the deprecated-flag warnings macOS 26+ turns into PETSc configure errors.
-    # No Homebrew -L: mpicc carries its own, and a Homebrew SUNDIALS there would hide the
-    # SUNDIALS 2.5 PETSc downloads.
+    # -Wl,-w: macOS 26+ turns deprecated-flag warnings into configure errors. No Homebrew -L:
+    # mpicc brings its own, and a Homebrew SUNDIALS there would hide PETSc's SUNDIALS 2.5.
     ldflags="-Wl,-w"
 fi
 
