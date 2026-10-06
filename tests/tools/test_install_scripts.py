@@ -729,12 +729,29 @@ fi
 
 
 @pytest.mark.unit
-def test_petsc_build_passes_no_library_path():
-    """No code line of get_petsc.sh passes a -L to the build, so no library directory
-    can come ahead of the SUNDIALS 2.5 that PETSc downloads; -Wl,-w stays."""
-    code = [line for _, line in _code_lines(TOOLS_DIR / 'get_petsc.sh')]
-    assert [line for line in code if re.search(r'(^|[\s"=\'])-L[/$"\']', line)] == []
-    assert any(line == 'ldflags="-Wl,-w"' for line in code)
+def test_petsc_configure_on_macos_gets_no_library_path(tmp_path):
+    """On macOS with a system MPI, PETSc configure gets LDFLAGS=-Wl,-w and no -L in any
+    argument, so no library directory comes ahead of the SUNDIALS 2.5 it downloads."""
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    _write_stub(stubs, 'xcrun', '#!/bin/bash\necho /sdk\n')
+    for name in ('mpicc', 'mpirun'):
+        _write_stub(stubs, name, '#!/bin/bash\nexit 0\n')
+    work = tmp_path / 'petsc'
+    work.mkdir()
+    _write_stub(work, 'configure', f'#!/bin/bash\nprintf "%s\\n" "$@" > "{tmp_path}/args"\n')
+    block = _extract_script_block(
+        'get_petsc.sh', 'current_step="Determining platform-specific flags"', '# 6. Build PETSc'
+    )
+    result = _run_bash(
+        f'OSTYPE=darwin24\nworkpath="{work}"\n{block}\n',
+        env={'PATH': f'{stubs}:/usr/bin:/bin', 'HOME': str(tmp_path)},
+    )
+    assert result.returncode == 0, result.stderr
+    args = (tmp_path / 'args').read_text().splitlines()
+    assert 'LDFLAGS=-Wl,-w' in args
+    assert [a for a in args if '-L' in a] == []
+    assert '--download-mpich' not in args and '--with-cxx=0' in args
 
 
 # ---------------------------------------------------------------------------
