@@ -3932,10 +3932,8 @@ def test_setup_solver_threads_core_module_params(tmp_path):
     assert params['q_radio'] == pytest.approx(2.0e12)
     assert {'t_m0', 't_m1', 't_m2', 'depression', 'melting_curve'} <= set(params)
     assert 'r_cmb' not in params and 'p_cmb' not in params
-    # The field-strength fields feed the wrapper-side entropy budget and
-    # must never reach the aragog factory, whose key contract rejects
-    # them; k_core and stratification travel, since the stratified-layer
-    # depth lives inside the budget.
+    # The field-strength fields feed the wrapper-side entropy budget and never reach the
+    # aragog factory, which rejects them; k_core and stratification travel to the budget.
     assert {'f_ohm', 'flux_geometry'}.isdisjoint(params)
     assert params['k_core'] == pytest.approx(130.0)
     assert params['stratification'] is False
@@ -4159,11 +4157,9 @@ def test_write_core_module_diagnostics_wiring_and_cache():
         )
         _ = mock_regime  # regime asserted through the output below
 
-        # With elapsed time, the diagnostics use the step-averaged power
-        # from the trajectory-integrated CMB energy, not the end-of-step
-        # flux snapshot (which spikes at phase boundaries). The two paths
-        # differ here by construction so a regression to the snapshot
-        # fails the argument pin.
+        # With elapsed time the diagnostics use the step-averaged CMB power, not the
+        # end-of-step flux (which spikes at phase boundaries); the two differ here by
+        # construction, so a regression to the snapshot fails the argument pin.
         from proteus.utils.constants import secs_per_year
 
         output_dt = {'T_cmb': 4864.0, 'F_cmb': 1.5e5, 'step_dE_F_cmb_J': 3.0e28}

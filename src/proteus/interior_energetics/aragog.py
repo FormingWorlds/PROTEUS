@@ -792,28 +792,16 @@ class AragogRunner:
         #   setting for parity runs, so both solvers follow the identical
         #   physical law.
         _aragog_outer_bc = 1 if config.interior_energetics.surface_bc_mode == 'grey_body' else 4
-        # Core BC mode from config. Valid values:
-        #   'energy_balance' (default, capacitance-weighted core cooling)
-        #   'quasi_steady'   (alpha-factor approximation)
-        #   'gradient'       (gradient-based state)
-        #   'bower2018'      (EXPERIMENTAL, not recommended)
-        #   'core_module'    (core-evolution budget; T_cmb as ODE state)
-        # Validation lives on the attrs schema (config._interior.Aragog).
-        # The attrs schema (config._interior.Aragog) already restricts
-        # core_bc to the five valid modes, so it is consumed directly here
-        # rather than re-checked with a silent fallback that could swap in a
-        # different core model.
+        # Core BC mode (modes in config._interior.Aragog); the attrs schema restricts it to the
+        # five valid modes, so it is used directly, with no fallback that could swap the model.
         core_bc_str = config.interior_energetics.aragog.core_bc
         core_module_params = None
         if core_bc_str == 'core_module':
             import attrs as _attrs
 
-            # The attrs sub-config maps one-to-one onto the aragog factory
-            # keys plus q_radio; geometry stays with the mesh. k_core
-            # travels (the stratified-layer depth needs it inside the
-            # budget); the field-strength fields feed the wrapper-side
-            # CoreEntropyBudget only, and the factory validates its keys
-            # strictly, so those two are stripped here.
+            # The sub-config maps onto the aragog factory keys plus q_radio (k_core included,
+            # for the stratified layer); f_ohm and flux_geometry feed only the wrapper-side
+            # CoreEntropyBudget and the factory rejects unknown keys, so they are stripped.
             core_module_params = _attrs.asdict(config.interior_energetics.aragog.core_module)
             for _diag_key in ('f_ohm', 'flux_geometry'):
                 core_module_params.pop(_diag_key)
