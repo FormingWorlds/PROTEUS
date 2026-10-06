@@ -569,6 +569,20 @@ def test_eval_obj_correlation_kept_for_log_observables():
 
 
 @pytest.mark.unit
+def test_eval_obj_compares_element_ratios_in_log_only_with_sigma():
+    """Without sigma C/O_atm stays linear, as before; with sigma it is compared in dex."""
+    tru, sim = {'C/O_atm': 0.5}, {'C/O_atm': 0.25}
+
+    # Linear relative residual 1 - 0.25/0.5 = 0.5; a log one would be 1 - 2 = -1.
+    assert _chi2(sim, tru, None) == pytest.approx(0.25, rel=1e-6)
+
+    # Log: (log10 0.5) / (0.05 / (0.5 ln 10)) = 6.93, so chi2 = 48.0; linear would give 25.
+    expected = (math.log10(2.0) * 0.5 * math.log(10.0) / 0.05) ** 2
+    assert _chi2(sim, tru, {'C/O_atm': 0.05}) == pytest.approx(expected, rel=1e-9)
+    assert abs(expected - 25.0) > 20.0
+
+
+@pytest.mark.unit
 def test_validate_sigma_accepts_complete_table_and_rejects_bad_entries():
     """``validate_sigma`` returns the uncertainties as floats when every
     observable has one, passes None through, and refuses a table with a

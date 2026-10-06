@@ -87,8 +87,9 @@ J = -log10( sum( ((sim - true) / sigma)^2 ) + 1e-10 )
 ```
 
 Observables that span orders of magnitude (`atm_kg_per_mol`, `*_vmr`, `*_bar`, `P_surf`, ...)
-are compared as `log10` values. Their uncertainty is converted to log10 units by first-order
-propagation, `sigma / (true * ln 10)`. This approximation is only accurate when the uncertainty is
+are compared as `log10` values, and so are element ratios such as `C/O_atm` when `[sigma]` is
+given (without it they stay linear, as before). Their uncertainty is converted to log10 units by
+first-order propagation, `sigma / (true * ln 10)`. This approximation is only accurate when the uncertainty is
 small compared to the value. A warning is logged at start-up when it exceeds 30 % of the value.
 
 The two objectives are on different scales, so compare `J` only between studies that use the same

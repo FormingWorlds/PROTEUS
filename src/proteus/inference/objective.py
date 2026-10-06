@@ -20,7 +20,7 @@ from proteus.inference.failures import (
     find_run_logfile,
     record_failure,
 )
-from proteus.inference.likelihood import CorrelationWhitener
+from proteus.inference.likelihood import CorrelationWhitener, is_element_ratio
 from proteus.inference.runner import ProteusRunner
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import element_list, gas_list
@@ -490,7 +490,7 @@ def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None):
     sig_vals = []
     for k in sim_dict.keys():
         # some variables scale logarithmically
-        if variable_is_logarithmic(k):
+        if variable_is_logarithmic(k) or (sigma is not None and is_element_ratio(k)):
             tru_k = max(tru_dict[k], LOG_CLIP)
             sim_vals.append(log10(max(sim_dict[k], LOG_CLIP)))
             tru_vals.append(log10(tru_k))
@@ -562,7 +562,7 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
         v = float(v)
         if not (math.isfinite(v) and v > 0):
             raise ValueError(f"sigma for '{k}' must be a positive finite number, got {v!r}")
-        if variable_is_logarithmic(k):
+        if variable_is_logarithmic(k) or is_element_ratio(k):
             x = float(observables[k])
             if x <= 0:
                 raise ValueError(

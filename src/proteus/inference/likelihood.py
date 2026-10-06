@@ -6,6 +6,18 @@ import math
 
 import torch
 
+from proteus.utils.constants import element_list
+
+
+def is_element_ratio(name: str) -> bool:
+    """Whether `name` is an atmospheric element ratio such as 'C/O_atm'.
+
+    The objective compares these in log10 only when `[sigma]` is given, so the
+    relative objective stays as it was.
+    """
+    sides = name.removesuffix('_atm').split('/')
+    return name.endswith('_atm') and len(sides) == 2 and set(sides) <= set(element_list)
+
 
 class CorrelationWhitener:
     """Factored correlation matrix R of the observables, for chi2 = u^T R^-1 u.

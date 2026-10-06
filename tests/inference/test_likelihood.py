@@ -45,3 +45,20 @@ def test_validate_correlation_rejects_invalid_matrices():
         likelihood_mod.validate_correlation(
             obs, sigma, {'R_obs': {'T_obs': 0.9, 'g_obs': 0.9}, 'T_obs': {'g_obs': -0.9}}
         )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('name', 'expected'),
+    [
+        ('C/O_atm', True),
+        ('Si/Mg_atm', True),
+        ('C/Xx_atm', False),
+        ('O/H_kg', False),
+        ('C/O/H_atm', False),
+        ('R_obs', False),
+    ],
+)
+def test_is_element_ratio_needs_two_elements_and_the_atm_suffix(name, expected):
+    """Only '<element>/<element>_atm' names count as element ratios."""
+    assert likelihood_mod.is_element_ratio(name) is expected
