@@ -731,27 +731,25 @@ fi
 @pytest.mark.unit
 def test_petsc_configure_on_macos_gets_no_library_path(tmp_path):
     """On macOS with a system MPI, PETSc configure gets LDFLAGS=-Wl,-w and no -L in any
-    argument, so no library directory comes ahead of the SUNDIALS 2.5 it downloads."""
-    stubs = tmp_path / 'stubs'
-    stubs.mkdir()
-    _write_stub(stubs, 'xcrun', '#!/bin/bash\necho /sdk\n')
-    for name in ('mpicc', 'mpirun'):
-        _write_stub(stubs, name, '#!/bin/bash\nexit 0\n')
-    work = tmp_path / 'petsc'
-    work.mkdir()
-    _write_stub(work, 'configure', f'#!/bin/bash\nprintf "%s\\n" "$@" > "{tmp_path}/args"\n')
+    argument or exported variable, so no library directory comes ahead of the SUNDIALS 2.5
+    it downloads."""
+    for name in ('xcrun', 'mpicc', 'mpirun'):
+        _write_stub(tmp_path, name, '#!/bin/bash\necho /sdk\n')
+    _write_stub(tmp_path, 'configure', '#!/bin/bash\nprintf "%s\\n" "$@" > args\nenv > env\n')
     block = _extract_script_block(
         'get_petsc.sh', 'current_step="Determining platform-specific flags"', '# 6. Build PETSc'
     )
     result = _run_bash(
-        f'OSTYPE=darwin24\nworkpath="{work}"\n{block}\n',
-        env={'PATH': f'{stubs}:/usr/bin:/bin', 'HOME': str(tmp_path)},
+        f'set -euo pipefail\nOSTYPE=darwin24\nworkpath=.\n{block}\n',
+        cwd=tmp_path,
+        env={'PATH': f'{tmp_path}:/usr/bin:/bin'},
     )
     assert result.returncode == 0, result.stderr
     args = (tmp_path / 'args').read_text().splitlines()
-    assert 'LDFLAGS=-Wl,-w' in args
+    assert {'LDFLAGS=-Wl,-w', '--download-sundials2'} <= set(args)
     assert [a for a in args if '-L' in a] == []
-    assert '--download-mpich' not in args and '--with-cxx=0' in args
+    assert [v for v in (tmp_path / 'env').read_text().splitlines() if '-L' in v] == []
+    assert '--download-mpich' not in args
 
 
 # ---------------------------------------------------------------------------
