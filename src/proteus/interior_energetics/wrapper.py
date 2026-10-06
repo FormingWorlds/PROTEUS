@@ -102,6 +102,18 @@ _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 # counter resets on each successful Aragog call.
 _ARAGOG_MAX_CONSECUTIVE_FAILS = 3
 
+# Per-call energy columns that a skipped Aragog step sets to 0.
+_ARAGOG_CALL_ENERGY_KEYS = (
+    'step_dE_F_int_J',
+    'step_dE_F_cmb_J',
+    'step_dE_Q_radio_J',
+    'step_dE_Q_tidal_J',
+    'step_dE_Q_radio_cons_J',
+    'step_dE_Q_tidal_cons_J',
+    'step_dE_state_heat_J',
+    'step_dE_core_J',
+)
+
 # Physical band for retained impact kinetic energy in giant-impact re-melts.
 # Values outside this range indicate initial conditions dominate collision energy.
 _REMELT_RETAINED_BAND = (0.01, 1.0)
@@ -2111,7 +2123,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0)
         log.warning('    re-melt heat injection not booked: %s', unbooked)
 
-    # core_module: refit the core to the grown planet and lift T_core to the re-melted base.
+    # core_module: lift T_core to the re-melted base; the core refit waits for the next reset.
     if core_bc == 'core_module' and T_core_pre is not None:
         from proteus.interior_energetics.aragog_core_impact import remelt_core_module
 
@@ -2155,6 +2167,17 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         hf_row['M_mantle_solid'] = (1.0 - phi_g) * m_mantle
 
 
+def _skip_aragog_call_energy(hf_row: dict) -> None:
+    """Set the per-call energy columns of a skipped Aragog step to 0, in place.
+
+    A retry-ladder fallback integrates nothing, so the energy ledgers must not count the
+    previous call's values again; a column the run does not compute keeps its NaN.
+    """
+    for key in _ARAGOG_CALL_ENERGY_KEYS:
+        if np.isfinite(hf_row.get(key, np.nan)):
+            hf_row[key] = 0.0
+
+
 def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:
     """Raise the mantle to its initial condition after a giant impact.
 
@@ -2195,8 +2218,8 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
     NotImplementedError
         If the interior module has no supported re-melt path (SPIDER).
     ValueError
-        If the interior module is unrecognised, or the core_module core cannot be
-        refit to the grown core (``aragog_core_impact.remelt_core_module``).
+        If the interior module is unrecognised, or the core_module core or basal
+        temperature is not finite (``aragog_core_impact.remelt_core_module``).
     RuntimeError
         If the Aragog solver has not been initialised.
     """
@@ -2214,7 +2237,7 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
             try:
                 _remelt_aragog(config, dirs, hf_row, interior_o)
             except ValueError:
-                UpdateStatusfile(dirs, 20)
+                UpdateStatusfile(dirs, 21)
                 raise
         case 'spider':
             UpdateStatusfile(dirs, 20)
@@ -2476,6 +2499,7 @@ def run_interior(
             # Skip output update; keep hf_row values from previous step.
             # Atmosphere + outgassing still advance, pushing the planet
             # past the stiff regime. Same pattern as SPIDER fallback above.
+            _skip_aragog_call_energy(hf_row)
             from proteus.interior_energetics.timestep import next_step
 
             dtswitch = next_step(

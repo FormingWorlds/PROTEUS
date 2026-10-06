@@ -6,6 +6,8 @@ import logging
 
 import numpy as np
 
+from proteus.utils.constants import secs_per_year
+
 log = logging.getLogger('fwl.' + __name__)
 
 # core_module params the solver reads itself; the budget factory rejects them.
@@ -155,7 +157,7 @@ def refit_core_at_reset(hf_row: dict, interior_o, solver) -> None:
     )
 
 
-def core_call_heat(out, interior_o, solver, secs_per_year: float, lift: float = 0.0) -> float:
+def core_call_heat(out, interior_o, lift: float = 0.0) -> float:
     """Heat change of the core over one solver call, for the core ledger [J].
 
     ``out.step_dE_core_J`` (the effective capacity integrated over the call's T_core
@@ -165,6 +167,7 @@ def core_call_heat(out, interior_o, solver, secs_per_year: float, lift: float = 
     jump, so the ledger closes only when the same lift is booked; ``lift``, the heat
     booked on this call, is logged against the jump at DEBUG.
     """
+    solver = interior_o.aragog_solver
     t_start = float(solver._S0[-1])
     t_prev = getattr(interior_o, '_core_t_end', None)
     jump = 0.0

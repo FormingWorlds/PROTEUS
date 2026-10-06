@@ -2238,6 +2238,35 @@ def test_the_update_refits_the_core_right_after_the_solver_reset(core_bc):
 
 
 @pytest.mark.unit
+def test_a_failed_core_refit_at_the_reset_writes_the_interior_status():
+    """A refit that cannot fit the grown core raises from the solver update; the run
+    stops with the interior error status 21 and the error reaches the caller, with the
+    entropy not restored on a half-updated solver."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    interior_o = MagicMock()
+    interior_o.ic = 2
+    interior_o.structure_stale = False
+    config = MagicMock()
+    config.interior_energetics.aragog.core_bc = 'core_module'
+    dirs = {'output': '/tmp/out'}
+    with (
+        patch.object(AragogRunner, 'update_structure'),
+        patch.object(AragogRunner, 'update_solver'),
+        patch.object(AragogRunner, '_refresh_entropy_eos'),
+        patch(
+            'proteus.interior_energetics.aragog_core_impact.refit_core_at_reset',
+            side_effect=ValueError('p_cen too low for the incompressible limit'),
+        ),
+        patch('proteus.interior_energetics.aragog.UpdateStatusfile') as status,
+        pytest.raises(ValueError, match='incompressible'),
+    ):
+        AragogRunner.setup_or_update_solver(config, {'Time': 600.0}, interior_o, 1.0, dirs)
+    status.assert_called_once_with(dirs, 21)
+    interior_o.aragog_solver.set_initial_entropy.assert_not_called()
+
+
+@pytest.mark.unit
 def test_setup_or_update_solver_refuses_to_build_without_cvode(cvode_missing):
     """The first-build branch stops before any solver or parameter object exists.
 

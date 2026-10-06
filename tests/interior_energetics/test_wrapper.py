@@ -4356,6 +4356,38 @@ def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_skipped_aragog_step_books_no_call_energy():
+    """A retry-ladder fallback integrates nothing, so the per-call energy columns are 0
+    on its row; a carried step_dE_core_J that holds an impact jump would otherwise add the
+    lift to the core residual again. A column the run does not compute stays NaN."""
+    from unittest.mock import patch as _patch
+
+    from proteus.interior_energetics.wrapper import _ARAGOG_CALL_ENERGY_KEYS, run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    carried = {key: 1.0e27 * (i + 1) for i, key in enumerate(_ARAGOG_CALL_ENERGY_KEYS)}
+    hf_row.update(carried, step_dE_core_J=3.15e29, step_dE_Q_tidal_cons_J=np.nan)
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 2
+    interior_o.dt = 0.0
+    interior_o.aragog_fail_count = 0
+    runner_mock = MagicMock()
+    runner_mock.run_solver.side_effect = RuntimeError('retry ladder exhausted')
+    with (
+        _patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        _patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    assert interior_o.aragog_fail_count == 1
+    assert np.isnan(hf_row['step_dE_Q_tidal_cons_J'])
+    zeroed = [k for k in _ARAGOG_CALL_ENERGY_KEYS if k != 'step_dE_Q_tidal_cons_J']
+    assert [hf_row[k] for k in zeroed] == [0.0] * len(zeroed)
+    assert 'step_dE_core_J' in zeroed
+
+
+@pytest.mark.unit
 def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
     """After _ARAGOG_MAX_CONSECUTIVE_FAILS (default 3), the next failure re-raises."""
     from unittest.mock import patch as _patch
@@ -6711,48 +6743,8 @@ class _FakeCoreModuleSolver:
         return 1.0e20
 
 
-@pytest.mark.unit
-def test_aragog_remelt_preserves_core_module_core_temperature():
-    """An impact re-melt hands the evolved core temperature to the core helper and starts
-    the next solve from the temperature the helper returns."""
-    molten = np.linspace(3900.0, 3500.0, 6)  # bottom cell first
-
-    solver = _FakeCoreModuleSolver()
-    interior_o = SimpleNamespace(
-        aragog_solver=solver, _last_entropy=np.full(6, 2400.0), impact_reset=False
-    )
-    config = _remelt_config('aragog')
-    config.interior_energetics.aragog = SimpleNamespace(core_bc='core_module')
-
-    def _fake_set_ic(cfg, io, outdir, hf_row):
-        io.aragog_solver.set_initial_entropy(molten)
-        return molten
-
-    hf_row = {'Time': 100.0, 'T_magma': 2000.0}
-    with (
-        patch(
-            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
-            side_effect=_fake_set_ic,
-        ),
-        patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
-        patch('proteus.interior_energetics.wrapper.evaluate_molten_state', return_value=None),
-        patch(
-            'proteus.interior_energetics.aragog_core_impact.remelt_core_module',
-            return_value=5800.0,
-        ) as core_mock,
-    ):
-        remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
-
-    # The pre-impact core temperature reaches the core helper with the re-melted base
-    # entropy, and the temperature it returns is the one the next solve starts from.
-    assert core_mock.call_args.args[3] == pytest.approx(3500.0)
-    assert core_mock.call_args.args[4] == pytest.approx(3900.0)
-    assert solver._T_core_init == pytest.approx(5800.0)
-    assert solver._S0[-1] == pytest.approx(5800.0)
-
-
-def _remelt_core_module_twice(core_side_effect, status_calls):
-    """Run two Aragog core_module re-melts in one step with a mocked core helper."""
+def _remelt_core_module(core_side_effect, status_calls, n=2):
+    """Run ``n`` Aragog core_module re-melts in one step with a mocked core helper."""
     molten = np.linspace(3900.0, 3500.0, 6)
     solver = _FakeCoreModuleSolver()
     interior_o = SimpleNamespace(
@@ -6782,9 +6774,20 @@ def _remelt_core_module_twice(core_side_effect, status_calls):
             side_effect=core_side_effect,
         ) as core_mock,
     ):
-        for _ in range(2):
+        for _ in range(n):
             remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
     return solver, core_mock, status_mock
+
+
+@pytest.mark.unit
+def test_aragog_remelt_preserves_core_module_core_temperature():
+    """An impact re-melt hands the evolved core temperature and the re-melted base entropy
+    to the core helper and starts the next solve from the temperature it returns."""
+    solver, core_mock, _ = _remelt_core_module([5800.0], [], n=1)
+    assert core_mock.call_args.args[3] == pytest.approx(3500.0)
+    assert core_mock.call_args.args[4] == pytest.approx(3900.0)
+    assert solver._T_core_init == pytest.approx(5800.0)
+    assert solver._S0[-1] == pytest.approx(5800.0)
 
 
 @pytest.mark.unit
@@ -6792,7 +6795,7 @@ def _remelt_core_module_twice(core_side_effect, status_calls):
 def test_two_aragog_core_module_impacts_chain_the_core_temperature():
     """The second impact of a step starts from the temperature the first impact returned,
     not from the pre-step core state (3500 K), and the next solve starts from the last."""
-    solver, core_mock, status_mock = _remelt_core_module_twice([5800.0, 6100.0], [])
+    solver, core_mock, status_mock = _remelt_core_module([5800.0, 6100.0], [])
     pre = [c.args[3] for c in core_mock.call_args_list]
     assert pre == [pytest.approx(3500.0), pytest.approx(5800.0)]
     assert solver._T_core_init == pytest.approx(6100.0)
@@ -6801,14 +6804,15 @@ def test_two_aragog_core_module_impacts_chain_the_core_temperature():
 
 
 @pytest.mark.unit
-def test_a_failed_core_refit_writes_the_error_status_and_raises():
-    """A core refit that cannot be done stops the run with status 20, not silently."""
+def test_a_non_finite_core_temperature_at_the_remelt_writes_the_interior_status():
+    """A core or basal temperature that is not finite at the re-melt stops the run with
+    the interior error status 21, and the error reaches the caller."""
     status_calls = []
-    with pytest.raises(ValueError, match='incompressible'):
-        _remelt_core_module_twice(
-            ValueError('p_cen below the incompressible limit'), status_calls
+    with pytest.raises(ValueError, match='not finite'):
+        _remelt_core_module(
+            ValueError('core or basal temperature is not finite: nan, 6089.0'), status_calls
         )
-    assert status_calls == [20]
+    assert status_calls == [21]
 
 
 @pytest.mark.unit

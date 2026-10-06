@@ -255,6 +255,30 @@ def check_accretion_vapourise_compatibility(instance, attribute, value):
         )
 
 
+def check_accretion_core_stratification_compatibility(instance, attribute, value):
+    """Reject accretion runs with a stratified Aragog core_module core.
+
+    An impact refits the core and books the heat of its temperature lift from the
+    full-core heat content, while a stratified core evolves only its convecting
+    volume, so the booked lift would not be the heat the solver integrates.
+    """
+    interior = instance.interior_energetics
+    if (
+        instance.accretion.module is not None
+        and interior.module == 'aragog'
+        and interior.aragog.core_bc == 'core_module'
+        and interior.aragog.core_module.stratification
+    ):
+        raise ValueError(
+            "accretion.module = '"
+            + str(instance.accretion.module)
+            + "' cannot run with interior_energetics.aragog.core_module.stratification "
+            '= true: the core heat booked at an impact is the full-core content, '
+            'while a stratified core evolves only its convecting volume. Disable one '
+            'of the two.'
+        )
+
+
 def boreas_requires_atmosphere(instance, attribute, value):
     """BOREAS escape requires a radiative atmosphere (not dummy)."""
     if (instance.escape.module == 'boreas') and (instance.atmos_clim.module == 'dummy'):
@@ -598,6 +622,7 @@ class Config:
             check_module_dependencies,
             check_accretion_interior_compatibility,
             check_accretion_vapourise_compatibility,
+            check_accretion_core_stratification_compatibility,
         ),
     )
 

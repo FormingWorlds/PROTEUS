@@ -1036,7 +1036,7 @@
     {
       "name": "T_cmb_node",
       "unit": "K",
-      "description": "temperature at the core-mantle boundary basic node",
+      "description": "mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so T_cmb - T_cmb_node is the CMB contrast",
       "group": "Temperatures",
       "origin": "literal",
       "producers": [
@@ -2139,9 +2139,14 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
+        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2156,9 +2161,14 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
+        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2173,9 +2183,14 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
+        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2190,9 +2205,14 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
+        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2207,9 +2227,15 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "interior_energetics"
+      ],
       "consumers_possible": []
     },
     {
@@ -2222,9 +2248,15 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "interior_energetics"
+      ],
       "consumers_possible": []
     },
     {
@@ -2269,9 +2301,14 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
+        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2435,9 +2472,14 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
+        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []

@@ -129,17 +129,15 @@ def test_the_reset_refit_does_nothing_without_a_pending_impact():
     assert solver._core_module_budget is budget
 
 
-def _reset_refit(new, fit_effect=None, build_effect=None):
+def _reset_refit(new):
     solver, params, _ = _solver()
     old = solver._core_module_budget
     pending = {'t_pre': 5091.0, 't_new': 6089.0, 'budget': old}
     interior_o = SimpleNamespace(_core_refit_pending=pending)
     fit = SimpleNamespace(rho_cen=12345.0, length_scale=7.1e6)
-    fit_kw = {'side_effect': fit_effect} if fit_effect else {'return_value': fit}
-    build_kw = {'side_effect': build_effect} if build_effect else {'return_value': new}
     with (
-        patch('aragog.core.fit_gaussian_core_profiles', **fit_kw) as fit_mock,
-        patch('aragog.core.build_core_module_budget', **build_kw) as build_mock,
+        patch('aragog.core.fit_gaussian_core_profiles', return_value=fit) as fit_mock,
+        patch('aragog.core.build_core_module_budget', return_value=new) as build_mock,
     ):
         refit_core_at_reset(dict(STRUCT), interior_o, solver)
     return solver, params, interior_o, old, fit_mock, build_mock
@@ -236,14 +234,78 @@ def test_core_call_heat_adds_the_jump_since_the_last_call_and_removes_the_source
         _core_module_q_radio=1.0e12,
     )
     out = SimpleNamespace(step_dE_core_J=-4.0e29, T_core=6000.0, dt_actual=10.0)
-    interior_o = SimpleNamespace(_core_t_end=5153.0)
+    interior_o = SimpleNamespace(_core_t_end=5153.0, aragog_solver=solver)
     with caplog.at_level('DEBUG', logger='fwl.proteus.interior_energetics.aragog_core_impact'):
-        heat = core_call_heat(out, interior_o, solver, 3.15576e7, lift=1.9e30)
+        heat = core_call_heat(out, interior_o, lift=1.9e30)
     jump = 2.0e27 * (6124.0 - 5153.0)
     assert heat == pytest.approx(-4.0e29 - 1.0e12 * 10.0 * 3.15576e7 + jump, rel=1e-12)
     logged = float(re.search(r'difference (\S+) J', caplog.text).group(1))
     assert logged == pytest.approx(jump - 1.9e30, rel=1e-12)
     assert interior_o._core_t_end == pytest.approx(6000.0)
     solver._S0[-1] = 6000.0
-    heat = core_call_heat(out, interior_o, solver, 3.15576e7)
+    heat = core_call_heat(out, interior_o)
     assert heat == pytest.approx(-4.0e29 - 3.15576e20, rel=1e-12)
+
+
+class _RealSolver(SimpleNamespace):
+    """Solver stand-in that builds its budget as Aragog does: from the live params with
+    the solver-only keys taken out, on its own CMB radius and pressure."""
+
+    def _cache_bc_constants(self):
+        from aragog.core import build_core_module_budget
+
+        params = dict(self.parameters.boundary_conditions.core_module_params)
+        self._core_module_q_radio = float(params.pop('q_radio'))
+        params.pop('ra_crit_cmb')
+        self._core_module_budget = build_core_module_budget(
+            params,
+            r_cmb=float(self._r_basic_flat[0]),
+            p_cmb_fallback=float(self._P_basic_flat[0]),
+        )
+
+
+@pytest.mark.physics_invariant
+def test_a_real_refit_books_the_lift_the_next_call_measures():
+    """With the real profile fit and budget, the full config parameter set and the
+    pre- and post-impact structure of a 0.05 M_E giant impact: the reset refit books a lift
+    that the next call measures again as its T_core jump to the last digit, and the
+    pre-impact budget would measure a jump different by more than 1e28 J."""
+    import attrs
+
+    from proteus.config._interior import AragogCoreModule
+
+    params = attrs.asdict(AragogCoreModule())
+    for key in ('f_ohm', 'flux_geometry'):
+        params.pop(key)
+    params.update(m_core=1.891516e24, p_cen=3.413884e11)
+    solver = _RealSolver(
+        parameters=SimpleNamespace(
+            boundary_conditions=SimpleNamespace(core_module_params=params)
+        ),
+        _r_basic_flat=np.array([3.409098e6, 3.5e6]),
+        _P_basic_flat=np.array([1.029895e11, 1.0e11]),
+        entropy_eos=SimpleNamespace(temperature=lambda p, s: np.array([6124.36])),
+    )
+    solver._cache_bc_constants()
+    old = solver._core_module_budget
+    params.update(
+        rho_cen=float(old.profiles.rho_cen), length_scale=float(old.profiles.length_scale)
+    )
+    params.update(fit_profile=False)
+    del params['m_core'], params['p_cen']
+    interior_o = SimpleNamespace(_core_t_end=5940.16)
+    remelt_core_module(dict(STRUCT, P_cmb=1.057153e11), interior_o, solver, 5940.16, 3100.0)
+    solver._r_basic_flat = np.array([3.508037e6, 3.6e6])
+    solver._P_basic_flat = np.array([1.057153e11, 1.0e11])
+    solver._cache_bc_constants()
+    hf_row = dict(M_core=2.055439e24, P_center=3.608753e11)
+    refit_core_at_reset(hf_row, interior_o, solver)
+    lift, refit = interior_o._core_impact_booked
+    solver._S0 = np.array([3100.0, 0.0, 6124.36])
+    out = SimpleNamespace(step_dE_core_J=0.0, T_core=6100.0, dt_actual=0.0)
+    interior_o.aragog_solver = solver
+    jump = core_call_heat(out, interior_o)
+    assert jump == lift
+    assert lift > 1.0e29
+    assert abs(refit) > 1.0e29
+    assert abs((old.heat_content(6124.36) - old.heat_content(5940.16)) - lift) > 1.0e28

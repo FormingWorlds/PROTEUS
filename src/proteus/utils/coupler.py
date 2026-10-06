@@ -873,7 +873,7 @@ def GetHelpfileKeys():
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
         'T_cmb',           # core temperature, bottom mantle cell [K]
-        'T_cmb_node',      # temperature at the core-mantle boundary basic node [K]
+        'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so T_cmb - T_cmb_node is the CMB contrast [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
         'T_skin',           # grey radiative skin temperature [K]
         'T_surface_initial',  # self-consistent T_surf from accretion mode [K]
@@ -1118,7 +1118,9 @@ def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     gives the mantle, ``-step_dE_F_cmb_J``, plus the heat a giant impact books into
     it, ``step_dE_impact_core_J``. ``E_core_residual_J`` accumulates the difference;
     a jump in T_core that no booking accounts for, or a CMB flux integral that does
-    not match the core's cooling, shows here. ``E_core_residual_frac`` normalises by
+    not match the core's cooling, shows here; a booked lift is measured with the same
+    budget as the jump, so the ledger shows a missing or repeated booking, not an error
+    in the lift itself. ``E_core_residual_frac`` normalises by
     ``max(sum(|step_dE_F_cmb_J| + |step_dE_impact_core_J|), 1 J)`` over the ledger's
     rows, which grows monotonically, so a lift that cancels the core's cumulative
     cooling cannot blow it up. Rows without ``step_dE_core_J`` keep NaN.
@@ -1134,10 +1136,10 @@ def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     if len(current_hf) and 'E_core_residual_J' in current_hf:
         last = float(current_hf['E_core_residual_J'].iloc[-1])
         prev = last if np.isfinite(last) else 0.0
-        rows = current_hf[np.isfinite(current_hf['step_dE_core_J'].to_numpy(dtype=float))]
+        rows = np.isfinite(current_hf['step_dE_core_J'].to_numpy(dtype=float))
         for key in ('step_dE_F_cmb_J', 'step_dE_impact_core_J'):
-            if key in rows:
-                scale += float(np.nansum(np.abs(rows[key].to_numpy(dtype=float))))
+            if key in current_hf:
+                scale += float(np.nansum(np.abs(current_hf[key].to_numpy(dtype=float)[rows])))
     new_row['E_core_residual_J'] = prev + dE_core + f_cmb - impact
     new_row['E_core_residual_frac'] = new_row['E_core_residual_J'] / max(scale, 1.0)
 

@@ -97,6 +97,9 @@ FUNCTION_CONDITIONS = {
     ('interior_energetics/wrapper.py', '_remelt_aragog'): (
         'giant impact, interior_energetics.module = "aragog"'
     ),
+    ('interior_energetics/wrapper.py', '_skip_aragog_call_energy'): (
+        'interior_energetics.module = "aragog"'
+    ),
     (
         'interior_struct/common.py',
         'record_volatile_change',

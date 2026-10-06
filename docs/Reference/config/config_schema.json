@@ -11387,6 +11387,18 @@
       "doc": "Boundary backend assumes a fixed surface state coupling."
     },
     {
+      "validator": "check_accretion_core_stratification_compatibility",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion.module",
+        "interior_energetics"
+      ],
+      "doc": "Reject accretion runs with a stratified Aragog core_module core."
+    },
+    {
       "validator": "check_accretion_interior_compatibility",
       "module": "_config.py",
       "attached_to": [

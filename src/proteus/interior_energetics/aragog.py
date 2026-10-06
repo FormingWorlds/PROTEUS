@@ -45,7 +45,8 @@ from proteus.utils.data import (
     resolve_melting_curve_files,
 )
 from proteus.utils.helper import MissingDataError, energetics_eos_key, generates_paleos_tables
-from proteus.utils.helper import format_subyear_time, parse_subyear_time, snapshot_path_for_time
+from proteus.utils.helper import UpdateStatusfile, format_subyear_time, parse_subyear_time
+from proteus.utils.helper import snapshot_path_for_time
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -760,7 +761,11 @@ class AragogRunner:
             if config.interior_energetics.aragog.core_bc == 'core_module':
                 from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
 
-                refit_core_at_reset(hf_row, interior_o, interior_o.aragog_solver)
+                try:
+                    refit_core_at_reset(hf_row, interior_o, interior_o.aragog_solver)
+                except ValueError:
+                    UpdateStatusfile(dirs, 21)
+                    raise
             # Restore entropy from previous solve. Known gap: cached _last_entropy
             # is not bounds-checked against the regenerated [S_min, S_max].
             if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
@@ -2244,15 +2249,9 @@ class AragogRunner:
                 output['step_dE_impact_core_J'], output['step_dE_impact_core_refit_J'] = booked
                 interior_o._core_impact_booked = None
             from proteus.interior_energetics.aragog_core_impact import core_call_heat
-            from proteus.utils.constants import secs_per_year
 
-            output['step_dE_core_J'] = core_call_heat(
-                out,
-                interior_o,
-                interior_o.aragog_solver,
-                secs_per_year,
-                lift=booked[0] if booked is not None else 0.0,
-            )
+            lift = booked[0] if booked is not None else 0.0
+            output['step_dE_core_J'] = core_call_heat(out, interior_o, lift=lift)
 
         self._store_profiles(interior_o, out)
 

@@ -2409,8 +2409,6 @@ def test_the_per_step_core_impact_heat_starts_core_module_rows_at_zero(
 ):
     """The core part of the impact heat is cleared with the total on Aragog core_module
     rows, and keeps its NaN (not computed) on any other core boundary or interior."""
-    from proteus.utils.constants import vol_gas_list
-
     p = _make_main_loop_proteus(
         tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
     )
@@ -2421,16 +2419,7 @@ def test_the_per_step_core_impact_heat_starts_core_module_rows_at_zero(
 
     def _writer(hf_row, step):
         incoming.append(hf_row.get('step_dE_impact_core_J'))
-        for s in vol_gas_list:
-            hf_row[s + '_kg_atm'] = 1.0e18
-            hf_row[s + '_kg_total'] = 1.0e18
-        hf_row['M_vol_atm'] = sum(hf_row[s + '_kg_atm'] for s in vol_gas_list)
-        hf_row['M_vaps'] = 0.0
-        hf_row['M_atm'] = hf_row['M_vol_atm']
-        hf_row['M_planet'] = _MASS_PLANET_KG
-        hf_row['P_vol'] = 260.0
-        hf_row['P_vap'] = 0.0
-        hf_row['P_surf'] = 260.0
+        _write_post_outgas_row(hf_row, step, vapour=False)
         if step == 0:
             hf_row['step_dE_impact_core_J'] = 2.4e30 if active else np.nan
         return hf_row

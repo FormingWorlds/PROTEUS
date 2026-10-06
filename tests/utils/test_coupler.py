@@ -5445,6 +5445,38 @@ def test_core_ledger_closes_across_an_impact_and_shows_a_missing_booking(booked)
 
 
 @pytest.mark.unit
+def test_core_ledger_scale_sums_the_history_of_core_rows_only():
+    """The fraction's scale adds |step_dE_F_cmb_J| and |step_dE_impact_core_J| of every
+    earlier core row, a booked lift included, and leaves out rows without the core
+    ledger, whose CMB flux is not core heat."""
+    from proteus.utils.coupler import _populate_core_residual
+
+    hf = pd.DataFrame(
+        [
+            {
+                'step_dE_core_J': np.nan,
+                'step_dE_F_cmb_J': 9.0e30,
+                'step_dE_impact_core_J': np.nan,
+            },
+            {
+                'step_dE_core_J': -1.0e29,
+                'step_dE_F_cmb_J': 1.0e29,
+                'step_dE_impact_core_J': 0.0,
+            },
+            {
+                'step_dE_core_J': 1.6e29,
+                'step_dE_F_cmb_J': 4.0e28,
+                'step_dE_impact_core_J': 2.0e29,
+            },
+        ]
+    ).assign(E_core_residual_J=[np.nan, 0.0, 2.0e24])
+    row = {'step_dE_core_J': -5.0e28, 'step_dE_F_cmb_J': 5.0e28, 'step_dE_impact_core_J': 0.0}
+    _populate_core_residual(hf, row)
+    assert row['E_core_residual_J'] == pytest.approx(2.0e24, rel=1e-9)
+    assert row['E_core_residual_frac'] == pytest.approx(2.0e24 / 3.9e29, rel=1e-12)
+
+
+@pytest.mark.unit
 def test_core_ledger_is_nan_without_the_core_module():
     """A row without the core heat column (core_bc is not core_module) keeps NaN."""
     from proteus.utils.coupler import _populate_core_residual
