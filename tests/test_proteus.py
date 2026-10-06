@@ -2404,17 +2404,14 @@ def test_the_per_step_impact_heat_starts_each_row_at_zero(tmp_path):
     ('module', 'core_bc'),
     [('aragog', 'core_module'), ('aragog', 'energy_balance'), ('dummy', 'core_module')],
 )
-def test_the_per_step_core_impact_heat_starts_core_module_rows_at_zero(
-    tmp_path, module, core_bc
-):
-    """The core part of the impact heat is cleared with the total on Aragog core_module
-    rows; on any other core boundary or interior the main loop leaves the column alone."""
+def test_the_per_step_core_impact_heat_starts_every_row_at_zero(tmp_path, module, core_bc):
+    """The core part of the impact heat is cleared with the total on every new row, for any
+    interior and core boundary, so a booked lift is never carried into the next row."""
     p = _make_main_loop_proteus(
         tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
     )
     p.config.interior_energetics.module = module
     p.config.interior_energetics.aragog.core_bc = core_bc
-    active = module == 'aragog' and core_bc == 'core_module'
     rows, incoming = [], []
 
     def _writer(hf_row, step):
@@ -2427,7 +2424,7 @@ def test_the_per_step_core_impact_heat_starts_core_module_rows_at_zero(
     _run_main_loop_recording_mass(p, stop_at_loop=2, rows=rows, row_writer=_writer)
 
     assert rows[0]['step_dE_impact_core_J'] == pytest.approx(2.4e30)
-    assert incoming[1] == pytest.approx(0.0 if active else 2.4e30)
+    assert incoming[1] == 0.0
 
 
 # ---------------------------------------------------------------------------

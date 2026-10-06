@@ -2173,11 +2173,10 @@ def _skip_aragog_call_energy(hf_row: dict) -> None:
     """Set the per-call energy columns of a skipped Aragog step to 0, in place.
 
     A retry-ladder fallback integrates nothing, so the energy ledgers must not count the
-    previous call's values again; a column the run does not compute keeps its NaN.
+    previous call's values again.
     """
     for key in _ARAGOG_CALL_ENERGY_KEYS:
-        if np.isfinite(hf_row.get(key, np.nan)):
-            hf_row[key] = 0.0
+        hf_row[key] = 0.0
 
 
 def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:

@@ -1957,7 +1957,7 @@
     {
       "name": "core_r_icb",
       "unit": "m",
-      "description": "inner-core boundary radius; written only with core_bc = core_module, 0 otherwise",
+      "description": "inner-core boundary radius; computed only with core_bc = core_module, 0 otherwise",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
@@ -1972,7 +1972,7 @@
     {
       "name": "core_C_eff",
       "unit": "J K-1",
-      "description": "core effective heat capacity incl. nucleation terms; written only with core_bc = core_module, 0 otherwise",
+      "description": "core effective heat capacity incl. nucleation terms; computed only with core_bc = core_module, 0 otherwise",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
@@ -1989,7 +1989,7 @@
     {
       "name": "core_dynamo_margin",
       "unit": "W K-1",
-      "description": "entropy margin for dynamo action; written only with core_bc = core_module, 0 otherwise",
+      "description": "entropy margin for dynamo action; computed only with core_bc = core_module, 0 otherwise",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
@@ -2004,7 +2004,7 @@
     {
       "name": "core_B_rms",
       "unit": "T",
-      "description": "rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); written only with core_bc = core_module, 0 otherwise",
+      "description": "rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); computed only with core_bc = core_module, 0 otherwise",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
@@ -2019,7 +2019,7 @@
     {
       "name": "core_regime",
       "unit": "1",
-      "description": "crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen; written only with core_bc = core_module, 0 otherwise",
+      "description": "crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen; computed only with core_bc = core_module, 0 otherwise",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
@@ -2034,7 +2034,7 @@
     {
       "name": "core_strat_depth",
       "unit": "m",
-      "description": "thermally stratified layer depth below the CMB; written only with core_bc = core_module, 0 otherwise",
+      "description": "thermally stratified layer depth below the CMB; computed only with core_bc = core_module, 0 otherwise",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
@@ -2148,7 +2148,6 @@
         }
       ],
       "consumers": [
-        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2170,7 +2169,6 @@
         }
       ],
       "consumers": [
-        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2192,7 +2190,6 @@
         }
       ],
       "consumers": [
-        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2214,7 +2211,6 @@
         }
       ],
       "consumers": [
-        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2235,9 +2231,7 @@
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],
-      "consumers": [
-        "interior_energetics"
-      ],
+      "consumers": [],
       "consumers_possible": []
     },
     {
@@ -2256,9 +2250,7 @@
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],
-      "consumers": [
-        "interior_energetics"
-      ],
+      "consumers": [],
       "consumers_possible": []
     },
     {
@@ -2278,7 +2270,6 @@
         }
       ],
       "consumers": [
-        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2299,9 +2290,7 @@
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],
-      "consumers": [
-        "interior_energetics"
-      ],
+      "consumers": [],
       "consumers_possible": []
     },
     {
@@ -2321,7 +2310,6 @@
         }
       ],
       "consumers": [
-        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2355,7 +2343,7 @@
     {
       "name": "step_dE_impact_core_J",
       "unit": "J",
-      "description": "giant-impact core heat: the T_core lift under the refitted profile, on the first row after the impact; written only with core_bc = core_module, 0 otherwise",
+      "description": "giant-impact core heat: the T_core lift under the refitted profile, on the first row after the impact; computed only with core_bc = core_module, 0 otherwise",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -2380,7 +2368,7 @@
     {
       "name": "step_dE_impact_core_refit_J",
       "unit": "J",
-      "description": "giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first row after the impact, recorded, not booked; written only with core_bc = core_module, 0 otherwise",
+      "description": "giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first row after the impact, recorded, not booked; computed only with core_bc = core_module, 0 otherwise",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -2478,7 +2466,7 @@
     {
       "name": "step_dE_core_J",
       "unit": "J",
-      "description": "core heat change over the call net of its internal source, plus a T_core jump since the last call; written only with core_bc = core_module, 0 otherwise",
+      "description": "core heat change over the call net of its internal source, plus a T_core jump since the last call; computed only with core_bc = core_module, 0 otherwise",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -2492,7 +2480,6 @@
         }
       ],
       "consumers": [
-        "interior_energetics",
         "utils"
       ],
       "consumers_possible": []
@@ -2500,7 +2487,7 @@
     {
       "name": "E_core_residual_J",
       "unit": "J",
-      "description": "cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J); written only with core_bc = core_module, 0 otherwise",
+      "description": "cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J); computed only with core_bc = core_module, 0 otherwise",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [
@@ -2517,7 +2504,7 @@
     {
       "name": "E_core_residual_frac",
       "unit": "1",
-      "description": "E_core_residual_J / max(sum(|step_dE_F_cmb_J| + |step_dE_impact_core_J|), 1 J); written only with core_bc = core_module, 0 otherwise",
+      "description": "E_core_residual_J / max(sum(|step_dE_F_cmb_J| + |step_dE_impact_core_J|), 1 J); computed only with core_bc = core_module, 0 otherwise",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [

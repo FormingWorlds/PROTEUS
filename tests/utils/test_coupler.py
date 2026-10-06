@@ -5465,6 +5465,37 @@ def test_core_ledger_scale_sums_the_history_of_core_rows_only():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('bad', ['core_C_eff', 'step_dE_F_cmb_J', 'previous'])
+def test_a_non_finite_core_ledger_input_never_resets_the_ledger(bad, caplog):
+    """A NaN capacity still marks a core row, a NaN term carries the previous residual with
+    a warning instead of feeding the NaN-to-zero fill, and a NaN previous residual (an
+    older helpfile) starts from 0; in no case is the cumulative 2e24 J residual erased."""
+    from proteus.utils.coupler import _populate_core_residual
+
+    hf = pd.DataFrame(
+        {
+            'core_C_eff': [1.6e27],
+            'step_dE_F_cmb_J': [1.0e29],
+            'step_dE_impact_core_J': [0.0],
+            'E_core_residual_J': [np.nan if bad == 'previous' else 2.0e24],
+        }
+    )
+    row = {
+        'Time': 300.0,
+        'core_C_eff': np.nan if bad == 'core_C_eff' else 1.6e27,
+        'step_dE_core_J': -5.0e28 + 1.0e24,
+        'step_dE_F_cmb_J': np.nan if bad == 'step_dE_F_cmb_J' else 5.0e28,
+        'step_dE_impact_core_J': 0.0,
+    }
+    with caplog.at_level('WARNING', logger='fwl.proteus.utils.coupler'):
+        _populate_core_residual(hf, row)
+    expected = {'core_C_eff': 3.0e24, 'step_dE_F_cmb_J': 2.0e24, 'previous': 1.0e24}[bad]
+    assert row['E_core_residual_J'] == pytest.approx(expected, rel=1e-6)
+    assert np.isfinite(row['E_core_residual_frac'])
+    assert ('residual carried' in caplog.text) == (bad == 'step_dE_F_cmb_J')
+
+
+@pytest.mark.unit
 def test_core_ledger_is_zero_without_the_core_module():
     """Without the core module (core_C_eff 0) the ledger stays 0 even where the CMB carries
     heat into an energy_balance reservoir, which is not the core budget's heat."""

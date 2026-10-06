@@ -4360,7 +4360,7 @@ def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
 def test_a_skipped_aragog_step_books_no_call_energy():
     """A retry-ladder fallback integrates nothing, so the per-call energy columns are 0
     on its row; a carried step_dE_core_J that holds an impact jump would otherwise add the
-    lift to the core residual again. A column the run does not compute stays NaN."""
+    lift to the core residual again; a NaN left by a failed solve is zeroed as well."""
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import _ARAGOG_CALL_ENERGY_KEYS, run_interior
@@ -4381,10 +4381,10 @@ def test_a_skipped_aragog_step_books_no_call_energy():
     ):
         run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
     assert interior_o.aragog_fail_count == 1
-    assert np.isnan(hf_row['step_dE_Q_tidal_cons_J'])
-    zeroed = [k for k in _ARAGOG_CALL_ENERGY_KEYS if k != 'step_dE_Q_tidal_cons_J']
-    assert [hf_row[k] for k in zeroed] == [0.0] * len(zeroed)
-    assert 'step_dE_core_J' in zeroed
+    assert [hf_row[k] for k in _ARAGOG_CALL_ENERGY_KEYS] == [0.0] * len(
+        _ARAGOG_CALL_ENERGY_KEYS
+    )
+    assert 'step_dE_core_J' in _ARAGOG_CALL_ENERGY_KEYS
 
 
 @pytest.mark.unit
