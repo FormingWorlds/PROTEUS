@@ -587,6 +587,8 @@ def download_stellar_tracks(track: str):
 
     Raises
     ------
+    ValueError
+        ``track`` is not 'Spada' or 'Baraffe'; nothing is downloaded.
     FileNotFoundError
         MORS finished, but the track directory is missing or empty.
     OSError or fwl-io error
@@ -594,9 +596,11 @@ def download_stellar_tracks(track: str):
     """
     from mors import data as mors_data
 
+    accessors = {'Baraffe': mors_data.baraffe_data_dir, 'Spada': mors_data.spada_data_dir}
+    if track not in accessors:
+        raise ValueError(f'Unknown stellar track set {track!r}; choose from {list(accessors)}')
     log.debug(f'Downloading stellar evolution tracks: {track}')
     mors_data.DownloadEvolutionTracks(track)
-    accessors = {'Baraffe': mors_data.baraffe_data_dir, 'Spada': mors_data.spada_data_dir}
     tracks_path = accessors[track]()
     if not (tracks_path.exists() and any(tracks_path.iterdir())):
         raise FileNotFoundError(f'Tracks directory empty or missing: {tracks_path}')

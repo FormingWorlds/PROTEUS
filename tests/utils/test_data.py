@@ -2578,6 +2578,22 @@ def test_download_stellar_tracks_checks_the_track_directory(tmp_path, monkeypatc
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('track', ['', 'spada', 'Phoenix'])
+def test_download_stellar_tracks_rejects_an_unknown_set_before_fetching(
+    tmp_path, monkeypatch, track
+):
+    """A name other than Spada or Baraffe raises before MORS downloads anything."""
+    import proteus.utils.data as data_mod
+
+    fetched = []
+    used = _fake_mors(monkeypatch, {'Baraffe': tmp_path, 'Spada': tmp_path}, fetched.append)
+
+    with pytest.raises(ValueError, match='Unknown stellar track set'):
+        data_mod.download_stellar_tracks(track)
+    assert fetched == [] and used == []
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize('present', [False, True])
 def test_download_stellar_tracks_refuses_a_missing_or_empty_directory(
     tmp_path, monkeypatch, present

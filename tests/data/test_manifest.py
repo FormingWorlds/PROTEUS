@@ -45,6 +45,7 @@ from proteus.data import (
     STELLAR_SPECTRA_SOLAR,
     SURFACE_ALBEDOS_HAMMOND_2024,
     _dataset,
+    _fetcher,
     _fwl_io_derives_the_location,
     dataset_dir,
     fetch_dataset,
@@ -199,16 +200,13 @@ def test_every_owned_dataset_pins_its_dataverse_mirror():
 
 def test_fetcher_passes_the_dataverse_pin_to_fwl_io(monkeypatch, tmp_path):
     """The fetcher PROTEUS builds for a dataset carries its Zenodo record and its mirror."""
-    import fwl_io
-
-    from proteus.data import _fetcher
-
     seen = {}
-    monkeypatch.setattr(fwl_io, 'create_fetcher', lambda **kwargs: seen.update(kwargs))
+    monkeypatch.setattr('fwl_io.create_fetcher', lambda **kwargs: seen.update(kwargs))
     _fetcher(SCATTERING, data_root=tmp_path)
     assert seen['dataverse'] == '10.34894/6Z8Y0Q'
     assert seen['zenodo'] == f'10.5281/zenodo.{SCATTERING_RECORD}'
     assert seen['subdir'] == 'atmos_clim/scattering' and seen['data_root'] == tmp_path
+    assert seen['registry'] == _dataset(SCATTERING).registry() and seen['extract'] is None
 
 
 def test_shared_datasets_resolve_through_the_fwl_io_manifest():
@@ -278,7 +276,28 @@ def test_registries_pin_committed_checksums():
     melting_wolf_bower = _dataset(MELTING_WOLF_BOWER_2018).registry()
 
     assert len(exo) == 1, 'the catalogue ships exactly one file'
-    assert len(scattering) == 17 and all(name.endswith('.mon') for name in scattering)
+    assert set(scattering) == {
+        f'{name}.mon'
+        for name in (
+            'agsoot',
+            'ash',
+            'biogenic',
+            'bioms1',
+            'delta',
+            'dustdiv1',
+            'dustdiv2',
+            'dustdiv3',
+            'dustdiv4',
+            'dustdiv5',
+            'dustdiv6',
+            'frsoot',
+            'naclflm',
+            'nacljet',
+            'nitrate',
+            'soot',
+            'sulph',
+        )
+    }
     assert scattering['sulph.mon'] == 'md5:ff75bb4b4136e562a45075d2ff7290d5'
     assert len(zeng) == 57, 'the Zeng-2019 grid ships 57 curve files'
     assert len(hammond) == 26, 'the Hammond-2024 record ships 25 spectra and a readme'

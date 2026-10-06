@@ -496,7 +496,7 @@ def test_get_solar_raises_if_no_files_found(monkeypatch, tmp_path):
     res = runner.invoke(cli.cli, ['get', 'solar'])
     assert res.exit_code != 0
     assert 'no files were found' in res.output.lower()
-    assert 'fwl-io check proteus' in res.output
+    assert str(_solar_dir(tmp_path)) in res.output
 
 
 @pytest.mark.unit

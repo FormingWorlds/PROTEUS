@@ -515,8 +515,7 @@ def solar():
     # If we get here, the downloader didn't raise but we can't find files.
     msg = (
         'Solar download finished without an exception, but no files were found where expected.\n'
-        f'Expected: {solar_dir}\n'
-        'Check the dataset with: fwl-io check proteus'
+        f'Expected: {solar_dir}'
     )
     raise click.ClickException(msg)
 
