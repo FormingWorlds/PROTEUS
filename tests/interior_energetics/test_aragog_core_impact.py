@@ -52,6 +52,7 @@ def _solver(t_basal=6089.0):
         'length_scale': 7.0e6,
         'fit_profile': False,
         'q_radio': 0.0,
+        'ra_crit_cmb': 450.0,
     }
     seen = []
     eos = SimpleNamespace(temperature=lambda p, s: seen.append((p, s)) or np.array([t_basal]))

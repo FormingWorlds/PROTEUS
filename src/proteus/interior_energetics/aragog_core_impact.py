@@ -9,7 +9,7 @@ import numpy as np
 log = logging.getLogger('fwl.' + __name__)
 
 # core_module params the solver reads itself; the budget factory rejects them.
-_SOLVER_ONLY_KEYS = ('q_radio',)
+_SOLVER_ONLY_KEYS = ('q_radio', 'ra_crit_cmb')
 
 
 def remelt_core_module(

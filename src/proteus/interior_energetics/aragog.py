@@ -1518,10 +1518,11 @@ class AragogRunner:
                     scales,
                     core_bc_mode=core_bc_mode,
                     radio_isotope_params=radio_isotope_params,
-                    # core_module closure: the solver's own budget and
-                    # constant core source; None/0 in every other mode.
+                    # core_module closure: the solver's own budget, constant core
+                    # source and CMB boundary-layer Ra_crit; None/0 in every other mode.
                     core_module_budget=getattr(solver, '_core_module_budget', None),
                     core_module_q_radio=float(getattr(solver, '_core_module_q_radio', 0.0)),
+                    core_module_ra_crit_cmb=getattr(solver, '_core_module_ra_crit_cmb', None),
                 )
                 return rhs_fn, jac_fn
 

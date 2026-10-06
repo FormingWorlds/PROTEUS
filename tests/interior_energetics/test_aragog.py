@@ -2006,10 +2006,12 @@ def test_an_interior_that_moves_under_fixed_radii_is_still_followed(monkeypatch)
 
 
 @pytest.mark.unit
-def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch):
-    """The option Z factory hands the solver's own core budget and core source power to
-    the JAX RHS builder, read at each call, so a budget an impact refit replaces after
-    install reaches the next solve."""
+@pytest.mark.parametrize('ra_crit', [777.0, None], ids=['set', 'absent'])
+def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch, ra_crit):
+    """The option Z factory hands the solver's own core budget, core source power and
+    CMB boundary-layer Ra_crit to the JAX RHS builder, read at each call, so a budget an
+    impact refit replaces after install reaches the next solve; a solver without the
+    Ra_crit attribute passes None, which Aragog resolves to its default."""
     pytest.importorskip('jax')
     pytest.importorskip('aragog.jax.phase')
     from proteus.interior_energetics.aragog import AragogRunner
@@ -2031,6 +2033,8 @@ def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch):
             mesh=SimpleNamespace(core_density=10800.0),
         ),
     )
+    if ra_crit is not None:
+        solver._core_module_ra_crit_cmb = ra_crit
     installed = {}
     solver.set_jax_cvode_factory = lambda f: installed.update(factory=f)
     interior_o = SimpleNamespace(aragog_solver=solver, _spider_eos_dir='/nonexistent')
@@ -2052,7 +2056,7 @@ def test_the_factory_passes_the_core_module_closure_of_the_solver(monkeypatch):
     assert kwargs['core_bc_mode'] == 'core_module'
     assert kwargs['core_module_budget'] == 'refit-sentinel'
     assert kwargs['core_module_q_radio'] == pytest.approx(3.0e12)
-    assert 'core_module_ra_crit_cmb' not in kwargs
+    assert kwargs['core_module_ra_crit_cmb'] == (pytest.approx(ra_crit) if ra_crit else None)
 
 
 @pytest.mark.unit
