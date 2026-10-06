@@ -46,6 +46,7 @@ def test_create_init_falls_back_to_n_workers_when_init_samps_less_than_one(monke
         n_workers,
         failure_codes,
         sigma=None,
+        correlation=None,
     ):
         received.append(n)
         return n
@@ -114,7 +115,9 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
         lambda outdir: {'output': str(tmp_path / 'output' / outdir)},
     )
 
-    def fake_sample_from_grid(output, params, observables, grid_dir, sigma=None):
+    def fake_sample_from_grid(
+        output, params, observables, grid_dir, sigma=None, correlation=None
+    ):
         observed['grid_dir'] = grid_dir
         return 6
 
@@ -263,6 +266,42 @@ def test_sample_from_grid_refuses_a_grid_with_no_readable_case(monkeypatch, tmp_
 
     assert 'Skipping case_0' in caplog.text and 'Skipping case_1' in caplog.text
     assert not (tmp_path / 'out' / 'init.csv').exists()
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_sample_from_grid_scores_with_observable_correlation(monkeypatch, tmp_path):
+    """Grid cases are scored by the correlated chi-squared, with the helpfile row
+    (a pandas Series) matched to the matrix by name: u = (2, 2), rho = 0.6 gives 5.
+    """
+    grid_dir = tmp_path / 'grid'
+    output_dir = tmp_path / 'output'
+    output_dir.mkdir(parents=True)
+    case = grid_dir / 'case_0'
+    case.mkdir(parents=True)
+    pd.DataFrame([{'T_obs': 450.0, 'R_obs': 7.0e6}]).to_csv(
+        case / 'runtime_helpfile.csv', sep=' ', index=False
+    )
+    (case / 'init_coupler.toml').write_text(
+        toml.dumps({'planet': {'mass_tot': 1.0}}), encoding='utf-8'
+    )
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(output_dir)}
+    )
+
+    init_mod.sample_from_grid(
+        output='ignored',
+        params={'planet.mass_tot': [0.0, 10.0]},
+        observables={'R_obs': 6.0e6, 'T_obs': 400.0},
+        grid_dir=str(grid_dir),
+        sigma={'R_obs': 5.0e5, 'T_obs': 25.0},
+        correlation={'R_obs': {'T_obs': 0.6}},
+    )
+
+    y = pd.read_csv(output_dir / 'init.csv')['y'].iloc[0]
+    assert y == pytest.approx(-np.log10(5.0 + 1e-10), rel=1e-9)
+    # Correlation guard: the independent chi-squared of 8 is 0.2 lower.
+    assert abs(y + np.log10(8.0)) > 0.1
 
 
 @pytest.mark.unit

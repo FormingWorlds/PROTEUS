@@ -27,6 +27,7 @@ pytest.importorskip('gpytorch')
 
 import proteus.inference.failures as failures_mod  # noqa: E402
 import proteus.inference.objective as objective_mod  # noqa: E402
+from proteus.inference.likelihood import CorrelationWhitener  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -515,6 +516,56 @@ def test_eval_obj_sigma_converted_to_dex_for_log_observables():
     # Exact for R_obs; ln(1.001)/0.001 = 0.9995 for the log term, hence 2e-3 rel.
     assert chi2 == pytest.approx(2.0, rel=2e-3)
     assert chi2 < 2.0  # a symmetric dex sigma overstates the upward distance
+
+
+def _chi2(sim, tru, sigma, correlation=None):
+    """Chi-squared from `eval_obj`, undoing its -log10 warp (exact while chi2 >> 1e-10)."""
+    whitener = None if correlation is None else CorrelationWhitener(list(tru), correlation)
+    return 10 ** (-objective_mod.eval_obj(sim, tru, sigma, whitener).item())
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_eval_obj_correlation_matches_bivariate_chi_squared(monkeypatch):
+    """Two correlated observables give (u1^2 - 2 rho u1 u2 + u2^2) / (1 - rho^2),
+    with u = (sim - true) / sigma, whatever order they are listed in.
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru = {'R_obs': 6.0e6, 'T_obs': 400.0}
+    sigma = {'R_obs': 5.0e5, 'T_obs': 25.0}
+    sim = {'R_obs': 7.0e6, 'T_obs': 450.0}  # u = (2, 2)
+    corr = {'R_obs': {'T_obs': 0.6}}
+
+    # (4 - 4.8 + 4) / 0.64 = 5; ignoring rho gives 8, flipping its sign 20.
+    assert _chi2(sim, tru, sigma, corr) == pytest.approx(5.0, rel=1e-9)
+    assert _chi2(sim, tru, sigma) == pytest.approx(8.0, rel=1e-9)
+    # Residuals and pair listed in reverse order.
+    sim_rev = {'T_obs': 450.0, 'R_obs': 7.0e6}
+    assert _chi2(sim_rev, tru, sigma, {'T_obs': {'R_obs': 0.6}}) == pytest.approx(5.0, rel=1e-9)
+    # rho = 0 reproduces the independent chi-squared.
+    assert _chi2(sim, tru, sigma, {'R_obs': {'T_obs': 0.0}}) == pytest.approx(8.0, rel=1e-9)
+    # A residual against the correlation, u = (2, -2), costs more: (4 + 4.8 + 4) / 0.64.
+    anti = {'R_obs': 7.0e6, 'T_obs': 350.0}
+    assert _chi2(anti, tru, sigma, corr) == pytest.approx(20.0, rel=1e-9)
+
+    with pytest.raises(ValueError, match='needs sigma'):
+        objective_mod.eval_obj(sim, tru, None, CorrelationWhitener(list(tru), corr))
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_eval_obj_correlation_kept_for_log_observables():
+    """A log-space observable's sigma is converted to dex, its correlation used unchanged."""
+    # atm_kg_per_mol is log-scaled, R_obs linear (utils.coupler).
+    tru = {'atm_kg_per_mol': 0.02, 'R_obs': 6.0e6}
+    sigma = {'atm_kg_per_mol': 2.0e-5, 'R_obs': 1.0e5}
+    # One sigma above the target on both, so u = (1, 1) exactly.
+    sim = {'atm_kg_per_mol': 0.02 * 10 ** (2.0e-5 / (0.02 * math.log(10.0))), 'R_obs': 6.1e6}
+
+    chi2 = _chi2(sim, tru, sigma, {'atm_kg_per_mol': {'R_obs': -0.5}})
+
+    assert chi2 == pytest.approx((1 + 1 + 1) / (1 - 0.25), rel=1e-9)  # 4
+    assert abs(chi2 - 2.0) > 0.5  # rho ignored
 
 
 @pytest.mark.unit

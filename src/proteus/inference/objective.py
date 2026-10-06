@@ -20,6 +20,7 @@ from proteus.inference.failures import (
     find_run_logfile,
     record_failure,
 )
+from proteus.inference.likelihood import CorrelationWhitener
 from proteus.inference.runner import ProteusRunner
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import element_list, gas_list
@@ -452,12 +453,15 @@ def log_warp(sq_dist):
     return warped_dist
 
 
-def eval_obj(sim_dict, tru_dict, sigma=None):
+def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None):
     """Evaluate objective value from simulated and target observables.
 
     The metric compares each observable in either linear or log space,
     accumulates squared normalized differences, and applies `log_warp`.
     A small offset is applied to the denominator to avoid division by zero.
+
+    With `whitener`, the sum of squares becomes the correlated chi-squared
+    u^T R^-1 u; R applies unchanged to log-space observables.
 
     Parameters
     ----------
@@ -466,6 +470,7 @@ def eval_obj(sim_dict, tru_dict, sigma=None):
     - sigma (dict, optional): 1-sigma uncertainty of each observable, keyed
       like `sim_dict` and in the same units as the observable. If None, the
       relative-difference objective is used.
+    - whitener (CorrelationWhitener, optional): Observable correlations; needs `sigma`.
 
     Returns
     ----------
@@ -477,6 +482,8 @@ def eval_obj(sim_dict, tru_dict, sigma=None):
         missing = [k for k in sim_dict.keys() if k not in sigma]
         if missing:
             raise KeyError(f'No sigma given for observables: {missing}')
+    if whitener is not None and sigma is None:
+        raise ValueError('correlation needs sigma: the correlation matrix scales sigma')
 
     sim_vals = []
     tru_vals = []
@@ -512,7 +519,10 @@ def eval_obj(sim_dict, tru_dict, sigma=None):
         sigma_tensor = torch.tensor(sig_vals, dtype=dtype).reshape(1, -1)
         diff = (sim - true_y) / sigma_tensor
 
-    sq_dist = (diff**2).sum(dim=1, keepdim=True)
+    if whitener is None:
+        sq_dist = (diff**2).sum(dim=1, keepdim=True)
+    else:
+        sq_dist = whitener.chi_squared(list(sim_dict.keys()), diff)
 
     obj = log_warp(sq_dist)
 
@@ -573,15 +583,17 @@ def J(
     ref_config: str,
     failure_codes: list[int] = [],
     sigma: dict | None = None,
+    whitener: CorrelationWhitener | None = None,
 ) -> torch.Tensor:
     """Run PROTEUS, and then compute the objective value for a given normalized input.
 
     Transforms normalized `x` to raw parameters, runs the simulator,
     and computes the squared-error based objective:
 
-        J = log_10(sum((1 - sim/true)^2) + eps)
+        J = -log_10(sum((1 - sim/true)^2) + eps)
 
-    or, when `sigma` is given, the same with sum(((sim - true) / sigma)^2).
+    or, when `sigma` is given, the same with sum(((sim - true) / sigma)^2),
+    correlated by `whitener` if given.
 
     Parameters
     ----------
@@ -595,6 +607,7 @@ def J(
     - failure_codes (list[int]): PROTEUS status codes that complete normally but
       that this study excludes from the fit.
     - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
+    - whitener (CorrelationWhitener | None): Observable correlations, passed to `eval_obj`.
 
     Returns
     ----------
@@ -646,7 +659,7 @@ def J(
         return _handle_unscored(failure, output)
 
     # Compute value of objective function given these results
-    return eval_obj(sim_vals, true_observables, sigma)
+    return eval_obj(sim_vals, true_observables, sigma, whitener)
 
 
 def _handle_unscored(failure: ProteusRunFailure, output: str) -> torch.Tensor:
@@ -689,6 +702,7 @@ def prot_builder(
     ref_config: str,
     failure_codes: list[int] = [],
     sigma: dict | None = None,
+    correlation: dict | None = None,
 ) -> callable:
     """Factory returning a BO-compatible objective function for PROTEUS inference.
 
@@ -705,6 +719,7 @@ def prot_builder(
     - failure_codes (list[int]): PROTEUS status codes that complete normally but
       that this study excludes from the fit.
     - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
+    - correlation (dict | None): Observable correlations, factored once here.
 
     Returns
     ----------
@@ -714,6 +729,9 @@ def prot_builder(
     param_keys = list(parameters.keys())
     d = len(param_keys)
     bounds = torch.tensor(list(parameters.values()), dtype=dtype).T
+    whitener = (
+        None if correlation is None else CorrelationWhitener(list(observables), correlation)
+    )
 
     def f(x_norm: torch.Tensor) -> torch.Tensor:
         """Inference objective function accepting normalized inputs.
@@ -739,6 +757,7 @@ def prot_builder(
             output=output,
             failure_codes=failure_codes,
             sigma=sigma,
+            whitener=whitener,
         )
 
         # Check J is finite

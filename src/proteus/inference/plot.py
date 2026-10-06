@@ -27,6 +27,7 @@ from matplotlib.ticker import MaxNLocator
 
 from proteus import Proteus
 from proteus.inference.failures import read_failure_records
+from proteus.inference.likelihood import CorrelationWhitener
 from proteus.inference.objective import EPS_CLIP, eval_obj
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.inference.utils import get_obs
@@ -703,7 +704,9 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
     plt.close(fig)
 
 
-def _collect_case_observables(directory, obs: dict, sigma: dict | None = None) -> pd.DataFrame:
+def _collect_case_observables(
+    directory, obs: dict, sigma: dict | None = None, correlation: dict | None = None
+) -> pd.DataFrame:
     """Read the final observables and fit quality of every case on disk.
 
     The objective is recomputed from the stored helpfile rather than read back
@@ -713,6 +716,7 @@ def _collect_case_observables(directory, obs: dict, sigma: dict | None = None) -
     `excluded`, one column per observable, and `J`.
     """
     obs_keys = list(obs.keys())
+    whitener = None if correlation is None else CorrelationWhitener(obs_keys, correlation)
 
     excluded = {
         (int(rec['worker']), int(rec['iter'])) for rec in read_failure_records(directory)
@@ -737,7 +741,7 @@ def _collect_case_observables(directory, obs: dict, sigma: dict | None = None) -
                 'case': f'w{w}_i{i}',
                 'excluded': (w, i) in excluded,
                 **sim,
-                'J': float(eval_obj(sim, obs, sigma)),
+                'J': float(eval_obj(sim, obs, sigma, whitener)),
             }
         )
 
@@ -861,7 +865,9 @@ def _panel_residual(ax, obs_keys: list[str], pct: np.ndarray, best_J: float) -> 
     ax.grid(axis='x', color='0.9', lw=0.6)
 
 
-def plot_result_observables(obs: dict, directory, best_config=None, sigma=None):
+def plot_result_observables(
+    obs: dict, directory, best_config=None, sigma=None, correlation=None
+):
     """Plot the best-fit final observables against the target observables.
 
     Two panels share the observable rows: every scored case as its ratio to
@@ -874,6 +880,7 @@ def plot_result_observables(obs: dict, directory, best_config=None, sigma=None):
     - best_config (str | Path | None): Path to the best fitting case's config
       TOML.
     - sigma (dict | None): Uncertainty of each observable
+    - correlation (dict | None): Correlations between the observable uncertainties.
 
     Returns
     ----------
@@ -881,7 +888,7 @@ def plot_result_observables(obs: dict, directory, best_config=None, sigma=None):
     """
     obs_keys = list(obs.keys())
 
-    df = _collect_case_observables(directory, obs, sigma)
+    df = _collect_case_observables(directory, obs, sigma, correlation)
     if df.empty:
         log.warning('No case produced observables; skipping the observable comparison')
         return
@@ -971,7 +978,13 @@ def _panel_position(ax, pos, truth_pos, best_pos, labels, best_case: str) -> Non
 
 
 def plot_result_parameters(
-    pars: dict, truth: dict, obs: dict, directory, best_config=None, sigma=None
+    pars: dict,
+    truth: dict,
+    obs: dict,
+    directory,
+    best_config=None,
+    sigma=None,
+    correlation=None,
 ):
     """Plot the best-fit parameters against the true parameters, if known.
 
@@ -983,6 +996,7 @@ def plot_result_parameters(
     - directory (str): Base dir where the inference was performed.
     - best_config (str | Path | None): Path to the best fitting case's config TOML.
     - sigma (dict | None): Uncertainty of each observable, as used by the optimiser.
+    - correlation (dict | None): Correlations between the observable uncertainties.
 
     Returns
     ----------
@@ -990,7 +1004,7 @@ def plot_result_parameters(
     """
     par_keys = list(pars.keys())
 
-    df = _collect_case_observables(directory, obs, sigma)
+    df = _collect_case_observables(directory, obs, sigma, correlation)
     ok = df[~df['excluded']].copy() if not df.empty else df
     if ok.empty:
         log.warning('No scored case to compare with the true parameters; skipping')

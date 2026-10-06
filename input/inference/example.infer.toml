@@ -74,6 +74,11 @@ n_steps    = 100       # Total number of evaluations (i.e. BO steps)
 # "S/O_atm" = 0.1
 # "O/H_atm" = 0.3
 
+# Optional correlation coefficient between the uncertainties of two observables, in (-1, 1).
+# Needs [sigma]. Give each pair once; pairs not listed are uncorrelated. Illustrative only.
+# [correlation.R_obs]
+# "g_obs" = -0.4
+
 # Optional true value of each parameter, when the observables above came from a simulation
 # with known parameters.
 # [truth]

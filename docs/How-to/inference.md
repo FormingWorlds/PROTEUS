@@ -94,6 +94,34 @@ small compared to the value. A warning is logged at start-up when it exceeds 30 
 The two objectives are on different scales, so compare `J` only between studies that use the same
 one. The objective in use is reported at start-up.
 
+### Correlated uncertainties
+
+When the errors of two observables are correlated, for example abundance ratios from one
+retrieval, or a surface gravity derived from a measured radius, an optional `[correlation]` table
+gives their correlation coefficient. It needs `[sigma]`. Each pair is given once, as a nested table,
+and pairs not listed are uncorrelated:
+
+```toml
+[correlation.R_obs]
+"g_obs" = -0.4
+"T_obs" = 0.2
+```
+
+The sum of squares is then replaced by the full chi-squared
+
+```
+chi2 = u^T R^-1 u,    u = (sim - true) / sigma
+```
+
+where `R` is the correlation matrix, with ones on the diagonal. This is the same as `r^T C^-1 r` with
+the covariance `C_ij = rho_ij sigma_i sigma_j`. Each coefficient must lie strictly between -1 and 1,
+and the matrix as a whole must be positive definite; both are checked at start-up. For an
+observable compared as `log10` values the coefficient is used unchanged, since to first order the
+conversion to log10 units only rescales each uncertainty.
+
+The correlations describe the measurement errors, not the way the model links observables: a
+model that predicts both radius and gravity from one planet mass already accounts for that link.
+
 ### Known true parameters
 
 When the target observables were extracted from a simulation whose parameters you know (a

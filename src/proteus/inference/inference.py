@@ -32,6 +32,7 @@ from proteus.config import (
 from proteus.inference.async_BO import checkpoint, parallel_process
 from proteus.inference.failures import ABORT_ON_FAILURE_ENV, summarise_failures
 from proteus.inference.gen_D_init import create_init
+from proteus.inference.likelihood import validate_correlation
 from proteus.inference.objective import (
     SPECTRAL_CACHE_ENV,
     WORKER_CONFIG_OVERRIDES,
@@ -282,6 +283,11 @@ def run_inference(config):
     # Optional uncertainty of each observable, in the observable's own units
     config['sigma'] = validate_sigma(config['observables'], config.get('sigma'))
 
+    # Optional correlations between the observable uncertainties
+    config['correlation'] = validate_correlation(
+        config['observables'], config['sigma'], config.get('correlation')
+    )
+
     # Optional true value of each parameter, for studies of a known simulation
     config['truth'] = validate_truth(config['parameters'], config.get('truth'))
 
@@ -360,7 +366,10 @@ def run_inference(config):
     log.info(f'    kernel        = {config["kernel"]}')
     log.info(f'    acquisition   = {config["acqf"]}')
     log.info(f'    dispatch      = {dispatch_mode()}')
-    log.info(f'    objective     = {"chi-squared" if config["sigma"] else "relative"}')
+    objective = 'chi-squared' if config['sigma'] else 'relative'
+    if config['correlation']:
+        objective += ', correlated'
+    log.info(f'    objective     = {objective}')
     log.info(' ')
     t_0 = time.perf_counter()
 
@@ -378,6 +387,7 @@ def run_inference(config):
         config['parameters'],
         config['failure_codes'],
         config['sigma'],
+        config['correlation'],
     )
 
     t_1 = time.perf_counter()
@@ -402,7 +412,11 @@ def run_inference(config):
     plotBO.plot_result_objective(D_final, config['parameters'], n_init, dirs['output'])
     plotBO.plot_result_correlation(config['parameters'], config['observables'], dirs['output'])
     plotBO.plot_result_observables(
-        config['observables'], dirs['output'], best_config, config['sigma']
+        config['observables'],
+        dirs['output'],
+        best_config,
+        config['sigma'],
+        config['correlation'],
     )
     if config['truth'] is not None:
         plotBO.plot_result_parameters(
@@ -412,6 +426,7 @@ def run_inference(config):
             dirs['output'],
             best_config,
             config['sigma'],
+            config['correlation'],
         )
 
     # Make PROTEUS plots for best fitting case

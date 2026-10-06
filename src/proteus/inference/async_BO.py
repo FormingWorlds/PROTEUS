@@ -291,6 +291,7 @@ def parallel_process(
     parameters: dict,
     failure_codes: list[int],
     sigma: dict | None = None,
+    correlation: dict | None = None,
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -313,6 +314,7 @@ def parallel_process(
       that this run excludes from the fit.
     - sigma (dict | None): Uncertainty of each observable, or None for the
       relative-difference objective.
+    - correlation (dict | None): Correlations between the observable uncertainties.
 
     Returns
     ----------
@@ -330,6 +332,7 @@ def parallel_process(
         output=output,
         failure_codes=failure_codes,
         sigma=sigma,
+        correlation=correlation,
     )
 
     # Build kernel

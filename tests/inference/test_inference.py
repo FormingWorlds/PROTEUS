@@ -536,6 +536,70 @@ def test_run_inference_rejects_incomplete_sigma_before_emptying_output(monkeypat
 
 
 @pytest.mark.unit
+def test_run_inference_rejects_invalid_correlation_before_emptying_output(
+    monkeypatch, tmp_path
+):
+    """An invalid ``[correlation]`` table is refused before the output folder is
+    emptied; a valid one is stored back as floats.
+    """
+    config = {
+        'output': 'unit_inference',
+        'logging': 'INFO',
+        'n_workers': 1,
+        'ref_config': BASE_CONFIG,
+        'n_steps': 1,
+        'kernel': 'MAT3/2',
+        'acqf': 'LogEI',
+        'seed': 1,
+        'observables': {'R_obs': 6.0e6, 'T_obs': 400.0, 'g_obs': 9.8},
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
+        'correlation': {'R_obs': {'T_obs': 0.5}},
+    }
+    output_root = tmp_path / 'output'
+    output_root.mkdir()
+    previous = output_root / 'init.csv'
+    previous.write_text('x_0,y\n0.5,1.0\n', encoding='utf-8')
+
+    monkeypatch.setattr(
+        inference_mod,
+        'get_proteus_directories',
+        lambda _output: {'output': str(output_root), 'proteus': ''},
+    )
+    monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
+    monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
+    for name in (
+        'PROTEUS_INFERENCE_CHILD_TIMEOUT_S',
+        'PROTEUS_INFERENCE_DISPATCH',
+        'PROTEUS_INFERENCE_RUNNER_MAX_JOBS',
+        inference_mod.ABORT_ON_FAILURE_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    def _stop(cfg):
+        raise RuntimeError('stop after validation')
+
+    monkeypatch.setattr(inference_mod, 'create_init', _stop)
+
+    with pytest.raises(ValueError, match='sigma'):
+        inference_mod.run_inference(dict(config))
+    config['sigma'] = {'R_obs': 1.0e5, 'T_obs': 20.0, 'g_obs': 0.5}
+    # Pairwise valid, but smallest eigenvalue 1 - 1.8 < 0.
+    bad = {'R_obs': {'T_obs': 0.9, 'g_obs': 0.9}, 'T_obs': {'g_obs': -0.9}}
+    with pytest.raises(ValueError, match='positive definite'):
+        inference_mod.run_inference({**config, 'correlation': bad})
+    # A check placed after `safe_rm` would leave this file deleted.
+    assert previous.read_text(encoding='utf-8') == 'x_0,y\n0.5,1.0\n'
+
+    config['correlation'] = {'R_obs': {'T_obs': 1}}
+    with pytest.raises(ValueError, match=r'\(-1, 1\)'):
+        inference_mod.run_inference(dict(config))
+    config['correlation'] = {'R_obs': {'T_obs': -0.25}}
+    with pytest.raises(RuntimeError, match='stop after validation'):
+        inference_mod.run_inference(config)
+    assert config['correlation'] == {'R_obs': {'T_obs': pytest.approx(-0.25)}}
+
+
+@pytest.mark.unit
 def test_validate_truth_returns_ordered_floats_and_rejects_bad_tables():
     """A complete ``[truth]`` table comes back as floats in parameter order;
     a missing, unknown, non-finite, boolean or non-positive log-scaled entry
