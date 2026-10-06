@@ -357,6 +357,70 @@ class TestIdempotency:
         assert result.stdout.strip() == path_with_spaces
 
 
+def _install_sh_blocks(*markers: str) -> str:
+    """The shipped lines of install.sh from each line holding a marker to the next blank line."""
+    lines = INSTALL_SH.read_text().splitlines()
+    blocks = []
+    for marker in markers:
+        start = next(i for i, ln in enumerate(lines) if ln.startswith(marker))
+        end = next(i for i, ln in enumerate(lines) if not ln.strip() and i > start)
+        blocks += lines[start:end]
+    return '\n'.join(blocks) + '\n'
+
+
+def _run_with_helpers(script: str, **env: str) -> subprocess.CompletedProcess:
+    """Run a bash snippet after install.sh's colour codes and log helpers, under its shell options."""
+    defs = 'set -euo pipefail\n' + _install_sh_blocks("RED='", 'info()', 'detect_shell_rc() {')
+    return subprocess.run(
+        ['bash', '-c', defs + script],
+        capture_output=True,
+        text=True,
+        env={**os.environ, **env},
+        timeout=10,
+    )
+
+
+class TestShellRcDetection:
+    """Verify the rc file path the installer captures from detect_shell_rc."""
+
+    @pytest.mark.parametrize(
+        ('shell', 'rc', 'warns'),
+        [
+            ('/usr/local/bin/fish', '.bashrc', True),
+            ('/bin/zsh', '.zshrc', False),
+            ('/bin/bash', '.bashrc', False),
+        ],
+    )
+    def test_captured_rc_file_is_only_the_path(self, tmp_path, shell, rc, warns):
+        """RC_FILE holds exactly the path; the unsupported-shell warning goes to stderr.
+
+        Discrimination: with warn on stdout, the fish case captures the
+        warning line in front of the path, so the equality fails.
+        """
+        out = _run_with_helpers(
+            'RC_FILE=$(detect_shell_rc)\nprintf "%s" "$RC_FILE"\n',
+            SHELL=shell,
+            HOME=str(tmp_path),
+        )
+        assert out.returncode == 0, out.stderr
+        assert out.stdout == str(tmp_path / rc)
+        assert ("Unsupported shell 'fish'" in out.stderr) is warns
+
+    def test_diagnostics_go_to_stderr_and_info_to_stdout(self):
+        """warn and fail write only to stderr, info only to stdout.
+
+        Discrimination: a captured helper that calls warn or fail keeps its
+        stdout clean only while both stay off stdout; info must not move.
+        """
+        out = _run_with_helpers('info one\nwarn two\nfail three\n')
+        assert out.returncode == 0, out.stderr
+        assert '[INFO]' in out.stdout and 'one' in out.stdout
+        assert '[WARN]' not in out.stdout and '[FAIL]' not in out.stdout
+        assert '[WARN]' in out.stderr and 'two' in out.stderr
+        assert '[FAIL]' in out.stderr and 'three' in out.stderr
+        assert '[INFO]' not in out.stderr
+
+
 class TestDiskSpaceCheck:
     """Verify disk space detection."""
 
