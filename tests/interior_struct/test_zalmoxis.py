@@ -2166,6 +2166,7 @@ def _run_gate_solver(
     real_melting_curves=False,
     mzf=None,
     use_anderson=None,
+    outer_solver=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -2203,6 +2204,10 @@ def _run_gate_solver(
     mzf : float, optional
         Value for ``config.interior_struct.zalmoxis.mushy_zone_factor``;
         the default keeps the config helper's 0.8.
+    use_anderson : bool, optional
+        Value for ``config.interior_struct.zalmoxis.use_anderson``.
+    outer_solver : str, optional
+        Value for ``config.interior_struct.zalmoxis.outer_solver``.
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -2223,6 +2228,8 @@ def _run_gate_solver(
     config.interior_struct.zalmoxis.dry_mantle = dry_mantle
     if use_anderson is not None:
         config.interior_struct.zalmoxis.use_anderson = use_anderson
+    if outer_solver is not None:
+        config.interior_struct.zalmoxis.outer_solver = outer_solver
     if mzf is not None:
         config.interior_struct.zalmoxis.mushy_zone_factor = mzf
     melting_patch_kwargs = (
@@ -2681,21 +2688,21 @@ def test_zalmoxis_solver_init_call_keeps_internal_mode_dispatch(tmp_path, monkey
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('use_anderson', [True, False])
+@pytest.mark.parametrize('outer_solver', ['newton', 'picard'])
 def test_zalmoxis_solver_guard_preserves_anderson_and_excludes_jax_without_temp_data(
-    tmp_path, monkeypatch, use_anderson
+    tmp_path, monkeypatch, outer_solver
 ):
-    """Invariant: JAX + internal temperature mode + Newton stays excluded.
+    """Invariant: calls without temperature data exclude JAX across outer solvers.
 
-    A call without temperature data and use_jax=True in the config reaches
-    Zalmoxis with use_jax=False and use_anderson matching the configured value.
+    A call arriving without temperature data disables JAX while preserving
+    Anderson acceleration as configured, whether outer_solver is newton or picard.
     """
     main_mock, _, _, _, _, _, _ = _run_gate_solver(
-        tmp_path, monkeypatch, 'PALEOS-2phase:MgSiO3', None, None, use_anderson=use_anderson
+        tmp_path, monkeypatch, 'PALEOS-2phase:MgSiO3', None, None, outer_solver=outer_solver
     )
     config_params = main_mock.call_args.args[0]
     assert config_params['use_jax'] is False
-    assert config_params['use_anderson'] is use_anderson
+    assert config_params['use_anderson'] is True
 
 
 @pytest.mark.unit
