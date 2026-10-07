@@ -1019,6 +1019,24 @@ def test_read_helpfile_refuses_a_file_that_predates_schema_columns():
 
 
 @pytest.mark.unit
+def test_orbital_energy_rate_column_is_a_diagnostic_zero_filled_on_resume():
+    """``dEdt_orb`` is a derived diagnostic that nothing reads back, so a run
+    written before the column existed resumes with it zeroed, while every
+    other column keeps the value the file holds."""
+    assert 'dEdt_orb' in GetHelpfileKeys()
+    assert 'dEdt_orb' in GetHelpfileDiagnosticKeys()
+    assert 'dEdt_orb' not in GetHelpfileCoreKeys()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, ['dEdt_orb'], n_rows=2)
+        hf = ReadHelpfileFromCSV(tmpdir)
+
+        assert (hf['dEdt_orb'] == 0.0).all()
+        # Discrimination: the neighbouring orbit columns keep their written values.
+        assert (hf['eccentricity'] > 0.0).all()
+        assert (hf['T_cmb_node'] > 0.0).all()
+
+
+@pytest.mark.unit
 def test_helpfile_without_diagnostic_column_resumes_with_zero_fill(caplog):
     """A helpfile short only of a diagnostic column loads, with that column zeroed.
 
@@ -1371,7 +1389,8 @@ def test_postprocessing_set_does_not_lose_a_key():
         'atm_kg_per_mol',
         'R_star',
         'T_star',
-        'separation',
+        'semimajorax',
+        'eccentricity',
     }
     assert named <= required, 'dropped from the requirement: %s' % sorted(named - required)
 
@@ -1392,7 +1411,7 @@ def test_postprocessing_still_refuses_a_column_it_does_read():
     the synthesis code reads without a fallback still has to be there.
     """
     probes = list(_POSTPROCESSING_FIXED_KEYS) + ['H2O_vmr', 'O_kg_atm']
-    assert len(probes) == 11, 'expected every fixed key plus one of each expansion'
+    assert len(probes) == 12, 'expected every fixed key plus one of each expansion'
     for needed in probes:
         assert needed in GetPostprocessingKeys()
         with tempfile.TemporaryDirectory() as tmpdir:

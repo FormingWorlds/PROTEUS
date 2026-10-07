@@ -18,6 +18,7 @@ from proteus.atmos_clim.common import (
     clip_radius_to_hill,
     require_spfile_path,
 )
+from proteus.star.wrapper import flux_weighted_distance
 from proteus.utils.constants import const_R, gas_list
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 
@@ -508,14 +509,13 @@ def update_bolometry(hf_row: dict):
     # Transit depth
     hf_row['transit_depth'] = (hf_row['R_obs'] / hf_row['R_star']) ** 2.0
 
-    # Eclipse depth
-    #    Accounting for fact that F_ins is scaled to TOA, not to stellar surface.
-    #    Also, F_ins can be zero when bol_scale is being appled.
+    # Eclipse depth. F_ins is the flux at the flux-weighted distance, not at
+    # the stellar surface, and can be zero when bol_scale is applied.
     if hf_row['F_ins'] == 0.0:
         hf_row['eclipse_depth'] = 0.0
     else:
         hf_row['eclipse_depth'] = ((hf_row['F_olr'] + hf_row['F_sct']) / hf_row['F_ins']) * (
-            hf_row['R_obs'] / hf_row['separation']
+            hf_row['R_obs'] / flux_weighted_distance(hf_row)
         ) ** 2.0
 
 

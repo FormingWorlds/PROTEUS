@@ -25,7 +25,7 @@ import pytest
 
 import proteus.atmos_clim.wrapper as atmos_wrapper
 from proteus.atmos_clim.common import Atmos_t, LevelsSource
-from proteus.utils.constants import const_R
+from proteus.utils.constants import AU, const_R, const_sigma
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -122,6 +122,8 @@ def test_update_bolometry_transit_depth_is_ratio_of_radii_squared():
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
     }
     atmos_wrapper.update_bolometry(hf_row)
 
@@ -136,13 +138,13 @@ def test_update_bolometry_transit_depth_is_ratio_of_radii_squared():
 
 @pytest.mark.physics_invariant
 def test_update_bolometry_eclipse_depth_is_flux_ratio_times_radius_ratio_squared():
-    """Eclipse depth = ((F_olr + F_sct) / F_ins) * (R_obs / separation)^2.
-    The F_olr + F_sct is the planet's thermal+scattered flux at TOA;
-    F_ins is the incoming stellar flux at TOA; the (R_obs/separation)^2
-    factor accounts for the inverse-square attenuation from the planet
-    to the star.
+    """Eclipse depth = ((F_olr + F_sct) / F_ins) * (R_obs / d)^2, with d the
+    flux-weighted distance a (1 - e^2)^(1/4), which is a on this circular
+    orbit. F_olr + F_sct is the planet's thermal and scattered flux at TOA,
+    F_ins the stellar flux arriving at d, and (R_obs / d)^2 carries F_ins
+    back to the stellar surface.
 
-    Discrimination: a regression that dropped the (R_obs/separation)^2
+    Discrimination: a regression that dropped the (R_obs / d)^2 factor
     would yield a much larger depth (~order unity).
     """
     hf_row = {
@@ -152,6 +154,8 @@ def test_update_bolometry_eclipse_depth_is_flux_ratio_times_radius_ratio_squared
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,  # 1 AU
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
     }
     atmos_wrapper.update_bolometry(hf_row)
 
@@ -166,6 +170,46 @@ def test_update_bolometry_eclipse_depth_is_flux_ratio_times_radius_ratio_squared
 
 
 @pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'ecc, separation_bias',
+    [(0.3, 0.873), (0.7, 0.460)],
+    ids=['mildly_eccentric', 'highly_eccentric'],
+)
+def test_update_bolometry_eclipse_depth_is_the_surface_brightness_ratio_when_eccentric(
+    ecc, separation_bias
+):
+    """On an eccentric orbit F_ins is the stellar flux at the flux-weighted
+    distance a (1 - e^2)^(1/4), so the depth must reduce to the planet-to-star
+    surface brightness ratio times (R_obs / R_star)^2, independent of the
+    orbit. Scaling with the time-averaged separation a (1 + e^2 / 2) instead
+    biases it by sqrt(1 - e^2) / (1 + e^2 / 2)^2: 0.873 at e = 0.3 and 0.460
+    at e = 0.7.
+    """
+    sigma_t4 = const_sigma * 5772.0**4  # stellar surface flux [W m-2]
+    r_star = 6.96e8
+    sma = 0.029 * AU
+    d_flux = sma * (1.0 - ecc**2) ** 0.25
+    hf_row = {
+        'R_obs': 9.0e6,
+        'R_star': r_star,
+        'F_olr': 2.0e5,
+        'F_sct': 0.0,
+        'F_ins': sigma_t4 * (r_star / d_flux) ** 2,
+        'separation': sma * (1.0 + 0.5 * ecc**2),
+        'semimajorax': sma,
+        'eccentricity': ecc,
+    }
+    atmos_wrapper.update_bolometry(hf_row)
+
+    expected = 2.0e5 / sigma_t4 * (9.0e6 / r_star) ** 2
+    assert hf_row['eclipse_depth'] == pytest.approx(expected, rel=1e-12)
+    # Guard: a depth scaled with the separation lands at the bias above.
+    wrong = hf_row['F_olr'] / hf_row['F_ins'] * (9.0e6 / hf_row['separation']) ** 2
+    assert wrong / expected == pytest.approx(separation_bias, abs=1e-3)
+    assert 1e-7 < hf_row['eclipse_depth'] < 1e-5  # about 0.5 ppm
+
+
+@pytest.mark.physics_invariant
 def test_update_bolometry_eclipse_depth_scales_with_flux_excess():
     """At fixed geometry, doubling (F_olr + F_sct) doubles the eclipse
     depth (linear in planet's emission flux). Discrimination: a
@@ -177,6 +221,8 @@ def test_update_bolometry_eclipse_depth_scales_with_flux_excess():
         'R_star': 6.96e8,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
     }
     hf_base = {**base_geometry, 'F_olr': 200.0, 'F_sct': 100.0}
     hf_hot = {**base_geometry, 'F_olr': 400.0, 'F_sct': 200.0}
@@ -426,6 +472,8 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
     }
     atm_output = {'albedo': 0.2, 'F_atm': 100.0}
 
@@ -822,6 +870,8 @@ def test_run_atmosphere_carries_levels_into_the_row_escape_reads():
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
         **{key: 0.0 for key in _levels(1.0, 1.0)},
     }
 
@@ -924,6 +974,8 @@ def test_run_atmosphere_takes_the_resume_fallback_from_the_last_committed_row():
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
         **{key: 0.0 for key in _levels(1.0, 1.0)},
     }
 
@@ -1114,6 +1166,8 @@ def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
         'hill_radius': 1.0e8,
         **{key: 0.0 for key in _levels(1.0, 1.0)},
     }
@@ -1214,6 +1268,8 @@ def test_run_atmosphere_does_not_place_gravity_from_a_radius_that_is_not_a_numbe
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
         'hill_radius': 1.0e8,
         **{key: 0.0 for key in _levels(1.0, 1.0)},
     }
@@ -1312,6 +1368,8 @@ def test_run_atmosphere_keeps_a_level_the_bound_does_not_move():
         'F_sct': 100.0,
         'F_ins': 1361.0,
         'separation': 1.5e11,
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
         'hill_radius': 1.0e8,
         **{key: 0.0 for key in _levels(1.0, 1.0)},
     }
