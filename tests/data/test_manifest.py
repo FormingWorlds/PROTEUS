@@ -78,6 +78,8 @@ MELTING_WOLF_BOWER_2018_RECORD = '15728072'
 
 # Datasets PROTEUS reads from the fwl-io shared manifest: key -> (subdir, record).
 SHARED_DATASETS = {
+    MASS_RADIUS_ZENG_2019: ('observe/mass_radius/zeng_2019', ZENG_2019_RECORD),
+    EOS_SEAGER_2007: ('interior_struct/eos/seager_2007', SEAGER_2007_RECORD),
     EOS_WOLF_BOWER_2018: ('interior/eos/wolf_bower_2018_1tpa', WOLF_BOWER_RECORD),
     EOS_RTPRESS_100TPA: ('interior/eos/rtpress_melt_100tpa', RTPRESS_RECORD),
     EOS_PALEOS_MGSIO3: ('interior/eos/paleos_mgsio3', PALEOS_2PHASE_RECORD),
@@ -129,9 +131,7 @@ SPECTRAL_RECORDS = {
 # Datasets declared in proteus_manifest.toml: only data PROTEUS alone reads.
 _OWNED_KEYS = {
     EXOPLANET_REFERENCE,
-    MASS_RADIUS_ZENG_2019,
     SURFACE_ALBEDOS_HAMMOND_2024,
-    EOS_SEAGER_2007,
     SCATTERING,
 }
 
@@ -168,13 +168,10 @@ def test_manifest_declares_the_datasets():
         datasets[SURFACE_ALBEDOS_HAMMOND_2024].subdir
         == 'atmos_clim/surface_albedos/hammond_2024'
     )
-    assert datasets[EOS_SEAGER_2007].subdir == 'interior_struct/eos/seager_2007'
-    assert datasets[EOS_SEAGER_2007].zenodo == f'10.5281/zenodo.{SEAGER_2007_RECORD}'
     assert datasets[SURFACE_ALBEDOS_HAMMOND_2024].zenodo == (
         f'10.5281/zenodo.{HAMMOND_2024_RECORD}'
     )
     assert datasets[EXOPLANET_REFERENCE].zenodo == f'10.5281/zenodo.{EXOPLANET_RECORD}'
-    assert datasets[MASS_RADIUS_ZENG_2019].zenodo == f'10.5281/zenodo.{ZENG_2019_RECORD}'
     assert datasets[SCATTERING].subdir == 'atmos_clim/scattering/socrates_aerosols'
     assert datasets[SCATTERING].zenodo == f'10.5281/zenodo.{SCATTERING_RECORD}'
     # All are PROTEUS-owned, so "proteus" has to appear in required_by or
@@ -190,9 +187,7 @@ def test_every_owned_dataset_pins_its_dataverse_mirror():
     pins = {ds.key: ds.dataverse for ds in load_manifest(manifest_path())}
     assert pins == {
         EXOPLANET_REFERENCE: '10.34894/9UJ0R7',
-        MASS_RADIUS_ZENG_2019: '10.34894/ZGZA6I',
         SURFACE_ALBEDOS_HAMMOND_2024: '10.34894/8ARDN5',
-        EOS_SEAGER_2007: '10.34894/QZZGHW',
         SCATTERING: '10.34894/6Z8Y0Q',
     }
     assert len(set(pins.values())) == len(pins)

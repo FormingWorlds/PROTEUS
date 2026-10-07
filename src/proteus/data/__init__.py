@@ -24,11 +24,11 @@ from pathlib import Path
 # rather than repeating the dotted strings, so a key rename is a single edit here.
 # Declared in proteus_manifest.toml:
 EXOPLANET_REFERENCE = 'observe.exoplanet_reference'
-MASS_RADIUS_ZENG_2019 = 'observe.mass_radius.zeng_2019'
 SURFACE_ALBEDOS_HAMMOND_2024 = 'atmos_clim.surface_albedos.hammond_2024'
 SCATTERING = 'atmos_clim.scattering.socrates_aerosols'
-EOS_SEAGER_2007 = 'interior_struct.eos.seager_2007'
 # Declared in the fwl-io shared manifest:
+MASS_RADIUS_ZENG_2019 = 'observe.mass_radius.zeng_2019'
+EOS_SEAGER_2007 = 'interior_struct.eos.seager_2007'
 EOS_WOLF_BOWER_2018 = 'interior.eos.wolf_bower_2018_1tpa'
 EOS_RTPRESS_100TPA = 'interior.eos.rtpress_melt_100tpa'
 EOS_PALEOS_MGSIO3 = 'interior.eos.paleos_mgsio3'
