@@ -63,8 +63,7 @@ HAMMOND_2024_RECORD = '15880455'
 SEAGER_2007_RECORD = '15727998'
 SCATTERING_RECORD = '19294180'
 SOLAR_RECORD = '17981836'
-NAMED_RECORD = '15721440'
-NAMED_V2_RECORD = '23197931'
+NAMED_RECORD = '23197931'
 MUSCLES_RECORD = '17802209'
 PHOENIX_RECORD = '17674612'
 WOLF_BOWER_RECORD = '17417017'
@@ -111,10 +110,6 @@ SHARED_DATASETS = {
 }
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-
-# Named v2 holds the 11 v1 spectra plus toi561.txt; the shared pin may name either.
-ACCEPTED_RECORDS = {NAMED_RECORD: {NAMED_RECORD, NAMED_V2_RECORD}}
-
 
 # Spectral-file datasets: (group, bands) -> Zenodo record, one dataset each.
 SPECTRAL_RECORDS = {
@@ -222,9 +217,7 @@ def test_shared_datasets_resolve_through_the_fwl_io_manifest():
     for key, (subdir, record) in SHARED_DATASETS.items():
         assert key in shared, f'{key} is not declared in the fwl-io shared manifest'
         assert _dataset(key).subdir == subdir
-        assert _dataset(key).zenodo.removeprefix('10.5281/zenodo.') in ACCEPTED_RECORDS.get(
-            record, {record}
-        )
+        assert _dataset(key).zenodo == f'10.5281/zenodo.{record}'
     for (group, bands), record in SPECTRAL_RECORDS.items():
         assert shared[spectral_file_key(group, bands)].zenodo == f'10.5281/zenodo.{record}'
     # Discrimination: none of these keys is PROTEUS-owned, so a lookup that only
@@ -294,9 +287,8 @@ def test_registries_pin_committed_checksums():
         'eos_seager07_water.txt',
     }
     assert len(solar) == 10, 'the solar record ships 10 spectra'
-    v2 = _dataset(STELLAR_SPECTRA_NAMED).zenodo.endswith(NAMED_V2_RECORD)
-    assert len(named) == 11 + v2, 'Named v1 ships 11 spectra; v2 adds toi561.txt'
-    assert not v2 or named['toi561.txt'] == 'md5:2ef31357cababb96941c61072f7a49d0'
+    assert len(named) == 12, 'the named-star record ships 12 spectra'
+    assert named['toi561.txt'] == 'md5:2ef31357cababb96941c61072f7a49d0'
     assert len(muscles) == 38, 'the MUSCLES record ships 36 spectra, a readme and a table'
     assert {'density_melt.dat', 'density_solid.dat', 'adiabat_temp_grad_melt.dat'} <= set(
         wolf_bower
@@ -368,9 +360,7 @@ def test_dataset_dir_is_versioned(tmp_path):
         tmp_path / 'atmos_clim' / 'surface_albedos' / 'hammond_2024' / f'r{HAMMOND_2024_RECORD}'
     )
     for key, (subdir, record) in SHARED_DATASETS.items():
-        pinned = _dataset(key).zenodo.removeprefix('10.5281/zenodo.')
-        assert pinned in ACCEPTED_RECORDS.get(record, {record})
-        assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{pinned}'
+        assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{record}'
     assert dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path) == (
         tmp_path / 'star' / 'spectra' / 'phoenix' / f'r{PHOENIX_RECORD}'
     )
