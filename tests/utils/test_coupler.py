@@ -5324,6 +5324,7 @@ CORE_COLUMNS = (
     'core_B_rms',
     'core_regime',
     'core_strat_depth',
+    'core_T_top',
     'step_dE_impact_core_J',
     'step_dE_impact_core_refit_J',
     'step_dE_core_J',

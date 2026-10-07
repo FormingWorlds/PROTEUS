@@ -202,13 +202,16 @@ class AragogCoreModule:
     q_radio: float
         Core radiogenic power [W], constant over a run.
     stratification: bool
-        When true, a stably stratified sub-CMB layer at its equilibrium
-        conductive-matching depth reduces the convecting volume in the
-        core's energy and entropy budgets whenever the CMB heat flow is
-        subadiabatic. Not available with accretion.
+        When true, the outer core above 0.4 of the CMB radius is a resolved
+        shell whose temperatures are part of the solver state: heat moves
+        through it by conduction and, where its gradient is superadiabatic,
+        by convective mixing, so a stable layer forms below the CMB when the
+        CMB heat flow is subadiabatic and erodes when it is not. The CMB heat
+        flow sees the temperature of the top of the shell. Not available
+        with accretion.
     k_core: float
-        Core thermal conductivity [W m-1 K-1] for the stratified-layer
-        depth and the entropy and dynamo diagnostics; the default is the
+        Core thermal conductivity [W m-1 K-1] for conduction in the
+        stratified shell and the entropy and dynamo diagnostics; the default is the
         Nimmo (2015) Table 2 value.
     f_ohm: float
         Ohmic fraction of the dissipation in the field-strength scaling,

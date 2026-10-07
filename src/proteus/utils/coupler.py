@@ -923,6 +923,7 @@ def GetHelpfileKeys():
         'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); computed only with core_bc = core_module, 0 otherwise [T]
         'core_regime',          # crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen; computed only with core_bc = core_module, 0 otherwise [1]
         'core_strat_depth',     # thermally stratified layer depth below the CMB; computed only with core_bc = core_module, 0 otherwise [m]
+        'core_T_top',           # temperature at the top of the core, the top shell cell with stratification, else T_cmb; computed only with core_bc = core_module, 0 otherwise [K]
 
         # Energy-conservation columns: cumulative integrals of entropy-transported
         # heat against boundary-flux and source predictions in the live EOS frame.
@@ -1571,6 +1572,7 @@ _DIAGNOSTIC_KEYS = (
     'core_B_rms',
     'core_regime',
     'core_strat_depth',
+    'core_T_top',
     'step_dE_impact_core_J',
     'step_dE_impact_core_refit_J',
     'step_dE_core_J',

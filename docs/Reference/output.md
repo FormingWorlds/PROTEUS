@@ -205,6 +205,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `core_B_rms` | `T` | rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); computed only with core_bc = core_module, 0 otherwise | `interior_energetics/aragog.py` | interior_energetics.module = "aragog", interior_energetics.aragog.core_bc = "core_module" |   |
 | `core_regime` | `1` | crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen; computed only with core_bc = core_module, 0 otherwise | `interior_energetics/aragog.py` | interior_energetics.module = "aragog", interior_energetics.aragog.core_bc = "core_module" |   |
 | `core_strat_depth` | `m` | thermally stratified layer depth below the CMB; computed only with core_bc = core_module, 0 otherwise | `interior_energetics/aragog.py` | interior_energetics.module = "aragog", interior_energetics.aragog.core_bc = "core_module" |   |
+| `core_T_top` | `K` | temperature at the top of the core, the top shell cell with stratification, else T_cmb; computed only with core_bc = core_module, 0 otherwise | `interior_energetics/aragog.py` | interior_energetics.module = "aragog", interior_energetics.aragog.core_bc = "core_module" |   |
 
 ### Energy-conservation columns
 

@@ -707,6 +707,11 @@ class AragogRunner:
                                 solver.set_initial_core_temperature(T_core)
                             else:
                                 solver._T_core_init = T_core
+                        # Without a stored profile the shell restarts on the core adiabat.
+                        if hasattr(solver, 'set_initial_shell_temperature'):
+                            solver.set_initial_shell_temperature(
+                                getattr(interior_o, '_last_T_shell', None)
+                            )
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
@@ -1951,6 +1956,7 @@ class AragogRunner:
             T_core, status_t = _snapshot_scalar(output_dir, hf_row['Time'], 'T_core_state')
             interior_o._last_T_core = T_core
             interior_o._last_T_core_status = status_t
+            interior_o._last_T_shell = _snapshot_shell(output_dir, hf_row['Time'])
             rho_cen_snap, _ = _snapshot_scalar(
                 output_dir, hf_row['Time'], 'core_module_rho_cen'
             )
@@ -2143,7 +2149,9 @@ class AragogRunner:
             )
         solver._prev_struct_log = (t_new, R_int_new, R_core_new, g_new)
 
-    def _write_core_module_diagnostics(self, output: dict, dt_actual_yr: float = 0.0) -> None:
+    def _write_core_module_diagnostics(
+        self, output: dict, dt_actual_yr: float = 0.0, out=None
+    ) -> None:
         """Fill the ``core_*`` helpfile columns from the core evolution budget.
 
         Evaluates the energy-side quantities on the solver's own
@@ -2188,18 +2196,21 @@ class AragogRunner:
             q_cmb = float(output.get('step_dE_F_cmb_J', 0.0)) / span_s
         else:
             q_cmb = float(output['F_cmb']) * area
+        # A stratified core carries its shell profile; the layer base bounds the light-element mixing.
+        t_shell = getattr(out, 'core_T_shell', None)
+        base = float(getattr(out, 'core_layer_base', np.nan)) if t_shell is not None else np.nan
+        upper = {'gravitational_upper': base} if np.isfinite(base) else {}
         output['core_r_icb'] = float(budget.r_icb(t_cmb))
-        # With stratification the capacity depends on the heat flow; the
-        # recorded value reflects the active convecting volume.
-        output['core_C_eff'] = float(budget.effective_capacity(t_cmb, q_cmb))
+        output['core_C_eff'] = float(budget.effective_capacity(t_cmb, **upper))
         output['core_dynamo_margin'] = float(
-            ent.entropy_margin(t_cmb, q_cmb, q_radio=cm_cfg.q_radio)
+            ent.entropy_margin(t_cmb, q_cmb, q_radio=cm_cfg.q_radio, t_shell=t_shell)
         )
         output['core_B_rms'] = float(ent.b_rms_core(t_cmb, q_cmb))
         output['core_regime'] = float(int(crystallization_regime(budget, t_cmb)))
-        output['core_strat_depth'] = float(budget.profiles.r_cmb) - float(
-            budget.convecting_radius(t_cmb, q_cmb)
+        output['core_strat_depth'] = (
+            float(budget.profiles.r_cmb) - base if np.isfinite(base) else 0.0
         )
+        output['core_T_top'] = float(t_shell[-1]) if t_shell is not None else t_cmb
         # A giant impact in this step adds the core's heat change after the solve.
         output['step_dE_impact_core_J'] = 0.0
         output['step_dE_impact_core_refit_J'] = 0.0
@@ -2230,7 +2241,9 @@ class AragogRunner:
         # Core-evolution diagnostics ride along when the core module is active;
         # every other mode leaves the zero defaults.
         if self._config.interior_energetics.aragog.core_bc == 'core_module':
-            self._write_core_module_diagnostics(output, dt_actual_yr=float(out.dt_actual))
+            self._write_core_module_diagnostics(
+                output, dt_actual_yr=float(out.dt_actual), out=out
+            )
             # A core refit at this step's reset books the previous impact's core heat here.
             booked = getattr(interior_o, '_core_impact_booked', None)
             if booked is not None:
@@ -2407,16 +2420,23 @@ class AragogRunner:
             if dSdr_snapshot is None:
                 if core_bc == 'energy_balance' and len(S0) == n_stag + 1:
                     dSdr_snapshot = float(S0[n_stag])
-                elif core_bc == 'core_module' and len(S0) == n_stag + 2:
+                elif core_bc == 'core_module' and len(S0) >= n_stag + 2:
                     dSdr_snapshot = float(S0[n_stag])
             if T_core_snapshot is None:
-                if core_bc == 'core_module' and len(S0) == n_stag + 2:
+                if core_bc == 'core_module' and len(S0) >= n_stag + 2:
                     T_core_snapshot = float(S0[n_stag + 1])
                 elif core_bc == 'bower2018' and len(S0) == n_stag + 1:
                     T_core_snapshot = float(S0[n_stag])
         dSdr_ic = dSdr_snapshot
         T_core_ic = T_core_snapshot
         sol_pre = getattr(solver, '_solution', None)
+        # A stratified core's shell: the set start, else where this step starts from.
+        shell_ic = getattr(solver, '_T_shell_init', None)
+        if shell_ic is None and core_bc == 'core_module' and n_stag is not None:
+            y_pre = getattr(sol_pre, 'y', None)
+            start = np.asarray(y_pre)[:, -1] if np.ndim(y_pre) == 2 else S0
+            if start is not None and len(start) > n_stag + 2:
+                shell_ic = np.array(start[n_stag + 2 :], dtype=float)
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.
         T_core_pre = float(hf_row.get('T_cmb', hf_row.get('T_core', 0.0)))
@@ -2684,6 +2704,8 @@ class AragogRunner:
                         solver.set_initial_core_temperature(T_core_ic)
                     else:
                         solver._T_core_init = T_core_ic
+                if shell_ic is not None:
+                    solver.set_initial_shell_temperature(shell_ic)
                 solver.reset()
                 if S_ic is not None:
                     solver.set_initial_entropy(S_ic)
@@ -2713,6 +2735,8 @@ class AragogRunner:
                 solver.set_initial_core_temperature(t_core_next)
             else:
                 solver._T_core_init = t_core_next
+            if shell_ic is not None:
+                solver.set_initial_shell_temperature(shell_ic if skipped else None)
 
         return out
 
@@ -2991,6 +3015,9 @@ class AragogRunner:
     ):
         """Write entropy solver output to NetCDF using SolverOutput.
 
+        A stratified ``core_module`` core also writes its shell temperatures as
+        ``core_T_shell_state`` so a resume restarts the stable layer.
+
         Parameters
         ----------
         write_diagnostics : bool
@@ -3086,6 +3113,11 @@ class AragogRunner:
                 ds.createVariable(name, np.float64)
                 ds[name][0] = value
                 ds[name].units = units
+
+            t_shell = getattr(out, 'core_T_shell', None)
+            if t_shell is not None and np.all(np.isfinite(t_shell)):
+                ds.createDimension('shell', len(t_shell))
+                _add('core_T_shell_state', t_shell, 'shell', 'K')
 
 
 def earlier_snapshot_exists(output_dir: str, time: float) -> bool:
@@ -3341,6 +3373,16 @@ def _snapshot_scalar(output_dir: str, time: float, name: str) -> tuple[float | N
             return None, 'absent'
         value = float(np.asarray(raw).item())
     return (value, 'ok') if np.isfinite(value) else (None, 'not finite')
+
+
+def _snapshot_shell(output_dir: str, time: float) -> np.ndarray | None:
+    """Shell temperatures [K] of a stratified core from the snapshot at ``time``, or None."""
+    fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_int.nc')
+    with nc.Dataset(fpath) as ds:
+        if 'core_T_shell_state' not in ds.variables:
+            return None
+        t_shell = np.asarray(ds['core_T_shell_state'][:], dtype=float)
+    return t_shell if np.all(np.isfinite(t_shell)) else None
 
 
 def get_all_output_times(output_dir: str):

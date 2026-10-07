@@ -2069,6 +2069,21 @@
       "consumers_possible": []
     },
     {
+      "name": "core_T_top",
+      "unit": "K",
+      "description": "temperature at the top of the core, the top shell cell with stratification, else T_cmb; computed only with core_bc = core_module, 0 otherwise",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
       "name": "E_th_mantle",
       "unit": "J",
       "description": "thermal-energy proxy (do not use for conservation)",

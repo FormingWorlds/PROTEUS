@@ -1231,6 +1231,77 @@ def test_cold_start_retry_core_module_restores_gradient_and_core_temperature():
 
 
 @pytest.mark.unit
+def test_cold_start_retry_of_a_stratified_core_restores_its_shell():
+    """A retry of a stratified core_module solve restarts the core and its shell from the
+    state attempt 1 starts from, and releases every override after the ladder."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    n_stag, shell = 4, [4255.0, 4290.0, 4330.0]
+    S0 = np.r_[np.full(n_stag, 3000.0), [-3.879e-6, 4250.0], shell]
+    states = [
+        SimpleNamespace(status=-1, T_core=4000.0, dt_actual=0.0),
+        SimpleNamespace(status=0, T_core=4000.0, dt_actual=50.0),
+    ]
+    attempts, tcore_overrides, shell_overrides = [], [], []
+    solver = SimpleNamespace(
+        parameters=SimpleNamespace(
+            solver=SimpleNamespace(start_time=0.0, end_time=100.0, rtol=1.0e-6, max_steps=1000)
+        ),
+        _atol_sf=1.0,
+        _max_steps=1000,
+        _S0=S0,
+        _n_stag=n_stag,
+        _dSdr_cmb_init=None,
+        _T_core_init=None,
+        get_state=lambda: states[len(attempts) - 1],
+        get_current_dSdr_cmb=lambda: None,
+        get_current_core_temperature=lambda: None,
+        set_initial_dSdr_cmb=lambda v: None,
+        set_initial_core_temperature=tcore_overrides.append,
+        set_initial_shell_temperature=shell_overrides.append,
+        set_initial_entropy=lambda S: None,
+        reset=lambda: None,
+    )
+    solver.solve = lambda: attempts.append(float(solver.parameters.solver.end_time))
+    runner = AragogRunner.__new__(AragogRunner)
+    runner.aragog_solver = solver
+    runner._config = MagicMock()
+    runner._config.planet.mass_tot = 1.0
+    runner._config.interior_energetics.aragog.core_bc = 'core_module'
+    interior_o = SimpleNamespace(aragog_step_progress=[], _last_entropy=None)
+
+    out = runner._solve_with_retry({'Time': 202.0, 'T_cmb': 4250.0}, interior_o)
+
+    assert out.status == 0 and len(attempts) == 2
+    assert tcore_overrides == [pytest.approx(4250.0, rel=1e-15), None]
+    assert len(shell_overrides) == 2 and shell_overrides[-1] is None
+    np.testing.assert_array_equal(shell_overrides[0], shell)
+
+
+@pytest.mark.unit
+def test_the_snapshot_keeps_the_shell_of_a_stratified_core(tmp_path):
+    """The NetCDF snapshot stores a finite shell profile and returns it on resume; a run
+    without a shell, or with a non-finite one, stores none."""
+    from proteus.interior_energetics.aragog import AragogRunner, _snapshot_shell
+
+    (tmp_path / 'data').mkdir()
+    shell = np.array([4255.0, 4290.0, 4330.0])
+    for t, t_shell, expected in (
+        (1.0, shell, shell),
+        (2.0, None, None),
+        (3.0, shell * np.nan, None),
+    ):
+        out = _snapshot_output()
+        out.core_T_shell = t_shell
+        AragogRunner._write_output_ncdf(str(tmp_path), t, out)
+        got = _snapshot_shell(str(tmp_path), t)
+        if expected is None:
+            assert got is None
+        else:
+            np.testing.assert_array_equal(got, expected)
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_a_step_stopped_by_the_terminal_event_is_accepted_as_it_stands():
     """A step the solver cut short at a physical event is kept, not retried.
@@ -4101,7 +4172,7 @@ def test_setup_solver_does_not_pass_core_module_params_keyword_on_default_config
 def test_write_core_module_diagnostics_wiring_and_cache():
     """The diagnostics writer converts the helpfile F_cmb into a CMB heat
     flow through the budget's own area (q = F * 4 pi r_cmb^2), forwards
-    the configured q_radio, writes all six core_* columns, and rebuilds
+    the configured q_radio, writes all seven core_* columns, and rebuilds
     the wrapper-side entropy budget only when the solver's budget object
     changes identity (a structure re-solve), not on every call.
 
@@ -4127,7 +4198,6 @@ def test_write_core_module_diagnostics_wiring_and_cache():
     budget.profiles.r_cmb = r_cmb
     budget.r_icb.return_value = 1.22e6
     budget.effective_capacity.return_value = 1.77e27
-    budget.convecting_radius.return_value = r_cmb
     solver = MagicMock()
     solver._core_module_budget = budget
     runner.aragog_solver = solver
@@ -4152,9 +4222,9 @@ def test_write_core_module_diagnostics_wiring_and_cache():
         assert args.args[0] == pytest.approx(4864.0)
         assert args.args[1] == pytest.approx(q_expected, rel=1e-12)
         assert args.kwargs['q_radio'] == pytest.approx(2.0e12)
-        assert budget.convecting_radius.call_args.args[1] == pytest.approx(
-            q_expected, rel=1e-12
-        )
+        assert args.kwargs['t_shell'] is None
+        assert budget.effective_capacity.call_args.args == (pytest.approx(4864.0),)
+        assert budget.effective_capacity.call_args.kwargs == {}
         _ = mock_regime  # regime asserted through the output below
 
         # With elapsed time the diagnostics use the step-averaged CMB power, not the
@@ -4174,12 +4244,20 @@ def test_write_core_module_diagnostics_wiring_and_cache():
         assert output['core_B_rms'] == pytest.approx(1.1e-3)
         assert output['core_regime'] == pytest.approx(1.0)
         assert output['core_strat_depth'] == pytest.approx(0.0)
+        assert output['core_T_top'] == pytest.approx(4864.0)
 
-        # Stratified layer active: reports layer thickness
-        budget.convecting_radius.return_value = r_cmb - 250.0e3
-        runner._write_core_module_diagnostics(output)
+        # A stratified core: the layer base from the solve bounds the capacity, the shell
+        # reaches the entropy margin, and its top cell is the top of the core.
+        from types import SimpleNamespace
+
+        t_shell = np.array([4870.0, 4910.0, 4955.0])
+        strat = SimpleNamespace(core_T_shell=t_shell, core_layer_base=r_cmb - 250.0e3)
+        runner._write_core_module_diagnostics(output, out=strat)
         assert output['core_strat_depth'] == pytest.approx(250.0e3)
-        budget.convecting_radius.return_value = r_cmb
+        assert output['core_T_top'] == pytest.approx(4955.0)
+        kwargs = budget.effective_capacity.call_args.kwargs
+        assert kwargs['gravitational_upper'] == pytest.approx(r_cmb - 250.0e3)
+        assert entropy.entropy_margin.call_args.kwargs['t_shell'] is t_shell
 
         # Second call, same budget object: the entropy budget is reused.
         runner._write_core_module_diagnostics(output)
@@ -4190,7 +4268,6 @@ def test_write_core_module_diagnostics_wiring_and_cache():
         solver._core_module_budget.profiles.r_cmb = r_cmb
         solver._core_module_budget.r_icb.return_value = 1.22e6
         solver._core_module_budget.effective_capacity.return_value = 1.77e27
-        solver._core_module_budget.convecting_radius.return_value = r_cmb
         runner._write_core_module_diagnostics(output)
         assert mock_ent_cls.call_count == 2
 
@@ -4403,8 +4480,8 @@ def test_run_solver_invokes_core_module_diagnostics_when_active(tmp_path):
 
     diag_called = []
 
-    def _mock_write_diag(output, dt_actual_yr):
-        diag_called.append((output, dt_actual_yr))
+    def _mock_write_diag(output, dt_actual_yr, out=None):
+        diag_called.append((output, dt_actual_yr, out))
         output['core_flux'] = 12.34
 
     runner._write_core_module_diagnostics = _mock_write_diag
@@ -4420,6 +4497,7 @@ def test_run_solver_invokes_core_module_diagnostics_when_active(tmp_path):
 
     assert len(diag_called) == 1
     assert diag_called[0][1] == pytest.approx(75.0)
+    assert diag_called[0][2].dt_actual == pytest.approx(75.0)  # the solve's own output
     assert output.get('core_flux') == pytest.approx(12.34)
     assert sim_time == pytest.approx(375.0)
 
@@ -4445,7 +4523,7 @@ def test_run_solver_writes_the_core_impact_heat_booked_at_the_reset(tmp_path):
     runner._solve_with_retry = lambda hf_row, interior_o: out
     runner._build_helpfile_output = lambda *a, **k: {}
 
-    def _zero_diag(output, dt_actual_yr):
+    def _zero_diag(output, dt_actual_yr, out=None):
         output['step_dE_impact_core_J'] = 0.0
         output['step_dE_impact_core_refit_J'] = 0.0
 
