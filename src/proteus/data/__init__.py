@@ -2,7 +2,7 @@
 
 Data only PROTEUS reads is declared in ``proteus_manifest.toml`` beside this
 module; data several models read (spectral files, stellar spectra, equations of
-state, melting curves) is declared in the shared manifest fwl-io ships. Each
+state, melting curves, mass-radius curves) is declared in the shared manifest fwl-io ships. Each
 dataset has a committed registry of file checksums next to its manifest. fwl-io
 derives each dataset's location from its manifest key and places it in a version
 directory named for the pinned Zenodo record, so a dataset lands in

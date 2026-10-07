@@ -355,18 +355,12 @@ def test_dataset_dir_is_versioned(tmp_path):
     """
     resolved = dataset_dir(MASS_RADIUS_ZENG_2019, data_root=tmp_path)
 
-    assert (
-        resolved == tmp_path / 'interior' / 'mass_radius' / 'zeng_2019' / f'r{ZENG_2019_RECORD}'
-    )
     assert resolved != tmp_path / 'interior' / 'mass_radius' / 'zeng_2019'
     assert dataset_dir(EXOPLANET_REFERENCE, data_root=tmp_path) == (
         tmp_path / 'observe' / 'exoplanet_reference' / f'r{EXOPLANET_RECORD}'
     )
     assert dataset_dir(SURFACE_ALBEDOS_HAMMOND_2024, data_root=tmp_path) == (
         tmp_path / 'atmos_clim' / 'surface_albedos' / 'hammond_2024' / f'r{HAMMOND_2024_RECORD}'
-    )
-    assert dataset_dir(EOS_SEAGER_2007, data_root=tmp_path) == (
-        tmp_path / 'interior' / 'eos' / 'seager_2007' / f'r{SEAGER_2007_RECORD}'
     )
     for key, (subdir, record) in SHARED_DATASETS.items():
         assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{record}'

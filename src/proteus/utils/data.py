@@ -563,9 +563,9 @@ def download_massradius_data():
     """
     Download the mass-radius relations through fwl-io.
 
-    The record pin and the file checksums come from the manifest PROTEUS ships,
-    so the curves land in their version directory and are verified against the
-    committed registry.
+    The record pin and the file checksums come from the fwl-io shared manifest,
+    so the curves land in their version directory and are verified against its
+    registry.
     """
     from proteus.data import MASS_RADIUS_ZENG_2019
 
@@ -988,7 +988,7 @@ def download_eos_dynamic(eos_dir: str = 'WolfBower2018_MgSiO3'):
 def download_Seager_EOS():
     """Fetch the Seager EOS tables through fwl-io.
 
-    The record pin and the file checksums come from the manifest PROTEUS ships.
+    The record pin and the file checksums come from the fwl-io shared manifest.
     Zalmoxis needs these tables for every Seager component, so a failed fetch
     raises.
     """
@@ -1045,9 +1045,8 @@ def download_zalmoxis_eos(
     """Download Zalmoxis EOS data required for the given EOS configuration.
 
     Inspects the mantle, core, and ice layer EOS identifiers and downloads
-    only the files needed. Seager 2007 lands under ``FWL_DATA/interior_struct/eos/``
-    (``proteus_manifest.toml``); the other datasets land under
-    ``FWL_DATA/interior/eos/`` (the fwl-io shared manifest).
+    only the files needed. Every dataset is declared in the fwl-io shared
+    manifest and lands under ``FWL_DATA/interior/eos/``.
 
     Parameters
     ----------

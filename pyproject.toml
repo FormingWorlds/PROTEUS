@@ -83,8 +83,8 @@ dependencies = [
     "sympy",
     "astropy",
     "toml",
-    # 26.10.6 falls back to the DataverseNL mirrors the manifests pin; every
-    # request has a timeout and a transient failure is retried with backoff.
+    # 26.10.7 declares the Seager 2007 EOS and Zeng 2019 mass-radius data in its
+    # shared manifest, which PROTEUS reads.
     "fwl-io>=26.10.7",
     "packaging",
 ]

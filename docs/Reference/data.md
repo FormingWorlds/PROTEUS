@@ -251,7 +251,7 @@ Theoretical mass-radius curves for a range of interior and atmospheric
 structures, from [Zeng et al. (2019)](https://doi.org/10.1073/pnas.1812905116),
 taken from the author's [planet model tables](https://lweb.cfa.harvard.edu/~lzeng/planetmodels.html#mrtables).
 
-Declared in the fwl-io shared manifest, which Zalmoxis reads too, and fetched into
+Declared in the fwl-io shared manifest and fetched into
 `$FWL_DATA/interior/mass_radius/zeng_2019/r<record-id>/`, on the same terms as
 the exoplanet catalogue above. Copies under `$FWL_DATA/mass_radius/Zeng2019` and
 `$FWL_DATA/observe/mass_radius/zeng_2019` are not read and can be deleted.

@@ -1080,7 +1080,7 @@ def test_download_massradius_data(mock_fetch):
 
     mock_fetch.assert_called_once_with(MASS_RADIUS_ZENG_2019)
     # Discrimination: the key must be the mass-radius dataset, not the
-    # catalogue declared beside it in the same manifest.
+    # exoplanet catalogue fetched by the same reference download.
     assert mock_fetch.call_args.args[0] == 'interior.mass_radius.zeng_2019'
 
 
