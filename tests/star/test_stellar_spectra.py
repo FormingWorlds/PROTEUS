@@ -468,6 +468,23 @@ def test_init_star_source_none_uses_named_last(tmp_path, monkeypatch, present, e
 
 
 @pytest.mark.unit
+def test_init_star_listed_star_never_switches_to_named(tmp_path, monkeypatch):
+    """A star the MUSCLES registry lists (gj1214) whose local MUSCLES file is missing stops
+    with the fetch error instead of using the Named gj1214.txt, a different spectrum.
+    """
+    from proteus.data import STELLAR_SPECTRA_NAMED, dataset_dir
+    from proteus.star.wrapper import init_star
+
+    _install_fake_mors(monkeypatch)
+    handler = _make_handler_for_init_star(tmp_path, spectrum_source=None, star_name='gj1214')
+    named = dataset_dir(STELLAR_SPECTRA_NAMED, data_root=tmp_path) / 'gj1214.txt'
+    _write_spectrum_file(named, fl=(50.0, 60.0))
+
+    with pytest.raises(FileNotFoundError, match='proteus get muscles --star gj1214'):
+        init_star(handler)
+
+
+@pytest.mark.unit
 def test_init_star_unknown_name_names_the_three_sets(tmp_path, monkeypatch):
     """A star in none of MUSCLES, solar or Named stops with an error naming all three."""
     from proteus.star.wrapper import init_star
