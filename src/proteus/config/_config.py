@@ -37,12 +37,18 @@ def instmethod_dummy(instance, attribute, value):
 
 
 def instmethod_evolve(instance, attribute, value):
-    """Orbital evolution cannot be combined with instellation method 'inst'."""
+    """Orbital evolution cannot be combined with instellation method 'inst'.
+
+    'inst' derives the semi-major axis from the flux, while every star-planet
+    model, a prescribed track included, starts from orbit.semimajoraxis.
+    """
     if (instance.orbit.instellation_method == 'inst') and (
         instance.orbit.star_planet_model is not None
     ):
         raise ValueError(
-            "Planet orbital evolution not supported for `instellation_method='inst'`"
+            "Planet orbital evolution not supported for `instellation_method='inst'`: "
+            f'orbit.star_planet_model = {instance.orbit.star_planet_model!r} starts from '
+            "orbit.semimajoraxis, so set instellation_method = 'distance'"
         )
 
 
@@ -108,6 +114,72 @@ def orbit_requires_tides(instance, attribute, value):
         raise ValueError(
             "orbit.star_planet_model = 'sp1d' or orbit.planet_satellite_model = "
             "'ps1d'/'ps1d_evec' requires orbit.module = 'obliqua' or 'lovepy'"
+        )
+
+
+def parameterized_excludes_tides(instance, attribute, value):
+    """The parameterized model prescribes the orbit as a closed-form track
+    and exchanges no energy with the interior, so no tides module can run
+    alongside it; see "Star-planet models" in docs/Explanations/orbit.md.
+    """
+    if (
+        instance.orbit.star_planet_model == 'parameterized'
+        and instance.orbit.module is not None
+    ):
+        raise ValueError(
+            "orbit.star_planet_model = 'parameterized' requires orbit.module = 'none' "
+            f'(got {instance.orbit.module!r}): a prescribed migration track computes no tides'
+        )
+
+
+def spinless_orbit_keeps_spin_synchronous(instance, attribute, value):
+    """sp0d and parameterized evolve no spin, so the planet stays synchronous
+    and orbit.axial_period must be unset; see "Star-planet models" in
+    docs/Explanations/orbit.md.
+    """
+    model = instance.orbit.star_planet_model
+    if model in ('sp0d', 'parameterized') and instance.orbit.axial_period is not None:
+        raise ValueError(
+            f'orbit.star_planet_model = {model!r} evolves no spin, so the planet is kept '
+            "synchronous with its orbit and requires orbit.axial_period = 'none' "
+            f'(got {instance.orbit.axial_period!r})'
+        )
+
+
+def parameterized_high_ecc_inward(instance, attribute, value):
+    """The high-eccentricity law circularises at fixed orbital angular momentum,
+    which can only shrink the orbit, so its final semi-major axis must not
+    exceed the initial one, orbit.semimajoraxis.
+    """
+    params = instance.orbit.parameterized
+    if (
+        instance.orbit.star_planet_model == 'parameterized'
+        and params.migration == 'high_ecc'
+        and params.sma_final is not None
+        and params.sma_final > instance.orbit.semimajoraxis
+    ):
+        raise ValueError(
+            'High-eccentricity migration is inward only and requires '
+            'orbit.parameterized.sma_final <= orbit.semimajoraxis, got '
+            f'semimajoraxis={instance.orbit.semimajoraxis} and sma_final={params.sma_final}'
+        )
+
+
+def parameterized_excludes_accretion(instance, attribute, value):
+    """Reject giant impacts with the parameterized star-planet model.
+
+    After the migration epoch the track sets the semi-major axis every step,
+    so an impact's new semi-major axis would be lost while its eccentricity
+    change persisted; see "Star-planet models" in docs/Explanations/orbit.md.
+    """
+    if (
+        instance.orbit.star_planet_model == 'parameterized'
+        and instance.accretion.module is not None
+    ):
+        raise ValueError(
+            "orbit.star_planet_model = 'parameterized' requires accretion.module = 'none' "
+            f'(got {instance.accretion.module!r}): the prescribed track overwrites the '
+            'semi-major axis an impact sets but keeps its eccentricity change'
         )
 
 
@@ -581,6 +653,9 @@ class Config:
             obliqua_requires_perturber,
             sp0d_obliqua_degree_mismatch,
             orbit_requires_tides,
+            parameterized_excludes_tides,
+            parameterized_high_ecc_inward,
+            spinless_orbit_keeps_spin_synchronous,
         ),
     )
     planet: Planet = field(
@@ -621,6 +696,7 @@ class Config:
             check_accretion_interior_compatibility,
             check_accretion_vapourise_compatibility,
             check_accretion_core_stratification_compatibility,
+            parameterized_excludes_accretion,
         ),
     )
 

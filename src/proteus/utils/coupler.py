@@ -826,6 +826,7 @@ def GetHelpfileKeys():
         'orbital_period',   # orbital duration [s]
         'eccentricity',     # orbital eccentricity [1]
         'ecc_dot_planet',   # eccentricity derivative [1 s-1]
+        'dEdt_orb',         # orbital energy rate of a prescribed track [W]
         'plan_star_am',     # angular momentum of star+planet [kg m2 s-1]
         'axial_period',     # day length of planet around its axis [s]
 
@@ -1562,6 +1563,7 @@ def _describe_missing_columns(missing: list[str]) -> str:
 # module or resume path reads it back, except the core ledger's core_C_eff and
 # E_core_residual_J, which a helpfile from before the core module has no rows for.
 _DIAGNOSTIC_KEYS = (
+    'dEdt_orb',
     'T_cmb_node',
     'core_r_icb',
     'core_C_eff',
@@ -1618,7 +1620,8 @@ _POSTPROCESSING_FIXED_KEYS = (
     'atm_kg_per_mol',
     'R_star',
     'T_star',
-    'separation',
+    'semimajorax',
+    'eccentricity',
 )
 
 

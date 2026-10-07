@@ -17,6 +17,7 @@ test inventoried here.
 | Atmosphere climate | `atmos_clim/agni.py` | [Transparent black-body limit](atmos_clim/agni.md) |
 | Interior structure | `interior_struct/zalmoxis.py` | [Liquidus-super IC anchor](interior_struct/zalmoxis.md) |
 | Orbit | `orbit/orbit.py` | [Orbital evolution](orbit/orbit.md) |
+| Orbit | `orbit/parameterized.py` | [Prescribed migration laws](orbit/parameterized.md) |
 | Orbit | `orbit/satellite.py` | [Satellite angular momentum](orbit/satellite.md) |
 | Orbit | `orbit/wrapper.py` | [Orbit module wrapper](orbit/wrapper.md) |
 | Outgassing | `outgas/atmodeller.py` | [Species-to-element mass split](outgas/atmodeller.md) |

@@ -2,7 +2,7 @@
 
 Data only PROTEUS reads is declared in ``proteus_manifest.toml`` beside this
 module; data several models read (spectral files, stellar spectra, equations of
-state, melting curves) is declared in the shared manifest fwl-io ships. Each
+state, melting curves, mass-radius curves) is declared in the shared manifest fwl-io ships. Each
 dataset has a committed registry of file checksums next to its manifest. fwl-io
 derives each dataset's location from its manifest key and places it in a version
 directory named for the pinned Zenodo record, so a dataset lands in
@@ -24,11 +24,11 @@ from pathlib import Path
 # rather than repeating the dotted strings, so a key rename is a single edit here.
 # Declared in proteus_manifest.toml:
 EXOPLANET_REFERENCE = 'observe.exoplanet_reference'
-MASS_RADIUS_ZENG_2019 = 'observe.mass_radius.zeng_2019'
 SURFACE_ALBEDOS_HAMMOND_2024 = 'atmos_clim.surface_albedos.hammond_2024'
 SCATTERING = 'atmos_clim.scattering.socrates_aerosols'
-EOS_SEAGER_2007 = 'interior_struct.eos.seager_2007'
 # Declared in the fwl-io shared manifest:
+EOS_SEAGER_2007 = 'interior.eos.seager_2007'
+MASS_RADIUS_ZENG_2019 = 'interior.mass_radius.zeng_2019'
 EOS_WOLF_BOWER_2018 = 'interior.eos.wolf_bower_2018_1tpa'
 EOS_RTPRESS_100TPA = 'interior.eos.rtpress_melt_100tpa'
 EOS_PALEOS_MGSIO3 = 'interior.eos.paleos_mgsio3'
@@ -67,11 +67,10 @@ def spectral_file_key(group: str, bands: str | int) -> str:
     return f'atmos_clim.spectral_files.{str(group).lower()}.{bands}'
 
 
-# The oldest fwl-io that reads this manifest schema. An older fwl-io reads the
-# manifest as malformed rather than as a version mismatch, so the load names
-# which side is out of date. The fwl-io requirement in pyproject.toml must be at
-# least this version; the test suite enforces the relation.
-FWL_IO_FLOOR = '26.10.6'
+# The oldest fwl-io that reads this manifest schema and declares every shared key
+# PROTEUS reads; a stale load or a missing key asks for an upgrade to this version.
+# The pyproject.toml requirement must equal it; a test checks.
+FWL_IO_FLOOR = '26.10.7'
 
 
 def manifest_path() -> Path:
@@ -185,8 +184,8 @@ def _dataset(key: str):
             installed = 'unknown'
         raise KeyError(
             f'{key!r} is declared neither in the PROTEUS manifest nor in the fwl-io '
-            f'shared manifest (installed fwl-io {installed}; PROTEUS reads the '
-            f'shared keys of fwl-io>={FWL_IO_FLOOR})'
+            f'shared manifest (installed fwl-io {installed}; upgrade to '
+            f'fwl-io>={FWL_IO_FLOOR})'
         )
     return shared[key]
 

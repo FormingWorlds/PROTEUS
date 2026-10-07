@@ -103,7 +103,8 @@ profile without running the full VULCAN photochemistry solver.
 
 A fixed star with no time evolution. The effective temperature
 (`dummy.Teff`) and luminosity are constant; the spectrum is a Planck
-function at that temperature, scaled to the planet-star separation.
+function at that temperature, scaled to the flux-weighted planet-star distance
+`a (1 - e^2)^(1/4)`.
 The stellar radius is either set explicitly or derived from an
 empirical mass-radius relation (Demircan & Kahraman 1991).
 

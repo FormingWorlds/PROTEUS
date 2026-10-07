@@ -443,6 +443,84 @@ def test_init_star_source_muscles_falls_back_to_solar_with_warning(
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
+    'present, expected',
+    [(('named',), 'named'), (('muscles', 'named'), 'muscles'), (('solar', 'named'), 'solar')],
+)
+def test_init_star_source_none_uses_named_last(tmp_path, monkeypatch, present, expected):
+    """With ``spectrum_source=None``, the Named spectrum is used only when neither MUSCLES
+    nor solar holds the star, so a star in either keeps the spectrum it had before.
+    """
+    from proteus.data import STELLAR_SPECTRA_NAMED, dataset_dir
+    from proteus.star.wrapper import init_star
+
+    _install_fake_mors(monkeypatch)
+    handler = _make_handler_for_init_star(tmp_path, spectrum_source=None, star_name='toi561')
+    named = dataset_dir(STELLAR_SPECTRA_NAMED, data_root=tmp_path)
+    dirs = {'muscles': _muscles_dir(tmp_path), 'solar': _solar_dir(tmp_path), 'named': named}
+    flux = {'muscles': (30.0, 40.0), 'solar': (10.0, 20.0), 'named': (50.0, 60.0)}
+    for name in present:
+        _write_spectrum_file(dirs[name] / 'toi561.txt', fl=flux[name])
+
+    init_star(handler)
+
+    arr = np.loadtxt(tmp_path / 'out' / 'data' / '-1.sflux')
+    assert np.allclose(arr[:, 1], flux[expected])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'star, command',
+    [('gj1214', 'proteus get muscles --star gj1214'), ('sun', 'proteus get solar')],
+)
+def test_init_star_listed_star_never_switches_to_named(tmp_path, monkeypatch, star, command):
+    """A star the MUSCLES (gj1214) or solar (sun) registry lists whose local file is missing
+    stops with the fetch error instead of using the Named file, a different spectrum.
+    """
+    from proteus.data import STELLAR_SPECTRA_NAMED, dataset_dir
+    from proteus.star.wrapper import init_star
+
+    _install_fake_mors(monkeypatch)
+    handler = _make_handler_for_init_star(tmp_path, spectrum_source=None, star_name=star)
+    named = dataset_dir(STELLAR_SPECTRA_NAMED, data_root=tmp_path) / f'{star}.txt'
+    _write_spectrum_file(named, fl=(50.0, 60.0))
+
+    with pytest.raises(FileNotFoundError, match=command):
+        init_star(handler)
+
+
+@pytest.mark.unit
+def test_init_star_unknown_name_names_the_three_sets(tmp_path, monkeypatch):
+    """A star in none of MUSCLES, solar or Named stops with an error naming all three."""
+    from proteus.star.wrapper import init_star
+
+    _install_fake_mors(monkeypatch)
+    handler = _make_handler_for_init_star(tmp_path, spectrum_source=None, star_name='nostar')
+    with pytest.raises(FileNotFoundError, match="No MUSCLES, solar or Named .*'nostar'") as err:
+        init_star(handler)
+    assert '`proteus get stellar` fetches the Named spectra' in str(err.value)
+
+
+@pytest.mark.unit
+def test_init_star_named_lookup_keeps_the_file_case(tmp_path, monkeypatch, caplog):
+    """A Named file with capitals (HIP67522.txt) is found by its lowercase star_name, and the
+    path used carries the real case, so the lookup also works on a case-sensitive filesystem.
+    """
+    from proteus.data import STELLAR_SPECTRA_NAMED, dataset_dir
+    from proteus.star.wrapper import init_star
+
+    caplog.set_level('INFO')
+    _install_fake_mors(monkeypatch)
+    handler = _make_handler_for_init_star(tmp_path, spectrum_source=None, star_name='HIP67522')
+    named = dataset_dir(STELLAR_SPECTRA_NAMED, data_root=tmp_path) / 'HIP67522.txt'
+    _write_spectrum_file(named, fl=(50.0, 60.0))
+
+    init_star(handler)
+
+    assert f'Using stellar spectrum file: {named}' in caplog.messages
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
     'source, star, command',
     [
         (None, 'gj 876', 'proteus get muscles --star gj876'),
