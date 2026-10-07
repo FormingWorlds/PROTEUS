@@ -730,8 +730,8 @@ runs:
     # ------------------------------------------------------------------
     # The key hashes BOTH dataset descriptors: .github/data-manifest.yaml (the
     # older download() datasets: spectral files, stellar spectra, tracks) and
-    # src/proteus/data/proteus_manifest.toml (the fwl-io pins for the exoplanet
-    # + mass-radius reference data). Keying on the fwl-io manifest as well means
+    # src/proteus/data/proteus_manifest.toml (the fwl-io pins of the data only
+    # PROTEUS reads, such as the exoplanet catalogue). Keying on the fwl-io manifest as well means
     # a Zenodo re-pin busts the cache and forces a fresh save. Without it, files
     # pinned after the cache was first frozen re-download on every run: the key
     # stays constant, actions/cache exact-hits and never re-saves, so the stale

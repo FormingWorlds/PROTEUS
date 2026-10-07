@@ -22,7 +22,7 @@ file that Zenodo does not serve is fetched from the
 [DataverseNL](https://dataverse.nl/dataverse/Proteus_Fr) mirror the manifest pins
 beside the record, and checked against the same registry.
 Data several models read (spectral files, stellar spectra, equations of state,
-melting curves, lookup tables) is declared in the shared manifest that fwl-io
+melting curves, lookup tables, mass-radius curves) is declared in the shared manifest that fwl-io
 ships; data only PROTEUS reads is declared in `src/proteus/data/proteus_manifest.toml`.
 A data folder in the older layout is brought into this one as described in
 [Upgrading an older data folder](#upgrading-an-older-data-folder).
@@ -254,7 +254,8 @@ taken from the author's [planet model tables](https://lweb.cfa.harvard.edu/~lzen
 Declared in the fwl-io shared manifest and fetched into
 `$FWL_DATA/interior/mass_radius/zeng_2019/r<record-id>/`, on the same terms as
 the exoplanet catalogue above. Copies under `$FWL_DATA/mass_radius/Zeng2019` and
-`$FWL_DATA/observe/mass_radius/zeng_2019` are not read and can be deleted.
+`$FWL_DATA/observe/mass_radius/zeng_2019` are not read and can be deleted; the
+curves (57 files, 20 kB) are fetched again.
 
 ---
 

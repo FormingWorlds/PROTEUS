@@ -349,13 +349,9 @@ def test_dataset_dir_is_versioned(tmp_path):
     """A dataset resolves into the version directory named for its record.
 
     The literal path is pinned because the version segment is what keeps a
-    re-pinned deposit from overwriting its predecessor. The discrimination
-    assert rules out the bare location, which is one directory above where the
-    readers look and is exactly what a version-less resolution would return.
+    re-pinned deposit from overwriting its predecessor; a version-less
+    resolution would return the bare location one directory above it.
     """
-    resolved = dataset_dir(MASS_RADIUS_ZENG_2019, data_root=tmp_path)
-
-    assert resolved != tmp_path / 'interior' / 'mass_radius' / 'zeng_2019'
     assert dataset_dir(EXOPLANET_REFERENCE, data_root=tmp_path) == (
         tmp_path / 'observe' / 'exoplanet_reference' / f'r{EXOPLANET_RECORD}'
     )

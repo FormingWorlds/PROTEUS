@@ -67,10 +67,9 @@ def spectral_file_key(group: str, bands: str | int) -> str:
     return f'atmos_clim.spectral_files.{str(group).lower()}.{bands}'
 
 
-# The oldest fwl-io that reads this manifest schema. An older fwl-io reads the
-# manifest as malformed rather than as a version mismatch, so the load names
-# which side is out of date. The fwl-io requirement in pyproject.toml must be at
-# least this version; the test suite enforces the relation.
+# The oldest fwl-io that reads this manifest schema and declares every shared key
+# PROTEUS reads; the load and the key lookup name the installed fwl-io as the side
+# to upgrade. The pyproject.toml requirement must be at least this; a test checks.
 FWL_IO_FLOOR = '26.10.7'
 
 
