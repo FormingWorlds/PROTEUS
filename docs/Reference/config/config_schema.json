@@ -5844,6 +5844,73 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.core_module.layer_base_fraction",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.4",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Base of the stratified shell as a fraction of the CMB radius, in (0, 1); the inner core must stay below it. Used with stratification.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.layer_k_mix",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "10000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Eddy diffusivity [m2 s-1] of convective mixing in the stratified shell at the reference superadiabatic gradient. Used with stratification.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.layer_g_mix",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.001",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Reference superadiabatic gradient of the shell mixing, as a fraction of the adiabatic gradient at the CMB. Used with stratification.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.core_module.f_ohm",
       "toml_section": "interior_energetics.aragog.core_module",
       "class": "AragogCoreModule",

@@ -4027,6 +4027,30 @@ def test_setup_solver_threads_core_module_params(tmp_path):
 
 
 @pytest.mark.unit
+def test_the_shell_settings_reach_the_aragog_core_budget():
+    """The shell settings of the config pass through the wrapper's dict into the aragog
+    budget's resolved shell, and the config refuses values aragog would reject."""
+    import attrs
+    from aragog.core.module import build_core_module_budget
+
+    from proteus.config._interior import AragogCoreModule
+
+    cfg = AragogCoreModule(
+        stratification=True, layer_base_fraction=0.55, layer_k_mix=3.0e6, layer_g_mix=2.0e-4
+    )
+    params = attrs.asdict(cfg)
+    # The wrapper strips the first two, the aragog solver the last two, before the factory.
+    for key in ('f_ohm', 'flux_geometry', 'q_radio', 'ra_crit_cmb'):
+        params.pop(key)
+    budget = build_core_module_budget(params, r_cmb=3.48e6, p_cmb_fallback=136e9)
+    assert budget.shell.r_base == pytest.approx(0.55 * 3.48e6, rel=1e-12)
+    assert (budget.shell.k_mix, budget.shell.g_mix) == (3.0e6, 2.0e-4)
+    for bad in ({'layer_base_fraction': 1.0}, {'layer_k_mix': 0.0}, {'layer_g_mix': -1.0}):
+        with pytest.raises(ValueError):
+            AragogCoreModule(**bad)
+
+
+@pytest.mark.unit
 def test_setup_solver_threads_structure_core_constraints(tmp_path):
     """With core_bc='core_module', positive M_core and P_center in hf_row travel to core_module_params."""
     from proteus.config._interior import AragogCoreModule

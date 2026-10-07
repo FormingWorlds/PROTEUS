@@ -213,6 +213,15 @@ class AragogCoreModule:
         Core thermal conductivity [W m-1 K-1] for conduction in the
         stratified shell and the entropy and dynamo diagnostics; the default is the
         Nimmo (2015) Table 2 value.
+    layer_base_fraction: float
+        Base of the stratified shell as a fraction of the CMB radius, in (0, 1);
+        the inner core must stay below it. Used with stratification.
+    layer_k_mix: float
+        Eddy diffusivity [m2 s-1] of convective mixing in the stratified shell
+        at the reference superadiabatic gradient. Used with stratification.
+    layer_g_mix: float
+        Reference superadiabatic gradient of the shell mixing, as a fraction of
+        the adiabatic gradient at the CMB. Used with stratification.
     f_ohm: float
         Ohmic fraction of the dissipation in the field-strength scaling,
         in (0, 1]; Christensen et al. (2009) adopt 1 for planets.
@@ -241,6 +250,9 @@ class AragogCoreModule:
     q_radio: float = field(default=0.0, validator=ge(0))
     stratification: bool = field(default=False)
     k_core: float = field(default=130.0, validator=gt(0))
+    layer_base_fraction: float = field(default=0.4, validator=(gt(0), lt(1)))
+    layer_k_mix: float = field(default=1.0e7, validator=gt(0))
+    layer_g_mix: float = field(default=1.0e-3, validator=gt(0))
     f_ohm: float = field(default=1.0, validator=(gt(0), le(1)))
     ra_crit_cmb: float = field(default=450.0, validator=(gt(0), lt(float('inf'))))
     flux_geometry: str = field(
