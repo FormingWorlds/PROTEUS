@@ -45,7 +45,7 @@ dependencies = [
     "attrs",
     "cattrs",
     "fwl-janus>=24.11.05",
-    "fwl-mors>=26.9.23",
+    "fwl-mors>=26.10.6",
     "fwl-calliope>=26.10.05",
     "fwl-zephyrus>=26.7.24",
     "fwl-aragog>=26.10.03",
@@ -83,14 +83,9 @@ dependencies = [
     "sympy",
     "astropy",
     "toml",
-    # This floor bounds the time a fetch can take: every request carries an
-    # explicit connect and read timeout, and a transient failure is retried
-    # with backoff instead of ending the fetch. Below that floor a stalled
-    # mirror hangs the start of a run with no diagnostic.
-    "fwl-io>=26.9.23",
-    "zenodo-get",
-    "zenodo-client>=0.4.1",
-    "osfclient",
+    # 26.10.6 falls back to the DataverseNL mirrors the manifests pin; every
+    # request has a timeout and a transient failure is retried with backoff.
+    "fwl-io>=26.10.6",
     "packaging",
 ]
 

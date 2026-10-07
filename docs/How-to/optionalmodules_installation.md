@@ -30,7 +30,7 @@ bash tools/get_spider.sh
 
 === "macOS"
 
-    The script detects Apple Silicon vs Intel and uses Homebrew's MPI. If you
+    The script uses the MPI on your PATH, for example Homebrew's Open MPI. If you
     encounter issues, see
     [Troubleshooting: PETSc on Apple Silicon](troubleshooting.md#petsc-compilation-fails-on-apple-silicon).
 
