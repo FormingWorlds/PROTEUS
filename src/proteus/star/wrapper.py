@@ -406,11 +406,12 @@ def scale_spectrum_to_stellar_surface(fl_arr, sep: float, r_star: float):
     """
     Scale stellar fluxes from the top of the planet's atmosphere to the stellar surface.
 
-    This inverts the separation-dependent part of scale_spectrum_to_toa. The spectrum
+    This inverts the distance-dependent part of scale_spectrum_to_toa. The spectrum
     written to the .sflux file is the flux at the planet, reduced from the stellar
-    surface by (r_star / sep) ** 2, so recovering the surface value multiplies by
-    (sep / r_star) ** 2. A consumer that compares against the stellar surface, such as
-    the eclipse-depth denominator or the VULCAN stellar input, needs this; the climate
+    surface by (r_star / sep) ** 2 with sep the flux-weighted distance it was written
+    at, so recovering the surface value multiplies by (sep / r_star) ** 2. A consumer
+    that compares against the stellar surface, such as the eclipse-depth denominator
+    or the VULCAN stellar input, needs this; the climate
     and photochemistry modules that want the flux at the planet use the file as written.
 
     Parameters
@@ -418,7 +419,7 @@ def scale_spectrum_to_stellar_surface(fl_arr, sep: float, r_star: float):
         fl_arr : iterable
             Stellar fluxes at the top of the planet's atmosphere.
         sep : float
-            Planet-star distance [m].
+            Flux-weighted planet-star distance the spectrum was scaled to [m].
         r_star : float
             Stellar radius [m].
     Returns
@@ -448,14 +449,13 @@ def write_spectrum(wl_arr, fl_arr, hf_row: dict, output_dir: str):
 
     log.debug('Writing stellar spectrum to file')
 
-    # Header information. Name where the spectrum corresponds to so the file is
-    # self-describing: these are the fluxes at the top of the planet's atmosphere,
-    # carried in from 1 AU by the orbital separation, not the fluxes at the stellar
-    # surface. A consumer that wants the stellar surface must undo that scaling.
+    # Fluxes at the top of the planet's atmosphere, not at the stellar surface;
+    # a consumer that wants the stellar surface must undo the distance scaling.
     header = (
         '# WL(nm)\t Flux(ergs/cm**2/s/nm)   '
         'Stellar flux at the top of the planet atmosphere '
-        '(scaled from 1 AU by the orbital separation), t_star = %.2e yr' % hf_row['age_star']
+        '(scaled from 1 AU to the flux-weighted distance a (1 - e^2)^(1/4)), '
+        't_star = %.2e yr' % hf_row['age_star']
     )
 
     # Write to TSV file
@@ -563,16 +563,52 @@ def update_stellar_temperature(hf_row: dict, config: Config, stellar_track=None)
                 hf_row['T_star'] = stellar_track.BaraffeStellarTeff(hf_row['age_star'])
 
 
+def flux_weighted_distance(hf_row: dict) -> float:
+    """
+    Distance reproducing the orbit-averaged inverse-square stellar flux.
+
+    Averaging 1/r^2 over one orbit gives 1 / (a^2 sqrt(1 - e^2)), so the
+    distance that carries the same flux is a (1 - e^2)^(1/4). This differs
+    from hf_row['separation'], which is the time-averaged separation
+    a (1 + e^2 / 2) and is the right quantity for the Roche-limit checks and
+    the orbit plots only.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Dictionary of current runtime variables, carrying ``semimajorax`` [m]
+        and ``eccentricity`` [1].
+
+    Returns
+    -------
+    float
+        Flux-weighted star-planet distance [m].
+    """
+
+    for key in ('semimajorax', 'eccentricity'):
+        if key not in hf_row:
+            raise ValueError(f"Flux-weighted distance requires hf_row['{key}']")
+
+    ecc = float(hf_row['eccentricity'])
+    if not 0.0 <= ecc < 1.0:
+        raise ValueError(f'Eccentricity must be >= 0 and < 1, got {ecc}')
+
+    return float(hf_row['semimajorax']) * (1.0 - ecc * ecc) ** 0.25
+
+
 def update_instellation(hf_row: dict, config: Config, stellar_track=None):
     """
     Update hf_row value of bolometric stellar flux impinging upon the planet.
     """
 
+    # Flux-weighted distance, so bolometric and XUV share one orbital average
+    sep_flux = flux_weighted_distance(hf_row)
+
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import calc_instellation
 
-        S_0 = calc_instellation(config.star.dummy.Teff, hf_row['R_star'], hf_row['separation'])
+        S_0 = calc_instellation(config.star.dummy.Teff, hf_row['R_star'], sep_flux)
         Fxuv_SI = 0.0
 
     # Mors cases
@@ -584,24 +620,18 @@ def update_instellation(hf_row: dict, config: Config, stellar_track=None):
 
                 # Bolometric flux
                 S_0 = (
-                    stellar_track.Value(age_star, 'Lbol')
-                    * 1e-7
-                    / (4.0 * np.pi * hf_row['separation'] ** 2.0)
+                    stellar_track.Value(age_star, 'Lbol') * 1e-7 / (4.0 * np.pi * sep_flux**2.0)
                 )
 
                 # Interpolating the XUV flux at the age of the star
                 Lxuv_cgs = stellar_track.Value(age_star, 'Lx') + stellar_track.Value(
                     age_star, 'Leuv'
                 )
-                Fxuv_SI = (
-                    Lxuv_cgs / (4 * np.pi * (hf_row['separation'] * 1e2) ** 2) * ergcm2stoWm2
-                )
+                Fxuv_SI = Lxuv_cgs / (4.0 * np.pi * (sep_flux * 1e2) ** 2) * ergcm2stoWm2
 
             case 'baraffe':
                 # Bolometric flux
-                S_0 = stellar_track.BaraffeSolarConstant(
-                    hf_row['age_star'], hf_row['separation'] / AU
-                )
+                S_0 = stellar_track.BaraffeSolarConstant(hf_row['age_star'], sep_flux / AU)
 
                 # XUV flux not provided by Baraffe tracks
                 Fxuv_SI = 0.0

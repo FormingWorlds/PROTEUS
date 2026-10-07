@@ -1,9 +1,11 @@
 """Unit tests for ``proteus.outgas.calliope``.
 
 Exercises the CALLIOPE wrapper helper functions with mocked CALLIOPE
-imports: ``_resolve_element`` (element mode-to-mass conversion),
+solves: ``_resolve_element`` (element mode-to-mass conversion),
 ``construct_guess`` (initial-guess construction for the solver),
-and ``flag_included_volatiles`` (volatile inclusion logic).
+``flag_included_volatiles`` (volatile inclusion logic) and
+``calc_surface_pressures`` (the target and the seeded solve). One test
+calls CALLIOPE's real ``get_initial_pressures``.
 
 Invariants tested:
   - _resolve_element: correct unit conversion for 'X/H', 'ppmw', 'kg' modes
@@ -11,6 +13,9 @@ Invariants tested:
   - construct_guess: returns None at Time < 1 (IC phase)
   - construct_guess: zeros guess for depleted elements
   - flag_included_volatiles: O2 is always included
+  - calc_surface_pressures: the result does not depend on the caller's RNG state
+  - calc_surface_pressures: the caller's RNG stream is restored, also when CALLIOPE raises
+  - calc_surface_pressures: the from_O_budget path gets the seed and leaves the global RNG alone
 
 Testing standards:
   - docs/How-to/testing.md
@@ -19,15 +24,19 @@ Testing standards:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from contextlib import nullcontext
+from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 # calliope is an optional dependency; skip if not installed
 pytest.importorskip('calliope')
 
 from proteus.outgas.calliope import (
+    RANDOM_SEED,
     _resolve_element,
+    calc_surface_pressures,
     construct_guess,
     construct_options,
     flag_included_volatiles,
@@ -37,6 +46,13 @@ from proteus.utils.constants import (
     noble_gases,
     noble_solar_mass_ratio,
     vol_list,
+)
+from tests.outgas._calliope_helpers import (  # noqa: F401
+    _HF_ROW,
+    _cold_start_config,
+    _element_mode_config,
+    _restore_global_rng,
+    _surface_pressure_hf_row,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -291,49 +307,6 @@ def test_resolve_noble_unknown_mode_raises():
 # -----------------------------------------------------------------------
 
 
-def _element_mode_config(noble_included, He_mode='kg', He_budget=0.0, reservoir='mantle'):
-    """Minimal element-mode config for construct_options with noble control.
-
-    `noble_included` maps a noble gas symbol to its include flag. Only the
-    attributes construct_options reads in element mode are populated.
-    """
-    config = MagicMock()
-    config.outgas.fO2_shift_IW = 4.0
-    config.outgas.calliope.solubility = True
-    config.planet.volatile_mode = 'elements'
-    config.planet.volatile_reservoir = reservoir
-    config.planet.gas_prs.get_pressure = lambda s: 0.0
-
-    def _is_included(s):
-        if s in noble_gases:
-            return noble_included.get(s, False)
-        return True
-
-    config.outgas.calliope.is_included = _is_included
-
-    elem = config.planet.elements
-    elem.use_metallicity = False
-    elem.H_mode, elem.H_budget = 'kg', 1.5e20
-    elem.C_mode, elem.C_budget = 'kg', 1.0e20
-    elem.N_mode, elem.N_budget = 'kg', 2.0e18
-    elem.S_mode, elem.S_budget = 'kg', 5.0e19
-    for gas in noble_gases:
-        setattr(elem, f'{gas}_mode', 'kg')
-        setattr(elem, f'{gas}_budget', 0.0)
-    elem.He_mode, elem.He_budget = He_mode, He_budget
-    return config
-
-
-_HF_ROW = {
-    'M_mantle': 4.0e24,
-    'M_int': 4.5e24,
-    'gravity': 9.81,
-    'R_int': 6.37e6,
-    'Phi_global': 1.0,
-    'T_magma': 1800.0,
-}
-
-
 def test_construct_options_includes_noble_gas_with_budget():
     """A noble gas that is switched on and carries a positive budget reaches
     the CALLIOPE options as an inclusion flag and a ppmw budget relative to
@@ -449,35 +422,8 @@ def test_construct_guess_defers_to_cold_start_when_noble_active():
 # -----------------------------------------------------------------------
 
 
-def _surface_pressure_hf_row():
-    """Helpfile row with a whole-planet inventory for every tracked element.
-
-    Each element carries a distinct mass so a target built from the wrong
-    element set is visible in the values, not only in the key set. The noble
-    inventories are trace relative to the volatiles, which is the realistic
-    regime.
-
-    Every total is deliberately DIFFERENT from the matching config budget in
-    `_element_mode_config`, so a target populated from the static config instead
-    of the running whole-planet totals is visible in the values. Reading the
-    config would silently discard every escape debit accumulated so far.
-    """
-    hf_row = dict(_HF_ROW)
-    hf_row['Time'] = 0.0
-    for e in element_list:
-        hf_row[f'{e}_kg_total'] = 1.0e16 if e in noble_gases else 1.0e20
-    # H budget in the config is 1.5e20; He budget is 3.0e16.
-    hf_row['H_kg_total'] = 1.2e20
-    hf_row['He_kg_total'] = 2.0e16
-    return hf_row
-
-
 def _captured_target(config, hf_row):
     """Run calc_surface_pressures with CALLIOPE mocked and return the target."""
-    from unittest.mock import patch
-
-    from proteus.outgas.calliope import calc_surface_pressures
-
     # A minimal output dict: the wrapper only copies keys it recognises, so an
     # empty result leaves hf_row untouched and keeps the test on the target.
     with patch('proteus.outgas.calliope.equilibrium_atmosphere', return_value={}) as mock_solve:
@@ -565,3 +511,117 @@ def test_calliope_target_reaches_the_solver_for_an_active_noble_gas():
     for gas in ('Ne', 'Ar', 'Kr', 'Xe'):
         assert opts[f'{gas}_included'] == 0
         assert target[gas] == pytest.approx(1.0e16, rel=1e-12)
+
+
+# -----------------------------------------------------------------------
+# calc_surface_pressures :: reproducible CALLIOPE cold start
+# -----------------------------------------------------------------------
+
+
+def _drawing_solver(target, opts, **kwargs):
+    """CALLIOPE stand-in whose root moves with the global RNG, as a cold start does."""
+    x0 = np.random.uniform(low=-1.0, high=1.0)
+    return {'P_surf': 250.0 * (1.0 + 1e-9 * x0), 'H2O_bar': 200.0 * (1.0 + 1e-9 * x0)}
+
+
+def _warm_start_hf_row():
+    """Row past the start with previous pressures and no noble gas, so CALLIOPE gets a warm guess."""
+    hf_row = _surface_pressure_hf_row()
+    hf_row['Time'] = 10.0
+    for gas in noble_gases:
+        hf_row[f'{gas}_kg_total'] = 0.0
+    for s in vol_list:
+        hf_row[f'{s}_bar'] = 1.0
+    return hf_row
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('warm', [False, True], ids=['cold_start', 'warm_start'])
+def test_calliope_result_does_not_depend_on_the_caller_rng(warm):
+    """Two CALLIOPE solves from the same helpfile row give the same surface
+    pressure whatever state the caller left the global RNG in.
+
+    CALLIOPE draws its cold-start guess (Time < 1, or any active noble gas)
+    and every restart guess from the global ``np.random``, and its converged
+    root moves within the solver tolerance with that guess, so the wrapper
+    seeds the draw.
+    """
+    config, rows = _cold_start_config(), []
+    with (
+        patch(
+            'proteus.outgas.calliope.equilibrium_atmosphere', side_effect=_drawing_solver
+        ) as solve,
+        patch('proteus.outgas.calliope.np.random.seed', wraps=np.random.seed) as seed,
+    ):
+        for caller_seed in (1, 2):
+            hf_row = _warm_start_hf_row() if warm else _surface_pressure_hf_row()
+            np.random.set_state(np.random.RandomState(caller_seed).get_state())
+            calc_surface_pressures({'output': '/tmp/test'}, config, hf_row)
+            rows.append(hf_row)
+
+    assert [c.args for c in seed.call_args_list] == [(RANDOM_SEED,), (RANDOM_SEED,)]
+    assert (solve.call_args.kwargs['p_guess'] is not None) == warm
+    assert rows[0] == rows[1]
+    # The stand-in does reach hf_row: a bounded, positive pressure near its root.
+    assert abs(rows[0]['P_surf'] - 250.0) < 1e-6
+
+
+@pytest.mark.parametrize('error', [None, RuntimeError, ValueError])
+def test_calliope_call_restores_the_caller_rng_stream(error):
+    """The caller's global RNG stream continues after the CALLIOPE call as if
+    the call had not drawn from it, also when CALLIOPE raises."""
+
+    def _failing_solver(target, opts, **kwargs):
+        np.random.uniform()
+        raise error('Could not find solution for volatile abundances')
+
+    expected = np.random.RandomState(7).uniform()
+    np.random.seed(7)
+    with (
+        patch(
+            'proteus.outgas.calliope.equilibrium_atmosphere',
+            side_effect=_failing_solver if error else _drawing_solver,
+        ),
+        patch('proteus.outgas.calliope.UpdateStatusfile') as status,
+        pytest.raises(error, match='Could not find solution') if error else nullcontext(),
+    ):
+        calc_surface_pressures(
+            {'output': '/tmp/test'}, _cold_start_config(), _surface_pressure_hf_row()
+        )
+    assert np.random.uniform() == expected
+    assert status.call_count == int(error is RuntimeError)
+
+
+def test_from_o_budget_solve_gets_the_same_fixed_seed():
+    """The from_O_budget path passes RANDOM_SEED to CALLIOPE, which seeds its
+    own generator with it, and does not seed the global RNG."""
+    config = _cold_start_config()
+    config.planet.fO2_source = 'from_O_budget'
+    with (
+        patch(
+            'proteus.outgas.calliope.equilibrium_atmosphere_authoritative_O',
+            return_value={'fO2_shift_derived': 4.0, 'O_res': 0.0},
+        ) as solve,
+        patch('proteus.outgas.calliope.np.random.seed') as global_seed,
+    ):
+        calc_surface_pressures({'output': '/tmp/test'}, config, _surface_pressure_hf_row())
+    assert solve.call_args.kwargs['random_seed'] == RANDOM_SEED == 42
+    assert global_seed.call_count == 0
+
+
+def test_calliope_cold_start_guess_draws_from_the_global_rng():
+    """CALLIOPE's cold-start guess helper consumes the global NumPy stream,
+    which the seed in calc_surface_pressures controls. A solver that stops
+    drawing from that stream fails the smoke test instead: a private unseeded
+    generator fails its first half, a self-seeded start its negative control."""
+    from calliope.solve import get_initial_pressures
+
+    target = {'H': 1.2e20, 'C': 1.0e20, 'N': 1.0e18, 'S': 1.0e18}
+    np.random.seed(5)
+    first = get_initial_pressures(target)
+    np.random.seed(5)
+    again = get_initial_pressures(target)
+    other = get_initial_pressures(target)
+    assert first == again
+    assert first != other
+    assert all(p > 0.0 for p in first)

@@ -7,37 +7,15 @@ set -euo pipefail
 
 echo "Set up Morrigan..."
 
-portable_realpath() {
-    # Keep this helper in sync across the get_* scripts. A path that does not
-    # exist yet is rejected by realpath (BSD refuses a missing leaf, GNU a
-    # missing parent), so fall through to python3 there too.
-    if command -v realpath >/dev/null 2>&1 && realpath "$1" 2>/dev/null; then
-        return 0
-    fi
-    python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
-}
+# Shared helpers: see tools/_get_common.sh.
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 
 # Path to PROTEUS folder
-root=$(dirname "$(portable_realpath "$0")")
-root=$(portable_realpath "$root/..")
+root="$proteus_root"
 
-# Refuse to delete a checkout holding local work unless --force is given.
-# Guards against overwriting uncommitted changes or unpushed commits.
-force=false
-for arg in "$@"; do
-    [ "$arg" = "--force" ] && force=true
-done
+get_parse_args "$@"
 workpath="$root/Morrigan/"
-if [ -d "$workpath/.git" ] && [ "$force" != true ]; then
-    dirty=$(git -C "$workpath" status --porcelain --untracked-files=no 2>/dev/null | head -1)
-    unpushed=$(git -C "$workpath" log HEAD --not --remotes --oneline 2>/dev/null | head -1)
-    if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
-        echo "ERROR: $workpath has uncommitted changes or commits not on a remote." >&2
-        echo "       Refusing to delete it. Commit and push your work, or run" >&2
-        echo "       bash tools/get_morrigan.sh --force  to discard the checkout." >&2
-        exit 1
-    fi
-fi
+guard_dirty_checkout "$workpath" get_morrigan.sh
 
 # Clone to a temporary directory first so a failed clone does not destroy
 # the existing checkout.
@@ -45,17 +23,8 @@ tmp_clone="${workpath%/}.tmp.$$"
 rm -rf "$tmp_clone"
 trap 'rm -rf "$tmp_clone"' EXIT
 
-# Detect SSH access to GitHub. Exit code 1 from ssh -T git@github.com
-# indicates authentication succeeded without shell access.
-if ssh -T git@github.com; then
-    use_ssh=false
-else
-    if [ $? -eq 1 ]; then
-        use_ssh=true
-    else
-        use_ssh=false
-    fi
-fi
+# Detect SSH access to GitHub.
+use_ssh=$(github_use_ssh)
 
 echo "Cloning from GitHub"
 if [ "$use_ssh" = true ]; then

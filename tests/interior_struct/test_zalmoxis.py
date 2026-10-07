@@ -1648,6 +1648,74 @@ def test_dry_mass_target_excludes_only_undissolved_volatiles():
     assert 0.999 * M_earth < wet['planet_mass'] < M_earth
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_resumed_row_gives_the_zalmoxis_target_rock_anchor_plus_volatile_change(tmp_path):
+    """After restore_accretion_state, the real Zalmoxis target is the configured
+    mass plus the accreted rock plus the stored volatile change, less volatiles."""
+    from types import SimpleNamespace
+
+    from proteus.accretion.wrapper import restore_accretion_state
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+    from proteus.utils.constants import AU, M_earth
+
+    H_total = 4.7e20
+    row = {
+        'Time': 1.0e5,
+        'H_kg_total': H_total,
+        'H_kg_atm': 1.2e20,
+        'M_accreted_rock': 0.1 * M_earth,
+        'M_volatile_change': -3.0e22,
+        'n_impacts_applied': 1,
+        'semimajorax': 1.0 * AU,
+        'eccentricity': 0.0,
+    }
+    config = _volatile_config(True)
+    config.params.resume = True
+    config.accretion.module = None
+    config.planet.mass_tot = 1.0
+    config.orbit.semimajoraxis = 1.0
+    config.orbit.eccentricity = 0.0
+    handler = SimpleNamespace(config=config, hf_row=row, directories={'output': str(tmp_path)})
+    restore_accretion_state(handler)
+    target = load_zalmoxis_configuration(config, row)['planet_mass']
+    assert config.planet.mass_tot == pytest.approx(1.1, rel=1e-12)
+    assert target == pytest.approx(1.1 * M_earth - 3.0e22 - H_total, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_dry_mass_target_adds_the_ledger_volatile_change():
+    """The whole-planet target is mass_tot plus the volatile change
+    (M_volatile_change), which mass_tot, the rock anchor, leaves
+    out; it keeps applying with accretion off, and is zero with no ledger."""
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+    from proteus.utils.constants import M_earth
+
+    H_total = 4.7e20
+    hf_row = {
+        'H_kg_total': H_total,
+        'H_kg_atm': 1.2e20,
+        'M_accreted_rock': 6.0e23,
+        'M_volatile_change': -5.0e22,  # 5e22 kg of volatiles net lost since the start
+    }
+    config = _volatile_config(True)
+    config.accretion.module = 'dummy'
+    with_ledger = load_zalmoxis_configuration(config, hf_row)
+    assert with_ledger['planet_mass'] == pytest.approx(M_earth - 5.0e22 - H_total, rel=1e-12)
+
+    # The ledger keeps applying after accretion is turned off on resume.
+    config.accretion.module = None
+    off = load_zalmoxis_configuration(config, hf_row)
+    assert off['planet_mass'] == pytest.approx(M_earth - 5.0e22 - H_total, rel=1e-12)
+    # A run that never had accretion has no ledger: V is zero.
+    no_ledger = {
+        k: v for k, v in hf_row.items() if k not in ('M_accreted_rock', 'M_volatile_change')
+    }
+    plain = load_zalmoxis_configuration(config, no_ledger)
+    assert plain['planet_mass'] == pytest.approx(M_earth - H_total, rel=1e-12)
+
+
 # ============================================================================
 # Temperature-source dispatch: JAX-path viability and callable pass-through
 # ============================================================================
@@ -3946,8 +4014,8 @@ def test_resume_without_table_files_warns_although_a_marker_exists(
 def test_resume_keeps_run_tables_across_the_helpfile_round_trip_of_the_mass(
     tmp_path, monkeypatch, caplog
 ):
-    """Masses that differ by a helpfile round trip (4.3e-12) give P_max keys that differ
-    in the 7th digit; the run still keeps its tables."""
+    """Masses that differ by an 11-digit helpfile round trip (4.3e-12) give P_max
+    keys that differ in the 7th digit; the run still keeps its tables."""
     monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
     run_eos = tmp_path / 'run' / 'data' / 'spider_eos'
     _, _, _, stored = _generate_tables_stubbed(

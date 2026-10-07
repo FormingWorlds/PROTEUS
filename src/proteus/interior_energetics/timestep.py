@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
-from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION, UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -381,10 +382,9 @@ def next_step(
     dtmaximum = config.params.dt.maximum
     dtmaximum += config.params.dt.maximum_rel * hf_row['Time']
 
-    # Prevent overshooting the configured final time (#676): when
-    # stop.time is active, the next step cannot push Time past
-    # stop.time.maximum. The 1 yr floor keeps tiny end-of-run remainders
-    # from collapsing dt to zero (and then to dt.minimum on the next line).
+    # Limit overshoot of the final time (#676): the step ends at stop.time.maximum, or
+    # less than 1 yr past it by the floor that keeps tiny remainders from collapsing dt;
+    # the impact snap-forward below can extend a step by up to 1e-3 yr more.
     if config.params.stop.time.enabled:
         maxtime = config.params.stop.time.maximum
         dtmaximum = min(dtmaximum, max(1.0, float(maxtime - hf_row['Time'])))
@@ -506,8 +506,18 @@ def next_step(
     # margin (e.g. the 10 yr -> 100 yr jump that occasionally wedges
     # CVODE in Aragog at the molten-to-mushy transition).
     max_growth = float(config.params.dt.max_growth_factor)
+    dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
     if max_growth > 0.0 and hf_all is not None and len(hf_all['Time']) >= 2:
         dt_prev_actual = float(hf_all['Time'].iloc[-1] - hf_all['Time'].iloc[-2])
+        # A landing step can be far below dtfloor; grow from dtfloor, or from the last
+        # step that did not land on an impact if that was shorter.
+        n_impacts = hf_all.get('n_impacts_applied')
+        if n_impacts is not None and n_impacts.iloc[-1] > n_impacts.iloc[-2]:
+            k = len(hf_all) - 2
+            while k > 0 and n_impacts.iloc[k] > n_impacts.iloc[k - 1]:
+                k -= 1
+            before = hf_all['Time'].iloc[k] - hf_all['Time'].iloc[k - 1] if k > 0 else dtfloor
+            dt_prev_actual = max(dt_prev_actual, min(dtfloor, before))
         if dt_prev_actual > 0.0:
             dt_capped = dt_prev_actual * max_growth
             if dtswitch > dt_capped:
@@ -522,18 +532,24 @@ def next_step(
                 )
                 dtswitch = dt_capped
 
-    # Align step with next scheduled giant impact, subject to optional
-    # impact_maximum and dtfloor (the floor can overshoot by up to dtfloor).
+    # A step reaching the next impact lands on it, cut to dt/ceil(dt/ceiling) with
+    # impact_maximum set; one ending within the snapshot-name resolution short of it
+    # is extended onto it. The landing step can be shorter than dtfloor.
     if interior_o is not None and np.isfinite(interior_o.t_next_impact):
         dt_to_impact = interior_o.t_next_impact - hf_row['Time']
+        if 0.0 < dt_to_impact - dtswitch <= SUBYEAR_TIME_RESOLUTION and not (
+            config.params.stop.time.enabled
+            and hf_row['Time'] + dtswitch >= config.params.stop.time.maximum
+        ):
+            dtswitch = dt_to_impact
         impact_ceiling = float(config.params.dt.impact_maximum)
         if impact_ceiling > 0.0:
-            dt_to_impact = min(dt_to_impact, impact_ceiling)
-        dtfloor = config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
-        dt_to_impact = max(dt_to_impact, dtfloor)
+            ceiling = max(impact_ceiling, dtfloor)
+            if dtswitch >= dt_to_impact > ceiling:
+                dt_to_impact /= math.ceil(dt_to_impact / ceiling)
         if dtswitch > dt_to_impact:
             log.info(
-                'Time-stepping: impact at %.4e yr, capping dt at %.2e yr (was %.2e yr)',
+                'Time-stepping: impact landing at %.4e yr, capping dt at %.2e yr (was %.2e yr)',
                 interior_o.t_next_impact,
                 dt_to_impact,
                 dtswitch,

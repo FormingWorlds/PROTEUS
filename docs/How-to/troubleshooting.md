@@ -16,6 +16,7 @@ step-by-step guide or the advice below,
 | `Aragog needs the SUNDIALS CVODE solver` / `scikits_odes_sundials.cvode cannot be imported` | [Aragog stops at setup](#aragog-stops-at-setup-cvode-cannot-be-imported) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
 | `Out-of-date modules detected` | [Module updates](#out-of-date-modules-detected) |
+| `Refusing to delete it` during an install | [Module checkout kept](#an-install-refuses-to-replace-a-module-checkout) |
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
 | `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
@@ -134,24 +135,44 @@ git pull
 python -m pip install -U -e .
 ```
 
+### An install refuses to replace a module checkout {#an-install-refuses-to-replace-a-module-checkout}
+
+An install script stops rather than delete a module checkout that holds work
+you would not get back:
+
+```console
+ERROR: /path/to/aragog has uncommitted changes or commits not on a remote.
+       Refusing to delete it. Commit and push your work, or run
+       bash tools/get_aragog.sh --force  to discard the checkout.
+```
+
+Commit and push the work, and the next run replaces the checkout normally.
+
+`install.sh` and `proteus install-all` never pass `--force`, so they cannot
+step over this for you. To discard the checkout deliberately, run the script
+the message names by hand, from the PROTEUS folder:
+
+```console
+bash tools/get_aragog.sh --force
+```
+
+A second message reports a checkout git cannot read at all, from a truncated
+copy or a clone interrupted after it started writing refs:
+
+```console
+ERROR: git could not report the state of /path/to/aragog, so whether
+       it holds local work is unknown. Refusing to delete it.
+       Inspect the checkout, or run
+       bash tools/get_aragog.sh --force  to discard it.
+```
+
+The same `--force` discards it. A clone killed before it committed anything
+is not affected: there is nothing to lose, so the next install refreshes it
+without asking.
+
 ### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 
-PROTEUS automatically downloads input data files from Zenodo. The code works without an API token using public access, but you can optionally configure a token for enhanced rate limits.
-
-??? tip "Optional: Configure a Zenodo API token"
-    If you encounter rate limiting errors or slow downloads, you can set up a Zenodo API token:
-
-    1. Get a personal access token from [Zenodo](https://zenodo.org/account/settings/applications/tokens/new/)
-    2. Configure it:
-        ```console
-        pystow set zenodo api_token <your-token>
-        ```
-    3. Verify it's configured:
-        ```console
-        pystow get zenodo api_token
-        ```
-
-    The token is optional. PROTEUS uses public access by default and falls back gracefully if the token is unavailable.
+PROTEUS downloads input data through fwl-io from Zenodo, without an API token. A file that Zenodo does not serve is fetched from its DataverseNL mirror (every dataset except the PHOENIX spectra has one), and every file is checked against the committed registry. When neither source serves a file, the error lists the failure from each source: a timeout, a connection error or an HTTP 429 or 5xx clears if you retry later; a 404 or a checksum mismatch from both sources does not, so report it as an issue. `fwl-io check proteus` lists what is missing or corrupt among the datasets PROTEUS declares in its own manifest.
 
 ### PETSc complains about being in the wrong directory
 
@@ -217,7 +238,7 @@ xcode-select --install
         cd petsc
         ./configure \
            PETSC_ARCH=arch-darwin-c-opt \
-           LDFLAGS="-L$(brew --prefix)/lib -Wl,-w" \
+           LDFLAGS="-Wl,-w" \
            --with-debugging=0 \
            --with-fc=0 \
            --with-cxx=0 \
@@ -232,7 +253,19 @@ xcode-select --install
         make PETSC_DIR=$(pwd) PETSC_ARCH=arch-darwin-c-opt check
         ```
 
-    Tested on M1 Ultra (macOS 15.6.1), M2 (macOS 26.2), and M4 Max (macOS 26.3).
+    With `LDFLAGS="-Wl,-w"`, `get_petsc.sh` was tested on M1 Ultra (macOS 26.6.2). The earlier command, which also passed the Homebrew library path, was tested on M1 Ultra (macOS 15.6.1), M2 (macOS 26.2), and M4 Max (macOS 26.3).
+
+### PETSc configure: "Downloaded sundials2 could not be used"
+
+PETSc configure on macOS stops with:
+
+```
+Downloaded sundials2 could not be used. Please check install in .../arch-darwin-c-opt
+```
+
+and `configure.log` reports `_CVDense` and `_CVSpgmr` as undefined symbols.
+
+A SUNDIALS 7 from Homebrew is in the linker search path ahead of the SUNDIALS 2.5 that PETSc downloads, and SUNDIALS 7 has no `CVDense`. `get_petsc.sh` passes no Homebrew library path, so on Apple Silicon, where Homebrew lives in `/opt/homebrew`, PETSc builds with a Homebrew SUNDIALS installed. On an Intel Mac, Homebrew installs into `/usr/local/lib`, which the linker searches by default, so a Homebrew SUNDIALS can still hide the downloaded one there. `brew list --versions sundials` shows whether Homebrew's SUNDIALS is installed.
 
 ### PETSc tests error (network configuration)
 

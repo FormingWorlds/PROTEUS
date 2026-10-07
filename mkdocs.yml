@@ -93,6 +93,7 @@ nav:
               - Satellite angular momentum (satellite.py): Validation/orbit/satellite.md
               - Orbit module wrapper (wrapper.py): Validation/orbit/wrapper.md
               - Tidal Love-number lookup (obliqua.py): Validation/orbit/obliqua.md
+              - Prescribed migration laws (parameterized.py): Validation/orbit/parameterized.md
           - Outgas:
               - H2-MgSiO3 binodal (binodal.py): Validation/outgas/binodal.md
               - Rock-vapour molar masses (lavatmos.py): Validation/outgas/lavatmos.md

@@ -671,7 +671,7 @@
           "value": 0
         }
       ],
-      "description": "Maximum time-step size [yr] for the step that lands on a scheduled giant impact. The landing step is otherwise clamped only to however much simulated time remains before the impact, so after a long quiescent phase has let ``dt`` coarsen, that remaining time can itself be large and the step absorbing the impact's melt-fraction jump inherits the same coarseness. Set to 0 (default) to disable, in which case the remaining-time clamp applies with no independent ceiling.",
+      "description": "Ceiling [yr] for the step that reaches a scheduled giant impact. Such a step is otherwise clamped only to the time left before the impact, which after a long quiescent phase can itself be large. With the ceiling set, a reaching step longer than ``max(impact_maximum, dtfloor)`` (dtfloor = dt.minimum + dt.minimum_rel * Time) is cut to an equal fraction of the time left; later steps are evaluated again, and the step that lands is no longer than ``max(impact_maximum, dtfloor)``. Set to 0 (default) to disable. Independent of this setting, the step that lands on an impact can be shorter than dtfloor, a step ending at most 1e-3 yr short of an impact is extended onto it (unless the step already reaches stop.time.maximum), and an impact is applied at the end of the first step that reaches its time. Impacts each less than 1e-3 yr after the one before form a chain that the step aims at the last of, so an impact in a chain can be applied later than its time by up to the chain span; a chain spanning 1e-3 yr or more is logged as a warning.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -692,7 +692,7 @@
           "value": 0
         }
       ],
-      "description": "Cap on the dt growth ratio between consecutive steps [dimensionless]. Bounds dtswitch / dtprev, preventing large jumps that can wedge the interior solver; 0 (default) disables the cap.",
+      "description": "Cap on the dt growth ratio between consecutive steps [dimensionless]. Bounds dtswitch / dtprev, preventing large jumps that can wedge the interior solver; 0 (default) disables the cap. After a step that landed on a giant impact, dtprev is the larger of that step and ``min(dtfloor, last step that did not land on an impact)``, or dtfloor when there is no such step.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1742,7 +1742,7 @@
         "inst"
       ],
       "bounds": null,
-      "description": "Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit",
+      "description": "Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit. With 'inst' the semi-major axis follows the flux at every step, so a giant impact's semi-major axis change is not applied; its eccentricity change is.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1827,10 +1827,11 @@
         null,
         "none",
         "sp0d",
-        "sp1d"
+        "sp1d",
+        "parameterized"
       ],
       "bounds": null,
-      "description": "Select star-planet orbit module to use. Choices: 'none', 'sp0d', 'sp1d'.",
+      "description": "Select star-planet orbit module to use. Choices: 'none', 'sp0d', 'sp1d', 'parameterized'.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1846,7 +1847,7 @@
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Planet initial day length [hours], will use orbital period if value is None.",
+      "description": "Planet initial day length [hours], will use orbital period if value is None. Must be None for sp0d and parameterized, which keep the spin locked to the orbit.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -2389,6 +2390,90 @@
         }
       ],
       "description": "Target storage-clock spacing for out-of-band fine samples, as a fraction of the requested call duration (ps1d_evec only).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.sma_final",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Final semi-major axis [AU].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.migration",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"none\"",
+      "choices": [
+        "none",
+        "instant",
+        "sigmoid",
+        "high_ecc"
+      ],
+      "bounds": null,
+      "description": "Type of orbital migration to apply.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.time_migration",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 1
+        }
+      ],
+      "description": "Time at which migration begins [yr].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.tau_migration",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Timescale of migration, used by the sigmoid and high_ecc laws [yr].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6981,7 +7066,7 @@
           "value": 0.0
         }
       ],
-      "description": "Minimum threshold for element mass [kg]. Inventories below this are set to zero.",
+      "description": "Minimum threshold for element mass [kg]. Outgassing treats H, C, N or S below it as absent; escape sets a non-noble element total below it to zero, except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -7337,7 +7422,7 @@
           "value": 0
         }
       ],
-      "description": "Maximum number of initial-guess samples for the CALLIOPE equilibrium solver. Default 1000.",
+      "description": "Maximum number of initial-guess samples for the CALLIOPE equilibrium solver. The samples come from a fixed seed, so identical inputs draw the same guesses, and an input that exhausts the samples fails the same way on a rerun. Default 1000.",
       "doc_source": "attributes",
       "group_order": 1,
       "group_position": 0,
@@ -10065,7 +10150,7 @@
         "morrigan"
       ],
       "bounds": null,
-      "description": "Accretion module to use. Choices: None, \"dummy\", \"timeline\", \"morrigan\".",
+      "description": "Accretion module to use. A \"timeline\" or \"morrigan\" history is borrowed from its dynamical bodies: impactor masses, collision loss fractions and impact energies are theirs, not rescaled to this planet. A warning is logged when the timeline's target mass differs from the planet mass by more than 10 %, a round threshold (about 3.5 % in escape speed, which scales as M^0.36), at load and per impact. Choices: None, \"dummy\", \"timeline\", \"morrigan\".",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -10647,7 +10732,7 @@
           "value": 0
         }
       ],
-      "description": "Oxygen carried by each impactor [ppmw of impactor mass].",
+      "description": "Oxygen carried by each impactor [ppmw of impactor mass]. With CALLIOPE or atmodeller at a fixed fO2 (``planet.fO2_source = 'user_constant'``) the outgassing derives the O budget, so the delivered part counts as rock; otherwise it joins the O budget.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11215,6 +11300,43 @@
       "doc": "sp1d, ps1d, and ps1d_evec require at least Lovepy, but ideally the Obliqua tidal-response module: all three read the full per-mode spectrum in ``tides_o``, which ``dummy`` never populates. ``sp0d``/``ps0d`` read the scalar ``Imk2`` instead (which ``dummy`` does provide), so they are unrestricted here; see \"Compatibility between orbit models and tidal modules\" in docs/Explanations/orbit.md."
     },
     {
+      "validator": "parameterized_excludes_accretion",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion.module",
+        "orbit.star_planet_model"
+      ],
+      "doc": "Reject giant impacts with the parameterized star-planet model."
+    },
+    {
+      "validator": "parameterized_excludes_tides",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.module",
+        "orbit.star_planet_model"
+      ],
+      "doc": "The parameterized model prescribes the orbit as a closed-form track and exchanges no energy with the interior, so no tides module can run alongside it; see \"Star-planet models\" in docs/Explanations/orbit.md."
+    },
+    {
+      "validator": "parameterized_high_ecc_inward",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.parameterized",
+        "orbit.semimajoraxis",
+        "orbit.star_planet_model"
+      ],
+      "doc": "The high-eccentricity law circularises at fixed orbital angular momentum, which can only shrink the orbit, so its final semi-major axis must not exceed the initial one, orbit.semimajoraxis."
+    },
+    {
       "validator": "planet_fO2_source_compat",
       "module": "_config.py",
       "attached_to": [
@@ -11289,6 +11411,18 @@
         "star.mors.tracks"
       ],
       "doc": "ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."
+    },
+    {
+      "validator": "spinless_orbit_keeps_spin_synchronous",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.axial_period",
+        "orbit.star_planet_model"
+      ],
+      "doc": "sp0d and parameterized evolve no spin, so the planet stays synchronous and orbit.axial_period must be unset; see \"Star-planet models\" in docs/Explanations/orbit.md."
     },
     {
       "validator": "tides_enabled_orbit",

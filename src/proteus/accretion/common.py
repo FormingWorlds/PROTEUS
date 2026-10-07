@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from attrs import define, field
 
+from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -321,7 +323,9 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
     if not os.path.exists(resolved):
         raise FileNotFoundError(f'Impact timeline file does not exist: {resolved}')
 
-    table = pd.read_csv(resolved, sep=None, engine='python', comment='#')
+    table = pd.read_csv(
+        resolved, sep=None, engine='python', comment='#', dtype=str, skipinitialspace=True
+    )
     table.columns = [str(c).strip() for c in table.columns]
 
     missing = [c for c in TIMELINE_COLUMNS if c not in table.columns]
@@ -330,6 +334,9 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
             f'Impact timeline {resolved} is missing required columns: {missing}. '
             f'Expected all of: {list(TIMELINE_COLUMNS)}'
         )
+    # float() reads each value exactly, where the python engine's parser can be 1 ulp off.
+    for c in TIMELINE_COLUMNS:
+        table[c] = table[c].map(float)
 
     if len(table) == 0:
         return []
@@ -408,6 +415,35 @@ def next_event(events: Sequence[ImpactEvent], time: float) -> ImpactEvent | None
     return None
 
 
+def landing_time(events: Sequence[ImpactEvent], time: float) -> float:
+    """Return the step end that lands the next impact after the given time.
+
+    The next impact and those each less than ``SUBYEAR_TIME_RESOLUTION`` after the
+    one before form a chain; the step aims at its last time. A step that ends
+    inside a wider chain applies the impacts it passed at its end. Rows that apply
+    impacts get distinct snapshot names when the steps inside the chain are at
+    least that resolution long.
+
+    Parameters
+    ----------
+    events : sequence of ImpactEvent
+        Timeline in time order.
+    time : float
+        Current simulation time [yr].
+
+    Returns
+    -------
+    float
+        Landing time [yr], infinite once the timeline is exhausted.
+    """
+    first = next_event(events, time)
+    landing = float('inf') if first is None else first.time
+    for e in events:
+        if 0.0 < e.time - landing < SUBYEAR_TIME_RESOLUTION:
+            landing = e.time
+    return landing
+
+
 def due_events(
     events: Sequence[ImpactEvent], time_previous: float, time_now: float
 ) -> list[ImpactEvent]:
@@ -432,3 +468,29 @@ def due_events(
         Impacts to apply for this step, in time order.
     """
     return [e for e in events if time_previous < e.time <= time_now]
+
+
+def snap_to_impact(time: float, t_impact: float) -> float:
+    """Return the impact time when a step ended a few ulp short of it.
+
+    ``time + (t_impact - time)`` can round below ``t_impact``, and the impact
+    would then land one step late. Moving the step end onto the impact keeps
+    every later comparison of the row time with the impact time exact.
+
+    Parameters
+    ----------
+    time : float
+        Simulation time at the end of the step [yr].
+    t_impact : float
+        Landing time of the next impact, the last time of its chain
+        (:func:`landing_time`) [yr], infinite when none is pending.
+
+    Returns
+    -------
+    float
+        ``t_impact`` when it lies above ``time`` within a relative 1e-12,
+        otherwise ``time``.
+    """
+    if 0.0 < t_impact - time <= 1.0e-12 * max(1.0, abs(time)):
+        return t_impact
+    return time
