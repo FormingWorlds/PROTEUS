@@ -38,6 +38,7 @@ n_workers  = 5        # Number of parallel workers
 kernel     = "MAT1/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
 acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI" | "LogPI"
 n_steps    = 100       # Total number of evaluations (i.e. BO steps)
+patience   = 0         # Stop after this many evaluations without improvement; 0 is off
 
 # Parameters to optimize (with bounds)
 [parameters]

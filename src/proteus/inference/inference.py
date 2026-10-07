@@ -133,6 +133,17 @@ def parameter_bounds(parameters: dict) -> dict[str, tuple[float, float]]:
     return bounds
 
 
+def validate_patience(patience) -> int:
+    """Check `patience`, the evaluations without improvement after which a study stops.
+
+    Raises:
+        ValueError: If it is not a whole number >= 0 (0 turns it off).
+    """
+    if isinstance(patience, bool) or not isinstance(patience, int) or patience < 0:
+        raise ValueError(f'patience must be a whole number >= 0 (0 is off), got {patience!r}')
+    return patience
+
+
 def validate_truth(parameters: dict, truth: dict | None) -> dict | None:
     """Check the ground-truth parameter values given in the inference config.
 
@@ -329,6 +340,9 @@ def run_inference(config):
     # Optional true value of each parameter, for studies of a known simulation
     config['truth'] = validate_truth(config['parameters'], config.get('truth'))
 
+    # Optional early stop once the best objective stops improving
+    config['patience'] = validate_patience(config.get('patience', 0))
+
     # How each worker runs its evaluations. Recorded here because the next step empties
     # the output folder.
     set_dispatch(config.get('dispatch'), config.get('runner_max_jobs'))
@@ -401,6 +415,8 @@ def run_inference(config):
     log.info(f'    workers       = {config["n_workers"]}')
     log.info(f'    init samples  = {n_init}')
     log.info(f'    optim steps   = {config["n_steps"]}')
+    if config['patience']:
+        log.info(f'    patience      = {config["patience"]} evaluations')
     log.info(f'    kernel        = {config["kernel"]}')
     log.info(f'    acquisition   = {config["acqf"]}')
     log.info(f'    dispatch      = {dispatch_mode()}')
@@ -430,6 +446,7 @@ def run_inference(config):
         config['failure_codes'],
         config['sigma'],
         config['correlation'],
+        config['patience'],
     )
 
     t_1 = time.perf_counter()

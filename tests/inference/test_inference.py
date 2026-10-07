@@ -812,3 +812,15 @@ def test_get_nested_docstring_uses_current_schema_example():
         'docstring example must not reference the deprecated struct.* schema'
     )
     assert 'planet.mass_tot' in doc, 'docstring example must use the current planet.* schema'
+
+
+@pytest.mark.unit
+def test_validate_patience_accepts_whole_numbers_and_rejects_others():
+    """0 (off) and positive whole numbers pass unchanged. A negative, fractional,
+    boolean or string patience is refused; True would otherwise pass as 1 and stop a
+    study after one evaluation."""
+    assert inference_mod.validate_patience(0) == 0
+    assert inference_mod.validate_patience(50) == 50
+    for bad in (-1, 2.5, True, '50'):
+        with pytest.raises(ValueError, match='patience must be a whole number'):
+            inference_mod.validate_patience(bad)

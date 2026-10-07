@@ -918,3 +918,139 @@ def test_parallel_process_stops_the_study_when_a_run_fails_under_abort(
     assert 'abort_on_failure is set' in reported
     # Only the initial sample was in the dataset when the study stopped.
     assert '1 evaluation, initial samples included, completed' in reported
+
+
+def _y(*values):
+    return torch.tensor([[v] for v in values], dtype=torch.double)
+
+
+@pytest.mark.unit
+def test_evaluations_since_improvement_needs_a_real_rise():
+    """Only a rise of the best objective by more than PATIENCE_MIN_GAIN (0.01)
+    resets the count, and rises below it add up."""
+    assert async_mod.PATIENCE_MIN_GAIN == pytest.approx(0.01)
+    # Initial best -1.5; -1.488 is the last rise beyond 0.01, two steps from the end
+    y = _y(-2.0, -1.5, -1.6, -1.495, -1.488, -1.7, -1.8)
+    assert async_mod.evaluations_since_improvement(y, n_init=2) == 2
+    # A rise of 0.005 alone does not count, so both steps are without improvement
+    assert async_mod.evaluations_since_improvement(_y(-1.5, -1.495, -1.6), n_init=1) == 2
+    # Two rises of 0.006 add up to 0.012 and count at the second
+    assert async_mod.evaluations_since_improvement(_y(-1.5, -1.494, -1.488), n_init=1) == 0
+    # No step beats the initial best
+    assert async_mod.evaluations_since_improvement(_y(0.2, -5.0, -5.0, -5.0), n_init=1) == 3
+
+
+def _worse_each_time(**_kwargs):
+    """A BO step whose evaluation never beats the initial sample."""
+    return (_y(0.5), _y(-5.0), 0.1, 0.2, 0.3, 0.4, 0.5, None)
+
+
+def _run_worker(tmp_path, monkeypatch, patience, converged, process_fun=_worse_each_time):
+    monkeypatch.setattr(async_mod, 'checkpoint', lambda *args: None)
+    D_shared = {'X': _y(0.1), 'Y': _y(0.2)}
+    async_mod.worker(
+        process_fun=process_fun,
+        build_obj=lambda **kwargs: lambda x: x,
+        D_shared=D_shared,
+        B={},
+        T=[],
+        T0=0.0,
+        x_init=_y(0.3),
+        n_init=1,
+        lock=_DummyLock(),
+        max_len=7,
+        worker_id=0,
+        log_list=[],
+        output_dir=str(tmp_path),
+        patience=patience,
+        converged=converged,
+    )
+    return D_shared
+
+
+@pytest.mark.unit
+def test_worker_stops_the_study_once_patience_runs_out(tmp_path, monkeypatch, caplog):
+    """With patience 3 and no improvement, the worker sets `converged` after the
+    third step and runs no fourth, although the budget allows six."""
+    converged = threading.Event()
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.async_BO'):
+        D_shared = _run_worker(tmp_path, monkeypatch, 3, converged)
+
+    assert len(D_shared['X']) == 1 + 3
+    assert converged.is_set()
+    messages = [r.getMessage() for r in caplog.records]
+    assert 'Worker 0 exiting: the best objective stopped improving' in messages
+
+
+@pytest.mark.unit
+def test_worker_with_patience_off_runs_the_full_budget(tmp_path, monkeypatch):
+    """patience = 0 never stops the study: all six steps run and `converged` stays clear."""
+    converged = threading.Event()
+    D_shared = _run_worker(tmp_path, monkeypatch, 0, converged)
+
+    assert len(D_shared['X']) == 7
+    assert not converged.is_set()
+
+
+@pytest.mark.unit
+def test_worker_starts_no_evaluation_once_another_worker_converged(
+    tmp_path, monkeypatch, caplog
+):
+    """A worker that finds `converged` already set runs no further evaluation and
+    says why, not as a failed run."""
+    converged = threading.Event()
+    converged.set()
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.async_BO'):
+        D_shared = _run_worker(
+            tmp_path,
+            monkeypatch,
+            3,
+            converged,
+            process_fun=lambda **_kwargs: pytest.fail('no evaluation should run'),
+        )
+
+    assert len(D_shared['X']) == 1
+    messages = [r.getMessage() for r in caplog.records]
+    assert 'Worker 0 exiting: the best objective stopped improving' in messages
+    assert 'Worker 0 exiting: the study is stopping on a failed run' not in messages
+
+
+@pytest.mark.unit
+def test_parallel_process_passes_patience_to_every_worker(monkeypatch, tmp_path):
+    """parallel_process hands each worker the configured patience and one shared
+    `converged` event."""
+    seen = []
+
+    class FakeProcess:
+        def __init__(self, target, args):
+            seen.append(args)
+            self.args = args
+            self.exitcode = 0
+
+        def start(self):
+            shared = self.args[2]
+            shared['X'] = torch.cat((shared['X'], _y(0.5)), dim=0)
+            shared['Y'] = torch.cat((shared['Y'], _y(0.7)), dim=0)
+
+        def join(self):
+            return None
+
+    _mocked_parallel_process_env(monkeypatch, tmp_path, FakeProcess)
+    async_mod.parallel_process(
+        objective_builder=lambda **kwargs: lambda x: x,
+        kernel='MAT3/2',
+        acqf='LogEI',
+        n_workers=2,
+        max_len=6,
+        output='dummy',
+        seed=1,
+        ref_config='ref.toml',
+        observables={'obs': 1.0},
+        parameters={'a': [0.0, 1.0]},
+        failure_codes=[],
+        patience=7,
+    )
+
+    assert [args[-2] for args in seen] == [7, 7]
+    assert seen[0][-1] is seen[1][-1]
+    assert isinstance(seen[0][-1], threading.Event)

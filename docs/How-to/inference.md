@@ -166,6 +166,8 @@ study: different parameter combinations can produce the same observables.
 
 The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
 
+With `patience = N` (default 0, off), the study stops earlier, once `N` evaluations in a row have not raised the best objective by more than 0.01, about a 2% lower chi-squared. Small rises add up: the count resets once the best has risen by more than 0.01 in total since the last reset. Runs already in progress finish first. Plateaus of 20 to 40 evaluations before a further improvement are common, so values below about 50 can stop a study too early.
+
 ### Acquisition functions
 
 The acquisition function is an analytical function that is aware of the current state of the optimisation.
