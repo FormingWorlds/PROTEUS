@@ -728,18 +728,10 @@ runs:
     # ------------------------------------------------------------------
     # 9. FWL_DATA cache + smoke / full data download
     # ------------------------------------------------------------------
-    # The key hashes BOTH dataset descriptors: .github/data-manifest.yaml (the
-    # older download() datasets: spectral files, stellar spectra, tracks) and
-    # src/proteus/data/proteus_manifest.toml (the fwl-io pins of the data only
-    # PROTEUS reads, such as the exoplanet catalogue). Keying on the fwl-io manifest as well means
-    # a Zenodo re-pin busts the cache and forces a fresh save. Without it, files
-    # pinned after the cache was first frozen re-download on every run: the key
-    # stays constant, actions/cache exact-hits and never re-saves, so the stale
-    # tree can never pick them up. The key also carries a full-data flavor
-    # segment, so full-data: 'true' and 'false' jobs keep separate cache
-    # lineages: a smoke-only save can never satisfy a full-data restore, or
-    # the reverse, which would otherwise freeze a job on incomplete content
-    # under actions/cache's skip-save-on-hit behavior.
+
+    # The key hashes both data descriptors, so a re-pin in either refreshes the cache (an exact
+    # hit never re-saves), and carries the full-data flavour, so a smoke-only tree never
+    # satisfies a full-data restore or the reverse.
     - name: Cache FWL_DATA
       uses: actions/cache@v5
       with:
