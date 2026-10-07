@@ -11,8 +11,8 @@ checksums have a single source of truth.
 
 Readers resolve a dataset directory through :func:`dataset_dir` rather than
 joining a path by hand, so the version segment stays an implementation detail of
-the pin. Datasets absent from the manifest are provisioned by the downloader in
-:mod:`proteus.utils.data` instead.
+the pin. A manifest may pin a DataverseNL mirror beside the Zenodo record, which
+fwl-io tries when Zenodo does not serve a file.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from pathlib import Path
 EXOPLANET_REFERENCE = 'observe.exoplanet_reference'
 MASS_RADIUS_ZENG_2019 = 'observe.mass_radius.zeng_2019'
 SURFACE_ALBEDOS_HAMMOND_2024 = 'atmos_clim.surface_albedos.hammond_2024'
+SCATTERING = 'atmos_clim.scattering.socrates_aerosols'
 EOS_SEAGER_2007 = 'interior_struct.eos.seager_2007'
 # Declared in the fwl-io shared manifest:
 EOS_WOLF_BOWER_2018 = 'interior.eos.wolf_bower_2018_1tpa'
@@ -70,7 +71,7 @@ def spectral_file_key(group: str, bands: str | int) -> str:
 # manifest as malformed rather than as a version mismatch, so the load names
 # which side is out of date. The fwl-io requirement in pyproject.toml must be at
 # least this version; the test suite enforces the relation.
-FWL_IO_FLOOR = '26.9.23'
+FWL_IO_FLOOR = '26.10.6'
 
 
 def manifest_path() -> Path:
