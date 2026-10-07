@@ -43,6 +43,7 @@ def _make_config(
     impact_maximum: float = 0.0,
     escape_dt_floor_frac: float = 1.0e-3,
     afe_max_rel_change: float = 0.0,
+    metal_saturation: bool = True,
 ):
     """Build a minimal duck-typed config that ``next_step`` reads from.
 
@@ -90,7 +91,8 @@ def _make_config(
         bol_scale_duration=bol_scale_duration,
     )
     escape = SimpleNamespace(step_dt_floor_frac=escape_dt_floor_frac)
-    return SimpleNamespace(params=params, star=star, escape=escape)
+    planet = SimpleNamespace(metal_saturation=metal_saturation)
+    return SimpleNamespace(params=params, star=star, escape=escape, planet=planet)
 
 
 def _make_hf_all(
@@ -1318,10 +1320,10 @@ def _hf_all_with_afe(a_prev: float, a_last: float, dt_prev: float = 5.0e3):
     return hf_all
 
 
-def _next_step_afe(target, a_prev, a_last):
+def _next_step_afe(target, a_prev, a_last, metal_saturation=True):
     from proteus.interior_energetics.timestep import next_step
 
-    config = _make_config(afe_max_rel_change=target)
+    config = _make_config(afe_max_rel_change=target, metal_saturation=metal_saturation)
     hf_all = _hf_all_with_afe(a_prev, a_last)
     hf_row = {'Time': 1.0e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
     return next_step(config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o())
@@ -1366,6 +1368,13 @@ class TestMetalActivityCap:
     def test_an_unchanged_activity_leaves_the_controller_step(self):
         """No change over the last step implies no rate to extrapolate."""
         assert _next_step_afe(0.03, 0.7, 0.7) == pytest.approx(8.0e3, rel=1e-12)
+
+    @pytest.mark.physics_invariant
+    def test_inactive_when_metal_saturation_is_disabled(self):
+        """With no metal reaction, a_Fe feeds nothing back and is not resolved."""
+        assert _next_step_afe(0.03, 0.50, 0.55, metal_saturation=False) == pytest.approx(
+            8.0e3, rel=1e-12
+        )
 
     @pytest.mark.physics_invariant
     def test_zero_disables_the_cap(self):

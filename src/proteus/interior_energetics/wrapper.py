@@ -2557,9 +2557,9 @@ def run_interior(
 
     update_melt_redox(interior_o, hf_row, config)
 
-    # Store the fO2 profile with this step's output (Aragog: appended to the
-    # _int.nc written inside run_solver; SPIDER: a standalone _redox.nc).
-    if write_data:
+    # Store the fO2 profile and tracker state with this step's output (Aragog: in
+    # its _int.nc; SPIDER: a _redox.nc every step, as resume can land on any JSON).
+    if write_data or config.interior_energetics.module == 'spider':
         store_profile_snapshot(config, dirs, sim_time, interior_o, hf_row)
 
     # Actual time step size.

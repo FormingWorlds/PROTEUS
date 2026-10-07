@@ -713,7 +713,7 @@
           "value": 0
         }
       ],
-      "description": "Largest relative change of the Fe-metal activity (``a_fe_max_mantle``, melt-redox tracker) allowed between two consecutive steps [dimensionless]. The next step is capped at ``dt_prev * afe_max_rel_change / |Δa_Fe / a_Fe|``, the change of the last step extrapolated at its own rate, and not below ``minimum + minimum_rel * Time``. Applies only while both of the last two steps tested a cell (``a_fe_max_mantle > 0``), i.e. under ``planet.fO2_source = \"from_mantle_redox\"``. Default 0.03; 0 disables the cap.",
+      "description": "Largest relative change of the Fe-metal activity (``a_fe_max_mantle``, melt-redox tracker) allowed between two consecutive steps [dimensionless]. The next step is capped at ``dt_prev * afe_max_rel_change / |Δa_Fe / a_Fe|``, the change of the last step extrapolated at its own rate, and not below ``minimum + minimum_rel * Time``. Applies only while both of the last two steps tested a cell (``a_fe_max_mantle > 0``), i.e. under ``planet.fO2_source = \"from_mantle_redox\"`` with ``planet.metal_saturation = true``. Default 0.03; 0 disables the cap.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -4183,6 +4183,22 @@
         }
       ],
       "description": "Initial ferric fraction Fe3+/FeT of the melt at the first tracker call, in (0, 1). Seeds the global Fe3+/Fe2+ reservoirs (``interior_chem/redox.py``, Step 1-2 / Eq 1-3). Default 0.1, the BSE-like value used by Schaefer et al. (2024). Read only when ``fO2_source = 'from_mantle_redox'``; ignored otherwise. The endpoints are excluded because the tracker forms the redox ratio f/(1-f), which is undefined at 1 and gives log10(0) at 0.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "planet.metal_saturation",
+      "toml_section": "planet",
+      "class": "Planet",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Whether the melt-redox tracker reacts a supersaturated melt to Fe-metal equilibrium (3FeO = 2FeO1.5 + Fe; ``interior_chem/redox.py``, Step 9, Schaefer et al. 2024 Section 2.7). Default False. When False no metal forms and Fe3+/FeT follows crystallization alone, so the melt can be left supersaturated (a_Fe > 1, metastable); a_Fe is still evaluated per cell and written to the helpfile as a diagnostic, the ``params.dt.afe_max_rel_change`` time-step cap is inactive, crystallization uses the solver melt fraction as is, without the PHI_SOLID = 0.15 solid threshold, and the radial fO2 profiles are pressure-free (Eq 13 without int(dV dP), Delta-IW against Hirschmann 2021 at 1 bar). Read only when ``fO2_source = 'from_mantle_redox'``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

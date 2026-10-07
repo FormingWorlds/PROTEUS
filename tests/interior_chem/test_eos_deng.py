@@ -1,24 +1,24 @@
 """Pressure term for Fe disproportionation (``src/proteus/interior_chem/eos_deng.py``).
 
-Covers the tabulated integral of the reaction volume change for
-3FeO = 2FeO1.5 + Fe, built from the Deng et al. (2020) silicate melt equation
-of state together with liquid FeO and liquid Fe.
+Covers the integral of the reaction volume change for 3FeO = 2FeO1.5 + Fe,
+built as in Schaefer et al. (2024) ``deltaGFeOFeO15_Deng.m``: the Deng et al.
+(2020) silicate melt equation of state together with liquid FeO and liquid Fe,
+each integrated directly on Schaefer's grids.
 
 Invariants and contract clauses exercised here:
 
 * Analytic identity of the fitted form: the fourth-order Birch-Murnaghan
-  pressure returns the reference pressure exactly at the reference volume,
-  which is what fixes the foot of every integral.
-* The thermal-pressure fit is a parabola in V/V0 whose minimum sits just below
-  the reference volume. Beyond that minimum it rises with expanding volume,
-  which no thermal pressure does, so the module caps the liquid at V0 and
-  splices below the corresponding pressure.
-* Sign structure: the reaction volume change is positive at low pressure and
-  negative at depth, which is why disproportionation is unfavourable near the
-  surface and favoured in a deep magma ocean.
+  pressure returns the reference pressure exactly at the reference volume.
+* Volume inversion as Schaefer's fsolve finds it: the compressed-branch root
+  above P(V0, T), the expanded-branch root (V > V0) below it, and, where the
+  fit has no root, the stationary point of the residual.
+* Schaefer's integration conventions: the FeO term integrates from zero, so
+  at 1 bar the integral is minus V_FeO times 1 bar, not zero.
+* Published benchmark: the oxidation integral reproduces the Deng 12.5 mol%
+  values of Zhang et al. (2024) Fig. S5 at their experimental conditions.
+* Sign structure: positive near the surface, negative at depth.
 * The validity contract: points above the temperature ceiling or beyond the
-  pressure range the source equation of state was exercised over are reported
-  as invalid rather than silently extrapolated.
+  pressure range Schaefer et al. exercised are reported as invalid.
 
 See docs/How-to/testing.md and docs/Explanations/test_framework.md.
 """
@@ -28,6 +28,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from proteus.interior_chem import eos_deng
 from proteus.interior_chem.eos_deng import (
     _B,
     _C,
@@ -41,7 +42,8 @@ from proteus.interior_chem.eos_deng import (
     _int_V_FeO,
     _solve_V,
     int_dV_dP,
-    p_splice,
+    int_dV_dP_oxidation,
+    p_at_V0,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -71,14 +73,12 @@ def test_birch_murnaghan_returns_the_reference_pressure_at_the_reference_volume(
 @pytest.mark.parametrize('endmember', [0, 1], ids=['ferrous endmember', 'ferric endmember'])
 def test_thermal_pressure_fit_turns_upward_just_below_the_reference_volume(endmember):
     """The thermal-pressure coefficient decreases with expanding volume only
-    up to V/V0 near 0.97, then rises, so the fit is usable on compressed
-    states alone.
+    up to V/V0 near 0.97, then rises.
 
-    A thermal pressure must fall as a liquid expands. The published
-    coefficients form a parabola in V/V0 with a positive leading term, so
-    beyond its minimum the fit is unphysical. Locating that minimum is what
-    sets the splice the module applies, and it is why the equation has no
-    solution at low pressure once the liquid is hot enough to expand past V0.
+    The published coefficients form a parabola in V/V0 with a positive leading
+    term, so beyond its minimum the thermal pressure grows on expansion. This
+    is why P(V) has a minimum on the expanded branch and why, hot enough, the
+    equation has no root at low pressure.
     """
     minimum_at = _B[endmember] / (2.0 * _C[endmember])
     below = float(_bh(np.array(minimum_at - 0.1), endmember))
@@ -94,53 +94,135 @@ def test_thermal_pressure_fit_turns_upward_just_below_the_reference_volume(endme
 
 
 @pytest.mark.physics_invariant
-def test_no_solution_exists_below_the_splice_pressure_at_high_temperature():
-    """Above the reference temperature the liquid would have to expand past
-    the reference volume at low pressure, where the fit has no root, and the
-    splice pressure marks that boundary.
+def test_pressure_at_the_reference_volume_is_one_bar_at_the_reference_temperature():
+    """P(V0, T) separates the compressed from the expanded branch. At T0 the
+    thermal term vanishes, so it is the reference pressure; colder, it moves
+    below 1 bar and the expanded branch is never reached.
 
-    The module solves on a bracket capped at V0, so the absence of a root
-    below the splice is the expected behaviour rather than a solver failure.
+    Limit input of P0 + BH(1)(T - T0), checked against a direct evaluation of
+    the equation of state at V0.
     """
-    T = 4000.0
-    boundary = p_splice(T)
-    below = _solve_V(0.5 * boundary, T, 1)
-    above = _solve_V(2.0 * boundary, T, 1)
-
-    assert not np.isfinite(below)
-    assert np.isfinite(above)
-    # The solved volume sits inside the compressed branch the fit covers.
-    assert above < _V0[1]
-    # Scale guard: a few GPa at 4000 K, not a fraction of a bar nor 100 GPa.
-    assert 0.1 < boundary < 10.0
-
-
-def test_splice_pressure_vanishes_at_the_reference_temperature():
-    """At the reference temperature the thermal term is zero, so the liquid
-    sits at its reference volume at the reference pressure and no splice is
-    needed.
-
-    This is the limit-input contract: the splice exists only to cover thermal
-    expansion past V0, which does not occur at T0.
-    """
-    assert p_splice(_T0) == pytest.approx(_P0, rel=1e-9)
-    # Below the reference temperature the liquid is already compressed, so the
-    # boundary moves to negative pressure and never binds.
-    assert p_splice(2000.0) < 0.0
-    assert p_splice(4000.0) > p_splice(_T0)
+    for i in (0, 1):
+        assert p_at_V0(_T0, i) == pytest.approx(_P0, rel=1e-9)
+        assert float(p_at_V0(4000.0, i)) == pytest.approx(
+            float(_bm4_pressure(_V0[i], 4000.0, i)), rel=1e-12
+        )
+    assert p_at_V0(2000.0, 0) < 0.0 < p_at_V0(4000.0, 0)
+    # Scale guard: about 1.3 GPa at 4000 K, not a fraction of a bar nor 100 GPa.
+    assert 0.5 < p_at_V0(4000.0, 0) < 3.0
 
 
 @pytest.mark.physics_invariant
-def test_reaction_volume_integral_vanishes_at_the_reference_pressure():
-    """Integrating from the reference pressure to itself gives zero, so the
-    standard state carries no pressure correction."""
-    value, valid = int_dV_dP(3000.0, _P0)
+@pytest.mark.parametrize(
+    'T, P',
+    [(2500.0, 30.0), (4500.0, 120.0)],
+    ids=['cold mid-mantle', 'hot lowermost mantle'],
+)
+def test_compressed_branch_volume_solves_the_equation_of_state(T, P):
+    """Above P(V0, T) the solved volume is the compressed-branch root: it
+    satisfies the equation of state and lies below V0, and it shrinks as
+    pressure rises.
+    """
+    for i in (0, 1):
+        V = _solve_V(P, T, i)
+        assert _bm4_pressure(V, T, i) == pytest.approx(P, abs=1e-9)
+        assert 0.15 * _V0[i] < V < _V0[i]
+        assert _solve_V(1.1 * P, T, i) < V
 
-    assert float(value) == pytest.approx(0.0, abs=1.0)
+
+@pytest.mark.physics_invariant
+def test_expanded_branch_root_is_used_below_the_reference_volume_pressure():
+    """Above T0 and below P(V0, T) the liquid sits on the expanded branch,
+    V > V0, where Schaefer's fsolve converges. The root solves the equation
+    of state; a volume capped at V0 (the former splice) would not.
+    """
+    T, P = 3711.0, 0.3  # magma-ocean base at 80 GPa, first node of its integral
+    for i in (0, 1):
+        assert P < p_at_V0(T, i)
+        V = _solve_V(P, T, i)
+        assert _bm4_pressure(V, T, i) == pytest.approx(P, abs=1e-9)
+        assert 1.01 * _V0[i] < V < 1.2 * _V0[i]
+        # Discrimination: V0 itself misses the target pressure by ~0.6 GPa.
+        assert abs(_bm4_pressure(_V0[i], T, i) - P) > 0.3
+
+
+@pytest.mark.physics_invariant
+def test_no_root_case_returns_the_residual_minimum_and_warns_once(monkeypatch, caplog):
+    """Hot enough, P(V) beyond V0 never falls to 1 bar. Schaefer's fsolve
+    then returns, unconverged, the stationary point of the squared residual,
+    the minimum of P(V); that volume is used and the case is logged once.
+    """
+    import logging
+
+    T, P = 4500.0, _P0
+    for i in (0, 1):
+        V = _solve_V(P, T, i)
+        assert _bm4_pressure(V, T, i) > P + 0.3  # no root: the residual stays large
+        h = 1e-4 * _V0[i]
+        slope = (_bm4_pressure(V + h, T, i) - _bm4_pressure(V - h, T, i)) / (2 * h)
+        curv = (
+            _bm4_pressure(V + h, T, i) + _bm4_pressure(V - h, T, i) - 2 * _bm4_pressure(V, T, i)
+        )
+        assert abs(slope * _V0[i]) < 1e-5  # stationary in P(V)
+        assert curv > 0.0  # a minimum, not a maximum
+        assert _V0[i] < V < 1.6 * _V0[i]
+
+    monkeypatch.setattr(eos_deng, '_NO_ROOT_WARNED', False)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.eos_deng'):
+        int_dV_dP(T, 50.0)
+        int_dV_dP(T, 60.0)
+    assert sum('no volume root' in r.message for r in caplog.records) == 1
+
+
+@pytest.mark.physics_invariant
+def test_integral_at_one_bar_is_the_feo_term_from_zero_as_in_schaefer():
+    """Schaefer's Murnaghan FeO integral runs from P = 0 while the Deng and Fe
+    integrals start at 1 bar, so at P = 1 bar the total is -V_FeO(T) x 1 bar
+    rather than zero, and the oxidation integral alone vanishes.
+    """
+    T = 3000.0
+    total, valid = int_dV_dP(T, _P0)
+    ox, _ = int_dV_dP_oxidation(T, _P0)
+    V_feo_cm3 = (13650.0 + 2.92 * (T - 1673.0)) * 1e-3
+
     assert bool(valid)
+    assert float(total) == pytest.approx(-V_feo_cm3 * _P0 * 1e3, rel=1e-3)
+    assert abs(float(ox)) < 1e-3
+    # Guard: a version that subtracts the 1-bar FeO value returns ~0 here.
+    assert float(total) < -1.0
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+@pytest.mark.parametrize(
+    'name, P, T, fig_s5',
+    [
+        ('DAC81', 38.0, 3941.0, 72.0e3),
+        ('DAC93', 43.4, 3802.0, 82.5e3),
+        ('DAC88', 71.1, 4394.0, 133.5e3),
+    ],
+    ids=['38 GPa', '43 GPa', '71 GPa'],
+)
+def test_oxidation_integral_reproduces_the_deng_values_of_zhang_2024(name, P, T, fig_s5):
+    """int dV(FeO1.5 - FeO) dP matches the Deng et al. (2020) 12.5 mol% FeO*
+    values of Zhang et al. (2024) Sci. Adv. 10, eadp1752, supplementary
+    Fig. S5 (orange diamonds), at the pressures and time-averaged
+    temperatures of their Table S1.
+
+    The Fig. S5 values are read off the plot to about +-1.5 kJ/mol, hence a 3%
+    tolerance. The 25 mol% FeO* model in the same figure sits 40-75 kJ/mol
+    higher, and dropping the factor 1/2 doubles the value.
+    """
+    I, valid = int_dV_dP_oxidation(T, P)
+
+    assert bool(valid), name
+    assert float(I) == pytest.approx(fig_s5, rel=0.03)
+    assert abs(2.0 * float(I) - fig_s5) > 0.5 * fig_s5  # missing factor 1/2
+    assert 1.0e4 < float(I) < 1.0e6  # J/mol, not kJ/mol or cm3 GPa
 
 
 @pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
 def test_reaction_volume_change_is_positive_near_the_surface_and_negative_at_depth():
     """Disproportionation is volumetrically unfavourable in a shallow melt and
     favourable in a deep one, so the pressure term changes sign.
@@ -148,8 +230,7 @@ def test_reaction_volume_change_is_positive_near_the_surface_and_negative_at_dep
     Anchor: Schaefer et al. (2024) JGR Planets 129, e2023JE008262, whose
     metal-saturation results have no metal forming in the 500 km magma ocean
     models but a large metal event at the base of the whole-mantle models.
-    That contrast requires the integral to change sign with depth, and it is
-    the reason a version without this term inverts the depth trend.
+    That contrast requires the integral to change sign with depth.
     """
     shallow, shallow_valid = int_dV_dP(2500.0, 2.0)
     deep, deep_valid = int_dV_dP(2500.0, 20.0)
@@ -174,17 +255,52 @@ def test_reaction_volume_change_is_positive_near_the_surface_and_negative_at_dep
 def test_points_outside_the_equation_of_state_domain_are_reported_invalid(
     T_kelvin, P_gpa, reason
 ):
-    """Conditions the source equation of state does not cover are flagged
-    rather than extrapolated, and return a zero the caller can distinguish
-    from a computed zero through the validity flag.
-
-    A silent zero would be indistinguishable from the pressure term being
-    switched off, which are very different states for the caller.
+    """Conditions outside the envelope are flagged rather than extrapolated,
+    and return a zero the caller can distinguish from a computed zero through
+    the validity flag.
     """
     value, valid = int_dV_dP(T_kelvin, P_gpa)
+    ox, ox_valid = int_dV_dP_oxidation(T_kelvin, P_gpa)
 
     assert not bool(valid), reason
+    assert not bool(ox_valid), reason
     assert float(value) == pytest.approx(0.0, abs=1e-30)
+    assert float(ox) == pytest.approx(0.0, abs=1e-30)
+
+
+def test_band_above_the_deng_limit_is_evaluated_and_logged_once(monkeypatch, caplog):
+    """Between the Deng modelling limit (5000 K) and the envelope ceiling
+    (6500 K) the integral is computed, flagged valid and logged once as an
+    extrapolation; just above the ceiling it is excluded.
+    """
+    import logging
+
+    assert eos_deng.T_DENG_MAX < T_CEILING
+    monkeypatch.setattr(eos_deng, '_EXTRAPOLATION_WARNED', False)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.eos_deng'):
+        inside, ok_in = int_dV_dP(6000.0, 100.0)
+        int_dV_dP(6400.0, 100.0)
+        outside, ok_out = int_dV_dP(T_CEILING + 10.0, 100.0)
+
+    assert bool(ok_in) and not bool(ok_out)
+    assert float(outside) == 0.0
+    # Same sign and order as the 5000 K value at this depth: hundreds of kJ/mol.
+    assert -1.0e6 < float(inside) < -1.0e5
+    assert sum('modelling limit' in r.message for r in caplog.records) == 1
+
+
+def test_array_input_keeps_its_shape_and_masks_only_the_invalid_points():
+    """A mixed array of cells returns the same shape, real values where valid
+    and zeros where invalid, matching the scalar evaluation point by point."""
+    T = np.array([[3000.0, T_CEILING + 1.0], [2500.0, 4000.0]])
+    P = np.array([[50.0, 50.0], [20.0, P_EXERCISED + 1.0]])
+    value, valid = int_dV_dP(T, P)
+
+    assert value.shape == T.shape and valid.shape == T.shape
+    np.testing.assert_array_equal(valid, [[True, False], [True, False]])
+    assert value[0, 1] == 0.0 and value[1, 1] == 0.0
+    assert value[0, 0] == pytest.approx(float(int_dV_dP(3000.0, 50.0)[0]), rel=1e-12)
+    assert abs(value[1, 0]) > 1.0e3
 
 
 def test_conditions_inside_the_domain_are_reported_valid():
@@ -193,9 +309,8 @@ def test_conditions_inside_the_domain_are_reported_valid():
     value, valid = int_dV_dP(3000.0, 50.0)
 
     assert bool(valid)
-    # A real, non-zero correction: the guard against a mask that passes but a
-    # table that silently returns zeros.
-    assert abs(float(value)) > 1.0e3
+    # A real, non-zero correction: tens to hundreds of kJ/mol.
+    assert 1.0e3 < abs(float(value)) < 1.0e6
 
 
 @pytest.mark.physics_invariant
@@ -217,53 +332,13 @@ def test_liquid_iron_oxide_volume_integral_is_linear_at_low_pressure():
     assert smaller > 0.0
 
 
+@pytest.mark.physics_invariant
 def test_liquid_iron_volume_is_the_reference_volume_at_zero_pressure():
-    """The Vinet inversion is skipped at P ~ 0, where V = V298 exactly, and
-    the solved volume joins it continuously."""
-    from proteus.interior_chem import eos_deng as e
-
-    assert e._V_Fe(0.0) == e._V298_FE
-    assert e._V_Fe(1e-7) == e._V298_FE
-    assert e._V_Fe(1e-3) == pytest.approx(e._V298_FE, rel=1e-4)
-    assert e._V_Fe(10.0) < e._V298_FE
-
-
-def test_failed_eos_inversions_are_filled_from_the_successful_points(caplog, monkeypatch):
-    """Grid points where the BM4 inversion fails are interpolated from the
-    good ones (with a warning); if every point fails the uncompressed dV is
-    used, so the oxidation integral is then exactly dV0 (P - P0)."""
-    import logging
-
-    from proteus.interior_chem import eos_deng as e
-
-    real = e._solve_V
-
-    def fail_mid(P, T, i):
-        return np.nan if 3.0 < P < 6.0 else real(P, T, i)
-
-    monkeypatch.setattr(e, '_solve_V', fail_mid)
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.eos_deng'):
-        tab = e._Table(P_max=10.0, T_min=3500.0, T_max=3600.0, nP=21, nT=2)
-    assert any('grid points failed' in r.message for r in caplog.records)
-    assert np.all(np.isfinite(tab.I_ox)) and np.all(np.isfinite(tab.I))
-
-    # Below T0 = 3000 K the splice pressure is below 1 bar, so every node
-    # needs an inversion; with all of them failing, dV falls back to dV0.
-    monkeypatch.setattr(e, '_solve_V', lambda P, T, i: np.nan)
-    tab = e._Table(P_max=10.0, T_min=2000.0, T_max=2100.0, nP=21, nT=2)
-    assert e.p_splice(2000.0) < e._P0
-    np.testing.assert_allclose(tab.I_ox[:, 0], e._DV0 * (tab.P - e._P0), rtol=1e-12)
-
-
-def test_the_table_is_built_on_first_use_by_any_public_call(monkeypatch):
-    """clamped_mask and int_dV_dP_oxidation build the cached table when it
-    does not exist yet, like int_dV_dP."""
-    from proteus.interior_chem import eos_deng as e
-
-    monkeypatch.setattr(e, '_TABLE', None)
-    assert not e.clamped_mask(3000.0, 10.0)
-    assert e._TABLE is not None
-
-    monkeypatch.setattr(e, '_TABLE', None)
-    I, valid = e.int_dV_dP_oxidation(3000.0, 10.0)
-    assert e._TABLE is not None and bool(valid) and float(I) > 0.0
+    """The Vinet inversion is skipped at P ~ 0, where V = V298 exactly, joins
+    it continuously, and solves the Vinet equation at depth."""
+    assert eos_deng._V_Fe(0.0) == eos_deng._V298_FE
+    assert eos_deng._V_Fe(1e-7) == eos_deng._V298_FE
+    assert eos_deng._V_Fe(1e-3) == pytest.approx(eos_deng._V298_FE, rel=1e-4)
+    V = eos_deng._V_Fe(10.0)
+    assert V < eos_deng._V298_FE
+    assert eos_deng._vinet_resid(V, 10.0) == pytest.approx(0.0, abs=1e-9)

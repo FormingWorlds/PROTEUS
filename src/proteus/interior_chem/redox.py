@@ -16,9 +16,10 @@ this was validated against):
             W_FET, Fe3+ = Fe2+ * f_0 / (1 - f_0) on top of it
   Step 3    new solid mass each step, from the decrease in local melt
             fraction (delta_phi), using the mass-invariant _s grid. A cell
-            with phi < PHI_SOLID (0.05) counts as solid throughout (phi set
+            with phi < PHI_SOLID (0.15) counts as solid throughout (phi set
             to 0 on entry), so its last trace of melt crystallises when it
-            crosses the threshold
+            crosses the threshold. With config.planet.metal_saturation False
+            there is no threshold: the solver's phi is used as is
   Step 4    redistribute the *previous* step's global Fe3+/Fe2+ reservoirs
             across cells in proportion to local melt mass -- this is what
             makes the Fe3+/Fe2+ ratio spatially uniform: only the absolute
@@ -28,11 +29,14 @@ this was validated against):
             Cpx/Opx above it)
   Step 7-9  update the global reservoirs and the resulting ferric
             fraction / Fe3+/Fe2+ redox ratio
-  Step 9a-9h  Fe metal saturation, run unconditionally between every pair of
-            crystallization steps. Whether the melt is supersaturated is a
-            property of the melt rather than a user option, and carrying a
-            supersaturation would leave the model metastable in the sense
-            Schaefer et al. flag for their Figures 2 and 4.
+  Step 9a-9h  Fe metal saturation, run between every pair of
+            crystallization steps when config.planet.metal_saturation is
+            True (default False). Whether the melt is supersaturated is a
+            property of the melt, and carrying a supersaturation leaves the
+            model metastable in the sense Schaefer et al. flag for their
+            Figures 2 and 4; with the option False (the default) that is
+            what happens: a_Fe is still evaluated per cell, but no metal
+            forms.
             Between crystallization and the fO2 evaluation -- Schaefer
             et al. (2024) Section 2.7 "add an additional step in between each
             crystallization step to check for metal saturation" -- the melt
@@ -55,19 +59,19 @@ this was validated against):
             the Deng et al. (2020) EOS (interior_chem/eos_deng.py): at depth
             2*V(FeO1.5) + V(Fe) < 3*V(FeO), and that volume change is what
             makes disproportionation favourable there. Cells outside the EOS
-            envelope (T > 5000 K or P > 136 GPa) are excluded from the
+            envelope (T > 6500 K or P > 136 GPa) are excluded from the
             check. See interior_chem/disproportionation.py for the
             derivation.
-  Step 10   surface fO2 via Hirschmann (2022) GCA 313 Eq 21 (= Schaefer
+  Step 10   surface fO2 via Hirschmann (2022) GCA 328 Eq 21 (= Schaefer
             et al. 2024 Eq 13) at 1 bar, with the pressure/EOS term
             (integral of Delta V dP) zero, using the single melt
             Fe3+/Fe2+ after Step 9a-9h, at the outgassing temperature
             max(T_magma, outgas.T_floor). This is Schaefer's surface
             calculation (fO2lowP_H22.m, "without the high pressure term",
             P = 0.0001 GPa), while the disproportionation in Step 9 always
-            carries the pressure term. Delta-IW uses the O'Neill & Eggins
-            (2002) buffer as given in Bower et al. (2022) PSJ 3, 93,
-            Eq 7-8, at the same temperature. Separately, a radial fO2
+            carries the pressure term. Delta-IW uses the Hirschmann (2021)
+            IW buffer at 1 bar and the same temperature, as Schaefer et al.
+            (2024) do (IW_H21.m, makefigures_Earth.m). Separately, a radial fO2
             profile is evaluated in every melt cell at that cell's T and P
             WITH int(dV dP) for FeO + 1/4 O2 = FeO1.5 (Schaefer Eq 10-11,
             interior_chem/eos_deng.int_dV_dP_oxidation; the oxidation dV,
@@ -133,7 +137,10 @@ F_0 = 0.10  # initial ferric fraction Fe3+/FeT (Schaefer et al. 2024)
 # otherwise stay "melt": it would keep its share of the Fe reservoirs and
 # could host the metal-saturation binding cell. A cell crossing the
 # threshold crystallises its remaining melt in that step (Step 3).
-PHI_SOLID = 0.05
+# Applied only with config.planet.metal_saturation True.
+PHI_SOLID = 0.15
+
+P_1BAR_GPA = 1.0e-4  # 1 bar in GPa, the pressure of the surface fO2 (Schaefer et al. 2024)
 
 D_FE2_BRG = 0.85  # bridgmanite/melt partition coefficient for Fe2+ (both regimes)
 
@@ -252,22 +259,64 @@ def _log10_fO2_surface(redox_ratio: float, T: float, X: dict) -> float:
 
 
 def _log10_fO2_profile(
-    redox_ratio: float, temp: np.ndarray, P_gpa: np.ndarray, X: dict
+    redox_ratio: float,
+    temp: np.ndarray,
+    P_gpa: np.ndarray,
+    X: dict,
+    pressure_term: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Per-cell log10(fO2) from Eq 13 at each cell's (T, P).
 
     Returns (log10_fO2, valid). Cells outside the Deng EOS envelope
     (T > T_CEILING or P > P_EXERCISED) have no pressure term and are NaN,
-    flagged False in ``valid``."""
+    flagged False in ``valid``. ``pressure_term=False`` drops int(dV dP),
+    i.e. Eq 13 at 1 bar and each cell's T, so no EOS envelope applies and
+    every finite-T cell is valid."""
+    if not pressure_term:
+        temp = np.asarray(temp, dtype=float)
+        valid = np.isfinite(temp)
+        prof = np.where(valid, _log10_fO2(redox_ratio, temp, X, 0.0), np.nan)
+        return prof, valid
     I_ox, valid = eos_deng.int_dV_dP_oxidation(temp, P_gpa)
     prof = np.where(valid, _log10_fO2(redox_ratio, temp, X, I_ox), np.nan)
     return prof, valid
 
 
-def _iw_buffer_bower2022(T: float) -> float:
-    """log10(fO2) of the IW buffer: O'Neill & Eggins (2002) as given in
-    Bower et al. (2022) PSJ 3, 93, Eq 7. T-only, no pressure term."""
-    return (-244118 + 115.559 * T - 8.474 * T * math.log(T)) / (0.5 * math.log(10) * _R * T)
+# Hirschmann (2021) GCA 313, 74-84, Table 1, as in Schaefer et al. (2024)
+# IW_H21.m: rows a, b, c, d; columns multiply [1, P, P^2, P^3, sqrt(P)].
+_IW_H21_FCC = np.array(
+    [
+        [6.844864, 1.175691e-1, 1.143873e-3, 0.0, 0.0],
+        [5.791364e-4, -2.891434e-4, -2.737171e-7, 0.0, 0.0],
+        [-7.971469e-5, 3.198005e-5, 0.0, 1.059554e-10, 2.014461e-7],
+        [-2.769002e4, 5.285977e2, -2.919275e0, 0.0, 0.0],
+    ]
+)
+_IW_H21_HCP = np.array(
+    [
+        [8.463095, -3.000307e-3, 7.213445e-5, 0.0, 0.0],
+        [1.148738e-3, -9.352312e-5, 5.161592e-7, 0.0, 0.0],
+        [-7.448624e-4, -6.329325e-6, 0.0, -1.407339e-10, 1.830014e-4],
+        [-2.782082e4, 5.285977e2, -8.473231e-1, 0.0, 0.0],
+    ]
+)
+
+
+def _iw_buffer_hirschmann2021(T, P_gpa):
+    """log10(fO2) of the IW buffer at (T [K], P [GPa]), Hirschmann (2021),
+    exactly as Schaefer et al. (2024) ``IW_H21.m``. Broadcasts over arrays.
+
+    The coefficient set switches from fcc/bcc to hcp Fe at
+    P = -18.640 + 0.04359 T - 5.069e-6 T^2. Calibrated for 1e-4 to 100 GPa
+    and 1000 to 3000 K; outside that it is extrapolated.
+    """
+    T = np.asarray(T, dtype=float)
+    P = np.asarray(P_gpa, dtype=float)
+    p_terms = np.stack(np.broadcast_arrays(np.ones_like(P), P, P**2, P**3, np.sqrt(P)), axis=-1)
+    hcp = P >= (-18.640 + 0.04359 * T - 5.069e-6 * T**2)
+    coeff = np.where(hcp[..., None, None], _IW_H21_HCP, _IW_H21_FCC)
+    a, b, c, d = np.moveaxis(np.einsum('...ij,...j->...i', coeff, p_terms), -1, 0)
+    return a + b * T + c * T * np.log(T) + d / T
 
 
 def _update_ratios(state: MeltRedoxState) -> None:
@@ -310,6 +359,12 @@ class MeltRedoxState:
     # the melt or the EOS envelope. Overwritten each step. Diagnostic only;
     # fO2_cell is the uppermost melt cell, the shallowest point of it.
     log10_fO2_cell: np.ndarray | None = None
+    # The same profile as Delta-IW against Hirschmann (2021) at each cell's
+    # (T, P), Schaefer et al.'s buffer convention. NaN where the profile is.
+    dIW_H21_cell: np.ndarray | None = None
+    # False when both profiles are pressure-free (metal_saturation off):
+    # no int(dV dP) in log10_fO2_cell and IW_H21 taken at 1 bar.
+    profile_pressure_term: bool = True
     fO2_cell: int = -1
     melt_exhausted: bool = False
     eos_coverage_logged: bool = False
@@ -356,43 +411,26 @@ def _init_state(
     )
 
 
-def _warn_clamped_cells(temp: np.ndarray, P_gpa: np.ndarray, usable: np.ndarray) -> None:
-    """Warn when usable melt cells lie outside the tabulated Deng EOS grid, so
-    their int dV dP is the nearest grid-edge value rather than a computed one.
-    In practice this is melt below the table's lowest temperature (1500 K),
-    which the validity mask does not exclude."""
-    clamped = usable & eos_deng.clamped_mask(temp, P_gpa)
-    if not np.any(clamped):
-        return
-    log.warning(
-        'Out of the bounds of the Deng EOS: %d melt cell(s) at T=%.0f-%.0f K, '
-        'P=%.1f-%.1f GPa; values of int(dV dP) are clamped to the nearest '
-        'available grid value',
-        int(np.count_nonzero(clamped)),
-        float(np.min(temp[clamped])),
-        float(np.max(temp[clamped])),
-        float(np.min(P_gpa[clamped])),
-        float(np.max(P_gpa[clamped])),
-    )
-
-
 def _metal_saturation_step(
     state: MeltRedoxState,
     temp: np.ndarray,
     pres: np.ndarray,
     phi: np.ndarray,
     mass: np.ndarray,
+    react: bool = True,
 ) -> float:
     """Step 9a-9h: check the melt for Fe-metal saturation and, if it is
     supersaturated, react it to equilibrium. Returns the reaction extent xi
     [mol], which because the Fe stoichiometric coefficient is 1 is also the
     moles of metal formed. Always >= 0: the back-reaction is disabled.
 
-    This is an intrinsic step of the crystallization algorithm, not an
-    option: Schaefer et al. (2024) Section 2.7 "add an additional step in
-    between each crystallization step to check for metal saturation". The
-    melt either is or is not supersaturated, and holding Fe3+/FeT through a
-    supersaturation would leave the model metastable.
+    Schaefer et al. (2024) Section 2.7 "add an additional step in between
+    each crystallization step to check for metal saturation". The melt
+    either is or is not supersaturated, and holding Fe3+/FeT through a
+    supersaturation leaves the model metastable. ``react=False``
+    (config.planet.metal_saturation = False, the default) does that
+    deliberately: a_fe_cell and a_fe_max_cell are still filled in, but
+    the melt is never reacted and 0.0 is returned.
 
     Runs between crystallization (Steps 3-9) and the surface fO2 (Step 10),
     matching Schaefer et al. (2024) Section 2.7, who "add an additional step
@@ -434,7 +472,6 @@ def _metal_saturation_step(
     )
     a_fe = np.where(melt & eos_valid, a_fe, 0.0)
     state.a_fe_cell = a_fe
-    _warn_clamped_cells(temp, P_gpa, melt & eos_valid)
 
     # Step 9e: the binding cell. Because the melt is homogeneous, only the
     # most supersaturated cell can host equilibrium -- once it reaches
@@ -442,7 +479,7 @@ def _metal_saturation_step(
     # of Schaefer evaluating at the base of the magma ocean.
     usable = melt & eos_valid
     if not np.any(usable):
-        # Every melt cell is outside the Deng EOS envelope (T above 5000 K or
+        # Every melt cell is outside the Deng EOS envelope (T above 6500 K or
         # P above 136 GPa), so the melt cannot be tested this step. Common
         # early in a hot deep magma ocean, which is also when metal is most
         # likely to form, so say it once rather than pass silently.
@@ -458,6 +495,9 @@ def _metal_saturation_step(
         return 0.0
     cstar = int(np.argmax(np.where(usable, a_fe, -np.inf)))
     state.a_fe_max_cell = cstar
+
+    if not react:
+        return 0.0  # saturation disabled: a_Fe is a diagnostic only
 
     # Forward reaction only: metal that has formed is never redissolved, so an
     # undersaturated melt is left untouched even if metal is present.
@@ -486,9 +526,14 @@ def write_fO2_profile_ncdf(fpath: str, state: MeltRedoxState | None) -> bool:
 
     Adds (or overwrites) ``log10_fO2_s`` on the snapshot's ``staggered``
     dimension -- absolute log10(fO2/bar) from Eq 13 at each cell's (T, P),
-    NaN in solid cells and outside the Deng EOS envelope -- and the scalar
+    NaN in solid cells and outside the Deng EOS envelope --, ``dIW_H21_s``,
+    the same profile relative to the Hirschmann (2021) IW buffer at each
+    cell's (T, P) as Schaefer et al. (2024) report Delta-IW, and the scalar
     ``fO2_top_index``, the staggered index of the uppermost melt cell
-    (diagnostic: ``fO2_shift_IW_mantle`` is evaluated at 1 bar). Returns True if written.
+    (diagnostic: ``fO2_shift_IW_mantle`` is evaluated at 1 bar). With
+    ``planet.metal_saturation = false`` both profiles are pressure-free (no
+    int(dV dP), IW_H21 at 1 bar); the ``pressure_term`` attribute (0 or 1)
+    of each variable records which. Returns True if written.
 
     The snapshot is written by the interior backend before the redox step
     runs, so this is called afterwards on the same file. Skips, with a log
@@ -511,13 +556,30 @@ def write_fO2_profile_ncdf(fpath: str, state: MeltRedoxState | None) -> bool:
             )
             return False
         _put_fO2_profile(ds, state)
+        _put_tracker_state(ds, state)
     return True
+
+
+def _snapshot_path(config: Config, dirs: dict, time: float) -> str | None:
+    """Path of the file holding the redox output for ``time``: the Aragog
+    ``data/<time>_int.nc`` or the SPIDER ``data/<time>_redox.nc``; None for
+    other interior modules."""
+    from proteus.utils.helper import format_subyear_time
+
+    stem = os.path.join(dirs['output'], 'data', format_subyear_time(float(time)))
+    module = config.interior_energetics.module
+    if module == 'aragog':
+        return stem + '_int.nc'
+    if module == 'spider':
+        return stem + '_redox.nc'
+    return None
 
 
 def store_profile_snapshot(
     config: Config, dirs: dict, time: float, interior_o: Interior_t, hf_row: dict
 ) -> str | None:
-    """Store the Step 10a fO2 profile with the interior output for ``time``.
+    """Store the Step 10a fO2 profile and the tracker state with the
+    interior output for ``time``.
 
     Aragog writes ``data/<time>_int.nc`` inside its solve, before the redox
     step runs, so the profile is appended to that file. SPIDER writes JSON
@@ -528,18 +590,13 @@ def store_profile_snapshot(
     """
     if config.planet.fO2_source != 'from_mantle_redox':
         return None
-    from proteus.utils.helper import format_subyear_time
-
-    stem = os.path.join(dirs['output'], 'data', format_subyear_time(float(time)))
-    module = config.interior_energetics.module
+    path = _snapshot_path(config, dirs, time)
     state = interior_o.redox_state
-    if module == 'aragog':
-        path = stem + '_int.nc'
+    if path is None:
+        return None
+    if config.interior_energetics.module == 'aragog':
         return path if write_fO2_profile_ncdf(path, state) else None
-    if module == 'spider':
-        path = stem + '_redox.nc'
-        return path if write_redox_ncdf(path, state, float(time), interior_o, hf_row) else None
-    return None
+    return path if write_redox_ncdf(path, state, float(time), interior_o, hf_row) else None
 
 
 def write_redox_ncdf(
@@ -574,6 +631,7 @@ def write_redox_ncdf(
         _add('temp_s', interior_o.temp, 'K')
         _add('phi_s', interior_o.phi, '')
         _put_fO2_profile(ds, state)
+        _put_tracker_state(ds, state)
 
         for name, value, units in (
             ('time', time, 'yr'),
@@ -596,11 +654,33 @@ def _put_fO2_profile(ds, state: MeltRedoxState) -> None:
     v[:] = np.asarray(state.log10_fO2_cell, dtype=float)
     v.units = 'log10(bar)'
     v.long_name = 'melt oxygen fugacity, Hirschmann (2022) Eq 21 / Schaefer et al. (2024) Eq 13'
+    with_p = state.profile_pressure_term
+    v.pressure_term = np.int32(with_p)
     v.comment = (
         'Evaluated at each cell T and P with the FeO-FeO1.5 '
         'int(dV dP) (Deng et al. 2020); NaN in solid cells and '
         'outside the EOS envelope'
+        if with_p
+        else 'Evaluated at each cell T and 1 bar, without int(dV dP) '
+        '(planet.metal_saturation = false); NaN in solid cells'
     )
+    if state.dIW_H21_cell is not None:
+        if 'dIW_H21_s' in ds.variables:
+            w = ds['dIW_H21_s']
+        else:
+            w = ds.createVariable('dIW_H21_s', np.float64, ('staggered',))
+        w[:] = np.asarray(state.dIW_H21_cell, dtype=float)
+        w.units = 'log10 units rel. IW'
+        w.pressure_term = np.int32(with_p)
+        w.long_name = (
+            'log10_fO2_s relative to the Hirschmann (2021) IW buffer at each cell T and '
+            + ('P' if with_p else '1 bar')
+        )
+        w.comment = (
+            'Schaefer et al. (2024) buffer convention (IW_H21.m); IW_H21 is '
+            'calibrated to 100 GPa and 3000 K and extrapolated beyond; NaN '
+            'where log10_fO2_s is NaN'
+        )
     if 'fO2_top_index' in ds.variables:
         t = ds['fO2_top_index']
     else:
@@ -612,10 +692,113 @@ def _put_fO2_profile(ds, state: MeltRedoxState) -> None:
     )
 
 
-def effective_melt_fraction(phi) -> np.ndarray:
-    """Solver melt fraction with cells below PHI_SOLID set to 0 (solid)."""
+# MeltRedoxState fields stored as ``redox_<name>`` so a resume continues the
+# tracker; X is a module constant and the fO2 profiles are recomputed each step.
+_STATE_CELL = {
+    'phi_prev': '',
+    'D_fe3_cell': '',
+    'n_fe_metal_cell': 'mol',
+    'a_fe_cell': '',
+}
+_STATE_FLOAT = {
+    'n_fe3_melt': 'mol',
+    'n_fe2_melt': 'mol',
+    'ferric_frac': '',
+    'redox_ratio': '',
+    'w_feo15': '',
+}
+_STATE_INT = ('a_fe_max_cell', 'fO2_cell')
+_STATE_BOOL = ('melt_exhausted', 'eos_coverage_logged', 'profile_pressure_term')
+
+
+def _put_tracker_state(ds, state: MeltRedoxState) -> None:
+    """Create or overwrite the ``redox_*`` tracker-state variables in an open
+    dataset that has a ``staggered`` dimension of the state's length."""
+
+    def var(name, dtype, dims=()):
+        key = 'redox_' + name
+        return ds[key] if key in ds.variables else ds.createVariable(key, dtype, dims)
+
+    for name, units in _STATE_CELL.items():
+        v = var(name, np.float64, ('staggered',))
+        v[:] = np.asarray(getattr(state, name), dtype=float)
+        v.units = units
+    for name, units in _STATE_FLOAT.items():
+        v = var(name, np.float64)
+        v.assignValue(float(getattr(state, name)))
+        v.units = units
+    for name in _STATE_INT + _STATE_BOOL:
+        var(name, np.int32).assignValue(int(getattr(state, name)))
+    ds.redox_state_comment = (
+        'redox_* variables: melt-redox tracker state after this step '
+        '(interior_chem/redox.py MeltRedoxState), read back on resume'
+    )
+
+
+def read_tracker_state(fpath: str) -> MeltRedoxState | None:
+    """Rebuild the MeltRedoxState stored by ``_put_tracker_state`` in
+    ``fpath``. Returns None when the file is missing or carries no state
+    (a snapshot written before the state was stored)."""
+    import netCDF4 as nc
+
+    if not os.path.isfile(fpath):
+        return None
+    with nc.Dataset(fpath) as ds:
+        ds.set_auto_mask(False)
+        if 'redox_n_fe2_melt' not in ds.variables:
+            return None
+        kw = {n: np.array(ds['redox_' + n][:], dtype=float) for n in _STATE_CELL}
+        kw.update({n: float(ds['redox_' + n][...]) for n in _STATE_FLOAT})
+        kw.update({n: int(ds['redox_' + n][...]) for n in _STATE_INT})
+        kw.update({n: bool(int(ds['redox_' + n][...])) for n in _STATE_BOOL})
+    return MeltRedoxState(**kw)
+
+
+def restore_tracker_state(
+    config: Config, dirs: dict, time: float, interior_o: Interior_t
+) -> bool:
+    """On resume, load the tracker state stored with the snapshot of the
+    resume row at ``time`` [yr] into ``interior_o.redox_state``.
+
+    Without it the first resumed step would reseed the reservoirs from
+    ``planet.ferric_fraction_initial`` and drop the metal inventory. A
+    snapshot without stored state (written before it was stored) is logged
+    as a warning and the tracker restarts. Returns True if restored.
+    """
+    if config.planet.fO2_source != 'from_mantle_redox':
+        return False
+    path = _snapshot_path(config, dirs, time)
+    state = read_tracker_state(path) if path is not None else None
+    if state is None:
+        log.warning(
+            'Resume: no melt-redox tracker state at t = %.3f yr (%s); the tracker '
+            'restarts from planet.ferric_fraction_initial = %.4g, so Fe3+/FeT and '
+            'the metal inventory are reset at this step',
+            float(time),
+            path,
+            float(config.planet.ferric_fraction_initial),
+        )
+        return False
+    interior_o.redox_state = state
+    log.info(
+        'Resume: melt-redox tracker restored from %s (Fe3+/FeT = %.4f, metal = %.3e mol)',
+        path,
+        state.ferric_frac,
+        float(np.sum(state.n_fe_metal_cell)),
+    )
+    return True
+
+
+def effective_melt_fraction(phi, phi_solid: float = PHI_SOLID) -> np.ndarray:
+    """Solver melt fraction with cells below ``phi_solid`` set to 0 (solid).
+
+    ``phi_solid = 0`` keeps the solver's value, only clipping round-off
+    negatives to 0. Used when the metal-saturation step is off: the
+    threshold exists to keep trace melt from hosting the binding cell, so
+    without the reaction crystallization follows the real melt fraction.
+    """
     phi = np.asarray(phi, dtype=float)
-    return np.where(phi < PHI_SOLID, 0.0, phi)
+    return np.where(phi < phi_solid, 0.0, np.maximum(phi, 0.0))
 
 
 def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> None:
@@ -634,9 +817,10 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     if config.planet.fO2_source != 'from_mantle_redox':
         return
 
-    # Effective melt fraction: cells with phi < PHI_SOLID are solid (phi = 0)
-    # for every step below. Applied once here so all steps agree.
-    phi = effective_melt_fraction(interior_o.phi)
+    # Effective melt fraction for every step below: phi < PHI_SOLID is solid,
+    # unless metal saturation is off, where the solver's phi is used as is.
+    react = bool(config.planet.metal_saturation)
+    phi = effective_melt_fraction(interior_o.phi, PHI_SOLID if react else 0.0)
     mass = np.asarray(interior_o.mass, dtype=float)
     pres = np.asarray(interior_o.pres, dtype=float)
 
@@ -652,6 +836,11 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
         )
     else:
         state = interior_o.redox_state
+        if state.phi_prev.shape != phi.shape:
+            raise ValueError(
+                f'Melt-redox state has {state.phi_prev.size} cells but the interior '
+                f'grid has {phi.size}; a resumed state must match the run grid'
+            )
 
         if not state.melt_exhausted:
             # Step 3 (Eq 4-6): new solid mass from the decrease in melt
@@ -700,26 +889,29 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     state = interior_o.redox_state
 
     # Step 9a-9h: Fe metal saturation, run between every pair of
-    # crystallization steps. Not optional: the melt either is or is not
-    # supersaturated, and carrying a supersaturation would leave the model
-    # metastable. Skipped on the first call, where no crystallization has
-    # happened yet, matching Schaefer et al., who begin the check only after
-    # the first solid layer forms.
+    # crystallization steps. The melt either is or is not supersaturated,
+    # and carrying a supersaturation leaves the model metastable; with
+    # planet.metal_saturation = False that is done on purpose, a_Fe is
+    # evaluated but no metal forms. Skipped on the first call, where no
+    # crystallization has happened yet, matching Schaefer et al., who begin
+    # the check only after the first solid layer forms.
     xi = 0.0
     if not first_call and not state.melt_exhausted:
         temp = np.asarray(interior_o.temp, dtype=float)
-        xi = _metal_saturation_step(state, temp, pres, phi, mass)
+        xi = _metal_saturation_step(state, temp, pres, phi, mass, react=react)
         if xi != 0.0:
             _update_ratios(state)
 
-    # Step 10a: radial fO2 profile from Eq 13 at each cell's (T, P),
-    # including int(dV dP). Diagnostic only (written to the interior
-    # snapshot, cf. Schaefer et al. 2024 Fig S4); it does not set Delta-IW.
+    # Step 10a: diagnostic radial fO2 profile, Eq 13 at each cell's (T, P) with
+    # int(dV dP) and IW_H21(T, P); with metal saturation off both are at 1 bar.
     temp = np.asarray(interior_o.temp, dtype=float)
     P_gpa = pres / 1e9
     melt = phi > 0.0
-    prof, _ = _log10_fO2_profile(state.redox_ratio, temp, P_gpa, state.X)
+    prof, _ = _log10_fO2_profile(state.redox_ratio, temp, P_gpa, state.X, pressure_term=react)
+    P_buffer = P_gpa if react else np.full_like(P_gpa, P_1BAR_GPA)
+    state.profile_pressure_term = react
     state.log10_fO2_cell = np.where(melt, prof, np.nan)
+    state.dIW_H21_cell = state.log10_fO2_cell - _iw_buffer_hirschmann2021(temp, P_buffer)
     candidates = melt if np.any(melt) else np.ones_like(melt, dtype=bool)
     state.fO2_cell = int(np.argmin(np.where(candidates, pres, np.inf)))
 
@@ -748,7 +940,7 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
             T_out,
         )
     log10_fO2_surf = _log10_fO2_surface(state.redox_ratio, T_out, state.X)
-    dIW = log10_fO2_surf - _iw_buffer_bower2022(T_out)
+    dIW = log10_fO2_surf - float(_iw_buffer_hirschmann2021(T_out, P_1BAR_GPA))
 
     hf_row['fO2_shift_IW_mantle'] = dIW
     hf_row['ferric_frac_mantle'] = state.ferric_frac
@@ -759,6 +951,8 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
         metal_msg = 'not checked (first step)'
     elif state.melt_exhausted:
         metal_msg = 'not checked (mantle solidified)'
+    elif not react:
+        metal_msg = 'saturation disabled (max a_Fe=%.3g)' % float(np.max(state.a_fe_cell))
     elif xi > 0.0:
         metal_msg = 'metal formed (%.3e mol this step)' % xi
     else:

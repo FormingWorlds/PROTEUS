@@ -349,6 +349,19 @@ class Planet:
         when ``fO2_source = 'from_mantle_redox'``; ignored otherwise.
         The endpoints are excluded because the tracker forms the redox
         ratio f/(1-f), which is undefined at 1 and gives log10(0) at 0.
+    metal_saturation: bool
+        Whether the melt-redox tracker reacts a supersaturated melt to
+        Fe-metal equilibrium (3FeO = 2FeO1.5 + Fe; ``interior_chem/redox.py``,
+        Step 9, Schaefer et al. 2024 Section 2.7). Default False. When False
+        no metal forms and Fe3+/FeT follows crystallization alone, so the
+        melt can be left supersaturated (a_Fe > 1, metastable); a_Fe is
+        still evaluated per cell and written to the helpfile as a
+        diagnostic, the ``params.dt.afe_max_rel_change`` time-step cap
+        is inactive, crystallization uses the solver melt fraction
+        as is, without the PHI_SOLID = 0.15 solid threshold, and the
+        radial fO2 profiles are pressure-free (Eq 13 without int(dV dP),
+        Delta-IW against Hirschmann 2021 at 1 bar). Read only when
+        ``fO2_source = 'from_mantle_redox'``.
     prevent_warming: bool
         When True, require the planet to monotonically cool over time.
         Enforced in all atmosphere modules and termination checks.
@@ -426,6 +439,11 @@ class Planet:
     # fO2_source = 'from_mantle_redox'. Open interval: the tracker forms
     # f/(1-f), so f=1 divides by zero and f=0 makes log10(ratio) -inf.
     ferric_fraction_initial: float = field(default=0.1, validator=(gt(0), lt(1)))
+
+    # Fe-metal saturation step of the redox tracker (redox.py Step 9). False
+    # keeps the a_Fe diagnostic but forms no metal. Only read under
+    # fO2_source = 'from_mantle_redox'.
+    metal_saturation: bool = field(default=False)
 
     # Structure override: bypass the root finder and use a fixed R_int.
     # Needed for SPIDER/Aragog parity runs where the two energetics

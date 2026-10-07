@@ -64,11 +64,20 @@ _N_SIL_TEST = _N_FET_TEST + 1.85945
 _M_MELT = 4.0e21
 
 
-def _make_config(f_0: float, source: str = 'from_mantle_redox') -> MagicMock:
+def _iw_oneill_eggins_2002(T):
+    """log10 fO2 of IW, O'Neill & Eggins (2002) Eq 11 [T in K]: an independent
+    1 bar calibration, and the buffer the surface Delta-IW used before H21."""
+    return 2 * (-244118 + 115.559 * T - 8.474 * T * np.log(T)) / (np.log(10) * 8.31441 * T)
+
+
+def _make_config(
+    f_0: float, source: str = 'from_mantle_redox', metal_saturation: bool = True
+) -> MagicMock:
     """Minimal config exposing only the fields the tracker reads."""
     config = MagicMock()
     config.planet.fO2_source = source
     config.planet.ferric_fraction_initial = f_0
+    config.planet.metal_saturation = metal_saturation
     config.outgas.T_floor = 700.0  # the outgassing temperature floor default
     return config
 
@@ -267,14 +276,14 @@ def test_tracker_is_a_no_op_and_writes_nothing_under_other_fo2_sources(source):
 # ── Fe metal saturation (Steps 9a-9h) ──────────────────────────────────────
 
 
-def _crystallise(f_0, n_steps=6):
+def _crystallise(f_0, n_steps=6, metal_saturation=True):
     """Run the tracker through a solidifying mantle and return (state, rows).
 
     Melt fraction falls monotonically so Fe3+ is progressively partitioned
     into the solid, which is what drives the melt towards or away from the
     metal saturation boundary.
     """
-    config = _make_config(f_0)
+    config = _make_config(f_0, metal_saturation=metal_saturation)
     interior = _make_interior()
     rows = []
     for step in range(n_steps):
@@ -302,6 +311,53 @@ def test_reduced_melt_saturates_in_metal_and_becomes_more_oxidised():
     # partitioning alone lifts it by well under a factor of two over this many
     # steps, whereas the metal reaction drives it several times higher.
     assert reduced.ferric_frac > 2.0 * f_0
+
+
+@pytest.mark.physics_invariant
+def test_disabled_metal_saturation_leaves_the_reduced_melt_supersaturated():
+    """planet.metal_saturation = False: the same reduced melt that exsolves
+    metal above forms none, is left supersaturated (a_Fe > 1, the metastable
+    state the option exists to show), and ends less oxidised than with
+    saturation on, because only partitioning raises its Fe3+/FeT. The a_Fe
+    diagnostics are still written and still name the most saturated cell."""
+    f_0 = 0.005
+    on, _ = _crystallise(f_0)
+    off, rows = _crystallise(f_0, metal_saturation=False)
+
+    for row in rows:
+        assert row['n_fe_metal_step_mantle'] == 0.0
+        assert row['n_fe_metal_mantle'] == 0.0
+        assert row['fe_metal_kg_mantle'] == 0.0
+    np.testing.assert_array_equal(off.n_fe_metal_cell, 0.0)
+    assert rows[-1]['a_fe_max_mantle'] > 1.0
+    assert rows[-1]['a_fe_max_cell_mantle'] == float(np.argmax(off.a_fe_cell))
+    # Partitioning alone still oxidises the melt a little, but by much less
+    # than the metal reaction does.
+    assert f_0 < off.ferric_frac < on.ferric_frac
+
+
+@pytest.mark.physics_invariant
+def test_metal_step_without_reaction_reports_a_fe_and_leaves_the_melt_unchanged():
+    """react=False computes the same per-cell a_Fe and binding cell as the
+    reacting step, but returns 0 and leaves every reservoir untouched."""
+    reacting, _ = _crystallise(0.005, n_steps=3)
+    passive, _ = _crystallise(0.005, n_steps=3)
+    # Push both melts well past saturation so the reacting step does act.
+    for s in (reacting, passive):
+        s.n_fe3_melt *= 0.1
+    n2, n3 = passive.n_fe2_melt, passive.n_fe3_melt
+    metal = passive.n_fe_metal_cell.copy()
+
+    xi_on = _metal_saturation_step(reacting, _TEMP, _PRES, _PHI, _MASS)
+    xi_off = _metal_saturation_step(passive, _TEMP, _PRES, _PHI, _MASS, react=False)
+
+    assert xi_on > 0.0
+    assert xi_off == 0.0
+    assert (passive.n_fe2_melt, passive.n_fe3_melt) == (n2, n3)
+    np.testing.assert_array_equal(passive.n_fe_metal_cell, metal)
+    np.testing.assert_array_equal(passive.a_fe_cell, reacting.a_fe_cell)
+    assert passive.a_fe_max_cell == reacting.a_fe_max_cell >= 0
+    assert passive.a_fe_cell[passive.a_fe_max_cell] > 1.0
 
 
 @pytest.mark.physics_invariant
@@ -402,12 +458,15 @@ def test_surface_delta_iw_is_eq13_at_1_bar_and_the_outgassing_temperature(caplog
     minus IW, both at T_out = max(T_magma, outgas.T_floor) -- the
     temperature CALLIOPE and atmodeller solve at. 302 K is a surface
     temperature an interior step can return; at that temperature the
-    relation gives an offset near -11 that the chemistry cannot solve.
+    relation gives an offset about 8 dex below the 700 K one.
+    IW is Hirschmann (2021) at 1 bar, Schaefer et al.'s convention.
     """
-    from proteus.interior_chem.redox import _iw_buffer_bower2022, _log10_fO2_surface
+    from proteus.interior_chem.redox import _iw_buffer_hirschmann2021, _log10_fO2_surface
 
     def diw_at(T, state):
-        return _log10_fO2_surface(state.redox_ratio, T, state.X) - _iw_buffer_bower2022(T)
+        return _log10_fO2_surface(state.redox_ratio, T, state.X) - float(
+            _iw_buffer_hirschmann2021(T, 1.0e-4)
+        )
 
     config = _make_config(0.1344)
     results = {}
@@ -427,7 +486,12 @@ def test_surface_delta_iw_is_eq13_at_1_bar_and_the_outgassing_temperature(caplog
     # Discrimination guard: at the raw 302 K the offset is far lower, so a
     # value evaluated at T_magma itself could not pass the check above.
     cold, cold_state, _ = results[302.342]
-    assert diw_at(302.342, cold_state) < cold - 10.0
+    assert diw_at(302.342, cold_state) < cold - 5.0
+    # Buffer guard: at 3500 K the O'Neill & Eggins buffer sits 1.1 dex below
+    # H21, so an offset taken against it would fail the check above.
+    hot, hot_state, _ = results[3500.0]
+    bower = _log10_fO2_surface(hot_state.redox_ratio, 3500.0, hot_state.X)
+    assert bower - _iw_oneill_eggins_2002(3500.0) > hot + 1.0
     # The temperature genuinely enters: at a fixed ratio the offset differs
     # between 700, 2200 and 3500 K (it is not monotonic in T, so only
     # distinctness is asserted).
@@ -472,32 +536,32 @@ def test_freezing_the_shallow_melt_does_not_shift_the_surface_delta_iw():
 
 @pytest.mark.physics_invariant
 def test_eq13_pressure_term_matches_the_uncompressed_volume_analytic_limit():
-    """Below the Deng splice pressure dV(FeO1.5 - FeO) is the constant
-    uncompressed value, so int dV dP = dV0 (P - P0) exactly and Eq 13
-    shifts log10 fO2 by dV0 (P - P0) / (a R T ln10) relative to 1 bar.
-    The expectation is built by hand from that closed form, not from the
-    interpolation table.
+    """At the Deng reference temperature T0 both endmembers sit at V0 at
+    1 bar, so for small P dV(FeO1.5 - FeO) is the uncompressed value
+    dV0 = (V0_ox - V0_red)/2 and Eq 13 shifts log10 fO2 by
+    dV0 (P - P0) / (a R T ln10) relative to 1 bar. The expectation is
+    built by hand from that closed form.
     """
     import math
 
     from proteus.interior_chem import eos_deng
     from proteus.interior_chem.redox import _A, _R, _log10_fO2_profile, _log10_fO2_surface
 
-    T = 4000.0  # p_splice(4000 K) ~ 1.29 GPa
-    P = np.array([1.0e-4, 0.3, 0.9])  # all below the splice
-    assert np.all(P < eos_deng.p_splice(T))
+    T = eos_deng._T0
+    P = np.array([1.0e-4, 0.02, 0.05])  # compression of order P/K0 ~ 0.2 % at most
+    dV0 = 0.5 * (eos_deng._V0[1] - eos_deng._V0[0])
     ratio = 0.1 / 0.9
     state = _init_state(_PHI, _MASS, _PRES, 0.1)
     prof, valid = _log10_fO2_profile(ratio, np.full(3, T), P, state.X)
     assert np.all(valid)
-    expected = _log10_fO2_surface(ratio, T, state.X) + eos_deng._DV0 * (P - 1.0e-4) / (
-        _A * _R * T * math.log(10)
-    )
-    np.testing.assert_allclose(prof, expected, rtol=0, atol=1e-9)
+    shift = dV0 * (P - 1.0e-4) / (_A * _R * T * math.log(10))
+    expected = _log10_fO2_surface(ratio, T, state.X) + shift
+    # 1 % of the shift covers the neglected compression of dV.
+    np.testing.assert_allclose(prof, expected, rtol=0, atol=0.01 * shift[-1] + 1e-12)
     # P -> 1 bar recovers the surface relation (pressure term vanishes).
-    assert prof[0] == pytest.approx(_log10_fO2_surface(ratio, T, state.X), abs=1e-12)
-    # Order of magnitude guard: ~0.25 log units per 0.5 GPa here.
-    assert 0.1 < prof[1] - prof[0] < 0.3
+    assert prof[0] == pytest.approx(_log10_fO2_surface(ratio, T, state.X), abs=1e-9)
+    # Order of magnitude guard: ~0.03 log units at 0.05 GPa here.
+    assert 0.01 < prof[2] - prof[0] < 0.1
 
 
 @pytest.mark.physics_invariant
@@ -719,12 +783,133 @@ def test_fo2_profile_round_trips_through_the_interior_snapshot(tmp_path):
     np.testing.assert_array_equal(np.isnan(got), _PHI == 0)
     np.testing.assert_allclose(got[_PHI > 0], state.log10_fO2_cell[_PHI > 0], rtol=0, atol=0)
 
+    # The Schaefer-convention profile: log10_fO2_s minus IW_H21 at each cell's
+    # (T, P), with the same NaN cells.
+    from proteus.interior_chem.redox import _iw_buffer_hirschmann2021
+
+    with nc.Dataset(fpath) as ds:
+        diw = np.asarray(ds['dIW_H21_s'][:], dtype=float)
+        assert ds['dIW_H21_s'].units == 'log10 units rel. IW'
+    np.testing.assert_array_equal(np.isnan(diw), np.isnan(got))
+    expected = got - _iw_buffer_hirschmann2021(_TEMP, _PRES / 1e9)
+    np.testing.assert_allclose(diw[_PHI > 0], expected[_PHI > 0], rtol=0, atol=1e-12)
+
     # Second step on the same file: values replaced, no duplicate-variable error.
     state.log10_fO2_cell = state.log10_fO2_cell + 1.0
     assert write_fO2_profile_ncdf(fpath, state)
     with nc.Dataset(fpath) as ds:
         again = np.asarray(ds['log10_fO2_s'][:], dtype=float)
     np.testing.assert_allclose(again[_PHI > 0], got[_PHI > 0] + 1.0, rtol=0, atol=1e-12)
+    assert ds_attr(fpath, 'log10_fO2_s', 'pressure_term') == 1
+
+
+def ds_attr(fpath, var, attr):
+    """Read one attribute of one variable from a NetCDF file."""
+    import netCDF4 as nc
+
+    with nc.Dataset(fpath) as ds:
+        return ds[var].getncattr(attr)
+
+
+@pytest.mark.physics_invariant
+def test_without_metal_saturation_the_fo2_profiles_are_pressure_free(tmp_path):
+    """metal_saturation = False: log10_fO2_cell is Eq 13 at each cell's T with
+    int(dV dP) = 0, and dIW_H21 is taken against IW_H21 at 1 bar, so both sides
+    drop their pressure dependence. A cell above the Deng envelope (7000 K) is
+    no longer NaN, since no EOS is evaluated."""
+    from proteus.interior_chem.redox import (
+        P_1BAR_GPA,
+        _iw_buffer_hirschmann2021,
+        _log10_fO2_surface,
+        write_fO2_profile_ncdf,
+    )
+
+    temp = np.array([2200.0, 3500.0, 7000.0])
+    profiles = {}
+    for react in (False, True):
+        interior = _make_interior()
+        interior.phi = np.array([1.0, 0.5, 0.4])
+        interior.temp = temp
+        update_melt_redox(
+            interior, {'T_magma': 2200.0}, _make_config(0.1, metal_saturation=react)
+        )
+        profiles[react] = interior.redox_state
+    off, on = profiles[False], profiles[True]
+
+    expected = np.array([_log10_fO2_surface(off.redox_ratio, T, off.X) for T in temp])
+    np.testing.assert_allclose(off.log10_fO2_cell, expected, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(
+        off.dIW_H21_cell,
+        expected - _iw_buffer_hirschmann2021(temp, P_1BAR_GPA),
+        rtol=0,
+        atol=1e-12,
+    )
+    assert not off.profile_pressure_term and on.profile_pressure_term
+    # Discrimination guard: with the pressure term the 30 GPa cell sits several
+    # log units higher, and the 7000 K cell is outside the Deng envelope.
+    assert on.log10_fO2_cell[1] - off.log10_fO2_cell[1] > 2.0
+    assert np.isnan(on.log10_fO2_cell[2]) and np.isfinite(off.log10_fO2_cell[2])
+
+    fpath = str(tmp_path / '1000_int.nc')
+    _make_int_snapshot(fpath, temp.size)
+    assert write_fO2_profile_ncdf(fpath, off)
+    assert ds_attr(fpath, 'log10_fO2_s', 'pressure_term') == 0
+    assert ds_attr(fpath, 'dIW_H21_s', 'pressure_term') == 0
+    assert '1 bar' in ds_attr(fpath, 'dIW_H21_s', 'long_name')
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_hirschmann_iw_buffer_matches_oneill_eggins_at_one_bar_and_the_solid_volume_slope():
+    """The Hirschmann (2021) IW buffer agrees with the independent O'Neill &
+    Eggins (2002) calibration at 1 bar near 1500 K, and its pressure slope at
+    2000 K matches 2 dV/(R T ln10) for Fe + 1/2 O2 = FeO with the ambient
+    molar volumes of wustite (12.06 cm3/mol) and iron (7.09 cm3/mol).
+
+    Both are calibrations of the same equilibrium, so they differ by tenths
+    of a log unit; a wrong coefficient or a missing T ln T term moves the
+    1-bar value by whole log units. The slope estimate neglects compression
+    and thermal expansion, hence the 25 % tolerance.
+    """
+    import math
+
+    from proteus.interior_chem.redox import _iw_buffer_hirschmann2021
+
+    T = 1500.0
+    h21 = float(_iw_buffer_hirschmann2021(T, 1.0e-4))
+    assert h21 == pytest.approx(_iw_oneill_eggins_2002(T), abs=0.3)
+    # Scale guard: IW at 1500 K sits near log10 fO2 = -10 to -11.
+    assert -12.0 < h21 < -9.0
+
+    T = 2000.0
+    slope = float(_iw_buffer_hirschmann2021(T, 11.0) - _iw_buffer_hirschmann2021(T, 9.0)) / 2.0
+    expected = 2.0 * (12.06 - 7.09) * 1e3 / (8.31447 * T * math.log(10))  # cm3 GPa = 1e3 J
+    assert slope == pytest.approx(expected, rel=0.25)
+    assert slope > 0.0  # IW rises with pressure
+
+
+@pytest.mark.physics_invariant
+def test_hirschmann_iw_buffer_is_continuous_at_the_iron_phase_switch_and_broadcasts():
+    """The fcc/bcc and hcp coefficient sets meet at the transition pressure
+    within a few hundredths of a log unit, and array input of mixed branches
+    gives the same values as scalar calls."""
+    from proteus.interior_chem.redox import _iw_buffer_hirschmann2021
+
+    for T in (2000.0, 3000.0):
+        p_tr = -18.640 + 0.04359 * T - 5.069e-6 * T**2
+        jump = float(
+            _iw_buffer_hirschmann2021(T, p_tr + 1e-6)
+            - _iw_buffer_hirschmann2021(T, p_tr - 1e-6)
+        )
+        assert abs(jump) < 0.05
+
+    T = np.array([1500.0, 2500.0, 3500.0])
+    P = np.array([1.0e-4, 30.0, 90.0])  # fcc, fcc, hcp at these temperatures
+    vec = _iw_buffer_hirschmann2021(T, P)
+    assert vec.shape == (3,)
+    np.testing.assert_allclose(
+        vec, [float(_iw_buffer_hirschmann2021(t, p)) for t, p in zip(T, P)], rtol=0, atol=1e-12
+    )
 
 
 def test_fo2_profile_is_not_written_to_a_missing_or_mismatched_snapshot(tmp_path):
@@ -854,6 +1039,55 @@ def test_crossing_the_solid_threshold_crystallises_the_remaining_melt():
     assert fe3_a == pytest.approx(fe3_b, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
+def test_without_metal_saturation_a_trace_melt_cell_keeps_its_iron():
+    """metal_saturation = False drops the PHI_SOLID threshold: a cell at
+    phi = PHI_SOLID / 2 joins the initial melt inventory with its real melt
+    mass, whereas with saturation on it counts as solid."""
+    from proteus.interior_chem.redox import PHI_SOLID
+
+    phi_deep = 0.5 * PHI_SOLID
+    phi = np.array([1.0, 0.5, phi_deep])
+    n_fe2 = {}
+    for react in (False, True):
+        interior = _make_interior()
+        interior.phi = phi
+        update_melt_redox(
+            interior, {'T_magma': 2200.0}, _make_config(0.1, metal_saturation=react)
+        )
+        n_fe2[react] = interior.redox_state.n_fe2_melt
+    m_melt_real = _M_MELT + phi_deep * _MASS[2]
+    assert n_fe2[False] == pytest.approx(W_FET * m_melt_real / MU_FEO, rel=1e-12)
+    assert n_fe2[True] == pytest.approx(W_FET * _M_MELT / MU_FEO, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_without_metal_saturation_crystallisation_follows_the_real_melt_fraction():
+    """With metal_saturation = False a cell dropping from phi = 0.5 to
+    0.8 * PHI_SOLID crystallises only that decrease (Eq 12-19), not its whole
+    remaining melt, and phi_prev keeps the solver value."""
+    from proteus.interior_chem.redox import D_FE2_BRG, PHI_SOLID
+
+    f_0, phi_last = 0.1, 0.8 * PHI_SOLID
+    config = _make_config(f_0, metal_saturation=False)
+    interior = _make_interior()
+    update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    interior.phi = np.array([1.0, phi_last, 0.0])
+    update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    st = interior.redox_state
+
+    n2_0 = W_FET * _M_MELT / MU_FEO
+    n3_0 = n2_0 * f_0 / (1.0 - f_0)
+    dM = (0.5 - phi_last) * _MASS[1]  # cell 1 sits at 30 GPa: bridgmanite D
+    assert st.n_fe2_melt == pytest.approx(n2_0 - D_FE2_BRG * n2_0 / _M_MELT * dM, rel=1e-12)
+    assert st.n_fe3_melt == pytest.approx(n3_0 - D_FE3_BRG * n3_0 / _M_MELT * dM, rel=1e-12)
+    assert st.phi_prev[1] == phi_last
+    assert np.all(st.n_fe_metal_cell == 0.0)
+    # Discrimination guard: the thresholded drop to 0 removes more Fe2+.
+    dM_thr = 0.5 * _MASS[1]
+    assert st.n_fe2_melt > n2_0 - D_FE2_BRG * n2_0 / _M_MELT * dM_thr * (1.0 - 1e-9)
+
+
 # ---------------------------------------------------------------------------
 # Edge states: no iron, no melt, melt outside the EOS, a solidified mantle
 # ---------------------------------------------------------------------------
@@ -867,28 +1101,6 @@ def test_ratios_are_left_unchanged_when_the_melt_holds_no_iron():
     state.n_fe2_melt = state.n_fe3_melt = 0.0
     _update_ratios(state)
     assert state.ferric_frac == pytest.approx(0.1, rel=1e-15)
-
-
-def test_cold_melt_below_the_eos_table_is_reported(caplog):
-    """Melt below the table's lowest temperature (1500 K) is usable but its
-    int(dV dP) is the clamped edge value; that is logged, not silent."""
-    import logging
-
-    from proteus.interior_chem.redox import _warn_clamped_cells
-
-    usable = np.array([True, True, False])
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.redox'):
-        _warn_clamped_cells(
-            np.array([1200.0, 2500.0, 1000.0]), np.array([1.0, 5.0, 9.0]), usable
-        )
-    msgs = [r.message for r in caplog.records if 'Out of the bounds' in r.message]
-    assert len(msgs) == 1 and '1 melt cell' in msgs[0]
-    caplog.clear()
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.redox'):
-        _warn_clamped_cells(
-            np.array([2000.0, 2500.0, 1000.0]), np.array([1.0, 5.0, 9.0]), usable
-        )
-    assert not any('Out of the bounds' in r.message for r in caplog.records)
 
 
 def test_metal_step_does_nothing_without_melt():
@@ -1038,3 +1250,129 @@ def test_a_saturated_cell_with_no_reaction_extent_leaves_the_melt_unchanged(monk
     assert state.a_fe_cell[state.a_fe_max_cell] >= 1.0  # the check did run
     assert (state.n_fe2_melt, state.n_fe3_melt) == (n2, n3)
     assert np.all(state.n_fe_metal_cell == 0.0)
+
+
+# ── Tracker state in the snapshot, restored on resume ──────────────────────
+
+
+def _phi_at(step):
+    """Melt fraction of the solidifying three-cell mantle at ``step``."""
+    return np.clip(_PHI - np.array([0.12, 0.07, 0.0]) * step, 0.0, None)
+
+
+def _resume_config(module='aragog'):
+    """A reduced melt (f_0 = 0.005) with metal saturation on, so the state
+    carries metal as well as crystallization history."""
+    config = _make_config(0.005, metal_saturation=True)
+    config.interior_energetics.module = module
+    return config
+
+
+def _run_steps(interior, config, steps):
+    for step in steps:
+        interior.phi = _phi_at(step)
+        update_melt_redox(interior, {'T_magma': 2200.0}, config)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('module', ['aragog', 'spider'])
+def test_a_resume_continues_the_tracker_exactly_as_an_unbroken_run(tmp_path, module):
+    """A run stored at step 3 and resumed from its snapshot reaches the same
+    reservoirs, metal and Fe3+/FeT after step 6 as a run that never stopped.
+    Without the restore the tracker reseeds from f_0 and loses the history."""
+    from proteus.interior_chem.redox import restore_tracker_state, store_profile_snapshot
+
+    config = _resume_config(module)
+    dirs = {'output': str(tmp_path)}
+    (tmp_path / 'data').mkdir()
+    if module == 'aragog':
+        _make_int_snapshot(str(tmp_path / 'data' / '1722p000_int.nc'), _PHI.size)
+
+    unbroken = _make_interior()
+    _run_steps(unbroken, config, range(6))
+
+    first = _make_interior()
+    _run_steps(first, config, range(3))
+    assert store_profile_snapshot(
+        config,
+        dirs,
+        1722.0,
+        first,
+        {'fO2_shift_IW_mantle': 0.0, 'ferric_frac_mantle': first.redox_state.ferric_frac},
+    )
+    resumed = _make_interior()
+    assert restore_tracker_state(config, dirs, 1722.0, resumed)
+    _run_steps(resumed, config, range(3, 6))
+
+    a, b = unbroken.redox_state, resumed.redox_state
+    assert b.n_fe2_melt == pytest.approx(a.n_fe2_melt, rel=1e-12)
+    assert b.n_fe3_melt == pytest.approx(a.n_fe3_melt, rel=1e-12)
+    assert b.ferric_frac == pytest.approx(a.ferric_frac, rel=1e-12)
+    np.testing.assert_allclose(b.n_fe_metal_cell, a.n_fe_metal_cell, rtol=1e-12, atol=0)
+    assert np.sum(a.n_fe_metal_cell) > 0.0  # the history being carried includes metal
+
+    # Discrimination guard: a reseeded tracker ends far from the unbroken run.
+    reseeded = _make_interior()
+    _run_steps(reseeded, config, range(3, 6))
+    assert abs(reseeded.redox_state.ferric_frac - a.ferric_frac) > 0.1 * a.ferric_frac
+
+
+def test_restored_state_matches_every_stored_field(tmp_path):
+    """read_tracker_state returns each MeltRedoxState field the tracker
+    carries between steps, with types preserved (flags as bool, indices as
+    int); the per-step fO2 profiles are not stored."""
+    from proteus.interior_chem.redox import read_tracker_state, write_fO2_profile_ncdf
+
+    interior = _make_interior()
+    _run_steps(interior, _resume_config(), range(4))
+    st = interior.redox_state
+    st.melt_exhausted, st.eos_coverage_logged = True, True  # non-default flags
+    fpath = str(tmp_path / '1_int.nc')
+    _make_int_snapshot(fpath, _PHI.size)
+    assert write_fO2_profile_ncdf(fpath, st)
+
+    got = read_tracker_state(fpath)
+    for name in ('phi_prev', 'D_fe3_cell', 'n_fe_metal_cell', 'a_fe_cell'):
+        np.testing.assert_array_equal(getattr(got, name), getattr(st, name))
+    for name in ('n_fe3_melt', 'n_fe2_melt', 'ferric_frac', 'redox_ratio', 'w_feo15'):
+        assert getattr(got, name) == getattr(st, name), name
+    assert (got.a_fe_max_cell, got.fO2_cell) == (st.a_fe_max_cell, st.fO2_cell)
+    assert got.melt_exhausted is True and got.eos_coverage_logged is True
+    assert got.profile_pressure_term is st.profile_pressure_term
+    assert got.log10_fO2_cell is None
+
+
+def test_a_snapshot_without_state_warns_and_leaves_the_tracker_unset(tmp_path, caplog):
+    """A resume onto a snapshot written before the state was stored (or a
+    missing file) cannot restore: it says so and the tracker restarts."""
+    from proteus.interior_chem.redox import restore_tracker_state
+
+    config = _resume_config()
+    (tmp_path / 'data').mkdir()
+    _make_int_snapshot(str(tmp_path / 'data' / '1722p000_int.nc'), _PHI.size)
+    interior = _make_interior()
+    with caplog.at_level('WARNING'):
+        assert not restore_tracker_state(config, {'output': str(tmp_path)}, 1722.0, interior)
+        assert not restore_tracker_state(config, {'output': str(tmp_path)}, 99.0, interior)
+    assert interior.redox_state is None
+    assert sum('no melt-redox tracker state' in r.message for r in caplog.records) == 2
+    # Another fO2 source never looks for a state.
+    other = _resume_config()
+    other.planet.fO2_source = 'user_constant'
+    assert not restore_tracker_state(other, {'output': str(tmp_path)}, 1722.0, interior)
+
+
+def test_a_restored_state_on_a_different_grid_is_refused():
+    """A state whose cell count differs from the interior grid cannot be
+    continued; update_melt_redox raises instead of broadcasting."""
+    config = _resume_config()
+    interior = _make_interior()
+    _run_steps(interior, config, range(2))
+    interior.phi = np.array([1.0, 0.5, 0.2, 0.0])
+    interior.mass = np.full(4, 1.0e21)
+    interior.pres = np.linspace(1.0e9, 6.0e10, 4)
+    interior.temp = np.full(4, 2500.0)
+    n2 = interior.redox_state.n_fe2_melt
+    with pytest.raises(ValueError, match='3 cells but the interior grid has 4'):
+        update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    assert interior.redox_state.n_fe2_melt == n2

@@ -138,8 +138,9 @@ class TimeStepParams:
         the last step extrapolated at its own rate, and not below
         ``minimum + minimum_rel * Time``. Applies only while both of the
         last two steps tested a cell (``a_fe_max_mantle > 0``), i.e. under
-        ``planet.fO2_source = "from_mantle_redox"``. Default 0.03; 0
-        disables the cap.
+        ``planet.fO2_source = "from_mantle_redox"`` with
+        ``planet.metal_saturation = true``. Default 0.03; 0 disables the
+        cap.
     mushy_upper: float
         Upper bound of the mushy regime [dimensionless melt
         fraction]. When ``Phi_global < mushy_upper`` AND

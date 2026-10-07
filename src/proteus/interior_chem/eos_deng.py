@@ -11,64 +11,65 @@ et al. (2024) always include in their disproportionation calculation
 ``fO2lowP_H22.m``, which correctly sets it to zero because that is evaluated
 at 1 bar.
 
-The integral assembles three volume terms, following Schaefer's construction:
+The integral is evaluated exactly as ``deltaGFeOFeO15_Deng.m`` and
+``BM4VolumeFunc.m`` (Schaefer et al. 2024 archived code) construct it:
 
     int dV dP = 2*int(dV_Deng) dP  -  int(V_FeO) dP  +  int(V_Fe) dP
 
-where dV_Deng = V(FeO1.5) - V(FeO) comes from differencing two Deng et al.
-(2020) melt endmembers (Mg14Fe2Si16O48 and Mg14Fe2Si16O49, which differ by
-exactly one oxygen; the Mg-silicate part cancels), V_FeO is the Lange &
-Carmichael (1987) liquid volume with a Murnaghan compression, and V_Fe is
-liquid iron on the Komabayashi (2014) Vinet EOS.
+* dV_Deng = V(FeO1.5) - V(FeO) = 0.5*(V_ox - V_red), from the two Deng et al.
+  (2020) 12.5 mol% FeO* melt endmembers (Mg14Fe2Si16O48 and Mg14Fe2Si16O49,
+  which differ by exactly one oxygen), each a fourth-order Birch-Murnaghan
+  EOS plus the thermal pressure BH(V/V0)*(T - T0), T0 = 3000 K. Integrated
+  with the trapezoid rule on Schaefer's 100-node grid: P0 = 1e-4 GPa, then
+  P*k/99 for k = 1..99.
+* V_FeO is the Lange & Carmichael (1987) liquid volume at T with a
+  Murnaghan compression (K0 = 30.33 GPa, K' = 4), integrated analytically
+  from P = 0 to P, as in Schaefer's code.
+* V_Fe is liquid iron on the Komabayashi (2014) Vinet EOS with
+  Anderson-Gruneisen thermal expansion, integrated with the trapezoid rule
+  on 100 equally spaced nodes from P0 to P.
 
-``int_dV_dP_oxidation(T, P)`` returns the first of those terms on its own,
-int(dV_Deng) dP, i.e. the volume integral of the oxidation reaction
+``int_dV_dP_oxidation(T, P)`` returns the first term on its own,
+int(dV_Deng) dP, the volume integral of the oxidation reaction
+FeO + 1/4 O2 = FeO1.5 (Schaefer et al. 2024 Eq 10), used for the radial fO2
+profile (Hirschmann 2022 Eq 21 / Schaefer et al. 2024 Eq 13). The O2 gas is
+not part of the condensed-phase volume change, as fO2 is a fugacity.
 
-    FeO(silicate liq) + 1/4 O2(g) = FeO1.5(silicate liq)
+VOLUME INVERSION
+----------------
+Schaefer solves P(V, T) = P with MATLAB ``fsolve`` from V = 0.95*V0, output
+suppressed and exit flag unchecked. Here the same root is found with a
+bracketed, vectorised bisection:
 
-(Schaefer et al. 2024 Eq 10). That is the pressure term of Hirschmann (2022)
-Eq 21 / Schaefer et al. (2024) Eq 13, used for the radial fO2 profile. The
-O2 gas is not part of the condensed-phase volume change, as fO2 is a
-fugacity.
-
-Because the integral depends only on (P, T) -- never on composition, the
-initial ferric fraction, or the timestep -- it is tabulated once per process
-and interpolated thereafter. A 150 x 40 grid over 1500-4175 K (68.6 K spacing) reproduces a direct 400-point
-integration to ~0.1% median / 1.2% max; a 60 x 40 grid is NOT sufficient
-(10% worst case). The default
-52 temperature nodes over 1500-5000 K keep that 68.6 K spacing.
+* P >= P(V0, T): the root lies on the compressed branch, V in [0.15 V0, V0],
+  where P(V) is monotonic, so it is the unique root fsolve converges to.
+* P < P(V0, T) (only above T0, where the thermal term is positive): the
+  liquid expands past V0. P(V) keeps falling to a minimum near V/V0 ~ 1.1-1.35
+  and then rises; the root between V0 and that minimum is the one fsolve
+  reaches from 0.95*V0.
+* If that minimum lies above the requested P there is no root (at 1 bar this
+  happens above ~4175 K for the ferric endmember). MATLAB's fsolve then
+  returns, unconverged, the point where the squared residual is stationary,
+  i.e. the minimum of P(V). That volume is used here, and a warning is
+  logged once per process. The exact unconverged MATLAB value depends on its
+  iteration history and cannot be reproduced; this is its limit point.
 
 VALIDITY
 --------
-Two independent limits, both enforced here and reported through the ``valid``
-flag that every public call returns:
+Schaefer's code has no validity envelope. PROTEUS keeps one, outside the EOS
+formula: points with T > ``T_CEILING`` or P > ``P_EXERCISED`` (136 GPa,
+roughly Earth's core-mantle boundary and the deepest Schaefer et al. ran) are
+returned as 0 and flagged invalid. For Earth-like magma oceans Schaefer never
+leaves this envelope, so inside it the results are hers.
 
-1. Deng's thermal-pressure term ``BH(x) = (a - b*x + c*x**2)/1000``, with
-   x = V/V0, is a parabola whose minimum sits at x = b/(2c) ~ 0.973. Below
-   that it decreases with expanding volume, as a thermal pressure must;
-   above it the fit turns upward and diverges, which is unphysical. It was
-   evidently fitted to compressed states only. We therefore cap the liquid
-   at V <= V0 and splice a constant dV below the corresponding pressure
-
-       P_splice(T) = P0 + BH(1)*(T - T0)
-
-   using Deng's own uncompressed volume difference there. NOTE: this splice
-   is our construction, not from the literature. Deng et al. (2020) Nat.
-   Commun. 11, 2007 should be consulted for the V/V0 range they actually
-   sampled, and the splice point set from that.
-
-2. Temperature. Deng et al. (2020) ran FPMD at 2000-4000 K (T0 = 3000 K,
-   thermal pressure linear in T - T0) and state that their thermodynamic
-   modelling extends to 5000 K; Schaefer et al. (2024) evaluate the EOS at
-   their solidus, which reaches ~4570 K at the core-mantle boundary.
-   ``T_CEILING`` = 5000 K follows Deng's stated range; above it the fit is
-   treated as invalid rather than extrapolated. Above T ~ 3000 K the BM4 has
-   no root at 1 bar, but that is the V > V0 branch removed by the splice in
-   (1), so it does not limit the temperature: above p_splice(T) the EOS
-   solves up to 140 GPa at every T tested (3000-6000 K).
-
-Pressures above ``P_EXERCISED`` (136 GPa, roughly Earth's core-mantle
-boundary and the deepest Schaefer et al. ran) are flagged but not refused.
+``T_CEILING`` is 6500 K, an extrapolation 1500 K beyond ``T_DENG_MAX``
+(5000 K, the upper limit of the Deng et al. 2020 thermodynamic modelling;
+their FPMD spans 2000-4000 K). It is set to the hottest melt of an Earth-like
+run that starts fully molten (~6500 K at the core-mantle boundary), so that
+the whole homogeneous melt is tested for metal saturation from the first
+check and the reaction extent is not set by a subset of it. Values above
+``T_DENG_MAX`` are extrapolations of every term (Deng volumes, the FeO and Fe
+volumes, the Gibbs energies) and are logged once per process.
 """
 
 from __future__ import annotations
@@ -76,7 +77,6 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-from scipy.optimize import brentq
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -92,42 +92,34 @@ _A = np.array([35.7939748339471, 34.5261639420686])
 _B = np.array([71.1031366774265, 68.6442962291442])
 _C = np.array([36.5954522514324, 35.2706911576929])
 
-_P0 = 1.0e-4  # GPa, Deng reference pressure
+_P0 = 1.0e-4  # GPa, Deng reference pressure and foot of Schaefer's grid
 _T0 = 3000.0  # K,   Deng reference temperature
+_N_GRID = 100  # nodes of Schaefer's trapezoid integrations
+_N_BISECT = 60  # bisection halvings: bracket / 2**60 is far below fsolve's tolerance
 
-# Uncompressed reaction volume, 0.5*(V0_ox - V0_red), in J/GPa/mol.
-# The factor 0.5 is Schaefer's: the endmembers carry 2 Fe per formula unit,
-# so the per-FeO volume difference is half the endmember difference.
-_DV0 = 0.5 * (_V0[1] - _V0[0])
-
-T_CEILING = 5000.0  # K,   upper limit of Deng et al. (2020) modelling
+T_DENG_MAX = 5000.0  # K,   upper limit of Deng et al. (2020) modelling
+T_CEILING = 6500.0  # K,   validity envelope, extrapolated beyond T_DENG_MAX
 P_EXERCISED = 136.0  # GPa, deepest pressure Schaefer et al. (2024) ran
 
-# ── Lange & Carmichael (1987) FeO liquid + Kress & Carmichael (1993) K ──────
+# ── Lange & Carmichael (1987) FeO liquid + Kress & Carmichael K ─────────────
 _K0_FEO, _KP_FEO = 30.33, 4.0
 
 # ── Komabayashi (2014) liquid Fe, Vinet ─────────────────────────────────────
 _V298_FE, _ALPHA0_FE = 6.88, 9.0e-5
 _K0_FE, _KP_FE, _DELTA0_FE, _KAPPA_FE = 148.0, 5.8, 5.1, 0.56
 
+_NO_ROOT_WARNED = False
+_EXTRAPOLATION_WARNED = False
 
-def _bh(x: np.ndarray, i: int) -> np.ndarray:
+
+def _bh(x, i: int):
     """Deng thermal-pressure coefficient, GPa/K. x = V/V0."""
     return (_A[i] - _B[i] * x + _C[i] * x**2) / 1000.0
 
 
-def p_splice(T: float) -> float:
-    """Pressure at V = V0, below which the fit would need V > V0.
-
-    Taken as the larger of the two endmembers: they have slightly different
-    thermal coefficients, so the ferrous one loses its root first, and a
-    splice set from the ferric endmember alone leaves a thin band near the
-    temperature ceiling where the ferrous solve fails.
-    """
-    return _P0 + max(float(_bh(np.array(1.0), 0)), float(_bh(np.array(1.0), 1))) * (T - _T0)
-
-
-def _bm4_pressure(V: float, T: float, i: int) -> float:
+def _bm4_pressure(V, T, i: int):
+    """Deng P(V, T) in GPa for endmember ``i``; V in J/GPa/mol, T in K.
+    Broadcasts over V and T."""
     v0, k0, kp, kdp = _V0[i], _K0[i], _KP[i], _KDP[i]
     a1 = 3 * v0 * _P0
     a2 = 3 * v0 * (3 * k0 - 5 * _P0) / 2
@@ -139,171 +131,183 @@ def _bm4_pressure(V: float, T: float, i: int) -> float:
         * (v0 ** (2.0 / 3.0))
         / (3.0 * V ** (5.0 / 3.0))
     )
-    return p_bm + float(_bh(np.array(V / v0), i)) * (T - _T0)
+    return p_bm + _bh(V / v0, i) * (T - _T0)
+
+
+def p_at_V0(T, i: int):
+    """Pressure at which endmember ``i`` sits exactly at V0, in GPa.
+
+    The cold term equals P0 at V0 by construction, so this is
+    P0 + BH(1)*(T - T0). Below it the root is on the expanded branch
+    (V > V0); it is below 1 bar whenever T < T0.
+    """
+    return _P0 + _bh(1.0, i) * (np.asarray(T, dtype=float) - _T0)
+
+
+def _bisect_decreasing(func, lo, hi):
+    """Vectorised bisection for a decreasing ``func`` with func(lo) >= 0 >= func(hi)."""
+    for _ in range(_N_BISECT):
+        mid = 0.5 * (lo + hi)
+        pos = func(mid) > 0.0
+        lo = np.where(pos, mid, lo)
+        hi = np.where(pos, hi, mid)
+    return 0.5 * (lo + hi)
+
+
+def _expanded_minimum(T, i: int):
+    """Volume of the minimum of P(V) beyond V0 at each T, J/GPa/mol: a dense
+    scan over V/V0 in [1, 1.6] refined by golden-section search."""
+    T = np.asarray(T, dtype=float)
+    v0 = _V0[i]
+    xs = np.linspace(1.0, 1.6, 241)
+    Ps = _bm4_pressure(xs[None, :] * v0, T[:, None], i)
+    k = np.argmin(Ps, axis=1)
+    lo = xs[np.maximum(k - 1, 0)]
+    hi = xs[np.minimum(k + 1, xs.size - 1)]
+    g = 0.5 * (np.sqrt(5.0) - 1.0)
+    for _ in range(40):
+        x1 = hi - g * (hi - lo)
+        x2 = lo + g * (hi - lo)
+        left = _bm4_pressure(x1 * v0, T, i) < _bm4_pressure(x2 * v0, T, i)
+        hi = np.where(left, x2, hi)
+        lo = np.where(left, lo, x1)
+    return 0.5 * (lo + hi) * v0
+
+
+def _volumes(P, T, i: int):
+    """Endmember volume V(P, T) in J/GPa/mol, the root Schaefer's fsolve finds.
+
+    P has shape (n, m) and T shape (n,). Returns (V, no_root), where no_root
+    marks points with no solution, set to the minimum of P(V) (see module
+    docstring).
+    """
+    P = np.asarray(P, dtype=float)
+    T = np.asarray(T, dtype=float)
+    Tc = T[:, None]
+    v0 = _V0[i]
+
+    def resid(V):
+        return _bm4_pressure(V, Tc, i) - P
+
+    V = np.full(P.shape, np.nan)
+    comp = P >= p_at_V0(Tc, i)
+    lo, hi = np.full(P.shape, 0.15 * v0), np.full(P.shape, v0)
+    reach = resid(lo) >= 0.0
+    root = _bisect_decreasing(resid, lo, hi)
+    V = np.where(comp & reach, root, V)
+
+    no_root = np.zeros(P.shape, dtype=bool)
+    expd = ~comp
+    if np.any(expd):
+        v_min = np.broadcast_to(_expanded_minimum(T, i)[:, None], P.shape)
+        has = expd & (resid(v_min) <= 0.0)
+        root = _bisect_decreasing(resid, np.full(P.shape, v0), v_min.copy())
+        V = np.where(has, root, V)
+        no_root = expd & ~has
+        V = np.where(no_root, v_min, V)
+    return V, no_root
 
 
 def _solve_V(P: float, T: float, i: int) -> float:
-    """Invert the BM4 + thermal EOS for V at (P, T).
-
-    Bracketed on [0.15*V0, V0]: the upper bound is V0 by construction (we
-    never use the expanded branch where the thermal parabola misbehaves),
-    so the bracket is guaranteed whenever P >= p_splice(T). A bracketed
-    solver is used deliberately -- Schaefer's MATLAB uses fsolve from a
-    guess with Display='off', which returns a non-converged value silently.
-    """
-    lo, hi = 0.15 * _V0[i], _V0[i]
-    f_lo = _bm4_pressure(lo, T, i) - P
-    f_hi = _bm4_pressure(hi, T, i) - P
-    if f_lo * f_hi > 0:
-        return np.nan
-    return brentq(lambda V: _bm4_pressure(V, T, i) - P, lo, hi, xtol=1e-10)
+    """Scalar V(P, T) for endmember ``i``, J/GPa/mol (see ``_volumes``)."""
+    V, _ = _volumes(np.array([[float(P)]]), np.array([float(T)]), i)
+    return float(V[0, 0])
 
 
-def _int_V_FeO(T: float, P: float) -> float:
-    """Murnaghan integral of the Lange & Carmichael (1987) FeO liquid, J/mol."""
-    V = (13650.0 + 2.92 * (T - 1673.0)) * 1e-3  # cm3/mol
+def _int_V_FeO(T, P):
+    """Murnaghan integral of the Lange & Carmichael (1987) FeO liquid from
+    P = 0 to P, J/mol (Schaefer's ``VdPFeO_LC``). T in K, P in GPa."""
+    V = (13650.0 + 2.92 * (np.asarray(T, dtype=float) - 1673.0)) * 1e-3  # cm3/mol
     return (
         V
         * _K0_FEO
         / (_KP_FEO - 1.0)
-        * ((1.0 + _KP_FEO * P / _K0_FEO) ** (1.0 - 1.0 / _KP_FEO) - 1.0)
+        * (
+            (1.0 + _KP_FEO * np.asarray(P, dtype=float) / _K0_FEO) ** (1.0 - 1.0 / _KP_FEO)
+            - 1.0
+        )
     ) * 1e3
 
 
-def _V_Fe(P: float) -> float:
-    """Vinet inversion for liquid Fe at 298 K reference, cm3/mol."""
-    if P <= 1e-6:
-        return _V298_FE
-
-    def resid(V):
-        x = (V / _V298_FE) ** (1.0 / 3.0)
-        return P - 3 * _K0_FE * (1 - x) / x**2 * np.exp(1.5 * (_KP_FE - 1) * (1 - x))
-
-    return brentq(resid, 0.2 * _V298_FE, _V298_FE, xtol=1e-12)
+def _vinet_resid(V, P):
+    x = (V / _V298_FE) ** (1.0 / 3.0)
+    return P - 3 * _K0_FE * (1 - x) / x**2 * np.exp(1.5 * (_KP_FE - 1) * (1 - x))
 
 
-def _cumint(y: np.ndarray, x: np.ndarray) -> np.ndarray:
-    """Cumulative trapezoid, same length as x, starting at 0."""
-    return np.concatenate(([0.0], np.cumsum(0.5 * (y[1:] + y[:-1]) * np.diff(x))))
-
-
-def _int_V_Fe_grid(T: float, Pgrid: np.ndarray) -> np.ndarray:
-    """Komabayashi (2014) liquid Fe integrated along the whole P grid, J/mol.
-
-    One cumulative sweep gives the integral at every P, so the Vinet
-    inversions cost len(Pgrid) rather than len(Pgrid)**2.
-    """
-    VT = np.empty(len(Pgrid))
-    for j, p in enumerate(Pgrid):
-        Vp = _V_Fe(float(p))
-        alpha = _ALPHA0_FE * np.exp(
-            -_DELTA0_FE / _KAPPA_FE * (1.0 - (Vp / _V298_FE) ** _KAPPA_FE)
-        )
-        VT[j] = Vp * np.exp(alpha * (T - 298.0))
-    return _cumint(VT, Pgrid) * 1e3
-
-
-class _Table:
-    """Cached (P, T) grids of int dV dP: the disproportionation reaction
-    (``I``) and the FeO -> FeO1.5 oxidation reaction (``I_ox``)."""
-
-    def __init__(self, P_max: float, T_min: float, T_max: float, nP: int, nT: int):
-        # The grid starts at P0 = 1 bar, not at zero: that is the standard
-        # state the Kowalski & Spencer Gibbs energies are referenced to, and
-        # the BM4 residual has no sign change in [0.15*V0, V0] at P = 0
-        # (P_BM(V0) = P0 by construction), so a zero first node would leave
-        # an unsolvable point at the foot of every integral. Schaefer's
-        # deltaGFeOFeO15_Deng.m likewise starts its PVector at 1e-4 GPa.
-        self.P = np.concatenate(([_P0], np.linspace(_P0, P_max, nP)[1:]))
-        self.T = np.linspace(T_min, min(T_max, T_CEILING), nT)
-        self.I = np.zeros((nP, nT))
-        self.I_ox = np.zeros((nP, nT))
-
-        for j, T in enumerate(self.T):
-            Psp = p_splice(T)
-            dV = np.empty(nP)
-            for i, P in enumerate(self.P):
-                if P < Psp:
-                    dV[i] = _DV0  # splice: uncompressed
-                else:
-                    v_ox = _solve_V(P, T, 1)
-                    v_red = _solve_V(P, T, 0)
-                    dV[i] = (
-                        np.nan if (np.isnan(v_ox) or np.isnan(v_red)) else 0.5 * (v_ox - v_red)
-                    )
-            # carry the last good value forward if the EOS failed anywhere
-            if np.isnan(dV).any():
-                bad = int(np.isnan(dV).sum())
-                log.warning('Deng EOS: %d/%d grid points failed at T=%.0f K', bad, nP, T)
-                idx = np.where(~np.isnan(dV))[0]
-                if idx.size == 0:
-                    dV[:] = _DV0
-                else:
-                    dV = np.interp(self.P, self.P[idx], dV[idx])
-
-            int_dV = _cumint(dV, self.P)
-            # Referenced to P0, matching the two cumulative integrals above:
-            # the Murnaghan form integrates from zero, so its value at the
-            # reference pressure is subtracted off.
-            int_FeO = np.array([_int_V_FeO(T, float(P)) for P in self.P])
-            int_FeO = int_FeO - int_FeO[0]
-            int_Fe = _int_V_Fe_grid(T, self.P)
-            self.I[:, j] = 2.0 * int_dV - int_FeO + int_Fe
-            self.I_ox[:, j] = int_dV
-
-    def __call__(self, T, P, grid=None):
-        """Bilinear interpolation of ``grid`` (default ``I``), clamped at the
-        grid edges."""
-        G = self.I if grid is None else grid
-        Pc = np.clip(P, self.P[0], self.P[-1])
-        Tc = np.clip(T, self.T[0], self.T[-1])
-        ip = np.clip(np.searchsorted(self.P, Pc) - 1, 0, len(self.P) - 2)
-        it = np.clip(np.searchsorted(self.T, Tc) - 1, 0, len(self.T) - 2)
-        wp = (Pc - self.P[ip]) / (self.P[ip + 1] - self.P[ip])
-        wt = (Tc - self.T[it]) / (self.T[it + 1] - self.T[it])
-        return (
-            (1 - wp) * (1 - wt) * G[ip, it]
-            + wp * (1 - wt) * G[ip + 1, it]
-            + (1 - wp) * wt * G[ip, it + 1]
-            + wp * wt * G[ip + 1, it + 1]
-        )
-
-
-_TABLE: _Table | None = None
-
-
-def build_table(
-    P_max: float = P_EXERCISED * 1.05,
-    T_min: float = 1500.0,
-    T_max: float = T_CEILING,
-    nP: int = 150,
-    nT: int = 52,
-) -> None:
-    """Build and cache the (P, T) table. ~0.15 s; call once at init."""
-    global _TABLE
-    _TABLE = _Table(P_max, T_min, T_max, nP, nT)
-    log.info(
-        'Deng EOS dV dP table built: %d x %d, P<=%.0f GPa, T=%.0f-%.0f K',
-        nP,
-        nT,
-        P_max,
-        _TABLE.T[0],
-        _TABLE.T[-1],
-    )
-
-
-def clamped_mask(T, P):
-    """Points whose int dV dP lookup falls outside the tabulated (P, T) grid
-    and is therefore taken from the nearest grid edge rather than computed.
-
-    Pressures below the 1 bar grid foot are not flagged: the integral from
-    1 bar is zero there by definition, so the edge value is exact.
-    """
-    T = np.asarray(T, dtype=float)
+def _V_Fe(P):
+    """Vinet inversion for liquid Fe at the 298 K reference, cm3/mol. P in GPa."""
     P = np.asarray(P, dtype=float)
-    if _TABLE is None:
-        build_table(P_max=P_EXERCISED * 1.05)
-    return (T < _TABLE.T[0]) | (T > _TABLE.T[-1]) | (P > _TABLE.P[-1])
+    lo = np.full(P.shape, 0.2 * _V298_FE)
+    hi = np.full(P.shape, _V298_FE)
+    # The residual rises with V, so bisect its negative.
+    V = _bisect_decreasing(lambda v: -_vinet_resid(v, P), lo, hi)
+    V = np.where(P <= 1e-6, _V298_FE, V)
+    return float(V) if V.ndim == 0 else V
+
+
+def _VT_Fe(P, T):
+    """Liquid Fe volume at (P, T), cm3/mol, with Anderson-Gruneisen expansion."""
+    Vp = _V_Fe(P)
+    alpha = _ALPHA0_FE * np.exp(-_DELTA0_FE / _KAPPA_FE * (1.0 - (Vp / _V298_FE) ** _KAPPA_FE))
+    return Vp * np.exp(alpha * (T - 298.0))
+
+
+def _trapz(y, x):
+    """Trapezoid rule along the last axis."""
+    return np.sum(0.5 * (y[..., 1:] + y[..., :-1]) * np.diff(x, axis=-1), axis=-1)
+
+
+def _integrals(T, P, deng_only=False):
+    """The three terms for flat arrays T [K], P [GPa], in J/mol:
+    (int dV_Deng dP, int V_FeO dP, int V_Fe dP); the last two are None
+    when ``deng_only``."""
+    global _NO_ROOT_WARNED
+    k = np.arange(1, _N_GRID)
+    grid_d = np.concatenate((np.full((P.size, 1), _P0), P[:, None] * k / (_N_GRID - 1)), axis=1)
+    V_red, nr_red = _volumes(grid_d, T, 0)
+    V_ox, nr_ox = _volumes(grid_d, T, 1)
+    no_root = nr_red | nr_ox
+    if np.any(no_root) and not _NO_ROOT_WARNED:
+        _NO_ROOT_WARNED = True
+        log.warning(
+            'Deng EOS: no volume root at %d node(s) (T up to %.0f K, P down to %.3g GPa); '
+            'using the residual minimum, as an unconverged fsolve in Schaefer et al. does',
+            int(np.count_nonzero(no_root)),
+            float(np.max(np.broadcast_to(T[:, None], no_root.shape)[no_root])),
+            float(np.min(grid_d[no_root])),
+        )
+    I_deng = _trapz(0.5 * (V_ox - V_red), grid_d)
+    if deng_only:
+        return I_deng, None, None
+
+    grid_fe = _P0 + (P[:, None] - _P0) * np.linspace(0.0, 1.0, _N_GRID)
+    I_fe = _trapz(_VT_Fe(grid_fe, T[:, None]), grid_fe) * 1e3
+    return I_deng, _int_V_FeO(T, P), I_fe
+
+
+def _evaluate(T, P, combine, deng_only=False):
+    """Shared driver: validity mask, evaluation on valid points, 0 elsewhere."""
+    global _EXTRAPOLATION_WARNED
+    T, P = np.broadcast_arrays(np.asarray(T, dtype=float), np.asarray(P, dtype=float))
+    shape = T.shape
+    T, P = T.ravel(), P.ravel()
+    valid = np.isfinite(T) & np.isfinite(P) & (T <= T_CEILING) & (P <= P_EXERCISED)
+    if not _EXTRAPOLATION_WARNED and np.any(valid & (T > T_DENG_MAX)):
+        _EXTRAPOLATION_WARNED = True
+        log.warning(
+            'Deng EOS evaluated above its %.0f K modelling limit (up to %.0f K); '
+            'values there are extrapolated',
+            T_DENG_MAX,
+            float(np.max(T[valid])),
+        )
+    out = np.zeros(T.shape)
+    if np.any(valid):
+        vals = combine(*_integrals(T[valid], P[valid], deng_only))
+        # A compressed-branch point beyond the bracket is NaN: flag it, never return it.
+        ok = np.isfinite(vals)
+        out[np.flatnonzero(valid)[ok]] = vals[ok]
+        valid[np.flatnonzero(valid)[~ok]] = False
+    return out.reshape(shape), valid.reshape(shape)
 
 
 def int_dV_dP(T, P):
@@ -317,31 +321,20 @@ def int_dV_dP(T, P):
     Returns
     -------
     (I, valid) : I is J/mol (0.0 where invalid, never silently so -- check
-        ``valid``), valid is a boolean array marking points inside both the
-        temperature ceiling and the pressure range Deng et al. were
-        exercised over.
+        ``valid``), valid is a boolean array marking points inside the
+        temperature ceiling and the pressure range Schaefer et al. exercised.
     """
-    T = np.asarray(T, dtype=float)
-    P = np.asarray(P, dtype=float)
-    if _TABLE is None:
-        # Size the grid to the range that is actually usable. Everything
-        # above P_EXERCISED is masked invalid below, so extending the table
-        # to a deeper mantle would only spread the same number of nodes over
-        # a wider span and coarsen the resolution where it is needed. A 5%
-        # margin keeps the top of the valid range away from the grid edge.
-        build_table(P_max=P_EXERCISED * 1.05)
-    valid = (T <= T_CEILING) & (P <= P_EXERCISED) & np.isfinite(T) & np.isfinite(P)
-    out = np.where(valid, _TABLE(T, P), 0.0)
-    return out, valid
+    return _evaluate(T, P, lambda deng, feo, fe: 2.0 * deng - feo + fe)
 
 
 def int_dV_dP_oxidation(T, P):
     """int dV dP for FeO + 1/4 O2 = FeO1.5, from 1 bar to P at T. J/mol.
 
     dV = V(FeO1.5) - V(FeO) per Fe, from the two Deng et al. (2020) melt
-    endmembers (Schaefer et al. 2024 Eq 10-11), with the same splice and
-    validity limits as ``int_dV_dP``. This is the pressure term of
-    Hirschmann (2022) Eq 21 / Schaefer et al. (2024) Eq 13.
+    endmembers (Schaefer et al. 2024 Eq 10-11, ``deltaVdP`` in
+    ``deltaGFeOFeO15_Deng.m``), with the same validity limits as
+    ``int_dV_dP``. This is the pressure term of Hirschmann (2022) Eq 21 /
+    Schaefer et al. (2024) Eq 13.
 
     Parameters
     ----------
@@ -352,10 +345,4 @@ def int_dV_dP_oxidation(T, P):
     -------
     (I, valid) : as for ``int_dV_dP``.
     """
-    T = np.asarray(T, dtype=float)
-    P = np.asarray(P, dtype=float)
-    if _TABLE is None:
-        build_table(P_max=P_EXERCISED * 1.05)
-    valid = (T <= T_CEILING) & (P <= P_EXERCISED) & np.isfinite(T) & np.isfinite(P)
-    out = np.where(valid, _TABLE(T, P, _TABLE.I_ox), 0.0)
-    return out, valid
+    return _evaluate(T, P, lambda deng, feo, fe: deng, deng_only=True)

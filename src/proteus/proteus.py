@@ -945,6 +945,13 @@ class Proteus:
             # Interior initial condition
             self.interior_o.ic = 2
 
+            # Melt-redox tracker state stored with the resume row's snapshot
+            from proteus.interior_chem.redox import restore_tracker_state
+
+            restore_tracker_state(
+                self.config, self.directories, self.hf_row['Time'], self.interior_o
+            )
+
             # Restore tides data
             if self.config.orbit.module is not None:
                 self.interior_o.resume_tides(self.directories['output'])
