@@ -150,7 +150,10 @@ def test_bo_step_ucb_path_computes_distance(monkeypatch):
     monkeypatch.setattr(bo_mod, 'SingleTaskGP', lambda **kwargs: _DummyGP())
     monkeypatch.setattr(bo_mod, 'ExactMarginalLogLikelihood', lambda _lik, _gp: object())
     monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *args, **kwargs: None)
-    monkeypatch.setattr(bo_mod, 'get_acqf', lambda *args, **kwargs: object())
+    pending = []
+    monkeypatch.setattr(
+        bo_mod, 'get_acqf', lambda *args, X_pending=None: pending.append(X_pending)
+    )
     monkeypatch.setattr(
         bo_mod,
         'optimize_acqf',
@@ -179,6 +182,8 @@ def test_bo_step_ucb_path_computes_distance(monkeypatch):
 
     assert y[0, 0].item() == pytest.approx(0.9)
     assert dist == pytest.approx(0.5)
+    # Only worker 1's point is pending; worker 0's own entry is excluded
+    assert pending[0].tolist() == [[0.3]]
 
 
 @pytest.mark.unit
@@ -186,14 +191,16 @@ def test_init_locs_returns_batch_candidates(monkeypatch):
     """init_locs(n, D) returns an (n, d) tensor for n workers by calling
     optimize_acqf once per worker with q=1 and stacking the results.
 
-    Analytic acquisition functions require q=1; each candidate is
-    optimised independently.
+    Each call gets the candidates chosen before it as pending points.
     """
     monkeypatch.setattr(bo_mod, 'get_kernel', lambda *args, **kwargs: object())
     monkeypatch.setattr(bo_mod, 'SingleTaskGP', lambda **kwargs: _DummyGP())
     monkeypatch.setattr(bo_mod, 'ExactMarginalLogLikelihood', lambda _lik, _gp: object())
     monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *args, **kwargs: None)
-    monkeypatch.setattr(bo_mod, 'get_acqf', lambda *args, **kwargs: object())
+    pending = []
+    monkeypatch.setattr(
+        bo_mod, 'get_acqf', lambda *args, X_pending=None: pending.append(X_pending)
+    )
 
     q_values: list = []
     results = [
@@ -221,6 +228,8 @@ def test_init_locs_returns_batch_candidates(monkeypatch):
     assert tuple(out.shape) == (2, 1)
     assert out[0, 0].item() == pytest.approx(0.2)
     assert out[1, 0].item() == pytest.approx(0.7)
+    assert pending[0] is None
+    assert pending[1].tolist() == [[0.2]]
 
 
 @pytest.mark.unit
@@ -362,7 +371,7 @@ def test_init_locs_propagates_acqf_to_log_pi(monkeypatch):
     """
     acqf_names: list = []
 
-    def _mock_get_acqf(name, gp, best):
+    def _mock_get_acqf(name, gp, best, X_pending=None):
         acqf_names.append(name)
         return object()
 
@@ -532,3 +541,71 @@ def test_bo_step_reports_no_distance_when_no_other_worker_is_busy(monkeypatch):
         worker_id=0,
     )
     assert dist2 is None
+
+
+def _two_peak_data():
+    """1D data around two unsampled maxima, at x = 0.2 (higher) and x = 0.8."""
+    X = torch.tensor([[0.0], [0.1], [0.3], [0.5], [0.7], [0.9], [1.0]], dtype=torch.double)
+    Y = torch.exp(-(((X - 0.2) / 0.1) ** 2)) + 0.8 * torch.exp(-(((X - 0.8) / 0.1) ** 2))
+    return {'X': X, 'Y': Y}
+
+
+def _fitted_gp(D):
+    """GP on `D` with fixed hyperparameters, so the test needs no fit."""
+    from botorch.models import SingleTaskGP
+
+    gp = SingleTaskGP(D['X'], D['Y'], train_Yvar=torch.full_like(D['Y'], 1e-4))
+    gp.covar_module.lengthscale = 0.1  # the width of the peaks in _two_peak_data
+    return gp.eval()
+
+
+def _propose(gp, D, X_pending):
+    from botorch.optim import optimize_acqf
+
+    torch.manual_seed(0)  # fixes the Monte Carlo base samples of qLogEI
+    acqf = bo_mod.get_acqf('LogEI', gp, D['Y'].max().item(), X_pending=X_pending)
+    x, _ = optimize_acqf(acqf, bo_mod.unit_bounds(1), q=1, num_restarts=2, raw_samples=64)
+    return x
+
+
+@pytest.mark.unit
+def test_get_acqf_with_pending_uses_monte_carlo_versions():
+    """With pending points, LogEI and UCB become qLogEI and qUCB holding those
+    points, and LogPI, which has no such version, stays analytic."""
+    from botorch.acquisition.analytic import LogProbabilityOfImprovement
+    from botorch.acquisition.logei import qLogExpectedImprovement
+    from botorch.acquisition.monte_carlo import qUpperConfidenceBound
+
+    D = _two_peak_data()
+    gp = _fitted_gp(D)
+    pending = torch.tensor([[0.2]], dtype=torch.double)
+
+    ei = bo_mod.get_acqf('LogEI', gp, best=0.73, X_pending=pending)
+    ucb = bo_mod.get_acqf('UCB', gp, best=0.73, X_pending=pending)
+    pi = bo_mod.get_acqf('LogPI', gp, best=0.73, X_pending=pending)
+
+    assert isinstance(ei, qLogExpectedImprovement)
+    assert ei.best_f.item() == pytest.approx(0.73)
+    assert isinstance(ucb, qUpperConfidenceBound)
+    for acqf in (ei, ucb):
+        assert acqf.X_pending.tolist() == [[0.2]]
+    assert isinstance(pi, LogProbabilityOfImprovement)
+
+
+@pytest.mark.unit
+def test_pending_point_moves_the_proposal_away():
+    """LogEI proposes the same point again while it is busy unless that point is
+    pending; with it pending, the proposal moves to the other maximum.
+
+    Without pending points, two workers would both propose the point near 0.2.
+    """
+    D = _two_peak_data()
+    gp = _fitted_gp(D)
+
+    first = _propose(gp, D, X_pending=None)
+    again = _propose(gp, D, X_pending=None)
+    second = _propose(gp, D, X_pending=first)
+
+    assert first.item() == pytest.approx(0.2, abs=0.05)
+    assert again.item() == pytest.approx(first.item(), abs=1e-3), 'without pending: a duplicate'
+    assert second.item() == pytest.approx(0.8, abs=0.05), 'with pending: the other maximum'

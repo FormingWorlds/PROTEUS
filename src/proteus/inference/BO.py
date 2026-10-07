@@ -100,7 +100,9 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
 
         t_0_ac = time.perf_counter()
 
-        acqf_f = get_acqf(acqf, gp, best)
+        # Other workers' points, so this one is proposed away from them
+        b = torch.cat(busys, dim=0) if busys else torch.zeros((0, d), dtype=dtype)
+        acqf_f = get_acqf(acqf, gp, best, X_pending=b if busys else None)
 
         x, _ = optimize_acqf(
             acq_function=acqf_f,  # expects outputs shape (N)
@@ -115,12 +117,7 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
 
         # Distance to the nearest point another worker is currently evaluating.
         # Undefined when no other worker is busy
-        if busys:
-            b = torch.cat(busys, dim=0)
-            dist = torch.min(torch.cdist(b, x)).item()
-        else:
-            b = torch.zeros((0, d), dtype=dtype)
-            dist = None
+        dist = torch.min(torch.cdist(b, x)).item() if busys else None
 
         if d == 1:
             plot_iter(
@@ -174,8 +171,9 @@ def init_locs(
 ) -> torch.Tensor:
     """Generate initial sample locations for each worker using the configured acqf.
 
-    Calls optimize_acqf once per worker with q=1. Analytic acquisition functions
-    (UCB, LogEI, LogPI) require q=1 and cannot optimise a joint batch in one call.
+    Calls optimize_acqf once per worker with q=1, passing the candidates chosen so
+    far as pending points, so the workers start from different points (except
+    with LogPI, which ignores pending points).
 
     Parameters
     ----------
@@ -216,7 +214,8 @@ def init_locs(
 
     candidates = []
     for _ in range(n_workers):
-        acqf_f = get_acqf(acqf, gp, best)
+        pending = torch.cat(candidates, dim=0) if candidates else None
+        acqf_f = get_acqf(acqf, gp, best, X_pending=pending)
         x_single, _ = optimize_acqf(
             acq_function=acqf_f,
             bounds=unit_bounds(d),

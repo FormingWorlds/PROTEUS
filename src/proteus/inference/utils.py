@@ -258,27 +258,41 @@ def print_results(D, logs, config, output, n_init):
     return in_path
 
 
-def get_acqf(name: str, gp: SingleTaskGP, best: float):
+def get_acqf(name: str, gp: SingleTaskGP, best: float, X_pending: torch.Tensor | None = None):
     """Build the acquisition function.
 
     Supports 'UCB', 'LogEI', and 'LogPI' acquisition functions.
     See docs: https://botorch.readthedocs.io/en/latest/acquisition.html
+
+    With `X_pending`, UCB and LogEI become their Monte Carlo versions, which score a
+    candidate jointly with the points other workers are still evaluating, so a
+    candidate next to one of them gains little. LogPI has no such version and
+    ignores `X_pending`.
 
     Parameters
     ----------
     - name (str): Name of the acquisition function.
     - gp (SingleTaskGP): Fitted Gaussian Process model.
     - best (float): Current best observed value for EI/PI.
+    - X_pending (torch.Tensor | None): Points being evaluated, shape (n, d).
 
     Returns
     ----------
     - AcquisitionFunction: The constructed acquisition function.
     """
     if name == 'UCB':
+        if X_pending is not None:
+            from botorch.acquisition.monte_carlo import qUpperConfidenceBound
+
+            return qUpperConfidenceBound(gp, beta=2.0, X_pending=X_pending)
         from botorch.acquisition.analytic import UpperConfidenceBound
 
         return UpperConfidenceBound(gp, beta=2.0)
     elif name == 'LogEI':
+        if X_pending is not None:
+            from botorch.acquisition.logei import qLogExpectedImprovement
+
+            return qLogExpectedImprovement(gp, best_f=best, X_pending=X_pending)
         from botorch.acquisition.analytic import LogExpectedImprovement
 
         return LogExpectedImprovement(gp, best_f=best)
