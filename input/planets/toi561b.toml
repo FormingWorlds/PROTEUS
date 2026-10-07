@@ -263,7 +263,7 @@ module = "mors"
 bol_scale_start = 0.0
 bol_scale_duration = 100.0
 
-# star_path overrides both star_name and spectrum_source, so those two are inert.
+# spectrum_source "none" looks up star_name in MUSCLES, then solar, then the Named spectra.
 [star.mors]
 age_now = 11  # [Gyr] Lacedelli et al. 2022
 phoenix_FeH = 0.0
@@ -273,7 +273,7 @@ phoenix_log_g = "none"
 phoenix_radius = "none"
 rot_pcntle = 50.0
 rot_period = "none"
-spectrum_source = "solar"
-star_name = "sun"
-star_path = "$FWL_DATA/stellar_spectra/Named/toi561.txt"
+spectrum_source = "none"
+star_name = "toi561"
+star_path = "none"
 tracks = "spada"
