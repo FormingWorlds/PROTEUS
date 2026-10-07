@@ -477,7 +477,7 @@ def test_get_solar_success_when_files_present(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_get_solar_raises_if_no_files_found(monkeypatch, tmp_path):
     """``proteus get solar`` exits non-zero when the downloader writes no files,
-    and points the user to the Zenodo download / validate log paths.
+    names the expected directory and tells the user to fetch again.
     """
     runner = CliRunner()
 
@@ -496,8 +496,8 @@ def test_get_solar_raises_if_no_files_found(monkeypatch, tmp_path):
     res = runner.invoke(cli.cli, ['get', 'solar'])
     assert res.exit_code != 0
     assert 'no files were found' in res.output.lower()
-    assert 'zenodo_download.log' in res.output
-    assert 'zenodo_validate.log' in res.output
+    assert str(_solar_dir(tmp_path)) in res.output
+    assert 'remove that folder' in res.output
 
 
 @pytest.mark.unit

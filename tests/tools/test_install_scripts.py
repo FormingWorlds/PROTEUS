@@ -6,7 +6,7 @@ Reusable shell logic replicated inline from ``tools/get_petsc.sh`` and
 ``tools/get_spider.sh``:
 - ERR trap: exit-code and step-name capture
 - Platform detection: PETSC_ARCH assignment
-- Homebrew prefix fallback: architecture-aware default
+- macOS linker flags: no library path that could hide the downloaded SUNDIALS
 - PETSc library detection: versioned ``.so``, ``.dylib``, missing
 
 ``tools/_get_common.sh``, the helper library every ``get_*.sh`` sources, is
@@ -825,96 +825,72 @@ fi
 
 
 # ---------------------------------------------------------------------------
-# Homebrew prefix fallback tests
-# ---------------------------------------------------------------------------
+# macOS linker flags (get_petsc.sh)
+
+
+# A stub configure: records its arguments, its environment and four named variables.
+CONFIGURE_STUB = """#!/bin/bash
+printf "%s\\n" "$@" > args
+export -p > env
+for v in LDFLAGS LIBRARY_PATH LIBS CPATH; do printf "%s=%s\\n" "$v" "${!v-unset}"; done > named
+"""
+
+
+def _run_petsc_macos(tmp_path, tools, path_extra=':/usr/bin:/bin'):
+    """Run the shipped platform and configure steps of get_petsc.sh as macOS with stub ``tools``."""
+    for name in tools:
+        _write_stub(tmp_path, name, '#!/bin/bash\necho /sdk\n')
+    _write_stub(tmp_path, 'configure', CONFIGURE_STUB)
+    block = _extract_script_block(
+        'get_petsc.sh', 'current_step="Determining platform-specific flags"', '# 6. Build PETSc'
+    )
+    return subprocess.run(
+        ['/bin/bash', '-c', f'set -euo pipefail\nOSTYPE=darwin24\nworkpath=.\n{block}\n'],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env={'PATH': f'{tmp_path}{path_extra}'},
+    )
+
+
+def _petsc_configure_args(tmp_path) -> list[str]:
+    """Return the configure arguments, after checking no build variable names a library path."""
+    named = (tmp_path / 'named').read_text().split()
+    assert named == [f'{v}=unset' for v in ('LDFLAGS', 'LIBRARY_PATH', 'LIBS', 'CPATH')]
+    assert 'homebrew/lib' not in (tmp_path / 'env').read_text()
+    args = (tmp_path / 'args').read_text().splitlines()
+    assert [a for a in args if '-L' in a] == []
+    return args
 
 
 @pytest.mark.unit
-def test_brew_prefix_fallback_arm64(tmp_path):
-    """With ``uname -m`` spoofed to arm64 and no brew, fallback is
-    ``/opt/homebrew``.
-
-    We create a fake ``uname`` that always reports arm64 and ensure
-    ``brew`` is not on PATH.
-    """
-    # Create a fake uname that reports arm64
-    fake_bin = tmp_path / 'bin'
-    fake_bin.mkdir()
-    # Locate the real uname binary for the passthrough case.
-    real_uname = subprocess.run(
-        ['which', 'uname'], capture_output=True, text=True
-    ).stdout.strip()
-
-    fake_uname = fake_bin / 'uname'
-    fake_uname.write_text(
-        f'#!/bin/bash\nif [[ "$1" == "-m" ]]; then echo arm64; else {real_uname} "$@"; fi\n'
-    )
-    fake_uname.chmod(0o755)
-
-    # Test the brew-prefix fallback logic in isolation.  The restricted PATH
-    # excludes brew on all platforms (including Linux with Linuxbrew), so the
-    # snippet always exercises the fallback branch.
-    snippet = f"""\
-export PATH="{fake_bin}:/usr/bin:/bin"
-if [[ "$(uname -m)" == "arm64" ]]; then
-    default_brew_prefix="/opt/homebrew"
-else
-    default_brew_prefix="/usr/local"
-fi
-brew_prefix=$(brew --prefix 2>/dev/null || echo "$default_brew_prefix")
-echo "$brew_prefix"
-"""
-    env = {**os.environ, 'PATH': f'{fake_bin}:/usr/bin:/bin'}
-    result = subprocess.run(
-        ['bash', '-c', snippet],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    assert result.returncode == 0
-    assert result.stdout.strip() == '/opt/homebrew'
+def test_petsc_configure_on_macos_gets_no_library_path(tmp_path):
+    """On macOS with a system MPI, PETSc configure gets LDFLAGS=-Wl,-w and no -L in any
+    argument or build variable, so no library directory comes ahead of the SUNDIALS 2.5 it
+    downloads."""
+    result = _run_petsc_macos(tmp_path, ('xcrun', 'mpicc', 'mpirun'))
+    assert result.returncode == 0, result.stderr
+    args = _petsc_configure_args(tmp_path)
+    assert {'LDFLAGS=-Wl,-w', '--download-sundials2'} <= set(args)
+    assert '--download-mpich' not in args
 
 
 @pytest.mark.unit
-def test_brew_prefix_fallback_x86_64(tmp_path):
-    """With ``uname -m`` spoofed to x86_64 and no brew, fallback is
-    ``/usr/local``.
+def test_petsc_configure_on_macos_without_mpicc_downloads_mpich(tmp_path):
+    """Without mpicc on PATH, PETSc downloads MPICH and still gets only LDFLAGS=-Wl,-w."""
+    result = _run_petsc_macos(tmp_path, ('xcrun',), path_extra='')
+    assert result.returncode == 0, result.stderr
+    args = _petsc_configure_args(tmp_path)
+    assert {'LDFLAGS=-Wl,-w', '--download-sundials2', '--download-mpich'} <= set(args)
 
-    Works on Linux too: ``brew`` is not on the restricted PATH, so the
-    fallback branch is always exercised regardless of platform.
-    """
-    fake_bin = tmp_path / 'bin'
-    fake_bin.mkdir()
 
-    real_uname = subprocess.run(
-        ['which', 'uname'], capture_output=True, text=True
-    ).stdout.strip()
-
-    fake_uname = fake_bin / 'uname'
-    fake_uname.write_text(
-        f'#!/bin/bash\nif [[ "$1" == "-m" ]]; then echo x86_64; else {real_uname} "$@"; fi\n'
-    )
-    fake_uname.chmod(0o755)
-
-    snippet = f"""\
-export PATH="{fake_bin}:/usr/bin:/bin"
-if [[ "$(uname -m)" == "arm64" ]]; then
-    default_brew_prefix="/opt/homebrew"
-else
-    default_brew_prefix="/usr/local"
-fi
-brew_prefix=$(brew --prefix 2>/dev/null || echo "$default_brew_prefix")
-echo "$brew_prefix"
-"""
-    env = {**os.environ, 'PATH': f'{fake_bin}:/usr/bin:/bin'}
-    result = subprocess.run(
-        ['bash', '-c', snippet],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    assert result.returncode == 0
-    assert result.stdout.strip() == '/usr/local'
+@pytest.mark.unit
+def test_petsc_on_macos_without_xcrun_stops_before_configure(tmp_path):
+    """Without xcrun the script stops with its install hint and never runs configure."""
+    result = _run_petsc_macos(tmp_path, ('mpicc', 'mpirun'), path_extra='')
+    assert result.returncode == 1
+    assert 'xcrun not found' in result.stdout and 'xcode-select --install' in result.stdout
+    assert not (tmp_path / 'args').exists()
 
 
 # ---------------------------------------------------------------------------

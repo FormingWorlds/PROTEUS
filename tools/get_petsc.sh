@@ -209,7 +209,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     SDKROOT=$(xcrun --show-sdk-path)
     echo "    SDKROOT = $SDKROOT"
 
-    # Use Homebrew's MPI if available (both Intel and Apple Silicon paths)
+    # Use the MPI on PATH if there is one, for example Homebrew's Open MPI
     if command -v mpicc >/dev/null 2>&1; then
         echo "    Found system MPI ($(which mpicc)) — skipping mpich download"
         mpi_flag=""
@@ -222,21 +222,9 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS provides Accelerate framework with BLAS/LAPACK; no download needed
     blas_flag=""
 
-    # Suppress deprecated linker warnings that break PETSc configure checks.
-    # macOS 13+ / Xcode 15+ deprecated -bind_at_load and -multiply_defined;
-    # macOS 26+ / clang 17+ treats these warnings as errors in PETSc's
-    # configure runtime tests (checkStdC). The -Wl,-w flag suppresses all
-    # linker warnings, allowing configure to complete.
-    # Homebrew prefix differs by architecture:
-    #   Apple Silicon (arm64): /opt/homebrew
-    #   Intel (x86_64):        /usr/local
-    if [[ "$(uname -m)" == "arm64" ]]; then
-        default_brew_prefix="/opt/homebrew"
-    else
-        default_brew_prefix="/usr/local"
-    fi
-    brew_prefix=$(brew --prefix 2>/dev/null || echo "$default_brew_prefix")
-    ldflags="-L${brew_prefix}/lib -Wl,-w"
+    # -Wl,-w: macOS 26+ turns deprecated-flag warnings into configure errors. No Homebrew -L:
+    # mpicc brings its own, and a Homebrew SUNDIALS there would hide PETSc's SUNDIALS 2.5.
+    ldflags="-Wl,-w"
 fi
 
 # Final check: if we skipped mpich download, mpicc/mpirun must be available
