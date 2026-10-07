@@ -149,10 +149,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    # The suite takes 59 min serially on ubuntu (47 min on macOS), so it runs on
-    # one xdist worker per logical CPU; the budget covers that plus a cold FWL_DATA
-    # download (~30 min), which happens on cache eviction or a manifest re-pin.
-    timeout-minutes: 80
+    # One xdist worker per physical core: ubuntu 35 min on 2, macOS 27 min on 3.
+    # More workers than cores push the heavy tests past their timeouts. The budget
+    # covers setup (up to 13 min), the tests and a cold FWL_DATA download (~30 min).
+    timeout-minutes: 90
     env:
       COVERAGE_FILE: .coverage.integration.${{ matrix.os }}
     steps:
@@ -167,7 +167,7 @@ jobs:
           pytest tests/integration \
             -m "integration and not slow" \
             -p no:faulthandler \
-            -n logical --dist worksteal \
+            -n auto --dist worksteal \
             --junitxml=junit-int-${{ matrix.os }}.xml \
             --cov=proteus \
             --cov-report=xml:coverage-int-${{ matrix.os }}.xml \
