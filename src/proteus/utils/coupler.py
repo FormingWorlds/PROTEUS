@@ -1529,10 +1529,8 @@ def _describe_missing_columns(missing: list[str]) -> str:
 # reader backfills these with zeros. Add a column here only if no module,
 # resume path or solver consumes it.
 _DIAGNOSTIC_KEYS = (
-
     'dEdt_orb',
     'T_cmb_node',
-
     # Melt-redox tracker outputs (interior_chem/redox.py): written each step,
     # read by no module (the tracker keeps its own state on Interior_t).
     'a_fe_max_mantle',
