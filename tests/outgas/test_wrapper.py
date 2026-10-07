@@ -2410,7 +2410,7 @@ def test_run_outgassing_preseeds_the_derived_offset_from_the_melt_redox_tracker(
     hf_row['atm_kg_per_mol'] = 0.044
     hf_row['fO2_shift_IW_mantle'] = 1.3
 
-    run_outgassing(dirs, config, hf_row)
+    run_outgassing(dirs, config, hf_row, initial=False)
 
     assert hf_row['fO2_shift_IW_derived'] == pytest.approx(1.3)
     assert hf_row['O_res'] == pytest.approx(0.0)
