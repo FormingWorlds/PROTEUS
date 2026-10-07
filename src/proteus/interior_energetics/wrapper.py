@@ -2161,6 +2161,9 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
             'RF_depth',
         ):
             hf_row[key] = output[key]
+        # Accretion excludes a stratified core, so the top of a re-melted core is its T_cmb.
+        if config.interior_energetics.aragog.core_bc == 'core_module':
+            hf_row['core_T_top'] = output['T_cmb']
 
     if 'Phi_global' in hf_row and 'M_mantle' in hf_row:
         phi_g = min(max(float(hf_row['Phi_global']), 0.0), 1.0)

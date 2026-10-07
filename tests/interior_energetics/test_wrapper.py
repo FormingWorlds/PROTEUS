@@ -7557,6 +7557,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         hf_row['M_mantle'], rel=1e-12
     )
     assert hf_row['F_atm'] == pytest.approx(100.0, rel=1e-12)
+    assert 'core_T_top' not in hf_row  # only the core module writes it
     assert solver._solution is None
     # The profile arrays later modules read on the impact step hold the re-melted state.
     for name, value in (('phi', 0.73), ('visc', 1.0), ('density', 4000.0), ('mass', 1e22)):
@@ -7564,6 +7565,18 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     np.testing.assert_array_equal(interior_o.temp, np.full(80, 3800.0))
     np.testing.assert_array_equal(interior_o.radius, np.linspace(3.4e6, 6.3e6, 81))
     np.testing.assert_array_equal(interior_o.pres, np.linspace(1.4e11, 1e5, 80))
+
+    # With the core module the re-melted core's top is its T_cmb (accretion excludes a shell).
+    config.interior_energetics.aragog.core_bc = 'core_module'
+    solver._solution = solver._prev_solution
+    solver._step_heat_content = lambda s_end, s_new: 0.0
+    solver.set_initial_entropy = lambda s: None
+    monkeypatch.setattr(
+        'proteus.interior_energetics.aragog_core_impact.remelt_core_module', lambda *a: 5300.0
+    )
+    row = {'Time': 250.0, 'M_mantle': 4.2e24, 'F_atm': 100.0, 'T_cmb': 5000.0}
+    _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, row, interior_o)
+    assert row['core_T_top'] == pytest.approx(5200.0, rel=1e-12)
 
     # 3. Solver without get_state returns None; liquid/solid split runs from Phi_global with clamping
     class NoGetStateSolver:
