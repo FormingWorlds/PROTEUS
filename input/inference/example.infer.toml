@@ -13,15 +13,14 @@ output = "bayesopt_infer_se_mat12_lei_5_100/"
 ref_config = "input/inference/example.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
-init_samps = 3        # Number of random samples if starting from scratch.
-init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
+init_samps = 3                                     # Number of random samples if starting from scratch.
+init_grid  = 'none' # grid_demo/'                  # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Completion codes to exclude from the fit. Evaporated (29) is always excluded.
 failure_codes = [11, ] # solidified (10), escaped (15), max_runtime (11)
 
 # Stop the whole inference run at the first simulation that fails.
 # Simulations already running finish first.
-# Off by default.
 abort_on_failure = false
 
 # Share prepared spectral files between workers through a cache in the output folder.
@@ -29,16 +28,16 @@ abort_on_failure = false
 spectral_cache = true
 
 # "subprocess" starts one PROTEUS per evaluation; "runner" reuses one per
-# worker. runner_max_jobs replaces it after that many runs; 0 never does.
+# worker (generally faster). runner_max_jobs replaces it after that many runs; 0 never does.
 dispatch        = "subprocess"
 runner_max_jobs = 0
 
 # Parameters for Bayesian optimisation
-n_workers  = 5        # Number of parallel workers
-kernel     = "MAT1/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
-acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI" | "LogPI"
-n_steps    = 100       # Total number of evaluations (i.e. BO steps)
-patience   = 0         # Stop after this many evaluations without improvement; 0 is off
+n_workers  = 5                                    # Number of parallel workers
+kernel     = "MAT1/2"                             # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
+acqf       = "LogEI"                              # Acquisition function, "UCB" | "LogEI" | "LogPI"
+n_steps    = 100                                  # Total number of evaluations (i.e. BO steps)
+patience   = 0                                    # Stop after this many evaluations without improvement; 0 is off
 
 # Parameters to optimize (with bounds)
 [parameters]
@@ -46,7 +45,7 @@ patience   = 0         # Stop after this many evaluations without improvement; 0
 # "planet.mass_tot"           = [1.0,     4.0]
 "interior_struct.core_frac" = [0.3,     0.7]
 "outgas.fO2_shift_IW"       = [-4.0,    4.0]
-"planet.elements.H_budget"= [1e3,     2e4]      # Hppmw
+"planet.elements.H_budget"= [1e3,     2e4]        # Hppmw
 "planet.elements.C_budget"= [0.1,     4.0]        # C/H
 "planet.elements.S_budget"= [0.1,     4.0]        # S/H
 
@@ -65,28 +64,26 @@ patience   = 0         # Stop after this many evaluations without improvement; 0
 "O/H_atm" = 2.7986395281e+00
 
 # Optional 1-sigma uncertainty of each observable, in the same units as the observable.
-# If this table is present every observable needs an entry. Values below are illustrative only.
+# Observables that are compared in log-space also take a string in dex, e.g., "0.1 dex".
 # [sigma]
 # "R_obs" = 1.0e5
 # "T_obs" = 20.0
 # "g_obs" = 0.5
 # "atm_kg_per_mol" = 1.0e-3
-# "C/O_atm" = 0.1
-# "S/O_atm" = 0.1
-# "O/H_atm" = 0.3
+# "C/O_atm" = "0.1 dex"                            # or use 0.1 when you prefer a linear uncertainty.
+# "S/O_atm" = "0.1 dex"
+# "O/H_atm" = "0.1 dex"
 
-# Optional correlation coefficient between the uncertainties of two observables, in (-1, 1).
-# Needs [sigma]. Give each pair once; pairs not listed are uncorrelated. Illustrative only.
+# Optional correlation coefficient between the uncertainties of two observables, between (-1, 1).
+# Needs [sigma].
 # [correlation.R_obs]
 # "g_obs" = -0.4
 
-# Alternatively, derive the correlations of the element-ratio observables (names with a '/')
-# from the elements they share, assuming the same dex error for every element. Needs [sigma];
-# cannot be combined with [correlation]. Other observables stay uncorrelated.
+# Or, derive the correlations of the abundance-ratio observables (e.g. "C/O_atm") from the elements they share,
+# assuming the same dex error for every element. Needs [sigma].
 # correlate_ratios = true
 
-# Optional true value of each parameter, when the observables above came from a simulation
-# with known parameters.
+# Optional true value of each parameter, when the observables above came from a simulation with known parameters.
 # [truth]
 # "interior_struct.core_frac" = 0.5
 # "outgas.fO2_shift_IW"       = 0.0
