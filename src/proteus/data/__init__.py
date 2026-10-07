@@ -67,9 +67,9 @@ def spectral_file_key(group: str, bands: str | int) -> str:
     return f'atmos_clim.spectral_files.{str(group).lower()}.{bands}'
 
 
-# The oldest fwl-io that reads this manifest schema and declares every shared key
-# PROTEUS reads; a stale load or a missing key asks for an upgrade to this version.
-# The pyproject.toml requirement must equal it; a test checks.
+# The oldest fwl-io that reads this manifest schema and pins every shared dataset PROTEUS
+# reads at the expected version; a stale load or a missing key asks for an upgrade to this
+# version. The pyproject.toml requirement must equal it; a test checks.
 FWL_IO_FLOOR = '26.10.7.1'
 
 
