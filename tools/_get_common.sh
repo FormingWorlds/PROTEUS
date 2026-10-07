@@ -181,6 +181,10 @@ fetch_verified() {
         echo "ERROR: no SHA-256 pin for $(basename "$dest"); check tools/_module_pins.py" >&2
         return 1
     fi
+    if ! command -v shasum >/dev/null 2>&1 && ! command -v sha256sum >/dev/null 2>&1; then
+        echo "ERROR: neither shasum nor sha256sum is installed; install one of them" >&2
+        return 1
+    fi
     for url in "$@"; do
         [ -n "$url" ] || continue
         echo "Downloading $url"

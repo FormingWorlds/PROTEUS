@@ -695,14 +695,23 @@ def test_fetch_verified_stops_when_no_source_serves_the_pinned_file(tmp_path, st
 
 
 @pytest.mark.unit
-def test_fetch_verified_refuses_an_empty_hash(tmp_path):
-    """A pin that could not be read stops before any download."""
+def test_fetch_verified_refuses_an_empty_hash_or_no_hash_tool(tmp_path):
+    """A pin that could not be read, or no shasum and no sha256sum, stops before any download."""
     good = tmp_path / 'good.zip'
     good.write_bytes(b'petsc archive')
-    result = _run_bash(_with_common(f'fetch_verified "" "{tmp_path}/p.zip" "file://{good}"\n'))
-    assert result.returncode == 1
-    assert 'no SHA-256 pin for p.zip' in result.stderr
-    assert 'Downloading' not in result.stdout
+    call = 'fetch_verified "{}" "' + f'{tmp_path}/p.zip" "file://{good}"\n'
+    blank = _run_bash(_with_common(call.format('')))
+    no_tool = subprocess.run(
+        ['/bin/bash', '-c', _with_common(call.format(_sha256(b'petsc archive')))],
+        capture_output=True,
+        text=True,
+        env={'PATH': str(tmp_path / 'empty')},
+    )
+    assert blank.returncode == 1 and 'no SHA-256 pin for p.zip' in blank.stderr
+    assert no_tool.returncode == 1
+    assert 'neither shasum nor sha256sum is installed' in no_tool.stderr
+    for result in (blank, no_tool):
+        assert 'Downloading' not in result.stdout
 
 
 @pytest.mark.unit
