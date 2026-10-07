@@ -64,6 +64,7 @@ SEAGER_2007_RECORD = '15727998'
 SCATTERING_RECORD = '19294180'
 SOLAR_RECORD = '17981836'
 NAMED_RECORD = '15721440'
+NAMED_V2_RECORD = '23197931'
 MUSCLES_RECORD = '17802209'
 PHOENIX_RECORD = '17674612'
 WOLF_BOWER_RECORD = '17417017'
@@ -101,6 +102,8 @@ SHARED_DATASETS = {
         'interior/melting_curves/wolf_bower_2018',
         MELTING_WOLF_BOWER_2018_RECORD,
     ),
+    EOS_SEAGER_2007: ('interior/eos/seager_2007', SEAGER_2007_RECORD),
+    MASS_RADIUS_ZENG_2019: ('interior/mass_radius/zeng_2019', ZENG_2019_RECORD),
     STELLAR_SPECTRA_SOLAR: ('star/spectra/solar', SOLAR_RECORD),
     STELLAR_SPECTRA_NAMED: ('star/spectra/named', NAMED_RECORD),
     STELLAR_SPECTRA_MUSCLES: ('star/spectra/muscles', MUSCLES_RECORD),
@@ -108,6 +111,10 @@ SHARED_DATASETS = {
 }
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Named v2 holds the 11 v1 spectra plus toi561.txt; the shared pin may name either.
+ACCEPTED_RECORDS = {NAMED_RECORD: {NAMED_RECORD, NAMED_V2_RECORD}}
+
 
 # Spectral-file datasets: (group, bands) -> Zenodo record, one dataset each.
 SPECTRAL_RECORDS = {
@@ -129,9 +136,7 @@ SPECTRAL_RECORDS = {
 # Datasets declared in proteus_manifest.toml: only data PROTEUS alone reads.
 _OWNED_KEYS = {
     EXOPLANET_REFERENCE,
-    MASS_RADIUS_ZENG_2019,
     SURFACE_ALBEDOS_HAMMOND_2024,
-    EOS_SEAGER_2007,
     SCATTERING,
 }
 
@@ -163,18 +168,14 @@ def test_manifest_declares_the_datasets():
 
     assert set(datasets) == _OWNED_KEYS
     assert datasets[EXOPLANET_REFERENCE].subdir == 'observe/exoplanet_reference'
-    assert datasets[MASS_RADIUS_ZENG_2019].subdir == 'observe/mass_radius/zeng_2019'
     assert (
         datasets[SURFACE_ALBEDOS_HAMMOND_2024].subdir
         == 'atmos_clim/surface_albedos/hammond_2024'
     )
-    assert datasets[EOS_SEAGER_2007].subdir == 'interior_struct/eos/seager_2007'
-    assert datasets[EOS_SEAGER_2007].zenodo == f'10.5281/zenodo.{SEAGER_2007_RECORD}'
     assert datasets[SURFACE_ALBEDOS_HAMMOND_2024].zenodo == (
         f'10.5281/zenodo.{HAMMOND_2024_RECORD}'
     )
     assert datasets[EXOPLANET_REFERENCE].zenodo == f'10.5281/zenodo.{EXOPLANET_RECORD}'
-    assert datasets[MASS_RADIUS_ZENG_2019].zenodo == f'10.5281/zenodo.{ZENG_2019_RECORD}'
     assert datasets[SCATTERING].subdir == 'atmos_clim/scattering/socrates_aerosols'
     assert datasets[SCATTERING].zenodo == f'10.5281/zenodo.{SCATTERING_RECORD}'
     # All are PROTEUS-owned, so "proteus" has to appear in required_by or
@@ -190,9 +191,7 @@ def test_every_owned_dataset_pins_its_dataverse_mirror():
     pins = {ds.key: ds.dataverse for ds in load_manifest(manifest_path())}
     assert pins == {
         EXOPLANET_REFERENCE: '10.34894/9UJ0R7',
-        MASS_RADIUS_ZENG_2019: '10.34894/ZGZA6I',
         SURFACE_ALBEDOS_HAMMOND_2024: '10.34894/8ARDN5',
-        EOS_SEAGER_2007: '10.34894/QZZGHW',
         SCATTERING: '10.34894/6Z8Y0Q',
     }
     assert len(set(pins.values())) == len(pins)
@@ -223,7 +222,9 @@ def test_shared_datasets_resolve_through_the_fwl_io_manifest():
     for key, (subdir, record) in SHARED_DATASETS.items():
         assert key in shared, f'{key} is not declared in the fwl-io shared manifest'
         assert _dataset(key).subdir == subdir
-        assert _dataset(key).zenodo == f'10.5281/zenodo.{record}'
+        assert _dataset(key).zenodo.removeprefix('10.5281/zenodo.') in ACCEPTED_RECORDS.get(
+            record, {record}
+        )
     for (group, bands), record in SPECTRAL_RECORDS.items():
         assert shared[spectral_file_key(group, bands)].zenodo == f'10.5281/zenodo.{record}'
     # Discrimination: none of these keys is PROTEUS-owned, so a lookup that only
@@ -293,7 +294,9 @@ def test_registries_pin_committed_checksums():
         'eos_seager07_water.txt',
     }
     assert len(solar) == 10, 'the solar record ships 10 spectra'
-    assert len(named) == 11, 'the named-star record ships 11 spectra'
+    v2 = _dataset(STELLAR_SPECTRA_NAMED).zenodo.endswith(NAMED_V2_RECORD)
+    assert len(named) == 11 + v2, 'Named v1 ships 11 spectra; v2 adds toi561.txt'
+    assert not v2 or named['toi561.txt'] == 'md5:2ef31357cababb96941c61072f7a49d0'
     assert len(muscles) == 38, 'the MUSCLES record ships 36 spectra, a readme and a table'
     assert {'density_melt.dat', 'density_solid.dat', 'adiabat_temp_grad_melt.dat'} <= set(
         wolf_bower
@@ -355,27 +358,19 @@ def test_dataset_dir_is_versioned(tmp_path):
     """A dataset resolves into the version directory named for its record.
 
     The literal path is pinned because the version segment is what keeps a
-    re-pinned deposit from overwriting its predecessor. The discrimination
-    assert rules out the bare location, which is one directory above where the
-    readers look and is exactly what a version-less resolution would return.
+    re-pinned deposit from overwriting its predecessor; a version-less
+    resolution would return the bare location one directory above it.
     """
-    resolved = dataset_dir(MASS_RADIUS_ZENG_2019, data_root=tmp_path)
-
-    assert (
-        resolved == tmp_path / 'observe' / 'mass_radius' / 'zeng_2019' / f'r{ZENG_2019_RECORD}'
-    )
-    assert resolved != tmp_path / 'observe' / 'mass_radius' / 'zeng_2019'
     assert dataset_dir(EXOPLANET_REFERENCE, data_root=tmp_path) == (
         tmp_path / 'observe' / 'exoplanet_reference' / f'r{EXOPLANET_RECORD}'
     )
     assert dataset_dir(SURFACE_ALBEDOS_HAMMOND_2024, data_root=tmp_path) == (
         tmp_path / 'atmos_clim' / 'surface_albedos' / 'hammond_2024' / f'r{HAMMOND_2024_RECORD}'
     )
-    assert dataset_dir(EOS_SEAGER_2007, data_root=tmp_path) == (
-        tmp_path / 'interior_struct' / 'eos' / 'seager_2007' / f'r{SEAGER_2007_RECORD}'
-    )
     for key, (subdir, record) in SHARED_DATASETS.items():
-        assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{record}'
+        pinned = _dataset(key).zenodo.removeprefix('10.5281/zenodo.')
+        assert pinned in ACCEPTED_RECORDS.get(record, {record})
+        assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{pinned}'
     assert dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path) == (
         tmp_path / 'star' / 'spectra' / 'phoenix' / f'r{PHOENIX_RECORD}'
     )
@@ -394,7 +389,7 @@ def test_dataset_dir_rejects_an_unversioned_resolution(tmp_path, monkeypatch):
 
     class _UnversionedFetcher:
         version_dir = None
-        target_dir = tmp_path / 'observe' / 'mass_radius' / 'zeng_2019'
+        target_dir = tmp_path / 'interior' / 'mass_radius' / 'zeng_2019'
 
     monkeypatch.setattr('proteus.data._fetcher', lambda *a, **k: _UnversionedFetcher())
 
@@ -413,13 +408,13 @@ def test_unknown_dataset_key_is_rejected():
     Silently resolving an undeclared key would create an unpinned directory with
     no registry to verify against.
     """
-    with pytest.raises(KeyError, match=f'fwl-io>={FWL_IO_FLOOR}'):
+    with pytest.raises(KeyError, match=f'upgrade to fwl-io>={FWL_IO_FLOOR}'):
         _dataset('observe.not_a_declared_dataset')
 
     # Discrimination: a key the manifest does declare resolves, and to that
     # same dataset, so the raise above follows from the key being absent
     # rather than from the lookup refusing or mis-resolving what it is asked.
-    assert _dataset(MASS_RADIUS_ZENG_2019).key == MASS_RADIUS_ZENG_2019
+    assert _dataset(EXOPLANET_REFERENCE).key == EXOPLANET_REFERENCE
 
 
 def test_stale_fwl_io_is_named_as_the_stale_side(monkeypatch):
@@ -438,7 +433,7 @@ def test_stale_fwl_io_is_named_as_the_stale_side(monkeypatch):
     monkeypatch.setattr('proteus.data._fwl_io_derives_the_location', lambda: False)
 
     with pytest.raises(RuntimeError, match=f'upgrade to fwl-io>={FWL_IO_FLOOR}') as excinfo:
-        _dataset(MASS_RADIUS_ZENG_2019)
+        _dataset(EXOPLANET_REFERENCE)
 
     assert isinstance(excinfo.value.__cause__, ValueError), 'the original error stays attached'
 
@@ -479,7 +474,7 @@ def test_fwl_io_without_shared_manifest_is_named_as_the_stale_side(monkeypatch):
 
     assert isinstance(raised.value.__cause__, ImportError)
     # Discrimination: a PROTEUS-owned key still resolves without the shared manifest.
-    assert _dataset(MASS_RADIUS_ZENG_2019).key == MASS_RADIUS_ZENG_2019
+    assert _dataset(EXOPLANET_REFERENCE).key == EXOPLANET_REFERENCE
 
 
 def test_import_error_inside_the_shared_manifest_load_is_not_relabelled(monkeypatch):
@@ -501,7 +496,7 @@ def test_import_error_inside_the_shared_manifest_load_is_not_relabelled(monkeypa
 
     assert raised.type is ImportError
     # Discrimination: the PROTEUS manifest still loads through the same wrapper.
-    assert _dataset(MASS_RADIUS_ZENG_2019).key == MASS_RADIUS_ZENG_2019
+    assert _dataset(EXOPLANET_REFERENCE).key == EXOPLANET_REFERENCE
 
 
 def test_unknown_key_message_survives_missing_package_metadata(monkeypatch):
@@ -516,7 +511,7 @@ def test_unknown_key_message_survives_missing_package_metadata(monkeypatch):
     with pytest.raises(KeyError, match='installed fwl-io unknown') as raised:
         _dataset('observe.not_a_declared_dataset')
 
-    assert f'fwl-io>={FWL_IO_FLOOR}' in str(raised.value)
+    assert f'upgrade to fwl-io>={FWL_IO_FLOOR}' in str(raised.value)
 
 
 def test_manifest_error_under_a_current_fwl_io_propagates(monkeypatch):
@@ -534,7 +529,7 @@ def test_manifest_error_under_a_current_fwl_io_propagates(monkeypatch):
     monkeypatch.setattr('proteus.data._fwl_io_derives_the_location', lambda: True)
 
     with pytest.raises(ValueError, match='malformed') as raised:
-        _dataset(MASS_RADIUS_ZENG_2019)
+        _dataset(EXOPLANET_REFERENCE)
 
     # Discrimination: the message carries the manifest's own complaint and not
     # an upgrade instruction, which is the whole point of separating a defect
@@ -568,12 +563,11 @@ def test_capability_check_reads_the_installed_fwl_io(monkeypatch):
 
 
 def test_declared_floor_is_not_below_the_schema_floor():
-    """The pyproject fwl-io floor is not below the manifest schema floor.
+    """The pyproject fwl-io floor equals the floor the upgrade messages name.
 
-    A pyproject floor below the schema floor would let pip install an fwl-io that
-    cannot read the manifest, which the load reports as a stale install. A
-    pyproject floor above it is allowed: it tracks fixes in later fwl-io
-    releases, and the upgrade instruction names only the schema floor.
+    A lower pyproject floor would let pip install an fwl-io that cannot read the
+    manifest or lacks a shared key; a higher one would make the messages ask for
+    a version that pip does not accept as enough.
     """
     from packaging.requirements import Requirement
     from packaging.version import Version

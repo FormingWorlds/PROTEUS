@@ -917,7 +917,14 @@ def test_eclipse_depth_returns_none_when_atmosphere_missing(monkeypatch, tmp_pat
     config = _make_config()
 
     result = mod.eclipse_depth(
-        {'Time': 1, 'R_star': 1.0, 'T_star': 1.0, 'separation': 1.0},
+        {
+            'Time': 1,
+            'R_star': 1.0,
+            'T_star': 1.0,
+            'separation': 1.0,
+            'semimajorax': 1.0,
+            'eccentricity': 0.0,
+        },
         config,
         'profile',
         {'fwl': str(tmp_path), 'output': str(tmp_path)},
@@ -950,7 +957,14 @@ def test_eclipse_depth_outgas_returns_none_when_profile_unreadable(monkeypatch, 
     config = _make_config()
 
     result = mod.eclipse_depth(
-        {'Time': 1, 'R_star': 1.0, 'T_star': 1.0, 'separation': 1.0},
+        {
+            'Time': 1,
+            'R_star': 1.0,
+            'T_star': 1.0,
+            'separation': 1.0,
+            'semimajorax': 1.0,
+            'eccentricity': 0.0,
+        },
         config,
         'outgas',
         {'fwl': str(tmp_path), 'output': str(tmp_path)},
@@ -977,7 +991,14 @@ def test_eclipse_depth_raises_for_unknown_source_before_parse(monkeypatch, tmp_p
     fake_common.get_eclipse_fpath = lambda *_a, **_k: str(tmp_path / 'unused.csv')
     monkeypatch.setitem(sys.modules, 'proteus.observe.common', fake_common)
     config = _make_config()
-    hf_row = {'Time': 1, 'R_star': 1.0, 'T_star': 1.0, 'separation': 1.0}
+    hf_row = {
+        'Time': 1,
+        'R_star': 1.0,
+        'T_star': 1.0,
+        'separation': 1.0,
+        'semimajorax': 1.0,
+        'eccentricity': 0.0,
+    }
     dirs = {'fwl': str(tmp_path), 'output': str(tmp_path)}
 
     with pytest.raises(UnboundLocalError):
@@ -1180,6 +1201,8 @@ def test_eclipse_depth_offchem_uses_latest_sflux_and_writes_output(monkeypatch, 
         # below covers the ppm conversion and the squared radius ratio while staying clear
         # of which distance belongs in the denominator.
         'separation': 7.0e8,
+        'semimajorax': 7.0e8,
+        'eccentricity': 0.0,
         'R_int': 7.0e6,
     }
 
@@ -1455,7 +1478,8 @@ def test_reference_pinned_mean_molar_mass_increases_with_helium_vmr(monkeypatch)
 
 
 @pytest.mark.physics_invariant
-def test_eclipse_depth_divides_by_the_stellar_surface_flux(monkeypatch, tmp_path):
+@pytest.mark.parametrize('ecc', [0.0, 0.8], ids=['circular', 'eccentric'])
+def test_eclipse_depth_divides_by_the_stellar_surface_flux(monkeypatch, tmp_path, ecc):
     """The eclipse depth is the planet-to-star surface brightness ratio scaled by the
     squared radius ratio, so the denominator has to be the flux at the stellar surface.
 
@@ -1463,7 +1487,7 @@ def test_eclipse_depth_divides_by_the_stellar_surface_flux(monkeypatch, tmp_path
     orbital distance, so it has to be carried back out to the stellar surface before it
     divides the planet flux. Otherwise the orbital reduction is applied a second time
     through the geometric factor and every depth comes out too large by the squared
-    ratio of separation to stellar radius.
+    ratio of the flux-weighted distance to the stellar radius.
 
     The planet sits at ten stellar radii, a hot-Jupiter separation, which makes that
     ratio exactly 100 and puts the two candidate answers two decades apart: far outside
@@ -1471,6 +1495,11 @@ def test_eclipse_depth_divides_by_the_stellar_surface_flux(monkeypatch, tmp_path
     pins already cover. The stand-in transfer returns fixed fluxes, so the expected
     depth is closed-form: planet flux 1.0 over a surface flux of 3e8 * 100, times the
     squared radius ratio (7.0e8/7.0e10)^2, in ppm.
+
+    The stored spectrum is written at the flux-weighted distance a (1 - e^2)^(1/4), so
+    that is the distance to undo. The eccentric case puts it at ten stellar radii while
+    the time-averaged separation a (1 + e^2 / 2) sits at 17 stellar radii, so undoing
+    the separation instead would overstate the stellar-surface flux 2.9 times.
     """
     mod = _import_backend(monkeypatch)
     monkeypatch.setattr(mod, 'prt_gases', ('H2O',))
@@ -1528,10 +1557,10 @@ def test_eclipse_depth_divides_by_the_stellar_surface_flux(monkeypatch, tmp_path
         'Time': 1,
         'R_star': R_star,
         'T_star': 1000.0,
-        # Ten stellar radii, a hot-Jupiter orbit. Deliberately not equal to R_star: at
-        # separation == R_star the surface and orbit fluxes coincide and the assertion
-        # below could not tell which one divided the planet flux.
-        'separation': 10.0 * R_star,
+        # Flux-weighted distance of ten stellar radii; at R_star the surface and orbit
+        # fluxes coincide and the assertion below could not tell them apart.
+        'semimajorax': 10.0 * R_star / (1.0 - ecc**2) ** 0.25,
+        'eccentricity': ecc,
         'R_int': 7.0e6,
     }
 
@@ -1539,7 +1568,8 @@ def test_eclipse_depth_divides_by_the_stellar_surface_flux(monkeypatch, tmp_path
     dirs = {'fwl': str(tmp_path), 'output': str(tmp_path)}
     result = mod.eclipse_depth(hf_row, config, 'outgas', dirs)
 
-    dilution = (hf_row['separation'] / R_star) ** 2  # 100, exactly
+    hf_row['separation'] = hf_row['semimajorax'] * (1.0 + 0.5 * ecc**2)
+    dilution = 100.0  # (flux-weighted distance / R_star)^2
     surface_flux = 3.0e8 * dilution  # erg cm-2 s-1 cm-1 at the stellar surface
     radius_ratio_sq = (7.0e8 / 7.0e10) ** 2
     expected = np.array([1.0, 2.0]) / surface_flux * radius_ratio_sq * 1e6
@@ -1556,11 +1586,16 @@ def test_eclipse_depth_divides_by_the_stellar_surface_flux(monkeypatch, tmp_path
     # (a missing radius ratio: the ~3e-9 expected value divided by the 1e-4
     # radius-ratio square).
     assert np.all((result[:, 1] > 1.0e-10) & (result[:, 1] < 1.0e-8))
+    if ecc > 0.0:
+        # Undoing the separation instead overstates the surface flux by 2.9.
+        sep_ratio_sq = (hf_row['separation'] / (10.0 * R_star)) ** 2
+        assert sep_ratio_sq == pytest.approx(2.90, rel=0.01)
+        assert np.all(np.abs(result[:, 1] - expected / sep_ratio_sq) > 0.5 * expected)
 
     # Limit input: a planet orbiting at one stellar radius sits on the stellar surface,
     # where the two fluxes are the same and the rescale is the identity. The depths then
     # fall back on the stored spectrum unchanged, which is why pins taken at that
     # separation cannot tell the two denominators apart.
-    hf_row_at_surface = {**hf_row, 'separation': R_star}
+    hf_row_at_surface = {**hf_row, 'semimajorax': R_star / (1.0 - ecc**2) ** 0.25}
     result_at_surface = mod.eclipse_depth(hf_row_at_surface, config, 'outgas', dirs)
     np.testing.assert_allclose(result_at_surface[:, 1], expected * dilution, rtol=1e-6)
