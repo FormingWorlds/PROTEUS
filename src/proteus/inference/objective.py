@@ -36,6 +36,8 @@ dtype = torch.double
 EPS_CLIP = 1e-10
 LOG_CLIP = 1e-20
 BAD_OBJ_VALUE = -20.0
+# Above this fraction of the value, a linear sigma converts poorly to dex
+SIGMA_LINEAR_MAX_FRAC = 0.3
 # Completion statuses excluded from every fit, whatever `failure_codes` holds.
 ALWAYS_EXCLUDED_STATUSES = frozenset({29})
 log = logging.getLogger('fwl.' + __name__)
@@ -537,15 +539,18 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
     - observables (dict): Target observable values.
     - sigma (dict | None): 1-sigma uncertainty of each observable, in the same
       units as the observable, or None to use the relative-difference objective.
+      An observable compared in log10 also takes a string such as '0.1 dex'.
 
     Returns
     ----------
-    - dict | None: The uncertainties as floats, or None.
+    - dict | None: The uncertainties in the observables' units, or None. A dex
+      entry becomes dex * true * ln 10, which `eval_obj` converts back exactly.
 
     Raises:
-        ValueError: If an observable has no uncertainty, an uncertainty names
-            no observable, an uncertainty is not a positive finite number, or a
-            log-scaled observable with an uncertainty is not positive.
+        ValueError: If an entry is missing, names no observable, is not a positive
+            finite number or '<number> dex', is in dex for an observable compared
+            linearly, or belongs to a log-compared observable whose value is not
+            positive.
     """
     if sigma is None:
         return None
@@ -558,16 +563,33 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
         raise ValueError(f'sigma given for names that are not observables: {unknown}')
 
     out = {}
-    for k, v in sigma.items():
-        v = float(v)
+    for k, given in sigma.items():
+        dex = isinstance(given, str) and given.strip().endswith('dex')
+        try:
+            v = float(given.strip().removesuffix('dex') if dex else given)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"sigma for '{k}' must be a number, or a string such as '0.1 dex', "
+                f'got {given!r}'
+            ) from None
         if not (math.isfinite(v) and v > 0):
-            raise ValueError(f"sigma for '{k}' must be a positive finite number, got {v!r}")
-        if variable_is_logarithmic(k) or is_element_ratio(k):
+            raise ValueError(f"sigma for '{k}' must be a positive finite number, got {given!r}")
+        log_space = variable_is_logarithmic(k) or is_element_ratio(k)
+        if dex and not log_space:
+            raise ValueError(f"sigma for '{k}' is given in dex, but '{k}' is compared linearly")
+        if log_space:
             x = float(observables[k])
             if x <= 0:
                 raise ValueError(
                     f"Observable '{k}' is compared in log space, so its value must be "
                     f'positive when a sigma is given, got {x!r}'
+                )
+            if dex:
+                v *= x * math.log(10.0)
+            elif v > SIGMA_LINEAR_MAX_FRAC * x:
+                log.warning(
+                    f"sigma for '{k}' is {v / x:.0%} of its value; the conversion to dex "
+                    "is first order, so give it in dex instead (e.g. '0.1 dex')"
                 )
         out[k] = v
     return out

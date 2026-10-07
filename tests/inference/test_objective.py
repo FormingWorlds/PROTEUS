@@ -615,6 +615,46 @@ def test_validate_sigma_accepts_complete_table_and_rejects_bad_entries():
 
 
 @pytest.mark.unit
+def test_validate_sigma_takes_dex_strings_for_log_compared_observables():
+    """'0.1 dex' is used as exactly 0.1 dex: a simulated C/O 0.1 dex above the
+    target gives chi2 = 1 (J = 0) and 0.2 dex below gives chi2 = 4. Dex on a linearly
+    compared observable, and strings that are not '<number> dex', are refused."""
+    obs = {'R_obs': 6.0e6, 'C/O_atm': 0.33}
+    out = objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': ' 0.1 dex '})
+    assert out['C/O_atm'] == pytest.approx(0.1 * 0.33 * math.log(10.0))
+    sim = {'R_obs': 6.0e6, 'C/O_atm': 0.33 * 10**0.1}
+    J = objective_mod.eval_obj(sim, obs, sigma=out).item()
+    assert J == pytest.approx(0.0, abs=1e-9)
+    # Two sigma off in dex gives chi2 = 4, not 2 (a missing square) or 1 (no scaling)
+    sim['C/O_atm'] = 0.33 * 10**-0.2
+    J = objective_mod.eval_obj(sim, obs, sigma=out).item()
+    assert J == pytest.approx(-math.log10(4.0), abs=1e-9)
+
+    with pytest.raises(ValueError, match="'R_obs' is compared linearly"):
+        objective_mod.validate_sigma(obs, {'R_obs': '0.1 dex', 'C/O_atm': '0.1 dex'})
+    for bad in ('abc dex', '0.1 bar', '-0.1 dex', '0 dex', 'nan dex'):
+        with pytest.raises(ValueError, match="sigma for 'C/O_atm'"):
+            objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': bad})
+
+
+@pytest.mark.unit
+def test_validate_sigma_warns_when_a_linear_sigma_converts_poorly_to_dex(caplog):
+    """A linear sigma above 30 % of a log-compared value logs a warning that suggests
+    dex; 20 %, a dex entry and a large sigma on a linear observable do not."""
+    obs = {'R_obs': 6.0e6, 'C/O_atm': 0.5}
+    logger = 'fwl.proteus.inference.objective'
+    with caplog.at_level('WARNING', logger=logger):
+        objective_mod.validate_sigma(obs, {'R_obs': 4.0e6, 'C/O_atm': 0.1})
+        objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': '0.3 dex'})
+    assert caplog.records == []
+    with caplog.at_level('WARNING', logger=logger):
+        objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': 0.2})
+    messages = [r.getMessage() for r in caplog.records]
+    assert len(messages) == 1
+    assert "sigma for 'C/O_atm' is 40% of its value" in messages[0]
+
+
+@pytest.mark.unit
 def test_prot_builder_unnormalizes_and_calls_J(monkeypatch):
     """``prot_builder`` returns a closure that un-normalises an x in
     [0, 1]^d to the physical parameter ranges (so x=0.5 with bounds

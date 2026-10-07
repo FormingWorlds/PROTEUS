@@ -88,9 +88,10 @@ J = -log10( sum( ((sim - true) / sigma)^2 ) + 1e-10 )
 
 Observables that span orders of magnitude (`atm_kg_per_mol`, `*_vmr`, `*_bar`, `P_surf`, ...)
 are compared as `log10` values, and so are element ratios such as `C/O_atm` when `[sigma]` is
-given (without it they stay linear, as before). Their uncertainty is converted to log10 units by
-first-order propagation, `sigma / (true * ln 10)`. This approximation is only accurate when the uncertainty is
-small compared to the value. A warning is logged at start-up when it exceeds 30 % of the value.
+given (without it they stay linear, as before). Their uncertainty can be given in dex as a
+string, for example `"C/O_atm" = "0.1 dex"`. A plain number is in the units of the value and is
+converted to dex to first order, `sigma / (true * ln 10)`, which is accurate only for small
+uncertainties; a warning is logged when it exceeds 30 % of the value.
 
 The two objectives are on different scales, so compare `J` only between studies that use the same
 one. The objective in use is reported at start-up.
