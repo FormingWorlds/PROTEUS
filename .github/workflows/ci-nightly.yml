@@ -149,8 +149,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    # Serially the suite takes 59 min on ubuntu and 47 min on macOS, so it runs
-    # on one xdist worker per core; the budget covers that plus a cold FWL_DATA
+    # The suite takes 59 min serially on ubuntu (47 min on macOS), so it runs on
+    # one xdist worker per logical CPU; the budget covers that plus a cold FWL_DATA
     # download (~30 min), which happens on cache eviction or a manifest re-pin.
     timeout-minutes: 80
     env:
@@ -167,7 +167,7 @@ jobs:
           pytest tests/integration \
             -m "integration and not slow" \
             -p no:faulthandler \
-            -n auto --dist worksteal \
+            -n logical --dist worksteal \
             --junitxml=junit-int-${{ matrix.os }}.xml \
             --cov=proteus \
             --cov-report=xml:coverage-int-${{ matrix.os }}.xml \
