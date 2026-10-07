@@ -193,9 +193,9 @@ def test_shared_datasets_resolve_through_the_fwl_io_manifest():
     for key, (subdir, record) in SHARED_DATASETS.items():
         assert key in shared, f'{key} is not declared in the fwl-io shared manifest'
         assert _dataset(key).subdir == subdir
-        assert _dataset(key).zenodo in {
-            f'10.5281/zenodo.{r}' for r in ACCEPTED_RECORDS.get(record, {record})
-        }
+        assert _dataset(key).zenodo.removeprefix('10.5281/zenodo.') in ACCEPTED_RECORDS.get(
+            record, {record}
+        )
     for (group, bands), record in SPECTRAL_RECORDS.items():
         assert shared[spectral_file_key(group, bands)].zenodo == f'10.5281/zenodo.{record}'
     # Discrimination: none of these keys is PROTEUS-owned, so a lookup that only
@@ -342,8 +342,9 @@ def test_dataset_dir_is_versioned(tmp_path):
         tmp_path / 'interior_struct' / 'eos' / 'seager_2007' / f'r{SEAGER_2007_RECORD}'
     )
     for key, (subdir, record) in SHARED_DATASETS.items():
-        accepted = {tmp_path / subdir / f'r{r}' for r in ACCEPTED_RECORDS.get(record, {record})}
-        assert dataset_dir(key, data_root=tmp_path) in accepted
+        pinned = _dataset(key).zenodo.removeprefix('10.5281/zenodo.')
+        assert pinned in ACCEPTED_RECORDS.get(record, {record})
+        assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{pinned}'
     assert dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path) == (
         tmp_path / 'star' / 'spectra' / 'phoenix' / f'r{PHOENIX_RECORD}'
     )
