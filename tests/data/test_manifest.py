@@ -107,10 +107,8 @@ SHARED_DATASETS = {
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-
-def _accepted(record: str) -> set[str]:
-    """Records a shared pin may name: Named v1 or v2 (adds toi561.txt), else ``record``."""
-    return {NAMED_RECORD, NAMED_V2_RECORD} if record == NAMED_RECORD else {record}
+# Named v2 holds the 11 v1 spectra plus toi561.txt; the shared pin may name either.
+ACCEPTED_RECORDS = {NAMED_RECORD: {NAMED_RECORD, NAMED_V2_RECORD}}
 
 
 # Spectral-file datasets: (group, bands) -> Zenodo record, one dataset each.
@@ -195,7 +193,9 @@ def test_shared_datasets_resolve_through_the_fwl_io_manifest():
     for key, (subdir, record) in SHARED_DATASETS.items():
         assert key in shared, f'{key} is not declared in the fwl-io shared manifest'
         assert _dataset(key).subdir == subdir
-        assert _dataset(key).zenodo in {f'10.5281/zenodo.{r}' for r in _accepted(record)}
+        assert _dataset(key).zenodo in {
+            f'10.5281/zenodo.{r}' for r in ACCEPTED_RECORDS.get(record, {record})
+        }
     for (group, bands), record in SPECTRAL_RECORDS.items():
         assert shared[spectral_file_key(group, bands)].zenodo == f'10.5281/zenodo.{record}'
     # Discrimination: none of these keys is PROTEUS-owned, so a lookup that only
@@ -258,7 +258,9 @@ def test_registries_pin_committed_checksums():
         'eos_seager07_water.txt',
     }
     assert len(solar) == 10, 'the solar record ships 10 spectra'
-    assert len(named) == 11, 'the named-star record ships 11 spectra'
+    v2 = _dataset(STELLAR_SPECTRA_NAMED).zenodo.endswith(NAMED_V2_RECORD)
+    assert len(named) == 11 + v2, 'Named v1 ships 11 spectra; v2 adds toi561.txt'
+    assert not v2 or named['toi561.txt'] == 'md5:2ef31357cababb96941c61072f7a49d0'
     assert len(muscles) == 38, 'the MUSCLES record ships 36 spectra, a readme and a table'
     assert {'density_melt.dat', 'density_solid.dat', 'adiabat_temp_grad_melt.dat'} <= set(
         wolf_bower
@@ -340,7 +342,7 @@ def test_dataset_dir_is_versioned(tmp_path):
         tmp_path / 'interior_struct' / 'eos' / 'seager_2007' / f'r{SEAGER_2007_RECORD}'
     )
     for key, (subdir, record) in SHARED_DATASETS.items():
-        accepted = {tmp_path / subdir / f'r{r}' for r in _accepted(record)}
+        accepted = {tmp_path / subdir / f'r{r}' for r in ACCEPTED_RECORDS.get(record, {record})}
         assert dataset_dir(key, data_root=tmp_path) in accepted
     assert dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path) == (
         tmp_path / 'star' / 'spectra' / 'phoenix' / f'r{PHOENIX_RECORD}'
