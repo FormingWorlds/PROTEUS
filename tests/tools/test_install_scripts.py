@@ -727,13 +727,13 @@ def test_get_petsc_tries_zenodo_then_the_mirror_from_its_pins(tmp_path):
 
 @pytest.mark.unit
 def test_pyproject_pins_the_petsc_archive_by_sha256():
-    """PETSc is pinned to its Zenodo archive by a SHA-256, with a mirror field."""
+    """PETSc is pinned to its Zenodo archive by a SHA-256, with the DataverseNL file as mirror."""
     pin = tomllib.loads((TOOLS_DIR.parent / 'pyproject.toml').read_text())['tool']['proteus'][
         'modules'
     ]['petsc']
     assert pin['url'] == 'https://zenodo.org/records/15805756/files/petsc.zip?download=1'
-    assert re.fullmatch(r'[0-9a-f]{64}', pin['sha256'])
-    assert 'mirror' in pin
+    assert pin['sha256'] == 'c5bdb75048b609627bac7fdc83042078a629f5de0c6508b50166a351d2aa045d'
+    assert pin['mirror'] == 'https://dataverse.nl/api/access/datafile/683669'
 
 
 # ---------------------------------------------------------------------------
