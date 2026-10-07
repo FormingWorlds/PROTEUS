@@ -255,7 +255,8 @@ Declared in the fwl-io shared manifest and fetched into
 `$FWL_DATA/interior/mass_radius/zeng_2019/r<record-id>/`, on the same terms as
 the exoplanet catalogue above. Copies under `$FWL_DATA/mass_radius/Zeng2019` and
 `$FWL_DATA/observe/mass_radius/zeng_2019` are not read and can be deleted; the
-curves (57 files, 20 kB) are fetched again.
+curves (57 files, 20 kB) are fetched again. On a machine that runs with `--offline`, such
+as a cluster node, run `proteus get reference` once before the first offline run.
 
 ---
 
@@ -274,7 +275,7 @@ All equation-of-state tables are fetched through fwl-io into `$FWL_DATA/<dataset
 | `interior/eos/paleos_iron`, `paleos_mgsio3_unified`, `paleos_h2o` | PALEOS unified tables for iron, MgSiO3 and water | the table of each selected component |
 | `interior/eos/chabrier_2021_hhe` | Chabrier et al. hydrogen and helium tables | archive extracted into `r<record-id>/EOS_Chabrier2021_HHe/` |
 
-Tables under `$FWL_DATA/zalmoxis_eos`, `$FWL_DATA/EOS_material_properties` and `$FWL_DATA/interior_struct/eos/seager_2007` are not read where they are; the Seager tables (0.2 MB) are fetched again into `interior/eos/seager_2007`. `fwl-io relocate` moves a `zalmoxis_eos` folder that holds every file of its dataset; the rest can be deleted once the run has fetched them.
+Tables under `$FWL_DATA/zalmoxis_eos`, `$FWL_DATA/EOS_material_properties` and `$FWL_DATA/interior_struct/eos/seager_2007` are not read where they are; the Seager tables (0.2 MB) are fetched again into `interior/eos/seager_2007`; before an `--offline` run, fetch them once with `proteus get interiordata --config-path <config.toml>`. `fwl-io relocate` moves a `zalmoxis_eos` folder that holds every file of its dataset; the rest can be deleted once the run has fetched them.
 
 ---
 

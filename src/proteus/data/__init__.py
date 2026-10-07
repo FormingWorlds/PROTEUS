@@ -68,8 +68,8 @@ def spectral_file_key(group: str, bands: str | int) -> str:
 
 
 # The oldest fwl-io that reads this manifest schema and declares every shared key
-# PROTEUS reads; the load and the key lookup name the installed fwl-io as the side
-# to upgrade. The pyproject.toml requirement must be at least this; a test checks.
+# PROTEUS reads; a stale load or a missing key asks for an upgrade to this version.
+# The pyproject.toml requirement must equal it; a test checks.
 FWL_IO_FLOOR = '26.10.7'
 
 
@@ -184,8 +184,8 @@ def _dataset(key: str):
             installed = 'unknown'
         raise KeyError(
             f'{key!r} is declared neither in the PROTEUS manifest nor in the fwl-io '
-            f'shared manifest (installed fwl-io {installed}; PROTEUS reads the '
-            f'shared keys of fwl-io>={FWL_IO_FLOOR})'
+            f'shared manifest (installed fwl-io {installed}; upgrade to '
+            f'fwl-io>={FWL_IO_FLOOR})'
         )
     return shared[key]
 

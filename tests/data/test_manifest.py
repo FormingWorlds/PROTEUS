@@ -397,7 +397,7 @@ def test_unknown_dataset_key_is_rejected():
     Silently resolving an undeclared key would create an unpinned directory with
     no registry to verify against.
     """
-    with pytest.raises(KeyError, match=f'fwl-io>={FWL_IO_FLOOR}'):
+    with pytest.raises(KeyError, match=f'upgrade to fwl-io>={FWL_IO_FLOOR}'):
         _dataset('observe.not_a_declared_dataset')
 
     # Discrimination: a key the manifest does declare resolves, and to that
@@ -500,7 +500,7 @@ def test_unknown_key_message_survives_missing_package_metadata(monkeypatch):
     with pytest.raises(KeyError, match='installed fwl-io unknown') as raised:
         _dataset('observe.not_a_declared_dataset')
 
-    assert f'fwl-io>={FWL_IO_FLOOR}' in str(raised.value)
+    assert f'upgrade to fwl-io>={FWL_IO_FLOOR}' in str(raised.value)
 
 
 def test_manifest_error_under_a_current_fwl_io_propagates(monkeypatch):
@@ -552,12 +552,11 @@ def test_capability_check_reads_the_installed_fwl_io(monkeypatch):
 
 
 def test_declared_floor_is_not_below_the_schema_floor():
-    """The pyproject fwl-io floor is not below the manifest schema floor.
+    """The pyproject fwl-io floor equals the floor the upgrade messages name.
 
-    A pyproject floor below the schema floor would let pip install an fwl-io that
-    cannot read the manifest, which the load reports as a stale install. A
-    pyproject floor above it is allowed: it tracks fixes in later fwl-io
-    releases, and the upgrade instruction names only the schema floor.
+    A lower pyproject floor would let pip install an fwl-io that cannot read the
+    manifest or lacks a shared key; a higher one would make the messages ask for
+    a version that pip does not accept as enough.
     """
     from packaging.requirements import Requirement
     from packaging.version import Version

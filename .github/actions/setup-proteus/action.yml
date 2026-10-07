@@ -729,9 +729,9 @@ runs:
     # 9. FWL_DATA cache + smoke / full data download
     # ------------------------------------------------------------------
 
-    # The key hashes both data descriptors, so a re-pin in either refreshes the cache (an exact
-    # hit never re-saves), and carries the full-data flavour, so a smoke-only tree never
-    # satisfies a full-data restore or the reverse.
+    # The key hashes the two PROTEUS-side descriptors (not the fwl-io shared-manifest pins), so a
+    # re-pin in either refreshes the cache (an exact hit never re-saves), and carries the full-data
+    # flavour, so a smoke-only tree never satisfies a full-data restore or the reverse.
     - name: Cache FWL_DATA
       uses: actions/cache@v5
       with:
