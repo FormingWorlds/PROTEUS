@@ -61,6 +61,7 @@ HAMMOND_2024_RECORD = '15880455'
 SEAGER_2007_RECORD = '15727998'
 SOLAR_RECORD = '17981836'
 NAMED_RECORD = '15721440'
+NAMED_V2_RECORD = '23197931'
 MUSCLES_RECORD = '17802209'
 PHOENIX_RECORD = '17674612'
 WOLF_BOWER_RECORD = '17417017'
@@ -105,6 +106,12 @@ SHARED_DATASETS = {
 }
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _accepted(record: str) -> set[str]:
+    """Records a shared pin may name: Named v1 or v2 (adds toi561.txt), else ``record``."""
+    return {NAMED_RECORD, NAMED_V2_RECORD} if record == NAMED_RECORD else {record}
+
 
 # Spectral-file datasets: (group, bands) -> Zenodo record, one dataset each.
 SPECTRAL_RECORDS = {
@@ -188,7 +195,7 @@ def test_shared_datasets_resolve_through_the_fwl_io_manifest():
     for key, (subdir, record) in SHARED_DATASETS.items():
         assert key in shared, f'{key} is not declared in the fwl-io shared manifest'
         assert _dataset(key).subdir == subdir
-        assert _dataset(key).zenodo == f'10.5281/zenodo.{record}'
+        assert _dataset(key).zenodo in {f'10.5281/zenodo.{r}' for r in _accepted(record)}
     for (group, bands), record in SPECTRAL_RECORDS.items():
         assert shared[spectral_file_key(group, bands)].zenodo == f'10.5281/zenodo.{record}'
     # Discrimination: none of these keys is PROTEUS-owned, so a lookup that only
@@ -333,7 +340,8 @@ def test_dataset_dir_is_versioned(tmp_path):
         tmp_path / 'interior_struct' / 'eos' / 'seager_2007' / f'r{SEAGER_2007_RECORD}'
     )
     for key, (subdir, record) in SHARED_DATASETS.items():
-        assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{record}'
+        accepted = {tmp_path / subdir / f'r{r}' for r in _accepted(record)}
+        assert dataset_dir(key, data_root=tmp_path) in accepted
     assert dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path) == (
         tmp_path / 'star' / 'spectra' / 'phoenix' / f'r{PHOENIX_RECORD}'
     )
