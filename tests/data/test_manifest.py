@@ -78,8 +78,8 @@ MELTING_WOLF_BOWER_2018_RECORD = '15728072'
 
 # Datasets PROTEUS reads from the fwl-io shared manifest: key -> (subdir, record).
 SHARED_DATASETS = {
-    MASS_RADIUS_ZENG_2019: ('observe/mass_radius/zeng_2019', ZENG_2019_RECORD),
-    EOS_SEAGER_2007: ('interior_struct/eos/seager_2007', SEAGER_2007_RECORD),
+    MASS_RADIUS_ZENG_2019: ('interior/mass_radius/zeng_2019', ZENG_2019_RECORD),
+    EOS_SEAGER_2007: ('interior/eos/seager_2007', SEAGER_2007_RECORD),
     EOS_WOLF_BOWER_2018: ('interior/eos/wolf_bower_2018_1tpa', WOLF_BOWER_RECORD),
     EOS_RTPRESS_100TPA: ('interior/eos/rtpress_melt_100tpa', RTPRESS_RECORD),
     EOS_PALEOS_MGSIO3: ('interior/eos/paleos_mgsio3', PALEOS_2PHASE_RECORD),
