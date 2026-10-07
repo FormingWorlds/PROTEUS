@@ -474,8 +474,28 @@ def test_init_star_unknown_name_names_the_three_sets(tmp_path, monkeypatch):
 
     _install_fake_mors(monkeypatch)
     handler = _make_handler_for_init_star(tmp_path, spectrum_source=None, star_name='nostar')
-    with pytest.raises(FileNotFoundError, match="No MUSCLES, solar or Named .*'nostar'"):
+    with pytest.raises(FileNotFoundError, match="No MUSCLES, solar or Named .*'nostar'") as err:
         init_star(handler)
+    assert '`proteus get stellar` fetches the Named spectra' in str(err.value)
+
+
+@pytest.mark.unit
+def test_init_star_named_lookup_keeps_the_file_case(tmp_path, monkeypatch, caplog):
+    """A Named file with capitals (HIP67522.txt) is found by its lowercase star_name, and the
+    path used carries the real case, so the lookup also works on a case-sensitive filesystem.
+    """
+    from proteus.data import STELLAR_SPECTRA_NAMED, dataset_dir
+    from proteus.star.wrapper import init_star
+
+    caplog.set_level('INFO')
+    _install_fake_mors(monkeypatch)
+    handler = _make_handler_for_init_star(tmp_path, spectrum_source=None, star_name='HIP67522')
+    named = dataset_dir(STELLAR_SPECTRA_NAMED, data_root=tmp_path) / 'HIP67522.txt'
+    _write_spectrum_file(named, fl=(50.0, 60.0))
+
+    init_star(handler)
+
+    assert f'Using stellar spectrum file: {named}' in caplog.messages
 
 
 @pytest.mark.unit

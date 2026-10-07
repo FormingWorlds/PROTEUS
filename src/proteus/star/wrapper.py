@@ -96,7 +96,13 @@ def init_star(handler: Proteus):
             solar_dir = dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=fwl_dir)
             muscles_path = os.path.join(muscles_dir, star_file)
             named_dir = dataset_dir(STELLAR_SPECTRA_NAMED, data_root=fwl_dir)
-            named_path = os.path.join(named_dir, star_file)
+            # Named file names keep their case (HIP67522.txt); match the lowercase id to them.
+            named = (
+                {f.lower(): f for f in os.listdir(named_dir)}
+                if os.path.isdir(named_dir)
+                else {}
+            )
+            named_path = os.path.join(named_dir, named.get(star_file, star_file))
 
             # Pick the intended solar_path:
             if solar_key in solar_map:
@@ -129,7 +135,8 @@ def init_star(handler: Proteus):
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
                         f"No MUSCLES, solar or Named spectrum found in reference data for '{mors_cfg.star_name}'. "
-                        f'Fetch it with {fetch}. {RELOCATE_HINT}'
+                        f'Fetch it with {fetch}. `proteus get stellar` fetches the Named spectra. '
+                        f'{RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'solar'
