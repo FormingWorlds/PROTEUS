@@ -177,10 +177,15 @@ resolve_module_pin() {
 fetch_verified() {
     local sha256="$1" dest="$2" url got
     shift 2
+    if [ -z "$sha256" ]; then
+        echo "ERROR: no SHA-256 pin for $(basename "$dest"); check tools/_module_pins.py" >&2
+        return 1
+    fi
     for url in "$@"; do
         [ -n "$url" ] || continue
         echo "Downloading $url"
-        if curl -fLsS --retry 3 "$url" -o "$dest"; then
+        if curl -fLsS --retry 3 --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
+            "$url" -o "$dest"; then
             got=$( (shasum -a 256 "$dest" 2>/dev/null || sha256sum "$dest") | awk '{print $1}')
             [ "$got" = "$sha256" ] && return 0
             echo "WARNING: $url served a file with SHA-256 $got, not $sha256" >&2
@@ -190,5 +195,5 @@ fetch_verified() {
     done
     rm -f "$dest"
     echo "ERROR: no source served $(basename "$dest") with SHA-256 $sha256" >&2
-    exit 1
+    return 1
 }

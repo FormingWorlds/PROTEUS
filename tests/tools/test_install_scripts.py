@@ -674,18 +674,35 @@ def test_fetch_verified_falls_back_to_the_next_source_with_the_pinned_hash(tmp_p
 @pytest.mark.unit
 @pytest.mark.parametrize('strict', [False, True])
 def test_fetch_verified_stops_when_no_source_serves_the_pinned_file(tmp_path, strict):
-    """With no matching source the install stops and leaves no archive to unpack."""
+    """With no matching source it returns 1 and leaves no archive, so a get_* script's
+    ERR trap prints its troubleshooting text and the install stops before unzip."""
     bad = tmp_path / 'bad.zip'
     bad.write_bytes(b'an error page')
     dest = tmp_path / 'petsc.zip'
-    body = f'fetch_verified {"0" * 64} "{dest}" "file://{bad}" ""\necho REACHED_UNZIP\n'
+    call = f'fetch_verified {"0" * 64} "{dest}" "file://{bad}" ""'
 
-    result = _run_bash(_with_common(body, strict))
+    returned = _run_bash(_with_common(f'{call} || echo "RETURNED $?"\n', strict))
+    trapped = _run_bash(
+        _with_common(f'set -e\ntrap "echo TRAPPED" ERR\n{call}\necho REACHED_UNZIP\n', strict)
+    )
 
-    assert result.returncode == 1
-    assert 'REACHED_UNZIP' not in result.stdout
+    assert 'RETURNED 1' in returned.stdout
     assert not dest.exists()
-    assert f'no source served petsc.zip with SHA-256 {"0" * 64}' in result.stderr
+    assert f'no source served petsc.zip with SHA-256 {"0" * 64}' in returned.stderr
+    assert 'download from  failed' not in returned.stderr
+    assert trapped.returncode == 1
+    assert 'TRAPPED' in trapped.stdout and 'REACHED_UNZIP' not in trapped.stdout
+
+
+@pytest.mark.unit
+def test_fetch_verified_refuses_an_empty_hash(tmp_path):
+    """A pin that could not be read stops before any download."""
+    good = tmp_path / 'good.zip'
+    good.write_bytes(b'petsc archive')
+    result = _run_bash(_with_common(f'fetch_verified "" "{tmp_path}/p.zip" "file://{good}"\n'))
+    assert result.returncode == 1
+    assert 'no SHA-256 pin for p.zip' in result.stderr
+    assert 'Downloading' not in result.stdout
 
 
 @pytest.mark.unit
@@ -698,31 +715,49 @@ def test_get_petsc_tries_zenodo_then_the_mirror_from_its_pins(tmp_path):
     (fake_tools / '_module_pins.py').write_text('')
     archive = tmp_path / 'mirror.zip'
     archive.write_bytes(b'petsc archive')
+    wrong = tmp_path / 'wrong.zip'
+    wrong.write_bytes(b'an error page')
     stubs = tmp_path / 'stubs'
     stubs.mkdir()
     _write_stub(
         stubs,
         'python',
         f'#!/bin/bash\ncase "$3" in sha256) echo {_sha256(b"petsc archive")} ;; '
-        'url) echo "file:///nowhere/petsc.zip" ;; mirror) echo "" ;; esac\n',
+        f'url) echo "file://{wrong}" ;; mirror) echo "$PIN_MIRROR" ;; esac\n',
     )
     block = _extract_script_block(
         'get_petsc.sh', 'zipfile="$workpath/petsc.zip"', 'current_step="Decompressing'
     )
     snippet = (
-        f'source "{fake_tools}/_get_common.sh"\nworkpath="{tmp_path}"\n{block}\necho DONE\n'
+        f'set -e\nsource "{fake_tools}/_get_common.sh"\nworkpath="{tmp_path}"\n{block}\necho DONE\n'
     )
-    env = {**os.environ, 'PATH': f'{stubs}:{os.environ["PATH"]}'}
+    env = {**os.environ, 'PATH': f'{stubs}:{os.environ["PATH"]}', 'PIN_MIRROR': ''}
 
-    pinned = subprocess.run(['bash', '-c', snippet], capture_output=True, text=True, env=env)
+    def run(**extra):
+        return subprocess.run(
+            ['bash', '-c', snippet], capture_output=True, text=True, env={**env, **extra}
+        )
+
+    # No mirror pin: the empty source is skipped, not tried.
+    pinned = run()
     assert pinned.returncode == 1
-    assert 'download from file:///nowhere/petsc.zip failed' in pinned.stderr
+    assert f'file://{wrong} served a file' in pinned.stderr
+    assert 'download from  failed' not in pinned.stderr
 
-    env['PETSC_MIRROR_URL'] = f'file://{archive}'
-    mirrored = subprocess.run(['bash', '-c', snippet], capture_output=True, text=True, env=env)
+    # Zenodo first, then the mirror.
+    mirrored = run(PIN_MIRROR=f'file://{archive}')
     assert mirrored.returncode == 0, mirrored.stderr
+    out = mirrored.stdout
+    assert out.index(f'Downloading file://{wrong}') < out.index(f'Downloading file://{archive}')
     assert (tmp_path / 'petsc.zip').read_bytes() == b'petsc archive'
-    assert 'DONE' in mirrored.stdout
+    assert 'DONE' in out
+
+    # PETSC_URL replaces the pinned url, and PETSC_MIRROR_URL the pinned mirror.
+    overridden = run(PETSC_URL=f'file://{archive}', PIN_MIRROR=f'file://{wrong}')
+    assert overridden.returncode == 0, overridden.stderr
+    assert f'Downloading file://{wrong}' not in overridden.stdout
+    mirror_set = run(PETSC_MIRROR_URL=f'file://{archive}')
+    assert mirror_set.returncode == 0, mirror_set.stderr
 
 
 @pytest.mark.unit

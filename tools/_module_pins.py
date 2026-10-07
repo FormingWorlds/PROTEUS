@@ -2,7 +2,7 @@
 
 Single entry point for tools/get_*.sh and the CI composite action to look
 up the URL and ref of an external module (AGNI, SOCRATES, SPIDER, VULCAN,
-LovePy, PETSc). The source of truth is pyproject.toml's
+LovePy), or the url, mirror and sha256 of the PETSc archive. The source of truth is pyproject.toml's
 ``[tool.proteus.modules.<name>]`` table.
 
 Usage from a shell script:
