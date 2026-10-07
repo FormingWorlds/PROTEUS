@@ -5815,7 +5815,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "When true, the outer core above 0.4 of the CMB radius is a resolved shell whose temperatures are part of the solver state: heat moves through it by conduction and, where its gradient is superadiabatic, by convective mixing, so a stable layer forms below the CMB when the CMB heat flow is subadiabatic and erodes when it is not. The CMB heat flow sees the temperature of the top of the shell. Not available with accretion.",
+      "description": "When true, the outer core above 0.4 of the CMB radius is a resolved shell whose temperatures are part of the solver state: heat moves through it by conduction and, where its gradient is superadiabatic, by convective mixing, so a stable layer forms below the CMB when the CMB heat flow is subadiabatic and erodes when it is not. The CMB heat flow sees the temperature of the top of the shell. Experimental: erosion of a layer does not run on CVODE at the default tolerances. Not available with accretion.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5861,7 +5861,7 @@
           "value": 1
         }
       ],
-      "description": "Base of the stratified shell as a fraction of the CMB radius, in (0, 1); the inner core must stay below it. Used with stratification.",
+      "description": "Base of the stratified shell as a fraction of the CMB radius, in (0, 1); the inner core must stay below it. Used with the experimental stratification.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5882,7 +5882,7 @@
           "value": 0
         }
       ],
-      "description": "Eddy diffusivity [m2 s-1] of convective mixing in the stratified shell at the reference superadiabatic gradient. Used with stratification.",
+      "description": "Eddy diffusivity [m2 s-1] of convective mixing in the stratified shell at the reference superadiabatic gradient. Used with the experimental stratification.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5903,7 +5903,7 @@
           "value": 0
         }
       ],
-      "description": "Reference superadiabatic gradient of the shell mixing, as a fraction of the adiabatic gradient at the CMB. Used with stratification.",
+      "description": "Reference superadiabatic gradient of the shell mixing, as a fraction of the adiabatic gradient at the CMB. Used with the experimental stratification.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

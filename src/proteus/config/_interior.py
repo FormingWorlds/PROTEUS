@@ -207,21 +207,25 @@ class AragogCoreModule:
         through it by conduction and, where its gradient is superadiabatic,
         by convective mixing, so a stable layer forms below the CMB when the
         CMB heat flow is subadiabatic and erodes when it is not. The CMB heat
-        flow sees the temperature of the top of the shell. Not available
-        with accretion.
+        flow sees the temperature of the top of the shell. Experimental:
+        erosion of a layer does not run on CVODE at the default tolerances.
+        Not available with accretion.
     k_core: float
         Core thermal conductivity [W m-1 K-1] for conduction in the
         stratified shell and the entropy and dynamo diagnostics; the default is the
         Nimmo (2015) Table 2 value.
     layer_base_fraction: float
         Base of the stratified shell as a fraction of the CMB radius, in (0, 1);
-        the inner core must stay below it. Used with stratification.
+        the inner core must stay below it. Used with the experimental
+        stratification.
     layer_k_mix: float
         Eddy diffusivity [m2 s-1] of convective mixing in the stratified shell
-        at the reference superadiabatic gradient. Used with stratification.
+        at the reference superadiabatic gradient. Used with the experimental
+        stratification.
     layer_g_mix: float
         Reference superadiabatic gradient of the shell mixing, as a fraction of
-        the adiabatic gradient at the CMB. Used with stratification.
+        the adiabatic gradient at the CMB. Used with the experimental
+        stratification.
     f_ohm: float
         Ohmic fraction of the dissipation in the field-strength scaling,
         in (0, 1]; Christensen et al. (2009) adopt 1 for planets.
