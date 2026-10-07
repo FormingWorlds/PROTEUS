@@ -1111,6 +1111,19 @@ def test_download_scattering_fetches_the_manifest_dataset(mock_fetch):
 
 
 @pytest.mark.unit
+@patch('proteus.data.fetch_dataset')
+def test_download_refractive_fetches_the_manifest_dataset(mock_fetch):
+    """The Mie refractive indices are fetched through fwl-io from the PROTEUS manifest."""
+    from proteus.data import REFRACTIVE
+    from proteus.utils.data import download_refractive
+
+    download_refractive()
+
+    mock_fetch.assert_called_once_with(REFRACTIVE)
+    assert mock_fetch.call_args.args[0] == 'atmos_clim.refractive.agni_aerosols'
+
+
+@pytest.mark.unit
 @patch('proteus.data.fetch_dataset', side_effect=OSError('mirror unreachable'))
 def test_download_surface_albedos_propagates_fetch_failure(mock_fetch):
     """AGNI needs the albedo files, so a failed fetch raises instead of being logged."""

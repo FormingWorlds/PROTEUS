@@ -38,6 +38,7 @@ from proteus.data import (
     MELTING_MONTEUX_MINUS600,
     MELTING_MONTEUX_PLUS600,
     MELTING_WOLF_BOWER_2018,
+    REFRACTIVE,
     SCATTERING,
     STELLAR_SPECTRA_MUSCLES,
     STELLAR_SPECTRA_NAMED,
@@ -62,6 +63,7 @@ ZENG_2019_RECORD = '15727899'
 HAMMOND_2024_RECORD = '15880455'
 SEAGER_2007_RECORD = '15727998'
 SCATTERING_RECORD = '19294180'
+REFRACTIVE_RECORD = '23000222'
 SOLAR_RECORD = '17981836'
 NAMED_RECORD = '15721440'
 MUSCLES_RECORD = '17802209'
@@ -133,6 +135,7 @@ _OWNED_KEYS = {
     SURFACE_ALBEDOS_HAMMOND_2024,
     EOS_SEAGER_2007,
     SCATTERING,
+    REFRACTIVE,
 }
 
 
@@ -177,6 +180,8 @@ def test_manifest_declares_the_datasets():
     assert datasets[MASS_RADIUS_ZENG_2019].zenodo == f'10.5281/zenodo.{ZENG_2019_RECORD}'
     assert datasets[SCATTERING].subdir == 'atmos_clim/scattering/socrates_aerosols'
     assert datasets[SCATTERING].zenodo == f'10.5281/zenodo.{SCATTERING_RECORD}'
+    assert datasets[REFRACTIVE].subdir == 'atmos_clim/refractive/agni_aerosols'
+    assert datasets[REFRACTIVE].zenodo == f'10.5281/zenodo.{REFRACTIVE_RECORD}'
     # All are PROTEUS-owned, so "proteus" has to appear in required_by or
     # "fwl-io fetch proteus" would skip them.
     for ds in datasets.values():
@@ -194,6 +199,7 @@ def test_every_owned_dataset_pins_its_dataverse_mirror():
         SURFACE_ALBEDOS_HAMMOND_2024: '10.34894/8ARDN5',
         EOS_SEAGER_2007: '10.34894/QZZGHW',
         SCATTERING: '10.34894/6Z8Y0Q',
+        REFRACTIVE: '10.34894/PZFHP2',
     }
     assert len(set(pins.values())) == len(pins)
 
@@ -266,6 +272,7 @@ def test_registries_pin_committed_checksums():
     hammond = _dataset(SURFACE_ALBEDOS_HAMMOND_2024).registry()
     seager = _dataset(EOS_SEAGER_2007).registry()
     scattering = _dataset(SCATTERING).registry()
+    refractive = _dataset(REFRACTIVE).registry()
     solar = _dataset(STELLAR_SPECTRA_SOLAR).registry()
     named = _dataset(STELLAR_SPECTRA_NAMED).registry()
     muscles = _dataset(STELLAR_SPECTRA_MUSCLES).registry()
@@ -285,6 +292,10 @@ def test_registries_pin_committed_checksums():
     )
     assert set(scattering) == {f'{name}.mon' for name in names.split()}
     assert scattering['sulph.mon'] == 'md5:ff75bb4b4136e562a45075d2ff7290d5'
+    assert len(refractive) == 71, (
+        'the refractive record ships 68 materials, a readme, a licence and plots'
+    )
+    assert refractive['SiO2_amorph.txt'] == 'md5:f52766cbc3679f973184cc3cb5ca7e30'
     assert len(zeng) == 57, 'the Zeng-2019 grid ships 57 curve files'
     assert len(hammond) == 26, 'the Hammond-2024 record ships 25 spectra and a readme'
     assert set(seager) == {

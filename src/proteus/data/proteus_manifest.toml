@@ -31,3 +31,9 @@ name = "Monochromatic aerosol scattering properties (.mon)"
 zenodo = "10.5281/zenodo.19294180"
 dataverse = "10.34894/6Z8Y0Q"
 required_by = ["proteus"]
+
+[atmos_clim.refractive.agni_aerosols]
+name = "Refractive indices of aerosol and cloud materials for Mie scattering"
+zenodo = "10.5281/zenodo.23000222"
+dataverse = "10.34894/PZFHP2"
+required_by = ["proteus"]

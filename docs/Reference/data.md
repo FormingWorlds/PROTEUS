@@ -35,6 +35,7 @@ A data folder in the older layout is brought into this one as described in
 | Spectral k-tables | fwl-io | `proteus get spectral` |
 | Surface albedos | fwl-io | `proteus get surfaces` |
 | Scattering properties | fwl-io | `proteus get scattering` |
+| Refractive indices for Mie aerosols | fwl-io | `proteus get refractive` |
 | Exoplanet populations, mass-radius curves | fwl-io | `proteus get reference` |
 | Interior structure EOS tables | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
 | Melting curves | fwl-io | `proteus get interiordata`, or fetched when a run needs them |

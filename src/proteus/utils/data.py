@@ -89,6 +89,18 @@ def download_scattering():
     fetch_dataset(SCATTERING)
 
 
+def download_refractive():
+    """
+    Download the aerosol refractive indices (n, k) for Mie scattering through fwl-io.
+
+    The files land in the version directory of ``REFRACTIVE`` and are verified
+    against the committed registry; DataverseNL serves them when Zenodo fails.
+    """
+    from proteus.data import REFRACTIVE, fetch_dataset
+
+    fetch_dataset(REFRACTIVE)
+
+
 def download_spectral_file(name: str, bands: str):
     """
     Download spectral file.

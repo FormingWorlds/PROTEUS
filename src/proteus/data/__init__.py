@@ -27,6 +27,7 @@ EXOPLANET_REFERENCE = 'observe.exoplanet_reference'
 MASS_RADIUS_ZENG_2019 = 'observe.mass_radius.zeng_2019'
 SURFACE_ALBEDOS_HAMMOND_2024 = 'atmos_clim.surface_albedos.hammond_2024'
 SCATTERING = 'atmos_clim.scattering.socrates_aerosols'
+REFRACTIVE = 'atmos_clim.refractive.agni_aerosols'
 EOS_SEAGER_2007 = 'interior_struct.eos.seager_2007'
 # Declared in the fwl-io shared manifest:
 EOS_WOLF_BOWER_2018 = 'interior.eos.wolf_bower_2018_1tpa'
