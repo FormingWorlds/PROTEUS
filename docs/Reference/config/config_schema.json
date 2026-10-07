@@ -4823,7 +4823,7 @@
       "class": "Zalmoxis",
       "type": "bool",
       "accepts_none": false,
-      "default": "false",
+      "default": "true",
       "choices": null,
       "bounds": null,
       "description": "Anderson Type-II Picard acceleration on the density loop.",

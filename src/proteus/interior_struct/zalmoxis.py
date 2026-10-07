@@ -3235,27 +3235,17 @@ def zalmoxis_solver(
     if config_params.get('use_jax') and 'wall_timeout' not in config_params:
         config_params['wall_timeout'] = 3600.0
 
-    # JAX structure path gate: the JAX wrapper's P-indexed adiabat
-    # tabulation collapses for P-ignoring callables (see
-    # tools/benchmarks/bench_coupled_tempfunc.py).
-    # The fix is to pass ``temperature_arrays=(r_arr, T_arr)`` instead,
-    # which routes the RHS to the r-indexed branch. We have arrays from
-    # ``update_structure_from_interior`` but NOT from PROTEUS init or
-    # equilibration (Zalmoxis constructs its own internal linear/adiabat
-    # guess for those, and that guess also ignores P). For calls with
-    # neither arrays nor a caller-provided callable, keep the defensive
-    # downgrade to the numpy path; the one-time init/equilibration cost
-    # (~70 s each, ~2-4 calls) is negligible against a 3-4 h full run.
+    # For calls without temperature data, disable JAX because internal temperature mode
+    # under Newton converges to another structure; keep Anderson acceleration as configured.
     if temperature_function is None and temperature_arrays is None:
-        if config_params.get('use_jax') or config_params.get('use_anderson'):
+        if config_params.get('use_jax'):
             log.debug(
                 'Zalmoxis call has no temperature_function or '
-                'temperature_arrays: disabling use_jax and use_anderson '
-                'for this call (the internal T-dispatch path collapses '
-                'for P-ignoring callables).'
+                'temperature_arrays: disabling use_jax for this call '
+                '(JAX internal temperature mode under Newton is excluded); '
+                'keeping use_anderson as configured.'
             )
             config_params['use_jax'] = False
-            config_params['use_anderson'] = False
 
     # Run structure solve: use miscibility wrapper when enabled
     mat_dicts = load_zalmoxis_material_dictionaries()
