@@ -1,12 +1,16 @@
 """Unit tests for the orbital-mechanics helpers in
 ``proteus.orbit.wrapper``: ``update_separation``, ``update_period``,
-``update_hillradius``, ``update_rochelimit``, ``update_breakup_period``.
+``update_hillradius``, ``update_rochelimit``, ``update_breakup_period``,
+``sma_for_instellation`` and the ``run_orbit`` dispatch.
 
 These are closed-form physics formulas, so each test pins the value
 against a hand-calculation with a known invariant (Kepler's third
 law, Hill-radius cube-root scaling, Roche-limit linear scaling in
 ``R_pl``) and uses discriminating values that distinguish the
-correct exponents from plausible bugs.
+correct exponents from plausible bugs. Also asserted: the semi-major
+axis for a target instellation returns that flux through the
+orbit-averaged inverse square on an eccentric orbit, and on a prescribed
+track and under sp0d the spin follows the orbital period.
 """
 
 from __future__ import annotations
@@ -18,6 +22,8 @@ import numpy as np
 import pytest
 
 from proteus.orbit.wrapper import (
+    run_orbit,
+    sma_for_instellation,
     update_breakup_period,
     update_hillradius,
     update_period,
@@ -25,7 +31,7 @@ from proteus.orbit.wrapper import (
     update_separation,
     update_separation_sat,
 )
-from proteus.utils.constants import AU, M_earth, M_sun, R_earth, const_G
+from proteus.utils.constants import AU, L_sun, M_earth, M_sun, R_earth, R_sun, const_G
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -1232,3 +1238,286 @@ def test_run_orbit_obliqua_module_zeroes_imk2_for_other_degrees():
     # not the one written to Imk2) -- this isn't a "module skipped"
     # no-op, but a deliberate discard of the wrong-degree value.
     mock_run_obliqua.assert_called_once()
+
+
+def _make_parameterized_orbit_config(migration, semimajoraxis_au, sma_final_au):
+    """Config stand-in for a prescribed-track run through run_orbit."""
+    config = MagicMock()
+    config.orbit.module = 'none'
+    config.orbit.evolve = False
+    config.orbit.eccentricity = 0.0
+    config.orbit.semimajoraxis = semimajoraxis_au
+    config.orbit.star_planet_model = 'parameterized'
+    config.orbit.planet_satellite_model = None
+    config.orbit.satellite = _make_satellite_config_stub()
+    config.orbit.satellite.include_satellite = False
+    config.orbit.axial_period = None
+    config.orbit.instellation_method = 'distance'
+    config.orbit.parameterized = types.SimpleNamespace(
+        migration=migration,
+        sma_final=sma_final_au,
+        time_migration=1.0e6,
+        tau_migration=1.0e7,
+    )
+    config.star.module = 'mors'
+    config.params.stop.disint.offset_spin = 0.0
+    config.params.stop.disint.offset_roche = 0.0
+    return config
+
+
+def _parameterized_seed_hf_row():
+    """Minimal runtime row for a prescribed-track run through run_orbit."""
+    return {
+        'M_star': M_sun,
+        'M_planet': M_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+        'R_obs': R_earth,
+        'R_xuv': R_earth,
+        'R_star': 6.957e8,
+        'semimajorax_sat': 1.0e8,
+        'M_sat': 7.342e22,
+        'Time': 0.0,
+        'plan_sat_am': 0.0,
+        'plan_star_am': 0.0,
+    }
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'migration',
+    ['none', 'instant', 'sigmoid', 'high_ecc'],
+    ids=['static', 'instant_step', 'sigmoid_ramp', 'high_eccentricity'],
+)
+def test_run_orbit_starts_a_prescribed_track_on_the_configured_orbit(migration):
+    """The initial condition seeds a prescribed track from orbit.semimajoraxis
+    and orbit.eccentricity, as for every other star-planet model, and the
+    track is not evaluated there. A later step that is still before
+    time_migration must find the orbit where the seed put it, so the run has
+    no jump between its first two steps.
+
+    Discriminating: the track ends at 0.0106 au, a factor 2.74 inside the
+    0.029 au start, so a seed taken from the destination, or a pre-epoch
+    step that moved the orbit, lands far outside the tolerance."""
+    config = _make_parameterized_orbit_config(migration, 0.029, 0.0106)
+    config.orbit.eccentricity = 0.05
+    hf_row = _parameterized_seed_hf_row()
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(5)
+
+    with patch('proteus.orbit.parameterized.run_parameterized_orbital_migration') as track:
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+        track.assert_not_called()
+    seed = (hf_row['semimajorax'], hf_row['eccentricity'])
+
+    assert seed[0] == pytest.approx(0.029 * AU, rel=1e-12)
+    assert seed[1] == pytest.approx(0.05, rel=1e-12)
+    assert 'dEdt_orb' not in hf_row
+
+    hf_row['Time'] = 1.0e5
+    interior_o.dt = 1.0e5
+    run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    assert hf_row['semimajorax'] == pytest.approx(seed[0], rel=1e-12)
+    assert hf_row['eccentricity'] == pytest.approx(seed[1], rel=1e-12)
+    assert abs(hf_row['semimajorax'] - 0.0106 * AU) > 0.01 * AU
+    # Scale and bounds: SI metres on a physical orbit.
+    assert 1.0e9 < hf_row['semimajorax'] < 1.0e13
+
+
+# ---------------------------------------------------------------------------
+# run_orbit: spin of a prescribed track, and the eccentric instellation inverse
+# ---------------------------------------------------------------------------
+
+
+def _run_two_parameterized_steps():
+    """Seed a high-eccentricity track at Time = 0, then step one tau past the
+    epoch, returning (orbital, axial) periods [s] at both steps."""
+    config = _make_parameterized_orbit_config('high_ecc', 0.029, 0.0106)
+    hf_row = _parameterized_seed_hf_row()
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(5)
+
+    run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+    first = (hf_row['orbital_period'], hf_row['axial_period'])
+
+    hf_row['Time'] = 1.0e6 + 1.0e7
+    interior_o.dt = 1.0e5
+    run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+    return first, (hf_row['orbital_period'], hf_row['axial_period'])
+
+
+@pytest.mark.physics_invariant
+def test_run_orbit_keeps_an_unset_spin_synchronous_on_a_prescribed_track():
+    """With axial_period unset the planet is tidally locked. A prescribed track
+    applies no torque to the spin, so the spin must follow the orbit it moves
+    to: one tau after the epoch the orbit has shrunk from 0.029 au and the day
+    must shorten with it rather than keep the first-step value."""
+    (p_orb_0, p_ax_0), (p_orb_1, p_ax_1) = _run_two_parameterized_steps()
+
+    assert p_ax_0 == pytest.approx(p_orb_0, rel=1e-12)
+    assert p_ax_1 == pytest.approx(p_orb_1, rel=1e-12)
+    # Discrimination: the orbit moved, so a spin frozen at its first value
+    # would sit far outside the tolerance above.
+    assert p_orb_1 < 0.5 * p_orb_0
+    assert abs(p_ax_1 - p_ax_0) > 0.5 * p_ax_0
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('time_yr', [0.0, 1.0], ids=['init_loops', 'first_unit_step'])
+def test_run_orbit_does_not_evaluate_the_track_at_the_initial_condition(time_yr):
+    """The initial condition spans Time <= 1 yr and holds the configured orbit
+    whatever the track says. The epoch is put at 0.5 yr here, below the bound
+    the config enforces, so an instant track evaluated there by any code path
+    would move the planet to 0.0106 au, a factor 2.74 inside the seed."""
+    config = _make_parameterized_orbit_config('instant', 0.029, 0.0106)
+    config.orbit.parameterized.time_migration = 0.5
+    hf_row = _parameterized_seed_hf_row()
+    hf_row['Time'] = time_yr
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(5)
+
+    run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    assert hf_row['semimajorax'] == pytest.approx(0.029 * AU, rel=1e-12)
+    assert abs(hf_row['semimajorax'] - 0.0106 * AU) > 0.01 * AU
+    assert 'dEdt_orb' not in hf_row
+
+
+@pytest.mark.physics_invariant
+def test_run_orbit_keeps_the_spin_synchronous_under_sp0d():
+    """sp0d evolves a and e but no spin, so the planet stays locked to the
+    orbit it moves to, as on a prescribed track. The orbit step is replaced by
+    a halving of a, so the orbital period falls by 2^1.5 = 2.83 and a spin
+    frozen at its first value would sit far outside the tolerance."""
+    config = _make_parameterized_orbit_config('none', 0.029, None)
+    config.orbit.star_planet_model = 'sp0d'
+    hf_row = _parameterized_seed_hf_row()
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(5)
+
+    run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+    p_orb_0, p_ax_0 = hf_row['orbital_period'], hf_row['axial_period']
+
+    def _halve_the_orbit(row, *args):
+        row['semimajorax'] *= 0.5
+
+    hf_row['Time'] = 1.0e5
+    interior_o.dt = 1.0e5
+    with patch('proteus.orbit.orbit.evolve_orbit_star', side_effect=_halve_the_orbit):
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    assert p_ax_0 == pytest.approx(p_orb_0, rel=1e-12)
+    assert hf_row['axial_period'] == pytest.approx(hf_row['orbital_period'], rel=1e-12)
+    assert hf_row['orbital_period'] == pytest.approx(p_orb_0 / 2.0**1.5, rel=1e-12)
+    assert abs(hf_row['axial_period'] - p_ax_0) > 0.5 * p_ax_0
+
+
+def _dummy_inst_config(flux_s_earth):
+    """Config stand-in for the dummy star at a target instellation."""
+    config = MagicMock()
+    config.star.dummy.Teff = 5772.0
+    config.orbit.instellationflux = flux_s_earth
+    return config
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('ecc', [0.0, 0.3, 0.8], ids=['circular', 'mild', 'high'])
+def test_sma_for_instellation_inverts_the_orbit_averaged_flux(ecc):
+    """Round trip: the semi-major axis returned for a target flux must give
+    that flux back through the orbit-averaged inverse square used by
+    update_instellation, exactly up to round-off since the luminosity cancels.
+    The circular inverse sqrt(L / 4 pi S) would instead deliver
+    (1 - e^2)^(-1/2) times the target: 1.048 at e = 0.3 and 1.67 at e = 0.8."""
+    from proteus.star.dummy import calc_instellation, calc_star_luminosity
+    from proteus.star.wrapper import flux_weighted_distance
+
+    config = _dummy_inst_config(2.0)
+    with patch('proteus.star.dummy.get_star_radius', return_value=1.0):
+        sma = sma_for_instellation(config, ecc)
+    s_earth = L_sun / (4.0 * np.pi * AU**2)
+    flux = calc_instellation(
+        5772.0, R_sun, flux_weighted_distance({'semimajorax': sma, 'eccentricity': ecc})
+    )
+
+    assert flux / s_earth == pytest.approx(2.0, rel=1e-10)
+    # Guard: the circular inverse misses the target by (1 - e^2)^(-1/2).
+    circular = np.sqrt(calc_star_luminosity(5772.0, R_sun) / (4.0 * np.pi * 2.0 * s_earth))
+    flux_wrong = calc_instellation(
+        5772.0, R_sun, flux_weighted_distance({'semimajorax': circular, 'eccentricity': ecc})
+    )
+    assert flux_wrong / s_earth == pytest.approx(2.0 / np.sqrt(1.0 - ecc**2), rel=1e-10)
+    if ecc > 0.0:
+        assert abs(flux_wrong / s_earth - 2.0) > 0.09
+    assert 0.5 * AU < sma < 1.0 * AU
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('time_yr', [0.0, 100.0], ids=['first_step', 'later_step'])
+def test_run_orbit_inst_method_puts_an_eccentric_orbit_at_the_target_flux(time_yr):
+    """Both run_orbit call sites of the instellation inverse (the first step
+    and a later step of a fixed orbit) place an e = 0.8 orbit where the
+    orbit-averaged flux equals orbit.instellationflux. The circular inverse
+    would leave the semi-major axis 1.29 times too small and the flux 1.67
+    times too high."""
+    from proteus.star.dummy import calc_instellation, calc_star_luminosity
+    from proteus.star.wrapper import flux_weighted_distance
+
+    config = MagicMock()
+    config.orbit.module = None
+    config.orbit.evolve = False
+    config.orbit.star_planet_model = None
+    config.orbit.planet_satellite_model = None
+    config.orbit.satellite.include_satellite = False
+    config.orbit.axial_period = None
+    config.orbit.instellation_method = 'inst'
+    config.orbit.instellationflux = 2.0
+    config.orbit.semimajoraxis = 1.0
+    config.orbit.eccentricity = 0.8
+    config.star.module = 'dummy'
+    config.star.dummy.Teff = 5772.0
+    config.params.stop.disint.offset_spin = 0.0
+    config.params.stop.disint.offset_roche = 0.0
+    hf_row = {
+        'M_star': M_sun,
+        'M_planet': M_earth,
+        'M_int': M_earth,
+        'R_int': R_earth,
+        'R_obs': R_earth,
+        'R_xuv': R_earth,
+        'R_star': R_sun,
+        'semimajorax': AU,
+        'eccentricity': 0.8,
+        'axial_period': 86400.0,
+        'semimajorax_sat': 3.8e8,
+        'M_sat': 7.342e22,
+        'Time': time_yr,
+        'plan_sat_am': 0.0,
+        'plan_star_am': 0.0,
+    }
+    interior_o = MagicMock()
+    interior_o.dt = 1.0
+    interior_o.phi = np.zeros(3)
+
+    with patch('proteus.star.dummy.get_star_radius', return_value=1.0):
+        run_orbit(hf_row, config, dirs={}, tides_o=MagicMock(), interior_o=interior_o)
+
+    s_earth = L_sun / (4.0 * np.pi * AU**2)
+    flux = calc_instellation(5772.0, R_sun, flux_weighted_distance(hf_row))
+    circular = np.sqrt(calc_star_luminosity(5772.0, R_sun) / (4.0 * np.pi * 2.0 * s_earth))
+    assert flux / s_earth == pytest.approx(2.0, rel=1e-10)
+    assert hf_row['semimajorax'] / circular == pytest.approx(0.36**-0.25, rel=1e-10)
+    assert hf_row['eccentricity'] == pytest.approx(0.8, rel=1e-12)
+
+
+@pytest.mark.parametrize('ecc', [1.0, -0.1], ids=['unbound', 'negative'])
+def test_sma_for_instellation_rejects_an_unphysical_eccentricity(ecc):
+    """An eccentricity outside [0, 1) has no bound orbit to invert to."""
+    config = _dummy_inst_config(1.0)
+    with pytest.raises(ValueError, match='Eccentricity') as excinfo:
+        sma_for_instellation(config, ecc)
+    assert str(ecc) in str(excinfo.value)
