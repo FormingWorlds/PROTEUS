@@ -9,6 +9,7 @@ Usage from a shell script:
 
     URL=$(python tools/_module_pins.py agni url)
     REF=$(python tools/_module_pins.py agni ref)
+    MIRROR=$(python tools/_module_pins.py petsc mirror)
 
 Exits non-zero with a clear message if the module is unknown or the
 requested field is missing.

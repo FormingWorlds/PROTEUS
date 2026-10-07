@@ -118,6 +118,17 @@ export PETSC_DIR="$workpath"
 echo "PETSC_DIR  = $PETSC_DIR"
 echo "PETSC_ARCH = $PETSC_ARCH"
 
+# Read the archive pins before the previous installation is removed
+petsc_pin() { python "$proteus_tools_dir/_module_pins.py" petsc "$1"; }
+petsc_sha256=$(petsc_pin sha256) || petsc_sha256=""
+petsc_url=$(petsc_pin url) || petsc_url=""
+petsc_mirror=$(petsc_pin mirror) || petsc_mirror=""
+if [[ -z "$petsc_sha256" || -z "$petsc_url" || -z "$petsc_mirror" ]]; then
+    echo "ERROR: cannot read the PETSc url, mirror and sha256 from [tool.proteus.modules.petsc]" \
+        "in pyproject.toml; this needs python 3.11 or newer (tomllib) on PATH" >&2
+    exit 1
+fi
+
 # Clean previous installation
 rm -rf "$workpath"
 mkdir "$workpath"
@@ -128,9 +139,8 @@ mkdir "$workpath"
 current_step="Downloading PETSc archive"
 
 zipfile="$workpath/petsc.zip"
-petsc_pin() { python "$proteus_tools_dir/_module_pins.py" petsc "$1"; }
-fetch_verified "$(petsc_pin sha256)" "$zipfile" \
-    "${PETSC_URL:-$(petsc_pin url)}" "${PETSC_MIRROR_URL:-$(petsc_pin mirror)}"
+fetch_verified "$petsc_sha256" "$zipfile" \
+    "${PETSC_URL:-$petsc_url}" "${PETSC_MIRROR_URL:-$petsc_mirror}"
 
 current_step="Decompressing PETSc archive"
 echo "Decompressing..."

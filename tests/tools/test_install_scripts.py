@@ -726,10 +726,11 @@ def test_get_petsc_tries_zenodo_then_the_mirror_from_its_pins(tmp_path):
         f'url) echo "file://{wrong}" ;; mirror) echo "$PIN_MIRROR" ;; esac\n',
     )
     block = _extract_script_block(
-        'get_petsc.sh', 'zipfile="$workpath/petsc.zip"', 'current_step="Decompressing'
+        'get_petsc.sh', '# Read the archive pins', 'current_step="Decompressing'
     )
+    work = tmp_path / 'work'
     snippet = (
-        f'set -e\nsource "{fake_tools}/_get_common.sh"\nworkpath="{tmp_path}"\n{block}\necho DONE\n'
+        f'set -e\nsource "{fake_tools}/_get_common.sh"\nworkpath="{work}"\n{block}\necho DONE\n'
     )
     env = {**os.environ, 'PATH': f'{stubs}:{os.environ["PATH"]}', 'PIN_MIRROR': ''}
 
@@ -738,26 +739,39 @@ def test_get_petsc_tries_zenodo_then_the_mirror_from_its_pins(tmp_path):
             ['bash', '-c', snippet], capture_output=True, text=True, env={**env, **extra}
         )
 
-    # No mirror pin: the empty source is skipped, not tried.
-    pinned = run()
+    # Both pinned sources serve a wrong file: the install stops.
+    pinned = run(PIN_MIRROR=f'file://{wrong}')
     assert pinned.returncode == 1
-    assert f'file://{wrong} served a file' in pinned.stderr
-    assert 'download from  failed' not in pinned.stderr
+    assert pinned.stderr.count(f'file://{wrong} served a file') == 2
+
+    # An empty pin stops with the cause instead of skipping that source.
+    empty_mirror = run()
+    assert empty_mirror.returncode == 1
+    assert 'cannot read the PETSc url, mirror and sha256' in empty_mirror.stderr
 
     # Zenodo first, then the mirror.
     mirrored = run(PIN_MIRROR=f'file://{archive}')
     assert mirrored.returncode == 0, mirrored.stderr
     out = mirrored.stdout
     assert out.index(f'Downloading file://{wrong}') < out.index(f'Downloading file://{archive}')
-    assert (tmp_path / 'petsc.zip').read_bytes() == b'petsc archive'
+    assert (work / 'petsc.zip').read_bytes() == b'petsc archive'
     assert 'DONE' in out
 
     # PETSC_URL replaces the pinned url, and PETSC_MIRROR_URL the pinned mirror.
     overridden = run(PETSC_URL=f'file://{archive}', PIN_MIRROR=f'file://{wrong}')
     assert overridden.returncode == 0, overridden.stderr
     assert f'Downloading file://{wrong}' not in overridden.stdout
-    mirror_set = run(PETSC_MIRROR_URL=f'file://{archive}')
+    mirror_set = run(PETSC_MIRROR_URL=f'file://{archive}', PIN_MIRROR=f'file://{wrong}')
     assert mirror_set.returncode == 0, mirror_set.stderr
+
+    # A pin that cannot be read stops before the previous installation is removed.
+    (work / 'old_build').write_text('kept')
+    _write_stub(stubs, 'python', '#!/bin/bash\nexit 1\n')
+    unreadable = run()
+    assert unreadable.returncode == 1
+    assert 'needs python 3.11 or newer (tomllib)' in unreadable.stderr
+    assert (work / 'old_build').read_text() == 'kept'
+    assert 'Downloading' not in unreadable.stdout
 
 
 @pytest.mark.unit
@@ -810,7 +824,7 @@ def test_err_trap_reports_current_step():
     """ERR trap output includes the ``current_step`` variable value."""
     snippet = """\
 set -e
-current_step="Downloading PETSc archive from OSF"
+current_step="Downloading PETSc archive"
 on_error() {
     local rc=$?
     echo "STEP=$current_step"
@@ -824,7 +838,7 @@ false
         text=True,
     )
     assert result.returncode != 0
-    assert 'STEP=Downloading PETSc archive from OSF' in result.stdout
+    assert 'STEP=Downloading PETSc archive' in result.stdout
 
 
 # ---------------------------------------------------------------------------
