@@ -2688,21 +2688,28 @@ def test_zalmoxis_solver_init_call_keeps_internal_mode_dispatch(tmp_path, monkey
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('use_anderson', [True, False])
 @pytest.mark.parametrize('outer_solver', ['newton', 'picard'])
 def test_zalmoxis_solver_guard_preserves_anderson_and_excludes_jax_without_temp_data(
-    tmp_path, monkeypatch, outer_solver
+    tmp_path, monkeypatch, use_anderson, outer_solver
 ):
-    """Invariant: calls without temperature data exclude JAX across outer solvers.
+    """Invariant: calls without temperature data exclude JAX across configurations.
 
     A call arriving without temperature data disables JAX while preserving
-    Anderson acceleration as configured, whether outer_solver is newton or picard.
+    Anderson acceleration as configured, across outer solvers and Anderson settings.
     """
     main_mock, _, _, _, _, _, _ = _run_gate_solver(
-        tmp_path, monkeypatch, 'PALEOS-2phase:MgSiO3', None, None, outer_solver=outer_solver
+        tmp_path,
+        monkeypatch,
+        'PALEOS-2phase:MgSiO3',
+        None,
+        None,
+        use_anderson=use_anderson,
+        outer_solver=outer_solver,
     )
     config_params = main_mock.call_args.args[0]
     assert config_params['use_jax'] is False
-    assert config_params['use_anderson'] is True
+    assert config_params['use_anderson'] is use_anderson
 
 
 @pytest.mark.unit
