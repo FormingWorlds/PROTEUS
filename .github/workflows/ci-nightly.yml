@@ -168,6 +168,7 @@ jobs:
             -m "integration and not slow" \
             -p no:faulthandler \
             -n auto --dist worksteal \
+            --durations=25 \
             --junitxml=junit-int-${{ matrix.os }}.xml \
             --cov=proteus \
             --cov-report=xml:coverage-int-${{ matrix.os }}.xml \
