@@ -251,10 +251,10 @@ Theoretical mass-radius curves for a range of interior and atmospheric
 structures, from [Zeng et al. (2019)](https://doi.org/10.1073/pnas.1812905116),
 taken from the author's [planet model tables](https://lweb.cfa.harvard.edu/~lzeng/planetmodels.html#mrtables).
 
-Fetched through fwl-io into
-`$FWL_DATA/observe/mass_radius/zeng_2019/r<record-id>/`, on the same terms as
-the exoplanet catalogue above. A copy under `$FWL_DATA/mass_radius/Zeng2019` is
-not read and can be deleted.
+Declared in the fwl-io shared manifest, which Zalmoxis reads too, and fetched into
+`$FWL_DATA/interior/mass_radius/zeng_2019/r<record-id>/`, on the same terms as
+the exoplanet catalogue above. Copies under `$FWL_DATA/mass_radius/Zeng2019` and
+`$FWL_DATA/observe/mass_radius/zeng_2019` are not read and can be deleted.
 
 ---
 
@@ -266,14 +266,14 @@ All equation-of-state tables are fetched through fwl-io into `$FWL_DATA/<dataset
 
 | Dataset directory | Contents | Fetched |
 |---|---|---|
-| `interior_struct/eos/seager_2007` | Seager et al. (2007) iron, silicate and water tables | whole record |
+| `interior/eos/seager_2007` | Seager et al. (2007) iron, silicate and water tables | whole record |
 | `interior/eos/wolf_bower_2018_1tpa` | Wolf and Bower (2018) MgSiO3 melt and solid tables to 1 TPa | melt density, melt adiabatic gradient and solid density for `WolfBower2018`; the solid density alone for `RTPress100TPa` |
 | `interior/eos/rtpress_melt_100tpa` | RTPress MgSiO3 melt tables to 100 TPa | melt density and melt adiabatic gradient |
 | `interior/eos/paleos_mgsio3` | PALEOS MgSiO3 solid and liquid tables, 150 and 600 points per decade | the 150 points-per-decade pair for `PALEOS-2phase:MgSiO3`, the 600 points-per-decade pair for `PALEOS-2phase:MgSiO3-highres` |
 | `interior/eos/paleos_iron`, `paleos_mgsio3_unified`, `paleos_h2o` | PALEOS unified tables for iron, MgSiO3 and water | the table of each selected component |
 | `interior/eos/chabrier_2021_hhe` | Chabrier et al. hydrogen and helium tables | archive extracted into `r<record-id>/EOS_Chabrier2021_HHe/` |
 
-Tables under `$FWL_DATA/zalmoxis_eos` and `$FWL_DATA/EOS_material_properties` are not read where they are. `fwl-io relocate` moves a `zalmoxis_eos` folder that holds every file of its dataset; the rest can be deleted once the run has fetched them.
+Tables under `$FWL_DATA/zalmoxis_eos`, `$FWL_DATA/EOS_material_properties` and `$FWL_DATA/interior_struct/eos/seager_2007` are not read where they are; the Seager tables (0.2 MB) are fetched again into `interior/eos/seager_2007`. `fwl-io relocate` moves a `zalmoxis_eos` folder that holds every file of its dataset; the rest can be deleted once the run has fetched them.
 
 ---
 

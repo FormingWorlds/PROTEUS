@@ -85,7 +85,7 @@ dependencies = [
     "toml",
     # 26.10.6 falls back to the DataverseNL mirrors the manifests pin; every
     # request has a timeout and a transient failure is retried with backoff.
-    "fwl-io>=26.10.6",
+    "fwl-io>=26.10.7",
     "packaging",
 ]
 

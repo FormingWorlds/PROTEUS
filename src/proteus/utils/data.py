@@ -930,7 +930,7 @@ def download_eos_static():
     """Download static (Zalmoxis-only) EOS files.
 
     Fetches the Seager et al. (2007) EOS tables through fwl-io into
-    ``FWL_DATA/interior_struct/eos/seager_2007/r<record-id>/``.
+    ``FWL_DATA/interior/eos/seager_2007/r<record-id>/``.
     """
     download_Seager_EOS()
 
