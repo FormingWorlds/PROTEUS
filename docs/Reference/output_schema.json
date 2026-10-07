@@ -2078,6 +2078,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "giant impact, interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [],
