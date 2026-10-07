@@ -1475,9 +1475,8 @@ def load_zalmoxis_configuration(
         'tolerance_inner': config.interior_struct.zalmoxis.solver_tol_inner,
         'max_iterations_outer': config.interior_struct.zalmoxis.solver_max_iter_outer,
         'max_iterations_inner': config.interior_struct.zalmoxis.solver_max_iter_inner,
-        # JAX+diffrax structure path (opt-in) and Anderson Picard acceleration
-        # (defaulting on). See `Zalmoxis.use_jax` / `Zalmoxis.use_anderson`
-        # in proteus.config._struct.
+        # JAX diffrax structure path and Anderson Picard acceleration both
+        # default on. See Zalmoxis.use_jax and use_anderson in config._struct.
         'use_jax': config.interior_struct.zalmoxis.use_jax,
         'use_anderson': config.interior_struct.zalmoxis.use_anderson,
         # outer mass-radius solver dispatch ('newton' default |
