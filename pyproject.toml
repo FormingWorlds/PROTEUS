@@ -44,7 +44,7 @@ classifiers = [
 dependencies = [
     "attrs",
     "cattrs",
-    "fwl-janus>=24.11.05",
+    "fwl-janus>=26.10.08",
     "fwl-mors>=26.10.6",
     "fwl-calliope>=26.10.05",
     "fwl-zephyrus>=26.7.24",

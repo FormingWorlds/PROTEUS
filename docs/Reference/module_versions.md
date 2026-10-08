@@ -18,7 +18,7 @@ in `[project] dependencies`. Click a badge to view the pinned release.
 <!-- BEGIN PYPI_TABLE -->
 | Module | Role | Pin | Docs |
 |--------|------|-----|------|
-| fwl-janus | 1D convective atmosphere | [![fwl-janus](https://img.shields.io/badge/fwl--janus-%3E%3D24.11.05-blue)](https://pypi.org/project/fwl-janus/24.11.05/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/JANUS/) |
+| fwl-janus | 1D convective atmosphere | [![fwl-janus](https://img.shields.io/badge/fwl--janus-%3E%3D26.10.08-blue)](https://pypi.org/project/fwl-janus/26.10.08/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/JANUS/) |
 | fwl-mors | Stellar evolution | [![fwl-mors](https://img.shields.io/badge/fwl--mors-%3E%3D26.10.6-blue)](https://pypi.org/project/fwl-mors/26.10.6/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/MORS/) |
 | fwl-calliope | Volatile outgassing | [![fwl-calliope](https://img.shields.io/badge/fwl--calliope-%3E%3D26.10.05-blue)](https://pypi.org/project/fwl-calliope/26.10.05/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/CALLIOPE/) |
 | fwl-zephyrus | Atmospheric escape | [![fwl-zephyrus](https://img.shields.io/badge/fwl--zephyrus-%3E%3D26.7.24-blue)](https://pypi.org/project/fwl-zephyrus/26.7.24/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/ZEPHYRUS) |
