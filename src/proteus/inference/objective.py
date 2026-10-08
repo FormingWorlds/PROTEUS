@@ -370,7 +370,9 @@ def run_proteus(
 
     # Records a run that dies before its logger exists.
     if dispatch_mode() == DISPATCH_RUNNER:
-        console = out_abs.parent / f'runner{CHILD_CONSOLE_SUFFIX}'
+        # Every initial-sampling pool process shares w_-1, so each names its own file.
+        stem = f'runner_{os.getpid()}' if worker == -1 else 'runner'
+        console = out_abs.parent / f'{stem}{CHILD_CONSOLE_SUFFIX}'
     else:
         console = out_abs.parent / f'{out_abs.name}{CHILD_CONSOLE_SUFFIX}'
 

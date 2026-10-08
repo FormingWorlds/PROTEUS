@@ -264,6 +264,7 @@ one PROTEUS process alive per worker and reuses it for every evaluation that wor
 
 On the default dispatch each evaluation writes its own `i_<n>_console.log`; 
 a reused process instead writes a single `runner_console.log` per worker, covering every simulation that worker ran, because Julia cannot be redirected between simulations. 
+The initial samples all go in `w_-1`, so there each pool process writes its own `runner_<pid>_console.log`. 
 Each run's own `proteus_*.log` is unaffected.
 
 ```toml

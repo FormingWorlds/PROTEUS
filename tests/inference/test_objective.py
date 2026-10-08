@@ -1464,6 +1464,47 @@ def test_runner_dispatch_reports_failures_like_a_failed_child(clean_dispatch, tm
 
 
 @pytest.mark.unit
+def test_runner_dispatch_gives_each_initial_sampling_process_its_own_console(
+    clean_dispatch, tmp_path
+):
+    """Initial samples all run as worker -1 from several pool processes, so the
+    console file the runner is handed names the process. A shared name would
+    interleave their output and send every failure report to one mixed file.
+    """
+    out_abs = tmp_path / 'sim'
+    out_abs.mkdir(parents=True)
+    _stub_runner(clean_dispatch, out_abs, outcome=('exceeded the 900.0 s timeout', None))
+    consoles = []
+    runner = objective_mod.worker_runner
+    clean_dispatch.setattr(
+        objective_mod,
+        'worker_runner',
+        lambda console: consoles.append(console) or runner(console),
+    )
+
+    def failed_console(pid):
+        clean_dispatch.setattr(objective_mod.os, 'getpid', lambda: pid)
+        with pytest.raises(failures_mod.ProteusRunFailure) as excinfo:
+            objective_mod.run_proteus(
+                parameters={},
+                worker=-1,
+                iter=0,
+                observables=['P_surf'],
+                ref_config='reference.toml',
+                output='dummy_output',
+            )
+        return excinfo.value.console_path
+
+    first, second = failed_console(1111), failed_console(2222)
+
+    assert first != second
+    assert first.endswith(f'runner_1111{failures_mod.CHILD_CONSOLE_SUFFIX}')
+    assert second.endswith(f'runner_2222{failures_mod.CHILD_CONSOLE_SUFFIX}')
+    # The report points at the file the runner was given, not a guess at it.
+    assert [str(c) for c in consoles] == [first, second]
+
+
+@pytest.mark.unit
 def test_run_proteus_leaves_the_callers_parameter_dict_as_it_was_passed(monkeypatch, tmp_path):
     """The run-specific config entries the simulator needs are added to the
     config it is given, not to the dict the caller passed in. The caller keeps
