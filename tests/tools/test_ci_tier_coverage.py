@@ -401,18 +401,21 @@ def test_integration_tier_runs_two_xdist_workers():
 
 
 @pytest.mark.parametrize(
-    ('extra', 'workers', 'distload'), [('', 2, False), (' -vn3', 3, False), (' -d', 2, True)]
+    ('extra', 'expected'),
+    [
+        ('', (2, False, None, [])),
+        (' -vn3', (3, False, None, [])),
+        (' -d', (2, True, None, [])),
+        (' --maxprocesses 1 --tx popen', (2, False, 1, ['popen'])),
+    ],
 )
-def test_integration_options_read_flags_as_pytest_does(extra, workers, distload):
-    """A clustered or later flag overrides ``-n 2 --dist worksteal`` in pytest, and in the helper."""
-    text = (
-        'run: |\n  pytest tests/integration \\\n    -n 2 --dist worksteal \\\n    -v'
-        + extra
-        + '\n'
+def test_integration_options_read_flags_as_pytest_does(extra, expected):
+    """A clustered ``-n``, ``-d``, ``--maxprocesses`` or ``--tx`` changes what ``-n 2`` runs."""
+    opts = _integration_options(
+        f'pytest tests/integration \\\n  -n 2 --dist worksteal{extra}\n'
     )
-    opts = _integration_options(text)
-    assert opts.numprocesses == workers
-    assert opts.distload is distload
+    assert (opts.numprocesses, opts.distload, opts.maxprocesses, opts.tx) == expected
+    assert opts.dist == 'worksteal'
 
 
 def test_every_tiered_file_is_reachable_by_its_ci_job():
