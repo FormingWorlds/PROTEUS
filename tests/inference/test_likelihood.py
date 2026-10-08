@@ -87,6 +87,28 @@ def test_ratio_correlation_shares_elements_with_sign():
     assert likelihood_mod.validate_correlation(obs, sigma, corr) == corr
 
 
+@pytest.mark.physics_invariant
+def test_chi_squared_matches_residuals_to_names_in_any_order():
+    """Residuals listed in another order than the matrix are reordered first.
+    With three observables and rho on one pair, a skipped reorder changes chi2;
+    with two and a unit diagonal it would not, since u^T R^-1 u is then symmetric.
+    """
+    whitener = likelihood_mod.CorrelationWhitener(['A', 'B', 'C'], {'A': {'B': 0.5}})
+    # u_A, u_B, u_C = 1, 2, 3, passed as (B, C, A).
+    u = torch.tensor([[2.0, 3.0, 1.0]], dtype=torch.double)
+
+    chi2 = whitener.chi_squared(['B', 'C', 'A'], u).item()
+
+    # (1 - 2*0.5*1*2 + 4) / 0.75 + 9 = 13.
+    assert chi2 == pytest.approx(13.0, rel=1e-12)
+    # Without the reorder rho would pair u_B with u_C: (4 - 6 + 9) / 0.75 + 1 = 10.33.
+    assert abs(chi2 - 31.0 / 3.0) > 2.0
+    # Independent residuals give 14, so rho is applied.
+    assert abs(chi2 - 14.0) > 0.5
+    with pytest.raises(KeyError, match='do not match'):
+        whitener.chi_squared(['A', 'B', 'D'], u)
+
+
 @pytest.mark.parametrize(
     ('name', 'expected'),
     [

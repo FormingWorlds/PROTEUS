@@ -561,8 +561,9 @@ def test_eval_obj_compares_element_ratios_in_log_only_with_sigma():
 
     # Log: (log10 0.5) / (0.05 / (0.5 ln 10)) = 6.93, so chi2 = 48.0; linear would give 25.
     expected = (math.log10(2.0) * 0.5 * math.log(10.0) / 0.05) ** 2
-    assert _chi2(sim, tru, {'C/O_atm': 0.05}) == pytest.approx(expected, rel=1e-9)
-    assert abs(expected - 25.0) > 20.0
+    chi2 = _chi2(sim, tru, {'C/O_atm': 0.05})
+    assert chi2 == pytest.approx(expected, rel=1e-9)
+    assert abs(chi2 - 25.0) > 20.0
 
 
 def test_validate_sigma_accepts_complete_table_and_rejects_bad_entries():
@@ -1332,6 +1333,48 @@ def _stub_runner(monkeypatch, out_abs, outcome, seen=None):
     monkeypatch.setattr(objective_mod, 'update_toml', lambda *args, **kwargs: None)
     monkeypatch.setattr(objective_mod, 'worker_runner', lambda _console: _Runner())
     monkeypatch.setenv('PROTEUS_INFERENCE_DISPATCH', 'runner')
+
+
+def test_worker_runner_is_one_instance_per_process_until_closed(clean_dispatch, tmp_path):
+    """Every evaluation in a worker gets the same runner, its console fixed at
+    the first; closing stops it, and the next call builds a fresh one.
+    """
+    clean_dispatch.setattr(objective_mod, '_RUNNER', None)
+    clean_dispatch.setenv('PROTEUS_INFERENCE_RUNNER_MAX_JOBS', '25')
+    stopped = []
+
+    first = objective_mod.worker_runner(tmp_path / 'a_console.log')
+    clean_dispatch.setattr(first, 'stop', lambda: stopped.append(first))
+    again = objective_mod.worker_runner(tmp_path / 'b_console.log')
+
+    assert again is first
+    assert first.console == tmp_path / 'a_console.log'
+    assert first.max_jobs == 25
+
+    objective_mod.close_worker_runner()
+    assert stopped == [first]
+    assert objective_mod._RUNNER is None
+    fresh = objective_mod.worker_runner(tmp_path / 'b_console.log')
+    assert fresh is not first
+    assert fresh.console == tmp_path / 'b_console.log'
+    # A second close with nothing started is a no-op.
+    objective_mod.close_worker_runner()
+    objective_mod.close_worker_runner()
+    assert objective_mod._RUNNER is None
+
+
+@pytest.mark.parametrize('value', ['many', '', '2.5'], ids=['word', 'empty', 'float'])
+def test_worker_runner_reads_a_bad_max_jobs_as_no_limit(clean_dispatch, tmp_path, value):
+    """A max_jobs the environment cannot give as an int means no limit,
+    rather than failing every evaluation of the worker.
+    """
+    clean_dispatch.setattr(objective_mod, '_RUNNER', None)
+    clean_dispatch.setenv('PROTEUS_INFERENCE_RUNNER_MAX_JOBS', value)
+
+    runner = objective_mod.worker_runner(tmp_path / 'console.log')
+
+    assert runner.max_jobs == 0
+    assert runner._proc is None  # built lazily: nothing runs until the first job
 
 
 def test_set_dispatch_rejects_an_unknown_mode(clean_dispatch):

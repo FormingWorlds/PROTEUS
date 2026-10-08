@@ -71,13 +71,20 @@ class ProteusRunner:
             self.stop()
             return _CRASHED, exit_code
 
+        # A reply `serve` did not write fails this sample, not the whole worker.
+        try:
+            error = json.loads(line)['error']
+        except (ValueError, KeyError, TypeError):
+            log.warning(f'Reused PROTEUS process sent an unreadable reply: {line!r}')
+            self.stop()
+            return _CRASHED, None
+
         self._jobs += 1
         if self.max_jobs and self._jobs >= self.max_jobs:
             self.stop()
 
         # A simulation that raised leaves the process usable, so it is kept.
         # Exit code 1, as the same failure gives as a one-shot child.
-        error = json.loads(line)['error']
         if error is None:
             return None
         log.debug(f'Reused PROTEUS process reported: {error}')

@@ -459,10 +459,11 @@ def test_run_inference_reports_the_spectral_cache_the_study_uses(
         assert os.environ[SPECTRAL_CACHE_ENV] == '1'
 
 
-def test_run_inference_rejects_incomplete_sigma_before_emptying_output(monkeypatch, tmp_path):
-    """A ``[sigma]`` table missing an observable is refused before the output
-    folder is emptied, so a typo does not cost the previous study's results.
-    A complete table is stored back on the config as floats.
+def _validation_study(monkeypatch, tmp_path, **config):
+    """A study config over a finished earlier study, stopped once validated.
+
+    Returns the config and the earlier study's file, which a check placed after
+    `safe_rm` would leave deleted.
     """
     config = {
         'output': 'unit_inference',
@@ -473,9 +474,8 @@ def test_run_inference_rejects_incomplete_sigma_before_emptying_output(monkeypat
         'kernel': 'MAT3/2',
         'acqf': 'LogEI',
         'seed': 1,
-        'observables': {'R_obs': 6.0e6, 'T_obs': 400.0},
         'parameters': {'planet.mass_tot': [0.7, 3.0]},
-        'sigma': {'R_obs': 1.0e5},
+        **config,
     }
     output_root = tmp_path / 'output'
     output_root.mkdir()
@@ -489,20 +489,6 @@ def test_run_inference_rejects_incomplete_sigma_before_emptying_output(monkeypat
     )
     monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
     monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
-    create_init_calls: list = []
-    monkeypatch.setattr(
-        inference_mod, 'create_init', lambda *a, **kw: create_init_calls.append((a, kw))
-    )
-
-    with pytest.raises(ValueError, match='T_obs'):
-        inference_mod.run_inference(config)
-    assert create_init_calls == []
-    # A check placed after `safe_rm` would leave this file deleted.
-    assert previous.read_text(encoding='utf-8') == 'x_0,y\n0.5,1.0\n'
-
-    # Complete table: accepted, and the run proceeds to the initial design.
-    # Stopped there, since only the validation step is under test.
-    config['sigma'] = {'T_obs': 20, 'R_obs': 1.0e5}
     # run_inference records these for its workers; restored after the test.
     for name in (
         'PROTEUS_INFERENCE_CHILD_TIMEOUT_S',
@@ -516,73 +502,87 @@ def test_run_inference_rejects_incomplete_sigma_before_emptying_output(monkeypat
         raise RuntimeError('stop after validation')
 
     monkeypatch.setattr(inference_mod, 'create_init', _stop)
-    with pytest.raises(RuntimeError, match='stop after validation'):
-        inference_mod.run_inference(config)
-    assert config['sigma'] == {'T_obs': pytest.approx(20.0), 'R_obs': pytest.approx(1.0e5)}
-    assert isinstance(config['sigma']['T_obs'], float)
+    return config, previous
 
 
-def test_run_inference_rejects_invalid_correlation_before_emptying_output(
-    monkeypatch, tmp_path, caplog
+_THREE_OBS = {'R_obs': 6.0e6, 'T_obs': 400.0, 'g_obs': 9.8}
+_THREE_SIGMA = {'R_obs': 1.0e5, 'T_obs': 20.0, 'g_obs': 0.5}
+
+
+@pytest.mark.parametrize(
+    ('config', 'key', 'bad', 'match', 'good'),
+    [
+        (
+            {'observables': {'R_obs': 6.0e6, 'T_obs': 400.0}},
+            'sigma',
+            {'R_obs': 1.0e5},
+            'T_obs',
+            {'T_obs': 20, 'R_obs': 1.0e5},
+        ),
+        (
+            {'observables': _THREE_OBS, 'sigma': _THREE_SIGMA},
+            'correlation',
+            # Pairwise valid, but smallest eigenvalue 1 - 1.8 < 0.
+            {'R_obs': {'T_obs': 0.9, 'g_obs': 0.9}, 'T_obs': {'g_obs': -0.9}},
+            'positive definite',
+            {'R_obs': {'T_obs': -0.25}},
+        ),
+        (
+            {
+                'observables': {'R_obs': 6.0e6},
+                'parameters': {
+                    'planet.mass_tot': [0.7, 3.0],
+                    'interior_struct.core_frac': [0.3, 0.7],
+                },
+            },
+            'truth',
+            {'planet.mass_tot': 1.0},
+            'core_frac',
+            {'planet.mass_tot': 1, 'interior_struct.core_frac': 0.325},
+        ),
+    ],
+    ids=['incomplete_sigma', 'indefinite_correlation', 'incomplete_truth'],
+)
+def test_run_inference_rejects_a_bad_table_before_emptying_output(
+    monkeypatch, tmp_path, config, key, bad, match, good
 ):
-    """An invalid ``[correlation]`` table is refused before the output folder is
-    emptied; a valid one, or the one ``correlate_ratios`` derives, is stored as floats.
+    """A bad ``[sigma]``, ``[correlation]`` or ``[truth]`` table is refused before
+    the output folder is emptied, so a typo does not cost the previous study's
+    results. A valid table is stored back on the config as floats.
     """
-    config = {
-        'output': 'unit_inference',
-        'logging': 'INFO',
-        'n_workers': 1,
-        'ref_config': BASE_CONFIG,
-        'n_steps': 1,
-        'kernel': 'MAT3/2',
-        'acqf': 'LogEI',
-        'seed': 1,
-        'observables': {'R_obs': 6.0e6, 'T_obs': 400.0, 'g_obs': 9.8},
-        'parameters': {'planet.mass_tot': [0.7, 3.0]},
-        'correlation': {'R_obs': {'T_obs': 0.5}},
-    }
-    output_root = tmp_path / 'output'
-    output_root.mkdir()
-    previous = output_root / 'init.csv'
-    previous.write_text('x_0,y\n0.5,1.0\n', encoding='utf-8')
+    config, previous = _validation_study(monkeypatch, tmp_path, **config)
 
-    monkeypatch.setattr(
-        inference_mod,
-        'get_proteus_directories',
-        lambda _output: {'output': str(output_root), 'proteus': ''},
-    )
-    monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
-    monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
-    for name in (
-        'PROTEUS_INFERENCE_CHILD_TIMEOUT_S',
-        'PROTEUS_INFERENCE_DISPATCH',
-        'PROTEUS_INFERENCE_RUNNER_MAX_JOBS',
-        inference_mod.ABORT_ON_FAILURE_ENV,
-    ):
-        monkeypatch.delenv(name, raising=False)
-
-    def _stop(cfg):
-        raise RuntimeError('stop after validation')
-
-    monkeypatch.setattr(inference_mod, 'create_init', _stop)
-
-    with pytest.raises(ValueError, match='sigma'):
-        inference_mod.run_inference(dict(config))
-    config['sigma'] = {'R_obs': 1.0e5, 'T_obs': 20.0, 'g_obs': 0.5}
-    # Pairwise valid, but smallest eigenvalue 1 - 1.8 < 0.
-    bad = {'R_obs': {'T_obs': 0.9, 'g_obs': 0.9}, 'T_obs': {'g_obs': -0.9}}
-    with pytest.raises(ValueError, match='positive definite'):
-        inference_mod.run_inference({**config, 'correlation': bad})
-    # A check placed after `safe_rm` would leave this file deleted.
+    with pytest.raises(ValueError, match=match):
+        inference_mod.run_inference({**config, key: bad})
     assert previous.read_text(encoding='utf-8') == 'x_0,y\n0.5,1.0\n'
 
+    config[key] = good
+    with pytest.raises(RuntimeError, match='stop after validation'):
+        inference_mod.run_inference(config)
+
+    def _floats(table):
+        return [v for x in table.values() for v in (_floats(x) if isinstance(x, dict) else [x])]
+
+    assert _floats(config[key]) == pytest.approx(_floats(good), rel=1e-12)
+    assert all(type(v) is float for v in _floats(config[key]))
+
+
+def test_run_inference_validates_and_derives_correlation_tables(monkeypatch, tmp_path, caplog):
+    """A correlation needs sigma and coefficients in (-1, 1); ``correlate_ratios``
+    derives the table from the ratio names instead, and refuses to run without
+    sigma, next to an explicit table, or with no ratio to correlate.
+    """
+    config, previous = _validation_study(
+        monkeypatch, tmp_path, observables=_THREE_OBS, correlation={'R_obs': {'T_obs': 0.5}}
+    )
+
+    with pytest.raises(ValueError, match='correlation is given but sigma is not'):
+        inference_mod.run_inference(dict(config))
+    config['sigma'] = _THREE_SIGMA
     config['correlation'] = {'R_obs': {'T_obs': 1}}
     with pytest.raises(ValueError, match=r'\(-1, 1\)'):
         inference_mod.run_inference(dict(config))
-    config['correlation'] = {'R_obs': {'T_obs': -0.25}}
-    with pytest.raises(RuntimeError, match='stop after validation'):
-        inference_mod.run_inference(config)
-    assert config['correlation'] == {'R_obs': {'T_obs': pytest.approx(-0.25)}}
+    assert previous.read_text(encoding='utf-8') == 'x_0,y\n0.5,1.0\n'
 
     # correlate_ratios derives the table from the ratio names instead.
     # A finished run repoints ref_config at its copy in the output folder.
@@ -685,60 +685,6 @@ def test_truth_outside_bounds_flags_only_values_beyond_the_range():
     assert set(out) == {'a.y', 'a.z'}
     assert out['a.y'] == pytest.approx(3.5, rel=1e-12)
     assert inference_mod.truth_outside_bounds(pars, None) == {}
-
-
-def test_run_inference_rejects_incomplete_truth_before_emptying_output(monkeypatch, tmp_path):
-    """A ``[truth]`` table missing a parameter is refused before the output
-    folder is emptied, and a complete one is stored back as floats.
-    """
-    config = {
-        'output': 'unit_inference',
-        'logging': 'INFO',
-        'n_workers': 1,
-        'ref_config': BASE_CONFIG,
-        'n_steps': 1,
-        'kernel': 'MAT3/2',
-        'acqf': 'LogEI',
-        'seed': 1,
-        'observables': {'R_obs': 6.0e6},
-        'parameters': {'planet.mass_tot': [0.7, 3.0], 'interior_struct.core_frac': [0.3, 0.7]},
-        'truth': {'planet.mass_tot': 1.0},
-    }
-    output_root = tmp_path / 'output'
-    output_root.mkdir()
-    previous = output_root / 'init.csv'
-    previous.write_text('x_0,y\n0.5,1.0\n', encoding='utf-8')
-
-    monkeypatch.setattr(
-        inference_mod,
-        'get_proteus_directories',
-        lambda _output: {'output': str(output_root), 'proteus': ''},
-    )
-    monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
-    monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
-
-    with pytest.raises(ValueError, match='core_frac'):
-        inference_mod.run_inference(config)
-    # A check placed after `safe_rm` would leave this file deleted.
-    assert previous.read_text(encoding='utf-8') == 'x_0,y\n0.5,1.0\n'
-
-    config['truth'] = {'planet.mass_tot': 1, 'interior_struct.core_frac': 0.325}
-    for name in (
-        'PROTEUS_INFERENCE_CHILD_TIMEOUT_S',
-        'PROTEUS_INFERENCE_DISPATCH',
-        'PROTEUS_INFERENCE_RUNNER_MAX_JOBS',
-        inference_mod.ABORT_ON_FAILURE_ENV,
-    ):
-        monkeypatch.delenv(name, raising=False)
-
-    def _stop(cfg):
-        raise RuntimeError('stop after validation')
-
-    monkeypatch.setattr(inference_mod, 'create_init', _stop)
-    with pytest.raises(RuntimeError, match='stop after validation'):
-        inference_mod.run_inference(config)
-    assert config['truth']['planet.mass_tot'] == pytest.approx(1.0, rel=1e-12)
-    assert isinstance(config['truth']['planet.mass_tot'], float)
 
 
 # ============================================================================

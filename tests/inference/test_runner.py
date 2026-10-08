@@ -14,13 +14,14 @@ References:
 from __future__ import annotations
 
 import json
+import os
 import sys
 import textwrap
 import time
 
 import pytest
 
-from proteus.inference.runner import ProteusRunner, handle_job
+from proteus.inference.runner import ProteusRunner, handle_job, serve
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -98,16 +99,6 @@ def test_one_process_serves_every_evaluation(runner_factory, tmp_path):
     # pids, which is exactly the cost this module exists to remove.
     assert len(set(pids)) == 1
     assert pids[0] == str(runner._proc.pid)
-
-
-def test_finished_simulation_reports_no_failure(runner_factory, tmp_path):
-    """A completed run reports nothing, which lets `run_proteus` fall through
-    to reading the helpfile, and its process is kept for the next evaluation.
-    """
-    runner = runner_factory(_reply())
-
-    assert runner.run(tmp_path / 'in.toml', timeout=20) is None
-    assert runner._proc is not None
     assert runner._proc.poll() is None
 
 
@@ -192,6 +183,39 @@ def test_process_is_replaced_after_max_jobs(runner_factory, tmp_path):
     assert runner._proc.pid != first_pid
 
 
+def test_write_to_a_dead_pipe_is_reported_as_a_crash(runner_factory, tmp_path):
+    """A process whose request pipe is gone fails the sample instead of raising
+    out of the worker, and the next evaluation starts a fresh process.
+    """
+    runner = runner_factory(_reply())
+    cfg = tmp_path / 'in.toml'
+    assert runner.run(cfg, timeout=20) is None
+    first_pid = runner._proc.pid
+
+    runner._requests.close()
+
+    assert runner.run(cfg, timeout=20) == ('the simulator exited with an error', None)
+    assert runner._proc is None
+    assert runner.run(cfg, timeout=20) is None
+    assert runner._proc.pid != first_pid
+
+
+@pytest.mark.parametrize(
+    'reply', ['not json', '{}', '[1]'], ids=['not_json', 'no_error_key', 'not_an_object']
+)
+def test_unreadable_reply_fails_the_sample_not_the_worker(runner_factory, tmp_path, reply):
+    """A reply `serve` would never write is reported as a crash and the process
+    replaced, rather than raising out of `run_proteus` and ending the worker.
+    """
+    runner = runner_factory(f'reply.write({reply!r} + "\\n")\nreply.flush()')
+    cfg = tmp_path / 'in.toml'
+
+    assert runner.run(cfg, timeout=20) == ('the simulator exited with an error', None)
+    assert runner._proc is None
+    # Not counted as a finished job, so the max_jobs budget is untouched.
+    assert runner._jobs == 0
+
+
 @pytest.mark.parametrize('max_jobs', [0, -5])
 def test_max_jobs_at_or_below_zero_keeps_one_process(runner_factory, tmp_path, max_jobs):
     """Edge case at the boundary: 0 means no limit, and a negative value is
@@ -221,37 +245,22 @@ def test_stop_is_safe_before_anything_has_run(runner_factory):
     assert runner._proc is None
 
 
-def test_console_file_collects_output_from_every_simulation(runner_factory, tmp_path):
-    """A reused process writes one console file for its whole life, because
-    Julia's output stream cannot be re-pointed between simulations.
+def test_console_file_collects_every_simulation_across_a_replacement(runner_factory, tmp_path):
+    """One console file holds every run, because Julia's output cannot be
+    re-pointed between simulations; a process replaced at `max_jobs` appends
+    to it rather than starting it afresh.
     """
-    runner = runner_factory(_ECHO)
+    runner = runner_factory(_ECHO, max_jobs=1)
 
     assert runner.run(tmp_path / 'first.toml', timeout=20) is None
     assert runner.run(tmp_path / 'second.toml', timeout=20) is None
     runner.stop()
 
     console = runner.console.read_text()
+    # Discrimination: opening the file for writing would leave only the second run.
     assert 'first.toml' in console
-    # Discrimination: opening for writing rather than appending, or per
-    # simulation rather than per process, would leave only the last run.
     assert 'second.toml' in console
     assert console.count('ran ') == 2
-
-
-def test_console_file_survives_the_process_being_replaced(runner_factory, tmp_path):
-    """Edge case at the `max_jobs` boundary: the replacement process appends to
-    the same file, keeping the record of runs made before the recycle.
-    """
-    runner = runner_factory(_ECHO, max_jobs=1)
-
-    runner.run(tmp_path / 'first.toml', timeout=20)
-    runner.run(tmp_path / 'second.toml', timeout=20)
-    runner.stop()
-
-    console = runner.console.read_text()
-    assert 'first.toml' in console
-    assert 'second.toml' in console
 
 
 def test_handle_job_reports_the_exception_type_and_message(capsys):
@@ -285,3 +294,39 @@ def test_handle_job_reports_nothing_for_a_simulation_that_finished():
     assert seen == ['x.toml']
     # The reply travels the pipe, so it has to serialise.
     assert json.loads(json.dumps(reply)) == {'error': None}
+
+
+def test_serve_answers_each_request_in_order_until_the_pipe_closes(monkeypatch, tmp_path):
+    """The real child loop: each request runs one simulation and gets one
+    reply, a failed one included, and the loop ends when the parent closes
+    the request pipe.
+    """
+    ran = []
+
+    class _Proteus:
+        def __init__(self, config_path):
+            self.config_path = config_path
+
+        def start(self, offline):
+            ran.append((self.config_path, offline))
+            if self.config_path.endswith('bad.toml'):
+                raise RuntimeError('solver diverged')
+
+    monkeypatch.setattr('proteus.proteus.Proteus', _Proteus)
+    request_r, request_w = os.pipe()
+    reply_r, reply_w = os.pipe()
+    with os.fdopen(request_w, 'w') as requests:
+        for name in ('a.toml', 'bad.toml', 'b.toml'):
+            requests.write(json.dumps({'config': str(tmp_path / name)}) + '\n')
+
+    serve(request_r, reply_w)
+
+    with os.fdopen(reply_r) as replies:
+        answers = [json.loads(line) for line in replies]
+    assert answers == [
+        {'error': None},
+        {'error': 'RuntimeError: solver diverged'},
+        {'error': None},
+    ]
+    # Every run is offline, as `proteus start --offline` is on the default dispatch.
+    assert ran == [(str(tmp_path / n), True) for n in ('a.toml', 'bad.toml', 'b.toml')]
