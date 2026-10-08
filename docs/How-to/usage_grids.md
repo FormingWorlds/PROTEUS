@@ -150,6 +150,44 @@ Use the CLI to package the results of a grid into a zip file; for example to sha
 proteus grid-pack -o output/grid_demo/
 ```
 
+## Post-processing a grid
+
+Once a grid has run, `proteus grid-analyse` extracts each case's final-row results into summary CSV files and makes overview plots. It is configured by an optional `[post_processing]` table in the same `.grid.toml` used to run the grid (so a grid needs only one config file), and is run with:
+
+```console
+proteus grid-analyse -c input/example.grid.toml
+```
+
+The `output` setting must name a fixed folder (not `"auto"`), so the analysis can find the grid's output directory.
+
+The `[post_processing]` table accepts:
+
+| Key | Meaning |
+|---|---|
+| `update_csv` | Rebuild the summary CSVs from the case folders before plotting (default `true`). Set `false` to plot from existing CSVs. |
+| `plot_status` | Make the status-summary bar plot (default `true`). |
+| `plot_ecdf` | Make the ECDF grid plot (default `true`). |
+| `colormap` | Colour map for numeric parameter values in the ECDF plot (a [cmcrameri](https://www.fabiocrameri.ch/colourmaps/) scientific map such as `"batlow"`; `colourmap` is also accepted). |
+| `output_variables` | List of `runtime_helpfile.csv` columns to plot, plus the derived `solidification_time`. |
+| `plot_format` | Image format (`"png"`, `"pdf"`, or `"svg"`); defaults to the base config's `params.out.plot_fmt`, then `"png"`. |
+
+`solidification_time` is computed by the analysis as the first time a case's `Phi_global` drops below its `params.stop.solid.phi_crit`.
+
+The outputs are written under the grid's output folder:
+
+```text
+output/<grid name>/post_processing/
+├── extracted_data/
+│   ├── final_extracted_data_all.csv            # every case
+│   ├── final_extracted_data_completed.csv      # completed cases
+│   └── final_extracted_data_running_error.csv  # running or errored cases
+└── grid_plots/
+    ├── summary_grid_statuses.<fmt>             # case count per final status
+    └── ecdf_grid_plot.<fmt>                    # ECDF per (parameter, output) panel
+```
+
+The CSVs are tab-separated (like other PROTEUS output), one row per case, holding the case number, status, the swept parameter values, every helpfile column at the final row, and `solidification_time`. The ECDF grid plot has one row per swept parameter and one column per requested output; curves are coloured by the parameter value (a colourbar for numeric parameters, a legend for string parameters), after Figure 5 of [Nicholls et al. (2024)](https://arxiv.org/abs/2411.19137).
+
 ---
 
 **See also:** [Running and output](usage_running.md) | [Configuration file](config.md) | [Execution and output reference](../Reference/config/params.md) | [Parameter grid tutorial](../Tutorials/parameter_grid.md) | [Bayesian inference](inference.md)

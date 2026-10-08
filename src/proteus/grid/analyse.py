@@ -202,24 +202,24 @@ def build_summary_dataframe(
         parameters, every runtime-helpfile column at the final row, and
         ``solidification_time``.
     """
-    rows = []
+    records = []
     for case in cases:
         phi_crit = _dig(case['init_params'], 'params.stop.solid.phi_crit', fallback_phi_crit)
-        row = {'case_number': case['index'], 'status': case['status']}
+        record = {'case_number': case['index'], 'status': case['status']}
 
         # Tested parameter values actually used by this case.
         for path in param_paths:
-            row[path] = _dig(case['init_params'], path, np.nan)
+            record[path] = _dig(case['init_params'], path, np.nan)
 
         # Final-row outputs (all helpfile columns), if the case produced any.
         output = case['output']
         if output is not None and not output.empty:
-            row.update(output.iloc[-1].to_dict())
+            record.update(output.iloc[-1].to_dict())
 
-        row['solidification_time'] = extract_solidification_time(output, phi_crit)
-        rows.append(row)
+        record['solidification_time'] = extract_solidification_time(output, phi_crit)
+        records.append(record)
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame(records)
 
 
 def write_summary_csvs(
