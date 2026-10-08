@@ -10,6 +10,15 @@ max_jobs = 2
 max_days = 1
 max_mem  = 3
 
+# Post-processing options, read by `proteus grid-analyse`.
+[post_processing]
+    update_csv  = true
+    plot_status = true
+    plot_ecdf   = true
+    colormap    = "batlow"
+    plot_format = "png"
+    output_variables = ["solidification_time", "Phi_global", "T_surf", "P_surf"]
+
 # Planet mass [M_earth]
 ["planet.mass_tot"]
     method = "direct"

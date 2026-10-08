@@ -177,18 +177,14 @@ class Grid:
 
     # Set a dimension by linspace
     def set_dimension_linspace(self, name: str, start: float, stop: float, count: int):
-        self.dim_avars[name] = list(np.linspace(start, stop, count))
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_linspace(start, stop, count)
         log.debug(
             "Dimension '%s' linspace: %d points in [%.6g, %.6g]", name, count, start, stop
         )
 
     # Set a dimension by arange (inclusive of endpoint)
     def set_dimension_arange(self, name: str, start: float, stop: float, step: float):
-        self.dim_avars[name] = list(np.arange(start, stop, step))
-        if not np.isclose(self.dim_avars[name][-1], stop):
-            self.dim_avars[name].append(stop)
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_arange(start, stop, step)
         log.debug(
             "Dimension '%s' arange: %d points in [%.6g, %.6g] (step=%.6g)",
             name,
@@ -200,22 +196,18 @@ class Grid:
 
     # Set a dimension by logspace
     def set_dimension_logspace(self, name: str, start: float, stop: float, count: int):
-        self.dim_avars[name] = list(np.logspace(np.log10(start), np.log10(stop), count))
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_logspace(start, stop, count)
         log.debug(
             "Dimension '%s' logspace: %d points in [%.6g, %.6g]", name, count, start, stop
         )
 
     # Set a dimension directly
     def set_dimension_direct(self, name: str, values: list, sort: bool = True):
-        the_list = list(set(values))  # remove duplicates
-        if (not isinstance(values[0], str)) and sort:  # sort if numeric
-            the_list = sorted(the_list)
-        self.dim_avars[name] = the_list
+        self.dim_avars[name] = dimension_direct(values, sort)
         log.debug(
             "Dimension '%s' direct: %d values (deduplicated from %d)",
             name,
-            len(the_list),
+            len(self.dim_avars[name]),
             len(values),
         )
 
@@ -613,6 +605,8 @@ done
 
 
 # Top-level keys of a grid file that set up the grid; every other key names a dimension.
+# `post_processing` is the optional table read by `proteus grid-analyse`; it is a grid
+# setting here so `proteus grid` accepts a grid file that carries it.
 GRID_SETTINGS = frozenset(
     {
         'output',
@@ -624,6 +618,7 @@ GRID_SETTINGS = frozenset(
         'max_mem',
         'jax_cache',
         'config_version',
+        'post_processing',
     }
 )
 
@@ -634,6 +629,77 @@ DIMENSION_METHODS = {
     'logspace': ('start', 'stop', 'count'),
     'arange': ('start', 'stop', 'step'),
 }
+
+
+# Grid dimension value construction. These module-level builders are shared by the
+# Grid setters above and by the grid analysis (proteus.grid.analyse), so both read
+# identical swept values for every axis from one implementation.
+def dimension_linspace(start: float, stop: float, count: int) -> list[float]:
+    """Return ``count`` values evenly spaced on a linear scale over [start, stop]."""
+    return [float(v) for v in np.linspace(start, stop, count)]
+
+
+def dimension_logspace(start: float, stop: float, count: int) -> list[float]:
+    """Return ``count`` values evenly spaced on a log scale over [start, stop]."""
+    return [float(v) for v in np.logspace(np.log10(start), np.log10(stop), count)]
+
+
+def dimension_arange(start: float, stop: float, step: float) -> list[float]:
+    """Return values from start to stop in steps of ``step``, including the endpoint.
+
+    The endpoint is appended when ``np.arange`` omits it. An empty range (for
+    example ``start == stop``) yields the single endpoint value rather than
+    raising on an empty array.
+    """
+    values = [float(v) for v in np.arange(start, stop, step)]
+    if not values or not np.isclose(values[-1], stop):
+        values.append(float(stop))
+    return values
+
+
+def dimension_direct(values: list, sort: bool = True) -> list:
+    """Return the given values with duplicates removed (sorted when numeric)."""
+    deduped = list(set(values))
+    if values and (not isinstance(values[0], str)) and sort:
+        deduped = sorted(deduped)
+    return deduped
+
+
+_DIMENSION_BUILDERS = {
+    'direct': dimension_direct,
+    'linspace': dimension_linspace,
+    'logspace': dimension_logspace,
+    'arange': dimension_arange,
+}
+
+
+def dimension_values(table: dict) -> list:
+    """Return the swept values for one grid dimension table.
+
+    Parameters
+    ----------
+    table : dict
+        A dimension table from a grid config: a ``method`` plus the keys that
+        method reads (see ``DIMENSION_METHODS``).
+
+    Returns
+    -------
+    list
+        The values that axis takes across the grid.
+
+    Raises
+    ------
+    ValueError
+        If ``method`` is missing or not one of ``DIMENSION_METHODS``.
+    """
+    method = table.get('method')
+    if method not in _DIMENSION_BUILDERS:
+        raise ValueError(
+            f'Unknown grid dimension method {method!r}; '
+            f'expected one of {", ".join(sorted(_DIMENSION_BUILDERS))}'
+        )
+    args = [table[arg] for arg in DIMENSION_METHODS[method]]
+    return _DIMENSION_BUILDERS[method](*args)
 
 
 def _dimension_kind(key: str, value) -> str:

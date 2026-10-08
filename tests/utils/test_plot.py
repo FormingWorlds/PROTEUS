@@ -162,3 +162,53 @@ def test_sample_output_parses_subyear_times(mock_glob):
     assert 30.8 in t
     assert all(isinstance(time, float) for time in t)
     assert all(path.endswith('_atm.nc') for path in f)
+
+
+# ---------------------------------------------------------------------------
+# Grid-quantity label / scale / log / colourmap helpers
+# ---------------------------------------------------------------------------
+
+
+def test_get_label_uses_preset_then_falls_back_to_last_path_component():
+    """get_label returns the preset display label, or the final dotted component
+    when a quantity has no preset (so an unlabelled axis still reads sensibly).
+    """
+    from proteus.utils.plot import get_label
+
+    assert get_label('P_surf') == r'$P_{\rm surf}$ [bar]'
+    assert get_label('some.unregistered.field') == 'field'
+
+
+def test_get_scale_converts_known_units_else_identity():
+    """get_scale returns the preset unit conversion, defaulting to 1.0 when unset.
+
+    rho_obs is kg/m^3 scaled to g/cm^3 (factor 1e-3); an unknown quantity is 1.0.
+    """
+    from proteus.utils.plot import get_scale
+
+    assert get_scale('rho_obs') == pytest.approx(1.0e-3)
+    assert get_scale('atm_kg_per_mol') == pytest.approx(1.0e3)
+    assert get_scale('unregistered_quantity') == pytest.approx(1.0)
+
+
+def test_get_log_scale_flags_only_log_quantities():
+    """get_log_scale is True for log-axis quantities and False otherwise/by default."""
+    from proteus.utils.plot import get_log_scale
+
+    assert get_log_scale('P_surf') is True
+    assert get_log_scale('T_surf') is False
+    assert get_log_scale('unregistered_quantity') is False
+
+
+def test_get_colourmap_resolves_names_and_falls_back(caplog):
+    """get_colourmap returns the named map, and falls back to cmcrameri batlow
+    for an empty or unknown name (logging a warning for the unknown case).
+    """
+    from proteus.utils.plot import get_colourmap
+
+    assert get_colourmap('berlin').name == 'berlin'
+    assert get_colourmap(None).name == 'batlow'
+    with caplog.at_level('WARNING'):
+        fallback = get_colourmap('definitely_not_a_colourmap')
+    assert fallback.name == 'batlow'
+    assert any('colourmap' in rec.message.lower() for rec in caplog.records)

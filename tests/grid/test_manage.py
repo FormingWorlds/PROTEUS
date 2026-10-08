@@ -29,6 +29,8 @@ from proteus.grid import manage as gm
 from proteus.grid.manage import (
     Grid,
     _thread_target,
+    dimension_arange,
+    dimension_values,
     grid_dimension_keys,
     grid_from_config,
 )
@@ -1439,7 +1441,9 @@ def test_shipped_grid_files_pass_the_key_check(rel_path):
 
 
 def test_grid_settings_match_the_keys_grid_from_config_reads(fake_proteus_dir, monkeypatch):
-    """GRID_SETTINGS holds the settings grid_from_config reads plus config_version."""
+    """GRID_SETTINGS holds the settings grid_from_config reads plus the two it
+    only accepts (config_version and the post_processing table, both read by
+    other tools, not the grid manager)."""
 
     class Recorder(dict):
         def __getitem__(self, key):
@@ -1457,4 +1461,64 @@ def test_grid_settings_match_the_keys_grid_from_config_reads(fake_proteus_dir, m
     monkeypatch.setattr(gm, 'Grid', mock.MagicMock(return_value=mock.MagicMock(size=1)))
     grid_from_config(str(fake_proteus_dir / 'g.toml'), test_run=True, check_interval=0.0)
     assert 'planet.mass_tot' in read
-    assert read - {'planet.mass_tot'} == gm.GRID_SETTINGS - {'config_version'}
+    assert read - {'planet.mass_tot'} == gm.GRID_SETTINGS - {
+        'config_version',
+        'post_processing',
+    }
+
+
+# ---------------------------------------------------------------------------
+# dimension_values (shared axis construction)
+# ---------------------------------------------------------------------------
+
+
+class TestDimensionValues:
+    """Module-level axis builders shared by Grid and the grid analysis."""
+
+    def test_dispatches_each_method_to_matching_builder(self):
+        """dimension_values builds linspace/logspace/arange/direct axes correctly."""
+        assert dimension_values(
+            {'method': 'linspace', 'start': 0.0, 'stop': 1.0, 'count': 3}
+        ) == [
+            0.0,
+            0.5,
+            1.0,
+        ]
+        logv = dimension_values({'method': 'logspace', 'start': 1.0, 'stop': 100.0, 'count': 3})
+        assert logv == pytest.approx([1.0, 10.0, 100.0])
+
+    def test_direct_dedups_numeric_and_preserves_strings(self):
+        """direct removes duplicates (sorted when numeric) and keeps string values."""
+        assert dimension_values({'method': 'direct', 'values': [3.0, 1.0, 2.0, 1.0]}) == [
+            1.0,
+            2.0,
+            3.0,
+        ]
+        assert set(dimension_values({'method': 'direct', 'values': ['janus', 'agni']})) == {
+            'janus',
+            'agni',
+        }
+
+    def test_arange_appends_endpoint_and_guards_empty_range(self):
+        """arange includes the stop endpoint and does not crash on an empty range."""
+        assert dimension_arange(1.0, 5.0, 1.0) == pytest.approx([1.0, 2.0, 3.0, 4.0, 5.0])
+        # start == stop gives an empty np.arange; the endpoint is still returned.
+        assert dimension_arange(5.0, 5.0, 1.0) == pytest.approx([5.0])
+
+    def test_unknown_method_raises_valueerror(self):
+        """An unrecognised method raises rather than silently skipping an axis."""
+        with pytest.raises(ValueError, match='Unknown grid dimension method'):
+            dimension_values({'method': 'bogus', 'values': [1.0]})
+        with pytest.raises(ValueError):
+            dimension_values({'values': [1.0]})  # missing method
+
+    def test_grid_setter_and_dimension_values_agree(self, grid_with_mocks):
+        """A Grid axis and dimension_values build identical values for one table,
+        so the grid run and its analysis see the same swept values.
+        """
+        g = grid_with_mocks
+        g.add_dimension('e', 'orbit.eccentricity')
+        g.set_dimension_logspace('e', 1e-3, 1e-1, 3)
+        assert g.dim_avars['e'] == dimension_values(
+            {'method': 'logspace', 'start': 1e-3, 'stop': 1e-1, 'count': 3}
+        )

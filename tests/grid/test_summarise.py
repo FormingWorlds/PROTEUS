@@ -244,3 +244,31 @@ def test_summarise_raises_on_empty_status_file(tmp_path):
     with pytest.raises(ValueError, match='Status file is empty') as exc:
         summarise_mod.summarise(str(grid))
     assert 'case_000000' in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# status_category
+# ---------------------------------------------------------------------------
+
+
+def test_status_category_bins_codes_by_documented_ranges():
+    """status_category maps codes to Running (0-9), Completed (10-19), Error (20-29).
+
+    Uses boundary codes so an off-by-one range bound is caught.
+    """
+    from proteus.grid.summarise import status_category
+
+    assert status_category(0) == 'Running'
+    assert status_category(9) == 'Running'
+    assert status_category(10) == 'Completed'
+    assert status_category(19) == 'Completed'
+    assert status_category(20) == 'Error'
+    assert status_category(29) == 'Error'
+
+
+def test_status_category_unknown_for_out_of_range_code():
+    """A code outside the documented ranges is 'Unknown', not silently a category."""
+    from proteus.grid.summarise import status_category
+
+    assert status_category(99) == 'Unknown'
+    assert status_category(-1) == 'Unknown'

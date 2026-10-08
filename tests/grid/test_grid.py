@@ -7,16 +7,15 @@ import os
 import pytest
 from helpers import PROTEUS_ROOT
 
+from proteus.grid.analyse import analyse_grid
 from proteus.grid.manage import grid_from_config
 from proteus.grid.pack import pack as gpack
-from proteus.grid.post_processing import main as gpostprocess
 from proteus.grid.summarise import summarise as gsummarise
 
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 OUT_DIR = PROTEUS_ROOT / 'output' / 'dummy_grid'
-GRID_NAME = 'dummy_grid'
 
 GRID_CONFIG = PROTEUS_ROOT / 'tests' / 'grid' / 'dummy.grid.toml'
 BASE_CONFIG = PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml'
@@ -94,25 +93,23 @@ def test_grid_pack(grid_run):
     assert os.path.isfile(OUT_DIR / 'pack.zip')
 
 
-@pytest.mark.integration
 def test_grid_post_process(grid_run):
-    # Test running grid-post-process command
-    gpostprocess(GRID_CONFIG)
+    """``proteus grid-analyse`` extracts the three summary CSVs and writes the
+    status-summary and ECDF grid plots for the completed dummy grid. End-to-end
+    check that the analysis runs on a real grid and produces every artefact
+    users rely on. Runs in the slow tier because it depends on the grid run.
+    """
+    analyse_grid(GRID_CONFIG)
 
-    # check post-processed summary CSV file exists
-    assert os.path.isfile(
-        OUT_DIR
-        / 'post_processing'
-        / 'extracted_data'
-        / f'{GRID_NAME}_final_extracted_data_all.csv'
-    )
+    extracted = OUT_DIR / 'post_processing' / 'extracted_data'
+    plots = OUT_DIR / 'post_processing' / 'grid_plots'
 
-    # check that status summary plot was generated
-    assert os.path.isfile(
-        OUT_DIR / 'post_processing' / 'grid_plots' / f'summary_grid_statuses_{GRID_NAME}.png'
-    )
+    # All three filtered CSVs exist (grid name is not in the filenames: the
+    # folder already identifies the grid).
+    assert os.path.isfile(extracted / 'final_extracted_data_all.csv')
+    assert os.path.isfile(extracted / 'final_extracted_data_completed.csv')
+    assert os.path.isfile(extracted / 'final_extracted_data_running_error.csv')
 
-    # check that ECDF plot was generated
-    assert os.path.isfile(
-        OUT_DIR / 'post_processing' / 'grid_plots' / f'ecdf_grid_plot_{GRID_NAME}.png'
-    )
+    # Both plots exist in the requested format.
+    assert os.path.isfile(plots / 'summary_grid_statuses.png')
+    assert os.path.isfile(plots / 'ecdf_grid_plot.png')

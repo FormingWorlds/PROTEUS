@@ -5,7 +5,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 
@@ -104,180 +104,141 @@ _preset_colours = {
     'nacljet': '#ee29f5',
 }
 
-# Standard label for input and output variables
-_preset_labels = {
-    ## Input parameters (from input.toml files)
+
+class _QuantityInfo(NamedTuple):
+    """Default plotting metadata for one grid input parameter or output column.
+
+    Attributes
+    ----------
+    label : str
+        Display-ready axis or colourbar label, with its own LaTeX ``$...$`` and
+        unit. Used directly by matplotlib (no further wrapping needed).
+    scale : float
+        Factor applied to a raw value before plotting (unit conversion).
+    log : bool
+        Whether the quantity is shown on a logarithmic axis, and, for a grid
+        parameter, whether its colour normalisation is logarithmic.
+    """
+
+    label: str
+    scale: float
+    log: bool
+
+
+# Default plotting metadata, keyed by grid config path (input parameters) or by
+# runtime_helpfile.csv column name (output variables). get_label/get_scale/
+# get_log_scale read this; a name that is absent falls back to sensible defaults.
+# Grouped by module, one entry per line, so independent additions merge cleanly.
+_preset_quantities = {
+    ## Grid input parameters (config paths)
     # Orbit module
-    'orbit.semimajoraxis': 'a [AU]',
-    'orbit.eccentricity': 'e',
-    # Structure module
-    'struct.mass_tot': 'M_{\\mathrm{tot}} [M_\\oplus]',
-    'struct.radius_int': 'R_{\\mathrm{int}} [R_\\oplus]',
-    'struct.corefrac': 'CRF',
-    # Atmosphere module
-    'atmos_clim.module': 'Atmospheric\ntreatment',
-    # Escape module
-    'escape.zephyrus.efficiency': '\\rm \\epsilon',
-    'escape.zephyrus.Pxuv': 'P_{\\rm XUV}\\,[bar]',
-    # Outgassing module
-    'outgas.fO2_shift_IW': '\\Delta\\,\\rm IW',
-    # Delivery module
-    'delivery.elements.H_oceans': 'H [Earth oceans]',
-    'delivery.elements.H_ppmw': 'H [ppmw]',
-    'delivery.elements.H_kg': 'H [kg]',
-    'delivery.elements.CH_ratio': 'C/H ratio',
-    'delivery.elements.C_ppmw': 'C [ppmw]',
-    'delivery.elements.C_kg': 'C [kg]',
-    'delivery.elements.NH_ratio': 'N/H ratio',
-    'delivery.elements.N_ppmw': 'N [ppmw]',
-    'delivery.elements.N_kg': 'N [kg]',
-    'delivery.elements.SH_ratio': 'S/H ratio',
-    'delivery.elements.S_ppmw': 'S [ppmw]',
-    'delivery.elements.S_kg': 'S [kg]',
-    ## Output variables (from runtime_helpfile.csv)
-    # Model tracking
-    'Time': 'Time [yr]',
-    'solidification_time': 'Solidification time [yr]',  # computed in post-processing script, not in runtime_helpfile.csv
-    # Orbital parameters
-    'semimajorax': 'a [m]',
-    'eccentricity': 'e',
+    'orbit.semimajoraxis': _QuantityInfo(r'$a$ [AU]', 1.0, False),
+    'orbit.eccentricity': _QuantityInfo(r'$e$', 1.0, False),
     # Planet structure
-    'R_int': 'R_{\\mathrm{int}} [R_\\oplus]',
-    'M_int': 'M_{\\mathrm{int}} [M_\\oplus]',
-    'M_planet': 'M_{\\mathrm{planet}} [M_\\oplus]',
+    'planet.mass_tot': _QuantityInfo(r'$M_{\rm tot}$ [$M_\oplus$]', 1.0, False),
+    'interior_struct.core_frac': _QuantityInfo('Core radius fraction', 1.0, False),
+    # Atmosphere module
+    'atmos_clim.module': _QuantityInfo('Atmosphere model', 1.0, False),
+    # Escape module
+    'escape.zephyrus.efficiency': _QuantityInfo(r'$\epsilon$', 1.0, False),
+    'escape.zephyrus.Pxuv': _QuantityInfo(r'$P_{\rm XUV}$ [bar]', 1.0, True),
+    # Outgassing module
+    'outgas.fO2_shift_IW': _QuantityInfo(r'$\Delta$IW', 1.0, False),
+    # Volatile element budgets (planet.elements.<X>_budget, unit set by <X>_mode)
+    'planet.elements.H_budget': _QuantityInfo('H budget', 1.0, True),
+    'planet.elements.C_budget': _QuantityInfo('C budget', 1.0, True),
+    'planet.elements.N_budget': _QuantityInfo('N budget', 1.0, True),
+    'planet.elements.S_budget': _QuantityInfo('S budget', 1.0, True),
+    ## Output variables (runtime_helpfile.csv columns)
+    # Model tracking
+    'Time': _QuantityInfo('Time [yr]', 1.0, True),
+    'solidification_time': _QuantityInfo('Solidification time [yr]', 1.0, True),
+    # Planet structure
+    'R_int': _QuantityInfo(r'$R_{\rm int}$ [$R_\oplus$]', 1.0 / R_earth, False),
+    'M_int': _QuantityInfo(r'$M_{\rm int}$ [$M_\oplus$]', 1.0 / M_earth, False),
+    'M_planet': _QuantityInfo(r'$M_{\rm planet}$ [$M_\oplus$]', 1.0 / M_earth, False),
     # Temperatures
-    'T_surf': 'T_{\\rm surf}\\,[\\mathrm{K}]',
-    'T_magma': 'T_{\\rm magma}\\,[\\mathrm{K}]',
-    'T_eqm': 'T_{\\rm eqm}\\,[\\mathrm{K}]',
-    'T_skin': 'T_{\\rm skin}\\,[\\mathrm{K}]',
-    # Planet interior properties
-    'Phi_global': 'Melt fraction [%]',
-    # Planet observational properties
-    'R_obs': 'R_{\\rm obs}\\,[R_\\oplus]',
-    'rho_obs': '\\rho_{\\rm obs}\\,[\\mathrm{g/cm^3}]',
-    # Atmospheric composition from outgassing
-    'M_atm': 'Atmosphere mass [kg]',
-    'P_surf': 'P_{\\rm surf}\\,[\\mathrm{bar}]',
-    'atm_kg_per_mol': 'MMW [g/mol]',
-    # Atmospheric escape
-    'esc_rate_total': 'Escape rate [g/s]',
+    'T_surf': _QuantityInfo(r'$T_{\rm surf}$ [K]', 1.0, False),
+    'T_magma': _QuantityInfo(r'$T_{\rm magma}$ [K]', 1.0, False),
+    # Interior
+    'Phi_global': _QuantityInfo('Melt fraction [%]', 100.0, False),
+    # Observational
+    'R_obs': _QuantityInfo(r'$R_{\rm obs}$ [$R_\oplus$]', 1.0 / R_earth, False),
+    'rho_obs': _QuantityInfo(r'$\rho_{\rm obs}$ [g cm$^{-3}$]', 1.0e-3, False),
+    # Atmosphere
+    'M_atm': _QuantityInfo(r'$M_{\rm atm}$ [kg]', 1.0, True),
+    'P_surf': _QuantityInfo(r'$P_{\rm surf}$ [bar]', 1.0, True),
+    'atm_kg_per_mol': _QuantityInfo(r'$\mu$ [g mol$^{-1}$]', 1.0e3, False),
+    'esc_rate_total': _QuantityInfo(r'$\dot{M}_{\rm esc}$ [g s$^{-1}$]', 1.0e3, True),
 }
 
-_preset_scales = {
-    ## Input parameters (from input.toml files)
-    # Orbit module
-    'orbit.semimajoraxis': 1.0,
-    'orbit.eccentricity': 1.0,
-    # Structure module
-    'struct.mass_tot': 1.0,
-    'struct.radius_int': 1.0,
-    'struct.corefrac': 1.0,
-    # Atmosphere module
-    'atmos_clim.module': 1.0,
-    # Escape module
-    'escape.zephyrus.efficiency': 1.0,
-    'escape.zephyrus.Pxuv': 1.0,
-    # Outgassing module
-    'outgas.fO2_shift_IW': 1.0,
-    # Delivery module
-    'delivery.elements.H_oceans': 1.0,
-    'delivery.elements.H_ppmw': 1.0,
-    'delivery.elements.H_kg': 1.0,
-    'delivery.elements.CH_ratio': 1.0,
-    'delivery.elements.C_ppmw': 1.0,
-    'delivery.elements.C_kg': 1.0,
-    'delivery.elements.NH_ratio': 1.0,
-    'delivery.elements.N_ppmw': 1.0,
-    'delivery.elements.N_kg': 1.0,
-    'delivery.elements.SH_ratio': 1.0,
-    'delivery.elements.S_ppmw': 1.0,
-    'delivery.elements.S_kg': 1.0,
-    ## Output variables (from runtime_helpfile.csv)
-    # Model tracking
-    'Time': 1.0,
-    'solidification_time': 1.0,  # computed in post-processing script, not in runtime_helpfile.csv
-    # Orbital parameters
-    'semimajorax': 1.0,
-    'eccentricity': 1.0,
-    # Planet structure
-    'R_int': 1.0 / R_earth,
-    'M_int': 1.0 / M_earth,
-    'M_planet': 1.0 / M_earth,
-    # Temperatures
-    'T_surf': 1.0,
-    'T_magma': 1.0,
-    'T_eqm': 1.0,
-    'T_skin': 1.0,
-    # Planet interior properties
-    'Phi_global': 100.0,
-    # Planet observational properties
-    'R_obs': 1.0 / R_earth,
-    'rho_obs': 0.001,
-    # Atmospheric composition from outgassing
-    'M_atm': 1.0,
-    'P_surf': 1.0,
-    'atm_kg_per_mol': 1000.0,
-    # Atmospheric escape
-    'esc_rate_total': 1000.0,
-}
 
-_preset_log_scales = {
-    ## Input parameters (from input.toml files)
-    # Orbit module
-    'orbit.semimajoraxis': False,
-    'orbit.eccentricity': False,
-    # Structure module
-    'struct.mass_tot': False,
-    'struct.radius_int': False,
-    'struct.corefrac': False,
-    # Atmosphere module
-    'atmos_clim.module': False,
-    # Escape module
-    'escape.zephyrus.efficiency': True,
-    'escape.zephyrus.Pxuv': True,
-    # Outgassing module
-    'outgas.fO2_shift_IW': False,
-    # Delivery module
-    'delivery.elements.H_oceans': True,
-    'delivery.elements.H_ppmw': True,
-    'delivery.elements.H_kg': True,
-    'delivery.elements.CH_ratio': True,
-    'delivery.elements.C_ppmw': True,
-    'delivery.elements.C_kg': True,
-    'delivery.elements.NH_ratio': True,
-    'delivery.elements.N_ppmw': True,
-    'delivery.elements.N_kg': True,
-    'delivery.elements.SH_ratio': True,
-    'delivery.elements.S_ppmw': True,
-    'delivery.elements.S_kg': True,
-    ## Output variables (from runtime_helpfile.csv)
-    # Model tracking
-    'Time': True,
-    'solidification_time': True,  # computed in post-processing script, not in runtime_helpfile.csv
-    # Orbital parameters
-    'semimajorax': False,
-    'eccentricity': False,
-    # Planet structure
-    'R_int': False,
-    'M_int': False,
-    'M_planet': False,
-    # Temperatures
-    'T_surf': False,
-    'T_magma': False,
-    'T_eqm': False,
-    'T_skin': False,
-    # Planet interior properties
-    'Phi_global': False,
-    # Planet observational properties
-    'R_obs': False,
-    'rho_obs': False,
-    # Atmospheric composition from outgassing
-    'M_atm': False,
-    'P_surf': True,
-    'atm_kg_per_mol': False,
-    # Atmospheric escape
-    'esc_rate_total': True,
-}
+def get_label(quant: str) -> str:
+    """Return a display-ready plot label for a grid quantity.
+
+    Parameters
+    ----------
+    quant : str
+        Grid config path (input parameter) or helpfile column (output).
+
+    Returns
+    -------
+    str
+        The preset label, or the last dotted component of ``quant`` when no
+        preset exists (so an unlabelled quantity still reads sensibly).
+    """
+    if quant in _preset_quantities:
+        return _preset_quantities[quant].label
+    return quant.split('.')[-1]
+
+
+def get_scale(quant: str) -> float:
+    """Return the multiplicative plot scale for a grid quantity (1.0 if unset)."""
+    if quant in _preset_quantities:
+        return _preset_quantities[quant].scale
+    return 1.0
+
+
+def get_log_scale(quant: str) -> bool:
+    """Return whether a grid quantity is plotted on a log axis (False if unset)."""
+    if quant in _preset_quantities:
+        return _preset_quantities[quant].log
+    return False
+
+
+def get_colourmap(name: str | None = None):
+    """Return a matplotlib Colormap for colouring grid parameter values.
+
+    Prefers the cmcrameri scientific colour maps, which are perceptually uniform
+    and colour-blind friendly. ``name`` may be a cmcrameri map (for example
+    'batlow', 'berlin') or any registered matplotlib colormap. Falls back to
+    cmcrameri 'batlow' when ``name`` is empty or not recognised.
+
+    Parameters
+    ----------
+    name : str or None
+        Requested colour map name.
+
+    Returns
+    -------
+    matplotlib.colors.Colormap
+        The resolved colour map.
+    """
+    import matplotlib as mpl
+    from cmcrameri import cm as cmc
+
+    default = cmc.batlow
+    if not name:
+        return default
+    if hasattr(cmc, name):
+        return getattr(cmc, name)
+    for candidate in (name, 'cmc.' + name):
+        try:
+            return mpl.colormaps[candidate]
+        except KeyError:
+            continue
+    log.warning("Unknown colourmap '%s'; falling back to cmcrameri 'batlow'", name)
+    return default
 
 
 def _generate_colour(gas: str):

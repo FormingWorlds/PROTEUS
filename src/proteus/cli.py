@@ -712,19 +712,21 @@ cli.add_command(offchem)
 cli.add_command(observe)
 
 # ----------------
-# 'grid_analyse' postprocessing commands
+# 'grid_analyse' postprocessing command
 # ----------------
 
 
 @click.command()
 @config_option
 def grid_analyse(config_path: Path):
-    """Generate grid analysis plots and CSV summary files from a grid
-    config_path : Path to the toml file containing grid analysis configuration
-    """
-    from proteus.grid.post_processing import main
+    """Post-process a PROTEUS grid: extract summary CSVs and make grid plots.
 
-    main(config_path)
+    config_path : path to the grid .toml file (the same one used to run the grid;
+    its optional [post_processing] table configures the analysis).
+    """
+    from proteus.grid.analyse import analyse_grid
+
+    analyse_grid(config_path)
 
 
 cli.add_command(grid_analyse)
