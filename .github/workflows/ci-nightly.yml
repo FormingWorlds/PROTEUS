@@ -154,7 +154,7 @@ jobs:
             workers: 2
     runs-on: ${{ matrix.os }}
     # xdist workers: ubuntu one per physical core (2), 26-35 min; macOS 2 of its 3
-    # cores, since on 3 the heaviest tests reach 92 % of their timeouts. The budget
+    # cores, 29 min (on 3 the heaviest tests reach 92 % of their timeouts). The budget
     # covers setup (up to 13 min), the tests and a cold FWL_DATA download (~30 min).
     timeout-minutes: 90
     env:
