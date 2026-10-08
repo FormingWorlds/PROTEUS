@@ -20,6 +20,8 @@ References:
 
 from __future__ import annotations
 
+import warnings
+
 import pytest
 
 # The Bayesian-optimisation stack ships as the optional `inference` extra,
@@ -609,3 +611,81 @@ def test_pending_point_moves_the_proposal_away():
     assert first.item() == pytest.approx(0.2, abs=0.05)
     assert again.item() == pytest.approx(first.item(), abs=1e-3), 'without pending: a duplicate'
     assert second.item() == pytest.approx(0.8, abs=0.05), 'with pending: the other maximum'
+
+
+# botorch 0.18.1 warning texts, as they appear in an inference log
+_FIRST_TRY = (
+    'Optimization failed in `gen_candidates_scipy` with the following warning(s):\n'
+    "[OptimizationWarning('Optimization failed within `scipy.optimize.minimize` with "
+    "status 2 and message ABNORMAL: .'), OptimizationWarning('Optimization failed within "
+    "`scipy.optimize.minimize` with status 2 and message ABNORMAL: .')]\n"
+    'Trying again with a new set of initial conditions.'
+)
+_SECOND_TRY = (
+    'Optimization failed on the second try, after generating a new set of initial conditions.'
+)
+
+
+def _patch_optimizer(monkeypatch, *messages):
+    """Make optimize_acqf emit `messages` as (text, category) warnings and return x = [[0.25, 0.75]]."""
+
+    def _optimize(**kwargs):
+        for text, category in messages:
+            warnings.warn(text, category)
+        return torch.tensor([[0.25, 0.75]], dtype=torch.double), None
+
+    monkeypatch.setattr(bo_mod, 'optimize_acqf', _optimize)
+
+
+@pytest.mark.unit
+def test_optimize_acqf_logged_folds_both_retry_warnings_into_one_warning_line(
+    monkeypatch, caplog, recwarn
+):
+    """Both botorch retry warnings become one WARNING log line naming the worker,
+    the failed starts and the candidate, and neither is re-raised as a warning.
+    """
+    _patch_optimizer(monkeypatch, (_FIRST_TRY, RuntimeWarning), (_SECOND_TRY, RuntimeWarning))
+
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.BO'):
+        x = bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 3')
+
+    assert x.tolist() == [[0.25, 0.75]]
+    assert len(caplog.records) == 1
+    rec = caplog.records[0]
+    assert rec.levelname == 'WARNING'
+    assert rec.getMessage() == (
+        'Acquisition optimiser (worker 3): L-BFGS-B stopped early in 2 start(s) '
+        '[status 2 (ABNORMAL)], failed again after a retry; proposing x = [0.25, 0.75]'
+    )
+    assert len(recwarn) == 0
+
+
+@pytest.mark.unit
+def test_optimize_acqf_logged_reports_successful_retry_at_info(monkeypatch, caplog):
+    """A first-try failure that the retry fixes is logged at INFO, not WARNING."""
+    _patch_optimizer(monkeypatch, (_FIRST_TRY, RuntimeWarning))
+
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.BO'):
+        bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='initial point 0')
+
+    assert [r.levelname for r in caplog.records] == ['INFO']
+    assert 'the retry succeeded' in caplog.records[0].getMessage()
+    assert 'initial point 0' in caplog.records[0].getMessage()
+
+
+@pytest.mark.unit
+def test_optimize_acqf_logged_passes_other_warnings_through_and_logs_nothing(
+    monkeypatch, caplog
+):
+    """A warning that is not botorch's retry message is re-raised unchanged and
+    produces no log line; a clean optimisation logs nothing either.
+    """
+    _patch_optimizer(monkeypatch, ('GP fit is ill-conditioned', UserWarning))
+
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.BO'):
+        with pytest.warns(UserWarning, match='ill-conditioned'):
+            bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 0')
+        _patch_optimizer(monkeypatch)
+        bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 0')
+
+    assert caplog.records == []
