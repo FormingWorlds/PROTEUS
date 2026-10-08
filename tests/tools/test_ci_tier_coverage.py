@@ -391,7 +391,11 @@ def test_every_test_carries_exactly_one_tier():
 
 def test_integration_tier_runs_two_xdist_workers():
     """More workers push the heaviest integration tests past their per-test timeouts."""
-    assert '-n 2 --dist worksteal' in _integration_command(_nightly_text())
+    cmd = _integration_command(_nightly_text())
+    tokens = cmd.split()
+    assert tokens.count('-n') == 1, cmd
+    assert tokens[tokens.index('-n') + 1] == '2', cmd
+    assert '--dist worksteal' in cmd, cmd
 
 
 def test_every_tiered_file_is_reachable_by_its_ci_job():
