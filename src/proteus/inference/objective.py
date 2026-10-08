@@ -10,6 +10,7 @@ import toml
 import torch
 from numpy import log10
 
+from proteus.inference.correlation import CorrelationWhitener, is_element_ratio
 from proteus.inference.failures import (
     ABORT_ON_FAILURE_ENV,
     CATEGORY_EXCLUDED,
@@ -20,7 +21,6 @@ from proteus.inference.failures import (
     find_run_logfile,
     record_failure,
 )
-from proteus.inference.likelihood import CorrelationWhitener, is_element_ratio
 from proteus.inference.runner import ProteusRunner
 from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import element_list, gas_list

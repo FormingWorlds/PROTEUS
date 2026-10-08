@@ -12,7 +12,7 @@ import pytest
 
 torch = pytest.importorskip('torch')
 
-import proteus.inference.likelihood as likelihood_mod  # noqa: E402
+import proteus.inference.correlation as correlation_mod  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -22,26 +22,26 @@ def test_validate_correlation_rejects_invalid_matrices():
     obs = {'R_obs': 6.0e6, 'T_obs': 400.0, 'g_obs': 9.8}
     sigma = {'R_obs': 1.0e5, 'T_obs': 10.0, 'g_obs': 0.5}
 
-    out = likelihood_mod.validate_correlation(obs, sigma, {'R_obs': {'g_obs': -0.3}})
+    out = correlation_mod.validate_correlation(obs, sigma, {'R_obs': {'g_obs': -0.3}})
     assert out == {'R_obs': {'g_obs': pytest.approx(-0.3)}}
-    assert likelihood_mod.validate_correlation(obs, sigma, None) is None
+    assert correlation_mod.validate_correlation(obs, sigma, None) is None
 
     with pytest.raises(ValueError, match='sigma'):
-        likelihood_mod.validate_correlation(obs, None, {'R_obs': {'g_obs': 0.3}})
+        correlation_mod.validate_correlation(obs, None, {'R_obs': {'g_obs': 0.3}})
     for bad in (1.0, -1.0, 1.5, float('nan')):
         with pytest.raises(ValueError, match=r'\(-1, 1\)'):
-            likelihood_mod.validate_correlation(obs, sigma, {'R_obs': {'g_obs': bad}})
+            correlation_mod.validate_correlation(obs, sigma, {'R_obs': {'g_obs': bad}})
     with pytest.raises(KeyError, match='P_surf'):
-        likelihood_mod.validate_correlation(obs, sigma, {'R_obs': {'P_surf': 0.3}})
+        correlation_mod.validate_correlation(obs, sigma, {'R_obs': {'P_surf': 0.3}})
     with pytest.raises(ValueError, match='itself'):
-        likelihood_mod.validate_correlation(obs, sigma, {'R_obs': {'R_obs': 0.3}})
+        correlation_mod.validate_correlation(obs, sigma, {'R_obs': {'R_obs': 0.3}})
     with pytest.raises(ValueError, match='twice'):
-        likelihood_mod.validate_correlation(
+        correlation_mod.validate_correlation(
             obs, sigma, {'R_obs': {'g_obs': 0.3}, 'g_obs': {'R_obs': 0.4}}
         )
     # Each pair is valid alone, but the matrix has eigenvalue 1 - 1.8 < 0.
     with pytest.raises(ValueError, match='positive definite'):
-        likelihood_mod.validate_correlation(
+        correlation_mod.validate_correlation(
             obs, sigma, {'R_obs': {'T_obs': 0.9, 'g_obs': 0.9}, 'T_obs': {'g_obs': -0.9}}
         )
 
@@ -49,7 +49,7 @@ def test_validate_correlation_rejects_invalid_matrices():
 def test_composition_from_names_parses_ratios_and_rejects_unknown_elements():
     """Each '/' name becomes +1 numerator, -1 denominator; other names are skipped."""
     obs = {'R_obs': 9.18e6, 'C/O_atm': 0.62, 'S/O_atm': 0.25, 'O/H_atm': 5.4, 'Si/Mg_atm': 1.1}
-    assert likelihood_mod.composition_from_names(obs) == {
+    assert correlation_mod.composition_from_names(obs) == {
         'C/O_atm': {'C': 1, 'O': -1},
         'S/O_atm': {'S': 1, 'O': -1},
         'O/H_atm': {'O': 1, 'H': -1},
@@ -57,7 +57,7 @@ def test_composition_from_names_parses_ratios_and_rejects_unknown_elements():
     }
     for bad in ('C/Xx_atm', 'CO/H_atm', 'C/O/H_atm', 'C/C_atm', '/O_atm', 'C/O'):
         with pytest.raises(ValueError, match='two different elements'):
-            likelihood_mod.composition_from_names({'R_obs': 1.0, bad: 1.0})
+            correlation_mod.composition_from_names({'R_obs': 1.0, bad: 1.0})
 
 
 @pytest.mark.physics_invariant
@@ -66,8 +66,8 @@ def test_ratio_correlation_shares_elements_with_sign():
     whether it sits on the same side of both ratios.
     """
     obs = {'R_obs': 9.18e6, 'C/O_atm': 0.624, 'S/O_atm': 0.249, 'O/H_atm': 5.37}
-    comp = likelihood_mod.composition_from_names(obs)
-    corr = likelihood_mod.ratio_correlation(comp)
+    comp = correlation_mod.composition_from_names(obs)
+    corr = correlation_mod.ratio_correlation(comp)
 
     assert corr['C/O_atm']['S/O_atm'] == pytest.approx(0.5, abs=1e-12)
     assert corr['C/O_atm']['O/H_atm'] == pytest.approx(-0.5, abs=1e-12)
@@ -84,7 +84,7 @@ def test_ratio_correlation_shares_elements_with_sign():
     eig = torch.linalg.eigvalsh(mat)
     assert eig.tolist() == pytest.approx([0.5, 0.5, 2.0], abs=1e-12)
     sigma = {k: 0.1 * v for k, v in obs.items()}
-    assert likelihood_mod.validate_correlation(obs, sigma, corr) == corr
+    assert correlation_mod.validate_correlation(obs, sigma, corr) == corr
 
 
 @pytest.mark.physics_invariant
@@ -93,7 +93,7 @@ def test_chi_squared_matches_residuals_to_names_in_any_order():
     With three observables and rho on one pair, a skipped reorder changes chi2;
     with two and a unit diagonal it would not, since u^T R^-1 u is then symmetric.
     """
-    whitener = likelihood_mod.CorrelationWhitener(['A', 'B', 'C'], {'A': {'B': 0.5}})
+    whitener = correlation_mod.CorrelationWhitener(['A', 'B', 'C'], {'A': {'B': 0.5}})
     # u_A, u_B, u_C = 1, 2, 3, passed as (B, C, A).
     u = torch.tensor([[2.0, 3.0, 1.0]], dtype=torch.double)
 
@@ -122,4 +122,4 @@ def test_chi_squared_matches_residuals_to_names_in_any_order():
 )
 def test_is_element_ratio_needs_two_elements_and_the_atm_suffix(name, expected):
     """Only '<element>/<element>_atm' names count as element ratios."""
-    assert likelihood_mod.is_element_ratio(name) is expected
+    assert correlation_mod.is_element_ratio(name) is expected

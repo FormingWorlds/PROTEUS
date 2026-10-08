@@ -15,7 +15,7 @@ import toml
 import torch
 from scipy.stats.qmc import Halton
 
-from proteus.inference.likelihood import CorrelationWhitener
+from proteus.inference.correlation import CorrelationWhitener
 from proteus.inference.objective import child_timeout_s, eval_obj, prot_builder
 from proteus.inference.transforms import normalize_parameters
 from proteus.inference.utils import save_dataset_csv

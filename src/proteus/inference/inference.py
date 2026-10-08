@@ -31,13 +31,13 @@ from proteus.config import (
 
 # bayesopt source files
 from proteus.inference.async_BO import checkpoint, parallel_process
-from proteus.inference.failures import ABORT_ON_FAILURE_ENV, summarise_failures
-from proteus.inference.gen_D_init import create_init
-from proteus.inference.likelihood import (
+from proteus.inference.correlation import (
     composition_from_names,
     ratio_correlation,
     validate_correlation,
 )
+from proteus.inference.failures import ABORT_ON_FAILURE_ENV, summarise_failures
+from proteus.inference.gen_D_init import create_init
 from proteus.inference.objective import (
     SPECTRAL_CACHE_ENV,
     WORKER_CONFIG_OVERRIDES,

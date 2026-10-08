@@ -27,7 +27,7 @@ pytest.importorskip('gpytorch')
 
 import proteus.inference.failures as failures_mod  # noqa: E402
 import proteus.inference.objective as objective_mod  # noqa: E402
-from proteus.inference.likelihood import CorrelationWhitener  # noqa: E402
+from proteus.inference.correlation import CorrelationWhitener  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

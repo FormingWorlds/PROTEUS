@@ -14,8 +14,8 @@ import numpy as np
 import pandas as pd
 import toml
 
+from proteus.inference.correlation import CorrelationWhitener
 from proteus.inference.failures import read_failure_records
-from proteus.inference.likelihood import CorrelationWhitener
 from proteus.inference.objective import EPS_CLIP, eval_obj
 from proteus.inference.plot import dpi, fmt
 from proteus.inference.utils import get_obs
