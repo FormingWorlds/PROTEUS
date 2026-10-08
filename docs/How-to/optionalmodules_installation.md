@@ -21,7 +21,8 @@ bash tools/get_spider.sh
 
 === "Linux"
 
-    The PETSc script downloads a pre-compiled version from OSF and configures
+    The PETSc script downloads the PETSc 3.19.0 source archive from Zenodo (or its
+    DataverseNL mirror), checks its SHA-256, builds it and configures
     `PETSC_DIR` and `PETSC_ARCH` automatically.
 
     !!! note "Fedora / RHEL"
