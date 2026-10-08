@@ -18,6 +18,7 @@ import toml
 import torch
 
 import proteus.inference.plot as plotBO
+import proteus.inference.plot_fit as plot_fit
 
 # proteus libraries
 from proteus.config import (
@@ -471,7 +472,7 @@ def run_inference(config):
     plotBO.plots_perf_converge(D_final, Ts, n_init, dirs['output'])
     plotBO.plot_result_objective(D_final, config['parameters'], n_init, dirs['output'])
     plotBO.plot_result_correlation(config['parameters'], config['observables'], dirs['output'])
-    plotBO.plot_result_observables(
+    plot_fit.plot_result_observables(
         config['observables'],
         dirs['output'],
         best_config,
@@ -479,7 +480,7 @@ def run_inference(config):
         config['correlation'],
     )
     if config['truth'] is not None:
-        plotBO.plot_result_parameters(
+        plot_fit.plot_result_parameters(
             config['parameters'],
             config['truth'],
             config['observables'],
