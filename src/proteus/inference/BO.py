@@ -26,6 +26,10 @@ from proteus.inference.utils import get_acqf, get_kernel
 dtype = torch.double
 log = logging.getLogger('fwl.' + __name__)
 
+# Warnings already passed on by this process. catch_warnings clears the warnings
+# registry, so the default once-per-location filter would repeat them every step.
+_PASSED_ON: set[tuple] = set()
+
 
 def unit_bounds(d):
     """Generate unit hypercube bounds for d-dimensional input.
@@ -71,20 +75,36 @@ def optimize_acqf_logged(acq_function, d: int, who: str) -> torch.Tensor:
     for w in caught:
         text = str(w.message)
         if text.startswith('Optimization failed in `gen_candidates_scipy`'):
-            failed = re.findall(r'status (\d+) and message ([^\']*)', text)
+            failed = text
         elif text.startswith('Optimization failed on the second try'):
             second = True
         else:
-            warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
+            key = (w.category, text, w.filename, w.lineno)
+            if key not in _PASSED_ON:
+                _PASSED_ON.add(key)
+                warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
 
     if failed is not None:
-        statuses = ', '.join(sorted({f'status {c} ({m.strip(" :.")})' for c, m in failed}))
         (log.warning if second else log.info)(
-            f'Acquisition optimiser ({who}): L-BFGS-B stopped early in {len(failed)} start(s) '
-            f'[{statuses}], {"failed again after a retry" if second else "the retry succeeded"}; '
+            f'Acquisition optimiser ({who}): L-BFGS-B stopped early{_failed_starts(failed)}, '
+            f'{"failed again after a retry" if second else "the retry succeeded"}; '
             f'proposing x = {[round(v, 3) for v in x[0].tolist()]}'
         )
     return x
+
+
+def _failed_starts(text: str) -> str:
+    """Count and reasons of the failed starts in botorch's first-try warning; '' if none parse."""
+    reasons = {
+        f'status {c} ({m.strip(" :.")})'
+        for c, m in re.findall(r'status (\d+) and message ([^\']*)', text)
+    }
+    if 'with no status returned' in text:
+        reasons.add('no status returned')
+    if not reasons:
+        return ''
+    starts = text.count('Optimization failed within')
+    return f' in {starts} start(s) [{", ".join(sorted(reasons))}]'
 
 
 def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):

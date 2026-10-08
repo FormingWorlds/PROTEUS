@@ -680,6 +680,81 @@ def test_optimize_acqf_logged_reports_successful_retry_at_info(monkeypatch, capl
     assert 'initial point 0' in caplog.records[0].getMessage()
 
 
+_NO_STATUS = (
+    "OptimizationWarning('Optimization failed within `scipy.optimize.minimize` with no "
+    "status returned to `res.`')"
+)
+
+
+@pytest.mark.unit
+def test_optimize_acqf_logged_names_starts_that_returned_no_status(monkeypatch, caplog):
+    """A start that returned no status is counted and named, alone and next to
+    a status failure, not logged as '0 start(s) []'."""
+    head = 'Optimization failed in `gen_candidates_scipy` with the following warning(s):\n['
+    tail = ']\nTrying again with a new set of initial conditions.'
+    status = (
+        "OptimizationWarning('Optimization failed within `scipy.optimize.minimize` with "
+        "status 2 and message ABNORMAL: .')"
+    )
+
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.BO'):
+        _patch_optimizer(monkeypatch, (head + _NO_STATUS + tail, RuntimeWarning))
+        bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 1')
+        _patch_optimizer(
+            monkeypatch, (head + _NO_STATUS + ', ' + status + tail, RuntimeWarning)
+        )
+        bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 1')
+
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines[0].startswith(
+        'Acquisition optimiser (worker 1): L-BFGS-B stopped early in 1 start(s) '
+        '[no status returned], the retry succeeded'
+    )
+    assert 'in 2 start(s) [no status returned, status 2 (ABNORMAL)]' in lines[1]
+
+
+@pytest.mark.unit
+def test_optimize_acqf_logged_falls_back_to_a_plain_line_for_an_unknown_format(
+    monkeypatch, caplog
+):
+    """An unparseable first-try warning is still logged, without a count or reasons."""
+    _patch_optimizer(
+        monkeypatch,
+        (
+            'Optimization failed in `gen_candidates_scipy` with the following warning(s):\n[]',
+            RuntimeWarning,
+        ),
+    )
+
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.BO'):
+        bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 2')
+
+    assert [r.getMessage() for r in caplog.records] == [
+        'Acquisition optimiser (worker 2): L-BFGS-B stopped early, the retry succeeded; '
+        'proposing x = [0.25, 0.75]'
+    ]
+
+
+@pytest.mark.unit
+def test_optimize_acqf_logged_passes_each_other_warning_on_once(monkeypatch):
+    """A warning repeated on every BO step is passed on once; a different one
+    still is."""
+    monkeypatch.setattr(bo_mod, '_PASSED_ON', set())
+    _patch_optimizer(monkeypatch, ('GP fit is ill-conditioned', UserWarning))
+
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter('default')
+        for _ in range(3):
+            bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 0')
+        _patch_optimizer(monkeypatch, ('input is not standardised', UserWarning))
+        bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 0')
+
+    assert [str(w.message) for w in seen] == [
+        'GP fit is ill-conditioned',
+        'input is not standardised',
+    ]
+
+
 @pytest.mark.unit
 def test_optimize_acqf_logged_passes_other_warnings_through_and_logs_nothing(
     monkeypatch, caplog
@@ -687,6 +762,7 @@ def test_optimize_acqf_logged_passes_other_warnings_through_and_logs_nothing(
     """A warning that is not botorch's retry message is re-raised unchanged and
     produces no log line; a clean optimisation logs nothing either.
     """
+    monkeypatch.setattr(bo_mod, '_PASSED_ON', set())
     _patch_optimizer(monkeypatch, ('GP fit is ill-conditioned', UserWarning))
 
     with caplog.at_level('INFO', logger='fwl.proteus.inference.BO'):
