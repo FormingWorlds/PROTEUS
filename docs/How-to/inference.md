@@ -2,6 +2,16 @@
 
 This project implements parallel-asynchronous Bayesian Optimization (BO) for parameter inference using PROTEUS as the  'simulator'. It uses multiple workers to efficiently explore the parameter space and find optimal matches between simulated and observed planetary characteristics. You can also run this BO inference scheme to refine the results of a grid.
 
+!!! info "Requires the `inference` extra"
+    The scheme is built on PyTorch, BoTorch and GPyTorch, which install
+    separately from the rest of PROTEUS:
+
+    ```console
+    pip install "fwl-proteus[inference]"
+    ```
+
+    See [optional modules](optionalmodules_installation.md#parameter-inference-bayesian-optimisation).
+
 ## Overview
 
 The system performs Bayesian optimization to infer planetary formation parameters by:
@@ -18,9 +28,11 @@ The system performs Bayesian optimization to infer planetary formation parameter
     | File               | Description                               |
     |:-------------------|:------------------------------------------|
     | `inference.py`     | Main entry point                          |
+    | `transforms.py`    | Functions for transforming and scaling variables |
     | `async_BO.py`      | Parallel BO implementation                |
     | `BO.py`            | Single BO step implementation             |
     | `objective.py`     | PROTEUS interface and objective function  |
+    | `failures.py`      | Functions for handling failing simulations |
     | `plot.py`          | Visualization utilities                   |
     | `utils.py`         | Helper functions for inference scheme     |
     | `gen_D_init.py`    | Generate initial data                     |
@@ -32,56 +44,18 @@ The main configuration is done through a TOML-formatted configuration file. Ther
 1. Allowing PROTEUS to randomly sample the parameter space provided in the config.
 2. Using the result of a previously-computed grid of models.
 
-To apply case (1), set the config variable `init_samps=4` to use 4 initial samples. You can choose any number greater than 2, but ideally less than 10. Then set `init_grid='none'`.
+To apply case (1), set the config variable `init_samps=4` to use 4 initial samples. You can choose any number greater than 2, but ideally less than 10. Then set `init_grid='none'`. Set `init_samps=-1` to use the same value as `n_workers`.
 
 If you instead wish to initialise under case (2), where a pre-computed grid provides the initial samples, set the config variable `init_grid='outname'` where `outname` is the name of the folder containing the grid inside the shared PROTEUS output folder. Then set `init_samps='none'`.
 
-An example configuration file is shown below.
-
-```toml
-# Set seed for reproducibility
-seed = 2
-
-# Logging level
-logging = 'INFO'
-
-# Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "infer_demo/"
-
-# Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "input/demos/dummy.toml"
-
-# Method for initialising the inference scheme (one of these must be 'none')
-init_samps = '2'         # Number of random samples if starting from scratch.
-init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
-
-# Parameters for Bayesian optimisation
-n_workers  = 7        # Number of parallel workers
-kernel     = "MAT"    # Kernel type for GP, "RBF" | "MAT"
-acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI"
-n_steps    = 30       # Total number of evaluations (i.e. BO steps)
-n_restarts = 10       # GP optimization restarts
-n_samples  = 1000     # Raw samples for acquisition optimization
-
-# Parameters to optimize (with bounds)
-[parameters]
-"struct.mass_tot" = [0.7, 3.0]
-"struct.corefrac" = [0.3, 0.9]
-"delivery.elements.H_ppmw" = [6e3, 2e4]
-"outgas.fO2_shift_IW" = [-3.0, 5.0]
-
-# Target observables to match by optimisation
-[observables]
-"R_obs" = 7.9950245489e6
-"H2O_vmr" = 0.41
-```
+An example configuration file is available at `input/inference/example.infer.toml`.
 
 ## Usage
 
 Execute the main optimisation process by using the PROTEUS command-line interface
 
 ```bash
-proteus infer --config input/ensembles/example.infer.toml
+proteus infer --config input/inference/example.infer.toml
 ```
 
 In this case, we randomly sample the parameter space to provide a starting point for the
@@ -117,6 +91,28 @@ better fits, while smaller values (including negative ones) are worse fits.
 
 The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
 
+### Acquisition functions
+
+The acquisition function is an analytical function that is aware of the current state of the optimisation.
+It is used to evaluate the *potential* value of sampling a candidate particular point in the parameter space, to 
+help determine where the optimisation should next run PROTEUS. It helps balance the trade-off between exploring new areas and exploiting known good areas to optimize a black-box function efficiently.
+
+* `UCB` - upper confidence bound
+* `LogEI` - logarithm of the expected improvement
+* `LogPI` - logarithm of the probability of improvement (analogous to log-likelihood)
+
+See docs [here](https://botorch.readthedocs.io/en/latest/acquisition.html).
+
+### Kernels
+
+The kernel is an analytical function used by the Gaussian processes to represent the similarity between model behaviour as a function of the parameter space. It includes the underlying function by capturing the relationships and uncertainties/noise in the data.
+
+* `RBF` - radial basis function
+* `MAT1/2` - Materne kernel with $\nu = 1/2$ 
+* `MAT3/2` - Materne kernel with $\nu = 3/2$
+* `MAT5/2` - Materne kernel with $\nu = 5/2$
+
+See docs [here](https://botorch.readthedocs.io/en/latest/models.html#module-botorch.models.kernels.categorical).
 
 ## Output
 
@@ -127,6 +123,7 @@ The system generates several outputs in:
 - `logs.csv`: Detailed logs of each BO step
 - `Ts.csv`: Timestamps for performance analysis
 - `init.csv`: Data used as an initial guess for starting the optimisation
+- `failures.csv`: One row per simulation that failed or was excluded, written only when there is at least one (see [Failed and excluded simulations](#failed-and-excluded-simulations))
 
 ### Plots
 The BO scheme will generate many plots upon completion.
@@ -149,18 +146,23 @@ Plots prefixed with `result_` show the results of the optimisation.
 
 ### Results Summary
 The system prints the final results including:
+
 - Best found parameters
 - Corresponding simulated observables
 - Comparison with target observables
 
+### Failed and excluded simulations
+
+During the inference run, some PROTEUS simulations might crash or fail, or stop on a status that is excluded in the inference configuration (e.g. maximum runtime reached). Status 29 (planet evaporated) is always excluded. The run carries on when there are failures unless `abort_on_failure` is set to `true` in the inference config. The study then starts no new simulations, but those already running finish first. Each failure is added to `failures.csv` in the output folder as it happens, and all failures are summarised at the end of the study. A study stopped by `abort_on_failure` keeps its `failures.csv` but prints no summary.
+
 ## Customization
 
 ### Adding New Parameters
-1. Update the `[parameters]` section in your inference config file
+1. Update the ``[parameters]`` section in your inference config file
 2. Ensure the parameter names match PROTEUS configuration keys
 
 ### Changing Observables
-1. Update the `[observables]` section with your target values
+1. Update the ``[observables]`` section with your target values
 2. Make sure these observables are output by PROTEUS
 
 
@@ -169,3 +171,4 @@ The system prints the final results including:
 - Set `n_workers` to be less than your CPU core count minus 1
 - The system automatically limits thread usage to prevent oversubscription
 - PROTEUS evaluation time typically dominates total runtime
+- Workers share prepared spectral files through a cache in the inference run's output folder. Set `spectral_cache = false` in the inference config to turn it off. The study log names the cache in use.

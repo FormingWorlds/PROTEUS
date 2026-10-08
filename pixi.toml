@@ -1,0 +1,12 @@
+[workspace]
+name = "proteus"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[dependencies]
+python = "3.12.*"
+pip = "*"
+# Julia 1.12 and 1.13 ship OpenSSL_jll 3.5+; juliacall matches it to Python's OpenSSL.
+openssl = ">=3.5"
+# Prebuilt CVODE wrapper for Aragog; pulls in its matching SUNDIALS.
+scikits_odes_sundials = ">=3.1,<4"

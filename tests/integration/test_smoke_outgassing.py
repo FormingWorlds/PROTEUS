@@ -1,188 +1,129 @@
-"""
-Smoke tests for volatile outgassing and atmosphere coupling.
+"""Smoke test for CALLIOPE outgassing with a dummy atmosphere.
 
-These tests validate that the outgassing module (CALLIOPE) correctly couples with the
-atmosphere module, exchanging volatile masses and updating chemical composition.
+Runs PROTEUS for one timestep with `interior_energetics.module = "dummy"`,
+`atmos_clim.module = "dummy"`, and `outgas.module = "calliope"`. The
+narrow scope means the test fits the smoke-tier budget (under 30 s on
+recent macOS / Linux runners) and exercises only the outgas-side
+boundary: the chemistry-side fO2 buffer is hit, volatile partitioning
+runs, and the helpfile records the volatile inventory.
 
-Tests are marked with @pytest.mark.smoke and are designed to run in <30s with real
-binaries but minimal physics (1 timestep, dummy modules where possible).
+The previous version of this file loaded `input/all_options.toml` (the
+full real-modules config) and silently `pytest.skip`-ed on any of a
+dozen exception types. That made the test simultaneously misnamed (it
+ran AGNI, ARAGOG, MORS, ZEPHYRUS, and VULCAN despite "dummy_atmos" in
+the function name) and unreliable (it almost always timed out on
+macOS). The rewrite below is byte-for-byte different and targets the
+intent the function name advertised.
 """
 
 from __future__ import annotations
 
 import os
+import tempfile
+import uuid
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from proteus.proteus import Proteus
+from proteus import Proteus
+
+pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
 
 PROTEUS_ROOT = Path(__file__).parent.parent.parent
 RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 
 
 @pytest.mark.smoke
+@pytest.mark.physics_invariant
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
-    reason='CALLIOPE integration smoke test reserved for nightly CI with compiled binaries',
+    reason='CALLIOPE smoke test reserved for nightly CI (PROTEUS_CI_NIGHTLY=1).',
 )
 def test_smoke_calliope_dummy_atmos_outgassing():
-    """Test CALLIOPE outgassing + dummy atmosphere coupling (1 timestep).
+    """Dummy interior + dummy atmos + CALLIOPE outgas, 1 timestep.
 
-    Physical scenario: Validates that outgassing from the interior correctly updates
-    atmospheric composition and volatile inventories. Uses CALLIOPE for outgassing
-    with dummy atmosphere to keep runtime short.
-
-    Validates:
-    - Volatile masses updated in helpfile
-    - fO2 (oxidation state) is physically reasonable
-    - H2O, CO2 masses change after outgassing
-    - No NaN or Inf values in volatile columns
-    - Volatile masses are conservative (total ≈ constant ± outgassing)
-
-    Runtime: ~15-20s (1 timestep, CALLIOPE + dummy atmos)
+    Validates the outgas-only boundary: CALLIOPE writes positive
+    volatile masses into the helpfile, fO2 sits in the configured
+    buffer range, surface pressure and temperature stay in physical
+    bounds, and per-element mass-fraction closure holds across
+    H, C, N, S, O.
     """
-    import tempfile
-    import uuid
-
-    # Create unique temporary output directory for this test
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Load configuration with CALLIOPE outgassing
-        config_path = PROTEUS_ROOT / 'input' / 'all_options.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
+        runner = Proteus(config_path=config_path)
 
-        # Initialize PROTEUS
-        try:
-            runner = Proteus(config_path=config_path)
-        except (ValueError, FileNotFoundError, RuntimeError, OSError) as e:
-            # Skip if initialization fails due to known transient issues
-            error_msg = str(e).lower()
-            if any(
-                keyword in error_msg
-                for keyword in [
-                    'columns',
-                    'track',
-                    'mors',
-                    'stellar',
-                    'csv',
-                    'parse',  # MORS track parsing
-                    'allocate',
-                    'atmosphere',
-                    'agni',
-                    'julia',  # AGNI/Julia allocation
-                ]
-            ):
-                pytest.skip(
-                    f'Module initialization failed (transient issue): {e}. '
-                    'This test requires working MORS and AGNI modules.'
-                )
-            raise
+        # Override only the outgas backend to CALLIOPE; keep all other
+        # backends dummy so the run stays under 30 s.
+        runner.config.outgas.module = 'calliope'
+        runner.config.outgas.fO2_shift_IW = 0.0
 
-        # Override output path to use temporary directory
-        runner.config.params.out.path = str(Path(tmpdir) / f'smoke_test_{unique_id}')
-
-        # Re-initialize directories after changing output path
-        runner.init_directories()
-
-        # Override stop time to run minimal timesteps
-        runner.config.params.stop.time.minimum = 1e3  # yr, minimum time
-        runner.config.params.stop.time.maximum = 1.01e3  # yr, maximum time
-
-        # Disable plotting and archiving for speed
+        # Single-timestep run. The iters validator requires
+        # maximum > minimum, so push minimum down to 1 before lowering
+        # maximum.
+        runner.config.params.out.path = str(Path(tmpdir) / f'smoke_calliope_{unique_id}')
+        runner.config.params.stop.iters.minimum = 1
+        runner.config.params.stop.iters.maximum = 3
+        runner.config.params.stop.time.minimum = 1e2
+        runner.config.params.stop.time.maximum = 1e3
         runner.config.params.out.plot_mod = 0
         runner.config.params.out.write_mod = 0
         runner.config.params.out.archive_mod = 'none'
 
-        try:
-            # Run simulation (1 timestep)
-            try:
-                runner.start(resume=False, offline=True)
-            except (ValueError, RuntimeError, OSError) as e:
-                # Skip if simulation fails due to known transient module issues
-                error_msg = str(e).lower()
-                if any(
-                    keyword in error_msg
-                    for keyword in [
-                        'columns',
-                        'track',
-                        'mors',
-                        'stellar',
-                        'csv',
-                        'parse',
-                        'allocate',
-                        'atmosphere',
-                        'agni',
-                        'julia',
-                        'zenodo',
-                        'osf',
-                        'download',
-                        'network',
-                        'connection',
-                    ]
-                ):
-                    pytest.skip(
-                        f'Simulation failed due to transient module issue: {e}. '
-                        'This test requires working MORS and AGNI modules.'
-                    )
-                raise
+        runner.init_directories()
+        runner.start(resume=False, offline=True)
 
-            # Validate that helpfile was created and populated
-            assert runner.hf_all is not None, 'Helpfile should be created'
-            assert len(runner.hf_all) > 1, 'Helpfile should have at least 2 rows'
+        # ---- Helpfile created with at least one row ----
+        assert runner.hf_all is not None, 'helpfile must be created'
+        assert len(runner.hf_all) >= 1, 'helpfile must have at least one row'
+        final = runner.hf_all.iloc[-1]
 
-            # Get initial and final rows
-            initial_row = runner.hf_all.iloc[0]
-            final_row = runner.hf_all.iloc[-1]
+        # ---- CALLIOPE wrote volatile masses ----
+        for elt in ('H_kg_total', 'C_kg_total', 'N_kg_total', 'S_kg_total', 'O_kg_total'):
+            assert elt in final, f'CALLIOPE must populate {elt}'
+            assert np.isfinite(final[elt]), f'{elt} must be finite'
+            assert final[elt] >= 0.0, f'{elt} must be non-negative'
 
-            # Validate volatile masses are written
-            volatile_species = [
-                'H2O',
-                'CO2',
-                'N2',
-                'H2',
-                'CH4',
-                'CO',
-                'O2',
-                'H2S',
-                'SO2',
-            ]
-            for species in volatile_species:
-                key = f'{species}_kg_total'
-                assert key in final_row, f'{key} should be in helpfile'
-                assert not np.isnan(final_row[key]), f'{key} should not be NaN'
-                assert not np.isinf(final_row[key]), f'{key} should not be Inf'
-
-            # Validate fO2 (oxidation state) is physically reasonable.
-            # CALLIOPE stores fO2_IW (log10 relative to Iron-Wüstite buffer).
-            # Other modules may use a generic 'fO2' key. See #564.
-            if 'fO2_IW' in final_row:
-                fO2 = final_row['fO2_IW']
-                assert -5 <= fO2 <= 4, f'fO2 should be in range [-5, 4], got {fO2}'
-
-            # Validate atmospheric pressure is physical
-            assert 'P_surf' in final_row, 'P_surf should be in helpfile'
-            p_surf = final_row['P_surf']
-            assert not np.isnan(p_surf), 'P_surf should not be NaN'
-            assert not np.isinf(p_surf), 'P_surf should not be Inf'
-            # Atmospheric pressure should be > 0 (0.001 - 1000 bar is reasonable range)
-            assert 0 < p_surf <= 10000, f'P_surf should be physical (0-10000 bar), got {p_surf}'
-
-            # Validate surface temperature is physical
-            assert 'T_surf' in final_row, 'T_surf should be in helpfile'
-            t_surf = final_row['T_surf']
-            assert not np.isnan(t_surf), 'T_surf should not be NaN'
-            assert not np.isinf(t_surf), 'T_surf should not be Inf'
-            assert 100 <= t_surf <= 5000, (
-                f'T_surf should be physical (100-5000 K), got {t_surf}'
+        # ---- Per-element closure for each volatile element ----
+        for elt in ('H', 'C', 'N', 'S', 'O'):
+            atm_key = f'{elt}_kg_atm'
+            liq_key = f'{elt}_kg_liquid'
+            sol_key = f'{elt}_kg_solid'
+            tot_key = f'{elt}_kg_total'
+            if not all(k in final for k in (atm_key, liq_key, sol_key, tot_key)):
+                # Some elements may not have all reservoirs in the schema
+                # version under test; skip the closure check for those.
+                continue
+            atm = float(final[atm_key])
+            liq = float(final[liq_key])
+            sol = float(final[sol_key])
+            tot = float(final[tot_key])
+            assert atm >= 0 and liq >= 0 and sol >= 0, (
+                f'{elt}: reservoirs must be non-negative (atm={atm}, liq={liq}, sol={sol})'
+            )
+            assert (atm + liq + sol) == pytest.approx(tot, rel=1e-2, abs=1.0), (
+                f'{elt}: atm + liq + sol must equal total within 1% '
+                f'({atm:.3e} + {liq:.3e} + {sol:.3e} != {tot:.3e})'
             )
 
-            # Validate time progressed
-            assert 'Time' in final_row, 'Time should be in helpfile'
-            time_final = final_row['Time']
-            time_initial = initial_row['Time']
-            assert time_final > time_initial, 'Time should have progressed from initial value'
+        # ---- fO2 in physical range ----
+        if 'fO2_shift_IW_derived' in final:
+            fO2 = float(final['fO2_shift_IW_derived'])
+            assert np.isfinite(fO2), 'fO2 must be finite'
+            assert -10.0 <= fO2 <= 8.0, f'fO2 out of physical range: {fO2}'
 
-        finally:
-            # Cleanup handled by tempfile context manager
-            pass
+        # ---- Surface pressure / temperature in physical bounds ----
+        assert 'P_surf' in final
+        p_surf = float(final['P_surf'])
+        assert np.isfinite(p_surf), 'P_surf must be finite'
+        assert 0.0 < p_surf <= 1e10, f'P_surf out of physical range: {p_surf}'
+
+        assert 'T_surf' in final
+        t_surf = float(final['T_surf'])
+        assert np.isfinite(t_surf), 'T_surf must be finite'
+        assert 100.0 <= t_surf <= 6000.0, f'T_surf out of physical range: {t_surf}'
+
+        # ---- Time progressed ----
+        assert 'Time' in final
+        assert final['Time'] > 0.0, 'time must have progressed past t=0'

@@ -32,17 +32,9 @@
 set -e
 
 # -----------------------------------------------------------------------------
-# Portable realpath: macOS <13 (Catalina through Monterey) does not ship
-# GNU coreutils realpath. Fall back to python3, which is always available
-# in PROTEUS's conda environment.
+# Shared helpers, portable_realpath among them: see tools/_get_common.sh.
 # -----------------------------------------------------------------------------
-portable_realpath() {
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$1"
-    else
-        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
-    fi
-}
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 
 # -----------------------------------------------------------------------------
 # Error handling: report which step failed on any non-zero exit
@@ -70,7 +62,7 @@ on_error() {
             echo "   - Verify mpicc is working: mpicc --version"
             echo "   - Verify PETSc is intact: ls \$PETSC_DIR/\$PETSC_ARCH/lib/libpetsc.*"
             echo "   - On macOS: ensure SDKROOT is set (xcrun --show-sdk-path)"
-            echo "   - See PROTEUS docs/troubleshooting.md for platform-specific fixes"
+            echo "   - See PROTEUS docs/How-to/troubleshooting.md for platform-specific fixes"
             ;;
         *"Verif"*)
             echo "   - The build completed without make errors but no binary was produced"
@@ -78,7 +70,7 @@ on_error() {
             echo "   - Try rebuilding with verbose output: cd $workpath && make V=1"
             ;;
         *)
-            echo "   - See docs/troubleshooting.md for platform-specific advice"
+            echo "   - See docs/How-to/troubleshooting.md for platform-specific advice"
             ;;
     esac
     echo ""
@@ -108,14 +100,12 @@ fi
 # -----------------------------------------------------------------------------
 current_step="Validating PETSc installation"
 
-# Derive the repo root from this script's location (tools/get_spider.sh).
-# This avoids dependence on the caller's CWD — important when invoked by
-# data.py:get_spider() which does not set cwd.
-script_dir="$(cd "$(dirname "$0")" && pwd)"
-repo_root="$(dirname "$script_dir")"
-
-# PETSc is expected at <repo_root>/petsc/.
-petsc_path="$repo_root/petsc"
+# The repo root comes from this script's location, through the shared
+# helpers, rather than from the caller's CWD: data.py:get_spider() invokes
+# the script without setting cwd.
+#
+# PETSc is expected at <repo root>/petsc/.
+petsc_path="$proteus_root/petsc"
 if [[ ! -d "$petsc_path" ]]; then
     echo "ERROR: petsc/ directory not found at $petsc_path."
     echo "Run ./tools/get_petsc.sh first to install PETSc."
@@ -201,10 +191,14 @@ fi
 current_step="Cloning SPIDER from GitHub"
 
 # Default install directory: ./SPIDER/ ; override via first argument.
+# The --force flag is separated from the optional path argument.
+get_parse_args "$@"
 workpath="SPIDER"
-if [[ -n "$1" ]]; then
-    workpath="$1"
+if [[ -n "$get_install_path" ]]; then
+    workpath="$get_install_path"
 fi
+
+guard_dirty_checkout "$workpath" get_spider.sh
 
 # Remove any previous installation
 if [[ -d "$workpath" ]]; then
@@ -214,7 +208,14 @@ fi
 
 echo ""
 echo "Cloning SPIDER from GitHub..."
-git clone https://github.com/FormingWorlds/SPIDER.git "$workpath"
+
+# Resolve the pinned URL + ref from pyproject.toml. Allow override via
+# the SPIDER_GIT_URL / SPIDER_GIT_REF env vars for local dev.
+sp_url="${SPIDER_GIT_URL:-$(python "$proteus_tools_dir/_module_pins.py" spider url)}"
+sp_ref="${SPIDER_GIT_REF:-$(python "$proteus_tools_dir/_module_pins.py" spider ref)}"
+
+git clone "$sp_url" "$workpath"
+git -C "$workpath" checkout --quiet "$sp_ref"
 
 # -----------------------------------------------------------------------------
 # 6. Build SPIDER

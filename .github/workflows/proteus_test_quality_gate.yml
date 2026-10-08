@@ -5,6 +5,12 @@ name: Reusable Test Quality Gate for PROTEUS Ecosystem
 #   - Nightly CI (ci-nightly.yml): Runs all tests, establishes coverage baseline, ratchets threshold
 #   - PR Checks (ci-pr-checks.yml): Runs fast tests, validates against nightly baseline with 0.3% grace period
 # Ecosystem modules can adopt similar patterns or use this simpler threshold-based approach.
+#
+# Ecosystem-wide ceiling: 90%. The ratchet may rise toward this value but never above
+# it; above 90% the gate tracks pragma usage and style rather than bug-finding signal.
+
+permissions:
+  contents: read    # checkout + read; no commits, no comments, no artifacts
 
 on:
   workflow_call:
@@ -46,12 +52,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Full history for better coverage analysis
 
       - name: Set up Python ${{ inputs.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.python-version }}
           cache: 'pip'
@@ -82,7 +88,7 @@ jobs:
           sudo apt-get install -y gnupg
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         if: always()
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

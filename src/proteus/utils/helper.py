@@ -4,15 +4,209 @@ from __future__ import annotations
 
 import glob
 import logging
+import math
 import os
 import re
 import shutil
+from pathlib import Path
 
 import numpy as np
 
-from proteus.utils.constants import element_list, element_mmw
+from proteus.utils.constants import (
+    PALEOS_EOS_PREFIXES,
+    PALEOS_REGISTRY_KEYS,
+    element_list,
+    element_mmw,
+)
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+class MissingReferenceData(Exception):
+    """Marks an error raised because reference data the run needs is missing.
+
+    ``Proteus.start`` writes status 20 when such an error stops the run.
+    """
+
+
+class MissingDataError(FileNotFoundError, MissingReferenceData):
+    """A reference data file or table the run needs is not on disk."""
+
+
+def _strip_fraction_tokens(component: str) -> str:
+    """Strip trailing mass-fraction tokens from an EOS component string.
+
+    Extended mantle EOS strings carry per-component fractions, e.g.
+    ``'PALEOS:MgSiO3:0.9800'``; the registry key is the prefix without
+    the numeric token. Only finite numbers count as fraction tokens:
+    ``'nan'`` and ``'inf'`` parse as floats but are never written by
+    the EOS extension, so they stay part of the identifier.
+    """
+    tokens = component.split(':')
+    while tokens:
+        try:
+            value = float(tokens[-1])
+        except ValueError:
+            break
+        if not math.isfinite(value):
+            break
+        tokens.pop()
+    return ':'.join(tokens)
+
+
+def eos_components(eos: str) -> list[str]:
+    """Registry keys of the components of a ``+``-joined EOS string.
+
+    Parameters
+    ----------
+    eos : str
+        EOS identifier, e.g. ``'PALEOS:MgSiO3:0.9 + PALEOS:H2O:0.1'``.
+
+    Returns
+    -------
+    list[str]
+        One key per component, with spaces and fraction tokens stripped.
+    """
+    return [k for c in str(eos or '').split('+') if (k := _strip_fraction_tokens(c.strip()))]
+
+
+def is_mgsio3(component: str) -> bool:
+    """Whether an EOS registry key names an MgSiO3 material, e.g. ``'PALEOS:MgSiO3'``."""
+    return component.partition(':')[2].startswith('MgSiO3')
+
+
+def energetics_eos_key(mantle_eos: str) -> str | None:
+    """Registry key of the EOS whose melting curves and P-S tables a mantle uses.
+
+    The structure melting curves and the energetics both follow this key, so a
+    run has one melting curve.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Mantle EOS, possibly a ``+``-joined mixture.
+
+    Returns
+    -------
+    str or None
+        The MgSiO3 component. Without one, the MgSiO3 2-phase pair of the PALEOS
+        family when a component is a PALEOS registry key (so PALEOS H2O and iron
+        mantles use MgSiO3 curves and tables); else the key of a single component,
+        or None for a mixture.
+
+    Raises
+    ------
+    ValueError
+        If a mixture has MgSiO3 components with different registry keys.
+    """
+    components = sorted(set(eos_components(mantle_eos)))
+    mgsio3 = [c for c in components if is_mgsio3(c)]
+    if len(mgsio3) > 1:
+        raise ValueError(
+            f'mantle_eos={mantle_eos!r} has MgSiO3 components from different sources '
+            f'({", ".join(mgsio3)}); the melting curves and energetics follow one '
+            'MgSiO3 component, so keep one of them.'
+        )
+    if mgsio3:
+        return mgsio3[0]
+    if any(c in PALEOS_REGISTRY_KEYS for c in components):
+        return twophase_registry_key(mantle_eos)
+    return components[0] if len(components) == 1 else None
+
+
+def generates_paleos_tables(interior_struct) -> bool:
+    """Return whether Zalmoxis generates a PALEOS table set for this structure.
+
+    Under the Zalmoxis structure, a mantle EOS gets one when its energetics key
+    (:func:`energetics_eos_key`) is a PALEOS key of the Zalmoxis material
+    registry. SPIDER, Aragog and the table fetch then use the PALEOS-derived
+    curves instead of interior_struct.melting_dir. The table files are not checked.
+    The dummy structure builds the same P-S set for a PALEOS mantle EOS, but Aragog
+    still requires melting_dir there, so it is not covered here.
+
+    Parameters
+    ----------
+    interior_struct : Struct
+        The interior_struct section of the configuration.
+
+    Returns
+    -------
+    bool
+        True for module 'zalmoxis' with a PALEOS energetics key.
+    """
+    if getattr(interior_struct, 'module', None) != 'zalmoxis':
+        return False
+    mantle = getattr(getattr(interior_struct, 'zalmoxis', None), 'mantle_eos', None)
+    return energetics_eos_key(mantle or '') in PALEOS_REGISTRY_KEYS
+
+
+def twophase_registry_key(mantle_eos: str) -> str:
+    """Return the 2-phase MgSiO3 registry key matching a mantle EOS name.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Configured mantle EOS name.
+
+    Returns
+    -------
+    str
+        ``'PALEOS-API-2phase:MgSiO3'`` when a component is of the PALEOS-API
+        family, ``'PALEOS-2phase:MgSiO3-highres'`` when a component is the
+        high-resolution shipped key, and ``'PALEOS-2phase:MgSiO3'`` otherwise.
+        A PALEOS MgSiO3 component, when present, alone sets the family.
+    """
+    components = eos_components(mantle_eos)
+    mgsio3 = [c for c in components if c.startswith(PALEOS_EOS_PREFIXES) and is_mgsio3(c)]
+    components = mgsio3 or components
+    if any(c.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')) for c in components):
+        return 'PALEOS-API-2phase:MgSiO3'
+    if 'PALEOS-2phase:MgSiO3-highres' in components:
+        return 'PALEOS-2phase:MgSiO3-highres'
+    return 'PALEOS-2phase:MgSiO3'
+
+
+def paleos_companion_keys(mantle_eos: str) -> list[str]:
+    """Registry key of the table pair a PALEOS mantle reads besides its own tables.
+
+    A mantle EOS with any PALEOS component also reads the MgSiO3 2-phase
+    pair of its family (P-S tables, Aragog tables, the liquidus_super anchor).
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Configured mantle EOS, possibly a ``+``-joined mixture.
+
+    Returns
+    -------
+    list[str]
+        The 2-phase pair key, or an empty list for a mantle without a PALEOS component.
+    """
+    if not any(c.startswith(PALEOS_EOS_PREFIXES) for c in eos_components(mantle_eos)):
+        return []
+    return [twophase_registry_key(mantle_eos)]
+
+
+def resolve_fwl_data_dir() -> Path:
+    """Return the FWL_DATA directory.
+
+    The single source of truth for the FWL data location: the ``FWL_DATA``
+    environment variable when set, otherwise a repo-local default
+    (``FWL_DATA`` alongside the proteus package source). Both the CLI and
+    ``utils.data`` resolve through this so the two cannot diverge.
+
+    Returns
+    -------
+    Path
+        Directory where FWL reference data is stored.
+    """
+    env = os.environ.get('FWL_DATA')
+    if env:
+        # expanduser matches how fwl-io resolves the same variable. Without it
+        # a value carrying a literal '~' becomes a directory of that name below
+        # the working directory, and the two resolvers point at different trees.
+        return Path(env).expanduser()
+    return Path(__file__).resolve().parents[2] / 'FWL_DATA'
 
 
 def get_proteus_dir():
@@ -33,6 +227,93 @@ def get_proteus_dir():
         raise EnvironmentError(f"Cannot locate PROTEUS directory. Tried '{root}' ")
 
     return root
+
+
+def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
+    """Return the snapshot path for a time, preferring the sub-year name.
+
+    A snapshot filename can take three forms: the ``p`` sub-year form
+    ``format_subyear_time(time) + suffix`` (e.g. ``'884p700_int.nc'``),
+    the dot-decimal sub-year form ``'%.3f' + suffix`` (e.g.
+    ``'884.700_int.nc'``), or the whole-year form ``'%.0f' + suffix``
+    (e.g. ``'884_int.nc'``). Probes in that order.
+
+    Parameters
+    ----------
+    data_dir : str
+        Directory holding the snapshot files (a run's ``data/``).
+    time : float
+        Simulation time [yr] to build the filename from.
+    suffix : str
+        Filename suffix after the formatted time, e.g. ``'_int.nc'`` or
+        ``'_atm.nc'``.
+
+    Returns
+    -------
+    str
+        Path to the existing snapshot. When no form exists, the ``p``
+        sub-year path is returned so the caller reports a consistent name.
+    """
+    subyear = os.path.join(data_dir, format_subyear_time(time) + suffix)
+    if os.path.exists(subyear):
+        return subyear
+    dotform = os.path.join(data_dir, '%.3f%s' % (time, suffix))
+    if os.path.exists(dotform):
+        return dotform
+    wholeyear = os.path.join(data_dir, '%.0f%s' % (time, suffix))
+    if os.path.exists(wholeyear):
+        return wholeyear
+    return subyear
+
+
+# Smallest time difference [yr] that format_subyear_time resolves.
+SUBYEAR_TIME_RESOLUTION = 1.0e-3
+
+
+def format_subyear_time(time: float) -> str:
+    """Format a simulation time with sub-year precision for snapshot filenames.
+
+    Uses ``p`` as the decimal separator so the resulting token has no dot,
+    avoiding ambiguity with file extensions.  E.g. ``884.7`` becomes
+    ``'884p700'`` and ``0.0`` becomes ``'0p000'``.
+
+    Parameters
+    ----------
+    time : float
+        Simulation time [yr].
+
+    Returns
+    -------
+    str
+        Formatted time token, e.g. ``'884p700'``.
+    """
+    return ('%.3f' % time).replace('.', 'p')
+
+
+def parse_subyear_time(token: str) -> float:
+    """Parse a sub-year time token back to a float.
+
+    Accepts both the ``p`` convention (``'884p700'``) and the plain-dot
+    convention (``'884.700'``).
+
+    Parameters
+    ----------
+    token : str
+        The numeric portion of a snapshot filename.
+
+    Returns
+    -------
+    float
+        The simulation time [yr].
+
+    Raises
+    ------
+    ValueError
+        If the token contains more than one ``p``.
+    """
+    if token.count('p') > 1:
+        raise ValueError(f"Snapshot time token '{token}' contains multiple 'p' characters")
+    return float(token.replace('p', '.'))
 
 
 def PrintSeparator():
@@ -57,6 +338,34 @@ def multiple(a: int, b: int) -> bool:
         return bool(a % b == 0)
 
 
+def is_write_snapshot(
+    loops_total: int,
+    write_mod: int,
+    dt_write_rel: float,
+    cur_time: float,
+    last_write_time: float,
+) -> bool:
+    """
+    Decide whether the current iteration of PROTEUS should write data to disk.
+
+    Two criteria, each individually sufficient:
+      1. Iteration count is a multiple of ``write_mod``.
+      2. Enough simulation time has elapsed since the last write, where the
+         relative interval is ``dt_write_rel * max(cur_time, 1)``.
+    """
+
+    # Iteration criterion
+    iter_ok = multiple(loops_total, write_mod)
+
+    # Time criterion
+    time_ok = False
+    if dt_write_rel > 0:
+        time_ok = bool(cur_time - last_write_time >= dt_write_rel * max(cur_time, 1.0))
+
+    # Logical OR of the two criteria
+    return iter_ok or time_ok
+
+
 def mol_to_ele(mol: str):
     """
     Return the number of atoms of each element in a given molecule, as a dictionary
@@ -76,7 +385,7 @@ def mol_to_ele(mol: str):
             val = 1
         else:
             val = int(ev[1])
-        elems[str(ev[0])] = val
+        elems[str(ev[0])] = elems.get(ev[0], 0) + val
 
     # Check that what we got is reasonable
     if not elems:
@@ -155,7 +464,7 @@ def CommentFromStatus(status: int):
         case 10:
             desc = 'Completed (solidified)'
         case 11:
-            desc = 'UNUSED_STATUS_CODE (11)'
+            desc = 'Completed (maximum clock runtime)'
         case 12:
             desc = 'Completed (maximum iterations)'
         case 13:
@@ -166,6 +475,10 @@ def CommentFromStatus(status: int):
             desc = 'Completed (volatiles escaped)'
         case 16:
             desc = 'Completed (planet disintegrated)'
+        case 17:
+            desc = 'Completed (satellite escaped)'
+        case 18:
+            desc = 'Completed (satellite disintegrated)'
         # Error cases
         case 20:
             desc = 'Error (generic case, or configuration issue)'
@@ -185,6 +498,8 @@ def CommentFromStatus(status: int):
             desc = 'Error (Outgassing model)'
         case 28:
             desc = 'Error (Escape model)'
+        case 29:
+            desc = 'Completed (planet evaporated)'
         # Default case
         case _:
             desc = 'UNHANDLED STATUS (%d)' % status
@@ -213,6 +528,32 @@ def UpdateStatusfile(dirs: dict, status: int):
         hdl.write('%d\n' % status)
         desc = CommentFromStatus(status)
         hdl.write('%s\n' % desc)
+
+
+# Status written by PROTEUS before its output folder is cleaned, and never
+# rewritten until the main loop starts.
+STATUS_MISSING = -1
+
+
+def ReadStatus(out_abs: Path | str) -> int:
+    """Read the PROTEUS status code from a finished run's output folder.
+
+    Parameters
+    ----------
+    - out_abs (Path | str): Absolute path to the run's output folder.
+
+    Returns
+    ----------
+    - int: The status code, or `STATUS_MISSING` when no readable status file
+      exists. A missing file is itself diagnostic: PROTEUS deletes the status
+      it writes at start-up when it cleans the output folder, and does not
+      write another until the main loop begins.
+    """
+    try:
+        with open(Path(out_abs) / 'status', 'r') as f:
+            return int(f.readlines()[0].strip())
+    except Exception:
+        return STATUS_MISSING
 
 
 def CleanDir(directory, keep_stdlog=False):

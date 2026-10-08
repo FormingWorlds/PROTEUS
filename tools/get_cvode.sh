@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Install CVODE (scikits-odes-sundials on the conda-forge SUNDIALS library), which
+# Aragog's default solver_method = "cvode" needs; PROTEUS stops at setup without it.
+# Idempotent; needs an active conda environment. "radau" or "bdf" select scipy instead.
+set -euo pipefail
+
+if python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum" >/dev/null 2>&1; then
+    echo "CVODE (scikits-odes-sundials) already installed; nothing to do."
+    exit 0
+fi
+
+if [ -z "${CONDA_PREFIX:-}" ]; then
+    echo "ERROR: installing CVODE needs an active conda environment" >&2
+    echo "       (CONDA_PREFIX is unset). Activate the proteus env and re-run." >&2
+    exit 1
+fi
+
+# Unreached under pixi: pixi.toml ships scikits_odes_sundials, so the check above exits.
+conda_bin="${CONDA_EXE:-conda}"
+
+# Pin the SUNDIALS major and the wrapper minor: a future SUNDIALS major can
+# change the ABI the wrapper builds against, so bound the ranges to the known
+# working combination (SUNDIALS 7.x, scikits-odes-sundials 3.x) while allowing
+# minor/patch updates.
+echo "Installing the SUNDIALS C library (conda-forge) into ${CONDA_PREFIX}..."
+"$conda_bin" install -y --prefix "$CONDA_PREFIX" -c conda-forge 'sundials>=7,<8'
+
+echo "Building scikits-odes-sundials against SUNDIALS..."
+# The build (scikit-build-core / CMake) locates SUNDIALS through the conda
+# prefix; expose it both ways so older and newer build backends find it.
+export CMAKE_PREFIX_PATH="${CONDA_PREFIX}:${CMAKE_PREFIX_PATH:-}"
+export SUNDIALS_INST="${CONDA_PREFIX}"
+if pip show scikits-odes-sundials >/dev/null 2>&1; then
+    # Installed but not importing: pip would call it satisfied, so rebuild it from
+    # source against the SUNDIALS above (--no-deps leaves the rest of the env alone).
+    echo "scikits-odes-sundials is installed but does not import; rebuilding it..."
+    pip install --force-reinstall --no-deps --no-cache-dir --no-binary scikits-odes-sundials \
+        'scikits-odes-sundials>=3.0,<4'
+else
+    pip install 'scikits-odes-sundials>=3.0,<4'
+fi
+
+# Hard gate: a wrapper that builds but does not import (wrong/missing SUNDIALS,
+# ABI mismatch) is exactly what this script exists to catch, so fail loudly
+# instead of reporting success.
+if ! python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum" >/dev/null 2>&1; then
+    echo "ERROR: scikits-odes-sundials installed but does not import." >&2
+    echo "       Check the SUNDIALS build against the conda library above." >&2
+    exit 1
+fi
+echo "[+] CVODE (scikits-odes-sundials) installed and importable."

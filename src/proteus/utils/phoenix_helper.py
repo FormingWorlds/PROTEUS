@@ -50,8 +50,8 @@ def phoenix_to_grid(*, FeH, alpha, Teff=None, logg=None):
     -----
     - FeH grid: [-4.0, -3.0, -2.0, -1.5, ..., +1.0]
     - alpha grid: -0.2 .. +1.2 in steps of 0.2
-    - Teff grid: 2300–7000 (100 K), 7200–12000 (200 K)
-    - logg grid: 0.0–6.0 in steps of 0.5
+    - Teff grid: 2300-7000 (100 K), 7200-12000 (200 K)
+    - logg grid: 0.0-6.0 in steps of 0.5
 
     Alpha is allowed to be nonzero only if:
       - FeH <= 0, and

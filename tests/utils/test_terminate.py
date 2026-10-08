@@ -2,7 +2,7 @@
 
 Exercises convergence/termination criteria for solidification, energy balance,
 volatile escape, disintegration, time/iteration limits, and keepalive guard.
-Follows PROTEUS testing standards (see docs/test_infrastructure.md).
+Follows PROTEUS testing standards (see docs/How-to/testing.md).
 """
 
 from __future__ import annotations
@@ -14,6 +14,9 @@ from typing import Any
 import pytest
 
 import proteus.utils.terminate as terminate
+from proteus.utils.constants import R_earth
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def _cfg(**kwargs: Any) -> Any:
@@ -33,12 +36,21 @@ def _cfg(**kwargs: Any) -> Any:
             offset_roche=0.0,
             offset_spin=0.0,
         ),
+        disint_sat=ns(
+            enabled=False,
+            roche_enabled=True,
+            spin_enabled=True,
+            offset_roche=0.0,
+            offset_spin=0.0,
+        ),
+        satellite=ns(enabled=False, sma_max=0.0),
         time=ns(enabled=True, maximum=100.0, minimum=0.0),
         iters=ns(enabled=True, total_loops=5, total_min=1),
+        clock=ns(enabled=True, maximum=600.0),
         strict=False,
     )
     params = ns(stop=stop)
-    return ns(params=params, atmos_clim=ns(prevent_warming=False), **kwargs)
+    return ns(params=params, planet=ns(prevent_warming=False), **kwargs)
 
 
 def _handler(cfg: Any, *, phi_global: float = 0.4) -> Any:
@@ -54,8 +66,12 @@ def _handler(cfg: Any, *, phi_global: float = 0.4) -> Any:
         'roche_limit': 1.0,
         'axial_period': 10.0,
         'breakup_period': 5.0,
+        'runtime': 10.0,
         'Time': 0.0,
+        'M_vaps': 1.0e18,
+        'M_int': 1.0e24,
     }
+
     loops = {
         'total': 0,
         'total_loops': cfg.params.stop.iters.total_loops,
@@ -105,6 +121,26 @@ def test_check_solid_skips_when_above_crit(patch_statusfile):
 
 
 @pytest.mark.unit
+def test_check_clock_skips_when_below_max(patch_statusfile):
+    """Clock: below maximum keeps simulation running."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['runtime'] = 500.0
+    assert terminate._check_clock(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_clock_hits_when_above_max(patch_statusfile):
+    """Clock: above maximum stops simulation."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['runtime'] = 1e99
+    assert terminate._check_clock(h) is True
+    assert patch_statusfile[-1][1] == 11  # stop code 11
+
+
+@pytest.mark.unit
 def test_check_radeqm_hits_energy_balance(patch_statusfile):
     """Energy balance: F_atm == F_tidal yields convergence with status 14."""
     cfg = _cfg()
@@ -120,7 +156,7 @@ def test_check_radeqm_hits_energy_balance(patch_statusfile):
 def test_check_radeqm_prevent_warming_triggers(monkeypatch, patch_statusfile):
     """Energy balance: prevent_warming=True exits when cooling stops (status 14)."""
     cfg = _cfg()
-    cfg.atmos_clim.prevent_warming = True
+    cfg.planet.prevent_warming = True
     h = _handler(cfg)
     h.hf_row['F_atm'] = 0.0
     h.hf_row['F_tidal'] = 1.0
@@ -169,6 +205,176 @@ def test_check_spinrate_triggers_breakup(patch_statusfile):
     h.hf_row['breakup_period'] = 5.0
     assert terminate._check_spinrate(h) is True
     assert patch_statusfile[-1][1] == 16
+
+
+@pytest.mark.unit
+def test_check_satellite_triggers_escape_sma(patch_statusfile):
+    """Satellite escape: semimajor axis at/above sma_max exits with status 17."""
+    cfg = _cfg()
+    cfg.params.stop.satellite.enabled = True
+    cfg.params.stop.satellite.sma_max = 10.0
+    h = _handler(cfg)
+    h.hf_row['semimajorax_sat'] = 10.0 * R_earth
+    assert terminate._check_satellite(h) is True
+    assert patch_statusfile[-1][1] == 17
+
+
+@pytest.mark.unit
+def test_check_satellite_not_triggered_below_escape_sma(patch_statusfile):
+    """Satellite escape: semimajor axis comfortably below sma_max keeps the
+    simulation running -- edge case for the >= boundary above."""
+    cfg = _cfg()
+    cfg.params.stop.satellite.enabled = True
+    cfg.params.stop.satellite.sma_max = 10.0
+    h = _handler(cfg)
+    h.hf_row['semimajorax_sat'] = 5.0 * R_earth
+    assert terminate._check_satellite(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_satellite_separation_triggers_roche_limit(patch_statusfile):
+    """Satellite disintegration: the satellite's own time-averaged
+    separation from the planet, below the satellite's own Roche limit,
+    exits with status 18.
+    """
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['separation_sat'] = 0.9
+    h.hf_row['roche_limit_sat'] = 1.0
+    assert terminate._check_satellite_separation(h) is True
+    assert patch_statusfile[-1][1] == 18
+
+
+@pytest.mark.unit
+def test_check_satellite_separation_not_triggered_outside_roche_limit(patch_statusfile):
+    """Edge case for the boundary above: satellite separation comfortably
+    outside the satellite's Roche limit keeps the simulation running."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['separation_sat'] = 5.0
+    h.hf_row['roche_limit_sat'] = 1.0
+    h.hf_row['separation'] = 1.5e11  # ~1 AU; must not leak into this check
+    assert terminate._check_satellite_separation(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_satellite_spinrate_triggers_breakup(patch_statusfile):
+    """Satellite disintegration: spinning faster than its own breakup
+    rate exits with status 18."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['axial_period_sat'] = 4.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    assert terminate._check_satellite_spinrate(h) is True
+    assert patch_statusfile[-1][1] == 18
+
+
+@pytest.mark.unit
+def test_check_satellite_spinrate_not_triggered_above_breakup_period(patch_statusfile):
+    """Edge case for the boundary above: satellite spin period
+    comfortably longer than its breakup period keeps the simulation
+    running."""
+    cfg = _cfg()
+    h = _handler(cfg)
+    h.hf_row['axial_period_sat'] = 20.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    assert terminate._check_satellite_spinrate(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_termination_dispatches_satellite_disintegration_checks(
+    monkeypatch, patch_statusfile
+):
+    """``check_termination`` must actually reach the satellite
+    disintegration checks when ``stop.disint_sat.enabled`` is True.
+    """
+    cfg = _cfg()
+    cfg.params.stop.disint_sat.enabled = True
+    h = _handler(cfg)
+    # Roche check runs first (roche_enabled defaults True); keep it safely
+    # unmet so the spin-rate trigger below is what's actually observed.
+    h.hf_row['separation_sat'] = 5.0
+    h.hf_row['roche_limit_sat'] = 1.0
+    h.hf_row['axial_period_sat'] = 4.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    h.loops['total'] = 5  # satisfy min_iter so exit is allowed
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    assert patch_statusfile[-1][1] == 18
+
+
+@pytest.mark.unit
+def test_check_termination_skips_satellite_roche_check_when_disabled(
+    monkeypatch, patch_statusfile
+):
+    """``disint_sat.roche_enabled=False`` must skip the satellite Roche
+    check entirely -- a satellite well within its Roche limit (which
+    would otherwise terminate the run) must NOT trigger termination while
+    the gate is off.
+    """
+    cfg = _cfg()
+    cfg.params.stop.disint_sat.enabled = True
+    cfg.params.stop.disint_sat.roche_enabled = False
+    h = _handler(cfg)
+    # Deep within the Roche limit -- would trigger if the check ran.
+    h.hf_row['separation_sat'] = 0.5
+    h.hf_row['roche_limit_sat'] = 1.0
+    # Spin safely unmet, so it is not what keeps this from terminating.
+    h.hf_row['axial_period_sat'] = 10.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    h.loops['total'] = 5
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_termination_skips_satellite_spinrate_check_when_disabled(
+    monkeypatch, patch_statusfile
+):
+    """``disint_sat.spin_enabled=False`` must skip the satellite spin-rate
+    check entirely -- a satellite spinning faster than its breakup rate
+    (which would otherwise terminate the run) must NOT trigger termination
+    while the gate is off.
+    """
+    cfg = _cfg()
+    cfg.params.stop.disint_sat.enabled = True
+    cfg.params.stop.disint_sat.spin_enabled = False
+    h = _handler(cfg)
+    # Roche safely unmet, so it is not what keeps this from terminating.
+    h.hf_row['separation_sat'] = 5.0
+    h.hf_row['roche_limit_sat'] = 1.0
+    # Spinning faster than breakup -- would trigger if the check ran.
+    h.hf_row['axial_period_sat'] = 4.0
+    h.hf_row['breakup_period_sat'] = 5.0
+    h.loops['total'] = 5
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is False
+    assert patch_statusfile == []
+
+
+@pytest.mark.unit
+def test_check_termination_wires_up_satellite_escape_check(monkeypatch, patch_statusfile):
+    """The satellite-escape criterion must actually be reachable through
+    the top-level ``check_termination`` orchestrator when enabled, not
+    just callable in isolation (see ``test_check_satellite_triggers_escape_sma``
+    above)."""
+    cfg = _cfg()
+    cfg.params.stop.satellite.enabled = True
+    cfg.params.stop.satellite.sma_max = 10.0
+    h = _handler(cfg)
+    h.hf_row['semimajorax_sat'] = 10.0 * R_earth
+    h.loops['total'] = 5  # satisfy min_iter so exit is allowed
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    assert patch_statusfile[-1][1] == 17
 
 
 @pytest.mark.unit
@@ -303,3 +509,99 @@ def test_check_termination_strict_resets_if_condition_lost(monkeypatch, patch_st
     assert h.finished_prev is False
     # No new statusfile entries added beyond initial attempt
     assert patch_statusfile[-1][1] == 13
+
+
+@pytest.mark.unit
+def test_check_termination_maxtime_vs_escape(monkeypatch, patch_statusfile):
+    """When volatile escape and the maximum-time limit are both satisfied on
+    the same iteration, the recorded status is the maximum simulation time.
+
+    Here, we check that time limit (code 13) outranks escape (code 15).
+    """
+    cfg = _cfg()  # strict=False
+    h = _handler(cfg)
+    h.hf_row['P_surf'] = 0.5  # below p_stop=1.0 -> escape fires (code 15)
+    h.hf_row['Time'] = 200.0  # above maximum=100.0 -> max time fires (code 13)
+    h.loops['total'] = 5  # satisfy min_iter so exit is allowed
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    codes = [code for _, code in patch_statusfile]
+    assert codes[-1] == 13
+    assert 15 not in codes
+
+
+@pytest.mark.unit
+def test_check_termination_maxtime_vs_solid(monkeypatch, patch_statusfile):
+    """When solidification and the maximum-time limit are both satisfied on
+    the same iteration, the recorded status is the maximum simulation time.
+
+    Here, we check that time limit (code 13) outranks solidification (code 10)
+    """
+    cfg = _cfg()  # strict=False
+    h = _handler(cfg, phi_global=0.2)  # below phi_crit=0.3 -> solid fires (10)
+    h.hf_row['P_surf'] = 50.0  # keep escape from firing
+    h.hf_row['Time'] = 200.0  # above maximum -> max time would fire (13)
+    h.loops['total'] = 5
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    codes = [code for _, code in patch_statusfile]
+    assert codes[-1] == 13
+    assert 10 not in codes
+
+
+@pytest.mark.unit
+def test_check_termination_radeqm_vs_escape(monkeypatch, patch_statusfile):
+    """When volatile escape and the energy-balance criterion are both satisfied on
+    the same iteration, the recorded status is the energy-balance code.
+
+    Here, we check that radeqm (code 14) outranks escape (code 15).
+    """
+    cfg = _cfg()  # strict=False
+    h = _handler(cfg)
+    h.hf_row['F_atm'] = 1.0
+    h.hf_row['F_tidal'] = 1.0  # radeqm fires (14)
+    h.hf_row['P_surf'] = 0.5  # below p_stop=1.0 -> escape fires (15)
+    h.loops['total'] = 5
+    monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
+
+    assert terminate.check_termination(h) is True
+    codes = [code for _, code in patch_statusfile]
+    assert codes[-1] == 14
+    assert 15 not in codes
+
+
+class TestPrintTerminationCriteria:
+    """print_termination_criteria: summary logging of active stop conditions."""
+
+    def test_logs_active_criteria_and_warns_on_prevent_warming(self, caplog):
+        """The summary lists every stop criterion and, when
+        planet.prevent_warming is set, re-emits the monotonic-cooling advisory
+        into the run log (where the config-load advisory would otherwise be
+        missed)."""
+        import logging
+
+        cfg = _cfg()
+        cfg.planet.prevent_warming = True
+        with caplog.at_level(logging.INFO, logger='fwl.proteus.utils.terminate'):
+            terminate.print_termination_criteria(cfg)
+        text = caplog.text
+        assert 'Active termination criteria' in text
+        # Each configured criterion is named in the summary.
+        assert 'Solidification' in text and 'Maximum loops' in text
+        # prevent_warming=True must surface the advisory.
+        assert 'prevent_warming = true' in text
+
+    def test_no_prevent_warming_advisory_when_disabled(self, caplog):
+        """With prevent_warming False (the default), the advisory is suppressed
+        while the criteria summary is still emitted."""
+        import logging
+
+        cfg = _cfg()  # planet.prevent_warming defaults to False
+        with caplog.at_level(logging.INFO, logger='fwl.proteus.utils.terminate'):
+            terminate.print_termination_criteria(cfg)
+        text = caplog.text
+        assert 'Active termination criteria' in text
+        # Discrimination: the advisory is gated on the flag, not always emitted.
+        assert 'prevent_warming = true' not in text

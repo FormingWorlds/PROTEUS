@@ -1,0 +1,632 @@
+"""Test suite for lavatmos.paths_importer initialization.
+
+This module exercises the paths_importer class initialization, which sets up
+environment-dependent paths for LavAtmos, FastChem3, and output directories.
+
+Invariants tested:
+1. Conservation: no paths created without explicit output directory argument
+2. Positivity/Boundedness: all path strings are non-empty, all absolute paths
+   exist (or are created), no negative indices or malformed path joins
+3. Monotonicity: reading the same env vars multiple times yields consistent
+   paths; directory creation idempotency (repeated calls do not fail)
+4. Pinned numeric values: directory permissions (mode), path component counts
+
+Contract clauses exercised:
+- Environment variable reading: LAVA_DIR, FC_DIR must be present
+- Directory creation: output subdirs must be created with exist_ok=True
+- Path normalization: os.path.join() handles trailing slashes correctly
+- Side effects: os.makedirs() is called exactly as documented
+"""
+
+from __future__ import annotations
+
+import os
+from unittest.mock import patch
+
+import pytest
+
+from proteus.outgas import lavatmos
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+class TestPathsImporterInitialization:
+    """Test suite for paths_importer.__init__ method.
+
+    Grouped by initialization concern: env var reading, path construction,
+    directory creation, and error handling.
+    """
+
+    def test_paths_importer_reads_lava_dir_and_fastchem_dir_from_env(self):
+        """Test that paths_importer reads LAVA_DIR and FC_DIR from environment.
+
+        Physical scenario: paths_importer must resolve all external module
+        paths from environment at construction time to avoid runtime surprises.
+        """
+        mock_lava_dir = '/mock/lava/path/'
+        mock_fc_dir = '/mock/fc/path/'
+        mock_dirs = {'output': '/mock/output/'}
+
+        with patch.dict(
+            os.environ,
+            {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir},
+            clear=False,
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+                    assert importer.lavatmos_dir == os.path.normpath(mock_lava_dir) + '/'
+
+        # Sign guard: verify we actually read the env var, not a fallback
+        assert importer.lavatmos_dir is not None
+        assert len(importer.lavatmos_dir) > 0
+        # A single trailing separator is kept (LavAtmos concatenates onto it).
+        assert importer.lavatmos_dir.endswith('/')
+        assert not importer.lavatmos_dir.endswith('//')
+
+    def test_paths_importer_creates_output_subdirectories(self):
+        """Test that paths_importer creates element_abundances/ and fastchem/ subdirs.
+
+        Physical scenario: LavAtmos requires pre-existing output directories to
+        write to; paths_importer must create them idempotently on init.
+        """
+        mock_dirs = {'output': '/mock/output/'}
+
+        with patch.dict(os.environ, {'LAVA_DIR': '/lava', 'FC_DIR': '/fc'}, clear=False):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs') as mock_makedirs:
+                    lavatmos.paths_importer(mock_dirs)
+
+                    # Verify makedirs was called twice: once for element_abundances, once for fastchem
+                    assert mock_makedirs.call_count >= 2
+                    calls = mock_makedirs.call_args_list
+                    # Check that exist_ok=True is passed (idempotency contract)
+                    for c in calls:
+                        assert 'exist_ok' in c.kwargs or c.kwargs.get('exist_ok')  # == True
+
+    def test_paths_importer_constructs_element_abundance_output_path(self):
+        """Test that element_abundance_output path is correctly joined.
+
+        Physical scenario: LavAtmos writes element abundances to a known file;
+        the path must be deterministically constructed from dirs['output'].
+        """
+        mock_dirs = {'output': '/output/base'}
+        mock_lava_dir = '/lava'
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+
+                    # Verify the path is constructed correctly
+                    expected = os.path.join(
+                        mock_dirs['output'], 'element_abundances/element_abundances_output.dat'
+                    )
+                    assert importer.element_abundance_output == expected
+                    # Discriminating value: path must contain 'element_abundances_output.dat'
+                    assert 'element_abundances_output.dat' in importer.element_abundance_output
+
+    def test_paths_importer_constructs_fastchem_output_path(self):
+        """Test that fastchem3_output and output_dir paths are set correctly.
+
+        Physical scenario: FastChem writes species and pressure data to output_dir;
+        both fastchem3_output and output_dir must point to the same fastchem subdir.
+        """
+        mock_dirs = {'output': '/output/base'}
+        mock_lava_dir = '/lava'
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+
+                    expected = os.path.join(mock_dirs['output'], 'fastchem/')
+                    # Monotonicity: both fastchem3_output and output_dir must agree
+                    assert importer.fastchem3_output == expected
+                    assert importer.output_dir == expected
+
+    def test_paths_importer_constructs_fastchem_input_paths(self):
+        """Test that FastChem3 input paths are joined from FC_DIR.
+
+        Physical scenario: FastChem3 config and data files live in FC_DIR/input/;
+        paths must be absolute and normalized.
+        """
+        mock_fc_dir = '/fastchem3/install'
+        mock_dirs = {'output': '/output/base'}
+        mock_lava_dir = '/lava'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+
+                    # Verify paths are joined correctly
+                    assert importer.fastchem3_input == os.path.join(mock_fc_dir, 'input')
+                    assert importer.species_data_file == os.path.join(
+                        mock_fc_dir, 'input/logK/logK.dat'
+                    )
+                    assert importer.species_data_file_cond == os.path.join(
+                        mock_fc_dir, 'input/logK/logK_condensates.dat'
+                    )
+
+    def test_paths_importer_constructs_fastchem_config_template_path(self):
+        """Test that FastChem3 config template path is joined from LAVA_DIR.
+
+        Physical scenario: LavAtmos holds the config template; it must be
+        accessible as an absolute path.
+        """
+        mock_lava_dir = '/lava/install'
+        mock_dirs = {'output': '/output/base'}
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+
+                    expected = os.path.join(
+                        mock_lava_dir, 'input/fastchem3/config_template.input'
+                    )
+                    assert importer.fastchem3_config_template == expected
+                    # Discriminating value: path must contain 'config_template.input'
+                    assert 'config_template.input' in importer.fastchem3_config_template
+
+    def test_paths_importer_constructs_element_abundance_template_path(self):
+        """Test that element abundance template path is correctly joined.
+
+        Physical scenario: LavAtmos provides an element abundance template file
+        for initializing FastChem3 runs.
+        """
+        mock_lava_dir = '/lava/install'
+        mock_dirs = {'output': '/output/base'}
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+
+                    expected = os.path.join(
+                        mock_lava_dir,
+                        'input/fastchem3/element_abundances/element_abundances_template2.dat',
+                    )
+                    assert importer.element_abundance_template == expected
+                    # Discriminating value: must reference 'template2.dat', not template or template1
+                    assert 'template2.dat' in importer.element_abundance_template
+
+    def test_paths_importer_constructs_janafs_data_path(self):
+        """Test that janafdata path is joined from LAVA_DIR.
+
+        Physical scenario: JANAF thermodynamic data resides in LAVA_DIR/data/.
+        """
+        mock_lava_dir = '/lava/install'
+        mock_dirs = {'output': '/output/base'}
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+
+                    expected = os.path.join(mock_lava_dir, 'data')
+                    assert importer.janafdata == expected
+
+                    # The appropriate JANAF data exists inside LAVA_DIR
+                    # so pin the root explicitly here.
+                    assert importer.janafdata.startswith(mock_lava_dir)
+                    assert mock_fc_dir + '/' not in importer.janafdata
+                    assert mock_dirs['output'] not in importer.janafdata
+
+    def test_paths_importer_handles_trailing_slashes_in_env_vars(self):
+        """Test that paths are robust to trailing slashes in environment variables.
+
+        Physical scenario: users and CI may set LAVA_DIR with or without trailing
+        slash; path construction must be idempotent.
+        """
+        mock_lava_dir_with_slash = '/lava/install/'
+        mock_lava_dir_no_slash = '/lava/install'
+        mock_dirs = {'output': '/output/base'}
+        mock_fc_dir = '/fc'
+
+        with patch.dict(
+            os.environ,
+            {'LAVA_DIR': mock_lava_dir_with_slash, 'FC_DIR': mock_fc_dir},
+            clear=False,
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer1 = lavatmos.paths_importer(mock_dirs)
+                    lava1 = importer1.lavatmos_dir
+
+            with patch.dict(
+                os.environ,
+                {'LAVA_DIR': mock_lava_dir_no_slash, 'FC_DIR': mock_fc_dir},
+                clear=False,
+            ):
+                with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                    with patch('proteus.outgas.lavatmos.os.makedirs'):
+                        importer2 = lavatmos.paths_importer(mock_dirs)
+                        lava2 = importer2.lavatmos_dir
+
+            # Monotonicity: lava dir should be read identically regardless of trailing slash
+            assert lava1 == lava2
+            # And the normalised form is the no-slash input plus exactly one
+            # separator, so neither input leaks a doubled separator through.
+            assert lava1 == mock_lava_dir_no_slash + '/'
+            assert not lava1.endswith('//')
+
+    def test_paths_importer_makedirs_called_with_exist_ok_true(self):
+        """Test that makedirs is called with exist_ok=True for idempotency.
+
+        Physical scenario: initialization may be called multiple times; creating
+        dirs must not fail if they already exist.
+        """
+        mock_dirs = {'output': '/output/base'}
+        mock_lava_dir = '/lava'
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs') as mock_makedirs:
+                    lavatmos.paths_importer(mock_dirs)
+
+                    # The loop below would pass vacuously if nothing was
+                    # created, so pin that both output subdirectories are made.
+                    assert mock_makedirs.call_count == 2
+
+                    # Verify all makedirs calls have exist_ok=True
+                    for call_obj in mock_makedirs.call_args_list:
+                        kwargs = call_obj.kwargs if hasattr(call_obj, 'kwargs') else call_obj[1]
+                        assert kwargs.get('exist_ok')
+
+                    # Both created directories sit under the run output, never
+                    # under the read-only LAVA_DIR or FC_DIR installs.
+                    created = [call_obj.args[0] for call_obj in mock_makedirs.call_args_list]
+                    for path_str in created:
+                        assert path_str.startswith(mock_dirs['output'])
+
+    def test_paths_importer_constructs_input_dir_from_lavatmos_dir(self):
+        """Test that input_dir is constructed as lavatmos_dir + 'input/'.
+
+        Physical scenario: LavAtmos input files are in a predictable location
+        relative to the working directory.
+        """
+        mock_lava_dir = '/lava/work'
+        mock_dirs = {'output': '/output/base'}
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+
+                    expected = os.path.join(mock_lava_dir, 'input') + '/'
+                    assert importer.input_dir == expected
+                    # Discriminating value: input_dir must end with 'input/'
+                    assert importer.input_dir.endswith('input/')
+
+    def test_paths_importer_constructs_lava_comps_from_input_dir(self):
+        """Test that lava_comps path is input_dir + 'lava_compositions/'.
+
+        Physical scenario: melt compositions are stored in input_dir/lava_compositions/.
+        """
+        mock_lava_dir = '/lava/work'
+        mock_dirs = {'output': '/output/base'}
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+
+                    expected = os.path.join(mock_lava_dir, 'input', 'lava_compositions') + '/'
+                    assert importer.lava_comps == expected
+                    # Discriminating value: must include both 'input' and 'lava_compositions'
+                    assert 'input' in importer.lava_comps
+                    assert 'lava_compositions' in importer.lava_comps
+
+    def test_paths_importer_handles_empty_dirs_output_key(self, tmp_path):
+        """Test that paths_importer handles edge case of dirs dict with empty string.
+
+        Physical scenario: malformed configuration might pass an empty string.
+        The initializer still constructs output paths, but they come out
+        relative to the working directory rather than absolute, which is the
+        observable symptom a caller can check for.
+        """
+        mock_dirs = {'output': ''}
+        mock_lava_dir = '/lava'
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+
+                    # The output paths are built by joining onto the empty
+                    # string, so they lose their absolute root while keeping
+                    # the expected suffix.
+                    assert importer.element_abundance_output == os.path.join(
+                        'element_abundances', 'element_abundances_output.dat'
+                    )
+                    assert not importer.element_abundance_output.startswith('/')
+                    assert importer.fastchem3_output == os.path.join('fastchem', '')
+
+                    # The env-derived paths are unaffected by the bad output
+                    # key, so a caller can still tell which root went missing.
+                    assert importer.lavatmos_dir.startswith('/')
+                    assert importer.fastchem3_dir.startswith('/')
+
+    def test_paths_importer_all_paths_are_strings_not_none(self):
+        """Test that all paths are string instances, never None.
+
+        Physical scenario: downstream code expects all paths to be non-empty strings.
+        This is a positivity/boundedness guard.
+        """
+        mock_dirs = {'output': '/mock/output/'}
+        mock_lava_dir = '/lava'
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+
+                    # Gather all path attributes
+                    path_attrs = [
+                        importer.lavatmos_dir,
+                        importer.lavatmos_dir,
+                        importer.input_dir,
+                        importer.lava_comps,
+                        importer.fastchem3_dir,
+                        importer.fastchem3_input,
+                        importer.fastchem3_config_template,
+                        importer.element_abundance_template,
+                        importer.species_data_file,
+                        importer.species_data_file_cond,
+                        importer.element_abundance_output,
+                        importer.fastchem3_output,
+                        importer.output_dir,
+                        importer.janafdata,
+                    ]
+
+                    # Positivity guard: all paths are strings
+                    for path in path_attrs:
+                        assert isinstance(path, str), f'Path {path} is not a string'
+                        assert len(path) > 0, 'Path is an empty string'
+
+    def test_paths_importer_input_dir_normalizes_slashes(self):
+        """input_dir is built with os.path.join, so a trailing slash on LAVA_DIR
+        does not change the result.
+
+        Edge case: LAVA_DIR given with and without a trailing slash must yield
+        the same input_dir ('/lava/input'), not the malformed '/lavainput' that
+        naive string concatenation produced.
+        """
+        mock_lava_dir_slash = '/lava/'
+        mock_lava_dir_no_slash = '/lava'
+        mock_dirs = {'output': '/output/base'}
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir_slash, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    input1 = lavatmos.paths_importer(mock_dirs).input_dir
+
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir_no_slash, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    input2 = lavatmos.paths_importer(mock_dirs).input_dir
+
+        # Idempotent under the trailing slash, and correctly separated.
+        assert input1 == input2 == os.path.join('/lava', 'input') + '/'
+        # Discrimination: the old concatenation produced '/lavainput' for the
+        # no-slash case; the normalised path must not collapse the separator.
+        assert input2 != '/lavainput'
+        assert not input2.endswith('//')
+
+
+class TestPathsImporterErrorHandling:
+    """Test error contracts and edge cases."""
+
+    def test_paths_importer_missing_lava_dir_env_var(self):
+        """paths_importer fails fast with an error when LAVA_DIR is unset.
+
+        Error contract: rock vapourisation cannot run without the LavAtmos
+        checkout, so construction raises ValueError naming LAVA_DIR rather than
+        silently storing None and crashing cryptically downstream.
+        """
+        mock_dirs = {'output': '/output/base'}
+        # Remove LAVA_DIR from environment
+        env_dict = {k: v for k, v in os.environ.items() if k != 'LAVA_DIR'}
+        env_dict['FC_DIR'] = '/fc'
+
+        with patch.dict(os.environ, env_dict, clear=True):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs') as mock_makedirs:
+                    with pytest.raises(ValueError, match='LAVA_DIR') as excinfo:
+                        lavatmos.paths_importer(mock_dirs)
+
+        # The error names the missing variable
+        assert 'LAVA_DIR' in str(excinfo.value)
+        assert 'FC_DIR' not in str(excinfo.value)
+
+        # No side effect: construction aborts before any output directory is
+        # created, so a failed init leaves no partial tree behind.
+        assert mock_makedirs.call_count == 0
+
+    def test_paths_importer_missing_fc_dir_env_var(self):
+        """paths_importer fails fast with an error when FC_DIR is unset.
+
+        Error contract: FastChem is required for the speciation step, so a
+        missing FC_DIR raises ValueError naming FC_DIR (with LAVA_DIR present,
+        the error must single out FC_DIR).
+        """
+        mock_dirs = {'output': '/output/base'}
+        env_dict = {k: v for k, v in os.environ.items() if k != 'FC_DIR'}
+        env_dict['LAVA_DIR'] = '/lava'
+
+        with patch.dict(os.environ, env_dict, clear=True):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs') as mock_makedirs:
+                    with pytest.raises(ValueError, match='FC_DIR') as excinfo:
+                        lavatmos.paths_importer(mock_dirs)
+
+        # LAVA_DIR is set here, so the error must single out FC_DIR. A guard
+        # that checked the wrong variable would name LAVA_DIR instead.
+        assert 'FC_DIR' in str(excinfo.value)
+        assert 'LAVA_DIR' not in str(excinfo.value)
+        # No side effect: construction aborts before any directory is created.
+        assert mock_makedirs.call_count == 0
+
+
+class TestPathsImporterPhysicsInvariants:
+    """Test physics-invariant assertions: conservation, boundedness, monotonicity."""
+
+    @pytest.mark.physics_invariant
+    def test_paths_importer_directory_creation_side_effect_invariant(self):
+        """Test that directory creation side effects are applied exactly once.
+
+        Physics invariant: Conservation of filesystem state. The init method
+        must call makedirs() for element_abundances and fastchem output dirs,
+        no more, no less. Repeated calls should not increase call count.
+        """
+
+        mock_dirs = {'output': '/output/base'}
+        mock_lava_dir = '/lava'
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs') as mock_makedirs:
+                    lavatmos.paths_importer(mock_dirs)
+                    # Verify exactly 2 makedirs calls: element_abundances, fastchem
+                    assert mock_makedirs.call_count == 2
+
+                    # Verify the paths are correct
+                    calls = [call_obj[0][0] for call_obj in mock_makedirs.call_args_list]
+                    assert any('element_abundances' in c for c in calls)
+                    assert any('fastchem' in c for c in calls)
+
+    @pytest.mark.physics_invariant
+    def test_paths_importer_output_paths_form_hierarchy(self):
+        """Test that output directory structure is hierarchical and consistent.
+
+        Physics invariant: Positivity/Boundedness. All output paths must be
+        subdirectories of dirs['output'], never siblings or parents.
+        """
+        mock_output_base = '/output/base'
+        mock_dirs = {'output': mock_output_base}
+        mock_lava_dir = '/lava'
+        mock_fc_dir = '/fc'
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+
+                    # All output paths should start with the base output directory
+                    output_paths = [
+                        importer.element_abundance_output,
+                        importer.fastchem3_output,
+                        importer.output_dir,
+                    ]
+
+                    for path in output_paths:
+                        assert path.startswith(mock_output_base), (
+                            f'Path {path} does not start with {mock_output_base}'
+                        )
+                        # Strictly below the base directory
+                        assert path != mock_output_base
+                        assert '..' not in path
+
+                    # The two fastchem accessors are aliases for the same
+                    # directory, while the abundance file is a distinct leaf.
+                    assert importer.fastchem3_output == importer.output_dir
+                    assert importer.element_abundance_output != importer.output_dir
+
+    @pytest.mark.physics_invariant
+    def test_paths_importer_all_paths_non_empty(self):
+        """Test that all path strings are non-empty (positivity bound).
+
+        Physics invariant: Positivity/Boundedness. Path strings must have
+        length > 0; no empty strings or None values escape initialization.
+        """
+        mock_dirs = {'output': '/output/base'}
+        mock_lava_dir = '/lava'
+        mock_fc_dir = '/fc'
+
+        with patch.dict(
+            os.environ, {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}, clear=False
+        ):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer = lavatmos.paths_importer(mock_dirs)
+
+                    # Gather all string-type attributes that represent paths
+                    path_attrs = {
+                        k: v
+                        for k, v in vars(importer).items()
+                        if isinstance(v, str) and ('dir' in k or 'path' in k or 'file' in k)
+                    }
+
+                    # The set must be non-trivial, otherwise the loop below
+                    # would pass over an empty collection.
+                    assert len(path_attrs) >= 5
+
+                    for name, path_str in path_attrs.items():
+                        assert len(path_str) > 0, f'Empty path string for {name}'
+                        # Every path is absolute: it is derived from LAVA_DIR,
+                        # FC_DIR, or dirs['output'], all absolute here. A
+                        # relative result would mean a lost join root.
+                        assert path_str.startswith('/'), f'Relative path for {name}: {path_str}'
+                        # No collapsed or doubled separators, which would signal
+                        # a stray manual concatenation instead of os.path.join.
+                        assert '//' not in path_str, f'Doubled separator for {name}: {path_str}'
+
+    @pytest.mark.physics_invariant
+    def test_paths_importer_config_template_path_invariant(self):
+        """Test that config and template paths are derived deterministically.
+
+        Physics invariant: Monotonicity. Calling paths_importer twice with
+        identical inputs yields identical config/template paths.
+        """
+        mock_dirs = {'output': '/output/base'}
+        mock_lava_dir = '/lava'
+        mock_fc_dir = '/fc'
+        env = {'LAVA_DIR': mock_lava_dir, 'FC_DIR': mock_fc_dir}
+
+        with patch.dict(os.environ, env, clear=False):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer1 = lavatmos.paths_importer(mock_dirs)
+                    template1 = importer1.fastchem3_config_template
+                    abund_template1 = importer1.element_abundance_template
+
+        with patch.dict(os.environ, env, clear=False):
+            with patch('proteus.outgas.lavatmos.os.path.exists', return_value=True):
+                with patch('proteus.outgas.lavatmos.os.makedirs'):
+                    importer2 = lavatmos.paths_importer(mock_dirs)
+                    template2 = importer2.fastchem3_config_template
+                    abund_template2 = importer2.element_abundance_template
+
+        # Monotonicity: identical inputs -> identical paths
+        assert template1 == template2
+        assert abund_template1 == abund_template2

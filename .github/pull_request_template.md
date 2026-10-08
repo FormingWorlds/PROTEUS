@@ -8,7 +8,7 @@ Include screenshots or log files if appropriate.
 ## Validation of changes
 Describe what you did to verify that these changes address the tagged issue.
 
-Outline your test configuration; e.g. MacOS with Python 3.13.
+Outline your test configuration; e.g. MacOS with Python 3.12.
 
 
 ## Checklist
@@ -21,6 +21,3 @@ Outline your test configuration; e.g. MacOS with Python 3.13.
 - [ ] I have updated the docs, as appropriate
 - [ ] I have added tests for these changes, as appropriate
 - [ ] I have checked that all dependencies have been updated, as required
-
-## Relevant people
-Tag people who should know about this PR here

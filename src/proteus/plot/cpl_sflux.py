@@ -126,7 +126,7 @@ def plot_sflux(
         cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
         cbar.set_label('Time [yr]')
     else:
-        log.warning('Only one spectrum was found')
+        log.info('Only one spectrum was found; plotting it without a time colorbar')
 
     ax.set_yscale('log')
     ax.set_ylabel(r'TOA spectral flux density [erg / (s cm$^2$ nm)]')
@@ -172,11 +172,11 @@ def plot_sflux_entry(handler: Proteus):
 
 
 if __name__ == '__main__':
-    print('Plotting stellar flux over time (colorbar)...')
+    log.info('Plotting stellar flux over time (colorbar)...')
 
     from proteus.plot._cpl_helpers import get_handler_from_argv
 
     handler = get_handler_from_argv()
     plot_sflux_entry(handler)
 
-    print('Done!')
+    log.info('Done!')

@@ -1,13 +1,5 @@
-"""Bayesian optimization core functions.
-
-This module provides utility functions and the core BO_step function
-for fitting Gaussian processes, optimizing acquisition functions,
-and plotting results during Bayesian optimization.
-
-Functions:
-    unit_bounds: Generate unit hypercube bounds for acquisition optimization.
-    plot_iter: Visualize GP posterior and acquisition function at each iteration.
-    BO_step: Execute a single Bayesian optimization step with timing and logging.
+"""Bayesian optimisation steps: fit a GP, optimise the acquisition function, and
+evaluate the objective at the chosen point.
 """
 
 from __future__ import annotations
@@ -18,11 +10,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import torch
-from botorch.acquisition import (
-    LogExpectedImprovement,
-    UpperConfidenceBound,
-    qLogExpectedImprovement,
-)
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from botorch.models.transforms import Normalize, Standardize
@@ -30,7 +17,7 @@ from botorch.optim import optimize_acqf
 from botorch.optim.fit import fit_gpytorch_mll_torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
-from proteus.inference.utils import get_kernel_w_prior
+from proteus.inference.utils import get_acqf, get_kernel
 
 # Set tensor dtype for consistent precision
 dtype = torch.double
@@ -47,9 +34,7 @@ def unit_bounds(d):
     ----------
     - torch.Tensor: Tensor of shape (2, d) where row 0 is zeros and row 1 is ones.
     """
-    # Build bounds [[0,...,0], [1,...,1]]
-    bounds = torch.tensor([[0] * d, [1] * d], dtype=dtype)
-    return bounds
+    return torch.tensor([[0] * d, [1] * d], dtype=dtype)
 
 
 def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
@@ -82,11 +67,12 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
         with lock:
             X = D['X']
             Y = D['Y']
-            busys = list(B.values())
+            # Select by key, not by position: a worker that has finished or
+            # stopped is absent from B, so the position of an entry in the
+            # values list does not identify the worker that owns it.
+            busys = [v for wid, v in B.items() if wid != worker_id]
 
         t_1_lock = time.perf_counter()
-
-        busys = torch.cat(busys, dim=0)
 
         d = X.shape[-1]
 
@@ -114,18 +100,10 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
 
         t_0_ac = time.perf_counter()
 
-        # build acquisition function
-        if acqf == 'UCB':
-            acqf = UpperConfidenceBound(gp, beta=2.0)
-        elif acqf == 'LogEI':
-            acqf = LogExpectedImprovement(gp, best_f=best)
-        elif acqf == 'E-LogEI':
-            acqf = qLogExpectedImprovement(gp, best_f=best, X_pending=busys)
-        else:
-            raise ValueError('Unknown acquisition function, choices are UCB or LogEI')
+        acqf_f = get_acqf(acqf, gp, best)
 
         x, _ = optimize_acqf(
-            acq_function=acqf,  # expects outputs shape (N)
+            acq_function=acqf_f,  # expects outputs shape (N)
             bounds=unit_bounds(d),
             q=1,
             num_restarts=10,
@@ -135,10 +113,14 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
 
         t_1_ac = time.perf_counter()
 
-        mask = torch.ones(busys.size(0), dtype=torch.bool)
-        mask[worker_id] = False
-        b = busys[mask]
-        dist = torch.min(torch.cdist(b, x)).item()
+        # Distance to the nearest point another worker is currently evaluating.
+        # Undefined when no other worker is busy
+        if busys:
+            b = torch.cat(busys, dim=0)
+            dist = torch.min(torch.cdist(b, x)).item()
+        else:
+            b = torch.zeros((0, d), dtype=dtype)
+            dist = None
 
         if d == 1:
             plot_iter(
@@ -187,17 +169,24 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
     )
 
 
-def init_locs(n_workers: int, D: dict) -> torch.Tensor:
-    """Generate initial sample locations using batch acqf.
+def init_locs(
+    n_workers: int, D: dict, acqf: str = 'LogEI', kernel: str = 'RBF'
+) -> torch.Tensor:
+    """Generate initial sample locations for each worker using the configured acqf.
+
+    Calls optimize_acqf once per worker with q=1. Analytic acquisition functions
+    (UCB, LogEI, LogPI) require q=1 and cannot optimise a joint batch in one call.
 
     Parameters
     ----------
-    - n_workers (int): Number of initial points to generate.
-    - D (dict): Shared dict with key 'X' to infer problem dimension.
+    - n_workers (int): Number of workers; one candidate is generated per worker.
+    - D (dict): Shared dict with keys 'X' and 'Y' containing observed data.
+    - acqf (str): Name of the acquisition function to use.
+    - kernel (str): Kernel type ('RBF', 'MAT1/2', 'MAT3/2', 'MAT5/2').
 
     Returns
     ----------
-    - torch.Tensor: Tensor of shape (n_workers, d) in [0, 1]^d for initial sampling.
+    - torch.Tensor: Tensor of shape (n_workers, d) in [0, 1]^d.
     """
 
     X, Y = D['X'], D['Y']
@@ -207,7 +196,7 @@ def init_locs(n_workers: int, D: dict) -> torch.Tensor:
     best = Y.max().item()
 
     noise = 1e-4
-    kernel = get_kernel_w_prior(d, use_rbf_kernel=False, nu=1.5)
+    kernel = get_kernel(kernel, d)
     gp = SingleTaskGP(
         train_X=X,
         train_Y=Y,
@@ -225,19 +214,20 @@ def init_locs(n_workers: int, D: dict) -> torch.Tensor:
         kwargs={'pick_best_of_all_attempts': True, 'max_attempts': 10},
     )
 
-    # build acquisition function
-    acqf = qLogExpectedImprovement(gp, best_f=best)
+    candidates = []
+    for _ in range(n_workers):
+        acqf_f = get_acqf(acqf, gp, best)
+        x_single, _ = optimize_acqf(
+            acq_function=acqf_f,
+            bounds=unit_bounds(d),
+            q=1,
+            num_restarts=10,
+            raw_samples=1000 * d,
+            options={'maxiter': 1000},
+        )
+        candidates.append(x_single)
 
-    x_batch, _ = optimize_acqf(
-        acq_function=acqf,
-        bounds=unit_bounds(d),
-        q=n_workers,
-        num_restarts=10,
-        raw_samples=1000 * d,
-        options={'maxiter': 1000},
-    )
-
-    return x_batch  # (n_workers, d)
+    return torch.cat(candidates, dim=0)  # (n_workers, d)
 
 
 def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
@@ -272,8 +262,6 @@ def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
     ax[0].plot(xs.detach().flatten(), mu, color='black', linewidth=0.5, label='post mean')
     ax[0].fill_between(xs.detach().flatten(), mu - 2 * sig, mu + 2 * sig, alpha=0.25)
     ax[0].scatter(X.flatten(), Y.flatten(), s=5, label='data', color='blue')
-    # fs = objective(xs).flatten()
-    # ax[0].plot(xs.detach().flatten(), fs, color = "grey", label = "f", linewidth = 0.5)
 
     ax[1].plot(xs.detach().flatten(), ac, color='cornflowerblue', label='acqf')
     a = acqf(next_x).detach().flatten()

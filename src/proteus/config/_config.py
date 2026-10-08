@@ -3,18 +3,19 @@ from __future__ import annotations
 import logging
 
 import tomlkit
-from attrs import asdict, define, field, validators
+from attrs import asdict, define, field
 
+from ._accretion import Accretion
 from ._atmos_chem import AtmosChem
 from ._atmos_clim import AtmosClim
 from ._converters import dict_replace_none
-from ._delivery import Delivery
 from ._escape import Escape
-from ._interior import Interior
+from ._interior import _STEP_CAP_FIELDS, Interior
 from ._observe import Observe
 from ._orbit import Orbit
 from ._outgas import Outgas
 from ._params import Params
+from ._planet import Planet
 from ._star import Star
 from ._struct import Struct
 
@@ -22,8 +23,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def spada_zephyrus(instance, attribute, value):
-    # using zephyrus
-    #     zephyrus requires MORS + Spada
+    """ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."""
     if (instance.escape.module == 'zephyrus') and not (
         (instance.star.module == 'mors') and (instance.star.mors.tracks == 'spada')
     ):
@@ -31,64 +31,558 @@ def spada_zephyrus(instance, attribute, value):
 
 
 def instmethod_dummy(instance, attribute, value):
-    # Instellation method 'inst' only support for dummy star module
+    """Instellation method 'inst' is only available with the dummy star module."""
     if (instance.orbit.instellation_method == 'inst') and not (instance.star.module == 'dummy'):
         raise ValueError("Instellation method can only be 'inst' when star.module=dummy ")
 
 
 def instmethod_evolve(instance, attribute, value):
-    # Orbital evolution not supported when installation_method is 'inst'
-    if (instance.orbit.instellation_method == 'inst') and instance.orbit.evolve:
+    """Orbital evolution cannot be combined with instellation method 'inst'.
+
+    'inst' derives the semi-major axis from the flux, while every star-planet
+    model, a prescribed track included, starts from orbit.semimajoraxis.
+    """
+    if (instance.orbit.instellation_method == 'inst') and (
+        instance.orbit.star_planet_model is not None
+    ):
         raise ValueError(
-            "Planet orbital evolution not supported for `instellation_method='inst'`"
+            "Planet orbital evolution not supported for `instellation_method='inst'`: "
+            f'orbit.star_planet_model = {instance.orbit.star_planet_model!r} starts from '
+            "orbit.semimajoraxis, so set instellation_method = 'distance'"
         )
 
 
 def satellite_evolve(instance, attribute, value):
-    # Planetary orbital evolution not supported when also modelling satellite
-    if instance.orbit.satellite and instance.orbit.evolve:
+    """Star-planet orbital evolution and the planet-satellite model are mutually exclusive."""
+    if (
+        instance.orbit.star_planet_model is not None
+        and instance.orbit.planet_satellite_model is not None
+    ):
         raise ValueError(
             'Planet orbital evolution cannot be used simultaneously with a satellite'
         )
 
 
 def tides_enabled_orbit(instance, attribute, value):
-    # Tides in interior requires orbit module to not be None
-    if (instance.interior.tidal_heat) and (instance.orbit.module is None):
-        raise ValueError('Interior tidal heating requires an orbit module to be enabled')
+    """Interior tidal heating requires an tides module to be enabled."""
+    if (instance.interior_energetics.heat_tidal) and (instance.orbit.module is None):
+        raise ValueError('Interior tidal heating requires a tides module to be enabled')
+
+
+def obliqua_requires_perturber(instance, attribute, value):
+    """The Obliqua tidal-response module requires an explicit perturber."""
+    if instance.orbit.module == 'obliqua' and instance.orbit.perturber is None:
+        raise ValueError(
+            "orbit.module = 'obliqua' requires orbit.perturber to be explicitly set to "
+            "'star' or 'satellite' (it has no default tidal-forcing body to fall back on)"
+        )
+
+
+def sp0d_obliqua_degree_mismatch(instance, attribute, value):
+    """sp0d's closed-form is by definition the n=2 Love number. Obliqua can compute
+    arbitrary tidal degree(s), block the mismatch.
+    """
+    if instance.orbit.module == 'obliqua' and instance.orbit.star_planet_model == 'sp0d':
+        if instance.orbit.obliqua.n != [2]:
+            raise ValueError(
+                "orbit.star_planet_model = 'sp0d' requires orbit.obliqua.n == [2]: "
+                'set orbit.obliqua.n = [2] to use sp0d with Obliqua, or use'
+                "orbit.star_planet_model = 'sp1d' instead."
+            )
+        log.warning(
+            "orbit.star_planet_model = 'sp0d' with orbit.module = 'obliqua': Imk2 is "
+            "the mean of Obliqua's per-mode Im(k2) spectrum collapsed to a single "
+            'scalar, which discards the eccentricity-dependent mode weighting sp1d '
+            'uses directly. This is an approximation, least accurate at high or '
+            "rapidly-changing eccentricity. Prefer orbit.star_planet_model = 'sp1d'"
+            ' when using Obliqua.'
+        )
+
+
+def orbit_requires_tides(instance, attribute, value):
+    """sp1d, ps1d, and ps1d_evec require at least Lovepy, but ideally the Obliqua
+    tidal-response module: all three read the full per-mode spectrum in
+    ``tides_o``, which ``dummy`` never populates. ``sp0d``/``ps0d`` read the
+    scalar ``Imk2`` instead (which ``dummy`` does provide), so they are
+    unrestricted here; see "Compatibility between orbit models and tidal
+    modules" in docs/Explanations/orbit.md.
+    """
+    needs_full_spectrum = instance.orbit.star_planet_model == 'sp1d' or (
+        instance.orbit.planet_satellite_model in ('ps1d', 'ps1d_evec')
+    )
+    if needs_full_spectrum and instance.orbit.module not in ('obliqua', 'lovepy'):
+        raise ValueError(
+            "orbit.star_planet_model = 'sp1d' or orbit.planet_satellite_model = "
+            "'ps1d'/'ps1d_evec' requires orbit.module = 'obliqua' or 'lovepy'"
+        )
+
+
+def parameterized_excludes_tides(instance, attribute, value):
+    """The parameterized model prescribes the orbit as a closed-form track
+    and exchanges no energy with the interior, so no tides module can run
+    alongside it; see "Star-planet models" in docs/Explanations/orbit.md.
+    """
+    if (
+        instance.orbit.star_planet_model == 'parameterized'
+        and instance.orbit.module is not None
+    ):
+        raise ValueError(
+            "orbit.star_planet_model = 'parameterized' requires orbit.module = 'none' "
+            f'(got {instance.orbit.module!r}): a prescribed migration track computes no tides'
+        )
+
+
+def spinless_orbit_keeps_spin_synchronous(instance, attribute, value):
+    """sp0d and parameterized evolve no spin, so the planet stays synchronous
+    and orbit.axial_period must be unset; see "Star-planet models" in
+    docs/Explanations/orbit.md.
+    """
+    model = instance.orbit.star_planet_model
+    if model in ('sp0d', 'parameterized') and instance.orbit.axial_period is not None:
+        raise ValueError(
+            f'orbit.star_planet_model = {model!r} evolves no spin, so the planet is kept '
+            "synchronous with its orbit and requires orbit.axial_period = 'none' "
+            f'(got {instance.orbit.axial_period!r})'
+        )
+
+
+def parameterized_high_ecc_inward(instance, attribute, value):
+    """The high-eccentricity law circularises at fixed orbital angular momentum,
+    which can only shrink the orbit, so its final semi-major axis must not
+    exceed the initial one, orbit.semimajoraxis.
+    """
+    params = instance.orbit.parameterized
+    if (
+        instance.orbit.star_planet_model == 'parameterized'
+        and params.migration == 'high_ecc'
+        and params.sma_final is not None
+        and params.sma_final > instance.orbit.semimajoraxis
+    ):
+        raise ValueError(
+            'High-eccentricity migration is inward only and requires '
+            'orbit.parameterized.sma_final <= orbit.semimajoraxis, got '
+            f'semimajoraxis={instance.orbit.semimajoraxis} and sma_final={params.sma_final}'
+        )
+
+
+def parameterized_excludes_accretion(instance, attribute, value):
+    """Reject giant impacts with the parameterized star-planet model.
+
+    After the migration epoch the track sets the semi-major axis every step,
+    so an impact's new semi-major axis would be lost while its eccentricity
+    change persisted; see "Star-planet models" in docs/Explanations/orbit.md.
+    """
+    if (
+        instance.orbit.star_planet_model == 'parameterized'
+        and instance.accretion.module is not None
+    ):
+        raise ValueError(
+            "orbit.star_planet_model = 'parameterized' requires accretion.module = 'none' "
+            f'(got {instance.accretion.module!r}): the prescribed track overwrites the '
+            'semi-major axis an impact sets but keeps its eccentricity change'
+        )
+
+
+CURRENT_CONFIG_VERSION = '3.0'
+
+
+def valid_config_version(instance, attribute, value):
+    if value != CURRENT_CONFIG_VERSION:
+        raise ValueError(
+            f'Config file version "{value}" is not compatible with this version of PROTEUS '
+            f'(requires config_version = "{CURRENT_CONFIG_VERSION}"). '
+            f'Please update your configuration file to match the current format. '
+            f'See input/all_options.toml for the full reference.'
+        )
+
+
+def check_module_dependencies(instance, attribute, value):
+    """Check that required external packages are importable for the selected modules."""
+    import importlib
+
+    checks = {
+        'calliope': (
+            instance.outgas.module == 'calliope',
+            'calliope',
+            'outgas.module = "calliope" requires the calliope package. '
+            'Install with: git clone git@github.com:FormingWorlds/CALLIOPE && pip install -e CALLIOPE/.',
+        ),
+        'atmodeller': (
+            instance.outgas.module == 'atmodeller',
+            'atmodeller',
+            'outgas.module = "atmodeller" requires the optional atmodeller package '
+            '(GPL-3.0 licensed). The standard outgassing backend is calliope and '
+            'needs no extra install. '
+            'Install atmodeller with: pip install "fwl-proteus[atmodeller]" '
+            '(or pip install "atmodeller>=1.0.0").',
+        ),
+        'vulcan': (
+            instance.atmos_chem.module == 'vulcan',
+            'vulcan',
+            'atmos_chem.module = "vulcan" requires the optional VULCAN package '
+            '(GPL-3.0 licensed). VULCAN is not needed for a standard PROTEUS run. '
+            'Install it with: pip install "fwl-proteus[vulcan]" '
+            '(or bash tools/get_vulcan.sh for an editable checkout).',
+        ),
+        'boreas': (
+            instance.escape.module == 'boreas',
+            'boreas',
+            'escape.module = "boreas" requires the optional boreas package. '
+            'Install it with: bash tools/get_boreas.sh',
+        ),
+        'morrigan': (
+            instance.accretion.module == 'morrigan',
+            'morrigan',
+            'accretion.module = "morrigan" requires the optional morrigan package, '
+            'which runs the giant-impact model. Morrigan is not needed for a '
+            'standard PROTEUS run. Install it with: pip install '
+            '"fwl-proteus[morrigan]" (or bash tools/get_morrigan.sh for an '
+            'editable checkout).',
+        ),
+    }
+
+    for name, (needed, pkg, msg) in checks.items():
+        if needed:
+            try:
+                importlib.import_module(pkg)
+            except ImportError as e:
+                raise ImportError(f'{msg}\n  Original error: {e}') from e
+
+
+# Interiors that cannot carry a giant impact, and the reason each cannot, keyed
+# by `interior_energetics.module`. One entry per line so a new interior adds a
+# line rather than editing a sentence.
+_ACCRETION_INCOMPATIBLE_INTERIORS = {
+    'spider': 'SPIDER has no supported re-melt path',
+    'boundary': (
+        'the boundary interior does not forward its interior state object to '
+        'the time-stepper, so the step cannot be shortened to land on a '
+        'scheduled impact'
+    ),
+}
+
+
+def check_accretion_interior_compatibility(instance, attribute, value):
+    """Reject accretion runs on an interior that cannot apply an impact.
+
+    A giant impact re-melts the mantle and has to be applied at the state the
+    timeline places it at. An interior that cannot do both is refused here at
+    configuration load rather than at the first impact, which can be many hours
+    into a run. SPIDER keeps its state in a restart file written by the external
+    binary; the boundary interior never forwards its interior state object to the
+    time-stepper, so the step cannot be capped to land on the impact and impacts
+    would be applied late by an unbounded amount, or several would collapse onto
+    the end of one long step. Furthermore, interior_struct.module == 'spider' is
+    refused because SPIDER structure solves do not support non-thermal solves
+    during giant impacts.
+    """
+    if instance.accretion.module is None:
+        return
+
+    interior = instance.interior_energetics.module
+    reason = _ACCRETION_INCOMPATIBLE_INTERIORS.get(interior)
+    if reason is not None:
+        raise ValueError(
+            "accretion.module = '"
+            + str(instance.accretion.module)
+            + "' cannot run with interior_energetics.module = '"
+            + str(interior)
+            + "': a giant impact re-melts the mantle and has to be applied where "
+            'the timeline places it, but '
+            + reason
+            + ". Use interior_energetics.module = 'aragog' (or 'dummy' for a test)."
+        )
+
+    struct_module = getattr(getattr(instance, 'interior_struct', None), 'module', None)
+    if struct_module == 'spider':
+        raise ValueError(
+            f"accretion.module = '{instance.accretion.module}' cannot run with "
+            "interior_struct.module = 'spider': SPIDER structure solve does not "
+            'support non-thermal solves during giant impacts.'
+        )
+
+
+def check_accretion_vapourise_compatibility(instance, attribute, value):
+    """Reject accretion runs that also vapourise rock into the atmosphere.
+
+    The two models keep incompatible books on the rock-forming elements. Rock
+    vapourisation moves rock mass into the atmosphere without debiting it from
+    the interior, which is why those elements are deliberately left out of
+    ``M_ele`` and the whole-planet mass. An impact, in contrast, grows the
+    planet's rock through the structure solve and conserves the per-element
+    volatile budgets across that growth, and it sizes both the atmosphere it
+    strips and the volatiles the impactor delivers from those same per-element
+    columns. Run together, the vapour column would be stripped and delivered as
+    though it were a tracked volatile budget while the mass it stands for is
+    accounted nowhere, so the combination is refused at configuration load.
+    """
+    if instance.accretion.module is not None and instance.outgas.vapourise:
+        raise ValueError(
+            "accretion.module = '"
+            + str(instance.accretion.module)
+            + "' cannot run with outgas.vapourise = true: rock vapour adds "
+            'rock-forming mass to the atmosphere that the whole-planet mass does '
+            'not track, and an impact sizes its atmospheric stripping and volatile '
+            'delivery from budgets that do. Disable one of the two.'
+        )
+
+
+def boreas_requires_atmosphere(instance, attribute, value):
+    """BOREAS escape requires a radiative atmosphere (not dummy)."""
+    if (instance.escape.module == 'boreas') and (instance.atmos_clim.module == 'dummy'):
+        raise ValueError(
+            'escape.module = "boreas" requires a radiative atmosphere model (agni or janus), '
+            'not atmos_clim.module = "dummy". BOREAS needs per-level T/P/composition profiles.'
+        )
 
 
 def observe_resolved_atmosphere(instance, attribute, value):
-    # Synthetic observations require a spatially resolved atmosphere profile
-    if (instance.observe.synthesis is not None) and (instance.atmos_clim.module == 'dummy'):
+    """Synthetic observations require a spatially resolved atmosphere (not dummy)."""
+    if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
         raise ValueError('Observational synthesis requires that atmos_clim != dummy')
 
 
 def janus_escape_atmosphere(instance, attribute, value):
-    # Using escape.zephyrus with JANUS requires params.stop.escape to be True
+    """ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled."""
     if (
         (instance.escape.module == 'zephyrus')
         and (instance.atmos_clim.module == 'janus')
-        and (instance.params.stop.escape is False)
+        and (not instance.params.stop.escape.enabled)
     ):
         raise ValueError(
             'When using escape.zephyrus with JANUS, params.stop.escape must be True.'
         )
 
 
-def boundary_requires_fixed_surface_state(instance, attribute, value):
-    # Boundary interior assumes fixed surface state coupling.
-    if (instance.interior.module == 'boundary') and (instance.atmos_clim.surf_state != 'fixed'):
+def planet_mass_valid(instance, attribute, value):
+    """Validate that mass_tot is within range."""
+    mass_tot = instance.planet.mass_tot
+    if mass_tot <= 0:
+        raise ValueError('The total planet mass must be > 0')
+    if mass_tot > 20:
+        raise ValueError('The total planet mass must be < 20 M_earth')
+
+
+def planet_oxygen_mode_explicit(instance, attribute, value):
+    """Validate O_mode in planet.elements.
+
+    Whole-planet oxygen accounting requires every config to declare how
+    the IC O budget is interpreted. Valid modes: 'ic_chemistry' (default,
+    defer to CALLIOPE equilibrium), 'ppmw', 'kg', 'FeO_mantle_wt_pct'.
+    """
+    # O_mode is now validated by the attrs in_() validator on the field
+    # itself. This function remains as a hook for cross-field checks
+    # (e.g. fO2_source compatibility) that reference O_mode.
+    pass
+
+
+def planet_liquidus_super_needs_tables(instance, attribute, value):
+    """Require a P-S table route for ``temperature_mode = "liquidus_super"``.
+
+    The spider and aragog interior modules build the ``liquidus_super``
+    initial condition on interior P-S tables, which the interior wrapper
+    supplies for the ``"zalmoxis"``, ``"spider"`` and ``"dummy"`` structure
+    modules. With no structure module, no table set is provided
+    and the initial condition has nothing to solve on.
+    """
+    if value.temperature_mode != 'liquidus_super':
+        return
+    if instance.interior_energetics.module not in ('spider', 'aragog'):
+        return
+    if instance.interior_struct.module is None:
         raise ValueError(
-            "Must set atmos_clim.surf_state='fixed' when interior.module='boundary'"
+            "planet.temperature_mode = 'liquidus_super' has no valid route with "
+            'interior_struct.module = None under interior_energetics.module = '
+            f"'{instance.interior_energetics.module}': no P-S table set is provided. "
+            "Set interior_struct.module to 'spider', 'dummy' or 'zalmoxis', or "
+            'choose another planet.temperature_mode.'
         )
 
 
-def boundary_zalmoxis_incompatible(instance, attribute, value):
-    # Boundary interior module cannot be used with zalmoxis structure module.
-    if (instance.interior.module == 'boundary') and (instance.struct.module == 'zalmoxis'):
+def energetics_needs_a_thermal_mantle_eos(instance, attribute, value):
+    """Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog.
+
+    Under the Zalmoxis structure the energetics read the tables and melting
+    curves of the mantle's energetics key; a Seager2007, Chabrier or analytic
+    key has none, so the run would read another set as a stand-in.
+    """
+    from proteus.utils.constants import PALEOS_EOS_PREFIXES, TDEP_EOS_PREFIXES
+    from proteus.utils.helper import energetics_eos_key
+
+    struct = instance.interior_struct
+    zc = struct.zalmoxis if struct.module == 'zalmoxis' else None
+    if value.module not in ('spider', 'aragog') or zc is None:
+        return
+    key = energetics_eos_key(zc.mantle_eos)
+    if not (key or '').startswith(PALEOS_EOS_PREFIXES + TDEP_EOS_PREFIXES):
         raise ValueError(
-            'Boundary interior module cannot currently be used with zalmoxis structure module'
+            f"interior_energetics.module = '{value.module}' with mantle_eos="
+            f"'{zc.mantle_eos}' has no energetics tables (energetics key: {key}). "
+            'Use a PALEOS, WolfBower2018 or RTPress100TPa mantle EOS, or an MgSiO3 component '
+            'of one of them in a mixture.'
+        )
+
+
+def aragog_needs_melting_curves(instance, attribute, value):
+    """Require ``interior_struct.melting_dir`` for Aragog without a PALEOS table set.
+
+    Aragog reads a solidus and a liquidus in every mode, from the generated
+    PALEOS set or from ``melting_dir``. SPIDER is checked when the run starts
+    instead: a resumed run continues on its kept P-S tables, and a
+    ``const_properties`` run reads no curves.
+    """
+    from proteus.utils.helper import generates_paleos_tables
+
+    if value.module != 'aragog' or instance.interior_struct.melting_dir is not None:
+        return
+    if generates_paleos_tables(instance.interior_struct):
+        return
+    raise ValueError(
+        "interior_energetics.module = 'aragog' needs interior_struct.melting_dir unless Zalmoxis "
+        'generates a PALEOS table set (a PALEOS mantle EOS under the Zalmoxis structure; a mixture '
+        'follows its MgSiO3 component). The dummy structure requires it with any mantle EOS. '
+        'Set melting_dir to a melting curve name (e.g. "Monteux-600").'
+    )
+
+
+def dummy_struct_mantle_eos(instance, attribute, value):
+    """Check the mantle EOS that the dummy structure hands to SPIDER or Aragog.
+
+    A mixture with two MgSiO3 sources has no energetics key and is rejected. With a
+    PALEOS energetics key the solve uses the PALEOS P-S set and its curves, so a set
+    ``melting_dir`` is passed to Aragog but does not change the solve; one warning says so.
+    """
+    from proteus.utils.constants import PALEOS_REGISTRY_KEYS
+    from proteus.utils.helper import energetics_eos_key
+
+    struct = instance.interior_struct
+    if struct.module != 'dummy' or struct.zalmoxis is None:
+        return
+    if value.module not in ('spider', 'aragog'):
+        return
+    key = energetics_eos_key(struct.zalmoxis.mantle_eos)
+    if struct.melting_dir is not None and key in PALEOS_REGISTRY_KEYS:
+        log.warning(
+            'interior_struct.melting_dir=%r does not change the solve: with module = "dummy" '
+            'and the PALEOS mantle EOS %s, %s uses the PALEOS P-S set and its curves.',
+            struct.melting_dir,
+            struct.zalmoxis.mantle_eos,
+            value.module,
+        )
+
+
+def planet_fO2_source_compat(instance, attribute, value):
+    """Validate planet.fO2_source against O_mode, volatile_mode, and
+    against availability.
+
+    Rejection rules:
+
+    1. ``fO2_source = "from_mantle_redox"`` is a reserved enum value for
+       the radial Fe3+/Fe2+ fO2 framework (issue #653, Schaefer et al.
+       2024). The runtime path for it does not exist yet; reject the
+       config so users do not silently fall through to the default behaviour.
+
+    2. ``fO2_source = "from_O_budget"`` requires the O budget to be
+       authoritative. ``O_mode = "ic_chemistry"`` defers the O inventory
+       to the chemistry solver, so there is nothing to invert against.
+       Require a concrete O budget
+       ("ppmw" / "kg" / "FeO_mantle_wt_pct") instead.
+
+    3. ``fO2_source = "from_O_budget"`` requires the volatile budget to
+       be set element-wise. ``volatile_mode = "gas_prs"`` supplies
+       partial pressures directly and makes ``planet.elements.O_mode``
+       inoperative, so there is nothing to invert against. Switch
+       ``volatile_mode`` to ``"elements"`` or pick a different fO2_source.
+
+    4. ``fO2_source = "from_O_budget"`` requires an outgassing backend
+       with an authoritative-O implementation: CALLIOPE
+       (``equilibrium_atmosphere_authoritative_O``) and atmodeller
+       (native mass-constraint API) both qualify; the ``dummy`` backend
+       does not. The runtime dispatch echoes this rejection too, but
+       failing at config-load saves the user from burning interior IC
+       and structure setup before hitting the wall.
+
+    ``fO2_source = "user_constant"`` (default) accepts every O_mode and
+    every volatile_mode.
+
+    Warning rule:
+
+    - ``fO2_source = "from_O_budget"`` with a non-default
+      ``outgas.fO2_shift_IW`` emits a UserWarning. With this source the
+      buffer offset is *derived*, so a user-supplied value is silently
+      ignored. The warning surfaces the misconfiguration without
+      blocking the run.
+    """
+    fO2_source = instance.planet.fO2_source
+    O_mode = instance.planet.elements.O_mode
+    volatile_mode = instance.planet.volatile_mode
+
+    if fO2_source == 'from_mantle_redox':
+        raise ValueError(
+            'planet.fO2_source = "from_mantle_redox" is reserved for the '
+            'radial Fe3+/Fe2+ tracking framework (issue #653) and is not '
+            'yet wired into the runtime. Use "user_constant" (fO2 '
+            'buffered by outgas.fO2_shift_IW) or "from_O_budget" '
+            '(authoritative O budget, fO2 derived) instead.'
+        )
+
+    if fO2_source == 'from_O_budget' and O_mode == 'ic_chemistry':
+        raise ValueError(
+            'planet.fO2_source = "from_O_budget" requires an authoritative '
+            'O budget but planet.elements.O_mode = "ic_chemistry" defers '
+            'the O inventory to the chemistry solver. Pick an explicit O '
+            'budget mode ("ppmw", "kg", or "FeO_mantle_wt_pct") or switch '
+            'fO2_source back to "user_constant".'
+        )
+
+    if fO2_source == 'from_O_budget' and volatile_mode == 'gas_prs':
+        raise ValueError(
+            'planet.fO2_source = "from_O_budget" requires '
+            'planet.volatile_mode = "elements" so the O inventory is '
+            'derived from planet.elements.O_budget. Under '
+            'volatile_mode = "gas_prs" the user supplies partial '
+            'pressures directly and the element budgets are inert, so '
+            'there is no O target to invert against. Either switch '
+            'volatile_mode to "elements" or set fO2_source back to '
+            '"user_constant".'
+        )
+
+    if fO2_source == 'from_O_budget':
+        outgas_module = getattr(instance.outgas, 'module', None)
+        if outgas_module == 'dummy':
+            raise ValueError(
+                'planet.fO2_source = "from_O_budget" requires an '
+                'outgassing backend with an authoritative-O '
+                'implementation. outgas.module = "dummy" has no '
+                'chemistry to invert against. Switch outgas.module to '
+                '"calliope" or '
+                '"atmodeller", or set fO2_source back to '
+                '"user_constant".'
+            )
+
+    if fO2_source == 'from_O_budget':
+        import warnings
+
+        fO2_shift_IW = getattr(instance.outgas, 'fO2_shift_IW', None)
+        if fO2_shift_IW is not None and fO2_shift_IW != 0.0:
+            warnings.warn(
+                'outgas.fO2_shift_IW = %.3f is set but '
+                'planet.fO2_source = "from_O_budget" derives the buffer '
+                'offset from the O budget. The configured value is used '
+                'only as the solver initial fO2 guess, not as the buffered '
+                'offset.' % fO2_shift_IW,
+                UserWarning,
+                stacklevel=2,
+            )
+
+
+def boundary_requires_fixed_surface_state(instance, attribute, value):
+    """Boundary backend assumes a fixed surface state coupling."""
+    if (instance.interior_energetics.module == 'boundary') and (
+        instance.atmos_clim.surf_state != 'fixed'
+    ):
+        raise ValueError(
+            "Must set atmos_clim.surf_state='fixed' when interior_energetics.module='boundary'"
         )
 
 
@@ -98,55 +592,104 @@ class Config:
 
     Attributes
     ----------
-    version: str
-        Version of the configuration file.
+    config_version: str
+        Version of the configuration file format.
     params: Params
         Parameters for code execution, output files, time-stepping, convergence.
     star: Star
         Stellar parameters, model selection.
     orbit: Orbit
         Orbital and star-system parameters.
-    struct: Struct
-        Planetary structure calculation (mass, radius).
+    planet: Planet
+        Bulk planet properties (mass, initial volatile inventory).
+    interior_struct: Struct
+        Planetary structure calculation (radius, composition, Zalmoxis).
+    interior_energetics: Interior
+        Magma ocean / mantle energetics model parameters, model selection.
+    outgas: Outgas
+        Outgassing parameters (fO2, etc) and included volatiles.
     atmos_clim: AtmosClim
         Planetary atmosphere climate parameters, model selection.
     atmos_chem: AtmosChem
         Planetary atmosphere chemistry parameters, model selection.
     escape: Escape
         Atmospheric escape parameters, model selection.
-    interior: Interior
-        Magma ocean / mantle model parameters, model selection.
-    outgas: Outgas
-        Outgassing parameters (fO2, etc) and included volatiles.
-    delivery: Delivery
-        Initial volatile inventory, and delivery model selection.
+    accretion: Accretion
+        Late accretion / delivery model selection.
     observe: Observe
         Synthetic observations.
     """
 
-    version: str = field(validator=validators.in_(('2.0',)))
-
-    params: Params
-    star: Star
-    orbit: Orbit = field(validator=(instmethod_dummy, instmethod_evolve, satellite_evolve))
-    struct: Struct
-    atmos_clim: AtmosClim
-    atmos_chem: AtmosChem
-    escape: Escape = field(validator=(spada_zephyrus,))
-    interior: Interior = field(
+    params: Params = field(factory=Params)
+    star: Star = field(factory=Star)
+    orbit: Orbit = field(
+        factory=Orbit,
+        validator=(
+            instmethod_dummy,
+            instmethod_evolve,
+            satellite_evolve,
+            obliqua_requires_perturber,
+            sp0d_obliqua_degree_mismatch,
+            orbit_requires_tides,
+            parameterized_excludes_tides,
+            parameterized_high_ecc_inward,
+            spinless_orbit_keeps_spin_synchronous,
+        ),
+    )
+    planet: Planet = field(
+        factory=Planet,
+        validator=(
+            planet_mass_valid,
+            planet_oxygen_mode_explicit,
+            planet_fO2_source_compat,
+            planet_liquidus_super_needs_tables,
+        ),
+    )
+    interior_struct: Struct = field(factory=Struct)
+    interior_energetics: Interior = field(
+        factory=Interior,
         validator=(
             tides_enabled_orbit,
             boundary_requires_fixed_surface_state,
-            boundary_zalmoxis_incompatible,
-        )
+            energetics_needs_a_thermal_mantle_eos,
+            aragog_needs_melting_curves,
+            dummy_struct_mantle_eos,
+        ),
     )
-    outgas: Outgas
-    delivery: Delivery
-    observe: Observe
+    outgas: Outgas = field(factory=Outgas)
+    atmos_clim: AtmosClim = field(factory=AtmosClim)
+    atmos_chem: AtmosChem = field(factory=AtmosChem)
+    escape: Escape = field(
+        factory=Escape,
+        validator=(spada_zephyrus, janus_escape_atmosphere, boreas_requires_atmosphere),
+    )
+    accretion: Accretion = field(factory=Accretion)
+    observe: Observe = field(factory=Observe, validator=(observe_resolved_atmosphere,))
 
-    def write(self, out: str):
+    config_version: str = field(
+        default='3.0',
+        validator=(
+            valid_config_version,
+            check_module_dependencies,
+            check_accretion_interior_compatibility,
+            check_accretion_vapourise_compatibility,
+            parameterized_excludes_accretion,
+        ),
+    )
+
+    def write(self, out: str, overrides: dict | None = None):
         """
         Write configuration to a new TOML file.
+
+        Parameters
+        ----------
+        out
+            Output path for the TOML file.
+        overrides
+            Dotted-path values to substitute in the written file, e.g.
+            ``{'interior_energetics.aragog.phi_step_cap': 0.1}``. Lets a
+            caller record a resolved value (one a module derives from a
+            config default at runtime) without mutating this Config object.
         """
 
         # Convert to dictionary
@@ -154,6 +697,53 @@ class Config:
 
         # Replace None with "none"
         cfg = dict_replace_none(cfg)
+
+        # Apply any resolved-value overrides
+        if overrides:
+            # Imported here to avoid a module-level import cycle: orphans
+            # imports Config from this module.
+            from .orphans import UnknownConfigKeyError
+
+            for dotted_key, value in overrides.items():
+                segments = dotted_key.split('.')
+                *parents, leaf = segments
+                node = cfg
+                for depth, key in enumerate(parents):
+                    if not isinstance(node, dict) or key not in node:
+                        failing = '.'.join(segments[: depth + 1])
+                        raise UnknownConfigKeyError(
+                            f"Override key '{dotted_key}' does not match the schema: "
+                            f"no config section '{failing}'."
+                        )
+                    node = node[key]
+                if not isinstance(node, dict) or leaf not in node:
+                    raise UnknownConfigKeyError(
+                        f"Override key '{dotted_key}' does not match the schema: "
+                        f"no config field '{dotted_key}'."
+                    )
+                if isinstance(node[leaf], dict):
+                    raise UnknownConfigKeyError(
+                        f"Override key '{dotted_key}' targets a config section, "
+                        f'not a field; refusing to replace the whole section.'
+                    )
+                # Route None through the same None -> "none" handling used above,
+                # so a None override does not reach tomlkit as a bare None.
+                node[leaf] = 'none' if value is None else value
+
+        # An Aragog step cap still at its 0.0 schema default (no override
+        # replaced it above) is ambiguous with an explicit, disabling 0.0
+        # once written to TOML, so omit the key and let a reload fall back
+        # to the same schema default it already carries here.
+        interior_energetics = cfg.get('interior_energetics')
+        if (
+            isinstance(interior_energetics, dict)
+            and interior_energetics.get('module') == 'aragog'
+        ):
+            aragog = interior_energetics.get('aragog')
+            if isinstance(aragog, dict):
+                for field_name in _STEP_CAP_FIELDS:
+                    if aragog.get(field_name) == 0.0:
+                        del aragog[field_name]
 
         # Write to TOML file
         with open(out, 'w') as hdl:

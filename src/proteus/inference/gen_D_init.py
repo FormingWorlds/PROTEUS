@@ -1,9 +1,5 @@
-"""Generate and save initial dataset for Bayesian optimization.
-
-This script sets up parameter bounds and true observables for the PROTEUS simulator,
-builds the objective function via `prot_builder`, generates a small random sample
-of points in the normalized input space, evaluates the objective to obtain outputs,
-and saves the resulting dataset to disk for use as the initial data in the BO pipeline.
+"""Initial dataset for Bayesian optimisation, from Halton samples of the parameter
+box or from a precomputed grid, saved as `init.csv` in the study output.
 """
 
 from __future__ import annotations
@@ -11,24 +7,31 @@ from __future__ import annotations
 import logging
 import os
 import time
-from multiprocessing import Pool
+from multiprocessing import Event, Pool
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import toml
 import torch
-from botorch.utils.transforms import normalize
 from scipy.stats.qmc import Halton
 
-from proteus.inference.objective import eval_obj, prot_builder
+from proteus.inference.objective import child_timeout_s, eval_obj, prot_builder
+from proteus.inference.transforms import normalize_parameters
 from proteus.inference.utils import save_dataset_csv
-from proteus.utils.coupler import get_proteus_directories
+from proteus.utils.coupler import (
+    HelpfileFormatError,
+    get_proteus_directories,
+    read_helpfile_table,
+)
 from proteus.utils.helper import recursive_get
 
 # Use double precision for all tensor computations
 dtype = torch.double
 log = logging.getLogger('fwl.' + __name__)
+
+# Stop signal shared by the initial-sampling pool, set by the first sample that
+# raises. Installed in each pool worker by `_init_pool_worker`.
+_stop = None
 
 
 def create_init(config):
@@ -52,10 +55,10 @@ def create_init(config):
     if init_grid.lower().strip() == 'none':
         init_grid = None
         init_samps = int(config['init_samps'])
-        if init_samps < 2:
-            raise ValueError('Initial guess dataset must contain >1 sample')
+        if init_samps < 1:
+            init_samps = int(config['n_workers'])
     else:
-        init_grid = os.path.join(get_proteus_directories()['proteus'], 'output', init_grid)
+        init_grid = get_proteus_directories(init_grid)['output']
         init_samps = None
 
     # create new initial guess data by sampling bounds
@@ -70,6 +73,7 @@ def create_init(config):
             init_samps,
             config['seed'],
             config['n_workers'],
+            config['failure_codes'],
         )
 
     # read from grid
@@ -113,11 +117,20 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
     confs = []
     for c in cases:
         # Data
-        helps.append(pd.read_csv(c / 'runtime_helpfile.csv', delimiter=r'\s+'))
+        try:
+            helps.append(read_helpfile_table(c / 'runtime_helpfile.csv', min_rows=1))
+        except (OSError, HelpfileFormatError) as err:
+            log.warning('Skipping %s: %s', c.name, err)
+            continue
 
         # Config
         with open(c / 'init_coupler.toml', 'r') as f:
             confs.append(toml.load(f))
+
+    if cases and not helps:
+        raise HelpfileFormatError(
+            f'No readable helpfile in any of {len(cases)} cases in {grid_path}'
+        )
 
     # List of parameter keys for ordering
     keys = list(params.keys())
@@ -144,7 +157,7 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
         raw_x = torch.tensor(raw_x, dtype=dtype)
 
         # Generate normalised INPUT parameters
-        nrm_x = normalize(raw_x, bounds).flatten()
+        nrm_x = normalize_parameters(raw_x, bounds, keys).flatten()
         X[i, :] = nrm_x[:]  # store (list of floats)
 
         # Get values of OUTPUT observables from grid point data (list of floats)
@@ -164,8 +177,19 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
     return len(Y.flatten())
 
 
+def _init_pool_worker(stop) -> None:
+    """Give an initial-sampling pool worker the batch's shared stop signal."""
+    global _stop
+    _stop = stop
+
+
 def f_aug(x, iter, builder_args):
     """Evaluate a single initial sample using a temporary objective wrapper.
+
+    Any error raised here fails the whole batch, including a failed run under
+    `abort_on_failure`. The first one sets the stop signal, so samples not yet
+    started return at once instead of running a simulation whose result would
+    be discarded. Runs already in progress finish.
 
     Parameters
     ----------
@@ -175,8 +199,11 @@ def f_aug(x, iter, builder_args):
 
     Returns
     ----------
-    - torch.Tensor: Objective value tensor with shape (1, 1).
+    - torch.Tensor | None: Objective value tensor with shape (1, 1), or None
+      for a sample skipped because the batch is stopping.
     """
+    if _stop is not None and _stop.is_set():
+        return None
     f = prot_builder(
         parameters=builder_args['parameters'],
         observables=builder_args['observables'],
@@ -184,9 +211,28 @@ def f_aug(x, iter, builder_args):
         iter=iter,
         ref_config=builder_args['ref_config'],
         output=builder_args['output'],
+        failure_codes=builder_args['failure_codes'],
     )
+    try:
+        return f(x)
+    except Exception:
+        if _stop is not None:
+            _stop.set()
+        raise
 
-    return f(x)
+
+def _pool_timeout(n_tasks: int, n_workers: int) -> float | None:
+    """Total timeout for the initial-sampling pool, or None when disabled.
+
+    Each worker runs about ``ceil(n_tasks / n_workers)`` child PROTEUS runs in
+    sequence, each bounded by the per-child timeout, so the batch is allowed
+    that long plus a fixed margin.
+    """
+    per_child = child_timeout_s()
+    if per_child is None:
+        return None
+    per_worker = int(np.ceil(n_tasks / max(n_workers, 1)))
+    return per_worker * per_child + 300.0
 
 
 def sample_from_bounds(
@@ -197,6 +243,7 @@ def sample_from_bounds(
     nsamp: int,
     seed: int,
     n_workers: int,
+    failure_codes: list[int],
 ) -> int:
     """Generate initial BO data by evaluating Halton samples in parameter space.
 
@@ -209,6 +256,8 @@ def sample_from_bounds(
     - nsamp (int): Number of initial samples to evaluate.
     - seed (int): RNG seed for Halton sequence generation.
     - n_workers (int): Number of parallel workers to use for evaluation.
+    - failure_codes (list[int]): PROTEUS status codes that complete normally but
+      that this study excludes from the fit.
 
     Returns
     ----------
@@ -222,43 +271,40 @@ def sample_from_bounds(
         n_workers = os.cpu_count() - 1
         log.warning(f'Number of workers reduced to {n_workers}')
 
-    # Build the PROTEUS-based objective function with fixed context
-    #    This will be used to evaluate the objective function to provide initial samples
-
     # Determine problem dimension (number of parameters)
     dims = len(params)
 
     # prepare parallel proteus runs
     builder_args = dict(
-        parameters=params, observables=observables, ref_config=ref_config, output=output
+        parameters=params,
+        observables=observables,
+        ref_config=ref_config,
+        output=output,
+        failure_codes=failure_codes,
     )
 
-    # Generate n random points in [0,1]^d and evaluate the objective
-    #     Each of the parameters are evaluated in space 0-1, normalised to the bounds
-    #     This variable is 2D, with shape [nsamp, dims]
+    # Halton points in [0, 1]^d, shape [nsamp, dims], each axis normalised to its bounds
+    sampler = Halton(d=dims, rng=np.random.default_rng(seed), scramble=True)
+    X = torch.tensor(sampler.random(n=nsamp), dtype=dtype)
 
-    sampler = Halton(d=dims, seed=np.random.default_rng(seed), scramble=True)
-    X = sampler.random(n=nsamp)
-    X = torch.tensor(X, dtype=dtype)
-
-    # X = torch.rand(nsamp, dims,
-    #                generator=torch.manual_seed(seed), dtype=dtype)
-
-    # Evaluate the objective function for each of the samples
-    #     This variable is 1D, with shape [nsamp]
-
+    # Evaluate the objective at each sample, in parallel
     aug_args = [(x[None, :], i, builder_args) for i, x in enumerate(X)]
 
     t0 = time.perf_counter()
-    with Pool(processes=n_workers) as pool:
-        results = pool.starmap(f_aug, aug_args)
+    # A skipped sample only occurs once another has raised, and that error is
+    # what `get` raises, so no None reaches the dataset.
+    stop = Event()
+    with Pool(processes=n_workers, initializer=_init_pool_worker, initargs=(stop,)) as pool:
+        async_result = pool.starmap_async(f_aug, aug_args)
+        # Bound the whole batch so a worker that wedges outside the per-child
+        # subprocess timeout cannot hang the run indefinitely. Leaving the Pool
+        # context terminates any still-running workers if this raises.
+        results = async_result.get(timeout=_pool_timeout(len(aug_args), n_workers))
     t1 = time.perf_counter()
 
     log.info(f'Initial sampling took {t1 - t0:.2f}s')
 
     Y = torch.vstack(results)
-
-    # Y = torch.stack([f(x[None, :]) for x in X]).reshape(nsamp, 1)
 
     log.info(f'Generated initial dataset with {nsamp} points in {dims}-dim space')
 

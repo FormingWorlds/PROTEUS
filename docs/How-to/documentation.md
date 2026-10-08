@@ -74,12 +74,13 @@ The current `docs/` folder structure is shown below:
 ├── Reference
 ├── stylesheets
 ├── submodules.md
-└── Tutorials
+├── Tutorials
+└── Validation
 ```
 
 The main directories and files are used as follows:
 
-- `Tutorials/`: contains tutorials (currently still empty).
+- `Tutorials/`: contains tutorials.
 - `How-to/`: contains how-to guides.
 - `Explanations/`: contains explanation pages.
 - `Reference/`: contains reference information.
@@ -89,6 +90,9 @@ The main directories and files are used as follows:
 - `javascripts/`: contains JavaScript files used for additional frontend behaviour.
 - `overrides/`: contains theme or template overrides used by the site.
 - `paper/`: contains material related to the PROTEUS JOSS paper.
+- `Validation/`: per-source-file scientific validation pages, recording the
+  published benchmarks, analytical limits, and cross-implementation checks
+  that pin each physics module's behavior.
 - `index.md`: the **landing page** of the documentation (Home).
 - `getting_started.md`: a page to get the user started, just below Home.
 - `funding.md`: contains our sponsors.
@@ -117,6 +121,8 @@ nav:
     Zensical looks for documentation files relative to the `docs/` directory. In `mkdocs.yml`, add files like this: `Tutorials/model_earth.md` and not like this: `docs/Tutorials/model_earth.md`.
 
 ## Before opening a pull request
+
+The `Documentation links and anchors` check on every pull request runs `zensical build --clean --strict`, which aborts the build on a link to a page or an anchor that does not exist. Run the same command locally to see the failure and its file and line before you push. Image paths are not checked, so confirm those in the local preview.
 
 Before submitting documentation changes, it is a good idea to check that:
 

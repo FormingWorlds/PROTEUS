@@ -9,8 +9,14 @@ step-by-step guide or the advice below,
 
 | Error / symptom | Section |
 |---|---|
+| `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
+| `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
+| `Resume: no Zalmoxis structure file matches the helpfile row` | [Resume stops on the Zalmoxis structure](#resume-stops-no-zalmoxis-structure-file-matches-the-row) |
+| Simulation fails to converge (general) | [Stabilise a simulation](stabilise_run.md) |
+| `Aragog needs the SUNDIALS CVODE solver` / `scikits_odes_sundials.cvode cannot be imported` | [Aragog stops at setup](#aragog-stops-at-setup-cvode-cannot-be-imported) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
 | `Out-of-date modules detected` | [Module updates](#out-of-date-modules-detected) |
+| `Refusing to delete it` during an install | [Module checkout kept](#an-install-refuses-to-replace-a-module-checkout) |
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
 | `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
@@ -22,6 +28,69 @@ step-by-step guide or the advice below,
 ---
 
 ## General (all platforms)
+
+### Numerically fragile coupled runs {#numerically-fragile-coupled-runs}
+
+Some coupled atmosphere-interior-outgassing configurations occasionally fail with messages such as `RuntimeError: Aragog retry ladder exhausted` or with warnings about T_core jumping >1500 K despite Aragog reporting `status=0`. The same config may succeed on one launch and fail on the next.
+
+The cause is sub-1e-7 floating-point noise in JAX/XLA reduction order that compounds through Aragog's tight tolerances and lands the solver on a wrong P-S branch within ~15 iterations.
+
+Workaround: launch PROTEUS with `--deterministic`:
+
+```bash
+nohup proteus start -c <cfg.toml> --offline --deterministic \
+    > output/<run>/launch.log 2>&1 & disown
+```
+
+The flag intercepts itself in `sys.argv` *before* any heavy imports, sets `JAX_ENABLE_X64=1` and `XLA_FLAGS=--xla_cpu_enable_fast_math=false`, and self-re-execs once. PROTEUS already pins BLAS thread counts at import time; `--deterministic` adds the JAX/XLA layer that BLAS pinning alone does not cover.
+
+Do not enable by default; the flag has a small per-step cost. Use only when a config shows noise-floor divergence between launches.
+
+For broader convergence problems,see [stabilising simulations](stabilise_run.md).
+
+### Aragog stops at setup: CVODE cannot be imported {#aragog-stops-at-setup-cvode-cannot-be-imported}
+
+`proteus start` with `interior_energetics.module = "aragog"` stops before any work with `ImportError: Aragog needs the SUNDIALS CVODE solver (solver_method = "cvode"), but scikits_odes_sundials.cvode cannot be imported`. The default Aragog integrator is CVODE from the SUNDIALS library; the Aragog package alone would switch to scipy Radau with only a log warning, so PROTEUS refuses to start instead.
+
+Install CVODE into the active conda environment from the PROTEUS root:
+
+```bash
+bash tools/get_cvode.sh
+python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum"
+```
+
+`proteus install-all`, `proteus update-all` and `install.sh` run the same script and only warn when it fails, so the failure first shows at the start of an Aragog run. To use scipy on purpose, set `solver_method = "radau"` or `"bdf"` in `[interior_energetics.aragog]`; the run then needs no CVODE, and its results are those of a different integrator.
+
+### Resuming a run written by an older PROTEUS {#resuming-a-run-written-by-an-older-proteus}
+
+`proteus start --resume` stops with a message naming columns the run's `runtime_helpfile.csv` does not carry:
+
+```text
+Helpfile 'output/<run>/runtime_helpfile.csv' was written before 3 column(s)
+of the current output schema existed: R_xuv, T_xuv, g_xuv.
+Run this configuration again from t=0, or read this run with the PROTEUS
+version that wrote it.
+```
+
+PROTEUS records one column per output quantity, and a resumed run reads its starting state from the last line of that file. A run paused before a quantity was added holds no value for it, so the run stops.
+
+Either run the configuration again from `t = 0`, or check out the PROTEUS version the run was launched with and read it under that version. There is deliberately no option to continue anyway. The absent columns cannot be filled with a placeholder, because several modules decide what to do by testing whether a quantity is present at all: CALLIOPE refuses a run whose oxygen budget is missing, the dummy and boundary interiors fall back to a configured core size, and the atmosphere lower boundary moves to the solvus only when a solvus radius exists. Supplying a placeholder satisfies each of those tests and passes the placeholder to the solver behind it, which produces a result that looks ordinary and is wrong.
+
+`proteus observe` and `proteus offchem` are held to a smaller set of columns, because reading a stored run to synthesise an observation or run offline chemistry touches only a small part of the schema. An archived run stays postprocessable after a schema addition it never used, and stops only when a column those commands actually read is absent. When that happens, the practical remedy for a run that is expensive or no longer possible to reproduce is the second one: check out the PROTEUS version the run was launched with and postprocess it under that version. Re-running from `t = 0` under current code does not reproduce the archived run, it produces a different one.
+
+To keep a long run resumable across an upgrade, note the PROTEUS version it was launched with and stay on it until the run finishes.
+
+### Resume stops: no Zalmoxis structure file matches the row {#resume-stops-no-zalmoxis-structure-file-matches-the-row}
+
+`proteus start --resume` on a Zalmoxis + Aragog run stops with status 20 and a message such as:
+
+```text
+Resume: no Zalmoxis structure file matches the helpfile row at t = 6.020140e+02 yr
+within max(1 m, 1e-9 of the mantle thickness); zalmoxis_output.dat: R_core +8.513e+03 m,
+R_int -5.486e+04 m; ...
+```
+
+A structure solve rewrites `data/zalmoxis_output.dat` at once, while the helpfile and the snapshots are written only on snapshot iterations, so a stopped run can hold a structure newer than the row it resumes from. PROTEUS tries three files in this order: the copy saved with that row (`data/<time>_zalmoxis.dat`), `data/zalmoxis_output.dat`, and its backup `data/zalmoxis_output.dat.prev`. The run resumes on the first one whose inner and outer radii match the row within the tolerance in the message. When none of them matches, or none of them exists, run the configuration again from `t = 0`.
 
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 
@@ -66,24 +135,44 @@ git pull
 python -m pip install -U -e .
 ```
 
+### An install refuses to replace a module checkout {#an-install-refuses-to-replace-a-module-checkout}
+
+An install script stops rather than delete a module checkout that holds work
+you would not get back:
+
+```console
+ERROR: /path/to/aragog has uncommitted changes or commits not on a remote.
+       Refusing to delete it. Commit and push your work, or run
+       bash tools/get_aragog.sh --force  to discard the checkout.
+```
+
+Commit and push the work, and the next run replaces the checkout normally.
+
+`install.sh` and `proteus install-all` never pass `--force`, so they cannot
+step over this for you. To discard the checkout deliberately, run the script
+the message names by hand, from the PROTEUS folder:
+
+```console
+bash tools/get_aragog.sh --force
+```
+
+A second message reports a checkout git cannot read at all, from a truncated
+copy or a clone interrupted after it started writing refs:
+
+```console
+ERROR: git could not report the state of /path/to/aragog, so whether
+       it holds local work is unknown. Refusing to delete it.
+       Inspect the checkout, or run
+       bash tools/get_aragog.sh --force  to discard it.
+```
+
+The same `--force` discards it. A clone killed before it committed anything
+is not affected: there is nothing to lose, so the next install refreshes it
+without asking.
+
 ### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 
-PROTEUS automatically downloads input data files from Zenodo. The code works without an API token using public access, but you can optionally configure a token for enhanced rate limits.
-
-??? tip "Optional: Configure a Zenodo API token"
-    If you encounter rate limiting errors or slow downloads, you can set up a Zenodo API token:
-
-    1. Get a personal access token from [Zenodo](https://zenodo.org/account/settings/applications/tokens/new/)
-    2. Configure it:
-        ```console
-        pystow set zenodo api_token <your-token>
-        ```
-    3. Verify it's configured:
-        ```console
-        pystow get zenodo api_token
-        ```
-
-    The token is optional. PROTEUS uses public access by default and falls back gracefully if the token is unavailable.
+PROTEUS downloads input data through fwl-io from Zenodo, without an API token. A file that Zenodo does not serve is fetched from its DataverseNL mirror (every dataset except the PHOENIX spectra has one), and every file is checked against the committed registry. When neither source serves a file, the error lists the failure from each source: a timeout, a connection error or an HTTP 429 or 5xx clears if you retry later; a 404 or a checksum mismatch from both sources does not, so report it as an issue. `fwl-io check proteus` lists what is missing or corrupt among the datasets PROTEUS declares in its own manifest.
 
 ### PETSc complains about being in the wrong directory
 
@@ -95,13 +184,13 @@ This happens when compiling SPIDER within a Python environment that is incompati
 
 ### Julia compatibility error {#julia-compatibility-error}
 
-There are incompatibilities between Python and some versions of Julia. Julia version 1.12+ is not yet supported because it requires a version of the OpenSSL library that is incompatible with Python.
+There are incompatibilities between Python and some versions of Julia. Supported Julia versions are **1.11.x, 1.12.x and 1.13.x**. Support for 1.11 is deprecated and will be dropped in a future release; `install.sh` and `proteus doctor` warn when they find it. Newer releases are untested and may fail when juliacall resolves shared libraries.
 
-You must use **Python 3.12** and **Julia 1.11** to avoid these problems:
+You must use **Python 3.12** with a supported Julia to avoid these problems:
 
 ```console
-juliaup add 1.11
-juliaup default 1.11
+juliaup add 1.13
+juliaup default 1.13
 ```
 
 ---
@@ -149,7 +238,7 @@ xcode-select --install
         cd petsc
         ./configure \
            PETSC_ARCH=arch-darwin-c-opt \
-           LDFLAGS="-L$(brew --prefix)/lib -Wl,-w" \
+           LDFLAGS="-Wl,-w" \
            --with-debugging=0 \
            --with-fc=0 \
            --with-cxx=0 \
@@ -164,7 +253,19 @@ xcode-select --install
         make PETSC_DIR=$(pwd) PETSC_ARCH=arch-darwin-c-opt check
         ```
 
-    Tested on M1 Ultra (macOS 15.6.1), M2 (macOS 26.2), and M4 Max (macOS 26.3).
+    With `LDFLAGS="-Wl,-w"`, `get_petsc.sh` was tested on M1 Ultra (macOS 26.6.2). The earlier command, which also passed the Homebrew library path, was tested on M1 Ultra (macOS 15.6.1), M2 (macOS 26.2), and M4 Max (macOS 26.3).
+
+### PETSc configure: "Downloaded sundials2 could not be used"
+
+PETSc configure on macOS stops with:
+
+```
+Downloaded sundials2 could not be used. Please check install in .../arch-darwin-c-opt
+```
+
+and `configure.log` reports `_CVDense` and `_CVSpgmr` as undefined symbols.
+
+A SUNDIALS 7 from Homebrew is in the linker search path ahead of the SUNDIALS 2.5 that PETSc downloads, and SUNDIALS 7 has no `CVDense`. `get_petsc.sh` passes no Homebrew library path, so on Apple Silicon, where Homebrew lives in `/opt/homebrew`, PETSc builds with a Homebrew SUNDIALS installed. On an Intel Mac, Homebrew installs into `/usr/local/lib`, which the linker searches by default, so a Homebrew SUNDIALS can still hide the downloaded one there. `brew list --versions sundials` shows whether Homebrew's SUNDIALS is installed.
 
 ### PETSc tests error (network configuration)
 

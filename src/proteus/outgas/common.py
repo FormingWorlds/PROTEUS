@@ -1,11 +1,21 @@
 # Shared code for outgassing wrapper
 from __future__ import annotations
 
-from proteus.utils.constants import element_list, gas_list
+from proteus.utils.constants import element_list, gas_list, noble_gases
 
 
 def expected_keys():
-    copy_keys = ['P_surf', 'M_atm', 'atm_kg_per_mol']
+    copy_keys = [
+        'P_surf',
+        'P_vol',
+        'P_vap',
+        'M_atm',
+        'M_vol_atm',
+        'M_vaps',
+        'atm_kg_per_mol',
+        'fO2_shift_IW_derived',
+        'O_res',
+    ]
 
     # reservoirs
     res_list = ('atm', 'liquid', 'solid', 'total')
@@ -15,15 +25,43 @@ def expected_keys():
         copy_keys.append(f'{s}_bar')
         copy_keys.append(f'{s}_vmr')
         for r in res_list:
-            copy_keys.append(f'{s}_kg_{r}')
+            # A noble gas is also an element; its _kg_total is escape-owned
+            # (like every non-O element total), so it is not copied from the
+            # backend here. Its atm/liquid/solid reservoirs are.
+            if not (r == 'total' and s in noble_gases):
+                copy_keys.append(f'{s}_kg_{r}')
             copy_keys.append(f'{s}_mol_{r}')
 
-    # elements
+    # elements. The `_kg_total` slot is owned by escape (which debits
+    # the running budget after the wrapper writes) for every element
+    # EXCEPT oxygen. For O, the chemistry solver's output partitions
+    # atm+liquid+solid into a fresh total each iteration; the calliope
+    # wrapper restores hf_row['O_kg_total'] to the authoritative input
+    # immediately after this copy when fO2_source =
+    # "from_O_budget", so the escape debit chain is preserved across
+    # iterations. Under user_constant the solver's O_kg_total IS the
+    # authoritative value, so the copy is the correct write.
+    # Some vap_list species are monatomic (e.g. 'Si', 'Na', 'Fe') and share
+    # their string with the matching element_list symbol, so the gas loop
+    # above already appended f'{e}_kg_{r}' for those elements. Skip keys
+    # already present instead of appending a duplicate for the same
+    # hf_row slot.
     for e in element_list:
+        if e in noble_gases:
+            continue  # noble reservoirs are handled in the gas-species loop
         for r in res_list:
-            # do not overwrite total inventory, since this will be modified by escape
-            # except oxygen, since we assume it's set by redox buffer (const_fO2)
             if (r != 'total') or (e == 'O'):
-                copy_keys.append(f'{e}_kg_{r}')
+                key = f'{e}_kg_{r}'
+                if key not in copy_keys:
+                    copy_keys.append(key)
+
+    # element mass ratios in atmosphere (must mirror the unordered-pair
+    # registration in coupler.GetHelpfileKeys so run_desiccated zeros
+    # them on desiccation instead of leaving stale ratios in hf_row).
+    for e1 in element_list:
+        for e2 in element_list:
+            if (e1 == e2) or (f'{e1}/{e2}_atm' in copy_keys):
+                continue
+            copy_keys.append(f'{e2}/{e1}_atm')
 
     return copy_keys

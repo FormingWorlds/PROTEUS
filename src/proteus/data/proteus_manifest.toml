@@ -1,0 +1,21 @@
+# Datasets only PROTEUS reads, fetched through fwl-io; shared data is in the fwl-io manifest.
+# Each dotted key is the dataset location below FWL_DATA, and its registry
+# <dotted-key>.registry.txt next to this file comes from `fwl-io sync <this file>`.
+
+[observe.exoplanet_reference]
+name = "DACE PlanetS catalogue of confirmed exoplanets"
+zenodo = "10.5281/zenodo.15727878"
+dataverse = "10.34894/9UJ0R7"
+required_by = ["proteus"]
+
+[atmos_clim.surface_albedos.hammond_2024]
+name = "Surface material reflectance spectra (Hammond et al. 2024)"
+zenodo = "10.5281/zenodo.15880455"
+dataverse = "10.34894/8ARDN5"
+required_by = ["proteus"]
+
+[atmos_clim.scattering.socrates_aerosols]
+name = "Monochromatic aerosol scattering properties (.mon)"
+zenodo = "10.5281/zenodo.19294180"
+dataverse = "10.34894/6Z8Y0Q"
+required_by = ["proteus"]

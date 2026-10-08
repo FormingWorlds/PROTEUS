@@ -1,136 +1,219 @@
 #!/usr/bin/env python3
+"""Generate the CHILI intercomparison configs from the tutorial configs.
 
-# Script to generate PROTEUS config files for the CHILI intercomparison project.
-# See `input/chili/readme.txt` for more information.
+The tutorial configs are the single source of truth for the CHILI
+nominal cases: ``input/tutorials/tutorial_earth.toml`` and
+``input/tutorials/tutorial_venus.toml`` implement the protocol's Earth
+and Venus setups and are validated by the documented tutorial runs.
+This script derives every intercomparison config from them by applying
+only the deltas listed in ``CASE_DELTAS`` and ``GRID_AXES`` below, so
+the intercomparison and the tutorials cannot drift apart. The unit
+tests in ``tests/tools/test_chili_generate.py`` enforce that contract:
+each generated config must equal its tutorial base on every field
+outside its delta list, the grid axes must match the standalone grid
+configs under ``input/tutorials/chili_grid/``, and the committed files
+under ``input/chili/intercomp/`` must equal a fresh regeneration.
+
+Cases
+-----
+- ``earth.toml`` / ``venus.toml``: tutorial configs with only the
+  output path changed.
+- ``earth.grid.toml`` / ``venus.grid.toml``: ``proteus grid`` specs
+  sweeping the protocol H and C inventories around the nominal cases.
+- ``tr1b.toml`` / ``tr1e.toml`` / ``tr1a.toml``: TRAPPIST-1 b, e, and
+  alpha (protocol Table 4), derived from the Earth base with the
+  TRAPPIST star, orbit, and integration-time deltas. Escape is
+  disabled in these cases: ZEPHYRUS pairs only with the Spada
+  evolution tracks, and a 0.09 M_sun star needs the Baraffe tracks,
+  so the escape treatment for the TRAPPIST cases awaits a protocol
+  decision. The configs are generated for completeness; their runs
+  are validated separately.
+
+Usage
+-----
+    python tools/chili_generate.py
+
+Writes the configs to ``input/chili/intercomp/``.
+"""
 
 from __future__ import annotations
 
 import os
-from copy import deepcopy
-from glob import glob
 
-import toml
+import tomlkit
 
-# Options
-use_scratch = True  # Store output in scratch folder
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+TUTORIALS = os.path.join(ROOT, 'input', 'tutorials')
+OUTDIR = os.path.join(ROOT, 'input', 'chili', 'intercomp')
 
-# -----------------------------------------------
+# Per-case deltas applied on top of the tutorial base config. Keys are
+# dotted config paths; every path listed here is exempt from the
+# equality contract with the tutorial base, nothing else is.
+CASE_DELTAS: dict[str, dict] = {
+    # Nominal cases: the tutorials, written to the intercomparison
+    # output folders.
+    'earth': {
+        'base': 'tutorial_earth.toml',
+        'set': {
+            'params.out.path': 'chili_earth',
+        },
+    },
+    'venus': {
+        'base': 'tutorial_venus.toml',
+        'set': {
+            'params.out.path': 'chili_venus',
+        },
+    },
+    # TRAPPIST-1 cases (protocol Table 4). Flux scaling follows the
+    # tutorial convention: the MORS track luminosity is used directly
+    # (star.bol_scale stays at its default of 1).
+    'tr1b': {
+        'base': 'tutorial_earth.toml',
+        'set': {
+            'params.out.path': 'chili_tr1b',
+            # ZEPHYRUS requires the Spada tracks; escape for the
+            # TRAPPIST cases awaits a protocol decision.
+            'escape.module': 'none',
+            'params.stop.time.maximum': 7.55e9,  # to present day (7.6 Gyr)
+            'star.mass': 0.0898,
+            'star.age_ini': 0.05,
+            'star.mors.tracks': 'baraffe',
+            'star.mors.age_now': 7.6,
+            'star.mors.star_name': 'trappist-1',
+            'star.mors.spectrum_source': 'muscles',
+            'orbit.semimajoraxis': 0.01154,
+        },
+    },
+    'tr1e': {
+        'base': 'tutorial_earth.toml',
+        'set': {
+            'params.out.path': 'chili_tr1e',
+            # ZEPHYRUS requires the Spada tracks; escape for the
+            # TRAPPIST cases awaits a protocol decision.
+            'escape.module': 'none',
+            'params.stop.time.maximum': 7.55e9,
+            'star.mass': 0.0898,
+            'star.age_ini': 0.05,
+            'star.mors.tracks': 'baraffe',
+            'star.mors.age_now': 7.6,
+            'star.mors.star_name': 'trappist-1',
+            'star.mors.spectrum_source': 'muscles',
+            'orbit.semimajoraxis': 0.02925,
+        },
+    },
+    'tr1a': {
+        'base': 'tutorial_earth.toml',
+        'set': {
+            'params.out.path': 'chili_tr1a',
+            # ZEPHYRUS requires the Spada tracks; escape for the
+            # TRAPPIST cases awaits a protocol decision.
+            'escape.module': 'none',
+            'params.stop.time.maximum': 6.6e9,  # later start (1 Gyr)
+            'star.mass': 0.0898,
+            'star.age_ini': 1.00,
+            'star.mors.tracks': 'baraffe',
+            'star.mors.age_now': 7.6,
+            'star.mors.star_name': 'trappist-1',
+            'star.mors.spectrum_source': 'muscles',
+            'orbit.semimajoraxis': 6.750e-4,
+        },
+    },
+}
 
-# Folder containing configuration files
-intercomp = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), '..', 'input', 'chili', 'intercomp')
-)
+# Protocol H and C inventory axes [kg] for the grid sweeps. The
+# standalone per-case grid configs under input/tutorials/chili_grid/
+# carry exactly these values; the lockstep test compares the two.
+GRID_AXES: dict[str, list[float]] = {
+    'planet.elements.H_budget': [1.60e20, 7.80e20, 1.60e21],
+    'planet.elements.C_budget': [1.36e20, 2.73e20, 5.44e20],
+}
 
-# Load base config
-pth_base = os.path.join(intercomp, '_base.toml')
-cfg = {'base': toml.load(pth_base)}
-print(f'Loaded base config from {pth_base}')
-
-# Load grid config
-pth_grid = os.path.join(intercomp, '_base.grid.toml')
-grd = {'base': toml.load(pth_grid)}
-print(f'Loaded base grid from {pth_grid}')
-
-# ------------------------
-# Remove old configs
-print(' ')
-for f in glob(os.path.join(intercomp, '*.toml')):
-    if '_base' not in f:
-        os.remove(f)
-print('Removed old configs')
-
-# ------------------------
-# Earth and Venus (Table 2 of protocol paper)
-tnow = 4.567  # Gyr
-for p in ('earth', 'venus'):
-    cfg[p] = deepcopy(cfg['base'])
-
-    # output
-    cfg[p]['params']['out']['path'] = 'scratch/' if use_scratch else ''
-    cfg[p]['params']['out']['path'] += f'chili_{p}/'
-
-    # star
-    cfg[p]['star']['mass'] = 1.0  # Msun
-    cfg[p]['star']['mors']['spec'] = 'stellar_spectra/Named/sun.txt'
-    cfg[p]['star']['mors']['age_now'] = tnow  # Gyr
-
-# Planet mass
-cfg['earth']['struct']['mass_tot'] = 1.0  # Mearth
-cfg['venus']['struct']['mass_tot'] = 0.815  # Mearth
-
-# Orbital distance
-cfg['earth']['orbit']['semimajoraxis'] = 1.0  # AU
-cfg['venus']['orbit']['semimajoraxis'] = 0.723  # AU
-
-# Scale flux to match Baraffe tracks at t=t0
-cfg['earth']['star']['bol_scale'] = 920.0 / 1005.3
-cfg['venus']['star']['bol_scale'] = 1760.0 / 1923.1
-
-# Grid configs (H and C inventories) for these two planets
-for p in ('earth', 'venus'):
-    grd[p] = deepcopy(grd['base'])
-    grd[p]['output'] = 'scratch/' if use_scratch else ''
-    grd[p]['output'] += f'chili_{p}_grid/'
-    grd[p]['ref_config'] = f'input/chili/intercomp/{p}.toml'
-
-# ------------------------
-# TRAPPIST-1 b/e/alpha (Table 4 of protocol paper)
-tnow = 7.6  # Gyr
-for p in ('tr1a', 'tr1b', 'tr1e'):
-    cfg[p] = deepcopy(cfg['base'])
-
-    # output
-    cfg[p]['params']['out']['path'] = 'scratch/' if use_scratch else ''
-    cfg[p]['params']['out']['path'] += f'chili_{p}/'
-
-    # star
-    cfg[p]['star']['mass'] = 0.0898  # Msun
-    cfg[p]['star']['mors']['spec'] = 'stellar_spectra/Named/trappist-1.txt'
-    cfg[p]['star']['mors']['age_now'] = tnow  # Gyr
-
-# Scale flux to match Baraffe tracks at t=t0
-cfg['tr1b']['star']['bol_scale'] = 3.628e04 / 4.439e04
-cfg['tr1e']['star']['bol_scale'] = 5.648e03 / 6.909e03
-cfg['tr1a']['star']['bol_scale'] = 1.687e06 / 4.218e06
-
-# Orbital distances
-cfg['tr1b']['orbit']['semimajoraxis'] = 0.01154  # AU
-cfg['tr1e']['orbit']['semimajoraxis'] = 0.02925  # AU
-cfg['tr1a']['orbit']['semimajoraxis'] = 6.750e-4  # AU
-
-# Initial ages
-cfg['tr1b']['star']['age_ini'] = 0.05  # Gyr
-cfg['tr1e']['star']['age_ini'] = 0.05  # Gyr
-cfg['tr1a']['star']['age_ini'] = 1.00  # Gyr  <- different from b/e
-
-# ------------------------
-# Integration time determines final age; all stop at present day
-for p in cfg.keys():
-    cfg[p]['params']['stop']['time']['maximum'] = (
-        cfg[p]['star']['mors']['age_now'] - cfg[p]['star']['age_ini']
-    ) * 1e9
-
-# Write configs for all planets
-print(' ')
-for p in cfg.keys():
-    if p == 'base':
-        continue
-
-    pth = os.path.join(intercomp, f'{p}.toml')
-    with open(pth, 'w') as hdl:
-        toml.dump(cfg[p], hdl)
-
-    print(f'Wrote new {p:5s} config to {pth}')
-
-# Write configs for Earth+Venus grids
-for p in ('earth', 'venus'):
-    pth = os.path.join(intercomp, f'{p}.grid.toml')
-    with open(pth, 'w') as hdl:
-        toml.dump(grd[p], hdl)
-
-    print(f'Wrote new {p:5s} grid to {pth}')
+# Grid-runner settings shared by both grid specs. max_mem is sized for
+# a coupled AGNI + Aragog + Zalmoxis run, which peaks near 4 GB.
+GRID_RUNNER = {
+    'symlink': '',
+    'use_slurm': False,
+    'max_jobs': 9,
+    'max_days': 1,
+    'max_mem': 6,
+}
 
 
-# Exit
-print(' ')
-print('Done!')
+def _set_dotted(doc, dotted: str, value) -> None:
+    """Set ``dotted`` path in a tomlkit document to ``value``."""
+    keys = dotted.split('.')
+    node = doc
+    for k in keys[:-1]:
+        node = node[k]
+    node[keys[-1]] = value
+
+
+def generate_case(name: str) -> str:
+    """Render one intercomparison case from its tutorial base.
+
+    Returns the TOML text. tomlkit round-trips the tutorial file, so
+    everything outside the delta list stays byte-identical to the base,
+    apart from the leading comment block, which is replaced with a
+    case-specific header (the tutorial header describes the tutorial,
+    not the derived case).
+    """
+    spec = CASE_DELTAS[name]
+    base_path = os.path.join(TUTORIALS, spec['base'])
+    with open(base_path) as f:
+        text = f.read()
+    doc = tomlkit.parse(text)
+    for dotted, value in spec['set'].items():
+        _set_dotted(doc, dotted, value)
+    rendered = tomlkit.dumps(doc)
+
+    # Replace the tutorial's leading comment block (everything up to
+    # the first non-comment, non-blank line) with the case header.
+    lines = rendered.split('\n')
+    body_start = None
+    for i, line in enumerate(lines):
+        if line.strip() and not line.lstrip().startswith('#'):
+            body_start = i
+            break
+    if body_start is None:
+        # Comment-only or empty document: nothing to keep below the header.
+        body_start = len(lines)
+    header = [
+        f'# CHILI intercomparison case: {name}',
+        f'# Generated by tools/chili_generate.py from {spec["base"]};',
+        '# do not edit by hand (see input/chili/intercomp/README.md).',
+        '',
+    ]
+    return '\n'.join(header + lines[body_start:])
+
+
+def generate_grid(planet: str) -> str:
+    """Render the ``proteus grid`` spec sweeping H and C for ``planet``."""
+    doc = tomlkit.document()
+    doc['output'] = f'chili_{planet}_grid'
+    doc['ref_config'] = f'input/chili/intercomp/{planet}.toml'
+    for key, value in GRID_RUNNER.items():
+        doc[key] = value
+    for dotted, values in GRID_AXES.items():
+        table = tomlkit.table()
+        table['method'] = 'direct'
+        table['values'] = values
+        doc[tomlkit.key(dotted)] = table
+    return tomlkit.dumps(doc)
+
+
+def main() -> None:
+    os.makedirs(OUTDIR, exist_ok=True)
+    for name in CASE_DELTAS:
+        path = os.path.join(OUTDIR, f'{name}.toml')
+        with open(path, 'w') as f:
+            f.write(generate_case(name))
+        print(f'wrote {os.path.relpath(path, ROOT)}')
+    for planet in ('earth', 'venus'):
+        path = os.path.join(OUTDIR, f'{planet}.grid.toml')
+        with open(path, 'w') as f:
+            f.write(generate_grid(planet))
+        print(f'wrote {os.path.relpath(path, ROOT)}')
+
+
+if __name__ == '__main__':
+    main()

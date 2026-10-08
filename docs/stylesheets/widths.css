@@ -1,0 +1,23 @@
+@media screen and (min-width: 769px) {
+  .proteus-index {
+    max-width: 70em;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .proteus-submodules {
+    max-width: 50em;
+    margin-right: auto;
+  }
+
+  .proteus-getstarted {
+    margin-left: 1em;
+  }
+
+  .proteus-index-img {
+    max-width: 50em;
+    margin: 0 auto;
+  }
+}
+
+

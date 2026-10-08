@@ -1,0 +1,1460 @@
+"""Unit tests for ``proteus.grid.manage``.
+
+The grid manager is plumbing-heavy: file IO, subprocess dispatch, TOML
+parsing, and a multiprocessing-driven worker loop. The tests below cover
+the public surface (``Grid``, ``_thread_target``, ``grid_from_config``)
+with all heavy callouts mocked. Each test pins at
+least two discriminating post-state facts so that a regression which
+silently no-ops one branch cannot pass.
+
+Links:
+- ``docs/How-to/testing.md``
+- ``docs/Explanations/test_framework.md``
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import re
+from pathlib import Path
+from unittest import mock
+
+import numpy as np
+import pytest
+import toml
+
+from proteus.config import UnknownConfigKeyError, read_config_object
+from proteus.grid import manage as gm
+from proteus.grid.manage import (
+    Grid,
+    _thread_target,
+    grid_dimension_keys,
+    grid_from_config,
+)
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+# ---------------------------------------------------------------------------
+# Shared fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_proteus_dir(tmp_path, monkeypatch):
+    """Redirect the module-level PROTEUS_DIR so Grid writes to tmp_path."""
+    monkeypatch.setattr(gm, 'PROTEUS_DIR', str(tmp_path))
+    # The Grid constructor also calls time.sleep(4.0) when wiping old output
+    # and shutil.rmtree subdir; bypass those waits entirely.
+    monkeypatch.setattr(gm.time, 'sleep', lambda *_args, **_kwargs: None)
+    return tmp_path
+
+
+@pytest.fixture
+def base_config_path(tmp_path):
+    """Minimal valid base config file (loadable by read_config_object)."""
+    src = tmp_path / 'base.toml'
+    src.write_text('# fake base config\n')
+    return src
+
+
+@pytest.fixture
+def grid_with_mocks(fake_proteus_dir, base_config_path, monkeypatch):
+    """Construct a Grid with read_config_object and setup_logger patched.
+
+    The Config constructor in PROTEUS does substantial validation that we
+    do not want triggered here; we replace ``read_config_object`` with a
+    lightweight stub via the call sites (write_config_files patches it
+    locally). The Grid constructor calls ``setup_logger`` which writes to
+    disk; we keep that call real because it is part of init's documented
+    behavior, but anchor logging inside tmp_path.
+    """
+    g = Grid(
+        name='unit_test_grid',
+        base_config_path=str(base_config_path),
+    )
+    return g
+
+
+# ---------------------------------------------------------------------------
+# _thread_target
+# ---------------------------------------------------------------------------
+
+
+class TestThreadTarget:
+    """Worker function dispatched by Grid.run for each grid point."""
+
+    def test_real_run_dispatches_proteus_cli(self, monkeypatch):
+        """``test=False`` invokes ``proteus start --offline --config
+        <cfg>`` via ``subprocess.run`` with ``shell=False``.
+        """
+        recorded = {}
+
+        def fake_run(cmd, **kwargs):
+            recorded['cmd'] = cmd
+            recorded['kwargs'] = kwargs
+
+            class _R:
+                returncode = 0
+
+            return _R()
+
+        monkeypatch.setattr(gm.subprocess, 'run', fake_run)
+        monkeypatch.setattr(gm.time, 'sleep', lambda *_a, **_k: None)
+
+        _thread_target('/tmp/case_x.toml', test=False, wait=0.01)
+        # Discriminating: command must contain "proteus" AND end in the cfg.
+        assert recorded['cmd'][0] == 'proteus'
+        assert recorded['cmd'][-1] == '/tmp/case_x.toml'
+        # shell=False is non-negotiable for safety.
+        assert recorded['kwargs']['shell'] is False
+
+    def test_test_run_uses_echo_stub(self, monkeypatch):
+        """``test=True`` swaps the real CLI for a /bin/echo stub. The
+        stub command must still embed the config path so log inspection
+        is unambiguous.
+        """
+        recorded = {}
+        monkeypatch.setattr(
+            gm.subprocess,
+            'run',
+            lambda cmd, **kw: recorded.setdefault('cmd', cmd) or mock.MagicMock(returncode=0),
+        )
+        monkeypatch.setattr(gm.time, 'sleep', lambda *_a, **_k: None)
+
+        _thread_target('/tmp/case_y.toml', test=True, wait=0.0)
+        # Distinct from the real-run path: starts with /bin/echo, not proteus.
+        assert recorded['cmd'][0] == '/bin/echo'
+        # And the config path is embedded in the dummy text:
+        joined = ' '.join(recorded['cmd'])
+        assert '/tmp/case_y.toml' in joined
+
+    def test_sleeps_for_wait_seconds(self, monkeypatch):
+        """``_thread_target`` calls ``time.sleep(wait)`` after the
+        subprocess returns, to swallow immediate-exit races.
+        """
+        slept = []
+        monkeypatch.setattr(gm.subprocess, 'run', lambda *a, **k: mock.MagicMock())
+        monkeypatch.setattr(gm.time, 'sleep', lambda s: slept.append(s))
+        _thread_target('/tmp/c.toml', test=True, wait=2.5)
+        # Discriminating: exactly the wait value was passed (not a default).
+        assert slept == [2.5]
+        # And was called at least once.
+        assert len(slept) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Grid.__init__
+# ---------------------------------------------------------------------------
+
+
+class TestGridInit:
+    """Constructor: path layout, validation, ref-config copy."""
+
+    def test_creates_outdir_cfgdir_logdir(self, fake_proteus_dir, base_config_path):
+        """Default no-symlink construction creates outdir, cfgdir, logdir."""
+        g = Grid(name='trial', base_config_path=str(base_config_path))
+        assert os.path.isdir(g.outdir)
+        assert os.path.isdir(g.cfgdir)
+        assert os.path.isdir(g.logdir)
+        # using_symlink should be False on the default branch
+        assert g.using_symlink is False
+
+    def test_strips_whitespace_in_name(self, fake_proteus_dir, base_config_path):
+        """Whitespace around the grid name is stripped (path-safety)."""
+        g = Grid(name='  padded_name  ', base_config_path=str(base_config_path))
+        # The stripped name lives in outdir
+        assert 'padded_name' in g.outdir
+        # And the un-stripped variant does NOT appear (no leading spaces).
+        assert ' padded_name ' not in g.outdir
+
+    def test_raises_when_base_config_missing(self, fake_proteus_dir, tmp_path):
+        """A non-existent base config path fails fast with a clear error.
+
+        Verifies that the error fires AND that no output side effects ran
+        (no output directory was created).
+        """
+        missing = tmp_path / 'nonexistent.toml'
+        with pytest.raises(Exception, match='does not exist'):
+            Grid(
+                name='no_base',
+                base_config_path=str(missing),
+            )
+        # Post-state: the failure aborts before any output dir is created.
+        assert not (fake_proteus_dir / 'output' / 'no_base').exists()
+
+    def test_raises_on_blank_symlink_dir(self, fake_proteus_dir, base_config_path):
+        """A symlink target of '' or '.' is refused (path safety)."""
+        with pytest.raises(Exception, match='blank path'):
+            Grid(
+                name='blank_link',
+                base_config_path=str(base_config_path),
+                symlink_dir='',
+            )
+        with pytest.raises(Exception, match='blank path'):
+            Grid(
+                name='dot_link',
+                base_config_path=str(base_config_path),
+                symlink_dir='.',
+            )
+
+    def test_writes_ref_config_copy(self, fake_proteus_dir, base_config_path):
+        """The base config is copied bit-identically as ref_config.toml in
+        the output directory; ensures reproducibility of the grid run.
+        """
+        g = Grid(name='copytest', base_config_path=str(base_config_path))
+        copy_path = os.path.join(g.outdir, 'ref_config.toml')
+        assert os.path.isfile(copy_path)
+        # Bit-identical: same bytes as the source
+        with open(copy_path, 'rb') as h:
+            copy_bytes = h.read()
+        with open(base_config_path, 'rb') as h:
+            src_bytes = h.read()
+        assert copy_bytes == src_bytes
+
+    def test_copies_grid_config_when_given(self, fake_proteus_dir, base_config_path, tmp_path):
+        """An optional ``grid_config`` argument triggers a copy.grid.toml
+        sibling so the run can be reproduced from output alone.
+        """
+        gcfg = tmp_path / 'gridfile.toml'
+        gcfg.write_text('use_slurm = false\n')
+        g = Grid(
+            name='with_gridcfg',
+            base_config_path=str(base_config_path),
+            grid_config=str(gcfg),
+        )
+        copy_path = os.path.join(g.outdir, 'copy.grid.toml')
+        assert os.path.isfile(copy_path)
+        # Bit-identical
+        assert open(copy_path, 'rb').read() == open(gcfg, 'rb').read()
+
+    def test_starts_with_empty_dimensions(self, fake_proteus_dir, base_config_path):
+        """Initial state: zero dimensions, zero size, empty flat list."""
+        g = Grid(name='empty_init', base_config_path=str(base_config_path))
+        assert g.dim_names == []
+        assert g.dim_param == []
+        assert g.dim_avars == {}
+        assert g.flat == []
+        assert g.size == 0
+
+    def test_existing_outdir_is_cleaned_no_git(
+        self, fake_proteus_dir, base_config_path, monkeypatch
+    ):
+        """If outdir pre-exists without a .git subfolder, it is wiped and
+        recreated. Construction must succeed and the new outdir is empty
+        of the prior contents.
+        """
+        outdir = os.path.join(str(fake_proteus_dir), 'output', 'cleanup_target')
+        os.makedirs(outdir)
+        # Drop a sentinel file that must NOT survive the reconstruction.
+        sentinel = os.path.join(outdir, 'old_file.dat')
+        with open(sentinel, 'w') as h:
+            h.write('stale')
+        g = Grid(name='cleanup_target', base_config_path=str(base_config_path))
+        # Sentinel file is gone:
+        assert not os.path.exists(sentinel)
+        # New outdir exists and contains ref_config.toml (proof of fresh init):
+        assert os.path.isfile(os.path.join(g.outdir, 'ref_config.toml'))
+
+    def test_refuses_to_clean_outdir_containing_git(self, fake_proteus_dir, base_config_path):
+        """Safety net: never wipe a directory containing a git repo.
+
+        Verifies the error fires AND that the .git directory survives,
+        i.e. the safety net actually short-circuits before rmtree runs.
+        """
+        outdir = os.path.join(str(fake_proteus_dir), 'output', 'has_git')
+        git_dir = os.path.join(outdir, '.git')
+        os.makedirs(git_dir)
+        # Sentinel under .git: proves the partial wipe never ran.
+        sentinel = os.path.join(git_dir, 'HEAD')
+        with open(sentinel, 'w') as h:
+            h.write('ref: refs/heads/main\n')
+        with pytest.raises(Exception, match='Git'):
+            Grid(name='has_git', base_config_path=str(base_config_path))
+        # Safety net engaged: the .git tree (and its content) is untouched.
+        assert os.path.isdir(git_dir)
+        assert os.path.isfile(sentinel)
+
+
+# ---------------------------------------------------------------------------
+# Grid.add_dimension, _get_idx
+# ---------------------------------------------------------------------------
+
+
+class TestGridDimensions:
+    """Dimension registration and lookup."""
+
+    def test_add_dimension_appends_to_lists(self, grid_with_mocks):
+        """Adding a dimension extends dim_names, dim_param, and sets
+        dim_avars to a None placeholder under the dimension name.
+        """
+        g = grid_with_mocks
+        g.add_dimension('alpha', 'planet.mass_tot')
+        assert g.dim_names == ['alpha']
+        assert g.dim_param == ['planet.mass_tot']
+        # Placeholder None for not-yet-set values:
+        assert g.dim_avars == {'alpha': None}
+
+    def test_add_dimension_rejects_duplicates(self, grid_with_mocks):
+        """A duplicate name is refused; the second call raises."""
+        g = grid_with_mocks
+        g.add_dimension('alpha', 'planet.mass_tot')
+        with pytest.raises(Exception, match='cannot be added twice'):
+            g.add_dimension('alpha', 'planet.elements.H_budget')
+        # State preserved: still exactly one dimension after the failure.
+        assert len(g.dim_names) == 1
+
+    def test_get_idx_returns_correct_index(self, grid_with_mocks):
+        """``_get_idx`` returns the position of a registered name and
+        raises when the name is unknown.
+        """
+        g = grid_with_mocks
+        g.add_dimension('a', 'pa')
+        g.add_dimension('b', 'pb')
+        g.add_dimension('c', 'pc')
+        # Discriminating: positions are 0, 1, 2 in registration order.
+        assert g._get_idx('a') == 0
+        assert g._get_idx('b') == 1
+        assert g._get_idx('c') == 2
+        # Unknown raises:
+        with pytest.raises(Exception, match='is not initialised'):
+            g._get_idx('zzz_missing')
+
+
+# ---------------------------------------------------------------------------
+# set_dimension_*
+# ---------------------------------------------------------------------------
+
+
+class TestSetDimension:
+    """Dimension-value setters: linspace, logspace, arange, direct."""
+
+    def test_linspace_matches_numpy(self, grid_with_mocks):
+        """``set_dimension_linspace`` produces ``np.linspace`` values
+        coerced to a list of Python floats.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_linspace('m', 0.5, 1.5, 5)
+        expected = list(np.linspace(0.5, 1.5, 5))
+        # Discriminating values (asymmetric, ratio carries information).
+        np.testing.assert_allclose(g.dim_avars['m'], expected, rtol=1e-12)
+        # And the stored type is Python float (not np.float64) - downstream
+        # TOML write requires this.
+        assert all(type(v) is float for v in g.dim_avars['m'])
+
+    def test_logspace_matches_numpy(self, grid_with_mocks):
+        """``set_dimension_logspace`` spans start->stop on a log axis."""
+        g = grid_with_mocks
+        g.add_dimension('h', 'planet.elements.H_budget')
+        g.set_dimension_logspace('h', 1.0, 1000.0, 4)
+        # Wrong-formula guard: linear interpolation would give [1, 334, 667, 1000];
+        # log spacing gives [1, 10, 100, 1000]. Pin the middle point.
+        np.testing.assert_allclose(g.dim_avars['h'], [1.0, 10.0, 100.0, 1000.0], rtol=1e-12)
+        # Endpoints are exact:
+        assert g.dim_avars['h'][0] == pytest.approx(1.0)
+        assert g.dim_avars['h'][-1] == pytest.approx(1000.0)
+
+    def test_arange_appends_endpoint_when_missing(self, grid_with_mocks):
+        """``arange(1, 5, 1)`` natively returns [1, 2, 3, 4]; the setter
+        appends the stop value so the user-facing contract is endpoint-inclusive.
+        """
+        g = grid_with_mocks
+        g.add_dimension('e', 'planet.elements.H_budget')
+        g.set_dimension_arange('e', 1.0, 5.0, 1.0)
+        # Discriminating: must contain the stop value AND not duplicate it.
+        assert g.dim_avars['e'][-1] == pytest.approx(5.0)
+        assert g.dim_avars['e'] == [1.0, 2.0, 3.0, 4.0, 5.0]
+
+    def test_arange_keeps_endpoint_when_already_present(self, grid_with_mocks):
+        """When the native arange includes the endpoint (step divides
+        evenly), the setter does NOT add a duplicate.
+        """
+        g = grid_with_mocks
+        g.add_dimension('e', 'planet.elements.H_budget')
+        # arange(0, 4, 2) -> [0, 2]; endpoint NOT included because exclusive.
+        # The setter then appends to get [0, 2, 4].
+        g.set_dimension_arange('e', 0.0, 4.0, 2.0)
+        # Discriminating: 4.0 appears exactly once at the end.
+        assert g.dim_avars['e'].count(4.0) == 1
+        assert g.dim_avars['e'] == [0.0, 2.0, 4.0]
+
+    def test_direct_dedups_and_sorts_numeric(self, grid_with_mocks):
+        """Numeric ``direct`` input is de-duplicated and sorted ascending
+        by default.
+        """
+        g = grid_with_mocks
+        g.add_dimension('d', 'planet.mass_tot')
+        g.set_dimension_direct('d', [3.0, 1.0, 2.0, 1.0])
+        # Discriminating: duplicates removed AND sorted.
+        assert g.dim_avars['d'] == [1.0, 2.0, 3.0]
+        # Length reflects the deduplication
+        assert len(g.dim_avars['d']) == 3
+
+    def test_direct_does_not_sort_strings(self, grid_with_mocks):
+        """String values are kept as a set-derived list (no sort branch
+        taken because elements are not numeric).
+        """
+        g = grid_with_mocks
+        g.add_dimension('d', 'atmos_clim.module')
+        g.set_dimension_direct('d', ['agni', 'janus', 'agni'])
+        # Discriminating: deduplicated regardless
+        assert set(g.dim_avars['d']) == {'agni', 'janus'}
+        assert len(g.dim_avars['d']) == 2
+
+
+# ---------------------------------------------------------------------------
+# generate, print, _get_tmpcfg
+# ---------------------------------------------------------------------------
+
+
+class TestGridGenerate:
+    """Grid generation: cartesian product, size accounting, formatting."""
+
+    def test_generate_empty_grid_raises(self, grid_with_mocks):
+        """A Grid with no dimensions cannot be generated.
+
+        Verifies the early-exit error AND that the failure leaves the
+        empty-state invariants (size == 0, flat == []) intact.
+        """
+        with pytest.raises(Exception, match='Grid is empty'):
+            grid_with_mocks.generate()
+        # Post-state: no partial generation; both invariants hold.
+        assert grid_with_mocks.size == 0
+        assert grid_with_mocks.flat == []
+
+    def test_generate_two_dim_grid_has_correct_size(self, grid_with_mocks):
+        """A 3x2 cartesian product yields 6 grid points; each point is a
+        dict mapping parameter name to value.
+        """
+        g = grid_with_mocks
+        g.add_dimension('a', 'planet.mass_tot')
+        g.add_dimension('b', 'planet.elements.H_budget')
+        g.set_dimension_direct('a', [0.5, 1.0, 1.5])
+        g.set_dimension_direct('b', [100.0, 200.0])
+        g.generate()
+        # Discriminating: 3 x 2 = 6 (not 5 or 3+2 = 5; not 3 alone).
+        assert g.size == 6
+        assert len(g.flat) == 6
+        # Each grid point is a dict mapping the variable names:
+        for gp in g.flat:
+            assert set(gp.keys()) == {'planet.mass_tot', 'planet.elements.H_budget'}
+
+    def test_generate_keys_map_correctly(self, grid_with_mocks):
+        """The flattened grid contains every (a, b) combination exactly
+        once. Equivalent to ``itertools.product(a_vals, b_vals)``.
+        """
+        g = grid_with_mocks
+        g.add_dimension('a', 'pa')
+        g.add_dimension('b', 'pb')
+        g.set_dimension_direct('a', [1.0, 2.0])
+        g.set_dimension_direct('b', [10.0, 20.0])
+        g.generate()
+        observed = {(gp['pa'], gp['pb']) for gp in g.flat}
+        expected = {(1.0, 10.0), (1.0, 20.0), (2.0, 10.0), (2.0, 20.0)}
+        assert observed == expected
+        # And no duplicates:
+        assert len(g.flat) == len(expected)
+
+    def test_get_tmpcfg_format(self, grid_with_mocks):
+        """``_get_tmpcfg`` yields a six-digit zero-padded basename in the
+        cfgdir directory.
+        """
+        g = grid_with_mocks
+        path0 = g._get_tmpcfg(0)
+        path42 = g._get_tmpcfg(42)
+        # Discriminating: zero-padded width = 6
+        assert path0.endswith('/case_000000.toml')
+        assert path42.endswith('/case_000042.toml')
+        # And both live under the cfgdir
+        assert g.cfgdir in path0
+        assert g.cfgdir in path42
+
+    def test_print_setup_logs_dimension_metadata(self, grid_with_mocks, caplog):
+        """``print_setup`` logs the grid's dimension names, parameter
+        keys, and value lists at INFO. Verifies the user-facing diagnostic.
+        """
+        g = grid_with_mocks
+        g.add_dimension('alpha', 'planet.mass_tot')
+        g.set_dimension_direct('alpha', [0.5, 1.0])
+        # gm.log is set inside Grid.__init__; reuse it
+        with caplog.at_level(logging.INFO, logger=gm.log.name):
+            g.print_setup()
+        text = ' '.join(rec.getMessage() for rec in caplog.records)
+        assert 'alpha' in text
+        assert 'planet.mass_tot' in text
+
+    def test_print_grid_logs_flat_points(self, grid_with_mocks, caplog):
+        """``print_grid`` prints each flattened grid point in order."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+        with caplog.at_level(logging.INFO, logger=gm.log.name):
+            g.print_grid()
+        text = ' '.join(rec.getMessage() for rec in caplog.records)
+        assert 'Flattened grid points' in text
+        # Both values must appear in the log
+        assert '0.5' in text
+        assert '1.0' in text
+
+
+# ---------------------------------------------------------------------------
+# write_config_files
+# ---------------------------------------------------------------------------
+
+
+class TestWriteConfigFiles:
+    """write_config_files: deepcopy base + set per-point attrs + write."""
+
+    def test_writes_one_file_per_grid_point(self, grid_with_mocks, monkeypatch):
+        """A 2-point grid produces exactly two config files at the
+        expected ``cfgdir/case_NNNNNN.toml`` paths.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        # Mock read_config_object to return a stub Config-like object whose
+        # write() drops a marker file containing the per-case mass.
+        written_paths = []
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+                self.planet = mock.MagicMock()
+
+            def write(self, path):
+                written_paths.append(path)
+                # Touch the file so cfg-existence check in run() would pass.
+                with open(path, 'w') as h:
+                    h.write('# fake conf\n')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        # recursive_setattr would walk the attrs object; we stub it because
+        # our _FakeConf is not a Config schema.
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda obj, attr, val: None)
+        # Avoid os.sync overhead (and platform-specific behavior).
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.write_config_files()
+        # Discriminating: exactly 2 files, named 000000 and 000001.
+        assert len(written_paths) == 2
+        assert any(p.endswith('case_000000.toml') for p in written_paths)
+        assert any(p.endswith('case_000001.toml') for p in written_paths)
+
+    def test_recursive_setattr_called_for_each_param(self, grid_with_mocks, monkeypatch):
+        """``recursive_setattr`` is invoked once per (grid point x
+        parameter) combination with the parameter name and value pair.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.add_dimension('h', 'planet.elements.H_budget')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.set_dimension_direct('h', [200.0])
+        g.generate()
+
+        recursive_calls = []
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(
+            gm,
+            'recursive_setattr',
+            lambda obj, attr, val: recursive_calls.append((attr, val)),
+        )
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.write_config_files()
+        # Discriminating: 2 grid points x 2 parameters = 4 calls.
+        assert len(recursive_calls) == 4
+        # Every recorded value came from one of the value lists:
+        values = {v for _attr, v in recursive_calls}
+        assert values == {0.5, 1.0, 200.0}
+
+    def test_unknown_key_in_the_base_config_stops_the_grid(
+        self, fake_proteus_dir, tmp_path, monkeypatch
+    ):
+        """A misspelled key in the base config halts the grid before any case is written.
+
+        Per-case configs are serialised out of the structured object, so an
+        unrecognised key in the base file never survives into them. Nothing
+        downstream can notice it: every case config reads as clean while the
+        whole grid runs on a default the user did not choose. Loading the base
+        file is the only place the mistake is still visible.
+        """
+        import tomllib
+
+        import tomlkit
+        from helpers import PROTEUS_ROOT
+
+        with open(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml', 'rb') as f:
+            raw = tomllib.load(f)
+        # Misspell the maximum time-step. Left unchecked this silently reverts
+        # to the schema default for every case in the grid.
+        raw['params']['dt']['maxium'] = raw['params']['dt'].pop('maximum')
+        dirty = tmp_path / 'dirty_base.toml'
+        with open(dirty, 'w') as f:
+            tomlkit.dump(raw, f)
+
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        g = Grid(name='typo_base_grid', base_config_path=str(dirty))
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        with pytest.raises(ValueError, match='params.dt.maxium'):
+            g.write_config_files()
+
+        # No case config was written, so the grid cannot proceed on the
+        # silently defaulted value.
+        assert not [p for p in os.listdir(g.cfgdir) if p.startswith('case_')]
+
+        # Edge case and discriminator: the unmodified base file writes both
+        # cases, so the refusal above is caused by the misspelling and not by
+        # this base config being unloadable in the first place.
+        clean = tmp_path / 'clean_base.toml'
+        with open(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml', 'rb') as f:
+            with open(clean, 'w') as out:
+                tomlkit.dump(tomllib.load(f), out)
+        g2 = Grid(name='clean_base_grid', base_config_path=str(clean))
+        g2.add_dimension('m', 'planet.mass_tot')
+        g2.set_dimension_direct('m', [0.5, 1.0])
+        g2.generate()
+        g2.write_config_files()
+        assert sorted(p for p in os.listdir(g2.cfgdir) if p.startswith('case_')) == [
+            'case_000000.toml',
+            'case_000001.toml',
+        ]
+
+
+# ---------------------------------------------------------------------------
+# Grid.slurm_config
+# ---------------------------------------------------------------------------
+
+
+class TestSlurmConfig:
+    """slurm_config: writes a sbatch script with the right knobs."""
+
+    def test_slurm_script_contents_test_run(self, grid_with_mocks, monkeypatch, tmp_path):
+        """``slurm_config(..., test_run=True)`` writes a slurm_dispatch.sh
+        with the echo-stub command. The SBATCH array bound matches size.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        # write_config_files is called inside slurm_config; stub its
+        # internals like the test above.
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.slurm_config(max_jobs=4, test_run=True, max_days=2, max_mem=8)
+        slurm_path = os.path.join(g.outdir, 'slurm_dispatch.sh')
+        assert os.path.isfile(slurm_path)
+        contents = open(slurm_path).read()
+        # Discriminating: test_run picks the echo stub, not the real CLI.
+        assert '/bin/echo' in contents
+        assert 'proteus start' not in contents
+        # SBATCH array goes 0 to size-1; with size=2 that is 0-1.
+        assert '--array=0-1' in contents
+        # max_days propagated:
+        assert '--time=2-00' in contents
+        # max_mem propagated:
+        assert '--mem-per-cpu=8G' in contents
+
+    def test_slurm_script_real_run_uses_proteus(self, grid_with_mocks, monkeypatch):
+        """When ``test_run=False`` the dispatch command is the real CLI."""
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5])
+        g.generate()
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.slurm_config(max_jobs=1, test_run=False, max_days=1, max_mem=4)
+        slurm_path = os.path.join(g.outdir, 'slurm_dispatch.sh')
+        contents = open(slurm_path).read()
+        # Discriminating against the test_run branch:
+        assert 'proteus start --offline --config' in contents
+        assert '/bin/echo' not in contents
+
+    def test_max_jobs_capped_at_grid_size(self, grid_with_mocks, monkeypatch):
+        """``max_jobs`` cannot exceed the number of grid points; the
+        array bound reflects the capped value implicitly via size-1.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])  # size = 2
+        g.generate()
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        # Caller asks for 99 jobs but only 2 points exist.
+        g.slurm_config(max_jobs=99, test_run=True, max_days=1, max_mem=4)
+        slurm_path = os.path.join(g.outdir, 'slurm_dispatch.sh')
+        contents = open(slurm_path).read()
+        # Discriminating: throttle is 2 (the size), not 99.
+        assert '%2' in contents
+        assert '%99' not in contents
+
+    def test_slurm_script_omits_jax_cache_by_default(self, grid_with_mocks, monkeypatch):
+        """Without the opt-in the script writes no JAX cache environment, so the
+        default behaviour is unchanged and no cache is created on disk.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.slurm_config(max_jobs=2, test_run=True, max_days=1, max_mem=4)
+        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        # No cache env vars at all on the default path.
+        assert 'JAX_COMPILATION_CACHE_DIR' not in contents
+        assert 'JAX_COMPILATION_CACHE_MAX_SIZE' not in contents
+        # The dispatch body is still emitted, so this is a real script.
+        assert 'i=$SLURM_ARRAY_TASK_ID' in contents
+
+    def test_slurm_script_includes_bounded_jax_cache_when_enabled(
+        self, grid_with_mocks, monkeypatch
+    ):
+        """With the opt-in enabled the script turns on the persistent cache
+        under the grid output directory AND pins the LRU size bound. A
+        regression that enabled the cache without the bound, the failure mode
+        that filled the filesystem, would fail this test.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        g.slurm_config(max_jobs=2, test_run=True, max_days=1, max_mem=4, jax_cache=True)
+        contents = open(os.path.join(g.outdir, 'slurm_dispatch.sh')).read()
+        expected_dir = os.path.join(g.outdir, 'jax_cache')
+        # Cache directory lives under the grid outdir (self-contained).
+        assert f'export JAX_COMPILATION_CACHE_DIR={expected_dir}' in contents
+        # The LRU size bound MUST be present: an unbounded cache (no max-size)
+        # is exactly the regression that filled scratch. 80 GiB in bytes.
+        assert 'export JAX_COMPILATION_CACHE_MAX_SIZE=85899345920' in contents
+        # Trivial compiles are kept out so the cache holds only what is costly.
+        assert 'export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=1' in contents
+        assert 'export JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES=4096' in contents
+        # The work loop still follows the env block.
+        assert 'i=$SLURM_ARRAY_TASK_ID' in contents
+
+
+# ---------------------------------------------------------------------------
+# Grid.run
+# ---------------------------------------------------------------------------
+
+
+class _ImmediateDoneProcess:
+    """Stand-in for multiprocessing.Process that completes instantly.
+
+    The Grid.run loop polls ``is_alive``; the first poll returns True (so
+    the process is counted in run_count and then transitions to "exited"),
+    the next returns False so the case is marked done.
+    """
+
+    def __init__(self, *_args, target=None, args=(), **_kwargs):
+        self._target = target
+        self._args = args
+        self._calls = 0
+        self.started = False
+        self.joined = False
+        self.closed = False
+
+    def start(self):
+        self.started = True
+        # Actually invoke the target (no fork, immediate).
+        if self._target is not None:
+            self._target(*self._args)
+
+    def is_alive(self):
+        # Treat as dead immediately after start
+        return False
+
+    def join(self):
+        self.joined = True
+
+    def close(self):
+        self.closed = True
+
+
+class TestGridRun:
+    """Grid.run end-to-end with subprocess and multiprocessing mocked."""
+
+    def test_run_with_test_run_dispatches_each_point(self, grid_with_mocks, monkeypatch):
+        """``run(test_run=True)`` writes configs, starts a Process per
+        point, and joins each one. Sleep waits are stubbed.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])
+        g.generate()
+
+        # write_config_files: stub out heavy bits, but leave the file
+        # touches so the cfgexists check passes.
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('# fake\n')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        # Replace multiprocessing.Process with our instant stand-in.
+        instances = []
+
+        def _factory(*args, **kwargs):
+            inst = _ImmediateDoneProcess(*args, **kwargs)
+            instances.append(inst)
+            return inst
+
+        monkeypatch.setattr(gm.multiprocessing, 'Process', _factory)
+        # Subprocess invoked by _thread_target via the test echo stub
+        monkeypatch.setattr(gm.subprocess, 'run', lambda *a, **k: mock.MagicMock())
+        monkeypatch.setattr(gm.time, 'sleep', lambda *a, **k: None)
+
+        g.run(num_threads=2, test_run=True, check_interval=0.01)
+        # Discriminating: one Process instance per grid point and each
+        # was started.
+        assert len(instances) == 2
+        assert all(inst.started for inst in instances)
+
+    def test_run_threads_capped_at_grid_size(self, grid_with_mocks, monkeypatch):
+        """A caller asking for 64 threads on a 2-point grid uses at most
+        2 worker slots; behavior is documented and protects against
+        oversubscription.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5, 1.0])  # 2 points
+        g.generate()
+
+        class _FakeConf:
+            def __init__(self):
+                self.params = mock.MagicMock()
+
+            def write(self, path):
+                with open(path, 'w') as h:
+                    h.write('')
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        monkeypatch.setattr(gm.subprocess, 'run', lambda *a, **k: mock.MagicMock())
+        monkeypatch.setattr(gm.time, 'sleep', lambda *a, **k: None)
+
+        instances = []
+        monkeypatch.setattr(
+            gm.multiprocessing,
+            'Process',
+            lambda *a, **k: instances.append(_ImmediateDoneProcess(*a, **k)) or instances[-1],
+        )
+
+        # Asking for 64 threads but only 2 points exist
+        g.run(num_threads=64, test_run=True, check_interval=0.01)
+        # Process count still == size (grid points). Threading cap is
+        # internal to scheduling, but each point still gets exactly one
+        # process instance.
+        assert len(instances) == 2
+        # All eventually started:
+        assert all(i.started for i in instances)
+
+    def test_run_raises_when_cfg_file_missing(self, grid_with_mocks, monkeypatch):
+        """If write_config_files is bypassed (so no per-case file
+        exists), the run loop's existence check fires within a few
+        seconds and raises with a clear message.
+        """
+        g = grid_with_mocks
+        g.add_dimension('m', 'planet.mass_tot')
+        g.set_dimension_direct('m', [0.5])
+        g.generate()
+
+        # Stub write_config_files to do nothing so cfgexists fails.
+        monkeypatch.setattr(g, 'write_config_files', lambda: None)
+        monkeypatch.setattr(gm.time, 'sleep', lambda *a, **k: None)
+        # Avoid mp.Process creation
+        monkeypatch.setattr(gm.multiprocessing, 'Process', _ImmediateDoneProcess)
+
+        with pytest.raises(Exception, match='Config file could not be found'):
+            g.run(num_threads=1, test_run=True, check_interval=0.01)
+        # Post-state: the expected cfg path never materialised (proof that
+        # the run failed for the documented reason, not some other path).
+        assert not os.path.exists(g._get_tmpcfg(0))
+
+
+# ---------------------------------------------------------------------------
+# grid_from_config
+# ---------------------------------------------------------------------------
+
+
+def _write_grid_toml(path, **overrides):
+    """Helper: write a minimal valid .grid.toml at ``path``."""
+    body = {
+        'output': overrides.get('output', 'unit_grid'),
+        'symlink': overrides.get('symlink', ''),
+        'use_slurm': overrides.get('use_slurm', False),
+        'max_jobs': overrides.get('max_jobs', 2),
+        'max_days': overrides.get('max_days', 1),
+        'max_mem': overrides.get('max_mem', 3),
+        'ref_config': overrides.get('ref_config', 'base.toml'),
+    }
+    body.update(overrides.get('dimensions', {}))
+    path.write_text(toml.dumps(body))
+    return path
+
+
+class TestGridFromConfig:
+    """grid_from_config: TOML parse + Grid build + dispatch wiring."""
+
+    @pytest.mark.parametrize(
+        ('table', 'reason'),
+        [
+            ({'method': 'BOGUS_METHOD', 'values': [0.5]}, 'whose method is not one of'),
+            ({'method': 'linspace', 'start': 1.0, 'stop': 2.0}, 'without a key its method'),
+            ({'method': 'direct'}, 'without a key its method reads'),
+        ],
+    )
+    def test_bad_dimension_table_keeps_the_old_output(self, fake_proteus_dir, table, reason):
+        """A bad method or a missing method key stops the grid before the old output
+        directory is removed."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml', dimensions={'planet.mass_tot': table}
+        )
+        with pytest.raises(UnknownConfigKeyError, match=reason) as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert '"planet.mass_tot"' in str(exc.value)
+        assert old.read_text() == 'kept\n'
+
+    def test_relative_symlink_rejected(self, fake_proteus_dir):
+        """Non-absolute ``symlink`` path is refused with RuntimeError.
+
+        Verifies the early-exit AND that no output dir was created on
+        the bogus relative path.
+        """
+        base_path = fake_proteus_dir / 'base.toml'
+        base_path.write_text('# base\n')
+        grid_path = fake_proteus_dir / 'g.toml'
+        _write_grid_toml(
+            grid_path,
+            symlink='relative/path',  # not absolute
+        )
+        with pytest.raises(RuntimeError, match='absolute'):
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        # Post-state: the relative path was never created (no side effects).
+        assert not (fake_proteus_dir / 'relative' / 'path').exists()
+
+    def test_auto_folder_name_is_grid_prefixed(self, fake_proteus_dir, monkeypatch):
+        """When ``output = "auto"``, the generated folder name starts
+        with the ``grid_`` prefix and embeds a timestamp + hex suffix.
+        """
+        base_path = fake_proteus_dir / 'base.toml'
+        base_path.write_text('# base\n')
+        grid_path = fake_proteus_dir / 'g.toml'
+        _write_grid_toml(
+            grid_path,
+            output='auto',
+            dimensions={
+                'planet.mass_tot': {
+                    'method': 'direct',
+                    'values': [0.5],
+                },
+            },
+        )
+
+        # Capture the Grid construction to inspect its name.
+        captured = {}
+        orig_init = Grid.__init__
+
+        def _capture_init(self, name, base_config_path, **kw):
+            captured['name'] = name
+            return orig_init(self, name, base_config_path, **kw)
+
+        monkeypatch.setattr(Grid, '__init__', _capture_init)
+        # Stub dispatch so the test does not actually try to run a grid.
+        monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: None)
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: None)
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        # Discriminating: name starts with 'grid_' and is more than 8 chars
+        # long (prefix + timestamp + hex token).
+        assert captured['name'].startswith('grid_')
+        assert len(captured['name']) > 8
+
+    def test_use_slurm_branch_calls_slurm_config(self, fake_proteus_dir, monkeypatch):
+        """``use_slurm = true`` routes through ``Grid.slurm_config`` and
+        does NOT call ``Grid.run``.
+        """
+        base_path = fake_proteus_dir / 'base.toml'
+        base_path.write_text('# base\n')
+        grid_path = fake_proteus_dir / 'g.toml'
+        _write_grid_toml(
+            grid_path,
+            use_slurm=True,
+            dimensions={
+                'planet.mass_tot': {
+                    'method': 'direct',
+                    'values': [0.5],
+                },
+            },
+        )
+
+        call_record = {'run': 0, 'slurm': 0}
+        monkeypatch.setattr(
+            Grid,
+            'run',
+            lambda self, *a, **k: call_record.__setitem__('run', call_record['run'] + 1),
+        )
+        monkeypatch.setattr(
+            Grid,
+            'slurm_config',
+            lambda self, *a, **k: call_record.__setitem__('slurm', call_record['slurm'] + 1),
+        )
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        # Discriminating: slurm path taken, run path NOT taken.
+        assert call_record['slurm'] == 1
+        assert call_record['run'] == 0
+
+    def test_run_branch_calls_run(self, fake_proteus_dir, monkeypatch):
+        """``use_slurm = false`` dispatches to ``Grid.run`` instead of
+        ``Grid.slurm_config``.
+        """
+        base_path = fake_proteus_dir / 'base.toml'
+        base_path.write_text('# base\n')
+        grid_path = fake_proteus_dir / 'g.toml'
+        _write_grid_toml(
+            grid_path,
+            use_slurm=False,
+            dimensions={
+                'planet.mass_tot': {
+                    'method': 'direct',
+                    'values': [0.5],
+                },
+            },
+        )
+
+        call_record = {'run': 0, 'slurm': 0}
+        monkeypatch.setattr(
+            Grid,
+            'run',
+            lambda self, *a, **k: call_record.__setitem__('run', call_record['run'] + 1),
+        )
+        monkeypatch.setattr(
+            Grid,
+            'slurm_config',
+            lambda self, *a, **k: call_record.__setitem__('slurm', call_record['slurm'] + 1),
+        )
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        # Discriminating: run path taken, slurm NOT taken.
+        assert call_record['run'] == 1
+        assert call_record['slurm'] == 0
+
+    def test_all_four_methods_set_correctly(self, fake_proteus_dir, monkeypatch):
+        """The four dimension methods (direct/linspace/logspace/arange)
+        all route to the matching setter and yield non-trivial values.
+        """
+        base_path = fake_proteus_dir / 'base.toml'
+        base_path.write_text('# base\n')
+        grid_path = fake_proteus_dir / 'g.toml'
+        _write_grid_toml(
+            grid_path,
+            dimensions={
+                'planet.mass_tot': {
+                    'method': 'direct',
+                    'values': [0.5, 1.0],
+                },
+                'planet.elements.H_budget': {
+                    'method': 'linspace',
+                    'start': 100,
+                    'stop': 200,
+                    'count': 3,
+                },
+                'planet.elements.C_budget': {
+                    'method': 'logspace',
+                    'start': 1.0,
+                    'stop': 1000.0,
+                    'count': 4,
+                },
+                'interior_struct.core_frac': {
+                    'method': 'arange',
+                    'start': 0.3,
+                    'stop': 0.5,
+                    'step': 0.1,
+                },
+            },
+        )
+
+        captured_grid = {}
+
+        def _capture_run(self, *a, **k):
+            captured_grid['grid'] = self
+            return None
+
+        monkeypatch.setattr(Grid, 'run', _capture_run)
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        g = captured_grid['grid']
+        # Discriminating: 2 x 3 x 4 x 3 (arange 0.3, 0.4, 0.5) = 72 points
+        # (arange appends 0.5 explicitly since np.arange may stop before).
+        # The four methods all produced non-empty value lists.
+        assert g.dim_avars['param_000'] == [0.5, 1.0]
+        np.testing.assert_allclose(g.dim_avars['param_001'], [100.0, 150.0, 200.0])
+        np.testing.assert_allclose(g.dim_avars['param_002'], [1.0, 10.0, 100.0, 1000.0])
+        np.testing.assert_allclose(g.dim_avars['param_003'], [0.3, 0.4, 0.5])
+        # And the dimension count is exactly four:
+        assert len(g.dim_names) == 4
+        # Size is the product of the lengths
+        expected_size = 1
+        for vs in g.dim_avars.values():
+            expected_size *= len(vs)
+        assert g.size == expected_size
+
+    def test_grid_size_cap_enforced(self, fake_proteus_dir, monkeypatch):
+        """Grids larger than 999999 points are refused (file-naming limit)."""
+        base_path = fake_proteus_dir / 'base.toml'
+        base_path.write_text('# base\n')
+        grid_path = fake_proteus_dir / 'g.toml'
+        _write_grid_toml(
+            grid_path,
+            dimensions={
+                'planet.mass_tot': {
+                    'method': 'arange',
+                    'start': 0.0,
+                    'stop': 1000001.0,
+                    'step': 1.0,
+                },
+            },
+        )
+
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+        # Block dispatch in case it slips past the size check.
+        run_called = {'n': 0}
+        slurm_called = {'n': 0}
+        monkeypatch.setattr(
+            Grid,
+            'run',
+            lambda self, *a, **k: run_called.__setitem__('n', run_called['n'] + 1),
+        )
+        monkeypatch.setattr(
+            Grid,
+            'slurm_config',
+            lambda self, *a, **k: slurm_called.__setitem__('n', slurm_called['n'] + 1),
+        )
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+
+        with pytest.raises(ValueError, match='too large'):
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        # Post-state: dispatch was blocked before reaching run or slurm.
+        assert run_called['n'] == 0
+        assert slurm_called['n'] == 0
+
+
+_UNSET = (1e-8, 1e-10)
+
+
+@pytest.mark.parametrize(
+    ('base', 'dims', 'expected'),
+    [
+        ('', {}, _UNSET),
+        ('rtol = -1.0', {}, _UNSET),
+        ('num_tolerance = -1.0', {}, _UNSET),
+        ('[interior_energetics.spider]\ntolerance_rel = -1.0', {}, _UNSET),
+        ('rtol = 3e-9', {}, (3e-9, 3e-9)),
+        ('num_tolerance = 3e-9', {}, (3e-9, 3e-9)),
+        ('[interior_energetics.spider]\ntolerance_rel = 3e-9', {}, (3e-9, 3e-9)),
+        ('', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
+        (
+            '[interior_energetics.spider]\ntolerance_rel = 3e-9',
+            {'interior_energetics.rtol': [1e-6]},
+            (1e-6, 1e-6),
+        ),
+        ('num_tolerance = 3e-9', {'interior_energetics.rtol': [1e-6]}, (1e-6, 1e-6)),
+        ('[interior_energetics.spider]\ntolerance_rel = 0.0', {}, _UNSET),
+    ],
+)
+def test_write_config_files_gives_each_module_its_default_rtol(
+    fake_proteus_dir, tmp_path, monkeypatch, base, dims, expected
+):
+    """A grid over the interior module writes each case the rtol default of its own
+    module unless the base config or the grid sets rtol or an alias; cases reload."""
+    cfg = tmp_path / 'base_ie.toml'
+    cfg.write_text(f'[interior_energetics]\n{base}\n')
+    g = Grid(name='rtol_grid', base_config_path=str(cfg))
+    dims = {'interior_energetics.module': ['aragog', 'spider'], **dims}
+    for i, (key, values) in enumerate(dims.items()):
+        g.add_dimension(f'd{i}', key)
+        g.set_dimension_direct(f'd{i}', values)
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    g.write_config_files()
+    paths = {
+        toml.load(p)['interior_energetics']['module']: p for p in map(g._get_tmpcfg, range(2))
+    }
+    got = [toml.load(paths[m])['interior_energetics']['rtol'] for m in ('aragog', 'spider')]
+    loaded = [
+        read_config_object(paths[m]).interior_energetics.rtol for m in ('aragog', 'spider')
+    ]
+    assert got == pytest.approx(expected, rel=1e-12)
+    assert loaded == pytest.approx(expected, rel=1e-12)
+
+
+def test_all_options_grid_over_the_module_gives_each_its_default_rtol(
+    fake_proteus_dir, monkeypatch
+):
+    """input/all_options.toml leaves rtol unset, so a grid over the interior module writes
+    1e-8 for Aragog and 1e-10 for SPIDER."""
+    from helpers import PROTEUS_ROOT
+
+    g = Grid(
+        name='opts_grid', base_config_path=str(PROTEUS_ROOT / 'input' / 'all_options.toml')
+    )
+    g.add_dimension('d0', 'interior_energetics.module')
+    g.set_dimension_direct('d0', ['aragog', 'spider'])
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    g.write_config_files()
+    got = {
+        c['interior_energetics']['module']: c['interior_energetics']['rtol']
+        for c in (toml.load(g._get_tmpcfg(i)) for i in range(2))
+    }
+    assert got == pytest.approx({'aragog': 1e-8, 'spider': 1e-10}, rel=1e-12)
+
+
+@pytest.mark.parametrize(
+    'alias', ['interior_energetics.num_tolerance', 'interior_energetics.spider.tolerance_rel']
+)
+def test_add_dimension_rejects_a_deprecated_tolerance_alias(fake_proteus_dir, tmp_path, alias):
+    """A grid over a deprecated rtol alias is refused at setup, naming the key to use."""
+    cfg = tmp_path / 'base_ie.toml'
+    cfg.write_text('')
+    g = Grid(name='alias_grid', base_config_path=str(cfg))
+    with pytest.raises(ValueError, match='interior_energetics.rtol'):
+        g.add_dimension('tol', alias)
+    assert g.dim_names == []
+
+
+_DIM = {'method': 'direct', 'values': [1.0]}
+_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.parametrize(
+    ('key', 'value', 'reason'),
+    [
+        ('struct_mass_tot', _DIM, 'not a grid setting or a configuration field'),
+        ('jax_cahce', True, 'not a grid setting or a configuration field'),
+        ('planet.mass_totl', _DIM, 'not a grid setting or a configuration field'),
+        ('planet.mass_tot.x', _DIM, 'not a grid setting or a configuration field'),
+        ('planet', _DIM, 'a configuration section, not a single field'),
+        ('orbit.semimajoraxis', 1.0, 'without a dimension table holding a method'),
+        (
+            'orbit.semimajoraxis',
+            {'values': [1.0]},
+            'without a dimension table holding a method',
+        ),
+        ('orbit.semimajoraxis', [_DIM], 'without a dimension table holding a method'),
+        ('orbit.semimajoraxis', {'method': 'lnspace'}, 'whose method is not one of'),
+        ('orbit.semimajoraxis', {'method': ['direct'], 'values': [1.0]}, 'whose method is not'),
+        (
+            'orbit.semimajoraxis',
+            {'method': 'arange', 'start': 0, 'stop': 1},
+            'its method reads',
+        ),
+    ],
+)
+def test_unaccounted_grid_key_is_refused_before_any_case(fake_proteus_dir, key, value, reason):
+    """A key that is no grid setting and no single schema field stops the grid at load,
+    named together with the grid file, before any output is created."""
+    (fake_proteus_dir / 'base.toml').write_text('# base\n')
+    grid_path = _write_grid_toml(
+        fake_proteus_dir / 'g.toml', dimensions={'planet.mass_tot': _DIM, key: value}
+    )
+    with pytest.raises(UnknownConfigKeyError, match=re.escape(f'"{key}"')) as exc:
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+    assert str(grid_path) in str(exc.value) and reason in str(exc.value)
+    assert not (fake_proteus_dir / 'output').exists()
+
+
+def test_grid_dimension_keys_skips_settings_and_keeps_file_order():
+    """Grid settings are not dimensions; every schema field path is, in file order."""
+    config = {
+        'planet.mass_tot': _DIM,
+        'output': 'g',
+        'interior_struct.core_frac': _DIM,
+        'config_version': '3.0',
+        'orbit.semimajoraxis': _DIM,
+        'jax_cache': True,
+    }
+    expected = ['planet.mass_tot', 'interior_struct.core_frac', 'orbit.semimajoraxis']
+    assert grid_dimension_keys(config, 'g.toml') == expected
+    assert grid_dimension_keys({'output': 'g'}, 'g.toml') == []
+
+
+def test_grid_dimension_keys_names_every_refused_key_with_its_reason():
+    """Several bad keys are refused together, each named under its reason."""
+    config = {
+        'output': 'g',
+        'jax_cahce': True,
+        'planet.mass_totl': _DIM,
+        'planet': _DIM,
+        'orbit.semimajoraxis': 1.0,
+    }
+    with pytest.raises(UnknownConfigKeyError) as exc:
+        grid_dimension_keys(config, 'g.toml')
+    msg = str(exc.value)
+    assert 'not a grid setting or a configuration field: "jax_cahce", "planet.mass_totl"' in msg
+    assert 'a configuration section, not a single field' in msg and '"planet"' in msg
+    assert 'without a dimension table holding a method: "orbit.semimajoraxis"' in msg
+
+
+def test_grid_from_config_numbers_dimensions_in_file_order(fake_proteus_dir, monkeypatch):
+    """Only dimensions take a number: param_000 onwards, in the order of the grid file."""
+    (fake_proteus_dir / 'base.toml').write_text('# base\n')
+    grid_path = fake_proteus_dir / 'g.toml'
+    grid_path.write_text(
+        toml.dumps(
+            {
+                'output': 'unit_grid',
+                'planet.mass_tot': _DIM,
+                'symlink': '',
+                'use_slurm': False,
+                'interior_struct.core_frac': _DIM,
+                'max_jobs': 2,
+                'max_days': 1,
+                'max_mem': 3,
+                'ref_config': 'base.toml',
+            }
+        )
+    )
+    captured = {}
+    monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: captured.setdefault('g', self))
+    monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+    monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+    assert captured['g'].dim_names == ['param_000', 'param_001']
+    assert captured['g'].dim_param == ['planet.mass_tot', 'interior_struct.core_frac']
+
+
+_SHIPPED_GRIDS = sorted(
+    str(p.relative_to(_ROOT))
+    for p in [*(_ROOT / 'input').rglob('*grid*.toml'), _ROOT / 'tests/grid/dummy.grid.toml']
+)
+
+
+@pytest.mark.parametrize('rel_path', _SHIPPED_GRIDS)
+def test_shipped_grid_files_pass_the_key_check(rel_path):
+    """Every grid file in the repository has only settings and complete dimension tables."""
+    config = toml.load(_ROOT / rel_path)
+    dims = grid_dimension_keys(config, rel_path)
+    assert dims
+    assert set(dims).isdisjoint(gm.GRID_SETTINGS)
+
+
+def test_grid_settings_match_the_keys_grid_from_config_reads(fake_proteus_dir, monkeypatch):
+    """GRID_SETTINGS holds the settings grid_from_config reads plus config_version."""
+
+    class Recorder(dict):
+        def __getitem__(self, key):
+            read.add(key)
+            return super().__getitem__(key)
+
+        def get(self, key, default=None):
+            read.add(key)
+            return super().get(key, default)
+
+    read = set()
+    config = toml.load(_write_grid_toml(fake_proteus_dir / 'g.toml', dimensions={}))
+    config.update({'jax_cache': False, 'planet.mass_tot': _DIM})
+    monkeypatch.setattr(gm.toml, 'load', lambda f: Recorder(config))
+    monkeypatch.setattr(gm, 'Grid', mock.MagicMock(return_value=mock.MagicMock(size=1)))
+    grid_from_config(str(fake_proteus_dir / 'g.toml'), test_run=True, check_interval=0.0)
+    assert 'planet.mass_tot' in read
+    assert read - {'planet.mass_tot'} == gm.GRID_SETTINGS - {'config_version'}

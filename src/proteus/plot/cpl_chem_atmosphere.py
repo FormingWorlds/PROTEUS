@@ -11,8 +11,8 @@ from matplotlib.ticker import LogLocator
 
 from proteus.atmos_chem.common import read_result
 from proteus.atmos_clim.common import read_ncdf_profile
-from proteus.utils.constants import vol_list
-from proteus.utils.helper import natural_sort
+from proteus.utils.constants import gas_list, vap_list
+from proteus.utils.helper import parse_subyear_time
 from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
@@ -64,7 +64,16 @@ GASES_STANDARD = (
     'S',
     'SO',
     'CS2',
+    'SiO',
+    'SiO2',
+    'TiO',
+    'FeO',
+    'MgO',
+    'Na',
 )
+
+
+REFRACTORY_GASES = tuple(vap_list)
 
 
 def plot_chem_atmosphere(
@@ -73,14 +82,33 @@ def plot_chem_atmosphere(
     plot_format='pdf',
     plot_gases: list = None,
     plot_offchem: bool = True,
-    xmin: float = 1e-14,
+    xmin: float = 1e-10,
 ):
+    """
+    Plot the chemical composition of the atmosphere.
+
+    Arguments
+    ---------
+    output_dir : str
+        Path to the output directory for the simulation.
+    chem_module : str
+        Name of the chemistry module that was used.
+    plot_format : str, optional
+        Format for the output plot file.
+    plot_gases : list, optional
+        List of gases to plot (otherwise uses default list)
+    plot_offchem : bool, optional
+        Whether to plot offline chemistry results.
+    xmin : float, optional
+        Minimum VMR for x-axis of the plot.
+    """
     log.info('Plot atmosphere chemical composition')
 
     # Default species.
     #     Ensure that members of gas_list are first
+
     if not plot_gases:
-        plot_gases = list(vol_list) + list(GASES_STANDARD)
+        plot_gases = list(gas_list) + list(GASES_STANDARD)
 
     # Remove duplicates, preserving order
     plot_gases = list(dict.fromkeys(plot_gases))
@@ -90,7 +118,7 @@ def plot_chem_atmosphere(
     if len(files) == 0:
         log.warning('No atmosphere NetCDF files found in output folder')
         return
-    nc_fpath = natural_sort(files)[-1]
+    nc_fpath = max(files, key=lambda f: parse_subyear_time(os.path.basename(f).split('_')[0]))
     atm_profile = read_ncdf_profile(
         nc_fpath, extra_keys=['pl', 'tmpl', 'x_gas', 'cloud_mmr', 'aer_mmr', 'aerosols']
     )
@@ -99,7 +127,7 @@ def plot_chem_atmosphere(
     tarr = atm_profile['tmpl']  # temperature profile
 
     # Get year
-    year = float(nc_fpath.split('/')[-1].split('_atm')[0])
+    year = parse_subyear_time(nc_fpath.split('/')[-1].split('_atm')[0])
 
     # Read offline chemistry output if available and requested
     if plot_offchem and (chem_module is not None) and (chem_module != 'none'):
@@ -125,26 +153,33 @@ def plot_chem_atmosphere(
         col = get_colour(gas)
         lbl = latexify(gas)
         vmr = 0.0
-
         _lw = lw
-        if gas in vol_list:
+        if gas in gas_list:
             _lw *= 1.25
 
-        # plot from netCDF (dashed lines)
+        # plot from netCDF (dashed lines). The prepend of ``xarr[0]``
+        # adds a TOA point for visual continuity when the source VMR
+        # array is shorter than parr by one (the layer-vs-interface
+        # convention some atmosphere backends use). When the VMR and
+        # parr already match, the prepend overshoots by one and
+        # matplotlib raises a shape mismatch; defend by truncating
+        # both to the common length before plotting.
         key = gas + '_vmr'
         if key in atm_profile.keys():
             xarr = list(atm_profile[key])
             xarr = [xarr[0]] + xarr
             if np.amax(xarr) >= xmin:
                 vmr = float(xarr[-1])
-                ax1.plot(xarr, parr, ls='dashed', color=col, lw=_lw, alpha=al)
+                n = min(len(xarr), len(parr))
+                ax1.plot(xarr[:n], parr[:n], ls='dashed', color=col, lw=_lw, alpha=al)
 
         # plot from offline chemistry, if available (solid lines)
         if has_offchem and (gas in atm_offchem.keys()):
             xarr = list(atm_offchem[gas].values)
             if np.amax(xarr) >= xmin:
                 vmr = float(xarr[-1])  # prefer vmr from offline chemistry
-                ax1.plot(xarr, parr, ls='solid', color=col, lw=_lw, alpha=al)
+                n = min(len(xarr), len(parr))
+                ax1.plot(xarr[:n], parr[:n], ls='solid', color=col, lw=_lw, alpha=al)
 
         # create legend entry and store surface vmr
         if vmr > 0.0:
@@ -191,9 +226,14 @@ def plot_chem_atmosphere(
     # Cloud profiles
     if 'cloud_mmr' in atm_profile.keys():
         cloud_mmr = atm_profile['cloud_mmr']
+        # Prepend matches the gas VMR case above; truncate to the
+        # common length so the plot does not fail when the source
+        # mmr array is already the same length as parr.
+        cloud_arr = [cloud_mmr[0]] + list(cloud_mmr)
+        n = min(len(cloud_arr), len(parr))
         ax2.plot(
-            [cloud_mmr[0]] + list(cloud_mmr),
-            parr,
+            cloud_arr[:n],
+            parr[:n],
             ls='solid',
             color=get_colour('cloud'),
             lw=1.5,
@@ -208,9 +248,11 @@ def plot_chem_atmosphere(
         for aer_name in atm_profile['aerosols']:
             num_aerosols += 1
             aer_mmr = atm_profile[f'{aer_name}_mmr']
+            aer_arr = [aer_mmr[0]] + list(aer_mmr)
+            n = min(len(aer_arr), len(parr))
             ax2.plot(
-                [aer_mmr[0]] + list(aer_mmr),
-                parr,
+                aer_arr[:n],
+                parr[:n],
                 ls='solid',
                 lw=1.5,
                 alpha=0.7,

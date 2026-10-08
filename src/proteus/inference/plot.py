@@ -20,13 +20,17 @@ import numpy as np
 import pandas as pd
 import toml
 import torch
-from botorch.utils.transforms import unnormalize
 from matplotlib import cm
 from matplotlib.ticker import MaxNLocator
 
 from proteus import Proteus
+from proteus.inference.transforms import unnormalize_parameters
 from proteus.plot import plot_dispatch
-from proteus.utils.coupler import variable_is_logarithmic
+from proteus.utils.coupler import (
+    HelpfileFormatError,
+    read_helpfile_table,
+    variable_is_logarithmic,
+)
 from proteus.utils.helper import recursive_get
 
 log = logging.getLogger('fwl.' + __name__)
@@ -443,7 +447,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
     )
 
     # Un-normalise X data
-    X = unnormalize(D['X'], bounds)
+    X = unnormalize_parameters(torch.tensor(D['X']), bounds, keys)
     X = np.array(X, copy=None, dtype=float)
 
     # Colors
@@ -562,14 +566,21 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
     par_keys = list(pars.keys())
     obs_keys = list(obs.keys())
 
-    # Get directories for all cases of interest
-    cases = sorted((Path(directory) / 'workers').glob('w_*/i_*'))
+    # Get directories for all cases of interest. Filtered to directories only:
+    # a worker's `_console.log` capture file (or any other stray sibling) also
+    # matches the `i_*` glob but is not a case directory.
+    cases = sorted(p for p in (Path(directory) / 'workers').glob('w_*/i_*') if p.is_dir())
 
     # Extract parameters and observables
     X, Y = [], []
     for c in cases:
-        # Read config
-        conf = toml.load(c / 'init_coupler.toml')
+        # A case that died during start-up has a folder but did not get as far
+        # as writing its resolved config, and so has nothing to plot.
+        conf_path = c / 'init_coupler.toml'
+        if not conf_path.is_file():
+            log.warning(f'Missing init_coupler.toml for {c}')
+            continue
+        conf = toml.load(conf_path)
 
         # Check success
         hf_path = c / 'runtime_helpfile.csv'
@@ -578,7 +589,11 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
             continue
 
         # Read helpfile for observables
-        help = pd.read_csv(c / 'runtime_helpfile.csv', delimiter=r'\s+')
+        try:
+            help = read_helpfile_table(hf_path, min_rows=1)
+        except (OSError, HelpfileFormatError) as err:
+            log.warning(f'Unreadable helpfile for {c}: {err}')
+            continue
 
         # Get parameters and observables
         xx = [recursive_get(conf, k.split('.')) for k in par_keys]
@@ -587,12 +602,14 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
         # Store these
         X.append(xx)
         Y.append(yy)
-    X = np.array(X, dtype=float)
-    Y = np.array(Y, dtype=float)
-
     # Axes
     n_par = len(par_keys)
     n_obs = len(obs_keys)
+
+    # Shaped explicitly, so that a study in which no case produced output still
+    # has a column per parameter and observable to index.
+    X = np.array(X, dtype=float).reshape(-1, n_par)
+    Y = np.array(Y, dtype=float).reshape(-1, n_obs)
 
     # Make plot
     fig, axs = plt.subplots(n_obs, n_par, figsize=(2.7 * n_par, 2.7 * n_obs))

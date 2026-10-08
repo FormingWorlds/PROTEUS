@@ -10,6 +10,7 @@ import numpy as np
 
 from proteus.star.phoenix import get_phoenix_modern_spectrum
 from proteus.utils.constants import AU, M_sun, R_sun, const_sigma, ergcm2stoWm2
+from proteus.utils.data import RELOCATE_HINT
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger('fwl.' + __name__)
@@ -61,8 +62,12 @@ def init_star(handler: Proteus):
                 )
 
         else:
-            starname_input = mors_cfg.star_name.strip()
-            star_file = starname_input.lower().replace(' ', '-').replace('gj-', 'gj') + '.txt'
+            # PHOENIX builds its spectrum from the stellar track, so star_name
+            # may be None there; for the file-based sources an empty name falls
+            # through to the not-found handling below.
+            starname_input = (mors_cfg.star_name or '').strip()
+            star_id = starname_input.lower().replace(' ', '-').replace('gj-', 'gj')
+            star_file = star_id + '.txt'
 
             # Solar special cases
             solar_key = starname_input.lower().replace(' ', '')
@@ -79,25 +84,47 @@ def init_star(handler: Proteus):
                 'sunmodern': 'SunModern.txt',
             }
 
+            from proteus.data import (
+                STELLAR_SPECTRA_MUSCLES,
+                STELLAR_SPECTRA_NAMED,
+                STELLAR_SPECTRA_SOLAR,
+                _dataset,
+                dataset_dir,
+            )
+
             # Paths to MUSCLES spectra
-            muscles_path = os.path.join(fwl_dir, 'stellar_spectra/MUSCLES', star_file)
+            muscles_dir = dataset_dir(STELLAR_SPECTRA_MUSCLES, data_root=fwl_dir)
+            solar_dir = dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=fwl_dir)
+            muscles_path = os.path.join(muscles_dir, star_file)
+            named_dir = dataset_dir(STELLAR_SPECTRA_NAMED, data_root=fwl_dir)
+            # Named serves only stars the MUSCLES and solar registries do not list, so a missing
+            # local file never switches the spectrum; Named names keep their case (HIP67522.txt).
+            listed = set(_dataset(STELLAR_SPECTRA_MUSCLES).registry())
+            listed |= set(_dataset(STELLAR_SPECTRA_SOLAR).registry())
+            named = {f.lower(): f for f in _dataset(STELLAR_SPECTRA_NAMED).registry()}
+            named_path = os.path.join(named_dir, named.get(star_file, star_file))
 
             # Pick the intended solar_path:
             if solar_key in solar_map:
-                solar_path = os.path.join(
-                    fwl_dir, 'stellar_spectra/solar', solar_map[solar_key]
-                )
+                solar_path = os.path.join(solar_dir, solar_map[solar_key])
             else:
-                solar_path = os.path.join(fwl_dir, 'stellar_spectra/solar', star_file)
+                solar_path = os.path.join(solar_dir, star_file)
 
             src = mors_cfg.spectrum_source
+            fetch = (
+                '`proteus get solar`'
+                if solar_key in solar_map
+                else f'`proteus get muscles --star {star_id or "<name>"}`'
+            )
 
-            # spectrum_source = None -> try MUSCLES, then solar
+            # spectrum_source = None -> try MUSCLES, then solar, then Named
             if src is None:
                 if os.path.exists(muscles_path):
                     star_modern_path = muscles_path
                 elif os.path.exists(solar_path):
                     star_modern_path = solar_path
+                elif star_file not in listed and os.path.exists(named_path):
+                    star_modern_path = named_path
                 else:
                     log.error(
                         f"No stellar spectrum found for '{mors_cfg.star_name}' in reference data."
@@ -107,7 +134,9 @@ def init_star(handler: Proteus):
                     )
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
-                        f"No solar or MUSCLES spectrum found in reference data for '{mors_cfg.star_name}'."
+                        f"No MUSCLES, solar or Named spectrum found in reference data for '{mors_cfg.star_name}'. "
+                        f'Fetch it with {fetch}. `proteus get stellar` fetches the Named spectra. '
+                        f'{RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'solar'
@@ -132,7 +161,8 @@ def init_star(handler: Proteus):
                     )
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
-                        f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'."
+                        f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'. "
+                        f'Fetch it with {fetch}. {RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'muscles'
@@ -157,15 +187,15 @@ def init_star(handler: Proteus):
                     log.error(
                         'Check the available MUSCLES spectra at https://proteus-framework.org/proteus/data.html#stellar-spectra'
                     )
-                    log.error(
-                        f'If available, MUSCLES spectra can be downloaded via the command line: proteus get muscles --star {mors_cfg.star_name}'
-                    )
                     log.error('To download all MUSCLES spectra: proteus get muscles --all')
                     log.error(
                         "If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'."
                     )
                     UpdateStatusfile(handler.directories, 23)
-                    raise FileNotFoundError(f"No MUSCLES spectrum for '{mors_cfg.star_name}'.")
+                    raise FileNotFoundError(
+                        f"No MUSCLES spectrum for '{mors_cfg.star_name}'. "
+                        f'Fetch it with {fetch}. {RELOCATE_HINT}'
+                    )
 
             # spectrum_source = 'phoenix'
             elif src == 'phoenix':
@@ -375,13 +405,41 @@ def scale_spectrum_to_toa(fl_arr, sep: float):
         fl_arr : iterable
             Stellar fluxes at 1 AU
         sep : float
-            Planet-star distance, in units of AU
+            Planet-star distance [m]
     Returns
     ----------
         fl_arr : np.ndarray
             Incoming stellar radiation scaled to the correct distance.
     """
     return np.array(fl_arr) * ((AU / sep) ** 2)
+
+
+def scale_spectrum_to_stellar_surface(fl_arr, sep: float, r_star: float):
+    """
+    Scale stellar fluxes from the top of the planet's atmosphere to the stellar surface.
+
+    This inverts the distance-dependent part of scale_spectrum_to_toa. The spectrum
+    written to the .sflux file is the flux at the planet, reduced from the stellar
+    surface by (r_star / sep) ** 2 with sep the flux-weighted distance it was written
+    at, so recovering the surface value multiplies by (sep / r_star) ** 2. A consumer
+    that compares against the stellar surface, such as the eclipse-depth denominator
+    or the VULCAN stellar input, needs this; the climate
+    and photochemistry modules that want the flux at the planet use the file as written.
+
+    Parameters
+    ----------
+        fl_arr : iterable
+            Stellar fluxes at the top of the planet's atmosphere.
+        sep : float
+            Flux-weighted planet-star distance the spectrum was scaled to [m].
+        r_star : float
+            Stellar radius [m].
+    Returns
+    ----------
+        fl_arr : np.ndarray
+            Stellar fluxes at the stellar surface.
+    """
+    return np.array(fl_arr) * ((sep / r_star) ** 2)
 
 
 def write_spectrum(wl_arr, fl_arr, hf_row: dict, output_dir: str):
@@ -393,7 +451,8 @@ def write_spectrum(wl_arr, fl_arr, hf_row: dict, output_dir: str):
         wl_arr : np.ndarray
             Wavelength array [nm]
         fl_arr : np.ndarray
-            Stellar fluxes at 1 AU [erg s-1 cm-2 nm-1]
+            Stellar fluxes at the top of the planet's atmosphere
+            [erg s-1 cm-2 nm-1]
         hf_row : dict
             Current helpfile row
         output_dir : str
@@ -402,10 +461,13 @@ def write_spectrum(wl_arr, fl_arr, hf_row: dict, output_dir: str):
 
     log.debug('Writing stellar spectrum to file')
 
-    # Header information
+    # Fluxes at the top of the planet's atmosphere, not at the stellar surface;
+    # a consumer that wants the stellar surface must undo the distance scaling.
     header = (
-        '# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at t_star = %.2e yr'
-        % hf_row['age_star']
+        '# WL(nm)\t Flux(ergs/cm**2/s/nm)   '
+        'Stellar flux at the top of the planet atmosphere '
+        '(scaled from 1 AU to the flux-weighted distance a (1 - e^2)^(1/4)), '
+        't_star = %.2e yr' % hf_row['age_star']
     )
 
     # Write to TSV file
@@ -447,6 +509,12 @@ def update_stellar_quantities(hf_row: dict, config: Config, stellar_track=None):
     log.info('    F_ins      = %.3e   W m-2' % hf_row['F_ins'])
     log.info('    F_xuv      = %.3e   W m-2' % hf_row['F_xuv'])
     log.info('    T_star     = %.3f    K' % hf_row['T_star'])
+
+    # Inform if applying bolometric scaling
+    if hf_row['bol_scale'] != 1.0:
+        log.info(
+            f'    Scaling factor is currently active on stellar fluxes: {hf_row["bol_scale"]}'
+        )
 
     # Calculate new eqm temperature
     log.debug('Update equilibrium temperature')
@@ -507,16 +575,52 @@ def update_stellar_temperature(hf_row: dict, config: Config, stellar_track=None)
                 hf_row['T_star'] = stellar_track.BaraffeStellarTeff(hf_row['age_star'])
 
 
+def flux_weighted_distance(hf_row: dict) -> float:
+    """
+    Distance reproducing the orbit-averaged inverse-square stellar flux.
+
+    Averaging 1/r^2 over one orbit gives 1 / (a^2 sqrt(1 - e^2)), so the
+    distance that carries the same flux is a (1 - e^2)^(1/4). This differs
+    from hf_row['separation'], which is the time-averaged separation
+    a (1 + e^2 / 2) and is the right quantity for the Roche-limit checks and
+    the orbit plots only.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Dictionary of current runtime variables, carrying ``semimajorax`` [m]
+        and ``eccentricity`` [1].
+
+    Returns
+    -------
+    float
+        Flux-weighted star-planet distance [m].
+    """
+
+    for key in ('semimajorax', 'eccentricity'):
+        if key not in hf_row:
+            raise ValueError(f"Flux-weighted distance requires hf_row['{key}']")
+
+    ecc = float(hf_row['eccentricity'])
+    if not 0.0 <= ecc < 1.0:
+        raise ValueError(f'Eccentricity must be >= 0 and < 1, got {ecc}')
+
+    return float(hf_row['semimajorax']) * (1.0 - ecc * ecc) ** 0.25
+
+
 def update_instellation(hf_row: dict, config: Config, stellar_track=None):
     """
     Update hf_row value of bolometric stellar flux impinging upon the planet.
     """
 
+    # Flux-weighted distance, so bolometric and XUV share one orbital average
+    sep_flux = flux_weighted_distance(hf_row)
+
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import calc_instellation
 
-        S_0 = calc_instellation(config.star.dummy.Teff, hf_row['R_star'], hf_row['separation'])
+        S_0 = calc_instellation(config.star.dummy.Teff, hf_row['R_star'], sep_flux)
         Fxuv_SI = 0.0
 
     # Mors cases
@@ -528,31 +632,37 @@ def update_instellation(hf_row: dict, config: Config, stellar_track=None):
 
                 # Bolometric flux
                 S_0 = (
-                    stellar_track.Value(age_star, 'Lbol')
-                    * 1e-7
-                    / (4.0 * np.pi * hf_row['separation'] ** 2.0)
+                    stellar_track.Value(age_star, 'Lbol') * 1e-7 / (4.0 * np.pi * sep_flux**2.0)
                 )
 
                 # Interpolating the XUV flux at the age of the star
                 Lxuv_cgs = stellar_track.Value(age_star, 'Lx') + stellar_track.Value(
                     age_star, 'Leuv'
                 )
-                Fxuv_SI = (
-                    Lxuv_cgs / (4 * np.pi * (hf_row['separation'] * 1e2) ** 2) * ergcm2stoWm2
-                )
+                Fxuv_SI = Lxuv_cgs / (4.0 * np.pi * (sep_flux * 1e2) ** 2) * ergcm2stoWm2
 
             case 'baraffe':
                 # Bolometric flux
-                S_0 = stellar_track.BaraffeSolarConstant(
-                    hf_row['age_star'], hf_row['separation'] / AU
-                )
+                S_0 = stellar_track.BaraffeSolarConstant(hf_row['age_star'], sep_flux / AU)
 
                 # XUV flux not provided by Baraffe tracks
                 Fxuv_SI = 0.0
 
+    # Determine if bolometric scaling is enabled
+    bol_scale_apply = 1.0
+    if config.star.bol_scale != 1.0 and config.star.bol_scale_start is not None:
+        # Determine when bolometric is currently active
+        bol_scale_ini = config.star.bol_scale_start * 1e9
+        bol_scale_end = bol_scale_ini + config.star.bol_scale_duration * 1e9
+
+        # Apply it if age is within the range
+        if bol_scale_ini <= hf_row['age_star'] < bol_scale_end:
+            bol_scale_apply = config.star.bol_scale
+
     # Update hf_row dictionary
-    hf_row['F_ins'] = S_0 * config.star.bol_scale
-    hf_row['F_xuv'] = Fxuv_SI * config.star.bol_scale
+    hf_row['F_ins'] = S_0 * bol_scale_apply
+    hf_row['F_xuv'] = Fxuv_SI * bol_scale_apply
+    hf_row['bol_scale'] = bol_scale_apply
 
 
 def update_equilibrium_temperature(hf_row: dict, config: Config):

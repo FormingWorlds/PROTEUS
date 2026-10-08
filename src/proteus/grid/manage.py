@@ -11,7 +11,6 @@ import multiprocessing
 import os
 import shutil
 import subprocess
-import sys
 import time
 from copy import deepcopy
 from datetime import datetime
@@ -20,63 +19,20 @@ from getpass import getuser
 import numpy as np
 import toml
 
-from proteus.config import Config, read_config_object
+from proteus.config import (
+    Config,
+    UnknownConfigKeyError,
+    field_path_kind,
+    read_config,
+    read_config_object,
+)
+from proteus.config._interior import _TOL_UNSET, default_rtol, rtol_is_set
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
+from proteus.utils.logs import setup_logger
 
 PROTEUS_DIR = get_proteus_dir()
 
-
-# Custom logger instance
-def setup_logger(logpath: str = 'new.log', level=1, logterm=True):
-    # https://stackoverflow.com/a/61457119
-
-    custom_logger = logging.getLogger()
-    custom_logger.handlers.clear()
-
-    if os.path.exists(logpath):
-        os.remove(logpath)
-
-    fmt = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-
-    level_code = logging.INFO
-    match level:
-        case 0:
-            level_code = logging.DEBUG
-        case 2:
-            level_code = logging.WARNING
-        case 3:
-            level_code = logging.ERROR
-        case 4:
-            level_code = logging.CRITICAL
-
-    # Add terminal output to logger
-    if logterm:
-        sh = logging.StreamHandler(sys.stdout)
-        sh.setFormatter(fmt)
-        sh.setLevel(level_code)
-        custom_logger.addHandler(sh)
-
-    # Add file output to logger
-    fh = logging.FileHandler(logpath)
-    fh.setFormatter(fmt)
-    fh.setLevel(level)
-    custom_logger.addHandler(fh)
-    custom_logger.setLevel(level_code)
-
-    # Capture unhandled exceptions
-    # https://stackoverflow.com/a/16993115
-    def handle_exception(exc_type, exc_value, exc_traceback):
-        if issubclass(exc_type, KeyboardInterrupt):
-            custom_logger.error('KeyboardInterrupt')
-            sys.__excepthook__(exc_type, exc_value, exc_traceback)
-            return
-        custom_logger.critical(
-            'Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback)
-        )
-
-    sys.excepthook = handle_exception
-
-    return
+log = logging.getLogger('fwl.' + __name__)
 
 
 # Thread target
@@ -168,10 +124,15 @@ class Grid:
         # Make copy of REFERENCE config file
         shutil.copyfile(self.conf, os.path.join(self.outdir, 'ref_config.toml'))
 
-        # Setup logging
-        setup_logger(logpath=os.path.join(self.outdir, 'manager.log'), logterm=True, level=1)
-        global log
-        log = logging.getLogger(__name__)
+        # Setup logging. Keep the plain timestamped layout the grid manager has
+        # always written to manager.log, via the shared setup_logger.
+        setup_logger(
+            logpath=os.path.join(self.outdir, 'manager.log'),
+            logterm=True,
+            level='INFO',
+            fmt='[%(asctime)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+        )
 
         log.info("Grid '%s' initialised empty" % self.name)
 
@@ -190,8 +151,21 @@ class Grid:
     def add_dimension(self, name: str, var: str):
         if name in self.dim_names:
             raise Exception("Dimension '%s' cannot be added twice" % name)
+        if var in (
+            'interior_energetics.num_tolerance',
+            'interior_energetics.spider.tolerance_rel',
+        ):
+            raise ValueError(
+                f'{var} is a deprecated alias; sweep interior_energetics.rtol instead'
+            )
 
         log.info("Added new dimension '%s' " % name)
+        log.debug(
+            "Dimension '%s' maps to parameter '%s' (total dims: %d)",
+            name,
+            var,
+            len(self.dim_names) + 1,
+        )
         self.dim_names.append(name)
         self.dim_param.append(var)
         self.dim_avars[name] = None
@@ -205,6 +179,9 @@ class Grid:
     def set_dimension_linspace(self, name: str, start: float, stop: float, count: int):
         self.dim_avars[name] = list(np.linspace(start, stop, count))
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        log.debug(
+            "Dimension '%s' linspace: %d points in [%.6g, %.6g]", name, count, start, stop
+        )
 
     # Set a dimension by arange (inclusive of endpoint)
     def set_dimension_arange(self, name: str, start: float, stop: float, step: float):
@@ -212,11 +189,22 @@ class Grid:
         if not np.isclose(self.dim_avars[name][-1], stop):
             self.dim_avars[name].append(stop)
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        log.debug(
+            "Dimension '%s' arange: %d points in [%.6g, %.6g] (step=%.6g)",
+            name,
+            len(self.dim_avars[name]),
+            start,
+            stop,
+            step,
+        )
 
     # Set a dimension by logspace
     def set_dimension_logspace(self, name: str, start: float, stop: float, count: int):
         self.dim_avars[name] = list(np.logspace(np.log10(start), np.log10(stop), count))
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        log.debug(
+            "Dimension '%s' logspace: %d points in [%.6g, %.6g]", name, count, start, stop
+        )
 
     # Set a dimension directly
     def set_dimension_direct(self, name: str, values: list, sort: bool = True):
@@ -224,6 +212,12 @@ class Grid:
         if (not isinstance(values[0], str)) and sort:  # sort if numeric
             the_list = sorted(the_list)
         self.dim_avars[name] = the_list
+        log.debug(
+            "Dimension '%s' direct: %d values (deduplicated from %d)",
+            name,
+            len(the_list),
+            len(values),
+        )
 
     # Print current setup
     def print_setup(self):
@@ -266,6 +260,10 @@ class Grid:
         for v in values:
             self.size *= len(v)
         log.info('    %d points expected' % self.size)
+        log.debug(
+            'Grid size breakdown: %s',
+            ' x '.join('%s(%d)' % (n, len(self.dim_avars[n])) for n in self.dim_names),
+        )
 
         # Create flattened parameter grid
         flat_values = list(itertools.product(*values))
@@ -289,6 +287,8 @@ class Grid:
         """Write config files."""
         # Read base config file
         base_config = read_config_object(self.conf)
+        # A module set per case takes that module's default rtol when nothing sets one.
+        rtol_unset = not rtol_is_set(read_config(self.conf).get('interior_energetics', {}))
 
         # Loop over grid points to write config files
         log.info('Writing config files')
@@ -302,6 +302,12 @@ class Grid:
             # Set other parameters in Config object
             for key in gp.keys():
                 recursive_setattr(thisconf, key, gp[key])
+            if 'interior_energetics.rtol' in gp:  # a base alias would conflict on reload
+                ie = thisconf.interior_energetics
+                ie.num_tolerance = ie.spider.tolerance_rel = _TOL_UNSET
+            elif rtol_unset and 'interior_energetics.module' in gp:
+                ie = thisconf.interior_energetics
+                ie.rtol = default_rtol(ie.module)
 
             # Write this configuration file
             thisconf.write(self._get_tmpcfg(i))
@@ -338,6 +344,12 @@ class Grid:
 
         # do not use more threads than are available
         num_threads = min(num_threads, os.cpu_count())
+        log.debug(
+            'Thread pool: %d threads (grid_size=%d, cpu_count=%d)',
+            num_threads,
+            self.size,
+            os.cpu_count(),
+        )
 
         # Print warning
         if not test_run:
@@ -451,6 +463,7 @@ class Grid:
                     if status[i] == 0:
                         status[i] = 1
                         start_new = False
+                        log.debug('Dispatching case %06d (step %d)', i, step)
                         threads[i].start()
                         break
 
@@ -492,7 +505,12 @@ class Grid:
         )
 
     def slurm_config(
-        self, max_jobs: int, test_run: bool = False, max_days: int = 1, max_mem: int = 3
+        self,
+        max_jobs: int,
+        test_run: bool = False,
+        max_days: int = 1,
+        max_mem: int = 12,
+        jax_cache: bool = False,
     ):
         """Write slurm config file.
 
@@ -509,6 +527,13 @@ class Grid:
             Maximum number of days to run
         max_mem : int
             Maximum memory per CPU in GB
+        jax_cache : bool
+            If true, the generated script enables a bounded JAX persistent
+            compilation cache shared across the array tasks (stored under the
+            grid output directory) so compiled executables are reused and JIT
+            recompiles are cut. An LRU size bound caps the cache so it cannot
+            fill the filesystem. Default false: no cache environment variables
+            are written and the script behaves exactly as before.
         """
 
         max_days = int(max_days)  # ensure integer
@@ -533,6 +558,22 @@ class Grid:
 
         log_file = os.path.join(self.logdir, 'proteus-%A_%a.log')
 
+        # Optional bounded JAX persistent compilation cache. The size bound uses
+        # JAX's own LRU eviction so the cache plateaus instead of growing without
+        # limit; the min-compile-time and min-entry-size thresholds keep trivial
+        # compilations out of it. Disabled by default so the generated script is
+        # unchanged unless the cache is explicitly requested.
+        if jax_cache:
+            jax_cache_dir = os.path.join(self.outdir, 'jax_cache')
+            jax_env = (
+                f'export JAX_COMPILATION_CACHE_DIR={jax_cache_dir}\n'
+                'export JAX_COMPILATION_CACHE_MAX_SIZE=85899345920\n'
+                'export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=1\n'
+                'export JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES=4096\n'
+            )
+        else:
+            jax_env = ''
+
         string = f"""#!/bin/sh
 #SBATCH -J proteus.grid.array
 #SBATCH --export=ALL
@@ -542,7 +583,7 @@ class Grid:
 #SBATCH -o {log_file}
 #SBATCH --array=0-{self.size - 1}%{max_jobs}
 
-i=$SLURM_ARRAY_TASK_ID
+{jax_env}i=$SLURM_ARRAY_TASK_ID
 
 while [ $i -lt {self.size} ]; do
     printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}.toml" $((i))
@@ -571,15 +612,114 @@ done
         time.sleep(2.0)
 
 
+# Top-level keys of a grid file that set up the grid; every other key names a dimension.
+GRID_SETTINGS = frozenset(
+    {
+        'output',
+        'ref_config',
+        'symlink',
+        'use_slurm',
+        'max_jobs',
+        'max_days',
+        'max_mem',
+        'jax_cache',
+        'config_version',
+    }
+)
+
+# Keys each dimension method reads from its table, in the order of its Grid setter.
+DIMENSION_METHODS = {
+    'direct': ('values',),
+    'linspace': ('start', 'stop', 'count'),
+    'logspace': ('start', 'stop', 'count'),
+    'arange': ('start', 'stop', 'step'),
+}
+
+
+def _dimension_kind(key: str, value) -> str:
+    """Classify a non-setting grid key; ``'field'`` means a complete dimension table."""
+    kind = field_path_kind(key)
+    if kind != 'field':
+        return kind
+    if not (isinstance(value, dict) and 'method' in value):
+        return 'value'
+    method = value['method']
+    if not isinstance(method, str) or method not in DIMENSION_METHODS:
+        return 'method'
+    return 'field' if all(arg in value for arg in DIMENSION_METHODS[method]) else 'incomplete'
+
+
+def grid_dimension_keys(config: dict, config_fpath: str) -> list[str]:
+    """Return the dimension keys of a grid config, refusing any key it cannot account for.
+
+    A top-level key is either one of ``GRID_SETTINGS`` or a dimension: the path of a
+    single configuration field in the PROTEUS schema, given as a table with one of the
+    ``DIMENSION_METHODS`` and the keys that method reads. Whether a key is a field is
+    decided by the schema, not by a dot.
+
+    Parameters
+    ----------
+    config:
+        The grid config as parsed from TOML.
+    config_fpath:
+        Path of the grid file, quoted back in the error.
+
+    Returns
+    -------
+    list[str]
+        The dimension keys, in file order.
+
+    Raises
+    ------
+    UnknownConfigKeyError
+        If a key is neither a grid setting nor a schema field, names a whole section
+        rather than one field, or does not hold a table with a known ``method`` and the
+        keys it reads.
+    """
+    dims = [key for key in config if key not in GRID_SETTINGS]
+    kinds = {key: _dimension_kind(key, config[key]) for key in dims}
+    reasons = {
+        'unknown': 'not a grid setting or a configuration field',
+        'section': 'a configuration section, not a single field (quote a dotted table '
+        'header, as in ["planet.mass_tot"])',
+        'value': 'a configuration field without a dimension table holding a method',
+        'method': f'a dimension table whose method is not one of {", ".join(DIMENSION_METHODS)}',
+        'incomplete': 'a dimension table without a key its method reads ('
+        + '; '.join(f'{m}: {", ".join(args)}' for m, args in DIMENSION_METHODS.items())
+        + ')',
+    }
+    lines = []
+    for kind, reason in reasons.items():
+        keys = ', '.join(f'"{key}"' for key in dims if kinds[key] == kind)
+        if keys:
+            lines.append(f'  {reason}: {keys}')
+    if lines:
+        lines.insert(0, f'Grid config {config_fpath} has keys the grid cannot account for:')
+        lines.append(
+            f'  A key is a grid setting ({", ".join(sorted(GRID_SETTINGS))}) or the path '
+            'of one configuration field to sweep, such as "planet.mass_tot".'
+        )
+        raise UnknownConfigKeyError('\n'.join(lines))
+    return dims
+
+
 def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: float = 15.0):
     """Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)"""
 
     # Load configuration from TOML file
     with open(config_fpath, 'r') as file:
         config = toml.load(file)
+    dimension_keys = grid_dimension_keys(config, config_fpath)
 
     # Output folder name, created inside `PROTEUS/output/`
     folder = str(config['output'])
+    if folder.strip().lower() == 'auto':
+        import secrets
+        from datetime import datetime
+
+        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        suffix = secrets.token_hex(2)
+        folder = f'grid_{stamp}_{suffix}'
 
     # Set this string to have the output files created at an alternative location. The
     #   output 'folder' in `PROTEUS/output/` will then by symbolically linked to this
@@ -600,6 +740,10 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     max_days = int(config['max_days'])  # maximum number of days to run (e.g. 1)
     max_mem = int(config['max_mem'])  # maximum memory per CPU in GB (e.g. 3)
 
+    # Optional bounded JAX persistent compilation cache (Slurm runs only).
+    # Absent or false leaves the generated script cache-free.
+    jax_cache = bool(config.get('jax_cache', False))
+
     # Base config file
     cfg_base = os.path.join(PROTEUS_DIR, str(config['ref_config']))
 
@@ -607,34 +751,13 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     pg = Grid(folder, cfg_base, symlink_dir=symlink, grid_config=config_fpath)
 
     # Add dimensions to grid by looping over keys
-    dim = -1
-    for key in config.keys():
-        # Skip those without dots, since they aren't config variables
-        if '.' not in key:
-            continue
-
-        # Add dimension
-        dim += 1
+    for dim, key in enumerate(dimension_keys):
         name = 'param_%03d' % dim
         pg.add_dimension(name, key)
 
-        # Handle each possible method for setting this dimension
         table = config[key]
-        method = table['method']
-        if method == 'direct':
-            pg.set_dimension_direct(name, list(table['values']))
-
-        elif method == 'linspace':
-            pg.set_dimension_linspace(name, table['start'], table['stop'], table['count'])
-
-        elif method == 'logspace':
-            pg.set_dimension_logspace(name, table['start'], table['stop'], table['count'])
-
-        elif method == 'arange':
-            pg.set_dimension_arange(name, table['start'], table['stop'], table['step'])
-
-        else:
-            raise ValueError(f'Invalid method for setting dimension: {method}')
+        setter = getattr(pg, f'set_dimension_{table["method"]}')
+        setter(name, *(table[arg] for arg in DIMENSION_METHODS[table['method']]))
 
     # Print information
     pg.print_setup()
@@ -653,7 +776,13 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     # Run the grid
     if use_slurm:
         # Generate Slurm batch file, use `sbatch` to submit
-        pg.slurm_config(max_jobs, test_run=test_run, max_days=max_days, max_mem=max_mem)
+        pg.slurm_config(
+            max_jobs,
+            test_run=test_run,
+            max_days=max_days,
+            max_mem=max_mem,
+            jax_cache=jax_cache,
+        )
     else:
         # Alternatively, let grid_proteus.py manage the jobs
         pg.run(max_jobs, test_run=test_run, check_interval=check_interval)
