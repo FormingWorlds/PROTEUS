@@ -276,6 +276,8 @@ def observable_correlation(config: dict) -> dict | None:
 
     if config.get('correlation') is not None:
         raise ValueError('correlate_ratios = true and [correlation] cannot both be given')
+    if config.get('sigma') is None:
+        raise ValueError('correlate_ratios = true needs [sigma]: correlations scale sigma')
     composition = composition_from_names(config['observables'])
     if not composition:
         raise ValueError(
@@ -343,8 +345,7 @@ def run_inference(config):
     # Optional early stop once the best objective stops improving
     config['patience'] = validate_patience(config.get('patience', 0))
 
-    # How each worker runs its evaluations. Recorded here because the next step empties
-    # the output folder.
+    # How each worker runs its evaluations, validated before the output folder is emptied.
     set_dispatch(config.get('dispatch'), config.get('runner_max_jobs'))
 
     # Create output directory

@@ -14,7 +14,7 @@ ref_config = "input/inference/example.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = 3                                     # Number of random samples if starting from scratch.
-init_grid  = 'none' # grid_demo/'                  # Path pre-computed grid (relative to PROTEUS output folder)
+init_grid  = 'none'                                # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Completion codes to exclude from the fit. Evaporated (29) is always excluded.
 failure_codes = [11, ] # solidified (10), escaped (15), max_runtime (11)

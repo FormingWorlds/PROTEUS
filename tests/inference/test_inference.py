@@ -609,7 +609,7 @@ def test_run_inference_rejects_invalid_correlation_before_emptying_output(
         'correlate_ratios': True,
     }
     for bad, match in (
-        ({'sigma': None}, 'sigma'),
+        ({'sigma': None}, 'correlate_ratios = true needs'),
         ({'correlation': {'R_obs': {'C/O_atm': 0.1}}}, 'cannot both'),
         ({'correlate_ratios': 'yes'}, 'true or false'),
         (

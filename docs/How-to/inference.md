@@ -66,15 +66,15 @@ optimisation. This process must stay open in order to manage the workers.
 
 ### Objective Function
 
-The system optimizes an objective function that measures how well simulated observables match target values:
+The system maximises an objective function that measures how well simulated observables match target values:
 
 ```
-J = 1 - ||1 - sim/true||²
+J = -log10( ||1 - sim/true||² + 1e-10 )
 ```
 
 Where `sim` are the simulated observables and `true` are the target values.
-This means that the 'best' value for the objective function is 1. Values closer to 1 represent
-better fits, while smaller values (including negative ones) are worse fits.
+A perfect match gives the largest possible value, J = 10. J is 0 when the squared relative
+errors sum to 1, and negative for worse fits.
 
 ### Observable uncertainties
 
@@ -167,12 +167,12 @@ study: different parameter combinations can produce the same observables.
 
 The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
 
-With `patience = N` (default 0, off), the study stops earlier, once `N` evaluations in a row have not raised the best objective by more than 0.01, about a 2% lower chi-squared. Small rises add up: the count resets once the best has risen by more than 0.01 in total since the last reset. Runs already in progress finish first. Plateaus of 20 to 40 evaluations before a further improvement are common, so values below about 50 can stop a study too early.
+With `patience = N` (default 0, off), the study stops earlier, once `N` evaluations in a row have not raised the best objective by more than 0.01, about a 2% lower chi-squared. Small rises add up: the count resets once the best has risen by more than 0.01 in total since the last reset. Runs already in progress finish first. In our SE, TR and SN studies, plateaus of 20 to 40 evaluations came before a further improvement, so values below about 50 can stop a study too early.
 
 ### Acquisition functions
 
 The acquisition function is an analytical function that is aware of the current state of the optimisation.
-It is used to evaluate the *potential* value of sampling a candidate particular point in the parameter space, to 
+It is used to evaluate the *potential* value of sampling a candidate particular point in the parameter space, to
 help determine where the optimisation should next run PROTEUS. It helps balance the trade-off between exploring new areas and exploiting known good areas to optimize a black-box function efficiently.
 
 * `UCB` - upper confidence bound
@@ -186,7 +186,7 @@ See docs [here](https://botorch.readthedocs.io/en/latest/acquisition.html).
 The kernel is an analytical function used by the Gaussian processes to represent the similarity between model behaviour as a function of the parameter space. It includes the underlying function by capturing the relationships and uncertainties/noise in the data.
 
 * `RBF` - radial basis function
-* `MAT1/2` - Materne kernel with $\nu = 1/2$ 
+* `MAT1/2` - Materne kernel with $\nu = 1/2$
 * `MAT3/2` - Materne kernel with $\nu = 3/2$
 * `MAT5/2` - Materne kernel with $\nu = 5/2$
 
@@ -221,7 +221,7 @@ Plots prefixed with `result_` show the results of the optimisation.
 
 - `result_correlation.png`: Scatter plot observables for each parameter, at each sample.
 - `result_objective.png`: Value of objective `J` for each parameter, at each sample.
-- `result_observables.png`: Final observables of every sample as a ratio to their target. 
+- `result_observables.png`: Final observables of every sample as a ratio to their target.
 - `result_parameters.png`: Only with a `[truth]` table. Every sample, the true value and the best
   fit placed within each parameter's sampled range (in log10 for log-scaled parameters), and the
   best-fit error as a percentage of that range.
@@ -259,13 +259,16 @@ During the inference run, some PROTEUS simulations might crash or fail, or stop 
 
 By default each evaluation runs as its own `proteus start`, so every sample
 pays for importing PROTEUS, loading the Julia environment and compiling AGNI
-on its first call. Setting `dispatch = "runner"` in the inference config keeps 
-one PROTEUS process alive per worker and reuses it for every evaluation that worker makes.
+on its first call. Setting `dispatch = "runner"` in the inference config keeps
+one PROTEUS process alive per worker and reuses it for every evaluation that
+worker makes.
 
-On the default dispatch each evaluation writes its own `i_<n>_console.log`; 
-a reused process instead writes a single `runner_console.log` per worker, covering every simulation that worker ran, because Julia cannot be redirected between simulations. 
-The initial samples all go in `w_-1`, so there each pool process writes its own `runner_<pid>_console.log`. 
-Each run's own `proteus_*.log` is unaffected.
+On the default dispatch each evaluation writes its own `i_<n>_console.log`; a
+reused process instead writes a single `runner_console.log` per worker, covering
+every simulation that worker ran, because Julia cannot be redirected between
+simulations. The initial samples all go in `w_-1`, so there each pool process
+writes its own `runner_<pid>_console.log`. Each run's own `proteus_*.log` is
+unaffected.
 
 ```toml
 dispatch = "runner"      # "subprocess" (default) or "runner"
