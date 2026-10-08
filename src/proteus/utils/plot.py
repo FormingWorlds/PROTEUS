@@ -136,7 +136,8 @@ _preset_quantities = {
     'orbit.eccentricity': _QuantityInfo(r'$e$', 1.0, False),
     # Planet structure
     'planet.mass_tot': _QuantityInfo(r'$M_{\rm tot}$ [$M_\oplus$]', 1.0, False),
-    'interior_struct.core_frac': _QuantityInfo('Core radius fraction', 1.0, False),
+    # core_frac is a mass or radius fraction depending on interior_struct.core_frac_mode.
+    'interior_struct.core_frac': _QuantityInfo('Core fraction', 1.0, False),
     # Atmosphere module
     'atmos_clim.module': _QuantityInfo('Atmosphere model', 1.0, False),
     # Escape module

@@ -14,9 +14,10 @@ from proteus.utils.helper import CommentFromStatus, ReadStatus, get_proteus_dir
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Typical PROTEUS critical melt fraction, used only when a case config does not
-# record params.stop.solid.phi_crit (every normal run does).
-DEFAULT_PHI_CRIT = 0.005
+# Fallback critical melt fraction, used only when neither a case config nor the
+# base config records params.stop.solid.phi_crit (every normal run does). Mirrors
+# the config schema default (proteus.config._params.StopSolid.phi_crit).
+DEFAULT_PHI_CRIT = 0.01
 
 # CSV filter modes: name -> status categories kept (None keeps every case).
 CSV_MODES = {
@@ -36,8 +37,21 @@ def get_grid_name(grid_dir: str | Path) -> str:
 
 
 def resolve_grid_dir(config: dict) -> Path:
-    """Return the absolute grid output directory named by a grid config's ``output`` key."""
+    """Return the absolute grid output directory named by a grid config's ``output`` key.
+
+    Raises
+    ------
+    ValueError
+        If ``output`` is ``'auto'``: the grid manager turns that into a unique
+        timestamped folder at run time, so the name cannot be recovered from the
+        config. Point grid-analyse at a grid config with a fixed ``output``.
+    """
     output = str(config['output']).strip().strip('/')
+    if output.lower() == 'auto':
+        raise ValueError(
+            "Cannot analyse a grid whose output is 'auto': the run folder name is "
+            'generated at run time. Set output to the actual grid run folder name.'
+        )
     return (Path(get_proteus_dir()) / 'output' / output).resolve()
 
 
@@ -166,7 +180,9 @@ def extract_solidification_time(output: pd.DataFrame | None, phi_crit: float) ->
     return float(output.loc[solidified.idxmax(), 'Time'])
 
 
-def build_summary_dataframe(cases: list[dict], param_paths: list[str]) -> pd.DataFrame:
+def build_summary_dataframe(
+    cases: list[dict], param_paths: list[str], fallback_phi_crit: float = DEFAULT_PHI_CRIT
+) -> pd.DataFrame:
     """Assemble one summary row per case: status, tested parameters, final outputs.
 
     Parameters
@@ -175,6 +191,9 @@ def build_summary_dataframe(cases: list[dict], param_paths: list[str]) -> pd.Dat
         Output of :func:`load_grid_cases`.
     param_paths : list of str
         Swept grid-parameter paths to record per case (from init_coupler.toml).
+    fallback_phi_crit : float
+        phi_crit to use for a case whose init_coupler.toml omits
+        ``params.stop.solid.phi_crit`` (normally the base config's value).
 
     Returns
     -------
@@ -185,7 +204,7 @@ def build_summary_dataframe(cases: list[dict], param_paths: list[str]) -> pd.Dat
     """
     rows = []
     for case in cases:
-        phi_crit = _dig(case['init_params'], 'params.stop.solid.phi_crit', DEFAULT_PHI_CRIT)
+        phi_crit = _dig(case['init_params'], 'params.stop.solid.phi_crit', fallback_phi_crit)
         row = {'case_number': case['index'], 'status': case['status']}
 
         # Tested parameter values actually used by this case.
@@ -267,10 +286,23 @@ def _read_post_processing_options(config: dict) -> dict:
     opts.setdefault('update_csv', True)
     opts.setdefault('plot_status', True)
     opts.setdefault('plot_ecdf', True)
-    opts.setdefault('colormap', None)
+    # Accept both spellings; 'colormap' matches matplotlib, 'colourmap' the UK style.
+    opts['colormap'] = opts.get('colormap', opts.get('colourmap'))
     opts.setdefault('output_variables', [])
     opts.setdefault('plot_format', None)
     return opts
+
+
+def _resolve_base_phi_crit(grid_dir: Path) -> float:
+    """Return the base config's params.stop.solid.phi_crit, else DEFAULT_PHI_CRIT."""
+    ref_file = grid_dir / 'ref_config.toml'
+    if ref_file.exists():
+        with ref_file.open('rb') as f:
+            ref = tomllib.load(f)
+        value = _dig(ref, 'params.stop.solid.phi_crit')
+        if value is not None:
+            return float(value)
+    return DEFAULT_PHI_CRIT
 
 
 def _resolve_plot_format(requested: str | None, grid_dir: Path) -> str:
@@ -318,13 +350,26 @@ def analyse_grid(config_path: str | Path) -> None:
     grid_name = get_grid_name(grid_dir)
     log.info("Analysing grid '%s' at '%s'", grid_name, grid_dir)
 
-    tested_params = get_tested_parameters(config, config_path)
+    # Prefer the grid's own copy.grid.toml (the authoritative record of what was
+    # run) for the swept axes, so the analysis matches the grid even if the config
+    # file passed on the CLI was edited after the run.
+    run_config, run_config_path = config, config_path
+    copy_grid = grid_dir / 'copy.grid.toml'
+    if copy_grid.exists():
+        with copy_grid.open('rb') as f:
+            run_config = tomllib.load(f)
+        run_config_path = copy_grid
+    tested_params = get_tested_parameters(run_config, run_config_path)
+
+    # Base config phi_crit, used only for a case whose own config omits it.
+    fallback_phi_crit = _resolve_base_phi_crit(grid_dir)
+
     extracted_dir = grid_dir / 'post_processing' / 'extracted_data'
     csv_paths = {mode: extracted_dir / f'final_extracted_data_{mode}.csv' for mode in CSV_MODES}
 
     if opts['update_csv']:
         cases = load_grid_cases(grid_dir)
-        summary = build_summary_dataframe(cases, list(tested_params))
+        summary = build_summary_dataframe(cases, list(tested_params), fallback_phi_crit)
         csv_paths = write_summary_csvs(summary, cases, extracted_dir)
     else:
         missing = [p.name for p in csv_paths.values() if not p.exists()]

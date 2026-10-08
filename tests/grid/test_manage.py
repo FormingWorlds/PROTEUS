@@ -1519,6 +1519,8 @@ class TestDimensionValues:
         g = grid_with_mocks
         g.add_dimension('e', 'orbit.eccentricity')
         g.set_dimension_logspace('e', 1e-3, 1e-1, 3)
-        assert g.dim_avars['e'] == dimension_values(
+        expected = dimension_values(
             {'method': 'logspace', 'start': 1e-3, 'stop': 1e-1, 'count': 3}
         )
+        assert g.dim_avars['e'] == expected
+        assert expected == pytest.approx([1e-3, 1e-2, 1e-1])  # correct endpoints/spacing

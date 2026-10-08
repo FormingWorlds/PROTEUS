@@ -20,7 +20,10 @@ import pytest
 
 from proteus.grid import analyse as ga
 from proteus.grid.analyse import (
+    DEFAULT_PHI_CRIT,
     _dig,
+    _read_post_processing_options,
+    _resolve_base_phi_crit,
     _resolve_plot_format,
     build_summary_dataframe,
     extract_solidification_time,
@@ -186,6 +189,37 @@ def test_validate_output_variables_drops_missing_without_substitute():
     present = validate_output_variables(df, ['P_surf', 'not_a_column'])
     assert present == ['P_surf']
     assert 'Time' not in present
+
+
+def test_resolve_grid_dir_rejects_auto_output():
+    """An 'auto' output cannot be analysed (the run folder name is unknowable),
+    so resolve_grid_dir raises a clear error instead of pointing at output/auto.
+    """
+    with pytest.raises(ValueError) as exc:
+        resolve_grid_dir({'output': 'auto'})
+    assert 'auto' in str(exc.value)
+    with pytest.raises(ValueError) as exc_upper:
+        resolve_grid_dir({'output': 'AUTO'})  # case-insensitive
+    assert 'auto' in str(exc_upper.value).lower()
+
+
+def test_read_post_processing_options_accepts_both_colourmap_spellings():
+    """Either 'colormap' or 'colourmap' sets the colour map, so the UK spelling
+    used elsewhere in the plotting code is not silently ignored.
+    """
+    us = _read_post_processing_options({'post_processing': {'colormap': 'vik'}})
+    uk = _read_post_processing_options({'post_processing': {'colourmap': 'batlow'}})
+    assert us['colormap'] == 'vik'
+    assert uk['colormap'] == 'batlow'
+
+
+def test_resolve_base_phi_crit_reads_ref_config_else_default(tmp_path):
+    """The base phi_crit comes from ref_config.toml, falling back to the schema
+    default when the file or key is absent.
+    """
+    (tmp_path / 'ref_config.toml').write_text('[params.stop.solid]\nphi_crit = 0.02\n')
+    assert _resolve_base_phi_crit(tmp_path) == pytest.approx(0.02)
+    assert _resolve_base_phi_crit(tmp_path / 'nowhere') == pytest.approx(DEFAULT_PHI_CRIT)
 
 
 def test_resolve_plot_format_defaults_reads_base_and_validates(tmp_path):

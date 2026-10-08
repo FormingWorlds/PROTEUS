@@ -139,7 +139,8 @@ def _value_colours(values, log_norm: bool, cmap):
     uniques = sorted({str(v) for v in values})
     discrete = cmap.resampled(max(len(uniques), 1))
     lookup = {val: discrete(i) for i, val in enumerate(uniques)}
-    return (lambda v: lookup[str(v)]), False, None
+    # Grey fallback for a value not among the tested set (should not happen).
+    return (lambda v: lookup.get(str(v), (0.5, 0.5, 0.5, 1.0))), False, None
 
 
 def _plot_cell(ax, df, param, value, output, colour, log_axis):
@@ -212,13 +213,16 @@ def plot_ecdf_grid(
         values = tested_params[param]
         colour_of, is_numeric, norm = _value_colours(values, get_log_scale(param), cmap)
 
+        # Iterate the values actually present in the column (not the in-memory
+        # swept list) so a float that changed on the CSV round-trip still matches.
+        present_values = sorted(df[param].dropna().unique())
+
         for j, output in enumerate(outputs):
             ax = axes[i][j]
-            for value in values:
-                if value in df[param].values:
-                    _plot_cell(
-                        ax, df, param, value, output, colour_of(value), get_log_scale(output)
-                    )
+            for value in present_values:
+                _plot_cell(
+                    ax, df, param, value, output, colour_of(value), get_log_scale(output)
+                )
             if get_log_scale(output):
                 ax.set_xscale('log')
             ax.set_ylim(0, 100)
