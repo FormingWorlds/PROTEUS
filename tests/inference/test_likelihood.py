@@ -17,7 +17,6 @@ import proteus.inference.likelihood as likelihood_mod  # noqa: E402
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
-@pytest.mark.unit
 def test_validate_correlation_rejects_invalid_matrices():
     """A valid table comes back as floats; every kind of invalid table is refused."""
     obs = {'R_obs': 6.0e6, 'T_obs': 400.0, 'g_obs': 9.8}
@@ -47,7 +46,6 @@ def test_validate_correlation_rejects_invalid_matrices():
         )
 
 
-@pytest.mark.unit
 def test_composition_from_names_parses_ratios_and_rejects_unknown_elements():
     """Each '/' name becomes +1 numerator, -1 denominator; other names are skipped."""
     obs = {'R_obs': 9.18e6, 'C/O_atm': 0.62, 'S/O_atm': 0.25, 'O/H_atm': 5.4, 'Si/Mg_atm': 1.1}
@@ -62,7 +60,6 @@ def test_composition_from_names_parses_ratios_and_rejects_unknown_elements():
             likelihood_mod.composition_from_names({'R_obs': 1.0, bad: 1.0})
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_ratio_correlation_shares_elements_with_sign():
     """Equal element errors give rho = +-1/2 for one shared element, signed by
@@ -90,7 +87,6 @@ def test_ratio_correlation_shares_elements_with_sign():
     assert likelihood_mod.validate_correlation(obs, sigma, corr) == corr
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize(
     ('name', 'expected'),
     [

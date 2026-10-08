@@ -60,7 +60,6 @@ class _DummyGP:
         return _Posterior()
 
 
-@pytest.mark.unit
 def test_unit_bounds_returns_hypercube_tensor():
     """``unit_bounds(d)`` returns a (2, d) tensor whose rows are all-zeros
     and all-ones, i.e. the lower and upper corners of the d-dimensional
@@ -72,7 +71,6 @@ def test_unit_bounds_returns_hypercube_tensor():
     assert bounds[1].tolist() == [1.0, 1.0, 1.0]
 
 
-@pytest.mark.unit
 def test_bo_step_with_x_in_skips_gp_fitting():
     """When ``BO_step`` is called with an explicit ``x_in`` (an
     externally-suggested candidate), it skips the GP fit + acquisition
@@ -102,7 +100,6 @@ def test_bo_step_with_x_in_skips_gp_fitting():
     assert B[0][0, 0].item() == pytest.approx(0.4)
 
 
-@pytest.mark.unit
 def test_bo_step_raises_for_unknown_acquisition(monkeypatch):
     """An unsupported acquisition function name raises ValueError with
     'Unsupported acquisition function' rather than silently dispatching to
@@ -143,7 +140,6 @@ def test_bo_step_raises_for_unknown_acquisition(monkeypatch):
     assert f_calls == []
 
 
-@pytest.mark.unit
 def test_bo_step_ucb_path_computes_distance(monkeypatch):
     """The UCB acquisition path returns the proposed candidate, the
     evaluated ``y`` at that candidate, and the minimum distance to any
@@ -188,7 +184,6 @@ def test_bo_step_ucb_path_computes_distance(monkeypatch):
     assert pending[0].tolist() == [[0.3]]
 
 
-@pytest.mark.unit
 def test_init_locs_returns_batch_candidates(monkeypatch):
     """init_locs(n, D) returns an (n, d) tensor for n workers by calling
     optimize_acqf once per worker with q=1 and stacking the results.
@@ -234,7 +229,6 @@ def test_init_locs_returns_batch_candidates(monkeypatch):
     assert pending[1].tolist() == [[0.2]]
 
 
-@pytest.mark.unit
 def test_plot_iter_writes_figure(tmp_path):
     """``plot_iter`` writes the BO-iteration diagnostic figure to disk
     under the given directory and filename. Verifies the file-IO leg of
@@ -273,7 +267,6 @@ def test_plot_iter_writes_figure(tmp_path):
 # patching import targets.
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_get_acqf_ucb_uses_beta_2():
     """get_acqf('UCB') returns an UpperConfidenceBound with beta=2.0.
@@ -295,7 +288,6 @@ def test_get_acqf_ucb_uses_beta_2():
     assert result.beta.item() != pytest.approx(0.0)
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_get_acqf_log_ei_forwards_best_f():
     """get_acqf('LogEI') returns a LogExpectedImprovement anchored at best_f.
@@ -315,7 +307,6 @@ def test_get_acqf_log_ei_forwards_best_f():
     assert abs(result.best_f.item()) > 0.1
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_get_acqf_log_pi_forwards_best_f():
     """get_acqf('LogPI') returns a LogProbabilityOfImprovement anchored at best_f.
@@ -335,7 +326,6 @@ def test_get_acqf_log_pi_forwards_best_f():
     assert abs(result.best_f.item()) > 0.1
 
 
-@pytest.mark.unit
 def test_get_acqf_raises_for_unsupported_name():
     """get_acqf raises ValueError for names outside {'UCB', 'LogEI', 'LogPI'}.
 
@@ -361,7 +351,6 @@ def test_get_acqf_raises_for_unsupported_name():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_init_locs_propagates_acqf_to_log_pi(monkeypatch):
     """init_locs with acqf='LogPI' passes 'LogPI' to get_acqf for every worker slot.
@@ -458,7 +447,6 @@ def _patched_bo_step_deps(monkeypatch, candidate=0.8):
     monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kwargs: None)
 
 
-@pytest.mark.unit
 def test_bo_step_identifies_busy_points_by_worker_id_not_position(monkeypatch):
     """Busy points are matched to their owner by worker id. Once a worker has
     stopped and released its claim, the remaining entries no longer sit at the
@@ -501,7 +489,6 @@ def test_bo_step_identifies_busy_points_by_worker_id_not_position(monkeypatch):
     assert abs(dist - 0.05) > 0.02
 
 
-@pytest.mark.unit
 def test_bo_step_reports_no_distance_when_no_other_worker_is_busy(monkeypatch):
     """With no other worker running, there is no nearest busy point and the
     distance is undefined rather than zero. This is the steady state of a
@@ -570,7 +557,6 @@ def _propose(gp, D, X_pending, name='LogEI'):
     return x
 
 
-@pytest.mark.unit
 def test_get_acqf_with_pending_uses_monte_carlo_versions():
     """With pending points, LogEI, UCB and LogPI become qLogEI, qUCB and qPI
     holding those points, with best_f carried over where it applies."""
@@ -597,7 +583,6 @@ def test_get_acqf_with_pending_uses_monte_carlo_versions():
         assert acqf.X_pending.tolist() == [[0.2]]
 
 
-@pytest.mark.unit
 # PI peaks beside the best observation at x = 0.1, EI further into the peak.
 @pytest.mark.parametrize(('name', 'x_first'), [('LogEI', 0.2), ('LogPI', 0.12)])
 def test_pending_point_moves_the_proposal_away(name, x_first):
@@ -644,7 +629,6 @@ def _patch_optimizer(monkeypatch, *messages):
     monkeypatch.setattr(bo_mod, 'optimize_acqf', _optimize)
 
 
-@pytest.mark.unit
 def test_optimize_acqf_logged_folds_both_retry_warnings_into_one_warning_line(
     monkeypatch, caplog, recwarn
 ):
@@ -667,7 +651,6 @@ def test_optimize_acqf_logged_folds_both_retry_warnings_into_one_warning_line(
     assert len(recwarn) == 0
 
 
-@pytest.mark.unit
 def test_optimize_acqf_logged_reports_successful_retry_at_info(monkeypatch, caplog):
     """A first-try failure that the retry fixes is logged at INFO, not WARNING."""
     _patch_optimizer(monkeypatch, (_FIRST_TRY, RuntimeWarning))
@@ -686,7 +669,6 @@ _NO_STATUS = (
 )
 
 
-@pytest.mark.unit
 def test_optimize_acqf_logged_names_starts_that_returned_no_status(monkeypatch, caplog):
     """A start that returned no status is counted and named, alone and next to
     a status failure, not logged as '0 start(s) []'."""
@@ -713,7 +695,6 @@ def test_optimize_acqf_logged_names_starts_that_returned_no_status(monkeypatch, 
     assert 'in 2 start(s) [no status returned, status 2 (ABNORMAL)]' in lines[1]
 
 
-@pytest.mark.unit
 def test_optimize_acqf_logged_falls_back_to_a_plain_line_for_an_unknown_format(
     monkeypatch, caplog
 ):
@@ -735,7 +716,6 @@ def test_optimize_acqf_logged_falls_back_to_a_plain_line_for_an_unknown_format(
     ]
 
 
-@pytest.mark.unit
 def test_optimize_acqf_logged_passes_each_other_warning_on_once(monkeypatch):
     """A warning repeated on every BO step is passed on once; a different one
     still is."""
@@ -755,7 +735,6 @@ def test_optimize_acqf_logged_passes_each_other_warning_on_once(monkeypatch):
     ]
 
 
-@pytest.mark.unit
 def test_optimize_acqf_logged_passes_other_warnings_through_and_logs_nothing(
     monkeypatch, caplog
 ):

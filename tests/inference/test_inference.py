@@ -42,7 +42,6 @@ BASE_CONFIG = str(Path(__file__).parent / 'base.toml')
 mp.set_start_method('spawn', force=True)
 
 
-@pytest.mark.unit
 def test_run_inference_rejects_too_many_workers(monkeypatch, tmp_path):
     """``run_inference`` rejects ``n_workers >= cpu_count`` with a
     'Not enough CPU cores' error, so a misconfigured job fails at
@@ -83,7 +82,6 @@ def test_run_inference_rejects_too_many_workers(monkeypatch, tmp_path):
     assert create_init_calls == []
 
 
-@pytest.mark.unit
 def test_run_inference_raises_for_missing_reference_config(monkeypatch, tmp_path):
     """``run_inference`` raises FileNotFoundError when ``ref_config`` does
     not point to an existing file on disk, naming the missing path.
@@ -125,7 +123,6 @@ def test_run_inference_raises_for_missing_reference_config(monkeypatch, tmp_path
     assert create_init_calls == []
 
 
-@pytest.mark.unit
 def test_infer_from_config_loads_toml_and_dispatches(monkeypatch, tmp_path):
     """``infer_from_config(path)`` parses the TOML and forwards the
     resulting dict verbatim to ``run_inference``; no field is dropped or
@@ -156,7 +153,6 @@ def test_infer_from_config_loads_toml_and_dispatches(monkeypatch, tmp_path):
 # ============================================================================
 
 
-@pytest.mark.unit
 def test_parameter_bounds_converts_pairs_and_rejects_malformed_ranges():
     """``parameter_bounds`` accepts an increasing pair of numbers and returns
     it as floats, and rejects every other shape a user could write: a single
@@ -192,7 +188,6 @@ def test_parameter_bounds_converts_pairs_and_rejects_malformed_ranges():
         inference_mod.parameter_bounds({'planet.mass_tot': [float('nan'), 3.0]})
 
 
-@pytest.mark.unit
 def test_parameter_bounds_rejects_a_log_scaled_range_that_reaches_zero():
     """A parameter swept on a log scale cannot have a bound at or below zero:
     the optimiser samples it in log10 space. The range is rejected here, while
@@ -224,7 +219,6 @@ def test_parameter_bounds_rejects_a_log_scaled_range_that_reaches_zero():
     assert inference_mod.variable_is_logarithmic('planet.elements.H_budget') is True
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize('enabled', [True, False], ids=['cache-on', 'cache-off'])
 def test_validate_reference_config_checks_the_spectral_cache_the_workers_use(
     monkeypatch, tmp_path, enabled
@@ -256,7 +250,6 @@ def test_validate_reference_config_checks_the_spectral_cache_the_workers_use(
         assert variants == ['none', 'none']
 
 
-@pytest.mark.unit
 def test_validate_reference_config_accepts_a_runnable_sweep():
     """A reference config that PROTEUS accepts, swept over parameters that stay
     inside the schema at both ends, passes validation. Each accepted sweep is
@@ -280,7 +273,6 @@ def test_validate_reference_config_accepts_a_runnable_sweep():
     inference_mod.validate_reference_config(BASE_CONFIG, {})
 
 
-@pytest.mark.unit
 def test_validate_reference_config_rejects_a_mistyped_parameter_name():
     """A parameter name that no config field matches is reported as an
     unrecognised key. Without this check the name would be written into each
@@ -301,7 +293,6 @@ def test_validate_reference_config_rejects_a_mistyped_parameter_name():
     assert 'planet.mass_tot"' not in message
 
 
-@pytest.mark.unit
 def test_validate_reference_config_rejects_a_bound_outside_the_schema_range():
     """A range whose upper end leaves the interval the schema allows is
     rejected, and the message names the end that failed. ``core_frac`` is
@@ -324,7 +315,6 @@ def test_validate_reference_config_rejects_a_bound_outside_the_schema_range():
     )
 
 
-@pytest.mark.unit
 def test_validate_reference_config_rejects_a_faulty_reference_file(tmp_path):
     """A fault in the reference config itself is attributed to the file, not
     to the parameter sweep, so the user knows which file to edit.
@@ -344,7 +334,6 @@ def test_validate_reference_config_rejects_a_faulty_reference_file(tmp_path):
     assert f'in {faulty}:' in message
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize(
     ('parameters', 'extra', 'error', 'match'),
     [
@@ -416,7 +405,6 @@ class _StopAfterSetup(Exception):
     """Raised in place of the initial design, once startup has finished."""
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize('switch', [None, True, False], ids=['default', 'on', 'off'])
 def test_run_inference_reports_the_spectral_cache_the_study_uses(
     monkeypatch, tmp_path, caplog, switch
@@ -471,7 +459,6 @@ def test_run_inference_reports_the_spectral_cache_the_study_uses(
         assert os.environ[SPECTRAL_CACHE_ENV] == '1'
 
 
-@pytest.mark.unit
 def test_run_inference_rejects_incomplete_sigma_before_emptying_output(monkeypatch, tmp_path):
     """A ``[sigma]`` table missing an observable is refused before the output
     folder is emptied, so a typo does not cost the previous study's results.
@@ -535,7 +522,6 @@ def test_run_inference_rejects_incomplete_sigma_before_emptying_output(monkeypat
     assert isinstance(config['sigma']['T_obs'], float)
 
 
-@pytest.mark.unit
 def test_run_inference_rejects_invalid_correlation_before_emptying_output(
     monkeypatch, tmp_path, caplog
 ):
@@ -640,7 +626,6 @@ def test_run_inference_rejects_invalid_correlation_before_emptying_output(
     assert 'share no element' in caplog.text
 
 
-@pytest.mark.unit
 def test_validate_truth_returns_ordered_floats_and_rejects_bad_tables():
     """A complete ``[truth]`` table comes back as floats in parameter order;
     a missing, unknown, non-finite, boolean or non-positive log-scaled entry
@@ -687,7 +672,6 @@ def test_validate_truth_returns_ordered_floats_and_rejects_bad_tables():
         )
 
 
-@pytest.mark.unit
 def test_truth_outside_bounds_flags_only_values_beyond_the_range():
     """True values on a bound are recoverable and not flagged; values beyond
     either bound are returned by name so the study can warn about them.
@@ -703,7 +687,6 @@ def test_truth_outside_bounds_flags_only_values_beyond_the_range():
     assert inference_mod.truth_outside_bounds(pars, None) == {}
 
 
-@pytest.mark.unit
 def test_run_inference_rejects_incomplete_truth_before_emptying_output(monkeypatch, tmp_path):
     """A ``[truth]`` table missing a parameter is refused before the output
     folder is emptied, and a complete one is stored back as floats.
@@ -763,7 +746,6 @@ def test_run_inference_rejects_incomplete_truth_before_emptying_output(monkeypat
 # ============================================================================
 
 
-@pytest.mark.unit
 def test_infer_from_config_uses_logger_not_print(caplog, tmp_path, monkeypatch):
     """Regression: infer_from_config must route its startup message through
     the module logger, not print(). The original PR #675 BayesOpt rewrite
@@ -795,7 +777,6 @@ def test_infer_from_config_uses_logger_not_print(caplog, tmp_path, monkeypatch):
     )
 
 
-@pytest.mark.unit
 def test_get_nested_docstring_uses_current_schema_example():
     """Regression: utils.get_nested docstring example must use a
     parameter path that is valid on the current branch schema
@@ -814,7 +795,6 @@ def test_get_nested_docstring_uses_current_schema_example():
     assert 'planet.mass_tot' in doc, 'docstring example must use the current planet.* schema'
 
 
-@pytest.mark.unit
 def test_validate_patience_accepts_whole_numbers_and_rejects_others():
     """0 (off) and positive whole numbers pass unchanged. A negative, fractional,
     boolean or string patience is refused; True would otherwise pass as 1 and stop a

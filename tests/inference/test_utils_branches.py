@@ -271,7 +271,6 @@ def test_print_results_reports_true_parameters_beside_best_fit(tmp_path, caplog)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_get_kernel_mat12_returns_matern_with_nu_half():
     """get_kernel('MAT1/2', d) builds a once-differentiable Matern kernel (nu=0.5)."""
     from gpytorch.kernels import MaternKernel
@@ -289,7 +288,6 @@ def test_get_kernel_mat12_returns_matern_with_nu_half():
     assert result.lengthscale.shape[-1] == 2
 
 
-@pytest.mark.unit
 def test_get_kernel_mat32_returns_matern_with_nu_three_halves():
     """get_kernel('MAT3/2', d) builds a once-mean-square-differentiable Matern (nu=1.5).
 
@@ -311,7 +309,6 @@ def test_get_kernel_mat32_returns_matern_with_nu_three_halves():
     assert result.lengthscale.shape[-1] == 3
 
 
-@pytest.mark.unit
 def test_get_kernel_mat52_returns_matern_with_nu_five_halves():
     """get_kernel('MAT5/2', d) builds a twice-mean-square-differentiable Matern (nu=2.5).
 
@@ -333,7 +330,6 @@ def test_get_kernel_mat52_returns_matern_with_nu_five_halves():
     assert result.lengthscale.shape[-1] == 1
 
 
-@pytest.mark.unit
 def test_get_kernel_raises_for_unknown_kernel_name():
     """get_kernel raises ValueError for names outside the documented set.
 
@@ -363,7 +359,6 @@ def test_get_kernel_raises_for_unknown_kernel_name():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_print_results_reads_the_best_run_helpfile_in_place(tmp_path, caplog):
     """The best run's helpfile is read through the exact reader: an empty field
     before H2O_vmr leaves the reported best-fit value at 0.9, not NaN."""

@@ -537,7 +537,6 @@ def test_plot_result_objective_logarithmic_x_axis_branch(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_plot_result_correlation_multi_par_multi_obs(monkeypatch, tmp_path, caplog):
     """Multi-parameter, multi-observable case sets per-axis log scaling.
 
@@ -609,7 +608,6 @@ def test_plot_result_correlation_multi_par_multi_obs(monkeypatch, tmp_path, capl
     assert {len(c.args[0]) for c in axis.scatter.call_args_list} == {1}
 
 
-@pytest.mark.unit
 def test_plot_result_correlation_ignores_stray_console_log_file(monkeypatch, tmp_path):
     """A worker's console-log capture file must not be treated as a case dir.
 
@@ -1044,7 +1042,6 @@ def _diamond_call(ax):
     return calls[0]
 
 
-@pytest.mark.unit
 def test_collect_case_observables_pins_objective_and_skips_missing_helpfile(tmp_path, caplog):
     """The recomputed objective matches its closed form; a case with no
     helpfile is warned about and dropped rather than crashing the figure.
@@ -1072,7 +1069,6 @@ def test_collect_case_observables_pins_objective_and_skips_missing_helpfile(tmp_
     assert 'Missing helpfile for' in caplog.text
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_collect_case_observables_scores_with_observable_correlation(tmp_path):
     """The plotted J uses the optimiser's correlation: u = (2, 2), rho = 0.6 gives chi2 5, not 8."""
@@ -1087,7 +1083,6 @@ def test_collect_case_observables_scores_with_observable_correlation(tmp_path):
     assert independent.loc[0, 'J'] == pytest.approx(-np.log10(8.0 + 1e-10), rel=1e-9)
 
 
-@pytest.mark.unit
 def test_collect_case_observables_marks_recorded_failures_as_excluded(tmp_path):
     """Cases listed in the failure table are flagged, scored ones are not.
 
@@ -1111,7 +1106,6 @@ def test_collect_case_observables_marks_recorded_failures_as_excluded(tmp_path):
     assert df.loc['w0_i1', 'J'] > df.loc['w0_i0', 'J']
 
 
-@pytest.mark.unit
 def test_plot_result_observables_highlights_the_reported_best_case(monkeypatch, tmp_path):
     """The named case is highlighted even when another scores better.
 
@@ -1138,7 +1132,6 @@ def test_plot_result_observables_highlights_the_reported_best_case(monkeypatch, 
     assert str(saved).endswith('result_observables.png')
 
 
-@pytest.mark.unit
 def test_plot_result_observables_falls_back_to_best_j_for_an_unknown_case(
     monkeypatch, tmp_path, caplog
 ):
@@ -1166,7 +1159,6 @@ def test_plot_result_observables_falls_back_to_best_j_for_an_unknown_case(
     fig.savefig.assert_called_once()
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize(
     'setup, expected',
     [
@@ -1200,7 +1192,6 @@ def test_plot_result_observables_skips_when_nothing_is_scored(
     assert not list((tmp_path / 'plots').glob('*.png'))
 
 
-@pytest.mark.unit
 def test_panel_ratio_parks_out_of_range_cases_on_the_axis_edges():
     """Cases beyond the ratio axis are drawn on its edges, one legend each.
 
@@ -1236,7 +1227,6 @@ def test_panel_ratio_parks_out_of_range_cases_on_the_axis_edges():
     ax.set_xlim.assert_called_once_with(lo, hi)
 
 
-@pytest.mark.unit
 def test_panel_residual_keeps_limits_ordered_for_a_single_observable():
     """A lone observable still yields a strictly increasing x-range.
 
@@ -1275,7 +1265,6 @@ def _write_param_case(root, worker, iter, r_obs, fo2, h_budget):
     return case
 
 
-@pytest.mark.unit
 def test_position_in_range_uses_log10_for_log_scaled_parameters():
     """A log-scaled value is placed by its log10 within the range, matching
     how the optimiser normalises it; values beyond the range fall outside
@@ -1294,7 +1283,6 @@ def test_position_in_range_uses_log10_for_log_scaled_parameters():
     )
 
 
-@pytest.mark.unit
 def test_plot_result_parameters_places_truth_and_named_best_fit(monkeypatch, tmp_path):
     """The truth and the named best case are drawn at their range positions,
     and the error bars are best minus truth as a percentage of the range.
@@ -1329,7 +1317,6 @@ def test_plot_result_parameters_places_truth_and_named_best_fit(monkeypatch, tmp
     assert str(fig.savefig.call_args.args[0]).endswith('result_parameters.png')
 
 
-@pytest.mark.unit
 def test_plot_result_parameters_widens_axis_for_truth_outside_range(monkeypatch, tmp_path):
     """A true value beyond the sampled range stays visible: the axis widens
     past [0, 1] just far enough to include it.
@@ -1347,7 +1334,6 @@ def test_plot_result_parameters_widens_axis_for_truth_outside_range(monkeypatch,
     assert left == pytest.approx(-0.04, rel=1e-12)
 
 
-@pytest.mark.unit
 def test_plot_result_parameters_skips_when_nothing_is_scored(monkeypatch, tmp_path, caplog):
     """Every case excluded leaves nothing to compare, so the function warns
     and draws nothing rather than picking a best row from an empty frame.

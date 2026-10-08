@@ -32,7 +32,6 @@ from proteus.inference.likelihood import CorrelationWhitener  # noqa: E402
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
-@pytest.mark.unit
 def test_log_warp_monotonic_decreasing_in_squared_distance():
     """``log_warp(sq_dist)`` returns -log10(sq_dist + 1e-10): values
     closer to the target (sq_dist near 0) score higher than distant
@@ -51,7 +50,6 @@ def test_log_warp_monotonic_decreasing_in_squared_distance():
     assert -0.5 < score_far.item() < 0.5
 
 
-@pytest.mark.unit
 def test_log_warp_finite_at_exact_zero():
     """``log_warp(0.0)`` does not diverge: the 1e-10 offset guarantees
     finite output. Discrimination: a regression that removed the offset
@@ -63,7 +61,6 @@ def test_log_warp_finite_at_exact_zero():
     assert 9 < val.item() < 11
 
 
-@pytest.mark.unit
 def test_update_toml_updates_nested_keys(tmp_path):
     """``update_toml`` applies dotted-key overrides on the loaded config
     (e.g. ``section.value=2``) and creates intermediate nesting for keys
@@ -85,7 +82,6 @@ def test_update_toml_updates_nested_keys(tmp_path):
     assert loaded['new']['branch']['leaf'] == 3
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize('enabled', [True, False], ids=['cache-on', 'cache-off'])
 @pytest.mark.parametrize(
     'ref_cache', [None, 'none', '/my/cache'], ids=['unset', 'none', 'path']
@@ -133,7 +129,6 @@ def test_run_proteus_takes_the_spectral_cache_from_the_inference_switch(
     assert written['planet']['mass_tot'] == pytest.approx(2.0)
 
 
-@pytest.mark.unit
 def test_spectral_cache_switch_defaults_to_on(monkeypatch):
     """Workers started without the switch recorded share the cache, and only
     an explicit "0" turns it off.
@@ -148,7 +143,6 @@ def test_spectral_cache_switch_defaults_to_on(monkeypatch):
     assert objective_mod.worker_spectral_cache('study', False) == 'none'
 
 
-@pytest.mark.unit
 def test_apply_nested_updates_mutates_in_place_and_rejects_value_paths():
     """``apply_nested_updates`` writes dotted keys into the dict it was given,
     creating the sections a new key needs, and refuses a path that descends
@@ -174,7 +168,6 @@ def test_apply_nested_updates_mutates_in_place_and_rejects_value_paths():
     assert config['section']['value'] == 2
 
 
-@pytest.mark.unit
 def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     """``run_proteus`` handles the escaped-atmosphere case (P_surf=0):
     the observable dictionary is populated with zeros instead of NaN,
@@ -229,7 +222,6 @@ def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     assert status != 20
 
 
-@pytest.mark.unit
 def test_run_proteus_raises_when_command_missing(monkeypatch, tmp_path):
     """A ``FileNotFoundError`` from ``subprocess.run`` (i.e. the proteus
     binary is not on PATH) is wrapped as ``RuntimeError`` with a
@@ -268,7 +260,6 @@ def test_run_proteus_raises_when_command_missing(monkeypatch, tmp_path):
     assert len(run_calls) == 1
 
 
-@pytest.mark.unit
 def test_run_proteus_raises_when_command_fails(monkeypatch, tmp_path):
     """A non-zero exit from the proteus binary is reported as a
     ``ProteusRunFailure`` naming the run, its exit code, and the status the
@@ -337,7 +328,6 @@ def test_run_proteus_raises_when_command_fails(monkeypatch, tmp_path):
     assert str(console) in rendered
 
 
-@pytest.mark.unit
 def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
     """Requesting an observable that the simulator did not write to the
     helpfile raises ``KeyError`` with a 'Requested observable' message,
@@ -383,7 +373,6 @@ def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
     assert status == objective_mod.STATUS_MISSING
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_eval_obj_mixes_log_and_linear_variables(monkeypatch):
     """``eval_obj`` evaluates log-relative residuals for log-scaled
@@ -419,7 +408,6 @@ def test_eval_obj_mixes_log_and_linear_variables(monkeypatch):
     assert value_match.item() == pytest.approx(10.0, rel=1e-6)
 
 
-@pytest.mark.unit
 def test_eval_obj_handles_zero_true_value():
     """Zero-valued observables should use an EPS_CLIP offset denominator
     to avoid division-by-zero.
@@ -443,7 +431,6 @@ def test_eval_obj_handles_zero_true_value():
     assert torch.isfinite(value).all()
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_eval_obj_sigma_matched_by_key_not_order(monkeypatch):
     """With ``sigma``, each residual is divided by the uncertainty of the
@@ -480,7 +467,6 @@ def test_eval_obj_sigma_matched_by_key_not_order(monkeypatch):
         objective_mod.eval_obj(sim, tru, {'R_obs': 5.0e5})
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_eval_obj_sigma_converted_to_dex_for_log_observables():
     """For an observable compared in log space, ``sigma`` is given in the
@@ -524,7 +510,6 @@ def _chi2(sim, tru, sigma, correlation=None):
     return 10 ** (-objective_mod.eval_obj(sim, tru, sigma, whitener).item())
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_eval_obj_correlation_matches_bivariate_chi_squared(monkeypatch):
     """Two correlated observables give (u1^2 - 2 rho u1 u2 + u2^2) / (1 - rho^2),
@@ -552,7 +537,6 @@ def test_eval_obj_correlation_matches_bivariate_chi_squared(monkeypatch):
         objective_mod.eval_obj(sim, tru, None, CorrelationWhitener(list(tru), corr))
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_eval_obj_correlation_kept_for_log_observables():
     """A log-space observable's sigma is converted to dex, its correlation used unchanged."""
@@ -568,7 +552,6 @@ def test_eval_obj_correlation_kept_for_log_observables():
     assert abs(chi2 - 2.0) > 0.5  # rho ignored
 
 
-@pytest.mark.unit
 def test_eval_obj_compares_element_ratios_in_log_only_with_sigma():
     """Without sigma C/O_atm stays linear, as before; with sigma it is compared in dex."""
     tru, sim = {'C/O_atm': 0.5}, {'C/O_atm': 0.25}
@@ -582,7 +565,6 @@ def test_eval_obj_compares_element_ratios_in_log_only_with_sigma():
     assert abs(expected - 25.0) > 20.0
 
 
-@pytest.mark.unit
 def test_validate_sigma_accepts_complete_table_and_rejects_bad_entries():
     """``validate_sigma`` returns the uncertainties as floats when every
     observable has one, passes None through, and refuses a table with a
@@ -614,7 +596,6 @@ def test_validate_sigma_accepts_complete_table_and_rejects_bad_entries():
     assert lin['R_obs'] == pytest.approx(1.0e5)
 
 
-@pytest.mark.unit
 def test_validate_sigma_takes_dex_strings_for_log_compared_observables():
     """'0.1 dex' is used as exactly 0.1 dex: a simulated C/O 0.1 dex above the
     target gives chi2 = 1 (J = 0) and 0.2 dex below gives chi2 = 4. Dex on a linearly
@@ -637,7 +618,6 @@ def test_validate_sigma_takes_dex_strings_for_log_compared_observables():
             objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': bad})
 
 
-@pytest.mark.unit
 def test_validate_sigma_warns_when_a_linear_sigma_converts_poorly_to_dex(caplog):
     """A linear sigma above 30 % of a log-compared value logs a warning that suggests
     dex; 20 %, a dex entry and a large sigma on a linear observable do not."""
@@ -654,7 +634,6 @@ def test_validate_sigma_warns_when_a_linear_sigma_converts_poorly_to_dex(caplog)
     assert "sigma for 'C/O_atm' is 40% of its value" in messages[0]
 
 
-@pytest.mark.unit
 def test_prot_builder_unnormalizes_and_calls_J(monkeypatch):
     """``prot_builder`` returns a closure that un-normalises an x in
     [0, 1]^d to the physical parameter ranges (so x=0.5 with bounds
@@ -686,7 +665,6 @@ def test_prot_builder_unnormalizes_and_calls_J(monkeypatch):
     assert captured['x'][0, 1].item() == pytest.approx(2.5)
 
 
-@pytest.mark.unit
 def test_prot_builder_unnormalizes_log_scaled_parameter(monkeypatch):
     """Surface pressure spans orders of magnitude, so log scaling must round-trip."""
     captured = {}
@@ -718,7 +696,6 @@ def test_prot_builder_unnormalizes_log_scaled_parameter(monkeypatch):
 # ============================================================================
 
 
-@pytest.mark.unit
 def test_run_proteus_failure_distinguishes_a_missing_status_from_a_generic_error(
     monkeypatch, tmp_path
 ):
@@ -777,7 +754,6 @@ def test_run_proteus_failure_distinguishes_a_missing_status_from_a_generic_error
     assert excinfo.value.status == 21
 
 
-@pytest.mark.unit
 def test_run_proteus_failure_points_at_the_simulator_logfile(monkeypatch, tmp_path):
     """When the failed run left a logfile, the report names it. That file holds
     the traceback the simulator captured for itself, and is the only place the
@@ -814,7 +790,6 @@ def test_run_proteus_failure_points_at_the_simulator_logfile(monkeypatch, tmp_pa
     assert 'proteus_01.log' in excinfo.value.report()
 
 
-@pytest.mark.unit
 def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, tmp_path):
     """A run that exits zero but writes no readable helpfile is reported as a
     failed sample rather than crashing the study with a bare parser error. That
@@ -880,7 +855,6 @@ def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, t
     assert obs['P_surf'] == pytest.approx(2.5)
 
 
-@pytest.mark.unit
 def test_J_scores_a_failed_run_badly_and_keeps_the_study_running(monkeypatch, tmp_path, caplog):
     """A parameter combination the simulator cannot integrate is scored as a
     poor sample so the sweep continues, and the failure is reported once in
@@ -949,7 +923,6 @@ def test_J_scores_a_failed_run_badly_and_keeps_the_study_running(monkeypatch, tm
         )
 
 
-@pytest.mark.unit
 def test_J_scores_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp_path, caplog):
     """A run that exits cleanly but records an error status is scored badly and
     named in the log. Status 25 is the only error code reachable this way: it
@@ -1016,7 +989,6 @@ def test_J_scores_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp_pa
     assert good.item() - objective_mod.BAD_OBJ_VALUE > 25.0
 
 
-@pytest.mark.unit
 def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp_path):
     """`abort_on_failure` stops the study on a run that exited cleanly but
     recorded an error status, the same way it stops on a run that crashed.
@@ -1094,7 +1066,6 @@ def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp
     assert scored.item() < -10.0
 
 
-@pytest.mark.unit
 def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
     """The failure range covers the error statuses the simulator can record."""
     monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
@@ -1142,7 +1113,6 @@ def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
     assert _score(objective_mod.STATUS_MISSING) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
 
 
-@pytest.mark.unit
 def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path, caplog):
     """A status named in `failure_codes` marks an outcome the study does not fit
     against, not a fault. A run stopped by its clock limit (status 11) completed
@@ -1223,7 +1193,6 @@ def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path
 # ============================================================================
 
 
-@pytest.mark.unit
 def test_run_output_dir_names_the_folder_the_simulator_is_given(monkeypatch, tmp_path):
     """The per-evaluation folder is derived in one place, so the path a failure
     report names is the path the simulator was told to write to. Initial
@@ -1246,7 +1215,6 @@ def test_run_output_dir_names_the_folder_the_simulator_is_given(monkeypatch, tmp
     assert rel_init != rel
 
 
-@pytest.mark.unit
 def test_J_records_clean_exit_failures_through_the_real_simulator_wrapper(
     monkeypatch, tmp_path
 ):
@@ -1366,7 +1334,6 @@ def _stub_runner(monkeypatch, out_abs, outcome, seen=None):
     monkeypatch.setenv('PROTEUS_INFERENCE_DISPATCH', 'runner')
 
 
-@pytest.mark.unit
 def test_set_dispatch_rejects_an_unknown_mode(clean_dispatch):
     """Error contract: a misspelled dispatch is refused where the study is
     configured, and leaves the mode already in force untouched.
@@ -1380,7 +1347,6 @@ def test_set_dispatch_rejects_an_unknown_mode(clean_dispatch):
     assert objective_mod.dispatch_mode() == 'runner'
 
 
-@pytest.mark.unit
 def test_dispatch_defaults_to_one_process_per_evaluation(clean_dispatch):
     """A study that asks for nothing, and one whose environment carries a value
     this version does not know, both get the long-standing behaviour.
@@ -1397,7 +1363,6 @@ def test_dispatch_defaults_to_one_process_per_evaluation(clean_dispatch):
     assert objective_mod.dispatch_mode() == 'subprocess'
 
 
-@pytest.mark.unit
 def test_run_proteus_reuses_a_process_when_dispatch_is_runner(clean_dispatch, tmp_path):
     """The evaluation goes to the worker's reused process, no new `proteus
     start` is launched, and the observables come back as on the default path.
@@ -1433,7 +1398,6 @@ def test_run_proteus_reuses_a_process_when_dispatch_is_runner(clean_dispatch, tm
     assert obs['T_surf'] == pytest.approx(1400.0)
 
 
-@pytest.mark.unit
 def test_runner_dispatch_reports_failures_like_a_failed_child(clean_dispatch, tmp_path):
     """A run the reused process could not complete carries the same failure
     type, reason and exit code as one that ran on its own, and names the
@@ -1463,7 +1427,6 @@ def test_runner_dispatch_reports_failures_like_a_failed_child(clean_dispatch, tm
     assert failure.console_path.endswith(f'runner{failures_mod.CHILD_CONSOLE_SUFFIX}')
 
 
-@pytest.mark.unit
 def test_runner_dispatch_gives_each_initial_sampling_process_its_own_console(
     clean_dispatch, tmp_path
 ):
@@ -1504,7 +1467,6 @@ def test_runner_dispatch_gives_each_initial_sampling_process_its_own_console(
     assert [str(c) for c in consoles] == [first, second]
 
 
-@pytest.mark.unit
 def test_run_proteus_leaves_the_callers_parameter_dict_as_it_was_passed(monkeypatch, tmp_path):
     """The run-specific config entries the simulator needs are added to the
     config it is given, not to the dict the caller passed in. The caller keeps
@@ -1570,7 +1532,6 @@ def test_run_proteus_leaves_the_callers_parameter_dict_as_it_was_passed(monkeypa
     assert set(objective_mod._FIXED_PARAMETER_KEYS) <= set(written[-1])
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_J_reports_a_clean_exit_failure_with_only_the_swept_values(
     monkeypatch, tmp_path, caplog

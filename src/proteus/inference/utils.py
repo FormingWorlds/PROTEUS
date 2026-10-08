@@ -233,11 +233,11 @@ def print_results(D, logs, config, output, n_init):
     truth = config.get('truth')
     if truth is None:
         log.info(f'{"Parameter":28s} | Best fitting value')
-        for i, k in enumerate(param_keys):
+        for k in param_keys:
             log.info(f'{k:28s}   {input[k]:g}')
     else:
         log.info(f'{"Parameter":28s} |    True     |  Best fit')
-        for i, k in enumerate(param_keys):
+        for k in param_keys:
             log.info(f'{k:28s}   {truth[k]:8.4e}    {input[k]:8.4e}')
     log.info(' ')
 

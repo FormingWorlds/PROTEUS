@@ -317,13 +317,17 @@ def _worker_loop(
         current_best = Y.max().item()
         log.info(f'Step {step:5d}, best objective = {current_best:+.5f}')
 
-        if patience and evaluations_since_improvement(Y, n_init) >= patience:
-            if converged is not None and not converged.is_set():
-                log.info(
-                    f'Stopping the study: the best objective has not risen by more than '
-                    f'{PATIENCE_MIN_GAIN} in {patience} evaluations'
-                )
-                converged.set()
+        if (
+            patience
+            and converged is not None
+            and not converged.is_set()
+            and evaluations_since_improvement(Y, n_init) >= patience
+        ):
+            log.info(
+                f'Stopping the study: the best objective has not risen by more than '
+                f'{PATIENCE_MIN_GAIN} in {patience} evaluations'
+            )
+            converged.set()
 
         task_id += 1
 
