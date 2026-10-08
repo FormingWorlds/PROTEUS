@@ -136,7 +136,7 @@ develop = [
     "pytest-cov",
     "pytest-dependency",
     "pytest-timeout",
-    "pytest-xdist[psutil]",  # `-n auto` counts physical cores only through psutil
+    "pytest-xdist",  # parallel test execution in CI
     "hypothesis",    # property-based / fuzz tests at slow tier
 ]
 

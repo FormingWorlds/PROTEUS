@@ -147,15 +147,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            workers: auto
-          - os: macos-latest
-            workers: 2
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    # xdist workers: ubuntu one per physical core (2), 26-35 min; macOS 2 of its 3
-    # cores, 29 min (on 3 the heaviest tests reach 92 % of their timeouts). The budget
-    # covers setup (up to 13 min), the tests and a cold FWL_DATA download (~30 min).
+    # 2 xdist workers per runner: more push the heaviest tests close to their per-test timeouts.
+    # The budget covers setup, the tests and a cold FWL_DATA download.
     timeout-minutes: 90
     env:
       COVERAGE_FILE: .coverage.integration.${{ matrix.os }}
@@ -171,7 +166,7 @@ jobs:
           pytest tests/integration \
             -m "integration and not slow" \
             -p no:faulthandler \
-            -n ${{ matrix.workers }} --dist worksteal \
+            -n 2 --dist worksteal \
             --durations=25 \
             --junitxml=junit-int-${{ matrix.os }}.xml \
             --cov=proteus \

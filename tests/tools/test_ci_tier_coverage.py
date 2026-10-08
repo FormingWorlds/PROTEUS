@@ -240,6 +240,13 @@ def _integration_paths() -> list[str]:
     return shlex.split(m.group(1))
 
 
+def _integration_command(text: str) -> str:
+    """The integration-tier pytest command, continuation lines joined into one."""
+    m = re.search(r'pytest tests/integration(?:[^\n]*\\\n)*[^\n]*', text)
+    assert m, 'no integration-tier pytest invocation found'
+    return ' '.join(m.group(0).replace('\\\n', ' ').split())
+
+
 def _duplicate_select_os(shards: list[dict]) -> list[tuple[str, str | None]]:
     """Return ``(select, os)`` pairs that appear on more than one shard.
 
@@ -380,6 +387,11 @@ def test_every_test_carries_exactly_one_tier():
         'these tests carry no tier marker and so are invisible to every CI tier; '
         f'add a module-level pytestmark: {untiered}'
     )
+
+
+def test_integration_tier_runs_two_xdist_workers():
+    """More workers push the heaviest integration tests past their per-test timeouts."""
+    assert '-n 2 --dist worksteal' in _integration_command(_nightly_text())
 
 
 def test_every_tiered_file_is_reachable_by_its_ci_job():
