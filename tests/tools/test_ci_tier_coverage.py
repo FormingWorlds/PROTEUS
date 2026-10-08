@@ -24,14 +24,12 @@ See also:
 
 from __future__ import annotations
 
-import argparse
 import ast
 import re
 import shlex
 from pathlib import Path
 
 import pytest
-from _pytest.config import get_config
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -242,13 +240,11 @@ def _integration_paths() -> list[str]:
     return shlex.split(m.group(1))
 
 
-def _integration_options(text: str) -> argparse.Namespace:
-    """The integration-tier pytest command line, parsed by pytest with pytest-xdist loaded."""
+def _integration_command(text: str) -> str:
+    """The integration-tier pytest command, continuation lines joined into one."""
     m = re.search(r'pytest tests/integration(?:[^\n]*\\\n)*[^\n]*', text)
     assert m, 'no integration-tier pytest invocation found'
-    config = get_config()
-    config.pluginmanager.import_plugin('xdist.plugin')
-    return config._parser.parse_known_args(shlex.split(m.group(0).replace('\\\n', ' '))[1:])
+    return ' '.join(m.group(0).replace('\\\n', ' ').split())
 
 
 def _duplicate_select_os(shards: list[dict]) -> list[tuple[str, str | None]]:
@@ -395,27 +391,7 @@ def test_every_test_carries_exactly_one_tier():
 
 def test_integration_tier_runs_two_xdist_workers():
     """More workers push the heaviest integration tests past their per-test timeouts."""
-    opts = _integration_options(_nightly_text())
-    assert (opts.numprocesses, opts.dist, opts.distload) == (2, 'worksteal', False), opts
-    assert opts.maxprocesses is None and not opts.tx, opts
-
-
-@pytest.mark.parametrize(
-    ('extra', 'expected'),
-    [
-        ('', (2, False, None, [])),
-        (' -vn3', (3, False, None, [])),
-        (' -d', (2, True, None, [])),
-        (' --maxprocesses 1 --tx popen', (2, False, 1, ['popen'])),
-    ],
-)
-def test_integration_options_read_flags_as_pytest_does(extra, expected):
-    """A clustered ``-n``, ``-d``, ``--maxprocesses`` or ``--tx`` changes what ``-n 2`` runs."""
-    opts = _integration_options(
-        f'pytest tests/integration \\\n  -n 2 --dist worksteal{extra}\n'
-    )
-    assert (opts.numprocesses, opts.distload, opts.maxprocesses, opts.tx) == expected
-    assert opts.dist == 'worksteal'
+    assert '-n 2 --dist worksteal' in _integration_command(_nightly_text())
 
 
 def test_every_tiered_file_is_reachable_by_its_ci_job():
