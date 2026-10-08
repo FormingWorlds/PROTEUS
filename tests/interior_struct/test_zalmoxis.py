@@ -2665,9 +2665,9 @@ def test_zalmoxis_solver_init_call_keeps_internal_mode_dispatch(tmp_path, monkey
 
     Initial-condition and equilibration calls arrive with neither a
     temperature callable nor hand-off arrays. The solver must then
-    disable the JAX path (its internal T dispatch under Newton is excluded)
-    and keep Anderson acceleration on as configured, running the internal
-    temperature-mode dispatch, with no external profile injected.
+    disable the JAX path for every outer solver and keep Anderson
+    acceleration on as configured, running the internal temperature-mode
+    dispatch, with no external profile injected.
     """
     main_mock, rho_mock, _mixed_mock, hf_row, model_results, _, _ = _run_gate_solver(
         tmp_path, monkeypatch, 'PALEOS-2phase:MgSiO3', None, None
@@ -2710,6 +2710,7 @@ def test_zalmoxis_solver_guard_preserves_anderson_and_excludes_jax_without_temp_
     config_params = main_mock.call_args.args[0]
     assert config_params['use_jax'] is False
     assert config_params['use_anderson'] is use_anderson
+    assert config_params['outer_solver'] == outer_solver
 
 
 @pytest.mark.unit
