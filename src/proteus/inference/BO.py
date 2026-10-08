@@ -215,8 +215,7 @@ def init_locs(
     """Generate initial sample locations for each worker using the configured acqf.
 
     Calls optimize_acqf once per worker with q=1, passing the candidates chosen so
-    far as pending points, so the workers start from different points (except
-    with LogPI, which ignores pending points).
+    far as pending points, so the workers start from different points.
 
     Parameters
     ----------

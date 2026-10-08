@@ -264,10 +264,10 @@ def get_acqf(name: str, gp: SingleTaskGP, best: float, X_pending: torch.Tensor |
     Supports 'UCB', 'LogEI', and 'LogPI' acquisition functions.
     See docs: https://botorch.readthedocs.io/en/latest/acquisition.html
 
-    With `X_pending`, UCB and LogEI become their Monte Carlo versions, which score a
+    With `X_pending`, each becomes its Monte Carlo version, which scores a
     candidate jointly with the points other workers are still evaluating, so a
-    candidate next to one of them gains little. LogPI has no such version and
-    ignores `X_pending`.
+    candidate next to one of them gains little. For LogPI that version is
+    qProbabilityOfImprovement, the probability itself rather than its log.
 
     Parameters
     ----------
@@ -297,6 +297,10 @@ def get_acqf(name: str, gp: SingleTaskGP, best: float, X_pending: torch.Tensor |
 
         return LogExpectedImprovement(gp, best_f=best)
     elif name == 'LogPI':
+        if X_pending is not None:
+            from botorch.acquisition.monte_carlo import qProbabilityOfImprovement
+
+            return qProbabilityOfImprovement(gp, best_f=best, X_pending=X_pending)
         from botorch.acquisition.analytic import LogProbabilityOfImprovement
 
         return LogProbabilityOfImprovement(gp, best_f=best)

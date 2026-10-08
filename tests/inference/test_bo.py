@@ -561,22 +561,24 @@ def _fitted_gp(D):
     return gp.eval()
 
 
-def _propose(gp, D, X_pending):
+def _propose(gp, D, X_pending, name='LogEI'):
     from botorch.optim import optimize_acqf
 
-    torch.manual_seed(0)  # fixes the Monte Carlo base samples of qLogEI
-    acqf = bo_mod.get_acqf('LogEI', gp, D['Y'].max().item(), X_pending=X_pending)
+    torch.manual_seed(0)  # fixes the Monte Carlo base samples of the batch versions
+    acqf = bo_mod.get_acqf(name, gp, D['Y'].max().item(), X_pending=X_pending)
     x, _ = optimize_acqf(acqf, bo_mod.unit_bounds(1), q=1, num_restarts=2, raw_samples=64)
     return x
 
 
 @pytest.mark.unit
 def test_get_acqf_with_pending_uses_monte_carlo_versions():
-    """With pending points, LogEI and UCB become qLogEI and qUCB holding those
-    points, and LogPI, which has no such version, stays analytic."""
-    from botorch.acquisition.analytic import LogProbabilityOfImprovement
+    """With pending points, LogEI, UCB and LogPI become qLogEI, qUCB and qPI
+    holding those points, with best_f carried over where it applies."""
     from botorch.acquisition.logei import qLogExpectedImprovement
-    from botorch.acquisition.monte_carlo import qUpperConfidenceBound
+    from botorch.acquisition.monte_carlo import (
+        qProbabilityOfImprovement,
+        qUpperConfidenceBound,
+    )
 
     D = _two_peak_data()
     gp = _fitted_gp(D)
@@ -589,26 +591,31 @@ def test_get_acqf_with_pending_uses_monte_carlo_versions():
     assert isinstance(ei, qLogExpectedImprovement)
     assert ei.best_f.item() == pytest.approx(0.73)
     assert isinstance(ucb, qUpperConfidenceBound)
-    for acqf in (ei, ucb):
+    assert isinstance(pi, qProbabilityOfImprovement)
+    assert pi.best_f.item() == pytest.approx(0.73)
+    for acqf in (ei, ucb, pi):
         assert acqf.X_pending.tolist() == [[0.2]]
-    assert isinstance(pi, LogProbabilityOfImprovement)
 
 
 @pytest.mark.unit
-def test_pending_point_moves_the_proposal_away():
-    """LogEI proposes the same point again while it is busy unless that point is
-    pending; with it pending, the proposal moves to the other maximum.
+# PI peaks beside the best observation at x = 0.1, EI further into the peak.
+@pytest.mark.parametrize(('name', 'x_first'), [('LogEI', 0.2), ('LogPI', 0.12)])
+def test_pending_point_moves_the_proposal_away(name, x_first):
+    """The acquisition proposes the same point again while it is busy unless
+    that point is pending; with it pending, the proposal moves to the other
+    maximum.
 
-    Without pending points, two workers would both propose the point near 0.2.
+    Without pending points, two workers would both propose a point on the
+    higher peak at 0.2.
     """
     D = _two_peak_data()
     gp = _fitted_gp(D)
 
-    first = _propose(gp, D, X_pending=None)
-    again = _propose(gp, D, X_pending=None)
-    second = _propose(gp, D, X_pending=first)
+    first = _propose(gp, D, X_pending=None, name=name)
+    again = _propose(gp, D, X_pending=None, name=name)
+    second = _propose(gp, D, X_pending=first, name=name)
 
-    assert first.item() == pytest.approx(0.2, abs=0.05)
+    assert first.item() == pytest.approx(x_first, abs=0.05)
     assert again.item() == pytest.approx(first.item(), abs=1e-3), 'without pending: a duplicate'
     assert second.item() == pytest.approx(0.8, abs=0.05), 'with pending: the other maximum'
 
