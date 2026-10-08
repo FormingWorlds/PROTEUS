@@ -2167,6 +2167,7 @@ def _run_gate_solver(
     mzf=None,
     use_anderson=None,
     outer_solver=None,
+    use_jax=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -2208,6 +2209,8 @@ def _run_gate_solver(
         Value for ``config.interior_struct.zalmoxis.use_anderson``.
     outer_solver : str, optional
         Value for ``config.interior_struct.zalmoxis.outer_solver``.
+    use_jax : bool, optional
+        Value for ``config.interior_struct.zalmoxis.use_jax``.
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -2230,6 +2233,8 @@ def _run_gate_solver(
         config.interior_struct.zalmoxis.use_anderson = use_anderson
     if outer_solver is not None:
         config.interior_struct.zalmoxis.outer_solver = outer_solver
+    if use_jax is not None:
+        config.interior_struct.zalmoxis.use_jax = use_jax
     if mzf is not None:
         config.interior_struct.zalmoxis.mushy_zone_factor = mzf
     melting_patch_kwargs = (
@@ -2690,13 +2695,15 @@ def test_zalmoxis_solver_init_call_keeps_internal_mode_dispatch(tmp_path, monkey
 @pytest.mark.unit
 @pytest.mark.parametrize('use_anderson', [True, False])
 @pytest.mark.parametrize('outer_solver', ['newton', 'picard'])
+@pytest.mark.parametrize('use_jax', [True, False])
 def test_zalmoxis_solver_guard_preserves_anderson_and_excludes_jax_without_temp_data(
-    tmp_path, monkeypatch, use_anderson, outer_solver
+    tmp_path, monkeypatch, use_anderson, outer_solver, use_jax
 ):
     """Invariant: calls without temperature data exclude JAX across configurations.
 
     A call arriving without temperature data disables JAX while preserving
-    Anderson acceleration as configured, across outer solvers and Anderson settings.
+    Anderson acceleration as configured, across outer solvers, Anderson settings
+    and both configured JAX settings.
     """
     main_mock, _, _, _, _, _, _ = _run_gate_solver(
         tmp_path,
@@ -2706,6 +2713,7 @@ def test_zalmoxis_solver_guard_preserves_anderson_and_excludes_jax_without_temp_
         None,
         use_anderson=use_anderson,
         outer_solver=outer_solver,
+        use_jax=use_jax,
     )
     config_params = main_mock.call_args.args[0]
     assert config_params['use_jax'] is False
