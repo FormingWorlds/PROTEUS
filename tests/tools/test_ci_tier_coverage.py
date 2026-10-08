@@ -240,11 +240,22 @@ def _integration_paths() -> list[str]:
     return shlex.split(m.group(1))
 
 
-def _integration_command(text: str) -> str:
-    """The integration-tier pytest command, continuation lines joined into one."""
+def _integration_args(text: str) -> list[str]:
+    """The integration-tier pytest command as shell tokens, continuation lines joined."""
     m = re.search(r'pytest tests/integration(?:[^\n]*\\\n)*[^\n]*', text)
     assert m, 'no integration-tier pytest invocation found'
-    return ' '.join(m.group(0).replace('\\\n', ' ').split())
+    return shlex.split(m.group(0).replace('\\\n', ' '))
+
+
+def _flag_values(args: list[str], *names: str) -> list[str]:
+    """Every value given to one of ``names``, as ``-n 2``, ``-n2`` or ``-n=2``."""
+    flag = re.compile('(?:%s)=?(.*)' % '|'.join(map(re.escape, names)))
+    found = []
+    for i, arg in enumerate(args):
+        m = flag.fullmatch(arg)
+        if m:
+            found.append(m.group(1) or args[i + 1])
+    return found
 
 
 def _duplicate_select_os(shards: list[dict]) -> list[tuple[str, str | None]]:
@@ -391,7 +402,9 @@ def test_every_test_carries_exactly_one_tier():
 
 def test_integration_tier_runs_two_xdist_workers():
     """More workers push the heaviest integration tests past their per-test timeouts."""
-    assert '-n 2 --dist worksteal' in _integration_command(_nightly_text())
+    args = _integration_args(_nightly_text())
+    assert _flag_values(args, '-n', '--numprocesses') == ['2'], args
+    assert _flag_values(args, '--dist') == ['worksteal'], args
 
 
 def test_every_tiered_file_is_reachable_by_its_ci_job():
