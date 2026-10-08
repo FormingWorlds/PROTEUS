@@ -170,3 +170,34 @@ resolve_module_pin() {
         exit 1
     fi
 }
+
+# Download <dest> from the first of the urls that serves a file with the given
+# SHA-256, skipping an empty url. Exits 1, with every url's failure named on
+# stderr, when none does.
+fetch_verified() {
+    local sha256="$1" dest="$2" url got
+    shift 2
+    if [ -z "$sha256" ]; then
+        echo "ERROR: no SHA-256 pin for $(basename "$dest"); check tools/_module_pins.py" >&2
+        return 1
+    fi
+    if ! command -v shasum >/dev/null 2>&1 && ! command -v sha256sum >/dev/null 2>&1; then
+        echo "ERROR: neither shasum nor sha256sum is installed; install one of them" >&2
+        return 1
+    fi
+    for url in "$@"; do
+        [ -n "$url" ] || continue
+        echo "Downloading $url"
+        if curl -fLsS --retry 3 --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
+            "$url" -o "$dest"; then
+            got=$( (shasum -a 256 "$dest" 2>/dev/null || sha256sum "$dest") | awk '{print $1}')
+            [ "$got" = "$sha256" ] && return 0
+            echo "WARNING: $url served a file with SHA-256 $got, not $sha256" >&2
+        else
+            echo "WARNING: download from $url failed" >&2
+        fi
+    done
+    rm -f "$dest"
+    echo "ERROR: no source served $(basename "$dest") with SHA-256 $sha256" >&2
+    return 1
+}
