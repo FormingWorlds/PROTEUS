@@ -1873,30 +1873,6 @@ def test_zephyrus_loss_module_without_the_law_fails_loudly(monkeypatch):
     assert _impact_loss_fraction(off, {'M_planet': 6.0e24}, _impact_event()) == 0.0
 
 
-@pytest.mark.unit
-def test_zephyrus_revision_probe():
-    """Verify and print the imported zephyrus path and git revision.
-
-    Acts as a collection probe confirming that the test environment resolves
-    the local ZEPHYRUS clone at the expected commit.
-    """
-    import subprocess
-    from pathlib import Path
-
-    import zephyrus
-
-    zfile = getattr(zephyrus, '__file__', 'unknown')
-    zdir = Path(zfile).resolve().parent.parent.parent
-    try:
-        head = subprocess.check_output(
-            ['git', 'rev-parse', 'HEAD'], cwd=zdir, text=True
-        ).strip()
-    except Exception as exc:
-        head = f'unknown ({exc})'
-    print(f'PROBE: zephyrus={zfile} HEAD={head}')
-    assert Path(zfile).exists()
-
-
 def _mock_impact_loss_call(captured: list[dict] | None = None, **result_kwargs):
     """Create a mock impact_loss capturing arguments and returning an ImpactLossResult."""
 
@@ -2310,13 +2286,14 @@ def test_roche2026_stability_clamps_through_impact_loss_fraction(caplog):
     bounds are clamped for fit evaluation while dynamical quantities use raw state:
     M_t_earth above 10 and below 1e-3, gamma below 1e-3 and above 0.5, and f_atm
     above 0.4 emit out-of-range flags with clamp annotations ('evaluated at').
-    Speeds with v_c / v_esc < 0.99 emit the 'v_sub_escape' flag. Holding other fit
-    inputs equal, evaluating at clamped gamma = 0.5 gives identical fit outputs,
-    whereas full collision evaluations with gamma = 0.7 and 0.5 differ because
-    unclamped physical variables preserve the raw collision state.
+    Speeds with v_c / v_esc < 0.99 emit the 'v_sub_escape' flag. Clamped gamma = 0.5
+    evaluation matches direct fit evaluation with gamma = 0.5 and differs from
+    unclamped gamma = 0.7 by more than 1e-3, whereas full collision evaluations
+    with gamma = 0.7 and 0.5 differ because unclamped physical variables preserve
+    the raw collision state.
     """
     pytest.importorskip('zephyrus.collision')
-    from zephyrus.collision import _roche2026_fit
+    from zephyrus.collision import _roche2026_fit, impact_loss
     from zephyrus.planets_parameters import Me, Re
 
     from proteus.accretion.wrapper import _impact_loss_fraction
@@ -2433,29 +2410,6 @@ def test_roche2026_stability_clamps_through_impact_loss_fraction(caplog):
     assert len(rec) == 1
     assert 'v_sub_escape: v_ratio = 0.513 (< 0.99)' in rec[0].getMessage()
 
-    # Direct fit comparison: clamped gamma 0.7 vs 0.5 with other fit inputs equal
-    fit_05 = _roche2026_fit(
-        b=0.3,
-        gamma=0.5,
-        v_c_v_esc=1.5,
-        M_t_earth=1.0,
-        mass_ratio=1.0,
-        Q_R_prime_MJ=10.0,
-        f_atm=0.02,
-        R_ratio=1.0,
-    )
-    fit_07_clamped = _roche2026_fit(
-        b=0.3,
-        gamma=min(0.7, 0.5),
-        v_c_v_esc=1.5,
-        M_t_earth=1.0,
-        mass_ratio=1.0,
-        Q_R_prime_MJ=10.0,
-        f_atm=0.02,
-        R_ratio=1.0,
-    )
-    assert fit_05 == fit_07_clamped
-
     # Dispatch comparison: gamma 0.7 vs 0.5 differ due to unclamped dynamical state
     event_gamma_05 = _impact_event(
         v_impact=1.5 * 11186.0,
@@ -2478,6 +2432,45 @@ def test_roche2026_stability_clamps_through_impact_loss_fraction(caplog):
     f_g07 = _impact_loss_fraction(cfg, hf_norm, event_gamma_07)
     assert f_g05 != f_g07
     assert abs(f_g07 - f_g05) > 0.01
+
+    # Direct fit comparison: gamma 0.7 evaluated with clamp 0.5 matches _roche2026_fit
+    # and differs from unclamped evaluation by more than 1e-3.
+    m_target_refractory = event_gamma_07.M_target_before * (1.0 - 0.02)
+    res_07 = impact_loss(
+        law='roche2026',
+        v_c=event_gamma_07.v_impact,
+        M_i=event_gamma_07.M_impactor,
+        M_t=m_target_refractory,
+        R_i=event_gamma_07.R_impactor,
+        R_t=event_gamma_07.R_target_before,
+        b=event_gamma_07.impact_parameter,
+        rho_i=event_gamma_07.rho_impactor,
+        rho_t=event_gamma_07.rho_target,
+        f_atm=0.02,
+    )
+    diag_07 = res_07.diagnostics
+    fit_clamped = _roche2026_fit(
+        b=diag_07['b'],
+        gamma=0.5,
+        v_c_v_esc=diag_07['v_ratio'],
+        M_t_earth=diag_07['M_t_earth'],
+        mass_ratio=event_gamma_07.M_impactor / m_target_refractory,
+        Q_R_prime_MJ=diag_07['Q_R_prime'],
+        f_atm=diag_07['f_atm'],
+        R_ratio=diag_07['R_ratio'],
+    )[3]
+    fit_unclamped = _roche2026_fit(
+        b=diag_07['b'],
+        gamma=diag_07['gamma'],
+        v_c_v_esc=diag_07['v_ratio'],
+        M_t_earth=diag_07['M_t_earth'],
+        mass_ratio=event_gamma_07.M_impactor / m_target_refractory,
+        Q_R_prime_MJ=diag_07['Q_R_prime'],
+        f_atm=diag_07['f_atm'],
+        R_ratio=diag_07['R_ratio'],
+    )[3]
+    assert f_g07 == pytest.approx(fit_clamped, rel=1e-12)
+    assert abs(f_g07 - fit_unclamped) > 1e-3
 
 
 @pytest.mark.unit
