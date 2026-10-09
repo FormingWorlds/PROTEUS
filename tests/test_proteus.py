@@ -4027,16 +4027,18 @@ def test_proteus_start_resume_accepts_legacy_accretion_ledger_when_disabled(tmp_
 
 # Each of 16 steps of 0.0125 releases 5.7e17 kg of O and 7.2e16 kg of H.
 _REMELT_THRESH = 7.0e17
+# Trapped N whose released 2/7, 4.3e17 kg, stays below that threshold.
+_REMELT_N = 1.5e18
 
 
 def _remelting_desiccated_run(tmp_path, monkeypatch, n_steps: int):
     """Run the dummy configuration through a desiccated planet's slow remelt.
 
-    The real dummy interior runs every step; around it, the melt fraction is
-    held at 0.30 through the initialisation stage. On the first step after it
-    the planet is left with nothing but 3.6e19 kg of water trapped, 4.03e18 kg
-    of H and 3.20e19 kg of O, so the step desiccates it. The melt fraction then rises
-    to 0.50 in ``n_steps`` equal steps and holds for two more before the run
+    The real dummy interior runs every step; around it, the melt fraction is held at
+    0.30 through the initialisation stage. On the first step after it the planet is
+    left with nothing but 3.6e19 kg of water trapped, 4.03e18 kg of H and 3.20e19 kg
+    of O, and 1.5e18 kg of N2, so the step desiccates it. The melt fraction then
+    rises to 0.50 in ``n_steps`` equal steps and holds for two more before the run
     stops. Trapping is switched on after loading: the loaded config refuses
     ``'front'`` without Aragog, and the remelt path reads no interior profile.
     """
@@ -4075,10 +4077,11 @@ def _remelting_desiccated_run(tmp_path, monkeypatch, n_steps: int):
                     hf_row[f'{name}_kg_{reservoir}'] = 0.0
                     hf_row[f'{name}_mol_{reservoir}'] = 0.0
             trapped = {'H2O': 3.6e19, **element_masses_from_species({'H2O': 3.6e19})}
+            trapped.update(N2=_REMELT_N, N=_REMELT_N)
             for name, mass in trapped.items():
                 hf_row.update({f'{name}_kg_{r}': mass for r in ('solid', 'trapped', 'total')})
             # Escape removed nothing, so the inventory is the baseline.
-            hf_row.update(M_vol_initial=3.6e19, esc_kg_cumulative=0.0)
+            hf_row.update(M_vol_initial=3.6e19 + _REMELT_N, esc_kg_cumulative=0.0)
         hf_row['Phi_global'] = min(0.30 + 0.20 * state['steps'] / n_steps, 0.50)
         if state['steps'] >= n_steps + 2:
             cfg_.params.stop.time.maximum = float(hf_row['Time'])
@@ -4097,11 +4100,14 @@ def test_a_desiccated_planet_remelting_in_small_steps_keeps_what_it_releases(
     the trapped water must stay in the melt and the totals while the planet is
     still flagged, and the totals must not drop while the released hydrogen
     sits below mass_thresh after the flag clears: the escape floor is off on a
-    step on which a remelt returned mass. The run ends where 4 steps
-    of 0.05 end: every total as trapped at the start, 5/7 of the water still
-    trapped, the rest outgassed into melt and atmosphere."""
+    step on which a remelt returned mass. The run ends where 4 steps of 0.05
+    end: the H and O totals as trapped at the start, 5/7 of the water still
+    trapped, the rest outgassed into melt and atmosphere. The released N, 2/7 of
+    1.5e18 kg, stays below mass_thresh: once the remelt stops, the floor reads
+    that reachable N as depleted, as the desiccation gate does, and empties it
+    down to what is still locked, although the N total stays above mass_thresh."""
     runner, hf, trapped = _remelting_desiccated_run(tmp_path, monkeypatch, n_steps=16)
-    after = hf[np.isclose(hf['M_vol_initial'], 3.6e19, rtol=1e-12)]
+    after = hf[np.isclose(hf['M_vol_initial'], 3.6e19 + _REMELT_N, rtol=1e-12)]
     end = hf.iloc[-1]
     assert end['Phi_global'] == pytest.approx(0.50, abs=1e-12)
     assert len(after) >= 19
@@ -4129,6 +4135,16 @@ def test_a_desiccated_planet_remelting_in_small_steps_keeps_what_it_releases(
     # where an escape floor on the reachable remainder deleted it every step.
     h_reach = after['H_kg_atm'] + after['H_kg_liquid']
     assert ((h_reach > 0.0) & (h_reach < _REMELT_THRESH)).sum() >= 5
+
+    # The N released by the remelt is kept while it lasts, then floored to the
+    # locked 5/7 once it stops, its reachable mass below mass_thresh.
+    remelting = after[after['Phi_global'] < 0.5 - 1e-9]
+    np.testing.assert_allclose(remelting['N_kg_total'], _REMELT_N, rtol=1e-12)
+    assert end['N_kg_total'] == pytest.approx(_REMELT_N * 5.0 / 7.0, rel=1e-9)
+    assert end['N_kg_atm'] + end['N_kg_liquid'] == pytest.approx(0.0, abs=1.0)
+    # Discrimination: the N total never falls below mass_thresh, so a floor on
+    # the whole total would have kept the released 4.3e17 kg.
+    assert end['N_kg_total'] > _REMELT_THRESH
 
 
 @pytest.mark.unit
