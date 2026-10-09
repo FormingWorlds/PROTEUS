@@ -1694,7 +1694,7 @@ def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeyp
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_zephyrus_loss_module_evaluates_the_kegerreis_law(monkeypatch):
+def test_zephyrus_loss_module_evaluates_the_kegerreis_law():
     """The zephyrus module turns the impact record into the erosion fraction.
 
     For two identical Earth-like bodies colliding head-on at their mutual
@@ -1715,22 +1715,6 @@ def test_zephyrus_loss_module_evaluates_the_kegerreis_law(monkeypatch):
     import zephyrus.collision
 
     from proteus.accretion.wrapper import _impact_loss_fraction
-
-    if not hasattr(zephyrus.collision, 'impact_loss'):
-
-        def _mock_kegerreis(
-            law, *, v_c, M_i, M_t, R_i, R_t, b, rho_i=None, rho_t=None, f_atm=None
-        ):
-            if law == 'kegerreis2020':
-                val = zephyrus.collision.mass_loss(
-                    v_c=v_c, M_i=M_i, M_t=M_t, rho_i=rho_i, rho_t=rho_t, R_i=R_i, R_t=R_t, b=b
-                )
-                return SimpleNamespace(
-                    law=law, fraction=val, flags=(), diagnostics={'v_ratio': 1.0, 'gamma': 0.5}
-                )
-            raise NotImplementedError
-
-        monkeypatch.setattr('zephyrus.collision.impact_loss', _mock_kegerreis, raising=False)
 
     m_e, r_e = 5.972e24, 6.371e6
     rho_e = m_e / (4.0 / 3.0 * np.pi * r_e**3)
@@ -1806,7 +1790,7 @@ def test_zephyrus_loss_module_evaluates_the_kegerreis_law(monkeypatch):
 
 
 @pytest.mark.unit
-def test_zephyrus_loss_module_warns_outside_the_thin_atmosphere_regime(caplog, monkeypatch):
+def test_zephyrus_loss_module_warns_outside_the_thin_atmosphere_regime(caplog):
     """A thick atmosphere triggers the fitted-domain warning, a thin one not.
 
     The erosion law is fitted for atmospheres of order 1 percent of the
@@ -1818,25 +1802,8 @@ def test_zephyrus_loss_module_warns_outside_the_thin_atmosphere_regime(caplog, m
     import numpy as np
 
     pytest.importorskip('zephyrus.collision')
-    import zephyrus.collision
 
     from proteus.accretion.wrapper import _impact_loss_fraction
-
-    if not hasattr(zephyrus.collision, 'impact_loss'):
-
-        def _mock_kegerreis(
-            law, *, v_c, M_i, M_t, R_i, R_t, b, rho_i=None, rho_t=None, f_atm=None
-        ):
-            if law == 'kegerreis2020':
-                val = zephyrus.collision.mass_loss(
-                    v_c=v_c, M_i=M_i, M_t=M_t, rho_i=rho_i, rho_t=rho_t, R_i=R_i, R_t=R_t, b=b
-                )
-                return SimpleNamespace(
-                    law=law, fraction=val, flags=(), diagnostics={'v_ratio': 1.0, 'gamma': 0.5}
-                )
-            raise NotImplementedError
-
-        monkeypatch.setattr('zephyrus.collision.impact_loss', _mock_kegerreis, raising=False)
 
     m_e, r_e = 5.972e24, 6.371e6
     rho_e = m_e / (4.0 / 3.0 * np.pi * r_e**3)
@@ -1895,14 +1862,42 @@ def test_zephyrus_loss_module_without_the_law_fails_loudly(monkeypatch):
     assert 'atmloss_module' in message
     assert 'zephyrus.collision' in message
     assert 'impact_loss' in message
-    assert 'upgrade' in message
-    assert 'pyproject.toml' in message
 
     # With no loss module configured the same call is silent and loses
     # nothing, so the error is specific to the selected module rather than
     # raised on every impact.
     off = SimpleNamespace(accretion=_impact_accretion(atmloss_module=None))
     assert _impact_loss_fraction(off, {'M_planet': 6.0e24}, _impact_event()) == 0.0
+
+
+def _mock_impact_loss_call(captured: list[dict] | None = None, **result_kwargs):
+    """Create a mock impact_loss capturing arguments and returning an ImpactLossResult."""
+
+    def _mock(law, *, v_c, M_i, M_t, R_i, R_t, b, rho_i=None, rho_t=None, f_atm=None):
+        call = {
+            'law': law,
+            'v_c': v_c,
+            'M_i': M_i,
+            'M_t': M_t,
+            'R_i': R_i,
+            'R_t': R_t,
+            'b': b,
+            'rho_i': rho_i,
+            'rho_t': rho_t,
+            'f_atm': f_atm,
+        }
+        if captured is not None:
+            captured.append(call)
+        diag = {'v_ratio': 1.5, 'gamma': 0.2, 'X_NF': 0.1, 'X_FF': 0.25}
+        diag.update(result_kwargs.get('diagnostics', {}))
+        return SimpleNamespace(
+            law=law,
+            fraction=result_kwargs.get('fraction', 0.35),
+            flags=result_kwargs.get('flags', ()),
+            diagnostics=diag,
+        )
+
+    return _mock
 
 
 @pytest.mark.unit
@@ -1915,35 +1910,13 @@ def test_impact_loss_fraction_routes_each_law_and_passes_arguments(monkeypatch):
     zephyrus.collision.impact_loss. Both 'roche2026' and 'kegerreis2020'
     route through the entry point without altering parameters.
     """
+    pytest.importorskip('zephyrus.collision')
     from proteus.accretion.wrapper import _impact_loss_fraction
 
     calls = []
-
-    def mock_impact_loss(
-        law, *, v_c, M_i, M_t, R_i, R_t, b, rho_i=None, rho_t=None, f_atm=None
-    ):
-        calls.append(
-            {
-                'law': law,
-                'v_c': v_c,
-                'M_i': M_i,
-                'M_t': M_t,
-                'R_i': R_i,
-                'R_t': R_t,
-                'b': b,
-                'rho_i': rho_i,
-                'rho_t': rho_t,
-                'f_atm': f_atm,
-            }
-        )
-        return SimpleNamespace(
-            law=law,
-            fraction=0.35,
-            flags=(),
-            diagnostics={'v_ratio': 1.5, 'gamma': 0.2, 'X_NF': 0.1, 'X_FF': 0.25},
-        )
-
-    monkeypatch.setattr('zephyrus.collision.impact_loss', mock_impact_loss, raising=False)
+    monkeypatch.setattr(
+        'zephyrus.collision.impact_loss', _mock_impact_loss_call(calls), raising=True
+    )
 
     event = _impact_event(
         v_impact=1.5e4,
@@ -1968,15 +1941,15 @@ def test_impact_loss_fraction_routes_each_law_and_passes_arguments(monkeypatch):
         assert len(calls) == 1
         c = calls[0]
         assert c['law'] == law
-        assert c['v_c'] == pytest.approx(1.5e4, rel=1e-12)
-        assert c['M_i'] == pytest.approx(1.0e24, rel=1e-12)
-        assert c['M_t'] == pytest.approx(5.0e24, rel=1e-12)
-        assert c['R_i'] == pytest.approx(3.0e6, rel=1e-12)
-        assert c['R_t'] == pytest.approx(6.0e6, rel=1e-12)
-        assert c['b'] == pytest.approx(0.4, rel=1e-12)
-        assert c['rho_i'] == pytest.approx(5000.0, rel=1e-12)
-        assert c['rho_t'] == pytest.approx(5500.0, rel=1e-12)
-        assert c['f_atm'] == pytest.approx(expected_f_atm, rel=1e-12)
+        assert c['v_c'] == event.v_impact
+        assert c['M_i'] == event.M_impactor
+        assert c['M_t'] == event.M_target_before
+        assert c['R_i'] == event.R_impactor
+        assert c['R_t'] == event.R_target_before
+        assert c['b'] == event.impact_parameter
+        assert c['rho_i'] == event.rho_impactor
+        assert c['rho_t'] == event.rho_target
+        assert c['f_atm'] == expected_f_atm
         # Discrimination guard: f_atm uses M_planet (6.0e24), not M_target_before (5.0e24).
         wrong_f_atm = 6.0e21 / 5.0e24
         assert abs(c['f_atm'] - wrong_f_atm) > 1.0e-4
@@ -1988,7 +1961,7 @@ def test_roche2026_loss_module_evaluates_real_zephyrus():
 
     Verifies clause: when ZEPHYRUS provides the Roche et al. (2026) law,
     _impact_loss_fraction returns the scaling law result matching direct
-    evaluation. Skips until the ZEPHYRUS update is available in the environment.
+    evaluation. Skips when zephyrus.collision provides no impact_loss.
     """
     pytest.importorskip('zephyrus.collision')
     import zephyrus.collision
@@ -1998,7 +1971,7 @@ def test_roche2026_loss_module_evaluates_real_zephyrus():
     if not hasattr(zephyrus.collision, 'impact_loss') or not hasattr(
         zephyrus.collision, 'mass_loss_roche2026'
     ):
-        pytest.skip('zephyrus.collision does not yet provide impact_loss (waiting for Z2)')
+        pytest.skip('zephyrus.collision provides no impact_loss')
 
     m_e, r_e = 5.972e24, 6.371e6
     event = _impact_event(
@@ -2030,158 +2003,184 @@ def test_roche2026_loss_module_evaluates_real_zephyrus():
 
 
 @pytest.mark.unit
-def test_roche2026_flags_produce_warnings_and_kegerreis_3pct_absent(caplog, monkeypatch):
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_roche2026_oracle_row_through_impact_loss_fraction():
+    """Verify one Roche et al. (2026) Set A oracle row through _impact_loss_fraction.
+
+    Pins the eroded fraction obtained through the full PROTEUS loss dispatch
+    for the first Set A reference row from Roche et al. (2026), arXiv:2610.06077
+    (Zenodo doi:10.5281/zenodo.23192423), matching the published simulation fit
+    within 2e-4 tolerance. Skips when zephyrus.collision provides no impact_loss.
+    """
+    pytest.importorskip('zephyrus.collision')
+    import zephyrus.collision
+
+    if not hasattr(zephyrus.collision, 'impact_loss'):
+        pytest.skip('zephyrus.collision provides no impact_loss')
+
+    import numpy as np
+    from zephyrus.planets_parameters import Me, Re
+
+    from proteus.accretion.wrapper import _impact_loss_fraction
+
+    m_t = 0.9970246031043678 * Me
+    m_i = 0.24927721643800169 * Me
+    r_t = 1.0173459965204401 * Re
+    r_i = 0.67502812051147343 * Re
+    f_atm = 0.0100205171612713
+    v_c = 19.27e3
+    b = 0.3
+    expected_x = 0.56221340039270196
+
+    event = _impact_event(
+        v_impact=v_c,
+        impact_parameter=b,
+        M_target_before=m_t,
+        M_impactor=m_i,
+        R_target_before=r_t,
+        R_impactor=r_i,
+        rho_target=m_t / (4.0 / 3.0 * np.pi * r_t**3),
+        rho_impactor=m_i / (4.0 / 3.0 * np.pi * r_i**3),
+    )
+    hf_row = {'M_planet': m_t, 'H_kg_atm': f_atm * m_t}
+    cfg = SimpleNamespace(
+        accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='roche2026')
+    )
+
+    f_loss = _impact_loss_fraction(cfg, hf_row, event)
+    assert f_loss == pytest.approx(expected_x, abs=2e-4)
+    assert 0.0 <= f_loss <= 1.0
+
+
+@pytest.mark.unit
+def test_roche2026_flags_produce_warnings_and_kegerreis_3pct_absent(caplog):
     """Roche flags emit one warning per impact and suppress the Kegerreis 3% warning.
 
     Verifies clause: Roche et al. (2026) out-of-range or clamp flags produce
     exactly one log.warning per impact naming all flags formatted with their
     values, fitted ranges, and clamp values. When no flags are set, no warning
     is emitted even if the atmosphere exceeds 3% of planet mass. The thin-atmosphere
-    warning fires only for kegerreis2020. Missing or invalid M_planet raises ValueError.
+    warning fires only for kegerreis2020. Missing or invalid M_planet raises ValueError
+    for roche2026 but computes cleanly for kegerreis2020.
     """
+    import math
+
+    pytest.importorskip('zephyrus.collision')
+    from zephyrus.planets_parameters import Me, Re
+
     from proteus.accretion.wrapper import _impact_loss_fraction
 
-    roche_fitted_range = {
-        'f_atm': (0.01, 0.2),
-        'M_t_earth': (0.35, 5.0),
-        'gamma': (0.1, 0.5),
-        'b': (0.0, 0.9),
-        'v_ratio': (1.0, 3.0),
-    }
-    monkeypatch.setattr(
-        'zephyrus.collision.ROCHE2026_FITTED_RANGE', roche_fitted_range, raising=False
-    )
-
-    current_flags = ['f_atm', 'b']
-    current_diagnostics = {
-        'f_atm': 0.005,
-        'M_t_earth': 1.0,
-        'gamma': 0.2,
-        'b': 0.95,
-        'v_ratio': 1.1,
-        'X_NF': 0.1,
-        'X_FF': 0.15,
-        'clamped': {},
-    }
-
-    def mock_impact_loss(
-        law, *, v_c, M_i, M_t, R_i, R_t, b, rho_i=None, rho_t=None, f_atm=None
-    ):
-        return SimpleNamespace(
-            law=law,
-            fraction=0.25,
-            flags=tuple(current_flags),
-            diagnostics=dict(current_diagnostics),
-        )
-
-    monkeypatch.setattr('zephyrus.collision.impact_loss', mock_impact_loss, raising=False)
-
-    event = _impact_event(v_impact=1.2e4, impact_parameter=0.95)
-    # Thick atmosphere (5% of planet mass > 3% threshold).
-    hf_row = {'M_planet': 6.0e24, 'H_kg_atm': 0.05 * 6.0e24}
-
-    # Case 1: roche2026 with 2 flags -> exactly one warning naming both flags with 4-space indent.
-    caplog.clear()
     cfg_roche = SimpleNamespace(
         accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='roche2026')
     )
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
-        f1 = _impact_loss_fraction(cfg_roche, hf_row, event)
-    assert f1 == pytest.approx(0.25, rel=1e-12)
-    warn_records = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warn_records) == 1
-    msg = warn_records[0].getMessage()
-    assert msg.startswith('    impact at t =')
-    assert 'Roche et al. (2026) law outside its fitted range' in msg
-    assert 'f_atm = 0.005 (fitted 0.01 to 0.2)' in msg
-    assert 'b = 0.95 (fitted 0 to 0.9)' in msg
-    assert 'thin-atmosphere regime' not in msg
-
-    # Case 2: roche2026 with 0 flags -> zero warnings even with thick atmosphere.
-    caplog.clear()
-    current_flags.clear()
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
-        f2 = _impact_loss_fraction(cfg_roche, hf_row, event)
-    assert f2 == pytest.approx(0.25, rel=1e-12)
-    assert not any(r.levelno == logging.WARNING for r in caplog.records)
-
-    # Case 2b: exercise gamma, v_ratio, and M_t_earth flag formatting branches.
-    caplog.clear()
-    current_flags.extend(['gamma', 'v_ratio', 'M_t_earth'])
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
-        _impact_loss_fraction(cfg_roche, hf_row, event)
-    records_2b = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(records_2b) == 1
-    msg_2b = records_2b[0].getMessage()
-    assert 'gamma = 0.2 (fitted 0.1 to 0.5)' in msg_2b
-    assert 'v_ratio = 1.1 (fitted 1 to 3)' in msg_2b
-    assert 'M_t_earth = 1 (fitted 0.35 to 5)' in msg_2b
-
-    # Case 2c: clamp formatting branches for f_atm, gamma, and M_t_earth.
-    caplog.clear()
-    current_flags.clear()
-    current_flags.extend(['f_atm', 'gamma', 'M_t_earth'])
-    current_diagnostics['f_atm'] = 1.0e-7
-    current_diagnostics['gamma'] = 1.0e-4
-    current_diagnostics['M_t_earth'] = 1.0e-4
-    current_diagnostics['clamped'] = {'f_atm': 1.0e-6, 'gamma': 1.0e-3, 'M_t_earth': 1.0e-3}
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
-        _impact_loss_fraction(cfg_roche, hf_row, event)
-    records_2c = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(records_2c) == 1
-    msg_2c = records_2c[0].getMessage()
-    assert 'f_atm = 1e-07 (fitted 0.01 to 0.2), evaluated at 1e-06' in msg_2c
-    assert 'gamma = 0.0001 (fitted 0.1 to 0.5), evaluated at 0.001' in msg_2c
-    assert 'M_t_earth = 0.0001 (fitted 0.35 to 5), evaluated at 0.001' in msg_2c
-
-    # Case 3: kegerreis2020 with thick atmosphere -> thin-atmosphere warning fires.
-    caplog.clear()
     cfg_keg = SimpleNamespace(
         accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='kegerreis2020')
     )
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
-        f3 = _impact_loss_fraction(cfg_keg, hf_row, event)
-    assert f3 == pytest.approx(0.25, rel=1e-12)
-    keg_records = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(keg_records) == 1
-    assert 'thin-atmosphere regime' in keg_records[0].getMessage()
 
-    # Case 4: roche2026 raises ValueError on missing, non-finite, or non-positive M_planet.
+    event_in_range = _impact_event(
+        v_impact=1.5 * 11186.0,
+        M_target_before=Me,
+        M_impactor=0.2 * Me,
+        R_target_before=Re,
+        R_impactor=0.58 * Re,
+        impact_parameter=0.3,
+    )
+    hf_in_range = {'M_planet': Me, 'H_kg_atm': 0.05 * Me}
+
+    # Case 1: roche2026 with 0 flags -> zero warnings even with thick atmosphere.
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        f_in = _impact_loss_fraction(cfg_roche, hf_in_range, event_in_range)
+    assert 0.0 <= f_in <= 1.0
+    assert not any(r.levelno == logging.WARNING for r in caplog.records)
+
+    # Case 2: out-of-range R_i/R_t = 1.2 -> exactly one warning naming R_ratio with fitted range.
+    event_r_ratio = _impact_event(
+        v_impact=1.5 * 11186.0,
+        M_target_before=Me,
+        M_impactor=0.2 * Me,
+        R_target_before=Re,
+        R_impactor=1.2 * Re,
+        impact_parameter=0.3,
+    )
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        f_r = _impact_loss_fraction(cfg_roche, hf_in_range, event_r_ratio)
+    assert 0.0 <= f_r <= 1.0
+    records = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(records) == 1
+    msg = records[0].getMessage()
+    assert msg.startswith('    impact at t =')
+    assert 'Roche et al. (2026) law outside its fitted range' in msg
+    assert 'R_ratio = 1.2 (fitted 0.001 to 1.015)' in msg
+    assert 'thin-atmosphere regime' not in msg
+
+    # Case 3: multiple out-of-range flags and clamps (b=0.95, f_atm=1e-7, gamma=0.0476).
+    event_multi = _impact_event(
+        v_impact=1.5 * 11186.0,
+        M_target_before=Me,
+        M_impactor=0.05 * Me,
+        R_target_before=Re,
+        R_impactor=0.58 * Re,
+        impact_parameter=0.95,
+    )
+    hf_multi = {'M_planet': Me, 'H_kg_atm': 1.0e-7 * Me}
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        f_multi = _impact_loss_fraction(cfg_roche, hf_multi, event_multi)
+    assert 0.0 <= f_multi <= 1.0
+    records_multi = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(records_multi) == 1
+    msg_multi = records_multi[0].getMessage()
+    assert 'b = 0.95 (fitted 0 to 0.9)' in msg_multi
+    assert 'f_atm = 1e-07 (fitted 0.01 to 0.2), evaluated at 1e-06' in msg_multi
+    assert 'gamma = 0.0476 (fitted 0.1 to 0.5)' in msg_multi
+
+    # Case 4: kegerreis2020 with thick atmosphere -> thin-atmosphere warning fires.
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
+        f_keg = _impact_loss_fraction(cfg_keg, hf_in_range, event_in_range)
+    assert 0.0 <= f_keg <= 1.0
+    records_keg = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(records_keg) == 1
+    assert 'thin-atmosphere regime' in records_keg[0].getMessage()
+
+    # Case 5: kegerreis2020 without M_planet computes finite result without raising.
+    hf_no_planet = {'H_kg_atm': 1.0e17}
+    f_no_planet = _impact_loss_fraction(cfg_keg, hf_no_planet, event_in_range)
+    assert 0.0 <= f_no_planet <= 1.0
+    assert math.isfinite(f_no_planet)
+
+    # Case 6: roche2026 raises ValueError on missing, non-finite, non-positive M_planet, or f_atm >= 1.
     with pytest.raises(ValueError, match='M_planet'):
-        _impact_loss_fraction(cfg_roche, {'H_kg_atm': 1.0e17}, event)
+        _impact_loss_fraction(cfg_roche, {'H_kg_atm': 1.0e17}, event_in_range)
     with pytest.raises(ValueError, match='M_planet'):
-        _impact_loss_fraction(cfg_roche, {'M_planet': 0.0, 'H_kg_atm': 1.0e17}, event)
+        _impact_loss_fraction(cfg_roche, {'M_planet': 0.0, 'H_kg_atm': 1.0e17}, event_in_range)
     with pytest.raises(ValueError, match='M_planet'):
-        _impact_loss_fraction(cfg_roche, {'M_planet': float('nan'), 'H_kg_atm': 1.0e17}, event)
+        _impact_loss_fraction(
+            cfg_roche, {'M_planet': float('nan'), 'H_kg_atm': 1.0e17}, event_in_range
+        )
     with pytest.raises(ValueError, match='M_planet'):
-        _impact_loss_fraction(cfg_roche, {'M_planet': -1.0e24, 'H_kg_atm': 1.0e17}, event)
+        _impact_loss_fraction(
+            cfg_roche, {'M_planet': -1.0e24, 'H_kg_atm': 1.0e17}, event_in_range
+        )
+    with pytest.raises(ValueError, match='f_atm'):
+        _impact_loss_fraction(
+            cfg_roche, {'M_planet': 1.0e24, 'H_kg_atm': 1.5e24}, event_in_range
+        )
 
 
 @pytest.mark.unit
-def test_impact_loss_zero_and_subthreshold_atmosphere_strips_nothing(monkeypatch):
+def test_impact_loss_zero_and_subthreshold_atmosphere_strips_nothing():
     """An atmosphere of zero or below the outgas threshold strips no volatiles.
 
-    Verifies clause: when f_atm is zero, impact_loss evaluates cleanly and
+    Verifies clause: when f_atm is zero, real impact_loss returns 0.0 and
     _target_strip_amounts returns an empty mapping. When m_atm is positive
     but below outgas.mass_thresh, stripping is suppressed.
     """
+    pytest.importorskip('zephyrus.collision')
     from proteus.accretion.wrapper import _impact_loss_fraction, _target_strip_amounts
-
-    calls = []
-
-    def mock_impact_loss(
-        law, *, v_c, M_i, M_t, R_i, R_t, b, rho_i=None, rho_t=None, f_atm=None
-    ):
-        calls.append({'f_atm': f_atm})
-        frac = 0.0 if f_atm == 0.0 else 0.4
-        return SimpleNamespace(
-            law=law,
-            fraction=frac,
-            flags=(),
-            diagnostics={'v_ratio': 1.0, 'gamma': 0.1, 'X_NF': 0.0, 'X_FF': frac},
-        )
-
-    monkeypatch.setattr('zephyrus.collision.impact_loss', mock_impact_loss, raising=False)
 
     cfg = SimpleNamespace(
         accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='roche2026'),
@@ -2192,23 +2191,21 @@ def test_impact_loss_zero_and_subthreshold_atmosphere_strips_nothing(monkeypatch
     # Zero atmosphere: f_atm is exactly zero.
     hf_zero = {'M_planet': 6.0e24}
     f_zero = _impact_loss_fraction(cfg, hf_zero, event)
-    assert f_zero == pytest.approx(0.0, abs=1e-15)
-    assert calls[0]['f_atm'] == pytest.approx(0.0, abs=1e-15)
+    assert f_zero == 0.0
     strip_zero = _target_strip_amounts(cfg, hf_zero, f_zero)
     assert strip_zero == {}
 
-    # Sub-threshold atmosphere: non-zero fraction returned, but stripping gives empty dict.
-    calls.clear()
+    # Sub-threshold atmosphere: positive loss fraction returned, but stripping gives empty dict.
     hf_sub = {'M_planet': 6.0e24, 'H_kg_atm': 1.0e16, 'H_kg_total': 1.0e18}
     f_sub = _impact_loss_fraction(cfg, hf_sub, event)
-    assert f_sub == pytest.approx(0.4, rel=1e-12)
-    assert calls[0]['f_atm'] == pytest.approx(1.0e16 / 6.0e24, rel=1e-12)
+    assert 0.0 < f_sub <= 1.0
     strip_sub = _target_strip_amounts(cfg, hf_sub, f_sub)
     assert strip_sub == {}
+
     # Discrimination: an atmosphere exceeding mass_thresh strips normally.
     hf_supra = {'M_planet': 6.0e24, 'H_kg_atm': 1.0e18, 'H_kg_total': 1.0e19}
     strip_supra = _target_strip_amounts(cfg, hf_supra, f_sub)
-    assert strip_supra['H'] == pytest.approx(0.4 * 1.0e18, rel=1e-12)
+    assert strip_supra['H'] == pytest.approx(f_sub * 1.0e18, rel=1e-12)
     assert abs(strip_supra['H'] - 1.0e18) > 1.0e17
 
 
@@ -2221,6 +2218,7 @@ def test_target_mass_mismatch_warning_and_event_mass_dispatch(caplog, monkeypatc
     differs from M_planet by more than 10%, a warning is logged once. When
     masses agree within 10%, no mismatch warning fires.
     """
+    pytest.importorskip('zephyrus.collision')
     from proteus.accretion.wrapper import apply_impact
     from proteus.utils.constants import M_earth
 
@@ -2228,20 +2226,16 @@ def test_target_mass_mismatch_warning_and_event_mass_dispatch(caplog, monkeypatc
         'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
     )
 
-    captured_args = {}
-
-    def mock_impact_loss(
-        law, *, v_c, M_i, M_t, R_i, R_t, b, rho_i=None, rho_t=None, f_atm=None
-    ):
-        captured_args.update({'M_t': M_t, 'f_atm': f_atm})
-        return SimpleNamespace(
-            law=law,
+    captured_args = []
+    monkeypatch.setattr(
+        'zephyrus.collision.impact_loss',
+        _mock_impact_loss_call(
+            captured_args,
             fraction=0.2,
-            flags=(),
             diagnostics={'v_ratio': 1.0, 'gamma': 0.1, 'X_NF': 0.1, 'X_FF': 0.1},
-        )
-
-    monkeypatch.setattr('zephyrus.collision.impact_loss', mock_impact_loss, raising=False)
+        ),
+        raising=True,
+    )
 
     m_planet = 1.0 * M_earth
     m_atm = 1.0e20
@@ -2267,10 +2261,10 @@ def test_target_mass_mismatch_warning_and_event_mass_dispatch(caplog, monkeypatc
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
         apply_impact(handler, event_mismatch)
 
-    assert captured_args['M_t'] == pytest.approx(1.3 * M_earth, rel=1e-12)
-    assert captured_args['f_atm'] == pytest.approx(m_atm / m_planet, rel=1e-12)
+    assert captured_args[0]['M_t'] == event_mismatch.M_target_before
+    assert captured_args[0]['f_atm'] == m_atm / m_planet
     # Discrimination: M_t came from event, not handler planet mass.
-    assert abs(captured_args['M_t'] - m_planet) > 0.2 * M_earth
+    assert abs(captured_args[0]['M_t'] - m_planet) > 0.2 * M_earth
 
     mismatch_records = [
         r
@@ -2290,7 +2284,7 @@ def test_target_mass_mismatch_warning_and_event_mass_dispatch(caplog, monkeypatc
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
         apply_impact(handler, event_matched)
 
-    assert captured_args['M_t'] == pytest.approx(m_planet, rel=1e-12)
+    assert captured_args[0]['M_t'] == m_planet
     assert not any('differs from the' in r.getMessage() for r in caplog.records)
 
 

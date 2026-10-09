@@ -24,15 +24,16 @@ and the [coupling loop](../../Explanations/coupling_loop.md#execution-order-per-
 | `impactor_S_ppmw` | float | `0.0` | Sulfur carried by each impactor \[ppmw of impactor mass\]. Must be >= 0. |
 | `impactor_O_ppmw` | float | `0.0` | Oxygen carried by each impactor \[ppmw of impactor mass\]. With CALLIOPE or atmodeller at a fixed fO2 (``planet.fO2_source = 'user_constant'``) the outgassing derives the O budget, so the delivered part counts as rock; otherwise it joins the O budget. Must be >= 0. |
 | `atmloss_module` | str or none | `none` | How impact atmosphere loss is computed. Choices: None (no impact atmosphere loss at all: the target keeps its atmosphere and a volatile-bearing impactor delivers its whole content), "constant" (the fixed fraction below), "zephyrus" (the giant-impact erosion scaling laws evaluated by ``zephyrus.collision.impact_loss`` from each impact's collision parameters). One fraction governs both bodies at each impact: the target loses that fraction of its atmosphere, and a volatile-bearing impactor loses the same fraction of its atmospheric part and delivers the remainder. PROTEUS itself ships no impact loss physics. Choices: `none`, `"constant"`, `"zephyrus"`. |
-| `atmloss_law` | str | `"roche2026"` | Which erosion scaling law to evaluate when ``atmloss_module = 'zephyrus'``. Choices: "roche2026" (Roche et al. 2026, arXiv:2610.06077, parameterized by impact angle, mass ratio, contact velocity, and target atmospheric fraction), "kegerreis2020" (Kegerreis et al. 2020, doi:10.3847/2041-8213/abb5fb, parameterized by impact angle, contact velocity, mass ratio, and bulk densities). Both laws are fitted to H2-He atmospheres (Kegerreis et al. 2020; Roche et al. 2026, Sect. 4.1). Choices: `"kegerreis2020"`, `"roche2026"`. |
+| `atmloss_law` | str | `"roche2026"` | Which erosion scaling law to evaluate when ``atmloss_module = 'zephyrus'``. Choices: "roche2026" (Roche et al. 2026, arXiv:2610.06077, parameterized by impact angle, mass ratio, contact velocity, target mass, radius ratio, and target atmospheric fraction), "kegerreis2020" (Kegerreis et al. 2020, doi:10.3847/2041-8213/abb5fb, parameterized by impact angle, contact velocity, mass ratio, radii, and bulk densities). Both laws are fitted to H2-He atmospheres (Kegerreis et al. 2020; Roche et al. 2026, Sect. 4.1). Choices: `"kegerreis2020"`, `"roche2026"`. |
 | `atmloss_frac` | float | `0.0` | Fraction of the atmosphere removed by each impact when ``atmloss_module = "constant"`` \[0-1\]. Applies to the target's atmosphere and to the impactor's atmospheric part alike. Must be >= 0 and <= 1. |
 <!-- END GENERATED: config-table [accretion] -->
 
 One loss fraction governs both bodies at each impact: the target loses that
 fraction of its atmosphere, and a volatile-bearing impactor loses the same
 fraction of its atmospheric part and delivers the remainder. PROTEUS ships no
-impact-loss physics of its own; the `"zephyrus"` module evaluates the
-giant-impact erosion scaling law of Kegerreis et al. (2020) [^cite-kegerreis2020].
+impact-loss physics of its own; the `"zephyrus"` module evaluates either the
+Roche et al. (2026) [^cite-roche2026] scaling law (the default, `atmloss_law = "roche2026"`)
+or the Kegerreis et al. (2020) [^cite-kegerreis2020] scaling law (`atmloss_law = "kegerreis2020"`).
 
 The mantle re-melt after an impact is a thermodynamic reset rather than an
 energy deposition: it raises the mantle to the run's `planet.temperature_mode`
@@ -145,6 +146,7 @@ set `accretion.module = "timeline"` and put the path in
     module = "morrigan"
     impactor_volatiles = "match_planet"
     atmloss_module = "zephyrus"
+    atmloss_law = "roche2026"
 
     [accretion.morrigan]
         seed = 1
@@ -170,6 +172,8 @@ Cross-field constraints enforced when the config file loads:
 <!-- END GENERATED: config-constraints accretion -->
 
  [^cite-kimura2025]: Kimura, T., Hoshino, H., Kokubo, E., Matsumoto, Y. & Ikoma, M., *[Semi-analytical model for the dynamical evolution of planetary systems via giant impacts](https://doi.org/10.3847/1538-4357/ade992)*, The Astrophysical Journal, 989, 109, 2025.
+
+ [^cite-roche2026]: Roche, M.J., Lock, S.J., Carter, P.J. & Leinhardt, Z.M., *Giant impacts preferentially remove low-mass atmospheres: a generalised scaling law for impact-driven atmospheric loss*, accepted to The Astrophysical Journal Letters, arXiv:2610.06077, 2026.
 
  [^cite-kegerreis2020]: Kegerreis, J.A., Eke, V.R., Catling, D.C., Massey, R.J., Teodoro, L.F.A. & Zahnle, K.J., *[Atmospheric erosion by giant impacts onto terrestrial planets: a scaling law for any speed, angle, mass, and density](https://doi.org/10.3847/2041-8213/abb5fb)*, The Astrophysical Journal Letters, 901, L31, 2020.
 

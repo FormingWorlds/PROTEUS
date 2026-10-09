@@ -424,11 +424,12 @@ class Accretion:
     atmloss_law: str
         Which erosion scaling law to evaluate when ``atmloss_module = 'zephyrus'``.
         Choices: "roche2026" (Roche et al. 2026, arXiv:2610.06077,
-        parameterized by impact angle, mass ratio, contact velocity, and target
-        atmospheric fraction), "kegerreis2020" (Kegerreis et al. 2020,
-        doi:10.3847/2041-8213/abb5fb, parameterized by impact angle, contact
-        velocity, mass ratio, and bulk densities). Both laws are fitted to
-        H2-He atmospheres (Kegerreis et al. 2020; Roche et al. 2026, Sect. 4.1).
+        parameterized by impact angle, mass ratio, contact velocity, target
+        mass, radius ratio, and target atmospheric fraction), "kegerreis2020"
+        (Kegerreis et al. 2020, doi:10.3847/2041-8213/abb5fb, parameterized by
+        impact angle, contact velocity, mass ratio, radii, and bulk densities).
+        Both laws are fitted to H2-He atmospheres (Kegerreis et al. 2020; Roche
+        et al. 2026, Sect. 4.1).
     atmloss_frac: float
         Fraction of the atmosphere removed by each impact when
         ``atmloss_module = "constant"`` [0-1]. Applies to the target's

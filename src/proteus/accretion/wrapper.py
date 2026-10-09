@@ -954,31 +954,147 @@ def _target_strip_amounts(config, hf_row: dict, f_loss: float) -> dict:
 _ATMLOSS_THIN_ATM_WARN = 0.03
 
 
-def _format_roche_flag(name: str, diagnostics: dict) -> str:
+def _format_roche_flag(name: str, diagnostics: dict, fitted_range: dict) -> str:
     """Format one Roche et al. (2026) out-of-range or clamp flag.
 
     Parameters
     ----------
     name : str
-        Flag name ('f_atm', 'M_t_earth', 'gamma', 'b', or 'v_ratio').
+        Flag name ('f_atm', 'M_t_earth', 'gamma', 'b', 'R_ratio', or 'v_ratio').
     diagnostics : dict
         Diagnostics dictionary from ``ImpactLossResult`` containing physical
         parameter values and any clamped bounds under ``'clamped'``.
+    fitted_range : dict
+        Mapping of parameter names to fitted (lo, hi) range tuples.
 
     Returns
     -------
     str
         Formatted string describing parameter value, fitted range, and any clamp.
     """
-    from zephyrus.collision import ROCHE2026_FITTED_RANGE
-
-    lo, hi = ROCHE2026_FITTED_RANGE[name]
+    lo, hi = fitted_range[name]
     val = float(diagnostics[name])
     msg = f'{name} = {val:.3g} (fitted {lo:g} to {hi:g})'
     clamped = diagnostics.get('clamped', {})
     if name in clamped:
         msg += f', evaluated at {clamped[name]:g}'
     return msg
+
+
+def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
+    """Evaluate giant-impact atmosphere loss using the zephyrus scaling laws.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration; reads ``accretion.atmloss_law``.
+    hf_row : dict
+        Current helpfile row, supplying planet mass and volatile budgets.
+    event : ImpactEvent
+        The impact being applied, supplying collision parameters.
+
+    Returns
+    -------
+    float
+        Eroded atmosphere loss fraction.
+    """
+    try:
+        from zephyrus.collision import ROCHE2026_FITTED_RANGE, impact_loss
+    except ImportError as exc:
+        raise ImportError(
+            "accretion.atmloss_module = 'zephyrus' needs a fwl-zephyrus "
+            'installation that provides zephyrus.collision.impact_loss'
+        ) from exc
+
+    law = config.accretion.atmloss_law
+    m_planet = _as_float(hf_row.get('M_planet'))
+    m_atm = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list)
+    has_valid_m_planet = 0.0 < m_planet < math.inf
+    f_atm = m_atm / m_planet if has_valid_m_planet else 0.0
+
+    match law:
+        case 'roche2026':
+            if not has_valid_m_planet:
+                raise ValueError(
+                    "accretion.atmloss_law = 'roche2026' requires a finite, positive "
+                    f'M_planet in hf_row, got {hf_row.get("M_planet")!r}'
+                )
+            if not 0.0 <= m_atm < math.inf:
+                raise ValueError(
+                    "accretion.atmloss_law = 'roche2026' requires finite, non-negative "
+                    f"atmosphere mass from '<e>_kg_atm' in hf_row, got {m_atm!r}"
+                )
+            if f_atm >= 1.0:
+                raise ValueError(
+                    "accretion.atmloss_law = 'roche2026' requires atmosphere mass "
+                    f"fraction f_atm < 1 from '<e>_kg_atm' and 'M_planet', got {f_atm!r}"
+                )
+        case 'kegerreis2020':
+            pass
+        case _:
+            raise ValueError(f"Unknown accretion.atmloss_law: '{law}'")
+
+    result = impact_loss(
+        law=law,
+        v_c=event.v_impact,
+        M_i=event.M_impactor,
+        M_t=event.M_target_before,
+        R_i=event.R_impactor,
+        R_t=event.R_target_before,
+        b=event.impact_parameter,
+        rho_i=event.rho_impactor,
+        rho_t=event.rho_target,
+        f_atm=f_atm,
+    )
+
+    f_loss = float(result.fraction)
+    flags = tuple(result.flags)
+    diagnostics = result.diagnostics
+
+    v_ratio = float(diagnostics['v_ratio'])
+    gamma = float(diagnostics['gamma'])
+
+    if law == 'kegerreis2020':
+        if has_valid_m_planet and m_atm / m_planet > _ATMLOSS_THIN_ATM_WARN:
+            log.warning(
+                '    the atmosphere is %.1f%% of the planet mass, beyond the '
+                'thin-atmosphere regime (about 1%%) the impact erosion law is '
+                'fitted for; the eroded fraction is extrapolated',
+                100.0 * m_atm / m_planet,
+            )
+        log.info(
+            '    impact erosion law: %s, v_ratio=%.3f, gamma=%.3f, loss fraction=%.3f',
+            law,
+            v_ratio,
+            gamma,
+            f_loss,
+        )
+    elif law == 'roche2026':
+        if flags:
+            flag_msgs = [
+                _format_roche_flag(f, diagnostics, ROCHE2026_FITTED_RANGE) for f in flags
+            ]
+            log.warning(
+                '    impact at t = %.4e yr: Roche et al. (2026) law outside its fitted range: '
+                '%s; the loss fraction is extrapolated',
+                event.time,
+                '; '.join(flag_msgs),
+            )
+        x_nf = float(diagnostics['X_NF'])
+        x_ff = float(diagnostics['X_FF'])
+        log.info(
+            '    impact erosion law: %s, f_atm=%.4e, v_ratio=%.3f, gamma=%.3f, '
+            'loss fraction=%.3f (X_NF=%.3f, X_FF=%.3f)',
+            law,
+            f_atm,
+            v_ratio,
+            gamma,
+            f_loss,
+            x_nf,
+            x_ff,
+        )
+
+    return f_loss
 
 
 def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
@@ -988,14 +1104,14 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
     the configured fixed fraction; the zephyrus module evaluates giant-impact
     erosion scaling laws through ``zephyrus.collision.impact_loss``, selecting
     either ``kegerreis2020`` or ``roche2026`` via ``accretion.atmloss_law``.
-    The collision parameters (speed, masses, radii, densities, and angle)
-    come from the impact record so the speed, masses, radii, densities, and
-    angle stay in the one frame the dynamical model produced them in (Morrigan
-    bodies carry no modelled atmosphere, matching the law's atmosphere-excluded
-    mass and radius convention, and its ``v_impact`` is the speed at first contact).
-    The target atmospheric fraction ``f_atm`` comes from the running planet state
-    (the sum of ``<e>_kg_atm`` over ``M_planet``). The returned fraction applies
-    to the target's atmosphere and to a volatile-bearing impactor's atmospheric
+    The collision parameters come from the impact record so the speed, masses,
+    radii, densities, and angle stay in the one frame the dynamical model
+    produced them in (Morrigan bodies carry no modelled atmosphere, matching
+    the law's atmosphere-excluded mass and radius convention, and its
+    ``v_impact`` is the speed at first contact). The target atmospheric
+    fraction ``f_atm`` comes from the running planet state (the sum of
+    ``<e>_kg_atm`` over ``M_planet``). The returned fraction applies to the
+    target's atmosphere and to a volatile-bearing impactor's atmospheric
     part alike. PROTEUS itself ships no impact loss physics.
 
     When ``kegerreis2020`` is selected and the planet's atmosphere exceeds a
@@ -1010,7 +1126,8 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
         Model configuration; reads ``accretion.atmloss_module``,
         ``accretion.atmloss_law``, and ``accretion.atmloss_frac``.
     hf_row : dict
-        Current helpfile row (the planet state the domain check reads).
+        Current helpfile row, supplying planet mass and volatile budgets for
+        ``f_atm`` and domain checks.
     event : ImpactEvent
         The impact being applied (the collision parameters the law reads).
 
@@ -1023,10 +1140,10 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
     ------
     ValueError
         If a loss module returns a fraction outside [0, 1], or if
-        ``accretion.atmloss_law = 'roche2026'`` encounters a missing,
-        non-finite, or non-positive ``M_planet`` in ``hf_row``. The debit
-        partitioning is only meaningful on [0, 1], so a provider violating
-        it is a contract error, not a value to clamp silently.
+        ``accretion.atmloss_law = 'roche2026'`` encounters an invalid
+        ``M_planet``, invalid atmosphere mass, or ``f_atm >= 1`` in ``hf_row``.
+        The debit partitioning is only meaningful on [0, 1], so a provider
+        violating it is a contract error, not a value to clamp silently.
     ImportError
         If the zephyrus module is selected but the installed fwl-zephyrus
         does not provide ``zephyrus.collision.impact_loss``.
@@ -1039,88 +1156,7 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
         case 'constant':
             f_loss = float(config.accretion.atmloss_frac)
         case 'zephyrus':
-            try:
-                from zephyrus.collision import impact_loss
-            except ImportError as exc:
-                raise ImportError(
-                    "accretion.atmloss_module = 'zephyrus' needs a fwl-zephyrus "
-                    'installation that provides zephyrus.collision.impact_loss; '
-                    'upgrade fwl-zephyrus to the version required in pyproject.toml.'
-                ) from exc
-
-            law = config.accretion.atmloss_law
-
-            m_atm = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list)
-            m_planet = float(hf_row.get('M_planet', 0.0))
-            if law == 'roche2026':
-                if 'M_planet' not in hf_row or not math.isfinite(m_planet) or m_planet <= 0.0:
-                    raise ValueError(
-                        f"accretion.atmloss_law = 'roche2026' requires a finite, positive "
-                        f'M_planet in hf_row, got {hf_row.get("M_planet")!r}'
-                    )
-                f_atm = m_atm / m_planet
-            else:
-                f_atm = m_atm / m_planet if m_planet > 0.0 else 0.0
-
-            result = impact_loss(
-                law=law,
-                v_c=event.v_impact,
-                M_i=event.M_impactor,
-                M_t=event.M_target_before,
-                R_i=event.R_impactor,
-                R_t=event.R_target_before,
-                b=event.impact_parameter,
-                rho_i=event.rho_impactor,
-                rho_t=event.rho_target,
-                f_atm=f_atm,
-            )
-
-            f_loss = float(result.fraction)
-            flags = tuple(result.flags)
-            diagnostics = result.diagnostics
-
-            v_ratio = float(diagnostics['v_ratio'])
-            gamma = float(diagnostics['gamma'])
-
-            if law == 'kegerreis2020':
-                if m_planet > 0.0 and m_atm / m_planet > _ATMLOSS_THIN_ATM_WARN:
-                    log.warning(
-                        '    the atmosphere is %.1f%% of the planet mass, beyond the '
-                        'thin-atmosphere regime (about 1%%) the impact erosion law is '
-                        'fitted for; the eroded fraction is extrapolated',
-                        100.0 * m_atm / m_planet,
-                    )
-                log.info(
-                    '    impact erosion law: %s, f_atm=%.4e, v_ratio=%.3f, gamma=%.3f, '
-                    'loss fraction=%.3f',
-                    law,
-                    f_atm,
-                    v_ratio,
-                    gamma,
-                    f_loss,
-                )
-            elif law == 'roche2026':
-                if flags:
-                    flag_msgs = [_format_roche_flag(f, diagnostics) for f in flags]
-                    log.warning(
-                        '    impact at t = %.4e yr: Roche et al. (2026) law outside its fitted range: '
-                        '%s; the loss fraction is extrapolated',
-                        event.time,
-                        '; '.join(flag_msgs),
-                    )
-                x_nf = float(diagnostics['X_NF'])
-                x_ff = float(diagnostics['X_FF'])
-                log.info(
-                    '    impact erosion law: %s, f_atm=%.4e, v_ratio=%.3f, gamma=%.3f, '
-                    'loss fraction=%.3f (X_NF=%.3f, X_FF=%.3f)',
-                    law,
-                    f_atm,
-                    v_ratio,
-                    gamma,
-                    f_loss,
-                    x_nf,
-                    x_ff,
-                )
+            f_loss = _zephyrus_loss_fraction(config, hf_row, event)
         case _:
             raise ValueError(f"Invalid accretion.atmloss_module: '{atmloss_module}'")
 
