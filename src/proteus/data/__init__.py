@@ -272,8 +272,19 @@ def missing_files(key: str, data_root: str | Path | None = None) -> list[str]:
     list of str
         Sorted names of the missing files; empty when every file is present. Presence
         only: the contents are checked when fwl-io fetches the files.
+
+    Raises
+    ------
+    ValueError
+        The dataset is an archive (``extract``): its registry names the archive, which
+        fwl-io removes after unpacking, so file presence says nothing about it.
     """
     fetcher = _fetcher(key, data_root=data_root)
+    if fetcher.extract is not None:
+        raise ValueError(
+            f'missing_files cannot check {key!r}: it is a {fetcher.extract} archive dataset, '
+            'whose registry names the archive that is removed after unpacking'
+        )
     return sorted(n for n in fetcher.registry if not (fetcher.target_dir / n).is_file())
 
 

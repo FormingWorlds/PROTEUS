@@ -764,3 +764,13 @@ def test_missing_files_lists_absent_registry_files(tmp_path):
     assert missing_files(REFRACTIVE, data_root=tmp_path) == names[:2]
     with pytest.raises(KeyError):
         missing_files('atmos_clim.refractive.unknown', data_root=tmp_path)
+
+
+def test_missing_files_refuses_an_archive_dataset(tmp_path):
+    """An archive dataset is refused, since its registry names the archive fwl-io removes."""
+    from proteus.data import missing_files
+
+    with pytest.raises(
+        ValueError, match="'interior.eos.chabrier_2021_hhe': it is a tar archive"
+    ):
+        missing_files('interior.eos.chabrier_2021_hhe', data_root=tmp_path)
