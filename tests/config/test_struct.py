@@ -145,6 +145,11 @@ class TestZalmoxisVolatileGates:
         # Retro-compat: the default remains dry, byte-identical to baseline.
         assert Struct(module='zalmoxis').zalmoxis.dry_mantle is True
 
+    def test_use_anderson_defaults_to_true(self):
+        """Verify that Zalmoxis.use_anderson defaults to True."""
+        assert Zalmoxis().use_anderson is True
+        assert Struct(module='zalmoxis').zalmoxis.use_anderson is True
+
     @pytest.mark.parametrize('module', ['spider', 'dummy', 'zalmoxis'])
     def test_global_miscibility_is_rejected_for_every_structure(self, module):
         """`global_miscibility = true` is rejected for every structure module:

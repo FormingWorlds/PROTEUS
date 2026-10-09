@@ -379,7 +379,7 @@ config_version = "3.0"
         # Outer mass-radius solver
         outer_solver          = "newton"     # newton (Newton + brentq bracketing) | picard (damped fixed-point)
         use_jax               = true         # JAX path for structure solver
-        use_anderson           = false       # Anderson Type-II Picard acceleration on density loop
+        use_anderson           = true        # Anderson Type-II Picard acceleration on density loop
 
         # Solver tolerances
         solver_tol_outer      = 3e-3         # relative tolerance for mass convergence

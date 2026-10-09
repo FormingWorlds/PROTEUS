@@ -289,8 +289,8 @@ class Zalmoxis:
     # trajectory or for systems without a JAX-compatible backend.
     use_jax: bool = field(default=True)
     # Anderson Type-II Picard acceleration on the density loop.
-    # Default off; only effective when use_jax=True.
-    use_anderson: bool = field(default=False)
+    # Active on both numpy and JAX structure paths; default on.
+    use_anderson: bool = field(default=True)
 
     # Outer mass-radius solver. 'newton' (Newton + brentq bracketing,
     # default) is robust on hot fully-molten mantle profiles where the

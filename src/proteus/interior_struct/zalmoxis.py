@@ -1475,9 +1475,8 @@ def load_zalmoxis_configuration(
         'tolerance_inner': config.interior_struct.zalmoxis.solver_tol_inner,
         'max_iterations_outer': config.interior_struct.zalmoxis.solver_max_iter_outer,
         'max_iterations_inner': config.interior_struct.zalmoxis.solver_max_iter_inner,
-        # JAX+diffrax structure path and Anderson Picard acceleration,
-        # both opt-in and defaulting off. See `Zalmoxis.use_jax` /
-        # `Zalmoxis.use_anderson` in proteus.config._struct.
+        # JAX diffrax structure path and Anderson Picard acceleration both
+        # default on. See Zalmoxis.use_jax and use_anderson in config._struct.
         'use_jax': config.interior_struct.zalmoxis.use_jax,
         'use_anderson': config.interior_struct.zalmoxis.use_anderson,
         # outer mass-radius solver dispatch ('newton' default |
@@ -3235,27 +3234,14 @@ def zalmoxis_solver(
     if config_params.get('use_jax') and 'wall_timeout' not in config_params:
         config_params['wall_timeout'] = 3600.0
 
-    # JAX structure path gate: the JAX wrapper's P-indexed adiabat
-    # tabulation collapses for P-ignoring callables (see
-    # tools/benchmarks/bench_coupled_tempfunc.py).
-    # The fix is to pass ``temperature_arrays=(r_arr, T_arr)`` instead,
-    # which routes the RHS to the r-indexed branch. We have arrays from
-    # ``update_structure_from_interior`` but NOT from PROTEUS init or
-    # equilibration (Zalmoxis constructs its own internal linear/adiabat
-    # guess for those, and that guess also ignores P). For calls with
-    # neither arrays nor a caller-provided callable, keep the defensive
-    # downgrade to the numpy path; the one-time init/equilibration cost
-    # (~70 s each, ~2-4 calls) is negligible against a 3-4 h full run.
+    # Disable JAX for calls without temperature data across all outer solvers;
+    # internal temperature mode converges differently. Keep Anderson as configured.
     if temperature_function is None and temperature_arrays is None:
-        if config_params.get('use_jax') or config_params.get('use_anderson'):
+        if config_params.get('use_jax'):
             log.debug(
-                'Zalmoxis call has no temperature_function or '
-                'temperature_arrays: disabling use_jax and use_anderson '
-                'for this call (the internal T-dispatch path collapses '
-                'for P-ignoring callables).'
+                'Disabling use_jax for call without temperature profile; keeping use_anderson.'
             )
             config_params['use_jax'] = False
-            config_params['use_anderson'] = False
 
     # Run structure solve: use miscibility wrapper when enabled
     mat_dicts = load_zalmoxis_material_dictionaries()
@@ -3681,9 +3667,9 @@ def zalmoxis_solver(
         hf_row['struct_mass_desync_frac'],
     )
 
-    # Cache density for next call's Picard seeding. Used by both numpy
-    # and JAX paths when use_anderson=False (Anderson + warm-start
-    # oscillates, see the warm-start gate above).
+    # Cache density for next call's Picard seeding. Applied on the numpy path
+    # regardless of use_anderson, and withheld on the JAX-arrays path where
+    # warm-starts drive Anderson into oscillation.
     _density_cache['density'] = density.copy()
     _density_cache['radii'] = np.asarray(radii).copy()
     _density_cache['key'] = _structure_cache_key(config)

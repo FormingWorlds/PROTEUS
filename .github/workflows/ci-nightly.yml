@@ -149,12 +149,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    # The budget must cover a cold FWL_DATA download (~30 min) plus the
-    # integration suite (~20 min), roughly 1.5x margin, consistent with the
-    # runner-to-runner variance budgeted for the slow-tier shards below. The
-    # full-data cache can miss on eviction, a manifest re-pin, or a slow
-    # network fetch even when the unit tier's smaller cache stays warm.
-    timeout-minutes: 80
+    # 2 xdist workers per runner: more push the heaviest tests close to their per-test timeouts.
+    # The budget covers setup, the tests and a cold FWL_DATA download.
+    timeout-minutes: 90
     env:
       COVERAGE_FILE: .coverage.integration.${{ matrix.os }}
     steps:
@@ -169,6 +166,8 @@ jobs:
           pytest tests/integration \
             -m "integration and not slow" \
             -p no:faulthandler \
+            -n 2 --dist worksteal \
+            --durations=25 \
             --junitxml=junit-int-${{ matrix.os }}.xml \
             --cov=proteus \
             --cov-report=xml:coverage-int-${{ matrix.os }}.xml \
