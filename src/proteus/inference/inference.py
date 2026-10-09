@@ -472,22 +472,13 @@ def run_inference(config):
     plotBO.plots_perf_converge(D_final, Ts, n_init, dirs['output'])
     plotBO.plot_result_objective(D_final, config['parameters'], n_init, dirs['output'])
     plotBO.plot_result_correlation(config['parameters'], config['observables'], dirs['output'])
-    plot_fit.plot_result_observables(
-        config['observables'],
-        dirs['output'],
-        best_config,
-        config['sigma'],
-        config['correlation'],
+    cases = plot_fit.collect_case_observables(
+        dirs['output'], config['observables'], config['sigma'], config['correlation']
     )
+    plot_fit.plot_result_observables(cases, config['observables'], dirs['output'], best_config)
     if config['truth'] is not None:
         plot_fit.plot_result_parameters(
-            config['parameters'],
-            config['truth'],
-            config['observables'],
-            dirs['output'],
-            best_config,
-            config['sigma'],
-            config['correlation'],
+            cases, config['parameters'], config['truth'], dirs['output'], best_config
         )
 
     # Make PROTEUS plots for best fitting case

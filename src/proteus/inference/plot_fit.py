@@ -1,6 +1,6 @@
 """Plots comparing the best fit with the targets and, if known, the true parameters.
 
-These re-read each case's helpfile and config from the output folder.
+`collect_case_observables` reads each case's helpfile once; both plots take its frame.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ OBS_STYLE = {
 RATIO_CLIP = (1e-2, 1e2)
 
 
-def _collect_case_observables(
+def collect_case_observables(
     directory, obs: dict, sigma: dict | None = None, correlation: dict | None = None
 ) -> pd.DataFrame:
     """Read the final observables and fit quality of every case on disk.
@@ -207,9 +207,7 @@ def _panel_residual(ax, obs_keys: list[str], pct: np.ndarray, best_J: float) -> 
     ax.grid(axis='x', color='0.9', lw=0.6)
 
 
-def plot_result_observables(
-    obs: dict, directory, best_config=None, sigma=None, correlation=None
-):
+def plot_result_observables(cases: pd.DataFrame, obs: dict, directory, best_config=None):
     """Plot the best-fit final observables against the target observables.
 
     Two panels share the observable rows: every scored case as its ratio to
@@ -217,12 +215,11 @@ def plot_result_observables(
 
     Parameters
     ----------
+    - cases (pd.DataFrame): Scored cases from `collect_case_observables`.
     - obs (dict): Observable names and target values.
     - directory (str): Base dir where the inference was performed.
     - best_config (str | Path | None): Path to the best fitting case's config
       TOML.
-    - sigma (dict | None): Uncertainty of each observable
-    - correlation (dict | None): Correlations between the observable uncertainties.
 
     Returns
     ----------
@@ -230,12 +227,11 @@ def plot_result_observables(
     """
     obs_keys = list(obs.keys())
 
-    df = _collect_case_observables(directory, obs, sigma, correlation)
-    if df.empty:
+    if cases.empty:
         log.warning('No case produced observables; skipping the observable comparison')
         return
 
-    ok = df[~df['excluded']].copy()
+    ok = cases[~cases['excluded']].copy()
     if ok.empty:
         log.warning('Every case carries the failure score; skipping the observable comparison')
         return
@@ -320,25 +316,17 @@ def _panel_position(ax, pos, truth_pos, best_pos, labels, best_case: str) -> Non
 
 
 def plot_result_parameters(
-    pars: dict,
-    truth: dict,
-    obs: dict,
-    directory,
-    best_config=None,
-    sigma=None,
-    correlation=None,
+    cases: pd.DataFrame, pars: dict, truth: dict, directory, best_config=None
 ):
     """Plot the best-fit parameters against the true parameters, if known.
 
     Parameters
     ----------
+    - cases (pd.DataFrame): Scored cases from `collect_case_observables`.
     - pars (dict): Parameter names and bounds.
     - truth (dict): True value of each parameter.
-    - obs (dict): Observable names and target values, used to score cases.
     - directory (str): Base dir where the inference was performed.
     - best_config (str | Path | None): Path to the best fitting case's config TOML.
-    - sigma (dict | None): Uncertainty of each observable, as used by the optimiser.
-    - correlation (dict | None): Correlations between the observable uncertainties.
 
     Returns
     ----------
@@ -346,16 +334,15 @@ def plot_result_parameters(
     """
     par_keys = list(pars.keys())
 
-    df = _collect_case_observables(directory, obs, sigma, correlation)
-    ok = df[~df['excluded']].copy() if not df.empty else df
+    ok = cases[~cases['excluded']].copy() if not cases.empty else cases
     if ok.empty:
         log.warning('No scored case to compare with the true parameters; skipping')
         return
 
     # Parameter values each case actually ran with
-    cases = Path(directory) / 'workers'
+    workers = Path(directory) / 'workers'
     confs = [
-        toml.load(cases / f'w_{w}' / f'i_{i}' / 'init_coupler.toml')
+        toml.load(workers / f'w_{w}' / f'i_{i}' / 'init_coupler.toml')
         for w, i in zip(ok['worker'], ok['iter'])
     ]
     for k in par_keys:

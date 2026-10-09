@@ -78,7 +78,7 @@ def test_collect_case_observables_pins_objective_and_skips_missing_helpfile(tmp_
     _write_case(tmp_path, 0, 0, {'R_obs': 2.4, 'T_obs': 5.5})
     (tmp_path / 'workers' / 'w_0' / 'i_1').mkdir(parents=True)
 
-    df = plot_fit_mod._collect_case_observables(tmp_path, obs)
+    df = plot_fit_mod.collect_case_observables(tmp_path, obs)
 
     assert list(df['case']) == ['w0_i0']
     assert not bool(df.loc[0, 'excluded'])
@@ -98,10 +98,10 @@ def test_collect_case_observables_scores_with_observable_correlation(tmp_path):
     sigma = {'R_obs': 5.0e5, 'T_obs': 25.0}
     _write_case(tmp_path, 0, 0, {'R_obs': 7.0e6, 'T_obs': 450.0})
 
-    df = plot_fit_mod._collect_case_observables(tmp_path, obs, sigma, {'T_obs': {'R_obs': 0.6}})
+    df = plot_fit_mod.collect_case_observables(tmp_path, obs, sigma, {'T_obs': {'R_obs': 0.6}})
 
     assert df.loc[0, 'J'] == pytest.approx(-np.log10(5.0 + 1e-10), rel=1e-9)
-    independent = plot_fit_mod._collect_case_observables(tmp_path, obs, sigma)
+    independent = plot_fit_mod.collect_case_observables(tmp_path, obs, sigma)
     assert independent.loc[0, 'J'] == pytest.approx(-np.log10(8.0 + 1e-10), rel=1e-9)
 
 
@@ -119,7 +119,7 @@ def test_collect_case_observables_marks_recorded_failures_as_excluded(tmp_path):
         tmp_path / 'failures.csv', index=False
     )
 
-    df = plot_fit_mod._collect_case_observables(tmp_path, obs).set_index('case')
+    df = plot_fit_mod.collect_case_observables(tmp_path, obs).set_index('case')
 
     assert not bool(df.loc['w0_i0', 'excluded'])
     assert bool(df.loc['w0_i1', 'excluded'])
@@ -132,17 +132,20 @@ def test_plot_result_observables_highlights_the_reported_best_case(monkeypatch, 
     """The named case is highlighted even when another scores better.
 
     The figure and the results summary must name the same run, so a supplied
-    ``best_config`` overrides the highest recomputed objective.
+    ``best_config`` overrides the highest recomputed objective. The plot draws
+    from the frame it is given, with the helpfiles already gone.
     """
     (tmp_path / 'plots').mkdir()
     named = _write_case(tmp_path, 0, 0, {'R_obs': 1.20})
     _write_case(tmp_path, 0, 1, {'R_obs': 1.01})
     _mock_plt, fig, ax_ratio, _ax_resid = _two_axes(monkeypatch)
+    cases = plot_fit_mod.collect_case_observables(tmp_path, {'R_obs': 1.0})
+    # The plot draws from the collected frame, so the helpfiles are not read again.
+    for hf in tmp_path.glob('workers/w_*/i_*/runtime_helpfile.csv'):
+        hf.unlink()
 
     plot_fit_mod.plot_result_observables(
-        obs={'R_obs': 1.0},
-        directory=str(tmp_path),
-        best_config=str(named / 'init_coupler.toml'),
+        cases, {'R_obs': 1.0}, str(tmp_path), str(named / 'init_coupler.toml')
     )
 
     call = _diamond_call(ax_ratio)
@@ -169,9 +172,10 @@ def test_plot_result_observables_falls_back_to_best_j_for_an_unknown_case(
     _mock_plt, fig, ax_ratio, _ax_resid = _two_axes(monkeypatch)
 
     plot_fit_mod.plot_result_observables(
-        obs={'R_obs': 1.0},
-        directory=str(tmp_path),
-        best_config='/does/not/exist/init_coupler.toml',
+        plot_fit_mod.collect_case_observables(tmp_path, {'R_obs': 1.0}),
+        {'R_obs': 1.0},
+        str(tmp_path),
+        '/does/not/exist/init_coupler.toml',
     )
 
     assert 'using the best J' in caplog.text
@@ -207,7 +211,8 @@ def test_plot_result_observables_skips_when_nothing_is_scored(
         )
     mock_plt, _fig, _ax_ratio, _ax_resid = _two_axes(monkeypatch)
 
-    plot_fit_mod.plot_result_observables(obs={'R_obs': 1.0}, directory=str(tmp_path))
+    cases = plot_fit_mod.collect_case_observables(tmp_path, {'R_obs': 1.0})
+    plot_fit_mod.plot_result_observables(cases, {'R_obs': 1.0}, str(tmp_path))
 
     assert expected in caplog.text
     assert mock_plt.subplots.call_count == 0
@@ -319,8 +324,9 @@ def test_plot_result_parameters_places_truth_and_named_best_fit(monkeypatch, tmp
     _write_param_case(tmp_path, 0, 1, 1.01, -1.0, 2.0e3)
     _mock_plt, fig, ax_pos, ax_err = _two_axes(monkeypatch)
 
+    cases = plot_fit_mod.collect_case_observables(tmp_path, {'R_obs': 1.0})
     plot_fit_mod.plot_result_parameters(
-        _PARS, _TRUTH, {'R_obs': 1.0}, str(tmp_path), str(named / 'init_coupler.toml')
+        cases, _PARS, _TRUTH, str(tmp_path), str(named / 'init_coupler.toml')
     )
 
     best_x = np.asarray(_diamond_call(ax_pos).args[0], dtype=float)
@@ -351,7 +357,8 @@ def test_plot_result_parameters_widens_axis_for_truth_outside_range(monkeypatch,
     # fO2 shift of +6 lies at position 1.25 of the [-4, 4] range.
     truth = {'outgas.fO2_shift_IW': 6.0, 'planet.elements.H_budget': 5.0e3}
 
-    plot_fit_mod.plot_result_parameters(_PARS, truth, {'R_obs': 1.0}, str(tmp_path))
+    cases = plot_fit_mod.collect_case_observables(tmp_path, {'R_obs': 1.0})
+    plot_fit_mod.plot_result_parameters(cases, _PARS, truth, str(tmp_path))
 
     left, right = ax_pos.set_xlim.call_args.args
     assert right == pytest.approx(1.25 + 0.04, rel=1e-12)
@@ -370,7 +377,8 @@ def test_plot_result_parameters_skips_when_nothing_is_scored(monkeypatch, tmp_pa
     )
     mock_plt, _fig, _ax_pos, _ax_err = _two_axes(monkeypatch)
 
-    plot_fit_mod.plot_result_parameters(_PARS, _TRUTH, {'R_obs': 1.0}, str(tmp_path))
+    cases = plot_fit_mod.collect_case_observables(tmp_path, {'R_obs': 1.0})
+    plot_fit_mod.plot_result_parameters(cases, _PARS, _TRUTH, str(tmp_path))
 
     assert 'No scored case to compare with the true parameters' in caplog.text
     assert mock_plt.subplots.call_count == 0
