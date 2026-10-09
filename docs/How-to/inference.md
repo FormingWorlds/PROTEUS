@@ -79,29 +79,21 @@ errors sum to 1, and negative for worse fits.
 ### Observable uncertainties
 
 An optional `[sigma]` table gives the 1-sigma uncertainty of each observable, in the same
-units as the value in `[observables]`. When it is present every observable needs an entry,
-and each residual is divided by its uncertainty instead of by the target value:
+units as the value in `[observables]`. When it is present, each residual is divided by its uncertainty:
 
 ```
 J = -log10( sum( ((sim - true) / sigma)^2 ) + 1e-10 )
 ```
 
-Observables that span orders of magnitude (`atm_kg_per_mol`, `*_vmr`, `*_bar`, `P_surf`, ...)
-are compared as `log10` values, and so are element ratios such as `C/O_atm` when `[sigma]` is
-given (without it they stay linear, as before). Their uncertainty can be given in dex as a
-string, for example `"C/O_atm" = "0.1 dex"`. A plain number is in the units of the value and is
-converted to dex to first order, `sigma / (true * ln 10)`, which is accurate only for small
-uncertainties; a warning is logged when it exceeds 30 % of the value.
+Observables that span orders of magnitude (e.g. `atm_kg_per_mol`) are compared as `log10` values, and so are element ratios such as `C/O_atm` when `[sigma]` is given. Their uncertainty can be given in linear space, in the following way `"C/O_atm" = 0.1`; in this case, it is converted to dex to first order via `sigma / (true * ln 10)`. Optionally, it can be given in dex directly as a string, for example `"C/O_atm" = "0.1 dex"`. 
 
-The two objectives are on different scales, so compare `J` only between studies that use the same
-one. The objective in use is reported at start-up.
+!!! warning "Do not compare `J` when using different objectives"
+    The two objectives are on different scales, so compare `J` only between inference runs that use the same one. The objective in use is reported at start-up.
 
 ### Correlated uncertainties
 
 When the errors of two observables are correlated, for example abundance ratios from one
-retrieval, or a surface gravity derived from a measured radius, an optional `[correlation]` table
-gives their correlation coefficient. It needs `[sigma]`. Each pair is given once, as a nested table,
-and pairs not listed are uncorrelated:
+retrieval, an optional `[correlation]` table gives their correlation coefficient. It needs `[sigma]`. Each pair is given once, as a nested table. Pairs not listed are uncorrelated:
 
 ```toml
 [correlation.R_obs]
@@ -115,28 +107,14 @@ The sum of squares is then replaced by the full chi-squared
 chi2 = u^T R^-1 u,    u = (sim - true) / sigma
 ```
 
-where `R` is the correlation matrix, with ones on the diagonal. This is the same as `r^T C^-1 r` with
-the covariance `C_ij = rho_ij sigma_i sigma_j`. Each coefficient must lie strictly between -1 and 1,
-and the matrix as a whole must be positive definite; both are checked at start-up. For an
-observable compared as `log10` values the coefficient is used unchanged, since to first order the
-conversion to log10 units only rescales each uncertainty.
+where `R` is the correlation matrix. Each coefficient must lie strictly between -1 and 1, and the matrix as a whole must be positive definite. 
 
-For element-ratio observables, `correlate_ratios = true` builds the table instead. Each name
-with a `/` must be a ratio of two elements ending in `_atm` (`C/O_atm` is C to the power +1, O to the power -1),
-and, assuming the same dex error for every element, two ratios correlate by the cosine of their
-exponent vectors. One element shared on the same side gives +0.5 (`C/O_atm` with `S/O_atm`), on
-opposite sides -0.5 (`C/O_atm` with `O/H_atm`). Observables without a `/` stay uncorrelated. It
-needs `[sigma]` and cannot be combined with `[correlation]`. The assumption fixes only the
-correlations; each ratio keeps its own `[sigma]`.
-
-The correlations describe the measurement errors, not the way the model links observables: a
-model that predicts both radius and gravity from one planet mass already accounts for that link.
+For element-ratio observables (such as `C/O_atm` and `O/H_atm`), `correlate_ratios = true` builds the table instead. Assuming the same dex error for every element, two ratios correlate by the cosine of their exponent vectors. One element shared on the same side gives +0.5 (`C/O_atm` with `S/O_atm`); on opposite sides -0.5 (`C/O_atm` with `O/H_atm`). 
 
 ### Known true parameters
 
 When the target observables were extracted from a simulation whose parameters you know (a
-synthetic retrieval test), an optional `[truth]` table records those parameters so the best fit
-can be compared against them:
+synthetic retrieval test), an optional `[truth]` table records those parameters so the best fit can be compared against them:
 
 ```toml
 [truth]
@@ -144,13 +122,7 @@ can be compared against them:
 "outgas.fO2_shift_IW"       = 2.0
 ```
 
-When it is present every entry of `[parameters]` needs a value, as with `[sigma]`. A value outside
-the sampled range is accepted with a warning, since the study cannot recover it. The table does
-not change the optimisation; it adds a True column to the results summary and the
-`result_parameters.png` plot.
-
-A best fit that matches the observables but not the true parameters is not necessarily a failed
-study: different parameter combinations can produce the same observables.
+The table does not change the optimisation; it adds a True column to the results summary and the `result_parameters.png` plot.
 
 ### Parallel Processing
 
@@ -167,7 +139,7 @@ study: different parameter combinations can produce the same observables.
 
 The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
 
-With `patience = N` (default 0, off), the study stops earlier, once `N` evaluations in a row have not raised the best objective by more than 0.01, about a 2% lower chi-squared. Small rises add up: the count resets once the best has risen by more than 0.01 in total since the last reset. Runs already in progress finish first. In our SE, TR and SN studies, plateaus of 20 to 40 evaluations came before a further improvement, so values below about 50 can stop a study too early.
+With `patience = N` (default 0, off), the study stops earlier, once `N` evaluations in a row have not raised the best objective by more than 0.01. It is advisable to only start using this after a few test runs: it might be common to have temporary stalls of tens of steps, and values that are too low can stop a study too early.
 
 ### Acquisition functions
 
@@ -222,9 +194,7 @@ Plots prefixed with `result_` show the results of the optimisation.
 - `result_correlation.png`: Scatter plot observables for each parameter, at each sample.
 - `result_objective.png`: Value of objective `J` for each parameter, at each sample.
 - `result_observables.png`: Final observables of every sample as a ratio to their target.
-- `result_parameters.png`: Only with a `[truth]` table. Every sample, the true value and the best
-  fit placed within each parameter's sampled range (in log10 for log-scaled parameters), and the
-  best-fit error as a percentage of that range.
+- `result_parameters.png`: Only with a `[truth]` table. Retrieved parameters of every sample as a ratio to the truth. 
 
 ### Results Summary
 The system prints the final results including:
@@ -262,13 +232,6 @@ pays for importing PROTEUS, loading the Julia environment and compiling AGNI
 on its first call. Setting `dispatch = "runner"` in the inference config keeps
 one PROTEUS process alive per worker and reuses it for every evaluation that
 worker makes.
-
-On the default dispatch each evaluation writes its own `i_<n>_console.log`; a
-reused process instead writes a single `runner_console.log` per worker, covering
-every simulation that worker ran, because Julia cannot be redirected between
-simulations. The initial samples all go in `w_-1`, so there each pool process
-writes its own `runner_<pid>_console.log`. Each run's own `proteus_*.log` is
-unaffected.
 
 ```toml
 dispatch = "runner"      # "subprocess" (default) or "runner"
