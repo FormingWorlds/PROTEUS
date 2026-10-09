@@ -265,7 +265,7 @@ directory = "htmlcov"
 # Tracks nichollsh/AGNI main; bump after every AGNI release PROTEUS needs.
 # Until AGNI branch tl/zenodo-per-file merges, the ref is a commit on it.
 url = "https://github.com/nichollsh/AGNI.git"
-ref = "1076fcaf89b880f68fc27c65ee0e10544a13be3b"
+ref = "bdcb99f948943c18cfd253103d636f90d3e0ee5a"
 
 [tool.proteus.modules.socrates]
 # Spectral radiative transfer library (Fortran). Compiled in-place
