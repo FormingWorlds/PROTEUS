@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
+import pathlib
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
@@ -145,13 +146,13 @@ def test_determine_aerosols_warns_when_the_scattering_dataset_cannot_be_resolved
     assert 'Scattering data directory not found: unresolved' in caplog.text
 
 
-def _fetch_refractive(root, keep=None):
-    """Write the registry files of the refractive dataset below root (the first keep only)."""
-    from proteus.data import REFRACTIVE, dataset_dir, missing_files
+def _fetch_refractive(root):
+    """Write every registry file of the refractive dataset below root."""
+    from proteus.data import REFRACTIVE, _dataset, dataset_dir
 
     target = dataset_dir(REFRACTIVE, data_root=root)
     target.mkdir(parents=True)
-    for name in missing_files(REFRACTIVE, data_root=root)[:keep]:
+    for name in _dataset(REFRACTIVE).registry():
         (target / name).write_text('0.3 1.5 0.0\n')
     return target
 
@@ -254,20 +255,18 @@ def test_refractive_env_warns_when_the_dataset_is_missing(
 
 @pytest.mark.unit
 @pytest.mark.parametrize('keep', [0, 1, -1])
-def test_refractive_env_skips_an_incomplete_dataset(tmp_path, monkeypatch, caplog, keep):
-    """An empty or partly fetched dataset is a warning naming a missing file; AGNI keeps its
-    own folder."""
-    from proteus.data import REFRACTIVE, missing_files
-
-    for var in (agni_mod.REFRACTIVE_ENV, 'AGNI_DIR_res'):
-        monkeypatch.delenv(var, raising=False)
-    target = _fetch_refractive(tmp_path, keep)
-    gone = missing_files(REFRACTIVE, data_root=tmp_path)
-    assert gone and len(gone) == (1 if keep == -1 else len(gone))
+def test_refractive_env_skips_an_incomplete_dataset(refractive_env, tmp_path, caplog, keep):
+    """An empty or partly fetched dataset is a warning naming the first missing files; AGNI
+    keeps its own folder."""
+    files = sorted(pathlib.Path(refractive_env).iterdir())
+    for path in files[keep:]:
+        path.unlink()
     with caplog.at_level(logging.WARNING):
         agni_mod._point_agni_at_refractive(str(tmp_path), True)
     assert agni_mod.REFRACTIVE_ENV not in os.environ
-    assert f'incomplete in {target}, missing: {gone[0]}' in caplog.text
+    gone = [f.name for f in files[keep:]]
+    listed = ', '.join(gone[:3]) + (f' and {len(gone) - 3} more' if len(gone) > 3 else '')
+    assert f'incomplete in {refractive_env}, missing: {listed}. AGNI' in caplog.text
 
 
 @pytest.mark.unit
