@@ -415,13 +415,19 @@ class Accretion:
         atmosphere loss at all: the target keeps its atmosphere and a
         volatile-bearing impactor delivers its whole content), "constant"
         (the fixed fraction below), "zephyrus" (the giant-impact erosion
-        scaling law of Kegerreis et al. 2020, evaluated by
-        ``zephyrus.collision.mass_loss`` from each impact's collision
-        parameters). One fraction governs both bodies at each impact: the
-        target loses that fraction of its atmosphere, and a
+        scaling laws evaluated by ``zephyrus.collision.impact_loss`` from each
+        impact's collision parameters). One fraction governs both bodies at
+        each impact: the target loses that fraction of its atmosphere, and a
         volatile-bearing impactor loses the same fraction of its
         atmospheric part and delivers the remainder. PROTEUS itself ships
         no impact loss physics.
+    atmloss_law: str
+        Which erosion scaling law to evaluate when ``atmloss_module = 'zephyrus'``.
+        Choices: "roche2026" (Roche et al. 2026, doi:10.5281/zenodo.23192423,
+        parameterized by impact angle, mass ratio, contact velocity, and target
+        atmospheric fraction), "kegerreis2020" (Kegerreis et al. 2020,
+        doi:10.3847/2041-8213/abb5fb, parameterized by impact angle, contact
+        velocity, mass ratio, and bulk densities).
     atmloss_frac: float
         Fraction of the atmosphere removed by each impact when
         ``atmloss_module = "constant"`` [0-1]. Applies to the target's
@@ -464,12 +470,16 @@ class Accretion:
     )
 
     # Impact atmosphere loss. Disabled by default; the constant module
-    # applies a fixed fraction, the zephyrus module the Kegerreis et al.
-    # (2020) scaling law from each impact's collision parameters.
+    # applies a fixed fraction, the zephyrus module evaluates scaling laws
+    # from each impact's collision parameters.
     atmloss_module: str | None = field(
         default='none',
         validator=in_((None, 'constant', 'zephyrus')),
         converter=none_if_none,
+    )
+    atmloss_law: str = field(
+        default='roche2026',
+        validator=in_(('kegerreis2020', 'roche2026')),
     )
     atmloss_frac: float = field(default=0.0, validator=[ge(0), le(1)])
 
