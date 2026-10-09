@@ -2580,6 +2580,57 @@ def test_roche2026_twin_bodies_gamma_clamp_tail(caplog):
 
 
 @pytest.mark.unit
+def test_roche2026_zero_energy_flag_inside_fitted_range(caplog):
+    """Zero-energy far-field flag inside fitted range emits warning without extrapolated tail.
+
+    Verifies clause: collisions with high gamma at f_atm in the fitted range can
+    predict far-field loss without impact energy and emit ('X_FF_zero_energy',) only.
+    The warning names the zero-energy loss and does not append 'extrapolated'.
+    """
+    pytest.importorskip('zephyrus.collision')
+    import scipy.constants as const
+    from zephyrus.planets_parameters import Me, Re
+
+    from proteus.accretion.wrapper import _impact_loss_fraction
+
+    cfg = SimpleNamespace(
+        accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='roche2026')
+    )
+    m_target_refractory = Me
+    f_atm = 0.012
+    m_target_event = m_target_refractory / (1.0 - f_atm)
+    m_impactor = m_target_refractory * 0.4 / 0.6
+    r_target = Re
+    r_impactor = r_target * (m_impactor / m_target_refractory) ** (1.0 / 3.0)
+    v_esc = (
+        2.0 * const.G * (m_target_refractory + m_impactor) / (r_target + r_impactor)
+    ) ** 0.5
+    v_impact = 1.5 * v_esc
+
+    event = _impact_event(
+        v_impact=v_impact,
+        M_target_before=m_target_event,
+        M_impactor=m_impactor,
+        R_target_before=r_target,
+        R_impactor=r_impactor,
+        impact_parameter=0.3,
+    )
+    hf_row = {'M_planet': m_target_event, 'H_kg_atm': f_atm * m_target_event}
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        f_loss = _impact_loss_fraction(cfg, hf_row, event)
+
+    assert 0.0 <= f_loss <= 1.0
+    rec = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(rec) == 1
+    msg = rec[0].getMessage()
+    assert 'far-field loss of 0.0014 without impact energy' in msg
+    assert 'extrapolated' not in msg
+    assert 'evaluated at' not in msg
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_roche2026_airless_target_and_trace_atmosphere_jump(caplog):
     """An airless target returns zero loss while a trace atmosphere jumps to ~0.69.

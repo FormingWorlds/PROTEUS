@@ -447,7 +447,8 @@ class Accretion:
         clamped, only the fit terms use the clamped value while v_esc, Q'_R,
         and the mass ratio use the raw collision state. When the far-field
         term predicts loss without impact energy, the 'X_FF_zero_energy'
-        flag is set.
+        flag is set; this flag can fire inside the fitted range (for high
+        gamma at f_atm 0.01 to 0.1) and is common below f_atm 0.01.
     atmloss_frac: float
         Fraction of the atmosphere removed by each impact when
         ``atmloss_module = "constant"`` [0-1]. Applies to the target's

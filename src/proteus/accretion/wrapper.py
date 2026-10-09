@@ -985,7 +985,7 @@ def _format_roche_flag(
     if name not in fitted_range:
         return name
     lo, hi = fitted_range[name]
-    val = float(diagnostics.get(name, 0.0))
+    val = float(diagnostics[name])
     msg = f'{name} = {val:.3g} (fitted {lo:g} to {hi:g})'
     clamped = diagnostics.get('clamped', {})
     if name in clamped:
@@ -1140,7 +1140,7 @@ def _log_zephyrus_loss(
                 if has_clamp_in_msg
                 else ''
             )
-            has_extrapolated = any(f != 'v_sub_escape' for f in names)
+            has_extrapolated = any(f in fitted_range for f in names)
             extrap_tail = '; the loss fraction is extrapolated' if has_extrapolated else ''
             log.warning(
                 '    impact at t = %.4e yr: Roche et al. (2026) law outside its fitted range: '

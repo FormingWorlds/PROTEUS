@@ -56,4 +56,6 @@ $10^{-6}$ stability bound, $f_\mathrm{atm}$ is evaluated at $10^{-6}$, and the r
 loss fraction depends on the collision parameters. When parameters are clamped, only the
 fit terms use the clamped values while $v_\mathrm{esc}$, $Q'_R$, and the mass ratio use
 the raw collision state. When the far-field term predicts loss without impact energy
-(from the log10 f_atm extrapolation), the 'X_FF_zero_energy' flag is set.
+(from the log10 f_atm extrapolation), the 'X_FF_zero_energy' flag is set; this flag can
+fire inside the fitted range (for high $\gamma$ at $f_\mathrm{atm}$ 0.01 to 0.1) and is
+common below $f_\mathrm{atm}$ 0.01.
