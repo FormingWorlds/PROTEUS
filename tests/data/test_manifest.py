@@ -744,3 +744,23 @@ def test_fetch_and_read_sides_agree_on_a_home_relative_data_root(monkeypatch, tm
     # the working directory, which is still an absolute, plausible-looking path.
     assert '~' not in str(proteus_side)
     assert proteus_side.is_relative_to(tmp_path)
+
+
+def test_missing_files_lists_absent_registry_files(tmp_path):
+    """missing_files names, sorted, every registry file that is not a file in the version
+    directory, a directory in its place included; a complete dataset gives an empty list."""
+    from proteus.data import REFRACTIVE, _dataset, missing_files
+
+    names = sorted(_dataset(REFRACTIVE).registry())
+    folder = dataset_dir(REFRACTIVE, data_root=tmp_path)
+    assert missing_files(REFRACTIVE, data_root=tmp_path) == names
+    folder.mkdir(parents=True)
+    for name in names:
+        (folder / name).write_text('x')
+    assert missing_files(REFRACTIVE, data_root=tmp_path) == []
+    (folder / names[1]).unlink()
+    (folder / names[1]).mkdir()
+    (folder / names[0]).unlink()
+    assert missing_files(REFRACTIVE, data_root=tmp_path) == names[:2]
+    with pytest.raises(KeyError):
+        missing_files('atmos_clim.refractive.unknown', data_root=tmp_path)

@@ -270,10 +270,11 @@ def missing_files(key: str, data_root: str | Path | None = None) -> list[str]:
     Returns
     -------
     list of str
-        Sorted names of the missing files; empty when the dataset is complete.
+        Sorted names of the missing files; empty when every file is present. Presence
+        only: the contents are checked when fwl-io fetches the files.
     """
-    folder = dataset_dir(key, data_root=data_root)
-    return sorted(name for name in _dataset(key).registry() if not (folder / name).is_file())
+    fetcher = _fetcher(key, data_root=data_root)
+    return sorted(n for n in fetcher.registry if not (fetcher.target_dir / n).is_file())
 
 
 def fetch_dataset(key: str, data_root: str | Path | None = None) -> list[Path]:

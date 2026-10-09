@@ -236,25 +236,33 @@ def test_refractive_env_keeps_a_user_value_set_after_a_proteus_run(refractive_en
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'fail', [None, KeyError('refractive'), RuntimeError('fwl-io'), OSError('ro')]
+    ('call', 'fail'),
+    [
+        (None, None),
+        ('dataset_dir', KeyError('refractive')),
+        ('dataset_dir', RuntimeError('fwl-io')),
+        ('dataset_dir', OSError('ro')),
+        ('missing_files', OSError('unreadable')),
+    ],
 )
 def test_refractive_env_warns_when_the_dataset_is_missing(
-    refractive_env, tmp_path, monkeypatch, caplog, fail
+    refractive_env, tmp_path, monkeypatch, caplog, call, fail
 ):
     """A missing or unresolvable dataset is a warning that names AGNI's own empty folder."""
     if fail is not None:
-        monkeypatch.setattr(agni_mod, 'dataset_dir', MagicMock(side_effect=fail))
+        monkeypatch.setattr(agni_mod, call, MagicMock(side_effect=fail))
     else:
         shutil.rmtree(refractive_env)
     with caplog.at_level(logging.WARNING):
         agni_mod._point_agni_at_refractive(str(tmp_path), True)
     assert agni_mod.REFRACTIVE_ENV not in os.environ
-    assert 'Refractive index data incomplete' in caplog.text
+    reason = 'incomplete in' if fail is None else f'could not be resolved ({fail})'
+    assert f'Refractive index data {reason}' in caplog.text
     assert 'empty unless its get_data.sh fetched' in caplog.text
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('keep', [0, 1, -1])
+@pytest.mark.parametrize('keep', [0, 1, -1, -3, -4])
 def test_refractive_env_skips_an_incomplete_dataset(refractive_env, tmp_path, caplog, keep):
     """An empty or partly fetched dataset is a warning naming the first missing files; AGNI
     keeps its own folder."""
@@ -3770,3 +3778,23 @@ def test_resolve_surface_material_absolute_path_is_unchanged(tmp_path):
 
     assert _resolve_surface_material(str(target), str(tmp_path / 'root')) == str(target)
     assert _resolve_surface_material(str(nested), str(tmp_path / 'root')) == str(nested)
+
+
+@pytest.mark.unit
+def test_refractive_env_checks_the_folder_agni_takes_first(refractive_env, tmp_path, caplog):
+    """With both variables set, the AGNI_DIR_refractive folder is the one checked, also when
+    its path holds glob characters."""
+    nk, res = tmp_path / 'nk[1]', tmp_path / 'res'
+    nk.mkdir()
+    (res / 'refractive').mkdir(parents=True)
+    (res / 'refractive' / 'Fe.txt').write_text('x')
+    os.environ[agni_mod.REFRACTIVE_ENV], os.environ['AGNI_DIR_res'] = str(nk), str(res)
+    with caplog.at_level(logging.INFO):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert f'AGNI reads {nk}' in caplog.text
+    assert f'{nk} (from AGNI_DIR_refractive) holds no refractive index file' in caplog.text
+    (nk / 'Fe.txt').write_text('x')
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert 'holds no refractive index file' not in caplog.text

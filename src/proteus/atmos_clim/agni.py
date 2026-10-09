@@ -476,17 +476,21 @@ def _point_agni_at_refractive(fwl_dir: str, aerosols_enabled: bool) -> None:
                     'finds no material for Mie aerosols.'
                 )
             return
+    fallback = (
+        'AGNI then reads its own res/refractive, which is empty unless its get_data.sh '
+        'fetched the data; fetch it with `proteus get refractive`.'
+    )
     try:
         nk_dir = str(dataset_dir(REFRACTIVE, data_root=fwl_dir))
         missing = missing_files(REFRACTIVE, data_root=fwl_dir)
     except (KeyError, RuntimeError, OSError) as exc:
-        nk_dir, missing = f'unresolved ({exc})', ['all']
+        log.warning(f'Refractive index data could not be resolved ({exc}). {fallback}')
+        return
     if missing:
         more = f' and {len(missing) - 3} more' if len(missing) > 3 else ''
         log.warning(
-            f'Refractive index data incomplete in {nk_dir}, missing: {", ".join(missing[:3])}'
-            f'{more}. AGNI then reads its own res/refractive, which is empty unless its '
-            'get_data.sh fetched the data; fetch it with `proteus get refractive`.'
+            f'Refractive index data incomplete in {nk_dir}, missing: '
+            f'{", ".join(missing[:3])}{more}. {fallback}'
         )
         return
     os.environ[REFRACTIVE_ENV] = nk_dir
