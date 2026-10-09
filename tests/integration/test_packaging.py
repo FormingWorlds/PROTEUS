@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from proteus.data import EXOPLANET_REFERENCE, MASS_RADIUS_ZENG_2019, manifest_path
+from proteus.data import EXOPLANET_REFERENCE, SCATTERING, manifest_path
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
@@ -56,7 +56,7 @@ def test_built_wheel_carries_the_manifest_and_registries(tmp_path):
 
     assert 'proteus/data/proteus_manifest.toml' in names
     assert f'proteus/data/{EXOPLANET_REFERENCE}.registry.txt' in names
-    assert f'proteus/data/{MASS_RADIUS_ZENG_2019}.registry.txt' in names
+    assert f'proteus/data/{SCATTERING}.registry.txt' in names
     # Discrimination: a wheel that shipped the manifest but no registry would
     # satisfy a looser check while failing every checksum verification.
     from fwl_io import load_manifest

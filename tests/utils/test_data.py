@@ -1080,8 +1080,8 @@ def test_download_massradius_data(mock_fetch):
 
     mock_fetch.assert_called_once_with(MASS_RADIUS_ZENG_2019)
     # Discrimination: the key must be the mass-radius dataset, not the
-    # catalogue declared beside it in the same manifest.
-    assert mock_fetch.call_args.args[0] == 'observe.mass_radius.zeng_2019'
+    # exoplanet catalogue fetched by the same reference download.
+    assert mock_fetch.call_args.args[0] == 'interior.mass_radius.zeng_2019'
 
 
 @pytest.mark.unit
@@ -1213,7 +1213,7 @@ def test_download_Seager_EOS(monkeypatch, tmp_path):
 
     download_Seager_EOS()
 
-    assert calls == [('interior_struct.eos.seager_2007', tmp_path)]
+    assert calls == [('interior.eos.seager_2007', tmp_path)]
     assert data_pkg.EOS_SEAGER_2007 == calls[0][0]
 
 
@@ -1247,7 +1247,7 @@ def test_download_Seager_EOS_failure_raises(monkeypatch, tmp_path):
 
     with pytest.raises(OSError, match='no network'):
         download_Seager_EOS()
-    assert attempts == ['interior_struct.eos.seager_2007']
+    assert attempts == ['interior.eos.seager_2007']
 
 
 # =============================================================================
@@ -3013,7 +3013,7 @@ def test_get_zalmoxis_EOS_seager_versioned_dir_used(monkeypatch, tmp_path):
     assert Path(iron_silicate['core']['eos_file']) == seager / 'eos_seager07_iron.txt'
     assert Path(iron_silicate['mantle']['eos_file']) == seager / 'eos_seager07_silicate.txt'
     assert Path(water['ice_layer']['eos_file']) == seager / 'eos_seager07_water.txt'
-    assert seager.parts[-4:-1] == ('interior_struct', 'eos', 'seager_2007')
+    assert seager.parts[-4:-1] == ('interior', 'eos', 'seager_2007')
     assert seager.name.startswith('r')
 
 

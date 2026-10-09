@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal, Union
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, le, lt
+from attrs.validators import ge, gt, in_, le, lt, optional
 
 from ._converters import none_if_none
 
@@ -258,6 +258,40 @@ def ax_valid(instance, attribute, value):
 
 
 @define
+class Parameterized:
+    """Parameterized orbital migration module.
+
+    The track starts from ``orbit.semimajoraxis`` and ``orbit.eccentricity``,
+    which seed the orbit at the initial condition as for every other model.
+
+    Attributes
+    ----------
+    migration: str
+        Type of orbital migration to apply.
+    sma_final: float | None
+        Final semi-major axis [AU].
+    time_migration: float
+        Time at which migration begins [yr].
+    tau_migration: float
+        Timescale of migration, used by the sigmoid and high_ecc laws [yr].
+    """
+
+    sma_final = field(default=None, validator=optional(gt(0)), converter=none_if_none)
+
+    migration: str = field(
+        default='none', validator=in_(('none', 'instant', 'sigmoid', 'high_ecc'))
+    )
+    time_migration: float = field(default=1e6, validator=gt(1))
+    tau_migration: float = field(default=1e9, validator=gt(0))
+
+    def __attrs_post_init__(self):
+        if self.migration != 'none' and self.sma_final is None:
+            raise ValueError(
+                f'orbit.parameterized.migration = {self.migration!r} requires sma_final'
+            )
+
+
+@define
 class Satellite:
     """Satellite orbit configuration for planet-satellite systems.
 
@@ -400,9 +434,9 @@ class Orbit:
         Scale factor applies to incoming stellar radiation to represent planetary rotation.
 
     star_planet_model: str | None
-        Select star-planet orbit module to use. Choices: 'none', 'sp0d', 'sp1d'.
+        Select star-planet orbit module to use. Choices: 'none', 'sp0d', 'sp1d', 'parameterized'.
     axial_period: float | None
-        Planet initial day length [hours], will use orbital period if value is None.
+        Planet initial day length [hours], will use orbital period if value is None. Must be None for sp0d and parameterized, which keep the spin locked to the orbit.
 
     satellite: Satellite
         Satellite and orbit configuration for planet-satellite systems.
@@ -413,6 +447,10 @@ class Orbit:
     solver: OrbitSolver
         Shared ODE-solver and adaptive-substep-controller settings for the
         star-planet and planet-satellite orbital-evolution models.
+
+    parameterized: Parameterized
+        Prescribed orbital-migration track, used when
+        star_planet_model = 'parameterized'.
 
     perturber: str | None
         Select perturber to induce tides on the planet. Options: 'none', 'star', 'satellite'.
@@ -452,7 +490,9 @@ class Orbit:
 
     # Orbital model to use for star-planet orbit evolution based on tides
     star_planet_model: str | None = field(
-        default='none', validator=in_((None, 'none', 'sp0d', 'sp1d')), converter=none_if_none
+        default='none',
+        validator=in_((None, 'none', 'sp0d', 'sp1d', 'parameterized')),
+        converter=none_if_none,
     )
     # Initial day length for planet [hours]
     # If none, assume 1:1 spin orbit synchronization and use orbital period as day length
@@ -470,6 +510,9 @@ class Orbit:
 
     # Shared ODE-solver and adaptive-substep-controller settings
     solver: OrbitSolver = field(factory=OrbitSolver)
+
+    # Parameterized orbital migration
+    parameterized: Parameterized = field(factory=Parameterized)
 
     # Perturber to induce tides on the planet. Options: 'none', 'star', 'satellite'.
     perturber: str | None = field(
