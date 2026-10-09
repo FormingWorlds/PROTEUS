@@ -88,7 +88,7 @@ units as the value in `[observables]`. When it is present, each residual is divi
 J = -log10( sum( ((sim - true) / sigma)^2 ) + 1e-10 )
 ```
 
-Observables that span orders of magnitude (e.g. `atm_kg_per_mol`) are compared as `log10` values, and so are element ratios such as `C/O_atm` when `[sigma]` is given. Their uncertainty can be given in linear space, in the following way `"C/O_atm" = 0.1`; in this case, it is converted to dex to first order via `sigma / (true * ln 10)`. Optionally, it can be given in dex directly as a string, for example `"C/O_atm" = "0.1 dex"`. 
+Observables that span orders of magnitude (e.g. `atm_kg_per_mol`) are compared as `log10` values, and so are element ratios such as `C/O_atm` when `[sigma]` is given. Their uncertainty can be given in linear space, e.g. `"C/O_atm" = 0.1`; in this case, it is converted to dex to first order via `sigma / (true * ln 10)`. Optionally, it can be given in dex directly as a string, for example `"C/O_atm" = "0.1 dex"`. 
 
 !!! warning "Do not compare `J` when using different objectives"
     The two objectives are on different scales, so compare `J` only between inference runs that use the same one. The objective in use is reported at start-up.
@@ -142,7 +142,7 @@ The table does not change the optimisation; it adds a True column to the results
 
 The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
 
-With `patience = N` (default 0, off), the study stops earlier, once `N` evaluations in a row have not raised the best objective by more than 0.01. It is advisable to only start using this after a few test runs: it might be common to have temporary stalls of tens of steps, and values that are too low can stop a study too early.
+With `patience = N` (default 0, off), the study stops earlier, once `N` evaluations in a row have not raised the best objective by more than 0.01. Stalls of tens of evaluations happen, so set patience after a few test runs; too low a value stops a study early.
 
 ### Acquisition functions
 
@@ -197,7 +197,7 @@ Plots prefixed with `result_` show the results of the optimisation.
 - `result_correlation.png`: Scatter plot observables for each parameter, at each sample.
 - `result_objective.png`: Value of objective `J` for each parameter, at each sample.
 - `result_observables.png`: Final observables of every sample as a ratio to their target.
-- `result_parameters.png`: Only with a `[truth]` table. Retrieved parameters of every sample as a ratio to the truth. 
+- `result_parameters.png`: Only with a `[truth]` table. Every sample, the truth and the best fit placed within each parameter's sampled range.
 
 ### Results Summary
 The system prints the final results including:
