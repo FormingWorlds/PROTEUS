@@ -1402,7 +1402,7 @@ def test_init_agni_atmos_forwards_hill_radius_and_hydrograv_hilldr(monkeypatch, 
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_path):
+def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_path, caplog):
     """A discovered aerosol whose name matches a condensate (case-insensitive)
     tracks that condensate's mixing ratio; a non-matching aerosol is skipped
     entirely (never sent to AGNI), since it would always read zero anyway.
@@ -1459,8 +1459,10 @@ def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_pa
     monkeypatch.setattr(agni_mod, '_point_agni_at_refractive', lambda *a: calls.append(a))
     fake_agni.aerosol_optics.list_materials = lambda: calls.append('list') or []
 
-    atmos = init_agni_atmos(dirs, config, hf_row)
+    with caplog.at_level(logging.WARNING):
+        atmos = init_agni_atmos(dirs, config, hf_row)
     assert atmos is not None
+    assert 'No aerosols mapped' not in caplog.text
     # AGNI must see the refractive directory before it lists its Mie materials.
     assert calls[:2] == [(str(tmp_path), True), 'list']
 
