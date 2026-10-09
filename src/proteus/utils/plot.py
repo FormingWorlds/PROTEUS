@@ -134,13 +134,28 @@ _preset_quantities = {
     # Orbit module
     'orbit.semimajoraxis': _QuantityInfo(r'$a$ [AU]', 1.0, False),
     'orbit.eccentricity': _QuantityInfo(r'$e$', 1.0, False),
+    # Star module
+    'star.module': _QuantityInfo('Star model', 1.0, False),
+    'star.mass': _QuantityInfo(r'$M_\star$ [$M_\odot$]', 1.0, False),
+    'star.age_ini': _QuantityInfo('Start age [Gyr]', 1.0, False),
+    'star.mors.age_now': _QuantityInfo('Stellar age [Gyr]', 1.0, False),
     # Planet structure
     'planet.mass_tot': _QuantityInfo(r'$M_{\rm tot}$ [$M_\oplus$]', 1.0, False),
+    'planet.temperature_mode': _QuantityInfo('Initial $T$ profile', 1.0, False),
+    'planet.tsurf_init': _QuantityInfo(r'$T_{\rm surf,ini}$ [K]', 1.0, False),
+    'planet.volatile_reservoir': _QuantityInfo('Volatile reservoir', 1.0, False),
     # core_frac is a mass or radius fraction depending on interior_struct.core_frac_mode.
     'interior_struct.core_frac': _QuantityInfo('Core fraction', 1.0, False),
+    # Module choices
+    'interior_struct.module': _QuantityInfo('Structure model', 1.0, False),
+    'interior_energetics.module': _QuantityInfo('Interior model', 1.0, False),
+    'outgas.module': _QuantityInfo('Outgassing model', 1.0, False),
     # Atmosphere module
     'atmos_clim.module': _QuantityInfo('Atmosphere model', 1.0, False),
+    'atmos_clim.surf_state': _QuantityInfo('Surface scheme', 1.0, False),
     # Escape module
+    'escape.module': _QuantityInfo('Escape model', 1.0, False),
+    'escape.reservoir': _QuantityInfo('Escape reservoir', 1.0, False),
     'escape.zephyrus.efficiency': _QuantityInfo(r'$\epsilon$', 1.0, False),
     'escape.zephyrus.Pxuv': _QuantityInfo(r'$P_{\rm XUV}$ [bar]', 1.0, True),
     # Outgassing module
@@ -150,6 +165,8 @@ _preset_quantities = {
     'planet.elements.C_budget': _QuantityInfo('C budget', 1.0, True),
     'planet.elements.N_budget': _QuantityInfo('N budget', 1.0, True),
     'planet.elements.S_budget': _QuantityInfo('S budget', 1.0, True),
+    'planet.elements.O_budget': _QuantityInfo('O budget', 1.0, True),
+    'planet.elements.metallicity': _QuantityInfo(r'Metallicity [$\times$ solar]', 1.0, True),
     ## Output variables, ordered as they appear in runtime_helpfile.csv (GetHelpfileKeys)
     # Model time (solidification_time is computed in post-processing; kept next to Time)
     'Time': _QuantityInfo('Time [yr]', 1.0, True),
@@ -205,15 +222,47 @@ _preset_quantities = {
     'M_atm': _QuantityInfo(r'$M_{\rm atm}$ [kg]', 1.0, True),
     'P_surf': _QuantityInfo(r'$P_{\rm surf}$ [bar]', 1.0, True),
     'atm_kg_per_mol': _QuantityInfo(r'$\mu$ [g mol$^{-1}$]', 1.0e3, False),
-    # Volatile partial surface pressures (<species>_bar)
+    # Volatile species (per species: whole-planet mass, atmospheric mixing ratio,
+    # partial surface pressure), in runtime_helpfile species order
+    'H2O_kg_total': _QuantityInfo(r'$M_{\rm H_2O}$ [kg]', 1.0, True),
+    'H2O_vmr': _QuantityInfo(r'$x_{\rm H_2O}$', 1.0, True),
     'H2O_bar': _QuantityInfo(r'$p_{\rm H_2O}$ [bar]', 1.0, True),
+    'CO2_kg_total': _QuantityInfo(r'$M_{\rm CO_2}$ [kg]', 1.0, True),
+    'CO2_vmr': _QuantityInfo(r'$x_{\rm CO_2}$', 1.0, True),
     'CO2_bar': _QuantityInfo(r'$p_{\rm CO_2}$ [bar]', 1.0, True),
+    'O2_kg_total': _QuantityInfo(r'$M_{\rm O_2}$ [kg]', 1.0, True),
+    'O2_vmr': _QuantityInfo(r'$x_{\rm O_2}$', 1.0, True),
+    'O2_bar': _QuantityInfo(r'$p_{\rm O_2}$ [bar]', 1.0, True),
+    'H2_kg_total': _QuantityInfo(r'$M_{\rm H_2}$ [kg]', 1.0, True),
+    'H2_vmr': _QuantityInfo(r'$x_{\rm H_2}$', 1.0, True),
     'H2_bar': _QuantityInfo(r'$p_{\rm H_2}$ [bar]', 1.0, True),
+    'CH4_kg_total': _QuantityInfo(r'$M_{\rm CH_4}$ [kg]', 1.0, True),
+    'CH4_vmr': _QuantityInfo(r'$x_{\rm CH_4}$', 1.0, True),
     'CH4_bar': _QuantityInfo(r'$p_{\rm CH_4}$ [bar]', 1.0, True),
+    'CO_kg_total': _QuantityInfo(r'$M_{\rm CO}$ [kg]', 1.0, True),
+    'CO_vmr': _QuantityInfo(r'$x_{\rm CO}$', 1.0, True),
     'CO_bar': _QuantityInfo(r'$p_{\rm CO}$ [bar]', 1.0, True),
+    'N2_kg_total': _QuantityInfo(r'$M_{\rm N_2}$ [kg]', 1.0, True),
+    'N2_vmr': _QuantityInfo(r'$x_{\rm N_2}$', 1.0, True),
     'N2_bar': _QuantityInfo(r'$p_{\rm N_2}$ [bar]', 1.0, True),
+    'NH3_kg_total': _QuantityInfo(r'$M_{\rm NH_3}$ [kg]', 1.0, True),
+    'NH3_vmr': _QuantityInfo(r'$x_{\rm NH_3}$', 1.0, True),
+    'NH3_bar': _QuantityInfo(r'$p_{\rm NH_3}$ [bar]', 1.0, True),
+    'S2_kg_total': _QuantityInfo(r'$M_{\rm S_2}$ [kg]', 1.0, True),
+    'S2_vmr': _QuantityInfo(r'$x_{\rm S_2}$', 1.0, True),
     'S2_bar': _QuantityInfo(r'$p_{\rm S_2}$ [bar]', 1.0, True),
+    'SO2_kg_total': _QuantityInfo(r'$M_{\rm SO_2}$ [kg]', 1.0, True),
+    'SO2_vmr': _QuantityInfo(r'$x_{\rm SO_2}$', 1.0, True),
     'SO2_bar': _QuantityInfo(r'$p_{\rm SO_2}$ [bar]', 1.0, True),
+    'H2S_kg_total': _QuantityInfo(r'$M_{\rm H_2S}$ [kg]', 1.0, True),
+    'H2S_vmr': _QuantityInfo(r'$x_{\rm H_2S}$', 1.0, True),
+    'H2S_bar': _QuantityInfo(r'$p_{\rm H_2S}$ [bar]', 1.0, True),
+    # Element inventories (whole planet)
+    'H_kg_total': _QuantityInfo(r'$M_{\rm H}$ [kg]', 1.0, True),
+    'O_kg_total': _QuantityInfo(r'$M_{\rm O}$ [kg]', 1.0, True),
+    'C_kg_total': _QuantityInfo(r'$M_{\rm C}$ [kg]', 1.0, True),
+    'N_kg_total': _QuantityInfo(r'$M_{\rm N}$ [kg]', 1.0, True),
+    'S_kg_total': _QuantityInfo(r'$M_{\rm S}$ [kg]', 1.0, True),
     # Atmospheric escape
     'esc_rate_total': _QuantityInfo(r'$\dot{M}_{\rm esc}$ [g s$^{-1}$]', 1.0e3, True),
 }
