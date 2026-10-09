@@ -749,6 +749,7 @@ def _get_sufficient(config: Config, clean: bool = False):
     # Aerosol scattering data
     if config.atmos_clim.module == 'agni' and config.atmos_clim.aerosols_enabled:
         _attempt('aerosol scattering data', download_scattering)
+        _attempt('aerosol refractive indices', download_refractive)
 
     # Exoplanet population data
     download_exoplanet_data()

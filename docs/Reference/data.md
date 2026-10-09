@@ -47,6 +47,11 @@ themselves from its own `res/scattering` folder. Fetch them with `proteus get sc
 before a run with `--offline` and aerosols enabled: without them that run only warns
 and offers no `.mon` aerosol species.
 
+With aerosols enabled, PROTEUS also fetches the aerosol refractive indices (`proteus get refractive`)
+and points AGNI at their version directory below `$FWL_DATA/atmos_clim/refractive/agni_aerosols`
+through `AGNI_DIR_refractive`, from which AGNI computes Mie optical properties. A value of
+`AGNI_DIR_refractive` or `AGNI_DIR_res` set before the run is kept.
+
 ### Upgrading an older data folder
 
 A `$FWL_DATA` folder written by an older PROTEUS keeps its files at paths that are no longer read. Three steps bring it into the current layout:

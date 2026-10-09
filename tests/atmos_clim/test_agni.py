@@ -144,6 +144,79 @@ def test_determine_aerosols_warns_when_the_scattering_dataset_cannot_be_resolved
     assert 'Scattering data directory not found: unresolved' in caplog.text
 
 
+@pytest.fixture
+def refractive_env(monkeypatch, tmp_path):
+    """A clean AGNI override environment and a fetched refractive dataset below tmp_path."""
+    from proteus.data import REFRACTIVE, dataset_dir
+
+    for var in (agni_mod.REFRACTIVE_ENV, 'AGNI_DIR_res'):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(agni_mod, '_refractive_dir_set', None)
+    target = dataset_dir(REFRACTIVE, data_root=tmp_path)
+    target.mkdir(parents=True)
+    yield str(target)
+    for var in (agni_mod.REFRACTIVE_ENV, 'AGNI_DIR_res'):
+        os.environ.pop(var, None)
+
+
+@pytest.mark.unit
+def test_refractive_env_points_at_the_dataset_and_is_removed_without_aerosols(
+    refractive_env, tmp_path
+):
+    """Aerosols on set AGNI_DIR_refractive to the dataset; a later run without aerosols removes it."""
+    agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert os.environ[agni_mod.REFRACTIVE_ENV] == refractive_env
+
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('var', ['AGNI_DIR_refractive', 'AGNI_DIR_res'])
+def test_refractive_env_keeps_a_user_value(refractive_env, tmp_path, monkeypatch, caplog, var):
+    """A user value of either override is kept, and PROTEUS sets nothing."""
+    monkeypatch.setenv(var, '/user/nk')
+    with caplog.at_level(logging.INFO):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert os.environ[var] == '/user/nk'
+    assert (var == agni_mod.REFRACTIVE_ENV) == (agni_mod.REFRACTIVE_ENV in os.environ)
+    assert f'keeping {var}=/user/nk' in caplog.text
+
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert os.environ[var] == '/user/nk'
+
+
+@pytest.mark.unit
+def test_refractive_env_keeps_a_user_value_set_after_a_proteus_run(refractive_env, tmp_path):
+    """A value the user set after PROTEUS set its own is not removed by the next run."""
+    agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    os.environ[agni_mod.REFRACTIVE_ENV] = '/user/nk'
+
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert os.environ[agni_mod.REFRACTIVE_ENV] == '/user/nk'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('fail', [False, True])
+def test_refractive_env_warns_when_the_dataset_is_missing(
+    refractive_env, tmp_path, monkeypatch, caplog, fail
+):
+    """A missing or unresolvable dataset is a warning that names AGNI's own empty folder."""
+    if fail:
+        monkeypatch.setattr(
+            agni_mod, 'dataset_dir', MagicMock(side_effect=KeyError('refractive'))
+        )
+    else:
+        os.rmdir(refractive_env)
+    with caplog.at_level(logging.WARNING):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+    assert 'Refractive index directory not found' in caplog.text
+    assert 'empty unless its get_data.sh fetched' in caplog.text
+
+
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.path.isdir')
 def test_determine_aerosols_missing_directory(mock_isdir, monkeypatch, tmp_path):

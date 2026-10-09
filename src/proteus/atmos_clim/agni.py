@@ -18,7 +18,7 @@ from proteus.atmos_clim.common import (
     require_spfile_path,
 )
 from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
-from proteus.data import SCATTERING, SURFACE_ALBEDOS_HAMMOND_2024, dataset_dir
+from proteus.data import REFRACTIVE, SCATTERING, SURFACE_ALBEDOS_HAMMOND_2024, dataset_dir
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
@@ -432,6 +432,54 @@ def _determine_condensates(vol_list: list):
     return [v for v in vol_list if v not in ALWAYS_DRY]
 
 
+REFRACTIVE_ENV = 'AGNI_DIR_refractive'
+_refractive_dir_set = None  # the AGNI_DIR_refractive value PROTEUS set, if any
+
+
+def _point_agni_at_refractive(fwl_dir: str, aerosols_enabled: bool) -> None:
+    """Point AGNI at the fetched aerosol refractive indices through ``AGNI_DIR_refractive``.
+
+    With aerosols on, the variable is set to the version directory of ``REFRACTIVE``,
+    unless the user already set ``AGNI_DIR_refractive`` or ``AGNI_DIR_res``. A value
+    PROTEUS set in an earlier run of the same process is removed first, but only while
+    the variable still holds that value. AGNI reads the variable when it lists its
+    materials and when it sets up the atmosphere; an AGNI without this override ignores it.
+
+    Parameters
+    ----------
+    fwl_dir : str
+        Root of the reference-data tree.
+    aerosols_enabled : bool
+        Whether the run uses aerosols.
+    """
+    global _refractive_dir_set
+    if (
+        _refractive_dir_set is not None
+        and os.environ.get(REFRACTIVE_ENV) == _refractive_dir_set
+    ):
+        del os.environ[REFRACTIVE_ENV]
+    _refractive_dir_set = None
+    if not aerosols_enabled:
+        return
+    for var in (REFRACTIVE_ENV, 'AGNI_DIR_res'):
+        if os.environ.get(var, '').strip():
+            log.info(f'Refractive indices: keeping {var}={os.environ[var]}')
+            return
+    try:
+        nk_dir = str(dataset_dir(REFRACTIVE, data_root=fwl_dir))
+    except (KeyError, RuntimeError, OSError) as exc:
+        nk_dir = f'unresolved ({exc})'
+    if not os.path.isdir(nk_dir):
+        log.warning(
+            f'Refractive index directory not found: {nk_dir}. AGNI then reads its own '
+            'res/refractive, which is empty unless its get_data.sh fetched the data; '
+            'fetch it with `proteus get refractive`.'
+        )
+        return
+    os.environ[REFRACTIVE_ENV] = nk_dir
+    _refractive_dir_set = nk_dir
+
+
 def _determine_aerosols(dirs: dict, aerosols_enabled: bool = True) -> dict:
     """
     Determine which aerosols are available, and which method to use for each.
@@ -642,6 +690,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
     # Aerosol species dictionary which maps names to properties files
+    _point_agni_at_refractive(dirs['fwl'], config.atmos_clim.aerosols_enabled)
     mie_materials_by_lower = {
         str(m).lower(): str(m) for m in jl.AGNI.aerosol_optics.list_materials()
     }
