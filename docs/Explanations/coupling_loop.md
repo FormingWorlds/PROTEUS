@@ -2,7 +2,7 @@
 
 The [previous page](code_architecture.md) described the static layout of
 PROTEUS's modules. This page explains how they run: the fixed execution order
-in each timestep, how modules exchange state through `hf_row`, and how the
+within each timestep, how modules exchange state through `hf_row`, and how the
 simulation advances and terminates. For the broader scientific context of each
 module, see [Model description](model.md).
 
@@ -34,7 +34,7 @@ The full column reference is in the [Output format](../Reference/output.md) page
 
 ## Execution order per iteration
 
-In each iteration, modules execute in a fixed order. This order matters
+Within each iteration, modules execute in a fixed order. This order matters
 for coupling stability: each module sees the most recent output from all
 upstream modules.
 
