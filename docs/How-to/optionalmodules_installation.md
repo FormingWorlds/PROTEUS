@@ -21,7 +21,8 @@ bash tools/get_spider.sh
 
 === "Linux"
 
-    The PETSc script downloads a pre-compiled version from OSF and configures
+    The PETSc script downloads the PETSc 3.19.0 source archive from Zenodo (or its
+    DataverseNL mirror), checks its SHA-256, builds it and configures
     `PETSC_DIR` and `PETSC_ARCH` automatically.
 
     !!! note "Fedora / RHEL"
@@ -30,7 +31,7 @@ bash tools/get_spider.sh
 
 === "macOS"
 
-    The script detects Apple Silicon vs Intel and uses Homebrew's MPI. If you
+    The script uses the MPI on your PATH, for example Homebrew's Open MPI. If you
     encounter issues, see
     [Troubleshooting: PETSc on Apple Silicon](troubleshooting.md#petsc-compilation-fails-on-apple-silicon).
 

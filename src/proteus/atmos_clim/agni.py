@@ -18,6 +18,7 @@ from proteus.atmos_clim.common import (
     require_spfile_path,
 )
 from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
+from proteus.data import SCATTERING, SURFACE_ALBEDOS_HAMMOND_2024, dataset_dir
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
@@ -431,7 +432,7 @@ def _determine_condensates(vol_list: list):
     return [v for v in vol_list if v not in ALWAYS_DRY]
 
 
-def _determine_aerosols(dirs: dict) -> dict:
+def _determine_aerosols(dirs: dict, aerosols_enabled: bool = True) -> dict:
     """
     Determine which aerosols are available, and which method to use for each.
 
@@ -444,6 +445,8 @@ def _determine_aerosols(dirs: dict) -> dict:
     ----------
         dirs : dict
             Dictionary containing paths to directories
+        aerosols_enabled : bool
+            Whether the run uses aerosols; the scattering data is looked up only then.
 
     Returns
     ----------
@@ -453,13 +456,18 @@ def _determine_aerosols(dirs: dict) -> dict:
 
     aerosols = {}
 
-    # Pre-computed monochromatic scattering data (FWL_DATA)
-    scattering_dir = os.path.join(dirs['fwl'], 'scattering', 'scattering')
-    if os.path.isdir(scattering_dir):
+    # Pre-computed monochromatic scattering data (FWL_DATA, fetched through fwl-io)
+    try:
+        scattering_dir = (
+            dataset_dir(SCATTERING, data_root=dirs['fwl']) if aerosols_enabled else None
+        )
+    except (KeyError, RuntimeError, OSError) as exc:
+        scattering_dir = f'unresolved ({exc})'
+    if scattering_dir is not None and os.path.isdir(scattering_dir):
         for f in os.listdir(scattering_dir):
             if f.endswith('.mon'):
                 aerosols[f.replace('.mon', '')] = 'mon'
-    else:
+    elif scattering_dir is not None:
         log.warning(f'Scattering data directory not found: {scattering_dir}')
 
     # Materials AGNI can compute via Mie theory at runtime.
@@ -496,8 +504,6 @@ def _resolve_surface_material(name: str, fwl_dir: str) -> str:
     str
         Path to the reflectance file, which may not exist.
     """
-    from proteus.data import SURFACE_ALBEDOS_HAMMOND_2024, dataset_dir
-
     parts = Path(name).parts
     if parts[:2] == ('surface_albedos', 'Hammond24') and len(parts) == 3:
         name = parts[2]
@@ -646,7 +652,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
 
     # Loop through each potential aerosol and determine which method to use
     log.info('Aerosol species:')
-    for name, method in _determine_aerosols(dirs).items():
+    for name, method in _determine_aerosols(dirs, config.atmos_clim.aerosols_enabled).items():
         entry = {'method': method}
 
         # Try mie

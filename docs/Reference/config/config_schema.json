@@ -1806,10 +1806,11 @@
         null,
         "none",
         "sp0d",
-        "sp1d"
+        "sp1d",
+        "parameterized"
       ],
       "bounds": null,
-      "description": "Select star-planet orbit module to use. Choices: 'none', 'sp0d', 'sp1d'.",
+      "description": "Select star-planet orbit module to use. Choices: 'none', 'sp0d', 'sp1d', 'parameterized'.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1825,7 +1826,7 @@
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Planet initial day length [hours], will use orbital period if value is None.",
+      "description": "Planet initial day length [hours], will use orbital period if value is None. Must be None for sp0d and parameterized, which keep the spin locked to the orbit.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -2368,6 +2369,90 @@
         }
       ],
       "description": "Target storage-clock spacing for out-of-band fine samples, as a fraction of the requested call duration (ps1d_evec only).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.sma_final",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Final semi-major axis [AU].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.migration",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"none\"",
+      "choices": [
+        "none",
+        "instant",
+        "sigmoid",
+        "high_ecc"
+      ],
+      "bounds": null,
+      "description": "Type of orbital migration to apply.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.time_migration",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 1
+        }
+      ],
+      "description": "Time at which migration begins [yr].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.tau_migration",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Timescale of migration, used by the sigmoid and high_ecc laws [yr].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -4823,7 +4908,7 @@
       "class": "Zalmoxis",
       "type": "bool",
       "accepts_none": false,
-      "default": "false",
+      "default": "true",
       "choices": null,
       "bounds": null,
       "description": "Anderson Type-II Picard acceleration on the density loop.",
@@ -11153,6 +11238,43 @@
       "doc": "sp1d, ps1d, and ps1d_evec require at least Lovepy, but ideally the Obliqua tidal-response module: all three read the full per-mode spectrum in ``tides_o``, which ``dummy`` never populates. ``sp0d``/``ps0d`` read the scalar ``Imk2`` instead (which ``dummy`` does provide), so they are unrestricted here; see \"Compatibility between orbit models and tidal modules\" in docs/Explanations/orbit.md."
     },
     {
+      "validator": "parameterized_excludes_accretion",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion.module",
+        "orbit.star_planet_model"
+      ],
+      "doc": "Reject giant impacts with the parameterized star-planet model."
+    },
+    {
+      "validator": "parameterized_excludes_tides",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.module",
+        "orbit.star_planet_model"
+      ],
+      "doc": "The parameterized model prescribes the orbit as a closed-form track and exchanges no energy with the interior, so no tides module can run alongside it; see \"Star-planet models\" in docs/Explanations/orbit.md."
+    },
+    {
+      "validator": "parameterized_high_ecc_inward",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.parameterized",
+        "orbit.semimajoraxis",
+        "orbit.star_planet_model"
+      ],
+      "doc": "The high-eccentricity law circularises at fixed orbital angular momentum, which can only shrink the orbit, so its final semi-major axis must not exceed the initial one, orbit.semimajoraxis."
+    },
+    {
       "validator": "planet_fO2_source_compat",
       "module": "_config.py",
       "attached_to": [
@@ -11226,6 +11348,18 @@
         "star.mors.tracks"
       ],
       "doc": "ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."
+    },
+    {
+      "validator": "spinless_orbit_keeps_spin_synchronous",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.axial_period",
+        "orbit.star_planet_model"
+      ],
+      "doc": "sp0d and parameterized evolve no spin, so the planet stays synchronous and orbit.axial_period must be unset; see \"Star-planet models\" in docs/Explanations/orbit.md."
     },
     {
       "validator": "tides_enabled_orbit",

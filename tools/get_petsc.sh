@@ -3,7 +3,8 @@
 # get_petsc.sh — Download, configure, and compile PETSc for PROTEUS/SPIDER
 # =============================================================================
 #
-# Downloads PETSc 3.19.0 from OSF and builds it with sundials2 support.
+# Downloads the PETSc 3.19.0 source archive from Zenodo, or its DataverseNL
+# mirror, checks its SHA-256, and builds it with sundials2 support.
 # SPIDER is a pure C code, so C++ and Fortran compilers are disabled.
 #
 # Supported platforms:
@@ -52,8 +53,8 @@ on_error() {
     case "$current_step" in
         *"Download"*)
             echo "   - Check your internet connection"
-            echo "   - Verify the OSF URL is accessible: $url"
-            echo "   - Try downloading manually: curl -LsS $url > petsc.zip"
+            echo "   - The sources and the SHA-256 are in pyproject.toml [tool.proteus.modules.petsc];"
+            echo "     PETSC_URL and PETSC_MIRROR_URL override the sources"
             ;;
         *"Decompress"*)
             echo "   - The downloaded archive may be corrupted"
@@ -117,21 +118,29 @@ export PETSC_DIR="$workpath"
 echo "PETSC_DIR  = $PETSC_DIR"
 echo "PETSC_ARCH = $PETSC_ARCH"
 
+# Read the archive pins before the previous installation is removed
+petsc_pin() { python "$proteus_tools_dir/_module_pins.py" petsc "$1"; }
+petsc_sha256=$(petsc_pin sha256) || petsc_sha256=""
+petsc_url=$(petsc_pin url) || petsc_url=""
+petsc_mirror=$(petsc_pin mirror) || petsc_mirror=""
+if [[ -z "$petsc_sha256" || -z "$petsc_url" || -z "$petsc_mirror" ]]; then
+    echo "ERROR: cannot read the PETSc url, mirror and sha256 from [tool.proteus.modules.petsc]" \
+        "in pyproject.toml; this needs python 3.11 or newer (tomllib) on PATH" >&2
+    exit 1
+fi
+
 # Clean previous installation
 rm -rf "$workpath"
 mkdir "$workpath"
 
 # -----------------------------------------------------------------------------
-# 3. Download PETSc 3.19.0 from OSF
+# 3. Download the PETSc 3.19.0 archive: Zenodo first, then the DataverseNL mirror
 # -----------------------------------------------------------------------------
-current_step="Downloading PETSc archive from OSF"
+current_step="Downloading PETSc archive"
 
 zipfile="$workpath/petsc.zip"
-url="https://osf.io/download/p5vxq/"
-echo "Downloading PETSc archive from OSF..."
-echo "    $url -> $zipfile"
-sleep 1
-curl -LsS "$url" > "$zipfile"
+fetch_verified "$petsc_sha256" "$zipfile" \
+    "${PETSC_URL:-$petsc_url}" "${PETSC_MIRROR_URL:-$petsc_mirror}"
 
 current_step="Decompressing PETSc archive"
 echo "Decompressing..."
@@ -210,7 +219,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     SDKROOT=$(xcrun --show-sdk-path)
     echo "    SDKROOT = $SDKROOT"
 
-    # Use Homebrew's MPI if available (both Intel and Apple Silicon paths)
+    # Use the MPI on PATH if there is one, for example Homebrew's Open MPI
     if command -v mpicc >/dev/null 2>&1; then
         echo "    Found system MPI ($(which mpicc)) — skipping mpich download"
         mpi_flag=""
@@ -223,21 +232,9 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS provides Accelerate framework with BLAS/LAPACK; no download needed
     blas_flag=""
 
-    # Suppress deprecated linker warnings that break PETSc configure checks.
-    # macOS 13+ / Xcode 15+ deprecated -bind_at_load and -multiply_defined;
-    # macOS 26+ / clang 17+ treats these warnings as errors in PETSc's
-    # configure runtime tests (checkStdC). The -Wl,-w flag suppresses all
-    # linker warnings, allowing configure to complete.
-    # Homebrew prefix differs by architecture:
-    #   Apple Silicon (arm64): /opt/homebrew
-    #   Intel (x86_64):        /usr/local
-    if [[ "$(uname -m)" == "arm64" ]]; then
-        default_brew_prefix="/opt/homebrew"
-    else
-        default_brew_prefix="/usr/local"
-    fi
-    brew_prefix=$(brew --prefix 2>/dev/null || echo "$default_brew_prefix")
-    ldflags="-L${brew_prefix}/lib -Wl,-w"
+    # -Wl,-w: macOS 26+ turns deprecated-flag warnings into configure errors. No Homebrew -L:
+    # mpicc brings its own, and a Homebrew SUNDIALS there would hide PETSc's SUNDIALS 2.5.
+    ldflags="-Wl,-w"
 fi
 
 # Final check: if we skipped mpich download, mpicc/mpirun must be available

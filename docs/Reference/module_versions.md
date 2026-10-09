@@ -19,10 +19,10 @@ in `[project] dependencies`. Click a badge to view the pinned release.
 | Module | Role | Pin | Docs |
 |--------|------|-----|------|
 | fwl-janus | 1D convective atmosphere | [![fwl-janus](https://img.shields.io/badge/fwl--janus-%3E%3D24.11.05-blue)](https://pypi.org/project/fwl-janus/24.11.05/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/JANUS/) |
-| fwl-mors | Stellar evolution | [![fwl-mors](https://img.shields.io/badge/fwl--mors-%3E%3D26.9.23-blue)](https://pypi.org/project/fwl-mors/26.9.23/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/MORS/) |
+| fwl-mors | Stellar evolution | [![fwl-mors](https://img.shields.io/badge/fwl--mors-%3E%3D26.10.6-blue)](https://pypi.org/project/fwl-mors/26.10.6/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/MORS/) |
 | fwl-calliope | Volatile outgassing | [![fwl-calliope](https://img.shields.io/badge/fwl--calliope-%3E%3D26.10.05-blue)](https://pypi.org/project/fwl-calliope/26.10.05/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/CALLIOPE/) |
 | fwl-zephyrus | Atmospheric escape | [![fwl-zephyrus](https://img.shields.io/badge/fwl--zephyrus-%3E%3D26.7.24-blue)](https://pypi.org/project/fwl-zephyrus/26.7.24/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/ZEPHYRUS) |
-| fwl-aragog | Interior thermal evolution | [![fwl-aragog](https://img.shields.io/badge/fwl--aragog-%3E%3D26.10.03-blue)](https://pypi.org/project/fwl-aragog/26.10.03/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/aragog/) |
+| fwl-aragog | Interior thermal evolution | [![fwl-aragog](https://img.shields.io/badge/fwl--aragog-%3E%3D26.10.08-blue)](https://pypi.org/project/fwl-aragog/26.10.08/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/aragog/) |
 | fwl-zalmoxis | Interior structure | [![fwl-zalmoxis](https://img.shields.io/badge/fwl--zalmoxis-%3E%3D26.09.21-blue)](https://pypi.org/project/fwl-zalmoxis/26.09.21/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/Zalmoxis/) |
 <!-- END PYPI_TABLE -->
 
