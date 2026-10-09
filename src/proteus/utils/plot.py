@@ -150,36 +150,28 @@ _preset_quantities = {
     'planet.elements.C_budget': _QuantityInfo('C budget', 1.0, True),
     'planet.elements.N_budget': _QuantityInfo('N budget', 1.0, True),
     'planet.elements.S_budget': _QuantityInfo('S budget', 1.0, True),
-    ## Output variables (runtime_helpfile.csv columns)
-    # Model tracking
+    ## Output variables, ordered as they appear in runtime_helpfile.csv (GetHelpfileKeys)
+    # Model time (solidification_time is computed in post-processing; kept next to Time)
     'Time': _QuantityInfo('Time [yr]', 1.0, True),
     'solidification_time': _QuantityInfo('Solidification time [yr]', 1.0, True),
-    # Orbit (helpfile columns; semimajorax is in m, orbital_period in s)
+    # Orbit (semimajorax is in m, orbital_period in s)
     'semimajorax': _QuantityInfo(r'$a$ [AU]', 1.0 / AU, False),
-    'separation': _QuantityInfo(r'$a_{\rm sep}$ [AU]', 1.0 / AU, False),
-    'eccentricity': _QuantityInfo(r'$e$', 1.0, False),
+    'separation': _QuantityInfo(r'Orbital separation [AU]', 1.0 / AU, False),
     'orbital_period': _QuantityInfo('Orbital period [days]', 1.0 / secs_per_day, True),
+    'eccentricity': _QuantityInfo(r'$e$', 1.0, False),
     # Planet structure
     'R_int': _QuantityInfo(r'$R_{\rm int}$ [$R_\oplus$]', 1.0 / R_earth, False),
-    'R_core': _QuantityInfo(r'$R_{\rm core}$ [$R_\oplus$]', 1.0 / R_earth, False),
     'M_int': _QuantityInfo(r'$M_{\rm int}$ [$M_\oplus$]', 1.0 / M_earth, False),
     'M_planet': _QuantityInfo(r'$M_{\rm planet}$ [$M_\oplus$]', 1.0 / M_earth, False),
-    'M_core': _QuantityInfo(r'$M_{\rm core}$ [$M_\oplus$]', 1.0 / M_earth, False),
-    'M_mantle': _QuantityInfo(r'$M_{\rm mantle}$ [$M_\oplus$]', 1.0 / M_earth, False),
-    'gravity': _QuantityInfo(r'$g_{\rm surf}$ [m s$^{-2}$]', 1.0, False),
+    'R_core': _QuantityInfo(r'$R_{\rm core}$ [$R_\oplus$]', 1.0 / R_earth, False),
+    'P_center': _QuantityInfo(r'$P_{\rm center}$ [GPa]', 1.0e-9, False),
     'P_cmb': _QuantityInfo(r'$P_{\rm CMB}$ [GPa]', 1.0e-9, False),
-    'P_center': _QuantityInfo(r'$P_{\rm c}$ [GPa]', 1.0e-9, False),
     # Temperatures
     'T_surf': _QuantityInfo(r'$T_{\rm surf}$ [K]', 1.0, False),
     'T_magma': _QuantityInfo(r'$T_{\rm magma}$ [K]', 1.0, False),
     'T_cmb': _QuantityInfo(r'$T_{\rm CMB}$ [K]', 1.0, False),
-    'T_eqm': _QuantityInfo(r'$T_{\rm eqm}$ [K]', 1.0, False),
+    'T_eqm': _QuantityInfo(r'$T_{\rm eq}$ [K]', 1.0, False),
     'T_skin': _QuantityInfo(r'$T_{\rm skin}$ [K]', 1.0, False),
-    'T_pot': _QuantityInfo(r'$T_{\rm pot}$ [K]', 1.0, False),
-    # Interior
-    'Phi_global': _QuantityInfo('Melt fraction (mass) [%]', 100.0, False),
-    'Phi_global_vol': _QuantityInfo('Melt fraction (volume) [%]', 100.0, False),
-    'RF_depth': _QuantityInfo('Rheological front depth [frac]', 1.0, False),
     # Energy fluxes (W m-2); F_net may be negative, so it is not logarithmic
     'F_int': _QuantityInfo(r'$F_{\rm int}$ [W m$^{-2}$]', 1.0, True),
     'F_atm': _QuantityInfo(r'$F_{\rm atm}$ [W m$^{-2}$]', 1.0, True),
@@ -188,30 +180,37 @@ _preset_quantities = {
     'F_ins': _QuantityInfo(r'$F_{\rm ins}$ [W m$^{-2}$]', 1.0, True),
     'F_xuv': _QuantityInfo(r'$F_{\rm XUV}$ [W m$^{-2}$]', 1.0, True),
     'F_tidal': _QuantityInfo(r'$F_{\rm tidal}$ [W m$^{-2}$]', 1.0, True),
-    # Observational
-    'R_obs': _QuantityInfo(r'$R_{\rm obs}$ [$R_\oplus$]', 1.0 / R_earth, False),
-    'rho_obs': _QuantityInfo(r'$\rho_{\rm obs}$ [g cm$^{-3}$]', 1.0e-3, False),
-    'p_obs': _QuantityInfo(r'$P_{\rm obs}$ [bar]', 1.0, True),
-    'T_obs': _QuantityInfo(r'$T_{\rm obs}$ [K]', 1.0, False),
-    'transit_depth': _QuantityInfo('Transit depth [ppm]', 1.0e6, False),
-    'eclipse_depth': _QuantityInfo('Eclipse depth [ppm]', 1.0e6, False),
-    'bond_albedo': _QuantityInfo('Bond albedo', 1.0, False),
+    # Interior (melt and mantle); gravity sits in this block in the helpfile
+    'gravity': _QuantityInfo(r'$g_{\rm surf}$ [m s$^{-2}$]', 1.0, False),
+    'Phi_global': _QuantityInfo('Melt fraction (mass) [%]', 100.0, False),
+    'Phi_global_vol': _QuantityInfo('Melt fraction (volume) [%]', 100.0, False),
+    'RF_depth': _QuantityInfo('Rheological front depth', 1.0, False),
+    'M_core': _QuantityInfo(r'$M_{\rm core}$ [$M_\oplus$]', 1.0 / M_earth, False),
+    'M_mantle': _QuantityInfo(r'$M_{\rm mantle}$ [$M_\oplus$]', 1.0 / M_earth, False),
+    'T_pot': _QuantityInfo(r'$T_{\rm pot}$ [K]', 1.0, False),
     # Star
     'M_star': _QuantityInfo(r'$M_\star$ [$M_\odot$]', 1.0 / M_sun, False),
     'R_star': _QuantityInfo(r'$R_\star$ [$R_\odot$]', 1.0 / R_sun, False),
-    'T_star': _QuantityInfo(r'$T_\star$ [K]', 1.0, False),
     'age_star': _QuantityInfo('Stellar age [Gyr]', 1.0e-9, True),
+    'T_star': _QuantityInfo(r'$T_\star$ [K]', 1.0, False),
+    # Observational
+    'p_obs': _QuantityInfo(r'$P_{\rm obs}$ [bar]', 1.0, True),
+    'R_obs': _QuantityInfo(r'$R_{\rm obs}$ [$R_\oplus$]', 1.0 / R_earth, False),
+    'T_obs': _QuantityInfo(r'$T_{\rm obs}$ [K]', 1.0, False),
+    'rho_obs': _QuantityInfo(r'$\rho_{\rm obs}$ [g cm$^{-3}$]', 1.0e-3, False),
+    'transit_depth': _QuantityInfo('Transit depth [ppm]', 1.0e6, False),
+    'eclipse_depth': _QuantityInfo('Eclipse depth [ppm]', 1.0e6, False),
+    'bond_albedo': _QuantityInfo('Bond albedo', 1.0, False),
     # Atmosphere
     'M_atm': _QuantityInfo(r'$M_{\rm atm}$ [kg]', 1.0, True),
     'P_surf': _QuantityInfo(r'$P_{\rm surf}$ [bar]', 1.0, True),
-    'P_surf_clim': _QuantityInfo(r'$P_{\rm surf}$ (post-rainout) [bar]', 1.0, True),
     'atm_kg_per_mol': _QuantityInfo(r'$\mu$ [g mol$^{-1}$]', 1.0e3, False),
-    # Volatile partial surface pressures (<species>_bar, bar)
+    # Volatile partial surface pressures (<species>_bar)
     'H2O_bar': _QuantityInfo(r'$p_{\rm H_2O}$ [bar]', 1.0, True),
     'CO2_bar': _QuantityInfo(r'$p_{\rm CO_2}$ [bar]', 1.0, True),
     'H2_bar': _QuantityInfo(r'$p_{\rm H_2}$ [bar]', 1.0, True),
-    'CO_bar': _QuantityInfo(r'$p_{\rm CO}$ [bar]', 1.0, True),
     'CH4_bar': _QuantityInfo(r'$p_{\rm CH_4}$ [bar]', 1.0, True),
+    'CO_bar': _QuantityInfo(r'$p_{\rm CO}$ [bar]', 1.0, True),
     'N2_bar': _QuantityInfo(r'$p_{\rm N_2}$ [bar]', 1.0, True),
     'S2_bar': _QuantityInfo(r'$p_{\rm S_2}$ [bar]', 1.0, True),
     'SO2_bar': _QuantityInfo(r'$p_{\rm SO_2}$ [bar]', 1.0, True),
