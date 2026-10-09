@@ -2297,6 +2297,15 @@ def test_roche2026_parameter_flags_and_kegerreis_thin_atmosphere_warning(caplog)
         formatted_zero_energy
         == 'far-field loss of 0.0801 without impact energy (log10 f_atm extrapolation)'
     )
+    assert (
+        _format_roche_flag(
+            'X_FF_zero_energy',
+            {'X_FF_zero_energy': 0.0801},
+            ROCHE2026_FITTED_RANGE,
+            has_range_flag=False,
+        )
+        == 'far-field loss of 0.0801 without impact energy'
+    )
 
     # Case 3e: unknown flags fall back to the bare flag name.
     assert (
@@ -2448,6 +2457,9 @@ def test_roche2026_stability_clamps_through_impact_loss_fraction(caplog):
         rec = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert len(rec) == 1
         assert fragment in rec[0].getMessage()
+        if fragment.startswith('v_sub_escape'):
+            assert 'Roche et al. (2026) law outside its fitted range:' in rec[0].getMessage()
+            assert rec[0].getMessage().endswith('; the loss fraction is extrapolated')
 
     # Direct fit comparison: gamma 0.7 evaluated with clamp 0.5 matches _roche2026_fit
     # and differs from unclamped evaluation by more than 1e-3.
@@ -2501,8 +2513,8 @@ def test_roche2026_twin_bodies_gamma_clamp_tail(caplog):
     Verifies clause: equal-mass collisions (M_t = M_i) produce gamma = 1/(2 - f_atm) > 0.5.
     At f_atm = 0.01, gamma is clamped to 0.5 and emits exactly one warning naming gamma
     with 'evaluated at 0.5' and appending the clamp explanation tail.
-    At f_atm = 0.005 with b = 0.95, if no parameter is clamped (or only when a clamp is named),
-    the clamp explanation tail is appended only if a parameter is marked 'evaluated at'.
+    When collision parameters are out of range but none is clamped (b = 0.95 and f_atm = 0.005),
+    the clamp explanation tail is omitted.
     """
     pytest.importorskip('zephyrus.collision')
     from zephyrus.planets_parameters import Me, Re
@@ -2625,7 +2637,9 @@ def test_roche2026_zero_energy_flag_inside_fitted_range(caplog):
     rec = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(rec) == 1
     msg = rec[0].getMessage()
-    assert 'far-field loss of 0.0014 without impact energy' in msg
+    assert 'Roche et al. (2026) law: far-field loss of 0.0014 without impact energy' in msg
+    assert 'outside its fitted range' not in msg
+    assert 'log10 f_atm extrapolation' not in msg
     assert 'extrapolated' not in msg
     assert 'evaluated at' not in msg
 

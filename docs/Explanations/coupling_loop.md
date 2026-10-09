@@ -49,18 +49,18 @@ upstream modules.
    re-melted by raising it to the run's temperature-mode initial condition
    (parts that are already hotter keep their state), and
    the orbit takes the impact's change in semi-major axis and eccentricity.
-   When `accretion.atmloss_module = "zephyrus"`, the eroded atmosphere fraction
-   is computed by the chosen scaling law (`accretion.atmloss_law`, default
-   `roche2026`, or `kegerreis2020`). For `roche2026`, the scaling law evaluates
-   collision masses, radii, contact velocity, and impact angle from the impact
-   record, and the target atmospheric mass fraction $f_\mathrm{atm} =
-   m_\mathrm{atm} / M_\mathrm{planet}$ from the running planet state. For
-   `kegerreis2020`, the law evaluates collision masses, radii, bulk densities,
-   contact velocity, and impact angle from the impact record.
    How molten the re-melt leaves the mantle follows that initial condition:
    only `planet.temperature_mode = "liquidus_super"` is fully molten for any
    planet mass and melting curve. Runs only when an accretion module is
-   configured and an impact is due.
+   configured and an impact is due. When `accretion.atmloss_module = "zephyrus"`,
+   the eroded atmosphere fraction is computed by the chosen scaling law
+   (`accretion.atmloss_law`, default `roche2026`, or `kegerreis2020`). For
+   `roche2026`, the scaling law evaluates collision masses, radii, contact
+   velocity, and impact angle from the impact record, and the target atmospheric
+   mass fraction $f_\mathrm{atm} = m_\mathrm{atm} / M_\mathrm{planet}$ from
+   the running planet state. For `kegerreis2020`, the law evaluates collision
+   masses, radii, bulk densities, contact velocity, and impact angle from the
+   impact record.
 
 3. **Structure update** (`update_structure_from_interior`): If Zalmoxis is
    active and a structure update is triggered (by elapsed time, melt fraction
