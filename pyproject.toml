@@ -262,9 +262,8 @@ directory = "htmlcov"
 
 [tool.proteus.modules.agni]
 # Radiative-convective atmosphere module (Julia, with juliacall bridge).
-# Tracks nichollsh/AGNI main. Bump after every AGNI release that
-# PROTEUS depends on. The ref is a commit of the AGNI branch
-# tl/zenodo-per-file until that branch merges to main.
+# Tracks nichollsh/AGNI main; bump after every AGNI release PROTEUS needs.
+# Until AGNI branch tl/zenodo-per-file merges, the ref is a commit on it.
 url = "https://github.com/nichollsh/AGNI.git"
 ref = "1076fcaf89b880f68fc27c65ee0e10544a13be3b"
 
