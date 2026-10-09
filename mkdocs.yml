@@ -53,6 +53,7 @@ nav:
       - Scientific background:
           - Model description: Explanations/model.md
           - Orbital dynamics and tides: Explanations/orbit.md
+          - Mantle redox evolution: Explanations/redox.md
       - Software design:
           - Code architecture: Explanations/code_architecture.md
           - Coupling loop: Explanations/coupling_loop.md

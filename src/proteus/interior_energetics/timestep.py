@@ -460,8 +460,8 @@ def next_step(
     # (a new cell entering the EOS range, a change of binding cell) would
     # otherwise drive dt to zero, so the cap is floored at dt.minimum +
     # dt.minimum_rel * Time like the impact alignment below.
-    # Inactive with planet.metal_saturation = False: a_Fe is then a
-    # diagnostic that feeds nothing back, so there is no reaction to resolve.
+    # Inactive with planet.metal_saturation = False: a_Fe is then not
+    # evaluated (the column holds 0), and there is no reaction to resolve.
     afe_target = float(config.params.dt.afe_max_rel_change)
     if (
         afe_target > 0.0

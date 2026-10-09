@@ -314,50 +314,37 @@ def test_reduced_melt_saturates_in_metal_and_becomes_more_oxidised():
 
 
 @pytest.mark.physics_invariant
-def test_disabled_metal_saturation_leaves_the_reduced_melt_supersaturated():
+def test_disabled_metal_saturation_skips_the_metal_check(monkeypatch):
     """planet.metal_saturation = False: the same reduced melt that exsolves
-    metal above forms none, is left supersaturated (a_Fe > 1, the metastable
-    state the option exists to show), and ends less oxidised than with
-    saturation on, because only partitioning raises its Fe3+/FeT. The a_Fe
-    diagnostics are still written and still name the most saturated cell."""
+    metal above forms none, a_Fe is never evaluated (the activity function
+    is not called, the columns hold 0 and -1), and the melt ends less
+    oxidised than with saturation on, because only partitioning raises its
+    Fe3+/FeT."""
+    from proteus.interior_chem import redox
+
     f_0 = 0.005
-    on, _ = _crystallise(f_0)
+    on, rows_on = _crystallise(f_0)
+
+    def _not_called(*args, **kwargs):
+        raise AssertionError('activity_Fe_metal called with metal_saturation off')
+
+    monkeypatch.setattr(redox.dispro, 'activity_Fe_metal', _not_called)
     off, rows = _crystallise(f_0, metal_saturation=False)
 
     for row in rows:
         assert row['n_fe_metal_step_mantle'] == 0.0
         assert row['n_fe_metal_mantle'] == 0.0
         assert row['fe_metal_kg_mantle'] == 0.0
+        assert row['a_fe_max_mantle'] == 0.0
+        assert row['a_fe_max_cell_mantle'] == -1.0
     np.testing.assert_array_equal(off.n_fe_metal_cell, 0.0)
-    assert rows[-1]['a_fe_max_mantle'] > 1.0
-    assert rows[-1]['a_fe_max_cell_mantle'] == float(np.argmax(off.a_fe_cell))
+    np.testing.assert_array_equal(off.a_fe_cell, 0.0)
+    assert off.a_fe_max_cell == -1
+    # Discrimination guard: with saturation on, the same melt does report a_Fe.
+    assert rows_on[-1]['a_fe_max_mantle'] > 0.0
     # Partitioning alone still oxidises the melt a little, but by much less
     # than the metal reaction does.
     assert f_0 < off.ferric_frac < on.ferric_frac
-
-
-@pytest.mark.physics_invariant
-def test_metal_step_without_reaction_reports_a_fe_and_leaves_the_melt_unchanged():
-    """react=False computes the same per-cell a_Fe and binding cell as the
-    reacting step, but returns 0 and leaves every reservoir untouched."""
-    reacting, _ = _crystallise(0.005, n_steps=3)
-    passive, _ = _crystallise(0.005, n_steps=3)
-    # Push both melts well past saturation so the reacting step does act.
-    for s in (reacting, passive):
-        s.n_fe3_melt *= 0.1
-    n2, n3 = passive.n_fe2_melt, passive.n_fe3_melt
-    metal = passive.n_fe_metal_cell.copy()
-
-    xi_on = _metal_saturation_step(reacting, _TEMP, _PRES, _PHI, _MASS)
-    xi_off = _metal_saturation_step(passive, _TEMP, _PRES, _PHI, _MASS, react=False)
-
-    assert xi_on > 0.0
-    assert xi_off == 0.0
-    assert (passive.n_fe2_melt, passive.n_fe3_melt) == (n2, n3)
-    np.testing.assert_array_equal(passive.n_fe_metal_cell, metal)
-    np.testing.assert_array_equal(passive.a_fe_cell, reacting.a_fe_cell)
-    assert passive.a_fe_max_cell == reacting.a_fe_max_cell >= 0
-    assert passive.a_fe_cell[passive.a_fe_max_cell] > 1.0
 
 
 @pytest.mark.physics_invariant

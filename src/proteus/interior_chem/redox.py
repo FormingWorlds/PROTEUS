@@ -31,12 +31,9 @@ this was validated against):
             fraction / Fe3+/Fe2+ redox ratio
   Step 9a-9h  Fe metal saturation, run between every pair of
             crystallization steps when config.planet.metal_saturation is
-            True (default False). Whether the melt is supersaturated is a
-            property of the melt, and carrying a supersaturation leaves the
-            model metastable in the sense Schaefer et al. flag for their
-            Figures 2 and 4; with the option False (the default) that is
-            what happens: a_Fe is still evaluated per cell, but no metal
-            forms.
+            True (default False). With the option False the step is
+            skipped entirely: a_Fe is not evaluated, no metal forms, and
+            the a_Fe helpfile columns hold 0 and -1.
             Between crystallization and the fO2 evaluation -- Schaefer
             et al. (2024) Section 2.7 "add an additional step in between each
             crystallization step to check for metal saturation" -- the melt
@@ -417,7 +414,6 @@ def _metal_saturation_step(
     pres: np.ndarray,
     phi: np.ndarray,
     mass: np.ndarray,
-    react: bool = True,
 ) -> float:
     """Step 9a-9h: check the melt for Fe-metal saturation and, if it is
     supersaturated, react it to equilibrium. Returns the reaction extent xi
@@ -426,11 +422,9 @@ def _metal_saturation_step(
 
     Schaefer et al. (2024) Section 2.7 "add an additional step in between
     each crystallization step to check for metal saturation". The melt
-    either is or is not supersaturated, and holding Fe3+/FeT through a
-    supersaturation leaves the model metastable. ``react=False``
-    (config.planet.metal_saturation = False, the default) does that
-    deliberately: a_fe_cell and a_fe_max_cell are still filled in, but
-    the melt is never reacted and 0.0 is returned.
+    either is or is not supersaturated. Called only with
+    config.planet.metal_saturation True; with it False (the default) the
+    caller skips this step, so a_Fe is never evaluated.
 
     Runs between crystallization (Steps 3-9) and the surface fO2 (Step 10),
     matching Schaefer et al. (2024) Section 2.7, who "add an additional step
@@ -495,9 +489,6 @@ def _metal_saturation_step(
         return 0.0
     cstar = int(np.argmax(np.where(usable, a_fe, -np.inf)))
     state.a_fe_max_cell = cstar
-
-    if not react:
-        return 0.0  # saturation disabled: a_Fe is a diagnostic only
 
     # Forward reaction only: metal that has formed is never redissolved, so an
     # undersaturated melt is left untouched even if metal is present.
@@ -888,17 +879,13 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
 
     state = interior_o.redox_state
 
-    # Step 9a-9h: Fe metal saturation, run between every pair of
-    # crystallization steps. The melt either is or is not supersaturated,
-    # and carrying a supersaturation leaves the model metastable; with
-    # planet.metal_saturation = False that is done on purpose, a_Fe is
-    # evaluated but no metal forms. Skipped on the first call, where no
-    # crystallization has happened yet, matching Schaefer et al., who begin
-    # the check only after the first solid layer forms.
+    # Step 9a-9h: Fe metal saturation, only with planet.metal_saturation True (a_Fe
+    # is not evaluated otherwise); skipped on the first call, before any solid forms.
     xi = 0.0
-    if not first_call and not state.melt_exhausted:
+    checked = react and not first_call and not state.melt_exhausted
+    if checked:
         temp = np.asarray(interior_o.temp, dtype=float)
-        xi = _metal_saturation_step(state, temp, pres, phi, mass, react=react)
+        xi = _metal_saturation_step(state, temp, pres, phi, mass)
         if xi != 0.0:
             _update_ratios(state)
 
@@ -952,7 +939,7 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     elif state.melt_exhausted:
         metal_msg = 'not checked (mantle solidified)'
     elif not react:
-        metal_msg = 'saturation disabled (max a_Fe=%.3g)' % float(np.max(state.a_fe_cell))
+        metal_msg = 'not checked (metal saturation off)'
     elif xi > 0.0:
         metal_msg = 'metal formed (%.3e mol this step)' % xi
     else:
@@ -967,14 +954,11 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
         T_out,
     )
 
-    # Step 11: metal-saturation diagnostics. Written unconditionally so the
-    # columns exist whether or not the check ran; a_Fe is reported even when
-    # below 1, because how close the melt runs to the buffer is the useful
-    # diagnostic during an f_0 scan.
-    hf_row['a_fe_max_mantle'] = float(np.max(state.a_fe_cell))
+    # Step 11: metal-saturation diagnostics, written whether or not the check ran.
+    # With saturation off a_Fe is never evaluated, so it is reported as 0.
+    hf_row['a_fe_max_mantle'] = float(np.max(state.a_fe_cell)) if react else 0.0
     # Where that maximum sits: the binding cell, which is also where any
     # metal formed this step was deposited. -1 on steps with no check.
-    checked = not first_call and not state.melt_exhausted
     hf_row['a_fe_max_cell_mantle'] = float(state.a_fe_max_cell if checked else -1)
     hf_row['n_fe_metal_mantle'] = float(np.sum(state.n_fe_metal_cell))
     # Same cumulative metal as a mass: moles times the molar mass of Fe.

@@ -354,9 +354,10 @@ class Planet:
         Fe-metal equilibrium (3FeO = 2FeO1.5 + Fe; ``interior_chem/redox.py``,
         Step 9, Schaefer et al. 2024 Section 2.7). Default False. When False
         no metal forms and Fe3+/FeT follows crystallization alone, so the
-        melt can be left supersaturated (a_Fe > 1, metastable); a_Fe is
-        still evaluated per cell and written to the helpfile as a
-        diagnostic, the ``params.dt.afe_max_rel_change`` time-step cap
+        melt can be left supersaturated in metal without this being
+        detected; a_Fe is not evaluated (``a_fe_max_mantle`` = 0,
+        ``a_fe_max_cell_mantle`` = -1), the
+        ``params.dt.afe_max_rel_change`` time-step cap
         is inactive, crystallization uses the solver melt fraction
         as is, without the PHI_SOLID = 0.15 solid threshold, and the
         radial fO2 profiles are pressure-free (Eq 13 without int(dV dP),
