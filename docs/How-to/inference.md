@@ -154,6 +154,8 @@ help determine where the optimisation should next run PROTEUS. It helps balance 
 * `LogEI` - logarithm of the expected improvement
 * `LogPI` - logarithm of the probability of improvement (analogous to log-likelihood)
 
+While other workers have runs in progress, each function switches to its Monte Carlo batch form so that it accounts for those points. BoTorch has no batch form of LogPI, so `LogPI` then uses the plain probability of improvement, which is flatter far from the best point; prefer `LogEI` with several workers.
+
 See docs [here](https://botorch.readthedocs.io/en/latest/acquisition.html).
 
 ### Kernels
