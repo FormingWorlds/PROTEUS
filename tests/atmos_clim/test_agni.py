@@ -174,6 +174,34 @@ def test_refractive_env_points_at_the_dataset_and_is_removed_without_aerosols(
 
 
 @pytest.mark.unit
+def test_refractive_env_follows_the_data_root_of_each_run(refractive_env, tmp_path, caplog):
+    """A second run with aerosols on replaces the value PROTEUS set; it is not kept as a user value."""
+    from proteus.data import REFRACTIVE, dataset_dir
+
+    other = dataset_dir(REFRACTIVE, data_root=tmp_path / 'b')
+    other.mkdir(parents=True)
+    agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    with caplog.at_level(logging.INFO):
+        agni_mod._point_agni_at_refractive(str(tmp_path / 'b'), True)
+    assert os.environ[agni_mod.REFRACTIVE_ENV] == str(other)
+    assert 'keeping' not in caplog.text
+
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('blank', ['', '  ', '\t'])
+def test_refractive_env_treats_a_blank_user_value_as_unset(
+    refractive_env, tmp_path, monkeypatch, blank
+):
+    """A blank override counts as unset, as in AGNI, so PROTEUS points AGNI at the dataset."""
+    monkeypatch.setenv('AGNI_DIR_res', blank)
+    agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert os.environ[agni_mod.REFRACTIVE_ENV] == refractive_env
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize('var', ['AGNI_DIR_refractive', 'AGNI_DIR_res'])
 def test_refractive_env_keeps_a_user_value(refractive_env, tmp_path, monkeypatch, caplog, var):
     """A user value of either override is kept, and PROTEUS sets nothing."""
@@ -196,18 +224,19 @@ def test_refractive_env_keeps_a_user_value_set_after_a_proteus_run(refractive_en
 
     agni_mod._point_agni_at_refractive(str(tmp_path), False)
     assert os.environ[agni_mod.REFRACTIVE_ENV] == '/user/nk'
+    assert agni_mod._refractive_dir_set is None
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('fail', [False, True])
+@pytest.mark.parametrize(
+    'fail', [None, KeyError('refractive'), RuntimeError('fwl-io'), OSError('ro')]
+)
 def test_refractive_env_warns_when_the_dataset_is_missing(
     refractive_env, tmp_path, monkeypatch, caplog, fail
 ):
     """A missing or unresolvable dataset is a warning that names AGNI's own empty folder."""
-    if fail:
-        monkeypatch.setattr(
-            agni_mod, 'dataset_dir', MagicMock(side_effect=KeyError('refractive'))
-        )
+    if fail is not None:
+        monkeypatch.setattr(agni_mod, 'dataset_dir', MagicMock(side_effect=fail))
     else:
         os.rmdir(refractive_env)
     with caplog.at_level(logging.WARNING):
@@ -653,6 +682,36 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     # grey_opacity_lw/sw should be forwarded as the Greek-named AGNI kwargs.
     assert fake_agni.last_setup_kwargs['κ_grey_lw'] == pytest.approx(0.1)
     assert fake_agni.last_setup_kwargs['κ_grey_sw'] == pytest.approx(0.2)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('aerosols', [True, False])
+def test_init_agni_atmos_warns_about_no_aerosols_only_when_they_are_on(
+    monkeypatch, tmp_path, caplog, aerosols
+):
+    """An AGNI listing no aerosol data is reported only for a run that uses aerosols."""
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+    output_dir = tmp_path / 'out'
+    (output_dir / 'data').mkdir(parents=True)
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
+    config = _build_greygas_config()
+    config.atmos_clim.aerosols_enabled = aerosols
+    hf_row = dict(
+        F_ins=1000.0, albedo_pl=0.2, T_surf=900.0, gravity=9.8, R_int=6.4e6, P_surf=1.0
+    )
+    hf_row.update(axial_period=86400.0, longitude=0.0, latitude=0.0, hill_radius=6.4e8)
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    monkeypatch.setattr(agni_mod, '_point_agni_at_refractive', lambda *_a: None)
+
+    with caplog.at_level(logging.WARNING):
+        assert init_agni_atmos(dirs, config, hf_row) is not None
+    assert ('No aerosols mapped' in caplog.text) == aerosols
 
 
 class _SpectralWritingAGNI(_FakeAGNI):

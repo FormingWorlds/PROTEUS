@@ -50,7 +50,9 @@ and offers no `.mon` aerosol species.
 With aerosols enabled, PROTEUS also fetches the aerosol refractive indices (`proteus get refractive`)
 and points AGNI at their version directory below `$FWL_DATA/atmos_clim/refractive/agni_aerosols`
 through `AGNI_DIR_refractive`, from which AGNI computes Mie optical properties. A value of
-`AGNI_DIR_refractive` or `AGNI_DIR_res` set before the run is kept.
+`AGNI_DIR_refractive` or `AGNI_DIR_res` set before the run is kept. Fetch them before a run with
+`--offline`: without them, and without the copy AGNI's `get_data.sh` places in its `res/refractive`, AGNI
+lists no Mie aerosol species.
 
 ### Upgrading an older data folder
 

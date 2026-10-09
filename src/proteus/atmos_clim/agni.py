@@ -453,10 +453,7 @@ def _point_agni_at_refractive(fwl_dir: str, aerosols_enabled: bool) -> None:
         Whether the run uses aerosols.
     """
     global _refractive_dir_set
-    if (
-        _refractive_dir_set is not None
-        and os.environ.get(REFRACTIVE_ENV) == _refractive_dir_set
-    ):
+    if _refractive_dir_set and os.environ.get(REFRACTIVE_ENV) == _refractive_dir_set:
         del os.environ[REFRACTIVE_ENV]
     _refractive_dir_set = None
     if not aerosols_enabled:
@@ -486,7 +483,7 @@ def _determine_aerosols(dirs: dict, aerosols_enabled: bool = True) -> dict:
 
     AGNI can compute aerosol optical properties two ways:
      - Pre-computed monochromatic scattering data
-     - Mie theory at runtime from refractive-index data bundled with AGNI
+     - Mie theory at runtime from the refractive-index data in the folder AGNI resolves
     Mie is preferred when both are available for the same species.
 
     Parameters
@@ -722,7 +719,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
             log.debug(f'    {name:8s} ({method}) not tied to any condensate; skipping')
 
     # Warn if no aerosol species were found
-    if len(aerosol_species) == 0:
+    if config.atmos_clim.aerosols_enabled and len(aerosol_species) == 0:
         log.warning('    No aerosols mapped or data unavailable')
 
     # AGNI computes Mie aerosol properties from the stellar spectrum while it
