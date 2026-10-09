@@ -10,6 +10,9 @@ from proteus.accretion.atmloss import (
     _ATMLOSS_THIN_ATM_WARN as _ATMLOSS_THIN_ATM_WARN,
 )
 from proteus.accretion.atmloss import (
+    _as_float as _as_float,
+)
+from proteus.accretion.atmloss import (
     _format_roche_flag as _format_roche_flag,
 )
 from proteus.accretion.atmloss import (
@@ -165,14 +168,6 @@ def _warn_target_mass_mismatch(event: ImpactEvent, m_planet: float, which: str) 
 def _valid_mass(value) -> bool:
     """Whether a stored mass or count is finite and not negative (absent counts as 0)."""
     return 0.0 <= float(value or 0.0) < math.inf
-
-
-def _as_float(val: object) -> float:
-    """Convert value to float, returning NaN on ValueError or TypeError."""
-    try:
-        return float(val)  # type: ignore[arg-type]
-    except (ValueError, TypeError):
-        return float('nan')
 
 
 def _current_orbit(hf_row: dict, config: Config) -> tuple[float, float]:

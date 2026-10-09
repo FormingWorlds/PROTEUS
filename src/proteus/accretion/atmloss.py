@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from proteus.accretion.common import ImpactEvent
     from proteus.config import Config
 
-log = logging.getLogger('fwl.proteus.accretion.wrapper')
+log = logging.getLogger('fwl.' + __name__)
 
 # Atmospheric mass threshold (fraction of planet mass) above which a warning is logged
 # for the thin-atmosphere Kegerreis et al. (2020) scaling law.
