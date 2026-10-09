@@ -25,17 +25,20 @@ The system performs Bayesian optimization to infer planetary formation parameter
 
     These files are contained within the folder `src/proteus/inference/`.
 
-    | File               | Description                               |
-    |:-------------------|:------------------------------------------|
-    | `inference.py`     | Main entry point                          |
-    | `transforms.py`    | Functions for transforming and scaling variables |
-    | `async_BO.py`      | Parallel BO implementation                |
-    | `BO.py`            | Single BO step implementation             |
-    | `objective.py`     | PROTEUS interface and objective function  |
-    | `failures.py`      | Functions for handling failing simulations |
-    | `plot.py`          | Visualization utilities                   |
-    | `utils.py`         | Helper functions for inference scheme     |
-    | `gen_D_init.py`    | Generate initial data                     |
+    | File               | Description                                                           |
+    |:-------------------|:----------------------------------------------------------------------|
+    | `inference.py`     | Main entry point                                                      |
+    | `gen_D_init.py`    | Generate initial data                                                 |
+    | `async_BO.py`      | Parallel BO implementation                                            |
+    | `BO.py`            | Single BO step implementation                                         |
+    | `objective.py`     | PROTEUS interface and objective function                              |
+    | `correlation.py`   | Correlated observable uncertainties                                   |
+    | `runner.py`        | One PROTEUS process reused across evaluations (`dispatch = "runner"`) |
+    | `failures.py`      | Functions for handling failing simulations                            |
+    | `transforms.py`    | Functions for transforming and scaling variables                      |
+    | `plot.py`          | Performance plots and per-sample results                              |
+    | `plot_fit.py`      | Best fit against the targets and true parameters                      |
+    | `utils.py`         | Helper functions for inference scheme                                 |
 
 ## Configuration
 
