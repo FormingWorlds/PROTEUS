@@ -2023,8 +2023,12 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
     Pins the eroded fraction obtained through the full PROTEUS loss dispatch
     for the first Set A reference row from Roche et al. (2026), arXiv:2610.06077
     (Zenodo doi:10.5281/zenodo.23192423), matching the authors' scaling-law
-    calculation (X_atm_calc = 0.562213) within 2e-4 tolerance. The 1.47e-5 residual
-    arises from numerical precision in the published parameter representation.
+    calculation (X_atm_calc = 0.562213) within 5e-5 tolerance. The authors'
+    X_atm_calc evaluates the fit at nominal grid values gamma = 0.2 and
+    v/v_esc = 2.0 with the simulation's Q'_R (28.5419 MJ/kg, which v_c = 19.27 km/s
+    reproduces); the dispatch derives gamma and v/v_esc from the body masses and
+    the 2-decimal contact speed (yielding v/v_esc = 2.000434, gamma = 0.200014),
+    which produces the -1.47e-5 residual.
     Skips when zephyrus.collision provides no impact_loss.
     """
     pytest.importorskip('zephyrus.collision')
@@ -2066,7 +2070,7 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
     )
 
     f_loss = _impact_loss_fraction(cfg, hf_row, event)
-    assert f_loss == pytest.approx(expected_x, abs=2e-4)
+    assert f_loss == pytest.approx(expected_x, abs=5e-5)
     assert 0.0 <= f_loss <= 1.0
 
     # Discrimination guard (a): kegerreis2020 yields f_keg = 0.693102, diverging by 0.1309 (> 0.10).
@@ -2178,7 +2182,8 @@ def test_roche2026_flags_produce_warnings_and_kegerreis_3pct_absent(caplog):
     assert 'f_atm = 1e-07 (fitted 0.01 to 0.2), evaluated at 1e-06' in msg_multi
     assert 'gamma = 0.0476 (fitted 0.1 to 0.5)' in msg_multi
     assert msg_multi.endswith(
-        "; the loss fraction is extrapolated; a parameter marked 'evaluated at' is held at that value"
+        "; the loss fraction is extrapolated; only the fit terms use the value marked 'evaluated at', "
+        "and v_esc, Q'_R, and the mass ratio use the raw collision state"
     )
 
     # Case 3b: out-of-range M_t_earth (M_t = 6 Me outside [0.35, 5]) emits M_t_earth flag.
@@ -2320,7 +2325,8 @@ def test_roche2026_airless_target_and_trace_atmosphere_jump(caplog):
     msg = records[0].getMessage()
     assert 'f_atm = 1.67e-25 (fitted 0.01 to 0.2), evaluated at 1e-06' in msg
     assert msg.endswith(
-        "; the loss fraction is extrapolated; a parameter marked 'evaluated at' is held at that value"
+        "; the loss fraction is extrapolated; only the fit terms use the value marked 'evaluated at', "
+        "and v_esc, Q'_R, and the mass ratio use the raw collision state"
     )
 
 

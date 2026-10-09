@@ -1121,7 +1121,8 @@ def _log_zephyrus_loss(
         if flags:
             flag_msgs = [_format_roche_flag(f, diagnostics, fitted_range) for f in flags]
             clamp_tail = (
-                "; a parameter marked 'evaluated at' is held at that value"
+                "; only the fit terms use the value marked 'evaluated at', "
+                "and v_esc, Q'_R, and the mass ratio use the raw collision state"
                 if diagnostics.get('clamped')
                 else ''
             )
