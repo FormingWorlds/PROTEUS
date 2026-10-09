@@ -348,8 +348,8 @@ This profile is diagnostic only: it is written to the interior output but does n
 | Output | Where | Meaning |
 |---|---|---|
 | `ferric_frac_mantle` | Helpfile | Melt Fe$^{3+}$/Fe$_{\rm T}$ after the current crystallization step |
-| `fO2_shift_IW_mantle` | Helpfile | Surface $\Delta$IW passed to outgassing [log$_{10}$ units] |
-| `log10_fO2_s` | Interior snapshot | Per-cell $\log_{10}f_{\rm O_2}$ [log$_{10}$ bar]; NaN in solid cells |
+| `fO2_shift_IW_mantle` | Helpfile | Surface $\Delta$IW passed to outgassing \[log$_{10}$ units\] |
+| `log10_fO2_s` | Interior snapshot | Per-cell $\log_{10}f_{\rm O_2}$ \[log$_{10}$ bar\]; NaN in solid cells |
 | `dIW_H21_s` | Interior snapshot | Same profile expressed relative to the Hirschmann (2021) IW buffer |
 | `fO2_top_index` | Interior snapshot | Staggered-grid index of the uppermost melt cell |
 | `redox_*` | Interior snapshot | Tracker state used when resuming a run |
