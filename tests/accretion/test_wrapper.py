@@ -2555,6 +2555,29 @@ def test_roche2026_twin_bodies_gamma_clamp_tail(caplog):
     assert "only the fit terms use the value marked 'evaluated at'" not in msg_nc
     assert msg_nc.endswith('; the loss fraction is extrapolated')
 
+    # 3. Result with empty flags but clamped parameter appends clamp to names.
+    from zephyrus.collision import ROCHE2026_FITTED_RANGE
+
+    from proteus.accretion.wrapper import _log_zephyrus_loss
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        mock_result = SimpleNamespace(
+            fraction=0.5,
+            flags=(),
+            diagnostics={
+                'v_ratio': 1.5,
+                'gamma': 0.503,
+                'X_NF': 0.2,
+                'X_FF': 0.3,
+                'clamped': {'gamma': 0.5},
+            },
+        )
+        _log_zephyrus_loss('roche2026', event_twin, mock_result, 0.01, ROCHE2026_FITTED_RANGE)
+    rec_mock = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(rec_mock) == 1
+    assert 'gamma = 0.503 (fitted 0.1 to 0.5), evaluated at 0.5' in rec_mock[0].getMessage()
+
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
