@@ -86,7 +86,9 @@ def init_star(handler: Proteus):
 
             from proteus.data import (
                 STELLAR_SPECTRA_MUSCLES,
+                STELLAR_SPECTRA_NAMED,
                 STELLAR_SPECTRA_SOLAR,
+                _dataset,
                 dataset_dir,
             )
 
@@ -94,6 +96,13 @@ def init_star(handler: Proteus):
             muscles_dir = dataset_dir(STELLAR_SPECTRA_MUSCLES, data_root=fwl_dir)
             solar_dir = dataset_dir(STELLAR_SPECTRA_SOLAR, data_root=fwl_dir)
             muscles_path = os.path.join(muscles_dir, star_file)
+            named_dir = dataset_dir(STELLAR_SPECTRA_NAMED, data_root=fwl_dir)
+            # Named serves only stars the MUSCLES and solar registries do not list, so a missing
+            # local file never switches the spectrum; Named names keep their case (HIP67522.txt).
+            listed = set(_dataset(STELLAR_SPECTRA_MUSCLES).registry())
+            listed |= set(_dataset(STELLAR_SPECTRA_SOLAR).registry())
+            named = {f.lower(): f for f in _dataset(STELLAR_SPECTRA_NAMED).registry()}
+            named_path = os.path.join(named_dir, named.get(star_file, star_file))
 
             # Pick the intended solar_path:
             if solar_key in solar_map:
@@ -108,12 +117,14 @@ def init_star(handler: Proteus):
                 else f'`proteus get muscles --star {star_id or "<name>"}`'
             )
 
-            # spectrum_source = None -> try MUSCLES, then solar
+            # spectrum_source = None -> try MUSCLES, then solar, then Named
             if src is None:
                 if os.path.exists(muscles_path):
                     star_modern_path = muscles_path
                 elif os.path.exists(solar_path):
                     star_modern_path = solar_path
+                elif star_file not in listed and os.path.exists(named_path):
+                    star_modern_path = named_path
                 else:
                     log.error(
                         f"No stellar spectrum found for '{mors_cfg.star_name}' in reference data."
@@ -123,8 +134,9 @@ def init_star(handler: Proteus):
                     )
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
-                        f"No solar or MUSCLES spectrum found in reference data for '{mors_cfg.star_name}'. "
-                        f'Fetch it with {fetch}. {RELOCATE_HINT}'
+                        f"No MUSCLES, solar or Named spectrum found in reference data for '{mors_cfg.star_name}'. "
+                        f'Fetch it with {fetch}. `proteus get stellar` fetches the Named spectra. '
+                        f'{RELOCATE_HINT}'
                     )
 
             # spectrum_source = 'solar'
