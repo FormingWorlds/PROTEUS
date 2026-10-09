@@ -88,7 +88,7 @@ units as the value in `[observables]`. When it is present, each residual is divi
 J = -log10( sum( ((sim - true) / sigma)^2 ) + 1e-10 )
 ```
 
-Observables that span orders of magnitude (e.g. `atm_kg_per_mol`) are compared as `log10` values, and so are element ratios such as `C/O_atm` when `[sigma]` is given. Their uncertainty can be given in linear space, e.g. `"C/O_atm" = 0.1`; in this case, it is converted to dex to first order via `sigma / (true * ln 10)`. Optionally, it can be given in dex directly as a string, for example `"C/O_atm" = "0.1 dex"`. 
+Observables that span orders of magnitude (e.g. `atm_kg_per_mol`) are compared as `log10` values, and so are element ratios such as `C/O_atm` when `[sigma]` is given. Their uncertainty can be given in linear space, e.g. `"C/O_atm" = 0.1`; in this case, it is converted to dex to first order via `sigma / (true * ln 10)`. Optionally, it can be given in dex directly as a string, for example `"C/O_atm" = "0.1 dex"`.
 
 !!! warning "Do not compare `J` when using different objectives"
     The two objectives are on different scales, so compare `J` only between inference runs that use the same one. The objective in use is reported at start-up.
@@ -110,9 +110,9 @@ The sum of squares is then replaced by the full chi-squared
 chi2 = u^T R^-1 u,    u = (sim - true) / sigma
 ```
 
-where `R` is the correlation matrix. Each coefficient must lie strictly between -1 and 1, and the matrix as a whole must be positive definite. 
+where `R` is the correlation matrix. Each coefficient must lie strictly between -1 and 1, and the matrix as a whole must be positive definite.
 
-For element-ratio observables (such as `C/O_atm` and `O/H_atm`), `correlate_ratios = true` builds the table instead. Assuming the same dex error for every element, two ratios correlate by the cosine of their exponent vectors. One element shared on the same side gives +0.5 (`C/O_atm` with `S/O_atm`); on opposite sides -0.5 (`C/O_atm` with `O/H_atm`). 
+For element-ratio observables (such as `C/O_atm` and `O/H_atm`), `correlate_ratios = true` builds the table instead. Assuming the same dex error for every element, two ratios correlate by the cosine of their exponent vectors. One element shared on the same side gives +0.5 (`C/O_atm` with `S/O_atm`); on opposite sides -0.5 (`C/O_atm` with `O/H_atm`).
 
 ### Known true parameters
 
