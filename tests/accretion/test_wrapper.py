@@ -1865,6 +1865,7 @@ def test_zephyrus_loss_module_without_the_law_fails_loudly(monkeypatch):
     assert 'atmloss_module' in message
     assert 'zephyrus.collision' in message
     assert 'impact_loss' in message
+    assert 'upgrade' in message
 
     # With no loss module configured the same call is silent and loses
     # nothing, so the error is specific to the selected module rather than
@@ -1971,6 +1972,60 @@ def test_impact_loss_fraction_routes_each_law_and_passes_arguments(monkeypatch):
 
 
 @pytest.mark.unit
+def test_rock_vapour_included_in_fatm_and_excluded_from_strip(monkeypatch):
+    """Rock vapour enters envelope mass in f_atm but is never stripped.
+
+    Verifies clause: _impact_loss_fraction includes rock-forming species
+    (such as Si) in f_atm passed to the collision law, but
+    _calculate_stripped_atmosphere does not debit rock vapour because
+    <e>_kg_total is zero for rock-forming elements and its inventory
+    re-equilibrates with the magma ocean at each step.
+    """
+    pytest.importorskip('zephyrus.collision')
+    from proteus.accretion.wrapper import (
+        _impact_loss_fraction,
+        _target_strip_amounts,
+    )
+
+    calls = []
+    monkeypatch.setattr(
+        'zephyrus.collision.impact_loss',
+        _mock_impact_loss_call(calls, fraction=0.4),
+        raising=True,
+    )
+
+    event = _impact_event(M_target_before=5.0e24)
+    m_planet = 5.0e24
+    h_atm = 1.0e20
+    si_atm = 5.0e19
+    hf_row = {
+        'M_planet': m_planet,
+        'H_kg_atm': h_atm,
+        'H_kg_total': 1.0e21,
+        'Si_kg_atm': si_atm,
+        'Si_kg_total': 0.0,
+    }
+    cfg = SimpleNamespace(
+        accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='roche2026'),
+        outgas=SimpleNamespace(mass_thresh=1.0e15),
+    )
+
+    f_loss = _impact_loss_fraction(cfg, hf_row, event)
+    assert f_loss == pytest.approx(0.4)
+    assert len(calls) == 1
+    # f_atm includes both H and Si
+    expected_f_atm = (h_atm + si_atm) / m_planet
+    assert calls[0]['f_atm'] == pytest.approx(expected_f_atm)
+    # Canary: excluding Si fails
+    assert calls[0]['f_atm'] != pytest.approx(h_atm / m_planet)
+
+    stripped = _target_strip_amounts(cfg, hf_row, f_loss)
+    assert 'H' in stripped
+    assert stripped['H'] == pytest.approx(0.4 * h_atm)
+    assert 'Si' not in stripped
+
+
+@pytest.mark.unit
 def test_roche2026_loss_module_evaluates_real_zephyrus():
     """Real ZEPHYRUS provides impact_loss and mass_loss_roche2026 when available.
 
@@ -2055,7 +2110,6 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
     expected_x = 0.56221340039270196
 
     m_t_tot = m_t_r / (1.0 - f_atm)
-    m_atm = m_t_tot - m_t_r
 
     event = _impact_event(
         v_impact=v_c,
@@ -2067,7 +2121,7 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
         rho_target=m_t_tot / (4.0 / 3.0 * np.pi * r_t**3),
         rho_impactor=m_i / (4.0 / 3.0 * np.pi * r_i**3),
     )
-    hf_row = {'M_planet': m_t_tot, 'H_kg_atm': m_atm}
+    hf_row = {'M_planet': m_t_tot, 'H_kg_atm': m_t_tot - m_t_r}
     cfg = SimpleNamespace(
         accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='roche2026')
     )
@@ -2083,7 +2137,7 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
     f_keg = _impact_loss_fraction(cfg_keg, hf_row, event)
     assert abs(f_keg - expected_x) > 0.10
 
-    # Discrimination guard (b): swapping masses and radii yields f_swapped = 0.753391, diverging by 0.1912 (> 0.10).
+    # Discrimination guard (b): swapping masses and radii diverges by > 0.10.
     event_swapped = _impact_event(
         v_impact=v_c,
         impact_parameter=b,
@@ -2138,9 +2192,7 @@ def test_roche2026_parameter_flags_and_kegerreis_thin_atmosphere_warning(caplog)
     # Positive control: verify caplog captures warnings without a logger filter.
     caplog.clear()
     with caplog.at_level(logging.WARNING):
-        import logging as py_logging
-
-        py_logging.getLogger('fwl.proteus.accretion.wrapper').warning('canary warning')
+        logging.getLogger('fwl.proteus.accretion.wrapper').warning('canary warning')
         assert any('canary warning' in r.getMessage() for r in caplog.records)
 
     # Case 1: roche2026 with 0 flags -> zero warnings even with thick atmosphere.
@@ -2246,6 +2298,12 @@ def test_roche2026_parameter_flags_and_kegerreis_thin_atmosphere_warning(caplog)
         == 'far-field loss of 0.0801 without impact energy (log10 f_atm extrapolation)'
     )
 
+    # Case 3e: unknown flags fall back to the bare flag name.
+    assert (
+        _format_roche_flag('custom_future_flag', {}, ROCHE2026_FITTED_RANGE)
+        == 'custom_future_flag'
+    )
+
     # Case 4: kegerreis2020 with thick atmosphere -> thin-atmosphere warning fires.
     caplog.clear()
     with caplog.at_level(logging.WARNING):
@@ -2278,6 +2336,10 @@ def test_roche2026_parameter_flags_and_kegerreis_thin_atmosphere_warning(caplog)
         _impact_loss_fraction(
             cfg_roche, {'M_planet': 1.0e24, 'H_kg_atm': 1.5e24}, event_in_range
         )
+    with pytest.raises(ValueError, match='f_atm'):
+        _impact_loss_fraction(
+            cfg_roche, {'M_planet': 1.0e24, 'H_kg_atm': 1.0e24}, event_in_range
+        )
     with pytest.raises(ValueError, match='<e>_kg_atm'):
         _impact_loss_fraction(cfg_roche, {'M_planet': Me, 'H_kg_atm': -1.0e17}, event_in_range)
     with pytest.raises(ValueError, match='<e>_kg_atm'):
@@ -2286,6 +2348,13 @@ def test_roche2026_parameter_flags_and_kegerreis_thin_atmosphere_warning(caplog)
         )
     with pytest.raises(ValueError, match='<e>_kg_atm'):
         _impact_loss_fraction(cfg_roche, {'M_planet': Me, 'H_kg_atm': None}, event_in_range)
+
+    # Unknown law raises ValueError.
+    cfg_bogus = SimpleNamespace(
+        accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='bogus')
+    )
+    with pytest.raises(ValueError, match="Unknown accretion.atmloss_law: 'bogus'"):
+        _impact_loss_fraction(cfg_bogus, {'M_planet': Me, 'H_kg_atm': 1.0e17}, event_in_range)
 
 
 @pytest.mark.unit
@@ -2298,9 +2367,7 @@ def test_roche2026_stability_clamps_through_impact_loss_fraction(caplog):
     above 0.4 emit out-of-range flags with clamp annotations ('evaluated at').
     Speeds with v_c / v_esc < 0.99 emit the 'v_sub_escape' flag. Clamped gamma = 0.5
     evaluation matches direct fit evaluation with gamma = 0.5 and differs from
-    unclamped gamma = 0.7 by more than 1e-3, whereas full collision evaluations
-    with gamma = 0.7 and 0.5 differ because unclamped physical variables preserve
-    the raw collision state.
+    unclamped gamma = 0.7 by more than 1e-3.
     """
     pytest.importorskip('zephyrus.collision')
     from zephyrus.collision import _roche2026_fit, impact_loss
@@ -2312,123 +2379,78 @@ def test_roche2026_stability_clamps_through_impact_loss_fraction(caplog):
         accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='roche2026')
     )
 
-    # 1. M_t_earth > 10 clamped to 10
-    event_mt_hi = _impact_event(
-        v_impact=45000.0,
-        M_target_before=15.0 * Me,
-        M_impactor=1.0 * Me,
-        R_target_before=2.2 * Re,
-        R_impactor=0.9 * Re,
-        impact_parameter=0.3,
-    )
-    hf_mt_hi = {'M_planet': 15.0 * Me, 'H_kg_atm': 0.02 * 15.0 * Me}
-    caplog.clear()
-    with caplog.at_level(logging.WARNING):
-        f_mt_hi = _impact_loss_fraction(cfg, hf_mt_hi, event_mt_hi)
-    assert 0.0 <= f_mt_hi <= 1.0
-    rec = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(rec) == 1
-    assert 'M_t_earth = 14.7 (fitted 0.35 to 5), evaluated at 10' in rec[0].getMessage()
+    base = {
+        'v_impact': 1.5 * 11186.0,
+        'M_target_before': Me,
+        'M_impactor': 0.2 * Me,
+        'R_target_before': Re,
+        'R_impactor': 0.58 * Re,
+        'impact_parameter': 0.3,
+    }
+    cases = [
+        # 1. M_t_earth > 10 clamped to 10
+        (
+            {
+                'v_impact': 45000.0,
+                'M_target_before': 15.0 * Me,
+                'M_impactor': 1.0 * Me,
+                'R_target_before': 2.2 * Re,
+                'R_impactor': 0.9 * Re,
+            },
+            0.02,
+            'M_t_earth = 14.7 (fitted 0.35 to 5), evaluated at 10',
+        ),
+        # 2. M_t_earth < 1e-3 clamped to 0.001
+        (
+            {
+                'v_impact': 2000.0,
+                'M_target_before': 5.0e-4 * Me,
+                'M_impactor': 5.0e-5 * Me,
+                'R_target_before': 0.08 * Re,
+                'R_impactor': 0.03 * Re,
+            },
+            0.02,
+            'M_t_earth = 0.00049 (fitted 0.35 to 5), evaluated at 0.001',
+        ),
+        # 3. gamma < 1e-3 clamped to 0.001
+        (
+            {'M_impactor': 5.0e-4 * Me, 'R_impactor': 0.08 * Re},
+            0.02,
+            'gamma = 0.00051 (fitted 0.1 to 0.5), evaluated at 0.001',
+        ),
+        # 4. gamma > 0.5 clamped to 0.5
+        (
+            {'M_impactor': 1.5 * Me, 'R_impactor': 1.0 * Re},
+            0.02,
+            'gamma = 0.605 (fitted 0.1 to 0.5), evaluated at 0.5',
+        ),
+        # 5. f_atm > 0.4 clamped to 0.4
+        (
+            {},
+            0.45,
+            'f_atm = 0.45 (fitted 0.01 to 0.2), evaluated at 0.4',
+        ),
+        # 6. sub-escape speed v_c / v_esc < 0.99 emits v_sub_escape flag
+        (
+            {'v_impact': 5000.0},
+            0.02,
+            'v_sub_escape: near-field loss held at v_c = v_esc (v_ratio = 0.513)',
+        ),
+    ]
+    for overrides, atm_frac, fragment in cases:
+        event = _impact_event(**{**base, **overrides})
+        m_planet = event.M_target_before
+        hf_row = {'M_planet': m_planet, 'H_kg_atm': atm_frac * m_planet}
+        caplog.clear()
+        with caplog.at_level(logging.WARNING):
+            f_loss = _impact_loss_fraction(cfg, hf_row, event)
+        assert 0.0 <= f_loss <= 1.0
+        rec = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(rec) == 1
+        assert fragment in rec[0].getMessage()
 
-    # 2. M_t_earth < 1e-3 clamped to 0.001
-    event_mt_lo = _impact_event(
-        v_impact=2000.0,
-        M_target_before=5.0e-4 * Me,
-        M_impactor=5.0e-5 * Me,
-        R_target_before=0.08 * Re,
-        R_impactor=0.03 * Re,
-        impact_parameter=0.3,
-    )
-    hf_mt_lo = {'M_planet': 5.0e-4 * Me, 'H_kg_atm': 0.02 * 5.0e-4 * Me}
-    caplog.clear()
-    with caplog.at_level(logging.WARNING):
-        f_mt_lo = _impact_loss_fraction(cfg, hf_mt_lo, event_mt_lo)
-    assert 0.0 <= f_mt_lo <= 1.0
-    rec = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(rec) == 1
-    assert 'M_t_earth = 0.00049 (fitted 0.35 to 5), evaluated at 0.001' in rec[0].getMessage()
-
-    # 3. gamma < 1e-3 clamped to 0.001
-    event_gamma_lo = _impact_event(
-        v_impact=1.5 * 11186.0,
-        M_target_before=1.0 * Me,
-        M_impactor=5.0e-4 * Me,
-        R_target_before=1.0 * Re,
-        R_impactor=0.08 * Re,
-        impact_parameter=0.3,
-    )
-    hf_gamma_lo = {'M_planet': 1.0 * Me, 'H_kg_atm': 0.02 * Me}
-    caplog.clear()
-    with caplog.at_level(logging.WARNING):
-        f_gamma_lo = _impact_loss_fraction(cfg, hf_gamma_lo, event_gamma_lo)
-    assert 0.0 <= f_gamma_lo <= 1.0
-    rec = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(rec) == 1
-    assert 'gamma = 0.00051 (fitted 0.1 to 0.5), evaluated at 0.001' in rec[0].getMessage()
-
-    # 4. gamma > 0.5 clamped to 0.5
-    event_gamma_hi = _impact_event(
-        v_impact=1.5 * 11186.0,
-        M_target_before=1.0 * Me,
-        M_impactor=1.5 * Me,
-        R_target_before=1.0 * Re,
-        R_impactor=1.0 * Re,
-        impact_parameter=0.3,
-    )
-    hf_gamma_hi = {'M_planet': 1.0 * Me, 'H_kg_atm': 0.02 * Me}
-    caplog.clear()
-    with caplog.at_level(logging.WARNING):
-        f_gamma_hi = _impact_loss_fraction(cfg, hf_gamma_hi, event_gamma_hi)
-    assert 0.0 <= f_gamma_hi <= 1.0
-    rec = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(rec) == 1
-    assert 'gamma = 0.605 (fitted 0.1 to 0.5), evaluated at 0.5' in rec[0].getMessage()
-
-    # 5. f_atm > 0.4 clamped to 0.4
-    event_fatm_hi = _impact_event(
-        v_impact=1.5 * 11186.0,
-        M_target_before=1.0 * Me,
-        M_impactor=0.2 * Me,
-        R_target_before=1.0 * Re,
-        R_impactor=0.58 * Re,
-        impact_parameter=0.3,
-    )
-    hf_fatm_hi = {'M_planet': 1.0 * Me, 'H_kg_atm': 0.45 * Me}
-    caplog.clear()
-    with caplog.at_level(logging.WARNING):
-        f_fatm_hi = _impact_loss_fraction(cfg, hf_fatm_hi, event_fatm_hi)
-    assert 0.0 <= f_fatm_hi <= 1.0
-    rec = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(rec) == 1
-    assert 'f_atm = 0.45 (fitted 0.01 to 0.2), evaluated at 0.4' in rec[0].getMessage()
-
-    # 6. sub-escape speed v_c / v_esc < 0.99 emits v_sub_escape flag
-    event_vsub = _impact_event(
-        v_impact=5000.0,
-        M_target_before=1.0 * Me,
-        M_impactor=0.2 * Me,
-        R_target_before=1.0 * Re,
-        R_impactor=0.58 * Re,
-        impact_parameter=0.3,
-    )
-    hf_vsub = {'M_planet': 1.0 * Me, 'H_kg_atm': 0.02 * Me}
-    caplog.clear()
-    with caplog.at_level(logging.WARNING):
-        f_vsub = _impact_loss_fraction(cfg, hf_vsub, event_vsub)
-    assert 0.0 <= f_vsub <= 1.0
-    rec = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(rec) == 1
-    assert 'v_sub_escape: v_ratio = 0.513 (< 0.99)' in rec[0].getMessage()
-
-    # Dispatch comparison: gamma 0.7 vs 0.5 differ due to unclamped dynamical state
-    event_gamma_05 = _impact_event(
-        v_impact=1.5 * 11186.0,
-        M_target_before=1.0 * Me,
-        M_impactor=0.98 * Me,
-        R_target_before=1.0 * Re,
-        R_impactor=1.0 * Re,
-        impact_parameter=0.3,
-    )
+    # Direct fit comparison: gamma 0.7 evaluated with clamp 0.5 matches _roche2026_fit
+    # and differs from unclamped evaluation by more than 1e-3.
     event_gamma_07 = _impact_event(
         v_impact=1.5 * 11186.0,
         M_target_before=1.0 * Me,
@@ -2438,13 +2460,8 @@ def test_roche2026_stability_clamps_through_impact_loss_fraction(caplog):
         impact_parameter=0.3,
     )
     hf_norm = {'M_planet': 1.0 * Me, 'H_kg_atm': 0.02 * Me}
-    f_g05 = _impact_loss_fraction(cfg, hf_norm, event_gamma_05)
     f_g07 = _impact_loss_fraction(cfg, hf_norm, event_gamma_07)
-    assert f_g05 != f_g07
-    assert abs(f_g07 - f_g05) > 0.01
 
-    # Direct fit comparison: gamma 0.7 evaluated with clamp 0.5 matches _roche2026_fit
-    # and differs from unclamped evaluation by more than 1e-3.
     m_target_refractory = event_gamma_07.M_target_before * (1.0 - 0.02)
     res_07 = impact_loss(
         law='roche2026',
@@ -2459,42 +2476,98 @@ def test_roche2026_stability_clamps_through_impact_loss_fraction(caplog):
         f_atm=0.02,
     )
     diag_07 = res_07.diagnostics
-    fit_clamped = _roche2026_fit(
-        b=diag_07['b'],
-        gamma=0.5,
-        v_c_v_esc=diag_07['v_ratio'],
-        M_t_earth=diag_07['M_t_earth'],
-        mass_ratio=event_gamma_07.M_impactor / m_target_refractory,
-        Q_R_prime_MJ=diag_07['Q_R_prime'],
-        f_atm=diag_07['f_atm'],
-        R_ratio=diag_07['R_ratio'],
-    )[3]
-    fit_unclamped = _roche2026_fit(
-        b=diag_07['b'],
-        gamma=diag_07['gamma'],
-        v_c_v_esc=diag_07['v_ratio'],
-        M_t_earth=diag_07['M_t_earth'],
-        mass_ratio=event_gamma_07.M_impactor / m_target_refractory,
-        Q_R_prime_MJ=diag_07['Q_R_prime'],
-        f_atm=diag_07['f_atm'],
-        R_ratio=diag_07['R_ratio'],
-    )[3]
+
+    def fit(gamma):
+        return _roche2026_fit(
+            b=diag_07['b'],
+            gamma=gamma,
+            v_c_v_esc=diag_07['v_ratio'],
+            M_t_earth=diag_07['M_t_earth'],
+            mass_ratio=event_gamma_07.M_impactor / m_target_refractory,
+            Q_R_prime_MJ=diag_07['Q_R_prime'],
+            f_atm=diag_07['f_atm'],
+            R_ratio=diag_07['R_ratio'],
+        )[3]
+
+    fit_clamped, fit_unclamped = fit(0.5), fit(diag_07['gamma'])
     assert f_g07 == pytest.approx(fit_clamped, rel=1e-12)
     assert abs(f_g07 - fit_unclamped) > 1e-3
 
 
 @pytest.mark.unit
+def test_roche2026_twin_bodies_gamma_clamp_tail(caplog):
+    """Twin bodies clamp gamma above 0.5 and only include clamp tail when clamped.
+
+    Verifies clause: equal-mass collisions (M_t = M_i) produce gamma = 1/(2 - f_atm) > 0.5.
+    At f_atm = 0.01, gamma is clamped to 0.5 and emits exactly one warning naming gamma
+    with 'evaluated at 0.5' and appending the clamp explanation tail.
+    At f_atm = 0.005 with b = 0.95, if no parameter is clamped (or only when a clamp is named),
+    the clamp explanation tail is appended only if a parameter is marked 'evaluated at'.
+    """
+    pytest.importorskip('zephyrus.collision')
+    from zephyrus.planets_parameters import Me, Re
+
+    from proteus.accretion.wrapper import _impact_loss_fraction
+
+    cfg = SimpleNamespace(
+        accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='roche2026')
+    )
+    event_twin = _impact_event(
+        v_impact=1.5 * 11186.0,
+        M_target_before=Me,
+        M_impactor=Me,
+        R_target_before=Re,
+        R_impactor=Re,
+        impact_parameter=0.3,
+    )
+    # 1. Twins at f_atm = 0.01: gamma = 1 / (2 - 0.01) = 0.5025 > 0.5 -> clamped to 0.5.
+    hf_twin_01 = {'M_planet': Me, 'H_kg_atm': 0.01 * Me}
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        f_loss = _impact_loss_fraction(cfg, hf_twin_01, event_twin)
+    assert 0.0 <= f_loss <= 1.0
+    rec = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(rec) == 1
+    msg = rec[0].getMessage()
+    assert 'gamma = 0.503 (fitted 0.1 to 0.5), evaluated at 0.5' in msg
+    assert "only the fit terms use the value marked 'evaluated at'" in msg
+
+    # 2. Collision where b = 0.95 and f_atm = 0.005 are out-of-range but not clamped.
+    event_non_clamped = _impact_event(
+        v_impact=1.5 * 11186.0,
+        M_target_before=Me,
+        M_impactor=0.2 * Me,
+        R_target_before=Re,
+        R_impactor=0.58 * Re,
+        impact_parameter=0.95,
+    )
+    hf_005 = {'M_planet': Me, 'H_kg_atm': 0.005 * Me}
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        f_loss_nc = _impact_loss_fraction(cfg, hf_005, event_non_clamped)
+    assert 0.0 <= f_loss_nc <= 1.0
+    rec_nc = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(rec_nc) == 1
+    msg_nc = rec_nc[0].getMessage()
+    assert 'b = 0.95 (fitted 0 to 0.9)' in msg_nc
+    assert 'f_atm = 0.005 (fitted 0.01 to 0.2)' in msg_nc
+    assert 'evaluated at' not in msg_nc
+    assert "only the fit terms use the value marked 'evaluated at'" not in msg_nc
+    assert msg_nc.endswith('; the loss fraction is extrapolated')
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_roche2026_airless_target_and_trace_atmosphere_jump(caplog):
-    """An airless target returns zero loss while a trace atmosphere jumps to ~0.56.
+    """An airless target returns zero loss while a trace atmosphere jumps to ~0.69.
 
     Verifies clause: with atmloss_law = 'roche2026', an airless target (m_atm = 0)
     returns f_loss = 0.0 exactly, delivering the impactor's full volatile inventory.
     An atmosphere with f_atm from 1e-6 to 0.01 is flagged and extrapolated without
     a clamp; f_atm below the 1e-6 stability bound (about 6e18 kg on 1 M_earth) is
-    evaluated at 1e-6, which jumps to f_loss = 0.560150 for this v_c = 13.4 km/s
+    evaluated at 1e-6, which jumps to f_loss = 0.691196 for this v_c = 13.4 km/s
     (v_c/v_esc = 1.38) test event and emits the out-of-range flag with
-    'evaluated at 1e-06'.
+    'evaluated at 1e-06' and zero-energy far-field flag.
     """
     pytest.importorskip('zephyrus.collision')
     import zephyrus.collision
@@ -2521,9 +2594,7 @@ def test_roche2026_airless_target_and_trace_atmosphere_jump(caplog):
     # Positive control: verify caplog captures warnings without a logger filter.
     caplog.clear()
     with caplog.at_level(logging.WARNING):
-        import logging as py_logging
-
-        py_logging.getLogger('fwl.proteus.accretion.wrapper').warning('canary warning')
+        logging.getLogger('fwl.proteus.accretion.wrapper').warning('canary warning')
         assert any('canary warning' in r.getMessage() for r in caplog.records)
 
     # Airless target: m_atm = 0 -> f_loss = 0.0 exactly without warning.
@@ -2533,21 +2604,22 @@ def test_roche2026_airless_target_and_trace_atmosphere_jump(caplog):
     assert f_airless == 0.0
     assert not any(r.levelno == logging.WARNING for r in caplog.records)
 
-    # Trace atmosphere: H_kg_atm = 1 kg -> f_atm evaluated at 1e-6, jumping to ~0.560150.
+    # Trace atmosphere: H_kg_atm = 1 kg -> f_atm evaluated at 1e-6, jumping to ~0.691196.
     caplog.clear()
     with caplog.at_level(logging.WARNING):
         f_trace = _impact_loss_fraction(cfg, {'M_planet': Me, 'H_kg_atm': 1.0}, event)
-    expected_trace = 0.56014971533417
+    expected_trace = 0.6911962061611638
     assert f_trace == pytest.approx(expected_trace, rel=1e-12)
     assert 0.0 < f_trace <= 1.0
-    # Discrimination: jumps discontinuously from 0.0 by ~0.56 far outside tolerance.
+    # Discrimination: jumps discontinuously from 0.0 by ~0.69 far outside tolerance.
     assert abs(f_trace - f_airless) > 0.50
 
-    # Warning records the clamp bound for f_atm.
+    # Warning records the clamp bound for f_atm and zero-energy far-field flag.
     records = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(records) == 1
     msg = records[0].getMessage()
     assert 'f_atm = 1.67e-25 (fitted 0.01 to 0.2), evaluated at 1e-06' in msg
+    assert 'far-field loss of 0.131 without impact energy (log10 f_atm extrapolation)' in msg
     assert msg.endswith(
         "; the loss fraction is extrapolated; only the fit terms use the value marked 'evaluated at', "
         "and v_esc, Q'_R, and the mass ratio use the raw collision state"

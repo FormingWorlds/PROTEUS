@@ -978,12 +978,14 @@ def _format_roche_flag(
     """
     if name == 'v_sub_escape':
         val = float(diagnostics.get('v_ratio', 0.0))
-        return f'v_sub_escape: v_ratio = {val:.3g} (< 0.99)'
+        return f'v_sub_escape: near-field loss held at v_c = v_esc (v_ratio = {val:.3g})'
     if name == 'X_FF_zero_energy':
         val = float(diagnostics.get('X_FF_zero_energy', 0.0))
         return f'far-field loss of {val:.3g} without impact energy (log10 f_atm extrapolation)'
+    if name not in fitted_range:
+        return name
     lo, hi = fitted_range[name]
-    val = float(diagnostics[name])
+    val = float(diagnostics.get(name, 0.0))
     msg = f'{name} = {val:.3g} (fitted {lo:g} to {hi:g})'
     clamped = diagnostics.get('clamped', {})
     if name in clamped:
@@ -996,9 +998,10 @@ def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
 
     For ``roche2026``, the target mass passed to ZEPHYRUS is the refractory
     mass ``event.M_target_before * (1 - f_atm)``; ``kegerreis2020`` receives
-    the total event mass directly. The Kegerreis law is defined on
-    atmosphere-free bodies, so passing the total event mass introduces an
-    error of order ``f_atm``.
+    the total event mass directly. Kegerreis et al. (2020) take the radii at
+    the base of the atmosphere, the bulk densities without it, and name their
+    scenarios by atmosphere-free masses; the total event mass changes X by a
+    relative amount of order f_atm.
 
     Parameters
     ----------
@@ -1020,15 +1023,17 @@ def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
         If ``zephyrus.collision.impact_loss`` is not available.
     ValueError
         If ``accretion.atmloss_law`` is unknown, or if ``roche2026`` is
-        selected and ``M_planet`` or ``<e>_kg_atm`` in ``hf_row`` are
-        missing, non-finite, negative, or yield ``f_atm >= 1``.
+        selected and ``M_planet`` in ``hf_row`` is missing, non-finite,
+        or non-positive, or if atmosphere masses yield negative, non-finite,
+        or ``f_atm >= 1``.
     """
     try:
         from zephyrus.collision import ROCHE2026_FITTED_RANGE, impact_loss
     except ImportError as exc:
         raise ImportError(
             "accretion.atmloss_module = 'zephyrus' needs a fwl-zephyrus "
-            'installation that provides zephyrus.collision.impact_loss'
+            'installation that provides zephyrus.collision.impact_loss; '
+            'upgrade fwl-zephyrus'
         ) from exc
 
     law = config.accretion.atmloss_law
@@ -1074,7 +1079,7 @@ def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
     )
 
     f_loss = float(result.fraction)
-    _log_zephyrus_loss(law, event, result, f_atm, has_valid_m_planet, ROCHE2026_FITTED_RANGE)
+    _log_zephyrus_loss(law, event, result, f_atm, ROCHE2026_FITTED_RANGE)
     return f_loss
 
 
@@ -1083,7 +1088,6 @@ def _log_zephyrus_loss(
     event: ImpactEvent,
     result,
     f_atm: float,
-    has_valid_m_planet: bool,
     fitted_range: Mapping[str, tuple[float, float]],
 ) -> None:
     """Log warnings and diagnostics for zephyrus impact erosion laws.
@@ -1098,8 +1102,6 @@ def _log_zephyrus_loss(
         Loss result object containing fraction, diagnostics, and flags.
     f_atm : float
         Target atmospheric mass fraction m_atm / M_planet.
-    has_valid_m_planet : bool
-        Whether M_planet in hf_row is finite and strictly positive.
     fitted_range : Mapping[str, tuple[float, float]]
         Parameter bounds for Roche et al. (2026) out-of-range checks.
     """
@@ -1109,7 +1111,7 @@ def _log_zephyrus_loss(
     gamma = float(diagnostics['gamma'])
 
     if law == 'kegerreis2020':
-        if has_valid_m_planet and f_atm > _ATMLOSS_THIN_ATM_WARN:
+        if f_atm > _ATMLOSS_THIN_ATM_WARN:
             log.warning(
                 '    the atmosphere is %.1f%% of the planet mass, beyond the '
                 'thin-atmosphere regime (about 1%%) the impact erosion law is '
@@ -1124,20 +1126,28 @@ def _log_zephyrus_loss(
             f_loss,
         )
     elif law == 'roche2026':
-        flags = tuple(result.flags)
-        if flags:
-            flag_msgs = [_format_roche_flag(f, diagnostics, fitted_range) for f in flags]
+        clamped = diagnostics.get('clamped') or {}
+        names = list(result.flags)
+        for k in clamped:
+            if k not in names:
+                names.append(k)
+        if names:
+            flag_msgs = [_format_roche_flag(f, diagnostics, fitted_range) for f in names]
+            has_clamp_in_msg = any('evaluated at' in m for m in flag_msgs)
             clamp_tail = (
                 "; only the fit terms use the value marked 'evaluated at', "
                 "and v_esc, Q'_R, and the mass ratio use the raw collision state"
-                if diagnostics.get('clamped')
+                if has_clamp_in_msg
                 else ''
             )
+            has_extrapolated = any(f != 'v_sub_escape' for f in names)
+            extrap_tail = '; the loss fraction is extrapolated' if has_extrapolated else ''
             log.warning(
                 '    impact at t = %.4e yr: Roche et al. (2026) law outside its fitted range: '
-                '%s; the loss fraction is extrapolated%s',
+                '%s%s%s',
                 event.time,
                 '; '.join(flag_msgs),
+                extrap_tail,
                 clamp_tail,
             )
         x_nf = float(diagnostics['X_NF'])
@@ -1166,11 +1176,14 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
     radii, densities, and angle stay in the one frame the dynamical model
     produced them in (event mass is the total mass; the refractory mass passed
     to roche2026 is that times (1 - f_atm), and its ``v_impact`` is the speed
-    at first contact). For ``kegerreis2020``, passing the total event mass
-    gives an error of order ``f_atm`` because that law is defined on
-    atmosphere-free bodies. The target atmospheric fraction ``f_atm`` comes
-    from the running planet state (the sum of ``<e>_kg_atm`` over ``M_planet``
-    across all elements including rock vapour, matching the stripped elements).
+    at first contact). Kegerreis et al. (2020) take the radii at the base of
+    the atmosphere, the bulk densities without it, and name their scenarios by
+    atmosphere-free masses; the total event mass changes X by a relative amount
+    of order f_atm. The target atmospheric fraction ``f_atm`` comes from the
+    running planet state (the sum of ``<e>_kg_atm`` over ``M_planet`` across
+    all elements including rock vapour; vapour adds to the envelope mass the
+    law sees, but PROTEUS does not debit stripped rock vapour because its
+    inventory re-equilibrates with the magma ocean at each step).
     The returned fraction applies to the target's atmosphere and to a
     volatile-bearing impactor's atmospheric part alike. PROTEUS itself ships
     no impact loss physics.
