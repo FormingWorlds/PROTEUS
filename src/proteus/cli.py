@@ -719,7 +719,7 @@ cli.add_command(observe)
 @click.command()
 @config_option
 def grid_analyse(config_path: Path):
-    """Post-process a PROTEUS grid: extract summary CSVs and make grid plots.
+    """Analyse a PROTEUS grid as a post-processing step: extract summary CSVs and make grid plots.
 
     config_path : path to the grid .toml file (the same one used to run the grid;
     its optional [post_processing] table configures the analysis).

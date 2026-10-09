@@ -79,7 +79,7 @@ def test_value_colours_numeric_builds_norm_and_colourbar_flag():
     """Numeric parameter values are flagged numeric and get a continuous norm
     spanning their range, so a colourbar (not a legend) is used.
     """
-    cmap = get_colourmap('batlow')
+    cmap = get_colourmap('viridis')
     colour_of, is_numeric, norm = _value_colours([0.5, 1.0, 2.0], log_norm=False, cmap=cmap)
     assert is_numeric
     assert norm is not None
@@ -91,7 +91,7 @@ def test_value_colours_string_uses_discrete_legend_mapping():
     """String parameter values are flagged non-numeric with no norm, and each
     distinct value maps to its own colour.
     """
-    cmap = get_colourmap('batlow')
+    cmap = get_colourmap('viridis')
     colour_of, is_numeric, norm = _value_colours(['janus', 'agni'], log_norm=False, cmap=cmap)
     assert not is_numeric
     assert norm is None
@@ -124,7 +124,9 @@ def test_plot_ecdf_grid_writes_file(tmp_path):
         }
     )
     tested = {'planet.mass_tot': [0.5, 1.0]}
-    out = plot_ecdf_grid(df, tested, ['P_surf', 'T_surf'], tmp_path, 'demo', colourmap='batlow')
+    out = plot_ecdf_grid(
+        df, tested, ['P_surf', 'T_surf'], tmp_path, 'demo', colourmap='viridis'
+    )
     assert out.exists()
     assert out.name == 'ecdf_grid_plot.png'
 

@@ -8,23 +8,35 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from proteus.utils.plot import get_colourmap, get_label, get_log_scale, get_scale
 
 log = logging.getLogger('fwl.' + __name__)
 
 # Wong colour-blind-safe qualitative palette (Wong 2011, Nat. Methods 8, 441),
-# used for the categorical status bars.
+# used for the categorical status bars. Ordered for a harmonious progression that
+# starts on the blue end (not black) and keeps the two palest colours last.
 WONG_PALETTE = (
-    '#000000',  # black
-    '#E69F00',  # orange
-    '#56B4E9',  # sky blue
-    '#009E73',  # bluish green
-    '#F0E442',  # yellow
     '#0072B2',  # blue
+    '#009E73',  # bluish green
+    '#56B4E9',  # sky blue
+    '#E69F00',  # orange
     '#D55E00',  # vermillion
     '#CC79A7',  # reddish purple
+    '#F0E442',  # yellow
+    '#000000',  # black
 )
+
+# The lightest fraction of a sequential colour map, trimmed off when colouring
+# ECDF curves so a pale top-of-range colour stays visible on a white background.
+COLOURMAP_TRIM = 0.15
+
+
+def _trim_colourmap(cmap, trim: float = COLOURMAP_TRIM):
+    """Return ``cmap`` with its lightest top fraction removed (for visible curves)."""
+    base = np.linspace(0.0, 1.0 - trim, 256)
+    return mpl.colors.LinearSegmentedColormap.from_list(f'{cmap.name}_trim', cmap(base))
 
 
 def _apply_axis_style(ax) -> None:
@@ -199,7 +211,8 @@ def plot_ecdf_grid(
     if not params or not outputs:
         raise ValueError('Need at least one tested parameter and one output to plot')
 
-    cmap = get_colourmap(colourmap)
+    # Trim the palest end of the colour map so a top-of-range curve stays visible.
+    cmap = _trim_colourmap(get_colourmap(colourmap))
     n_rows, n_cols = len(params), len(outputs)
     fig, axes = plt.subplots(
         n_rows,
@@ -209,6 +222,7 @@ def plot_ecdf_grid(
         sharey=True,
     )
 
+    row_keys = []
     for i, param in enumerate(params):
         values = tested_params[param]
         colour_of, is_numeric, norm = _value_colours(values, get_log_scale(param), cmap)
@@ -233,10 +247,16 @@ def plot_ecdf_grid(
             if j == 0:
                 ax.set_ylabel('ECDF [%]')
 
-        _add_row_key(fig, axes[i][-1], param, values, is_numeric, norm, cmap, colour_of)
+        row_keys.append((axes[i][-1], param, values, is_numeric, norm, colour_of))
 
     fig.suptitle(f'ECDF summary for grid {grid_name}')
     fig.tight_layout()
+
+    # Add the colourbar or legend AFTER the layout, in an axes anchored outside the
+    # rightmost panel, so every data panel keeps an identical size (a colourbar added
+    # with ax=... would shrink only the panel it sits beside).
+    for ax, param, values, is_numeric, norm, colour_of in row_keys:
+        _add_row_key(fig, ax, param, values, is_numeric, norm, cmap, colour_of)
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -248,10 +268,23 @@ def plot_ecdf_grid(
 
 
 def _add_row_key(fig, ax, param, values, is_numeric, norm, cmap, colour_of) -> None:
-    """Attach a colourbar (numeric) or legend (string) labelling a parameter row."""
+    """Attach a colourbar (numeric) or legend (string) labelling a parameter row.
+
+    The key sits in an axes anchored just outside ``ax`` (not stolen from it), so
+    the data panels all keep the same size whether a row uses a colourbar or a legend.
+    """
     if is_numeric:
+        cax = inset_axes(
+            ax,
+            width='5%',
+            height='100%',
+            loc='center left',
+            bbox_to_anchor=(1.03, 0.0, 1.0, 1.0),
+            bbox_transform=ax.transAxes,
+            borderpad=0,
+        )
         mappable = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
-        cbar = fig.colorbar(mappable, ax=ax, pad=0.02, aspect=12)
+        cbar = fig.colorbar(mappable, cax=cax)
         cbar.set_label(get_label(param))
         cbar.set_ticks(sorted(set(values)))
     else:
@@ -263,6 +296,7 @@ def _add_row_key(fig, ax, param, values, is_numeric, norm, cmap, colour_of) -> N
             handles=handles,
             title=get_label(param),
             fontsize=8,
-            bbox_to_anchor=(1.01, 1.0),
+            bbox_to_anchor=(1.03, 1.0),
             loc='upper left',
+            borderaxespad=0.0,
         )

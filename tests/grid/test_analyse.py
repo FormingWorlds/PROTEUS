@@ -228,8 +228,8 @@ def test_resolve_plot_format_defaults_reads_base_and_validates(tmp_path):
     """
     ref = tmp_path / 'ref_config.toml'
     ref.write_text('[params.out]\nplot_fmt = "pdf"\n')
-    assert _resolve_plot_format('svg', tmp_path) == 'svg'  # explicit request wins
+    assert _resolve_plot_format('pdf', tmp_path) == 'pdf'  # explicit request wins
     assert _resolve_plot_format(None, tmp_path) == 'pdf'  # from base config
     assert _resolve_plot_format(None, tmp_path / 'empty') == 'png'  # final fallback
     with pytest.raises(ValueError):
-        _resolve_plot_format('tiff', tmp_path)
+        _resolve_plot_format('svg', tmp_path)  # svg is not a supported format

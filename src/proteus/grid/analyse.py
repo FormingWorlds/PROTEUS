@@ -27,7 +27,7 @@ CSV_MODES = {
 }
 
 # Image formats the grid plots may be saved as.
-SUPPORTED_PLOT_FORMATS = ('png', 'pdf', 'svg')
+SUPPORTED_PLOT_FORMATS = ('png', 'pdf')
 
 
 def get_grid_name(grid_dir: str | Path) -> str:

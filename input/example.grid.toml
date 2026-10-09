@@ -51,7 +51,7 @@ jax_cache = false
     update_csv  = true      # rebuild the summary CSVs before plotting
     plot_status = true      # make the status-summary bar plot
     plot_ecdf   = true      # make the ECDF grid plot
-    colormap    = "batlow"  # scientific colour map for numeric parameter values
+    colormap    = "viridis"  # perceptually uniform colour map for numeric values
     # Output columns (runtime_helpfile.csv) to plot; solidification_time is
     # computed by the analysis (first time Phi_global < params.stop.solid.phi_crit).
     output_variables = [
@@ -59,7 +59,7 @@ jax_cache = false
         "P_surf", "atm_kg_per_mol", "esc_rate_total", "rho_obs",
     ]
     # plot_format is optional; defaults to the base config's params.out.plot_fmt,
-    # then "png". Supported: "png", "pdf", "svg".
+    # then "png". Supported: "png", "pdf".
     # plot_format = "png"
 
 # -------------------------------------------------------

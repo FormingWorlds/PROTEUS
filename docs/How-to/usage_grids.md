@@ -167,9 +167,9 @@ The `[post_processing]` table accepts:
 | `update_csv` | Rebuild the summary CSVs from the case folders before plotting (default `true`). Set `false` to plot from existing CSVs. |
 | `plot_status` | Make the status-summary bar plot (default `true`). |
 | `plot_ecdf` | Make the ECDF grid plot (default `true`). |
-| `colormap` | Colour map for numeric parameter values in the ECDF plot (a [cmcrameri](https://www.fabiocrameri.ch/colourmaps/) scientific map such as `"batlow"`; `colourmap` is also accepted). |
+| `colormap` | Matplotlib colour map for numeric parameter values in the ECDF plot (for example `"viridis"`, `"cividis"`, or the scientific `"berlin"`; `colourmap` is also accepted). Defaults to `viridis`. |
 | `output_variables` | List of `runtime_helpfile.csv` columns to plot, plus the derived `solidification_time`. |
-| `plot_format` | Image format (`"png"`, `"pdf"`, or `"svg"`); defaults to the base config's `params.out.plot_fmt`, then `"png"`. |
+| `plot_format` | Image format (`"png"` or `"pdf"`); defaults to the base config's `params.out.plot_fmt`, then `"png"`. |
 
 `solidification_time` is computed by the analysis as the first time a case's `Phi_global` drops below its `params.stop.solid.phi_crit`.
 

@@ -201,14 +201,14 @@ def test_get_log_scale_flags_only_log_quantities():
 
 
 def test_get_colourmap_resolves_names_and_falls_back(caplog):
-    """get_colourmap returns the named map, and falls back to cmcrameri batlow
-    for an empty or unknown name (logging a warning for the unknown case).
+    """get_colourmap returns the named matplotlib map (no cmcrameri import), and
+    falls back to the default for an empty or unknown name (warning on the latter).
     """
-    from proteus.utils.plot import get_colourmap
+    from proteus.utils.plot import DEFAULT_COLOURMAP, get_colourmap
 
-    assert get_colourmap('berlin').name == 'berlin'
-    assert get_colourmap(None).name == 'batlow'
+    assert get_colourmap('plasma').name == 'plasma'
+    assert get_colourmap(None).name == DEFAULT_COLOURMAP
     with caplog.at_level('WARNING'):
         fallback = get_colourmap('definitely_not_a_colourmap')
-    assert fallback.name == 'batlow'
+    assert fallback.name == DEFAULT_COLOURMAP
     assert any('colourmap' in rec.message.lower() for rec in caplog.records)
