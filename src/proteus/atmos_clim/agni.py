@@ -18,7 +18,13 @@ from proteus.atmos_clim.common import (
     require_spfile_path,
 )
 from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
-from proteus.data import SCATTERING, SURFACE_ALBEDOS_HAMMOND_2024, dataset_dir
+from proteus.data import (
+    REFRACTIVE,
+    SCATTERING,
+    SURFACE_ALBEDOS_HAMMOND_2024,
+    dataset_dir,
+    missing_files,
+)
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
@@ -432,13 +438,72 @@ def _determine_condensates(vol_list: list):
     return [v for v in vol_list if v not in ALWAYS_DRY]
 
 
+REFRACTIVE_ENV = 'AGNI_DIR_refractive'
+_refractive_dir_set = None  # the AGNI_DIR_refractive value PROTEUS set, if any
+
+
+def _point_agni_at_refractive(fwl_dir: str, aerosols_enabled: bool) -> None:
+    """Point AGNI at the fetched aerosol refractive indices through ``AGNI_DIR_refractive``.
+
+    With aerosols on, the variable is set to the version directory of ``REFRACTIVE`` when
+    every registry file is there, unless the user already set ``AGNI_DIR_refractive`` or
+    ``AGNI_DIR_res``; a kept value whose folder holds no material file is a warning. A value
+    PROTEUS set in an earlier run of the same process is removed first, but only while
+    the variable still holds that value. AGNI reads the variable when it lists its
+    materials and when it sets up the atmosphere; an AGNI without this override ignores it.
+
+    Parameters
+    ----------
+    fwl_dir : str
+        Root of the reference-data tree.
+    aerosols_enabled : bool
+        Whether the run uses aerosols.
+    """
+    global _refractive_dir_set
+    if _refractive_dir_set and os.environ.get(REFRACTIVE_ENV) == _refractive_dir_set:
+        del os.environ[REFRACTIVE_ENV]
+    _refractive_dir_set = None
+    if not aerosols_enabled:
+        return
+    for var in (REFRACTIVE_ENV, 'AGNI_DIR_res'):
+        value = os.environ.get(var, '').strip()
+        if value:
+            nk_dir = os.path.abspath(value if var == REFRACTIVE_ENV else f'{value}/refractive')
+            log.info(f'Refractive indices: keeping {var}={value}; AGNI reads {nk_dir}')
+            if not glob.glob(os.path.join(glob.escape(nk_dir), '[!_]*.txt')):
+                log.warning(
+                    f'{nk_dir} (from {var}) holds no refractive index file, so AGNI '
+                    'finds no material for Mie aerosols.'
+                )
+            return
+    fallback = (
+        'AGNI then reads its own res/refractive, which is empty unless its get_data.sh '
+        'fetched the data; fetch it with `proteus get refractive`.'
+    )
+    try:
+        nk_dir = str(dataset_dir(REFRACTIVE, data_root=fwl_dir))
+        missing = missing_files(REFRACTIVE, data_root=fwl_dir)
+    except (KeyError, RuntimeError, OSError) as exc:
+        log.warning(f'Refractive index data could not be resolved ({exc}). {fallback}')
+        return
+    if missing:
+        more = f' and {len(missing) - 3} more' if len(missing) > 3 else ''
+        log.warning(
+            f'Refractive index data incomplete in {nk_dir}, missing: '
+            f'{", ".join(missing[:3])}{more}. {fallback}'
+        )
+        return
+    os.environ[REFRACTIVE_ENV] = nk_dir
+    _refractive_dir_set = nk_dir
+
+
 def _determine_aerosols(dirs: dict, aerosols_enabled: bool = True) -> dict:
     """
     Determine which aerosols are available, and which method to use for each.
 
     AGNI can compute aerosol optical properties two ways:
      - Pre-computed monochromatic scattering data
-     - Mie theory at runtime from refractive-index data bundled with AGNI
+     - Mie theory at runtime from the refractive-index data in the folder AGNI resolves
     Mie is preferred when both are available for the same species.
 
     Parameters
@@ -642,6 +707,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
     # Aerosol species dictionary which maps names to properties files
+    _point_agni_at_refractive(dirs['fwl'], config.atmos_clim.aerosols_enabled)
     mie_materials_by_lower = {
         str(m).lower(): str(m) for m in jl.AGNI.aerosol_optics.list_materials()
     }
@@ -673,7 +739,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
             log.debug(f'    {name:8s} ({method}) not tied to any condensate; skipping')
 
     # Warn if no aerosol species were found
-    if len(aerosol_species) == 0:
+    if config.atmos_clim.aerosols_enabled and len(aerosol_species) == 0:
         log.warning('    No aerosols mapped or data unavailable')
 
     # AGNI computes Mie aerosol properties from the stellar spectrum while it
