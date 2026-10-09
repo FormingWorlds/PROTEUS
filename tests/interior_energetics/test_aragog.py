@@ -3617,3 +3617,47 @@ def test_update_solver_reads_the_cmb_gradient_on_resume(tmp_path):
     interior_o.aragog_solver.solution = None
     AragogRunner.update_solver(80.0, hf_row, interior_o)
     assert interior_o._last_dSdr_cmb == 'unchanged'
+
+
+def test_stored_profiles_carry_the_basic_node_drainage_fields():
+    """The solver output's basic-node melt fraction, mixture density,
+    phase-boundary densities and gravity reach the interior state, where the
+    trapping step drains the freezing front with them; an output without them
+    leaves them unset rather than failing, and the staggered profiles are
+    stored as before."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    n = 5
+    out = SimpleNamespace(
+        phi_stag=np.full(n - 1, 0.4),
+        visc_stag=np.full(n - 1, 1.0e2),
+        rho_stag=np.full(n - 1, 3800.0),
+        r_basic=np.linspace(3.5e6, 6.3e6, n),
+        mass_stag=np.full(n - 1, 1.0e23),
+        T_stag=np.full(n - 1, 2500.0),
+        P_stag=np.linspace(1.0e11, 1.0e9, n - 1),
+        phi_basic=np.linspace(0.2, 0.6, n),
+        rho_basic=np.linspace(4000.0, 3700.0, n),
+        porosity_b=np.linspace(0.21, 0.61, n),
+        rho_solid_b=np.full(n, 4100.0),
+        rho_melt_b=np.full(n, 3600.0),
+        g_b=np.linspace(11.0, 9.8, n),
+    )
+    interior = SimpleNamespace()
+    AragogRunner._store_profiles(interior, out)
+    np.testing.assert_allclose(interior.phi_b, out.phi_basic, rtol=0.0)
+    np.testing.assert_allclose(interior.rho_b, out.rho_basic, rtol=0.0)
+    for name in ('rho_solid_b', 'rho_melt_b', 'g_b'):
+        np.testing.assert_allclose(getattr(interior, name), getattr(out, name), rtol=0.0)
+    # Discrimination: the basic-node melt fraction is one node longer than the
+    # staggered one, which still goes to ``phi``.
+    assert interior.phi_b.size == interior.phi.size + 1
+    np.testing.assert_allclose(interior.radius, out.r_basic, rtol=0.0)
+
+    # Edge case: an output from before the fields existed leaves them unset.
+    for name in ('phi_basic', 'rho_basic', 'rho_solid_b', 'rho_melt_b', 'g_b'):
+        delattr(out, name)
+    bare = SimpleNamespace()
+    AragogRunner._store_profiles(bare, out)
+    assert bare.phi_b is None and bare.g_b is None
+    np.testing.assert_allclose(bare.phi, out.phi_stag, rtol=0.0)

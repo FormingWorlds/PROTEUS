@@ -49,6 +49,7 @@ from proteus.utils.coupler import (
     GetHelpfileCoreKeys,
     GetHelpfileDiagnosticKeys,
     GetHelpfileKeys,
+    GetHelpfileTrappingKeys,
     GetPostprocessingKeys,
     HelpfileFormatError,
     HelpfileRow,
@@ -1071,6 +1072,54 @@ def test_helpfile_without_diagnostic_column_resumes_with_zero_fill(caplog):
         # frame extends without a key gap.
         extended = ExtendHelpfile(hf, {**hf.iloc[-1].to_dict(), 'T_cmb_node': 4321.0})
         assert extended['T_cmb_node'].iloc[-1] == pytest.approx(4321.0)
+
+
+@pytest.mark.unit
+def test_helpfile_written_before_trapping_resumes_with_nothing_trapped(caplog):
+    """A run written before the solid-phase trapping columns existed resumes.
+
+    Such a run trapped nothing, and zero is the value every trapping column
+    holds in a run that never trapped, so the reader fills them with zeros
+    through the same path as ``RESUMABLE_ZERO_FILL_KEYS`` and says so, and the
+    run continues whatever ``trap_mode`` it resumes under. Every other column
+    keeps the value the file holds.
+    """
+    from proteus.utils.constants import noble_gases, vol_element_list, vol_list
+
+    trapping = GetHelpfileTrappingKeys()
+    reservoirs = {f'{n}_kg_trapped' for n in (*vol_list, *vol_element_list, *noble_gases)}
+    assert reservoirs <= set(trapping)
+    assert {'trap_F_tl', 'trap_kg_cumulative', 'trap_branch'} <= set(trapping)
+    # Discrimination: the reservoirs trapping moves mass between stay core.
+    for core in ('H2O_kg_solid', 'H_kg_total', 'Phi_global', 'T_cmb_node'):
+        assert core not in trapping
+    # They are core columns that may be read as zero, not optional ones.
+    assert set(trapping) <= set(GetHelpfileCoreKeys())
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, trapping, n_rows=3)
+        with caplog.at_level(logging.INFO, logger='fwl.proteus.utils.coupler'):
+            hf = ReadHelpfileFromCSV(tmpdir)
+
+        assert len(hf) == 3
+        assert set(GetHelpfileKeys()) <= set(hf.columns)
+        for key in trapping:
+            assert (hf[key] == 0.0).all(), key
+        assert hf['H2O_kg_solid'].iloc[-1] > 0.0
+        messages = [r.getMessage() for r in caplog.records]
+        assert any(f'predates {len(trapping)} column(s)' in m for m in messages)
+
+        # A row appended on resume carries the full schema.
+        extended = ExtendHelpfile(hf, {**hf.iloc[-1].to_dict(), 'H2O_kg_trapped': 1.0e18})
+        assert extended['H2O_kg_trapped'].iloc[-1] == pytest.approx(1.0e18, rel=1e-12)
+
+    # Error contract: the zero-fill never excuses a missing core column.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, [*trapping, 'H2O_kg_solid'])
+        with pytest.raises(HelpfileSchemaDriftError) as excinfo:
+            ReadHelpfileFromCSV(tmpdir)
+        assert 'H2O_kg_solid' in str(excinfo.value)
+        assert 'before 1 column(s)' in str(excinfo.value)
 
 
 @pytest.mark.unit

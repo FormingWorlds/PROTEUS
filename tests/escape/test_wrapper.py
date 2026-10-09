@@ -2293,3 +2293,98 @@ def test_a_new_escape_baseline_clears_the_desiccation_ledger():
 
     hf['H_kg_total'] = 4.0e15  # an upstream wipe, no escape
     assert check_desiccation(config, hf) is False
+
+
+def _molten_row_with_trapped_n(n_trapped: float, **values) -> dict:
+    """Molten-mantle row: 1.2e16 kg of N reachable in the atmosphere, more locked
+    in the solid, and a 4e17 kg H atmosphere that keeps the planet wet."""
+    from proteus.utils.constants import element_list
+
+    hf = {f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')}
+    hf.update(H_kg_atm=4.0e17, H_kg_total=4.0e17, H2_kg_atm=4.0e17)
+    hf.update(N_kg_atm=1.2e16, N_kg_solid=n_trapped, N_kg_trapped=n_trapped)
+    hf.update(N_kg_total=1.2e16 + n_trapped, N2_kg_atm=1.2e16)
+    hf.update(M_atm=4.12e17, P_surf=1.0, esc_kg_cumulative=0.0, M_vol_initial=4.12e17)
+    hf.update(trap_branch=0.0, trap_kg_step=0.0)
+    hf.update(values)
+    return hf
+
+
+def _quarter_loss_config():
+    """Dummy escape capped at a quarter of the atmosphere, at mass_thresh 1e16 kg."""
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e16
+    config.outgas.vapourise = False
+    return config
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_escape_floor_reads_the_reachable_mass_whatever_is_trapped():
+    """Two molten-mantle runs that differ only in how much N trapping locked, 5e14
+    or 1.1e16 kg, lose a quarter of their 1.2e16 kg of atmospheric N in one step.
+    The reachable 9e15 kg is then below mass_thresh in both, so both empty it to
+    the locked mass, and the desiccation gate, which reads the same reachable
+    mass, agrees that N is depleted in both. Flooring on the whole total instead
+    would empty the first run's N and keep the second's."""
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.trapping import escapable_inventory
+
+    config = _quarter_loss_config()
+    totals = {}
+    for trapped in (5.0e14, 1.1e16):
+        hf = _molten_row_with_trapped_n(trapped)
+        run_escape(config, hf, dt=1.0e4, atmosphere_only=False)
+        totals[trapped] = hf['N_kg_total']
+        assert hf['N_kg_total'] == pytest.approx(trapped, rel=1e-12)
+        assert escapable_inventory(hf, 'N') == pytest.approx(0.0, abs=0.0)
+        # The wet H atmosphere is far above the threshold and keeps its total
+        # less the quarter that escaped.
+        assert hf['H_kg_total'] == pytest.approx(0.75 * 4.0e17, rel=1e-9)
+    # Discrimination: the whole totals after the loss, 9.5e15 and 2e16 kg, sit on
+    # either side of mass_thresh, so a whole-total floor would split the runs.
+    assert 9.0e15 + 5.0e14 < 1.0e16 < 9.0e15 + 1.1e16
+    assert totals[1.1e16] - totals[5.0e14] == pytest.approx(1.1e16 - 5.0e14, rel=1e-12)
+
+    # Edge case: on a frozen mantle the floor is off, as on main, and the
+    # reachable remainder stays.
+    frozen = _molten_row_with_trapped_n(5.0e14)
+    run_escape(config, frozen, dt=1.0e4, atmosphere_only=True)
+    assert frozen['N_kg_total'] == pytest.approx(9.0e15 + 5.0e14, rel=1e-9)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_escape_floor_is_off_on_a_step_a_remelt_returned_mass():
+    """A remelt that returns buried N to the melt resupplies it. Flooring the
+    reachable remainder on that step would delete the release whenever it is
+    small, so a slow remelt would keep less than a fast one; on such a step the
+    floor is off and escape only debits its quarter. A step that released
+    nothing keeps the floor, however its branch code reads."""
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.compaction import BRANCH_REMELT
+    from proteus.outgas.trapping import remelt_returned_mass
+
+    config = _quarter_loss_config()
+    remelt = _molten_row_with_trapped_n(5.0e14, trap_branch=float(BRANCH_REMELT))
+    remelt['trap_kg_step'] = -2.0e14
+    assert remelt_returned_mass(remelt)
+    run_escape(config, remelt, dt=1.0e4, atmosphere_only=False)
+    assert remelt['N_kg_total'] == pytest.approx(9.0e15 + 5.0e14, rel=1e-9)
+
+    # Error contract: a remelt branch that released nothing, a burial step, and
+    # an unreadable branch code all keep the floor.
+    for values in (
+        {'trap_branch': float(BRANCH_REMELT), 'trap_kg_step': 0.0},
+        {'trap_branch': 1.0, 'trap_kg_step': 3.0e14},
+        {'trap_branch': float('nan'), 'trap_kg_step': -2.0e14},
+    ):
+        hf = _molten_row_with_trapped_n(5.0e14, **values)
+        assert not remelt_returned_mass(hf)
+        run_escape(config, hf, dt=1.0e4, atmosphere_only=False)
+        assert hf['N_kg_total'] == pytest.approx(5.0e14, rel=1e-12)

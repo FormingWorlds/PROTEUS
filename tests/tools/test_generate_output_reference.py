@@ -117,8 +117,7 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
     expected_unresolved_reads = [
         'src/proteus/atmos_clim/agni.py::_validate_surface_state:dynamic key name',
         'src/proteus/escape/common.py::calc_unfract_fluxes:dynamic key e + key',
-        "src/proteus/escape/wrapper.py::calc_new_elements:dynamic key f'{e}{key}'",
-        "src/proteus/escape/wrapper.py::escapable_mass:dynamic key f'{e}{key}'",
+        "src/proteus/escape/wrapper.py::reservoir_mass:dynamic key f'{element}{key}'",
         'src/proteus/observe/petitRADTRANS.py::_get_mix:dynamic key key',
         "src/proteus/outgas/atmodeller.py::_populate_volatile_element_reservoirs:dynamic key f'{sp}_kg_{r}'",
         'src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller:dynamic key key',
@@ -126,6 +125,7 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
         'src/proteus/plot/cpl_global.py::plot_global:dynamic key k',
         'src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot:dynamic key ecc_col',
         'src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot:dynamic key sma_col',
+        "src/proteus/utils/coupler.py::assert_mass_conservation:dynamic key f'{e}_kg_{r}'",
     ]
     actual_reads = sorted(
         f'{e["file"]}::{e["function"]}:{e["reason"]}' for e in matrix['unresolved_events']

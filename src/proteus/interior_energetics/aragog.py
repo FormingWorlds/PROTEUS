@@ -1194,11 +1194,19 @@ class AragogRunner:
         Parameters
         ----------
         interior_o : Interior_t
-            Interior state receiving phi, visc, density, radius, mass, temp and pres.
+            Interior state receiving phi, visc, density, radius, mass, temp and
+            pres, and at the basic nodes the melt fraction, mixture density,
+            phase-boundary densities and gravity that the trapping step drains
+            the freezing front with.
         out : SolverOutput
             Solver state; ``r_basic`` stays in metres, as the structure update
             compares it with the core radius in metres.
         """
+        # Only the trapping step reads these, and it falls back when one is absent.
+        interior_o.phi_b = getattr(out, 'phi_basic', None)
+        interior_o.rho_b = getattr(out, 'rho_basic', None)
+        for name in ('rho_solid_b', 'rho_melt_b', 'g_b'):
+            setattr(interior_o, name, getattr(out, name, None))
         interior_o.phi = out.phi_stag
         interior_o.visc = out.visc_stag
         interior_o.density = out.rho_stag

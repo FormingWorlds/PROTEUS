@@ -25,8 +25,10 @@ import pandas as pd
 from proteus.utils.constants import (
     element_list,
     gas_list,
+    noble_gases,
     secs_per_hour,
     secs_per_minute,
+    vol_element_list,
     vol_gas_list,
     vol_list,
 )
@@ -576,6 +578,10 @@ def assert_mass_conservation(
     atol_frac: float = 1e-6,
     *,
     require_atm_le_planet: bool = True,
+    check_element_closure: bool = False,
+    derived_elements: tuple[str, ...] = (),
+    closure_rtol: float | None = None,
+    closure_atol_kg: float = 1.0,
 ) -> None:
     """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, and
     M_atm <= M_planet unless the caller disables that half.
@@ -604,13 +610,40 @@ def assert_mass_conservation(
         Whether to enforce M_atm <= M_planet. Ignored when the row carries no
         vapour column: rock vapour is the only mass the relaxation excuses, so
         with M_vaps == 0 the invariant is enforced either way.
+    check_element_closure : bool
+        Whether to also require that each element's ``_kg_total`` equals the
+        sum of its atmospheric, liquid and solid reservoirs. The main loop sets
+        it when solid-phase trapping is on, which is the bookkeeping it
+        guards; without trapping, desiccation empties the reservoirs and keeps
+        the totals, so the closure does not hold and is not asked for.
+    derived_elements : tuple of str
+        Elements whose whole-planet total the chemistry recomputes rather than
+        conserving, so the per-element reservoir closure does not apply to
+        them. Supplied by ``outgas.trapping.derived_total_elements``.
+    closure_rtol : float or None
+        Relative tolerance for the per-element reservoir closure only. The
+        atmospheric and liquid reservoirs come out of a nonlinear chemistry
+        solve that converges to its own relative tolerance, while the total is
+        carried forward from the escape chain, so the two can agree no more
+        tightly than the solver does. The closure is therefore checked against
+        ``max(atol_frac, closure_rtol)``; the main loop supplies
+        ``config.outgas.solver_rtol``. ``atol_frac`` itself, and with it the
+        atmosphere-mass and species-sum invariants, is unchanged.
+    closure_atol_kg : float
+        Absolute tolerance of the per-element closure [kg]: a mismatch is
+        refused once it exceeds both this and the relative tolerance times the
+        total. It admits the trace melt mass the chemistry can leave of an
+        element the run does not carry, a few hundredths of a kilogram, and
+        nothing a bookkeeping error produces.
 
     Raises
     ------
     RuntimeError
         If the per-species kg_atm sum over vol_gas_list disagrees with
         M_vol_atm by more than ``atol_frac``. When ``require_atm_le_planet``,
-        raises if M_atm relatively exceeds M_planet.
+        raises if M_atm relatively exceeds M_planet. When
+        ``check_element_closure``, raises if an element's reservoirs do not sum
+        to its total.
     """
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
@@ -688,6 +721,34 @@ def assert_mass_conservation(
                 f'(relative difference {rel * 100:.3f}%). One of the '
                 f'gas-species kg_atm fields is stale or the M_vol_atm sum '
                 f'loop is missing a species.'
+            )
+
+    # Invariant 3, with trapping on: each element total equals the sum of its
+    # reservoirs, so a debit without its credit fails here. Elements the run
+    # never carried are skipped; the tolerance is set out in the docstring.
+    if not check_element_closure:
+        return
+    closure_tol = max(atol_frac, float(closure_rtol)) if closure_rtol else atol_frac
+    for e in element_list:
+        if e in derived_elements:
+            # A total the chemistry recomputes is not a conserved budget.
+            continue
+        total = float(hf_row.get(f'{e}_kg_total', 0.0))
+        if not np.isfinite(total) or total <= 0.0:
+            continue
+        parts = sum(float(hf_row.get(f'{e}_kg_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
+        if not np.isfinite(parts):
+            continue
+        rel = abs(parts - total) / total
+        if abs(parts - total) > max(closure_atol_kg, closure_tol * total):
+            raise RuntimeError(
+                f'Per-element reservoir closure failed for {e}: '
+                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid='
+                f'{parts:.6e} kg (relative difference {rel * 100:.4f}%). '
+                f'atm={float(hf_row.get(f"{e}_kg_atm", 0.0)):.3e}, '
+                f'liquid={float(hf_row.get(f"{e}_kg_liquid", 0.0)):.3e}, '
+                f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e} kg. '
+                f'A reservoir was debited without the matching credit.'
             )
 
 
@@ -1006,6 +1067,24 @@ def GetHelpfileKeys():
         'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
         'esc_step_kg',      # loss applied on this step, after the cap [kg]
 
+        # Solid-phase volatile trapping
+        'trap_dM_RM',       # mantle mass crystallised this step, negative when it remelted [kg]
+        'trap_F_tl',        # trapped melt fraction applied this step [1]
+        'trap_kg_step',     # volatile mass buried this step, negative when remelting released it [kg]
+        'trap_kg_cumulative',  # net volatile mass buried since the run began [kg]
+        'trap_branch',      # drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting [1]
+        'trap_tau_D',       # percolation time at the top of the front [yr]
+        'trap_tau_s',       # matrix deformation time [yr]
+        'trap_t_res',       # parcel residence time in the front [yr]
+        'trap_n_front',     # nodes spanned by the freezing front [1]
+        'trap_L_front',     # freezing-front thickness [m]
+        'trap_v_front',     # freezing-front speed [m s-1]
+        'trap_front_courant',  # front advance over one step, in front thicknesses [1]
+        'trap_w_matrix_over_vf',  # matrix speed over front speed [1]
+        'trap_n_exited',    # mush nodes that reached the porosity floor this step [1]
+        'trap_frac_bound',  # share of their mass trapped at the no-drainage bound [1]
+        'trap_n_substeps',  # drainage sub-steps of the step [1]
+
         # Giant-impact accretion ledger: cumulative rock mass added to interior
         # mass anchor to enable reconstruction on resume.
         'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
@@ -1014,6 +1093,15 @@ def GetHelpfileKeys():
         # Element mass the Zalmoxis whole-planet target adds to mass_tot (Zalmoxis only).
         'M_volatile_change',  # cumulative element mass added to the Zalmoxis target [kg]: delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation
     ]
+
+    # Share of the solid-mantle reservoir that trapping owns. The chemistry
+    # writes the rest of `_kg_solid`, its own condensate, on every solve.
+    for s in vol_list:
+        keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
+    for e in vol_element_list:
+        keys.append(e + '_kg_trapped')  # mass trapped in the solid mantle [kg]
+    for s in noble_gases:
+        keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
 
     # gases from outgassing
     for s in gas_list:
@@ -1530,6 +1618,23 @@ def GetHelpfileDiagnosticKeys():
     return list(_DIAGNOSTIC_KEYS)
 
 
+def GetHelpfileTrappingKeys():
+    """
+    Helpfile columns written by solid-phase volatile trapping.
+
+    A run that never trapped holds zero in every one of them, which is also
+    what a run written before they existed has trapped. `ReadHelpfileFromCSV`
+    therefore reads them as zero, like `RESUMABLE_ZERO_FILL_KEYS`, and such a
+    run resumes.
+
+    Returns
+    -------
+    list of str
+        Column names, all of which are also in `GetHelpfileKeys()`.
+    """
+    return [k for k in GetHelpfileKeys() if k.startswith('trap_') or k.endswith('_kg_trapped')]
+
+
 def GetHelpfileCoreKeys():
     """
     Helpfile columns that a stored run must carry to be resumed.
@@ -1643,7 +1748,8 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     hf_all = read_helpfile_table(fpath)
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
-    fillable = [key for key in missing if key in RESUMABLE_ZERO_FILL_KEYS]
+    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys())
+    fillable = [key for key in missing if key in zero_fill]
     unfillable = sorted(set(missing) - set(fillable))
 
     if unfillable:
