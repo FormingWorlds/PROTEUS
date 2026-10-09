@@ -329,11 +329,8 @@ def test_atmloss_config_bounds_and_module_selection_bind_at_load():
 
     # The default law matches the schema default; both registered laws load
     # cleanly, while unregistered laws are rejected at load.
-    default_law = Accretion().atmloss_law
-    assert a.atmloss_law == default_law
-    assert default_law in ('roche2026', 'kegerreis2020')
+    assert Accretion().atmloss_law == 'roche2026'
     assert Accretion(atmloss_law='kegerreis2020').atmloss_law == 'kegerreis2020'
-    assert Accretion(atmloss_law='roche2026').atmloss_law == 'roche2026'
     with pytest.raises(ValueError):
         Accretion(atmloss_law='kegerreis')
     with pytest.raises(ValueError):

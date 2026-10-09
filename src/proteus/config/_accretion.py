@@ -423,7 +423,7 @@ class Accretion:
         no impact loss physics.
     atmloss_law: str
         Which erosion scaling law to evaluate when ``atmloss_module = 'zephyrus'``.
-        Choices: "roche2026" (Roche et al. 2026, doi:10.5281/zenodo.23192423,
+        Choices: "roche2026" (Roche et al. 2026, arXiv:2610.06077,
         parameterized by impact angle, mass ratio, contact velocity, and target
         atmospheric fraction), "kegerreis2020" (Kegerreis et al. 2020,
         doi:10.3847/2041-8213/abb5fb, parameterized by impact angle, contact
