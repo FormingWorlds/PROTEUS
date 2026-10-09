@@ -2216,7 +2216,7 @@ def test_impact_loss_zero_and_subthreshold_atmosphere_strips_nothing(monkeypatch
 def test_target_mass_mismatch_warning_and_event_mass_dispatch(caplog, monkeypatch):
     """Event target mass is passed to impact_loss and mass mismatch warns once.
 
-    Verifies clause (Ruling A1): collision parameters come from the impact event
+    Verifies clause: collision parameters come from the impact event
     while f_atm comes from the PROTEUS planet state. When event.M_target_before
     differs from M_planet by more than 10%, a warning is logged once. When
     masses agree within 10%, no mismatch warning fires.

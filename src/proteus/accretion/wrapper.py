@@ -998,7 +998,7 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
     to the target's atmosphere and to a volatile-bearing impactor's atmospheric
     part alike. PROTEUS itself ships no impact loss physics.
 
-    When the zephyrus law is selected and the planet's atmosphere exceeds a
+    When ``kegerreis2020`` is selected and the planet's atmosphere exceeds a
     few percent of its mass, the fitted thin-atmosphere regime no longer
     covers the impact and a warning is logged; when ``roche2026`` is selected
     and collision parameters fall outside its fitted range, one warning is logged

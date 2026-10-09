@@ -2,7 +2,7 @@
 
 The [previous page](code_architecture.md) described the static layout of
 PROTEUS's modules. This page explains how they run: the fixed execution order
-within each timestep, how modules exchange state through `hf_row`, and how the
+in each timestep, how modules exchange state through `hf_row`, and how the
 simulation advances and terminates. For the broader scientific context of each
 module, see [Model description](model.md).
 
@@ -34,7 +34,7 @@ The full column reference is in the [Output format](../Reference/output.md) page
 
 ## Execution order per iteration
 
-Within each iteration, modules execute in a fixed order. This order matters
+In each iteration, modules execute in a fixed order. This order matters
 for coupling stability: each module sees the most recent output from all
 upstream modules.
 
@@ -49,6 +49,12 @@ upstream modules.
    re-melted by raising it to the run's temperature-mode initial condition
    (parts that are already hotter keep their state), and
    the orbit takes the impact's change in semi-major axis and eccentricity.
+   When `accretion.atmloss_module = "zephyrus"`, the eroded atmosphere fraction
+   is computed by the chosen scaling law (`accretion.atmloss_law`, default
+   `roche2026`, or `kegerreis2020`): the target atmospheric mass fraction
+   $f_\mathrm{atm} = m_\mathrm{atm} / M_\mathrm{planet}$ is evaluated from the
+   running planet state, while collision masses, radii, contact velocity, and
+   impact angle come from the impact record.
    How molten the re-melt leaves the mantle follows that initial condition:
    only `planet.temperature_mode = "liquidus_super"` is fully molten for any
    planet mass and melting curve. Runs only when an accretion module is
