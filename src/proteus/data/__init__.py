@@ -256,6 +256,26 @@ def dataset_dir(key: str, data_root: str | Path | None = None) -> Path:
     return fetcher.target_dir
 
 
+def missing_files(key: str, data_root: str | Path | None = None) -> list[str]:
+    """Return the registry files of a dataset that are absent from its version directory.
+
+    Parameters
+    ----------
+    key : str
+        Dotted manifest key of the dataset.
+    data_root : str or Path, optional
+        Reference-data tree to resolve against. Defaults to the tree PROTEUS
+        resolves from the environment.
+
+    Returns
+    -------
+    list of str
+        Sorted names of the missing files; empty when the dataset is complete.
+    """
+    folder = dataset_dir(key, data_root=data_root)
+    return sorted(name for name in _dataset(key).registry() if not (folder / name).is_file())
+
+
 def fetch_dataset(key: str, data_root: str | Path | None = None) -> list[Path]:
     """Fetch one declared dataset, verifying every file against the registry.
 

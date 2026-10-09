@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -144,17 +145,24 @@ def test_determine_aerosols_warns_when_the_scattering_dataset_cannot_be_resolved
     assert 'Scattering data directory not found: unresolved' in caplog.text
 
 
+def _fetch_refractive(root, keep=None):
+    """Write the registry files of the refractive dataset below root (the first keep only)."""
+    from proteus.data import REFRACTIVE, dataset_dir, missing_files
+
+    target = dataset_dir(REFRACTIVE, data_root=root)
+    target.mkdir(parents=True)
+    for name in missing_files(REFRACTIVE, data_root=root)[:keep]:
+        (target / name).write_text('0.3 1.5 0.0\n')
+    return target
+
+
 @pytest.fixture
 def refractive_env(monkeypatch, tmp_path):
     """A clean AGNI override environment and a fetched refractive dataset below tmp_path."""
-    from proteus.data import REFRACTIVE, dataset_dir
-
     for var in (agni_mod.REFRACTIVE_ENV, 'AGNI_DIR_res'):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(agni_mod, '_refractive_dir_set', None)
-    target = dataset_dir(REFRACTIVE, data_root=tmp_path)
-    target.mkdir(parents=True)
-    yield str(target)
+    yield str(_fetch_refractive(tmp_path))
     for var in (agni_mod.REFRACTIVE_ENV, 'AGNI_DIR_res'):
         os.environ.pop(var, None)
 
@@ -176,10 +184,7 @@ def test_refractive_env_points_at_the_dataset_and_is_removed_without_aerosols(
 @pytest.mark.unit
 def test_refractive_env_follows_the_data_root_of_each_run(refractive_env, tmp_path, caplog):
     """A second run with aerosols on replaces the value PROTEUS set; it is not kept as a user value."""
-    from proteus.data import REFRACTIVE, dataset_dir
-
-    other = dataset_dir(REFRACTIVE, data_root=tmp_path / 'b')
-    other.mkdir(parents=True)
+    other = _fetch_refractive(tmp_path / 'b')
     agni_mod._point_agni_at_refractive(str(tmp_path), True)
     with caplog.at_level(logging.INFO):
         agni_mod._point_agni_at_refractive(str(tmp_path / 'b'), True)
@@ -211,6 +216,7 @@ def test_refractive_env_keeps_a_user_value(refractive_env, tmp_path, monkeypatch
     assert os.environ[var] == '/user/nk'
     assert (var == agni_mod.REFRACTIVE_ENV) == (agni_mod.REFRACTIVE_ENV in os.environ)
     assert f'keeping {var}=/user/nk' in caplog.text
+    assert 'holds no refractive index file' in caplog.text
 
     agni_mod._point_agni_at_refractive(str(tmp_path), False)
     assert os.environ[var] == '/user/nk'
@@ -238,12 +244,52 @@ def test_refractive_env_warns_when_the_dataset_is_missing(
     if fail is not None:
         monkeypatch.setattr(agni_mod, 'dataset_dir', MagicMock(side_effect=fail))
     else:
-        os.rmdir(refractive_env)
+        shutil.rmtree(refractive_env)
     with caplog.at_level(logging.WARNING):
         agni_mod._point_agni_at_refractive(str(tmp_path), True)
     assert agni_mod.REFRACTIVE_ENV not in os.environ
-    assert 'Refractive index directory not found' in caplog.text
+    assert 'Refractive index data incomplete' in caplog.text
     assert 'empty unless its get_data.sh fetched' in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('keep', [0, 1, -1])
+def test_refractive_env_skips_an_incomplete_dataset(tmp_path, monkeypatch, caplog, keep):
+    """An empty or partly fetched dataset is a warning naming a missing file; AGNI keeps its
+    own folder."""
+    from proteus.data import REFRACTIVE, missing_files
+
+    for var in (agni_mod.REFRACTIVE_ENV, 'AGNI_DIR_res'):
+        monkeypatch.delenv(var, raising=False)
+    target = _fetch_refractive(tmp_path, keep)
+    gone = missing_files(REFRACTIVE, data_root=tmp_path)
+    assert gone and len(gone) == (1 if keep == -1 else len(gone))
+    with caplog.at_level(logging.WARNING):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+    assert f'incomplete in {target}, missing: {gone[0]}' in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('var', ['AGNI_DIR_refractive', 'AGNI_DIR_res'])
+@pytest.mark.parametrize(
+    ('files', 'warned'), [([], True), (['_readme.txt'], True), (['Fe.txt'], False)]
+)
+def test_refractive_env_checks_the_folder_of_a_user_value(
+    refractive_env, tmp_path, monkeypatch, caplog, var, files, warned
+):
+    """A kept value is logged with the absolute folder AGNI resolves, and a folder without a
+    material file (a leading underscore marks a note) is a warning."""
+    monkeypatch.chdir(tmp_path)
+    nk = tmp_path / 'user' / ('refractive' if var == 'AGNI_DIR_res' else 'nk')
+    nk.mkdir(parents=True)
+    for name in files:
+        (nk / name).write_text('x')
+    monkeypatch.setenv(var, ' user/ ' if var == 'AGNI_DIR_res' else ' user/nk ')
+    with caplog.at_level(logging.INFO):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert f'AGNI reads {nk}' in caplog.text
+    assert ('holds no refractive index file' in caplog.text) == warned
 
 
 @pytest.mark.unit
