@@ -26,3 +26,25 @@ mass fraction $f_\mathrm{atm} = m_\mathrm{atm} / M_\mathrm{planet}$ is evaluated
 from the PROTEUS helpfile state. The dispatch-level pins certify the
 record-to-argument mapping, law routing, and warning bounds; the scaling laws'
 internal physics is certified in ZEPHYRUS.
+
+## Coupled behaviour
+
+Coupled simulations evaluate the atmosphere loss dispatch under full planet
+evolution for two test configurations: C1 (a 1.3 M_earth planet following
+Morrigan seed 7 with two giant impacts over 3000 yr) and C2 (a four-impact
+synthetic timeline over 300 yr).
+
+In these oxygen-buffered configurations (IW+4 magma-ocean redox state), the
+atmosphere prior to each impact is approximately 99.6% to 99.9% O2 by mass
+at surface pressures of roughly 2e4 bar and temperatures near 3200 K, which lies
+outside the hydrogen-helium calibration regime of both scaling laws. Both laws
+yield comparable post-impact bulk atmospheric masses because rapid magma-ocean
+outgassing replenishes the lost oxygen. The physical difference between the
+erosion laws appears in the volatile element inventories and cumulative escape:
+
+- For C1 at 3000 yr, whole-planet carbon is 4.9e19 kg under kegerreis2020
+  compared with 1.0e20 kg under roche2026, while cumulative escaped mass is
+  2.38e23 kg compared with 1.65e23 kg.
+- For C2 at 300 yr, whole-planet carbon is 8.7e19 kg under kegerreis2020
+  compared with 1.36e20 kg under roche2026, while cumulative escaped mass is
+  2.27e23 kg compared with 1.65e23 kg.
