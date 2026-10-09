@@ -429,7 +429,11 @@ class Accretion:
         (Kegerreis et al. 2020, doi:10.3847/2041-8213/abb5fb, parameterized by
         impact angle, contact velocity, mass ratio, radii, and bulk densities).
         Both laws are fitted to H2-He atmospheres (Kegerreis et al. 2020; Roche
-        et al. 2026, Sect. 4.1).
+        et al. 2026, Sect. 4.1). With ``roche2026``, an airless target
+        (m_atm = 0) returns f_loss = 0 so an impactor delivers its full volatile
+        content, whereas any positive trace atmosphere gives f_atm below the
+        stability bound, evaluated at 1e-6, and f_loss of order 0.7 (0.69 for
+        the 1.2 v_esc test event) for target and impactor alike.
     atmloss_frac: float
         Fraction of the atmosphere removed by each impact when
         ``atmloss_module = "constant"`` [0-1]. Applies to the target's

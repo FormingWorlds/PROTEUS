@@ -51,10 +51,12 @@ upstream modules.
    the orbit takes the impact's change in semi-major axis and eccentricity.
    When `accretion.atmloss_module = "zephyrus"`, the eroded atmosphere fraction
    is computed by the chosen scaling law (`accretion.atmloss_law`, default
-   `roche2026`, or `kegerreis2020`): for `roche2026`, the target atmospheric mass
-   fraction $f_\mathrm{atm} = m_\mathrm{atm} / M_\mathrm{planet}$ is evaluated from
-   the running planet state, while collision masses, radii, bulk densities,
-   contact velocity, and impact angle come from the impact record.
+   `roche2026`, or `kegerreis2020`). For `roche2026`, the scaling law evaluates
+   collision masses, radii, contact velocity, and impact angle from the impact
+   record, and the target atmospheric mass fraction $f_\mathrm{atm} =
+   m_\mathrm{atm} / M_\mathrm{planet}$ from the running planet state. For
+   `kegerreis2020`, the law evaluates collision masses, radii, bulk densities,
+   contact velocity, and impact angle from the impact record.
    How molten the re-melt leaves the mantle follows that initial condition:
    only `planet.temperature_mode = "liquidus_super"` is fully molten for any
    planet mass and melting curve. Runs only when an accretion module is

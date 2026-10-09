@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from proteus.utils.constants import AU, M_earth, element_list, noble_gases, vol_element_list
@@ -954,8 +955,10 @@ def _target_strip_amounts(config, hf_row: dict, f_loss: float) -> dict:
 _ATMLOSS_THIN_ATM_WARN = 0.03
 
 
-def _format_roche_flag(name: str, diagnostics: dict, fitted_range: dict) -> str:
-    """Format one Roche et al. (2026) out-of-range or clamp flag.
+def _format_roche_flag(
+    name: str, diagnostics: dict, fitted_range: Mapping[str, tuple[float, float]]
+) -> str:
+    """Format one out-of-range flag, with the clamp value when one is active.
 
     Parameters
     ----------
@@ -964,7 +967,7 @@ def _format_roche_flag(name: str, diagnostics: dict, fitted_range: dict) -> str:
     diagnostics : dict
         Diagnostics dictionary from ``ImpactLossResult`` containing physical
         parameter values and any clamped bounds under ``'clamped'``.
-    fitted_range : dict
+    fitted_range : Mapping[str, tuple[float, float]]
         Mapping of parameter names to fitted (lo, hi) range tuples.
 
     Returns
@@ -1008,7 +1011,7 @@ def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
 
     law = config.accretion.atmloss_law
     m_planet = _as_float(hf_row.get('M_planet'))
-    m_atm = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list)
+    m_atm = sum(_as_float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list)
     has_valid_m_planet = 0.0 < m_planet < math.inf
     f_atm = m_atm / m_planet if has_valid_m_planet else 0.0
 
@@ -1076,7 +1079,7 @@ def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
             ]
             log.warning(
                 '    impact at t = %.4e yr: Roche et al. (2026) law outside its fitted range: '
-                '%s; the loss fraction is extrapolated',
+                "%s; the loss fraction is extrapolated; a parameter marked 'evaluated at' is held at that bound",
                 event.time,
                 '; '.join(flag_msgs),
             )
