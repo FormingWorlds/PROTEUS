@@ -1396,9 +1396,14 @@ def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_pa
     monkeypatch.setattr(
         agni_mod, '_determine_aerosols', lambda *_a, **_k: {'sio2': 'mon', 'Soot': 'mon'}
     )
+    calls = []
+    monkeypatch.setattr(agni_mod, '_point_agni_at_refractive', lambda *a: calls.append(a))
+    fake_agni.aerosol_optics.list_materials = lambda: calls.append('list') or []
 
     atmos = init_agni_atmos(dirs, config, hf_row)
     assert atmos is not None
+    # AGNI must see the refractive directory before it lists its Mie materials.
+    assert calls[:2] == [(str(tmp_path), True), 'list']
 
     aerosol_species = fake_agni.last_setup_kwargs['aerosol_species']
     assert aerosol_species == {'sio2': {'method': 'mon', 'species': 'SiO2'}}
