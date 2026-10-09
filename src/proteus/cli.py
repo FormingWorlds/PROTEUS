@@ -513,18 +513,11 @@ def solar():
             return
 
     # If we get here, the downloader didn't raise but we can't find files.
-    log_dir = GetFWLData()
-    zenodo_log = log_dir / 'zenodo_download.log'
-    validate_log = log_dir / 'zenodo_validate.log'
-
-    msg = (
+    raise click.ClickException(
         'Solar download finished without an exception, but no files were found where expected.\n'
         f'Expected: {solar_dir}\n'
-        f'Check logs:\n'
-        f'  - {zenodo_log}\n'
-        f'  - {validate_log}'
+        'Run `proteus get solar` again; if this repeats, remove that folder first.'
     )
-    raise click.ClickException(msg)
 
 
 @click.command()

@@ -77,6 +77,14 @@ def _restore_fwl_logger():
 
 
 @pytest.fixture(autouse=True)
+def _default_fwl_data(monkeypatch, tmp_path_factory):
+    """Set FWL_DATA to an empty data root of its own when the environment has none, so a
+    test that builds Proteus depends neither on the environment nor on another test."""
+    if 'FWL_DATA' not in os.environ:
+        monkeypatch.setenv('FWL_DATA', str(tmp_path_factory.mktemp('fwl_data')))
+
+
+@pytest.fixture(autouse=True)
 def _clear_paleos_api_resolutions():
     """Drop the per-process PALEOS-API resolutions around each test, so a fake resolver
     in one test does not hand its paths to another."""

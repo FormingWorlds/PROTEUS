@@ -45,11 +45,15 @@ from proteus.config._config import (
     front_trapping_requires_aragog,
     instmethod_evolve,
     orbit_requires_tides,
+    parameterized_excludes_accretion,
+    parameterized_excludes_tides,
+    parameterized_high_ecc_inward,
     planet_fO2_source_compat,
     planet_mass_valid,
     planet_oxygen_mode_explicit,
     satellite_evolve,
     sp0d_obliqua_degree_mismatch,
+    spinless_orbit_keeps_spin_synchronous,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -729,6 +733,27 @@ def test_instmethod_evolve_rejects_inst_with_orbit_evolve():
 
 
 @pytest.mark.unit
+def test_instmethod_evolve_rejects_inst_with_a_prescribed_track():
+    """A prescribed track starts from orbit.semimajoraxis, while 'inst' would
+    derive a second starting orbit from the flux, so the pair is refused
+    and the message points at the setting that resolves it."""
+    instance = _make_config_instance(
+        **{
+            'orbit.instellation_method': 'inst',
+            'orbit.star_planet_model': 'parameterized',
+        }
+    )
+    with pytest.raises(ValueError, match=r"instellation_method='inst'") as excinfo:
+        instmethod_evolve(instance, None, None)
+    msg = str(excinfo.value)
+    assert "'parameterized'" in msg
+    assert "instellation_method = 'distance'" in msg
+
+    instance.orbit.instellation_method = 'distance'
+    assert instmethod_evolve(instance, None, None) is None
+
+
+@pytest.mark.unit
 def test_instmethod_evolve_passes_with_inst_and_no_evolve():
     """instellation_method='inst' is OK when star_planet_model is None."""
     instance = _make_config_instance(
@@ -893,6 +918,173 @@ def test_orbit_requires_tides_passes_for_0d_models_regardless_of_module(model, m
         }
     )
     orbit_requires_tides(instance, None, None)
+
+
+# ---------------------------------------------------------------------------
+# parameterized_excludes_tides: no tides module alongside a prescribed track
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('module', ['dummy', 'lovepy', 'obliqua'])
+def test_parameterized_excludes_tides_rejects_every_tides_module(module):
+    """Pairing the prescribed track with any tides module must raise, since
+    the tidal dispatch in run_orbit would otherwise compute a tidal response
+    the model documents it never produces. The message names the offending
+    module and the required setting, so the user knows what to change."""
+    instance = _make_config_instance(
+        **{'orbit.module': module, 'orbit.star_planet_model': 'parameterized'}
+    )
+    with pytest.raises(ValueError, match='parameterized') as excinfo:
+        parameterized_excludes_tides(instance, None, None)
+    msg = str(excinfo.value)
+    assert repr(module) in msg
+    assert "orbit.module = 'none'" in msg
+
+
+@pytest.mark.unit
+def test_parameterized_excludes_tides_passes_without_a_tides_module():
+    """With tides disabled (``'none'`` converts to ``None`` on load) the
+    prescribed track is valid, and the validator leaves the config as is."""
+    instance = _make_config_instance(
+        **{'orbit.module': None, 'orbit.star_planet_model': 'parameterized'}
+    )
+    parameterized_excludes_tides(instance, None, None)
+    assert instance.orbit.module is None
+    assert instance.orbit.star_planet_model == 'parameterized'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('model', ['sp0d', 'sp1d'])
+def test_parameterized_excludes_tides_ignores_tidal_orbit_models(model):
+    """The restriction is specific to the prescribed track: the tidal orbit
+    models need a tides module, so the validator must not fire for them."""
+    instance = _make_config_instance(
+        **{'orbit.module': 'lovepy', 'orbit.star_planet_model': model}
+    )
+    parameterized_excludes_tides(instance, None, None)
+    assert instance.orbit.module == 'lovepy'
+    assert instance.orbit.star_planet_model == model
+
+
+# ---------------------------------------------------------------------------
+# spinless_orbit_keeps_spin_synchronous: no fixed spin without spin dynamics
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize('model', ['sp0d', 'parameterized'])
+def test_spinless_orbit_rejects_a_configured_axial_period(model):
+    """sp0d and the prescribed track evolve no spin, so a fixed day length
+    would decouple the spin from the orbit it is locked to. The message names
+    the model and the setting to use."""
+    instance = _make_config_instance(
+        **{'orbit.star_planet_model': model, 'orbit.axial_period': 24.0}
+    )
+    with pytest.raises(ValueError, match='evolves no spin') as excinfo:
+        spinless_orbit_keeps_spin_synchronous(instance, None, None)
+    msg = str(excinfo.value)
+    assert repr(model) in msg
+    assert "orbit.axial_period = 'none'" in msg
+
+    instance.orbit.axial_period = None
+    assert spinless_orbit_keeps_spin_synchronous(instance, None, None) is None
+
+
+@pytest.mark.parametrize('model', [None, 'sp1d'], ids=['no_orbit_model', 'sp1d'])
+def test_spinless_orbit_allows_a_configured_spin_where_it_means_something(model):
+    """Positive counterpart: sp1d evolves the spin from its configured start,
+    and a static orbit holds it, so both keep a configured axial period. The
+    same day length under sp0d is refused, so the rule tells the models apart."""
+    instance = _make_config_instance(
+        **{'orbit.star_planet_model': model, 'orbit.axial_period': 24.0}
+    )
+    assert spinless_orbit_keeps_spin_synchronous(instance, None, None) is None
+
+    instance.orbit.star_planet_model = 'sp0d'
+    with pytest.raises(ValueError, match='evolves no spin'):
+        spinless_orbit_keeps_spin_synchronous(instance, None, None)
+
+
+def test_spinless_orbit_rule_is_enforced_on_config_load(tmp_path):
+    """The spin rule is registered on the Config: a prescribed track with a
+    fixed day length is refused at load, the same file with the spin unset
+    loads, and a fixed day length without a star-planet model loads."""
+    from pathlib import Path
+
+    base = (Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml').read_text()
+
+    def _write(name, orbit_lines):
+        path = tmp_path / f'{name}.toml'
+        path.write_text(base.replace('[orbit]\n', '[orbit]\n' + orbit_lines, 1))
+        return path
+
+    track = '    star_planet_model = "parameterized"\n'
+    with pytest.raises(ValueError, match='evolves no spin'):
+        read_config_object(_write('fixed', track + '    axial_period = 24.0\n'))
+
+    locked = read_config_object(_write('locked', track + '    axial_period = "none"\n'))
+    assert locked.orbit.star_planet_model == 'parameterized'
+    assert locked.orbit.axial_period is None
+
+    static = read_config_object(_write('static', '    axial_period = 24.0\n'))
+    assert static.orbit.star_planet_model is None
+    assert static.orbit.axial_period == pytest.approx(24.0, rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# parameterized_excludes_accretion: no impacts on a prescribed track
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('module', ['dummy', 'timeline', 'morrigan'])
+def test_parameterized_excludes_accretion_rejects_every_accretion_module(module):
+    """Every accretion module applies its impacts through apply_impact, which
+    rewrites the configured orbit. Under the prescribed track that keeps the
+    eccentricity change and drops the semi-major axis change, so the pairing
+    must raise, naming the module and the setting to change."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': None,
+            'orbit.star_planet_model': 'parameterized',
+            'accretion.module': module,
+        }
+    )
+    with pytest.raises(ValueError, match='parameterized') as excinfo:
+        parameterized_excludes_accretion(instance, None, None)
+    msg = str(excinfo.value)
+    assert repr(module) in msg
+    assert "accretion.module = 'none'" in msg
+
+
+@pytest.mark.unit
+def test_parameterized_excludes_accretion_passes_without_accretion():
+    """With accretion disabled (``'none'`` converts to ``None``) the prescribed
+    track is valid, and the validator leaves the config as is."""
+    instance = _make_config_instance(
+        **{
+            'orbit.module': None,
+            'orbit.star_planet_model': 'parameterized',
+            'accretion.module': None,
+        }
+    )
+    parameterized_excludes_accretion(instance, None, None)
+    assert instance.accretion.module is None
+    assert instance.orbit.star_planet_model == 'parameterized'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('model', [None, 'sp0d', 'sp1d'])
+def test_parameterized_excludes_accretion_ignores_other_orbit_models(model):
+    """A fixed or tidally evolved orbit carries the impact's new orbit forward
+    from the running row, so accretion stays allowed there and the validator
+    must not fire."""
+    instance = _make_config_instance(
+        **{'orbit.star_planet_model': model, 'accretion.module': 'dummy'}
+    )
+    parameterized_excludes_accretion(instance, None, None)
+    assert instance.accretion.module == 'dummy'
+    assert instance.orbit.star_planet_model == model
 
 
 # ---------------------------------------------------------------------------
@@ -1156,3 +1348,138 @@ def test_front_trapping_requires_the_aragog_interior():
     undeclared = _make_config_instance(**{'interior_energetics.module': 'dummy'})
     assert not hasattr(undeclared.outgas, 'trap_mode')
     assert front_trapping_requires_aragog(undeclared, None, None) is None
+
+
+@pytest.mark.parametrize(
+    'migration',
+    ['instant', 'sigmoid', 'high_ecc'],
+    ids=['instant_step', 'sigmoid_ramp', 'high_eccentricity'],
+)
+def test_parameterized_requires_a_destination_for_a_migrating_law(migration):
+    """Negative: a law that moves the planet needs sma_final, and the schema
+    says so at config time rather than at the first orbit step, which is
+    after the structure solve and the first interior step. The start is
+    orbit.semimajoraxis, which always has a value."""
+    from proteus.config._orbit import Parameterized
+
+    with pytest.raises(ValueError, match='requires sma_final') as excinfo:
+        Parameterized(migration=migration)
+    # The message names the law, so the user knows which setting asked for it.
+    assert repr(migration) in str(excinfo.value)
+
+    accepted = Parameterized(migration=migration, sma_final=0.8)
+    assert accepted.sma_final == pytest.approx(0.8, rel=1e-12)
+
+
+@pytest.mark.parametrize('sma_final', [None, 0.8], ids=['no_destination', 'destination'])
+def test_parameterized_static_regime_needs_no_destination(sma_final):
+    """Positive counterpart: the static regime never moves the planet, so
+    it accepts a missing or a set destination. Without this a blanket
+    requirement would break every non-migrating config."""
+    from proteus.config._orbit import Parameterized
+
+    params = Parameterized(migration='none', sma_final=sma_final)
+
+    assert params.migration == 'none'
+    assert params.sma_final == sma_final
+
+
+def _high_ecc_instance(migration, semimajoraxis, sma_final):
+    """Config stand-in for the high-eccentricity direction rule."""
+    from proteus.config._orbit import Parameterized
+
+    return _make_config_instance(
+        **{
+            'orbit.star_planet_model': 'parameterized',
+            'orbit.semimajoraxis': semimajoraxis,
+            'orbit.parameterized': Parameterized(migration=migration, sma_final=sma_final),
+        }
+    )
+
+
+def test_parameterized_rejects_an_outward_high_eccentricity_track():
+    """Negative: high-eccentricity circularisation conserves orbital
+    angular momentum, so it can only shrink the orbit. Its inward
+    solution needs a non-negative 1 - sma_final / orbit.semimajoraxis."""
+    with pytest.raises(ValueError, match='inward only') as excinfo:
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 0.8, 2.0), None, None)
+    # The message names both orbits, so the user can see which one to change.
+    assert 'semimajoraxis=0.8' in str(excinfo.value)
+    assert 'sma_final=2.0' in str(excinfo.value)
+
+    # Positive: the mirrored inward track and the degenerate equal-endpoint
+    # case both validate, so the check is not rejecting every high_ecc config.
+    assert (
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 2.0, 0.8), None, None)
+        is None
+    )
+    assert (
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 2.0, 2.0), None, None)
+        is None
+    )
+    # Boundary: one part in a million outward is already refused, which a
+    # rule with any slack factor on the start would let through.
+    with pytest.raises(ValueError, match='inward only'):
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 2.0, 2.000002), None, None)
+
+
+@pytest.mark.parametrize(
+    'migration', ['none', 'instant', 'sigmoid'], ids=['static', 'instant_step', 'sigmoid_ramp']
+)
+def test_parameterized_allows_outward_migration_for_the_direction_free_laws(migration):
+    """The inward-only restriction belongs to high_ecc alone. Both the step
+    and the ramp are defined in either direction, so a config that migrates
+    a planet outward must validate rather than being caught by a rule
+    written for a different law."""
+    instance = _high_ecc_instance(migration, 0.8, 2.0)
+
+    assert parameterized_high_ecc_inward(instance, None, None) is None
+    assert instance.orbit.parameterized.sma_final > instance.orbit.semimajoraxis
+    # The same orbits are refused for high_ecc, so the acceptance above is
+    # specific to the direction-free laws.
+    with pytest.raises(ValueError, match='inward only'):
+        parameterized_high_ecc_inward(_high_ecc_instance('high_ecc', 0.8, 2.0), None, None)
+
+
+@pytest.mark.parametrize(
+    'model', [None, 'sp0d', 'sp1d'], ids=['no_orbit_model', 'sp0d', 'sp1d']
+)
+def test_parameterized_high_ecc_direction_is_silent_for_other_models(model):
+    """The block is read only by the parameterized model, so a leftover
+    outward high_ecc block under another star-planet model is not refused,
+    while the same block under parameterized is."""
+    instance = _high_ecc_instance('high_ecc', 0.8, 2.0)
+    instance.orbit.star_planet_model = model
+
+    assert parameterized_high_ecc_inward(instance, None, None) is None
+    assert instance.orbit.parameterized.sma_final > instance.orbit.semimajoraxis
+
+    instance.orbit.star_planet_model = 'parameterized'
+    with pytest.raises(ValueError, match='inward only'):
+        parameterized_high_ecc_inward(instance, None, None)
+
+
+def test_parameterized_high_ecc_direction_is_enforced_on_config_load(tmp_path):
+    """The direction rule is registered on the Config, so an outward
+    high_ecc track in a real file is refused at load, and the inward one
+    loads with the track starting from orbit.semimajoraxis."""
+    from pathlib import Path
+
+    base = (Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml').read_text()
+
+    def _write(sma_final):
+        path = tmp_path / f'track_{sma_final}.toml'
+        path.write_text(
+            base.replace('[orbit]\n', '[orbit]\n    star_planet_model = "parameterized"\n', 1)
+            + '\n[orbit.parameterized]\nmigration = "high_ecc"\n'
+            + f'sma_final = {sma_final}\n'
+        )
+        return path
+
+    with pytest.raises(ValueError, match='inward only'):
+        read_config_object(_write(2.0))
+
+    cfg = read_config_object(_write(0.5))
+    assert cfg.orbit.star_planet_model == 'parameterized'
+    assert cfg.orbit.parameterized.sma_final == pytest.approx(0.5, rel=1e-12)
+    assert cfg.orbit.parameterized.sma_final < cfg.orbit.semimajoraxis

@@ -60,7 +60,7 @@ belong to the experimental binodal-aware mode.
 | `num_levels` | int | `150` | Number of Zalmoxis radius layers. |
 | `outer_solver` | str | `"newton"` | Outer mass-radius solver: 'newton' (recommended) or 'picard'. Choices: `"picard"`, `"newton"`. |
 | `use_jax` | bool | `true` | Use the JAX backend for the structure solver. |
-| `use_anderson` | bool | `false` | Anderson Type-II Picard acceleration on the density loop. |
+| `use_anderson` | bool | `true` | Anderson Type-II Picard acceleration on the density loop. |
 | `solver_tol_outer` | float | `0.003` | Relative tolerance for mass convergence (outer loop). Must be > 0. |
 | `solver_tol_inner` | float | `0.0001` | Relative tolerance for density convergence (inner loop). Must be > 0. |
 | `solver_max_iter_outer` | int | `100` | Max iterations for mass convergence (outer loop). Must be >= 10. |

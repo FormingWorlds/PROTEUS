@@ -887,6 +887,7 @@ def GetHelpfileKeys():
         'orbital_period',   # orbital duration [s]
         'eccentricity',     # orbital eccentricity [1]
         'ecc_dot_planet',   # eccentricity derivative [1 s-1]
+        'dEdt_orb',         # orbital energy rate of a prescribed track [W]
         'plan_star_am',     # angular momentum of star+planet [kg m2 s-1]
         'axial_period',     # day length of planet around its axis [s]
 
@@ -1595,7 +1596,10 @@ def _describe_missing_columns(missing: list[str]) -> str:
 # helpfile written before one of them joined the schema still resumes: the
 # reader backfills these with zeros. Add a column here only if no module,
 # resume path or solver consumes it.
-_DIAGNOSTIC_KEYS = ('T_cmb_node',)
+_DIAGNOSTIC_KEYS = (
+    'dEdt_orb',
+    'T_cmb_node',
+)
 
 
 def GetHelpfileDiagnosticKeys():
@@ -1656,7 +1660,8 @@ _POSTPROCESSING_FIXED_KEYS = (
     'atm_kg_per_mol',
     'R_star',
     'T_star',
-    'separation',
+    'semimajorax',
+    'eccentricity',
 )
 
 

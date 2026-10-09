@@ -298,3 +298,16 @@ class TestNewtonPathTightensIntegratorTolerances:
         # regression that bumped the default below 1e-15 would
         # produce silent integrator stalls instead of useful steps.
         assert cp['relative_tolerance'] >= 1.0e-15
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('use_anderson', [True, False])
+def test_load_zalmoxis_configuration_propagates_use_anderson(monkeypatch, use_anderson):
+    """Verify that load_zalmoxis_configuration propagates use_anderson."""
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
+    config = _make_mock_config()
+    config.interior_struct.zalmoxis.use_anderson = use_anderson
+    _stub_get_target_surface_pressure(monkeypatch)
+    cp = load_zalmoxis_configuration(config, _make_hf_row())
+    assert cp['use_anderson'] is use_anderson

@@ -6,7 +6,7 @@ Reusable shell logic replicated inline from ``tools/get_petsc.sh`` and
 ``tools/get_spider.sh``:
 - ERR trap: exit-code and step-name capture
 - Platform detection: PETSC_ARCH assignment
-- Homebrew prefix fallback: architecture-aware default
+- macOS linker flags: no library path that could hide the downloaded SUNDIALS
 - PETSc library detection: versioned ``.so``, ``.dylib``, missing
 
 ``tools/_get_common.sh``, the helper library every ``get_*.sh`` sources, is
@@ -635,6 +635,165 @@ def test_resolve_module_pin_reads_the_pin_and_stops_when_it_is_missing(tmp_path)
     assert 'REACHED_CLONE' not in missing.stdout
 
 
+def _sha256(data: bytes) -> str:
+    """Return the SHA-256 hex digest of ``data``."""
+    import hashlib
+
+    return hashlib.sha256(data).hexdigest()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('strict', [False, True])
+def test_fetch_verified_falls_back_to_the_next_source_with_the_pinned_hash(tmp_path, strict):
+    """A failed download, an empty url and a wrong file each give way to the next source.
+
+    The archive goes straight into ``unzip`` and a PETSc build, so only a file
+    with the pinned SHA-256 may end the search.
+    """
+    good, bad = tmp_path / 'good.zip', tmp_path / 'bad.zip'
+    good.write_bytes(b'petsc archive')
+    bad.write_bytes(b'an error page')
+    dest = tmp_path / 'petsc.zip'
+    body = (
+        f'fetch_verified {_sha256(b"petsc archive")} "{dest}" '
+        f'"file://{tmp_path}/missing.zip" "" "file://{bad}" "file://{good}"\n'
+        'echo REACHED_UNZIP\n'
+    )
+
+    result = _run_bash(_with_common(body, strict))
+
+    assert result.returncode == 0, result.stderr
+    assert dest.read_bytes() == b'petsc archive'
+    assert 'REACHED_UNZIP' in result.stdout
+    assert f'download from file://{tmp_path}/missing.zip failed' in result.stderr
+    assert (
+        f'file://{bad} served a file with SHA-256 {_sha256(b"an error page")}' in result.stderr
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('strict', [False, True])
+def test_fetch_verified_stops_when_no_source_serves_the_pinned_file(tmp_path, strict):
+    """With no matching source it returns 1 and leaves no archive, so a get_* script's
+    ERR trap prints its troubleshooting text and the install stops before unzip."""
+    bad = tmp_path / 'bad.zip'
+    bad.write_bytes(b'an error page')
+    dest = tmp_path / 'petsc.zip'
+    call = f'fetch_verified {"0" * 64} "{dest}" "file://{bad}" ""'
+
+    returned = _run_bash(_with_common(f'{call} || echo "RETURNED $?"\n', strict))
+    trapped = _run_bash(
+        _with_common(f'set -e\ntrap "echo TRAPPED" ERR\n{call}\necho REACHED_UNZIP\n', strict)
+    )
+
+    assert 'RETURNED 1' in returned.stdout
+    assert not dest.exists()
+    assert f'no source served petsc.zip with SHA-256 {"0" * 64}' in returned.stderr
+    assert 'download from  failed' not in returned.stderr
+    assert trapped.returncode == 1
+    assert 'TRAPPED' in trapped.stdout and 'REACHED_UNZIP' not in trapped.stdout
+
+
+@pytest.mark.unit
+def test_fetch_verified_refuses_an_empty_hash_or_no_hash_tool(tmp_path):
+    """A pin that could not be read, or no shasum and no sha256sum, stops before any download."""
+    good = tmp_path / 'good.zip'
+    good.write_bytes(b'petsc archive')
+    call = 'fetch_verified "{}" "' + f'{tmp_path}/p.zip" "file://{good}"\n'
+    blank = _run_bash(_with_common(call.format('')))
+    no_tool = subprocess.run(
+        ['/bin/bash', '-c', _with_common(call.format(_sha256(b'petsc archive')))],
+        capture_output=True,
+        text=True,
+        env={'PATH': str(tmp_path / 'empty')},
+    )
+    assert blank.returncode == 1 and 'no SHA-256 pin for p.zip' in blank.stderr
+    assert no_tool.returncode == 1
+    assert 'neither shasum nor sha256sum is installed' in no_tool.stderr
+    for result in (blank, no_tool):
+        assert 'Downloading' not in result.stdout
+
+
+@pytest.mark.unit
+def test_get_petsc_tries_zenodo_then_the_mirror_from_its_pins(tmp_path):
+    """The shipped download step passes the pinned hash and sources, overridable by
+    PETSC_URL and PETSC_MIRROR_URL, to fetch_verified in that order."""
+    fake_tools = tmp_path / 'tools'
+    fake_tools.mkdir()
+    shutil.copy2(COMMON_LIB, fake_tools / '_get_common.sh')
+    (fake_tools / '_module_pins.py').write_text('')
+    archive = tmp_path / 'mirror.zip'
+    archive.write_bytes(b'petsc archive')
+    wrong = tmp_path / 'wrong.zip'
+    wrong.write_bytes(b'an error page')
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    _write_stub(
+        stubs,
+        'python',
+        f'#!/bin/bash\ncase "$3" in sha256) echo {_sha256(b"petsc archive")} ;; '
+        f'url) echo "file://{wrong}" ;; mirror) echo "$PIN_MIRROR" ;; esac\n',
+    )
+    block = _extract_script_block(
+        'get_petsc.sh', '# Read the archive pins', 'current_step="Decompressing'
+    )
+    work = tmp_path / 'work'
+    snippet = (
+        f'set -e\nsource "{fake_tools}/_get_common.sh"\nworkpath="{work}"\n{block}\necho DONE\n'
+    )
+    env = {**os.environ, 'PATH': f'{stubs}:{os.environ["PATH"]}', 'PIN_MIRROR': ''}
+
+    def run(**extra):
+        return subprocess.run(
+            ['bash', '-c', snippet], capture_output=True, text=True, env={**env, **extra}
+        )
+
+    # Both pinned sources serve a wrong file: the install stops.
+    pinned = run(PIN_MIRROR=f'file://{wrong}')
+    assert pinned.returncode == 1
+    assert pinned.stderr.count(f'file://{wrong} served a file') == 2
+
+    # An empty pin stops with the cause instead of skipping that source.
+    empty_mirror = run()
+    assert empty_mirror.returncode == 1
+    assert 'cannot read the PETSc url, mirror and sha256' in empty_mirror.stderr
+
+    # Zenodo first, then the mirror.
+    mirrored = run(PIN_MIRROR=f'file://{archive}')
+    assert mirrored.returncode == 0, mirrored.stderr
+    out = mirrored.stdout
+    assert out.index(f'Downloading file://{wrong}') < out.index(f'Downloading file://{archive}')
+    assert (work / 'petsc.zip').read_bytes() == b'petsc archive'
+    assert 'DONE' in out
+
+    # PETSC_URL replaces the pinned url, and PETSC_MIRROR_URL the pinned mirror.
+    overridden = run(PETSC_URL=f'file://{archive}', PIN_MIRROR=f'file://{wrong}')
+    assert overridden.returncode == 0, overridden.stderr
+    assert f'Downloading file://{wrong}' not in overridden.stdout
+    mirror_set = run(PETSC_MIRROR_URL=f'file://{archive}', PIN_MIRROR=f'file://{wrong}')
+    assert mirror_set.returncode == 0, mirror_set.stderr
+
+    # A pin that cannot be read stops before the previous installation is removed.
+    (work / 'old_build').write_text('kept')
+    _write_stub(stubs, 'python', '#!/bin/bash\nexit 1\n')
+    unreadable = run()
+    assert unreadable.returncode == 1
+    assert 'needs python 3.11 or newer (tomllib)' in unreadable.stderr
+    assert (work / 'old_build').read_text() == 'kept'
+    assert 'Downloading' not in unreadable.stdout
+
+
+@pytest.mark.unit
+def test_pyproject_pins_the_petsc_archive_by_sha256():
+    """PETSc is pinned to its Zenodo archive by a SHA-256, with the DataverseNL file as mirror."""
+    pin = tomllib.loads((TOOLS_DIR.parent / 'pyproject.toml').read_text())['tool']['proteus'][
+        'modules'
+    ]['petsc']
+    assert pin['url'] == 'https://zenodo.org/records/15805756/files/petsc.zip?download=1'
+    assert pin['sha256'] == 'c5bdb75048b609627bac7fdc83042078a629f5de0c6508b50166a351d2aa045d'
+    assert pin['mirror'] == 'https://dataverse.nl/api/access/datafile/683669'
+
+
 # ---------------------------------------------------------------------------
 # ERR trap tests
 # ---------------------------------------------------------------------------
@@ -674,7 +833,7 @@ def test_err_trap_reports_current_step():
     """ERR trap output includes the ``current_step`` variable value."""
     snippet = """\
 set -e
-current_step="Downloading PETSc archive from OSF"
+current_step="Downloading PETSc archive"
 on_error() {
     local rc=$?
     echo "STEP=$current_step"
@@ -688,7 +847,7 @@ false
         text=True,
     )
     assert result.returncode != 0
-    assert 'STEP=Downloading PETSc archive from OSF' in result.stdout
+    assert 'STEP=Downloading PETSc archive' in result.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -724,96 +883,72 @@ fi
 
 
 # ---------------------------------------------------------------------------
-# Homebrew prefix fallback tests
-# ---------------------------------------------------------------------------
+# macOS linker flags (get_petsc.sh)
+
+
+# A stub configure: records its arguments, its environment and four named variables.
+CONFIGURE_STUB = """#!/bin/bash
+printf "%s\\n" "$@" > args
+export -p > env
+for v in LDFLAGS LIBRARY_PATH LIBS CPATH; do printf "%s=%s\\n" "$v" "${!v-unset}"; done > named
+"""
+
+
+def _run_petsc_macos(tmp_path, tools, path_extra=':/usr/bin:/bin'):
+    """Run the shipped platform and configure steps of get_petsc.sh as macOS with stub ``tools``."""
+    for name in tools:
+        _write_stub(tmp_path, name, '#!/bin/bash\necho /sdk\n')
+    _write_stub(tmp_path, 'configure', CONFIGURE_STUB)
+    block = _extract_script_block(
+        'get_petsc.sh', 'current_step="Determining platform-specific flags"', '# 6. Build PETSc'
+    )
+    return subprocess.run(
+        ['/bin/bash', '-c', f'set -euo pipefail\nOSTYPE=darwin24\nworkpath=.\n{block}\n'],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env={'PATH': f'{tmp_path}{path_extra}'},
+    )
+
+
+def _petsc_configure_args(tmp_path) -> list[str]:
+    """Return the configure arguments, after checking no build variable names a library path."""
+    named = (tmp_path / 'named').read_text().split()
+    assert named == [f'{v}=unset' for v in ('LDFLAGS', 'LIBRARY_PATH', 'LIBS', 'CPATH')]
+    assert 'homebrew/lib' not in (tmp_path / 'env').read_text()
+    args = (tmp_path / 'args').read_text().splitlines()
+    assert [a for a in args if '-L' in a] == []
+    return args
 
 
 @pytest.mark.unit
-def test_brew_prefix_fallback_arm64(tmp_path):
-    """With ``uname -m`` spoofed to arm64 and no brew, fallback is
-    ``/opt/homebrew``.
-
-    We create a fake ``uname`` that always reports arm64 and ensure
-    ``brew`` is not on PATH.
-    """
-    # Create a fake uname that reports arm64
-    fake_bin = tmp_path / 'bin'
-    fake_bin.mkdir()
-    # Locate the real uname binary for the passthrough case.
-    real_uname = subprocess.run(
-        ['which', 'uname'], capture_output=True, text=True
-    ).stdout.strip()
-
-    fake_uname = fake_bin / 'uname'
-    fake_uname.write_text(
-        f'#!/bin/bash\nif [[ "$1" == "-m" ]]; then echo arm64; else {real_uname} "$@"; fi\n'
-    )
-    fake_uname.chmod(0o755)
-
-    # Test the brew-prefix fallback logic in isolation.  The restricted PATH
-    # excludes brew on all platforms (including Linux with Linuxbrew), so the
-    # snippet always exercises the fallback branch.
-    snippet = f"""\
-export PATH="{fake_bin}:/usr/bin:/bin"
-if [[ "$(uname -m)" == "arm64" ]]; then
-    default_brew_prefix="/opt/homebrew"
-else
-    default_brew_prefix="/usr/local"
-fi
-brew_prefix=$(brew --prefix 2>/dev/null || echo "$default_brew_prefix")
-echo "$brew_prefix"
-"""
-    env = {**os.environ, 'PATH': f'{fake_bin}:/usr/bin:/bin'}
-    result = subprocess.run(
-        ['bash', '-c', snippet],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    assert result.returncode == 0
-    assert result.stdout.strip() == '/opt/homebrew'
+def test_petsc_configure_on_macos_gets_no_library_path(tmp_path):
+    """On macOS with a system MPI, PETSc configure gets LDFLAGS=-Wl,-w and no -L in any
+    argument or build variable, so no library directory comes ahead of the SUNDIALS 2.5 it
+    downloads."""
+    result = _run_petsc_macos(tmp_path, ('xcrun', 'mpicc', 'mpirun'))
+    assert result.returncode == 0, result.stderr
+    args = _petsc_configure_args(tmp_path)
+    assert {'LDFLAGS=-Wl,-w', '--download-sundials2'} <= set(args)
+    assert '--download-mpich' not in args
 
 
 @pytest.mark.unit
-def test_brew_prefix_fallback_x86_64(tmp_path):
-    """With ``uname -m`` spoofed to x86_64 and no brew, fallback is
-    ``/usr/local``.
+def test_petsc_configure_on_macos_without_mpicc_downloads_mpich(tmp_path):
+    """Without mpicc on PATH, PETSc downloads MPICH and still gets only LDFLAGS=-Wl,-w."""
+    result = _run_petsc_macos(tmp_path, ('xcrun',), path_extra='')
+    assert result.returncode == 0, result.stderr
+    args = _petsc_configure_args(tmp_path)
+    assert {'LDFLAGS=-Wl,-w', '--download-sundials2', '--download-mpich'} <= set(args)
 
-    Works on Linux too: ``brew`` is not on the restricted PATH, so the
-    fallback branch is always exercised regardless of platform.
-    """
-    fake_bin = tmp_path / 'bin'
-    fake_bin.mkdir()
 
-    real_uname = subprocess.run(
-        ['which', 'uname'], capture_output=True, text=True
-    ).stdout.strip()
-
-    fake_uname = fake_bin / 'uname'
-    fake_uname.write_text(
-        f'#!/bin/bash\nif [[ "$1" == "-m" ]]; then echo x86_64; else {real_uname} "$@"; fi\n'
-    )
-    fake_uname.chmod(0o755)
-
-    snippet = f"""\
-export PATH="{fake_bin}:/usr/bin:/bin"
-if [[ "$(uname -m)" == "arm64" ]]; then
-    default_brew_prefix="/opt/homebrew"
-else
-    default_brew_prefix="/usr/local"
-fi
-brew_prefix=$(brew --prefix 2>/dev/null || echo "$default_brew_prefix")
-echo "$brew_prefix"
-"""
-    env = {**os.environ, 'PATH': f'{fake_bin}:/usr/bin:/bin'}
-    result = subprocess.run(
-        ['bash', '-c', snippet],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    assert result.returncode == 0
-    assert result.stdout.strip() == '/usr/local'
+@pytest.mark.unit
+def test_petsc_on_macos_without_xcrun_stops_before_configure(tmp_path):
+    """Without xcrun the script stops with its install hint and never runs configure."""
+    result = _run_petsc_macos(tmp_path, ('mpicc', 'mpirun'), path_extra='')
+    assert result.returncode == 1
+    assert 'xcrun not found' in result.stdout and 'xcode-select --install' in result.stdout
+    assert not (tmp_path / 'args').exists()
 
 
 # ---------------------------------------------------------------------------

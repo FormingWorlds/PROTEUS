@@ -66,7 +66,9 @@ class Calliope:
         Enable solubility of volatiles into melt.
     nguess: int
         Maximum number of initial-guess samples for the CALLIOPE
-        equilibrium solver. Default 1000.
+        equilibrium solver. The samples come from a fixed seed, so identical
+        inputs draw the same guesses, and an input that exhausts the samples
+        fails the same way on a rerun. Default 1000.
     nsolve: int
         Maximum number of iterations of the CALLIOPE equilibrium
         solver per call. Default 3000.

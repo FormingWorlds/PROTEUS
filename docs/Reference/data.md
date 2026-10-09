@@ -7,9 +7,9 @@ config files. For instructions on switching between spectrum sources, see
 ## Automatic data download
 
 PROTEUS downloads reference data from
-[Zenodo](https://zenodo.org/communities/proteus_framework/) on first run.
-Each dataset is provisioned by one of two mechanisms, named per dataset in the
-table below.
+[Zenodo](https://zenodo.org/communities/proteus_framework/) on first run,
+through fwl-io; the stellar evolution tracks come through MORS, which uses
+fwl-io as well.
 
 **fwl-io.** [fwl-io](https://github.com/FormingWorlds/fwl-io) pins a dataset to
 a Zenodo version DOI declared in a manifest, verifies every file against a
@@ -17,42 +17,42 @@ checksum registry committed beside that manifest,
 and places the files in a version directory named for the record, so a re-pinned
 deposit lands beside its predecessor rather than overwriting it. Every request
 carries a connect and read timeout, and a transient failure is retried with
-backoff. Zenodo is currently the only mirror these datasets declare, so an
-unreachable Zenodo means the fetch fails rather than falling back elsewhere.
+backoff. For every dataset except the PHOENIX spectra, which have no mirror yet, a
+file that Zenodo does not serve is fetched from the
+[DataverseNL](https://dataverse.nl/dataverse/Proteus_Fr) mirror the manifest pins
+beside the record, and checked against the same registry.
 Data several models read (spectral files, stellar spectra, equations of state,
-melting curves, lookup tables) is declared in the shared manifest that fwl-io
+melting curves, lookup tables, mass-radius curves) is declared in the shared manifest that fwl-io
 ships; data only PROTEUS reads is declared in `src/proteus/data/proteus_manifest.toml`.
 A data folder in the older layout is brought into this one as described in
 [Upgrading an older data folder](#upgrading-an-older-data-folder).
-
-**The PROTEUS downloader.** `proteus.utils.data` fetches a whole Zenodo record,
-retrying a few times, and falls back to the corresponding project on the
-[Open Science Framework](https://osf.io/) (OSF) when Zenodo is unavailable. A
-Zenodo API token applies to this mechanism only; without one, public access is
-used with lower rate limits.
 
 | Dataset | Provisioned by | Downloaded by |
 |---|---|---|
 | Stellar spectra (solar, named stars, MUSCLES) | fwl-io | `proteus get solar`, `proteus get muscles` |
 | PHOENIX synthetic spectra | fwl-io | `proteus get phoenix`, or fetched when a run needs a grid |
-| Stellar evolution tracks | PROTEUS downloader | `proteus get stellar` |
+| Stellar evolution tracks | MORS, through fwl-io | `proteus get stellar` |
 | Spectral k-tables | fwl-io | `proteus get spectral` |
 | Surface albedos | fwl-io | `proteus get surfaces` |
-| Scattering properties | PROTEUS downloader | `proteus get scattering` |
+| Scattering properties | fwl-io | `proteus get scattering` |
 | Exoplanet populations, mass-radius curves | fwl-io | `proteus get reference` |
 | Interior structure EOS tables | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
 | Melting curves | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
 | P-S lookup tables | fwl-io | fetched when SPIDER or Aragog run without a generated PALEOS table set |
 
-To configure a Zenodo API token, see the
-[Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
+The scattering tables in the version directory below `$FWL_DATA/atmos_clim/scattering/socrates_aerosols`
+decide which `.mon` aerosol species PROTEUS offers to AGNI; AGNI reads the tables
+themselves from its own `res/scattering` folder. Fetch them with `proteus get scattering`
+before a run with `--offline` and aerosols enabled: without them that run only warns
+and offers no `.mon` aerosol species.
 
 ### Upgrading an older data folder
 
-A `$FWL_DATA` folder written by an older PROTEUS keeps its files at paths that are no longer read. Two steps bring it into the current layout:
+A `$FWL_DATA` folder written by an older PROTEUS keeps its files at paths that are no longer read. Three steps bring it into the current layout:
 
 1. Run `fwl-io relocate`. It moves every dataset whose files all match their pinned checksums into its version directory. `fwl-io relocate --dry-run` lists what would move, what is incomplete and what does not match, without moving anything.
-2. Run `proteus start --config <config.toml>` once without `--offline`, which downloads the data that configuration needs, or `proteus get interiordata --config-path <config.toml>` for the interior tables alone. This downloads what the first step left: incomplete and mismatched datasets, and those it cannot move (the Chabrier archive, the surface albedos, the Seager tables and the Spada tracks).
+2. Run `proteus start --config <config.toml>` once without `--offline`, which downloads the data that configuration needs, or `proteus get interiordata --config-path <config.toml>` for the interior tables alone. This downloads what the first step left: incomplete and mismatched datasets, and those it cannot move (the Chabrier archive, the surface albedos, the Seager tables, the Spada tracks and the scattering tables).
+3. Delete `$FWL_DATA/scattering`, which PROTEUS does not read; `proteus get scattering` fetches the tables into their version directory. The `zenodo_download.log` and `zenodo_validate.log` files in `$FWL_DATA` and the `*.zenodo` files beside downloaded files are no longer written or read and can be deleted too.
 
 A run with `--offline` stops when an interior EOS table, a melting curve, a P-S lookup table, a spectral file, a stellar spectrum or a surface albedo file is missing. The error names its download command and ends with: "Data kept in the older FWL_DATA layout can be moved into place with `fwl-io relocate`." Two stops have no download command. A spectral file of a group and band count that no manifest declares is not downloaded, so its error says to place the file at the path it names. PALEOS-API tables are built at start from the `paleos` package, so their error names that package.
 
@@ -251,10 +251,12 @@ Theoretical mass-radius curves for a range of interior and atmospheric
 structures, from [Zeng et al. (2019)](https://doi.org/10.1073/pnas.1812905116),
 taken from the author's [planet model tables](https://lweb.cfa.harvard.edu/~lzeng/planetmodels.html#mrtables).
 
-Fetched through fwl-io into
-`$FWL_DATA/observe/mass_radius/zeng_2019/r<record-id>/`, on the same terms as
-the exoplanet catalogue above. A copy under `$FWL_DATA/mass_radius/Zeng2019` is
-not read and can be deleted.
+Declared in the fwl-io shared manifest and fetched into
+`$FWL_DATA/interior/mass_radius/zeng_2019/r<record-id>/`, on the same terms as
+the exoplanet catalogue above. Copies under `$FWL_DATA/mass_radius/Zeng2019` and
+`$FWL_DATA/observe/mass_radius/zeng_2019` are not read and can be deleted; the
+curves (57 files, 20 kB) are fetched again. On a machine that runs with `--offline`, such
+as a cluster node, run `proteus get reference` once before the first offline run.
 
 ---
 
@@ -266,14 +268,14 @@ All equation-of-state tables are fetched through fwl-io into `$FWL_DATA/<dataset
 
 | Dataset directory | Contents | Fetched |
 |---|---|---|
-| `interior_struct/eos/seager_2007` | Seager et al. (2007) iron, silicate and water tables | whole record |
+| `interior/eos/seager_2007` | Seager et al. (2007) iron, silicate and water tables | whole record |
 | `interior/eos/wolf_bower_2018_1tpa` | Wolf and Bower (2018) MgSiO3 melt and solid tables to 1 TPa | melt density, melt adiabatic gradient and solid density for `WolfBower2018`; the solid density alone for `RTPress100TPa` |
 | `interior/eos/rtpress_melt_100tpa` | RTPress MgSiO3 melt tables to 100 TPa | melt density and melt adiabatic gradient |
 | `interior/eos/paleos_mgsio3` | PALEOS MgSiO3 solid and liquid tables, 150 and 600 points per decade | the 150 points-per-decade pair for `PALEOS-2phase:MgSiO3`, the 600 points-per-decade pair for `PALEOS-2phase:MgSiO3-highres` |
 | `interior/eos/paleos_iron`, `paleos_mgsio3_unified`, `paleos_h2o` | PALEOS unified tables for iron, MgSiO3 and water | the table of each selected component |
 | `interior/eos/chabrier_2021_hhe` | Chabrier et al. hydrogen and helium tables | archive extracted into `r<record-id>/EOS_Chabrier2021_HHe/` |
 
-Tables under `$FWL_DATA/zalmoxis_eos` and `$FWL_DATA/EOS_material_properties` are not read where they are. `fwl-io relocate` moves a `zalmoxis_eos` folder that holds every file of its dataset; the rest can be deleted once the run has fetched them.
+Tables under `$FWL_DATA/zalmoxis_eos`, `$FWL_DATA/EOS_material_properties` and `$FWL_DATA/interior_struct/eos/seager_2007` are not read where they are; the Seager tables (0.2 MB) are fetched again into `interior/eos/seager_2007`; before an `--offline` run, fetch them once with `proteus get interiordata --config-path <config.toml>`. `fwl-io relocate` moves a `zalmoxis_eos` folder that holds every file of its dataset; the rest can be deleted once the run has fetched them.
 
 ---
 
