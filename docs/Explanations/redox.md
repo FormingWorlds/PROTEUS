@@ -124,10 +124,6 @@ On a single-cation basis, one mole of Fe$^{2+}$ is one mole of FeO units and one
 
 The per-cell Fe$^{3+}$ partition coefficient $D_i^{3+}$ (step 4) is also fixed at this call, from the pressure profile of the first step.
 
-!!! example "Worked example: 1 kg of melt, f₀ = 0.1"
-
-    $n^{2+}=0.08\times1/0.07184=1.1136$ mol, $n^{3+}=1.1136\times0.1/0.9=0.1237$ mol, so $n^{2+}+n^{3+}=1.2373$ mol and $f=0.1237/1.2373=0.100$. One iron ion in ten is ferric.
-
 ### 2. Determine newly formed solid
 
 Steps 2 to 5 run on every later call until the mantle has fully solidified. They are an explicit, step-by-step form of fractional crystallization: crystals that form are removed from contact with the melt and never re-equilibrate with it.
@@ -251,41 +247,6 @@ Iron that has entered the solid is never returned to the melt. If a cell remelts
 
 When no melt remains ($M_{\rm melt}^{\rm prev}=0$), the tracker records that the mantle has solidified and keeps the final $f$ for the rest of the run.
 
-### How $f$ evolves
-
-Steps 2 to 5 are an explicit discretization of a continuous process. Consider one assemblage with constant coefficients. Removing a small solid mass $dM_s=-dM$ from melt of mass $M$ gives
-
-$$
-dn^{3+}=D^{3+}\frac{n^{3+}}{M}\,dM,
-\qquad
-dn^{2+}=D^{2+}\frac{n^{2+}}{M}\,dM.
-$$
-
-Integrating from the initial melt mass $M_0$ gives the Rayleigh fractionation law for each species. Taking their ratio,
-
-$$
-\frac{n^{3+}}{n^{3+}_0}=\left(\frac{M}{M_0}\right)^{D^{3+}},
-\qquad
-\frac{R}{R_0}=\left(\frac{M}{M_0}\right)^{D^{3+}-D^{2+}}.
-$$
-
-With $D^{2+}=0.85$, the exponent is negative in both assemblages, so $R$ rises as the melt shrinks. The exponent is $-0.4675$ in the shallow (Cpx + Opx) regime and $-0.10$ in the bridgmanite regime. Shallow crystallization is therefore almost five times more effective at oxidizing the residual melt.
-
-This continuous limit explains the trend and provides an independent check of the step-by-step code (figure below). The code itself applies steps 2 to 5 with the cell-dependent coefficients of step 4. In a real run, the deep and shallow cells crystallize at different times, so $f$ follows neither curve exactly.
-
-<figure markdown="span">
-  ![Fractional crystallization](../assets/redox/redox_crystallization.svg){ width="760" }
-  <figcaption>(a) Schematic of one cell between two calls: the new solid takes iron in the proportions set by the partition coefficients, and Fe³⁺, being less compatible, stays preferentially in the melt. (b) Melt ferric fraction against remaining melt mass for one assemblage starting from f₀ = 0.1. Lines: the Rayleigh limit above. Circles: update_melt_redox applied in 5000 equal steps. Crosses: the same in 10 equal steps.</figcaption>
-</figure>
-
-!!! example "Worked example: crystallizing 1 kg of melt from f = 0.1"
-
-    **One step, 0.1 kg crystallized.** In the bridgmanite regime, $\Delta n^{3+}=0.75\times0.1237\times0.1=0.00928$ mol and $\Delta n^{2+}=0.85\times1.1136\times0.1=0.0947$ mol, so the new $f=0.1010$. In the shallow regime the new $f$ is $0.1046$.
-
-    **Crystallizing to $M/M_0=0.5$ in 5000 steps.** The code gives $R/R_0=1.0718$ (bridgmanite) and $1.3827$ (shallow). These equal $0.5^{-0.10}$ and $0.5^{-0.4675}$ from the Rayleigh law to about $10^{-5}$.
-
-    **Crystallizing to $M/M_0=0.02$.** The code gives $f=0.141$ (bridgmanite) and $0.409$ (shallow) with 5000 steps, and $0.153$ and $0.419$ with 10 equal steps. The difference is the first-order step error described under [Assumptions and limitations](#assumptions-and-limitations).
-
 ## From melt redox to surface $f_{\rm O_2}$
 
 At the surface, the melt exchanges oxygen with the atmosphere through the ferric-ferrous equilibrium
@@ -296,25 +257,7 @@ $$
 
 For a given redox ratio $R$ of the well-mixed melt and a given temperature, this equilibrium fixes the oxygen fugacity. More ferric iron (larger $R$) gives a higher $f_{\rm O_2}$.
 
-The depth physics (where and how fast the mantle crystallizes, and with which $D^{3+}$) reaches the surface only through $R$.
-
 ### Hirschmann (2022) relation
-
-For ideal mixing, the law of mass action for the equilibrium above would read
-
-$$
-\log_{10}\frac{X_{\rm FeO_{1.5}}}{X_{\rm FeO}}
-=
-\tfrac14\log_{10}f_{\rm O_2}+\log_{10}K(T)+\log_{10}\frac{\gamma_{\rm FeO}}{\gamma_{\rm FeO_{1.5}}}.
-$$
-
-Hirschmann's empirical relation has the same structure, with three changes:
-
-- the ¼ is replaced by a fitted exponent $a$;
-- $\log_{10}K$ is a function of temperature (the $b$, $c$ and $\Delta C_p$ terms);
-- the activity-coefficient ratio becomes a function of melt composition (the $Y_k$ terms).
-
-This reading of the relation's structure is our interpretation; it is not stated in that form by Hirschmann (2022).
 
 Hirschmann (2022), Eq. 21, relates the ferric/ferrous ratio of the melt to its oxygen fugacity:
 
@@ -384,18 +327,7 @@ CALLIOPE or atmodeller uses this value instead of `outgas.fO2_shift_IW` for that
 
 CALLIOPE and atmodeller themselves raise $T_{\rm magma}$ to `outgas.T_floor` before solving. Evaluating both the melt $f_{\rm O_2}$ and the buffer at $T_{\rm out}$ therefore keeps $\Delta$IW consistent with the temperature actually used downstream. When $T_{\rm out}>T_{\rm magma}$, a warning is logged.
 
-At fixed $f$, $\Delta$IW decreases with temperature, because the IW buffer rises with $T$ faster than the melt $f_{\rm O_2}$ does (panel a below). The same melt can therefore lie above IW in a cool magma ocean and below it in a hot one.
-
-<figure markdown="span">
-  ![Surface oxygen fugacity and IW offset](../assets/redox/redox_fO2.svg){ width="760" }
-  <figcaption>(a) Surface log₁₀ fO₂ from the Hirschmann (2022) relation at 1 bar for three melt ferric fractions, and the Hirschmann (2021) IW buffer at 1 bar. The shaded region lies above the 3000 K calibration limit of the buffer. (b) ΔIW passed to outgassing as a function of the melt ferric fraction. Curves and markers are computed with the functions of redox.py and the fixed bulk-silicate-Earth composition.</figcaption>
-</figure>
-
-!!! example "Worked example: T_out = 2000 K, f = 0.1"
-
-    $\log_{10}R=\log_{10}(0.1/0.9)=-0.954$. The Hirschmann (2022) relation at 1 bar then gives $\log_{10}f_{\rm O_2}=-5.33$. The Hirschmann (2021) buffer at 2000 K and 1 bar is $-7.05$, so $\Delta{\rm IW}=+1.72$.
-
-    At the same temperature, $f=0.02$ gives $\Delta{\rm IW}=-2.09$. At 3000 K, $f=0.1$ gives $\Delta{\rm IW}=-0.44$.
+At fixed $f$, $\Delta$IW decreases with temperature, because the IW buffer rises with $T$ faster than the melt $f_{\rm O_2}$ does. The same melt can therefore lie above IW in a cool magma ocean and below it in a hot one.
 
 !!! warning "Temperature range of the IW buffer"
 
@@ -481,6 +413,17 @@ The unit tests in `tests/interior_chem/test_redox.py` check that:
 - the real melt-fraction change determines how much iron crystallizes;
 - the Hirschmann (2021) buffer agrees with an independent 1-bar IW calibration near 1500 K and has the expected pressure dependence;
 - a run resumed from a snapshot reaches the same final reservoirs as an uninterrupted run.
+
+### Comparison with Schaefer et al. (2024)
+
+The figure compares a coupled Earth run (Aragog, `ferric_fraction_initial = 0.1`, `metal_saturation = false`) with the whole-mantle fractional crystallization of Schaefer et al. (2024)[^cite-schaefer2024] for the same initial ferric fraction. Schaefer et al. do not model time; they plot the melt state against the pressure at the base of the magma ocean. Each PROTEUS interior snapshot is therefore placed at the Schaefer base pressure with the same remaining melt mass, which does not depend on a melt-fraction threshold for the base of the mushy PROTEUS magma ocean.
+
+<figure markdown="span">
+  ![Comparison with Schaefer et al. (2024)](../assets/redox/redox_validation_schaefer.svg){ width="760" }
+  <figcaption>Whole-mantle fractional crystallization without metal saturation, f₀ = 0.1. (a) Melt ferric fraction and (b) surface ΔIW at 1 bar against the pressure at the base of the magma ocean. Blue: Schaefer et al. (2024), mean of 1000 Monte Carlo runs (their Fig. 3) and range of all runs (their Fig. 2) their mass ratio FeO₁.₅/(FeO₁.₅+FeO) is converted to the molar ferric fraction. Vermillion: PROTEUS, the interior snapshots placed at equal remaining melt mass. The PROTEUS ΔIW is taken at the uppermost melt cell and its temperature; Schaefer et al. evaluate it on an adiabat anchored at the solidus of the base.</figcaption>
+</figure>
+
+Both models start from the same state. The PROTEUS ferric fraction stays within the range of the Schaefer et al. runs down to a base pressure of about 15 GPa, near the upper edge of that range, and lies slightly above it at shallower bases. With $D^{2+}=0.85$ above $D^{3+}=0.75$ in the bridgmanite regime, Fe$^{3+}$ stays in the melt as the lower mantle crystallizes, whereas the mean Schaefer et al. run removes it there. The surface $\Delta$IW lies above all of their runs by 0.3 to 1.2 log units. It adds to the ferric-fraction difference the different temperature convention and the fixed bulk-silicate-Earth composition used in the activity terms of the Hirschmann (2022) relation; Schaefer et al. evolve the melt composition during crystallization.
 
 ---
 
