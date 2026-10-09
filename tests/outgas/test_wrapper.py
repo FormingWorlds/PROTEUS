@@ -2305,9 +2305,9 @@ def test_run_crystallized_scales_the_volatile_element_reservoirs():
     from proteus.outgas.wrapper import run_crystallized
 
     hf_row = {
-        'M_atm': 100.0,
+        'M_atm': 105.0,  # the H2O column and the Si vapour
         'esc_rate_total': 1.0,
-        'esc_step_kg': 10.0,  # 10 of 100 leaves, so 0.90 is retained
+        'esc_step_kg': 10.0,  # 10 of the 105 kg of elements leaves, 95/105 is retained
         'H2O_kg_atm': 100.0,
         'H2O_bar': 10.0,
         'P_surf': 10.0,
@@ -2318,14 +2318,14 @@ def test_run_crystallized_scales_the_volatile_element_reservoirs():
     }
     run_crystallized(_cryst_cfg(), hf_row, dt=1.0)
 
-    assert hf_row['H_kg_atm'] == pytest.approx(18.0, rel=1e-9)
-    assert hf_row['O_kg_atm'] == pytest.approx(72.0, rel=1e-9)
-    # Discrimination: an unscaled reservoir stays at 20.0, which is 2 kg from
+    assert hf_row['H_kg_atm'] == pytest.approx(20.0 * 95.0 / 105.0, rel=1e-9)
+    assert hf_row['O_kg_atm'] == pytest.approx(80.0 * 95.0 / 105.0, rel=1e-9)
+    # Discrimination: an unscaled reservoir stays at 20.0, which is 1.9 kg from
     # the correct value and far outside the tolerance above.
     assert abs(hf_row['H_kg_atm'] - 20.0) > 1.0
     # Si is reached through the species loop and the element loop must not
-    # scale it a second time; 0.9 twice would land on 4.05, not 4.5.
-    assert hf_row['Si_kg_atm'] == pytest.approx(4.5, rel=1e-9)
+    # scale it a second time; twice would land on 4.09, not 4.52.
+    assert hf_row['Si_kg_atm'] == pytest.approx(5.0 * 95.0 / 105.0, rel=1e-9)
     # An element the column never held stays empty rather than going negative.
     assert hf_row['C_kg_atm'] == pytest.approx(0.0, abs=1e-30)
 
@@ -2757,3 +2757,67 @@ def test_desiccation_with_trapping_keeps_the_mantle_and_books_the_atmosphere():
     assert stale['O_kg_total'] == pytest.approx(3.2e20, rel=1e-15)
     assert stale['O_kg_liquid'] == pytest.approx(0.0, abs=0.0)
     assert not np.isfinite(stale['C_kg_total'])
+
+
+@pytest.mark.physics_invariant
+def test_a_frozen_atmosphere_loses_per_element_what_escape_takes_from_each_total():
+    """On a frozen mantle, escape debits each element total by its share of the
+    escaping mass, its atmospheric mass over the element sum, and run_crystallized
+    removes the same mass from each element's atmosphere. With CALLIOPE the
+    species masses sum to 1.0000177 times the element masses; a scaling sized
+    from M_atm would then leave 1.8e-5 of every step's loss in the atmosphere,
+    and as escape draws the N total down to what the solid holds that gap grows
+    past the closure tolerance. Over 60 quarter-atmosphere steps every element
+    closes to 1e-10 instead."""
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.coupler import assert_mass_conservation
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e10
+    config.outgas.vapourise = False
+    config.interior_struct.module = 'dummy'
+
+    ratio = 1.0000177
+    row = _outgas_row()
+    # A frozen H2O-N2 atmosphere over a mantle that holds 1e15 kg of N and some H, O.
+    atm = {'H': 4.0e17, 'O': 3.2e18, 'N': 1.2e16}
+    held = {'H': 1.0e17, 'O': 8.0e17, 'N': 1.0e15}
+    for e in atm:
+        row.update({f'{e}_kg_atm': atm[e], f'{e}_kg_solid': held[e]})
+        row[f'{e}_kg_total'] = atm[e] + held[e]
+    species = {'H2O': 3.6e18 * ratio, 'N2': 1.2e16 * ratio}
+    for s, mass in species.items():
+        row.update({f'{s}_kg_atm': mass, f'{s}_bar': mass * 1e-17})
+    row.update(M_atm=sum(species.values()), M_vol_atm=sum(species.values()), P_surf=36.12)
+    row.update(M_planet=6.0e24, esc_kg_cumulative=0.0, M_vol_initial=4.513e18)
+    n_start = row['N_kg_total']
+
+    for _ in range(60):
+        run_escape(config, row, dt=1.0e4, atmosphere_only=True)
+        run_crystallized(config, row, dt=1.0e4)
+        for e in atm:
+            parts = row[f'{e}_kg_atm'] + row[f'{e}_kg_liquid'] + row[f'{e}_kg_solid']
+            assert parts == pytest.approx(row[f'{e}_kg_total'], rel=1e-10)
+        assert_mass_conservation(row, check_element_closure=True, closure_rtol=1.0e-4)
+
+    # The N total is down to what the solid holds, the atmosphere to 3e8 kg.
+    assert row['N_kg_total'] == pytest.approx(1.0e15, rel=1e-6)
+    assert row['N_kg_atm'] < 1.0e9
+    # The species columns keep their ratio to the element masses.
+    assert row['M_atm'] == pytest.approx(ratio * sum(row[f'{e}_kg_atm'] for e in atm), rel=1e-9)
+    # Discrimination: sized from M_atm, the atmosphere would keep 1.8e-5 of the
+    # 1.2e16 kg of N that escaped, 2.1e-4 of the N total, past the 1e-4 limit.
+    gap = (1.0 - 1.0 / ratio) * (n_start - row['N_kg_total'])
+    assert gap / row['N_kg_total'] > 2.0e-4
+
+    # Edge case: a row that records no element atmosphere scales by the species
+    # sum, the only measure of the column it has.
+    bare = {'M_atm': 100.0, 'esc_rate_total': 1.0, 'esc_step_kg': 10.0, 'H2O_kg_atm': 100.0}
+    run_crystallized(_cryst_cfg(), bare, dt=1.0)
+    assert bare['H2O_kg_atm'] == pytest.approx(90.0, rel=1e-12)

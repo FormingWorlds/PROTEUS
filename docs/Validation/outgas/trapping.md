@@ -43,6 +43,11 @@ The trapping tests also assert, without a published reference:
 - desiccation emptying the atmosphere into `M_desiccated` and keeping the
   solid, and with trapping on the melt as well, so the closure holds and a
   remelt's release stays in the planet.
+- a mantle frozen with `freeze_volatiles` escaping a quarter of its atmosphere
+  a step for 20 steps through the main loop, with the species masses at
+  CALLIOPE's 1.0000177 times the element masses, every element closing to
+  `1e-10` on every row: the frozen step removes from each element's
+  atmosphere what escape took from its total.
 
 ## Scope
 

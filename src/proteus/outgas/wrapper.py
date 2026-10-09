@@ -541,15 +541,17 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     trapped in the solid and outgassing no longer replenishes the atmosphere.
 
     Escape, however, continues. ``run_escape`` runs earlier in the main loop
-    with ``atmosphere_only=True`` in this regime, so it debits the whole-planet
-    element totals (``*_kg_total``) proportional to atmospheric abundance. The
-    same escaped mass is removed from the atmospheric reservoirs here by scaling
-    them with the retained fraction. Because the chemistry is frozen and the
-    escape is unfractionated, the scaling is composition-preserving: partial-
-    pressure ratios, VMRs, and the mean molecular weight are unchanged. Sizing
-    the loss from the atmosphere in both places keeps the per-element
-    ``*_kg_total`` and the atmospheric reservoirs mutually consistent for every
-    ``escape.reservoir`` setting.
+    with ``atmosphere_only=True`` in this regime, so it debits each element
+    total (``*_kg_total``) by its share of the escaping mass, its atmospheric
+    mass over the sum of the element masses in the atmosphere. The atmospheric
+    reservoirs are scaled here by the fraction of that same sum that remains,
+    so each element's atmosphere loses exactly what escape took from its total
+    and the per-element totals and reservoirs stay consistent. ``M_atm``, the
+    sum of the species masses, can differ from the element sum where the
+    chemistry's molar masses do (by 1.8e-5 with CALLIOPE); scaling it by
+    ``(M_atm - esc) / M_atm`` instead would leave that fraction of every step's
+    loss in the atmosphere. The scaling is uniform, so partial-pressure ratios,
+    VMRs and the mean molecular weight are unchanged.
 
     Parameters
     ----------
@@ -574,6 +576,11 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
 
     m_atm = float(hf_row.get('M_atm', 0.0))
     esc_rate = float(hf_row.get('esc_rate_total', 0.0))
+    # The element masses in the atmosphere, the reservoir escape shared its loss over;
+    # a row that records none has only the species sum.
+    m_elements = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list)
+    if m_elements == 0.0:
+        m_elements = m_atm
 
     if dt <= 0.0:
         # A non-positive step is a coupling error, not a benign no-op: surface it
@@ -586,8 +593,9 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
         )
         return
 
-    if m_atm <= 0.0 or esc_rate <= 0.0:
-        # No atmosphere or no active escape: reservoirs stay as-is.
+    if m_atm <= 0.0 or esc_rate <= 0.0 or not m_elements > 0.0:
+        # No atmosphere, no active escape, or an unreadable element atmosphere:
+        # reservoirs stay as-is.
         log.info('Crystallized mantle: volatile exchange frozen, reservoirs preserved')
         return
 
@@ -600,7 +608,7 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
         esc_step_kg = esc_rate * secs_per_year * dt
     esc_step_kg = float(esc_step_kg)
 
-    if esc_step_kg > m_atm:
+    if esc_step_kg > m_elements:
         # Escape took more from the elemental totals than the column holds, so
         # the loss was sized from a reservoir the frozen mantle no longer
         # supplies and the two records of this step disagree by the excess.
@@ -609,10 +617,10 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
             'atmosphere holds only %.3e kg; the column empties and the excess '
             '%.3e kg leaves no reservoir that tracks it.',
             esc_step_kg,
-            m_atm,
-            esc_step_kg - m_atm,
+            m_elements,
+            esc_step_kg - m_elements,
         )
-    retained = max(0.0, (m_atm - esc_step_kg) / m_atm)
+    retained = max(0.0, (m_elements - esc_step_kg) / m_elements)
 
     # Scale the atmospheric reservoirs by the retained fraction. Uniform
     # scaling preserves composition, so `*_vmr` and `atm_kg_per_mol` (mmw)

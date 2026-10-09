@@ -4170,3 +4170,104 @@ def test_resume_takes_the_desiccated_latch_from_the_restored_row(tmp_path, verdi
     )
     assert p.desiccated is verdict
     assert rows == [float(hf['Time'].iloc[-1])]
+
+
+# CALLIOPE's species masses sum to this multiple of its element masses.
+_CALLIOPE_SPECIES_OVER_ELEMENTS = 1.0000177
+
+
+def _frozen_escape_run(tmp_path, monkeypatch, n_frozen: int):
+    """Run the dummy configuration to a frozen mantle, then escape from it.
+
+    The real dummy interior runs every step; around it, the melt fraction falls
+    from 1 to 0.002 in ten steps and holds there, below phi_crit, with
+    freeze_volatiles on, and the dummy escape strips a quarter of the
+    atmosphere a step once the mantle is frozen. The dummy chemistry splits
+    species into elements exactly, so it is wrapped to put the species masses
+    at the CALLIOPE ratio to the element masses. Trapping is switched on after
+    loading, so the per-element closure is checked on every step.
+    """
+    import proteus.interior_energetics.wrapper as interior_wrapper
+    import proteus.outgas.dummy as dummy_outgas
+    from proteus import Proteus
+    from proteus.utils.constants import gas_list
+
+    out = tmp_path / 'run'
+    text = (Path(__file__).resolve().parents[1] / 'input' / 'dummy.toml').read_text()
+    cfg = tmp_path / 'frozen.toml'
+    cfg.write_text(text.replace('path = "auto"', f'path = "{out}"', 1))
+    runner = Proteus(config_path=cfg)
+    config = runner.config
+    config.outgas.trap_mode = 'front'
+    config.atmos_chem.module = None
+    config.params.stop.solid.enabled = False
+    config.params.stop.solid.freeze_volatiles = True
+    config.params.stop.time.minimum = 0.0
+    config.params.stop.time.maximum = 1.0e9
+    config.params.out.plot_mod = None
+    config.params.out.archive_mod = 'none'
+
+    real_chemistry = dummy_outgas.calc_surface_pressures_dummy
+
+    def chemistry(dirs, cfg_, hf_row, **kwargs):
+        real_chemistry(dirs, cfg_, hf_row, **kwargs)
+        for s in gas_list:
+            hf_row[f'{s}_kg_atm'] *= _CALLIOPE_SPECIES_OVER_ELEMENTS
+
+    real_interior = interior_wrapper.run_interior
+    state = {'steps': -1}
+
+    def interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs):
+        real_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs)
+        if runner.init_stage:
+            hf_row['Phi_global'] = 1.0
+            return
+        state['steps'] += 1
+        hf_row['Phi_global'] = max(1.0 - 0.1 * state['steps'], 0.002)
+        frozen = hf_row['Phi_global'] < cfg_.params.stop.solid.phi_crit
+        cfg_.escape.dummy.rate = 1.0e14 if frozen else 0.0
+        if state['steps'] >= 10 + n_frozen:
+            cfg_.params.stop.time.maximum = float(hf_row['Time'])
+
+    monkeypatch.setattr(dummy_outgas, 'calc_surface_pressures_dummy', chemistry)
+    monkeypatch.setattr(interior_wrapper, 'run_interior', interior)
+    runner.start(resume=False, offline=True)
+    return runner, runner.hf_all
+
+
+@pytest.mark.physics_invariant
+def test_a_frozen_mantle_escapes_over_many_steps_with_every_element_closing(
+    tmp_path, monkeypatch
+):
+    """A mantle frozen with freeze_volatiles loses a quarter of its atmosphere a
+    step to escape for 20 steps, with trapping on, so the per-element closure is
+    asserted on every row. Escape debits each element total by its share of the
+    element masses in the atmosphere, and the frozen step removes the same mass
+    from each element's atmosphere. Where the species masses exceed the element
+    masses, as CALLIOPE's do by 1.8e-5, a debit sized from M_atm would leave that
+    fraction of each step's loss behind, and once escape has drawn the totals
+    down towards what the solid holds the run stops on the closure check."""
+    runner, hf = _frozen_escape_run(tmp_path, monkeypatch, n_frozen=20)
+    frozen = hf[hf['Phi_global'] < 0.01]
+    assert len(frozen) >= 20
+    assert runner.crystallized
+
+    # Every element closes on every row, to rounding.
+    for e in ('H', 'O', 'C', 'N', 'S'):
+        parts = hf[f'{e}_kg_atm'] + hf[f'{e}_kg_liquid'] + hf[f'{e}_kg_solid']
+        total = hf[f'{e}_kg_total']
+        carried = total > 0.0
+        np.testing.assert_allclose(parts[carried], total[carried], rtol=1e-10)
+    # Escape took most of the hydrogen the mantle does not hold.
+    h_start, h_end = frozen['H_kg_total'].iloc[0], frozen['H_kg_total'].iloc[-1]
+    h_held = frozen['H_kg_liquid'].iloc[-1] + frozen['H_kg_solid'].iloc[-1]
+    assert (h_end - h_held) < 0.01 * (h_start - h_held)
+    # The species masses keep their ratio to the element masses.
+    elements = sum(frozen[f'{e}_kg_atm'] for e in ('H', 'O', 'C', 'N', 'S'))
+    np.testing.assert_allclose(
+        frozen['M_atm'], _CALLIOPE_SPECIES_OVER_ELEMENTS * elements, rtol=1e-9
+    )
+    # Discrimination: sized from M_atm, the atmosphere would keep 1.8e-5 of the
+    # hydrogen that escaped, beyond the 1e-4 closure limit on the final total.
+    gap = (1.0 - 1.0 / _CALLIOPE_SPECIES_OVER_ELEMENTS) * (h_start - h_end)
+    assert gap / h_end > 1.0e-4
