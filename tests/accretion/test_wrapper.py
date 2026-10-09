@@ -2113,9 +2113,10 @@ def test_roche2026_parameter_flags_and_kegerreis_thin_atmosphere_warning(caplog)
     import math
 
     pytest.importorskip('zephyrus.collision')
+    from zephyrus.collision import ROCHE2026_FITTED_RANGE
     from zephyrus.planets_parameters import Me, Re
 
-    from proteus.accretion.wrapper import _impact_loss_fraction
+    from proteus.accretion.wrapper import _format_roche_flag, _impact_loss_fraction
 
     cfg_roche = SimpleNamespace(
         accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='roche2026')
@@ -2235,6 +2236,15 @@ def test_roche2026_parameter_flags_and_kegerreis_thin_atmosphere_warning(caplog)
     assert 'v_ratio = 4.02 (fitted 1 to 3)' in records_vr[0].getMessage()
     assert records_vr[0].getMessage().endswith('; the loss fraction is extrapolated')
     assert 'evaluated at' not in records_vr[0].getMessage()
+
+    # Case 3d: format X_FF_zero_energy flag when far-field loss exists without impact energy.
+    formatted_zero_energy = _format_roche_flag(
+        'X_FF_zero_energy', {'X_FF_zero_energy': 0.0801}, ROCHE2026_FITTED_RANGE
+    )
+    assert (
+        formatted_zero_energy
+        == 'far-field loss of 0.0801 without impact energy (log10 f_atm extrapolation)'
+    )
 
     # Case 4: kegerreis2020 with thick atmosphere -> thin-atmosphere warning fires.
     caplog.clear()

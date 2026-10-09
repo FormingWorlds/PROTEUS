@@ -964,7 +964,7 @@ def _format_roche_flag(
     ----------
     name : str
         Flag name ('f_atm', 'M_t_earth', 'gamma', 'b', 'R_ratio', 'v_ratio',
-        or 'v_sub_escape').
+        'v_sub_escape', or 'X_FF_zero_energy').
     diagnostics : dict
         Diagnostics dictionary from ``ImpactLossResult`` containing physical
         parameter values and any clamped bounds under ``'clamped'``.
@@ -979,6 +979,9 @@ def _format_roche_flag(
     if name == 'v_sub_escape':
         val = float(diagnostics.get('v_ratio', 0.0))
         return f'v_sub_escape: v_ratio = {val:.3g} (< 0.99)'
+    if name == 'X_FF_zero_energy':
+        val = float(diagnostics.get('X_FF_zero_energy', 0.0))
+        return f'far-field loss of {val:.3g} without impact energy (log10 f_atm extrapolation)'
     lo, hi = fitted_range[name]
     val = float(diagnostics[name])
     msg = f'{name} = {val:.3g} (fitted {lo:g} to {hi:g})'

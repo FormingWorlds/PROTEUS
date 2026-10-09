@@ -444,7 +444,8 @@ class Accretion:
         1e-6 stability bound is evaluated at 1e-6, and the resulting fraction
         depends on the collision parameters. When parameters are clamped, only
         the fit terms use the clamped value while v_esc, Q'_R, and the mass
-        ratio use the raw collision state.
+        ratio use the raw collision state. When the far-field term predicts
+        loss without impact energy, the 'X_FF_zero_energy' flag is set.
     atmloss_frac: float
         Fraction of the atmosphere removed by each impact when
         ``atmloss_module = "constant"`` [0-1]. Applies to the target's
