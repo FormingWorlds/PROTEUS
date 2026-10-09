@@ -1949,7 +1949,10 @@ def test_impact_loss_fraction_routes_each_law_and_passes_arguments(monkeypatch):
         assert c['law'] == law
         assert c['v_c'] == event.v_impact
         assert c['M_i'] == event.M_impactor
-        assert c['M_t'] == event.M_target_before
+        if law == 'roche2026':
+            assert c['M_t'] == pytest.approx(event.M_target_before * (1.0 - expected_f_atm))
+        else:
+            assert c['M_t'] == event.M_target_before
         assert c['R_i'] == event.R_impactor
         assert c['R_t'] == event.R_target_before
         assert c['b'] == event.impact_parameter
@@ -2001,7 +2004,7 @@ def test_roche2026_loss_module_evaluates_real_zephyrus():
     direct = zephyrus.collision.mass_loss_roche2026(
         v_c=event.v_impact,
         M_i=event.M_impactor,
-        M_t=event.M_target_before,
+        M_t=event.M_target_before * (1.0 - 0.01),
         R_i=event.R_impactor,
         R_t=event.R_target_before,
         b=event.impact_parameter,
@@ -2020,8 +2023,9 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
     Pins the eroded fraction obtained through the full PROTEUS loss dispatch
     for the first Set A reference row from Roche et al. (2026), arXiv:2610.06077
     (Zenodo doi:10.5281/zenodo.23192423), matching the authors' scaling-law
-    calculation (X_atm_calc = 0.562213) within 2e-4 tolerance. Skips when
-    zephyrus.collision provides no impact_loss.
+    calculation (X_atm_calc = 0.562213) within 2e-4 tolerance. The 1.47e-5 residual
+    arises from numerical precision in the published parameter representation.
+    Skips when zephyrus.collision provides no impact_loss.
     """
     pytest.importorskip('zephyrus.collision')
     import zephyrus.collision
@@ -2034,7 +2038,7 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
 
     from proteus.accretion.wrapper import _impact_loss_fraction
 
-    m_t = 0.9970246031043678 * Me
+    m_t_r = 0.9970246031043678 * Me
     m_i = 0.24927721643800169 * Me
     r_t = 1.0173459965204401 * Re
     r_i = 0.67502812051147343 * Re
@@ -2043,17 +2047,20 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
     b = 0.3
     expected_x = 0.56221340039270196
 
+    m_t_tot = m_t_r / (1.0 - f_atm)
+    m_atm = m_t_tot - m_t_r
+
     event = _impact_event(
         v_impact=v_c,
         impact_parameter=b,
-        M_target_before=m_t,
+        M_target_before=m_t_tot,
         M_impactor=m_i,
         R_target_before=r_t,
         R_impactor=r_i,
-        rho_target=m_t / (4.0 / 3.0 * np.pi * r_t**3),
+        rho_target=m_t_tot / (4.0 / 3.0 * np.pi * r_t**3),
         rho_impactor=m_i / (4.0 / 3.0 * np.pi * r_i**3),
     )
-    hf_row = {'M_planet': m_t, 'H_kg_atm': f_atm * m_t}
+    hf_row = {'M_planet': m_t_tot, 'H_kg_atm': m_atm}
     cfg = SimpleNamespace(
         accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='roche2026')
     )
@@ -2062,23 +2069,23 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
     assert f_loss == pytest.approx(expected_x, abs=2e-4)
     assert 0.0 <= f_loss <= 1.0
 
-    # Discrimination guard (a): kegerreis2020 yields f_keg = 0.701221, diverging by 0.1390 (> 0.10).
+    # Discrimination guard (a): kegerreis2020 yields f_keg = 0.693102, diverging by 0.1309 (> 0.10).
     cfg_keg = SimpleNamespace(
         accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='kegerreis2020')
     )
     f_keg = _impact_loss_fraction(cfg_keg, hf_row, event)
     assert abs(f_keg - expected_x) > 0.10
 
-    # Discrimination guard (b): swapping masses and radii yields f_swapped = 0.753007, diverging by 0.1908 (> 0.10).
+    # Discrimination guard (b): swapping masses and radii yields f_swapped = 0.753391, diverging by 0.1912 (> 0.10).
     event_swapped = _impact_event(
         v_impact=v_c,
         impact_parameter=b,
         M_target_before=m_i,
-        M_impactor=m_t,
+        M_impactor=m_t_tot,
         R_target_before=r_i,
         R_impactor=r_t,
         rho_target=m_i / (4.0 / 3.0 * np.pi * r_i**3),
-        rho_impactor=m_t / (4.0 / 3.0 * np.pi * r_t**3),
+        rho_impactor=m_t_tot / (4.0 / 3.0 * np.pi * r_t**3),
     )
     hf_row_swapped = {'M_planet': m_i, 'H_kg_atm': f_atm * m_i}
     f_swapped = _impact_loss_fraction(cfg, hf_row_swapped, event_swapped)
@@ -2190,11 +2197,11 @@ def test_roche2026_flags_produce_warnings_and_kegerreis_3pct_absent(caplog):
     assert 0.0 <= f_mt <= 1.0
     records_mt = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(records_mt) == 1
-    assert 'M_t_earth = 6 (fitted 0.35 to 5)' in records_mt[0].getMessage()
+    assert 'M_t_earth = 5.7 (fitted 0.35 to 5)' in records_mt[0].getMessage()
     assert records_mt[0].getMessage().endswith('; the loss fraction is extrapolated')
     assert 'evaluated at' not in records_mt[0].getMessage()
 
-    # Case 3c: out-of-range v_ratio (v_c = 39.2 km/s, v_ratio = 3.93 above 3) emits v_ratio flag.
+    # Case 3c: out-of-range v_ratio (v_c = 39.2 km/s, v_ratio = 4.02 above 3) emits v_ratio flag.
     event_vr = _impact_event(
         v_impact=3.5 * 11186.0,
         M_target_before=Me,
@@ -2209,7 +2216,7 @@ def test_roche2026_flags_produce_warnings_and_kegerreis_3pct_absent(caplog):
     assert 0.0 <= f_vr <= 1.0
     records_vr = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(records_vr) == 1
-    assert 'v_ratio = 3.93 (fitted 1 to 3)' in records_vr[0].getMessage()
+    assert 'v_ratio = 4.02 (fitted 1 to 3)' in records_vr[0].getMessage()
     assert records_vr[0].getMessage().endswith('; the loss fraction is extrapolated')
     assert 'evaluated at' not in records_vr[0].getMessage()
 
@@ -2407,8 +2414,11 @@ def test_target_mass_mismatch_warning_and_event_mass_dispatch(caplog, monkeypatc
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
         apply_impact(handler, event_mismatch)
 
-    assert captured_args[0]['M_t'] == event_mismatch.M_target_before
-    assert captured_args[0]['f_atm'] == m_atm / m_planet
+    expected_f_atm = m_atm / m_planet
+    assert captured_args[0]['M_t'] == pytest.approx(
+        event_mismatch.M_target_before * (1.0 - expected_f_atm)
+    )
+    assert captured_args[0]['f_atm'] == pytest.approx(expected_f_atm)
     # Discrimination: M_t came from event, not handler planet mass.
     assert abs(captured_args[0]['M_t'] - m_planet) > 0.2 * M_earth
 
@@ -2422,6 +2432,8 @@ def test_target_mass_mismatch_warning_and_event_mass_dispatch(caplog, monkeypatc
     # Matched event: M_target_before matches M_planet -> no warning.
     captured_args.clear()
     caplog.clear()
+    handler.hf_row['M_planet'] = m_planet
+    handler.hf_row['H_kg_atm'] = m_atm
     event_matched = _impact_event(
         M_target_before=m_planet,
         M_impactor=0.1 * M_earth,
@@ -2430,8 +2442,14 @@ def test_target_mass_mismatch_warning_and_event_mass_dispatch(caplog, monkeypatc
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.accretion.wrapper'):
         apply_impact(handler, event_matched)
 
-    assert captured_args[0]['M_t'] == m_planet
+    assert captured_args[0]['M_t'] == pytest.approx(m_planet * (1.0 - expected_f_atm))
     assert not any('differs from the' in r.getMessage() for r in caplog.records)
+
+    # Discrimination: kegerreis2020 receives raw event target mass without refractory subtraction.
+    captured_args.clear()
+    handler.config.accretion.atmloss_law = 'kegerreis2020'
+    apply_impact(handler, event_mismatch)
+    assert captured_args[0]['M_t'] == event_mismatch.M_target_before
 
 
 def _rescaling_solve_structure(factor):

@@ -987,6 +987,12 @@ def _format_roche_flag(
 def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
     """Evaluate giant-impact atmosphere loss using the zephyrus scaling laws.
 
+    For ``roche2026``, the target mass passed to ZEPHYRUS is the refractory
+    mass ``event.M_target_before * (1 - f_atm)``; ``kegerreis2020`` receives
+    the total event mass directly. The Kegerreis law is defined on
+    atmosphere-free bodies, so passing the total event mass introduces an
+    error of order ``f_atm``.
+
     Parameters
     ----------
     config : Config
@@ -1000,6 +1006,15 @@ def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
     -------
     float
         Eroded atmosphere loss fraction.
+
+    Raises
+    ------
+    ImportError
+        If ``zephyrus.collision.impact_loss`` is not available.
+    ValueError
+        If ``accretion.atmloss_law`` is unknown, or if ``roche2026`` is
+        selected and ``M_planet`` or ``<e>_kg_atm`` in ``hf_row`` are
+        missing, non-finite, negative, or yield ``f_atm >= 1``.
     """
     try:
         from zephyrus.collision import ROCHE2026_FITTED_RANGE, impact_loss
@@ -1032,8 +1047,9 @@ def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
                     "accretion.atmloss_law = 'roche2026' requires atmosphere mass "
                     f"fraction f_atm < 1 from '<e>_kg_atm' and 'M_planet', got {f_atm!r}"
                 )
+            m_target = event.M_target_before * (1.0 - f_atm)
         case 'kegerreis2020':
-            pass
+            m_target = event.M_target_before
         case _:
             raise ValueError(f"Unknown accretion.atmloss_law: '{law}'")
 
@@ -1041,7 +1057,7 @@ def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
         law=law,
         v_c=event.v_impact,
         M_i=event.M_impactor,
-        M_t=event.M_target_before,
+        M_t=m_target,
         R_i=event.R_impactor,
         R_t=event.R_target_before,
         b=event.impact_parameter,
@@ -1063,7 +1079,23 @@ def _log_zephyrus_loss(
     has_valid_m_planet: bool,
     fitted_range: Mapping[str, tuple[float, float]],
 ) -> None:
-    """Log warnings and diagnostics for zephyrus impact erosion laws."""
+    """Log warnings and diagnostics for zephyrus impact erosion laws.
+
+    Parameters
+    ----------
+    law : str
+        Selected erosion scaling law name.
+    event : ImpactEvent
+        The impact event being applied.
+    result : ImpactLossResult
+        Loss result object containing fraction, diagnostics, and flags.
+    f_atm : float
+        Target atmospheric mass fraction m_atm / M_planet.
+    has_valid_m_planet : bool
+        Whether M_planet in hf_row is finite and strictly positive.
+    fitted_range : Mapping[str, tuple[float, float]]
+        Parameter bounds for Roche et al. (2026) out-of-range checks.
+    """
     f_loss = float(result.fraction)
     diagnostics = result.diagnostics
     v_ratio = float(diagnostics['v_ratio'])
@@ -1124,13 +1156,16 @@ def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
     either ``kegerreis2020`` or ``roche2026`` via ``accretion.atmloss_law``.
     The collision parameters come from the impact record so the speed, masses,
     radii, densities, and angle stay in the one frame the dynamical model
-    produced them in (Morrigan bodies carry no modelled atmosphere, matching
-    the law's atmosphere-excluded mass and radius convention, and its
-    ``v_impact`` is the speed at first contact). The target atmospheric
-    fraction ``f_atm`` comes from the running planet state (the sum of
-    ``<e>_kg_atm`` over ``M_planet``). The returned fraction applies to the
-    target's atmosphere and to a volatile-bearing impactor's atmospheric
-    part alike. PROTEUS itself ships no impact loss physics.
+    produced them in (event mass is the total mass; the refractory mass passed
+    to roche2026 is that times (1 - f_atm), and its ``v_impact`` is the speed
+    at first contact). For ``kegerreis2020``, passing the total event mass
+    gives an error of order ``f_atm`` because that law is defined on
+    atmosphere-free bodies. The target atmospheric fraction ``f_atm`` comes
+    from the running planet state (the sum of ``<e>_kg_atm`` over ``M_planet``
+    across all elements including rock vapour, matching the stripped elements).
+    The returned fraction applies to the target's atmosphere and to a
+    volatile-bearing impactor's atmospheric part alike. PROTEUS itself ships
+    no impact loss physics.
 
     When ``kegerreis2020`` is selected and the planet's atmosphere exceeds a
     few percent of its mass, the fitted thin-atmosphere regime no longer
