@@ -112,7 +112,9 @@ chi2 = u^T R^-1 u,    u = (sim - true) / sigma
 
 where `R` is the correlation matrix. Each coefficient must lie strictly between -1 and 1, and the matrix as a whole must be positive definite.
 
-For element-ratio observables (such as `C/O_atm` and `O/H_atm`), `correlate_ratios = true` builds the table instead. Assuming the same dex error for every element, two ratios correlate by the cosine of their exponent vectors. One element shared on the same side gives +0.5 (`C/O_atm` with `S/O_atm`); on opposite sides -0.5 (`C/O_atm` with `O/H_atm`).
+For element-ratio observables (such as `C/O_atm` and `O/H_atm`), `correlate_ratios = true` builds the table instead. Assuming the same dex error for every element, two ratios correlate by the cosine of their exponent vectors. One element shared on the same side gives +0.5 (`C/O_atm` with `S/O_atm`); on opposite sides -0.5 (`C/O_atm` with `O/H_atm`). A ratio that follows from the others, such as `C/H_atm` next to `C/O_atm` and `O/H_atm`, is rejected.
+
+The assumption sets only the correlations; each ratio keeps its own `[sigma]`. Retrievals rarely give independent element errors, so when posterior samples exist, their correlation matrix in `[correlation]` is the better input; `correlate_ratios` is a default for when nothing better is known.
 
 ### Known true parameters
 

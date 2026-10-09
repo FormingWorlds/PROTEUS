@@ -87,6 +87,31 @@ def test_ratio_correlation_shares_elements_with_sign():
     assert correlation_mod.validate_correlation(obs, sigma, corr) == corr
 
 
+@pytest.mark.parametrize(
+    'names, dependent',
+    [
+        (['C/O_atm', 'O/H_atm', 'C/H_atm'], 'C/H_atm'),
+        (['C/O_atm', 'N/O_atm', 'C/N_atm'], 'C/N_atm'),
+        (['C/O_atm', 'S/O_atm', 'C/S_atm', 'O/H_atm'], 'C/S_atm'),
+    ],
+    ids=['ch_from_co_and_oh', 'cn_from_co_and_no', 'cs_before_an_independent_ratio'],
+)
+def test_ratio_correlation_rejects_a_ratio_that_follows_from_the_others(names, dependent):
+    """A dependent ratio set makes R singular, which Cholesky accepts on round-off.
+
+    Without the check the last pivot is about 2e-8, so chi2 would amplify one
+    residual direction by about 1e15 instead of failing.
+    """
+    comp = correlation_mod.composition_from_names(names)
+    with pytest.raises(ValueError, match=f"'{dependent}' follows from"):
+        correlation_mod.ratio_correlation(comp)
+    # Dropping the dependent ratio leaves a valid, positive definite set.
+    kept = [n for n in names if n != dependent]
+    corr = correlation_mod.ratio_correlation(correlation_mod.composition_from_names(kept))
+    sigma = dict.fromkeys(kept, 0.1)
+    assert correlation_mod.validate_correlation(dict.fromkeys(kept, 1.0), sigma, corr) == corr
+
+
 @pytest.mark.physics_invariant
 def test_chi_squared_matches_residuals_to_names_in_any_order():
     """Residuals listed in another order than the matrix are reordered first.

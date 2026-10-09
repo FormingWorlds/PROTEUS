@@ -107,7 +107,21 @@ def ratio_correlation(composition: dict) -> dict:
     With the same dex error for every element, cov(a, b) is proportional to the dot
     product of the exponent vectors, so rho_ab = <n_a, n_b> / (|n_a| |n_b|).
     Returns the nonzero pairs in the `[correlation]` format, each pair once.
+
+    Raises:
+        ValueError: If one ratio follows from the others (C/H = C/O * O/H), which
+            makes the matrix singular; round-off can hide that from Cholesky.
     """
+    elements = sorted({e for expo in composition.values() for e in expo})
+    rows = []
+    for name, expo in composition.items():
+        rows.append([float(expo.get(e, 0)) for e in elements])
+        if torch.linalg.matrix_rank(torch.tensor(rows, dtype=torch.double)) < len(rows):
+            raise ValueError(
+                f"Ratio '{name}' follows from {list(composition)[: len(rows) - 1]}, "
+                'so the ratios cannot all be correlated; leave one of them out'
+            )
+
     norm = {n: math.sqrt(sum(v * v for v in expo.values())) for n, expo in composition.items()}
     names = list(composition)
     correlation = {}
