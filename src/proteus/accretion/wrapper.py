@@ -1051,19 +1051,31 @@ def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
     )
 
     f_loss = float(result.fraction)
-    flags = tuple(result.flags)
-    diagnostics = result.diagnostics
+    _log_zephyrus_loss(law, event, result, f_atm, has_valid_m_planet, ROCHE2026_FITTED_RANGE)
+    return f_loss
 
+
+def _log_zephyrus_loss(
+    law: str,
+    event: ImpactEvent,
+    result,
+    f_atm: float,
+    has_valid_m_planet: bool,
+    fitted_range: Mapping[str, tuple[float, float]],
+) -> None:
+    """Log warnings and diagnostics for zephyrus impact erosion laws."""
+    f_loss = float(result.fraction)
+    diagnostics = result.diagnostics
     v_ratio = float(diagnostics['v_ratio'])
     gamma = float(diagnostics['gamma'])
 
     if law == 'kegerreis2020':
-        if has_valid_m_planet and m_atm / m_planet > _ATMLOSS_THIN_ATM_WARN:
+        if has_valid_m_planet and f_atm > _ATMLOSS_THIN_ATM_WARN:
             log.warning(
                 '    the atmosphere is %.1f%% of the planet mass, beyond the '
                 'thin-atmosphere regime (about 1%%) the impact erosion law is '
                 'fitted for; the eroded fraction is extrapolated',
-                100.0 * m_atm / m_planet,
+                100.0 * f_atm,
             )
         log.info(
             '    impact erosion law: %s, v_ratio=%.3f, gamma=%.3f, loss fraction=%.3f',
@@ -1073,15 +1085,20 @@ def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
             f_loss,
         )
     elif law == 'roche2026':
+        flags = tuple(result.flags)
         if flags:
-            flag_msgs = [
-                _format_roche_flag(f, diagnostics, ROCHE2026_FITTED_RANGE) for f in flags
-            ]
+            flag_msgs = [_format_roche_flag(f, diagnostics, fitted_range) for f in flags]
+            clamp_tail = (
+                "; a parameter marked 'evaluated at' is held at that value"
+                if diagnostics.get('clamped')
+                else ''
+            )
             log.warning(
                 '    impact at t = %.4e yr: Roche et al. (2026) law outside its fitted range: '
-                "%s; the loss fraction is extrapolated; a parameter marked 'evaluated at' is held at that bound",
+                '%s; the loss fraction is extrapolated%s',
                 event.time,
                 '; '.join(flag_msgs),
+                clamp_tail,
             )
         x_nf = float(diagnostics['X_NF'])
         x_ff = float(diagnostics['X_FF'])
@@ -1096,8 +1113,6 @@ def _zephyrus_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:
             x_nf,
             x_ff,
         )
-
-    return f_loss
 
 
 def _impact_loss_fraction(config, hf_row: dict, event: ImpactEvent) -> float:

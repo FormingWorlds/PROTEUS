@@ -1928,8 +1928,14 @@ def test_impact_loss_fraction_routes_each_law_and_passes_arguments(monkeypatch):
         rho_target=5500.0,
         impact_parameter=0.4,
     )
-    hf_row = {'M_planet': 6.0e24, 'H_kg_atm': 6.0e21}
-    expected_f_atm = 6.0e21 / 6.0e24
+    hf_row = {
+        'M_planet': 6.0e24,
+        'H_kg_atm': 3.0e21,
+        'C_kg_atm': 2.0e21,
+        'O_kg_atm': 1.0e21,
+    }
+    m_atm_total = 3.0e21 + 2.0e21 + 1.0e21
+    expected_f_atm = m_atm_total / 6.0e24
 
     for law in ('roche2026', 'kegerreis2020'):
         calls.clear()
@@ -1951,8 +1957,11 @@ def test_impact_loss_fraction_routes_each_law_and_passes_arguments(monkeypatch):
         assert c['rho_t'] == event.rho_target
         assert c['f_atm'] == expected_f_atm
         # Discrimination guard: f_atm uses M_planet (6.0e24), not M_target_before (5.0e24).
-        wrong_f_atm = 6.0e21 / 5.0e24
+        wrong_f_atm = m_atm_total / 5.0e24
         assert abs(c['f_atm'] - wrong_f_atm) > 1.0e-4
+        # Discrimination guard: omitting oxygen (H + C only) fails the f_atm sum.
+        f_atm_without_o = (3.0e21 + 2.0e21) / 6.0e24
+        assert abs(c['f_atm'] - f_atm_without_o) > 1.0e-4
 
 
 @pytest.mark.unit
@@ -2010,8 +2019,9 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
 
     Pins the eroded fraction obtained through the full PROTEUS loss dispatch
     for the first Set A reference row from Roche et al. (2026), arXiv:2610.06077
-    (Zenodo doi:10.5281/zenodo.23192423), matching the published simulation fit
-    within 2e-4 tolerance. Skips when zephyrus.collision provides no impact_loss.
+    (Zenodo doi:10.5281/zenodo.23192423), matching the authors' scaling-law
+    calculation (X_atm_calc = 0.562213) within 2e-4 tolerance. Skips when
+    zephyrus.collision provides no impact_loss.
     """
     pytest.importorskip('zephyrus.collision')
     import zephyrus.collision
@@ -2136,9 +2146,8 @@ def test_roche2026_flags_produce_warnings_and_kegerreis_3pct_absent(caplog):
     assert msg.startswith('    impact at t =')
     assert 'Roche et al. (2026) law outside its fitted range' in msg
     assert 'R_ratio = 1.2 (fitted 0.001 to 1.015)' in msg
-    assert msg.endswith(
-        "; the loss fraction is extrapolated; a parameter marked 'evaluated at' is held at that bound"
-    )
+    assert msg.endswith('; the loss fraction is extrapolated')
+    assert 'evaluated at' not in msg
     assert 'thin-atmosphere regime' not in msg
 
     # Case 3: multiple out-of-range flags and clamps (b=0.95, f_atm=1e-7, gamma=0.0476).
@@ -2161,6 +2170,9 @@ def test_roche2026_flags_produce_warnings_and_kegerreis_3pct_absent(caplog):
     assert 'b = 0.95 (fitted 0 to 0.9)' in msg_multi
     assert 'f_atm = 1e-07 (fitted 0.01 to 0.2), evaluated at 1e-06' in msg_multi
     assert 'gamma = 0.0476 (fitted 0.1 to 0.5)' in msg_multi
+    assert msg_multi.endswith(
+        "; the loss fraction is extrapolated; a parameter marked 'evaluated at' is held at that value"
+    )
 
     # Case 3b: out-of-range M_t_earth (M_t = 6 Me outside [0.35, 5]) emits M_t_earth flag.
     event_mt = _impact_event(
@@ -2179,8 +2191,10 @@ def test_roche2026_flags_produce_warnings_and_kegerreis_3pct_absent(caplog):
     records_mt = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(records_mt) == 1
     assert 'M_t_earth = 6 (fitted 0.35 to 5)' in records_mt[0].getMessage()
+    assert records_mt[0].getMessage().endswith('; the loss fraction is extrapolated')
+    assert 'evaluated at' not in records_mt[0].getMessage()
 
-    # Case 3c: out-of-range v_ratio (v_impact = 3.5 * v_esc above 3) emits v_ratio flag.
+    # Case 3c: out-of-range v_ratio (v_c = 39.2 km/s, v_ratio = 3.93 above 3) emits v_ratio flag.
     event_vr = _impact_event(
         v_impact=3.5 * 11186.0,
         M_target_before=Me,
@@ -2196,6 +2210,8 @@ def test_roche2026_flags_produce_warnings_and_kegerreis_3pct_absent(caplog):
     records_vr = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(records_vr) == 1
     assert 'v_ratio = 3.93 (fitted 1 to 3)' in records_vr[0].getMessage()
+    assert records_vr[0].getMessage().endswith('; the loss fraction is extrapolated')
+    assert 'evaluated at' not in records_vr[0].getMessage()
 
     # Case 4: kegerreis2020 with thick atmosphere -> thin-atmosphere warning fires.
     caplog.clear()
@@ -2241,15 +2257,16 @@ def test_roche2026_flags_produce_warnings_and_kegerreis_3pct_absent(caplog):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-@pytest.mark.reference_pinned
 def test_roche2026_airless_target_and_trace_atmosphere_jump(caplog):
-    """An airless target returns zero loss while a trace atmosphere jumps to ~0.7.
+    """An airless target returns zero loss while a trace atmosphere jumps to ~0.69.
 
     Verifies clause: with atmloss_law = 'roche2026', an airless target (m_atm = 0)
     returns f_loss = 0.0 exactly, delivering the impactor's full volatile inventory.
-    Any positive trace atmosphere gives f_atm below the stability bound (0.01),
-    evaluated at 1e-6, which jumps to f_loss of order 0.7 (0.691196 for this
-    1.2 v_esc event) and emits the out-of-range flag with 'evaluated at 1e-06'.
+    An atmosphere with f_atm from 1e-6 to 0.01 is flagged and extrapolated without
+    a clamp; f_atm below the 1e-6 stability bound (about 6e18 kg on 1 M_earth) is
+    evaluated at 1e-6, which jumps to f_loss = 0.691196 for this v_c = 13.4 km/s
+    (v_c/v_esc = 1.38) test event and emits the out-of-range flag with
+    'evaluated at 1e-06'.
     """
     pytest.importorskip('zephyrus.collision')
     import zephyrus.collision
@@ -2295,6 +2312,9 @@ def test_roche2026_airless_target_and_trace_atmosphere_jump(caplog):
     assert len(records) == 1
     msg = records[0].getMessage()
     assert 'f_atm = 1.67e-25 (fitted 0.01 to 0.2), evaluated at 1e-06' in msg
+    assert msg.endswith(
+        "; the loss fraction is extrapolated; a parameter marked 'evaluated at' is held at that value"
+    )
 
 
 @pytest.mark.unit

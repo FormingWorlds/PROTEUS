@@ -431,9 +431,12 @@ class Accretion:
         Both laws are fitted to H2-He atmospheres (Kegerreis et al. 2020; Roche
         et al. 2026, Sect. 4.1). With ``roche2026``, an airless target
         (m_atm = 0) returns f_loss = 0 so an impactor delivers its full volatile
-        content, whereas any positive trace atmosphere gives f_atm below the
-        stability bound, evaluated at 1e-6, and f_loss of order 0.7 (0.69 for
-        the 1.2 v_esc test event) for target and impactor alike.
+        content. An atmosphere with f_atm between 1e-6 and 0.01 is flagged and
+        extrapolated without a clamp; f_atm below the 1e-6 stability bound
+        (about 6e18 kg on 1 M_earth, where modern Earth sits at 8.5e-7) is
+        evaluated at 1e-6, yielding f_loss of order 0.69 for the v_c = 13.4 km/s
+        (v_c/v_esc = 1.38) test event for target and impactor alike. Across
+        collisions, the fraction at the clamp spans 0.18 to 1.0.
     atmloss_frac: float
         Fraction of the atmosphere removed by each impact when
         ``atmloss_module = "constant"`` [0-1]. Applies to the target's
