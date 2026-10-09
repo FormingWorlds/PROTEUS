@@ -44,11 +44,11 @@ classifiers = [
 dependencies = [
     "attrs",
     "cattrs",
-    "fwl-janus>=24.11.05",
+    "fwl-janus>=26.10.08",
     "fwl-mors>=26.10.6",
     "fwl-calliope>=26.10.05",
     "fwl-zephyrus>=26.7.24",
-    "fwl-aragog>=26.10.08",
+    "fwl-aragog>=26.10.09",
 
     # 26.07.17 reads the liquid EOS table for fully molten entropy
     # lookups, which the super-liquidus interior initial condition
@@ -265,7 +265,7 @@ directory = "htmlcov"
 # Tracks nichollsh/AGNI main. Bump after every AGNI release that
 # PROTEUS depends on.
 url = "https://github.com/nichollsh/AGNI.git"
-ref = "4a6c286c00362765e8072ef782a032e6cb53b3e3"
+ref = "2180f489b988885164d8869a640c7193666fc957"
 
 [tool.proteus.modules.socrates]
 # Spectral radiative transfer library (Fortran). Compiled in-place

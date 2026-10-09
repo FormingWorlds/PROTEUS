@@ -35,6 +35,7 @@ A data folder in the older layout is brought into this one as described in
 | Spectral k-tables | fwl-io | `proteus get spectral` |
 | Surface albedos | fwl-io | `proteus get surfaces` |
 | Scattering properties | fwl-io | `proteus get scattering` |
+| Refractive indices for Mie aerosols | fwl-io | `proteus get refractive` |
 | Exoplanet populations, mass-radius curves | fwl-io | `proteus get reference` |
 | Interior structure EOS tables | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
 | Melting curves | fwl-io | `proteus get interiordata`, or fetched when a run needs them |
@@ -45,6 +46,15 @@ decide which `.mon` aerosol species PROTEUS offers to AGNI; AGNI reads the table
 themselves from its own `res/scattering` folder. Fetch them with `proteus get scattering`
 before a run with `--offline` and aerosols enabled: without them that run only warns
 and offers no `.mon` aerosol species.
+
+With aerosols enabled, PROTEUS also fetches the aerosol refractive indices (`proteus get refractive`)
+and points AGNI at their version directory below `$FWL_DATA/atmos_clim/refractive/agni_aerosols`
+through `AGNI_DIR_refractive` once every file of the dataset is present, from which AGNI computes
+Mie optical properties; an incomplete fetch is a warning and leaves the variable unset. A value of
+`AGNI_DIR_refractive` or `AGNI_DIR_res` set before the run is kept, with a warning when the folder
+AGNI then reads holds no refractive index file. Fetch them before a run with
+`--offline`: without them, and without the copy AGNI's `get_data.sh` places in its `res/refractive`, AGNI
+lists no Mie aerosol species.
 
 ### Upgrading an older data folder
 
