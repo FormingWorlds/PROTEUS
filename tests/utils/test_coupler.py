@@ -5511,7 +5511,9 @@ def test_a_non_finite_core_ledger_input_never_resets_the_ledger(bad, caplog):
         _populate_core_residual(hf, row)
     expected = {'core_C_eff': 3.0e24, 'step_dE_F_cmb_J': 2.0e24, 'previous': 1.0e24}[bad]
     assert row['E_core_residual_J'] == pytest.approx(expected, rel=1e-6)
-    assert np.isfinite(row['E_core_residual_frac'])
+    # The scale keeps the CMB heat of the earlier rows; a NaN term of this row adds nothing.
+    scale = 1.0e29 + (0.0 if bad == 'step_dE_F_cmb_J' else 5.0e28)
+    assert row['E_core_residual_frac'] == pytest.approx(expected / scale, rel=1e-6)
     assert ('residual carried' in caplog.text) == (bad == 'step_dE_F_cmb_J')
 
 

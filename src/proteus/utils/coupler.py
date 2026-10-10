@@ -1136,7 +1136,7 @@ def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
         return
     terms = [float(new_row.get(k, 0.0)) for k in ('step_dE_core_J', 'step_dE_F_cmb_J')]
     impact = float(new_row.get('step_dE_impact_core_J', 0.0))
-    prev, scale = 0.0, abs(terms[1]) + abs(impact)
+    prev, scale = 0.0, float(np.nansum(np.abs([terms[1], impact])))
     if len(current_hf) and 'E_core_residual_J' in current_hf:
         prev = np.nan_to_num(float(current_hf['E_core_residual_J'].iloc[-1]))
         rows = current_hf['core_C_eff'].to_numpy(dtype=float) != 0.0
@@ -1148,7 +1148,7 @@ def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
         log.warning(
             'core ledger term is not finite at t=%s yr; residual carried', new_row.get('Time')
         )
-        inc, scale = 0.0, np.nan_to_num(scale)
+        inc = 0.0
     new_row['E_core_residual_J'] = prev + inc
     new_row['E_core_residual_frac'] = new_row['E_core_residual_J'] / max(scale, 1.0)
 
