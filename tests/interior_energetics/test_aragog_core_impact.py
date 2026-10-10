@@ -238,10 +238,11 @@ def test_a_rebuilt_budget_without_the_refit_profile_raises(stale):
 @pytest.mark.physics_invariant
 def test_core_call_heat_adds_the_jump_since_the_last_call_and_removes_the_source(caplog):
     """The core's heat change over a call is the capacity integral net of its internal
-    source, plus the heat of a T_core jump between calls measured with the solver's
-    budget; a continuous T_core adds no jump, and the call's final T_core is kept. The
-    start state carries two shell cells of a stratified core after T_core, which the
-    jump must not read."""
+    source, plus the jump of the heat content since the last kept call; a continuous
+    T_core under the same budget adds no jump, and a budget that changed at a continuous
+    T_core (capacity 1.9e27 to 2.0e27 J K-1 at 6000 K) adds the difference of the two
+    heat contents. The start state carries two shell cells of a stratified core after
+    T_core, which the jump must not read."""
     budget = _Budget(2.0e27, 0.0)
     solver = SimpleNamespace(
         _S0=np.array([3000.0, -1e-5, 6124.0, 6130.0, 6150.0]),
@@ -261,6 +262,9 @@ def test_core_call_heat_adds_the_jump_since_the_last_call_and_removes_the_source
     solver._S0[2], interior_o._core_t_end = 6000.0, 6000.0
     heat = core_call_heat(out, interior_o)
     assert heat == pytest.approx(-4.0e29 - 3.15576e20, rel=1e-12)
+    interior_o._core_budget_end = _Budget(1.9e27, 0.0)
+    heat = core_call_heat(out, interior_o)
+    assert heat == pytest.approx(-4.0e29 - 3.15576e20 + 0.1e27 * 6000.0, rel=1e-12)
 
 
 class _RealSolver(SimpleNamespace):
