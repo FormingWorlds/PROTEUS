@@ -873,8 +873,8 @@ def GetHelpfileKeys():
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
-        'T_cmb',           # core temperature, bottom mantle cell [K]
-        'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so T_cmb - T_cmb_node is the CMB contrast [K]
+        'T_cmb',           # core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018 [K]
+        'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so the CMB contrast is T_cmb - T_cmb_node, or core_T_top - T_cmb_node with stratification [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
         'T_skin',           # grey radiative skin temperature [K]
         'T_surface_initial',  # self-consistent T_surf from accretion mode [K]

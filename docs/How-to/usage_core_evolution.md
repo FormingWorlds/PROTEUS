@@ -59,6 +59,10 @@ contrast between the core and the mantle from then on, positive when the core
 is the hotter side. The inner core starts to grow when the core adiabat meets
 the melting curve.
 
+With `stratification = true` the flux follows the contrast between the top of
+the shell (`core_T_top`) and the base of the mantle, and it is not zero at the
+start.
+
 A resumed run reads the core temperature, the fitted core profile and, with
 `stratification = true`, the shell temperatures from the interior snapshot.
 
@@ -71,8 +75,8 @@ heat of that rise is written to `step_dE_impact_core_J`.
 
 | Column | Use |
 |---|---|
-| `T_cmb` | Core temperature at the CMB. |
-| `T_cmb_node` | Temperature of the base of the mantle at the CMB pressure; `T_cmb - T_cmb_node` is the contrast that sets `F_cmb`. |
+| `T_cmb` | Core temperature: the state of the core that the solver evolves. |
+| `T_cmb_node` | Temperature of the base of the mantle at the CMB pressure; `T_cmb - T_cmb_node` is the contrast that sets `F_cmb`, and `core_T_top - T_cmb_node` with `stratification = true`. |
 | `core_r_icb`, `core_regime` | Radius of the inner core and the way the core freezes (0 fully liquid, 1 from the centre outwards). |
 | `core_dynamo_margin`, `core_B_rms` | Entropy available for a dynamo and an estimate of the field strength. |
 | `E_core_residual_frac` | Closure of the core energy ledger: the summed core heat change against the summed CMB heat. |
@@ -81,7 +85,7 @@ Check `E_core_residual_frac` first. The Aragog verification page gives the
 values measured in coupled runs and how they depend on
 `interior_energetics.rtol`.
 
-These columns are zero in every other `core_bc` mode. Zero is also a valid
-value in a `core_module` run (no inner core yet, no field estimate under a
+The `core_*` and `E_core_*` columns are zero in every other `core_bc` mode.
+Zero is also a valid value in a `core_module` run (no inner core yet, no field estimate under a
 subadiabatic CMB flux), so select runs by their configured `core_bc`, not by
 the column values.
