@@ -1971,19 +1971,11 @@ def evaluate_molten_state(solver, hf_row: dict):
     if not hasattr(solver, 'get_state'):
         return None
 
+    from proteus.interior_energetics.aragog import state_solution
+
     prev_solution = getattr(solver, '_solution', None)
-    t_curr = float(hf_row.get('Time', 0.0))
-    # Aragog reads its solution by attribute and by .get, as on an OptimizeResult.
-    sol = optimise.OptimizeResult(
-        y=solver._S0.reshape(-1, 1),
-        t=np.array([t_curr]),
-        status=0,
-        cvode_flag=0,
-        cvode_flag_name='SUCCESS',
-        message='',
-    )
     try:
-        solver._solution = sol
+        solver._solution = state_solution(solver._S0, hf_row.get('Time', 0.0))
         return solver.get_state()
     finally:
         solver._solution = prev_solution
@@ -2446,9 +2438,8 @@ def run_interior(
                     interior_o.aragog_fail_count,
                 )
                 raise
-            # Skip output update; keep the previous step's hf_row but for the call energies.
-            # Atmosphere + outgassing still advance, pushing the planet
-            # past the stiff regime. Same pattern as SPIDER fallback above.
+            # Keep the previous step's hf_row with the call energies at 0; the solver holds
+            # the state this call started from, and the other modules advance.
             _skip_aragog_call_energy(hf_row)
             from proteus.interior_energetics.timestep import next_step
 
