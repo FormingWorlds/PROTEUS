@@ -267,7 +267,7 @@ class AragogCoreModule:
     def __attrs_post_init__(self):
         # The iron melting curve scales with 1 - depression * light_element_fraction.
         product = self.depression * self.light_element_fraction
-        if self.melting_curve == 'iron' and product >= 1:
+        if self.melting_curve == 'iron' and not product < 1:
             raise ValueError(
                 'interior_energetics.aragog.core_module: depression * light_element_fraction '
                 f'= {product:g} must be below 1.'

@@ -1359,6 +1359,28 @@ def test_a_step_that_never_advanced_is_still_refused():
     )
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('core_bc', 'released'),
+    [('core_module', True), ('bower2018', True), ('energy_balance', False)],
+)
+def test_the_ladder_releases_a_set_core_start_only_for_a_boundary_with_a_core_state(
+    core_bc, released
+):
+    """After a call, a set core temperature and a set shell start are released, so the next
+    step takes them from the solution and not from a resume or a re-melt long past; a
+    boundary without a core state has no such start and its solver is not asked."""
+    runner, interior_o, _ = _retry_ladder_runner(status=0, dt_actual=100.0)
+    runner._config.interior_energetics.aragog.core_bc = core_bc
+    core, shell = [], []
+    runner.aragog_solver.set_initial_core_temperature = core.append
+    runner.aragog_solver.set_initial_shell_temperature = shell.append
+
+    runner._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, interior_o)
+
+    assert (core, shell) == (([None], [None]) if released else ([], []))
+
+
 class _HotStartSolver(SimpleNamespace):
     """Solver stand-in whose start rules and entropy accessors are Aragog's own, bound
     below; every attempt replaces the solution, accepted or not, and reports the next of
@@ -4437,15 +4459,12 @@ def test_core_module_resumed_solver_matches_continuous_frozen_profile(tmp_path):
     config_cont.planet.ini_dsdr = 0.0
 
     # Step 1: Continuous run initializes and freezes profile
-    interior_cont = MagicMock()
+    _, interior_cont = _spider_fallback_scaffold(tmp_path)
     interior_cont.aragog_solver = None
     interior_cont._frozen_core_rho_cen = None
     interior_cont._frozen_core_length_scale = None
     interior_cont._frozen_core_m_core = None
     interior_cont._frozen_core_p_cen = None
-    interior_cont.tides = np.zeros(20)
-    spider_eos_dir = _spider_fallback_scaffold(tmp_path)[1]._spider_eos_dir
-    interior_cont._spider_eos_dir = spider_eos_dir
 
     hf_row = {
         'Time': 100.0,
@@ -4511,7 +4530,7 @@ def test_core_module_resumed_solver_matches_continuous_frozen_profile(tmp_path):
     interior_resume._frozen_core_m_core = None
     interior_resume._frozen_core_p_cen = None
     interior_resume.tides = np.zeros(20)
-    interior_resume._spider_eos_dir = spider_eos_dir
+    interior_resume._spider_eos_dir = interior_cont._spider_eos_dir
 
     mock_solver_res = MagicMock()
     mock_solver_res.get_state.return_value = _snapshot_output()

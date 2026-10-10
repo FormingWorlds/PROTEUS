@@ -2505,7 +2505,8 @@ class AragogRunner:
             # Release the set starts: the next step takes them from the solution.
             solver.set_initial_dSdr_cmb(None)
             if self._config.interior_energetics.aragog.core_bc in ('core_module', 'bower2018'):
-                aragog_core.release_core_start(solver)
+                solver.set_initial_core_temperature(None)
+                solver.set_initial_shell_temperature(None)
 
         return out
 

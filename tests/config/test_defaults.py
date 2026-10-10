@@ -387,6 +387,7 @@ def test_deprecated_rtol_alias_overrides_the_aragog_default():
         ('iron', 0.0, 50.0, False),
         ('iron', 0.1, 10.0, True),
         ('iron', 0.5, 3.0, True),
+        ('iron', 0.0, float('inf'), True),
         ('quadratic', 0.5, 3.0, False),
     ],
 )
@@ -394,8 +395,8 @@ def test_an_iron_melting_curve_depressed_to_zero_is_refused_at_config_load(
     curve, fraction, depression, refused
 ):
     """The iron melting curve scales with 1 - depression * light_element_fraction, so a
-    product of 1 or more is refused when the config is built; the quadratic curve does
-    not read the two keys."""
+    product of 1 or more, or one that is not a number, is refused when the config is
+    built; the quadratic curve does not read the two keys."""
     from proteus.config._interior import AragogCoreModule
 
     kwargs = dict(melting_curve=curve, light_element_fraction=fraction, depression=depression)

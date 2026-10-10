@@ -22,13 +22,6 @@ SOLVER_ONLY_KEYS = ('q_radio', 'ra_crit_cmb')
 _FROZEN_UNITS = {'rho_cen': 'kg m-3', 'length_scale': 'm', 'm_core': 'kg', 'p_cen': 'Pa'}
 
 
-def release_core_start(solver) -> None:
-    """Release a set core temperature and shell start, so the next solve takes them from
-    the last solution."""
-    solver.set_initial_core_temperature(None)
-    solver.set_initial_shell_temperature(None)
-
-
 def frozen_profile(interior_o) -> dict[str, float | None]:
     """The frozen core profile scalars of ``interior_o``, None where not set."""
     return {name: getattr(interior_o, f'_frozen_core_{name}', None) for name in _FROZEN_UNITS}
