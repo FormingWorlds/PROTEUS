@@ -5327,6 +5327,7 @@ CORE_COLUMNS = (
     'core_T_top',
     'step_dE_impact_core_J',
     'step_dE_impact_core_refit_J',
+    'step_dE_struct_core_J',
     'step_dE_core_J',
     'E_core_residual_J',
     'E_core_residual_frac',
@@ -5426,12 +5427,18 @@ def test_core_columns_of_a_run_without_the_core_module_stay_zero(tmp_path, caplo
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('booked', [True, False], ids=['booked', 'booking_removed'])
-def test_core_ledger_closes_across_an_impact_and_shows_a_missing_booking(booked):
+@pytest.mark.parametrize(
+    'column',
+    ['step_dE_impact_core_J', 'step_dE_impact_core_refit_J', 'step_dE_struct_core_J'],
+)
+def test_core_ledger_closes_across_a_booked_jump_and_shows_a_missing_booking(booked, column):
     """Row 2 carries a solve that cooled the core by 1e29 J into the mantle and a
-    3e29 J T_core lift between calls, which cancels the core's cumulative cooling.
-    With the lift booked the residual stays at the prior row's value, without it it
-    grows by exactly the lift; the fraction is normalised by the summed CMB and booked
-    lift magnitudes, so it stays bounded where the summed core heat change is zero."""
+    3e29 J jump of the core heat content between calls, which cancels the core's
+    cumulative cooling. With the jump booked in the column of its cause (the lift or the
+    refit of an impact, or a structure update) the residual stays at the prior row's
+    value, without it it grows by exactly the jump; the fraction is normalised by the
+    summed CMB and booked magnitudes, so it stays bounded where the summed core heat
+    change is zero."""
     from proteus.utils.coupler import _populate_core_residual
 
     hf = pd.DataFrame(
@@ -5448,7 +5455,7 @@ def test_core_ledger_closes_across_an_impact_and_shows_a_missing_booking(booked)
         'core_C_eff': 1.6e27,
         'step_dE_core_J': -1.0e29 + 3.0e29,
         'step_dE_F_cmb_J': 1.0e29,
-        'step_dE_impact_core_J': 3.0e29 if booked else 0.0,
+        column: 3.0e29 if booked else 0.0,
     }
     _populate_core_residual(hf, row)
     expected = 3.0e24 + (0.0 if booked else 3.0e29)
@@ -5459,9 +5466,10 @@ def test_core_ledger_closes_across_an_impact_and_shows_a_missing_booking(booked)
 
 @pytest.mark.unit
 def test_core_ledger_scale_sums_the_history_of_core_rows_only():
-    """The fraction's scale adds |step_dE_F_cmb_J| and |step_dE_impact_core_J| of every
-    earlier core row, a booked lift included, and leaves out rows without the core
-    budget (core_C_eff 0), whose CMB flux is not core heat."""
+    """The fraction's scale adds |step_dE_F_cmb_J| and the magnitudes of the 3 booked
+    terms of every earlier core row (a lift of 2e29 J, a refit of 5e28 J and a structure
+    update that took 1e29 J out), and leaves out rows without the core budget
+    (core_C_eff 0), whose CMB flux is not core heat."""
     from proteus.utils.coupler import _populate_core_residual
 
     hf = pd.DataFrame(
@@ -5470,6 +5478,8 @@ def test_core_ledger_scale_sums_the_history_of_core_rows_only():
             'step_dE_core_J': [0.0, -1.0e29, 1.6e29],
             'step_dE_F_cmb_J': [9.0e30, 1.0e29, 4.0e28],
             'step_dE_impact_core_J': [0.0, 0.0, 2.0e29],
+            'step_dE_impact_core_refit_J': [0.0, 5.0e28, 0.0],
+            'step_dE_struct_core_J': [7.0e30, -1.0e29, 0.0],
             'E_core_residual_J': [0.0, 0.0, 2.0e24],
         }
     )
@@ -5481,7 +5491,7 @@ def test_core_ledger_scale_sums_the_history_of_core_rows_only():
     }
     _populate_core_residual(hf, row)
     assert row['E_core_residual_J'] == pytest.approx(2.0e24, rel=1e-9)
-    assert row['E_core_residual_frac'] == pytest.approx(2.0e24 / 3.9e29, rel=1e-12)
+    assert row['E_core_residual_frac'] == pytest.approx(2.0e24 / 5.4e29, rel=1e-12)
 
 
 @pytest.mark.unit

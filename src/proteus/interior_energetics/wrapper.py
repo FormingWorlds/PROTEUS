@@ -114,6 +114,7 @@ _ARAGOG_CALL_ENERGY_KEYS = (
     'step_dE_compression_J',
     'step_dE_state_heat_J',
     'step_dE_core_J',
+    'step_dE_struct_core_J',
 )
 
 # Physical band for retained impact kinetic energy in giant-impact re-melts.

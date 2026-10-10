@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -119,13 +120,20 @@ def test_write_core_diagnostics_wiring_and_cache():
 
 @pytest.mark.unit
 def test_the_core_columns_change_the_output_only_until_the_call_is_committed():
-    """The core columns of a call are computed before its snapshot is written, so a booked
-    impact heat (1.79e30 J, refit 5.2e29 J) and the last core temperature (5000 K) stay as
-    they are until the call returned; the commit then uses the booking up and moves the
-    temperature to the end of the call (4500 K)."""
+    """The core columns of a call are computed before its snapshot is written, so the heat
+    booked by an impact (1.79e30 J, refit 5.2e29 J) and by a structure update (3.1e29 J)
+    and the end of the last kept call (5000 K) stay as they are until the call returned;
+    the commit then uses the bookings up and moves the end to this call (4500 K, the
+    budget of the solver)."""
     from proteus.interior_energetics import aragog_core
 
-    interior_o = SimpleNamespace(_core_impact_booked=(1.79e30, 5.2e29), _core_t_end=5000.0)
+    budget = object()
+    interior_o = SimpleNamespace(
+        _core_impact_booked=(1.79e30, 5.2e29),
+        _core_struct_booked=3.1e29,
+        _core_t_end=5000.0,
+        aragog_solver=SimpleNamespace(_core_module_budget=budget),
+    )
     out = SimpleNamespace(dt_actual=75.0, T_core=4500.0)
     output = {}
     core = 'proteus.interior_energetics.aragog_core'
@@ -134,15 +142,285 @@ def test_the_core_columns_change_the_output_only_until_the_call_is_committed():
         patch(f'{core}_impact.core_call_heat', return_value=-2.0e28) as heat,
     ):
         aragog_core.write_core_columns(None, output, out, interior_o)
-    assert heat.call_args.kwargs == {'lift': 1.79e30}
+    assert heat.call_args.kwargs == {'lift': pytest.approx(1.79e30 + 5.2e29 + 3.1e29)}
     assert output == {
         'step_dE_impact_core_J': 1.79e30,
         'step_dE_impact_core_refit_J': 5.2e29,
+        'step_dE_struct_core_J': 3.1e29,
         'step_dE_core_J': -2.0e28,
     }
-    assert (interior_o._core_impact_booked, interior_o._core_t_end) == (
-        (1.79e30, 5.2e29),
-        5000.0,
-    )
+    state = ('_core_impact_booked', '_core_struct_booked', '_core_t_end')
+    assert [getattr(interior_o, k) for k in state] == [(1.79e30, 5.2e29), 3.1e29, 5000.0]
     aragog_core.commit_core_call(interior_o, out)
-    assert (interior_o._core_impact_booked, interior_o._core_t_end) == (None, 4500.0)
+    assert [getattr(interior_o, k) for k in state] == [None, 0.0, 4500.0]
+    assert interior_o._core_budget_end is budget
+
+
+ALPHA, C_P = 1.35e-5, 840.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('dP', 'rho', 'ln_shape', 'weights', 'expected'),
+    [
+        ([1.0e10] * 4, [1.0e4] * 4, 0.0, None, 1.016201),
+        ([-1.0e10] * 4, [1.0e4] * 4, 0.0, None, 1.0 / 1.016201),
+        ([1.0e10, 2.0e10], [1.0e4, 1.2e4], 0.0, [1.0, 3.0], 1.024400),
+        ([1.0e10] * 4, [1.0e4] * 4, np.log(1.01), None, 1.016201 / 1.01),
+    ],
+    ids=['uniform', 'uniform_decompression', 'two_parcels_by_hand', 'shape_change'],
+)
+def test_the_entropy_rule_by_hand(dP, rho, ln_shape, weights, expected):
+    """The total entropy of the core is kept when the mass-weighted mean of
+    c_p ln(T'/T) - alpha dP / rho is zero. A uniform density and pressure change gives the
+    relation of one parcel, exp(alpha dP / (rho c_p)) = exp(0.016071) = 1.016201, and its
+    inverse for a decompression. Two parcels of masses 1 and 3 with 10 and 20 GPa at 1.0e4
+    and 1.2e4 kg m-3 give exp((0.016071 + 3 * 0.026786) / 4) = exp(0.024107) = 1.024400.
+    A new adiabat 1 percent steeper in every parcel lowers the CMB ratio by that factor."""
+    from proteus.interior_energetics.aragog_core import isentropic_ratio
+
+    ratio = isentropic_ratio(ALPHA, C_P, dP, rho, ln_shape, weights)
+    assert ratio == pytest.approx(expected, abs=1.0e-6)
+    if weights is None and np.isscalar(ln_shape) and ln_shape == 0.0:
+        assert ratio == pytest.approx(np.exp(ALPHA * dP[0] / (rho[0] * C_P)), rel=1e-15)
+
+
+class _RealSolver(SimpleNamespace):
+    """Solver stand-in that builds its budget as Aragog does, from the live params on its
+    own CMB radius and pressure, and records the core temperature it is given."""
+
+    def _cache_bc_constants(self):
+        from aragog.core import build_core_module_budget
+
+        params = dict(self.parameters.boundary_conditions.core_module_params)
+        self._core_module_q_radio = float(params.pop('q_radio'))
+        params.pop('ra_crit_cmb')
+        self._core_module_budget = build_core_module_budget(
+            params,
+            r_cmb=float(self._r_basic_flat[0]),
+            p_cmb_fallback=float(self._P_basic_flat[0]),
+        )
+
+    def set_initial_core_temperature(self, t_core):
+        self._T_core_init = t_core
+
+
+# A structure before and after 2 updates of a coupled run: CMB radius [m], CMB and central
+# pressure [Pa]. The core mass stays the first one, 1.891517e24 kg.
+M_CORE = 1.891517e24
+GEOMETRY = [
+    (3.409104e6, 1.029887e11, 3.413884e11),
+    (3.411170e6, 1.114017e11, 3.607284e11),
+    (3.385975e6, 1.265341e11, 3.878284e11),
+]
+
+
+def _core_solver():
+    """A real core budget fitted to the first structure, frozen as the wrapper does."""
+    import attrs
+
+    from proteus.config._interior import AragogCoreModule
+
+    params = attrs.asdict(AragogCoreModule())
+    for key in ('f_ohm', 'flux_geometry'):
+        params.pop(key)
+    r_cmb, p_cmb, p_cen = GEOMETRY[0]
+    params.update(m_core=M_CORE, p_cen=p_cen)
+    solver = _RealSolver(
+        parameters=SimpleNamespace(
+            boundary_conditions=SimpleNamespace(core_module_params=params)
+        ),
+        _r_basic_flat=np.array([r_cmb, 3.5e6]),
+        _P_basic_flat=np.array([p_cmb, 1.0e11]),
+        _T_core_init=None,
+    )
+    solver._cache_bc_constants()
+    profiles = solver._core_module_budget.profiles
+    params.update(
+        rho_cen=float(profiles.rho_cen),
+        length_scale=float(profiles.length_scale),
+        fit_profile=False,
+    )
+    del params['m_core'], params['p_cen']
+    return solver, SimpleNamespace(_frozen_core_m_core=M_CORE, aragog_solver=solver)
+
+
+def _update(solver, interior_o, step, t_old):
+    """Move the solver to structure ``step`` as a reset does and carry the core."""
+    from proteus.interior_energetics.aragog_core import carry_core_across_update
+
+    old = solver._core_module_budget
+    r_cmb, p_cmb, p_cen = GEOMETRY[step]
+    solver._r_basic_flat, solver._P_basic_flat = (
+        np.array([r_cmb, 3.5e6]),
+        np.array([p_cmb, 1e11]),
+    )
+    solver._cache_bc_constants()
+    carry_core_across_update(
+        {'P_center': p_cen, 'M_core': 1.93e24}, interior_o, solver, (old, t_old)
+    )
+    return old
+
+
+def _mass_mean(old, new, t_old, t_new, n=4000):
+    """Mass-weighted mean of c_p ln(T'/T) - alpha dP / rho [J kg-1 K-1] between 2 profiles
+    of one mass, on a radial grid of 20001 points and ``n`` equal-mass parcels."""
+
+    def parcels(profiles):
+        r = np.linspace(0.0, profiles.r_cmb, 20001)
+        mass = np.asarray(profiles.enclosed_mass(r))
+        return np.interp((np.arange(n) + 0.5) / n * mass[-1], mass, r)
+
+    r_old, r_new = parcels(old), parcels(new)
+    dP = np.asarray(new.pressure(r_new)) - np.asarray(old.pressure(r_old))
+    rho = 0.5 * (np.asarray(old.density(r_old)) + np.asarray(new.density(r_new)))
+    ratio = np.asarray(new.adiabat(r_new, t_new)) / np.asarray(old.adiabat(r_old, t_old))
+    return float(np.mean(C_P * np.log(ratio) - ALPHA * dP / rho))
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_core_keeps_its_mass_and_its_entropy_across_a_structure_update(caplog):
+    """A structure update that raises the CMB pressure by 8.4 GPa: the refitted profile
+    holds the first core mass and the new central pressure, the core temperature rises by
+    about 60 K (1.0 percent, the compression of an adiabatic core) and the total entropy
+    is kept, checked by a separate quadrature on 4000 parcels. The booked heat is the
+    change of the heat content between the two budgets, the solver gets the new
+    temperature, the profile scalars follow, and the range of the temperature ratio over
+    the mass parcels is below the limit, so no warning is logged."""
+    from proteus.interior_energetics import aragog_core
+
+    solver, interior_o = _core_solver()
+    t_old = 6053.74
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.aragog_core'):
+        old = _update(solver, interior_o, 1, t_old)
+    new, t_new = solver._core_module_budget, solver._T_core_init
+
+    r_cmb, _, p_cen = GEOMETRY[1]
+    assert float(new.profiles.enclosed_mass(r_cmb)) == pytest.approx(M_CORE, rel=1e-9)
+    assert float(new.profiles.pressure(0.0)) == pytest.approx(p_cen, rel=1e-9)
+    assert t_new / t_old == pytest.approx(1.01003, abs=2e-5)
+    assert abs(_mass_mean(old.profiles, new.profiles, t_old, t_new)) < 1e-6 * C_P
+    # A core that kept its temperature would lose 8.4 J kg-1 K-1 of entropy.
+    assert _mass_mean(old.profiles, new.profiles, t_old, t_old) < -8.0
+    booked = new.heat_content(t_new) - old.heat_content(t_old)
+    assert interior_o._core_struct_booked == pytest.approx(booked, rel=1e-12)
+    assert 1.5e29 < booked < 1.9e29
+    assert (interior_o._core_t_end, interior_o._core_budget_end) == (t_old, old)
+    assert interior_o._frozen_core_rho_cen == float(new.profiles.rho_cen)
+    assert interior_o._frozen_core_length_scale == float(new.profiles.length_scale)
+    assert interior_o._frozen_core_p_cen == p_cen
+    assert aragog_core.frozen_profile(interior_o)['r_cmb'] == r_cmb
+    assert 'not the old one compressed' not in caplog.text
+
+
+@pytest.mark.unit
+def test_a_profile_that_is_not_the_old_one_compressed_is_reported(caplog, monkeypatch):
+    """The mass parcels of the same update differ by 5.2e-3 in their own temperature
+    ratio, because the refitted profile is not the old one compressed; with a limit below
+    that range the update logs a warning with the number."""
+    from proteus.interior_energetics import aragog_core
+
+    monkeypatch.setattr(aragog_core, 'ENTROPY_SPREAD_MAX', 1.0e-3)
+    solver, interior_o = _core_solver()
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.aragog_core'):
+        _update(solver, interior_o, 1, 6053.74)
+    assert re.search(r'parcels differ by 5\.[12]\de-03', caplog.text)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('case', ['same_cmb', 'no_budget', 'no_temperature'])
+def test_a_reset_that_keeps_the_cmb_leaves_the_core_as_it_is(case):
+    """A reset that left the CMB radius and pressure as they were, also when it built a new
+    budget object, and a first set-up without a core state: the carry returns and changes
+    nothing on the solver or on the interior state."""
+    from proteus.interior_energetics.aragog_core import carry_core_across_update
+
+    r_cmb, p_cmb, _ = GEOMETRY[0]
+    old = SimpleNamespace(profiles=SimpleNamespace(r_cmb=r_cmb, p_cmb=p_cmb))
+    solver = SimpleNamespace(
+        _core_module_budget=object(),
+        _r_basic_flat=np.array([r_cmb, 3.5e6]),
+        _P_basic_flat=np.array([p_cmb, 1.0e11]),
+    )
+    state = dict(vars(solver))
+    interior_o = SimpleNamespace()
+    before = {'same_cmb': (old, 6000.0), 'no_budget': (None, 6000.0)}.get(case, (old, None))
+    carry_core_across_update({}, interior_o, solver, before)
+    assert vars(interior_o) == {} and vars(solver) == state
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_ledger_measures_the_heat_two_structure_updates_booked():
+    """Two structure updates before one kept call, as after a skipped step: the booking is
+    the sum of both changes of the heat content, and the jump the next call measures from
+    the end of the last kept call (its temperature and its budget) equals it, so the
+    ledger closes. A core that is carried but not booked would show as that jump."""
+    from proteus.interior_energetics.aragog_core import commit_core_call
+    from proteus.interior_energetics.aragog_core_impact import core_call_heat
+
+    solver, interior_o = _core_solver()
+    first, t0 = solver._core_module_budget, 6053.74
+    interior_o._core_t_end, interior_o._core_budget_end = t0, first
+    _update(solver, interior_o, 1, t0)
+    one = interior_o._core_struct_booked
+    _update(solver, interior_o, 2, solver._T_core_init)
+    booked, t2 = interior_o._core_struct_booked, solver._T_core_init
+    last = solver._core_module_budget
+    assert booked == pytest.approx(last.heat_content(t2) - first.heat_content(t0), rel=1e-12)
+    assert booked > one > 0.0
+    assert (interior_o._core_t_end, interior_o._core_budget_end) == (t0, first)
+
+    solver._S0, solver._n_stag = np.array([3100.0, 0.0, t2]), 1
+    out = SimpleNamespace(step_dE_core_J=0.0, T_core=t2 - 1.0, dt_actual=0.0)
+    assert core_call_heat(out, interior_o) == pytest.approx(booked, rel=1e-12)
+    commit_core_call(interior_o, out)
+    assert interior_o._core_struct_booked == 0.0
+    assert (interior_o._core_t_end, interior_o._core_budget_end) == (t2 - 1.0, last)
+    solver._S0[2] = t2 - 1.0
+    assert core_call_heat(out, interior_o) == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_resume_carries_the_core_from_the_geometry_of_its_snapshot():
+    """A run stopped after a structure update and a skipped step resumes from the snapshot
+    of the last kept call: its core temperature and profile on the CMB radius and pressure
+    it was written with. The solver of the resumed row is on the updated structure, so the
+    core is carried from the snapshot's budget and the heat is booked again; a snapshot on
+    the solver's own geometry, or one without the geometry, starts no carry."""
+    from proteus.interior_energetics.aragog_core import (
+        carry_core_across_update,
+        snapshot_core_state,
+    )
+
+    solver, interior_o = _core_solver()
+    snapshot_budget = solver._core_module_budget
+    r_cmb, p_cmb, _ = GEOMETRY[0]
+    assert snapshot_core_state(interior_o, solver) == (None, None)
+    interior_o._frozen_core_r_cmb, interior_o._frozen_core_p_cmb = r_cmb, p_cmb
+    assert snapshot_core_state(interior_o, solver) == (None, None)
+
+    r_new, p_new, p_cen = GEOMETRY[1]
+    solver._r_basic_flat, solver._P_basic_flat = (
+        np.array([r_new, 3.5e6]),
+        np.array([p_new, 1e11]),
+    )
+    solver._cache_bc_constants()
+    solver._T_core_init = 6053.74
+    old, t_old = snapshot_core_state(interior_o, solver)
+    assert t_old == 6053.74
+    assert (old.profiles.r_cmb, old.profiles.p_cmb) == (r_cmb, p_cmb)
+    assert old.heat_content(t_old) == pytest.approx(
+        snapshot_budget.heat_content(t_old), rel=1e-12
+    )
+    carry_core_across_update(
+        {'P_center': p_cen, 'M_core': 1.93e24}, interior_o, solver, (old, t_old)
+    )
+    new = solver._core_module_budget
+    assert interior_o._core_struct_booked == pytest.approx(
+        new.heat_content(solver._T_core_init) - snapshot_budget.heat_content(t_old), rel=1e-12
+    )
+    assert (interior_o._core_t_end, interior_o._core_budget_end) == (t_old, old)

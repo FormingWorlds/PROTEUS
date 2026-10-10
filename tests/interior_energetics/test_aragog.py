@@ -2359,17 +2359,24 @@ def test_cvode_factory_installs_with_empty_mesh_mock(caplog):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('core_bc', ['core_module', 'energy_balance'])
-def test_the_update_refits_the_core_right_after_the_solver_reset(core_bc):
-    """On core_module the pending impact refit runs after reset() rebuilds the mesh and
-    before the entropy is restored, so it fits on the solver's final geometry; other
-    core boundaries never call it."""
+@pytest.mark.parametrize(
+    ('core_bc', 'pending'),
+    [('core_module', True), ('core_module', False), ('energy_balance', False)],
+    ids=['impact_refit', 'structure_update', 'other_core_boundary'],
+)
+def test_the_update_refits_the_core_right_after_the_solver_reset(core_bc, pending):
+    """On core_module the core is brought onto the new structure after reset() rebuilds
+    the mesh and before the entropy is restored, so it fits on the solver's final
+    geometry: by the pending refit of an impact, which covers the structure change of its
+    reset, or else by the carry across a structure update, with the core state that was
+    read before the reset. Other core boundaries call neither."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     calls = MagicMock()
     interior_o = MagicMock()
     interior_o.ic = 2
     interior_o.structure_stale = False
+    interior_o._core_refit_pending = {'t_pre': 5000.0} if pending else None
     interior_o.aragog_solver.reset = calls.reset
     interior_o.aragog_solver.set_initial_entropy = calls.set_initial_entropy
     config = MagicMock()
@@ -2382,26 +2389,44 @@ def test_the_update_refits_the_core_right_after_the_solver_reset(core_bc):
             'proteus.interior_energetics.aragog_core_impact.refit_core_at_reset',
             side_effect=lambda hf, io, sv: calls.refit(sv),
         ),
+        patch(f'{_CORE}.core_state', side_effect=lambda sv: (calls.state(sv), 'before')[1]),
+        patch(
+            f'{_CORE}.carry_core_across_update',
+            side_effect=lambda hf, io, sv, before: calls.carry(sv, before),
+        ),
     ):
         AragogRunner.setup_or_update_solver(config, {'Time': 600.0}, interior_o, 1.0, {})
     names = [c[0] for c in calls.mock_calls]
-    if core_bc == 'core_module':
-        assert names == ['reset', 'refit', 'set_initial_entropy']
+    if core_bc != 'core_module':
+        assert names == ['reset', 'set_initial_entropy']
+    elif pending:
+        assert names == ['state', 'reset', 'refit', 'set_initial_entropy']
         assert calls.refit.call_args.args[0] is interior_o.aragog_solver
     else:
-        assert names == ['reset', 'set_initial_entropy']
+        assert names == ['state', 'reset', 'carry', 'set_initial_entropy']
+        assert calls.carry.call_args.args == (interior_o.aragog_solver, 'before')
 
 
 @pytest.mark.unit
-def test_a_failed_core_refit_at_the_reset_writes_the_interior_status():
-    """A refit that cannot fit the grown core raises from the solver update; the run
-    stops with the interior error status 21 and the error reaches the caller, with the
-    entropy not restored on a half-updated solver."""
+@pytest.mark.parametrize(
+    ('pending', 'target'),
+    [
+        (True, 'proteus.interior_energetics.aragog_core_impact.refit_core_at_reset'),
+        (False, f'{_CORE}.carry_core_across_update'),
+    ],
+    ids=['impact_refit', 'structure_update'],
+)
+def test_a_failed_core_refit_at_the_reset_writes_the_interior_status(pending, target):
+    """A fit that cannot hold the core on the new structure, after an impact or after a
+    structure update, raises from the solver update; the run stops with the interior error
+    status 21 and the error reaches the caller, with the entropy not restored on a
+    half-updated solver."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     interior_o = MagicMock()
     interior_o.ic = 2
     interior_o.structure_stale = False
+    interior_o._core_refit_pending = {'t_pre': 5000.0} if pending else None
     config = MagicMock()
     config.interior_energetics.aragog.core_bc = 'core_module'
     dirs = {'output': '/tmp/out'}
@@ -2409,10 +2434,7 @@ def test_a_failed_core_refit_at_the_reset_writes_the_interior_status():
         patch.object(AragogRunner, 'update_structure'),
         patch.object(AragogRunner, 'update_solver'),
         patch.object(AragogRunner, '_refresh_entropy_eos'),
-        patch(
-            'proteus.interior_energetics.aragog_core_impact.refit_core_at_reset',
-            side_effect=ValueError('p_cen too low for the incompressible limit'),
-        ),
+        patch(target, side_effect=ValueError('p_cen too low for the incompressible limit')),
         patch('proteus.interior_energetics.aragog.UpdateStatusfile') as status,
         pytest.raises(ValueError, match='incompressible'),
     ):
@@ -4190,6 +4212,9 @@ def test_core_module_snapshot_and_resume_preserves_t_core_and_gradient(tmp_path)
             return _snapshot_output()
 
     solver = _MockSolver(-4.567e-8, 5987.654321)
+    solver._core_module_budget = SimpleNamespace(
+        profiles=SimpleNamespace(r_cmb=3.409104e6, p_cmb=1.029887e11)
+    )
     assert cmb_gradient_state(solver, 'core_module') == pytest.approx(-4.567e-8)
     assert core_temperature_state(solver, 'core_module') == pytest.approx(5987.654321)
 
@@ -4214,6 +4239,8 @@ def test_core_module_snapshot_and_resume_preserves_t_core_and_gradient(tmp_path)
         'core_module_length_scale': 6281400.0,
         'core_module_m_core': 1.8916e24,
         'core_module_p_cen': 3.4139e11,
+        'core_module_r_cmb': 3.409104e6,
+        'core_module_p_cmb': 1.029887e11,
     }
     for name, expected in stored.items():
         value, status = _snapshot_scalar(str(tmp_path), t_snap, name)
@@ -4231,6 +4258,11 @@ def test_core_module_snapshot_and_resume_preserves_t_core_and_gradient(tmp_path)
     )
 
     assert getattr(new_interior, '_last_T_core', None) == pytest.approx(5987.654321, rel=1e-12)
+    # The CMB geometry of the budget, from which a resume carries the core when the structure moved.
+    assert (new_interior._frozen_core_r_cmb, new_interior._frozen_core_p_cmb) == (
+        pytest.approx(3.409104e6, rel=1e-12),
+        pytest.approx(1.029887e11, rel=1e-12),
+    )
     assert getattr(new_interior, '_last_dSdr_cmb', None) == pytest.approx(-4.567e-8, rel=1e-12)
     assert getattr(new_interior, '_frozen_core_rho_cen', None) == pytest.approx(
         13559.79, rel=1e-12
@@ -4378,7 +4410,7 @@ def test_run_solver_writes_the_core_impact_heat_booked_at_the_reset(tmp_path):
         assert output['step_dE_impact_core_J'] == pytest.approx(1.79e30)
         assert output['step_dE_impact_core_refit_J'] == pytest.approx(5.2e29)
         assert (interior_o._core_impact_booked, interior_o._core_t_end) == (None, 4500.0)
-        assert heat.call_args.kwargs == {'lift': pytest.approx(1.79e30)}
+        assert heat.call_args.kwargs == {'lift': pytest.approx(1.79e30 + 5.2e29)}
         _, output = runner.run_solver({'Time': 375.0}, interior_o, {'output': str(tmp_path)})
     assert output['step_dE_impact_core_J'] == pytest.approx(0.0)
     assert heat.call_args.kwargs == {'lift': 0.0}
@@ -4426,6 +4458,8 @@ def test_setup_or_update_solver_restores_the_core_temperature_on_resume(
     )
     interior_o._last_entropy = np.full(20, 4000.0)
     interior_o._frozen_core_rho_cen = 13500.0
+    order = []
+    solver.set_initial_entropy.side_effect = lambda S: order.append('entropy')
 
     def _setup(cfg, row, int_o, outdir):
         int_o.aragog_solver = solver
@@ -4436,10 +4470,19 @@ def test_setup_or_update_solver_restores_the_core_temperature_on_resume(
             'proteus.interior_energetics.aragog.AragogRunner.setup_solver', side_effect=_setup
         ),
         patch('proteus.interior_energetics.aragog.AragogRunner.update_solver'),
+        patch(f'{_CORE}.snapshot_core_state', return_value='snapshot state') as state,
+        patch(
+            f'{_CORE}.carry_core_across_update',
+            side_effect=lambda *args: order.append('carry'),
+        ) as carry,
         caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.aragog_core'),
     ):
         AragogRunner.setup_or_update_solver(config, hf_row, interior_o, 10.0, {'output': '.'})
 
+    # The core is carried from the geometry of the snapshot before the entropy is set.
+    state.assert_called_once_with(interior_o, solver)
+    assert carry.call_args.args == (hf_row, interior_o, solver, 'snapshot state')
+    assert order == ['carry', 'entropy']
     if expected is None:
         solver.set_initial_core_temperature.assert_not_called()
     else:

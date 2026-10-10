@@ -45,10 +45,14 @@ default `energy_balance` mode.
   the core mass and the central pressure of the structure solution, which
   only Zalmoxis provides. A config with another structure module is rejected
   when it is read.
-- **No resolved stable layer with accretion or Radau.** `stratification = true`
-  resolves the outer part of the core as a shell in which a stable layer can
-  form. It is experimental, and a config that combines it with an accretion
-  module or with `solver_method = "radau"` is rejected when it is read.
+- **A resolved stable layer needs a structure that is solved once.**
+  `stratification = true` resolves the outer part of the core as a shell in
+  which a stable layer can form. It is experimental. A config that combines it
+  with an accretion module, with `solver_method = "radau"`, with structure
+  updates (`interior_struct.zalmoxis.update_interval > 0`) or with an initial
+  condition other than `planet.temperature_mode = "liquidus_super"` is
+  rejected when it is read: a structure update carries the core with its heat
+  content, which is not available for a stratified core.
 
 ## What happens in a run
 
@@ -65,6 +69,18 @@ start.
 
 A resumed run reads the core temperature, the fitted core profile and, with
 `stratification = true`, the shell temperatures from the interior snapshot.
+
+A structure update (`interior_struct.zalmoxis.update_interval > 0`) moves the
+CMB radius and pressure. The core keeps its mass and its entropy across it:
+the density profile is fitted again to the same core mass on the new
+structure, and the core temperature takes the value that keeps the total
+entropy of the core, so a core under a rising pressure heats as an adiabatic
+body does. The change of its heat content is written to
+`step_dE_struct_core_J`, on the row of the next interior solve that is kept.
+The log gives, for each update, the temperature ratio of the rule and of the
+single mass parcels; a warning marks an update where the parcels differ by
+more than 1 percent, which means that the fitted profile is far from the old
+one compressed.
 
 With an accretion module, a giant impact that re-melts the mantle raises the
 core temperature to at least the temperature of the re-melted base, and the
@@ -85,12 +101,10 @@ Check `E_core_residual_frac` first. The Aragog verification page gives the
 values measured in coupled runs and how they depend on
 `interior_energetics.rtol`.
 
-The ledger compares the heat the core loses with the heat that crosses the
-CMB within each interior call. It does not include what a structure update
-does to the core: with `interior_struct.zalmoxis.update_interval > 0` each
-update moves the CMB radius and pressure, and the heat content of the core at
-a given temperature changes with them, because the fitted density profile is
-kept. A run without structure updates has no such term.
+The ledger compares the change of the heat content of the core with the heat
+that crosses the CMB and with 3 booked terms: the lift and the refit of a
+giant impact (`step_dE_impact_core_J`, `step_dE_impact_core_refit_J`) and the
+structure updates (`step_dE_struct_core_J`).
 
 Every column of this table except `T_cmb` and `T_cmb_node` is zero in every
 other `core_bc` mode, and so are the other columns that the

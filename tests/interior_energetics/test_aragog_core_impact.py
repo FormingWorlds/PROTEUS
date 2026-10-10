@@ -300,8 +300,10 @@ def _secular_capacity(rho_cen, length, r_cmb, linear=False, alpha=1.35e-5, c_p=8
 def test_a_real_refit_books_the_lift_the_next_call_measures():
     """With the real profile fit and budget, the full config parameter set and the
     pre- and post-impact structure of a 0.05 M_E giant impact: the reset refit books a lift
-    that the next call measures again as its T_core jump to the last digit, and the
-    pre-impact budget would measure a jump different by more than 1e28 J. Lift and refit
+    and a refit term, and the next call measures their sum again as the jump of the heat
+    content from the pre-impact budget to the refitted one; with the current budget on both
+    sides the jump is the lift alone, and the pre-impact budget alone would measure a jump
+    different by more than 1e28 J. Lift and refit
     equal an independent quadrature of the adiabat with the exact gravity of the fitted
     density; the adiabat of gravity linear in radius gives a lift 2 percent higher."""
     import attrs
@@ -338,8 +340,9 @@ def test_a_real_refit_books_the_lift_the_next_call_measures():
     solver._S0, solver._n_stag = np.array([3100.0, 0.0, 6124.36]), 1
     out = SimpleNamespace(step_dE_core_J=0.0, T_core=6100.0, dt_actual=0.0)
     interior_o.aragog_solver = solver
-    jump = core_call_heat(out, interior_o)
-    assert jump == pytest.approx(lift, rel=1e-15)
+    assert core_call_heat(out, interior_o) == pytest.approx(lift, rel=1e-15)
+    interior_o._core_budget_end = old
+    assert core_call_heat(out, interior_o) == pytest.approx(lift + refit, rel=1e-13)
     # Above onset the lift is dT times the secular capacity, M_core c_p times the mass-weighted
     # mean of T / T_cmb on the adiabat (1.156 here).
     new = solver._core_module_budget.profiles

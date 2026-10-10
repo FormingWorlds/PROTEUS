@@ -662,6 +662,14 @@ class AragogRunner:
                         'bower2018',
                     ):
                         aragog_core.restore_core_start(hf_row, interior_o, solver)
+                    if config.interior_energetics.aragog.core_bc == 'core_module':
+                        # The structure of the resumed row is not always the snapshot's.
+                        aragog_core.carry_core_across_update(
+                            hf_row,
+                            interior_o,
+                            solver,
+                            aragog_core.snapshot_core_state(interior_o, solver),
+                        )
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
@@ -712,12 +720,19 @@ class AragogRunner:
             # Refresh before reset() to evaluate new mesh pressures against
             # the updated table ceiling on impact steps.
             AragogRunner._refresh_entropy_eos(config, interior_o)
-            interior_o.aragog_solver.reset()
-            if config.interior_energetics.aragog.core_bc == 'core_module':
+            solver = interior_o.aragog_solver
+            core_module = config.interior_energetics.aragog.core_bc == 'core_module'
+            before = aragog_core.core_state(solver) if core_module else None
+            solver.reset()
+            if core_module:
                 from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
 
+                # An impact refit covers the structure change of its reset.
                 try:
-                    refit_core_at_reset(hf_row, interior_o, interior_o.aragog_solver)
+                    if getattr(interior_o, '_core_refit_pending', None) is not None:
+                        refit_core_at_reset(hf_row, interior_o, solver)
+                    else:
+                        aragog_core.carry_core_across_update(hf_row, interior_o, solver, before)
                 except ValueError:
                     UpdateStatusfile(dirs, 21)
                     raise

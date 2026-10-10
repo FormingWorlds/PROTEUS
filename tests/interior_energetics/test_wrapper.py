@@ -4394,8 +4394,8 @@ def test_a_skipped_aragog_step_adds_nothing_to_the_energy_ledgers():
     for key, value in previous.items():
         assert hf_row[key] == pytest.approx(value, rel=1e-15)
     assert hf_row['E_residual_cons_J'] == pytest.approx(-1.0e29, rel=1e-12)
-    assert [hf_row[k] for k in _ARAGOG_CALL_ENERGY_KEYS] == [0.0] * 10
-    assert 'step_dE_core_J' in _ARAGOG_CALL_ENERGY_KEYS
+    assert [hf_row[k] for k in _ARAGOG_CALL_ENERGY_KEYS] == [0.0] * 11
+    assert {'step_dE_core_J', 'step_dE_struct_core_J'} <= set(_ARAGOG_CALL_ENERGY_KEYS)
 
 
 @pytest.mark.unit

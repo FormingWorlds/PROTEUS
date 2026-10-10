@@ -944,15 +944,16 @@ def GetHelpfileKeys():
         'step_dE_state_heat_J',  # per-call entropy-transported heat content change [J]
         'step_dE_impact_J',  # giant-impact re-melt heat injection [J] (both residual sides)
         'step_dE_impact_core_J',  # giant-impact core heat: the T_core lift under the refitted profile, on the first row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
-        'step_dE_impact_core_refit_J',  # giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first row after the impact, recorded, not booked; computed only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_impact_core_refit_J',  # giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_struct_core_J',  # change of the core heat content across the structure updates since the last kept interior call (core mass and total entropy kept), positive when the core gains heat; computed only with core_bc = core_module, 0 otherwise [J]
         'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
         'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
         'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
         'E_residual_cons_frac', # E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J) [1]
         'solver_residual_J',    # cumulative entropy-ODE LHS-RHS residual [J]
-        'step_dE_core_J',       # core heat change over the call net of its internal source, plus a T_core jump since the last call; computed only with core_bc = core_module, 0 otherwise [J]
-        'E_core_residual_J',    # cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J); computed only with core_bc = core_module, 0 otherwise [J]
-        'E_core_residual_frac', # E_core_residual_J / max(sum(|step_dE_F_cmb_J| + |step_dE_impact_core_J|), 1 J); computed only with core_bc = core_module, 0 otherwise [1]
+        'step_dE_core_J',       # core heat change over the call net of its internal source, plus the jump of the heat content since the last kept call; computed only with core_bc = core_module, 0 otherwise [J]
+        'E_core_residual_J',    # cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J - step_dE_impact_core_refit_J - step_dE_struct_core_J); computed only with core_bc = core_module, 0 otherwise [J]
+        'E_core_residual_frac', # E_core_residual_J / max(sum(|step_dE_F_cmb_J| + |the 3 booked terms|), 1 J); computed only with core_bc = core_module, 0 otherwise [1]
         'Cp_eff',           # effective mantle heat capacity [J kg-1 K-1]
 
         # Host star properties
@@ -1112,6 +1113,14 @@ def ZeroHelpfileRow():
     return out
 
 
+# Heat booked into the core between interior calls, on the row of the next kept call.
+_CORE_BOOKED_KEYS = (
+    'step_dE_impact_core_J',
+    'step_dE_impact_core_refit_J',
+    'step_dE_struct_core_J',
+)
+
+
 def _finite_abs_sum(values) -> float:
     """Sum of the absolute values of the finite entries of ``values``."""
     values = np.abs(np.asarray(values, dtype=float))
@@ -1121,29 +1130,30 @@ def _finite_abs_sum(values) -> float:
 def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     """Fill the cumulative core ledger of ``new_row`` in place (Aragog core_module).
 
-    ``E_core_residual_J`` accumulates ``step_dE_core_J + step_dE_F_cmb_J -
-    step_dE_impact_core_J``: the core's heat change must equal the heat it gives the
-    mantle plus the heat a giant impact books into it. An unbooked T_core jump or a
-    mismatched CMB flux integral shows here; a booked lift is measured with the budget
-    that measures the jump, so the ledger shows a missing or repeated booking, not an
-    error in the lift. ``E_core_residual_frac`` divides by ``max(sum(|step_dE_F_cmb_J| +
-    |step_dE_impact_core_J|), 1 J)`` over the rows with ``core_C_eff != 0`` (0.0 is the
-    unwritten value; other rows keep 0), a sum that only grows. A non-finite term
-    carries the previous residual unchanged, with a warning.
+    ``E_core_residual_J`` accumulates ``step_dE_core_J + step_dE_F_cmb_J`` minus the
+    booked terms ``step_dE_impact_core_J``, ``step_dE_impact_core_refit_J`` and
+    ``step_dE_struct_core_J``: the change of the core's heat content must equal the heat
+    it gives the mantle plus what a giant impact and a structure update book into it. An
+    unbooked jump of the heat content or a mismatched CMB flux integral shows here; a
+    booking is computed where the core changes and the jump where the next call starts,
+    so the ledger shows a missing or repeated booking. ``E_core_residual_frac`` divides
+    by ``max(sum(|step_dE_F_cmb_J| + |booked terms|), 1 J)`` over the rows with
+    ``core_C_eff != 0`` (0.0 is the unwritten value; other rows keep 0), a sum that only
+    grows. A non-finite term carries the previous residual unchanged, with a warning.
     """
     if float(new_row.get('core_C_eff', 0.0)) == 0.0:
         new_row['E_core_residual_J'] = new_row['E_core_residual_frac'] = 0.0
         return
     terms = [float(new_row.get(k, 0.0)) for k in ('step_dE_core_J', 'step_dE_F_cmb_J')]
-    impact = float(new_row.get('step_dE_impact_core_J', 0.0))
-    prev, scale = 0.0, _finite_abs_sum([terms[1], impact])
+    booked = [float(new_row.get(k, 0.0)) for k in _CORE_BOOKED_KEYS]
+    prev, scale = 0.0, _finite_abs_sum([terms[1], *booked])
     if len(current_hf) and 'E_core_residual_J' in current_hf:
         prev = np.nan_to_num(float(current_hf['E_core_residual_J'].iloc[-1]))
         rows = current_hf['core_C_eff'].to_numpy(dtype=float) != 0.0
-        for key in ('step_dE_F_cmb_J', 'step_dE_impact_core_J'):
+        for key in ('step_dE_F_cmb_J', *_CORE_BOOKED_KEYS):
             if key in current_hf:
                 scale += _finite_abs_sum(current_hf[key].to_numpy(dtype=float)[rows])
-    inc = terms[0] + terms[1] - impact
+    inc = terms[0] + terms[1] - sum(booked)
     if not np.isfinite(inc):
         log.warning(
             'core ledger term is not finite at t=%s yr; residual carried', new_row.get('Time')
@@ -1575,6 +1585,7 @@ _DIAGNOSTIC_KEYS = (
     'core_T_top',
     'step_dE_impact_core_J',
     'step_dE_impact_core_refit_J',
+    'step_dE_struct_core_J',
     'step_dE_core_J',
     'E_core_residual_J',
     'E_core_residual_frac',

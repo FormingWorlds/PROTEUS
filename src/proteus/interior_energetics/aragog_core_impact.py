@@ -73,10 +73,9 @@ def refit_core_at_reset(hf_row: dict, interior_o, solver) -> None:
     fit to the row's ``M_core`` and ``P_center`` with the solver's own CMB radius and
     pressure, the geometry the next solve integrates on. The heat of the lift under
     the refitted profile, ``E_new(T_new) - E_new(T_pre)``, is booked in
-    ``step_dE_impact_core_J``; the refit's content difference at ``T_pre``,
+    ``step_dE_impact_core_J``, and the refit's content difference at ``T_pre``,
     ``E_new - E_old`` (the added iron's heat content from the profile's
-    reference), is recorded in ``step_dE_impact_core_refit_J`` and not booked, the
-    same convention as the mantle re-melt. Both land on the first row after the
+    reference), in ``step_dE_impact_core_refit_J``. Both land on the first row after the
     impact, through ``interior_o._core_impact_booked``. A failing fit, budget build
     or heat check raises before anything changes; the final profile check raises
     after the solver budget is rebuilt, and the run then stops.
@@ -152,7 +151,7 @@ def refit_core_at_reset(hf_row: dict, interior_o, solver) -> None:
     )
     log.info(
         '    core impact heat: lift %.6e J booked (%.2f K -> %.2f K), refit content '
-        'change %.6e J recorded',
+        'change %.6e J booked',
         dE,
         t_pre,
         t_new,
@@ -164,20 +163,21 @@ def core_call_heat(out, interior_o, lift: float = 0.0) -> float:
     """Heat change of the core over one solver call, for the core ledger [J].
 
     ``out.step_dE_core_J`` (the effective capacity integrated over the call's T_core
-    trajectory) net of the core's internal source over the call, plus the heat of
-    any jump between the previous call's final T_core and this call's initial one,
-    measured with the solver's current budget. An impact lift appears here as that
-    jump, so the ledger closes only when the same lift is booked; ``lift``, the heat
-    booked on this call, is logged against the jump at DEBUG. The previous final T_core
-    is ``interior_o._core_t_end``, which ``aragog_core.commit_core_call`` moves.
+    trajectory) net of the core's internal source over the call, plus the jump of the
+    heat content between the end of the last kept call and the start of this one,
+    each with the budget of its own time. An impact or a structure update appears
+    here as that jump, so the ledger closes only when the same heat is booked;
+    ``lift``, the heat booked on this call, is logged against the jump at DEBUG. The
+    end of the last kept call is ``interior_o._core_t_end`` and ``_core_budget_end``,
+    which ``aragog_core.commit_core_call`` moves.
     """
     solver = interior_o.aragog_solver
     t_start = start_core_temperature(solver, 'core_module')
-    t_prev = getattr(interior_o, '_core_t_end', None)
+    t_prev, budget = getattr(interior_o, '_core_t_end', None), solver._core_module_budget
+    budget_prev = getattr(interior_o, '_core_budget_end', budget)
     jump = 0.0
-    if t_prev is not None and abs(t_start - t_prev) > 1e-9:
-        budget = solver._core_module_budget
-        jump = budget.heat_content(t_start) - budget.heat_content(t_prev)
+    if t_prev is not None and (budget_prev is not budget or abs(t_start - t_prev) > 1e-9):
+        jump = budget.heat_content(t_start) - budget_prev.heat_content(t_prev)
     if jump or lift:
         log.debug(
             '    core jump %.17g J, booked lift %.17g J, difference %.17g J',
