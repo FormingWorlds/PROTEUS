@@ -7,6 +7,7 @@ import os
 
 import netCDF4 as nc
 import numpy as np
+from aragog.solver.entropy_solver import EXTRA_STATE_SLOTS
 
 from proteus.utils.constants import secs_per_year
 from proteus.utils.helper import snapshot_path_for_time
@@ -88,6 +89,16 @@ def core_temperature_state(solver, core_bc: str) -> float | None:
     ):
         return None
     return solver.get_current_core_temperature()
+
+
+def start_core_temperature(solver, core_bc: str) -> float | None:
+    """Core temperature [K] in the start state of the next solve, or None when the mode
+    or the solver holds none."""
+    slots = EXTRA_STATE_SLOTS.get(core_bc, ())
+    S0 = getattr(solver, '_S0', None)
+    if 'T_core' not in slots or S0 is None or len(S0) < solver._n_stag + len(slots):
+        return None
+    return float(S0[solver._n_stag + slots.index('T_core')])
 
 
 def core_module_params(config, hf_row: dict, interior_o, outdir: str) -> dict:

@@ -2059,13 +2059,9 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         if T_core_pre is None:
             T_core_pre = getattr(solver, '_T_core_init', None)
         if T_core_pre is None:
-            S0 = getattr(solver, '_S0', None)
-            n_stag = getattr(solver, '_n_stag', None)
-            if S0 is not None and n_stag is not None:
-                if core_bc == 'core_module' and len(S0) == n_stag + 2:
-                    T_core_pre = float(S0[n_stag + 1])
-                elif core_bc == 'bower2018' and len(S0) == n_stag + 1:
-                    T_core_pre = float(S0[n_stag])
+            from proteus.interior_energetics.aragog_core import start_core_temperature
+
+            T_core_pre = start_core_temperature(solver, core_bc)
         if T_core_pre is None:
             t_cmb_val = hf_row.get('T_cmb', hf_row.get('T_core'))
             T_core_pre = float(t_cmb_val) if t_cmb_val is not None else None
@@ -2119,7 +2115,13 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         from proteus.interior_energetics.aragog_core_impact import remelt_core_module
 
         S_ic = np.asarray(interior_o._last_entropy, dtype=float)
-        T_core_new = remelt_core_module(hf_row, interior_o, solver, T_core_pre, float(S_ic[0]))
+        try:
+            T_core_new = remelt_core_module(
+                hf_row, interior_o, solver, T_core_pre, float(S_ic[0])
+            )
+        except ValueError:
+            UpdateStatusfile(dirs, 21)
+            raise
         solver.set_initial_core_temperature(T_core_new)
         solver.set_initial_entropy(S_ic)
 
@@ -2224,11 +2226,7 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
         case 'dummy' | 'boundary':
             _remelt_scalar_backend(config, hf_row, interior_o)
         case 'aragog':
-            try:
-                _remelt_aragog(config, dirs, hf_row, interior_o)
-            except ValueError:
-                UpdateStatusfile(dirs, 21)
-                raise
+            _remelt_aragog(config, dirs, hf_row, interior_o)
         case 'spider':
             UpdateStatusfile(dirs, 20)
             raise NotImplementedError(

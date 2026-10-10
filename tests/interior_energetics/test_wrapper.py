@@ -6844,6 +6844,29 @@ def test_a_non_finite_core_temperature_at_the_remelt_writes_the_interior_status(
 
 
 @pytest.mark.unit
+def test_an_energy_balance_remelt_error_writes_no_status():
+    """A ValueError of a re-melt without the core module reaches the caller and leaves
+    the status file as it is: only the core module re-melt writes status 21."""
+    interior_o = SimpleNamespace(
+        aragog_solver=_FakeAragogSolver(cooled_profile=np.full(6, 2400.0)),
+        _last_entropy=np.full(6, 2400.0),
+        impact_reset=False,
+    )
+    with (
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            side_effect=ValueError('no entropy for this temperature'),
+        ),
+        patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status_mock,
+        pytest.raises(ValueError, match='no entropy'),
+    ):
+        remelt_mantle(
+            {'output': '/tmp/out'}, _remelt_config('aragog'), hf_row={}, interior_o=interior_o
+        )
+    status_mock.assert_not_called()
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_aragog_remelt_books_the_injected_heat_over_the_cooled_to_molten_jump():
     """The booked impact heat is the quadrature from the cooled to the molten state.
@@ -7487,6 +7510,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     class FakeSolver:
         def __init__(self, n_nodes=64):
             self._S0 = np.linspace(3000.0, 4500.0, n_nodes)
+            self._n_stag = n_nodes
             self._prev_solution = object()
             self._solution = self._prev_solution
             self.recorded_y = None
@@ -7594,7 +7618,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
 
     # 3. Solver without get_state returns None; liquid/solid split runs from Phi_global with clamping
     class NoGetStateSolver:
-        _S0 = np.array([4000.0])
+        _S0, _n_stag = np.array([4000.0]), 1
         _solution = None
         parameters = SimpleNamespace()
 
@@ -7749,7 +7773,9 @@ def _s0(n_stag, extra, idx, value):
         ('core_module', dict(getter=lambda: 5234.5, t_core_init=1.0), {}, 5234.5),
         ('core_module', dict(getter=lambda: None, t_core_init=5123.4), {}, 5123.4),
         ('core_module', dict(s0=_s0(80, 2, 81, 5067.8), n_stag=80), {}, 5067.8),
+        ('core_module', dict(s0=_s0(80, 6, 81, 5045.6), n_stag=80), {}, 5045.6),
         ('bower2018', dict(s0=_s0(80, 1, 80, 4987.6), n_stag=80), {}, 4987.6),
+        ('core_module', dict(s0=_s0(80, 0, 79, 1.0), n_stag=80), {'T_cmb': 4654.3}, 4654.3),
         ('core_module', {}, {'T_cmb': 4876.5, 'T_core': 1.0}, 4876.5),
         ('core_module', {}, {'T_core': 4765.4}, 4765.4),
     ],
@@ -7757,7 +7783,9 @@ def _s0(n_stag, extra, idx, value):
         'getter',
         't_core_init',
         's0_core_module',
+        's0_core_module_with_shell',
         's0_bower2018',
+        's0_without_the_core_slot',
         'hf_t_cmb_first',
         'hf_t_core',
     ],
