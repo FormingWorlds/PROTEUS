@@ -1034,8 +1034,8 @@ def _retry_ladder_runner(
     """Build an AragogRunner whose solver returns one fixed result.
 
     The solver is a stand-in for the Aragog side of the call: the retry ladder
-    reads the solve result, the requested interval and the entropy hot-start
-    hooks, so the stub carries exactly those. Every attempt returns the same
+    reads the solve result, the requested interval, the start state and the
+    compression work, so the stub carries exactly those. Every attempt returns the same
     result, which is what a step stopped by the same physical event on every
     retry looks like.
 
@@ -1095,9 +1095,7 @@ def _retry_ladder_runner(
         _S0=np.zeros(1),
         _last_compression_J=0.0,
         get_state=lambda: states[min(len(attempts), len(states)) - 1],
-        get_current_dSdr_cmb=lambda: -1.0e-6,
         set_initial_dSdr_cmb=lambda value: None,
-        set_initial_entropy=lambda S: None,
         reset=lambda: None,
     )
     settings: list[tuple[float, float]] = []
@@ -1123,20 +1121,18 @@ def _retry_ladder_runner(
     'extra', [[], [-3.879e-6], [-3.879e-6, 5.0e3]], ids=['no-slot', 'one-slot', 'two-slots']
 )
 def test_a_retry_starts_from_the_state_the_call_started_from(extra):
-    """A retry starts from the state the first attempt started from, whatever extra slots
-    the core boundary adds to it, not from the end of the failed attempt (9999) and not
-    from the entropy the wrapper carried in (3000): after a structure re-solve that profile
-    is on the mesh of the step before, while the start state (3100) is on the new one. The
-    accepted retry also reports the compression work of that re-solve (6.5e29 J), which
-    the reset before the retry would set to 0."""
+    """Each retry of a ladder with 2 failed attempts starts from the state the first
+    attempt started from (3100), whatever extra slots the core boundary adds to it. It does
+    not start from what the reset leaves (7777), from the end of the failed attempt (9999),
+    which Aragog takes for the extra slots when it rebuilds its start, or from the entropy
+    the wrapper carried in (3000), which after a structure re-solve is on the mesh of the
+    step before. The accepted retry reports the compression work of that re-solve
+    (6.5e29 J), which each reset on the unchanged mesh sets to 0."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     n_stag = 4
     S0 = np.r_[np.full(n_stag, 3100.0), extra]
-    states = [
-        SimpleNamespace(status=-1, T_core=4000.0, dt_actual=0.0),
-        SimpleNamespace(status=0, T_core=4000.0, dt_actual=50.0),
-    ]
+    statuses = [-1, -1, 0]
     starts, overrides = [], []
     solver = SimpleNamespace(
         parameters=SimpleNamespace(
@@ -1146,19 +1142,24 @@ def test_a_retry_starts_from_the_state_the_call_started_from(extra):
         _max_steps=1000,
         _S0=S0.copy(),
         _last_compression_J=6.5e29,
-        get_state=lambda: states[len(starts) - 1],
+        get_state=lambda: SimpleNamespace(
+            status=statuses[len(starts) - 1], T_core=4000.0, dt_actual=50.0
+        ),
         set_initial_dSdr_cmb=overrides.append,
     )
-    # A reset on an unchanged mesh finds no compression, as Aragog's does.
-    solver.reset = lambda: setattr(solver, '_last_compression_J', 0.0)
-    # Aragog rebuilds its start state from the profile it is given, with no remap here.
-    solver.set_initial_entropy = lambda S: setattr(solver, '_S0', np.r_[S, extra])
+
+    def _reset():
+        solver._S0, solver._last_compression_J = np.full(S0.size, 7777.0), 0.0
 
     def _solve():
         starts.append(solver._S0.copy())
         solver._solution = SimpleNamespace(y=np.full((S0.size, 1), 9999.0))
 
-    solver.solve = _solve
+    solver.reset, solver.solve = _reset, _solve
+    # As Aragog does: the entropy from the caller, the extra slots from the last solution.
+    solver.set_initial_entropy = lambda S: setattr(
+        solver, '_S0', np.r_[S, solver._solution.y[n_stag:, -1]]
+    )
     runner = AragogRunner.__new__(AragogRunner)
     runner.aragog_solver = solver
     runner._config = MagicMock()
@@ -1167,8 +1168,9 @@ def test_a_retry_starts_from_the_state_the_call_started_from(extra):
 
     out = runner._solve_with_retry({'Time': 202.0, 'T_cmb': 4000.0}, interior_o)
 
-    assert out.status == 0 and len(starts) == 2
-    assert starts[1] == pytest.approx(S0, rel=1e-15)
+    assert out.status == 0 and len(starts) == 3
+    for start in starts:
+        assert start == pytest.approx(S0, rel=1e-15)
     assert solver._last_compression_J == pytest.approx(6.5e29, rel=1e-15)
     assert overrides == [None]
 
@@ -1362,32 +1364,41 @@ for _name in (
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
-    ('statuses', 'write_fails', 'kept'),
+    ('statuses', 'error', 'entry'),
     [
-        ([-1], False, 'start'),
-        ([0], True, 'start'),
-        ([0], False, 'end'),
-        ([-1, 0], False, 'end'),
+        ([-1], None, 'hot'),
+        ([-1], None, 'cold'),
+        ([-1], None, 'set'),
+        ([0], RuntimeError('NetCDF: HDF error'), 'hot'),
+        ([0], OSError('No space left on device'), 'hot'),
+        ([0], None, 'hot'),
+        ([-1, 0], None, 'hot'),
     ],
     ids=[
         'ladder_exhausted',
+        'ladder_exhausted_on_the_first_call',
+        'ladder_exhausted_with_a_set_gradient_start',
         'write_fails_after_an_accepted_solve',
+        'write_fails_with_an_error_that_stops_the_run',
         'accepted',
         'retry_accepted',
     ],
 )
 def test_a_failed_call_leaves_the_solver_with_the_state_it_started_from(
-    statuses, write_fails, kept
+    tmp_path, statuses, error, entry
 ):
     """Whenever run_solver raises, the row is skipped or the run stops, and the solver must
     hold the state the row holds: the start state of the call (entropy 3100, dSdr_cmb
-    -2.2e-4), which is the previous state on the mesh of this step. It must not hold the
-    end of a rejected or discarded attempt (2400, 5.08e-4), nor the previous solution, which
-    after a structure re-solve is on the mesh of the step before (3000, -1.64e-4). The next
-    update then takes its entropy and its gradient from that state, and the stored profiles
-    are untouched. A call that returns, on the first attempt or on a retry, leaves the
-    solution of the accepted attempt and stores its profiles."""
+    -2.2e-4) at the time of the row, which is the previous state on the mesh of this step.
+    It must not hold the end of a rejected or discarded attempt (2400, 5.08e-4), nor the
+    previous solution, which after a structure re-solve is on the mesh of the step before
+    (3000, -1.64e-4); a first call has none. The next update then takes its entropy and its
+    gradient from that state, a set gradient start is released, the stored profiles are
+    untouched, and a snapshot the failed write left is removed. A call that returns, on the
+    first attempt or on a retry, leaves the solution of the accepted attempt, stores its
+    profiles and keeps its snapshot."""
     from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.utils.helper import snapshot_path_for_time
 
     n_stag = 4
     S0 = np.r_[np.full(n_stag, 3100.0), [-2.2e-4]]
@@ -1404,13 +1415,22 @@ def test_a_failed_call_leaves_the_solver_with_the_state_it_started_from(
         _last_compression_J=0.0,
         _n_stag=n_stag,
         _core_bc='energy_balance',
-        _dSdr_cmb_init=None,
-        _solution=sol_pre,
+        _dSdr_cmb_init=-2.2e-4 if entry == 'set' else None,
+        _solution=sol_pre if entry == 'hot' else None,
         statuses=statuses,
         attempts=0,
         reset=lambda: None,
     )
-    stored = []
+    stored, written = [], []
+
+    def _write(output_dir, time, out, **kwargs):
+        path = Path(snapshot_path_for_time(str(Path(output_dir) / 'data'), time, '_int.nc'))
+        path.parent.mkdir(exist_ok=True)
+        path.touch()
+        written.append(path)
+        if error is not None:
+            raise error
+
     runner = AragogRunner.__new__(AragogRunner)
     runner.aragog_solver = solver
     runner._use_jax = False
@@ -1418,22 +1438,25 @@ def test_a_failed_call_leaves_the_solver_with_the_state_it_started_from(
     runner._config.planet.mass_tot = 1.0
     runner._build_helpfile_output = lambda *a, **k: {}
     runner._store_profiles = lambda interior_o, out: stored.append(out)
-    runner._write_output_ncdf = MagicMock(
-        side_effect=RuntimeError('NetCDF: HDF error') if write_fails else None
-    )
+    runner._write_output_ncdf = _write
     interior_o = SimpleNamespace(
         aragog_solver=solver, aragog_step_progress=[], _last_entropy=None, tides=None
     )
     hf_row = {'Time': 202.0, 'T_cmb': 5000.0, 'F_atm': 1.0e3, 'T_eqm': 255.0}
+    dirs = {'output': str(tmp_path)}
 
-    if kept == 'start':
-        with pytest.raises(RuntimeError, match='retry ladder exhausted|HDF error'):
-            runner.run_solver(hf_row, interior_o, {'output': 'unused'})
-        assert stored == []
+    if error is not None or statuses[-1] != 0:
+        raised, message = (type(error), str(error)) if error else (RuntimeError, 'exhausted')
+        with pytest.raises(raised, match=message):
+            runner.run_solver(hf_row, interior_o, dirs)
+        assert stored == [] and len(written) == (error is not None)
+        assert not any(path.exists() for path in written)
+        assert list(solver._solution.t) == [202.0]
         expected = (3100.0, -2.2e-4)
     else:
-        runner.run_solver(hf_row, interior_o, {'output': 'unused'})
+        runner.run_solver(hf_row, interior_o, dirs)
         assert len(stored) == 1 and solver.attempts == len(statuses)
+        assert len(written) == 1 and written[0].exists()
         expected = (2400.0, 5.08e-4)
     assert solver._dSdr_cmb_init is None
     AragogRunner.update_solver(10.0, hf_row, interior_o)
@@ -3382,7 +3405,7 @@ def test_run_solver_writes_the_resume_state_every_step(tmp_path, core_bc):
     runner._config.interior_energetics.write_flux_diagnostics = False
     out = _snapshot_output()
     out.dt_actual = 80.0
-    runner._solve_with_retry = lambda hf_row, interior_o: out
+    runner._solve_with_retry = lambda hf_row, interior_o, S0_entry: out
     runner._build_helpfile_output = lambda *a, **k: {}
     interior_o = SimpleNamespace(
         aragog_solver=_StateSolver(-5.254e-08 if core_bc == 'energy_balance' else 4100.0)
@@ -3437,7 +3460,7 @@ def test_a_step_ending_short_of_an_impact_writes_its_snapshot_at_the_impact_time
     t_impact = 1.0e8 / 3.0
     out = _snapshot_output()
     out.dt_actual = math.nextafter(math.nextafter(t_impact, 0.0), 0.0) - 1.0e3
-    runner._solve_with_retry = lambda hf_row, interior_o: out
+    runner._solve_with_retry = lambda hf_row, interior_o, S0_entry: out
     runner._build_helpfile_output = lambda *a, **k: {}
     interior_o = SimpleNamespace(aragog_solver=_StateSolver(4100.0), t_next_impact=t_impact)
     sim_time, _ = runner.run_solver(
