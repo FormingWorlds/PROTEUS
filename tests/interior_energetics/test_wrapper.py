@@ -4357,18 +4357,23 @@ def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_a_skipped_aragog_step_books_no_call_energy():
-    """A retry-ladder fallback integrates nothing, so the per-call energy columns are 0
-    on its row; a carried step_dE_core_J that holds an impact jump would otherwise add the
-    lift to the core residual again; a NaN left by a failed solve is zeroed as well."""
+def test_a_skipped_aragog_step_adds_nothing_to_the_energy_ledgers():
+    """A retry-ladder fallback integrates nothing: the per-call energy columns of its row
+    are 0 (a NaN left by a failed solve as well), so the cumulative ledgers of the coupler
+    stay at the previous row's values and do not count the previous call a second time; a
+    carried step_dE_core_J that holds an impact jump would add the lift to the core
+    residual again."""
     from unittest.mock import patch as _patch
 
+    import pandas as pd
+
     from proteus.interior_energetics.wrapper import _ARAGOG_CALL_ENERGY_KEYS, run_interior
+    from proteus.utils.coupler import _populate_energy_residual
 
     config = _make_run_interior_config(prevent_warming=False, module='aragog')
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
     carried = {key: 1.0e27 * (i + 1) for i, key in enumerate(_ARAGOG_CALL_ENERGY_KEYS)}
-    hf_row.update(carried, step_dE_core_J=3.15e29, step_dE_Q_tidal_cons_J=np.nan)
+    hf_row.update(carried, step_dE_Q_tidal_cons_J=np.nan, E_state_cons_J=-3.0e31)
     interior_o = MagicMock(spec=Interior_t)
     interior_o.ic = 2
     interior_o.dt = 0.0
@@ -4381,9 +4386,18 @@ def test_a_skipped_aragog_step_books_no_call_energy():
     ):
         run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
     assert interior_o.aragog_fail_count == 1
-    assert [hf_row[k] for k in _ARAGOG_CALL_ENERGY_KEYS] == [0.0] * len(
-        _ARAGOG_CALL_ENERGY_KEYS
-    )
+    row = dict(hf_row)
+
+    previous = {
+        'E_state_heat_cons_J': -5.0e30,
+        'dE_predicted_cons_J': -4.9e30,
+        'solver_residual_J': 2.0e20,
+    }
+    _populate_energy_residual(pd.DataFrame([previous]), hf_row)
+    for key, value in previous.items():
+        assert hf_row[key] == pytest.approx(value, rel=1e-15)
+    assert hf_row['E_residual_cons_J'] == pytest.approx(-1.0e29, rel=1e-12)
+    assert [row[k] for k in _ARAGOG_CALL_ENERGY_KEYS] == [0.0] * 10
     assert 'step_dE_core_J' in _ARAGOG_CALL_ENERGY_KEYS
 
 
