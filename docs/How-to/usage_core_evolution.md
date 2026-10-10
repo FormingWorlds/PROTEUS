@@ -85,6 +85,13 @@ Check `E_core_residual_frac` first. The Aragog verification page gives the
 values measured in coupled runs and how they depend on
 `interior_energetics.rtol`.
 
+The ledger compares the heat the core loses with the heat that crosses the
+CMB within each interior call. It does not include what a structure update
+does to the core: with `interior_struct.zalmoxis.update_interval > 0` each
+update moves the CMB radius and pressure, and the heat content of the core at
+a given temperature changes with them, because the fitted density profile is
+kept. A run without structure updates has no such term.
+
 Every column of this table except `T_cmb` and `T_cmb_node` is zero in every
 other `core_bc` mode, and so are the other columns that the
 [output reference](../Reference/output.md) marks as computed only with
