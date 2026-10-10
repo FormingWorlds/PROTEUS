@@ -1017,6 +1017,7 @@
       ],
       "consumers": [
         "atmos_clim",
+        "interior_chem",
         "interior_energetics",
         "interior_struct",
         "main loop",
@@ -2939,6 +2940,120 @@
         {
           "file": "src/proteus/outgas/lavatmos.py",
           "condition": "outgas.vapourise = true"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "a_fe_max_mantle",
+      "unit": "1",
+      "description": "largest per-cell Fe-metal activity",
+      "group": "Atmospheric composition from outgassing",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_chem/redox.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "a_fe_max_cell_mantle",
+      "unit": "1",
+      "description": "index of that cell (-1: none tested)",
+      "group": "Atmospheric composition from outgassing",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_chem/redox.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "fO2_shift_IW_mantle",
+      "unit": "log10 bar",
+      "description": "tracked-melt-redox surface Delta-IW",
+      "group": "Atmospheric composition from outgassing",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_chem/redox.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_chem",
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "fe_metal_kg_mantle",
+      "unit": "kg",
+      "description": "cumulative Fe metal formed in the mantle",
+      "group": "Atmospheric composition from outgassing",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_chem/redox.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "ferric_frac_mantle",
+      "unit": "1",
+      "description": "global melt Fe3+/FeT from the tracker",
+      "group": "Atmospheric composition from outgassing",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_chem/redox.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_chem"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "n_fe_metal_mantle",
+      "unit": "mol",
+      "description": "cumulative Fe metal formed in the mantle",
+      "group": "Atmospheric composition from outgassing",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_chem/redox.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "interior_chem"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "n_fe_metal_step_mantle",
+      "unit": "mol",
+      "description": "Fe metal formed on this step",
+      "group": "Atmospheric composition from outgassing",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_chem/redox.py",
+          "condition": "always"
         }
       ],
       "consumers": [],

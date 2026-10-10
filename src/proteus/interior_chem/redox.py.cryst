@@ -1,0 +1,42 @@
+            # Step 3 (Eq 4-6): new solid mass from the decrease in melt
+            # fraction since the previous call (mass is time-invariant per
+            # cell on the _s grid, so 'mass' here serves for both steps)
+            delta_phi = state.phi_prev - phi
+            new_solid_frac = np.clip(delta_phi, 0.0, None)
+            new_solid_mass = mass * new_solid_frac
+
+            # Step 4 (Eq 9-11): redistribute the *previous* step's global
+            # reservoirs across cells in proportion to local melt mass
+            M_melt_cell = state.phi_prev * mass
+            M_melt_all = float(np.sum(M_melt_cell))
+
+            if M_melt_all > 0:
+                safe_M = np.where(M_melt_cell > 0, M_melt_cell, 1.0)
+                n_fe3_melt_cell = np.where(
+                    M_melt_cell > 0, (M_melt_cell / M_melt_all) * state.n_fe3_melt, 0.0
+                )
+                n_fe2_melt_cell = np.where(
+                    M_melt_cell > 0, (M_melt_cell / M_melt_all) * state.n_fe2_melt, 0.0
+                )
+                C_fe3 = n_fe3_melt_cell / safe_M
+                C_fe2 = n_fe2_melt_cell / safe_M
+
+                # Step 5-6 (Eq 12-17): Fe3+/Fe2+ moles entering the new solid
+                delta_n_fe3 = state.D_fe3_cell * C_fe3 * new_solid_mass
+                delta_n_fe2 = D_FE2_BRG * C_fe2 * new_solid_mass
+
+                # Step 7 (Eq 18-19): update the global reservoirs
+                state.n_fe3_melt -= float(np.sum(delta_n_fe3))
+                state.n_fe2_melt -= float(np.sum(delta_n_fe2))
+
+                # Step 8-9 (Eq 20-24): ferric fraction and redox ratio
+                _update_ratios(state)
+            else:
+                state.melt_exhausted = True
+                log.info(
+                    'Melt redox tracking: mantle fully solidified, '
+                    'freezing ferric_frac=%.6f for remaining steps',
+                    state.ferric_frac,
+                )
+
+        state.phi_prev = phi.copy()

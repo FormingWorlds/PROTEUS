@@ -370,6 +370,15 @@ _REVIEWED_NEUTRAL = frozenset(
         'params.stop.solid.freeze_volatiles',
         'planet.delta_T_super',
         'planet.fO2_source',
+        # Default 0.1 is the value previously hard-coded in the redox
+        # tracker, so a migrated 2.0 config keeps its existing behaviour.
+        'planet.ferric_fraction_initial',
+        # Read only under from_mantle_redox, which no 2.0 config can select,
+        # and its default True is the tracker's previous unconditional step.
+        'planet.metal_saturation',
+        # Acts only when a_fe_max_mantle > 0, i.e. under from_mantle_redox,
+        # which no 2.0 config can select; a migrated config is unaffected.
+        'params.dt.afe_max_rel_change',
         'planet.f_accretion',
         'planet.f_differentiation',
         'planet.tcenter_init',

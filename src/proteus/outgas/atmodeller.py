@@ -484,6 +484,11 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
 
     if fO2_source == 'user_constant':
         fugacity_constraints['O2_g'] = IronWustiteBuffer(config.outgas.fO2_shift_IW)
+    elif fO2_source == 'from_mantle_redox':
+        # Tracked-melt-redox offset (interior_chem/redox.py), computed
+        # against the Hirschmann (2021) IW buffer at 1 bar; IronWustiteBuffer
+        # applies it against atmodeller's own Hirschmann-combined buffer.
+        fugacity_constraints['O2_g'] = IronWustiteBuffer(float(hf_row['fO2_shift_IW_mantle']))
 
     # Stash the authoritative O target for the 'from_O_budget' source:
     # atmodeller's output
@@ -839,17 +844,14 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     volatile_O_kg = _total_volatile_oxygen_kg(hf_row, element_mmw)
 
     # Plumb the derived IW-buffer offset only for the 'from_O_budget'
-    # source. Under
-    # user_constant the wrapper's pre-dispatch echo of
-    # config.outgas.fO2_shift_IW IS the offset the chemistry equilibrated
-    # to (the fugacity constraint set it), so overwriting with
+    # source. Under user_constant and from_mantle_redox, the wrapper's
+    # pre-dispatch echo (config.outgas.fO2_shift_IW, or
+    # hf_row['fO2_shift_IW_mantle']) IS the offset the chemistry
+    # equilibrated to (the fugacity constraint set it), so overwriting with
     # atmodeller's back-computed log10dIW_1_bar would lose bit-for-bit
     # echo of the user input and introduce a small Hirschmann-buffer
-    # 1-bar-vs-P reconstruction drift. The IW buffer atmodeller uses
-    # for the 'from_O_budget' source is Hirschmann combined; CALLIOPE uses O'Neill & Eggins
-    # 2002 (~0.95 dex offset at 3000 K). Cross-backend comparison work
-    # later in the framework will quantify this; for now the column is
-    # backend-faithful (each wrapper reports its own buffer).
+    # 1-bar-vs-P reconstruction drift. The column is backend-faithful:
+    # each wrapper reports the offset against its own IW buffer.
     if fO2_source == 'from_O_budget':
         o2_dict = output_dict.get('O2_g', {})
         log10dIW = o2_dict.get('log10dIW_1_bar') if isinstance(o2_dict, dict) else None

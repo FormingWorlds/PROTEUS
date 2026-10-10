@@ -797,6 +797,11 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'M_volatile_change',
         'n_impacts_applied',
         'step_dE_impact_J',
+        # Melt-redox offset (interior_chem/redox.py). update_melt_redox
+        # rewrites it every step before the outgassing reads it (run_interior
+        # precedes the outgassing in the loop), and a resume re-initialises
+        # the tracker, so a stored value is never read back.
+        'fO2_shift_IW_mantle',
     }
 )
 
@@ -975,13 +980,8 @@ def GetHelpfileKeys():
         # residual is zero (O is an output, not a constraint). Under
         # planet.fO2_source = "from_O_budget" the offset is the solver
         # output and the residual is the 5th element-mass residual paired
-        # with the H/C/N/S residuals reported by CALLIOPE. The IW buffer
-        # convention is backend-specific: CALLIOPE uses O'Neill & Eggins
-        # (2002), atmodeller uses the Hirschmann combined buffer. The
-        # two disagree by roughly 0.95 dex at 3000 K, so direct
-        # cross-backend comparison of this column requires converting
-        # one of the conventions; an independent comparison harness will
-        # eventually pick a single canonical convention.
+        # with the H/C/N/S residuals reported by CALLIOPE. The offset is
+        # against each backend's own IW buffer.
         # The rock-vapour columns below are the LavAtmos counterparts,
         # derived from the O2 partial pressure of the vapourisation
         # solve rather than from the volatile chemistry. They are
@@ -992,6 +992,26 @@ def GetHelpfileKeys():
         'fO2_vapourise_shift_IW_derived',  # rock-vapour IW offset [log10 bar]
         'O_res',                 # O mass-balance residual [kg]
         'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
+
+        # Melt Fe3+/Fe2+ redox tracking (issue #653,
+        # interior_chem/redox.py). Populated only under
+        # planet.fO2_source = "from_mantle_redox"; left at 0.0 (from
+        # ZeroHelpfileRow) otherwise. fO2_shift_IW_mantle is what the
+        # outgas dispatch buffers to under that source, echoed here
+        # verbatim for single-source-of-truth analysis (same convention
+        # as fO2_shift_IW_derived above).
+        # The Fe-metal columns are the saturation diagnostics of the same
+        # tracker: the largest per-cell metal activity (0 when no cell was
+        # tested) and the index of the cell holding it (-1 when no cell was
+        # tested; 0 under other fO2 sources), the cumulative metal formed in mol and in kg, and the
+        # metal formed on this step.
+        'a_fe_max_mantle',  # largest per-cell Fe-metal activity [1]
+        'a_fe_max_cell_mantle',  # index of that cell (-1: none tested) [1]
+        'fO2_shift_IW_mantle',  # tracked-melt-redox surface Delta-IW [log10 bar]
+        'fe_metal_kg_mantle',  # cumulative Fe metal formed in the mantle [kg]
+        'ferric_frac_mantle',  # global melt Fe3+/FeT from the tracker [1]
+        'n_fe_metal_mantle',  # cumulative Fe metal formed in the mantle [mol]
+        'n_fe_metal_step_mantle',  # Fe metal formed on this step [mol]
 
         # Desiccation escape-balance baseline (M_vol_initial) and cumulative
         # loss ledger (esc_kg_cumulative) across escape and impact stripping.
@@ -1511,6 +1531,14 @@ def _describe_missing_columns(missing: list[str]) -> str:
 _DIAGNOSTIC_KEYS = (
     'dEdt_orb',
     'T_cmb_node',
+    # Melt-redox tracker outputs (interior_chem/redox.py): written each step,
+    # read by no module (the tracker keeps its own state on Interior_t).
+    'a_fe_max_mantle',
+    'a_fe_max_cell_mantle',
+    'fe_metal_kg_mantle',
+    'ferric_frac_mantle',
+    'n_fe_metal_mantle',
+    'n_fe_metal_step_mantle',
 )
 
 

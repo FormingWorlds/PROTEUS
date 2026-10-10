@@ -449,6 +449,52 @@ def next_step(
         )
         dtswitch = evection_cap
 
+    # Fe-metal activity cap (melt-redox tracker, interior_chem/redox.py):
+    # limit the relative change of a_fe_max_mantle between consecutive steps
+    # to dt.afe_max_rel_change. The change over the last step is assumed to
+    # continue at the same rate, so the next step is scaled by
+    # target / observed. Only rows where a cell was tested carry a_Fe > 0;
+    # under other fO2 sources the column stays 0 and the cap is inactive.
+    # The step that produced the observed change has already been taken, so
+    # this bounds the next one, not the last. A jump that is not set by dt
+    # (a new cell entering the EOS range, a change of binding cell) would
+    # otherwise drive dt to zero, so the cap is floored at dt.minimum +
+    # dt.minimum_rel * Time like the impact alignment below.
+    # Inactive with planet.metal_saturation = False: a_Fe is then not
+    # evaluated (the column holds 0), and there is no reaction to resolve.
+    afe_target = float(config.params.dt.afe_max_rel_change)
+    if (
+        afe_target > 0.0
+        and config.planet.metal_saturation
+        and hf_all is not None
+        and 'a_fe_max_mantle' in hf_all.columns
+        and len(hf_all['Time']) >= 2
+    ):
+        a_prev = float(hf_all['a_fe_max_mantle'].iloc[-2])
+        a_last = float(hf_all['a_fe_max_mantle'].iloc[-1])
+        dt_prev_afe = float(hf_all['Time'].iloc[-1] - hf_all['Time'].iloc[-2])
+        if a_prev > 0.0 and a_last > 0.0 and dt_prev_afe > 0.0:
+            rel_change = abs(a_last - a_prev) / a_prev
+            if rel_change > afe_target:
+                log.debug('a_Fe changed by %.2f%% over the last step', 100.0 * rel_change)
+            if rel_change > 0.0:
+                dt_afe = dt_prev_afe * afe_target / rel_change
+                afe_floor = (
+                    config.params.dt.minimum + config.params.dt.minimum_rel * hf_row['Time']
+                )
+                dt_afe = max(dt_afe, afe_floor)
+                if dtswitch > dt_afe:
+                    log.info(
+                        'Time-stepping: a_Fe cap active (a_Fe changed by %.2f%% over the '
+                        'last %.2e yr, target %.1f%%), capping dt at %.2e yr (was %.2e yr)',
+                        100.0 * rel_change,
+                        dt_prev_afe,
+                        100.0 * afe_target,
+                        dt_afe,
+                        dtswitch,
+                    )
+                    dtswitch = dt_afe
+
     # On retries (step_sf < 1) in the static/initial branches we
     # deliberately allow dt to fall below dt.minimum; the whole point of
     # a retry is to shrink the step below what would otherwise be allowed.

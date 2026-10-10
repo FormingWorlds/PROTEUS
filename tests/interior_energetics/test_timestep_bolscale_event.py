@@ -187,6 +187,7 @@ def _next_step_config(dt_maximum, bol_scale, bol_scale_start, bol_scale_duration
         hysteresis_iters=0,
         hysteresis_sfinc=1.1,
         max_growth_factor=0.0,
+        afe_max_rel_change=0.0,
     )
     stop = SimpleNamespace(
         solid=SimpleNamespace(enabled=False, phi_crit=0.05),
