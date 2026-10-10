@@ -1341,6 +1341,82 @@ def test_a_step_that_never_advanced_is_still_refused():
     )
 
 
+class _HotStartSolver(SimpleNamespace):
+    """Solver stand-in with Aragog's start rule for dSdr_cmb: an override wins, else the end
+    of the last solution, which every attempt replaces, accepted or not."""
+
+    def get_current_dSdr_cmb(self):
+        return None if self._solution is None else float(self._solution.y[self._n_stag, -1])
+
+    def set_initial_dSdr_cmb(self, value):
+        self._dSdr_cmb_init = value
+
+    def next_start(self):
+        dsdr = self._dSdr_cmb_init
+        return self.get_current_dSdr_cmb() if dsdr is None else dsdr
+
+    def solve(self):
+        self.attempts += 1
+        y_end = np.r_[np.full(self._n_stag, 3000.0), [5.08e-4]]
+        self._solution = SimpleNamespace(y=y_end[:, None], status=self.status)
+
+    def get_state(self):
+        return SimpleNamespace(status=self.status, T_core=4000.0, dt_actual=50.0)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('skipped', 'set_start'),
+    [(True, False), (True, True), (False, False)],
+    ids=['skipped_step', 'skipped_step_with_a_set_start', 'accepted_step'],
+)
+def test_a_skipped_step_restarts_from_the_pre_step_state(skipped, set_start):
+    """A step whose retry ladder fails is skipped, so the next step starts from the pre-step
+    solution and CMB entropy gradient, not from the end of the rejected attempt (dSdr_cmb
+    5.08e-4), which the energy_balance hot start would otherwise read. A step that starts
+    from a set gradient and no solution, as the first step of a resume does, keeps that
+    gradient (-2.2e-4) when it is skipped. An accepted step releases the override and
+    starts from its end."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    n_stag = 4
+    sol_pre = SimpleNamespace(y=np.r_[np.full(n_stag, 3000.0), [-1.64e-4]][:, None], status=0)
+    solver = _HotStartSolver(
+        parameters=SimpleNamespace(
+            solver=SimpleNamespace(start_time=0.0, end_time=100.0, rtol=1.0e-6, max_steps=1000)
+        ),
+        _atol_sf=1.0,
+        _max_steps=1000,
+        _S0=np.r_[np.full(n_stag, 3000.0), [-1.64e-4]],
+        _n_stag=n_stag,
+        _dSdr_cmb_init=-2.2e-4 if set_start else None,
+        _solution=None if set_start else sol_pre,
+        status=-1 if skipped else 0,
+        attempts=0,
+        set_initial_entropy=lambda S: None,
+        reset=lambda: None,
+    )
+    runner = AragogRunner.__new__(AragogRunner)
+    runner.aragog_solver = solver
+    runner._config = MagicMock()
+    runner._config.planet.mass_tot = 1.0
+    runner._config.interior_energetics.aragog.core_bc = 'energy_balance'
+    interior_o = SimpleNamespace(aragog_step_progress=[], _last_entropy=None)
+
+    if skipped:
+        with pytest.raises(RuntimeError, match='retry ladder exhausted'):
+            runner._solve_with_retry({'Time': 202.0, 'T_cmb': 5000.0}, interior_o)
+        assert solver.attempts > 1
+        assert solver.next_start() == pytest.approx(-2.2e-4 if set_start else -1.64e-4)
+        assert solver._solution is (None if set_start else sol_pre)
+    else:
+        runner._solve_with_retry({'Time': 202.0, 'T_cmb': 5000.0}, interior_o)
+        assert solver.attempts == 1
+        assert solver._dSdr_cmb_init is None
+        assert solver.next_start() == pytest.approx(5.08e-4)
+
+
 @pytest.mark.unit
 def test_solve_with_retry_ladder_exhaustion_names_the_solver_that_actually_ran(
     monkeypatch,

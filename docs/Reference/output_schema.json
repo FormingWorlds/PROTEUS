@@ -2071,6 +2071,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -2087,6 +2091,10 @@
       "producers": [
         {
           "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],
@@ -2105,6 +2113,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [
@@ -2121,6 +2133,10 @@
       "producers": [
         {
           "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],
@@ -2139,6 +2155,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [],
@@ -2154,6 +2174,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [],
@@ -2168,6 +2192,10 @@
       "producers": [
         {
           "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],
@@ -2186,6 +2214,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "interior_energetics.module = \"aragog\""
         }
       ],
       "consumers": [],
@@ -2200,6 +2232,10 @@
       "producers": [
         {
           "file": "src/proteus/interior_energetics/aragog.py",
+          "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "interior_energetics.module = \"aragog\""
         }
       ],

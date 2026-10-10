@@ -2192,6 +2192,7 @@ class AragogRunner:
             if S0 is not None and n_stag is not None and len(S0) == n_stag + 1:
                 dSdr_snapshot = float(S0[n_stag])
         dSdr_ic = dSdr_snapshot
+        sol_pre = getattr(solver, '_solution', None)
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.
         T_core_pre = float(hf_row.get('T_cmb', hf_row.get('T_core', 0.0)))
@@ -2231,6 +2232,7 @@ class AragogRunner:
         stiff_seen = 0
         other_seen = 0
         _diag_on = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
+        skipped = False
         try:
             # Range over the widest ladder. max_attempts holds the active
             # budget (6, widened to max_attempts_stiff on a stiff failure)
@@ -2456,6 +2458,12 @@ class AragogRunner:
                 solver.reset()
                 if S_ic is not None:
                     solver.set_initial_entropy(S_ic)
+        except BaseException:
+            # The caller skips the step and keeps the pre-step state: the solution that
+            # hot-starts the next step and the dSdr_cmb start below.
+            solver._solution = sol_pre
+            skipped = True
+            raise
         finally:
             # Always reset atol_sf so subsequent coupling steps start at 1.0x
             solver._atol_sf = 1.0
@@ -2465,16 +2473,13 @@ class AragogRunner:
             solver.parameters.solver.rtol = base_rtol
             if hasattr(solver, '_max_steps'):
                 solver._max_steps = base_max_steps
-            # Release the dSdr_cmb override so the NEXT coupling step's
-            # set_initial_entropy can hot-start from its own _solution
-            # (which, after a successful retry, holds the accepted
-            # attempt's final dSdr_cmb, or after a full ladder exhaustion
-            # the wrapper will apply its own skip-step fallback before
-            # the next coupling step begins).
+            # Release the dSdr_cmb override for the next coupling step, or keep the
+            # pre-step value when the step is skipped.
+            dSdr_next = dSdr_ic if skipped else None
             if hasattr(solver, 'set_initial_dSdr_cmb'):
-                solver.set_initial_dSdr_cmb(None)
+                solver.set_initial_dSdr_cmb(dSdr_next)
             else:
-                solver._dSdr_cmb_init = None
+                solver._dSdr_cmb_init = dSdr_next
 
         return out
 

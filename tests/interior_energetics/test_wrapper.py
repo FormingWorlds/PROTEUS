@@ -4356,6 +4356,65 @@ def test_run_interior_aragog_fallback_keeps_hf_row_on_failure():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_skipped_aragog_step_adds_nothing_to_the_energy_ledgers():
+    """A retry-ladder fallback integrates nothing: the per-call energy columns of its row
+    are 0 (a NaN left by a failed solve as well), so the cumulative ledgers of the coupler
+    stay at the previous row's values and do not count the previous call a second time."""
+    from unittest.mock import patch as _patch
+
+    import pandas as pd
+
+    from proteus.interior_energetics.wrapper import _ARAGOG_CALL_ENERGY_KEYS, run_interior
+    from proteus.utils.coupler import _populate_energy_residual
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
+    carried = {key: 1.0e27 * (i + 1) for i, key in enumerate(_ARAGOG_CALL_ENERGY_KEYS)}
+    hf_row.update(carried, step_dE_Q_tidal_cons_J=np.nan, E_state_cons_J=-3.0e31)
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 2
+    interior_o.dt = 0.0
+    interior_o.aragog_fail_count = 0
+    runner_mock = MagicMock()
+    runner_mock.run_solver.side_effect = RuntimeError('retry ladder exhausted')
+    with (
+        _patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        _patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+    assert interior_o.aragog_fail_count == 1
+    row = dict(hf_row)
+
+    previous = {
+        'E_state_heat_cons_J': -5.0e30,
+        'dE_predicted_cons_J': -4.9e30,
+        'solver_residual_J': 2.0e20,
+    }
+    _populate_energy_residual(pd.DataFrame([previous]), hf_row)
+    for key, value in previous.items():
+        assert hf_row[key] == pytest.approx(value, rel=1e-15)
+    assert hf_row['E_residual_cons_J'] == pytest.approx(-1.0e29, rel=1e-12)
+    assert [row[k] for k in _ARAGOG_CALL_ENERGY_KEYS] == [0.0] * 9
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_every_per_step_column_is_zeroed_on_a_skipped_step_or_reset_per_row():
+    """A skipped step sets every per-call step_* helpfile column to 0; the one left is the
+    impact column, which the main loop resets on each row, so no column carries a previous
+    call's energy into the ledgers."""
+    from proteus.interior_energetics.wrapper import _skip_aragog_call_energy
+    from proteus.utils.coupler import GetHelpfileKeys
+
+    row = {k: 1.0 for k in GetHelpfileKeys() if k.startswith('step_')}
+    _skip_aragog_call_energy(row)
+    zeroed = {k for k, v in row.items() if v == 0.0}
+    assert set(row) - zeroed == {'step_dE_impact_J'}
+    assert {'step_dE_state_heat_J', 'step_solver_residual_J', 'step_dE_F_cmb_J'} <= zeroed
+
+
+@pytest.mark.unit
 def test_run_interior_aragog_fallback_aborts_after_max_consecutive():
     """After _ARAGOG_MAX_CONSECUTIVE_FAILS (default 3), the next failure re-raises."""
     from unittest.mock import patch as _patch
