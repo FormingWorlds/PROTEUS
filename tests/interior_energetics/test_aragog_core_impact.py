@@ -239,10 +239,13 @@ def test_a_rebuilt_budget_without_the_refit_profile_raises(stale):
 def test_core_call_heat_adds_the_jump_since_the_last_call_and_removes_the_source(caplog):
     """The core's heat change over a call is the capacity integral net of its internal
     source, plus the heat of a T_core jump between calls measured with the solver's
-    budget; a continuous T_core adds no jump, and the call's final T_core is kept."""
+    budget; a continuous T_core adds no jump, and the call's final T_core is kept. The
+    start state carries two shell cells of a stratified core after T_core, which the
+    jump must not read."""
     budget = _Budget(2.0e27, 0.0)
     solver = SimpleNamespace(
-        _S0=np.array([3000.0, -1e-5, 6124.0]),
+        _S0=np.array([3000.0, -1e-5, 6124.0, 6130.0, 6150.0]),
+        _n_stag=1,
         _core_module_budget=budget,
         _core_module_q_radio=1.0e12,
     )
@@ -255,7 +258,7 @@ def test_core_call_heat_adds_the_jump_since_the_last_call_and_removes_the_source
     logged = float(re.search(r'difference (\S+) J', caplog.text).group(1))
     assert logged == pytest.approx(jump - 1.9e30, rel=1e-12)
     assert interior_o._core_t_end == pytest.approx(6000.0)
-    solver._S0[-1] = 6000.0
+    solver._S0[2] = 6000.0
     heat = core_call_heat(out, interior_o)
     assert heat == pytest.approx(-4.0e29 - 3.15576e20, rel=1e-12)
 
@@ -332,7 +335,7 @@ def test_a_real_refit_books_the_lift_the_next_call_measures():
     hf_row = dict(M_core=2.055439e24, P_center=3.608753e11)
     refit_core_at_reset(hf_row, interior_o, solver)
     lift, refit = interior_o._core_impact_booked
-    solver._S0 = np.array([3100.0, 0.0, 6124.36])
+    solver._S0, solver._n_stag = np.array([3100.0, 0.0, 6124.36]), 1
     out = SimpleNamespace(step_dE_core_J=0.0, T_core=6100.0, dt_actual=0.0)
     interior_o.aragog_solver = solver
     jump = core_call_heat(out, interior_o)

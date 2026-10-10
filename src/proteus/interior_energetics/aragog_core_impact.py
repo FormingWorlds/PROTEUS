@@ -173,7 +173,8 @@ def core_call_heat(out, interior_o, lift: float = 0.0) -> float:
     booked on this call, is logged against the jump at DEBUG.
     """
     solver = interior_o.aragog_solver
-    t_start = float(solver._S0[-1])
+    # T_core follows the mantle cells and dSdr_cmb; a stratified core's shell comes after it.
+    t_start = float(solver._S0[solver._n_stag + 1])
     t_prev = getattr(interior_o, '_core_t_end', None)
     jump = 0.0
     if t_prev is not None and abs(t_start - t_prev) > 1e-9:
