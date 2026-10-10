@@ -3970,27 +3970,8 @@ def test_setup_solver_threads_core_module_params(tmp_path):
         light_element_fraction=0.08, q_radio=2.0e12
     )
 
-    hf_row = {
-        'R_int': 6.371e6,
-        'R_core': 3.48e6,
-        'gravity': 9.81,
-        'T_magma': 3000.0,
-        'T_eqm': 255.0,
-        'F_atm': 100.0,
-        'M_core': 1.93e24,
-        'P_center': 3.6e11,
-    }
-    interior_o = MagicMock()
-    interior_o.tides = np.zeros(20)
-    spider_eos_dir = tmp_path / 'spider_eos'
-    spider_eos_dir.mkdir(parents=True)
-    interior_o._spider_eos_dir = str(spider_eos_dir)
-    eos_dir = (
-        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
-    )
-    eos_dir.mkdir(parents=True)
-    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
-    (tmp_path / 'interior_lookup_tables' / 'Melting_curves').mkdir(parents=True)
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    hf_row.update(R_core=3480000.0, M_core=1.93e24, P_center=360000000000.0)
 
     with (
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
@@ -4164,25 +4145,8 @@ def test_setup_solver_passes_no_core_module_params_on_default_config(tmp_path):
     config = _make_aragog_config(struct_module='zalmoxis')
     assert config.interior_energetics.aragog.core_bc != 'core_module'
 
-    hf_row = {
-        'R_int': 6.371e6,
-        'R_core': 3.48e6,
-        'gravity': 9.81,
-        'T_magma': 3000.0,
-        'T_eqm': 255.0,
-        'F_atm': 100.0,
-    }
-    interior_o = MagicMock()
-    interior_o.tides = np.zeros(20)
-    spider_eos_dir = tmp_path / 'spider_eos'
-    spider_eos_dir.mkdir(parents=True)
-    interior_o._spider_eos_dir = str(spider_eos_dir)
-    eos_dir = (
-        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
-    )
-    eos_dir.mkdir(parents=True)
-    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
-    (tmp_path / 'interior_lookup_tables' / 'Melting_curves').mkdir(parents=True)
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    hf_row.update(R_core=3.48e6)
 
     with (
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
