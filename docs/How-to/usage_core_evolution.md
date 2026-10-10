@@ -85,7 +85,9 @@ Check `E_core_residual_frac` first. The Aragog verification page gives the
 values measured in coupled runs and how they depend on
 `interior_energetics.rtol`.
 
-The `core_*` and `E_core_*` columns are zero in every other `core_bc` mode.
-Zero is also a valid value in a `core_module` run (no inner core yet, no field estimate under a
+Every column of this table except `T_cmb` and `T_cmb_node` is zero in every
+other `core_bc` mode, and so are the other columns that the
+[output reference](../Reference/output.md) marks as computed only with
+`core_bc = core_module`. Zero is also a valid value in a `core_module` run (no inner core yet, no field estimate under a
 subadiabatic CMB flux), so select runs by their configured `core_bc`, not by
 the column values.

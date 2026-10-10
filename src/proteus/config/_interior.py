@@ -162,16 +162,6 @@ def valid_aragog(instance, attribute, value):
         raise ValueError('Must enable at least one energy transport term in Aragog')
 
 
-def _melting_curve_stays_positive(instance, attribute, value):
-    """The depressed iron melting temperature, T_m * (1 - depression * x), must stay positive."""
-    product = value * instance.light_element_fraction
-    if instance.melting_curve == 'iron' and product >= 1:
-        raise ValueError(
-            'interior_energetics.aragog.core_module: depression * light_element_fraction '
-            f'= {product:g} must be below 1.'
-        )
-
-
 @define
 class AragogCoreModule:
     """Parameters of the core evolution module (core_bc = 'core_module').
@@ -254,7 +244,7 @@ class AragogCoreModule:
     c_p: float = field(default=840.0, validator=gt(0))
     melting_curve: str = field(default='iron', validator=in_(('iron', 'quadratic')))
     light_element_fraction: float = field(default=0.0, validator=(ge(0), lt(1)))
-    depression: float = field(default=0.0, validator=(ge(0), _melting_curve_stays_positive))
+    depression: float = field(default=0.0, validator=ge(0))
     t_m0: float = field(default=2677.0, validator=gt(0))
     t_m1: float = field(default=2.95e-12)
     t_m2: float = field(default=8.37e-25)
@@ -273,6 +263,15 @@ class AragogCoreModule:
     flux_geometry: str = field(
         default='const_flux', validator=in_(('const_flux', 'zero_outer'))
     )
+
+    def __attrs_post_init__(self):
+        # The iron melting curve scales with 1 - depression * light_element_fraction.
+        product = self.depression * self.light_element_fraction
+        if self.melting_curve == 'iron' and product >= 1:
+            raise ValueError(
+                'interior_energetics.aragog.core_module: depression * light_element_fraction '
+                f'= {product:g} must be below 1.'
+            )
 
 
 @define

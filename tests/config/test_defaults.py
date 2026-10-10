@@ -406,6 +406,18 @@ def test_an_iron_melting_curve_depressed_to_zero_is_refused_at_config_load(
         assert AragogCoreModule(**kwargs).depression == depression
 
 
+def test_a_change_of_one_melting_curve_key_is_not_checked_against_the_old_other_key():
+    """A grid sets the keys of a config one by one, so the product is checked when the
+    config is built, not at each change: the step from (0.4, 2.0) to (0.1, 5.0) passes
+    through a pair above 1 and must not stop."""
+    from proteus.config._interior import AragogCoreModule
+
+    core = AragogCoreModule(light_element_fraction=0.4, depression=2.0)
+    core.depression = 5.0
+    core.light_element_fraction = 0.1
+    assert core.depression * core.light_element_fraction == pytest.approx(0.5)
+
+
 @pytest.mark.parametrize(
     ('struct', 'core_bc', 'stratified', 'solver', 'refused'),
     [
