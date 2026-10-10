@@ -6,21 +6,7 @@ import math
 import os
 from typing import TYPE_CHECKING
 
-from proteus.accretion.atmloss import (
-    _ATMLOSS_THIN_ATM_WARN as _ATMLOSS_THIN_ATM_WARN,
-)
-from proteus.accretion.atmloss import (
-    _as_float as _as_float,
-)
-from proteus.accretion.atmloss import (
-    _format_roche_flag as _format_roche_flag,
-)
-from proteus.accretion.atmloss import (
-    _log_zephyrus_loss as _log_zephyrus_loss,
-)
-from proteus.accretion.atmloss import (
-    _zephyrus_loss_fraction as _zephyrus_loss_fraction,
-)
+from proteus.accretion.atmloss import _as_float, _zephyrus_loss_fraction
 from proteus.utils.constants import AU, M_earth, element_list, noble_gases, vol_element_list
 from proteus.utils.coupler import helpfile_path
 

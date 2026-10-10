@@ -2160,7 +2160,8 @@ def test_roche2026_parameter_flags_and_kegerreis_thin_atmosphere_warning(caplog)
     from zephyrus.collision import ROCHE2026_FITTED_RANGE
     from zephyrus.planets_parameters import Me, Re
 
-    from proteus.accretion.wrapper import _format_roche_flag, _impact_loss_fraction
+    from proteus.accretion.atmloss import _format_roche_flag
+    from proteus.accretion.wrapper import _impact_loss_fraction
 
     cfg_roche = SimpleNamespace(
         accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='roche2026')
@@ -2560,7 +2561,7 @@ def test_roche2026_twin_bodies_gamma_clamp_tail(caplog):
     # 3. Result with empty flags but clamped parameter appends clamp to names.
     from zephyrus.collision import ROCHE2026_FITTED_RANGE
 
-    from proteus.accretion.wrapper import _log_zephyrus_loss
+    from proteus.accretion.atmloss import _log_zephyrus_loss
 
     caplog.clear()
     with caplog.at_level(logging.WARNING):
