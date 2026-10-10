@@ -791,8 +791,9 @@ config_version = "3.0"
 
     # Impact atmosphere loss: the fraction stripped from target and impactor.
     # The constant module applies atmloss_frac directly; zephyrus evaluates
-    # the Kegerreis et al. (2020) collision erosion scaling.
+    # collision erosion scaling laws.
     atmloss_module            = "none"       # none | constant | zephyrus
+    atmloss_law               = "roche2026"  # roche2026 | kegerreis2020 (zephyrus module)
     atmloss_frac              = 0.0          # atmosphere fraction removed per impact (constant module) [0-1]
 
     [accretion.morrigan]

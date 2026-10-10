@@ -327,6 +327,17 @@ def test_atmloss_config_bounds_and_module_selection_bind_at_load():
     with pytest.raises(ValueError):
         Accretion(atmloss_module='kegerreis')
 
+    # The default law matches the schema default; both registered laws load
+    # cleanly, while unregistered laws are rejected at load.
+    assert Accretion().atmloss_law == 'roche2026'
+    assert Accretion(atmloss_law='kegerreis2020').atmloss_law == 'kegerreis2020'
+    with pytest.raises(ValueError):
+        Accretion(atmloss_law='kegerreis')
+    with pytest.raises(ValueError):
+        Accretion(atmloss_law='roche2025')
+    with pytest.raises(ValueError):
+        Accretion(atmloss_law='')
+
 
 @pytest.mark.unit
 def test_reference_config_declares_the_accretion_section():
