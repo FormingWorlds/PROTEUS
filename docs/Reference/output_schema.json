@@ -2426,7 +2426,7 @@
     {
       "name": "step_dE_struct_core_J",
       "unit": "J",
-      "description": "change of the core heat content across the structure updates since the last kept interior call (core mass and total entropy kept), positive when the core gains heat; computed only with core_bc = core_module, 0 otherwise",
+      "description": "change of the core heat content across the structure updates since the last kept interior call (core mass and total entropy kept), positive when the heat content rises; with an inner core it includes the change of the reference of the latent and gravitational energy, which each budget counts along its own melting curve; computed only with core_bc = core_module, 0 otherwise",
       "group": "Energy-conservation columns",
       "origin": "literal",
       "producers": [

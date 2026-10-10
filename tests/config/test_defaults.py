@@ -417,6 +417,8 @@ def test_a_change_of_one_melting_curve_key_is_not_checked_against_the_old_other_
     core.depression = 5.0
     core.light_element_fraction = 0.1
     assert core.depression * core.light_element_fraction == pytest.approx(0.5)
+    with pytest.raises(ValueError, match='must be below 1'):
+        AragogCoreModule(light_element_fraction=0.4, depression=5.0)
 
 
 @pytest.mark.parametrize(

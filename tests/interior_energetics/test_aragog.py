@@ -1378,7 +1378,8 @@ def test_the_ladder_releases_a_set_core_start_only_for_a_boundary_with_a_core_st
 
     runner._solve_with_retry({'Time': 2.15e5, 'T_cmb': 4000.0}, interior_o)
 
-    assert (core, shell) == (([None], [None]) if released else ([], []))
+    assert core == ([None] if released else [])
+    assert shell == ([None] if released else [])
 
 
 class _HotStartSolver(SimpleNamespace):

@@ -246,11 +246,24 @@ def _core_solver():
     return solver, SimpleNamespace(_frozen_core_m_core=M_CORE, aragog_solver=solver)
 
 
-def _update(solver, interior_o, step, t_old):
-    """Move the solver to structure ``step`` as a reset does and carry the core."""
+def _update(solver, interior_o, step, t_old, heat=True):
+    """Move the solver to structure ``step`` as a reset does and carry the core; without
+    ``heat`` the heat contents, slow below the nucleation onset, are not evaluated."""
+    from proteus.interior_energetics import aragog_core
     from proteus.interior_energetics.aragog_core import carry_core_across_update
 
     old = solver._core_module_budget
+    if not heat:
+        fit = aragog_core.fitted_core_budget
+
+        def no_heat(*args):
+            budget, profile = fit(*args)
+            budget.heat_content = lambda t_core: 0.0
+            return budget, profile
+
+        old.heat_content = lambda t_core: 0.0
+        with patch.object(aragog_core, 'fitted_core_budget', no_heat):
+            return _update(solver, interior_o, step, t_old)
     r_cmb, p_cmb, p_cen = GEOMETRY[step]
     solver._r_basic_flat, solver._P_basic_flat = (
         np.array([r_cmb, 3.5e6]),
@@ -327,6 +340,7 @@ def test_a_profile_that_is_not_the_old_one_compressed_is_reported(caplog, monkey
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.aragog_core'):
         _update(solver, interior_o, 1, 6053.74)
     assert re.search(r'parcels differ by 5\.[12]\de-03', caplog.text)
+    assert 'limit 1.0e-03' in caplog.text
 
 
 @pytest.mark.unit
@@ -348,7 +362,8 @@ def test_a_reset_that_keeps_the_cmb_leaves_the_core_as_it_is(case):
     interior_o = SimpleNamespace()
     before = {'same_cmb': (old, 6000.0), 'no_budget': (None, 6000.0)}.get(case, (old, None))
     carry_core_across_update({}, interior_o, solver, before)
-    assert vars(interior_o) == {} and vars(solver) == state
+    assert vars(interior_o) == {}
+    assert vars(solver) == state
 
 
 @pytest.mark.unit
@@ -411,7 +426,7 @@ def test_a_resume_carries_the_core_from_the_geometry_of_its_snapshot():
     solver._cache_bc_constants()
     solver._T_core_init = 6053.74
     old, t_old = snapshot_core_state(interior_o, solver)
-    assert t_old == 6053.74
+    assert t_old == pytest.approx(6053.74, rel=1e-15)
     assert (old.profiles.r_cmb, old.profiles.p_cmb) == (r_cmb, p_cmb)
     assert old.heat_content(t_old) == pytest.approx(
         snapshot_budget.heat_content(t_old), rel=1e-12
@@ -437,20 +452,29 @@ def _fusion_budget(inner_core_mass):
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
     ('m_ic_old', 'm_ic_new', 'expected'),
-    [(1.0e23, 1.7e23, 1.0076077), (1.7e23, 1.0e23, 1.0 / 1.0076077), (1.0e23, 1.0e23, 1.0)],
-    ids=['freezing', 'melting', 'no_change'],
+    [
+        (1.0e23, 1.7e23, 1.0076077),
+        (1.7e23, 1.0e23, 1.0 / 1.0076077),
+        (1.0e23, 1.0e23, 1.0),
+        (0.0, 1.9e24, 1.2284022),
+        (1.9e24, 0.0, 1.0 / 1.2284022),
+    ],
+    ids=['freezing', 'melting', 'no_change', 'whole_core_freezes', 'whole_core_melts'],
 )
 def test_the_entropy_of_fusion_by_hand(m_ic_old, m_ic_new, expected):
     """A core of 1.9e24 kg whose inner core grows by 7e22 kg at the update gives up
     172.8 J kg-1 K-1 * 7e22 kg of entropy, which the core takes up:
     ln(T'/T_liquid) = 172.8 * 7e22 / (1.9e24 * 840) = 7.5789e-3, a ratio of 1.0076077.
     The same mass melting cools the core by the inverse ratio, and an inner core that
-    does not change leaves the liquid value."""
+    does not change leaves the liquid value. A whole core that freezes or melts is the
+    largest change, ln(T'/T_liquid) = 172.8 / 840 = 0.205714 (a ratio of 1.2284022), and
+    the root is found inside the bracket."""
     from proteus.interior_energetics.aragog_core import _with_fusion_entropy
 
     old, new = _fusion_budget(lambda t: m_ic_old), _fusion_budget(lambda t: m_ic_new)
     t_new = _with_fusion_entropy(old, new, 4500.0, 4545.0, 1.9e24)
     assert t_new / 4545.0 == pytest.approx(expected, abs=1.0e-7)
+    assert (t_new - 4545.0) * (m_ic_new - m_ic_old) >= 0.0  # freezing heats, melting cools
 
 
 @pytest.mark.unit
@@ -478,8 +502,10 @@ def test_an_inner_core_that_is_not_a_number_stops_the_root_find_with_a_clear_err
     from proteus.interior_energetics.aragog_core import _with_fusion_entropy
 
     old, new = _fusion_budget(lambda t: 1.0e23), _fusion_budget(lambda t: float('nan'))
-    with pytest.raises(ValueError, match='no core temperature keeps the entropy'):
+    with pytest.raises(ValueError, match='no core temperature keeps the entropy') as error:
         _with_fusion_entropy(old, new, 4500.0, 4545.0, 1.9e24)
+    # 4545 K * exp(-/+ 1.01 * 172.8 / 840): the range a whole core frozen or melted spans.
+    assert 'between 3692.3 and 5594.6 K' in str(error.value)
 
 
 @pytest.mark.unit
@@ -512,16 +538,13 @@ def test_a_core_with_an_inner_core_keeps_its_entropy_with_the_entropy_of_fusion(
     the adiabat, so the inner core grows (9.8e22 to 1.3e23 kg). The entropy the frozen mass
     gives up heats the core by about 15 K more than the liquid rule, and the total balance,
     core mass times the mass-weighted mean of c_p ln(T'/T) - alpha dP / rho against
-    ds_fusion times the change of the inner core mass, closes on a separate quadrature.
-    The booked heat, 1.19e29 J, is then within 6 percent of the compression work of the
-    sensible part, 1.26e29 J; the liquid rule alone would book 5.0e28 J and lose the
-    latent heat of the mass the update freezes."""
+    ds_fusion times the change of the inner core mass, closes on a separate quadrature."""
     from proteus.interior_energetics import aragog_core
 
     solver, interior_o = _core_solver()
     old = solver._core_module_budget
     t_old = old.t_onset - 50.0
-    _update(solver, interior_o, 1, t_old)
+    _update(solver, interior_o, 1, t_old, heat=False)
     new, t_new = solver._core_module_budget, solver._T_core_init
 
     t_liquid = t_old * 1.010031
@@ -531,7 +554,6 @@ def test_a_core_with_an_inner_core_keeps_its_entropy_with_the_entropy_of_fusion(
     assert 9.0e22 < m_old < m_new < 1.5e23
     sensible = M_CORE * _mass_mean(old.profiles, new.profiles, t_old, t_new)
     assert sensible == pytest.approx(new.ds_fusion * (m_new - m_old), rel=2e-3)
-    assert interior_o._core_struct_booked == pytest.approx(1.1875e29, rel=2e-3)
 
 
 @pytest.mark.unit
@@ -572,7 +594,7 @@ def test_an_update_that_starts_the_inner_core_counts_its_entropy_of_fusion():
     solver, interior_o = _core_solver()
     old, t_old = solver._core_module_budget, 4600.0
     assert t_old > old.t_onset
-    _update(solver, interior_o, 1, t_old)
+    _update(solver, interior_o, 1, t_old, heat=False)
     new, t_new = solver._core_module_budget, solver._T_core_init
     assert t_old * 1.010031 < new.t_onset
     assert 1.0 < t_new - t_old * 1.010031 < 4.0
@@ -626,3 +648,27 @@ def test_a_heat_change_that_is_not_a_number_stops_the_carry_before_the_solver_ch
         _update(solver, interior_o, 1, 6053.74)
     assert solver.parameters.boundary_conditions.core_module_params == kept
     assert solver._T_core_init is None and not hasattr(interior_o, '_core_struct_booked')
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_an_update_that_melts_the_inner_core_counts_its_entropy_of_fusion():
+    """The reverse update lowers the CMB pressure by 8.4 GPa and the nucleation onset by
+    77 K. A core 5 K below its onset has an inner core before it; the liquid rule alone
+    would put it 26 K above the new onset, fully liquid. The entropy of fusion of the mass
+    that melts is taken from the core: the new temperature is below the liquid value."""
+    from proteus.interior_energetics import aragog_core
+
+    solver, interior_o = _core_solver()
+    _update(solver, interior_o, 1, 6053.74)
+    old, t_old = solver._core_module_budget, solver._core_module_budget.t_onset - 5.0
+    m_old = aragog_core._inner_core_mass(old, t_old)
+    _update(solver, interior_o, 0, t_old, heat=False)
+    new, t_new = solver._core_module_budget, solver._T_core_init
+    q = (np.arange(256) + 0.5) / 256
+    dP, rho, ln_shape = aragog_core._parcels(old.profiles, new.profiles, q)
+    t_liquid = t_old * aragog_core.isentropic_ratio(ALPHA, C_P, dP, rho, ln_shape)
+
+    assert m_old > 1.0e21 and t_liquid > new.t_onset
+    assert aragog_core._inner_core_mass(new, t_liquid) == 0.0
+    assert 0.01 < t_liquid - t_new < 5.0

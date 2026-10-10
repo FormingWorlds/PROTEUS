@@ -945,7 +945,7 @@ def GetHelpfileKeys():
         'step_dE_impact_J',  # giant-impact re-melt heat injection [J] (both residual sides)
         'step_dE_impact_core_J',  # giant-impact core heat: the T_core lift under the refitted profile, on the first row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
         'step_dE_impact_core_refit_J',  # giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
-        'step_dE_struct_core_J',  # change of the core heat content across the structure updates since the last kept interior call (core mass and total entropy kept), positive when the core gains heat; computed only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_struct_core_J',  # change of the core heat content across the structure updates since the last kept interior call (core mass and total entropy kept), positive when the heat content rises; with an inner core it includes the change of the reference of the latent and gravitational energy, which each budget counts along its own melting curve; computed only with core_bc = core_module, 0 otherwise [J]
         'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
         'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
         'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
