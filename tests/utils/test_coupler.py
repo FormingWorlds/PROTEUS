@@ -5485,33 +5485,43 @@ def test_core_ledger_scale_sums_the_history_of_core_rows_only():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('bad', ['core_C_eff', 'step_dE_F_cmb_J', 'previous'])
-def test_a_non_finite_core_ledger_input_never_resets_the_ledger(bad, caplog):
-    """A NaN capacity still marks a core row, a NaN term carries the previous residual with
-    a warning instead of feeding the NaN-to-zero fill, and a NaN previous residual (an
-    older helpfile) starts from 0; in no case is the cumulative 2e24 J residual erased."""
+@pytest.mark.parametrize(
+    ('bad', 'value'),
+    [
+        ('core_C_eff', np.nan),
+        ('step_dE_F_cmb_J', np.nan),
+        ('step_dE_F_cmb_J', np.inf),
+        ('previous', np.nan),
+        ('earlier_row', np.inf),
+    ],
+)
+def test_a_non_finite_core_ledger_input_never_resets_the_ledger(bad, value, caplog):
+    """A NaN capacity still marks a core row, a NaN or infinite term carries the previous
+    residual with a warning instead of feeding the NaN-to-zero fill, a NaN previous residual
+    (an older helpfile) starts from 0, and an infinite term of an earlier row stays out of
+    the scale; in no case is the cumulative 2e24 J residual or its scale erased."""
     from proteus.utils.coupler import _populate_core_residual
 
     hf = pd.DataFrame(
         {
-            'core_C_eff': [1.6e27],
-            'step_dE_F_cmb_J': [1.0e29],
-            'step_dE_impact_core_J': [0.0],
-            'E_core_residual_J': [np.nan if bad == 'previous' else 2.0e24],
+            'core_C_eff': [1.6e27, 1.6e27],
+            'step_dE_F_cmb_J': [value if bad == 'earlier_row' else 0.0, 1.0e29],
+            'step_dE_impact_core_J': [0.0, 0.0],
+            'E_core_residual_J': [0.0, value if bad == 'previous' else 2.0e24],
         }
     )
     row = {
         'Time': 300.0,
-        'core_C_eff': np.nan if bad == 'core_C_eff' else 1.6e27,
+        'core_C_eff': value if bad == 'core_C_eff' else 1.6e27,
         'step_dE_core_J': -5.0e28 + 1.0e24,
-        'step_dE_F_cmb_J': np.nan if bad == 'step_dE_F_cmb_J' else 5.0e28,
+        'step_dE_F_cmb_J': value if bad == 'step_dE_F_cmb_J' else 5.0e28,
         'step_dE_impact_core_J': 0.0,
     }
     with caplog.at_level('WARNING', logger='fwl.proteus.utils.coupler'):
         _populate_core_residual(hf, row)
-    expected = {'core_C_eff': 3.0e24, 'step_dE_F_cmb_J': 2.0e24, 'previous': 1.0e24}[bad]
+    expected = {'step_dE_F_cmb_J': 2.0e24, 'previous': 1.0e24}.get(bad, 3.0e24)
     assert row['E_core_residual_J'] == pytest.approx(expected, rel=1e-6)
-    # The scale keeps the CMB heat of the earlier rows; a NaN term of this row adds nothing.
+    # The scale keeps the CMB heat of the earlier rows; a bad term of this row adds nothing.
     scale = 1.0e29 + (0.0 if bad == 'step_dE_F_cmb_J' else 5.0e28)
     assert row['E_core_residual_frac'] == pytest.approx(expected / scale, rel=1e-6)
     assert ('residual carried' in caplog.text) == (bad == 'step_dE_F_cmb_J')

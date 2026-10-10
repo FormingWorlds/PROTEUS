@@ -1112,6 +1112,12 @@ def ZeroHelpfileRow():
     return out
 
 
+def _finite_abs_sum(values) -> float:
+    """Sum of the absolute values of the finite entries of ``values``."""
+    values = np.abs(np.asarray(values, dtype=float))
+    return float(values[np.isfinite(values)].sum())
+
+
 def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     """Fill the cumulative core ledger of ``new_row`` in place (Aragog core_module).
 
@@ -1130,13 +1136,13 @@ def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
         return
     terms = [float(new_row.get(k, 0.0)) for k in ('step_dE_core_J', 'step_dE_F_cmb_J')]
     impact = float(new_row.get('step_dE_impact_core_J', 0.0))
-    prev, scale = 0.0, float(np.nansum(np.abs([terms[1], impact])))
+    prev, scale = 0.0, _finite_abs_sum([terms[1], impact])
     if len(current_hf) and 'E_core_residual_J' in current_hf:
         prev = np.nan_to_num(float(current_hf['E_core_residual_J'].iloc[-1]))
         rows = current_hf['core_C_eff'].to_numpy(dtype=float) != 0.0
         for key in ('step_dE_F_cmb_J', 'step_dE_impact_core_J'):
             if key in current_hf:
-                scale += float(np.nansum(np.abs(current_hf[key].to_numpy(dtype=float)[rows])))
+                scale += _finite_abs_sum(current_hf[key].to_numpy(dtype=float)[rows])
     inc = terms[0] + terms[1] - impact
     if not np.isfinite(inc):
         log.warning(
