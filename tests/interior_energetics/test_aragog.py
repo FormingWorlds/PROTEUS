@@ -4251,9 +4251,8 @@ def test_write_core_module_diagnostics_wiring_and_cache():
         assert budget.effective_capacity.call_args.kwargs == {}
         _ = mock_regime  # regime asserted through the output below
 
-        # With elapsed time the diagnostics use the step-averaged CMB power, not the
-        # end-of-step flux (which spikes at phase boundaries); the two differ here by
-        # construction, so a regression to the snapshot fails the argument pin.
+        # With elapsed time the diagnostics take the CMB power from the call's heat, not from
+        # F_cmb times the area; the two inputs differ here, so a regression fails the pin.
         from proteus.utils.constants import secs_per_year
 
         output_dt = {'T_cmb': 4864.0, 'F_cmb': 1.5e5, 'step_dE_F_cmb_J': 3.0e28}

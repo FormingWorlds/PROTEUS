@@ -2162,10 +2162,8 @@ class AragogRunner:
         on object identity.
 
         The CMB heat flow driving the diagnostics is the step-averaged
-        power ``step_dE_F_cmb_J / dt`` rather than the end-of-step flux
-        snapshot, which spikes at phase boundaries (the same reason the
-        energy ledger integrates over the sub-step trajectory); the
-        snapshot is the fallback when no time elapsed (the init call).
+        power ``step_dE_F_cmb_J / dt``; with no elapsed time (the init
+        call) it is ``F_cmb`` times the CMB area.
         """
         solver = self.aragog_solver
         budget = getattr(solver, '_core_module_budget', None)
@@ -2193,7 +2191,7 @@ class AragogRunner:
 
         span_s = float(dt_actual_yr) * secs_per_year
         if span_s > 0.0:
-            q_cmb = float(output.get('step_dE_F_cmb_J', 0.0)) / span_s
+            q_cmb = float(output['step_dE_F_cmb_J']) / span_s
         else:
             q_cmb = float(output['F_cmb']) * area
         # A stratified core carries its shell profile; the layer base bounds the light-element mixing.
