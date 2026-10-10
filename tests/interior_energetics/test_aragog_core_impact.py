@@ -257,8 +257,8 @@ def test_core_call_heat_adds_the_jump_since_the_last_call_and_removes_the_source
     assert heat == pytest.approx(-4.0e29 - 1.0e12 * 10.0 * 3.15576e7 + jump, rel=1e-12)
     logged = float(re.search(r'difference (\S+) J', caplog.text).group(1))
     assert logged == pytest.approx(jump - 1.9e30, rel=1e-12)
-    assert interior_o._core_t_end == pytest.approx(6000.0)
-    solver._S0[2] = 6000.0
+    assert interior_o._core_t_end == 5153.0  # the caller moves it when the row is kept
+    solver._S0[2], interior_o._core_t_end = 6000.0, 6000.0
     heat = core_call_heat(out, interior_o)
     assert heat == pytest.approx(-4.0e29 - 3.15576e20, rel=1e-12)
 

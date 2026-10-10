@@ -115,3 +115,34 @@ def test_write_core_diagnostics_wiring_and_cache():
     before = dict(output)
     write_core_diagnostics(runner, output)
     assert output == before
+
+
+@pytest.mark.unit
+def test_the_core_columns_change_the_output_only_until_the_call_is_committed():
+    """The core columns of a call are computed before its snapshot is written, so a booked
+    impact heat (1.79e30 J, refit 5.2e29 J) and the last core temperature (5000 K) stay as
+    they are until the call returned; the commit then uses the booking up and moves the
+    temperature to the end of the call (4500 K)."""
+    from proteus.interior_energetics import aragog_core
+
+    interior_o = SimpleNamespace(_core_impact_booked=(1.79e30, 5.2e29), _core_t_end=5000.0)
+    out = SimpleNamespace(dt_actual=75.0, T_core=4500.0)
+    output = {}
+    core = 'proteus.interior_energetics.aragog_core'
+    with (
+        patch(f'{core}.write_core_diagnostics'),
+        patch(f'{core}_impact.core_call_heat', return_value=-2.0e28) as heat,
+    ):
+        aragog_core.write_core_columns(None, output, out, interior_o)
+    assert heat.call_args.kwargs == {'lift': 1.79e30}
+    assert output == {
+        'step_dE_impact_core_J': 1.79e30,
+        'step_dE_impact_core_refit_J': 5.2e29,
+        'step_dE_core_J': -2.0e28,
+    }
+    assert (interior_o._core_impact_booked, interior_o._core_t_end) == (
+        (1.79e30, 5.2e29),
+        5000.0,
+    )
+    aragog_core.commit_core_call(interior_o, out)
+    assert (interior_o._core_impact_booked, interior_o._core_t_end) == (None, 4500.0)

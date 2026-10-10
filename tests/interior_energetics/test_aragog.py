@@ -1426,6 +1426,7 @@ for _name in (
         ([-1], None, 'set'),
         ([0], RuntimeError('NetCDF: HDF error'), 'hot'),
         ([0], OSError('No space left on device'), 'hot'),
+        ([0], RuntimeError('XLA runtime error'), 'columns'),
         ([0], None, 'hot'),
         ([-1, 0], None, 'hot'),
     ],
@@ -1435,6 +1436,7 @@ for _name in (
         'ladder_exhausted_with_a_set_gradient_start',
         'write_fails_after_an_accepted_solve',
         'write_fails_with_an_error_that_stops_the_run',
+        'core_columns_fail_after_an_accepted_solve',
         'accepted',
         'retry_accepted',
     ],
@@ -1452,9 +1454,10 @@ def test_a_failed_call_leaves_the_solver_with_the_state_it_started_from(
     untouched, and a snapshot the failed write left is removed. A call that returns, on the
     first attempt or on a retry, leaves the solution of the accepted attempt, stores its
     profiles and keeps its snapshot. With core_module the state also holds the core
-    temperature (start 5100 K, previous solution 5000 K, attempt 4000 K), and the core
-    columns are written only for a call that returned, so the core ledger of a skipped row
-    does not move."""
+    temperature (start 5100 K, previous solution 5000 K, attempt 4000 K). An error of the
+    core columns fails the call like any other, before a snapshot is written, and the
+    ledger state (the last core temperature and a booked impact heat) moves only with a
+    call that returned."""
     from proteus.interior_energetics.aragog import AragogRunner
     from proteus.utils.helper import snapshot_path_for_time
 
@@ -1476,7 +1479,7 @@ def test_a_failed_call_leaves_the_solver_with_the_state_it_started_from(
         _core_bc=core_bc,
         _dSdr_cmb_init=-2.2e-4 if entry == 'set' else None,
         _T_core_init=None,
-        _solution=sol_pre if entry == 'hot' else None,
+        _solution=None if entry in ('cold', 'set') else sol_pre,
         statuses=statuses,
         attempts=0,
         reset=lambda: None,
@@ -1488,7 +1491,7 @@ def test_a_failed_call_leaves_the_solver_with_the_state_it_started_from(
         path.parent.mkdir(exist_ok=True)
         path.touch()
         written.append(path)
-        if error is not None:
+        if error is not None and entry != 'columns':
             raise error
 
     runner = AragogRunner.__new__(AragogRunner)
@@ -1500,22 +1503,25 @@ def test_a_failed_call_leaves_the_solver_with_the_state_it_started_from(
     runner._build_helpfile_output = lambda *a, **k: {}
     runner._store_profiles = lambda interior_o, out: stored.append(out)
     runner._write_output_ncdf = _write
+    ledger = dict(_core_t_end=5000.0, _core_impact_booked=(1.0e30, 0.0))
     interior_o = SimpleNamespace(
-        aragog_solver=solver, aragog_step_progress=[], _last_entropy=None, tides=None
+        aragog_solver=solver, aragog_step_progress=[], _last_entropy=None, tides=None, **ledger
     )
     hf_row = {'Time': 202.0, 'T_cmb': 5000.0, 'F_atm': 1.0e3, 'T_eqm': 255.0}
     dirs = {'output': str(tmp_path)}
+    in_columns = entry == 'columns'
+    side_effect = error if in_columns else None
 
-    with patch(f'{_CORE}.write_core_columns') as core_columns:
-        if error is not None or statuses[-1] != 0:
+    with patch(f'{_CORE}.write_core_columns', side_effect=side_effect) as core_columns:
+        if statuses[-1] != 0 or (error is not None and (core or not in_columns)):
             raised, message = (
                 (type(error), str(error)) if error else (RuntimeError, 'exhausted')
             )
             with pytest.raises(raised, match=message):
                 runner.run_solver(hf_row, interior_o, dirs)
-            assert stored == [] and len(written) == (error is not None)
+            assert stored == [] and len(written) == (error is not None and not in_columns)
             assert not any(path.exists() for path in written)
-            assert list(solver._solution.t) == [202.0] and core_columns.call_count == 0
+            assert list(solver._solution.t) == [202.0]
             expected = (3100.0, -2.2e-4, 5100.0)
         else:
             runner.run_solver(hf_row, interior_o, dirs)
@@ -1523,6 +1529,9 @@ def test_a_failed_call_leaves_the_solver_with_the_state_it_started_from(
             assert len(written) == 1 and written[0].exists()
             assert core_columns.call_count == int(core)
             expected = (2400.0, 5.08e-4, 4000.0)
+            if core:
+                ledger = dict(_core_t_end=4000.0, _core_impact_booked=None)
+    assert {key: getattr(interior_o, key) for key in ledger} == ledger
     assert (solver._dSdr_cmb_init, solver._T_core_init) == (None, None)
     AragogRunner.update_solver(10.0, hf_row, interior_o)
     assert list(interior_o._last_entropy) == [pytest.approx(expected[0])] * n_stag
@@ -4310,7 +4319,7 @@ def test_run_solver_invokes_core_module_diagnostics_when_active(tmp_path):
     runner._config.interior_energetics.write_flux_diagnostics = False
 
     out = _snapshot_output()
-    out.dt_actual = 75.0
+    out.dt_actual, out.T_core = 75.0, 4500.0
     runner._solve_with_retry = lambda hf_row, interior_o, S0_entry: out
     runner._build_helpfile_output = lambda *a, **k: {'existing_col': 1.0}
 
@@ -4341,8 +4350,8 @@ def test_run_solver_invokes_core_module_diagnostics_when_active(tmp_path):
 @pytest.mark.physics_invariant
 def test_run_solver_writes_the_core_impact_heat_booked_at_the_reset(tmp_path):
     """A core refit at this step's reset left its booking on the interior; run_solver
-    writes it into the row after the core diagnostics (which write 0.0) and clears it,
-    so the next row starts clean."""
+    writes it into the row and clears it when the call returned, so the next row starts
+    clean and measures its jump from the core temperature this call ended at."""
     from types import SimpleNamespace
 
     from proteus.interior_energetics.aragog import AragogRunner
@@ -4354,7 +4363,7 @@ def test_run_solver_writes_the_core_impact_heat_booked_at_the_reset(tmp_path):
     runner._config.interior_energetics.aragog.core_bc = 'core_module'
     runner._config.interior_energetics.write_flux_diagnostics = False
     out = _snapshot_output()
-    out.dt_actual = 75.0
+    out.dt_actual, out.T_core = 75.0, 4500.0
     runner._solve_with_retry = lambda hf_row, interior_o, S0_entry: out
     runner._build_helpfile_output = lambda *a, **k: {}
 
@@ -4368,7 +4377,7 @@ def test_run_solver_writes_the_core_impact_heat_booked_at_the_reset(tmp_path):
         _, output = runner.run_solver({'Time': 300.0}, interior_o, {'output': str(tmp_path)})
         assert output['step_dE_impact_core_J'] == pytest.approx(1.79e30)
         assert output['step_dE_impact_core_refit_J'] == pytest.approx(5.2e29)
-        assert interior_o._core_impact_booked is None
+        assert (interior_o._core_impact_booked, interior_o._core_t_end) == (None, 4500.0)
         assert heat.call_args.kwargs == {'lift': pytest.approx(1.79e30)}
         _, output = runner.run_solver({'Time': 375.0}, interior_o, {'output': str(tmp_path)})
     assert output['step_dE_impact_core_J'] == pytest.approx(0.0)

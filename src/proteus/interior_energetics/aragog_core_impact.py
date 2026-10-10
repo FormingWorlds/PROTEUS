@@ -168,7 +168,8 @@ def core_call_heat(out, interior_o, lift: float = 0.0) -> float:
     any jump between the previous call's final T_core and this call's initial one,
     measured with the solver's current budget. An impact lift appears here as that
     jump, so the ledger closes only when the same lift is booked; ``lift``, the heat
-    booked on this call, is logged against the jump at DEBUG.
+    booked on this call, is logged against the jump at DEBUG. The previous final T_core
+    is ``interior_o._core_t_end``, which ``aragog_core.commit_core_call`` moves.
     """
     solver = interior_o.aragog_solver
     t_start = start_core_temperature(solver, 'core_module')
@@ -184,6 +185,5 @@ def core_call_heat(out, interior_o, lift: float = 0.0) -> float:
             lift,
             jump - lift,
         )
-    interior_o._core_t_end = float(out.T_core)
     source = float(solver._core_module_q_radio) * float(out.dt_actual) * secs_per_year
     return float(out.step_dE_core_J) - source + jump

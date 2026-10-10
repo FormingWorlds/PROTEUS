@@ -264,12 +264,22 @@ def write_core_diagnostics(runner, output: dict, dt_actual_yr: float = 0.0, out=
 
 
 def write_core_columns(runner, output: dict, out, interior_o) -> None:
-    """Fill the core diagnostics and the core ledger columns of a ``core_module`` call."""
+    """Fill the core diagnostics and the core ledger columns of a ``core_module`` call.
+
+    It changes ``output`` only; ``commit_core_call`` moves the ledger state when the
+    call returned.
+    """
     from proteus.interior_energetics.aragog_core_impact import core_call_heat
 
     write_core_diagnostics(runner, output, dt_actual_yr=float(out.dt_actual), out=out)
     # A core refit at this step's reset books the previous impact's core heat here.
     booked = getattr(interior_o, '_core_impact_booked', None) or (0.0, 0.0)
-    interior_o._core_impact_booked = None
     output['step_dE_impact_core_J'], output['step_dE_impact_core_refit_J'] = booked
     output['step_dE_core_J'] = core_call_heat(out, interior_o, lift=booked[0])
+
+
+def commit_core_call(interior_o, out) -> None:
+    """Move the core ledger state to the end of a call whose row is kept: the booked
+    impact heat is used up and the next call measures its jump from this T_core."""
+    interior_o._core_impact_booked = None
+    interior_o._core_t_end = float(out.T_core)

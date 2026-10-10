@@ -2086,6 +2086,10 @@ class AragogRunner:
                 hf_row['Time'] + out.dt_actual, getattr(interior_o, 't_next_impact', np.inf)
             )
 
+            core_module = self._config.interior_energetics.aragog.core_bc == 'core_module'
+            if core_module:
+                aragog_core.write_core_columns(self, output, out, interior_o)
+
             # Write output to a file (skipped when dt_write suppresses this step)
             if write_data:
                 written = sim_time
@@ -2115,9 +2119,9 @@ class AragogRunner:
             if written is not None:
                 discard_snapshot(dirs['output'], written)
             raise
-        # The core columns and the stored profiles move with a call that returned.
-        if self._config.interior_energetics.aragog.core_bc == 'core_module':
-            aragog_core.write_core_columns(self, output, out, interior_o)
+        # The core ledger state and the stored profiles move with a call that returned.
+        if core_module:
+            aragog_core.commit_core_call(interior_o, out)
         self._store_profiles(interior_o, out)
 
         return sim_time, output
