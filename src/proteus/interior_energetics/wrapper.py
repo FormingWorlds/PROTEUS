@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
-from proteus.interior_energetics.aragog_core import set_core_start
 from proteus.interior_energetics.common import (
     _SPIDER_EOS_MELTING_CURVES,
     _SPIDER_EOS_PHASE_FILES,
@@ -1973,19 +1972,11 @@ def evaluate_molten_state(solver, hf_row: dict):
     if not hasattr(solver, 'get_state'):
         return None
 
+    from proteus.interior_energetics.aragog import state_solution
+
     prev_solution = getattr(solver, '_solution', None)
-    t_curr = float(hf_row.get('Time', 0.0))
-    # Aragog reads its solution by attribute and by .get, as on an OptimizeResult.
-    sol = optimise.OptimizeResult(
-        y=solver._S0.reshape(-1, 1),
-        t=np.array([t_curr]),
-        status=0,
-        cvode_flag=0,
-        cvode_flag_name='SUCCESS',
-        message='',
-    )
     try:
-        solver._solution = sol
+        solver._solution = state_solution(solver._S0, hf_row.get('Time', 0.0))
         return solver.get_state()
     finally:
         solver._solution = prev_solution
@@ -2085,7 +2076,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     if hasattr(solver, '_dSdr_cmb_init'):
         solver._dSdr_cmb_init = None
     if T_core_pre is not None:
-        set_core_start(solver, T_core_pre)
+        solver.set_initial_core_temperature(T_core_pre)
 
     # _set_entropy_ic returns the staggered molten profile it just set. Take it
     # from the return value rather than from the solver's solution object, which
@@ -2129,7 +2120,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
 
         S_ic = np.asarray(interior_o._last_entropy, dtype=float)
         T_core_new = remelt_core_module(hf_row, interior_o, solver, T_core_pre, float(S_ic[0]))
-        set_core_start(solver, T_core_new)
+        solver.set_initial_core_temperature(T_core_new)
         solver.set_initial_entropy(S_ic)
 
     log.info('    mantle re-melted: Aragog restarts from the re-melted entropy profile')
@@ -2495,9 +2486,8 @@ def run_interior(
                     interior_o.aragog_fail_count,
                 )
                 raise
-            # Skip output update; keep the previous step's hf_row but for the call energies.
-            # Atmosphere + outgassing still advance, pushing the planet
-            # past the stiff regime. Same pattern as SPIDER fallback above.
+            # Keep the previous step's hf_row with the call energies at 0; the solver holds
+            # the state this call started from, and the other modules advance.
             _skip_aragog_call_energy(hf_row)
             from proteus.interior_energetics.timestep import next_step
 

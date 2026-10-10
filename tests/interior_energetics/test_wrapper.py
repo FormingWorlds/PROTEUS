@@ -7492,6 +7492,9 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
             self.recorded_y = None
             self.recorded_t = None
 
+        def set_initial_core_temperature(self, t):
+            self._T_core_init = t
+
         def get_state(self):
             # Aragog's get_state reads attributes and calls .get on its solution.
             self._solution.get('energy_integrals')
@@ -7706,7 +7709,7 @@ def test_dummy_structure_passes_a_missing_paleos_table_error_through(tmp_path):
     provide.assert_not_called()
 
 
-def _remelt_stub(getter=None, t_core_init=None, s0=None, n_stag=None, setter=True):
+def _remelt_stub(getter=None, t_core_init=None, s0=None, n_stag=None):
     """A solver stand-in for _remelt_aragog that records each core temperature it is given."""
 
     class Stub:
@@ -7725,10 +7728,11 @@ def _remelt_stub(getter=None, t_core_init=None, s0=None, n_stag=None, setter=Tru
         def set_initial_entropy(self, S):
             self.ic_entropy = np.asarray(S)
 
+        def set_initial_core_temperature(self, t):
+            self.set_calls.append(t)
+
     if getter is not None:
         Stub.get_current_core_temperature = lambda self: getter()
-    if setter:
-        Stub.set_initial_core_temperature = lambda self, t: self.set_calls.append(t)
     return Stub()
 
 
@@ -7744,10 +7748,10 @@ def _s0(n_stag, extra, idx, value):
     [
         ('core_module', dict(getter=lambda: 5234.5, t_core_init=1.0), {}, 5234.5),
         ('core_module', dict(getter=lambda: None, t_core_init=5123.4), {}, 5123.4),
-        ('core_module', dict(s0=_s0(80, 2, 81, 5067.8), n_stag=80, setter=False), {}, 5067.8),
-        ('bower2018', dict(s0=_s0(80, 1, 80, 4987.6), n_stag=80, setter=False), {}, 4987.6),
-        ('core_module', dict(setter=False), {'T_cmb': 4876.5, 'T_core': 1.0}, 4876.5),
-        ('core_module', dict(setter=False), {'T_core': 4765.4}, 4765.4),
+        ('core_module', dict(s0=_s0(80, 2, 81, 5067.8), n_stag=80), {}, 5067.8),
+        ('bower2018', dict(s0=_s0(80, 1, 80, 4987.6), n_stag=80), {}, 4987.6),
+        ('core_module', {}, {'T_cmb': 4876.5, 'T_core': 1.0}, 4876.5),
+        ('core_module', {}, {'T_core': 4765.4}, 4765.4),
     ],
     ids=[
         'getter',
@@ -7795,10 +7799,9 @@ def test_remelt_aragog_keeps_the_core_temperature(
     assert seen_at_ic == [pytest.approx(expected)]
     assert solver.core_t() == pytest.approx(expected)
     assert handed == ([pytest.approx(expected)] if core_bc == 'core_module' else [])
-    if stub_kw.get('setter', True):
-        # core_module sets the kept temperature, then the helper's return value.
-        n_calls = 2 if core_bc == 'core_module' else 1
-        assert solver.set_calls == [pytest.approx(expected)] * n_calls
+    # core_module sets the kept temperature, then the helper's return value.
+    n_calls = 2 if core_bc == 'core_module' else 1
+    assert solver.set_calls == [pytest.approx(expected)] * n_calls
     assert solver._solution is None and solver._dSdr_cmb_init is None
 
 

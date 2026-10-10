@@ -21,12 +21,11 @@ SOLVER_ONLY_KEYS = ('q_radio', 'ra_crit_cmb')
 _FROZEN_UNITS = {'rho_cen': 'kg m-3', 'length_scale': 'm', 'm_core': 'kg', 'p_cen': 'Pa'}
 
 
-def set_core_start(solver, t_core: float | None) -> None:
-    """Set, or with None release, the core temperature the next solve starts from [K]."""
-    if hasattr(solver, 'set_initial_core_temperature'):
-        solver.set_initial_core_temperature(t_core)
-    else:
-        solver._T_core_init = t_core
+def release_core_start(solver) -> None:
+    """Release a set core temperature and shell start, so the next solve takes them from
+    the last solution."""
+    solver.set_initial_core_temperature(None)
+    solver.set_initial_shell_temperature(None)
 
 
 def frozen_profile(interior_o) -> dict[str, float | None]:
@@ -89,32 +88,6 @@ def core_temperature_state(solver, core_bc: str) -> float | None:
     ):
         return None
     return solver.get_current_core_temperature()
-
-
-def call_start(solver, core_bc: str, sol_pre):
-    """Core temperature [K] and shell temperatures [K] a solver call starts from.
-
-    A set start (re-melt, resume, exhausted ladder) wins over the end of the last
-    solution ``sol_pre``, which wins over the solver's start state; each is None
-    when the mode does not carry it.
-    """
-    t_core = getattr(solver, '_T_core_init', None)
-    if t_core is None and hasattr(solver, 'get_current_core_temperature'):
-        t_core = solver.get_current_core_temperature()
-    S0 = getattr(solver, '_S0', None)
-    n_stag = getattr(solver, '_n_stag', None)
-    if t_core is None and S0 is not None and n_stag is not None:
-        if core_bc == 'core_module' and len(S0) >= n_stag + 2:
-            t_core = float(S0[n_stag + 1])
-        elif core_bc == 'bower2018' and len(S0) == n_stag + 1:
-            t_core = float(S0[n_stag])
-    shell = getattr(solver, '_T_shell_init', None)
-    if shell is None and core_bc == 'core_module' and n_stag is not None:
-        y_pre = getattr(sol_pre, 'y', None)
-        start = np.asarray(y_pre)[:, -1] if np.ndim(y_pre) == 2 else S0
-        if start is not None and len(start) > n_stag + 2:
-            shell = np.array(start[n_stag + 2 :], dtype=float)
-    return t_core, shell
 
 
 def core_module_params(config, hf_row: dict, interior_o, outdir: str) -> dict:
@@ -228,9 +201,8 @@ def restore_core_start(hf_row: dict, interior_o, solver) -> None:
                 status,
             )
     if T_core is not None:
-        set_core_start(solver, T_core)
-    if hasattr(solver, 'set_initial_shell_temperature'):
-        solver.set_initial_shell_temperature(getattr(interior_o, '_last_T_shell', None))
+        solver.set_initial_core_temperature(T_core)
+    solver.set_initial_shell_temperature(getattr(interior_o, '_last_T_shell', None))
 
 
 def write_core_diagnostics(runner, output: dict, dt_actual_yr: float = 0.0, out=None) -> None:
