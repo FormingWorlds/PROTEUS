@@ -420,28 +420,44 @@ def test_a_change_of_one_melting_curve_key_is_not_checked_against_the_old_other_
 
 
 @pytest.mark.parametrize(
-    ('struct', 'core_bc', 'stratified', 'solver', 'refused'),
+    ('struct', 'core_bc', 'stratified', 'solver', 'interval', 'ic', 'refused'),
     [
-        ('zalmoxis', 'core_module', False, 'cvode', None),
-        ('zalmoxis', 'core_module', True, 'bdf', None),
-        ('dummy', 'energy_balance', True, 'radau', None),
-        ('dummy', 'core_module', False, 'cvode', "needs interior_struct.module = 'zalmoxis'"),
-        ('spider', 'core_module', False, 'cvode', "not 'spider'"),
-        ('zalmoxis', 'core_module', True, 'radau', "not 'radau'"),
+        ('zalmoxis', 'core_module', False, 'cvode', 1.0e9, 'adiabatic', None),
+        ('zalmoxis', 'core_module', True, 'bdf', 0.0, 'liquidus_super', None),
+        ('dummy', 'energy_balance', True, 'radau', 1.0e9, 'adiabatic', None),
+        (
+            'dummy',
+            'core_module',
+            False,
+            'cvode',
+            0.0,
+            'liquidus_super',
+            'needs interior_struct',
+        ),
+        ('spider', 'core_module', False, 'cvode', 0.0, 'liquidus_super', "not 'spider'"),
+        ('zalmoxis', 'core_module', True, 'radau', 0.0, 'liquidus_super', "not 'radau'"),
+        ('zalmoxis', 'core_module', True, 'bdf', 300.0, 'liquidus_super', 'solved once'),
+        ('zalmoxis', 'core_module', True, 'bdf', 0.0, 'adiabatic', 'solved once'),
     ],
 )
 def test_core_module_requirements_are_checked_at_config_load(
-    struct, core_bc, stratified, solver, refused
+    struct, core_bc, stratified, solver, interval, ic, refused
 ):
     """The core_module core needs the Zalmoxis structure, which provides the core mass and
-    the central pressure of its profile fit, and its resolved shell does not run on Radau;
-    another core boundary is not checked."""
+    the central pressure of its profile fit, and its resolved shell does not run on Radau.
+    A stratified core needs a structure that is solved once: structure updates off and the
+    initial condition that has no baseline re-solve, because the core is carried across a
+    structure update with a heat content that a stratified budget does not give. Another
+    core boundary is not checked."""
     from types import SimpleNamespace
 
     from proteus.config._config import check_core_module_requirements
 
     instance = SimpleNamespace(
-        interior_struct=SimpleNamespace(module=struct),
+        planet=SimpleNamespace(temperature_mode=ic),
+        interior_struct=SimpleNamespace(
+            module=struct, zalmoxis=SimpleNamespace(update_interval=interval)
+        ),
         interior_energetics=SimpleNamespace(
             module='aragog',
             aragog=SimpleNamespace(

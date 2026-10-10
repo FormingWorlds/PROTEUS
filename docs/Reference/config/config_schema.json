@@ -11590,7 +11590,9 @@
       ],
       "touches": [
         "interior_energetics",
-        "interior_struct.module"
+        "interior_struct.module",
+        "interior_struct.zalmoxis.update_interval",
+        "planet.temperature_mode"
       ],
       "doc": "Reject an Aragog core_module core that its structure or solver cannot serve."
     },

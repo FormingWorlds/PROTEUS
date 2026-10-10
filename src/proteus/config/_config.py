@@ -354,7 +354,9 @@ def check_core_module_requirements(instance, attribute, value):
 
     The core profile is fitted to the core mass and the central pressure, which only the
     Zalmoxis structure provides, and Aragog refuses the resolved shell of a stratified core
-    on Radau.
+    on Radau. A stratified core cannot be carried across a structure update, because
+    Aragog gives no heat content for a stratified budget, so it needs a structure that
+    is solved once: no dynamic update and no baseline re-solve after the start.
     """
     interior = instance.interior_energetics
     if interior.module != 'aragog' or interior.aragog.core_bc != 'core_module':
@@ -366,10 +368,23 @@ def check_core_module_requirements(instance, attribute, value):
             'the core profile is fitted to the core mass and the central pressure of the '
             'Zalmoxis structure.'
         )
-    if interior.aragog.core_module.stratification and interior.aragog.solver_method == 'radau':
+    if not interior.aragog.core_module.stratification:
+        return
+    if interior.aragog.solver_method == 'radau':
         raise ValueError(
             'interior_energetics.aragog.core_module.stratification = true needs '
             "interior_energetics.aragog.solver_method = 'cvode' or 'bdf', not 'radau'."
+        )
+    if (
+        instance.interior_struct.zalmoxis.update_interval > 0
+        or instance.planet.temperature_mode != 'liquidus_super'
+    ):
+        raise ValueError(
+            'interior_energetics.aragog.core_module.stratification = true needs a structure '
+            'that is solved once: interior_struct.zalmoxis.update_interval = 0 and '
+            "planet.temperature_mode = 'liquidus_super'. The core is carried across a "
+            'structure update with its heat content, which Aragog does not give for a '
+            'stratified core.'
         )
 
 
