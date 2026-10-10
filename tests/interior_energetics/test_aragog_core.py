@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -246,33 +247,29 @@ def _core_solver():
     return solver, SimpleNamespace(_frozen_core_m_core=M_CORE, aragog_solver=solver)
 
 
-def _update(solver, interior_o, step, t_old, heat=True):
+def _linear_heat(budget, t_core):
+    """Stand-in for the heat content [J]: linear in the temperature, one slope per budget."""
+    return 1e20 * budget.profiles.r_cmb * t_core
+
+
+def _update(solver, interior_o, step, t_old, heat=True, row=None):
     """Move the solver to structure ``step`` as a reset does and carry the core; without
-    ``heat`` the heat contents, slow below the nucleation onset, are not evaluated."""
-    from proteus.interior_energetics import aragog_core
+    ``heat`` the heat contents, slow below the nucleation onset, are ``_linear_heat``."""
+    from aragog.core.budget import CoreEnergyBudget
+
     from proteus.interior_energetics.aragog_core import carry_core_across_update
 
     old = solver._core_module_budget
-    if not heat:
-        fit = aragog_core.fitted_core_budget
-
-        def no_heat(*args):
-            budget, profile = fit(*args)
-            budget.heat_content = lambda t_core: 0.0
-            return budget, profile
-
-        old.heat_content = lambda t_core: 0.0
-        with patch.object(aragog_core, 'fitted_core_budget', no_heat):
-            return _update(solver, interior_o, step, t_old)
     r_cmb, p_cmb, p_cen = GEOMETRY[step]
     solver._r_basic_flat, solver._P_basic_flat = (
         np.array([r_cmb, 3.5e6]),
         np.array([p_cmb, 1e11]),
     )
     solver._cache_bc_constants()
-    carry_core_across_update(
-        {'P_center': p_cen, 'M_core': 1.93e24}, interior_o, solver, (old, t_old)
-    )
+    row = {'P_center': p_cen, **({'M_core': 1.93e24} if row is None else row)}
+    stub = patch.object(CoreEnergyBudget, 'heat_content', _linear_heat)
+    with nullcontext() if heat else stub:
+        carry_core_across_update(row, interior_o, solver, (old, t_old))
     return old
 
 
@@ -512,14 +509,15 @@ def test_an_inner_core_that_is_not_a_number_stops_the_root_find_with_a_clear_err
 @pytest.mark.physics_invariant
 def test_a_liquid_core_takes_the_rule_of_the_liquid_bit_for_bit(monkeypatch):
     """Above the nucleation onset before and after the update the new temperature is the
-    old one times the ratio of the liquid rule, to the last bit, and the entropy of fusion
-    is not evaluated."""
+    old one times the ratio of the liquid rule, to the last bit, and neither the entropy
+    of fusion nor the inner core mass is evaluated."""
     from proteus.interior_energetics import aragog_core
 
     def never(*args):
-        raise AssertionError('the entropy of fusion was evaluated for a liquid core')
+        raise AssertionError('the inner core was evaluated for a liquid core')
 
     monkeypatch.setattr(aragog_core, '_with_fusion_entropy', never)
+    monkeypatch.setattr(aragog_core, '_inner_core_mass', never)
     solver, interior_o = _core_solver()
     t_old = 6053.74
     old = _update(solver, interior_o, 1, t_old)
@@ -533,40 +531,54 @@ def test_a_liquid_core_takes_the_rule_of_the_liquid_bit_for_bit(monkeypatch):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_a_core_with_an_inner_core_keeps_its_entropy_with_the_entropy_of_fusion():
+def test_a_core_with_an_inner_core_keeps_its_entropy_with_the_entropy_of_fusion(caplog):
     """50 K below the nucleation onset the same update raises the melting curve more than
     the adiabat, so the inner core grows (9.8e22 to 1.3e23 kg). The entropy the frozen mass
     gives up heats the core by about 15 K more than the liquid rule, and the total balance,
     core mass times the mass-weighted mean of c_p ln(T'/T) - alpha dP / rho against
-    ds_fusion times the change of the inner core mass, closes on a separate quadrature."""
+    ds_fusion times the change of the inner core mass, closes on a separate quadrature.
+    The booked heat is the heat content of the new budget at that temperature less the
+    one of the old budget before, and the log line holds the 2 inner core masses."""
     from proteus.interior_energetics import aragog_core
 
     solver, interior_o = _core_solver()
     old = solver._core_module_budget
     t_old = old.t_onset - 50.0
-    _update(solver, interior_o, 1, t_old, heat=False)
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.aragog_core'):
+        _update(solver, interior_o, 1, t_old, heat=False)
     new, t_new = solver._core_module_budget, solver._T_core_init
+    booked = _linear_heat(new, t_new) - _linear_heat(old, t_old)
+    assert interior_o._core_struct_booked == pytest.approx(booked, rel=1e-12)
 
     t_liquid = t_old * 1.010031
     assert 10.0 < t_new - t_liquid < 20.0
     m_old = aragog_core._inner_core_mass(old, t_old)
     m_new = aragog_core._inner_core_mass(new, t_new)
     assert 9.0e22 < m_old < m_new < 1.5e23
+    assert f'inner core mass {m_old:.4e} -> {m_new:.4e} kg' in caplog.text
     sensible = M_CORE * _mass_mean(old.profiles, new.profiles, t_old, t_new)
     assert sensible == pytest.approx(new.ds_fusion * (m_new - m_old), rel=2e-3)
 
 
 @pytest.mark.unit
-def test_a_carry_that_fails_leaves_the_solver_and_the_interior_as_they_were():
+@pytest.mark.parametrize(
+    'stratified, row, error, match',
+    [(True, None, ValueError, 'stratified budget'), (False, {}, KeyError, 'M_core')],
+    ids=['no_heat_content', 'row_without_the_core_mass'],
+)
+def test_a_carry_that_fails_leaves_the_solver_and_the_interior_as_they_were(
+    stratified, row, error, match
+):
     """The new state is computed on a candidate budget; when its heat content cannot be
-    evaluated (a stratified budget gives none) the error leaves the profile of the solver,
-    its core temperature and the bookings untouched."""
+    evaluated (a stratified budget gives none), or a value of the log line cannot be
+    computed, the error leaves the profile of the solver, its core temperature and the
+    bookings untouched."""
     solver, interior_o = _core_solver()
     params = solver.parameters.boundary_conditions.core_module_params
-    params['stratification'] = True
+    params['stratification'] = stratified
     kept, state = dict(params), dict(vars(interior_o))
-    with pytest.raises(ValueError, match='stratified budget'):
-        _update(solver, interior_o, 1, 6053.74)
+    with pytest.raises(error, match=match):
+        _update(solver, interior_o, 1, 6053.74, row=row)
     assert params == kept and vars(interior_o) == state and solver._T_core_init is None
 
 
@@ -600,6 +612,8 @@ def test_an_update_that_starts_the_inner_core_counts_its_entropy_of_fusion():
     assert 1.0 < t_new - t_old * 1.010031 < 4.0
     assert aragog_core._inner_core_mass(old, t_old) == 0.0
     assert aragog_core._inner_core_mass(new, t_new) > 1.0e21
+    booked = _linear_heat(new, t_new) - _linear_heat(old, t_old)
+    assert interior_o._core_struct_booked == pytest.approx(booked, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -626,25 +640,15 @@ def test_the_core_state_before_a_reset_is_what_the_next_solve_would_start_from(
 
 
 @pytest.mark.unit
-def test_a_heat_change_that_is_not_a_number_stops_the_carry_before_the_solver_changes(
-    monkeypatch,
-):
-    """A candidate budget whose heat content is not a number raises with the value named,
-    and the solver keeps its profile, its core temperature and its budget."""
-    from proteus.interior_energetics import aragog_core
+def test_a_heat_change_that_is_not_a_number_stops_the_carry_before_the_solver_changes():
+    """A heat content that is not a number raises with the value named, and the solver
+    keeps its profile and its core temperature."""
+    from aragog.core.budget import CoreEnergyBudget
 
     solver, interior_o = _core_solver()
-    fit = aragog_core.fitted_core_budget
-
-    def broken(*args):
-        budget, profile = fit(*args)
-        return SimpleNamespace(
-            profiles=budget.profiles, t_onset=budget.t_onset, heat_content=lambda t: np.nan
-        ), profile
-
-    monkeypatch.setattr(aragog_core, 'fitted_core_budget', broken)
     kept = dict(solver.parameters.boundary_conditions.core_module_params)
-    with pytest.raises(ValueError, match='is not finite: nan'):
+    nan_heat = patch.object(CoreEnergyBudget, 'heat_content', lambda self, t_core: np.nan)
+    with nan_heat, pytest.raises(ValueError, match='is not finite: nan'):
         _update(solver, interior_o, 1, 6053.74)
     assert solver.parameters.boundary_conditions.core_module_params == kept
     assert solver._T_core_init is None and not hasattr(interior_o, '_core_struct_booked')
@@ -662,9 +666,11 @@ def test_an_update_that_melts_the_inner_core_counts_its_entropy_of_fusion():
     solver, interior_o = _core_solver()
     _update(solver, interior_o, 1, 6053.74)
     old, t_old = solver._core_module_budget, solver._core_module_budget.t_onset - 5.0
-    m_old = aragog_core._inner_core_mass(old, t_old)
+    m_old, first = aragog_core._inner_core_mass(old, t_old), interior_o._core_struct_booked
     _update(solver, interior_o, 0, t_old, heat=False)
     new, t_new = solver._core_module_budget, solver._T_core_init
+    booked = _linear_heat(new, t_new) - _linear_heat(old, t_old)
+    assert interior_o._core_struct_booked - first == pytest.approx(booked, rel=1e-9)
     q = (np.arange(256) + 0.5) / 256
     dP, rho, ln_shape = aragog_core._parcels(old.profiles, new.profiles, q)
     t_liquid = t_old * aragog_core.isentropic_ratio(ALPHA, C_P, dP, rho, ln_shape)

@@ -82,7 +82,9 @@ the melting curve; the entropy of fusion of the mass that freezes or melts at
 the update is part of that balance. The gravitational energy of the light
 elements that such freezing releases is not put into the core. The change of
 the heat content is written to `step_dE_struct_core_J`, on the row of the next
-interior solve that is kept.
+interior solve that is kept. With an inner core that change includes the shift
+of the reference from which each budget counts the latent and gravitational
+energy, because the reference follows the melting curve.
 
 The log gives, for each update, the temperature ratio of the rule and of the
 single mass parcels; a warning marks an update where the parcels differ by
