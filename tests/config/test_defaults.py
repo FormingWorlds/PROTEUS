@@ -378,3 +378,66 @@ def test_deprecated_rtol_alias_overrides_the_aragog_default():
     """num_tolerance still copies into rtol for Aragog, with its deprecation warning."""
     with pytest.warns(DeprecationWarning, match='num_tolerance'):
         assert Interior(module='aragog', num_tolerance=1e-6).rtol == pytest.approx(1e-6)
+
+
+@pytest.mark.parametrize(
+    ('struct', 'core_bc', 'stratified', 'solver', 'refused'),
+    [
+        ('zalmoxis', 'core_module', False, 'cvode', None),
+        ('zalmoxis', 'core_module', True, 'bdf', None),
+        ('dummy', 'energy_balance', True, 'radau', None),
+        ('dummy', 'core_module', False, 'cvode', "needs interior_struct.module = 'zalmoxis'"),
+        ('spider', 'core_module', False, 'cvode', "not 'spider'"),
+        ('zalmoxis', 'core_module', True, 'radau', "not 'radau'"),
+    ],
+)
+def test_core_module_requirements_are_checked_at_config_load(
+    struct, core_bc, stratified, solver, refused
+):
+    """The core_module core needs the Zalmoxis structure, which provides the core mass and
+    the central pressure of its profile fit, and its resolved shell does not run on Radau;
+    another core boundary is not checked."""
+    from types import SimpleNamespace
+
+    from proteus.config._config import check_core_module_requirements
+
+    instance = SimpleNamespace(
+        interior_struct=SimpleNamespace(module=struct),
+        interior_energetics=SimpleNamespace(
+            module='aragog',
+            aragog=SimpleNamespace(
+                core_bc=core_bc,
+                solver_method=solver,
+                core_module=SimpleNamespace(stratification=stratified),
+            ),
+        ),
+    )
+    if refused:
+        with pytest.raises(ValueError, match=refused):
+            check_core_module_requirements(instance, None, None)
+    else:
+        assert check_core_module_requirements(instance, None, None) is None
+    instance.interior_energetics.module = 'spider'
+    assert check_core_module_requirements(instance, None, None) is None
+
+
+def test_a_core_module_core_without_the_zalmoxis_structure_is_refused_when_built():
+    """Building a configuration runs the core_module check: the dummy structure is refused,
+    the Zalmoxis structure builds, and a light-element mass fraction of 1 is out of range."""
+    import attrs
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+    from proteus.config._interior import AragogCoreModule
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'all_options.toml')
+    aragog = attrs.evolve(cfg.interior_energetics.aragog, core_bc='core_module')
+    interior = attrs.evolve(cfg.interior_energetics, module='aragog', aragog=aragog)
+    built = attrs.evolve(cfg, interior_energetics=interior)
+    assert built.interior_struct.module == 'zalmoxis'
+    with pytest.raises(ValueError, match="needs interior_struct.module = 'zalmoxis'"):
+        dummy = attrs.evolve(cfg.interior_struct, module='dummy', melting_dir='Monteux-600')
+        attrs.evolve(built, interior_struct=dummy)
+    assert AragogCoreModule(c_light=0.046).c_light == pytest.approx(0.046)
+    with pytest.raises(ValueError):
+        AragogCoreModule(c_light=1.0)

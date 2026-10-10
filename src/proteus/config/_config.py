@@ -349,6 +349,30 @@ def check_accretion_core_stratification_compatibility(instance, attribute, value
         )
 
 
+def check_core_module_requirements(instance, attribute, value):
+    """Reject an Aragog core_module core that its structure or solver cannot serve.
+
+    The core profile is fitted to the core mass and the central pressure, which only the
+    Zalmoxis structure provides, and Aragog refuses the resolved shell of a stratified core
+    on Radau.
+    """
+    interior = instance.interior_energetics
+    if interior.module != 'aragog' or interior.aragog.core_bc != 'core_module':
+        return
+    if instance.interior_struct.module != 'zalmoxis':
+        raise ValueError(
+            "interior_energetics.aragog.core_bc = 'core_module' needs "
+            f"interior_struct.module = 'zalmoxis', not '{instance.interior_struct.module}': "
+            'the core profile is fitted to the core mass and the central pressure of the '
+            'Zalmoxis structure.'
+        )
+    if interior.aragog.core_module.stratification and interior.aragog.solver_method == 'radau':
+        raise ValueError(
+            'interior_energetics.aragog.core_module.stratification = true needs '
+            "interior_energetics.aragog.solver_method = 'cvode' or 'bdf', not 'radau'."
+        )
+
+
 def boreas_requires_atmosphere(instance, attribute, value):
     """BOREAS escape requires a radiative atmosphere (not dummy)."""
     if (instance.escape.module == 'boreas') and (instance.atmos_clim.module == 'dummy'):
@@ -696,6 +720,7 @@ class Config:
             check_accretion_interior_compatibility,
             check_accretion_vapourise_compatibility,
             check_accretion_core_stratification_compatibility,
+            check_core_module_requirements,
             parameterized_excludes_accretion,
         ),
     )

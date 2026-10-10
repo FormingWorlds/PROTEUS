@@ -183,7 +183,8 @@ class AragogCoreModule:
     light_element_fraction: float
         Mole fraction of light elements depressing the iron melting curve.
     depression: float
-        Melting-point depression per unit mole fraction.
+        Melting-point depression per unit mole fraction, as a fraction of the melting
+        temperature [1]; its product with light_element_fraction must stay below 1.
     t_m0: float
         Quadratic-curve prefactor [K] (melting_curve = 'quadratic').
     t_m1: float
@@ -202,7 +203,7 @@ class AragogCoreModule:
     q_radio: float
         Core radiogenic power [W], constant over a run.
     stratification: bool
-        When true, the outer core above 0.4 of the CMB radius is a resolved
+        When true, the outer core above layer_base_fraction of the CMB radius is a resolved
         shell whose temperatures are part of the solver state: heat moves
         through it by conduction and, where its gradient is superadiabatic,
         by convective mixing, so a stable layer forms below the CMB when the
@@ -250,7 +251,7 @@ class AragogCoreModule:
     ds_fusion: float = field(default=172.8, validator=gt(0))
     icn_width: float = field(default=10.0, validator=gt(0))
     alpha_c: float = field(default=0.0, validator=ge(0))
-    c_light: float = field(default=0.0, validator=ge(0))
+    c_light: float = field(default=0.0, validator=(ge(0), lt(1)))
     q_radio: float = field(default=0.0, validator=ge(0))
     stratification: bool = field(default=False)
     k_core: float = field(default=130.0, validator=gt(0))
@@ -373,8 +374,8 @@ class Aragog:
     """Core evolution module parameters, active when core_bc =
     'core_module': the core evolves its own energy budget (inner-core
     growth, latent and gravitational terms) as an extra ODE state, and
-    the reported core temperature is that boundary state rather than the
-    lowermost mantle node."""
+    the reported core temperature (T_cmb) is that state, not the temperature
+    of the lowermost mantle node."""
 
     temperature_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell temperature step cap [K]. Shares the same root

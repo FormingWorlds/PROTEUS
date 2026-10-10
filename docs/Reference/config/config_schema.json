@@ -5641,7 +5641,7 @@
           "value": 0
         }
       ],
-      "description": "Melting-point depression per unit mole fraction.",
+      "description": "Melting-point depression per unit mole fraction, as a fraction of the melting temperature [1]; its product with light_element_fraction must stay below 1.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5776,6 +5776,10 @@
         {
           "op": ">=",
           "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
         }
       ],
       "description": "Light-element mass fraction of the outer core (complete rejection).",
@@ -5815,7 +5819,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "When true, the outer core above 0.4 of the CMB radius is a resolved shell whose temperatures are part of the solver state: heat moves through it by conduction and, where its gradient is superadiabatic, by convective mixing, so a stable layer forms below the CMB when the CMB heat flow is subadiabatic and erodes when it is not. The CMB heat flow sees the temperature of the top of the shell. Experimental: erosion of a layer does not run on CVODE at the default tolerances. Not available with accretion.",
+      "description": "When true, the outer core above layer_base_fraction of the CMB radius is a resolved shell whose temperatures are part of the solver state: heat moves through it by conduction and, where its gradient is superadiabatic, by convective mixing, so a stable layer forms below the CMB when the CMB heat flow is subadiabatic and erodes when it is not. The CMB heat flow sees the temperature of the top of the shell. Experimental: erosion of a layer does not run on CVODE at the default tolerances. Not available with accretion.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11577,6 +11581,18 @@
         "outgas.vapourise"
       ],
       "doc": "Reject accretion runs that also vapourise rock into the atmosphere."
+    },
+    {
+      "validator": "check_core_module_requirements",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "interior_energetics",
+        "interior_struct.module"
+      ],
+      "doc": "Reject an Aragog core_module core that its structure or solver cannot serve."
     },
     {
       "validator": "check_module_dependencies",
