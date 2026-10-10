@@ -439,8 +439,8 @@ def carry_core_across_update(hf_row: dict, interior_o, solver, before: tuple) ->
         interior_o._core_t_end, interior_o._core_budget_end = float(t_old), old
     interior_o._core_struct_booked = getattr(interior_o, '_core_struct_booked', 0.0) + dE
     log.info(
-        '    core across the structure update: T_core %.2f K -> %.2f K, heat content '
-        '%+.6e J; P_cmb %.6e -> %.6e Pa, R_core %.6e -> %.6e m; liquid T_core ratio %.6f '
+        '    core across the structure update: T_core %.9f K -> %.9f K, heat content '
+        '%+.9e J; P_cmb %.6e -> %.6e Pa, R_core %.6e -> %.6e m; liquid T_core ratio %.9f '
         '(centre parcel %.6f, CMB parcel %.6f, all parcels %.6f to %.6f); inner core mass '
         '%.4e -> %.4e kg; length scale %.1f -> %.1f km; profile mass / structure M_core '
         '- 1 = %+.2e, profile P_center / structure - 1 = %+.2e',
