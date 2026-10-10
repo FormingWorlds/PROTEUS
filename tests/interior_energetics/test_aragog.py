@@ -1462,19 +1462,8 @@ def test_a_step_that_never_advanced_is_still_refused():
 
 
 class _HotStartSolver(SimpleNamespace):
-    """Solver stand-in whose start rules and entropy accessors are Aragog's own; every
-    attempt replaces the solution, accepted or not."""
-
-    solution = EntropySolver.solution
-    entropy_staggered = EntropySolver.entropy_staggered
-    _state_is_extended = EntropySolver._state_is_extended
-    _final_extra_state = EntropySolver._final_extra_state
-    _core_shell = EntropySolver._core_shell
-    _n_shell = EntropySolver._n_shell
-    get_current_dSdr_cmb = EntropySolver.get_current_dSdr_cmb
-    set_initial_dSdr_cmb = EntropySolver.set_initial_dSdr_cmb
-    get_current_core_temperature = EntropySolver.get_current_core_temperature
-    set_initial_core_temperature = EntropySolver.set_initial_core_temperature
+    """Solver stand-in whose start rules and entropy accessors are Aragog's own, bound
+    below; every attempt replaces the solution, accepted or not."""
 
     def solve(self):
         self.attempts += 1
@@ -1484,6 +1473,21 @@ class _HotStartSolver(SimpleNamespace):
 
     def get_state(self):
         return SimpleNamespace(status=self.status, T_core=4000.0, dt_actual=50.0)
+
+
+for _name in (
+    'solution',
+    'entropy_staggered',
+    '_state_is_extended',
+    'get_current_dSdr_cmb',
+    'set_initial_dSdr_cmb',
+    'get_current_core_temperature',
+    'set_initial_core_temperature',
+    '_final_extra_state',
+    '_core_shell',
+    '_n_shell',
+):
+    setattr(_HotStartSolver, _name, getattr(EntropySolver, _name))
 
 
 @pytest.mark.unit
