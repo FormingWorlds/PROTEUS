@@ -15,6 +15,7 @@ import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import platformdirs
+from scipy.optimize import OptimizeResult
 
 from aragog import aragog_file_logger
 from aragog.mesh import derive_core_density_from_mesh
@@ -644,10 +645,7 @@ class AragogRunner:
                                 'the finite difference of the restored profile.',
                                 getattr(interior_o, '_last_dSdr_cmb_status', 'absent'),
                             )
-                        if hasattr(solver, 'set_initial_dSdr_cmb'):
-                            solver.set_initial_dSdr_cmb(dSdr_cmb)
-                        else:
-                            solver._dSdr_cmb_init = dSdr_cmb
+                        solver.set_initial_dSdr_cmb(dSdr_cmb)
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
@@ -2013,6 +2011,17 @@ class AragogRunner:
         solver._prev_struct_log = (t_new, R_int_new, R_core_new, g_new)
 
     def run_solver(self, hf_row, interior_o, dirs, write_data: bool = True):
+        """Advance the interior by one coupling step and write its snapshot.
+
+        On any exception the solver's solution is the state this call started from,
+        and a snapshot the step wrote is removed. The profiles of the step are stored
+        on ``interior_o`` only after the write.
+
+        Returns
+        -------
+        tuple
+            The simulation time at the end of the step [yr] and the helpfile output.
+        """
         # Dispatch to JAX solver if configured
         if self._use_jax:
             return self._jax_runner.run_solver(hf_row, interior_o, dirs, write_data=write_data)
@@ -2024,41 +2033,52 @@ class AragogRunner:
         # step lands in a stiff regime (e.g. the first crystallisation
         # transition). Retry with a halved dt from the same start state.
         # Mirrors SPIDER's _try_spider retry ladder in spider.py.
-        out = self._solve_with_retry(hf_row, interior_o)
+        solver = interior_o.aragog_solver
+        S0_entry, written = solver._S0.copy(), None
+        try:
+            out = self._solve_with_retry(hf_row, interior_o, S0_entry)
 
-        # Build PROTEUS helpfile output from SolverOutput
-        output = self._build_helpfile_output(
-            out,
-            hf_row,
-            interior_o=interior_o,
-            surface_d=self._config.atmos_clim.surface_d,
-            surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
-        )
-
-        self._store_profiles(interior_o, out)
-
-        # The actual integration endpoint, not the requested end_time (dt_actual is
-        # shorter when the solver exits early); a step aimed at an impact ends on it,
-        # so the snapshot is named like the row.
-        sim_time = snap_to_impact(
-            hf_row['Time'] + out.dt_actual, getattr(interior_o, 't_next_impact', np.inf)
-        )
-
-        # Write output to a file (skipped when dt_write suppresses this step)
-        if write_data:
-            self._write_output_ncdf(
-                dirs['output'],
-                sim_time,
+            # Build PROTEUS helpfile output from SolverOutput
+            output = self._build_helpfile_output(
                 out,
-                write_diagnostics=getattr(
-                    self._config.interior_energetics, 'write_flux_diagnostics', False
-                ),
-                T_surf_coupled=hf_row.get('T_surf'),
-                dSdr_cmb=cmb_gradient_state(
-                    interior_o.aragog_solver, self._config.interior_energetics.aragog.core_bc
-                ),
-                mesh_surface_pressure=mesh_surface_pressure_state(interior_o.aragog_solver),
+                hf_row,
+                interior_o=interior_o,
+                surface_d=self._config.atmos_clim.surface_d,
+                surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
             )
+
+            # The actual integration endpoint, not the requested end_time (dt_actual is
+            # shorter when the solver exits early); a step aimed at an impact ends on it,
+            # so the snapshot is named like the row.
+            sim_time = snap_to_impact(
+                hf_row['Time'] + out.dt_actual, getattr(interior_o, 't_next_impact', np.inf)
+            )
+
+            # Write output to a file (skipped when dt_write suppresses this step)
+            if write_data:
+                written = sim_time
+                self._write_output_ncdf(
+                    dirs['output'],
+                    sim_time,
+                    out,
+                    write_diagnostics=getattr(
+                        self._config.interior_energetics, 'write_flux_diagnostics', False
+                    ),
+                    T_surf_coupled=hf_row.get('T_surf'),
+                    dSdr_cmb=cmb_gradient_state(
+                        interior_o.aragog_solver,
+                        self._config.interior_energetics.aragog.core_bc,
+                    ),
+                    mesh_surface_pressure=mesh_surface_pressure_state(interior_o.aragog_solver),
+                )
+        except Exception:
+            # The row of this step is skipped or the run stops: the solver holds the state
+            # the call started from, and a snapshot of the end state does not stay on disk.
+            solver._solution = state_solution(S0_entry, hf_row['Time'])
+            if written is not None:
+                discard_snapshot(dirs['output'], written)
+            raise
+        self._store_profiles(interior_o, out)
 
         return sim_time, output
 
@@ -2078,7 +2098,7 @@ class AragogRunner:
         method = str(self._config.interior_energetics.aragog.solver_method or '')
         return {'cvode': 'CVODE', 'bdf': 'BDF'}.get(method, 'Radau')
 
-    def _solve_with_retry(self, hf_row, interior_o) -> SolverOutput:
+    def _solve_with_retry(self, hf_row, interior_o, S0_entry=None) -> SolverOutput:
         """Run aragog_solver.solve() with a failure-mode-branched retry ladder.
 
         On CVODE failure the recovery lever depends on the failure mode.
@@ -2087,22 +2107,33 @@ class AragogRunner:
         budget (max_steps), then relaxes rtol (bounded), and only then
         halves the integration interval, over up to eight attempts. Every
         other failure keeps the dt-halving plus atol-scaling ladder over
-        six attempts. Each retry restores the entropy IC and dSdr_cmb_init
-        from before the attempt. On final failure this raises RuntimeError
-        so the caller can apply its skip-step fallback.
+        six attempts. Each retry starts again from the state the call
+        started from (``S0_entry``, the state vector of the solver) and
+        keeps the compression work of the structure re-solve before the
+        call, which a reset on an unchanged mesh sets to 0. On final failure
+        this raises RuntimeError so the caller can apply its skip-step
+        fallback.
 
         Parameters
         ----------
         hf_row : dict
             Current helpfile row (for logging context).
         interior_o : Interior_t
-            Interior state object holding _last_entropy.
+            Interior state object; its EOS tables are refreshed and its step
+            progress is tracked.
+        S0_entry : np.ndarray, optional
+            State vector of the solver at the start of the call; the solver's
+            ``_S0`` when not given.
 
         Returns
         -------
         SolverOutput
-            Solver state from the first successful attempt, or from the
-            last attempt if all failed.
+            Solver state from the first successful attempt.
+
+        Raises
+        ------
+        RuntimeError
+            When every attempt of the ladder failed.
 
         Notes
         -----
@@ -2161,37 +2192,11 @@ class AragogRunner:
         t_start = float(solver.parameters.solver.start_time)
         t_end = float(solver.parameters.solver.end_time)
         dt_requested = t_end - t_start
-        S_ic = (
-            interior_o._last_entropy.copy()
-            if getattr(interior_o, '_last_entropy', None) is not None
-            else None
-        )
-        # Snapshot dSdr_cmb BEFORE the first attempt so retries can
-        # restore the pre-solve value. Without this the hot-start at
-        # Aragog's set_initial_entropy (entropy_solver.py:604-616) reads
-        # the FAILED attempt's final dSdr_cmb from _solution.y[..., -1]
-        # and uses it as the IC for the next retry, producing a
-        # positive-feedback loop in which each retry drives dSdr_cmb
-        # further from the pre-solve value and T_core jumps grow
-        # unbounded. Seen on the 5 M_Earth dry CHILI super-Earth runs.
-        # Prefer the Aragog getter; fall back to the private override
-        # attribute when present (e.g. when a previous call forced it).
-        dSdr_snapshot = None
-        if hasattr(solver, 'get_current_dSdr_cmb'):
-            dSdr_snapshot = solver.get_current_dSdr_cmb()
-        if dSdr_snapshot is None:
-            dSdr_snapshot = getattr(solver, '_dSdr_cmb_init', None)
-        # A cold start (first solve, or after a re-melt) has neither; take
-        # the value attempt 1 starts from, so retries do not inherit its end.
-        if (
-            dSdr_snapshot is None
-            and self._config.interior_energetics.aragog.core_bc == 'energy_balance'
-        ):
-            S0 = getattr(solver, '_S0', None)
-            n_stag = getattr(solver, '_n_stag', None)
-            if S0 is not None and n_stag is not None and len(S0) == n_stag + 1:
-                dSdr_snapshot = float(S0[n_stag])
-        dSdr_ic = dSdr_snapshot
+        # The state vector this call starts from and the compression work of the re-solve
+        # before it; every retry starts from them again.
+        if S0_entry is None:
+            S0_entry = solver._S0.copy()
+        compression = solver._last_compression_J
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.
         T_core_pre = float(hf_row.get('T_cmb', hf_row.get('T_core', 0.0)))
@@ -2446,16 +2451,8 @@ class AragogRunner:
                 solver.parameters.solver.start_time = t_start
                 solver.parameters.solver.end_time = t_start + dt_new
                 solver._atol_sf = atol_sf_new
-                if dSdr_ic is not None:
-                    # Force the next attempt's hot-start to use the pre-solve
-                    # snapshot instead of the failed attempt's final value.
-                    if hasattr(solver, 'set_initial_dSdr_cmb'):
-                        solver.set_initial_dSdr_cmb(dSdr_ic)
-                    else:
-                        solver._dSdr_cmb_init = dSdr_ic
                 solver.reset()
-                if S_ic is not None:
-                    solver.set_initial_entropy(S_ic)
+                solver._S0, solver._last_compression_J = S0_entry.copy(), compression
         finally:
             # Always reset atol_sf so subsequent coupling steps start at 1.0x
             solver._atol_sf = 1.0
@@ -2465,16 +2462,8 @@ class AragogRunner:
             solver.parameters.solver.rtol = base_rtol
             if hasattr(solver, '_max_steps'):
                 solver._max_steps = base_max_steps
-            # Release the dSdr_cmb override so the NEXT coupling step's
-            # set_initial_entropy can hot-start from its own _solution
-            # (which, after a successful retry, holds the accepted
-            # attempt's final dSdr_cmb, or after a full ladder exhaustion
-            # the wrapper will apply its own skip-step fallback before
-            # the next coupling step begins).
-            if hasattr(solver, 'set_initial_dSdr_cmb'):
-                solver.set_initial_dSdr_cmb(None)
-            else:
-                solver._dSdr_cmb_init = None
+            # Release a set dSdr_cmb start: the next step takes it from the solution.
+            solver.set_initial_dSdr_cmb(None)
 
         return out
 
@@ -2890,6 +2879,22 @@ def discard_snapshot(output_dir: str, time: float) -> bool:
         return False
     os.remove(fpath)
     return True
+
+
+def state_solution(state: np.ndarray, time: float) -> OptimizeResult:
+    """A one-column Aragog solution that holds a solver state vector at ``time`` [yr].
+
+    Aragog reads its solution by attribute and by ``.get``, as on an OptimizeResult.
+    ``y`` shares its memory with a float64 ``state``.
+    """
+    return OptimizeResult(
+        y=np.asarray(state, dtype=float).reshape(-1, 1),
+        t=np.array([float(time)]),
+        status=0,
+        cvode_flag=0,
+        cvode_flag_name='SUCCESS',
+        message='',
+    )
 
 
 def read_last_Sfield(output_dir: str, time: float):

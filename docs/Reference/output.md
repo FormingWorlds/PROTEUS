@@ -209,15 +209,15 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `E_state_cons_J` | `J` | frozen-mass integrated mantle enthalpy (diagnostic only) | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" | utils |
 | `Q_radio_W` | `W` | instantaneous mantle-integrated radiogenic power | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
 | `Q_tidal_W` | `W` | instantaneous mantle-integrated tidal power | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
-| `step_dE_F_int_J` | `J` | per-call ∫ -F_int*A_int dt | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" | utils |
-| `step_dE_F_cmb_J` | `J` | per-call ∫ +F_cmb*A_cmb dt | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" | utils |
-| `step_dE_Q_radio_J` | `J` | per-call ∫ +Q_radio dt (live-density, predicted side) | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" | utils |
-| `step_dE_Q_tidal_J` | `J` | per-call ∫ +Q_tidal dt (live-density, predicted side) | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" | utils |
-| `step_dE_Q_radio_cons_J` | `J` | per-call ∫ +Q_radio dt (frozen-mass, diagnostic) | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
-| `step_dE_Q_tidal_cons_J` | `J` | per-call ∫ +Q_tidal dt (frozen-mass, diagnostic) | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
-| `step_solver_residual_J` | `J` | per-call entropy-ODE LHS-RHS | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" | utils |
-| `step_dE_compression_J` | `J` | per-call structure-re-solve compression work (diagnostic) | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
-| `step_dE_state_heat_J` | `J` | per-call entropy-transported heat content change | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" | utils |
+| `step_dE_F_int_J` | `J` | per-call ∫ -F_int*A_int dt | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog" | utils |
+| `step_dE_F_cmb_J` | `J` | per-call ∫ +F_cmb*A_cmb dt | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog" | utils |
+| `step_dE_Q_radio_J` | `J` | per-call ∫ +Q_radio dt (live-density, predicted side) | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog" | utils |
+| `step_dE_Q_tidal_J` | `J` | per-call ∫ +Q_tidal dt (live-density, predicted side) | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog" | utils |
+| `step_dE_Q_radio_cons_J` | `J` | per-call ∫ +Q_radio dt (frozen-mass, diagnostic) | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog" |   |
+| `step_dE_Q_tidal_cons_J` | `J` | per-call ∫ +Q_tidal dt (frozen-mass, diagnostic) | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog" |   |
+| `step_solver_residual_J` | `J` | per-call entropy-ODE LHS-RHS | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog" | utils |
+| `step_dE_compression_J` | `J` | per-call structure-re-solve compression work (diagnostic) | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog" |   |
+| `step_dE_state_heat_J` | `J` | per-call entropy-transported heat content change | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog" | utils |
 | `step_dE_impact_J` | `J` | giant-impact re-melt heat injection (both residual sides) | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py`<br>`proteus.py` | always; interior_energetics.module = "aragog"; giant impact, interior_energetics.module = "aragog" | interior_energetics, utils |
 | `E_state_heat_cons_J` | `J` | cumulative sum of step_dE_state_heat_J across rows | `utils/coupler.py` | always |   |
 | `dE_predicted_cons_J` | `J` | cumulative sum of boundary fluxes + live-density step_dE_Q_*_J | `utils/coupler.py` | always |   |

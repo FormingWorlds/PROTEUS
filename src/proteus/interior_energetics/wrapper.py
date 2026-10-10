@@ -102,6 +102,19 @@ _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 # counter resets on each successful Aragog call.
 _ARAGOG_MAX_CONSECUTIVE_FAILS = 3
 
+# Per-call energy columns that a skipped Aragog step sets to 0.
+_ARAGOG_CALL_ENERGY_KEYS = (
+    'step_dE_F_int_J',
+    'step_dE_F_cmb_J',
+    'step_dE_Q_radio_J',
+    'step_dE_Q_tidal_J',
+    'step_dE_Q_radio_cons_J',
+    'step_dE_Q_tidal_cons_J',
+    'step_solver_residual_J',
+    'step_dE_compression_J',
+    'step_dE_state_heat_J',
+)
+
 # Physical band for retained impact kinetic energy in giant-impact re-melts.
 # Values outside this range indicate initial conditions dominate collision energy.
 _REMELT_RETAINED_BAND = (0.01, 1.0)
@@ -1958,19 +1971,11 @@ def evaluate_molten_state(solver, hf_row: dict):
     if not hasattr(solver, 'get_state'):
         return None
 
+    from proteus.interior_energetics.aragog import state_solution
+
     prev_solution = getattr(solver, '_solution', None)
-    t_curr = float(hf_row.get('Time', 0.0))
-    # Aragog reads its solution by attribute and by .get, as on an OptimizeResult.
-    sol = optimise.OptimizeResult(
-        y=solver._S0.reshape(-1, 1),
-        t=np.array([t_curr]),
-        status=0,
-        cvode_flag=0,
-        cvode_flag_name='SUCCESS',
-        message='',
-    )
     try:
-        solver._solution = sol
+        solver._solution = state_solution(solver._S0, hf_row.get('Time', 0.0))
         return solver.get_state()
     finally:
         solver._solution = prev_solution
@@ -2108,6 +2113,16 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         m_mantle = float(hf_row['M_mantle'])
         hf_row['M_mantle_liquid'] = phi_g * m_mantle
         hf_row['M_mantle_solid'] = (1.0 - phi_g) * m_mantle
+
+
+def _skip_aragog_call_energy(hf_row: dict) -> None:
+    """Set the per-call energy columns of a skipped Aragog step to 0, in place.
+
+    A retry-ladder fallback integrates nothing, so the energy ledgers must not count the
+    previous call's values again.
+    """
+    for key in _ARAGOG_CALL_ENERGY_KEYS:
+        hf_row[key] = 0.0
 
 
 def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:
@@ -2423,9 +2438,9 @@ def run_interior(
                     interior_o.aragog_fail_count,
                 )
                 raise
-            # Skip output update; keep hf_row values from previous step.
-            # Atmosphere + outgassing still advance, pushing the planet
-            # past the stiff regime. Same pattern as SPIDER fallback above.
+            # Keep the previous step's hf_row with the call energies at 0; the solver holds
+            # the state this call started from, and the other modules advance.
+            _skip_aragog_call_energy(hf_row)
             from proteus.interior_energetics.timestep import next_step
 
             dtswitch = next_step(
