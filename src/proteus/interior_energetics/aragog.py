@@ -2142,8 +2142,15 @@ class AragogRunner:
         Returns
         -------
         SolverOutput
-            Solver state from the first successful attempt, or from the
-            last attempt if all failed.
+            Solver state from the first successful attempt.
+
+        Raises
+        ------
+        RuntimeError
+            When every attempt of the ladder failed. On this and any other
+            exception the solver gets back the solution and the dSdr_cmb,
+            core temperature and shell starts it entered with, so a caller
+            that skips the step starts the next one from the pre-step state.
 
         Notes
         -----
@@ -2233,7 +2240,11 @@ class AragogRunner:
             ):
                 dSdr_snapshot = float(S0[n_stag])
         dSdr_ic = dSdr_snapshot
+        # The state of entry, which an exit by exception puts back.
         sol_pre = getattr(solver, '_solution', None)
+        dSdr_pre = getattr(solver, '_dSdr_cmb_init', None)
+        t_core_pre = getattr(solver, '_T_core_init', None)
+        shell_pre = getattr(solver, '_T_shell_init', None)
         T_core_ic, shell_ic = aragog_core.call_start(solver, core_bc, sol_pre)
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.
@@ -2274,7 +2285,7 @@ class AragogRunner:
         stiff_seen = 0
         other_seen = 0
         _diag_on = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
-        skipped = False
+        dSdr_next = t_core_next = shell_next = None
         try:
             # Range over the widest ladder. max_attempts holds the active
             # budget (6, widened to max_attempts_stiff on a stiff failure)
@@ -2504,11 +2515,10 @@ class AragogRunner:
                 solver.reset()
                 if S_ic is not None:
                     solver.set_initial_entropy(S_ic)
-        except BaseException:
-            # The caller skips the step and keeps the pre-step state: the solution that hot
-            # starts and the re-melt read, and the dSdr_cmb and T_core starts below.
+        except Exception:
+            # The caller skips the step, so the next one starts from the state of entry.
             solver._solution = sol_pre
-            skipped = True
+            dSdr_next, t_core_next, shell_next = dSdr_pre, t_core_pre, shell_pre
             raise
         finally:
             # Always reset atol_sf so subsequent coupling steps start at 1.0x
@@ -2519,16 +2529,15 @@ class AragogRunner:
             solver.parameters.solver.rtol = base_rtol
             if hasattr(solver, '_max_steps'):
                 solver._max_steps = base_max_steps
-            # Release the dSdr_cmb and T_core overrides for the next coupling step, or keep
-            # the pre-step ones when the step is skipped.
-            dSdr_next, t_core_next = (dSdr_ic, T_core_ic) if skipped else (None, None)
+            # Release the dSdr_cmb, T_core and shell overrides for the next coupling step; a
+            # failed call keeps the ones it entered with.
             if hasattr(solver, 'set_initial_dSdr_cmb'):
                 solver.set_initial_dSdr_cmb(dSdr_next)
             else:
                 solver._dSdr_cmb_init = dSdr_next
             aragog_core.set_core_start(solver, t_core_next)
             if shell_ic is not None:
-                solver.set_initial_shell_temperature(shell_ic if skipped else None)
+                solver.set_initial_shell_temperature(shell_next)
 
         return out
 

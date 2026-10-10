@@ -4363,8 +4363,6 @@ def test_a_skipped_aragog_step_adds_nothing_to_the_energy_ledgers():
     stay at the previous row's values and do not count the previous call a second time; a
     carried step_dE_core_J that holds an impact jump would add the lift to the core
     residual again."""
-    from unittest.mock import patch as _patch
-
     import pandas as pd
 
     from proteus.interior_energetics.wrapper import _ARAGOG_CALL_ENERGY_KEYS, run_interior
@@ -4381,12 +4379,11 @@ def test_a_skipped_aragog_step_adds_nothing_to_the_energy_ledgers():
     runner_mock = MagicMock()
     runner_mock.run_solver.side_effect = RuntimeError('retry ladder exhausted')
     with (
-        _patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
-        _patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        patch('proteus.interior_energetics.timestep.next_step', return_value=42.0),
     ):
         run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
     assert interior_o.aragog_fail_count == 1
-    row = dict(hf_row)
 
     previous = {
         'E_state_heat_cons_J': -5.0e30,
@@ -4397,7 +4394,7 @@ def test_a_skipped_aragog_step_adds_nothing_to_the_energy_ledgers():
     for key, value in previous.items():
         assert hf_row[key] == pytest.approx(value, rel=1e-15)
     assert hf_row['E_residual_cons_J'] == pytest.approx(-1.0e29, rel=1e-12)
-    assert [row[k] for k in _ARAGOG_CALL_ENERGY_KEYS] == [0.0] * 10
+    assert [hf_row[k] for k in _ARAGOG_CALL_ENERGY_KEYS] == [0.0] * 10
     assert 'step_dE_core_J' in _ARAGOG_CALL_ENERGY_KEYS
 
 

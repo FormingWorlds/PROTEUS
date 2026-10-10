@@ -2495,7 +2495,7 @@ def run_interior(
                     interior_o.aragog_fail_count,
                 )
                 raise
-            # Skip output update; keep hf_row values from previous step.
+            # Skip output update; keep the previous step's hf_row but for the call energies.
             # Atmosphere + outgassing still advance, pushing the planet
             # past the stiff regime. Same pattern as SPIDER fallback above.
             _skip_aragog_call_energy(hf_row)
