@@ -4,8 +4,11 @@ evaluate the objective at the chosen point.
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 import time
+import warnings
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -21,6 +24,11 @@ from proteus.inference.utils import get_acqf, get_kernel
 
 # Set tensor dtype for consistent precision
 dtype = torch.double
+log = logging.getLogger('fwl.' + __name__)
+
+# Warnings already passed on by this process. catch_warnings clears the warnings
+# registry, so the default once-per-location filter would repeat them every step.
+_PASSED_ON: set[tuple] = set()
 
 
 def unit_bounds(d):
@@ -35,6 +43,68 @@ def unit_bounds(d):
     - torch.Tensor: Tensor of shape (2, d) where row 0 is zeros and row 1 is ones.
     """
     return torch.tensor([[0] * d, [1] * d], dtype=dtype)
+
+
+def optimize_acqf_logged(acq_function, d: int, who: str) -> torch.Tensor:
+    """Maximise the acquisition, logging botorch's L-BFGS-B retry warnings as one line.
+
+    botorch keeps the best candidate even when the retry fails. Other warnings pass through.
+
+    Parameters
+    ----------
+    - acq_function (AcquisitionFunction): Acquisition function to maximise.
+    - d (int): Number of parameters.
+    - who (str): Caller named in the log line, e.g. 'worker 3'.
+
+    Returns
+    ----------
+    - torch.Tensor: The candidate, shape (1, d), in [0, 1]^d.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        x, _ = optimize_acqf(
+            acq_function=acq_function,
+            bounds=unit_bounds(d),
+            q=1,
+            num_restarts=10,
+            raw_samples=1000 * d,
+            options={'maxiter': 1000},
+        )
+
+    failed, second = None, False
+    for w in caught:
+        text = str(w.message)
+        if text.startswith('Optimization failed in `gen_candidates_scipy`'):
+            failed = text
+        elif text.startswith('Optimization failed on the second try'):
+            second = True
+        else:
+            key = (w.category, text, w.filename, w.lineno)
+            if key not in _PASSED_ON:
+                _PASSED_ON.add(key)
+                warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
+
+    if failed is not None:
+        (log.warning if second else log.info)(
+            f'Acquisition optimiser ({who}): L-BFGS-B stopped early{_failed_starts(failed)}, '
+            f'{"failed again after a retry" if second else "the retry succeeded"}; '
+            f'proposing x = {[round(v, 3) for v in x[0].tolist()]}'
+        )
+    return x
+
+
+def _failed_starts(text: str) -> str:
+    """Count and reasons of the failed starts in botorch's first-try warning; '' if none parse."""
+    reasons = {
+        f'status {c} ({m.strip(" :.")})'
+        for c, m in re.findall(r'status (\d+) and message ([^\']*)', text)
+    }
+    if 'with no status returned' in text:
+        reasons.add('no status returned')
+    if not reasons:
+        return ''
+    starts = text.count('Optimization failed within')
+    return f' in {starts} start(s) [{", ".join(sorted(reasons))}]'
 
 
 def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
@@ -100,27 +170,17 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
 
         t_0_ac = time.perf_counter()
 
-        acqf_f = get_acqf(acqf, gp, best)
+        # Other workers' points, so this one is proposed away from them
+        b = torch.cat(busys, dim=0) if busys else torch.zeros((0, d), dtype=dtype)
+        acqf_f = get_acqf(acqf, gp, best, X_pending=b if busys else None)
 
-        x, _ = optimize_acqf(
-            acq_function=acqf_f,  # expects outputs shape (N)
-            bounds=unit_bounds(d),
-            q=1,
-            num_restarts=10,
-            raw_samples=1000 * d,
-            options={'maxiter': 1000},
-        )
+        x = optimize_acqf_logged(acqf_f, d, f'worker {worker_id}')
 
         t_1_ac = time.perf_counter()
 
         # Distance to the nearest point another worker is currently evaluating.
         # Undefined when no other worker is busy
-        if busys:
-            b = torch.cat(busys, dim=0)
-            dist = torch.min(torch.cdist(b, x)).item()
-        else:
-            b = torch.zeros((0, d), dtype=dtype)
-            dist = None
+        dist = torch.min(torch.cdist(b, x)).item() if busys else None
 
         if d == 1:
             plot_iter(
@@ -174,8 +234,8 @@ def init_locs(
 ) -> torch.Tensor:
     """Generate initial sample locations for each worker using the configured acqf.
 
-    Calls optimize_acqf once per worker with q=1. Analytic acquisition functions
-    (UCB, LogEI, LogPI) require q=1 and cannot optimise a joint batch in one call.
+    Calls optimize_acqf once per worker with q=1, passing the candidates chosen so
+    far as pending points, so the workers start from different points.
 
     Parameters
     ----------
@@ -216,16 +276,9 @@ def init_locs(
 
     candidates = []
     for _ in range(n_workers):
-        acqf_f = get_acqf(acqf, gp, best)
-        x_single, _ = optimize_acqf(
-            acq_function=acqf_f,
-            bounds=unit_bounds(d),
-            q=1,
-            num_restarts=10,
-            raw_samples=1000 * d,
-            options={'maxiter': 1000},
-        )
-        candidates.append(x_single)
+        pending = torch.cat(candidates, dim=0) if candidates else None
+        acqf_f = get_acqf(acqf, gp, best, X_pending=pending)
+        candidates.append(optimize_acqf_logged(acqf_f, d, f'initial point {len(candidates)}'))
 
     return torch.cat(candidates, dim=0)  # (n_workers, d)
 

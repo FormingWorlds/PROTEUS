@@ -25,7 +25,6 @@ import proteus.inference.utils as utils_mod  # noqa: E402
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
-@pytest.mark.unit
 def test_save_dataset_csv_validates_input_shapes(tmp_path):
     """``save_dataset_csv`` rejects malformed inputs with specific
     ValueError messages: X must be 2D, Y must have matching column rank,
@@ -45,7 +44,6 @@ def test_save_dataset_csv_validates_input_shapes(tmp_path):
         utils_mod.save_dataset_csv(torch.zeros((2, 1)), torch.zeros((3, 1)), str(out))
 
 
-@pytest.mark.unit
 def test_load_dataset_csv_validates_required_columns(tmp_path):
     """``load_dataset_csv`` raises if the CSV is missing either an
     ``x_<index>`` parameter column or the ``y`` objective column.
@@ -62,7 +60,6 @@ def test_load_dataset_csv_validates_required_columns(tmp_path):
         utils_mod.load_dataset_csv(str(no_y))
 
 
-@pytest.mark.unit
 def test_get_obj_reads_square_worker_grid(monkeypatch, tmp_path):
     """``get_obj`` walks an n*n worker grid, reads each worker's
     ``runtime_helpfile.csv``, evaluates the objective, and returns the
@@ -99,7 +96,6 @@ def test_get_obj_reads_square_worker_grid(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_str_time_returns_iso_like_string_with_timezone():
     """``str_time`` returns the current wall-clock time formatted as
     'YYYY-MM-DD HH:MM:SS TZ'. Discrimination: a regression that dropped
@@ -116,7 +112,6 @@ def test_str_time_returns_iso_like_string_with_timezone():
     assert 20 <= len(s) <= 40
 
 
-@pytest.mark.unit
 def test_get_nested_drills_into_nested_dict():
     """``get_nested`` resolves a dot-separated key path through a nested
     dict. Discrimination: get_nested(d, 'a.b.c') must return the value
@@ -128,7 +123,6 @@ def test_get_nested_drills_into_nested_dict():
     assert utils_mod.get_nested(config, 'a.b.d') == 'wrong'
 
 
-@pytest.mark.unit
 def test_get_nested_accepts_custom_separator():
     """``get_nested`` honours the ``sep`` argument so callers can use a
     different separator (e.g. '/'). Discrimination: with sep='/' the
@@ -142,7 +136,6 @@ def test_get_nested_accepts_custom_separator():
         utils_mod.get_nested(config, 'a/b')
 
 
-@pytest.mark.unit
 def test_get_nested_raises_keyerror_for_missing_path():
     """``get_nested`` raises KeyError when any segment in the path is
     absent. Discrimination: a regression that silently returned None
@@ -158,7 +151,6 @@ def test_get_nested_raises_keyerror_for_missing_path():
         utils_mod.get_nested(config, 'missing.b')
 
 
-@pytest.mark.unit
 def test_flatten_handles_nested_dict_with_dot_separator():
     """``flatten`` produces a single-level dict whose keys are the
     dot-joined paths from the original nested dict. Discrimination:
@@ -172,7 +164,6 @@ def test_flatten_handles_nested_dict_with_dot_separator():
     assert 'd' in flat and flat['d'] == 3
 
 
-@pytest.mark.unit
 def test_flatten_descends_through_multiple_levels():
     """``flatten`` recurses through arbitrarily deep nesting.
     Discrimination: a regression that flattened only one level would
@@ -185,7 +176,6 @@ def test_flatten_descends_through_multiple_levels():
     assert all(not isinstance(v, dict) for v in flat.values())
 
 
-@pytest.mark.unit
 def test_flatten_honours_custom_separator():
     """``flatten`` uses the ``sep`` argument for path joins. With sep='/'
     the keys must use '/' (e.g. 'a/b'), not '.'. A regression that
@@ -199,7 +189,6 @@ def test_flatten_honours_custom_separator():
     assert flat_default == {'a.b': 1}
 
 
-@pytest.mark.unit
 def test_flatten_returns_empty_dict_for_empty_input():
     """``flatten({})`` returns ``{}`` (the identity on empty dicts).
     Discrimination: a regression that returned None or raised would

@@ -25,17 +25,20 @@ The system performs Bayesian optimization to infer planetary formation parameter
 
     These files are contained within the folder `src/proteus/inference/`.
 
-    | File               | Description                               |
-    |:-------------------|:------------------------------------------|
-    | `inference.py`     | Main entry point                          |
-    | `transforms.py`    | Functions for transforming and scaling variables |
-    | `async_BO.py`      | Parallel BO implementation                |
-    | `BO.py`            | Single BO step implementation             |
-    | `objective.py`     | PROTEUS interface and objective function  |
-    | `failures.py`      | Functions for handling failing simulations |
-    | `plot.py`          | Visualization utilities                   |
-    | `utils.py`         | Helper functions for inference scheme     |
-    | `gen_D_init.py`    | Generate initial data                     |
+    | File               | Description                                                           |
+    |:-------------------|:----------------------------------------------------------------------|
+    | `inference.py`     | Main entry point                                                      |
+    | `gen_D_init.py`    | Generate initial data                                                 |
+    | `async_BO.py`      | Parallel BO implementation                                            |
+    | `BO.py`            | Single BO step implementation                                         |
+    | `objective.py`     | PROTEUS interface and objective function                              |
+    | `correlation.py`   | Correlated observable uncertainties                                   |
+    | `runner.py`        | One PROTEUS process reused across evaluations (`dispatch = "runner"`) |
+    | `failures.py`      | Functions for handling failing simulations                            |
+    | `transforms.py`    | Functions for transforming and scaling variables                      |
+    | `plot.py`          | Performance plots and per-sample results                              |
+    | `plot_fit.py`      | Best fit against the targets and true parameters                      |
+    | `utils.py`         | Helper functions for inference scheme                                 |
 
 ## Configuration
 
@@ -66,15 +69,67 @@ optimisation. This process must stay open in order to manage the workers.
 
 ### Objective Function
 
-The system optimizes an objective function that measures how well simulated observables match target values:
+The system maximises an objective function that measures how well simulated observables match target values:
 
 ```
-J = 1 - ||1 - sim/true||²
+J = -log10( ||1 - sim/true||² + 1e-10 )
 ```
 
 Where `sim` are the simulated observables and `true` are the target values.
-This means that the 'best' value for the objective function is 1. Values closer to 1 represent
-better fits, while smaller values (including negative ones) are worse fits.
+A perfect match gives the largest possible value, J = 10. J is 0 when the squared relative
+errors sum to 1, and negative for worse fits.
+
+### Observable uncertainties
+
+An optional `[sigma]` table gives the 1-sigma uncertainty of each observable, in the same
+units as the value in `[observables]`. When it is present, each residual is divided by its uncertainty:
+
+```
+J = -log10( sum( ((sim - true) / sigma)^2 ) + 1e-10 )
+```
+
+Observables that span orders of magnitude (e.g. `atm_kg_per_mol`) are compared as `log10` values, and so are element ratios such as `C/O_atm` when `[sigma]` is given. Their uncertainty can be given in linear space, e.g. `"C/O_atm" = 0.1`; in this case, it is converted to dex to first order via `sigma / (true * ln 10)`. Optionally, it can be given in dex directly as a string, for example `"C/O_atm" = "0.1 dex"`.
+
+!!! warning "Do not compare `J` when using different objectives"
+    The two objectives are on different scales, so compare `J` only between inference runs that use the same one. The objective in use is reported at start-up.
+
+### Correlated uncertainties
+
+When the errors of two observables are correlated, for example abundance ratios from one
+retrieval, an optional `[correlation]` table gives their correlation coefficient. It needs `[sigma]`. Each pair is given once, as a nested table. Pairs not listed are uncorrelated:
+
+```toml
+[correlation.R_obs]
+"g_obs" = -0.4
+"T_obs" = 0.2
+```
+
+The sum of squares is then replaced by the full chi-squared
+
+```
+chi2 = u^T R^-1 u,    u = (sim - true) / sigma
+```
+
+where `R` is the correlation matrix. Each coefficient must lie strictly between -1 and 1, and the matrix as a whole must be positive definite.
+
+#### Element-ratio observables
+
+For element-ratio observables (such as `C/O_atm` and `O/H_atm`), `correlate_ratios = true` builds the table instead. Assuming the same dex error for every element, two ratios correlate by the cosine of their exponent vectors. One element shared on the same side gives +0.5 (`C/O_atm` with `S/O_atm`); on opposite sides -0.5 (`C/O_atm` with `O/H_atm`). 
+
+When posterior samples, e.g. from a retrieval, exist, their correlation matrix in `[correlation]` is the best input; `correlate_ratios` can be set when nothing better is known.
+
+### Known true parameters
+
+When the target observables were extracted from a simulation whose parameters you know (a
+synthetic retrieval test), an optional `[truth]` table records those parameters so the best fit can be compared against them:
+
+```toml
+[truth]
+"interior_struct.core_frac" = 0.325
+"outgas.fO2_shift_IW"       = 2.0
+```
+
+The table does not change the optimisation; it adds a True column to the results summary and the `result_parameters.png` plot.
 
 ### Parallel Processing
 
@@ -91,15 +146,19 @@ better fits, while smaller values (including negative ones) are worse fits.
 
 The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
 
+With `patience = N` (default 0, off), the study stops earlier, once `N` evaluations in a row have not raised the best objective by more than 0.01. Stalls of tens of evaluations happen, so set patience after a few test runs; too low a value stops a study early.
+
 ### Acquisition functions
 
 The acquisition function is an analytical function that is aware of the current state of the optimisation.
-It is used to evaluate the *potential* value of sampling a candidate particular point in the parameter space, to 
+It is used to evaluate the *potential* value of sampling a candidate particular point in the parameter space, to
 help determine where the optimisation should next run PROTEUS. It helps balance the trade-off between exploring new areas and exploiting known good areas to optimize a black-box function efficiently.
 
 * `UCB` - upper confidence bound
 * `LogEI` - logarithm of the expected improvement
 * `LogPI` - logarithm of the probability of improvement (analogous to log-likelihood)
+
+While other workers have runs in progress, each function switches to its Monte Carlo batch form so that it accounts for those points. BoTorch has no batch form of LogPI, so `LogPI` then uses the plain probability of improvement, which is flatter far from the best point; prefer `LogEI` with several workers.
 
 See docs [here](https://botorch.readthedocs.io/en/latest/acquisition.html).
 
@@ -108,7 +167,7 @@ See docs [here](https://botorch.readthedocs.io/en/latest/acquisition.html).
 The kernel is an analytical function used by the Gaussian processes to represent the similarity between model behaviour as a function of the parameter space. It includes the underlying function by capturing the relationships and uncertainties/noise in the data.
 
 * `RBF` - radial basis function
-* `MAT1/2` - Materne kernel with $\nu = 1/2$ 
+* `MAT1/2` - Materne kernel with $\nu = 1/2$
 * `MAT3/2` - Materne kernel with $\nu = 3/2$
 * `MAT5/2` - Materne kernel with $\nu = 5/2$
 
@@ -143,6 +202,8 @@ Plots prefixed with `result_` show the results of the optimisation.
 
 - `result_correlation.png`: Scatter plot observables for each parameter, at each sample.
 - `result_objective.png`: Value of objective `J` for each parameter, at each sample.
+- `result_observables.png`: Final observables of every sample as a ratio to their target.
+- `result_parameters.png`: Only with a `[truth]` table. Every sample, the truth and the best fit placed within each parameter's sampled range.
 
 ### Results Summary
 The system prints the final results including:
@@ -172,3 +233,18 @@ During the inference run, some PROTEUS simulations might crash or fail, or stop 
 - The system automatically limits thread usage to prevent oversubscription
 - PROTEUS evaluation time typically dominates total runtime
 - Workers share prepared spectral files through a cache in the inference run's output folder. Set `spectral_cache = false` in the inference config to turn it off. The study log names the cache in use.
+
+### Reusing one PROTEUS process per worker
+
+By default each evaluation runs as its own `proteus start`, so every sample
+pays for importing PROTEUS, loading the Julia environment and compiling AGNI
+on its first call. Setting `dispatch = "runner"` in the inference config keeps
+one PROTEUS process alive per worker and reuses it for every evaluation that
+worker makes.
+
+```toml
+dispatch = "runner"      # "subprocess" (default) or "runner"
+runner_max_jobs = 0      # replace the process after this many simulations; 0 keeps it
+```
+
+Set `runner_max_jobs` to a positive number to bound how long any one process is kept.

@@ -35,7 +35,6 @@ class _DummyLock:
         return False
 
 
-@pytest.mark.unit
 def test_checkpoint_writes_expected_files(tmp_path):
     """``async_BO.checkpoint`` writes the three expected files
     (``data.csv``, ``logs.csv``, ``Ts.csv``) and the timing CSV has the
@@ -56,7 +55,6 @@ def test_checkpoint_writes_expected_files(tmp_path):
     assert list(pd.read_csv(tmp_path / 'Ts.csv').columns) == ['elapsed_s']
 
 
-@pytest.mark.unit
 def test_worker_updates_shared_data_and_logs(monkeypatch, tmp_path):
     """A single worker iteration appends one row to the shared X/Y
     tensors, one entry to the timing list, one log record, and triggers
@@ -116,7 +114,6 @@ def test_worker_updates_shared_data_and_logs(monkeypatch, tmp_path):
     assert len(snapshots) == 1
 
 
-@pytest.mark.unit
 def test_parallel_process_rejects_unknown_kernel():
     """``parallel_process`` raises ValueError with a 'Unknown kernel'
     message when called with a kernel name outside the supported set.
@@ -169,7 +166,6 @@ def test_parallel_process_rejects_unknown_kernel():
         )
 
 
-@pytest.mark.unit
 def test_parallel_process_raises_when_init_dataset_missing(monkeypatch, tmp_path):
     """``parallel_process`` raises FileNotFoundError when the initial
     dataset (``D_init``) is missing from the output directory.
@@ -199,7 +195,6 @@ def test_parallel_process_raises_when_init_dataset_missing(monkeypatch, tmp_path
     assert not (tmp_path / 'init.csv').exists()
 
 
-@pytest.mark.unit
 def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     """With a mocked multiprocessing Manager and Process, ``parallel_process``
     spawns one Process per worker, returns the final dataset, the per-worker
@@ -338,7 +333,6 @@ def _mocked_parallel_process_env(monkeypatch, tmp_path, fake_process_cls, n_init
     monkeypatch.setattr(async_mod, 'get_kernel', lambda *args, **kwargs: object())
 
 
-@pytest.mark.unit
 def test_parallel_process_reports_a_worker_that_stopped_early(monkeypatch, tmp_path, caplog):
     """A worker that dies mid-study leaves the run looking complete: the others
     carry on and the results are saved. The shortfall is reported by worker id
@@ -405,7 +399,6 @@ def test_parallel_process_reports_a_worker_that_stopped_early(monkeypatch, tmp_p
     assert '2 evaluations' in reported and '6 requested' in reported
 
 
-@pytest.mark.unit
 def test_parallel_process_stays_silent_when_every_worker_completes(
     monkeypatch, tmp_path, caplog
 ):
@@ -451,7 +444,6 @@ def test_parallel_process_stays_silent_when_every_worker_completes(
     assert [r for r in caplog.records if r.levelname == 'ERROR'] == []
 
 
-@pytest.mark.unit
 def test_parallel_process_refuses_a_study_with_no_completed_steps(monkeypatch, tmp_path):
     """When the dataset never grows past the initial samples there is no
     optimisation to report, and the best-fit summary downstream would describe
@@ -493,7 +485,6 @@ def test_parallel_process_refuses_a_study_with_no_completed_steps(monkeypatch, t
     assert '2 of 2 workers stopped early' in message
 
 
-@pytest.mark.unit
 def test_worker_releases_its_busy_point_and_records_why_it_stopped(tmp_path, caplog):
     """A worker that fails records the cause in the log before it dies,
     and releases the point it had claimed. Neither happens on its own:
@@ -540,7 +531,6 @@ def test_worker_releases_its_busy_point_and_records_why_it_stopped(tmp_path, cap
     assert D_shared['X'].shape == (1, 1)
 
 
-@pytest.mark.unit
 def test_worker_releases_its_busy_point_after_a_normal_finish(tmp_path):
     """A worker that reaches the evaluation budget also releases its claimed
     point.
@@ -576,7 +566,6 @@ def test_worker_releases_its_busy_point_after_a_normal_finish(tmp_path):
     assert 1 in B
 
 
-@pytest.mark.unit
 def test_parallel_process_names_the_real_step_budget_when_no_worker_failed(
     monkeypatch, tmp_path
 ):
@@ -626,7 +615,6 @@ def test_parallel_process_names_the_real_step_budget_when_no_worker_failed(
     assert 'Raise n_steps to at least n_workers (2)' in message
 
 
-@pytest.mark.unit
 def test_worker_writes_its_traceback_to_the_study_logfile(tmp_path):
     """A worker started with the 'spawn' method inherits no logging
     configuration, so the report of its death would go to stderr and never
@@ -693,7 +681,6 @@ def test_worker_writes_its_traceback_to_the_study_logfile(tmp_path):
     assert B == {}
 
 
-@pytest.mark.unit
 def test_worker_without_a_logfile_path_leaves_logging_untouched(tmp_path, caplog):
     """Under 'fork' the parent's handlers are inherited, so `parallel_process`
     passes no path and the worker must not attach one of its own; a second
@@ -756,7 +743,6 @@ def _run_failure(worker_id):
     )
 
 
-@pytest.mark.unit
 def test_worker_signals_the_study_to_stop_on_a_failed_run(tmp_path):
     """A failed run that reaches the worker, which happens only under
     `abort_on_failure`, sets the shared stop signal and hands the failure to
@@ -814,7 +800,6 @@ def test_worker_signals_the_study_to_stop_on_a_failed_run(tmp_path):
     assert aborts == []
 
 
-@pytest.mark.unit
 def test_worker_starts_no_evaluation_once_the_study_is_stopping(tmp_path, caplog):
     """A worker that finds the stop signal set exits before its next
     evaluation, although the budget is far from reached, and says why.
@@ -854,7 +839,6 @@ def test_worker_starts_no_evaluation_once_the_study_is_stopping(tmp_path, caplog
     assert 'Worker 1 exiting' not in messages
 
 
-@pytest.mark.unit
 def test_parallel_process_stops_the_study_when_a_run_fails_under_abort(
     monkeypatch, tmp_path, caplog
 ):
@@ -918,3 +902,134 @@ def test_parallel_process_stops_the_study_when_a_run_fails_under_abort(
     assert 'abort_on_failure is set' in reported
     # Only the initial sample was in the dataset when the study stopped.
     assert '1 evaluation, initial samples included, completed' in reported
+
+
+def _y(*values):
+    return torch.tensor([[v] for v in values], dtype=torch.double)
+
+
+def test_evaluations_since_improvement_needs_a_real_rise():
+    """Only a rise of the best objective by more than PATIENCE_MIN_GAIN (0.01)
+    resets the count, and rises below it add up."""
+    assert async_mod.PATIENCE_MIN_GAIN == pytest.approx(0.01)
+    # Initial best -1.5; -1.488 is the last rise beyond 0.01, two steps from the end
+    y = _y(-2.0, -1.5, -1.6, -1.495, -1.488, -1.7, -1.8)
+    assert async_mod.evaluations_since_improvement(y, n_init=2) == 2
+    # A rise of 0.005 alone does not count, so both steps are without improvement
+    assert async_mod.evaluations_since_improvement(_y(-1.5, -1.495, -1.6), n_init=1) == 2
+    # Two rises of 0.006 add up to 0.012 and count at the second
+    assert async_mod.evaluations_since_improvement(_y(-1.5, -1.494, -1.488), n_init=1) == 0
+    # No step beats the initial best
+    assert async_mod.evaluations_since_improvement(_y(0.2, -5.0, -5.0, -5.0), n_init=1) == 3
+
+
+def _worse_each_time(**_kwargs):
+    """A BO step whose evaluation never beats the initial sample."""
+    return (_y(0.5), _y(-5.0), 0.1, 0.2, 0.3, 0.4, 0.5, None)
+
+
+def _run_worker(tmp_path, monkeypatch, patience, converged, process_fun=_worse_each_time):
+    monkeypatch.setattr(async_mod, 'checkpoint', lambda *args: None)
+    D_shared = {'X': _y(0.1), 'Y': _y(0.2)}
+    async_mod.worker(
+        process_fun=process_fun,
+        build_obj=lambda **kwargs: lambda x: x,
+        D_shared=D_shared,
+        B={},
+        T=[],
+        T0=0.0,
+        x_init=_y(0.3),
+        n_init=1,
+        lock=_DummyLock(),
+        max_len=7,
+        worker_id=0,
+        log_list=[],
+        output_dir=str(tmp_path),
+        patience=patience,
+        converged=converged,
+    )
+    return D_shared
+
+
+def test_worker_stops_the_study_once_patience_runs_out(tmp_path, monkeypatch, caplog):
+    """With patience 3 and no improvement, the worker sets `converged` after the
+    third step and runs no fourth, although the budget allows six."""
+    converged = threading.Event()
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.async_BO'):
+        D_shared = _run_worker(tmp_path, monkeypatch, 3, converged)
+
+    assert len(D_shared['X']) == 1 + 3
+    assert converged.is_set()
+    messages = [r.getMessage() for r in caplog.records]
+    assert 'Worker 0 exiting: the best objective stopped improving' in messages
+
+
+def test_worker_with_patience_off_runs_the_full_budget(tmp_path, monkeypatch):
+    """patience = 0 never stops the study: all six steps run and `converged` stays clear."""
+    converged = threading.Event()
+    D_shared = _run_worker(tmp_path, monkeypatch, 0, converged)
+
+    assert len(D_shared['X']) == 7
+    assert not converged.is_set()
+
+
+def test_worker_starts_no_evaluation_once_another_worker_converged(
+    tmp_path, monkeypatch, caplog
+):
+    """A worker that finds `converged` already set runs no further evaluation and
+    says why, not as a failed run."""
+    converged = threading.Event()
+    converged.set()
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.async_BO'):
+        D_shared = _run_worker(
+            tmp_path,
+            monkeypatch,
+            3,
+            converged,
+            process_fun=lambda **_kwargs: pytest.fail('no evaluation should run'),
+        )
+
+    assert len(D_shared['X']) == 1
+    messages = [r.getMessage() for r in caplog.records]
+    assert 'Worker 0 exiting: the best objective stopped improving' in messages
+    assert 'Worker 0 exiting: the study is stopping on a failed run' not in messages
+
+
+def test_parallel_process_passes_patience_to_every_worker(monkeypatch, tmp_path):
+    """parallel_process hands each worker the configured patience and one shared
+    `converged` event."""
+    seen = []
+
+    class FakeProcess:
+        def __init__(self, target, args):
+            seen.append(args)
+            self.args = args
+            self.exitcode = 0
+
+        def start(self):
+            shared = self.args[2]
+            shared['X'] = torch.cat((shared['X'], _y(0.5)), dim=0)
+            shared['Y'] = torch.cat((shared['Y'], _y(0.7)), dim=0)
+
+        def join(self):
+            return None
+
+    _mocked_parallel_process_env(monkeypatch, tmp_path, FakeProcess)
+    async_mod.parallel_process(
+        objective_builder=lambda **kwargs: lambda x: x,
+        kernel='MAT3/2',
+        acqf='LogEI',
+        n_workers=2,
+        max_len=6,
+        output='dummy',
+        seed=1,
+        ref_config='ref.toml',
+        observables={'obs': 1.0},
+        parameters={'a': [0.0, 1.0]},
+        failure_codes=[],
+        patience=7,
+    )
+
+    assert [args[-2] for args in seen] == [7, 7]
+    assert seen[0][-1] is seen[1][-1]
+    assert isinstance(seen[0][-1], threading.Event)

@@ -42,7 +42,6 @@ BASE_CONFIG = str(Path(__file__).parent / 'base.toml')
 mp.set_start_method('spawn', force=True)
 
 
-@pytest.mark.unit
 def test_run_inference_rejects_too_many_workers(monkeypatch, tmp_path):
     """``run_inference`` rejects ``n_workers >= cpu_count`` with a
     'Not enough CPU cores' error, so a misconfigured job fails at
@@ -83,7 +82,6 @@ def test_run_inference_rejects_too_many_workers(monkeypatch, tmp_path):
     assert create_init_calls == []
 
 
-@pytest.mark.unit
 def test_run_inference_raises_for_missing_reference_config(monkeypatch, tmp_path):
     """``run_inference`` raises FileNotFoundError when ``ref_config`` does
     not point to an existing file on disk, naming the missing path.
@@ -125,7 +123,6 @@ def test_run_inference_raises_for_missing_reference_config(monkeypatch, tmp_path
     assert create_init_calls == []
 
 
-@pytest.mark.unit
 def test_infer_from_config_loads_toml_and_dispatches(monkeypatch, tmp_path):
     """``infer_from_config(path)`` parses the TOML and forwards the
     resulting dict verbatim to ``run_inference``; no field is dropped or
@@ -156,7 +153,6 @@ def test_infer_from_config_loads_toml_and_dispatches(monkeypatch, tmp_path):
 # ============================================================================
 
 
-@pytest.mark.unit
 def test_parameter_bounds_converts_pairs_and_rejects_malformed_ranges():
     """``parameter_bounds`` accepts an increasing pair of numbers and returns
     it as floats, and rejects every other shape a user could write: a single
@@ -192,7 +188,6 @@ def test_parameter_bounds_converts_pairs_and_rejects_malformed_ranges():
         inference_mod.parameter_bounds({'planet.mass_tot': [float('nan'), 3.0]})
 
 
-@pytest.mark.unit
 def test_parameter_bounds_rejects_a_log_scaled_range_that_reaches_zero():
     """A parameter swept on a log scale cannot have a bound at or below zero:
     the optimiser samples it in log10 space. The range is rejected here, while
@@ -224,7 +219,6 @@ def test_parameter_bounds_rejects_a_log_scaled_range_that_reaches_zero():
     assert inference_mod.variable_is_logarithmic('planet.elements.H_budget') is True
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize('enabled', [True, False], ids=['cache-on', 'cache-off'])
 def test_validate_reference_config_checks_the_spectral_cache_the_workers_use(
     monkeypatch, tmp_path, enabled
@@ -256,7 +250,6 @@ def test_validate_reference_config_checks_the_spectral_cache_the_workers_use(
         assert variants == ['none', 'none']
 
 
-@pytest.mark.unit
 def test_validate_reference_config_accepts_a_runnable_sweep():
     """A reference config that PROTEUS accepts, swept over parameters that stay
     inside the schema at both ends, passes validation. Each accepted sweep is
@@ -280,7 +273,6 @@ def test_validate_reference_config_accepts_a_runnable_sweep():
     inference_mod.validate_reference_config(BASE_CONFIG, {})
 
 
-@pytest.mark.unit
 def test_validate_reference_config_rejects_a_mistyped_parameter_name():
     """A parameter name that no config field matches is reported as an
     unrecognised key. Without this check the name would be written into each
@@ -301,7 +293,6 @@ def test_validate_reference_config_rejects_a_mistyped_parameter_name():
     assert 'planet.mass_tot"' not in message
 
 
-@pytest.mark.unit
 def test_validate_reference_config_rejects_a_bound_outside_the_schema_range():
     """A range whose upper end leaves the interval the schema allows is
     rejected, and the message names the end that failed. ``core_frac`` is
@@ -324,7 +315,6 @@ def test_validate_reference_config_rejects_a_bound_outside_the_schema_range():
     )
 
 
-@pytest.mark.unit
 def test_validate_reference_config_rejects_a_faulty_reference_file(tmp_path):
     """A fault in the reference config itself is attributed to the file, not
     to the parameter sweep, so the user knows which file to edit.
@@ -344,7 +334,6 @@ def test_validate_reference_config_rejects_a_faulty_reference_file(tmp_path):
     assert f'in {faulty}:' in message
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize(
     ('parameters', 'extra', 'error', 'match'),
     [
@@ -416,7 +405,6 @@ class _StopAfterSetup(Exception):
     """Raised in place of the initial design, once startup has finished."""
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize('switch', [None, True, False], ids=['default', 'on', 'off'])
 def test_run_inference_reports_the_spectral_cache_the_study_uses(
     monkeypatch, tmp_path, caplog, switch
@@ -471,12 +459,239 @@ def test_run_inference_reports_the_spectral_cache_the_study_uses(
         assert os.environ[SPECTRAL_CACHE_ENV] == '1'
 
 
+def _validation_study(monkeypatch, tmp_path, **config):
+    """A study config over a finished earlier study, stopped once validated.
+
+    Returns the config and the earlier study's file, which a check placed after
+    `safe_rm` would leave deleted.
+    """
+    config = {
+        'output': 'unit_inference',
+        'logging': 'INFO',
+        'n_workers': 1,
+        'ref_config': BASE_CONFIG,
+        'n_steps': 1,
+        'kernel': 'MAT3/2',
+        'acqf': 'LogEI',
+        'seed': 1,
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
+        **config,
+    }
+    output_root = tmp_path / 'output'
+    output_root.mkdir()
+    previous = output_root / 'init.csv'
+    previous.write_text('x_0,y\n0.5,1.0\n', encoding='utf-8')
+
+    monkeypatch.setattr(
+        inference_mod,
+        'get_proteus_directories',
+        lambda _output: {'output': str(output_root), 'proteus': ''},
+    )
+    monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
+    monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
+    # run_inference records these for its workers; restored after the test.
+    for name in (
+        'PROTEUS_INFERENCE_CHILD_TIMEOUT_S',
+        'PROTEUS_INFERENCE_DISPATCH',
+        'PROTEUS_INFERENCE_RUNNER_MAX_JOBS',
+        inference_mod.ABORT_ON_FAILURE_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    def _stop(cfg):
+        raise RuntimeError('stop after validation')
+
+    monkeypatch.setattr(inference_mod, 'create_init', _stop)
+    return config, previous
+
+
+_THREE_OBS = {'R_obs': 6.0e6, 'T_obs': 400.0, 'g_obs': 9.8}
+_THREE_SIGMA = {'R_obs': 1.0e5, 'T_obs': 20.0, 'g_obs': 0.5}
+
+
+@pytest.mark.parametrize(
+    ('config', 'key', 'bad', 'match', 'good'),
+    [
+        (
+            {'observables': {'R_obs': 6.0e6, 'T_obs': 400.0}},
+            'sigma',
+            {'R_obs': 1.0e5},
+            'T_obs',
+            {'T_obs': 20, 'R_obs': 1.0e5},
+        ),
+        (
+            {'observables': _THREE_OBS, 'sigma': _THREE_SIGMA},
+            'correlation',
+            # Pairwise valid, but smallest eigenvalue 1 - 1.8 < 0.
+            {'R_obs': {'T_obs': 0.9, 'g_obs': 0.9}, 'T_obs': {'g_obs': -0.9}},
+            'positive definite',
+            {'R_obs': {'T_obs': -0.25}},
+        ),
+        (
+            {
+                'observables': {'R_obs': 6.0e6},
+                'parameters': {
+                    'planet.mass_tot': [0.7, 3.0],
+                    'interior_struct.core_frac': [0.3, 0.7],
+                },
+            },
+            'truth',
+            {'planet.mass_tot': 1.0},
+            'core_frac',
+            {'planet.mass_tot': 1, 'interior_struct.core_frac': 0.325},
+        ),
+    ],
+    ids=['incomplete_sigma', 'indefinite_correlation', 'incomplete_truth'],
+)
+def test_run_inference_rejects_a_bad_table_before_emptying_output(
+    monkeypatch, tmp_path, config, key, bad, match, good
+):
+    """A bad ``[sigma]``, ``[correlation]`` or ``[truth]`` table is refused before
+    the output folder is emptied, so a typo does not cost the previous study's
+    results. A valid table is stored back on the config as floats.
+    """
+    config, previous = _validation_study(monkeypatch, tmp_path, **config)
+
+    with pytest.raises(ValueError, match=match):
+        inference_mod.run_inference({**config, key: bad})
+    assert previous.read_text(encoding='utf-8') == 'x_0,y\n0.5,1.0\n'
+
+    config[key] = good
+    with pytest.raises(RuntimeError, match='stop after validation'):
+        inference_mod.run_inference(config)
+
+    def _floats(table):
+        return [v for x in table.values() for v in (_floats(x) if isinstance(x, dict) else [x])]
+
+    assert _floats(config[key]) == pytest.approx(_floats(good), rel=1e-12)
+    assert all(type(v) is float for v in _floats(config[key]))
+
+
+def test_run_inference_validates_and_derives_correlation_tables(monkeypatch, tmp_path, caplog):
+    """A correlation needs sigma and coefficients in (-1, 1); ``correlate_ratios``
+    derives the table from the ratio names instead, and refuses to run without
+    sigma, next to an explicit table, or with no ratio to correlate.
+    """
+    config, previous = _validation_study(
+        monkeypatch, tmp_path, observables=_THREE_OBS, correlation={'R_obs': {'T_obs': 0.5}}
+    )
+
+    with pytest.raises(ValueError, match='correlation is given but sigma is not'):
+        inference_mod.run_inference(dict(config))
+    config['sigma'] = _THREE_SIGMA
+    config['correlation'] = {'R_obs': {'T_obs': 1}}
+    with pytest.raises(ValueError, match=r'\(-1, 1\)'):
+        inference_mod.run_inference(dict(config))
+    assert previous.read_text(encoding='utf-8') == 'x_0,y\n0.5,1.0\n'
+
+    # correlate_ratios derives the table from the ratio names instead.
+    # A finished run repoints ref_config at its copy in the output folder.
+    ratios = {
+        **config,
+        'ref_config': BASE_CONFIG,
+        'observables': {'R_obs': 6.0e6, 'C/O_atm': 0.62, 'S/O_atm': 0.25, 'O/H_atm': 5.4},
+        'sigma': {'R_obs': 1.0e5, 'C/O_atm': 0.1, 'S/O_atm': 0.05, 'O/H_atm': 0.5},
+        'correlation': None,
+        'correlate_ratios': True,
+    }
+    for bad, match in (
+        ({'sigma': None}, 'correlate_ratios = true needs'),
+        ({'correlation': {'R_obs': {'C/O_atm': 0.1}}}, 'cannot both'),
+        ({'correlate_ratios': 'yes'}, 'true or false'),
+        (
+            {'observables': {'R_obs': 6.0e6}, 'sigma': {'R_obs': 1.0e5}},
+            'no observable is a ratio',
+        ),
+    ):
+        with pytest.raises(ValueError, match=match):
+            inference_mod.run_inference({**ratios, **bad})
+    with pytest.raises(RuntimeError, match='stop after validation'):
+        inference_mod.run_inference(ratios)
+    assert ratios['correlation'] == {
+        'C/O_atm': {'S/O_atm': pytest.approx(0.5), 'O/H_atm': pytest.approx(-0.5)},
+        'S/O_atm': {'O/H_atm': pytest.approx(-0.5)},
+    }
+
+    # One ratio has no partner: nothing is correlated, and the log says so.
+    single = {
+        **ratios,
+        'ref_config': BASE_CONFIG,
+        'correlation': None,
+        'observables': {'R_obs': 6.0e6, 'C/O_atm': 0.62},
+    }
+    single['sigma'] = {'R_obs': 1.0e5, 'C/O_atm': 0.1}
+    with pytest.raises(RuntimeError, match='stop after validation'):
+        inference_mod.run_inference(single)
+    assert single['correlation'] == {}
+    assert 'share no element' in caplog.text
+
+
+def test_validate_truth_returns_ordered_floats_and_rejects_bad_tables():
+    """A complete ``[truth]`` table comes back as floats in parameter order;
+    a missing, unknown, non-finite, boolean or non-positive log-scaled entry
+    is refused with the offending name in the message.
+    """
+    pars = {
+        'outgas.fO2_shift_IW': [-4.0, 4.0],
+        'planet.elements.H_budget': [1e3, 2e4],
+    }
+    # Written in reverse order and with an int, so both conversions are exercised.
+    out = inference_mod.validate_truth(
+        pars, {'planet.elements.H_budget': 5000, 'outgas.fO2_shift_IW': -1.5}
+    )
+    assert list(out) == list(pars)
+    assert out['planet.elements.H_budget'] == pytest.approx(5.0e3, rel=1e-12)
+    assert isinstance(out['planet.elements.H_budget'], float)
+    # Edge case: a zero or negative true value is valid for a linear parameter.
+    assert out['outgas.fO2_shift_IW'] == pytest.approx(-1.5, rel=1e-12)
+    assert inference_mod.validate_truth(pars, None) is None
+
+    with pytest.raises(ValueError, match='H_budget'):
+        inference_mod.validate_truth(pars, {'outgas.fO2_shift_IW': 0.0})
+    with pytest.raises(ValueError, match='not parameters.*mass_tot'):
+        inference_mod.validate_truth(
+            pars,
+            {
+                'outgas.fO2_shift_IW': 0.0,
+                'planet.elements.H_budget': 5e3,
+                'planet.mass_tot': 1.0,
+            },
+        )
+    with pytest.raises(ValueError, match='finite number'):
+        inference_mod.validate_truth(
+            pars, {'outgas.fO2_shift_IW': float('nan'), 'planet.elements.H_budget': 5e3}
+        )
+    with pytest.raises(ValueError, match='finite number'):
+        inference_mod.validate_truth(
+            pars, {'outgas.fO2_shift_IW': True, 'planet.elements.H_budget': 5e3}
+        )
+    # H_budget is sampled in log10, where a non-positive value has no position.
+    with pytest.raises(ValueError, match='log space'):
+        inference_mod.validate_truth(
+            pars, {'outgas.fO2_shift_IW': 0.0, 'planet.elements.H_budget': 0.0}
+        )
+
+
+def test_truth_outside_bounds_flags_only_values_beyond_the_range():
+    """True values on a bound are recoverable and not flagged; values beyond
+    either bound are returned by name so the study can warn about them.
+    """
+    pars = {'a.x': [0.0, 1.0], 'a.y': [2.0, 3.0], 'a.z': [-1.0, 1.0]}
+    # Edge case: 'a.x' sits exactly on its lower bound.
+    truth = {'a.x': 0.0, 'a.y': 3.5, 'a.z': -1.2}
+
+    out = inference_mod.truth_outside_bounds(pars, truth)
+
+    assert set(out) == {'a.y', 'a.z'}
+    assert out['a.y'] == pytest.approx(3.5, rel=1e-12)
+    assert inference_mod.truth_outside_bounds(pars, None) == {}
+
+
 # ============================================================================
 # Regression: no stray prints + docstring uses current schema
 # ============================================================================
 
 
-@pytest.mark.unit
 def test_infer_from_config_uses_logger_not_print(caplog, tmp_path, monkeypatch):
     """Regression: infer_from_config must route its startup message through
     the module logger, not print(). The original PR #675 BayesOpt rewrite
@@ -508,7 +723,6 @@ def test_infer_from_config_uses_logger_not_print(caplog, tmp_path, monkeypatch):
     )
 
 
-@pytest.mark.unit
 def test_get_nested_docstring_uses_current_schema_example():
     """Regression: utils.get_nested docstring example must use a
     parameter path that is valid on the current branch schema
@@ -525,3 +739,14 @@ def test_get_nested_docstring_uses_current_schema_example():
         'docstring example must not reference the deprecated struct.* schema'
     )
     assert 'planet.mass_tot' in doc, 'docstring example must use the current planet.* schema'
+
+
+def test_validate_patience_accepts_whole_numbers_and_rejects_others():
+    """0 (off) and positive whole numbers pass unchanged. A negative, fractional,
+    boolean or string patience is refused; True would otherwise pass as 1 and stop a
+    study after one evaluation."""
+    assert inference_mod.validate_patience(0) == 0
+    assert inference_mod.validate_patience(50) == 50
+    for bad in (-1, 2.5, True, '50'):
+        with pytest.raises(ValueError, match='patience must be a whole number'):
+            inference_mod.validate_patience(bad)

@@ -534,7 +534,6 @@ def test_plot_result_objective_logarithmic_x_axis_branch(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_plot_result_correlation_multi_par_multi_obs(monkeypatch, tmp_path, caplog):
     """Multi-parameter, multi-observable case sets per-axis log scaling.
 
@@ -606,7 +605,6 @@ def test_plot_result_correlation_multi_par_multi_obs(monkeypatch, tmp_path, capl
     assert {len(c.args[0]) for c in axis.scatter.call_args_list} == {1}
 
 
-@pytest.mark.unit
 def test_plot_result_correlation_ignores_stray_console_log_file(monkeypatch, tmp_path):
     """A worker's console-log capture file must not be treated as a case dir.
 
