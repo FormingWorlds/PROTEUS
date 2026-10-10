@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
+from proteus.interior_energetics.aragog_core import set_core_start
 from proteus.interior_energetics.common import (
     _SPIDER_EOS_MELTING_CURVES,
     _SPIDER_EOS_PHASE_FILES,
@@ -2084,10 +2085,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     if hasattr(solver, '_dSdr_cmb_init'):
         solver._dSdr_cmb_init = None
     if T_core_pre is not None:
-        if hasattr(solver, 'set_initial_core_temperature'):
-            solver.set_initial_core_temperature(T_core_pre)
-        else:
-            solver._T_core_init = T_core_pre
+        set_core_start(solver, T_core_pre)
 
     # _set_entropy_ic returns the staggered molten profile it just set. Take it
     # from the return value rather than from the solver's solution object, which
@@ -2131,10 +2129,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
 
         S_ic = np.asarray(interior_o._last_entropy, dtype=float)
         T_core_new = remelt_core_module(hf_row, interior_o, solver, T_core_pre, float(S_ic[0]))
-        if hasattr(solver, 'set_initial_core_temperature'):
-            solver.set_initial_core_temperature(T_core_new)
-        else:
-            solver._T_core_init = T_core_new
+        set_core_start(solver, T_core_new)
         solver.set_initial_entropy(S_ic)
 
     log.info('    mantle re-melted: Aragog restarts from the re-melted entropy profile')

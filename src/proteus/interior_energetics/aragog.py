@@ -30,6 +30,7 @@ from aragog.parser import (
     _SolverParameters,
 )
 from proteus.accretion.common import snap_to_impact
+from proteus.interior_energetics import aragog_core
 from proteus.interior_energetics.aragog_phase import (
     build_jax_phase_params,
     build_mixed_phase_params,
@@ -45,8 +46,12 @@ from proteus.utils.data import (
     resolve_melting_curve_files,
 )
 from proteus.utils.helper import MissingDataError, energetics_eos_key, generates_paleos_tables
-from proteus.utils.helper import UpdateStatusfile, format_subyear_time, parse_subyear_time
-from proteus.utils.helper import snapshot_path_for_time
+from proteus.utils.helper import (
+    UpdateStatusfile,
+    format_subyear_time,
+    parse_subyear_time,
+    snapshot_path_for_time,
+)
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -603,28 +608,8 @@ class AragogRunner:
                 AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
             _t_init = time.perf_counter()
             interior_o.aragog_solver.initialize()
-            if (
-                config.interior_energetics.aragog.core_bc == 'core_module'
-                and getattr(interior_o, '_frozen_core_rho_cen', None) is None
-            ):
-                budget = getattr(interior_o.aragog_solver, '_core_module_budget', None)
-                if budget is not None:
-                    fitted_rho = float(budget.profiles.rho_cen)
-                    fitted_len = float(budget.profiles.length_scale)
-                    interior_o._frozen_core_rho_cen = fitted_rho
-                    interior_o._frozen_core_length_scale = fitted_len
-                    bc_params = interior_o.aragog_solver.parameters.boundary_conditions.core_module_params
-                    if bc_params is not None:
-                        bc_params['rho_cen'] = fitted_rho
-                        bc_params['length_scale'] = fitted_len
-                        bc_params['fit_profile'] = False
-                        bc_params.pop('m_core', None)
-                        bc_params.pop('p_cen', None)
-                    log.info(
-                        'Aragog core_module profile frozen: rho_cen=%.2f kg/m^3, length_scale=%.1f km',
-                        fitted_rho,
-                        fitted_len / 1e3,
-                    )
+            if config.interior_energetics.aragog.core_bc == 'core_module':
+                aragog_core.freeze_core_profile(interior_o)
             _t_after_init = time.perf_counter()
             # Option Z: register the JAX CVODE callback factory when
             # the flag is on. No-op when the flag is off.
@@ -678,40 +663,7 @@ class AragogRunner:
                         'core_module',
                         'bower2018',
                     ):
-                        T_core = getattr(interior_o, '_last_T_core', None)
-                        if T_core is not None:
-                            log.info(
-                                'Restored core temperature from snapshot: T_core=%.2f K', T_core
-                            )
-                        else:
-                            # The helpfile T_cmb column holds the core temperature in these modes.
-                            status = getattr(interior_o, '_last_T_core_status', 'absent')
-                            T_cmb = float(hf_row.get('T_cmb', np.nan))
-                            if np.isfinite(T_cmb) and T_cmb > 0:
-                                T_core = T_cmb
-                                log.warning(
-                                    'Snapshot core temperature is %s; it restarts from the '
-                                    'resumed row, T_cmb=%.2f K.',
-                                    status,
-                                    T_cmb,
-                                )
-                            else:
-                                log.warning(
-                                    'Snapshot core temperature is %s and the resumed row has no '
-                                    'usable T_cmb; it restarts from the temperature of the '
-                                    "restored profile's bottom cell at the CMB.",
-                                    status,
-                                )
-                        if T_core is not None:
-                            if hasattr(solver, 'set_initial_core_temperature'):
-                                solver.set_initial_core_temperature(T_core)
-                            else:
-                                solver._T_core_init = T_core
-                        # Without a stored profile the shell restarts on the core adiabat.
-                        if hasattr(solver, 'set_initial_shell_temperature'):
-                            solver.set_initial_shell_temperature(
-                                getattr(interior_o, '_last_T_shell', None)
-                            )
+                        aragog_core.restore_core_start(hf_row, interior_o, solver)
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
@@ -802,79 +754,37 @@ class AragogRunner:
         core_bc_str = config.interior_energetics.aragog.core_bc
         core_module_params = None
         if core_bc_str == 'core_module':
-            import attrs as _attrs
+            core_module_params = aragog_core.core_module_params(
+                config, hf_row, interior_o, outdir
+            )
 
-            # The sub-config maps onto the aragog factory keys plus q_radio (k_core included,
-            # for the stratified layer); f_ohm and flux_geometry feed only the wrapper-side
-            # CoreEntropyBudget and the factory rejects unknown keys, so they are stripped.
-            core_module_params = _attrs.asdict(config.interior_energetics.aragog.core_module)
-            for _diag_key in ('f_ohm', 'flux_geometry'):
-                core_module_params.pop(_diag_key)
-
-            # Check if this is a resume with saved frozen profile parameters in snapshot
-            restored_frozen = False
-            if getattr(config.params, 'resume', False) is True and 'Time' in hf_row:
-                rho_cen_snap, _ = _snapshot_scalar(
-                    outdir, hf_row['Time'], 'core_module_rho_cen'
-                )
-                len_scale_snap, _ = _snapshot_scalar(
-                    outdir, hf_row['Time'], 'core_module_length_scale'
-                )
-                m_core_snap, _ = _snapshot_scalar(outdir, hf_row['Time'], 'core_module_m_core')
-                p_cen_snap, _ = _snapshot_scalar(outdir, hf_row['Time'], 'core_module_p_cen')
-                if rho_cen_snap is not None and len_scale_snap is not None:
-                    core_module_params['rho_cen'] = rho_cen_snap
-                    core_module_params['length_scale'] = len_scale_snap
-                    core_module_params['fit_profile'] = False
-                    core_module_params.pop('m_core', None)
-                    core_module_params.pop('p_cen', None)
-                    interior_o._frozen_core_rho_cen = rho_cen_snap
-                    interior_o._frozen_core_length_scale = len_scale_snap
-                    interior_o._frozen_core_m_core = m_core_snap
-                    interior_o._frozen_core_p_cen = p_cen_snap
-                    restored_frozen = True
-                    log.info(
-                        'Restored frozen core profile from snapshot: rho_cen=%.2f kg/m^3, length_scale=%.1f km',
-                        rho_cen_snap,
-                        len_scale_snap / 1e3,
-                    )
-
-            if not restored_frozen:
-                # Structure constraints from hf_row feed the Gaussian profile fit.
-                m_core_val = float(hf_row.get('M_core', 0.0) or 0.0)
-                p_cen_val = float(hf_row.get('P_center', 0.0) or 0.0)
-                if m_core_val <= 0.0 or p_cen_val <= 0.0:
-                    struct_mod = config.interior_struct.module
-                    raise ValueError(
-                        f"core_bc='core_module' requires positive M_core and P_center from interior structure, "
-                        f"but interior_struct.module='{struct_mod}' provided M_core={m_core_val:.4e}, P_center={p_cen_val:.4e}"
-                    )
-                core_module_params['m_core'] = m_core_val
-                core_module_params['p_cen'] = p_cen_val
-                interior_o._frozen_core_m_core = m_core_val
-                interior_o._frozen_core_p_cen = p_cen_val
-                log.info(
-                    'Aragog core_module structure constraints: M_core=%.4e kg, P_center=%.4e Pa',
-                    m_core_val,
-                    p_cen_val,
-                )
-
-        bc_kwargs: dict[str, object] = {
-            'outer_boundary_condition': _aragog_outer_bc,
-            'outer_boundary_value': hf_row['F_atm'],
-            'inner_boundary_condition': 1,
-            'inner_boundary_value': 4000,
-            'emissivity': 1,
-            'equilibrium_temperature': hf_row['T_eqm'],
-            'core_heat_capacity': get_core_heatcap(config, hf_row),
-            'tfac_core_avg': config.interior_energetics.core_tfac_avg,
-            'param_utbl': config.interior_energetics.param_utbl,
-            'param_utbl_const': config.interior_energetics.param_utbl_const,
-            'core_bc': core_bc_str,
-        }
-        if core_module_params is not None:
-            bc_kwargs['core_module_params'] = core_module_params
-        boundary_conditions = _BoundaryConditionsParameters(**bc_kwargs)
+        boundary_conditions = _BoundaryConditionsParameters(
+            # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
+            # 1 = native grey-body (emissivity * sigma * (T^4 - T_eqm^4))
+            outer_boundary_condition=_aragog_outer_bc,
+            # first guess surface heat flux [W/m2] (only used if outer_bc=4)
+            outer_boundary_value=hf_row['F_atm'],
+            # 1 = core cooling model
+            # 2 = prescribed heat flux
+            # 3 = prescribed temperature
+            inner_boundary_condition=(1),
+            # core temperature [K], if inner_boundary_condition = 3
+            inner_boundary_value=(4000),
+            # only used in gray body BC, outer_boundary_condition = 1
+            emissivity=1,
+            # only used in gray body BC, outer_boundary_condition = 1
+            equilibrium_temperature=hf_row['T_eqm'],
+            # used if inner_boundary_condition = 1
+            core_heat_capacity=get_core_heatcap(config, hf_row),
+            # core T_avg/T_cmb ratio from adiabatic gradient (Bower+2018 Table 2)
+            tfac_core_avg=config.interior_energetics.core_tfac_avg,
+            # ultra-thin boundary layer parameterization (Bower et al. 2018, Eq. 18)
+            param_utbl=config.interior_energetics.param_utbl,
+            param_utbl_const=config.interior_energetics.param_utbl_const,
+            # core BC mode (the 'energy_balance' option is available)
+            core_bc=core_bc_str,
+            core_module_params=core_module_params,
+        )
 
         # Define the inner_radius for the mesh.
         # Prefer hf_row['R_core'] (set by the structure module) over
@@ -1956,23 +1866,8 @@ class AragogRunner:
             T_core, status_t = _snapshot_scalar(output_dir, hf_row['Time'], 'T_core_state')
             interior_o._last_T_core = T_core
             interior_o._last_T_core_status = status_t
-            interior_o._last_T_shell = _snapshot_shell(output_dir, hf_row['Time'])
-            rho_cen_snap, _ = _snapshot_scalar(
-                output_dir, hf_row['Time'], 'core_module_rho_cen'
-            )
-            len_scale_snap, _ = _snapshot_scalar(
-                output_dir, hf_row['Time'], 'core_module_length_scale'
-            )
-            m_core_snap, _ = _snapshot_scalar(output_dir, hf_row['Time'], 'core_module_m_core')
-            p_cen_snap, _ = _snapshot_scalar(output_dir, hf_row['Time'], 'core_module_p_cen')
-            if rho_cen_snap is not None:
-                interior_o._frozen_core_rho_cen = rho_cen_snap
-            if len_scale_snap is not None:
-                interior_o._frozen_core_length_scale = len_scale_snap
-            if m_core_snap is not None:
-                interior_o._frozen_core_m_core = m_core_snap
-            if p_cen_snap is not None:
-                interior_o._frozen_core_p_cen = p_cen_snap
+            interior_o._last_T_shell = aragog_core.snapshot_shell(output_dir, hf_row['Time'])
+            aragog_core.restore_frozen_profile(interior_o, output_dir, hf_row['Time'])
             # The run built its mesh with the surface pressure of its own setup.
             P_mesh, status = _snapshot_scalar(
                 output_dir, hf_row['Time'], 'mesh_surface_pressure'
@@ -2149,70 +2044,6 @@ class AragogRunner:
             )
         solver._prev_struct_log = (t_new, R_int_new, R_core_new, g_new)
 
-    def _write_core_module_diagnostics(
-        self, output: dict, dt_actual_yr: float = 0.0, out=None
-    ) -> None:
-        """Fill the ``core_*`` helpfile columns from the core evolution budget.
-
-        Evaluates the energy-side quantities on the solver's own
-        ``CoreEnergyBudget`` and the entropy, dynamo, and stratification
-        diagnostics on a wrapper-side ``CoreEntropyBudget`` built from the
-        config's ``k_core`` / ``f_ohm`` / ``flux_geometry``. The entropy
-        budget is rebuilt whenever the solver's budget object changes, keyed
-        on object identity.
-
-        The CMB heat flow driving the diagnostics is the step-averaged
-        power ``step_dE_F_cmb_J / dt``; with no elapsed time (the init
-        call) it is ``F_cmb`` times the CMB area.
-        """
-        solver = self.aragog_solver
-        budget = getattr(solver, '_core_module_budget', None)
-        if budget is None:
-            return
-        from aragog.core import (
-            CoreEntropyBudget,
-            crystallization_regime,
-        )
-
-        cm_cfg = self._config.interior_energetics.aragog.core_module
-        if getattr(self, '_core_entropy_for', None) is not budget:
-            self._core_entropy_budget = CoreEntropyBudget(
-                budget,
-                k_core=cm_cfg.k_core,
-                f_ohm=cm_cfg.f_ohm,
-                flux_geometry=cm_cfg.flux_geometry,
-            )
-            self._core_entropy_for = budget
-        ent = self._core_entropy_budget
-
-        t_cmb = float(output['T_cmb'])
-        area = 4.0 * np.pi * float(budget.profiles.r_cmb) ** 2
-        from proteus.utils.constants import secs_per_year
-
-        span_s = float(dt_actual_yr) * secs_per_year
-        if span_s > 0.0:
-            q_cmb = float(output['step_dE_F_cmb_J']) / span_s
-        else:
-            q_cmb = float(output['F_cmb']) * area
-        # A stratified core carries its shell profile; the layer base bounds the light-element mixing.
-        t_shell = getattr(out, 'core_T_shell', None)
-        base = float(getattr(out, 'core_layer_base', np.nan)) if t_shell is not None else np.nan
-        upper = {'gravitational_upper': base} if np.isfinite(base) else {}
-        output['core_r_icb'] = float(budget.r_icb(t_cmb))
-        output['core_C_eff'] = float(budget.effective_capacity(t_cmb, **upper))
-        output['core_dynamo_margin'] = float(
-            ent.entropy_margin(t_cmb, q_cmb, q_radio=cm_cfg.q_radio, t_shell=t_shell)
-        )
-        output['core_B_rms'] = float(ent.b_rms_core(t_cmb, q_cmb))
-        output['core_regime'] = float(int(crystallization_regime(budget, t_cmb)))
-        output['core_strat_depth'] = (
-            float(budget.profiles.r_cmb) - base if np.isfinite(base) else 0.0
-        )
-        output['core_T_top'] = float(t_shell[-1]) if t_shell is not None else t_cmb
-        # A giant impact in this step adds the core's heat change after the solve.
-        output['step_dE_impact_core_J'] = 0.0
-        output['step_dE_impact_core_refit_J'] = 0.0
-
     def run_solver(self, hf_row, interior_o, dirs, write_data: bool = True):
         # Dispatch to JAX solver if configured
         if self._use_jax:
@@ -2239,18 +2070,7 @@ class AragogRunner:
         # Core-evolution diagnostics ride along when the core module is active;
         # every other mode leaves the zero defaults.
         if self._config.interior_energetics.aragog.core_bc == 'core_module':
-            self._write_core_module_diagnostics(
-                output, dt_actual_yr=float(out.dt_actual), out=out
-            )
-            # A core refit at this step's reset books the previous impact's core heat here.
-            booked = getattr(interior_o, '_core_impact_booked', None)
-            if booked is not None:
-                output['step_dE_impact_core_J'], output['step_dE_impact_core_refit_J'] = booked
-                interior_o._core_impact_booked = None
-            from proteus.interior_energetics.aragog_core_impact import core_call_heat
-
-            lift = booked[0] if booked is not None else 0.0
-            output['step_dE_core_J'] = core_call_heat(out, interior_o, lift=lift)
+            aragog_core.write_core_columns(self, output, out, interior_o)
 
         self._store_profiles(interior_o, out)
 
@@ -2274,14 +2094,11 @@ class AragogRunner:
                 dSdr_cmb=cmb_gradient_state(
                     interior_o.aragog_solver, self._config.interior_energetics.aragog.core_bc
                 ),
-                T_core=core_temperature_state(
+                T_core=aragog_core.core_temperature_state(
                     interior_o.aragog_solver, self._config.interior_energetics.aragog.core_bc
                 ),
                 mesh_surface_pressure=mesh_surface_pressure_state(interior_o.aragog_solver),
-                core_module_rho_cen=getattr(interior_o, '_frozen_core_rho_cen', None),
-                core_module_length_scale=getattr(interior_o, '_frozen_core_length_scale', None),
-                core_module_m_core=getattr(interior_o, '_frozen_core_m_core', None),
-                core_module_p_cen=getattr(interior_o, '_frozen_core_p_cen', None),
+                core_profile=aragog_core.frozen_profile(interior_o),
             )
 
         return sim_time, output
@@ -2405,36 +2222,19 @@ class AragogRunner:
             dSdr_snapshot = solver.get_current_dSdr_cmb()
         if dSdr_snapshot is None:
             dSdr_snapshot = getattr(solver, '_dSdr_cmb_init', None)
-        # An explicit start (re-melt, resume, exhausted ladder) wins over the last solution.
-        T_core_snapshot = getattr(solver, '_T_core_init', None)
-        if T_core_snapshot is None and hasattr(solver, 'get_current_core_temperature'):
-            T_core_snapshot = solver.get_current_core_temperature()
         # A cold start (first solve, or after a re-melt) has neither; take
         # the value attempt 1 starts from, so retries do not inherit its end.
-        core_bc = getattr(self._config.interior_energetics.aragog, 'core_bc', None)
+        core_bc = self._config.interior_energetics.aragog.core_bc
         S0 = getattr(solver, '_S0', None)
         n_stag = getattr(solver, '_n_stag', None)
-        if S0 is not None and n_stag is not None:
-            if dSdr_snapshot is None:
-                if core_bc == 'energy_balance' and len(S0) == n_stag + 1:
-                    dSdr_snapshot = float(S0[n_stag])
-                elif core_bc == 'core_module' and len(S0) >= n_stag + 2:
-                    dSdr_snapshot = float(S0[n_stag])
-            if T_core_snapshot is None:
-                if core_bc == 'core_module' and len(S0) >= n_stag + 2:
-                    T_core_snapshot = float(S0[n_stag + 1])
-                elif core_bc == 'bower2018' and len(S0) == n_stag + 1:
-                    T_core_snapshot = float(S0[n_stag])
+        if dSdr_snapshot is None and S0 is not None and n_stag is not None:
+            if (core_bc == 'energy_balance' and len(S0) == n_stag + 1) or (
+                core_bc == 'core_module' and len(S0) >= n_stag + 2
+            ):
+                dSdr_snapshot = float(S0[n_stag])
         dSdr_ic = dSdr_snapshot
-        T_core_ic = T_core_snapshot
         sol_pre = getattr(solver, '_solution', None)
-        # A stratified core's shell: the set start, else where this step starts from.
-        shell_ic = getattr(solver, '_T_shell_init', None)
-        if shell_ic is None and core_bc == 'core_module' and n_stag is not None:
-            y_pre = getattr(sol_pre, 'y', None)
-            start = np.asarray(y_pre)[:, -1] if np.ndim(y_pre) == 2 else S0
-            if start is not None and len(start) > n_stag + 2:
-                shell_ic = np.array(start[n_stag + 2 :], dtype=float)
+        T_core_ic, shell_ic = aragog_core.call_start(solver, core_bc, sol_pre)
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.
         T_core_pre = float(hf_row.get('T_cmb', hf_row.get('T_core', 0.0)))
@@ -2698,10 +2498,7 @@ class AragogRunner:
                     else:
                         solver._dSdr_cmb_init = dSdr_ic
                 if T_core_ic is not None:
-                    if hasattr(solver, 'set_initial_core_temperature'):
-                        solver.set_initial_core_temperature(T_core_ic)
-                    else:
-                        solver._T_core_init = T_core_ic
+                    aragog_core.set_core_start(solver, T_core_ic)
                 if shell_ic is not None:
                     solver.set_initial_shell_temperature(shell_ic)
                 solver.reset()
@@ -2729,10 +2526,7 @@ class AragogRunner:
                 solver.set_initial_dSdr_cmb(dSdr_next)
             else:
                 solver._dSdr_cmb_init = dSdr_next
-            if hasattr(solver, 'set_initial_core_temperature'):
-                solver.set_initial_core_temperature(t_core_next)
-            else:
-                solver._T_core_init = t_core_next
+            aragog_core.set_core_start(solver, t_core_next)
             if shell_ic is not None:
                 solver.set_initial_shell_temperature(shell_ic if skipped else None)
 
@@ -3006,10 +2800,7 @@ class AragogRunner:
         dSdr_cmb: float | None = None,
         T_core: float | None = None,
         mesh_surface_pressure: float | None = None,
-        core_module_rho_cen: float | None = None,
-        core_module_length_scale: float | None = None,
-        core_module_m_core: float | None = None,
-        core_module_p_cen: float | None = None,
+        core_profile: dict | None = None,
     ):
         """Write entropy solver output to NetCDF using SolverOutput.
 
@@ -3094,10 +2885,7 @@ class AragogRunner:
                 ('dSdr_cmb_state', dSdr_cmb, 'J kg-1 K-1 m-1'),
                 ('T_core_state', T_core, 'K'),
                 ('mesh_surface_pressure', mesh_surface_pressure, 'Pa'),
-                ('core_module_rho_cen', core_module_rho_cen, 'kg m-3'),
-                ('core_module_length_scale', core_module_length_scale, 'm'),
-                ('core_module_m_core', core_module_m_core, 'kg'),
-                ('core_module_p_cen', core_module_p_cen, 'Pa'),
+                *aragog_core.frozen_profile_fields(core_profile),
             ):
                 if value is None:
                     continue
@@ -3215,28 +3003,6 @@ def cmb_gradient_state(solver, core_bc: str) -> float | None:
     return solver.get_current_dSdr_cmb()
 
 
-def core_temperature_state(solver, core_bc: str) -> float | None:
-    """Core temperature state of a ``core_module`` or ``bower2018`` solve [K].
-
-    Parameters
-    ----------
-    solver : EntropySolver
-        Aragog solver after at least one solve.
-    core_bc : str
-        ``interior_energetics.aragog.core_bc``.
-
-    Returns
-    -------
-    float or None
-        T_core [K] for ``core_module`` or ``bower2018``, else None.
-    """
-    if core_bc not in ('core_module', 'bower2018') or not hasattr(
-        solver, 'get_current_core_temperature'
-    ):
-        return None
-    return solver.get_current_core_temperature()
-
-
 def mesh_surface_pressure_state(solver) -> float | None:
     """Surface pressure of the solver's Adams-Williamson mesh [Pa].
 
@@ -3292,12 +3058,11 @@ def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_
         write_diagnostics=getattr(config.interior_energetics, 'write_flux_diagnostics', False),
         T_surf_coupled=hf_row.get('T_surf'),
         dSdr_cmb=cmb_gradient_state(solver, config.interior_energetics.aragog.core_bc),
-        T_core=core_temperature_state(solver, config.interior_energetics.aragog.core_bc),
+        T_core=aragog_core.core_temperature_state(
+            solver, config.interior_energetics.aragog.core_bc
+        ),
         mesh_surface_pressure=mesh_surface_pressure_state(solver),
-        core_module_rho_cen=getattr(interior_o, '_frozen_core_rho_cen', None),
-        core_module_length_scale=getattr(interior_o, '_frozen_core_length_scale', None),
-        core_module_m_core=getattr(interior_o, '_frozen_core_m_core', None),
-        core_module_p_cen=getattr(interior_o, '_frozen_core_p_cen', None),
+        core_profile=aragog_core.frozen_profile(interior_o),
     )
 
 
@@ -3371,16 +3136,6 @@ def _snapshot_scalar(output_dir: str, time: float, name: str) -> tuple[float | N
             return None, 'absent'
         value = float(np.asarray(raw).item())
     return (value, 'ok') if np.isfinite(value) else (None, 'not finite')
-
-
-def _snapshot_shell(output_dir: str, time: float) -> np.ndarray | None:
-    """Shell temperatures [K] of a stratified core from the snapshot at ``time``, or None."""
-    fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), time, '_int.nc')
-    with nc.Dataset(fpath) as ds:
-        if 'core_T_shell_state' not in ds.variables:
-            return None
-        t_shell = np.asarray(ds['core_T_shell_state'][:], dtype=float)
-    return t_shell if np.all(np.isfinite(t_shell)) else None
 
 
 def get_all_output_times(output_dir: str):

@@ -104,10 +104,13 @@ FUNCTION_CONDITIONS = {
         'interior_struct/common.py',
         'record_volatile_change',
     ): 'interior_struct.module = "zalmoxis"',
-    (
-        'interior_energetics/aragog.py',
-        '_write_core_module_diagnostics',
-    ): 'interior_energetics.module = "aragog", interior_energetics.aragog.core_bc = "core_module"',
+    **{
+        ('interior_energetics/aragog_core.py', writer): (
+            'interior_energetics.module = "aragog", '
+            'interior_energetics.aragog.core_bc = "core_module"'
+        )
+        for writer in ('write_core_diagnostics', 'write_core_columns')
+    },
 }
 
 

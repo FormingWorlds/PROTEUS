@@ -1984,7 +1984,7 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/interior_energetics/aragog.py",
+          "file": "src/proteus/interior_energetics/aragog_core.py",
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         }
       ],
@@ -1999,7 +1999,7 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/interior_energetics/aragog.py",
+          "file": "src/proteus/interior_energetics/aragog_core.py",
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         }
       ],
@@ -2016,7 +2016,7 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/interior_energetics/aragog.py",
+          "file": "src/proteus/interior_energetics/aragog_core.py",
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         }
       ],
@@ -2031,7 +2031,7 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/interior_energetics/aragog.py",
+          "file": "src/proteus/interior_energetics/aragog_core.py",
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         }
       ],
@@ -2046,7 +2046,7 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/interior_energetics/aragog.py",
+          "file": "src/proteus/interior_energetics/aragog_core.py",
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         }
       ],
@@ -2061,7 +2061,7 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/interior_energetics/aragog.py",
+          "file": "src/proteus/interior_energetics/aragog_core.py",
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         }
       ],
@@ -2076,7 +2076,7 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/interior_energetics/aragog.py",
+          "file": "src/proteus/interior_energetics/aragog_core.py",
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         },
         {
@@ -2389,11 +2389,7 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/interior_energetics/aragog.py",
-          "condition": "interior_energetics.module = \"aragog\""
-        },
-        {
-          "file": "src/proteus/interior_energetics/aragog.py",
+          "file": "src/proteus/interior_energetics/aragog_core.py",
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         },
         {
@@ -2414,11 +2410,7 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/interior_energetics/aragog.py",
-          "condition": "interior_energetics.module = \"aragog\""
-        },
-        {
-          "file": "src/proteus/interior_energetics/aragog.py",
+          "file": "src/proteus/interior_energetics/aragog_core.py",
           "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         },
         {
@@ -2512,8 +2504,8 @@
       "origin": "literal",
       "producers": [
         {
-          "file": "src/proteus/interior_energetics/aragog.py",
-          "condition": "interior_energetics.module = \"aragog\""
+          "file": "src/proteus/interior_energetics/aragog_core.py",
+          "condition": "interior_energetics.module = \"aragog\", interior_energetics.aragog.core_bc = \"core_module\""
         },
         {
           "file": "src/proteus/interior_energetics/wrapper.py",

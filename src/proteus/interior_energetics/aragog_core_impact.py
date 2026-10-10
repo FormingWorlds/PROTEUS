@@ -6,12 +6,10 @@ import logging
 
 import numpy as np
 
+from proteus.interior_energetics.aragog_core import SOLVER_ONLY_KEYS
 from proteus.utils.constants import secs_per_year
 
 log = logging.getLogger('fwl.' + __name__)
-
-# core_module params the solver reads itself; the budget factory rejects them.
-_SOLVER_ONLY_KEYS = ('q_radio', 'ra_crit_cmb')
 
 
 def remelt_core_module(
@@ -115,7 +113,7 @@ def refit_core_at_reset(hf_row: dict, interior_o, solver) -> None:
         c_p=float(params['c_p']),
     )
     refit = dict(params, rho_cen=float(fit.rho_cen), length_scale=float(fit.length_scale))
-    budget_params = {k: v for k, v in refit.items() if k not in _SOLVER_ONLY_KEYS}
+    budget_params = {k: v for k, v in refit.items() if k not in SOLVER_ONLY_KEYS}
     new = build_core_module_budget(budget_params, r_cmb=r_cmb, p_cmb_fallback=p_cmb)
     t_pre, t_new = pending['t_pre'], pending['t_new']
     e_pre = new.heat_content(t_pre)
