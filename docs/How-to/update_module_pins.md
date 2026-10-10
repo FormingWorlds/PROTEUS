@@ -23,8 +23,9 @@ module is distributed.
 
 
 A third entry, PETSc, is pinned in `[tool.proteus.modules.petsc]` by the SHA-256
-of a pre-built archive rather than a git ref, because it is downloaded as a
-binary from OSF.
+of its source archive rather than a git ref: `tools/get_petsc.sh` downloads it from
+Zenodo (`url`), or from the DataverseNL mirror (`mirror`) when Zenodo fails, and
+refuses a file with another SHA-256.
 
 **PyPI floors** are minimum bounds. When a user runs `pip install -e ".[develop]"`,
 pip resolves the newest release that satisfies every floor. The floor is the
@@ -37,8 +38,8 @@ identical AGNI, SOCRATES, and SPIDER checkouts.
 
 ## How the update process works
 
-Everything downstream reads from the same table, so a pin only needs to be
-changed in one place:
+Everything in PROTEUS reads from the same table, so a pin is changed in
+`pyproject.toml` alone (PETSc is the exception, see Case 4):
 
 - **`tools/get_*.sh`** read git pins through `tools/_module_pins.py`
   (`python tools/_module_pins.py agni ref` prints the pinned AGNI commit) and
@@ -55,7 +56,8 @@ changed in one place:
   pinned but not drift-checked by the doctor.
 
 Because of this, bumping a module is a single-line edit followed by a badge
-refresh and a local re-sync.
+refresh and a local re-sync; a PETSc archive change is three lines here and the
+matching lines in SPIDER.
 
 ## Procedure
 
@@ -176,6 +178,25 @@ follow upstream, not a default.
     matching that floor, so the editable checkout and the published release
     cannot diverge. Do not add a second pin for these in
     `[tool.proteus.modules]`.
+
+### Case 4: change the PETSc archive
+
+PETSc is pinned by its archive, not a ref: `url` (the Zenodo file), `mirror`
+(the DataverseNL file of the same archive) and `sha256` in
+`[tool.proteus.modules.petsc]` change together, since `tools/get_petsc.sh`
+accepts a file from either source only when its SHA-256 matches. SPIDER's
+`tools/get_petsc.sh` holds its own copy of the three values and is changed in the
+same window, so the two installs build the same PETSc.
+
+Check the mirror on its own by breaking the Zenodo source, so the download has
+to come from DataverseNL:
+
+```console
+PETSC_URL=file:///nonexistent/petsc.zip bash tools/get_petsc.sh /tmp/petsc-check
+```
+
+The log names the DataverseNL file it downloaded, and the build continues only if
+its SHA-256 matches the pin.
 
 ## Propagating the change to other developers
 

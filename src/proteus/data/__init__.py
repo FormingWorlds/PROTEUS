@@ -26,6 +26,7 @@ from pathlib import Path
 EXOPLANET_REFERENCE = 'observe.exoplanet_reference'
 SURFACE_ALBEDOS_HAMMOND_2024 = 'atmos_clim.surface_albedos.hammond_2024'
 SCATTERING = 'atmos_clim.scattering.socrates_aerosols'
+REFRACTIVE = 'atmos_clim.refractive.agni_aerosols'
 # Declared in the fwl-io shared manifest:
 EOS_SEAGER_2007 = 'interior.eos.seager_2007'
 MASS_RADIUS_ZENG_2019 = 'interior.mass_radius.zeng_2019'
@@ -67,10 +68,10 @@ def spectral_file_key(group: str, bands: str | int) -> str:
     return f'atmos_clim.spectral_files.{str(group).lower()}.{bands}'
 
 
-# The oldest fwl-io that reads this manifest schema and declares every shared key
-# PROTEUS reads; a stale load or a missing key asks for an upgrade to this version.
-# The pyproject.toml requirement must equal it; a test checks.
-FWL_IO_FLOOR = '26.10.7'
+# The oldest fwl-io that reads this manifest schema and pins every shared dataset PROTEUS
+# reads at the expected version; a stale load or a missing key asks for an upgrade to this
+# version. The pyproject.toml requirement must equal it; a test checks.
+FWL_IO_FLOOR = '26.10.7.1'
 
 
 def manifest_path() -> Path:
@@ -253,6 +254,38 @@ def dataset_dir(key: str, data_root: str | Path | None = None) -> Path:
             f'{key!r}; the files are expected under an r<record-id> version directory.'
         )
     return fetcher.target_dir
+
+
+def missing_files(key: str, data_root: str | Path | None = None) -> list[str]:
+    """Return the registry files of a dataset that are absent from its version directory.
+
+    Parameters
+    ----------
+    key : str
+        Dotted manifest key of the dataset.
+    data_root : str or Path, optional
+        Reference-data tree to resolve against. Defaults to the tree PROTEUS
+        resolves from the environment.
+
+    Returns
+    -------
+    list of str
+        Sorted names of the missing files; empty when every file is present. Presence
+        only: the contents are checked when fwl-io fetches the files.
+
+    Raises
+    ------
+    ValueError
+        The dataset is an archive (``extract``): its registry names the archive, which
+        fwl-io removes after unpacking, so file presence says nothing about it.
+    """
+    fetcher = _fetcher(key, data_root=data_root)
+    if fetcher.extract is not None:
+        raise ValueError(
+            f'missing_files cannot check {key!r}: it is a {fetcher.extract} archive dataset, '
+            'whose registry names the archive that is removed after unpacking'
+        )
+    return sorted(n for n in fetcher.registry if not (fetcher.target_dir / n).is_file())
 
 
 def fetch_dataset(key: str, data_root: str | Path | None = None) -> list[Path]:

@@ -38,6 +38,7 @@ from proteus.data import (
     MELTING_MONTEUX_MINUS600,
     MELTING_MONTEUX_PLUS600,
     MELTING_WOLF_BOWER_2018,
+    REFRACTIVE,
     SCATTERING,
     STELLAR_SPECTRA_MUSCLES,
     STELLAR_SPECTRA_NAMED,
@@ -62,9 +63,9 @@ ZENG_2019_RECORD = '15727899'
 HAMMOND_2024_RECORD = '15880455'
 SEAGER_2007_RECORD = '15727998'
 SCATTERING_RECORD = '19294180'
+REFRACTIVE_RECORD = '23000222'
 SOLAR_RECORD = '17981836'
-NAMED_RECORD = '15721440'
-NAMED_V2_RECORD = '23197931'
+NAMED_RECORD = '23197931'
 MUSCLES_RECORD = '17802209'
 PHOENIX_RECORD = '17674612'
 WOLF_BOWER_RECORD = '17417017'
@@ -112,10 +113,6 @@ SHARED_DATASETS = {
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# Named v2 holds the 11 v1 spectra plus toi561.txt; the shared pin may name either.
-ACCEPTED_RECORDS = {NAMED_RECORD: {NAMED_RECORD, NAMED_V2_RECORD}}
-
-
 # Spectral-file datasets: (group, bands) -> Zenodo record, one dataset each.
 SPECTRAL_RECORDS = {
     ('Frostflow', '16'): '15799743',
@@ -138,6 +135,7 @@ _OWNED_KEYS = {
     EXOPLANET_REFERENCE,
     SURFACE_ALBEDOS_HAMMOND_2024,
     SCATTERING,
+    REFRACTIVE,
 }
 
 
@@ -178,6 +176,8 @@ def test_manifest_declares_the_datasets():
     assert datasets[EXOPLANET_REFERENCE].zenodo == f'10.5281/zenodo.{EXOPLANET_RECORD}'
     assert datasets[SCATTERING].subdir == 'atmos_clim/scattering/socrates_aerosols'
     assert datasets[SCATTERING].zenodo == f'10.5281/zenodo.{SCATTERING_RECORD}'
+    assert datasets[REFRACTIVE].subdir == 'atmos_clim/refractive/agni_aerosols'
+    assert datasets[REFRACTIVE].zenodo == f'10.5281/zenodo.{REFRACTIVE_RECORD}'
     # All are PROTEUS-owned, so "proteus" has to appear in required_by or
     # "fwl-io fetch proteus" would skip them.
     for ds in datasets.values():
@@ -193,6 +193,7 @@ def test_every_owned_dataset_pins_its_dataverse_mirror():
         EXOPLANET_REFERENCE: '10.34894/9UJ0R7',
         SURFACE_ALBEDOS_HAMMOND_2024: '10.34894/8ARDN5',
         SCATTERING: '10.34894/6Z8Y0Q',
+        REFRACTIVE: '10.34894/PZFHP2',
     }
     assert len(set(pins.values())) == len(pins)
 
@@ -222,9 +223,7 @@ def test_shared_datasets_resolve_through_the_fwl_io_manifest():
     for key, (subdir, record) in SHARED_DATASETS.items():
         assert key in shared, f'{key} is not declared in the fwl-io shared manifest'
         assert _dataset(key).subdir == subdir
-        assert _dataset(key).zenodo.removeprefix('10.5281/zenodo.') in ACCEPTED_RECORDS.get(
-            record, {record}
-        )
+        assert _dataset(key).zenodo == f'10.5281/zenodo.{record}'
     for (group, bands), record in SPECTRAL_RECORDS.items():
         assert shared[spectral_file_key(group, bands)].zenodo == f'10.5281/zenodo.{record}'
     # Discrimination: none of these keys is PROTEUS-owned, so a lookup that only
@@ -267,6 +266,7 @@ def test_registries_pin_committed_checksums():
     hammond = _dataset(SURFACE_ALBEDOS_HAMMOND_2024).registry()
     seager = _dataset(EOS_SEAGER_2007).registry()
     scattering = _dataset(SCATTERING).registry()
+    refractive = _dataset(REFRACTIVE).registry()
     solar = _dataset(STELLAR_SPECTRA_SOLAR).registry()
     named = _dataset(STELLAR_SPECTRA_NAMED).registry()
     muscles = _dataset(STELLAR_SPECTRA_MUSCLES).registry()
@@ -286,6 +286,10 @@ def test_registries_pin_committed_checksums():
     )
     assert set(scattering) == {f'{name}.mon' for name in names.split()}
     assert scattering['sulph.mon'] == 'md5:ff75bb4b4136e562a45075d2ff7290d5'
+    assert len(refractive) == 71, (
+        'the refractive record ships 68 materials, a readme, a licence and plots'
+    )
+    assert refractive['SiO2_amorph.txt'] == 'md5:f52766cbc3679f973184cc3cb5ca7e30'
     assert len(zeng) == 57, 'the Zeng-2019 grid ships 57 curve files'
     assert len(hammond) == 26, 'the Hammond-2024 record ships 25 spectra and a readme'
     assert set(seager) == {
@@ -294,9 +298,8 @@ def test_registries_pin_committed_checksums():
         'eos_seager07_water.txt',
     }
     assert len(solar) == 10, 'the solar record ships 10 spectra'
-    v2 = _dataset(STELLAR_SPECTRA_NAMED).zenodo.endswith(NAMED_V2_RECORD)
-    assert len(named) == 11 + v2, 'Named v1 ships 11 spectra; v2 adds toi561.txt'
-    assert not v2 or named['toi561.txt'] == 'md5:2ef31357cababb96941c61072f7a49d0'
+    assert len(named) == 12, 'the named-star record ships 12 spectra'
+    assert named['toi561.txt'] == 'md5:2ef31357cababb96941c61072f7a49d0'
     assert len(muscles) == 38, 'the MUSCLES record ships 36 spectra, a readme and a table'
     assert {'density_melt.dat', 'density_solid.dat', 'adiabat_temp_grad_melt.dat'} <= set(
         wolf_bower
@@ -368,9 +371,7 @@ def test_dataset_dir_is_versioned(tmp_path):
         tmp_path / 'atmos_clim' / 'surface_albedos' / 'hammond_2024' / f'r{HAMMOND_2024_RECORD}'
     )
     for key, (subdir, record) in SHARED_DATASETS.items():
-        pinned = _dataset(key).zenodo.removeprefix('10.5281/zenodo.')
-        assert pinned in ACCEPTED_RECORDS.get(record, {record})
-        assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{pinned}'
+        assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{record}'
     assert dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path) == (
         tmp_path / 'star' / 'spectra' / 'phoenix' / f'r{PHOENIX_RECORD}'
     )
@@ -743,3 +744,33 @@ def test_fetch_and_read_sides_agree_on_a_home_relative_data_root(monkeypatch, tm
     # the working directory, which is still an absolute, plausible-looking path.
     assert '~' not in str(proteus_side)
     assert proteus_side.is_relative_to(tmp_path)
+
+
+def test_missing_files_lists_absent_registry_files(tmp_path):
+    """missing_files names, sorted, every registry file that is not a file in the version
+    directory, a directory in its place included; a complete dataset gives an empty list."""
+    from proteus.data import REFRACTIVE, _dataset, missing_files
+
+    names = sorted(_dataset(REFRACTIVE).registry())
+    folder = dataset_dir(REFRACTIVE, data_root=tmp_path)
+    assert missing_files(REFRACTIVE, data_root=tmp_path) == names
+    folder.mkdir(parents=True)
+    for name in names:
+        (folder / name).write_text('x')
+    assert missing_files(REFRACTIVE, data_root=tmp_path) == []
+    (folder / names[1]).unlink()
+    (folder / names[1]).mkdir()
+    (folder / names[0]).unlink()
+    assert missing_files(REFRACTIVE, data_root=tmp_path) == names[:2]
+    with pytest.raises(KeyError):
+        missing_files('atmos_clim.refractive.unknown', data_root=tmp_path)
+
+
+def test_missing_files_refuses_an_archive_dataset(tmp_path):
+    """An archive dataset is refused, since its registry names the archive fwl-io removes."""
+    from proteus.data import missing_files
+
+    with pytest.raises(
+        ValueError, match="'interior.eos.chabrier_2021_hhe': it is a tar archive"
+    ):
+        missing_files('interior.eos.chabrier_2021_hhe', data_root=tmp_path)
