@@ -80,8 +80,8 @@ def refit_core_at_reset(hf_row: dict, interior_o, solver) -> None:
     the refitted profile, ``E_new(T_new) - E_new(T_pre)``, is booked in
     ``step_dE_impact_core_J``, and the refit's content difference at ``T_pre``,
     ``E_new - E_old`` (the added iron's heat content from the profile's
-    reference), in ``step_dE_impact_core_refit_J``. Both land on the first row after the
-    impact, through ``interior_o._core_impact_booked``. A failing fit, budget build
+    reference), in ``step_dE_impact_core_refit_J``. Both land on the first kept row after
+    the impact, through ``interior_o._core_impact_booked``. A failing fit, budget build
     or heat check raises before anything changes; the final profile check raises
     after the solver budget is rebuilt, and the run then stops.
 
@@ -115,7 +115,9 @@ def refit_core_at_reset(hf_row: dict, interior_o, solver) -> None:
 
     install_core_profile(interior_o, solver, refit, m_core, p_cen)
     interior_o._core_refit_pending = None
-    interior_o._core_impact_booked = (dE, dE_refit)
+    # Added, not set: a skipped call keeps the booking of an impact before this one.
+    lift, refit_heat = getattr(interior_o, '_core_impact_booked', None) or (0.0, 0.0)
+    interior_o._core_impact_booked = (lift + dE, refit_heat + dE_refit)
 
     log.info(
         '    core refit: rho_cen %.2f kg/m^3, length_scale %.1f km at R_core %.6e m, '

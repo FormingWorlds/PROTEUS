@@ -32,6 +32,7 @@ from aragog.parser import (
 )
 from proteus.accretion.common import snap_to_impact
 from proteus.interior_energetics import aragog_core
+from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
 from proteus.interior_energetics.aragog_phase import (
     build_jax_phase_params,
     build_mixed_phase_params,
@@ -657,12 +658,8 @@ class AragogRunner:
                                 getattr(interior_o, '_last_dSdr_cmb_status', 'absent'),
                             )
                         solver.set_initial_dSdr_cmb(dSdr_cmb)
-                    if config.interior_energetics.aragog.core_bc in (
-                        'core_module',
-                        'bower2018',
-                    ):
-                        aragog_core.restore_core_start(hf_row, interior_o, solver)
                     if config.interior_energetics.aragog.core_bc == 'core_module':
+                        aragog_core.restore_core_start(hf_row, interior_o, solver)
                         # The structure of the resumed row is not always the snapshot's.
                         try:
                             aragog_core.carry_core_across_update(
@@ -729,8 +726,6 @@ class AragogRunner:
             before = aragog_core.core_state(solver) if core_module else None
             solver.reset()
             if core_module:
-                from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
-
                 # An impact refit covers the structure change of its reset.
                 try:
                     if getattr(interior_o, '_core_refit_pending', None) is not None:
@@ -2527,7 +2522,7 @@ class AragogRunner:
                 solver._max_steps = base_max_steps
             # Release the set starts: the next step takes them from the solution.
             solver.set_initial_dSdr_cmb(None)
-            if self._config.interior_energetics.aragog.core_bc in ('core_module', 'bower2018'):
+            if self._config.interior_energetics.aragog.core_bc == 'core_module':
                 solver.set_initial_core_temperature(None)
                 solver.set_initial_shell_temperature(None)
 
@@ -2826,8 +2821,8 @@ class AragogRunner:
             [J kg-1 K-1 m-1], written as ``dSdr_cmb_state`` so a resume
             restarts the boundary state where it was. None writes nothing.
         T_core : float or None
-            Core temperature state of the ``core_module`` or ``bower2018``
-            core boundary condition at ``time`` [K], written as
+            Core temperature state of the ``core_module`` core boundary
+            condition at ``time`` [K], written as
             ``T_core_state`` so a resume restarts the core temperature. None
             writes nothing.
         mesh_surface_pressure : float or None

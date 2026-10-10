@@ -921,7 +921,7 @@ def GetHelpfileKeys():
         'core_C_eff',           # core effective heat capacity incl. nucleation terms; computed only with core_bc = core_module, 0 otherwise [J K-1]
         'core_dynamo_margin',   # entropy margin for dynamo action; computed only with core_bc = core_module, 0 otherwise [W K-1]
         'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); computed only with core_bc = core_module, 0 otherwise [T]
-        'core_regime',          # crystallisation code: 0 liquid, 1 bottom-up, 2 top-down, 3 snow, 4 fully frozen; computed only with core_bc = core_module, 0 otherwise [1]
+        'core_regime',          # crystallisation code: 0 fully liquid, 1 freezing from the centre outwards, 4 fully frozen; 2 (from the top) and 3 (snow) do not appear, Aragog ends the run at such a state; computed only with core_bc = core_module, 0 otherwise [1]
         'core_strat_depth',     # thermally stratified layer depth below the CMB; computed only with core_bc = core_module, 0 otherwise [m]
         'core_T_top',           # temperature at the top of the core, the top shell cell with stratification, else T_cmb; computed only with core_bc = core_module, 0 otherwise [K]
 
@@ -943,9 +943,9 @@ def GetHelpfileKeys():
         'step_dE_compression_J',  # per-call structure-re-solve compression work [J] (diagnostic)
         'step_dE_state_heat_J',  # per-call entropy-transported heat content change [J]
         'step_dE_impact_J',  # giant-impact re-melt heat injection [J] (both residual sides)
-        'step_dE_impact_core_J',  # giant-impact core heat: the T_core lift under the refitted profile, on the first row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
-        'step_dE_impact_core_refit_J',  # giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
-        'step_dE_struct_core_J',  # change of the core heat content across the structure updates since the last kept interior call (core mass and total entropy kept), positive when the heat content rises; with an inner core it includes the change of the reference of the latent and gravitational energy, which each budget counts along its own melting curve; computed only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_impact_core_J',  # giant-impact core heat: the T_core lift under the refitted profile, on the first kept row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_impact_core_refit_J',  # giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first kept row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_struct_core_J',  # change of the core heat content across the structure updates since the last kept interior call (core mass and total entropy kept), positive when the heat content rises; the rule keeps entropy and the heat content is an energy, so with an inner core the term also holds the latent and gravitational energy of the mass that freezes or melts at the update, which the rule does not put into the core, and the change of the reference from which each budget counts that energy; computed only with core_bc = core_module, 0 otherwise [J]
         'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
         'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
         'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
@@ -953,7 +953,7 @@ def GetHelpfileKeys():
         'solver_residual_J',    # cumulative entropy-ODE LHS-RHS residual [J]
         'step_dE_core_J',       # core heat change over the call net of its internal source, plus the jump of the heat content since the last kept call; computed only with core_bc = core_module, 0 otherwise [J]
         'E_core_residual_J',    # cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J - step_dE_impact_core_refit_J - step_dE_struct_core_J); computed only with core_bc = core_module, 0 otherwise [J]
-        'E_core_residual_frac', # E_core_residual_J / max(sum(|step_dE_F_cmb_J| + |the 3 booked terms|), 1 J); computed only with core_bc = core_module, 0 otherwise [1]
+        'E_core_residual_frac', # E_core_residual_J / max(sum(|step_dE_F_cmb_J| + |the 3 booked terms|), 1 J); a booked term equals the jump it explains by construction, so the fraction checks the bookkeeping of those terms and the solver's core heat against its CMB flux; computed only with core_bc = core_module, 0 otherwise [1]
         'Cp_eff',           # effective mantle heat capacity [J kg-1 K-1]
 
         # Host star properties

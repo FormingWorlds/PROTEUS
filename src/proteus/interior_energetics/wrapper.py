@@ -2016,7 +2016,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     re-melt unless the re-melted base is hotter
     (``aragog_core_impact.remelt_core_module``); the core profile is refit to the
     grown core at the next solver reset, and the core's heat goes to
-    ``step_dE_impact_core_J`` on the next row, not to ``step_dE_impact_J``, which
+    ``step_dE_impact_core_J`` on the next kept row, not to ``step_dE_impact_J``, which
     stays the mantle's.
 
     The melt-state keys in ``hf_row`` (``T_magma``, ``T_cmb``, ``Phi_global``,
@@ -2050,22 +2050,14 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     if S_end is not None:
         S_end = np.asarray(S_end, dtype=float).ravel().copy()
 
-    # Keep the core temperature across the re-melt; core_module lifts it to the
-    # re-melted base below, never lowers it.
-    core_bc = getattr(getattr(config.interior_energetics, 'aragog', None), 'core_bc', None)
+    # A core_module core keeps its temperature across the re-melt; the lift below
+    # raises it to the re-melted base, never lowers it.
+    core_module = config.interior_energetics.aragog.core_bc == 'core_module'
     T_core_pre = None
-    if core_bc in ('core_module', 'bower2018'):
-        if hasattr(solver, 'get_current_core_temperature'):
-            T_core_pre = solver.get_current_core_temperature()
-        if T_core_pre is None:
+    if core_module:
+        T_core_pre = solver.get_current_core_temperature()
+        if T_core_pre is None:  # a re-melt before this one dropped the solution
             T_core_pre = getattr(solver, '_T_core_init', None)
-        if T_core_pre is None:
-            from proteus.interior_energetics.aragog_core import start_core_temperature
-
-            T_core_pre = start_core_temperature(solver, core_bc)
-        if T_core_pre is None:
-            t_cmb_val = hf_row.get('T_cmb', hf_row.get('T_core'))
-            T_core_pre = float(t_cmb_val) if t_cmb_val is not None else None
 
     # Drop cooled trajectory and CMB gradient before rebuilding initial conditions.
     # This prevents hot-starting from obsolete profiles or restoring cooled fields.
@@ -2111,12 +2103,13 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0)
         log.warning('    re-melt heat injection not booked: %s', unbooked)
 
-    # core_module: lift T_core to the re-melted base; the core refit waits for the next reset.
-    if core_bc == 'core_module' and T_core_pre is not None:
+    if core_module:
         from proteus.interior_energetics.aragog_core_impact import remelt_core_module
 
         S_ic = np.asarray(interior_o._last_entropy, dtype=float)
         try:
+            if T_core_pre is None:
+                raise ValueError('core_module: the solver holds no core temperature to re-melt')
             T_core_new = remelt_core_module(
                 hf_row, interior_o, solver, T_core_pre, float(S_ic[0])
             )
@@ -2151,7 +2144,7 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         ):
             hf_row[key] = output[key]
         # Accretion excludes a stratified core, so the top of a re-melted core is its T_cmb.
-        if config.interior_energetics.aragog.core_bc == 'core_module':
+        if core_module:
             hf_row['core_T_top'] = output['T_cmb']
 
     if 'Phi_global' in hf_row and 'M_mantle' in hf_row:
@@ -2211,8 +2204,9 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
     NotImplementedError
         If the interior module has no supported re-melt path (SPIDER).
     ValueError
-        If the interior module is unrecognised, or the core_module core or basal
-        temperature is not finite (``aragog_core_impact.remelt_core_module``).
+        If the interior module is unrecognised, or a core_module solver holds no core
+        temperature, or its core or basal temperature is not finite
+        (``aragog_core_impact.remelt_core_module``).
     RuntimeError
         If the Aragog solver has not been initialised.
     """
@@ -2465,6 +2459,11 @@ def run_interior(
                 write_data=write_data,
             )
             interior_o.aragog_fail_count = 0
+        except ValueError:
+            # A core_module call ends the run here: Aragog refuses a core state outside its model.
+            if config.interior_energetics.aragog.core_bc == 'core_module':
+                UpdateStatusfile(dirs, 21)
+            raise
         except InteriorStalledError:
             # InteriorStalledError indicates zero progress across successful steps.
             # Do not absorb it under the consecutive retry failure counter.

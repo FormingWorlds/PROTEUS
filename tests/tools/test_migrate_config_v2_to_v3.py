@@ -150,7 +150,6 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.core_module.ds_fusion',
         'interior_energetics.aragog.core_module.f_ohm',
         'interior_energetics.aragog.core_module.flux_geometry',
-        'interior_energetics.aragog.core_module.icn_width',
         'interior_energetics.aragog.core_module.k_core',
         'interior_energetics.aragog.core_module.layer_base_fraction',
         'interior_energetics.aragog.core_module.layer_g_mix',

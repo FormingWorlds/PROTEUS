@@ -5723,27 +5723,6 @@
       "group_qualifier": null
     },
     {
-      "path": "interior_energetics.aragog.core_module.icn_width",
-      "toml_section": "interior_energetics.aragog.core_module",
-      "class": "AragogCoreModule",
-      "type": "float",
-      "accepts_none": false,
-      "default": "10.0",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Temperature width [K] of the inner-core nucleation diagnostic sigmoid. Diagnostic only; does not affect the effective heat capacity.",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
       "path": "interior_energetics.aragog.core_module.alpha_c",
       "toml_section": "interior_energetics.aragog.core_module",
       "class": "AragogCoreModule",

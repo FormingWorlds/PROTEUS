@@ -5465,6 +5465,36 @@ def test_core_ledger_closes_across_a_booked_jump_and_shows_a_missing_booking(boo
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_core_row_through_the_helpfile_extension_gets_its_ledger_columns():
+    """A core_module row that is appended to the helpfile gets the core ledger: the first
+    row cools the core by 2e29 J against 1.99e29 J of CMB heat, so its residual is -1e27 J
+    on a scale of 1.99e29 J; the second row books a structure term of 3e29 J and closes to
+    +2e26 J, which adds to the first residual on the summed scale of both rows."""
+    row = ZeroHelpfileRow()
+    row.update(Time=0.0)
+    hf = CreateHelpfileFromDict(row)
+    first = ZeroHelpfileRow()
+    first.update(Time=100.0, core_C_eff=1.6e27, step_dE_core_J=-2.0e29, step_dE_F_cmb_J=1.99e29)
+    hf = ExtendHelpfile(hf, first)
+    assert hf['E_core_residual_J'].iloc[-1] == pytest.approx(-1.0e27, rel=1e-9)
+    assert hf['E_core_residual_frac'].iloc[-1] == pytest.approx(-1.0e27 / 1.99e29, rel=1e-9)
+
+    second = ZeroHelpfileRow()
+    second.update(
+        Time=200.0,
+        core_C_eff=1.6e27,
+        step_dE_core_J=2.0e29,
+        step_dE_F_cmb_J=1.002e29,
+        step_dE_struct_core_J=3.0e29,
+    )
+    hf = ExtendHelpfile(hf, second)
+    assert hf['E_core_residual_J'].iloc[-1] == pytest.approx(-0.8e27, rel=1e-9)
+    scale = 1.99e29 + 1.002e29 + 3.0e29
+    assert hf['E_core_residual_frac'].iloc[-1] == pytest.approx(-0.8e27 / scale, rel=1e-9)
+
+
+@pytest.mark.unit
 def test_core_ledger_scale_sums_the_history_of_core_rows_only():
     """The fraction's scale adds |step_dE_F_cmb_J| and the magnitudes of the 3 booked
     terms of every earlier core row (a lift of 2e29 J, a refit of 5e28 J and a structure

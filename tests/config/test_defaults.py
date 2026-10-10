@@ -330,8 +330,6 @@ def test_aragog_core_module_defaults_and_mode_validator():
         AragogCoreModule(light_element_fraction=1.0)  # bound is exclusive
     with pytest.raises(ValueError):
         AragogCoreModule(melting_curve='cubic')
-    with pytest.raises(ValueError):
-        AragogCoreModule(icn_width=0.0)
 
     # Diagnostics fields: Nimmo (2015) conductivity default, ohmic
     # fraction bounded on (0, 1], and the two printed CHR09 geometries.
@@ -427,6 +425,8 @@ def test_a_change_of_one_melting_curve_key_is_not_checked_against_the_old_other_
         ('zalmoxis', 'core_module', False, 'cvode', 1.0e9, 'adiabatic', None),
         ('zalmoxis', 'core_module', True, 'bdf', 0.0, 'liquidus_super', None),
         ('dummy', 'energy_balance', True, 'radau', 1.0e9, 'adiabatic', None),
+        ('zalmoxis', 'energy_balance', False, 'const', 0.0, 'liquidus_super', None),
+        ('zalmoxis', 'core_module', False, 'const', 0.0, 'liquidus_super', 'const_properties'),
         (
             'dummy',
             'core_module',
@@ -449,8 +449,9 @@ def test_core_module_requirements_are_checked_at_config_load(
     the central pressure of its profile fit, and its resolved shell does not run on Radau.
     A stratified core needs a structure that is solved once: structure updates off and the
     initial condition that has no baseline re-solve, because the core is carried across a
-    structure update with a heat content that a stratified budget does not give. Another
-    core boundary is not checked."""
+    structure update with a heat content that a stratified budget does not give. Constant
+    properties (the solver name 'const' here) load no entropy tables, which the CMB flux
+    of the core model needs. Another core boundary is not checked."""
     from types import SimpleNamespace
 
     from proteus.config._config import check_core_module_requirements
@@ -462,6 +463,7 @@ def test_core_module_requirements_are_checked_at_config_load(
         ),
         interior_energetics=SimpleNamespace(
             module='aragog',
+            const_properties=solver == 'const',
             aragog=SimpleNamespace(
                 core_bc=core_bc,
                 solver_method=solver,

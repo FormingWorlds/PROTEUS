@@ -193,9 +193,6 @@ class AragogCoreModule:
         Quadratic-curve quadratic coefficient [Pa-2].
     ds_fusion: float
         Entropy of fusion at the inner-core boundary [J kg-1 K-1].
-    icn_width: float
-        Temperature width [K] of the inner-core nucleation diagnostic sigmoid.
-        Diagnostic only; does not affect the effective heat capacity.
     alpha_c: float
         Compositional expansivity of the outer-core alloy.
     c_light: float
@@ -249,7 +246,6 @@ class AragogCoreModule:
     t_m1: float = field(default=2.95e-12)
     t_m2: float = field(default=8.37e-25)
     ds_fusion: float = field(default=172.8, validator=gt(0))
-    icn_width: float = field(default=10.0, validator=gt(0))
     alpha_c: float = field(default=0.0, validator=ge(0))
     c_light: float = field(default=0.0, validator=(ge(0), lt(1)))
     q_radio: float = field(default=0.0, validator=ge(0))

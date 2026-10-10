@@ -2405,8 +2405,9 @@ def test_the_per_step_impact_heat_starts_each_row_at_zero(tmp_path):
     [('aragog', 'core_module'), ('aragog', 'energy_balance'), ('dummy', 'core_module')],
 )
 def test_the_per_step_core_impact_heat_starts_every_row_at_zero(tmp_path, module, core_bc):
-    """The core part of the impact heat is cleared with the total on every new row, for any
-    interior and core boundary, so a booked lift is never carried into the next row."""
+    """The 2 core parts of the impact heat, the lift and the refit, are cleared with the
+    total on every new row, for any interior and core boundary, so a booked term is never
+    carried into the next row."""
     p = _make_main_loop_proteus(
         tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
     )
@@ -2414,17 +2415,19 @@ def test_the_per_step_core_impact_heat_starts_every_row_at_zero(tmp_path, module
     p.config.interior_energetics.aragog.core_bc = core_bc
     rows, incoming = [], []
 
+    keys = ('step_dE_impact_core_J', 'step_dE_impact_core_refit_J')
+
     def _writer(hf_row, step):
-        incoming.append(hf_row.get('step_dE_impact_core_J'))
+        incoming.append([hf_row.get(key) for key in keys])
         _write_post_outgas_row(hf_row, step, vapour=False)
         if step == 0:
-            hf_row['step_dE_impact_core_J'] = 2.4e30
+            hf_row.update(step_dE_impact_core_J=2.4e30, step_dE_impact_core_refit_J=9.8e29)
         return hf_row
 
     _run_main_loop_recording_mass(p, stop_at_loop=2, rows=rows, row_writer=_writer)
 
-    assert rows[0]['step_dE_impact_core_J'] == pytest.approx(2.4e30)
-    assert incoming[1] == 0.0
+    assert [rows[0][key] for key in keys] == [pytest.approx(2.4e30), pytest.approx(9.8e29)]
+    assert incoming[1] == [0.0, 0.0]
 
 
 # ---------------------------------------------------------------------------

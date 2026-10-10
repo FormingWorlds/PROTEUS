@@ -353,8 +353,8 @@ def check_core_module_requirements(instance, attribute, value):
     """Reject an Aragog core_module core that its structure or solver cannot serve.
 
     The core profile is fitted to the core mass and the central pressure, which only the
-    Zalmoxis structure provides, and Aragog refuses the resolved shell of a stratified core
-    on Radau. A stratified core cannot be carried across a structure update, because
+    Zalmoxis structure provides, its CMB flux needs the entropy EOS tables, and Aragog
+    refuses the resolved shell of a stratified core on Radau. A stratified core cannot be carried across a structure update, because
     Aragog gives no heat content for a stratified budget, so it needs a structure that
     is solved once: no dynamic update and no baseline re-solve after the start.
     """
@@ -367,6 +367,12 @@ def check_core_module_requirements(instance, attribute, value):
             f"interior_struct.module = 'zalmoxis', not '{instance.interior_struct.module}': "
             'the core profile is fitted to the core mass and the central pressure of the '
             'Zalmoxis structure.'
+        )
+    if interior.const_properties:
+        raise ValueError(
+            "interior_energetics.aragog.core_bc = 'core_module' needs "
+            'interior_energetics.const_properties = false: the CMB flux of the core model '
+            'is computed with the entropy EOS tables, which constant properties do not load.'
         )
     if not interior.aragog.core_module.stratification:
         return

@@ -349,7 +349,6 @@ from the running mesh.
 | `t_m1` | float | `2.95e-12` | Quadratic-curve linear coefficient \[Pa-1\]. |
 | `t_m2` | float | `8.37e-25` | Quadratic-curve quadratic coefficient \[Pa-2\]. |
 | `ds_fusion` | float | `172.8` | Entropy of fusion at the inner-core boundary \[J kg-1 K-1\]. Must be > 0. |
-| `icn_width` | float | `10.0` | Temperature width \[K\] of the inner-core nucleation diagnostic sigmoid. Diagnostic only; does not affect the effective heat capacity. Must be > 0. |
 | `alpha_c` | float | `0.0` | Compositional expansivity of the outer-core alloy. Must be >= 0. |
 | `c_light` | float | `0.0` | Light-element mass fraction of the outer core (complete rejection). Must be >= 0 and < 1. |
 | `q_radio` | float | `0.0` | Core radiogenic power \[W\], constant over a run. Must be >= 0. |
@@ -372,8 +371,9 @@ shell temperatures are stored in each interior snapshot, so a resume restarts th
 a reachable physical value for most of them while the mode is active (no
 inner core yet, no stratified layer, subadiabatic field estimate), so key any
 analysis on the configured `core_bc`, not on the column values. `core_regime`
-encodes the crystallisation topology as 0 = fully liquid, 1 = bottom-up,
-2 = top-down, 3 = snow, 4 = fully frozen (the `aragog.core.regime` taxonomy). `core_B_rms` uses
+encodes the way the core freezes as 0 = fully liquid, 1 = from the centre outwards,
+4 = fully frozen; the codes 2 (from the top) and 3 (snow) of `aragog.core.regime` do not
+appear, because Aragog ends the run at such a state. `core_B_rms` uses
 only the superadiabatic part of the heat flow as its reference flux, so a
 compositionally driven dynamo under a subadiabatic CMB reports a positive
 `core_dynamo_margin` with `core_B_rms = 0`; that pairing is the documented

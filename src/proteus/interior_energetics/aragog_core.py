@@ -80,7 +80,7 @@ def snapshot_shell(output_dir: str, time: float) -> np.ndarray | None:
 
 
 def core_temperature_state(solver, core_bc: str) -> float | None:
-    """Core temperature state of a ``core_module`` or ``bower2018`` solve [K].
+    """Core temperature state of a ``core_module`` solve [K].
 
     Parameters
     ----------
@@ -92,13 +92,9 @@ def core_temperature_state(solver, core_bc: str) -> float | None:
     Returns
     -------
     float or None
-        T_core [K] for ``core_module`` or ``bower2018``, else None.
+        T_core [K] for ``core_module``, else None.
     """
-    if core_bc not in ('core_module', 'bower2018') or not hasattr(
-        solver, 'get_current_core_temperature'
-    ):
-        return None
-    return solver.get_current_core_temperature()
+    return solver.get_current_core_temperature() if core_bc == 'core_module' else None
 
 
 def start_core_temperature(solver, core_bc: str) -> float | None:
@@ -146,7 +142,6 @@ def core_module_params(config, hf_row: dict, interior_o, outdir: str) -> dict:
             )
             return params
 
-    # Structure constraints from hf_row feed the Gaussian profile fit.
     m_core_val = float(hf_row.get('M_core', 0.0) or 0.0)
     p_cen_val = float(hf_row.get('P_center', 0.0) or 0.0)
     if m_core_val <= 0.0 or p_cen_val <= 0.0:
@@ -193,10 +188,10 @@ def freeze_core_profile(interior_o) -> None:
 
 
 def restore_core_start(hf_row: dict, interior_o, solver) -> None:
-    """Start a resumed ``core_module`` or ``bower2018`` core from its snapshot state.
+    """Start a resumed ``core_module`` core from its snapshot state.
 
     The core temperature comes from the snapshot, else from the resumed row's
-    ``T_cmb``, which holds the core temperature in these modes, else Aragog starts
+    ``T_cmb``, which holds the core temperature in this mode, else Aragog starts
     it from the restored profile's bottom cell. A stratified core's shell comes
     from the snapshot, else it restarts on the core adiabat.
     """
@@ -386,20 +381,21 @@ def snapshot_core_state(interior_o, solver) -> tuple:
 
 def _carried_temperature(old, new, t_old: float, m_core: float) -> tuple:
     """T_core' [K] that keeps the total entropy between two budgets of one core mass, the
-    ratio of the liquid rule, and T'/T of each mass parcel alone (centre first, CMB last).
+    ratio of the liquid rule, T'/T of each mass parcel alone (centre first, CMB last),
+    and whether the core is below its nucleation onset before or after.
 
-    Below the nucleation onset, before or after, the entropy of fusion of the mass that
-    freezes or melts counts too.
+    Below the onset the entropy of fusion of the mass that freezes or melts counts too.
     """
     q = np.r_[0.0, (np.arange(_MASS_NODES) + 0.5) / _MASS_NODES, 1.0]
     dP, rho, ln_shape = _parcels(old.profiles, new.profiles, q)
     alpha, c_p = new.profiles.alpha, new.profiles.c_p
     ratio = isentropic_ratio(alpha, c_p, dP[1:-1], rho[1:-1], ln_shape[1:-1])
     t_new = t_old * ratio
-    if t_old < old.t_onset or t_new < new.t_onset:
+    frozen = bool(t_old < old.t_onset or t_new < new.t_onset)
+    if frozen:
         t_new = _with_fusion_entropy(old, new, t_old, t_new, m_core)
     # T'/T of each parcel alone; all agree when the new profile is the old one compressed.
-    return t_new, ratio, np.exp(alpha * dP / (rho * c_p) - ln_shape)
+    return t_new, ratio, np.exp(alpha * dP / (rho * c_p) - ln_shape), frozen
 
 
 def carry_core_across_update(hf_row: dict, interior_o, solver, before: tuple) -> None:
@@ -443,9 +439,8 @@ def carry_core_across_update(hf_row: dict, interior_o, solver, before: tuple) ->
         m_core = old.profiles.enclosed_mass(old.profiles.r_cmb)
     m_core, p_cen, t_old = float(m_core), float(hf_row['P_center']), float(t_old)
     new, profile = fitted_core_budget(solver, m_core, p_cen)
-    t_new, ratio, parcel = _carried_temperature(old, new, t_old, m_core)
+    t_new, ratio, parcel, frozen = _carried_temperature(old, new, t_old, m_core)
     spread = float(parcel.max() - parcel.min()) / ratio
-    frozen = t_old < old.t_onset or t_new < new.t_onset
     dE = float(new.heat_content(t_new) - old.heat_content(t_old))
     if not np.isfinite(dE):
         raise ValueError(f'core heat change across a structure update is not finite: {dE}')
@@ -491,9 +486,7 @@ def write_core_diagnostics(runner, output: dict, dt_actual_yr: float = 0.0, out=
     Evaluates the energy-side quantities on the solver's own
     ``CoreEnergyBudget`` and the entropy, dynamo, and stratification
     diagnostics on a wrapper-side ``CoreEntropyBudget`` built from the
-    config's ``k_core`` / ``f_ohm`` / ``flux_geometry``. The entropy
-    budget is kept on ``runner`` and rebuilt whenever the solver's budget
-    object changes, keyed on object identity.
+    config's ``k_core`` / ``f_ohm`` / ``flux_geometry``.
 
     The CMB heat flow driving the diagnostics is the step-averaged
     power ``step_dE_F_cmb_J / dt``; with no elapsed time (the init
@@ -505,15 +498,9 @@ def write_core_diagnostics(runner, output: dict, dt_actual_yr: float = 0.0, out=
     from aragog.core import CoreEntropyBudget, crystallization_regime
 
     cm_cfg = runner._config.interior_energetics.aragog.core_module
-    if getattr(runner, '_core_entropy_for', None) is not budget:
-        runner._core_entropy_budget = CoreEntropyBudget(
-            budget,
-            k_core=cm_cfg.k_core,
-            f_ohm=cm_cfg.f_ohm,
-            flux_geometry=cm_cfg.flux_geometry,
-        )
-        runner._core_entropy_for = budget
-    ent = runner._core_entropy_budget
+    ent = CoreEntropyBudget(
+        budget, k_core=cm_cfg.k_core, f_ohm=cm_cfg.f_ohm, flux_geometry=cm_cfg.flux_geometry
+    )
 
     t_cmb = float(output['T_cmb'])
     area = 4.0 * np.pi * float(budget.profiles.r_cmb) ** 2

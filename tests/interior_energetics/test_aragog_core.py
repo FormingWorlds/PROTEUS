@@ -14,12 +14,11 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.unit
-def test_write_core_diagnostics_wiring_and_cache():
+def test_write_core_diagnostics_wiring():
     """The diagnostics writer converts the helpfile F_cmb into a CMB heat
     flow through the budget's own area (q = F * 4 pi r_cmb^2), forwards
-    the configured q_radio, writes all seven core_* columns, and rebuilds
-    the wrapper-side entropy budget only when the solver's budget object
-    changes identity (a structure re-solve), not on every call.
+    the configured q_radio, writes all seven core_* columns, and builds
+    the wrapper-side entropy budget on the solver's own budget.
 
     The mocked budget returns physically plausible Earth-core values
     (r_icb ~ 1.2e6 m, C_eff ~ 1.8e27 J/K) so a units slip (missing area
@@ -98,17 +97,7 @@ def test_write_core_diagnostics_wiring_and_cache():
         assert kwargs['gravitational_upper'] == pytest.approx(r_cmb - 250.0e3)
         assert entropy.entropy_margin.call_args.kwargs['t_shell'] is t_shell
 
-        # Second call, same budget object: the entropy budget is reused.
-        write_core_diagnostics(runner, output)
-        assert mock_ent_cls.call_count == 1
-
-        # New budget object (structure re-solve): rebuilt once.
-        solver._core_module_budget = MagicMock()
-        solver._core_module_budget.profiles.r_cmb = r_cmb
-        solver._core_module_budget.r_icb.return_value = 1.22e6
-        solver._core_module_budget.effective_capacity.return_value = 1.77e27
-        write_core_diagnostics(runner, output)
-        assert mock_ent_cls.call_count == 2
+        assert mock_ent_cls.call_args.args[0] is budget
 
     # Guard return: a solver without the budget (mode mismatch after a
     # config edit mid-run) writes nothing rather than crashing.
@@ -117,6 +106,19 @@ def test_write_core_diagnostics_wiring_and_cache():
     before = dict(output)
     write_core_diagnostics(runner, output)
     assert output == before
+
+
+@pytest.mark.unit
+def test_the_start_core_temperature_needs_the_slot_of_the_boundary():
+    """The start state of a core_module solve holds the core temperature after the CMB
+    gradient; a boundary without that slot, or a start state too short for it, gives None."""
+    from proteus.interior_energetics.aragog_core import start_core_temperature
+
+    solver = SimpleNamespace(_n_stag=3, _S0=np.array([2400.0, 2390.0, 2380.0, -1e-5, 5100.0]))
+    assert start_core_temperature(solver, 'core_module') == pytest.approx(5100.0, rel=1e-15)
+    assert start_core_temperature(solver, 'energy_balance') is None
+    solver._S0 = solver._S0[:3]
+    assert start_core_temperature(solver, 'core_module') is None
 
 
 @pytest.mark.unit

@@ -376,3 +376,61 @@ def test_a_real_refit_books_the_lift_the_next_call_measures():
     )
     assert cap_linear * (6124.36 - 5940.16) == pytest.approx(1.022 * lift, rel=2e-3)
     assert abs((old.heat_content(6124.36) - old.heat_content(5940.16)) - lift) > 1.0e28
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_an_impact_after_a_skipped_call_adds_its_core_heat_to_the_booking():
+    """Impact A, its refit at the next reset, a call that is skipped (nothing committed),
+    impact B and its refit: the booking holds the lift and the refit of both, and the
+    next kept call measures their sum as the jump of the heat content from the budget
+    before A to the budget after B. A booking of impact B alone would leave the heat of
+    impact A in the ledger for the rest of the run."""
+    import attrs
+
+    from proteus.config._interior import AragogCoreModule
+
+    params = attrs.asdict(AragogCoreModule())
+    for key in ('f_ohm', 'flux_geometry'):
+        params.pop(key)
+    params.update(m_core=1.891516e24, p_cen=3.413884e11)
+    t_basal = [6124.36]
+    solver = _RealSolver(
+        parameters=SimpleNamespace(
+            boundary_conditions=SimpleNamespace(core_module_params=params)
+        ),
+        _r_basic_flat=np.array([3.409098e6, 3.5e6]),
+        _P_basic_flat=np.array([1.029895e11, 1.0e11]),
+        entropy_eos=SimpleNamespace(temperature=lambda p, s: np.array(t_basal)),
+    )
+    solver._cache_bc_constants()
+    old = solver._core_module_budget
+    params.update(
+        rho_cen=float(old.profiles.rho_cen),
+        length_scale=float(old.profiles.length_scale),
+        fit_profile=False,
+    )
+    del params['m_core'], params['p_cen']
+    interior_o = SimpleNamespace(_core_t_end=5940.16, _core_budget_end=old)
+
+    def impact(t_pre, structure):
+        r_cmb, p_cmb, m_core, p_cen = structure
+        remelt_core_module(dict(STRUCT, P_cmb=p_cmb), interior_o, solver, t_pre, 3100.0)
+        solver._r_basic_flat, solver._P_basic_flat = (
+            np.array([r_cmb, 3.7e6]),
+            np.array([p_cmb, 1.0e11]),
+        )
+        solver._cache_bc_constants()
+        refit_core_at_reset(dict(M_core=m_core, P_center=p_cen), interior_o, solver)
+
+    impact(5940.16, (3.508037e6, 1.057153e11, 2.055439e24, 3.608753e11))
+    first = interior_o._core_impact_booked
+    t_basal[0] = 6230.0
+    impact(6124.36, (3.566e6, 1.085e11, 2.16e24, 3.80e11))
+    lift, refit = interior_o._core_impact_booked
+    assert lift > first[0] > 1.0e29 and refit > first[1] > 1.0e29
+
+    solver._S0, solver._n_stag = np.array([3100.0, 0.0, 6230.0]), 1
+    interior_o.aragog_solver = solver
+    out = SimpleNamespace(step_dE_core_J=0.0, T_core=6200.0, dt_actual=0.0)
+    assert core_call_heat(out, interior_o) == pytest.approx(lift + refit, rel=1e-12)
