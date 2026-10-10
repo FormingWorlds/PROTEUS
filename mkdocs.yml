@@ -24,6 +24,7 @@ nav:
               - Overview: How-to/usage.md
               - Running and output: How-to/usage_running.md
               - Initial thermal conditions: How-to/usage_initial_conditions.md
+              - Core evolution: How-to/usage_core_evolution.md
               - Parameter grids: How-to/usage_grids.md
               - Postprocessing and chemistry: How-to/usage_postprocessing.md
               - Choose stellar spectrum: How-to/switch_spectrum.md

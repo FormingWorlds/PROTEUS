@@ -20,6 +20,7 @@ In all cases you configure the model through a configuration file, described in 
 |---|---|
 | [Running and output](usage_running.md) | Launching a single run from the terminal, running on remote machines, where results are written, and archiving output. |
 | [Initial thermal conditions](usage_initial_conditions.md) | Setting the mantle's starting temperature profile, what the initial state controls, and which option to favour. |
+| [Core evolution](usage_core_evolution.md) | Evolving the core with its own energy budget in Aragog: inner-core growth, the heat flux through the core-mantle boundary, and the output columns to read. |
 | [Parameter grids](usage_grids.md) | Defining and dispatching ensembles of simulations, with or without Slurm. |
 | [Postprocessing and chemistry](usage_postprocessing.md) | Atmospheric chemistry with VULCAN, synthetic observations, and multi-angle thermal profiles. |
 | [Bayesian inference](inference.md) | Using PROTEUS as the forward model in a Bayesian-optimisation retrieval. |
