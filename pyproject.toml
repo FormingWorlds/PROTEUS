@@ -48,7 +48,7 @@ dependencies = [
     "fwl-mors>=26.10.6",
     "fwl-calliope>=26.10.05",
     "fwl-zephyrus>=26.7.24",
-    "fwl-aragog>=26.10.09",
+    "fwl-aragog>=26.10.10",
 
     # 26.07.17 reads the liquid EOS table for fully molten entropy
     # lookups, which the super-liquidus interior initial condition
