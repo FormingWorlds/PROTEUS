@@ -2095,8 +2095,10 @@ class AragogRunner:
         other failure keeps the dt-halving plus atol-scaling ladder over
         six attempts. Each retry starts again from the state the call
         started from (``solver._S0``: the entropy on the mesh of this step
-        and the extra state of the core boundary). On final failure this
-        raises RuntimeError so the caller can apply its skip-step fallback.
+        and the extra state of the core boundary) and keeps the compression
+        work of the structure re-solve before the call, which a reset on an
+        unchanged mesh sets to 0. On final failure this raises RuntimeError
+        so the caller can apply its skip-step fallback.
 
         Parameters
         ----------
@@ -2173,8 +2175,9 @@ class AragogRunner:
         t_end = float(solver.parameters.solver.end_time)
         dt_requested = t_end - t_start
         # The state this call starts from, on the mesh of this step and with the extra
-        # slots of the core boundary; every retry starts from it again.
-        S0_entry = solver._S0.copy()
+        # slots of the core boundary, and the compression work of the re-solve before it;
+        # every retry starts from them again.
+        S0_entry, compression = solver._S0.copy(), solver._last_compression_J
         # Pre-rename helpfiles store this column as T_core; fall back so
         # resumed runs keep the jump guard on their first step.
         T_core_pre = float(hf_row.get('T_cmb', hf_row.get('T_core', 0.0)))
@@ -2430,7 +2433,7 @@ class AragogRunner:
                 solver.parameters.solver.end_time = t_start + dt_new
                 solver._atol_sf = atol_sf_new
                 solver.reset()
-                solver._S0 = S0_entry.copy()
+                solver._S0, solver._last_compression_J = S0_entry.copy(), compression
         finally:
             # Always reset atol_sf so subsequent coupling steps start at 1.0x
             solver._atol_sf = 1.0

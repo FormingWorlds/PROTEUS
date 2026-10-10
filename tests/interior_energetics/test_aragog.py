@@ -1093,6 +1093,7 @@ def _retry_ladder_runner(
         _atol_sf=1.0,
         _max_steps=1000,
         _S0=np.zeros(1),
+        _last_compression_J=0.0,
         get_state=lambda: states[min(len(attempts), len(states)) - 1],
         get_current_dSdr_cmb=lambda: -1.0e-6,
         set_initial_dSdr_cmb=lambda value: None,
@@ -1125,7 +1126,9 @@ def test_a_retry_starts_from_the_state_the_call_started_from(extra):
     """A retry starts from the state the first attempt started from, whatever extra slots
     the core boundary adds to it, not from the end of the failed attempt (9999) and not
     from the entropy the wrapper carried in (3000): after a structure re-solve that profile
-    is on the mesh of the step before, while the start state (3100) is on the new one."""
+    is on the mesh of the step before, while the start state (3100) is on the new one. The
+    accepted retry also reports the compression work of that re-solve (6.5e29 J), which
+    the reset before the retry would set to 0."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     n_stag = 4
@@ -1142,10 +1145,12 @@ def test_a_retry_starts_from_the_state_the_call_started_from(extra):
         _atol_sf=1.0,
         _max_steps=1000,
         _S0=S0.copy(),
+        _last_compression_J=6.5e29,
         get_state=lambda: states[len(starts) - 1],
         set_initial_dSdr_cmb=overrides.append,
-        reset=lambda: None,
     )
+    # A reset on an unchanged mesh finds no compression, as Aragog's does.
+    solver.reset = lambda: setattr(solver, '_last_compression_J', 0.0)
     # Aragog rebuilds its start state from the profile it is given, with no remap here.
     solver.set_initial_entropy = lambda S: setattr(solver, '_S0', np.r_[S, extra])
 
@@ -1164,6 +1169,7 @@ def test_a_retry_starts_from_the_state_the_call_started_from(extra):
 
     assert out.status == 0 and len(starts) == 2
     assert starts[1] == pytest.approx(S0, rel=1e-15)
+    assert solver._last_compression_J == pytest.approx(6.5e29, rel=1e-15)
     assert overrides == [None]
 
 
@@ -1395,6 +1401,7 @@ def test_a_failed_call_leaves_the_solver_with_the_state_it_started_from(
         _atol_sf=1.0,
         _max_steps=1000,
         _S0=S0.copy(),
+        _last_compression_J=0.0,
         _n_stag=n_stag,
         _core_bc='energy_balance',
         _dSdr_cmb_init=None,
