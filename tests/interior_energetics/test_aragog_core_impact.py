@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+from scipy import constants
+from scipy.integrate import cumulative_trapezoid, trapezoid
 
 from proteus.interior_energetics.aragog_core_impact import (
     core_call_heat,
@@ -275,12 +277,30 @@ class _RealSolver(SimpleNamespace):
         )
 
 
+def _secular_capacity(rho_cen, length, r_cmb, linear=False, alpha=1.35e-5, c_p=840.0):
+    """Core heat per kelvin of CMB temperature [J K-1] and core mass [kg] of a Gaussian
+    density on its adiabat, by the trapezoid rule with the G of aragog (scipy);
+    ``linear`` takes gravity linear in radius in place of G M(r) / r^2."""
+    r = np.linspace(0.0, r_cmb, 20001)
+    shell = 4.0 * np.pi * r**2 * rho_cen * np.exp(-((r / length) ** 2))
+    if linear:
+        g = 4.0 * np.pi / 3.0 * constants.G * rho_cen * r
+    else:
+        mass = cumulative_trapezoid(shell, r, initial=0.0)
+        g = np.divide(constants.G * mass, r**2, out=np.zeros_like(r), where=r > 0)
+    psi = cumulative_trapezoid(g, r, initial=0.0)
+    ratio = np.exp(alpha * (psi[-1] - psi) / c_p)
+    return c_p * trapezoid(shell * ratio, r), trapezoid(shell, r)
+
+
 @pytest.mark.physics_invariant
 def test_a_real_refit_books_the_lift_the_next_call_measures():
     """With the real profile fit and budget, the full config parameter set and the
     pre- and post-impact structure of a 0.05 M_E giant impact: the reset refit books a lift
     that the next call measures again as its T_core jump to the last digit, and the
-    pre-impact budget would measure a jump different by more than 1e28 J."""
+    pre-impact budget would measure a jump different by more than 1e28 J. Lift and refit
+    equal an independent quadrature of the adiabat with the exact gravity of the fitted
+    density; the adiabat of gravity linear in radius gives a lift 2 percent higher."""
     import attrs
 
     from proteus.config._interior import AragogCoreModule
@@ -317,9 +337,19 @@ def test_a_real_refit_books_the_lift_the_next_call_measures():
     interior_o.aragog_solver = solver
     jump = core_call_heat(out, interior_o)
     assert jump == pytest.approx(lift, rel=1e-15)
-    # The coupled impact run booked 3.757742e29 J from the same structure (7 digits here);
-    # above onset that is dT times the secular capacity, M_core c_p times the adiabat's 1.18.
-    assert lift == pytest.approx(3.757742e29, rel=1e-4)
+    # Above onset the lift is dT times the secular capacity, M_core c_p times the mass-weighted
+    # mean of T / T_cmb on the adiabat (1.156 here).
+    new = solver._core_module_budget.profiles
+    cap, mass = _secular_capacity(float(new.rho_cen), float(new.length_scale), 3.508037e6)
+    cap_old, _ = _secular_capacity(
+        float(old.profiles.rho_cen), float(old.profiles.length_scale), 3.409098e6
+    )
+    assert mass == pytest.approx(2.055439e24, rel=1e-6)
+    assert lift == pytest.approx(cap * (6124.36 - 5940.16), rel=1e-8)
+    assert refit == pytest.approx(5940.16 * (cap - cap_old), rel=1e-8)
     assert 1.1 < lift / (2.055439e24 * 840.0 * (6124.36 - 5940.16)) < 1.3
-    assert refit == pytest.approx(1.116566e30, rel=1e-4)
+    cap_linear, _ = _secular_capacity(
+        float(new.rho_cen), float(new.length_scale), 3.508037e6, linear=True
+    )
+    assert cap_linear * (6124.36 - 5940.16) == pytest.approx(1.022 * lift, rel=2e-3)
     assert abs((old.heat_content(6124.36) - old.heat_content(5940.16)) - lift) > 1.0e28
