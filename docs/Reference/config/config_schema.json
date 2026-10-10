@@ -11877,6 +11877,18 @@
       "doc": "Validate ZEPHYRUS settings: Pxuv within (0, 10] bar and efficiency within [0, 1]."
     },
     {
+      "validator": "_melting_curve_stays_positive",
+      "module": "_interior.py",
+      "attached_to": [
+        "interior_energetics.aragog.core_module.depression"
+      ],
+      "touches": [
+        "light_element_fraction",
+        "melting_curve"
+      ],
+      "doc": "The depressed iron melting temperature, T_m * (1 - depression * x), must stay positive."
+    },
+    {
       "validator": "valid_aragog",
       "module": "_interior.py",
       "attached_to": [

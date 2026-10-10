@@ -381,6 +381,32 @@ def test_deprecated_rtol_alias_overrides_the_aragog_default():
 
 
 @pytest.mark.parametrize(
+    ('curve', 'fraction', 'depression', 'refused'),
+    [
+        ('iron', 0.1, 9.9, False),
+        ('iron', 0.0, 50.0, False),
+        ('iron', 0.1, 10.0, True),
+        ('iron', 0.5, 3.0, True),
+        ('quadratic', 0.5, 3.0, False),
+    ],
+)
+def test_an_iron_melting_curve_depressed_to_zero_is_refused_at_config_load(
+    curve, fraction, depression, refused
+):
+    """The iron melting curve scales with 1 - depression * light_element_fraction, so a
+    product of 1 or more is refused when the config is built; the quadratic curve does
+    not read the two keys."""
+    from proteus.config._interior import AragogCoreModule
+
+    kwargs = dict(melting_curve=curve, light_element_fraction=fraction, depression=depression)
+    if refused:
+        with pytest.raises(ValueError, match='must be below 1'):
+            AragogCoreModule(**kwargs)
+    else:
+        assert AragogCoreModule(**kwargs).depression == depression
+
+
+@pytest.mark.parametrize(
     ('struct', 'core_bc', 'stratified', 'solver', 'refused'),
     [
         ('zalmoxis', 'core_module', False, 'cvode', None),
