@@ -6,7 +6,12 @@ import logging
 
 import numpy as np
 
-from proteus.interior_energetics.aragog_core import SOLVER_ONLY_KEYS, start_core_temperature
+from proteus.interior_energetics.aragog_core import (
+    fitted_core_budget,
+    install_core_profile,
+    profile_key,
+    start_core_temperature,
+)
 from proteus.utils.constants import secs_per_year
 
 log = logging.getLogger('fwl.' + __name__)
@@ -98,22 +103,9 @@ def refit_core_at_reset(hf_row: dict, interior_o, solver) -> None:
     pending = getattr(interior_o, '_core_refit_pending', None)
     if pending is None:
         return
-    from aragog.core import build_core_module_budget, fit_gaussian_core_profiles
-
-    params = solver.parameters.boundary_conditions.core_module_params
     m_core, p_cen = float(hf_row['M_core']), float(hf_row['P_center'])
     r_cmb, p_cmb = float(solver._r_basic_flat[0]), float(solver._P_basic_flat[0])
-    fit = fit_gaussian_core_profiles(
-        m_core=m_core,
-        p_cen=p_cen,
-        r_cmb=r_cmb,
-        p_cmb=p_cmb,
-        alpha=float(params['alpha']),
-        c_p=float(params['c_p']),
-    )
-    refit = dict(params, rho_cen=float(fit.rho_cen), length_scale=float(fit.length_scale))
-    budget_params = {k: v for k, v in refit.items() if k not in SOLVER_ONLY_KEYS}
-    new = build_core_module_budget(budget_params, r_cmb=r_cmb, p_cmb_fallback=p_cmb)
+    new, refit = fitted_core_budget(solver, m_core, p_cen)
     t_pre, t_new = pending['t_pre'], pending['t_new']
     e_pre = new.heat_content(t_pre)
     dE = new.heat_content(t_new) - e_pre
@@ -121,18 +113,7 @@ def refit_core_at_reset(hf_row: dict, interior_o, solver) -> None:
     if not (np.isfinite(dE) and np.isfinite(dE_refit)):
         raise ValueError(f'core heat change is not finite: lift {dE}, refit {dE_refit}')
 
-    params.update(rho_cen=refit['rho_cen'], length_scale=refit['length_scale'])
-    solver._cache_bc_constants()
-    profiles = solver._core_module_budget.profiles
-    if not (
-        np.isclose(float(profiles.rho_cen), refit['rho_cen'])
-        and np.isclose(float(profiles.length_scale), refit['length_scale'])
-    ):
-        raise ValueError('the rebuilt solver budget does not carry the refitted core profile')
-    interior_o._frozen_core_rho_cen = refit['rho_cen']
-    interior_o._frozen_core_length_scale = refit['length_scale']
-    interior_o._frozen_core_m_core = m_core
-    interior_o._frozen_core_p_cen = p_cen
+    install_core_profile(interior_o, solver, refit, m_core, p_cen)
     interior_o._core_refit_pending = None
     interior_o._core_impact_booked = (dE, dE_refit)
 
@@ -175,8 +156,9 @@ def core_call_heat(out, interior_o, lift: float = 0.0) -> float:
     t_start = start_core_temperature(solver, 'core_module')
     t_prev, budget = getattr(interior_o, '_core_t_end', None), solver._core_module_budget
     budget_prev = getattr(interior_o, '_core_budget_end', budget)
+    moved = budget_prev is not budget and profile_key(budget_prev) != profile_key(budget)
     jump = 0.0
-    if t_prev is not None and (budget_prev is not budget or abs(t_start - t_prev) > 1e-9):
+    if t_prev is not None and (moved or abs(t_start - t_prev) > 1e-9):
         jump = budget.heat_content(t_start) - budget_prev.heat_content(t_prev)
     if jump or lift:
         log.debug(

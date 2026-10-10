@@ -266,6 +266,94 @@ def _parcels(old, new, q):
     return dP, rho, np.log(shape)
 
 
+def profile_key(budget) -> tuple:
+    """The density profile and the CMB geometry of a core budget; Aragog builds a new
+    budget object for the same core when its parameter set changes form."""
+    profiles = budget.profiles
+    return profiles.rho_cen, profiles.length_scale, profiles.r_cmb, profiles.p_cmb
+
+
+def fitted_core_budget(solver, m_core: float, p_cen: float) -> tuple:
+    """A core budget fitted to ``m_core`` [kg] and ``p_cen`` [Pa] on the solver's CMB radius
+    and pressure, with its 2 profile scalars; the solver stays as it is.
+
+    Raises
+    ------
+    ValueError
+        From the profile fit or the budget factory.
+    """
+    from aragog.core import build_core_module_budget, fit_gaussian_core_profiles
+
+    params = solver.parameters.boundary_conditions.core_module_params
+    r_cmb, p_cmb = float(solver._r_basic_flat[0]), float(solver._P_basic_flat[0])
+    fit = fit_gaussian_core_profiles(
+        m_core=m_core,
+        p_cen=p_cen,
+        r_cmb=r_cmb,
+        p_cmb=p_cmb,
+        alpha=float(params['alpha']),
+        c_p=float(params['c_p']),
+    )
+    profile = dict(rho_cen=float(fit.rho_cen), length_scale=float(fit.length_scale))
+    budget_params = {
+        k: v for k, v in {**params, **profile}.items() if k not in SOLVER_ONLY_KEYS
+    }
+    return build_core_module_budget(budget_params, r_cmb=r_cmb, p_cmb_fallback=p_cmb), profile
+
+
+def install_core_profile(
+    interior_o, solver, profile: dict, m_core: float, p_cen: float
+) -> None:
+    """Give the solver a fitted profile and keep its scalars for the snapshot.
+
+    Raises
+    ------
+    ValueError
+        When the rebuilt solver budget does not carry the profile.
+    """
+    solver.parameters.boundary_conditions.core_module_params.update(profile)
+    solver._cache_bc_constants()
+    built = solver._core_module_budget.profiles
+    if not all(np.isclose(float(getattr(built, k)), v) for k, v in profile.items()):
+        raise ValueError('the rebuilt solver budget does not carry the refitted core profile')
+    interior_o._frozen_core_rho_cen = profile['rho_cen']
+    interior_o._frozen_core_length_scale = profile['length_scale']
+    interior_o._frozen_core_m_core, interior_o._frozen_core_p_cen = m_core, p_cen
+
+
+def _inner_core_mass(budget, t_core: float) -> float:
+    """Mass [kg] inside the inner core boundary of ``budget`` at ``t_core`` [K]."""
+    r_icb = budget.r_icb_batch(np.array([float(t_core)]))[0]
+    return float(budget.profiles.enclosed_mass(r_icb))
+
+
+def _with_fusion_entropy(old, new, t_old: float, t_liquid: float, m_core: float) -> float:
+    """T_core' [K] that keeps the total entropy when the update changes the inner core.
+
+    ``t_liquid`` keeps the entropy of a core whose inner core mass does not change. The
+    mass that freezes at the update gives up ``ds_fusion`` per kilogram, which the core
+    takes up: ``m_core c_p ln(T'/t_liquid) = ds_fusion (M_ic'(T') - M_ic(t_old))``.
+    """
+    from scipy.optimize import brentq
+
+    m_ic, scale = _inner_core_mass(old, t_old), new.ds_fusion / (m_core * new.profiles.c_p)
+
+    def excess(t_core):
+        return np.log(t_core / t_liquid) - scale * (_inner_core_mass(new, t_core) - m_ic)
+
+    # ln(T'/t_liquid) is at most ds_fusion / c_p in size, the whole core frozen or melted.
+    low, high = (
+        t_liquid * np.exp(-1.01 * scale * m_core),
+        t_liquid * np.exp(1.01 * scale * m_core),
+    )
+    if not excess(low) < 0.0 < excess(high):
+        raise ValueError(
+            'no core temperature keeps the entropy across the structure update between '
+            f'{low:.1f} and {high:.1f} K (liquid value {t_liquid:.1f} K)'
+        )
+    return float(brentq(excess, low, high, xtol=1e-9))
+
+
 def core_state(solver) -> tuple:
     """The core budget and the core temperature [K] the next solve starts from, None
     where the solver holds none; read before a reset."""
@@ -297,10 +385,12 @@ def carry_core_across_update(hf_row: dict, interior_o, solver, before: tuple) ->
 
     The profile is fitted again to the core mass ``interior_o._frozen_core_m_core`` at
     the new CMB radius and pressure and the row's ``P_center``, and ``T_core`` takes the
-    value that keeps the total entropy (``isentropic_ratio`` over equal-mass parcels).
-    The change of the heat content, ``E_new(T_core') - E_old(T_core)``, is added to
-    ``interior_o._core_struct_booked`` for ``step_dE_struct_core_J``. Nothing changes
-    when the CMB radius and pressure of the mesh are those of the budget before.
+    value that keeps the total entropy: ``isentropic_ratio`` over equal-mass parcels,
+    and below the nucleation onset the entropy of fusion of the mass that the update
+    freezes or melts. The change of the heat content, ``E_new(T_core') - E_old(T_core)``,
+    is added to ``interior_o._core_struct_booked`` for ``step_dE_struct_core_J``.
+    Nothing changes when the CMB radius and pressure of the mesh are those of the budget
+    before, and the solver changes only after the new state is computed.
 
     Parameters
     ----------
@@ -316,8 +406,8 @@ def carry_core_across_update(hf_row: dict, interior_o, solver, before: tuple) ->
     Raises
     ------
     ValueError
-        From the profile fit, from the heat content of a stratified budget, or when
-        the heat change is not finite.
+        From the profile fit, from the heat content of a stratified budget, when the
+        heat change is not finite, or when the solver does not take the profile.
     """
     old, t_old = before
     if old is None or t_old is None:
@@ -325,21 +415,11 @@ def carry_core_across_update(hf_row: dict, interior_o, solver, before: tuple) ->
     r_cmb, p_cmb = float(solver._r_basic_flat[0]), float(solver._P_basic_flat[0])
     if (r_cmb, p_cmb) == (old.profiles.r_cmb, old.profiles.p_cmb):
         return
-    from aragog.core import fit_gaussian_core_profiles
-
-    params = solver.parameters.boundary_conditions.core_module_params
-    m_core, p_cen = float(interior_o._frozen_core_m_core), float(hf_row['P_center'])
-    fit = fit_gaussian_core_profiles(
-        m_core=m_core,
-        p_cen=p_cen,
-        r_cmb=r_cmb,
-        p_cmb=p_cmb,
-        alpha=float(params['alpha']),
-        c_p=float(params['c_p']),
-    )
-    params.update(rho_cen=float(fit.rho_cen), length_scale=float(fit.length_scale))
-    solver._cache_bc_constants()
-    new = solver._core_module_budget
+    m_core = getattr(interior_o, '_frozen_core_m_core', None)
+    if m_core is None:  # a snapshot without the core mass: the mass of the profile before
+        m_core = float(old.profiles.enclosed_mass(old.profiles.r_cmb))
+    p_cen = float(hf_row['P_center'])
+    new, profile = fitted_core_budget(solver, float(m_core), p_cen)
     q = np.r_[0.0, (np.arange(_MASS_NODES) + 0.5) / _MASS_NODES, 1.0]
     dP, rho, ln_shape = _parcels(old.profiles, new.profiles, q)
     alpha, c_p = new.profiles.alpha, new.profiles.c_p
@@ -348,21 +428,22 @@ def carry_core_across_update(hf_row: dict, interior_o, solver, before: tuple) ->
     parcel = np.exp(alpha * dP / (rho * c_p) - ln_shape)
     spread = float(parcel.max() - parcel.min()) / ratio
     t_new = float(t_old) * ratio
+    if t_old < old.t_onset or t_new < new.t_onset:
+        t_new = _with_fusion_entropy(old, new, float(t_old), t_new, float(m_core))
     dE = float(new.heat_content(t_new) - old.heat_content(t_old))
     if not np.isfinite(dE):
         raise ValueError(f'core heat change across a structure update is not finite: {dE}')
+    install_core_profile(interior_o, solver, profile, float(m_core), p_cen)
     solver.set_initial_core_temperature(t_new)
     if getattr(interior_o, '_core_t_end', None) is None:
         interior_o._core_t_end, interior_o._core_budget_end = float(t_old), old
     interior_o._core_struct_booked = getattr(interior_o, '_core_struct_booked', 0.0) + dE
-    interior_o._frozen_core_rho_cen = float(fit.rho_cen)
-    interior_o._frozen_core_length_scale = float(fit.length_scale)
-    interior_o._frozen_core_p_cen = p_cen
     log.info(
         '    core across the structure update: T_core %.2f K -> %.2f K, heat content '
-        '%+.6e J; P_cmb %.6e -> %.6e Pa, R_core %.6e -> %.6e m; T_core ratio %.6f '
-        '(centre parcel %.6f, CMB parcel %.6f, all parcels %.6f to %.6f); profile mass / '
-        'structure M_core - 1 = %+.2e, profile P_center / structure - 1 = %+.2e',
+        '%+.6e J; P_cmb %.6e -> %.6e Pa, R_core %.6e -> %.6e m; liquid T_core ratio %.6f '
+        '(centre parcel %.6f, CMB parcel %.6f, all parcels %.6f to %.6f); inner core mass '
+        '%.4e -> %.4e kg; length scale %.1f -> %.1f km; profile mass / structure M_core '
+        '- 1 = %+.2e, profile P_center / structure - 1 = %+.2e',
         t_old,
         t_new,
         dE,
@@ -375,7 +456,11 @@ def carry_core_across_update(hf_row: dict, interior_o, solver, before: tuple) ->
         parcel[-1],
         parcel.min(),
         parcel.max(),
-        m_core / float(hf_row['M_core']) - 1.0,
+        _inner_core_mass(old, t_old),
+        _inner_core_mass(new, t_new),
+        old.profiles.length_scale / 1e3,
+        new.profiles.length_scale / 1e3,
+        float(m_core) / float(hf_row['M_core']) - 1.0,
         float(new.profiles.pressure(0.0)) / p_cen - 1.0,
     )
     if spread > ENTROPY_SPREAD_MAX:

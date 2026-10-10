@@ -28,8 +28,14 @@ class _Budget:
 
     def __init__(self, slope, offset, m_core=STRUCT['M_core'], p_cen=STRUCT['P_center']):
         self.slope, self.offset = slope, offset
+        # The slope stands for the profile: 2 stubs of one slope are one core.
         self.profiles = SimpleNamespace(
-            enclosed_mass=lambda r: m_core, pressure=lambda r: p_cen, rho_cen=0.0
+            enclosed_mass=lambda r: m_core,
+            pressure=lambda r: p_cen,
+            rho_cen=0.0,
+            length_scale=slope,
+            r_cmb=MESH['r_cmb'],
+            p_cmb=MESH['p_cmb'],
         )
 
     def heat_content(self, t):
@@ -241,8 +247,10 @@ def test_core_call_heat_adds_the_jump_since_the_last_call_and_removes_the_source
     source, plus the jump of the heat content since the last kept call; a continuous
     T_core under the same budget adds no jump, and a budget that changed at a continuous
     T_core (capacity 1.9e27 to 2.0e27 J K-1 at 6000 K) adds the difference of the two
-    heat contents. The start state carries two shell cells of a stratified core after
-    T_core, which the jump must not read."""
+    heat contents. A new budget object for the same profile and CMB, which Aragog builds
+    when its parameter set changes form, is not a change: no heat content is evaluated,
+    which a stratified budget does not give. The start state carries two shell cells of
+    a stratified core after T_core, which the jump must not read."""
     budget = _Budget(2.0e27, 0.0)
     solver = SimpleNamespace(
         _S0=np.array([3000.0, -1e-5, 6124.0, 6130.0, 6150.0]),
@@ -265,6 +273,10 @@ def test_core_call_heat_adds_the_jump_since_the_last_call_and_removes_the_source
     interior_o._core_budget_end = _Budget(1.9e27, 0.0)
     heat = core_call_heat(out, interior_o)
     assert heat == pytest.approx(-4.0e29 - 3.15576e20 + 0.1e27 * 6000.0, rel=1e-12)
+    same_core = _Budget(2.0e27, 0.0)
+    same_core.heat_content = budget.heat_content = None  # as a stratified budget: not callable
+    interior_o._core_budget_end = same_core
+    assert core_call_heat(out, interior_o) == pytest.approx(-4.0e29 - 3.15576e20, rel=1e-12)
 
 
 class _RealSolver(SimpleNamespace):

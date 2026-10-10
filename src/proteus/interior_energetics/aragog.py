@@ -664,12 +664,16 @@ class AragogRunner:
                         aragog_core.restore_core_start(hf_row, interior_o, solver)
                     if config.interior_energetics.aragog.core_bc == 'core_module':
                         # The structure of the resumed row is not always the snapshot's.
-                        aragog_core.carry_core_across_update(
-                            hf_row,
-                            interior_o,
-                            solver,
-                            aragog_core.snapshot_core_state(interior_o, solver),
-                        )
+                        try:
+                            aragog_core.carry_core_across_update(
+                                hf_row,
+                                interior_o,
+                                solver,
+                                aragog_core.snapshot_core_state(interior_o, solver),
+                            )
+                        except ValueError:
+                            UpdateStatusfile(dirs, 21)
+                            raise
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',

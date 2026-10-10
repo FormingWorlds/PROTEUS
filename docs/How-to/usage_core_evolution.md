@@ -70,22 +70,33 @@ start.
 A resumed run reads the core temperature, the fitted core profile and, with
 `stratification = true`, the shell temperatures from the interior snapshot.
 
-A structure update (`interior_struct.zalmoxis.update_interval > 0`) moves the
-CMB radius and pressure. The core keeps its mass and its entropy across it:
-the density profile is fitted again to the same core mass on the new
-structure, and the core temperature takes the value that keeps the total
-entropy of the core, so a core under a rising pressure heats as an adiabatic
-body does. The change of its heat content is written to
-`step_dE_struct_core_J`, on the row of the next interior solve that is kept.
+A structure update moves the CMB radius and pressure. The structure is updated
+during the run when `interior_struct.zalmoxis.update_interval > 0`, and once
+after the start for every initial condition except
+`planet.temperature_mode = "liquidus_super"`. The core keeps its mass and its
+entropy through an update: the density profile is fitted again to the same
+core mass on the new structure, and the core temperature takes the value that
+keeps the total entropy of the core, so a core under a rising pressure heats
+as an adiabatic body does. With an inner core the pressure change also moves
+the melting curve; the entropy of fusion of the mass that freezes or melts at
+the update is part of that balance. The gravitational energy of the light
+elements that such freezing releases is not put into the core. The change of
+the heat content is written to `step_dE_struct_core_J`, on the row of the next
+interior solve that is kept.
+
 The log gives, for each update, the temperature ratio of the rule and of the
 single mass parcels; a warning marks an update where the parcels differ by
 more than 1 percent, which means that the fitted profile is far from the old
-one compressed.
+one compressed. The profile is fitted to the central pressure of the
+structure, whose own core mass can differ from the mass the core keeps; the
+log prints both ratios.
 
 With an accretion module, a giant impact that re-melts the mantle raises the
 core temperature to at least the temperature of the re-melted base, and the
 core profile is fitted again to the grown core at the next interior solve. The
-heat of that rise is written to `step_dE_impact_core_J`.
+heat of that rise is written to `step_dE_impact_core_J`, and the change of the
+heat content by the new profile to `step_dE_impact_core_refit_J`. The step of
+an impact follows this rule alone, not the entropy rule of a structure update.
 
 ## What to read in the output
 

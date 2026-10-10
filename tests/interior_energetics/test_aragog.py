@@ -4492,6 +4492,40 @@ def test_setup_or_update_solver_restores_the_core_temperature_on_resume(
 
 
 @pytest.mark.unit
+def test_a_failed_core_carry_on_a_resume_writes_the_interior_status():
+    """A resume whose row is on another structure than its snapshot carries the core; a fit
+    that cannot hold the core there stops the run with the interior error status 21, and
+    the entropy is not restored on a half-built solver."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.params.resume = True
+    config.interior_energetics.aragog.core_bc = 'core_module'
+    solver = MagicMock(_n_stag=20)
+    interior_o = MagicMock(aragog_solver=None, _last_T_core=5280.0)
+    interior_o._last_entropy = np.full(20, 4000.0)
+    dirs = {'output': '.'}
+    with (
+        patch('proteus.interior_energetics.aragog.require_cvode'),
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner.setup_solver',
+            side_effect=lambda cfg, row, int_o, outdir: setattr(int_o, 'aragog_solver', solver),
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner.update_solver'),
+        patch(f'{_CORE}.snapshot_core_state', return_value='snapshot state'),
+        patch(
+            f'{_CORE}.carry_core_across_update',
+            side_effect=ValueError('p_cen too low for the incompressible limit'),
+        ),
+        patch('proteus.interior_energetics.aragog.UpdateStatusfile') as status,
+        pytest.raises(ValueError, match='incompressible'),
+    ):
+        AragogRunner.setup_or_update_solver(config, {'Time': 100.0}, interior_o, 10.0, dirs)
+    status.assert_called_once_with(dirs, 21)
+    solver.set_initial_entropy.assert_not_called()
+
+
+@pytest.mark.unit
 def test_core_module_resumed_solver_matches_continuous_frozen_profile(tmp_path):
     """A resumed run restores the frozen rho_cen and length_scale from the snapshot,
     matching the continuous run exactly, and subsequent solver.reset() calls do not refit."""

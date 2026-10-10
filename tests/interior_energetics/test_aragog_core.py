@@ -424,3 +424,157 @@ def test_a_resume_carries_the_core_from_the_geometry_of_its_snapshot():
         new.heat_content(solver._T_core_init) - snapshot_budget.heat_content(t_old), rel=1e-12
     )
     assert (interior_o._core_t_end, interior_o._core_budget_end) == (t_old, old)
+
+
+def _fusion_budget(inner_core_mass):
+    """Budget stand-in whose inner core mass [kg] is a function of the core temperature."""
+    profiles = SimpleNamespace(enclosed_mass=lambda radius: radius, c_p=C_P)
+    r_icb = lambda t_core: [inner_core_mass(t_core[0])]  # noqa: E731
+    return SimpleNamespace(profiles=profiles, r_icb_batch=r_icb, ds_fusion=172.8)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('m_ic_old', 'm_ic_new', 'expected'),
+    [(1.0e23, 1.7e23, 1.0076077), (1.7e23, 1.0e23, 1.0 / 1.0076077), (1.0e23, 1.0e23, 1.0)],
+    ids=['freezing', 'melting', 'no_change'],
+)
+def test_the_entropy_of_fusion_by_hand(m_ic_old, m_ic_new, expected):
+    """A core of 1.9e24 kg whose inner core grows by 7e22 kg at the update gives up
+    172.8 J kg-1 K-1 * 7e22 kg of entropy, which the core takes up:
+    ln(T'/T_liquid) = 172.8 * 7e22 / (1.9e24 * 840) = 7.5789e-3, a ratio of 1.0076077.
+    The same mass melting cools the core by the inverse ratio, and an inner core that
+    does not change leaves the liquid value."""
+    from proteus.interior_energetics.aragog_core import _with_fusion_entropy
+
+    old, new = _fusion_budget(lambda t: m_ic_old), _fusion_budget(lambda t: m_ic_new)
+    t_new = _with_fusion_entropy(old, new, 4500.0, 4545.0, 1.9e24)
+    assert t_new / 4545.0 == pytest.approx(expected, abs=1.0e-7)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_entropy_of_fusion_with_an_inner_core_that_follows_the_temperature():
+    """An inner core whose mass falls by 2e21 kg per kelvin of the new core temperature:
+    the root satisfies the balance to 1e-9 and lies between the liquid value and the value
+    for an inner core fixed at the liquid temperature, because the heating melts a part of
+    what the pressure froze."""
+    from proteus.interior_energetics.aragog_core import _with_fusion_entropy
+
+    grown = lambda t: 1.7e23 - 2.0e21 * (t - 4545.0)  # noqa: E731
+    old, new = _fusion_budget(lambda t: 1.0e23), _fusion_budget(grown)
+    t_new = _with_fusion_entropy(old, new, 4500.0, 4545.0, 1.9e24)
+    scale = 172.8 / (1.9e24 * C_P)
+    assert np.log(t_new / 4545.0) == pytest.approx(scale * (grown(t_new) - 1.0e23), rel=1e-9)
+    assert 4545.0 < t_new < 4545.0 * 1.0076077
+
+
+@pytest.mark.unit
+def test_an_inner_core_that_is_not_a_number_stops_the_root_find_with_a_clear_error():
+    """The bracket spans the largest change the entropy of fusion can give, the whole core
+    frozen or melted; a budget that returns no number for its inner core has no root in it,
+    and the error names the range."""
+    from proteus.interior_energetics.aragog_core import _with_fusion_entropy
+
+    old, new = _fusion_budget(lambda t: 1.0e23), _fusion_budget(lambda t: float('nan'))
+    with pytest.raises(ValueError, match='no core temperature keeps the entropy'):
+        _with_fusion_entropy(old, new, 4500.0, 4545.0, 1.9e24)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_liquid_core_takes_the_rule_of_the_liquid_bit_for_bit(monkeypatch):
+    """Above the nucleation onset before and after the update the new temperature is the
+    old one times the ratio of the liquid rule, to the last bit, and the entropy of fusion
+    is not evaluated."""
+    from proteus.interior_energetics import aragog_core
+
+    def never(*args):
+        raise AssertionError('the entropy of fusion was evaluated for a liquid core')
+
+    monkeypatch.setattr(aragog_core, '_with_fusion_entropy', never)
+    solver, interior_o = _core_solver()
+    t_old = 6053.74
+    old = _update(solver, interior_o, 1, t_old)
+    new = solver._core_module_budget
+    assert t_old > old.t_onset and solver._T_core_init > new.t_onset
+    q = (np.arange(256) + 0.5) / 256
+    dP, rho, ln_shape = aragog_core._parcels(old.profiles, new.profiles, q)
+    ratio = aragog_core.isentropic_ratio(ALPHA, C_P, dP, rho, ln_shape)
+    assert solver._T_core_init == t_old * ratio
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_core_with_an_inner_core_keeps_its_entropy_with_the_entropy_of_fusion():
+    """50 K below the nucleation onset the same update raises the melting curve more than
+    the adiabat, so the inner core grows (9.8e22 to 1.3e23 kg). The entropy the frozen mass
+    gives up heats the core by about 15 K more than the liquid rule, and the total balance,
+    core mass times the mass-weighted mean of c_p ln(T'/T) - alpha dP / rho against
+    ds_fusion times the change of the inner core mass, closes on a separate quadrature.
+    The booked heat, 1.19e29 J, is then within 6 percent of the compression work of the
+    sensible part, 1.26e29 J; the liquid rule alone would book 5.0e28 J and lose the
+    latent heat of the mass the update freezes."""
+    from proteus.interior_energetics import aragog_core
+
+    solver, interior_o = _core_solver()
+    old = solver._core_module_budget
+    t_old = old.t_onset - 50.0
+    _update(solver, interior_o, 1, t_old)
+    new, t_new = solver._core_module_budget, solver._T_core_init
+
+    t_liquid = t_old * 1.010031
+    assert 10.0 < t_new - t_liquid < 20.0
+    m_old = aragog_core._inner_core_mass(old, t_old)
+    m_new = aragog_core._inner_core_mass(new, t_new)
+    assert 9.0e22 < m_old < m_new < 1.5e23
+    sensible = M_CORE * _mass_mean(old.profiles, new.profiles, t_old, t_new)
+    assert sensible == pytest.approx(new.ds_fusion * (m_new - m_old), rel=2e-3)
+    assert interior_o._core_struct_booked == pytest.approx(1.1875e29, rel=2e-3)
+
+
+@pytest.mark.unit
+def test_a_carry_that_fails_leaves_the_solver_and_the_interior_as_they_were():
+    """The new state is computed on a candidate budget; when its heat content cannot be
+    evaluated (a stratified budget gives none) the error leaves the profile of the solver,
+    its core temperature and the bookings untouched."""
+    solver, interior_o = _core_solver()
+    params = solver.parameters.boundary_conditions.core_module_params
+    params['stratification'] = True
+    kept, state = dict(params), dict(vars(interior_o))
+    with pytest.raises(ValueError, match='stratified budget'):
+        _update(solver, interior_o, 1, 6053.74)
+    assert params == kept and vars(interior_o) == state and solver._T_core_init is None
+
+
+@pytest.mark.unit
+def test_a_snapshot_without_the_core_mass_keeps_the_mass_of_the_profile_before():
+    """A resume from a snapshot that holds no core mass carries the core with the mass of
+    the profile it restored, 1.8915e24 kg, not with the core mass of the structure."""
+    solver, interior_o = _core_solver()
+    interior_o._frozen_core_m_core = None
+    _update(solver, interior_o, 1, 6053.74)
+    profiles = solver._core_module_budget.profiles
+    assert float(profiles.enclosed_mass(profiles.r_cmb)) == pytest.approx(M_CORE, rel=1e-6)
+    assert interior_o._frozen_core_m_core == pytest.approx(M_CORE, rel=1e-6)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_an_update_that_starts_the_inner_core_counts_its_entropy_of_fusion():
+    """A liquid core 23 K above its nucleation onset: the update raises the onset by 77 K
+    and the liquid rule raises the core by 46 K only, so the update starts an inner core.
+    Its entropy of fusion is counted although the core was liquid before: the new
+    temperature is above the liquid value and the core has an inner core."""
+    from proteus.interior_energetics import aragog_core
+
+    solver, interior_o = _core_solver()
+    old, t_old = solver._core_module_budget, 4600.0
+    assert t_old > old.t_onset
+    _update(solver, interior_o, 1, t_old)
+    new, t_new = solver._core_module_budget, solver._T_core_init
+    assert t_old * 1.010031 < new.t_onset
+    assert 1.0 < t_new - t_old * 1.010031 < 4.0
+    assert aragog_core._inner_core_mass(old, t_old) == 0.0
+    assert aragog_core._inner_core_mass(new, t_new) > 1.0e21
