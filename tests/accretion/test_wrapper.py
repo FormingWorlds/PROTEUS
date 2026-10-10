@@ -2031,17 +2031,12 @@ def test_roche2026_loss_module_evaluates_real_zephyrus():
 
     Verifies clause: when ZEPHYRUS provides the Roche et al. (2026) law,
     _impact_loss_fraction returns the scaling law result matching direct
-    evaluation. Skips when zephyrus.collision provides no impact_loss.
+    evaluation.
     """
     pytest.importorskip('zephyrus.collision')
     import zephyrus.collision
 
     from proteus.accretion.wrapper import _impact_loss_fraction
-
-    if not hasattr(zephyrus.collision, 'impact_loss') or not hasattr(
-        zephyrus.collision, 'mass_loss_roche2026'
-    ):
-        pytest.skip('zephyrus.collision provides no impact_loss')
 
     m_e, r_e = 5.972e24, 6.371e6
     event = _impact_event(
@@ -2087,13 +2082,8 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
     reproduces); the dispatch derives gamma and v/v_esc from the body masses and
     the 2-decimal contact speed (yielding v/v_esc = 2.000434, gamma = 0.200014),
     which produces the -1.47e-5 residual.
-    Skips when zephyrus.collision provides no impact_loss.
     """
     pytest.importorskip('zephyrus.collision')
-    import zephyrus.collision
-
-    if not hasattr(zephyrus.collision, 'impact_loss'):
-        pytest.skip('zephyrus.collision provides no impact_loss')
 
     import numpy as np
     from zephyrus.planets_parameters import Me, Re
@@ -2658,10 +2648,6 @@ def test_roche2026_airless_target_and_trace_atmosphere_jump(caplog):
     'evaluated at 1e-06' and zero-energy far-field flag.
     """
     pytest.importorskip('zephyrus.collision')
-    import zephyrus.collision
-
-    if not hasattr(zephyrus.collision, 'impact_loss'):
-        pytest.skip('zephyrus.collision provides no impact_loss')
 
     from zephyrus.planets_parameters import Me, Re
 
