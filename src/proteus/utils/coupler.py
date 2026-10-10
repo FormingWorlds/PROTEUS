@@ -1115,21 +1115,15 @@ def ZeroHelpfileRow():
 def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     """Fill the cumulative core ledger of ``new_row`` in place (Aragog core_module).
 
-    The core's own heat change over each call, ``step_dE_core_J`` (the integral of
-    its effective capacity over the T_core trajectory, net of its internal source,
-    plus any T_core jump the solver finds between calls), must equal the heat it
-    gives the mantle, ``-step_dE_F_cmb_J``, plus the heat a giant impact books into
-    it, ``step_dE_impact_core_J``. ``E_core_residual_J`` accumulates the difference;
-    a jump in T_core that no booking accounts for, or a CMB flux integral that does
-    not match the core's cooling, shows here; a booked lift is measured with the same
-    budget as the jump, so the ledger shows a missing or repeated booking, not an error
-    in the lift itself. ``E_core_residual_frac`` normalises by
-    ``max(sum(|step_dE_F_cmb_J| + |step_dE_impact_core_J|), 1 J)`` over the ledger's
-    rows, which grows monotonically, so a lift that cancels the core's cumulative
-    cooling cannot blow it up. The ledger runs on the rows the core module wrote, those
-    with a nonzero effective capacity ``core_C_eff`` (0.0 is the unwritten value); other
-    rows keep 0. A non-finite term carries the previous residual unchanged, with a
-    warning, so a bad row never resets the cumulative ledger.
+    ``E_core_residual_J`` accumulates ``step_dE_core_J + step_dE_F_cmb_J -
+    step_dE_impact_core_J``: the core's heat change must equal the heat it gives the
+    mantle plus the heat a giant impact books into it. An unbooked T_core jump or a
+    mismatched CMB flux integral shows here; a booked lift is measured with the budget
+    that measures the jump, so the ledger shows a missing or repeated booking, not an
+    error in the lift. ``E_core_residual_frac`` divides by ``max(sum(|step_dE_F_cmb_J| +
+    |step_dE_impact_core_J|), 1 J)`` over the rows with ``core_C_eff != 0`` (0.0 is the
+    unwritten value; other rows keep 0), a sum that only grows. A non-finite term
+    carries the previous residual unchanged, with a warning.
     """
     if float(new_row.get('core_C_eff', 0.0)) == 0.0:
         new_row['E_core_residual_J'] = new_row['E_core_residual_frac'] = 0.0

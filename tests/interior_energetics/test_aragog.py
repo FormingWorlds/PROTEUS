@@ -3995,16 +3995,7 @@ def test_setup_solver_threads_structure_core_constraints(tmp_path):
         'M_core': 1.93e24,
         'P_center': 3.6e11,
     }
-    interior_o = MagicMock()
-    spider_eos_dir = tmp_path / 'spider_eos'
-    spider_eos_dir.mkdir(parents=True)
-    interior_o._spider_eos_dir = str(spider_eos_dir)
-    eos_dir = (
-        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
-    )
-    eos_dir.mkdir(parents=True)
-    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
-    (tmp_path / 'interior_lookup_tables' / 'Melting_curves').mkdir(parents=True)
+    _, interior_o = _spider_fallback_scaffold(tmp_path)
 
     with (
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
@@ -4160,29 +4151,18 @@ def test_core_module_snapshot_and_resume_preserves_t_core_and_gradient(tmp_path)
     hf_row = {'Time': t_snap, 'T_surf': 3200.0}
     write_final_snapshot(config, interior_o, {'output': str(tmp_path)}, hf_row)
 
-    t_val, status_t = _snapshot_scalar(str(tmp_path), t_snap, 'T_core_state')
-    assert status_t == 'ok'
-    assert t_val == pytest.approx(5987.654321, rel=1e-12)
-
-    g_val, status_g = _snapshot_scalar(str(tmp_path), t_snap, 'dSdr_cmb_state')
-    assert status_g == 'ok'
-    assert g_val == pytest.approx(-4.567e-8, rel=1e-12)
-
-    rho_val, status_rho = _snapshot_scalar(str(tmp_path), t_snap, 'core_module_rho_cen')
-    assert status_rho == 'ok'
-    assert rho_val == pytest.approx(13559.79, rel=1e-12)
-
-    len_val, status_len = _snapshot_scalar(str(tmp_path), t_snap, 'core_module_length_scale')
-    assert status_len == 'ok'
-    assert len_val == pytest.approx(6281400.0, rel=1e-12)
-
-    m_val, status_m = _snapshot_scalar(str(tmp_path), t_snap, 'core_module_m_core')
-    assert status_m == 'ok'
-    assert m_val == pytest.approx(1.8916e24, rel=1e-12)
-
-    p_val, status_p = _snapshot_scalar(str(tmp_path), t_snap, 'core_module_p_cen')
-    assert status_p == 'ok'
-    assert p_val == pytest.approx(3.4139e11, rel=1e-12)
+    stored = {
+        'T_core_state': 5987.654321,
+        'dSdr_cmb_state': -4.567e-8,
+        'core_module_rho_cen': 13559.79,
+        'core_module_length_scale': 6281400.0,
+        'core_module_m_core': 1.8916e24,
+        'core_module_p_cen': 3.4139e11,
+    }
+    for name, expected in stored.items():
+        value, status = _snapshot_scalar(str(tmp_path), t_snap, name)
+        assert status == 'ok'
+        assert value == pytest.approx(expected, rel=1e-12)
 
     new_interior = MagicMock()
     new_solver = _MockSolver(0.0, 4500.0)
@@ -4246,17 +4226,7 @@ def test_setup_solver_restores_frozen_profile_on_resume(tmp_path):
         'M_core': 1.8916e24,
         'P_center': 3.4139e11,
     }
-    interior_o = MagicMock()
-    interior_o.tides = np.zeros(20)
-    spider_eos_dir = tmp_path / 'spider_eos'
-    spider_eos_dir.mkdir(parents=True)
-    interior_o._spider_eos_dir = str(spider_eos_dir)
-    eos_dir = (
-        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
-    )
-    eos_dir.mkdir(parents=True)
-    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
-    (tmp_path / 'interior_lookup_tables' / 'Melting_curves').mkdir(parents=True)
+    _, interior_o = _spider_fallback_scaffold(tmp_path)
 
     with (
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
@@ -4341,15 +4311,11 @@ def test_run_solver_writes_the_core_impact_heat_booked_at_the_reset(tmp_path):
     runner._solve_with_retry = lambda hf_row, interior_o: out
     runner._build_helpfile_output = lambda *a, **k: {}
 
-    def _zero_diag(runner, output, dt_actual_yr, out=None):
-        output['step_dE_impact_core_J'] = 0.0
-        output['step_dE_impact_core_refit_J'] = 0.0
-
     interior_o = SimpleNamespace(
         aragog_solver=_StateSolver(4500.0), _core_impact_booked=(1.79e30, 5.2e29)
     )
     with (
-        patch(f'{_CORE}.write_core_diagnostics', _zero_diag),
+        patch(f'{_CORE}.write_core_diagnostics'),
         patch(f'{_CORE}_impact.core_call_heat', return_value=0.0) as heat,
     ):
         _, output = runner.run_solver({'Time': 300.0}, interior_o, {'output': str(tmp_path)})
@@ -4453,15 +4419,8 @@ def test_core_module_resumed_solver_matches_continuous_frozen_profile(tmp_path):
     interior_cont._frozen_core_m_core = None
     interior_cont._frozen_core_p_cen = None
     interior_cont.tides = np.zeros(20)
-    spider_eos_dir = tmp_path / 'spider_eos'
-    spider_eos_dir.mkdir(parents=True, exist_ok=True)
-    interior_cont._spider_eos_dir = str(spider_eos_dir)
-    eos_dir = (
-        tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
-    )
-    eos_dir.mkdir(parents=True, exist_ok=True)
-    (eos_dir / 'heat_capacity_melt.dat').write_text('dummy')
-    (tmp_path / 'interior_lookup_tables' / 'Melting_curves').mkdir(parents=True, exist_ok=True)
+    spider_eos_dir = _spider_fallback_scaffold(tmp_path)[1]._spider_eos_dir
+    interior_cont._spider_eos_dir = spider_eos_dir
 
     hf_row = {
         'Time': 100.0,
@@ -4527,7 +4486,7 @@ def test_core_module_resumed_solver_matches_continuous_frozen_profile(tmp_path):
     interior_resume._frozen_core_m_core = None
     interior_resume._frozen_core_p_cen = None
     interior_resume.tides = np.zeros(20)
-    interior_resume._spider_eos_dir = str(spider_eos_dir)
+    interior_resume._spider_eos_dir = spider_eos_dir
 
     mock_solver_res = MagicMock()
     mock_solver_res.get_state.return_value = _snapshot_output()

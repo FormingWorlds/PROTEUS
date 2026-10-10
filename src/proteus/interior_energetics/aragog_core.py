@@ -268,9 +268,6 @@ def write_core_diagnostics(runner, output: dict, dt_actual_yr: float = 0.0, out=
         float(budget.profiles.r_cmb) - base if np.isfinite(base) else 0.0
     )
     output['core_T_top'] = float(t_shell[-1]) if t_shell is not None else t_cmb
-    # A giant impact in this step adds the core's heat change after the solve.
-    output['step_dE_impact_core_J'] = 0.0
-    output['step_dE_impact_core_refit_J'] = 0.0
 
 
 def write_core_columns(runner, output: dict, out, interior_o) -> None:
@@ -279,9 +276,7 @@ def write_core_columns(runner, output: dict, out, interior_o) -> None:
 
     write_core_diagnostics(runner, output, dt_actual_yr=float(out.dt_actual), out=out)
     # A core refit at this step's reset books the previous impact's core heat here.
-    booked = getattr(interior_o, '_core_impact_booked', None)
-    if booked is not None:
-        output['step_dE_impact_core_J'], output['step_dE_impact_core_refit_J'] = booked
-        interior_o._core_impact_booked = None
-    lift = booked[0] if booked is not None else 0.0
-    output['step_dE_core_J'] = core_call_heat(out, interior_o, lift=lift)
+    booked = getattr(interior_o, '_core_impact_booked', None) or (0.0, 0.0)
+    interior_o._core_impact_booked = None
+    output['step_dE_impact_core_J'], output['step_dE_impact_core_refit_J'] = booked
+    output['step_dE_core_J'] = core_call_heat(out, interior_o, lift=booked[0])
